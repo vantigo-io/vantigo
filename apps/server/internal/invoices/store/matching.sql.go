@@ -68,7 +68,7 @@ INSERT INTO invoices.payments (
     $1, $2, $3, $4, $5, $6::bigint, $7,
     $8::uuid, $9::timestamptz
 )
-RETURNING id, invoice_id, paid_on, amount, currency, reference, note, registered_by_user_id, registered_at, removed_at, removed_by_user_id, removal_reason, source, bank_transaction_id, payment_attempt_id
+RETURNING id, invoice_id, paid_on, amount, currency, reference, note, registered_by_user_id, registered_at, removed_at, removed_by_user_id, removal_reason, source, bank_transaction_id, payment_attempt_id, kind, write_off_id
 `
 
 type InsertImportedPaymentParams struct {
@@ -118,6 +118,8 @@ func (q *Queries) InsertImportedPayment(ctx context.Context, arg InsertImportedP
 		&i.Source,
 		&i.BankTransactionID,
 		&i.PaymentAttemptID,
+		&i.Kind,
+		&i.WriteOffID,
 	)
 	return i, err
 }

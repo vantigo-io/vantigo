@@ -27,6 +27,11 @@ export type AccountingOpenItem = Schemas["AccountingOpenItem"];
 export type AccountingReport = Schemas["AccountingReport"];
 export type AccountingReportKind = Schemas["AccountingReportKind"];
 export type AccountingVatTerm = Schemas["AccountingVatTerm"];
+export type AccountingPostingRule = Schemas["AccountingPostingRule"];
+export type AccountingRuleMatch = Schemas["AccountingRuleMatch"];
+export type AccountingUnposted = Schemas["AccountingUnposted"];
+export type AccountingUnpostedList = Schemas["AccountingUnpostedList"];
+export type AccountingCatchUp = Schemas["AccountingCatchUp"];
 
 const BASE = "/api/v1/accounting";
 
@@ -162,6 +167,8 @@ export interface VoucherFilters {
   kind?: AccountingVoucherKind;
   accountId?: number;
   customerId?: number;
+  /** The system vouchers of a document in Invoices (A13). */
+  sourceDocumentId?: number;
   q?: string;
   offset?: number;
   limit?: number;
@@ -263,3 +270,58 @@ export const reportQueryOptions = (kind: AccountingReportKind, params: ReportPar
 /** The address a report's CSV downloads from. */
 export const reportCsvUrl = (kind: AccountingReportKind, params: ReportParams) =>
   appUrl(`${BASE}/reports/${kind}/csv${queryString({ ...params })}`);
+
+/** The line kinds a posting rule may match (A14, Invoices' snapshot of what a line was made from). */
+export const lineKinds = [
+  "hours",
+  "expense",
+  "milestone",
+  "settlement",
+  "order_line",
+  "subscription_period",
+  "deduction",
+  "manual",
+  "mixed",
+] as const;
+
+/** The posting rules, in precedence order (A14). */
+export const postingRulesQueryOptions = () =>
+  queryOptions({
+    queryKey: [ACCOUNTING_QUERY_KEY, "posting-rules"],
+    queryFn: ({ signal }) => request<{ items: AccountingPostingRule[] }>(`${BASE}/posting-rules`, { signal }),
+    select: (answer) => answer.items,
+  });
+
+export const createPostingRule = (body: {
+  name: string;
+  scope: "sales";
+  match: AccountingRuleMatch;
+  lineKind?: string;
+  taxCategoryId?: number;
+  taxCode?: string;
+  accountId: number;
+}) => send<AccountingPostingRule>(`${BASE}/posting-rules`, json("POST", body));
+
+export const updatePostingRule = (id: number, body: { name: string; accountId: number; revision: number }) =>
+  send<AccountingPostingRule>(`${BASE}/posting-rules/${id}`, json("PUT", body));
+
+export const deletePostingRule = (id: number) => send<void>(`${BASE}/posting-rules/${id}`, { method: "DELETE" });
+
+/** The facts under Needs attention (A15). */
+export const unpostedQueryOptions = (filters: { open?: boolean; offset?: number; limit?: number }) =>
+  queryOptions({
+    queryKey: [ACCOUNTING_QUERY_KEY, "unposted", filters],
+    queryFn: ({ signal }) =>
+      request<AccountingUnpostedList>(`${BASE}/unposted${queryString({ ...filters })}`, { signal }),
+  });
+
+/** Reads a fact again through Invoices and posts it. */
+export const retryUnposted = (id: number) =>
+  send<AccountingUnposted>(`${BASE}/unposted/${id}/retry`, { method: "POST" });
+
+/** Where the catch-up of sales stands (A12, R7). */
+export const catchUpQueryOptions = () =>
+  queryOptions({
+    queryKey: [ACCOUNTING_QUERY_KEY, "catch-up"],
+    queryFn: ({ signal }) => request<AccountingCatchUp>(`${BASE}/catch-up`, { signal }),
+  });

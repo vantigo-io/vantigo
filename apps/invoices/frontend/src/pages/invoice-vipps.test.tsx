@@ -263,6 +263,7 @@ describe("PaymentsCard_ShowsVipps", () => {
         payments: [
           {
             id: 1009,
+            kind: "payment",
             paidOn: "2026-09-12",
             amount: 124.99,
             currency: "NOK",

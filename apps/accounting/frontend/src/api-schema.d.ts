@@ -56,6 +56,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/accounting/catch-up": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Where the catch-up of sales stands
+         * @description Reads Invoices' sales journal, with no transaction open, for how far each stream is behind.
+         */
+        get: operations["getAccountingCatchUp"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/accounting/grouping-codes": {
         parameters: {
             query?: never;
@@ -161,6 +181,45 @@ export interface paths {
          */
         post: operations["postAccountingOpening"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/posting-rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the posting rules
+         * @description Seeds the default rules first when the books were set up before they existed.
+         */
+        get: operations["listAccountingPostingRules"];
+        put?: never;
+        /** Create a posting rule */
+        post: operations["createAccountingPostingRule"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/posting-rules/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Change a posting rule's name or account */
+        put: operations["updateAccountingPostingRule"];
+        post?: never;
+        /** Delete a posting rule */
+        delete: operations["deleteAccountingPostingRule"];
         options?: never;
         head?: never;
         patch?: never;
@@ -294,6 +353,46 @@ export interface paths {
          * @description The open period ends the day before validFrom (A5).
          */
         post: operations["addAccountingTaxCodeRate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/unposted": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the facts that could not be posted
+         * @description The facts under Needs attention, oldest first.
+         */
+        get: operations["listAccountingUnposted"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/unposted/{id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retry posting a fact
+         * @description Reads the fact again through Invoices' sales journal, with no transaction open, and posts it. The answer is the item, with its voucher when it posted and its new reason when it did not.
+         */
+        post: operations["retryAccountingUnposted"];
         delete?: never;
         options?: never;
         head?: never;
@@ -474,6 +573,39 @@ export interface components {
             /** Format: date-time */
             uploadedAt: string;
         };
+        /** @description Where the catch-up stands (A12, R7): each stream's cursor, when it last ran, whether a wake-up waits, and how far the books are behind Invoices — the facts after the cursor, counted up to 500. */
+        AccountingCatchUp: {
+            streams: components["schemas"]["AccountingCatchUpStream"][];
+            /**
+             * Format: int32
+             * @description Facts under Needs attention, not yet posted.
+             */
+            unposted: number;
+        };
+        AccountingCatchUpStream: {
+            /**
+             * Format: int32
+             * @description The facts after the cursor, counted up to 500 (behindMore says there are more); null when the source could not be read.
+             */
+            behind: number | null;
+            behindMore: boolean;
+            /** @description Why the last run stopped early, when it did. */
+            lastError: string | null;
+            /** Format: date-time */
+            lastRunAt: string | null;
+            /**
+             * Format: int64
+             * @description The last document number (invoices.documents) or fact seq (invoices.facts) the books have read.
+             */
+            position: number;
+            /**
+             * Format: date-time
+             * @description When a wake-up for the stream was asked for and not yet taken; null when none waits.
+             */
+            requestedAt: string | null;
+            /** @enum {string} */
+            stream: "invoices.documents" | "invoices.facts";
+        };
         /**
          * @description How a line with a tax code is entered (A6): net of VAT, or gross with the VAT in it.
          * @enum {string}
@@ -583,7 +715,7 @@ export interface components {
             canPost: boolean;
             /** @description NOK. */
             currency: string;
-            /** @description Whether Invoices' sales journal is composed: open invoices are offered on the opening form. */
+            /** @description Whether Invoices' sales journal is composed: open invoices are offered on the opening form, and sales post themselves. */
             invoicesEnabled: boolean;
             /**
              * Format: int32
@@ -601,6 +733,11 @@ export interface components {
              * @description The business calendar's today.
              */
             today: string;
+            /**
+             * Format: int32
+             * @description Source facts under Needs attention, not yet posted (A15).
+             */
+            unposted: number;
             /**
              * Format: int32
              * @description Vouchers in the fiscal year of today.
@@ -720,6 +857,59 @@ export interface components {
             /** Format: int32 */
             taxCodeId: number | null;
             taxRole: components["schemas"]["AccountingTaxRole"] | null;
+            /** @description The VAT return's specification line the posting belongs to — tapPåKrav for the VAT a konstatert loss takes back (R4); null for an ordinary posting. */
+            taxSpecification: string | null;
+        };
+        /** @description A posting rule (A14): the account a sales line's net is credited to, matched on exactly one of the line's kind, its product's tax category or its standard tax code; a default rule (match default) is seeded per tax code and is the last resort. version counts the changes of its account; a voucher names the rule and version that made each revenue line, and a change affects future vouchers only. */
+        AccountingPostingRule: {
+            /** Format: int32 */
+            accountId: number;
+            accountName: string;
+            accountNumber: string;
+            /** Format: int32 */
+            id: number;
+            /** @description On a line_kind rule, the line kind (hours, expense, milestone, settlement, order_line, subscription_period, deduction, manual, mixed). */
+            lineKind: string | null;
+            match: components["schemas"]["AccountingRuleMatch"];
+            name: string;
+            /** Format: int32 */
+            revision: number;
+            scope: components["schemas"]["AccountingRuleScope"];
+            /**
+             * Format: int32
+             * @description On a tax_category rule, Products' tax category id.
+             */
+            taxCategoryId: number | null;
+            /** @description On a tax_code or default rule, the standard tax code. */
+            taxCode: string | null;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: int32 */
+            version: number;
+        };
+        /** @description A new rule: a name (1–100, unique), the scope (sales in this delivery), a match of line_kind, tax_category or tax_code with its one value, and an active account. */
+        AccountingPostingRuleInput: {
+            /** Format: int32 */
+            accountId: number;
+            lineKind?: string;
+            match: components["schemas"]["AccountingRuleMatch"];
+            name: string;
+            scope: components["schemas"]["AccountingRuleScope"];
+            /** Format: int32 */
+            taxCategoryId?: number;
+            taxCode?: string;
+        };
+        AccountingPostingRuleList: {
+            /** @description In precedence order — line kind, tax category, tax code, the defaults — and by name. */
+            items: components["schemas"]["AccountingPostingRule"][];
+        };
+        /** @description A rule's name and account under its revision; its match never changes. A changed account is a new version. */
+        AccountingPostingRuleUpdate: {
+            /** Format: int32 */
+            accountId: number;
+            name: string;
+            /** Format: int32 */
+            revision: number;
         };
         AccountingPreviewLine: {
             /** Format: int32 */
@@ -740,7 +930,7 @@ export interface components {
             taxCodeId: number | null;
             taxRole: components["schemas"]["AccountingTaxRole"] | null;
         };
-        /** @description An RFC 9457 problem with this module's refusal code (accounting design §2, §13). code names the rule that refused and is what a client keys off, never the words: books_not_set_up (409: every operation but the meta and the setup, until Set up the books has run, R12), books_already_set_up (409: a second setup), revision_conflict (409: the revision has moved on), account_number_taken (409), account_has_postings (409: a delete of an account with postings, or a change of its number or kind), account_has_role (409: a delete of an account holding a system role; move the role first), account_inactive (400: a line on an inactive account), account_unknown (400), tax_code_unknown (400: an unknown or inactive tax code), tax_code_no_rate (400: no rate period covers the voucher's date), rate_period_invalid (400: a new rate period that does not start after the current one's start), party_required (400: a line on receivables or payables without a customer or supplier), party_not_allowed (400: a party on a line of another account, or both a customer and a supplier), open_item_unknown (400: an open item of another party or kind), voucher_unbalanced (400: the lines and their computed tax do not sum to zero; the detail names the difference), voucher_empty (400: no line, or every line zero), amount_invalid (400: not an exact decimal with at most two places, or zero), date_before_books_start (400), period_locked (409: a voucher a person posts dated on or before the lock, A8), voucher_owned_by_source (409: a reversal of a voucher the system posted, which only its source reverses, A7), voucher_already_reversed (409), opening_exists (409: an opening voucher stands and is not reversed), opening_locked (409: an opening entered or reversed after the first lock, A9), lock_not_month_end (400), lock_reason_required (400: a lock moved back without a reason), lock_before_books_start (400), settlement_source_document (409: an item that stands for a document in Invoices is paid there, R5), settlement_exceeds_balance (409: more than the item's balance), settlement_settled (409: an item with nothing left), bank_account_invalid (400: not an active asset account), attachment_too_large (400: over 20 MB), storage_not_configured (503: no object store for attachments), report_account_required (400: the account report without accountId), period_invalid (400: from after to, or a period over 366 days for the journal), open_item_source_document (400: a person's voucher naming an open item that stands for a document in Invoices, which moves with Invoices' own facts), report_too_large (400: the journal or an account's specification over 50 000 postings; choose a shorter period), lock_in_future (400: a lock after the end of the current month), books_start_too_early (400: books that start before 2022-01-01, the first day the seeded rates are known to hold), account_kind_mismatch (400: an account whose kind is not its number's class's — 1 asset, 20 equity, 21–29 liability, 3 income, 4–7 expense, 8 income or expense — or a number outside the classes 1 to 8; a system role moved to an account of another kind than the role's), reverse_charge_gross (400: a gross journal with a reverse-charge code, which is entered net). errors carries the field errors of a 400, keyed by the camelCase path (lines[2].accountId). */
+        /** @description An RFC 9457 problem with this module's refusal code (accounting design §2, §13). code names the rule that refused and is what a client keys off, never the words: books_not_set_up (409: every operation but the meta and the setup, until Set up the books has run, R12), books_already_set_up (409: a second setup), revision_conflict (409: the revision has moved on), account_number_taken (409), account_has_postings (409: a delete of an account with postings, or a change of its number or kind), account_has_role (409: a delete of an account holding a system role; move the role first), account_inactive (400: a line on an inactive account), account_unknown (400), tax_code_unknown (400: an unknown or inactive tax code), tax_code_no_rate (400: no rate period covers the voucher's date), rate_period_invalid (400: a new rate period that does not start after the current one's start), party_required (400: a line on receivables or payables without a customer or supplier), party_not_allowed (400: a party on a line of another account, or both a customer and a supplier), open_item_unknown (400: an open item of another party or kind), voucher_unbalanced (400: the lines and their computed tax do not sum to zero; the detail names the difference), voucher_empty (400: no line, or every line zero), amount_invalid (400: not an exact decimal with at most two places, or zero), date_before_books_start (400), period_locked (409: a voucher a person posts dated on or before the lock, A8), voucher_owned_by_source (409: a reversal of a voucher the system posted, which only its source reverses, A7), voucher_already_reversed (409), opening_exists (409: an opening voucher stands and is not reversed), opening_locked (409: an opening entered or reversed after the first lock, A9), lock_not_month_end (400), lock_reason_required (400: a lock moved back without a reason), lock_before_books_start (400), settlement_source_document (409: an item that stands for a document in Invoices is paid there, R5), settlement_exceeds_balance (409: more than the item's balance), settlement_settled (409: an item with nothing left), bank_account_invalid (400: not an active asset account), attachment_too_large (400: over 20 MB), storage_not_configured (503: no object store for attachments), report_account_required (400: the account report without accountId), period_invalid (400: from after to, or a period over 366 days for the journal), open_item_source_document (400: a person's voucher naming an open item that stands for a document in Invoices, which moves with Invoices' own facts), report_too_large (400: the journal or an account's specification over 50 000 postings; choose a shorter period), lock_in_future (400: a lock after the end of the current month), books_start_too_early (400: books that start before 2022-01-01, the first day the seeded rates are known to hold), account_kind_mismatch (400: an account whose kind is not its number's class's — 1 asset, 20 equity, 21–29 liability, 3 income, 4–7 expense, 8 income or expense — or a number outside the classes 1 to 8; a system role moved to an account of another kind than the role's), reverse_charge_gross (400: a gross journal with a reverse-charge code, which is entered net), posting_rule_name_taken (409), posting_rule_match_taken (409: a rule with the same scope and match exists), posting_rule_default (409: a default rule is never deleted, only pointed at another account), unposted_already_posted (409: a retry of a fact that has posted). errors carries the field errors of a 400, keyed by the camelCase path (lines[2].accountId). */
         AccountingProblem: {
             code?: string | null;
             detail?: string | null;
@@ -788,6 +978,11 @@ export interface components {
             depth: number;
             /** @enum {string} */
             style: "line" | "heading" | "subtotal" | "total";
+            /**
+             * Format: int64
+             * @description The document in Invoices the row stands for (a customer's open item for an invoice), which the screen links to.
+             */
+            documentId: number | null;
             /** Format: int64 */
             voucherId: number | null;
         };
@@ -803,6 +998,13 @@ export interface components {
             /** Format: int32 */
             accountId: number;
         };
+        /** @enum {string} */
+        AccountingRuleMatch: "line_kind" | "tax_category" | "expense_category" | "tax_code" | "default";
+        /**
+         * @description sales for Invoices' lines; expense arrives with purchases (delivery C).
+         * @enum {string}
+         */
+        AccountingRuleScope: "sales" | "expense";
         AccountingSettings: {
             /**
              * Format: date
@@ -918,6 +1120,43 @@ export interface components {
         };
         /** @enum {string} */
         AccountingTaxRole: "base" | "tax";
+        /** @description A source fact that could not be posted (A15), under Needs attention: the stream and position it was read at, its source key, what it is about, why — tax_code_unknown (the document's standard tax code is not in the books, or inactive), account_inactive or account_unknown (a rule's or a role's account), unknown_kind (a fact of a kind this version does not post), document_unknown (the invoice a fact is about is not in the journal), or an engine refusal's code — and, once a retry posted it, the voucher. */
+        AccountingUnposted: {
+            amount: string | null;
+            /** Format: int32 */
+            attempts: number;
+            /** Format: int32 */
+            customerId: number | null;
+            customerName: string | null;
+            detail: string;
+            /**
+             * Format: int64
+             * @description The document in Invoices the fact is about.
+             */
+            documentId: number | null;
+            documentNumber: string | null;
+            /** Format: date */
+            factDate: string | null;
+            /** Format: date-time */
+            firstSeenAt: string;
+            /** Format: int64 */
+            id: number;
+            /** Format: date-time */
+            lastTriedAt: string;
+            /** Format: date-time */
+            postedAt: string | null;
+            postedVoucher: components["schemas"]["AccountingVoucherRef"] | null;
+            /** Format: int64 */
+            position: number;
+            reason: string;
+            source: components["schemas"]["AccountingSource"];
+            stream: string;
+        };
+        AccountingUnpostedList: {
+            items: components["schemas"]["AccountingUnposted"][];
+            /** Format: int32 */
+            total: number;
+        };
         /**
          * @description The VAT terms (A2): none when the seller is not VAT-registered.
          * @enum {string}
@@ -950,6 +1189,11 @@ export interface components {
             /** Format: int32 */
             ruleVersion: number | null;
             source: components["schemas"]["AccountingSource"] | null;
+            /**
+             * Format: int64
+             * @description The document in Invoices a system voucher belongs to — the invoice its payment, credit note or write-off is about — which the screen links to.
+             */
+            sourceDocumentId: number | null;
             system: boolean;
             /** Format: date */
             voucherDate: string;
@@ -990,6 +1234,8 @@ export interface components {
             reversedBy: components["schemas"]["AccountingVoucherRef"] | null;
             reverses: components["schemas"]["AccountingVoucherRef"] | null;
             source: components["schemas"]["AccountingSource"] | null;
+            /** Format: int64 */
+            sourceDocumentId: number | null;
             /** @description Posted by the system for a source fact; only its source reverses it. */
             system: boolean;
             /** Format: date */
@@ -1361,6 +1607,53 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Conflict — books_not_set_up. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+        };
+    };
+    getAccountingCatchUp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingCatchUp"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
             };
             /** @description Conflict — books_not_set_up. */
             409: {
@@ -1792,6 +2085,236 @@ export interface operations {
                 };
             };
             /** @description Conflict — books_not_set_up; opening_exists, opening_locked. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+        };
+    };
+    listAccountingPostingRules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingPostingRuleList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — books_not_set_up. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+        };
+    };
+    createAccountingPostingRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountingPostingRuleInput"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingPostingRule"];
+                };
+            };
+            /** @description Bad Request — field errors; account_unknown, account_inactive. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — books_not_set_up; posting_rule_name_taken, posting_rule_match_taken. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+        };
+    };
+    updateAccountingPostingRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountingPostingRuleUpdate"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingPostingRule"];
+                };
+            };
+            /** @description Bad Request — field errors; account_unknown, account_inactive. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — books_not_set_up; revision_conflict, posting_rule_name_taken. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+        };
+    };
+    deleteAccountingPostingRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — books_not_set_up; posting_rule_default. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -2257,6 +2780,115 @@ export interface operations {
             };
         };
     };
+    listAccountingUnposted: {
+        parameters: {
+            query?: {
+                /** @description Default true: only the facts not yet posted. */
+                open?: boolean;
+                offset?: number;
+                /** @description Default 100, at most 500. */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingUnpostedList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — books_not_set_up. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+        };
+    };
+    retryAccountingUnposted: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingUnposted"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — books_not_set_up; unposted_already_posted. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+        };
+    };
     listAccountingVouchers: {
         parameters: {
             query?: {
@@ -2267,6 +2899,8 @@ export interface operations {
                 accountId?: number;
                 customerId?: number;
                 supplierId?: number;
+                /** @description The system vouchers of a document in Invoices (an invoice, its credit notes, payments and write-offs). */
+                sourceDocumentId?: number;
                 /** @description Matched against the description, a posting's text and the number (2027-000123). */
                 q?: string;
                 offset?: number;

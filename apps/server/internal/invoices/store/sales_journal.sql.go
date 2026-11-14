@@ -12,6 +12,68 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const journalDocumentByID = `-- name: JournalDocumentByID :many
+SELECT i.id, i.number::bigint AS number, i.kind, i.issue_date, i.due_date, i.customer_id, i.currency, i.exchange_rate,
+    i.credits_invoice_id, o.number AS credits_number, i.net_total, i.vat_total, i.gross_total, i.vat_total_nok
+FROM invoices.invoices i
+LEFT JOIN invoices.invoices o ON o.id = i.credits_invoice_id
+WHERE i.status = 'issued' AND i.id = $1::bigint
+`
+
+type JournalDocumentByIDRow struct {
+	ID               int64
+	Number           int64
+	Kind             string
+	IssueDate        pgtype.Date
+	DueDate          pgtype.Date
+	CustomerID       int32
+	Currency         string
+	ExchangeRate     pgtype.Numeric
+	CreditsInvoiceID *int64
+	CreditsNumber    *int64
+	NetTotal         pgtype.Numeric
+	VatTotal         pgtype.Numeric
+	GrossTotal       pgtype.Numeric
+	VatTotalNok      pgtype.Numeric
+}
+
+// JournalDocumentByID is the issued document with that id, as
+// JournalDocuments answers one: no row when there is none or it is a draft.
+func (q *Queries) JournalDocumentByID(ctx context.Context, id int64) ([]JournalDocumentByIDRow, error) {
+	rows, err := q.db.Query(ctx, journalDocumentByID, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []JournalDocumentByIDRow
+	for rows.Next() {
+		var i JournalDocumentByIDRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Number,
+			&i.Kind,
+			&i.IssueDate,
+			&i.DueDate,
+			&i.CustomerID,
+			&i.Currency,
+			&i.ExchangeRate,
+			&i.CreditsInvoiceID,
+			&i.CreditsNumber,
+			&i.NetTotal,
+			&i.VatTotal,
+			&i.GrossTotal,
+			&i.VatTotalNok,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const journalDocuments = `-- name: JournalDocuments :many
 
 SELECT i.id, i.number::bigint AS number, i.kind, i.issue_date, i.due_date, i.customer_id, i.currency, i.exchange_rate,
@@ -90,13 +152,18 @@ func (q *Queries) JournalDocuments(ctx context.Context, arg JournalDocumentsPara
 const journalFacts = `-- name: JournalFacts :many
 SELECT f.seq, f.kind, f.subject_id, f.invoice_id, f.business_date, f.removed_at,
     i.number::bigint AS invoice_number, i.customer_id, i.exchange_rate,
-    COALESCE(p.amount, c.amount)::numeric AS amount,
-    COALESCE(p.source, c.source)::text AS source,
-    COALESCE(t.account, '')::text AS bank_account
+    COALESCE(p.amount, c.amount, w.amount)::numeric AS amount,
+    COALESCE(p.source, c.source, 'manual')::text AS source,
+    COALESCE(t.account, '')::text AS bank_account,
+    w.id AS write_off_id, w.reason AS write_off_reason, w.vat_correction AS write_off_vat_correction,
+    w.amount AS write_off_amount
 FROM invoices.journal_facts f
 JOIN invoices.invoices i ON i.id = f.invoice_id
-LEFT JOIN invoices.payments p ON f.kind IN ('payment', 'payment_removed') AND p.id = f.subject_id
+LEFT JOIN invoices.payments p
+    ON f.kind IN ('payment', 'payment_removed', 'recovered_payment', 'recovered_payment_removed') AND p.id = f.subject_id
 LEFT JOIN invoices.charge_payments c ON f.kind IN ('charge_payment', 'charge_payment_removed') AND c.id = f.subject_id
+LEFT JOIN invoices.write_offs w
+    ON w.id = CASE WHEN f.kind IN ('write_off', 'write_off_undone') THEN f.subject_id ELSE p.write_off_id END
 LEFT JOIN invoices.bank_transactions t ON t.id = COALESCE(p.bank_transaction_id, c.bank_transaction_id)
 WHERE f.seq > $1::bigint
 ORDER BY f.seq
@@ -109,23 +176,29 @@ type JournalFactsParams struct {
 }
 
 type JournalFactsRow struct {
-	Seq           int64
-	Kind          string
-	SubjectID     int64
-	InvoiceID     int64
-	BusinessDate  pgtype.Date
-	RemovedAt     *time.Time
-	InvoiceNumber int64
-	CustomerID    int32
-	ExchangeRate  pgtype.Numeric
-	Amount        pgtype.Numeric
-	Source        string
-	BankAccount   string
+	Seq                   int64
+	Kind                  string
+	SubjectID             int64
+	InvoiceID             int64
+	BusinessDate          pgtype.Date
+	RemovedAt             *time.Time
+	InvoiceNumber         int64
+	CustomerID            int32
+	ExchangeRate          pgtype.Numeric
+	Amount                pgtype.Numeric
+	Source                string
+	BankAccount           string
+	WriteOffID            *int64
+	WriteOffReason        *string
+	WriteOffVatCorrection *bool
+	WriteOffAmount        pgtype.Numeric
 }
 
 // JournalFacts is up to row_limit facts after after_seq, in seq order, each
-// joined to the payment or charge payment it is about, its invoice, and the
-// bank line it came from: that line's account is the receiving account.
+// joined to the payment, charge payment or write-off it is about, its
+// invoice, and the bank line it came from: that line's account is the
+// receiving account. A recovered payment's fact carries the write-off it
+// recovers.
 func (q *Queries) JournalFacts(ctx context.Context, arg JournalFactsParams) ([]JournalFactsRow, error) {
 	rows, err := q.db.Query(ctx, journalFacts, arg.AfterSeq, arg.RowLimit)
 	if err != nil {
@@ -148,6 +221,10 @@ func (q *Queries) JournalFacts(ctx context.Context, arg JournalFactsParams) ([]J
 			&i.Amount,
 			&i.Source,
 			&i.BankAccount,
+			&i.WriteOffID,
+			&i.WriteOffReason,
+			&i.WriteOffVatCorrection,
+			&i.WriteOffAmount,
 		); err != nil {
 			return nil, err
 		}
@@ -235,9 +312,12 @@ CROSS JOIN LATERAL (
     WHERE c.credits_invoice_id = i.id AND c.status = 'issued' AND c.issue_date <= $1::date
 ) AS cr
 CROSS JOIN LATERAL (
-    SELECT sum(p.amount) AS paid FROM invoices.payments p
-    WHERE p.invoice_id = i.id AND p.paid_on <= $1::date
-      AND (p.removed_at IS NULL OR p.removed_at >= $2::timestamptz)
+    SELECT coalesce((SELECT sum(p.amount) FROM invoices.payments p
+        WHERE p.invoice_id = i.id AND p.kind = 'payment' AND p.paid_on <= $1::date
+          AND (p.removed_at IS NULL OR p.removed_at >= $2::timestamptz)), 0)
+      + coalesce((SELECT sum(w.amount) FROM invoices.write_offs w
+        WHERE w.invoice_id = i.id AND w.written_off_on <= $1::date
+          AND (w.undone_at IS NULL OR w.undone_at >= $2::timestamptz)), 0) AS paid
 ) AS pd
 WHERE i.kind = 'invoice' AND i.status = 'issued' AND i.issue_date <= $1::date
   AND i.number > $3::bigint
@@ -268,7 +348,9 @@ type JournalOpenAtRow struct {
 // number order, issued on or before day and whose open amount at the end of
 // that day is not zero: its gross, less the credit notes issued on or before
 // day, less the payments paid on or before day that were not removed before
-// live_until — the first moment of the next business day.
+// live_until — the first moment of the next business day — and less the
+// write-offs made on or before day that were not undone before it. A
+// recovered payment is not part of the open amount.
 func (q *Queries) JournalOpenAt(ctx context.Context, arg JournalOpenAtParams) ([]JournalOpenAtRow, error) {
 	rows, err := q.db.Query(ctx, journalOpenAt,
 		arg.Day,

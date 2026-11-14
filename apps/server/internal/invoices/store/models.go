@@ -440,6 +440,8 @@ type InvoicesPayment struct {
 	Source             string
 	BankTransactionID  *int64
 	PaymentAttemptID   *int64
+	Kind               string
+	WriteOffID         *int64
 }
 
 type InvoicesPaymentAttempt struct {
@@ -742,4 +744,19 @@ type InvoicesVippsDayReconciliation struct {
 	ReconciledByUserID uuid.UUID
 	ReconciledAt       time.Time
 	Note               string
+}
+
+type InvoicesWriteOff struct {
+	ID                 int64
+	InvoiceID          int64
+	WrittenOffOn       pgtype.Date
+	Amount             pgtype.Numeric
+	Currency           string
+	Reason             string
+	VatCorrection      bool
+	RegisteredByUserID uuid.UUID
+	RegisteredAt       time.Time
+	UndoneAt           *time.Time
+	UndoneByUserID     *uuid.UUID
+	UndoReason         *string
 }

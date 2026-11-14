@@ -168,21 +168,80 @@ func (d fakeDirectory) Customers(_ context.Context, ids []int32) ([]contracts.Cu
 
 // fakeJournal is Invoices' sales journal: the open invoices a test sets, in
 // number order and pages of the limit asked, call n answering seqs[n] as its
-// AsOfSeq (the last again past the end, 0 without any).
+// AsOfSeq (the last again past the end, 0 without any); and the documents and
+// facts a test adds, in number and seq order. fail, when set, is every
+// Documents and Facts call's error.
 type fakeJournal struct {
 	mu    sync.Mutex
 	open  []contracts.OpenDocument
 	seqs  []int64
 	asked []time.Time
 	calls int
+	docs  []contracts.JournalDocument
+	facts []contracts.JournalFact
+	fail  error
 }
 
-func (j *fakeJournal) Documents(context.Context, int64, int) ([]contracts.JournalDocument, error) {
+// addDocument adds an issued document, numbered after the last.
+func (j *fakeJournal) addDocument(d contracts.JournalDocument) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	j.docs = append(j.docs, d)
+}
+
+// addFact adds a fact, its seq after the last unless set.
+func (j *fakeJournal) addFact(f contracts.JournalFact) contracts.JournalFact {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if f.Seq == 0 {
+		f.Seq = int64(len(j.facts)) + 1
+		if n := len(j.facts); n > 0 {
+			f.Seq = j.facts[n-1].Seq + 1
+		}
+	}
+	j.facts = append(j.facts, f)
+	return f
+}
+
+func (j *fakeJournal) Documents(_ context.Context, after int64, limit int) ([]contracts.JournalDocument, error) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if j.fail != nil {
+		return nil, j.fail
+	}
+	out := []contracts.JournalDocument{}
+	for _, d := range j.docs {
+		if d.Number > after && len(out) < limit {
+			out = append(out, d)
+		}
+	}
+	return out, nil
+}
+
+func (j *fakeJournal) Document(_ context.Context, id int64) (*contracts.JournalDocument, error) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	for _, d := range j.docs {
+		if d.ID == id {
+			return &d, nil
+		}
+	}
 	return nil, nil
 }
 
-func (j *fakeJournal) Facts(context.Context, int64, int) ([]contracts.JournalFact, error) {
-	return nil, nil
+func (j *fakeJournal) Facts(_ context.Context, after int64, limit int) ([]contracts.JournalFact, error) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if j.fail != nil {
+		return nil, j.fail
+	}
+	out := []contracts.JournalFact{}
+	for _, f := range j.facts {
+		if f.Seq > after && len(out) < limit {
+			out = append(out, f)
+		}
+	}
+	return out, nil
 }
 
 func (j *fakeJournal) OpenAt(_ context.Context, day time.Time, afterNumber int64, limit int) (contracts.OpenPage, error) {

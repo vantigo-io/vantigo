@@ -212,6 +212,7 @@ describe("the payments card", () => {
           manual,
           {
             id: 1003,
+            kind: "payment",
             paidOn: "2026-09-11",
             amount: 10,
             currency: "NOK",
@@ -223,6 +224,7 @@ describe("the payments card", () => {
           },
           {
             id: 1004,
+            kind: "payment",
             paidOn: "2026-09-11",
             amount: 5,
             currency: "NOK",
@@ -271,6 +273,7 @@ describe("the payments card", () => {
           payments: [
             {
               id: 1003,
+              kind: "payment",
               paidOn: "2026-09-11",
               amount: 10,
               currency: "NOK",

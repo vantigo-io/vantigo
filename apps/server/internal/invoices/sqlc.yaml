@@ -22,6 +22,7 @@ sql:
       - ../db/migrations/00178_invoices_bank_feed.sql
       - ../db/migrations/00179_invoices_bank_feed_cursor.sql
       - ../db/migrations/00180_invoices_journal.sql
+      - ../db/migrations/00182_invoices_write_offs.sql
     queries: queries
     gen:
       go:

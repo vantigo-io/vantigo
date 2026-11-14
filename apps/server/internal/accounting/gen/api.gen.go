@@ -48,6 +48,24 @@ func (e AccountingAccountKind) Valid() bool {
 	}
 }
 
+// Defines values for AccountingCatchUpStreamStream.
+const (
+	InvoicesDocuments AccountingCatchUpStreamStream = "invoices.documents"
+	InvoicesFacts     AccountingCatchUpStreamStream = "invoices.facts"
+)
+
+// Valid indicates whether the value is a known member of the AccountingCatchUpStreamStream enum.
+func (e AccountingCatchUpStreamStream) Valid() bool {
+	switch e {
+	case InvoicesDocuments:
+		return true
+	case InvoicesFacts:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AccountingEntryMode.
 const (
 	Gross AccountingEntryMode = "gross"
@@ -174,6 +192,51 @@ func (e AccountingReportRowStyle) Valid() bool {
 	case Subtotal:
 		return true
 	case Total:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AccountingRuleMatch.
+const (
+	Default         AccountingRuleMatch = "default"
+	ExpenseCategory AccountingRuleMatch = "expense_category"
+	LineKind        AccountingRuleMatch = "line_kind"
+	TaxCategory     AccountingRuleMatch = "tax_category"
+	TaxCode         AccountingRuleMatch = "tax_code"
+)
+
+// Valid indicates whether the value is a known member of the AccountingRuleMatch enum.
+func (e AccountingRuleMatch) Valid() bool {
+	switch e {
+	case Default:
+		return true
+	case ExpenseCategory:
+		return true
+	case LineKind:
+		return true
+	case TaxCategory:
+		return true
+	case TaxCode:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AccountingRuleScope.
+const (
+	AccountingRuleScopeExpense AccountingRuleScope = "expense"
+	AccountingRuleScopeSales   AccountingRuleScope = "sales"
+)
+
+// Valid indicates whether the value is a known member of the AccountingRuleScope enum.
+func (e AccountingRuleScope) Valid() bool {
+	switch e {
+	case AccountingRuleScopeExpense:
+		return true
+	case AccountingRuleScopeSales:
 		return true
 	default:
 		return false
@@ -408,6 +471,35 @@ type AccountingAttachment struct {
 	UploadedAt  time.Time `json:"uploadedAt"`
 }
 
+// AccountingCatchUp Where the catch-up stands (A12, R7): each stream's cursor, when it last ran, whether a wake-up waits, and how far the books are behind Invoices — the facts after the cursor, counted up to 500.
+type AccountingCatchUp struct {
+	Streams []AccountingCatchUpStream `json:"streams"`
+
+	// Unposted Facts under Needs attention, not yet posted.
+	Unposted int32 `json:"unposted"`
+}
+
+// AccountingCatchUpStream defines model for AccountingCatchUpStream.
+type AccountingCatchUpStream struct {
+	// Behind The facts after the cursor, counted up to 500 (behindMore says there are more); null when the source could not be read.
+	Behind     *int32 `json:"behind"`
+	BehindMore bool   `json:"behindMore"`
+
+	// LastError Why the last run stopped early, when it did.
+	LastError *string    `json:"lastError"`
+	LastRunAt *time.Time `json:"lastRunAt"`
+
+	// Position The last document number (invoices.documents) or fact seq (invoices.facts) the books have read.
+	Position int64 `json:"position"`
+
+	// RequestedAt When a wake-up for the stream was asked for and not yet taken; null when none waits.
+	RequestedAt *time.Time                    `json:"requestedAt"`
+	Stream      AccountingCatchUpStreamStream `json:"stream"`
+}
+
+// AccountingCatchUpStreamStream defines model for AccountingCatchUpStream.Stream.
+type AccountingCatchUpStreamStream string
+
 // AccountingEntryMode How a line with a tax code is entered (A6): net of VAT, or gross with the VAT in it.
 type AccountingEntryMode string
 
@@ -530,7 +622,7 @@ type AccountingMeta struct {
 	// Currency NOK.
 	Currency string `json:"currency"`
 
-	// InvoicesEnabled Whether Invoices' sales journal is composed: open invoices are offered on the opening form.
+	// InvoicesEnabled Whether Invoices' sales journal is composed: open invoices are offered on the opening form, and sales post themselves.
 	InvoicesEnabled bool `json:"invoicesEnabled"`
 
 	// OpenCustomerItems Customer open items with a balance.
@@ -547,6 +639,9 @@ type AccountingMeta struct {
 
 	// Today The business calendar's today.
 	Today openapi_types.Date `json:"today"`
+
+	// Unposted Source facts under Needs attention, not yet posted (A15).
+	Unposted int32 `json:"unposted"`
 
 	// VouchersThisYear Vouchers in the fiscal year of today.
 	VouchersThisYear int32 `json:"vouchersThisYear"`
@@ -659,6 +754,60 @@ type AccountingPosting struct {
 	TaxCode   *string            `json:"taxCode"`
 	TaxCodeId *int32             `json:"taxCodeId"`
 	TaxRole   *AccountingTaxRole `json:"taxRole"`
+
+	// TaxSpecification The VAT return's specification line the posting belongs to — tapPåKrav for the VAT a konstatert loss takes back (R4); null for an ordinary posting.
+	TaxSpecification *string `json:"taxSpecification"`
+}
+
+// AccountingPostingRule A posting rule (A14): the account a sales line's net is credited to, matched on exactly one of the line's kind, its product's tax category or its standard tax code; a default rule (match default) is seeded per tax code and is the last resort. version counts the changes of its account; a voucher names the rule and version that made each revenue line, and a change affects future vouchers only.
+type AccountingPostingRule struct {
+	AccountId     int32  `json:"accountId"`
+	AccountName   string `json:"accountName"`
+	AccountNumber string `json:"accountNumber"`
+	Id            int32  `json:"id"`
+
+	// LineKind On a line_kind rule, the line kind (hours, expense, milestone, settlement, order_line, subscription_period, deduction, manual, mixed).
+	LineKind *string             `json:"lineKind"`
+	Match    AccountingRuleMatch `json:"match"`
+	Name     string              `json:"name"`
+	Revision int32               `json:"revision"`
+
+	// Scope sales for Invoices' lines; expense arrives with purchases (delivery C).
+	Scope AccountingRuleScope `json:"scope"`
+
+	// TaxCategoryId On a tax_category rule, Products' tax category id.
+	TaxCategoryId *int32 `json:"taxCategoryId"`
+
+	// TaxCode On a tax_code or default rule, the standard tax code.
+	TaxCode   *string   `json:"taxCode"`
+	UpdatedAt time.Time `json:"updatedAt"`
+	Version   int32     `json:"version"`
+}
+
+// AccountingPostingRuleInput A new rule: a name (1–100, unique), the scope (sales in this delivery), a match of line_kind, tax_category or tax_code with its one value, and an active account.
+type AccountingPostingRuleInput struct {
+	AccountId int32               `json:"accountId"`
+	LineKind  *string             `json:"lineKind,omitempty"`
+	Match     AccountingRuleMatch `json:"match"`
+	Name      string              `json:"name"`
+
+	// Scope sales for Invoices' lines; expense arrives with purchases (delivery C).
+	Scope         AccountingRuleScope `json:"scope"`
+	TaxCategoryId *int32              `json:"taxCategoryId,omitempty"`
+	TaxCode       *string             `json:"taxCode,omitempty"`
+}
+
+// AccountingPostingRuleList defines model for AccountingPostingRuleList.
+type AccountingPostingRuleList struct {
+	// Items In precedence order — line kind, tax category, tax code, the defaults — and by name.
+	Items []AccountingPostingRule `json:"items"`
+}
+
+// AccountingPostingRuleUpdate A rule's name and account under its revision; its match never changes. A changed account is a new version.
+type AccountingPostingRuleUpdate struct {
+	AccountId int32  `json:"accountId"`
+	Name      string `json:"name"`
+	Revision  int32  `json:"revision"`
 }
 
 // AccountingPreviewLine defines model for AccountingPreviewLine.
@@ -679,7 +828,7 @@ type AccountingPreviewLine struct {
 	TaxRole   *AccountingTaxRole `json:"taxRole"`
 }
 
-// AccountingProblem An RFC 9457 problem with this module's refusal code (accounting design §2, §13). code names the rule that refused and is what a client keys off, never the words: books_not_set_up (409: every operation but the meta and the setup, until Set up the books has run, R12), books_already_set_up (409: a second setup), revision_conflict (409: the revision has moved on), account_number_taken (409), account_has_postings (409: a delete of an account with postings, or a change of its number or kind), account_has_role (409: a delete of an account holding a system role; move the role first), account_inactive (400: a line on an inactive account), account_unknown (400), tax_code_unknown (400: an unknown or inactive tax code), tax_code_no_rate (400: no rate period covers the voucher's date), rate_period_invalid (400: a new rate period that does not start after the current one's start), party_required (400: a line on receivables or payables without a customer or supplier), party_not_allowed (400: a party on a line of another account, or both a customer and a supplier), open_item_unknown (400: an open item of another party or kind), voucher_unbalanced (400: the lines and their computed tax do not sum to zero; the detail names the difference), voucher_empty (400: no line, or every line zero), amount_invalid (400: not an exact decimal with at most two places, or zero), date_before_books_start (400), period_locked (409: a voucher a person posts dated on or before the lock, A8), voucher_owned_by_source (409: a reversal of a voucher the system posted, which only its source reverses, A7), voucher_already_reversed (409), opening_exists (409: an opening voucher stands and is not reversed), opening_locked (409: an opening entered or reversed after the first lock, A9), lock_not_month_end (400), lock_reason_required (400: a lock moved back without a reason), lock_before_books_start (400), settlement_source_document (409: an item that stands for a document in Invoices is paid there, R5), settlement_exceeds_balance (409: more than the item's balance), settlement_settled (409: an item with nothing left), bank_account_invalid (400: not an active asset account), attachment_too_large (400: over 20 MB), storage_not_configured (503: no object store for attachments), report_account_required (400: the account report without accountId), period_invalid (400: from after to, or a period over 366 days for the journal), open_item_source_document (400: a person's voucher naming an open item that stands for a document in Invoices, which moves with Invoices' own facts), report_too_large (400: the journal or an account's specification over 50 000 postings; choose a shorter period), lock_in_future (400: a lock after the end of the current month), books_start_too_early (400: books that start before 2022-01-01, the first day the seeded rates are known to hold), account_kind_mismatch (400: an account whose kind is not its number's class's — 1 asset, 20 equity, 21–29 liability, 3 income, 4–7 expense, 8 income or expense — or a number outside the classes 1 to 8; a system role moved to an account of another kind than the role's), reverse_charge_gross (400: a gross journal with a reverse-charge code, which is entered net). errors carries the field errors of a 400, keyed by the camelCase path (lines[2].accountId).
+// AccountingProblem An RFC 9457 problem with this module's refusal code (accounting design §2, §13). code names the rule that refused and is what a client keys off, never the words: books_not_set_up (409: every operation but the meta and the setup, until Set up the books has run, R12), books_already_set_up (409: a second setup), revision_conflict (409: the revision has moved on), account_number_taken (409), account_has_postings (409: a delete of an account with postings, or a change of its number or kind), account_has_role (409: a delete of an account holding a system role; move the role first), account_inactive (400: a line on an inactive account), account_unknown (400), tax_code_unknown (400: an unknown or inactive tax code), tax_code_no_rate (400: no rate period covers the voucher's date), rate_period_invalid (400: a new rate period that does not start after the current one's start), party_required (400: a line on receivables or payables without a customer or supplier), party_not_allowed (400: a party on a line of another account, or both a customer and a supplier), open_item_unknown (400: an open item of another party or kind), voucher_unbalanced (400: the lines and their computed tax do not sum to zero; the detail names the difference), voucher_empty (400: no line, or every line zero), amount_invalid (400: not an exact decimal with at most two places, or zero), date_before_books_start (400), period_locked (409: a voucher a person posts dated on or before the lock, A8), voucher_owned_by_source (409: a reversal of a voucher the system posted, which only its source reverses, A7), voucher_already_reversed (409), opening_exists (409: an opening voucher stands and is not reversed), opening_locked (409: an opening entered or reversed after the first lock, A9), lock_not_month_end (400), lock_reason_required (400: a lock moved back without a reason), lock_before_books_start (400), settlement_source_document (409: an item that stands for a document in Invoices is paid there, R5), settlement_exceeds_balance (409: more than the item's balance), settlement_settled (409: an item with nothing left), bank_account_invalid (400: not an active asset account), attachment_too_large (400: over 20 MB), storage_not_configured (503: no object store for attachments), report_account_required (400: the account report without accountId), period_invalid (400: from after to, or a period over 366 days for the journal), open_item_source_document (400: a person's voucher naming an open item that stands for a document in Invoices, which moves with Invoices' own facts), report_too_large (400: the journal or an account's specification over 50 000 postings; choose a shorter period), lock_in_future (400: a lock after the end of the current month), books_start_too_early (400: books that start before 2022-01-01, the first day the seeded rates are known to hold), account_kind_mismatch (400: an account whose kind is not its number's class's — 1 asset, 20 equity, 21–29 liability, 3 income, 4–7 expense, 8 income or expense — or a number outside the classes 1 to 8; a system role moved to an account of another kind than the role's), reverse_charge_gross (400: a gross journal with a reverse-charge code, which is entered net), posting_rule_name_taken (409), posting_rule_match_taken (409: a rule with the same scope and match exists), posting_rule_default (409: a default rule is never deleted, only pointed at another account), unposted_already_posted (409: a retry of a fact that has posted). errors carries the field errors of a 400, keyed by the camelCase path (lines[2].accountId).
 type AccountingProblem struct {
 	Code     *string              `json:"code,omitempty"`
 	Detail   *string              `json:"detail,omitempty"`
@@ -721,10 +870,13 @@ type AccountingReportRow struct {
 	AccountId *int32 `json:"accountId"`
 
 	// Cells By column key.
-	Cells     map[string]string        `json:"cells"`
-	Depth     int32                    `json:"depth"`
-	Style     AccountingReportRowStyle `json:"style"`
-	VoucherId *int64                   `json:"voucherId"`
+	Cells map[string]string `json:"cells"`
+	Depth int32             `json:"depth"`
+
+	// DocumentId The document in Invoices the row stands for (a customer's open item for an invoice), which the screen links to.
+	DocumentId *int64                   `json:"documentId"`
+	Style      AccountingReportRowStyle `json:"style"`
+	VoucherId  *int64                   `json:"voucherId"`
 }
 
 // AccountingReportRowStyle defines model for AccountingReportRow.Style.
@@ -741,6 +893,12 @@ type AccountingReverseInput struct {
 type AccountingRoleInput struct {
 	AccountId int32 `json:"accountId"`
 }
+
+// AccountingRuleMatch defines model for AccountingRuleMatch.
+type AccountingRuleMatch string
+
+// AccountingRuleScope sales for Invoices' lines; expense arrives with purchases (delivery C).
+type AccountingRuleScope string
 
 // AccountingSettings defines model for AccountingSettings.
 type AccountingSettings struct {
@@ -854,6 +1012,37 @@ type AccountingTaxRateInput struct {
 // AccountingTaxRole defines model for AccountingTaxRole.
 type AccountingTaxRole string
 
+// AccountingUnposted A source fact that could not be posted (A15), under Needs attention: the stream and position it was read at, its source key, what it is about, why — tax_code_unknown (the document's standard tax code is not in the books, or inactive), account_inactive or account_unknown (a rule's or a role's account), unknown_kind (a fact of a kind this version does not post), document_unknown (the invoice a fact is about is not in the journal), or an engine refusal's code — and, once a retry posted it, the voucher.
+type AccountingUnposted struct {
+	Amount       *string `json:"amount"`
+	Attempts     int32   `json:"attempts"`
+	CustomerId   *int32  `json:"customerId"`
+	CustomerName *string `json:"customerName"`
+	Detail       string  `json:"detail"`
+
+	// DocumentId The document in Invoices the fact is about.
+	DocumentId     *int64                `json:"documentId"`
+	DocumentNumber *string               `json:"documentNumber"`
+	FactDate       *openapi_types.Date   `json:"factDate"`
+	FirstSeenAt    time.Time             `json:"firstSeenAt"`
+	Id             int64                 `json:"id"`
+	LastTriedAt    time.Time             `json:"lastTriedAt"`
+	Position       int64                 `json:"position"`
+	PostedAt       *time.Time            `json:"postedAt"`
+	PostedVoucher  *AccountingVoucherRef `json:"postedVoucher"`
+	Reason         string                `json:"reason"`
+
+	// Source The fact a system voucher records (A4).
+	Source AccountingSource `json:"source"`
+	Stream string           `json:"stream"`
+}
+
+// AccountingUnpostedList defines model for AccountingUnpostedList.
+type AccountingUnpostedList struct {
+	Items []AccountingUnposted `json:"items"`
+	Total int32                `json:"total"`
+}
+
 // AccountingVatTerm The VAT terms (A2): none when the seller is not VAT-registered.
 type AccountingVatTerm string
 
@@ -878,8 +1067,11 @@ type AccountingVoucher struct {
 	Rule           *string                `json:"rule"`
 	RuleVersion    *int32                 `json:"ruleVersion"`
 	Source         *AccountingSource      `json:"source"`
-	System         bool                   `json:"system"`
-	VoucherDate    openapi_types.Date     `json:"voucherDate"`
+
+	// SourceDocumentId The document in Invoices a system voucher belongs to — the invoice its payment, credit note or write-off is about — which the screen links to.
+	SourceDocumentId *int64             `json:"sourceDocumentId"`
+	System           bool               `json:"system"`
+	VoucherDate      openapi_types.Date `json:"voucherDate"`
 }
 
 // AccountingVoucherKind defines model for AccountingVoucherKind.
@@ -907,16 +1099,17 @@ type AccountingVoucherSummary struct {
 	Description string `json:"description"`
 
 	// Display The voucher's number as shown: 2027-000123.
-	Display      string                `json:"display"`
-	DocumentDate openapi_types.Date    `json:"documentDate"`
-	FiscalYear   int32                 `json:"fiscalYear"`
-	Id           int64                 `json:"id"`
-	Kind         AccountingVoucherKind `json:"kind"`
-	Number       int32                 `json:"number"`
-	PostedAt     time.Time             `json:"postedAt"`
-	ReversedBy   *AccountingVoucherRef `json:"reversedBy"`
-	Reverses     *AccountingVoucherRef `json:"reverses"`
-	Source       *AccountingSource     `json:"source"`
+	Display          string                `json:"display"`
+	DocumentDate     openapi_types.Date    `json:"documentDate"`
+	FiscalYear       int32                 `json:"fiscalYear"`
+	Id               int64                 `json:"id"`
+	Kind             AccountingVoucherKind `json:"kind"`
+	Number           int32                 `json:"number"`
+	PostedAt         time.Time             `json:"postedAt"`
+	ReversedBy       *AccountingVoucherRef `json:"reversedBy"`
+	Reverses         *AccountingVoucherRef `json:"reverses"`
+	Source           *AccountingSource     `json:"source"`
+	SourceDocumentId *int64                `json:"sourceDocumentId"`
 
 	// System Posted by the system for a source fact; only its source reverses it.
 	System      bool               `json:"system"`
@@ -1005,6 +1198,16 @@ type ExportAccountingReportParams struct {
 	ProjectId *int32 `form:"projectId,omitempty" json:"projectId,omitempty"`
 }
 
+// ListAccountingUnpostedParams defines parameters for ListAccountingUnposted.
+type ListAccountingUnpostedParams struct {
+	// Open Default true: only the facts not yet posted.
+	Open   *bool  `form:"open,omitempty" json:"open,omitempty"`
+	Offset *int32 `form:"offset,omitempty" json:"offset,omitempty"`
+
+	// Limit Default 100, at most 500.
+	Limit *int32 `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // ListAccountingVouchersParams defines parameters for ListAccountingVouchers.
 type ListAccountingVouchersParams struct {
 	From *openapi_types.Date    `form:"from,omitempty" json:"from,omitempty"`
@@ -1015,6 +1218,9 @@ type ListAccountingVouchersParams struct {
 	AccountId  *int32 `form:"accountId,omitempty" json:"accountId,omitempty"`
 	CustomerId *int32 `form:"customerId,omitempty" json:"customerId,omitempty"`
 	SupplierId *int64 `form:"supplierId,omitempty" json:"supplierId,omitempty"`
+
+	// SourceDocumentId The system vouchers of a document in Invoices (an invoice, its credit notes, payments and write-offs).
+	SourceDocumentId *int64 `form:"sourceDocumentId,omitempty" json:"sourceDocumentId,omitempty"`
 
 	// Q Matched against the description, a posting's text and the number (2027-000123).
 	Q      *string `form:"q,omitempty" json:"q,omitempty"`
@@ -1046,6 +1252,12 @@ type SettleAccountingOpenItemJSONRequestBody = AccountingSettlementInput
 
 // PostAccountingOpeningJSONRequestBody defines body for PostAccountingOpening for application/json ContentType.
 type PostAccountingOpeningJSONRequestBody = AccountingOpeningInput
+
+// CreateAccountingPostingRuleJSONRequestBody defines body for CreateAccountingPostingRule for application/json ContentType.
+type CreateAccountingPostingRuleJSONRequestBody = AccountingPostingRuleInput
+
+// UpdateAccountingPostingRuleJSONRequestBody defines body for UpdateAccountingPostingRule for application/json ContentType.
+type UpdateAccountingPostingRuleJSONRequestBody = AccountingPostingRuleUpdate
 
 // AssignAccountingRoleJSONRequestBody defines body for AssignAccountingRole for application/json ContentType.
 type AssignAccountingRoleJSONRequestBody = AccountingRoleInput
@@ -1091,6 +1303,9 @@ type ServerInterface interface {
 	// PutAccountingAccountGroupings Set an account's grouping codes
 	// (PUT /api/v1/accounting/accounts/{id}/groupings)
 	PutAccountingAccountGroupings(w http.ResponseWriter, r *http.Request, id int32)
+	// GetAccountingCatchUp Where the catch-up of sales stands
+	// (GET /api/v1/accounting/catch-up)
+	GetAccountingCatchUp(w http.ResponseWriter, r *http.Request)
 	// ListAccountingGroupingCodes List Skatteetaten's grouping codes
 	// (GET /api/v1/accounting/grouping-codes)
 	ListAccountingGroupingCodes(w http.ResponseWriter, r *http.Request, params ListAccountingGroupingCodesParams)
@@ -1115,6 +1330,18 @@ type ServerInterface interface {
 	// PostAccountingOpening Enter the opening balances
 	// (POST /api/v1/accounting/opening)
 	PostAccountingOpening(w http.ResponseWriter, r *http.Request)
+	// ListAccountingPostingRules List the posting rules
+	// (GET /api/v1/accounting/posting-rules)
+	ListAccountingPostingRules(w http.ResponseWriter, r *http.Request)
+	// CreateAccountingPostingRule Create a posting rule
+	// (POST /api/v1/accounting/posting-rules)
+	CreateAccountingPostingRule(w http.ResponseWriter, r *http.Request)
+	// DeleteAccountingPostingRule Delete a posting rule
+	// (DELETE /api/v1/accounting/posting-rules/{id})
+	DeleteAccountingPostingRule(w http.ResponseWriter, r *http.Request, id int32)
+	// UpdateAccountingPostingRule Change a posting rule's name or account
+	// (PUT /api/v1/accounting/posting-rules/{id})
+	UpdateAccountingPostingRule(w http.ResponseWriter, r *http.Request, id int32)
 	// GetAccountingReport Get a report
 	// (GET /api/v1/accounting/reports/{report})
 	GetAccountingReport(w http.ResponseWriter, r *http.Request, report AccountingReportKind, params GetAccountingReportParams)
@@ -1136,6 +1363,12 @@ type ServerInterface interface {
 	// AddAccountingTaxCodeRate Add a rate period to a tax code
 	// (POST /api/v1/accounting/tax-codes/{id}/rates)
 	AddAccountingTaxCodeRate(w http.ResponseWriter, r *http.Request, id int32)
+	// ListAccountingUnposted List the facts that could not be posted
+	// (GET /api/v1/accounting/unposted)
+	ListAccountingUnposted(w http.ResponseWriter, r *http.Request, params ListAccountingUnpostedParams)
+	// RetryAccountingUnposted Retry posting a fact
+	// (POST /api/v1/accounting/unposted/{id}/retry)
+	RetryAccountingUnposted(w http.ResponseWriter, r *http.Request, id int64)
 	// ListAccountingVouchers List vouchers
 	// (GET /api/v1/accounting/vouchers)
 	ListAccountingVouchers(w http.ResponseWriter, r *http.Request, params ListAccountingVouchersParams)
@@ -1323,6 +1556,20 @@ func (siw *ServerInterfaceWrapper) PutAccountingAccountGroupings(w http.Response
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PutAccountingAccountGroupings(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAccountingCatchUp operation middleware
+func (siw *ServerInterfaceWrapper) GetAccountingCatchUp(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAccountingCatchUp(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1563,6 +1810,86 @@ func (siw *ServerInterfaceWrapper) PostAccountingOpening(w http.ResponseWriter, 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostAccountingOpening(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListAccountingPostingRules operation middleware
+func (siw *ServerInterfaceWrapper) ListAccountingPostingRules(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAccountingPostingRules(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateAccountingPostingRule operation middleware
+func (siw *ServerInterfaceWrapper) CreateAccountingPostingRule(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateAccountingPostingRule(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteAccountingPostingRule operation middleware
+func (siw *ServerInterfaceWrapper) DeleteAccountingPostingRule(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteAccountingPostingRule(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateAccountingPostingRule operation middleware
+func (siw *ServerInterfaceWrapper) UpdateAccountingPostingRule(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateAccountingPostingRule(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1944,6 +2271,91 @@ func (siw *ServerInterfaceWrapper) AddAccountingTaxCodeRate(w http.ResponseWrite
 	handler.ServeHTTP(w, r)
 }
 
+// ListAccountingUnposted operation middleware
+func (siw *ServerInterfaceWrapper) ListAccountingUnposted(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListAccountingUnpostedParams
+
+	// ------------- Optional query parameter "open" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "open", r.URL.Query(), &params.Open, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "open"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "open", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "offset", r.URL.Query(), &params.Offset, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "offset"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "offset", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAccountingUnposted(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RetryAccountingUnposted operation middleware
+func (siw *ServerInterfaceWrapper) RetryAccountingUnposted(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RetryAccountingUnposted(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListAccountingVouchers operation middleware
 func (siw *ServerInterfaceWrapper) ListAccountingVouchers(w http.ResponseWriter, r *http.Request) {
 
@@ -2027,6 +2439,19 @@ func (siw *ServerInterfaceWrapper) ListAccountingVouchers(w http.ResponseWriter,
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "supplierId"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "supplierId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "sourceDocumentId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "sourceDocumentId", r.URL.Query(), &params.SourceDocumentId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "sourceDocumentId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sourceDocumentId", Err: err})
 		}
 		return
 	}
@@ -2348,6 +2773,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/accounting/accounts/{id}", wrapper.GetAccountingAccount)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/accounting/accounts/{id}", wrapper.UpdateAccountingAccount)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/accounting/accounts/{id}/groupings", wrapper.PutAccountingAccountGroupings)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/accounting/catch-up", wrapper.GetAccountingCatchUp)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/accounting/grouping-codes", wrapper.ListAccountingGroupingCodes)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/accounting/lock", wrapper.GetAccountingLock)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/accounting/lock", wrapper.PutAccountingLock)
@@ -2356,6 +2782,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/accounting/open-items/{id}/settlements", wrapper.SettleAccountingOpenItem)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/accounting/opening", wrapper.GetAccountingOpening)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/accounting/opening", wrapper.PostAccountingOpening)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/accounting/posting-rules", wrapper.ListAccountingPostingRules)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/accounting/posting-rules", wrapper.CreateAccountingPostingRule)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/accounting/posting-rules/{id}", wrapper.DeleteAccountingPostingRule)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/accounting/posting-rules/{id}", wrapper.UpdateAccountingPostingRule)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/accounting/reports/{report}", wrapper.GetAccountingReport)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/accounting/reports/{report}/csv", wrapper.ExportAccountingReport)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/accounting/roles/{role}", wrapper.AssignAccountingRole)
@@ -2363,6 +2793,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/accounting/tax-codes", wrapper.ListAccountingTaxCodes)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/accounting/tax-codes/{id}", wrapper.UpdateAccountingTaxCode)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/accounting/tax-codes/{id}/rates", wrapper.AddAccountingTaxCodeRate)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/accounting/unposted", wrapper.ListAccountingUnposted)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/accounting/unposted/{id}/retry", wrapper.RetryAccountingUnposted)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/accounting/vouchers", wrapper.ListAccountingVouchers)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/accounting/vouchers", wrapper.PostAccountingVoucher)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/accounting/vouchers/{id}", wrapper.GetAccountingVoucher)
@@ -2817,6 +3249,69 @@ func (response PutAccountingAccountGroupings404Response) VisitPutAccountingAccou
 type PutAccountingAccountGroupings409ApplicationProblemPlusJSONResponse AccountingProblem
 
 func (response PutAccountingAccountGroupings409ApplicationProblemPlusJSONResponse) VisitPutAccountingAccountGroupingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountingCatchUpRequestObject struct {
+}
+
+type GetAccountingCatchUpResponseObject interface {
+	VisitGetAccountingCatchUpResponse(w http.ResponseWriter) error
+}
+
+type GetAccountingCatchUp200JSONResponse AccountingCatchUp
+
+func (response GetAccountingCatchUp200JSONResponse) VisitGetAccountingCatchUpResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountingCatchUp401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetAccountingCatchUp401JSONResponse) VisitGetAccountingCatchUpResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountingCatchUp403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetAccountingCatchUp403JSONResponse) VisitGetAccountingCatchUpResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountingCatchUp409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response GetAccountingCatchUp409ApplicationProblemPlusJSONResponse) VisitGetAccountingCatchUpResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -3363,6 +3858,300 @@ func (response PostAccountingOpening403JSONResponse) VisitPostAccountingOpeningR
 type PostAccountingOpening409ApplicationProblemPlusJSONResponse AccountingProblem
 
 func (response PostAccountingOpening409ApplicationProblemPlusJSONResponse) VisitPostAccountingOpeningResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccountingPostingRulesRequestObject struct {
+}
+
+type ListAccountingPostingRulesResponseObject interface {
+	VisitListAccountingPostingRulesResponse(w http.ResponseWriter) error
+}
+
+type ListAccountingPostingRules200JSONResponse AccountingPostingRuleList
+
+func (response ListAccountingPostingRules200JSONResponse) VisitListAccountingPostingRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccountingPostingRules401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListAccountingPostingRules401JSONResponse) VisitListAccountingPostingRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccountingPostingRules403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListAccountingPostingRules403JSONResponse) VisitListAccountingPostingRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccountingPostingRules409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response ListAccountingPostingRules409ApplicationProblemPlusJSONResponse) VisitListAccountingPostingRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccountingPostingRuleRequestObject struct {
+	Body *CreateAccountingPostingRuleJSONRequestBody
+}
+
+type CreateAccountingPostingRuleResponseObject interface {
+	VisitCreateAccountingPostingRuleResponse(w http.ResponseWriter) error
+}
+
+type CreateAccountingPostingRule201JSONResponse AccountingPostingRule
+
+func (response CreateAccountingPostingRule201JSONResponse) VisitCreateAccountingPostingRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccountingPostingRule400ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response CreateAccountingPostingRule400ApplicationProblemPlusJSONResponse) VisitCreateAccountingPostingRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccountingPostingRule401JSONResponse externalRef0.AuthErrorResponse
+
+func (response CreateAccountingPostingRule401JSONResponse) VisitCreateAccountingPostingRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccountingPostingRule403JSONResponse externalRef0.AuthErrorResponse
+
+func (response CreateAccountingPostingRule403JSONResponse) VisitCreateAccountingPostingRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccountingPostingRule409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response CreateAccountingPostingRule409ApplicationProblemPlusJSONResponse) VisitCreateAccountingPostingRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteAccountingPostingRuleRequestObject struct {
+	Id int32 `json:"id"`
+}
+
+type DeleteAccountingPostingRuleResponseObject interface {
+	VisitDeleteAccountingPostingRuleResponse(w http.ResponseWriter) error
+}
+
+type DeleteAccountingPostingRule204Response struct {
+}
+
+func (response DeleteAccountingPostingRule204Response) VisitDeleteAccountingPostingRuleResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteAccountingPostingRule401JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteAccountingPostingRule401JSONResponse) VisitDeleteAccountingPostingRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteAccountingPostingRule403JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteAccountingPostingRule403JSONResponse) VisitDeleteAccountingPostingRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteAccountingPostingRule404Response struct {
+}
+
+func (response DeleteAccountingPostingRule404Response) VisitDeleteAccountingPostingRuleResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type DeleteAccountingPostingRule409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response DeleteAccountingPostingRule409ApplicationProblemPlusJSONResponse) VisitDeleteAccountingPostingRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAccountingPostingRuleRequestObject struct {
+	Id   int32 `json:"id"`
+	Body *UpdateAccountingPostingRuleJSONRequestBody
+}
+
+type UpdateAccountingPostingRuleResponseObject interface {
+	VisitUpdateAccountingPostingRuleResponse(w http.ResponseWriter) error
+}
+
+type UpdateAccountingPostingRule200JSONResponse AccountingPostingRule
+
+func (response UpdateAccountingPostingRule200JSONResponse) VisitUpdateAccountingPostingRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAccountingPostingRule400ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response UpdateAccountingPostingRule400ApplicationProblemPlusJSONResponse) VisitUpdateAccountingPostingRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAccountingPostingRule401JSONResponse externalRef0.AuthErrorResponse
+
+func (response UpdateAccountingPostingRule401JSONResponse) VisitUpdateAccountingPostingRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAccountingPostingRule403JSONResponse externalRef0.AuthErrorResponse
+
+func (response UpdateAccountingPostingRule403JSONResponse) VisitUpdateAccountingPostingRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAccountingPostingRule404Response struct {
+}
+
+func (response UpdateAccountingPostingRule404Response) VisitUpdateAccountingPostingRuleResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type UpdateAccountingPostingRule409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response UpdateAccountingPostingRule409ApplicationProblemPlusJSONResponse) VisitUpdateAccountingPostingRuleResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -3921,6 +4710,142 @@ func (response AddAccountingTaxCodeRate404Response) VisitAddAccountingTaxCodeRat
 type AddAccountingTaxCodeRate409ApplicationProblemPlusJSONResponse AccountingProblem
 
 func (response AddAccountingTaxCodeRate409ApplicationProblemPlusJSONResponse) VisitAddAccountingTaxCodeRateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccountingUnpostedRequestObject struct {
+	Params ListAccountingUnpostedParams
+}
+
+type ListAccountingUnpostedResponseObject interface {
+	VisitListAccountingUnpostedResponse(w http.ResponseWriter) error
+}
+
+type ListAccountingUnposted200JSONResponse AccountingUnpostedList
+
+func (response ListAccountingUnposted200JSONResponse) VisitListAccountingUnpostedResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccountingUnposted401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListAccountingUnposted401JSONResponse) VisitListAccountingUnpostedResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccountingUnposted403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListAccountingUnposted403JSONResponse) VisitListAccountingUnpostedResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccountingUnposted409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response ListAccountingUnposted409ApplicationProblemPlusJSONResponse) VisitListAccountingUnpostedResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RetryAccountingUnpostedRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type RetryAccountingUnpostedResponseObject interface {
+	VisitRetryAccountingUnpostedResponse(w http.ResponseWriter) error
+}
+
+type RetryAccountingUnposted200JSONResponse AccountingUnposted
+
+func (response RetryAccountingUnposted200JSONResponse) VisitRetryAccountingUnpostedResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RetryAccountingUnposted401JSONResponse externalRef0.AuthErrorResponse
+
+func (response RetryAccountingUnposted401JSONResponse) VisitRetryAccountingUnpostedResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RetryAccountingUnposted403JSONResponse externalRef0.AuthErrorResponse
+
+func (response RetryAccountingUnposted403JSONResponse) VisitRetryAccountingUnpostedResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RetryAccountingUnposted404Response struct {
+}
+
+func (response RetryAccountingUnposted404Response) VisitRetryAccountingUnpostedResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type RetryAccountingUnposted409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response RetryAccountingUnposted409ApplicationProblemPlusJSONResponse) VisitRetryAccountingUnpostedResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -4526,6 +5451,9 @@ type StrictServerInterface interface {
 	// PutAccountingAccountGroupings Set an account's grouping codes
 	// (PUT /api/v1/accounting/accounts/{id}/groupings)
 	PutAccountingAccountGroupings(ctx context.Context, request PutAccountingAccountGroupingsRequestObject) (PutAccountingAccountGroupingsResponseObject, error)
+	// GetAccountingCatchUp Where the catch-up of sales stands
+	// (GET /api/v1/accounting/catch-up)
+	GetAccountingCatchUp(ctx context.Context, request GetAccountingCatchUpRequestObject) (GetAccountingCatchUpResponseObject, error)
 	// ListAccountingGroupingCodes List Skatteetaten's grouping codes
 	// (GET /api/v1/accounting/grouping-codes)
 	ListAccountingGroupingCodes(ctx context.Context, request ListAccountingGroupingCodesRequestObject) (ListAccountingGroupingCodesResponseObject, error)
@@ -4550,6 +5478,18 @@ type StrictServerInterface interface {
 	// PostAccountingOpening Enter the opening balances
 	// (POST /api/v1/accounting/opening)
 	PostAccountingOpening(ctx context.Context, request PostAccountingOpeningRequestObject) (PostAccountingOpeningResponseObject, error)
+	// ListAccountingPostingRules List the posting rules
+	// (GET /api/v1/accounting/posting-rules)
+	ListAccountingPostingRules(ctx context.Context, request ListAccountingPostingRulesRequestObject) (ListAccountingPostingRulesResponseObject, error)
+	// CreateAccountingPostingRule Create a posting rule
+	// (POST /api/v1/accounting/posting-rules)
+	CreateAccountingPostingRule(ctx context.Context, request CreateAccountingPostingRuleRequestObject) (CreateAccountingPostingRuleResponseObject, error)
+	// DeleteAccountingPostingRule Delete a posting rule
+	// (DELETE /api/v1/accounting/posting-rules/{id})
+	DeleteAccountingPostingRule(ctx context.Context, request DeleteAccountingPostingRuleRequestObject) (DeleteAccountingPostingRuleResponseObject, error)
+	// UpdateAccountingPostingRule Change a posting rule's name or account
+	// (PUT /api/v1/accounting/posting-rules/{id})
+	UpdateAccountingPostingRule(ctx context.Context, request UpdateAccountingPostingRuleRequestObject) (UpdateAccountingPostingRuleResponseObject, error)
 	// GetAccountingReport Get a report
 	// (GET /api/v1/accounting/reports/{report})
 	GetAccountingReport(ctx context.Context, request GetAccountingReportRequestObject) (GetAccountingReportResponseObject, error)
@@ -4571,6 +5511,12 @@ type StrictServerInterface interface {
 	// AddAccountingTaxCodeRate Add a rate period to a tax code
 	// (POST /api/v1/accounting/tax-codes/{id}/rates)
 	AddAccountingTaxCodeRate(ctx context.Context, request AddAccountingTaxCodeRateRequestObject) (AddAccountingTaxCodeRateResponseObject, error)
+	// ListAccountingUnposted List the facts that could not be posted
+	// (GET /api/v1/accounting/unposted)
+	ListAccountingUnposted(ctx context.Context, request ListAccountingUnpostedRequestObject) (ListAccountingUnpostedResponseObject, error)
+	// RetryAccountingUnposted Retry posting a fact
+	// (POST /api/v1/accounting/unposted/{id}/retry)
+	RetryAccountingUnposted(ctx context.Context, request RetryAccountingUnpostedRequestObject) (RetryAccountingUnpostedResponseObject, error)
 	// ListAccountingVouchers List vouchers
 	// (GET /api/v1/accounting/vouchers)
 	ListAccountingVouchers(ctx context.Context, request ListAccountingVouchersRequestObject) (ListAccountingVouchersResponseObject, error)
@@ -4808,6 +5754,30 @@ func (sh *strictHandler) PutAccountingAccountGroupings(w http.ResponseWriter, r 
 	}
 }
 
+// GetAccountingCatchUp operation middleware
+func (sh *strictHandler) GetAccountingCatchUp(w http.ResponseWriter, r *http.Request) {
+	var request GetAccountingCatchUpRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAccountingCatchUp(ctx, request.(GetAccountingCatchUpRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAccountingCatchUp")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAccountingCatchUpResponseObject); ok {
+		if err := validResponse.VisitGetAccountingCatchUpResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListAccountingGroupingCodes operation middleware
 func (sh *strictHandler) ListAccountingGroupingCodes(w http.ResponseWriter, r *http.Request, params ListAccountingGroupingCodesParams) {
 	var request ListAccountingGroupingCodesRequestObject
@@ -5027,6 +5997,120 @@ func (sh *strictHandler) PostAccountingOpening(w http.ResponseWriter, r *http.Re
 	}
 }
 
+// ListAccountingPostingRules operation middleware
+func (sh *strictHandler) ListAccountingPostingRules(w http.ResponseWriter, r *http.Request) {
+	var request ListAccountingPostingRulesRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListAccountingPostingRules(ctx, request.(ListAccountingPostingRulesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListAccountingPostingRules")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListAccountingPostingRulesResponseObject); ok {
+		if err := validResponse.VisitListAccountingPostingRulesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateAccountingPostingRule operation middleware
+func (sh *strictHandler) CreateAccountingPostingRule(w http.ResponseWriter, r *http.Request) {
+	var request CreateAccountingPostingRuleRequestObject
+
+	var body CreateAccountingPostingRuleJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateAccountingPostingRule(ctx, request.(CreateAccountingPostingRuleRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateAccountingPostingRule")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateAccountingPostingRuleResponseObject); ok {
+		if err := validResponse.VisitCreateAccountingPostingRuleResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteAccountingPostingRule operation middleware
+func (sh *strictHandler) DeleteAccountingPostingRule(w http.ResponseWriter, r *http.Request, id int32) {
+	var request DeleteAccountingPostingRuleRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteAccountingPostingRule(ctx, request.(DeleteAccountingPostingRuleRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteAccountingPostingRule")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteAccountingPostingRuleResponseObject); ok {
+		if err := validResponse.VisitDeleteAccountingPostingRuleResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateAccountingPostingRule operation middleware
+func (sh *strictHandler) UpdateAccountingPostingRule(w http.ResponseWriter, r *http.Request, id int32) {
+	var request UpdateAccountingPostingRuleRequestObject
+
+	request.Id = id
+
+	var body UpdateAccountingPostingRuleJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateAccountingPostingRule(ctx, request.(UpdateAccountingPostingRuleRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateAccountingPostingRule")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateAccountingPostingRuleResponseObject); ok {
+		if err := validResponse.VisitUpdateAccountingPostingRuleResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetAccountingReport operation middleware
 func (sh *strictHandler) GetAccountingReport(w http.ResponseWriter, r *http.Request, report AccountingReportKind, params GetAccountingReportParams) {
 	var request GetAccountingReportRequestObject
@@ -5228,6 +6312,58 @@ func (sh *strictHandler) AddAccountingTaxCodeRate(w http.ResponseWriter, r *http
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(AddAccountingTaxCodeRateResponseObject); ok {
 		if err := validResponse.VisitAddAccountingTaxCodeRateResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListAccountingUnposted operation middleware
+func (sh *strictHandler) ListAccountingUnposted(w http.ResponseWriter, r *http.Request, params ListAccountingUnpostedParams) {
+	var request ListAccountingUnpostedRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListAccountingUnposted(ctx, request.(ListAccountingUnpostedRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListAccountingUnposted")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListAccountingUnpostedResponseObject); ok {
+		if err := validResponse.VisitListAccountingUnpostedResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RetryAccountingUnposted operation middleware
+func (sh *strictHandler) RetryAccountingUnposted(w http.ResponseWriter, r *http.Request, id int64) {
+	var request RetryAccountingUnpostedRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RetryAccountingUnposted(ctx, request.(RetryAccountingUnpostedRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RetryAccountingUnposted")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RetryAccountingUnpostedResponseObject); ok {
+		if err := validResponse.VisitRetryAccountingUnpostedResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

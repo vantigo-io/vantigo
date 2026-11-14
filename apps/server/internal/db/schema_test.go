@@ -2471,7 +2471,7 @@ func TestInvoicesBaseline_AppliesAndIsIdempotent(t *testing.T) {
 	// line_sources and timesheet_rows 00040's, and the bank, rate, reminder,
 	// charge, hold and hand-off tables 00041's, and the payment credentials,
 	// settings, pay links, attempts and day reconciliations 00046's, and the
-	// billing runs and their items 00079's, and tax_category_vat_codes 00118's, and the bank feed's connection and accounts 00178's, and journal_facts 00180's; applyUpDownUp ends with every migration applied, so they stand here
+	// billing runs and their items 00079's, and tax_category_vat_codes 00118's, and the bank feed's connection and accounts 00178's, and journal_facts 00180's, and write_offs 00182's; applyUpDownUp ends with every migration applied, so they stand here
 	// beside the seven this one creates.
 	if want := []string{"access_point_credentials", "bank_feed_accounts", "bank_feed_connections", "bank_files", "bank_import_accounts", "bank_transaction_events",
 		"bank_transactions", "billing_run_items", "billing_runs", "charge_payments", "charge_waivers", "collection_handoffs", "collection_rates", "counters",
@@ -2479,7 +2479,7 @@ func TestInvoicesBaseline_AppliesAndIsIdempotent(t *testing.T) {
 		"line_sources", "lines", "manual_deliveries", "order_allocations_taken", "overdue_announced", "pay_links", "payment_attempts", "payment_provider_credentials",
 		"payment_settings", "payments", "quick_requests", "reminder_print_batches", "reminder_runs",
 		"reminder_settings", "reminders", "settings", "tax_category_vat_codes", "timesheet_rows", "transmissions", "vat_code_rates", "vat_codes",
-		"vat_summaries", "vipps_day_reconciliations"}; !equalStrings(gotTables, want) {
+		"vat_summaries", "vipps_day_reconciliations", "write_offs"}; !equalStrings(gotTables, want) {
 		t.Errorf("tables = %v, want %v", gotTables, want)
 	}
 
@@ -2593,8 +2593,8 @@ func TestInvoicesBaseline_AppliesAndIsIdempotent(t *testing.T) {
 	// transmissions 00036's, the three on line_releases, line_sources and
 	// timesheet_rows 00040's, the twenty on the receivables' tables 00041's,
 	// and the seven on the payments port's tables 00046's, as above;
-	// tr_payments_received is 00150's, and the journal's five and
-	// tr_payments_removed 00180's.
+	// tr_payments_received is 00150's, the journal's five and
+	// tr_payments_removed 00180's, and the four on write_offs 00182's.
 	if want := []string{
 		"bank_files:tr_bank_files_immutable", "bank_import_accounts:tr_bank_import_accounts_immutable",
 		"bank_transaction_events:tr_bank_transaction_events_immutable", "bank_transactions:tr_bank_transactions_immutable",
@@ -2621,6 +2621,8 @@ func TestInvoicesBaseline_AppliesAndIsIdempotent(t *testing.T) {
 		"transmissions:tr_transmissions_immutable", "transmissions:tr_transmissions_parent",
 		"vat_summaries:tr_vat_summaries_immutable",
 		"vipps_day_reconciliations:tr_vipps_day_reconciliations_immutable",
+		"write_offs:tr_write_offs_immutable", "write_offs:tr_write_offs_journal_made", "write_offs:tr_write_offs_journal_undone",
+		"write_offs:tr_write_offs_parent",
 	}; !equalStrings(gotTriggers, want) {
 		t.Errorf("triggers = %v, want %v", gotTriggers, want)
 	}
@@ -2672,6 +2674,7 @@ func invoicesPhase1BObjects(t *testing.T, ctx context.Context, pool *pgxpool.Poo
 		WHERE schemaname = 'invoices' AND tablename IN ('payments', 'deliveries') AND indexname LIKE 'ix\_%'
 		  AND indexname <> 'ix_payments_bank_transaction' -- 00041's, pinned by its own test
 		  AND indexname <> 'ix_payments_vipps_paid_on' -- 00046's, pinned by its own test
+		  AND indexname <> 'ix_payments_write_off' -- 00182's
 		ORDER BY 1`)
 	return tables, triggers, checks, functions, indexes
 }
