@@ -1,11 +1,14 @@
 package saft
 
 import (
+	"bufio"
+	"bytes"
 	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
 	"math/big"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -36,13 +39,16 @@ type File struct {
 	SelectionStart time.Time
 	SelectionEnd   time.Time
 	// SelectionByPeriod is true when the file named its selection by
-	// periods, which the reader takes as calendar months.
-	SelectionByPeriod bool
-	Accounts          []FileAccount
-	Customers         []FileParty
-	Suppliers         []FileParty
-	TaxCodes          []FileTaxCode
-	Entries           int64
+	// periods: SelectionStart and SelectionEnd then take them as calendar
+	// months, and PeriodStart … PeriodEndYear are what the file said, for the
+	// caller to place in the fiscal year it is told.
+	SelectionByPeriod                                      bool
+	PeriodStart, PeriodStartYear, PeriodEnd, PeriodEndYear int
+	Accounts                                               []FileAccount
+	Customers                                              []FileParty
+	Suppliers                                              []FileParty
+	TaxCodes                                               []FileTaxCode
+	Entries                                                int64
 }
 
 // FileAccount is an account with its signed balances, debit positive.
@@ -145,12 +151,28 @@ type xmlHeader struct {
 	} `xml:"SelectionCriteria"`
 }
 
+// Limits bound what a file may hold: an import refuses a file with more
+// accounts or parties than a company has, rather than holding them all.
+type Limits struct {
+	Accounts, Parties int
+}
+
+// TooManyError is a file over a limit.
+type TooManyError struct{ What string }
+
+func (e *TooManyError) Error() string { return "saft: too many " + e.What }
+
 // Read reads a SAF-T Financial 1.30 or 1.40 file as a stream. It refuses a
 // DOCTYPE — and with it every entity declaration and external reference, so
 // no entity is ever expanded (XXE, the billion laughs) — and any entity
-// reference beyond XML's five; the transactions are counted and skipped.
-func Read(r io.Reader) (*File, error) {
-	d := xml.NewDecoder(r)
+// reference beyond XML's five; a UTF-8 byte order mark is skipped; the
+// transactions are counted and skipped. A zero limit is none.
+func Read(r io.Reader, lim Limits) (*File, error) {
+	br := bufio.NewReader(r)
+	if head, err := br.Peek(3); err == nil && bytes.Equal(head, []byte("\xef\xbb\xbf")) {
+		_, _ = br.Discard(3)
+	}
+	d := xml.NewDecoder(br)
 	d.Strict = true
 	d.Entity = nil
 	d.CharsetReader = func(charset string, in io.Reader) (io.Reader, error) {
@@ -169,7 +191,8 @@ func Read(r io.Reader) (*File, error) {
 		}
 		if err != nil {
 			var inv *InvalidError
-			if errors.As(err, &inv) {
+			var many *TooManyError
+			if errors.As(err, &inv) || errors.As(err, &many) {
 				return nil, err
 			}
 			return nil, invalid("not readable XML: %v", err)
@@ -218,6 +241,9 @@ func Read(r io.Reader) (*File, error) {
 					return nil, err
 				}
 				f.Accounts = append(f.Accounts, acc)
+				if lim.Accounts > 0 && len(f.Accounts) > lim.Accounts {
+					return nil, &TooManyError{What: fmt.Sprintf("accounts: more than %d", lim.Accounts)}
+				}
 				continue
 			case (parent == "Customers" && name == "Customer") || (parent == "Suppliers" && name == "Supplier"):
 				var p xmlParty
@@ -232,6 +258,9 @@ func Read(r io.Reader) (*File, error) {
 					f.Customers = append(f.Customers, party)
 				} else {
 					f.Suppliers = append(f.Suppliers, party)
+				}
+				if lim.Parties > 0 && len(f.Customers)+len(f.Suppliers) > lim.Parties {
+					return nil, &TooManyError{What: fmt.Sprintf("customers and suppliers: more than %d", lim.Parties)}
 				}
 				continue
 			case parent == "MasterFiles" && name == "TaxTable":
@@ -300,6 +329,7 @@ func (f *File) header(h xmlHeader) error {
 	if e1 != nil || e2 != nil || e3 != nil || e4 != nil || py < 1970 || ey > 2100 {
 		return invalid("the SelectionCriteria name no dates and no periods")
 	}
+	f.PeriodStart, f.PeriodStartYear, f.PeriodEnd, f.PeriodEndYear = ps, py, pe, ey
 	ps, pe = max(1, min(ps, 12)), max(1, min(pe, 12))
 	f.SelectionStart = time.Date(py, time.Month(ps), 1, 0, 0, 0, 0, time.UTC)
 	f.SelectionEnd = time.Date(ey, time.Month(pe)+1, 0, 0, 0, 0, 0, time.UTC)
@@ -318,23 +348,34 @@ func parseDate(s string) (time.Time, error) {
 	return time.Parse(time.DateOnly, s)
 }
 
-// Amount is a file's decimal text as an exact amount: a point or a comma,
-// no thousands separator; "" is zero.
+// monetary is the XSD's SAFmonetaryType as text: an xs:decimal of at most
+// 18 digits, two of them after the point. Nothing else is read as an amount
+// — no comma, no exponent, no thousands separator.
+var monetary = regexp.MustCompile(`^[+-]?(\d{1,16}(\.\d{0,2})?|\.\d{1,2})$`)
+
+// Amount is a file's SAFmonetaryType text as an exact amount; "" is zero.
 func Amount(s string) (*big.Rat, bool) {
-	s = strings.ReplaceAll(strings.TrimSpace(s), ",", ".")
+	s = strings.TrimSpace(s)
 	if s == "" {
 		return new(big.Rat), true
+	}
+	if !monetary.MatchString(s) {
+		return nil, false
 	}
 	r, ok := new(big.Rat).SetString(s)
 	return r, ok
 }
 
-// signed is a debit and a credit element as one signed amount's text.
-func signed(debit, credit string) (string, error) {
+// signed is a debit and a credit element as one signed amount's text; path
+// names the element in a refusal.
+func signed(path, debit, credit string) (string, error) {
 	d, ok1 := Amount(debit)
+	if !ok1 {
+		return "", invalid("%sDebit… is not an amount: %q", path, debit)
+	}
 	c, ok2 := Amount(credit)
-	if !ok1 || !ok2 {
-		return "", invalid("an amount cannot be read: %q %q", debit, credit)
+	if !ok2 {
+		return "", invalid("%sCredit… is not an amount: %q", path, credit)
 	}
 	return new(big.Rat).Sub(d, c).FloatString(2), nil
 }
@@ -347,10 +388,11 @@ func account(a xmlAccount) (FileAccount, error) {
 		return out, invalid("an Account has no AccountID")
 	}
 	var err error
-	if out.Opening, err = signed(a.OpeningDebitBalance, a.OpeningCreditBalance); err != nil {
+	path := "GeneralLedgerAccounts/Account[" + out.ID + "]/"
+	if out.Opening, err = signed(path+"Opening", a.OpeningDebitBalance, a.OpeningCreditBalance); err != nil {
 		return out, err
 	}
-	if out.Closing, err = signed(a.ClosingDebitBalance, a.ClosingCreditBalance); err != nil {
+	if out.Closing, err = signed(path+"Closing", a.ClosingDebitBalance, a.ClosingCreditBalance); err != nil {
 		return out, err
 	}
 	return out, nil
@@ -380,12 +422,17 @@ func partyOf(p xmlParty, customer bool) (FileParty, error) {
 		b := p.BankAccount[0]
 		out.BankAccount, out.IBAN, out.BIC = strings.TrimSpace(b.BankAccountNumber), strings.TrimSpace(b.IBANNumber), strings.TrimSpace(b.BIC)
 	}
+	kind := "Supplier"
+	if customer {
+		kind = "Customer"
+	}
 	for _, b := range p.BalanceAccount {
-		o, err := signed(b.OpeningDebitBalance, b.OpeningCreditBalance)
+		path := kind + "[" + out.ID + "]/BalanceAccount/"
+		o, err := signed(path+"Opening", b.OpeningDebitBalance, b.OpeningCreditBalance)
 		if err != nil {
 			return out, err
 		}
-		c, err := signed(b.ClosingDebitBalance, b.ClosingCreditBalance)
+		c, err := signed(path+"Closing", b.ClosingDebitBalance, b.ClosingCreditBalance)
 		if err != nil {
 			return out, err
 		}

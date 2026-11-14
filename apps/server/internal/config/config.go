@@ -222,6 +222,11 @@ type Config struct {
 	// takes files of up to 2 GB — at least 1024, so a test can force a
 	// split; accounting design A24).
 	AccountingSaftSplitBytes int64
+	// AccountingSaftExportRetentionDays is how many days a SAF-T export's
+	// files are kept after it is written (ACCOUNTING_SAFT_EXPORT_RETENTION_DAYS,
+	// default 90, 0 keeps them): they carry personal data, and the worker
+	// deletes them after it; the export's record and hash stay.
+	AccountingSaftExportRetentionDays int
 
 	// PeppolLookupEnabled is the on/off switch for the customers module's
 	// Peppol lookup (PEPPOL_LOOKUP_ENABLED, can-this-customer-receive-EHF
@@ -1344,6 +1349,7 @@ func objectStorage(p *problems, env map[string]string, c *Config) {
 func accountingSaft(p *problems, env map[string]string, c *Config) {
 	c.AccountingSaftImportMaxBytes = int64(integer(p, env, "ACCOUNTING_SAFT_IMPORT_MAX_BYTES", 512<<20, 1<<20, 4<<30))
 	c.AccountingSaftSplitBytes = int64(integer(p, env, "ACCOUNTING_SAFT_SPLIT_BYTES", 2_000_000_000, 1024, 2_000_000_000))
+	c.AccountingSaftExportRetentionDays = integer(p, env, "ACCOUNTING_SAFT_EXPORT_RETENTION_DAYS", 90, 0, 3650)
 }
 
 // communicationsAttachments loads the two settings communications' attachment

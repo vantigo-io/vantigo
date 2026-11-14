@@ -294,7 +294,7 @@ func (s *server) exportViews(ctx context.Context, q *store.Queries, rows []store
 	for _, f := range files {
 		byExport[f.ExportID] = append(byExport[f.ExportID], gen.AccountingSaftExportFile{Part: f.Part, Parts: f.Parts,
 			FileName: f.FileName, SizeBytes: f.SizeBytes, Sha256: f.Sha256, FromPeriod: int32(f.FromPeriod),
-			ToPeriod: int32(f.ToPeriod), From: apiDate(f.PeriodStart), To: apiDate(f.PeriodEnd)})
+			ToPeriod: int32(f.ToPeriod), From: apiDate(f.PeriodStart), To: apiDate(f.PeriodEnd), RemovedAt: f.RemovedAt})
 	}
 	names := map[uuid.UUID]string{}
 	if s.deps.Users != nil && len(users) > 0 {
@@ -385,6 +385,10 @@ func (s *server) DownloadAccountingSaftExport(ctx context.Context, req gen.Downl
 	if err != nil {
 		return nil, err
 	}
+	if f.RemovedAt != nil {
+		return nil, conflict(codeSaftExportFileRemoved, "The file is removed",
+			"SAF-T files are kept for a while after they are written, then removed: they carry personal data. Ask for the export again.")
+	}
 	st, err := s.objectStore()
 	if err != nil {
 		return nil, storageRefusal(err)
@@ -461,6 +465,9 @@ func (w *SaftWorker) RunOnce(ctx context.Context) error {
 		MaxAttempts: saftMaxAttempts, Error: ptr(fmt.Sprintf("Given up after %d attempts: the export stopped each time before it was written. Ask for it again.", saftMaxAttempts))}); err != nil {
 		return err
 	}
+	if err := w.sweep(ctx); err != nil {
+		return err
+	}
 	for range saftPerCycle {
 		lease := uuid.New()
 		var row store.AccountingSaftExport
@@ -479,6 +486,35 @@ func (w *SaftWorker) RunOnce(ctx context.Context) error {
 			return err
 		}
 		w.run(ctx, row, lease)
+	}
+	return nil
+}
+
+// sweep deletes the files of exports written more than the retention's days
+// ago: they carry personal data. The rows — who, when, the selection, the
+// hash — stay, each with when its file was removed.
+func (w *SaftWorker) sweep(ctx context.Context) error {
+	days := 90
+	if w.deps.Config != nil {
+		days = w.deps.Config.AccountingSaftExportRetentionDays
+	}
+	if days <= 0 || w.objects == nil {
+		return nil
+	}
+	now := clockOf(w.deps)()
+	q := store.New(w.deps.Pool)
+	files, err := q.ExpiredSaftExportFiles(ctx, ptr(now.AddDate(0, 0, -days)))
+	if err != nil {
+		return err
+	}
+	for _, f := range files {
+		if err := w.objects.Delete(ctx, f.ObjectKey); err != nil && !errors.Is(err, storage.ErrNotExist) {
+			return fmt.Errorf("accounting: remove a SAF-T file: %w", err)
+		}
+		if err := q.MarkSaftExportFileRemoved(ctx, store.MarkSaftExportFileRemovedParams{ExportID: f.ExportID, Part: f.Part, Now: ptr(now)}); err != nil {
+			return err
+		}
+		w.logger().InfoContext(ctx, "accounting: a SAF-T file was removed after its retention", "export_id", f.ExportID, "part", f.Part)
 	}
 	return nil
 }

@@ -246,3 +246,64 @@ UPDATE accounting.saft_imports
 SET state = 'applied', applied_at = sqlc.arg(now), applied_by_user_id = sqlc.arg(user_id),
     opening_voucher_id = sqlc.narg(opening_voucher_id)
 WHERE id = sqlc.arg(id);
+
+-- name: InsertSaftImportParties :exec
+-- InsertSaftImportParties writes a page of an import's parties at once.
+INSERT INTO accounting.saft_import_parties (import_id, kind, position, file_id, name, party, closing)
+SELECT sqlc.arg(import_id), sqlc.arg(kind), p.position, p.file_id, p.name, p.party, p.closing::numeric
+FROM (SELECT unnest(sqlc.arg(positions)::int[]) AS position, unnest(sqlc.arg(file_ids)::text[]) AS file_id,
+    unnest(sqlc.arg(names)::text[]) AS name, unnest(sqlc.arg(parties)::jsonb[]) AS party,
+    unnest(sqlc.arg(closings)::text[]) AS closing) p;
+
+-- name: SaftImportParties :many
+-- SaftImportParties is every party of a kind, in the file's order: what the
+-- plan reads.
+SELECT position, file_id, name, party, closing::text AS closing, coalesce(match, '')::text AS match, customer_id,
+    customer_name, customer_org
+FROM accounting.saft_import_parties
+WHERE import_id = sqlc.arg(import_id) AND kind = sqlc.arg(kind)
+ORDER BY position;
+
+-- name: PageSaftImportParties :many
+-- PageSaftImportParties is a page of an import's parties; with attention,
+-- the customers with a balance that are not matched or linked.
+SELECT position, file_id, name, party, closing::text AS closing, coalesce(match, '')::text AS match, customer_id,
+    customer_name, customer_org, count(*) OVER ()::int AS total
+FROM accounting.saft_import_parties
+WHERE import_id = sqlc.arg(import_id) AND kind = sqlc.arg(kind)
+  AND (NOT sqlc.arg(attention)::boolean OR (closing <> 0 AND coalesce(match, '') NOT IN ('matched', 'linked')))
+ORDER BY position
+OFFSET sqlc.arg(row_offset) LIMIT sqlc.arg(row_limit);
+
+-- name: GetSaftImportParty :one
+SELECT position, file_id, name, party, closing::text AS closing, coalesce(match, '')::text AS match, customer_id,
+    customer_name, customer_org
+FROM accounting.saft_import_parties
+WHERE import_id = sqlc.arg(import_id) AND kind = sqlc.arg(kind) AND position = sqlc.arg(position);
+
+-- name: SetSaftImportMatches :exec
+-- SetSaftImportMatches records the customers' matches at once.
+UPDATE accounting.saft_import_parties sp
+SET match = m.match, customer_id = nullif(m.customer_id, 0), customer_name = nullif(m.customer_name, ''),
+    customer_org = nullif(m.customer_org, '')
+FROM (SELECT unnest(sqlc.arg(positions)::int[]) AS position, unnest(sqlc.arg(matches)::text[]) AS match,
+    unnest(sqlc.arg(customer_ids)::int[]) AS customer_id, unnest(sqlc.arg(customer_names)::text[]) AS customer_name,
+    unnest(sqlc.arg(customer_orgs)::text[]) AS customer_org) m
+WHERE sp.import_id = sqlc.arg(import_id) AND sp.kind = 'customer' AND sp.position = m.position;
+
+-- name: SetSaftImportMatchedAt :exec
+UPDATE accounting.saft_imports SET matched_at = sqlc.arg(now) WHERE id = sqlc.arg(id);
+
+-- name: ExpiredSaftExportFiles :many
+-- ExpiredSaftExportFiles is the files of exports finished before the day
+-- their retention ends, whose objects are still there.
+SELECT f.export_id, f.part, f.object_key
+FROM accounting.saft_export_files f
+JOIN accounting.saft_exports e ON e.id = f.export_id
+WHERE f.removed_at IS NULL AND e.finished_at < sqlc.arg(before)
+ORDER BY f.export_id, f.part
+LIMIT 100;
+
+-- name: MarkSaftExportFileRemoved :exec
+UPDATE accounting.saft_export_files SET removed_at = sqlc.arg(now)
+WHERE export_id = sqlc.arg(export_id) AND part = sqlc.arg(part) AND removed_at IS NULL;

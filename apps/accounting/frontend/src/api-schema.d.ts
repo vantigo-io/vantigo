@@ -433,6 +433,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/accounting/saft-imports/{id}/customers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a SAF-T import's customers
+         * @description A page of the file's customers with their match to Customers; with attention, those with a balance that are not matched or linked.
+         */
+        get: operations["listAccountingSaftImportCustomers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/saft-imports/{id}/customers/{position}/link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Link a SAF-T import's customer to Customers
+         * @description Links a file customer to a customer in Customers that a person picked (A25): refused when the id names no customer; a customer merged away links to the one it was merged into. The preview then shows that customer's name and organisation number.
+         */
+        put: operations["linkAccountingSaftImportCustomer"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/accounting/saft-imports/{id}/file": {
         parameters: {
             query?: never;
@@ -445,6 +485,46 @@ export interface paths {
          * @description Streams the uploaded file as it was received, the record of the years before the books, never cached.
          */
         get: operations["downloadAccountingSaftImportFile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/saft-imports/{id}/match": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Match a SAF-T import's customers again
+         * @description Matches the file's customers to Customers by organisation number again, keeping the links a person made; the match is otherwise made once, at the upload.
+         */
+        post: operations["matchAccountingSaftImport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/saft-imports/{id}/suppliers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a SAF-T import's suppliers
+         * @description A page of the suppliers Apply makes from the file.
+         */
+        get: operations["listAccountingSaftImportSuppliers"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1724,7 +1804,7 @@ export interface components {
             taxCodeId: number | null;
             taxRole: components["schemas"]["AccountingTaxRole"] | null;
         };
-        /** @description An RFC 9457 problem with this module's refusal code (accounting design §2, §13). code names the rule that refused and is what a client keys off, never the words: books_not_set_up (409: every operation but the meta and the setup, until Set up the books has run, R12), books_already_set_up (409: a second setup), revision_conflict (409: the revision has moved on), account_number_taken (409), account_has_postings (409: a delete of an account with postings, or a change of its number or kind), account_has_role (409: a delete of an account holding a system role; move the role first), account_inactive (400: a line on an inactive account), account_unknown (400), tax_code_unknown (400: an unknown or inactive tax code), tax_code_no_rate (400: no rate period covers the voucher's date), rate_period_invalid (400: a new rate period that does not start after the current one's start), party_required (400: a line on receivables or payables without a customer or supplier), party_not_allowed (400: a party on a line of another account, or both a customer and a supplier), open_item_unknown (400: an open item of another party or kind), voucher_unbalanced (400: the lines and their computed tax do not sum to zero; the detail names the difference), voucher_empty (400: no line, or every line zero), amount_invalid (400: not an exact decimal with at most two places, or zero), date_before_books_start (400), period_locked (409: a voucher a person posts dated on or before the lock, A8), voucher_owned_by_source (409: a reversal of a voucher the system posted, which only its source reverses, A7), voucher_already_reversed (409), opening_exists (409: an opening voucher stands and is not reversed), opening_locked (409: an opening entered or reversed after the first lock, A9), lock_not_month_end (400), lock_reason_required (400: a lock moved back without a reason), lock_before_books_start (400), settlement_source_document (409: an item that stands for a document in Invoices is paid there, R5), settlement_exceeds_balance (409: more than the item's balance), settlement_settled (409: an item with nothing left), bank_account_invalid (400: not an active asset account), attachment_too_large (400: over 20 MB), storage_not_configured (503: no object store for attachments), report_account_required (400: the account report without accountId), period_invalid (400: from after to, or a period over 366 days for the journal), open_item_source_document (400: a person's voucher naming an open item that stands for a document in Invoices, which moves with Invoices' own facts), report_too_large (400: the journal or an account's specification over 50 000 postings; choose a shorter period), lock_in_future (400: a lock after the end of the current month), books_start_too_early (400: books that start before 2022-01-01, the first day the seeded rates are known to hold), account_kind_mismatch (400: an account whose kind is not its number's class's — 1 asset, 20 equity, 21–29 liability, 3 income, 4–7 expense, 8 income or expense — or a number outside the classes 1 to 8; a system role moved to an account of another kind than the role's), reverse_charge_gross (400: a gross journal with a reverse-charge code, which is entered net), posting_rule_name_taken (409), posting_rule_match_taken (409: a rule with the same scope and match exists), posting_rule_default (409: a default rule is never deleted, only pointed at another account), unposted_already_posted (409: a retry of a fact that has posted), supplier_organisation_number_taken (409: another supplier has that organisation number), supplier_bank_account_invalid (400: not eleven digits passing mod 11), supplier_has_postings (409: a delete of a supplier with postings or invoices; make it inactive), supplier_inactive (400: a new invoice for an inactive supplier), duplicate_supplier_invoice (409: the same supplier's number of the same kind on another invoice that is not reversed), supplier_invoice_not_draft (409: a change, a delete, a post or a file removed on an invoice that is not a draft), supplier_invoice_not_posted (409: a payment or Reverse and copy on an invoice that is not posted), supplier_invoice_file_required (409: Post without an attached file), supplier_invoice_total_mismatch (400: the lines' gross does not sum to the total), tax_code_not_purchase (400: an output code on a purchase line), exchange_rate_required (400: another currency without the rate or the NOK total), supplier_invoice_settled (409: a payment on an invoice with nothing left), payment_exceeds_balance (409: a payment of more than is left), payment_removed (409: a payment removed already), settlement_supplier_invoice (409: an item that stands for a supplier invoice is paid on the invoice), unposted_wrong_reason (409: an action for another reason than the row's), brreg_unavailable (502: Brønnøysundregisteret could not be reached), supplier_invoice_has_payments (409: Reverse and copy of an invoice with a payment standing; remove the payment first), tax_code_not_for_supplier_invoice (400: an import code — 14, 15, 20, 21, 22, 81 to 85 — on a supplier invoice line; import VAT is a manual journal), exchange_rate_mismatch (400: both the rate and the NOK total, and they disagree), credit_note_invoice_not_posted (409: Post of a credit note whose invoice is no longer posted), credit_note_currency_mismatch (409: a credit note in another currency than the invoice it credits), credit_note_exceeds_balance (409: a credit note of more than is left on the credited invoice), supplier_invoice_item_in_use (409: Reverse and copy of an invoice whose open item another voucher standing posts on — a credit note, a payment, a settlement; reverse that first), supplier_retained (409: anonymising a person supplier before its retention date), supplier_anonymised (409: a change or an anonymisation of a supplier anonymised already), expense_already_invoiced (409: an expense made into a supplier invoice already), vat_not_registered (409: a VAT term of books whose vatTerm is none), vat_term_closed (409: a close of a closed term), vat_term_not_ended (409: a close before the term's last day has passed), vat_term_out_of_order (409: a close while an earlier term is open), vat_term_attention (409: a close while Needs attention holds facts that wait dated in the term; the detail counts them), vat_term_lock_after_end (409: a close while the lock is on or after the term's last day; move the lock back first), vat_term_unreconciled (409: a close while the VAT accounts' movement differs from the return's VAT; the detail names the vouchers), vat_term_not_closed (409: a reopening, a filing or the XML of an open term), vat_term_filed (409: a reopening or a second filing of a filed term), vat_term_not_latest (409: a reopening while a later term is closed), vat_term_not_filed (409: an unfiling of a term not filed), lock_behind_filed_term (409: the lock moved back behind a term filed at Skatteetaten, R10), lock_behind_closed_term (409: the lock moved back behind a closed VAT term; reopen the term instead), vat_term_stale (409: a close while a closed term's figures, computed again, differ from the return it was closed with), opening_vat_account (400: an opening line on a tax code's VAT or counter account; VAT owed from before the books start belongs on the VAT settlement account), tax_code_in_use (409: a change of a tax code's VAT or counter account once a posting carries the code), vat_term_inconsistent (409: a close whose counted VAT is not the return's exact total, or whose rounding difference is a krone a line or more), vat_term_partial (409: a close of a term that starts before the books without confirmPartial), vat_term_rate_missing (409: a close while a reported code has no rate on a posting's date), saft_seller_missing (409: a SAF-T export with no company in Invoices that has an organisation number), saft_file_invalid (400: an upload that is not a readable SAF-T Financial file, or one with a DOCTYPE, an entity or an external reference), saft_version_unsupported (400: a SAF-T file of version 1.20 or older; export it again as 1.30 or 1.40), saft_file_too_large (400: an upload over ACCOUNTING_SAFT_IMPORT_MAX_BYTES), saft_import_ledger_has_vouchers (409: an import while the ledger has vouchers), saft_import_applied (409: an import applied already), saft_import_unresolved (409: Apply while an account needs a number or a problem stands; the detail names them), saft_import_unmatched_customers (409: Apply while a customer with a balance is matched to no customer in Customers, or to several; create or link them there), saft_import_parties_mismatch (409: Apply of a file whose customers' or suppliers' balances differ from the control account's; the detail shows the difference), saft_import_books_start_mismatch (400: a booksStart that is not the day after the file's selection ends). errors carries the field errors of a 400, keyed by the camelCase path (lines[2].accountId). */
+        /** @description An RFC 9457 problem with this module's refusal code (accounting design §2, §13). code names the rule that refused and is what a client keys off, never the words: books_not_set_up (409: every operation but the meta and the setup, until Set up the books has run, R12), books_already_set_up (409: a second setup), revision_conflict (409: the revision has moved on), account_number_taken (409), account_has_postings (409: a delete of an account with postings, or a change of its number or kind), account_has_role (409: a delete of an account holding a system role; move the role first), account_inactive (400: a line on an inactive account), account_unknown (400), tax_code_unknown (400: an unknown or inactive tax code), tax_code_no_rate (400: no rate period covers the voucher's date), rate_period_invalid (400: a new rate period that does not start after the current one's start), party_required (400: a line on receivables or payables without a customer or supplier), party_not_allowed (400: a party on a line of another account, or both a customer and a supplier), open_item_unknown (400: an open item of another party or kind), voucher_unbalanced (400: the lines and their computed tax do not sum to zero; the detail names the difference), voucher_empty (400: no line, or every line zero), amount_invalid (400: not an exact decimal with at most two places, or zero), date_before_books_start (400), period_locked (409: a voucher a person posts dated on or before the lock, A8), voucher_owned_by_source (409: a reversal of a voucher the system posted, which only its source reverses, A7), voucher_already_reversed (409), opening_exists (409: an opening voucher stands and is not reversed), opening_locked (409: an opening entered or reversed after the first lock, A9), lock_not_month_end (400), lock_reason_required (400: a lock moved back without a reason), lock_before_books_start (400), settlement_source_document (409: an item that stands for a document in Invoices is paid there, R5), settlement_exceeds_balance (409: more than the item's balance), settlement_settled (409: an item with nothing left), bank_account_invalid (400: not an active asset account), attachment_too_large (400: over 20 MB), storage_not_configured (503: no object store for attachments), report_account_required (400: the account report without accountId), period_invalid (400: from after to, or a period over 366 days for the journal), open_item_source_document (400: a person's voucher naming an open item that stands for a document in Invoices, which moves with Invoices' own facts), report_too_large (400: the journal or an account's specification over 50 000 postings; choose a shorter period), lock_in_future (400: a lock after the end of the current month), books_start_too_early (400: books that start before 2022-01-01, the first day the seeded rates are known to hold), account_kind_mismatch (400: an account whose kind is not its number's class's — 1 asset, 20 equity, 21–29 liability, 3 income, 4–7 expense, 8 income or expense — or a number outside the classes 1 to 8; a system role moved to an account of another kind than the role's), reverse_charge_gross (400: a gross journal with a reverse-charge code, which is entered net), posting_rule_name_taken (409), posting_rule_match_taken (409: a rule with the same scope and match exists), posting_rule_default (409: a default rule is never deleted, only pointed at another account), unposted_already_posted (409: a retry of a fact that has posted), supplier_organisation_number_taken (409: another supplier has that organisation number), supplier_bank_account_invalid (400: not eleven digits passing mod 11), supplier_has_postings (409: a delete of a supplier with postings or invoices; make it inactive), supplier_inactive (400: a new invoice for an inactive supplier), duplicate_supplier_invoice (409: the same supplier's number of the same kind on another invoice that is not reversed), supplier_invoice_not_draft (409: a change, a delete, a post or a file removed on an invoice that is not a draft), supplier_invoice_not_posted (409: a payment or Reverse and copy on an invoice that is not posted), supplier_invoice_file_required (409: Post without an attached file), supplier_invoice_total_mismatch (400: the lines' gross does not sum to the total), tax_code_not_purchase (400: an output code on a purchase line), exchange_rate_required (400: another currency without the rate or the NOK total), supplier_invoice_settled (409: a payment on an invoice with nothing left), payment_exceeds_balance (409: a payment of more than is left), payment_removed (409: a payment removed already), settlement_supplier_invoice (409: an item that stands for a supplier invoice is paid on the invoice), unposted_wrong_reason (409: an action for another reason than the row's), brreg_unavailable (502: Brønnøysundregisteret could not be reached), supplier_invoice_has_payments (409: Reverse and copy of an invoice with a payment standing; remove the payment first), tax_code_not_for_supplier_invoice (400: an import code — 14, 15, 20, 21, 22, 81 to 85 — on a supplier invoice line; import VAT is a manual journal), exchange_rate_mismatch (400: both the rate and the NOK total, and they disagree), credit_note_invoice_not_posted (409: Post of a credit note whose invoice is no longer posted), credit_note_currency_mismatch (409: a credit note in another currency than the invoice it credits), credit_note_exceeds_balance (409: a credit note of more than is left on the credited invoice), supplier_invoice_item_in_use (409: Reverse and copy of an invoice whose open item another voucher standing posts on — a credit note, a payment, a settlement; reverse that first), supplier_retained (409: anonymising a person supplier before its retention date), supplier_anonymised (409: a change or an anonymisation of a supplier anonymised already), expense_already_invoiced (409: an expense made into a supplier invoice already), vat_not_registered (409: a VAT term of books whose vatTerm is none), vat_term_closed (409: a close of a closed term), vat_term_not_ended (409: a close before the term's last day has passed), vat_term_out_of_order (409: a close while an earlier term is open), vat_term_attention (409: a close while Needs attention holds facts that wait dated in the term; the detail counts them), vat_term_lock_after_end (409: a close while the lock is on or after the term's last day; move the lock back first), vat_term_unreconciled (409: a close while the VAT accounts' movement differs from the return's VAT; the detail names the vouchers), vat_term_not_closed (409: a reopening, a filing or the XML of an open term), vat_term_filed (409: a reopening or a second filing of a filed term), vat_term_not_latest (409: a reopening while a later term is closed), vat_term_not_filed (409: an unfiling of a term not filed), lock_behind_filed_term (409: the lock moved back behind a term filed at Skatteetaten, R10), lock_behind_closed_term (409: the lock moved back behind a closed VAT term; reopen the term instead), vat_term_stale (409: a close while a closed term's figures, computed again, differ from the return it was closed with), opening_vat_account (400: an opening line on a tax code's VAT or counter account; VAT owed from before the books start belongs on the VAT settlement account), tax_code_in_use (409: a change of a tax code's VAT or counter account once a posting carries the code), vat_term_inconsistent (409: a close whose counted VAT is not the return's exact total, or whose rounding difference is a krone a line or more), vat_term_partial (409: a close of a term that starts before the books without confirmPartial), vat_term_rate_missing (409: a close while a reported code has no rate on a posting's date), saft_seller_missing (409: a SAF-T export with no company in Invoices that has an organisation number), saft_file_invalid (400: an upload that is not a readable SAF-T Financial file, or one with a DOCTYPE, an entity or an external reference), saft_version_unsupported (400: a SAF-T file of version 1.20 or older; export it again as 1.30 or 1.40), saft_file_too_large (400: an upload over ACCOUNTING_SAFT_IMPORT_MAX_BYTES), saft_import_ledger_has_vouchers (409: an import while the ledger has vouchers), saft_import_applied (409: an import applied already), saft_import_unresolved (409: Apply while an account needs a number or a problem stands; the detail names them), saft_import_unmatched_customers (409: Apply while a customer with a balance is matched to no customer in Customers, or to several; create or link them there), saft_import_parties_mismatch (409: Apply of a file whose customers' or suppliers' balances differ from the control account's; the detail shows the difference), saft_import_books_start_mismatch (400: a booksStart that is not the day after the file's selection ends), saft_import_link_unknown (400: a link to a customer Customers does not hold), saft_import_other_company (409: Apply of a file of another company than the seller in Invoices, not confirmed with confirmOtherCompany), saft_export_file_removed (409: the download of a SAF-T file deleted after its retention). errors carries the field errors of a 400, keyed by the camelCase path (lines[2].accountId). */
         AccountingProblem: {
             code?: string | null;
             detail?: string | null;
@@ -1911,6 +1991,11 @@ export interface components {
             part: number;
             /** Format: int32 */
             parts: number;
+            /**
+             * Format: date-time
+             * @description When the file was deleted after ACCOUNTING_SAFT_EXPORT_RETENTION_DAYS; its row, size and SHA-256 stay. Null while it can be downloaded.
+             */
+            removedAt: string | null;
             sha256: string;
             /** Format: int64 */
             sizeBytes: number;
@@ -1953,14 +2038,23 @@ export interface components {
             /** @description What stands in the way of Apply, in words; empty when it may be applied. */
             blockers: string[];
             /**
+             * Format: int32
+             * @description All that stands in the way of Apply; blockers lists the first 100.
+             */
+            blockersTotal: number;
+            /**
              * Format: date
              * @description The day after the file's selection ends, the day the books start on.
              */
             booksStart: string;
             canApply: boolean;
+            /** @description The file's company is not the seller in Invoices: Apply needs confirmOtherCompany. */
+            companyMismatch: boolean;
             companyName: string;
             companyOrganisationNumber: string;
             customers: components["schemas"]["AccountingSaftImportCustomer"][];
+            /** Format: int32 */
+            customersTotal: number;
             fileName: string;
             /**
              * Format: int32
@@ -1969,6 +2063,15 @@ export interface components {
             fiscalYearStartMonth: number;
             /** Format: int64 */
             id: number;
+            /**
+             * Format: date-time
+             * @description When the customers were matched to Customers: at the upload, and again on Match again.
+             */
+            matchedAt: string | null;
+            /** @description The books start inside a fiscal year: the opening carries the income and expense accounts' year-to-date balances on their own accounts, and no result to equity. */
+            midYear: boolean;
+            /** @description The file names its selection by periods: Apply needs fiscalYearStartMonth to know the days they are. */
+            needsFiscalYearStartMonth: boolean;
             /** @description What the import does not take, and what it changed, in words. */
             notes: string[];
             opening: components["schemas"]["AccountingSaftImportOpening"];
@@ -1979,12 +2082,16 @@ export interface components {
             selectionEnd: string;
             /** Format: date */
             selectionStart: string;
+            /** @description The seller's organisation number in Invoices, for the comparison; null without one. */
+            sellerOrganisationNumber: string | null;
             sha256: string;
             /** Format: int64 */
             sizeBytes: number;
             /** @enum {string} */
             state: "preview" | "applied";
             suppliers: components["schemas"]["AccountingSaftImportSupplier"][];
+            /** Format: int32 */
+            suppliersTotal: number;
             taxCodes: components["schemas"]["AccountingSaftImportTaxCode"][];
             /**
              * Format: int64
@@ -2028,11 +2135,12 @@ export interface components {
              * @description Optional; must be the day after the file's selection ends (saft_import_books_start_mismatch).
              */
             booksStart?: string;
-            /** @description Per file customer id, the customer in Customers its balance belongs to; overrides the match by organisation number. */
-            customerLinks?: {
-                [key: string]: number;
-            };
-            /** Format: int32 */
+            /** @description Required true when the file's company is not the seller in Invoices (companyMismatch). */
+            confirmOtherCompany?: boolean;
+            /**
+             * Format: int32
+             * @description The fiscal year's first month; required for a file that names its selection by periods. Default: the selection's first month when it is twelve months, else January.
+             */
             fiscalYearStartMonth?: number;
             language: components["schemas"]["AccountingLanguage"];
             /** @description Per system role, the number of the account to hold it; overrides the proposal. */
@@ -2049,6 +2157,8 @@ export interface components {
              */
             customerId: number | null;
             customerName: string | null;
+            /** @description The organisation number of the customer in Customers its balance goes to, for confirmation. */
+            customerOrganisationNumber: string | null;
             fileCustomerId: string;
             /**
              * @description matched (one customer holds the organisation number), linked (named in the apply's customerLinks), ambiguous (several hold it), unmatched, or not_needed (no balance to carry).
@@ -2057,6 +2167,23 @@ export interface components {
             match: "matched" | "linked" | "ambiguous" | "unmatched" | "not_needed";
             name: string;
             organisationNumber: string | null;
+            /**
+             * Format: int32
+             * @description Its place in the file, which a link names.
+             */
+            position: number;
+        };
+        AccountingSaftImportCustomerList: {
+            items: components["schemas"]["AccountingSaftImportCustomer"][];
+            /** Format: int32 */
+            total: number;
+        };
+        AccountingSaftImportLink: {
+            /**
+             * Format: int32
+             * @description The customer in Customers, as the picker found it.
+             */
+            customerId: number;
         };
         AccountingSaftImportList: {
             items: components["schemas"]["AccountingSaftImportSummary"][];
@@ -2117,6 +2244,13 @@ export interface components {
             name: string;
             notes: string[];
             organisationNumber: string | null;
+            /** Format: int32 */
+            position: number;
+        };
+        AccountingSaftImportSupplierList: {
+            items: components["schemas"]["AccountingSaftImportSupplier"][];
+            /** Format: int32 */
+            total: number;
         };
         AccountingSaftImportTaxCode: {
             /** @description The standard code it maps to in these books; null when it maps to none. */
@@ -4599,7 +4733,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — books_not_set_up. */
+            /** @description Conflict — books_not_set_up; saft_export_file_removed. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -4845,6 +4979,127 @@ export interface operations {
             };
         };
     };
+    listAccountingSaftImportCustomers: {
+        parameters: {
+            query?: {
+                attention?: boolean;
+                offset?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingSaftImportCustomerList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    linkAccountingSaftImportCustomer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                position: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountingSaftImportLink"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingSaftImportCustomer"];
+                };
+            };
+            /** @description Bad Request — saft_import_link_unknown. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — saft_import_applied. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+        };
+    };
     downloadAccountingSaftImportFile: {
         parameters: {
             query?: never;
@@ -4898,6 +5153,112 @@ export interface operations {
                 content: {
                     "application/problem+json": components["schemas"]["AccountingProblem"];
                 };
+            };
+        };
+    };
+    matchAccountingSaftImport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingSaftImport"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — saft_import_applied. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+        };
+    };
+    listAccountingSaftImportSuppliers: {
+        parameters: {
+            query?: {
+                offset?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingSaftImportSupplierList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

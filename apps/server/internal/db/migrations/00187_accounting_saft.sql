@@ -56,6 +56,10 @@ CREATE TABLE accounting.saft_export_files (
     to_period    smallint      NOT NULL,
     period_start date          NOT NULL,
     period_end   date          NOT NULL,
+    -- removed_at is set when the retention worker deletes the object after
+    -- ACCOUNTING_SAFT_EXPORT_RETENTION_DAYS: the file carries personal data,
+    -- the row — who, when, the selection, the hash — is kept.
+    removed_at   timestamptz,
     PRIMARY KEY (export_id, part),
     CONSTRAINT ck_saft_export_files_part CHECK (part BETWEEN 1 AND parts)
 );
@@ -63,9 +67,27 @@ CREATE TABLE accounting.saft_export_files (
 CREATE TRIGGER tr_saft_exports_no_delete
     BEFORE DELETE ON accounting.saft_exports
     FOR EACH ROW EXECUTE FUNCTION accounting.refuse_change();
+-- A file's row changes once, and only so: removed_at set when its object is
+-- deleted; it is never deleted.
+-- +goose StatementBegin
+CREATE FUNCTION accounting.saft_export_file_removal() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+    IF TG_OP = 'UPDATE' AND OLD.removed_at IS NULL AND NEW.removed_at IS NOT NULL
+        AND (NEW.export_id, NEW.part, NEW.parts, NEW.file_name, NEW.object_key, NEW.size_bytes, NEW.sha256,
+             NEW.from_period, NEW.to_period, NEW.period_start, NEW.period_end)
+          = (OLD.export_id, OLD.part, OLD.parts, OLD.file_name, OLD.object_key, OLD.size_bytes, OLD.sha256,
+             OLD.from_period, OLD.to_period, OLD.period_start, OLD.period_end) THEN
+        RETURN NEW;
+    END IF;
+    RAISE EXCEPTION 'accounting.saft_export_files: a row is never changed, but for its removal'
+        USING ERRCODE = 'check_violation';
+END;
+$$;
+-- +goose StatementEnd
 CREATE TRIGGER tr_saft_export_files_immutable
     BEFORE UPDATE OR DELETE ON accounting.saft_export_files
-    FOR EACH ROW EXECUTE FUNCTION accounting.refuse_change();
+    FOR EACH ROW EXECUTE FUNCTION accounting.saft_export_file_removal();
 
 CREATE TABLE accounting.saft_imports (
     id                  bigint        GENERATED ALWAYS AS IDENTITY (START WITH 1001) PRIMARY KEY,
@@ -81,6 +103,9 @@ CREATE TABLE accounting.saft_imports (
     -- accounts with their balances, the tax table, the customers and the
     -- suppliers. The transactions are counted, never kept.
     preview             jsonb         NOT NULL,
+    -- matched_at is when the customers were last matched to Customers: at
+    -- the upload, and again only when a person asks.
+    matched_at          timestamptz,
     uploaded_at         timestamptz   NOT NULL,
     uploaded_by_user_id uuid          NOT NULL,
     applied_at          timestamptz,
@@ -93,7 +118,31 @@ CREATE TABLE accounting.saft_imports (
 );
 CREATE UNIQUE INDEX ux_saft_imports_applied ON accounting.saft_imports ((true)) WHERE state = 'applied';
 
+-- An import's customers and suppliers, one row each, paged rather than held
+-- in the preview: a file may name many. A customer's match to Customers is
+-- kept here — matched or ambiguous by organisation number, linked by a
+-- person, unmatched — with the customer's name and organisation number.
+CREATE TABLE accounting.saft_import_parties (
+    import_id     bigint        NOT NULL REFERENCES accounting.saft_imports (id) ON DELETE CASCADE,
+    kind          varchar(10)   NOT NULL,
+    position      integer       NOT NULL,
+    file_id       varchar(70)   NOT NULL,
+    name          varchar(256)  NOT NULL,
+    party         jsonb         NOT NULL,
+    closing       numeric(18,2) NOT NULL,
+    match         varchar(12),
+    customer_id   integer,
+    customer_name varchar(256),
+    customer_org  varchar(70),
+    PRIMARY KEY (import_id, kind, position),
+    CONSTRAINT ck_saft_import_parties_kind CHECK (kind IN ('customer', 'supplier')),
+    CONSTRAINT ck_saft_import_parties_match CHECK (
+        match IS NULL OR match IN ('matched', 'linked', 'ambiguous', 'unmatched', 'not_needed'))
+);
+
 -- +goose Down
+DROP TABLE accounting.saft_import_parties;
 DROP TABLE accounting.saft_imports;
 DROP TABLE accounting.saft_export_files;
 DROP TABLE accounting.saft_exports;
+DROP FUNCTION accounting.saft_export_file_removal();
