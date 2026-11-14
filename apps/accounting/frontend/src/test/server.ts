@@ -389,6 +389,10 @@ export const vatTermItem = (change: Partial<AccountingVatTermItem> = {}): Accoun
   lockCovers: true,
   needsClosing: true,
   needsFiling: true,
+  closing: null,
+  filedClosing: null,
+  partial: false,
+  coversFrom: "2026-07-01",
   ...change,
 });
 
@@ -471,7 +475,17 @@ export const vatTermDetail = (change: Partial<AccountingVatTermDetail> = {}): Ac
       postings: [],
     },
   },
-  checks: { ended: true, earlierOpen: null, attention: 0, lockAfterEnd: false, reconciled: true },
+  checks: {
+    ended: true,
+    earlierOpen: null,
+    attention: 0,
+    lockAfterEnd: false,
+    reconciled: true,
+    partial: false,
+    rateMissing: false,
+    staleTerm: null,
+  },
+  closings: [],
   events: [],
   ...change,
 });
@@ -685,6 +699,7 @@ export const stubAccountingApi = (change: Partial<ApiState> = {}): StubbedFetch 
     if (method === "GET" && path === "/vat/postings")
       return jsonResponse(200, {
         total: 1,
+        sum: "-60000.40",
         items: [
           {
             voucher: { id: 5001, display: "2026-000007" },

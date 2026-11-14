@@ -56,6 +56,9 @@ describe("a VAT term", () => {
           attention: 2,
           lockAfterEnd: true,
           reconciled: false,
+          partial: false,
+          rateMissing: false,
+          staleTerm: null,
           earlierOpen: vatTermItem({ number: 3, periodName: "mai-juni" }),
         },
       }),
@@ -108,6 +111,43 @@ describe("a VAT term", () => {
     );
   });
 
+  it("asks a term that starts before the books to be closed as partial, and says so", async () => {
+    const fetchMock = stubAccountingApi({
+      vatTerm: vatTermDetail({
+        term: vatTermItem({ partial: true, coversFrom: "2026-08-15" }),
+        checks: { ...vatTermDetail().checks, partial: true },
+      }),
+    });
+    renderRoute("/accounting/vat/2026/4");
+    await userEvent.click(await screen.findByRole("button", { name: "Close the term" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByTestId("vat-partial")).toHaveTextContent(/covers .* only/);
+    await userEvent.click(within(dialog).getByRole("button", { name: "Close the term" }));
+    await waitFor(() => expect(sent(fetchMock, "POST", /\/close$/)[0]?.body).toEqual({ confirmPartial: true }));
+  });
+
+  it("keeps every closing with its XML", async () => {
+    const closing = (n: number, current: boolean, total: string) => ({
+      closing: n,
+      closedAt: "2026-11-14T09:00:00Z",
+      closedByUserId: "11111111-1111-1111-1111-111111111111",
+      current,
+      filed: false,
+      settlementVoucher: null,
+      total,
+    });
+    stubAccountingApi({
+      vatTerm: vatTermDetail({
+        term: vatTermItem({ state: "closed", needsClosing: false, closing: 2 }),
+        closings: [closing(2, true, "12345"), closing(1, false, "12000")],
+      }),
+    });
+    renderRoute("/accounting/vat/2026/4");
+    const closings = await screen.findByTestId("vat-closings");
+    const links = within(closings).getAllByRole("link", { name: "Download XML" });
+    expect(links[1]).toHaveAttribute("href", "/api/v1/accounting/vat/terms/2026/4/closings/1/xml");
+  });
+
   it("lists the postings behind a figure", async () => {
     stubAccountingApi();
     renderRoute("/accounting/vat/postings?from=2026-07-01&to=2026-08-31&taxCodeId=2003&part=base");
@@ -116,6 +156,8 @@ describe("a VAT term", () => {
       "/accounting/vouchers/5001",
     );
     expect(screen.getByText("1 postings")).toBeInTheDocument();
+    // The whole selection's sum, as the server computes it (L4).
+    expect(screen.getAllByText("-60,000.40").length).toBeGreaterThan(0);
   });
 
   it("shows the next term due on the overview", async () => {

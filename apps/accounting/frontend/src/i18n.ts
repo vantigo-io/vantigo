@@ -711,6 +711,20 @@ export const accountingCatalog = {
     "refusal.vat_term_not_latest": "A later term is closed: reopen it first.",
     "refusal.vat_term_not_filed": "The term is not marked as filed.",
     "refusal.lock_behind_filed_term": "The lock cannot move back behind a VAT term filed at Skatteetaten.",
+    vatCheckStale: "{{term}} has changed since it was closed: reopen it and close it again first.",
+    vatCheckRateMissing: "A code in the return has no rate on a posting's date: give the code its rate first.",
+    vatPartial: "The books start inside this term: its return covers {{from}} – {{to}} only. Closing it says so.",
+    vatClosings: "Closings",
+    vatClosingName: "Closing {{closing}}",
+    vatClosingCurrent: "Standing",
+    "refusal.lock_behind_closed_term": "A closed VAT term is behind the lock: reopen the term instead.",
+    "refusal.vat_term_stale": "A closed term has changed since it was closed: reopen it and close it again.",
+    "refusal.opening_vat_account":
+      "A VAT account takes no opening balance: put unpaid VAT on the VAT settlement account.",
+    "refusal.tax_code_in_use": "Postings carry this code: its VAT accounts are fixed.",
+    "refusal.vat_term_inconsistent": "The return does not add up to the books.",
+    "refusal.vat_term_partial": "The term starts before the books: confirm that its return covers only part of it.",
+    "refusal.vat_term_rate_missing": "A code in the return has no rate.",
     unpostedReason_expense_invoice_unapproved:
       "The expense behind a supplier invoice was unapproved in Expenses. Delete or post the draft, then retry.",
     makeSupplierInvoiceHint:
@@ -1418,6 +1432,21 @@ export const accountingCatalog = {
     "refusal.vat_term_not_filed": "Terminen er ikke merket som levert.",
     "refusal.lock_behind_filed_term":
       "Sperredatoen kan ikke flyttes tilbake bak en mva-termin levert hos Skatteetaten.",
+    vatCheckStale: "{{term}} er endret siden den ble lukket: åpne den igjen og lukk den på nytt først.",
+    vatCheckRateMissing: "En kode i mva-meldingen har ingen sats på en posterings dato: gi koden sats først.",
+    vatPartial:
+      "Regnskapet starter inne i denne terminen: mva-meldingen dekker bare {{from}} – {{to}}. Lukkingen sier fra om det.",
+    vatClosings: "Lukkinger",
+    vatClosingName: "Lukking {{closing}}",
+    vatClosingCurrent: "Gjeldende",
+    "refusal.lock_behind_closed_term": "En lukket mva-termin ligger bak sperren: åpne terminen igjen i stedet.",
+    "refusal.vat_term_stale": "En lukket termin er endret siden den ble lukket: åpne den igjen og lukk den på nytt.",
+    "refusal.opening_vat_account":
+      "En mva-konto tar ingen inngående saldo: før skyldig mva på oppgjørskontoen for mva.",
+    "refusal.tax_code_in_use": "Posteringer bruker denne koden: mva-kontoene dens ligger fast.",
+    "refusal.vat_term_inconsistent": "Mva-meldingen går ikke opp mot regnskapet.",
+    "refusal.vat_term_partial": "Terminen starter før regnskapet: bekreft at mva-meldingen bare dekker en del av den.",
+    "refusal.vat_term_rate_missing": "En kode i mva-meldingen har ingen sats.",
     unpostedReason_expense_invoice_unapproved:
       "Utgiften bak en leverandørfaktura ble ikke lenger godkjent i Utgifter. Slett eller bokfør utkastet, og prøv igjen.",
     makeSupplierInvoiceHint:

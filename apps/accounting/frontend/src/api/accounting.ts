@@ -489,8 +489,11 @@ export const vatTermQueryOptions = (year: number, number: number) =>
 
 const termUrl = (year: number, number: number) => `${BASE}/vat/terms/${year}/${number}`;
 
-export const closeVatTerm = (year: number, number: number) =>
-  send<AccountingVatTermDetail>(`${termUrl(year, number)}/close`, { method: "POST" });
+export const closeVatTerm = (year: number, number: number, confirmPartial = false) =>
+  send<AccountingVatTermDetail>(
+    `${termUrl(year, number)}/close`,
+    confirmPartial ? json("POST", { confirmPartial: true }) : { method: "POST" },
+  );
 
 export const reopenVatTerm = (year: number, number: number, reason: string) =>
   send<AccountingVatTermDetail>(`${termUrl(year, number)}/reopen`, json("POST", { reason }));
@@ -503,6 +506,10 @@ export const unfileVatTerm = (year: number, number: number, reason: string) =>
 
 /** The address a closed term's return downloads from, as XML. */
 export const vatReturnXmlUrl = (year: number, number: number) => appUrl(`${termUrl(year, number)}/xml`);
+
+/** The address one of a term's closings downloads from, as XML: every close is kept (H2). */
+export const vatClosingXmlUrl = (year: number, number: number, closing: number) =>
+  appUrl(`${termUrl(year, number)}/closings/${closing}/xml`);
 
 /** What the drill-down behind a VAT figure is asked for (A21). */
 export interface VatPostingFilters {

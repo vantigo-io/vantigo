@@ -156,6 +156,13 @@ export const refusalCodes = [
   "vat_term_not_latest",
   "vat_term_not_filed",
   "lock_behind_filed_term",
+  "lock_behind_closed_term",
+  "vat_term_stale",
+  "opening_vat_account",
+  "tax_code_in_use",
+  "vat_term_inconsistent",
+  "vat_term_partial",
+  "vat_term_rate_missing",
 ] as const;
 export type RefusalCode = (typeof refusalCodes)[number];
 

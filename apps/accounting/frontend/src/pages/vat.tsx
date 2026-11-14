@@ -31,6 +31,7 @@ import {
   fileVatTerm,
   reopenVatTerm,
   unfileVatTerm,
+  vatClosingXmlUrl,
   vatPostingsQueryOptions,
   vatReturnXmlUrl,
   vatTermQueryOptions,
@@ -76,7 +77,8 @@ const TermState = ({ term }: { term: AccountingVatTermItem }) => {
 /** A return's total: to pay, to receive or nothing, in whole kroner. */
 const useTotal = () => {
   const { t, money } = useAccountingFormat();
-  return (total: string) => {
+  return (total: string | null) => {
+    if (total === null) return "";
     const n = Number(total);
     if (n > 0) return t("vatToPay", { amount: money(total) });
     if (n < 0) return t("vatToReceive", { amount: money(String(-n)) });
@@ -251,6 +253,11 @@ const Term = ({ meta, year, number }: { meta: AccountingMeta; year: number; numb
           </Text>
         )}
       </Group>
+      {it.partial && (
+        <Alert color="orange" icon={<IconAlertTriangle size={16} />}>
+          {t("vatPartial", { from: day(it.coversFrom), to: day(it.periodEnd) })}
+        </Alert>
+      )}
       {closed && !it.lockCovers && (
         <Alert color="orange" icon={<IconAlertTriangle size={16} />}>
           {t("vatLockNotCovering")}
@@ -259,6 +266,7 @@ const Term = ({ meta, year, number }: { meta: AccountingMeta; year: number; numb
       <FiledAtSkatteetaten />
       <ReturnFigures ret={d.return} closed={closed} />
       <Specification spec={d.specification} />
+      <Closings detail={d} year={year} number={number} />
       <Events detail={d} />
       {dialog === "close" && <CloseDialog detail={d} year={year} number={number} onClose={() => setDialog(null)} />}
       {dialog === "reopen" && (
@@ -484,6 +492,37 @@ const FiguresTable = ({
   );
 };
 
+/** Every close of the term, each with its return kept and its XML to download (H2). */
+const Closings = ({ detail, year, number }: { detail: AccountingVatTermDetail; year: number; number: number }) => {
+  const { t, stamp, money } = useAccountingFormat();
+  if (detail.closings.length === 0) return null;
+  return (
+    <Card withBorder padding="md" data-testid="vat-closings">
+      <Title order={5} mb="xs">
+        {t("vatClosings")}
+      </Title>
+      <Table>
+        <Table.Tbody>
+          {detail.closings.map((c) => (
+            <Table.Tr key={c.closing}>
+              <Table.Td>{t("vatClosingName", { closing: c.closing })}</Table.Td>
+              <Table.Td>{stamp(c.closedAt)}</Table.Td>
+              <Table.Td>
+                {c.current && <Badge color="blue">{t("vatClosingCurrent")}</Badge>}{" "}
+                {c.filed && <Badge color="green">{t("vatStateFiled")}</Badge>}
+              </Table.Td>
+              <Table.Td ta="right">{money(c.total)}</Table.Td>
+              <Table.Td>
+                <Anchor href={vatClosingXmlUrl(year, number, c.closing)}>{t("vatDownloadXml")}</Anchor>
+              </Table.Td>
+            </Table.Tr>
+          ))}
+        </Table.Tbody>
+      </Table>
+    </Card>
+  );
+};
+
 /** What happened to the term: closes, reopenings, filings and their removal. */
 const Events = ({ detail }: { detail: AccountingVatTermDetail }) => {
   const { t, stamp, day } = useAccountingFormat();
@@ -537,9 +576,11 @@ const CloseDialog = ({
     c.attention > 0 && t("vatCheckAttention", { count: c.attention }),
     c.lockAfterEnd && t("vatCheckLockAfterEnd", { day: day(it.periodEnd) }),
     !c.reconciled && t("vatCheckUnreconciled"),
+    c.staleTerm && t("vatCheckStale", { term: name(c.staleTerm) }),
+    c.rateMissing && t("vatCheckRateMissing"),
   ].filter((b): b is string => typeof b === "string");
   const close = useMutation({
-    mutationFn: () => closeVatTerm(year, number),
+    mutationFn: () => closeVatTerm(year, number, c.partial),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: [ACCOUNTING_QUERY_KEY] });
       notifications.show({ color: "green", message: t("vatClosed", { term: name(it) }) });
@@ -558,6 +599,11 @@ const CloseDialog = ({
           <List.Item>{t("vatCloseLock", { day: day(it.periodEnd) })}</List.Item>
           <List.Item>{t("vatCloseXml")}</List.Item>
         </List>
+        {c.partial && (
+          <Alert color="orange" icon={<IconAlertTriangle size={16} />} data-testid="vat-partial">
+            {t("vatPartial", { from: day(it.coversFrom), to: day(it.periodEnd) })}
+          </Alert>
+        )}
         {blockers.length > 0 && (
           <Alert color="orange" icon={<IconAlertTriangle size={16} />} title={t("vatCloseBlocked")}>
             <List size="sm">
@@ -736,7 +782,6 @@ const Postings = ({ search }: { search: VatPostingsSearch & { from: string; to: 
       </Alert>
     );
   if (list.isPending) return <ContentSkeleton rows={6} />;
-  const sum = list.data.items.reduce((s, p) => s + Math.round(Number(p.amount) * 100), 0) / 100;
   return (
     <Stack gap="sm">
       <Table striped>
@@ -774,7 +819,7 @@ const Postings = ({ search }: { search: VatPostingsSearch & { from: string; to: 
               {t("vatPostingsTotal", { count: list.data.total })}
             </Table.Td>
             <Table.Td ta="right" fw={600}>
-              {amount(sum.toFixed(2))}
+              {amount(list.data.sum)}
             </Table.Td>
           </Table.Tr>
         </Table.Tbody>
