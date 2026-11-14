@@ -115,7 +115,11 @@ exits 2 outside it): it applies migrations and populates an idempotent Norwegian
 dataset across all modules (20 users across 9 permission roles, 200 companies with 400
 contacts, 62 products, 75 projects, time entries, expenses, invoices, energy metering
 points, customer conversations, and a small workshop with its stock, bills of materials,
-manufacturing orders and sales orders). No command, or an unknown one, prints usage on
+manufacturing orders and sales orders) and, when `accounting` is enabled, books set up from 1
+January with the demo's sales and expenses posted, suppliers and their invoices, the VAT
+terms that have ended closed and filed, and last month's bank statement half reconciled.
+The supplier invoices and the bank statement keep files and are left out, as the seed logs,
+when no object store (`STORAGE_PROVIDER`) is configured. No command, or an unknown one, prints usage on
 stderr and exits 2, so a typo in a job definition fails loudly rather than quietly
 becoming a web server.
 
