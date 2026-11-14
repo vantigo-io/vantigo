@@ -475,6 +475,10 @@ clock and never reads a directory; its caller never calls it under a lock of its
   name `Subscriptions` too, each with a `Through` date: [Billing a
   period](#billing-a-period).
 - **`Allocations`** — the allocations named, as they stand; a missing id is absent.
+  Every allocation `Allocate` and `Allocations` answer carries its line's `VariantID`
+  (nil for a line of free text), from which Invoices reads the product's tax category
+  through the catalog, so an issued line remembers it
+  ([What a line was made from](/en/reference/invoices/#what-a-line-was-made-from)).
 - **`ReleaseAllocations`** — a provider command: the named drafts released on one
   transaction of its own, after it has locked their orders, their lines and the
   allocations in that order ([the lock order](#allocations)); one invoiced, released or

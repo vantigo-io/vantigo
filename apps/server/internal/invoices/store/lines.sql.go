@@ -112,7 +112,7 @@ func (q *Queries) InsertVatSummary(ctx context.Context, arg InsertVatSummaryPara
 }
 
 const lines = `-- name: Lines :many
-SELECT id, invoice_id, position, description, quantity, unit, unit_price, discount_percent, vat_code_id, credits_line_id, line_gross, line_allowance, line_net, vat_rate_percent, vat_category, saf_t_code, exemption_reason, deducts_invoice_id, correction FROM invoices.lines WHERE invoice_id = $1 ORDER BY position
+SELECT id, invoice_id, position, description, quantity, unit, unit_price, discount_percent, vat_code_id, credits_line_id, line_gross, line_allowance, line_net, vat_rate_percent, vat_category, saf_t_code, exemption_reason, deducts_invoice_id, correction, line_kind, tax_category_id, project_id FROM invoices.lines WHERE invoice_id = $1 ORDER BY position
 `
 
 // Lines is one document's lines, in their order.
@@ -145,6 +145,9 @@ func (q *Queries) Lines(ctx context.Context, invoiceID int64) ([]InvoicesLine, e
 			&i.ExemptionReason,
 			&i.DeductsInvoiceID,
 			&i.Correction,
+			&i.LineKind,
+			&i.TaxCategoryID,
+			&i.ProjectID,
 		); err != nil {
 			return nil, err
 		}
@@ -157,12 +160,50 @@ func (q *Queries) Lines(ctx context.Context, invoiceID int64) ([]InvoicesLine, e
 }
 
 const snapshotLine = `-- name: SnapshotLine :exec
-UPDATE invoices.lines SET
+UPDATE invoices.lines AS l SET
     vat_rate_percent = $1,
     vat_category = $2,
     saf_t_code = $3,
-    exemption_reason = $4
-WHERE id = $5
+    exemption_reason = $4,
+    line_kind = d.line_kind,
+    tax_category_id = d.tax_category_id,
+    project_id = d.project_id
+FROM (
+    SELECT
+        CASE
+            WHEN b.line_kind IS NOT NULL THEN b.line_kind
+            WHEN b.deducts_invoice_id IS NOT NULL THEN 'deduction'
+            WHEN s.kinds IS NULL THEN 'manual'
+            WHEN cardinality(s.kinds) > 1 THEN 'mixed'
+            WHEN s.kinds[1] = 'time.entry' THEN 'hours'
+            WHEN s.kinds[1] = 'expenses.entry' THEN 'expense'
+            WHEN s.kinds[1] = 'projects.milestone' THEN 'milestone'
+            WHEN s.kinds[1] = 'settlement' THEN 'settlement'
+            WHEN s.kinds[1] IN ('order_line', 'subscription_period') THEN s.kinds[1]
+            ELSE 'mixed'
+        END::text AS line_kind,
+        CASE WHEN b.line_kind IS NOT NULL THEN b.tax_category_id ELSE s.tax_category_id END AS tax_category_id,
+        CASE WHEN b.line_kind IS NOT NULL THEN b.project_id ELSE s.project_id END AS project_id
+    FROM invoices.lines t
+    JOIN invoices.lines b ON b.id = COALESCE(t.credits_line_id, t.id)
+    CROSS JOIN LATERAL (
+        SELECT
+            array_agg(DISTINCT CASE
+                WHEN ls.source_kind = 'orders.allocation' THEN COALESCE(ls.source_subkind, 'order_line')
+                WHEN ls.point_gsrn IS NOT NULL THEN 'settlement'
+                ELSE ls.source_kind END) AS kinds,
+            CASE WHEN count(*) = count(ls.project_id) AND count(DISTINCT ls.project_id) = 1
+                THEN min(ls.project_id) END AS project_id,
+            CASE WHEN count(*) = count(ls.tax_category_id) AND count(DISTINCT ls.tax_category_id) = 1
+                THEN min(ls.tax_category_id) END AS tax_category_id
+        FROM invoices.line_sources ls
+        JOIN invoices.lines f ON f.id = ls.line_id
+        WHERE ls.invoice_id = b.invoice_id
+          AND b.position BETWEEN f.position AND f.position + ls.line_count - 1
+    ) AS s
+    WHERE t.id = $5
+) AS d
+WHERE l.id = $5
 `
 
 type SnapshotLineParams struct {
@@ -173,8 +214,21 @@ type SnapshotLineParams struct {
 	ID              int64
 }
 
-// SnapshotLine writes the VAT a line was issued with (D6 step 6). It runs while
-// the document is still a draft; the trigger refuses it afterwards (D9).
+// SnapshotLine writes the VAT a line was issued with (D6 step 6), and what it
+// was made from (accounting design R6): its kind, the product's tax category
+// and its project. It runs while the document is still a draft; the trigger
+// refuses it afterwards (D9).
+//
+// What a line was made from is read from its basis: the line itself, or on a
+// credit note the original line it credits. An original issued with the
+// snapshot gives its own; else the basis's sources are read — every source
+// whose lines include the basis's position (an energy settlement's row sits
+// on its first line and covers line_count of them, and is told by its metering
+// point, as 00078 tells it, without naming another schema). One kind of source names
+// the kind; an order allocation's is its subkind; sources of several kinds are
+// mixed; a deduction line deducts an a-konto; a line with no source is
+// manual. The project and the tax category are the sources' when they all
+// share one, else NULL.
 func (q *Queries) SnapshotLine(ctx context.Context, arg SnapshotLineParams) error {
 	_, err := q.db.Exec(ctx, snapshotLine,
 		arg.VatRatePercent,

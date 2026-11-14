@@ -587,7 +587,7 @@ func invoicesWorkHolds(t *testing.T, invoiceID, lineID int64, sources []invoices
 		"subkinds": subkinds, "project_ids": projectIDs, "quantities": quantities, "amounts": amounts,
 		"currencies": currencies, "dates": dates, "line_counts": lineCounts, "point_gsrns": points,
 		"point_addresses": points, "price_areas": points, "contract_names": points, "period_froms": periodFroms,
-		"estimateds": estimateds,
+		"estimateds": estimateds, "tax_category_ids": make([]int32, len(sources)),
 	}
 }
 

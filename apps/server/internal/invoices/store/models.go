@@ -320,6 +320,16 @@ type InvoicesInvoiceHold struct {
 	ChargesAllowed *bool
 }
 
+type InvoicesJournalFact struct {
+	Seq          int64
+	Kind         string
+	SubjectID    int64
+	InvoiceID    int64
+	BusinessDate pgtype.Date
+	RemovedAt    *time.Time
+	CreatedAt    time.Time
+}
+
 type InvoicesLine struct {
 	ID               int64
 	InvoiceID        int64
@@ -340,6 +350,9 @@ type InvoicesLine struct {
 	ExemptionReason  *string
 	DeductsInvoiceID *int64
 	Correction       bool
+	LineKind         *string
+	TaxCategoryID    *int32
+	ProjectID        *int32
 }
 
 type InvoicesLineRelease struct {
@@ -370,6 +383,7 @@ type InvoicesLineSource struct {
 	ContractName   *string
 	PeriodFrom     pgtype.Date
 	Estimated      *bool
+	TaxCategoryID  *int32
 }
 
 type InvoicesManualDelivery struct {

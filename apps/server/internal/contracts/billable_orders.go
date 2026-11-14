@@ -309,9 +309,13 @@ type OrderAllocation struct {
 	Quantity, UnitPrice, DiscountPercent, Amount string
 	VATCodeID                                    int32
 	Description, Unit                            string
-	Currency                                     string
-	ProjectID                                    *int32
-	YourReference                                string
+	// VariantID is the order line's product variant, nil for a line of free
+	// text: Invoices reads its tax category through the product catalog, so
+	// an issued line remembers it (accounting design R6).
+	VariantID     *int32
+	Currency      string
+	ProjectID     *int32
+	YourReference string
 	// State is AllocationDraft, AllocationInvoiced or AllocationReleased.
 	State string
 	// PeriodStart and PeriodEnd are a subscription period's first and last

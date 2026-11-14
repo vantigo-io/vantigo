@@ -526,6 +526,13 @@ func (s *server) fromOrders(ctx context.Context, lines []orderLineInput, subs []
 		return ordersOutcome{}, fmt.Errorf("invoices: record the order allocations taken: %w", err)
 	}
 
+	// The tax categories of the allocations' products, read now, on the
+	// pool: the issue snapshots them onto the lines (accounting design R6).
+	categories, err := s.variantTaxCategories(ctx, allocations)
+	if err != nil {
+		return ordersOutcome{}, err
+	}
+
 	byOrder := map[docKey][]contracts.OrderAllocation{}
 	for _, a := range allocations {
 		key := allocationKey(a)
@@ -545,7 +552,7 @@ func (s *server) fromOrders(ctx context.Context, lines []orderLineInput, subs []
 	for _, g := range groups {
 		profile := profiles[g.customerID]
 		language := lineLanguage(profile.Language)
-		made, rows, err := orderDraftLines(language, g, byOrder, positions, dates)
+		made, rows, err := orderDraftLines(language, g, byOrder, positions, dates, categories)
 		if err != nil {
 			return ordersOutcome{}, err
 		}

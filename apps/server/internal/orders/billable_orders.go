@@ -388,7 +388,7 @@ func (p *billableOrders) Allocate(ctx context.Context, req contracts.AllocateReq
 			out = append(out, p.allocationOf(store.AllocationsByIDsRow{
 				ID: row.ID, Revision: row.Revision, Kind: row.Kind, OrderID: o.ID, OrderNumber: o.Number, LineID: l.ID,
 				Quantity: row.Quantity, UnitPrice: row.UnitPrice, DiscountPercent: row.DiscountPercent, Amount: row.Amount,
-				VatCodeID: row.VatCodeID, Description: l.Description, Unit: l.Unit, Currency: o.Currency,
+				VatCodeID: row.VatCodeID, Description: l.Description, Unit: l.Unit, VariantID: l.VariantID, Currency: o.Currency,
 				ProjectID: o.ProjectID, YourReference: o.YourReference, State: row.State,
 			}))
 			drafted[l.ID] = new(big.Rat).Add(orZero(drafted[l.ID]), qty)
@@ -463,7 +463,7 @@ func (p *billableOrders) allocatePeriods(ctx context.Context, q *store.Queries, 
 				out = append(out, p.allocationOf(store.AllocationsByIDsRow{
 					ID: row.ID, Revision: row.Revision, Kind: row.Kind, OrderID: sub.ID, OrderNumber: sub.Number, LineID: l.ID,
 					Quantity: row.Quantity, UnitPrice: row.UnitPrice, DiscountPercent: row.DiscountPercent, Amount: row.Amount,
-					VatCodeID: row.VatCodeID, Description: l.Description, Unit: l.Unit, Currency: sub.Currency,
+					VatCodeID: row.VatCodeID, Description: l.Description, Unit: l.Unit, VariantID: l.VariantID, Currency: sub.Currency,
 					ProjectID: sub.ProjectID, YourReference: sub.YourReference, State: row.State,
 					PeriodStart: row.PeriodStart, PeriodEnd: row.PeriodEnd,
 				}))
@@ -570,7 +570,7 @@ func (p *billableOrders) allocationOf(r store.AllocationsByIDsRow) contracts.Ord
 		ID: r.ID, Revision: r.Revision, Kind: r.Kind, OrderID: r.OrderID, OrderNumber: r.OrderNumber, LineID: r.LineID,
 		Quantity: ratOrZero(r.Quantity).FloatString(quantityPlaces), UnitPrice: ratOrZero(r.UnitPrice).FloatString(pricePlaces),
 		DiscountPercent: ratOrZero(r.DiscountPercent).FloatString(discountPlaces), Amount: ratOrZero(r.Amount).FloatString(amountPlaces),
-		VATCodeID: r.VatCodeID, Description: r.Description, Unit: r.Unit, Currency: r.Currency,
+		VATCodeID: r.VatCodeID, Description: r.Description, Unit: r.Unit, VariantID: r.VariantID, Currency: r.Currency,
 		YourReference: r.YourReference, State: r.State,
 	}
 	if p.projects {
