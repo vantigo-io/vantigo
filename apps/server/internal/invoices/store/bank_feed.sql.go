@@ -125,6 +125,24 @@ func (q *Queries) BankFeedRateLimited(ctx context.Context, arg BankFeedRateLimit
 	return result.RowsAffected(), nil
 }
 
+const bankFeedRateLimitedUntil = `-- name: BankFeedRateLimitedUntil :one
+SELECT rate_limited_until FROM invoices.bank_feed_accounts
+WHERE rate_limited_until > $1::timestamptz
+ORDER BY rate_limited_until DESC
+LIMIT 1
+`
+
+// BankFeedRateLimitedUntil is the latest moment the bank, answering this
+// module's sync 429, said it may be asked again, among the accounts whose
+// wait still holds at @now: no row when none does. The bank limits the key,
+// so contracts.BankFeed's reads wait for it too.
+func (q *Queries) BankFeedRateLimitedUntil(ctx context.Context, now time.Time) (*time.Time, error) {
+	row := q.db.QueryRow(ctx, bankFeedRateLimitedUntil, now)
+	var rate_limited_until *time.Time
+	err := row.Scan(&rate_limited_until)
+	return rate_limited_until, err
+}
+
 const bankFeedRefused = `-- name: BankFeedRefused :execrows
 UPDATE invoices.bank_feed_accounts SET
     status = 'refused', reason = $1::text, detail = $2, failures = 0,
