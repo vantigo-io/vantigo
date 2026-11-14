@@ -7,8 +7,11 @@
 // credit or debit marker (R4). The adapter reads it from the parties — money
 // came in when the creditor's account is the account asked for and the
 // debtor's is not, went out the other way — and answers DirectionUnknown when
-// neither or both are, which the consumer refuses. Account numbers are
-// compared without spaces, a Norwegian IBAN as the eleven digits of its BBAN.
+// neither or both are, when a party's account is written in a form it cannot
+// read, and when a would-be credit names a paymentId (our own outgoing
+// payment), which the consumer refuses. Account numbers are compared without
+// spaces and dots, a Norwegian IBAN as the eleven digits of its BBAN. This
+// reading is not verified against a real Folio account.
 //
 // The client is the Vipps adapter's shape: the base URL is the operator's,
 // so it dials through the transport the caller hands it (Deps.HTTPTransport,
@@ -30,6 +33,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/vantigo-io/vantigo/server/internal/bankfeed"
 	"github.com/vantigo-io/vantigo/server/internal/buildinfo"
@@ -69,8 +73,8 @@ var _ bankfeed.Feed = (*Client)(nil)
 // New is the adapter for o's key.
 func New(o Options) (*Client, error) {
 	base, err := url.Parse(o.BaseURL)
-	if err != nil || (base.Scheme != "https" && base.Scheme != "http") || base.Host == "" {
-		return nil, errors.New("folio: the base URL must be an absolute http(s) URL")
+	if err != nil || base.Scheme != "https" || base.Host == "" {
+		return nil, errors.New("folio: the base URL must be an https URL")
 	}
 	if o.APIKey == "" {
 		return nil, errors.New("folio: the API key is required")
@@ -110,12 +114,10 @@ var kinds = map[string]bankfeed.AccountKind{
 	"Card":        bankfeed.AccountCard,
 }
 
-// Verify is GET /accounts, the answer discarded: the cheapest call the key
-// must be good for.
+// Verify is Accounts, the list discarded: the cheapest call the key must be
+// good for, and an answer that is not Folio's accounts fails it.
 func (c *Client) Verify(ctx context.Context) error {
-	ctx, cancel := context.WithTimeout(ctx, c.timeout)
-	defer cancel()
-	_, err := c.get(ctx, "accounts", "/accounts")
+	_, err := c.Accounts(ctx)
 	return err
 }
 
@@ -157,6 +159,7 @@ type party struct {
 // transaction is the part of Folio's Transaction the port reads.
 type transaction struct {
 	ID                string          `json:"id"`
+	PaymentID         string          `json:"paymentId"`
 	BookingDate       string          `json:"bookingDate"`
 	Description       string          `json:"description"`
 	KID               string          `json:"kid"`
@@ -172,22 +175,26 @@ type transaction struct {
 
 // Transactions is GET /accounts/{accountNumber}/transactions with startDate
 // and endDate, both inclusive, the calendar days of from and to as they are
-// written in their own location. Every booked transaction is answered or
+// written in their own location. The account is sent as it reads after
+// normalising (no spaces or dots, a Norwegian IBAN as its BBAN), and must be
+// digits. Every booked transaction is answered or
 // none: one whose id, booking day or amount does not read fails the whole
 // call, and the consumer refuses the batch. currencyAmount, the original
 // currency's, is never read.
 func (c *Client) Transactions(ctx context.Context, accountNumber string, from, to time.Time) ([]bankfeed.Transaction, error) {
 	asked := normalise(accountNumber)
-	if asked == "" {
-		return nil, errors.New("folio: an account number is required")
+	if !digits(asked) {
+		return nil, errors.New("folio: an account number of digits is required")
 	}
-	if to.Before(from) {
+	// The days compared are the days sent, never the instants.
+	startDate, endDate := from.Format(time.DateOnly), to.Format(time.DateOnly)
+	if endDate < startDate {
 		return nil, errors.New("folio: the range ends before it starts")
 	}
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
-	query := url.Values{"startDate": {from.Format(time.DateOnly)}, "endDate": {to.Format(time.DateOnly)}}
-	body, err := c.get(ctx, "transactions", "/accounts/"+url.PathEscape(accountNumber)+"/transactions?"+query.Encode())
+	query := url.Values{"startDate": {startDate}, "endDate": {endDate}}
+	body, err := c.get(ctx, "transactions", "/accounts/"+url.PathEscape(asked)+"/transactions?"+query.Encode())
 	if err != nil {
 		return nil, err
 	}
@@ -236,7 +243,7 @@ func transactionOf(asked string, raw json.RawMessage) (bankfeed.Transaction, err
 	}
 	out := bankfeed.Transaction{
 		ID: t.ID, BookedOn: booked, AmountMinor: minor, Currency: t.TransactionAmount.Currency,
-		Direction: directionOf(asked, t.Creditor, t.Debtor), Kind: kindOf(t),
+		Direction: directionOf(asked, t), Kind: kindOf(t),
 		KID: strings.TrimSpace(t.KID), Text: t.Description,
 		Raw: raw,
 	}
@@ -248,28 +255,53 @@ func transactionOf(asked string, raw json.RawMessage) (bankfeed.Transaction, err
 
 // minorOf reads Folio's amount, digits, a point and two decimals, as minor
 // units without a float. Anything else — a sign, three decimals, none, an
-// amount past int64 — does not read.
+// amount past int64 — does not read. An error quotes at most the first 32
+// bytes of what Folio sent.
 func minorOf(amount string) (int64, error) {
 	m := amountPattern.FindStringSubmatch(amount)
 	if m == nil {
-		return 0, fmt.Errorf("its amount %q is not digits with two decimals", amount)
+		return 0, fmt.Errorf("its amount %q is not digits with two decimals", cut(amount))
 	}
 	whole, err := strconv.ParseInt(m[1], 10, 64)
 	if err != nil || whole > (1<<63-1-99)/100 {
-		return 0, fmt.Errorf("its amount %q is out of range", amount)
+		return 0, fmt.Errorf("its amount %q is out of range", cut(amount))
 	}
 	cents, _ := strconv.ParseInt(m[2], 10, 64)
 	return whole*100 + cents, nil
 }
 
+// maxQuoted is the most of Folio's text an error quotes.
+const maxQuoted = 32
+
+// cut is s at most maxQuoted bytes long, on a rune boundary.
+func cut(s string) string {
+	if len(s) <= maxQuoted {
+		return s
+	}
+	n := maxQuoted
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n] + "…"
+}
+
 // directionOf is credit when the creditor's account is the one asked for
 // and the debtor's is not, debit the other way, and unknown when neither or
-// both are.
-func directionOf(asked string, creditor, debtor *party) bankfeed.Direction {
-	in := creditor != nil && normalise(creditor.AccountNumber) == asked
-	out := debtor != nil && normalise(debtor.AccountNumber) == asked
+// both are. It is unknown too when either party's account is present but
+// reads, after normalising, as neither digits nor an IBAN — it cannot be
+// told from the account asked for — and when a would-be credit names a
+// paymentId: a transaction our own payment made is never money in.
+func directionOf(asked string, t transaction) bankfeed.Direction {
+	creditor, debtor := partyAccount(t.Creditor), partyAccount(t.Debtor)
+	if !readable(creditor) || !readable(debtor) {
+		return bankfeed.DirectionUnknown
+	}
+	in, out := creditor == asked, debtor == asked
 	switch {
 	case in && !out:
+		if t.PaymentID != "" {
+			return bankfeed.DirectionUnknown
+		}
 		return bankfeed.DirectionCredit
 	case out && !in:
 		return bankfeed.DirectionDebit
@@ -292,11 +324,30 @@ func kindOf(t transaction) bankfeed.Kind {
 	}
 }
 
-// normalise is an account number without its spaces, a Norwegian IBAN (NO,
-// two check digits, eleven digits) as its eleven-digit BBAN.
+// partyAccount is a party's account normalised, empty when the party or
+// its account is absent.
+func partyAccount(p *party) string {
+	if p == nil {
+		return ""
+	}
+	return normalise(p.AccountNumber)
+}
+
+// ibanPattern is an IBAN's form: a country, two check digits, letters and
+// digits.
+var ibanPattern = regexp.MustCompile(`^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$`)
+
+// readable reports whether a normalised account is absent, digits or an
+// IBAN: a form the comparison with the account asked for can trust.
+func readable(n string) bool {
+	return n == "" || digits(n) || ibanPattern.MatchString(n)
+}
+
+// normalise is an account number without its spaces and dots, a Norwegian
+// IBAN (NO, two check digits, eleven digits) as its eleven-digit BBAN.
 func normalise(number string) string {
-	n := strings.ReplaceAll(number, " ", "")
-	if len(n) == 15 && strings.EqualFold(n[:2], "NO") && digits(n[2:]) {
+	n := strings.ToUpper(strings.NewReplacer(" ", "", ".", "").Replace(number))
+	if len(n) == 15 && n[:2] == "NO" && digits(n[2:]) {
 		return n[4:]
 	}
 	return n

@@ -39,7 +39,8 @@ import (
 const APIKey = "foliotest-api-key"
 
 // MaxAnswerBytes is the adapter's bound on an answer; Oversized answers one
-// byte more.
+// byte more, as valid JSON — the operation's empty answer padded with
+// spaces — so only the bound can refuse it.
 const MaxAnswerBytes = 10 << 20
 
 // Op names the operation a Fail applies to.
@@ -62,7 +63,8 @@ type Failure struct {
 	Redirect string
 	// Body, when set, is answered as it is under Status (200 when zero).
 	Body []byte
-	// Oversized answers 200 with a body of MaxAnswerBytes+1 bytes.
+	// Oversized answers 200 with the operation's empty answer padded with
+	// spaces to MaxAnswerBytes+1 bytes: valid JSON one byte past the bound.
 	Oversized bool
 	// Times is how many requests it answers; 0 is every one until Clear.
 	Times int
@@ -119,12 +121,47 @@ type Transaction struct {
 	KID               string             `json:"kid,omitempty"`
 	CreditorEventID   string             `json:"creditorEventId,omitempty"`
 	CardAuthorization *CardAuthorization `json:"cardAuthorization,omitempty"`
-	Creditor          Party              `json:"creditor"`
-	Debtor            Party              `json:"debtor"`
-	TransactionAmount Amount             `json:"transactionAmount"`
-	CurrencyAmount    Amount             `json:"currencyAmount"`
-	Attachments       []json.RawMessage  `json:"attachments"`
-	Complete          bool               `json:"complete"`
+	// Creditor and Debtor are absent when nil; NullCreditor and NullDebtor
+	// answer them as an explicit null instead.
+	Creditor          *Party            `json:"-"`
+	Debtor            *Party            `json:"-"`
+	NullCreditor      bool              `json:"-"`
+	NullDebtor        bool              `json:"-"`
+	TransactionAmount Amount            `json:"transactionAmount"`
+	CurrencyAmount    Amount            `json:"currencyAmount"`
+	Attachments       []json.RawMessage `json:"attachments"`
+	Complete          bool              `json:"complete"`
+}
+
+// MarshalJSON answers tx as Folio would, its parties absent, null or
+// present as the test set them.
+func (tx Transaction) MarshalJSON() ([]byte, error) {
+	type plain Transaction
+	body, err := json.Marshal(plain(tx))
+	if err != nil {
+		return nil, err
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(body, &fields); err != nil {
+		return nil, err
+	}
+	for _, p := range []struct {
+		key   string
+		party *Party
+		null  bool
+	}{{"creditor", tx.Creditor, tx.NullCreditor}, {"debtor", tx.Debtor, tx.NullDebtor}} {
+		switch {
+		case p.null:
+			fields[p.key] = json.RawMessage("null")
+		case p.party != nil:
+			raw, err := json.Marshal(p.party)
+			if err != nil {
+				return nil, err
+			}
+			fields[p.key] = raw
+		}
+	}
+	return json.Marshal(fields)
 }
 
 // Server is the fake. Its methods are safe for concurrent use.
@@ -280,9 +317,13 @@ func (s *Server) failed(w http.ResponseWriter, op Op) bool {
 		w.Header().Set("Location", copied.Redirect)
 		w.WriteHeader(http.StatusFound)
 	case copied.Oversized:
+		empty := []byte(`{"accounts":[]}`)
+		if op == OpTransactions {
+			empty = []byte(`{"transactions":{"booked":[]}}`)
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write(bytes.Repeat([]byte(" "), MaxAnswerBytes+1))
+		_, _ = w.Write(append(empty, bytes.Repeat([]byte(" "), MaxAnswerBytes+1-len(empty))...))
 	case copied.Body != nil:
 		status := copied.Status
 		if status == 0 {
@@ -354,8 +395,9 @@ func (s *Server) serveTransactions(w http.ResponseWriter, r *http.Request, accou
 	}
 	out := make([]Transaction, 0, len(booked))
 	for _, tx := range booked {
-		day, err := time.Parse(time.DateOnly, tx.BookingDate)
-		if err != nil || day.Before(start) || day.After(end) {
+		// A booking date the fake cannot read is answered as it is, so a
+		// test can drive the adapter's refusal of it.
+		if day, err := time.Parse(time.DateOnly, tx.BookingDate); err == nil && (day.Before(start) || day.After(end)) {
 			continue
 		}
 		if tx.CurrencyAmount == (Amount{}) {

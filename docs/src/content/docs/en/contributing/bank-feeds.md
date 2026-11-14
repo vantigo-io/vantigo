@@ -43,20 +43,20 @@ retries**: a read has no side effect, and the consumer's next cycle reads again.
 
 `bankfeed/folio` speaks [Folio's API](https://api.folio.no/v2/api.yml):
 `folio.New(Options{BaseURL, APIKey, Transport, Now})`. The base URL is the operator's
-(`https://api.folio.no/v2`), absolute http or https; the API key is a customer's, sent as
+(`https://api.folio.no/v2`), and must be an https URL; the API key is a customer's, sent as
 `Authorization: Bearer`, with `User-Agent: vantigo/<release>`. A call is bounded by thirty
 seconds, an answer by 10 MiB, and a redirect is never followed — it would send the key to
 a host no operator named. Nothing is retried or cached.
 
 | Port | Folio |
 | --- | --- |
-| `Verify` | `GET /accounts`, the answer discarded |
+| `Verify` | `Accounts`, the list discarded: a 200 whose body is not Folio's accounts fails it |
 | `Accounts` | `GET /accounts`: `accountNumber`, `name`, and `type` — `Operational`, `Tax`, `Savings`, `Earmarks`, `Card` onto the kinds of the same names, anything else onto `other` |
-| `Transactions` | `GET /accounts/{accountNumber}/transactions?startDate=&endDate=`, both `YYYY-MM-DD`; `transactions.booked[]` |
+| `Transactions` | `GET /accounts/{accountNumber}/transactions?startDate=&endDate=`, the account normalised as below (it must then be digits), both days `YYYY-MM-DD` as written in their own location, compared as days; `transactions.booked[]` |
 | `ID` | `id` |
 | `BookedOn` | `bookingDate` |
 | amount and currency | `transactionAmount.amount` and `.currency` — never `currencyAmount`, the original currency's |
-| `KID` | `kid`, trimmed |
+| `KID` | `kid`, white space trimmed |
 | `Text` | `description` |
 | debtor | `debtor.name` and `debtor.accountNumber`, as written |
 | `Kind` | `internal` when `creditorEventId` is present (both sides of a transfer between the customer's own accounts carry it), else `card` when `cardAuthorization` is, else `transfer` |
@@ -65,11 +65,24 @@ a host no operator named. Nothing is retried or cached.
 
 **Direction.** Folio answers no sign and no credit or debit marker. The adapter compares
 the account asked for with `creditor.accountNumber` and `debtor.accountNumber`, each
-without spaces and a Norwegian IBAN (`NO`, two check digits, eleven digits) read as its
-eleven-digit BBAN: `credit` when the creditor's is the account and the debtor's is not,
-`debit` the other way, `unknown` when neither or both are — a party or its account may be
-absent. One transaction Folio writes in a form the adapter does not read therefore stops
-the account's sync, and never registers a wrong payment.
+without spaces and dots, upper-cased, and a Norwegian IBAN (`NO`, two check digits,
+eleven digits) read as its eleven-digit BBAN: `credit` when the creditor's is the account
+and the debtor's is not, `debit` the other way. It answers `unknown` when:
+
+- neither party's account is the account asked for, or both are — a party, or its
+  account, may be absent or null, which is no account;
+- either party's account is present but reads, after normalising, as neither digits nor
+  an IBAN (two letters, two digits, 11–30 letters and digits) — it cannot be told from the
+  account asked for;
+- the direction would be `credit` and the transaction names a `paymentId`: a transaction
+  our own payment made is never money in. This is the cross-check on the reading above.
+
+That is all the adapter guarantees. **Reading the direction from the creditor and the
+debtor is itself unverified** against a real Folio account: if Folio writes the parties
+otherwise than its OpenAPI document suggests — the account asked for as the creditor of an
+outgoing payment, say, in a form the adapter reads — the adapter would answer a wrong
+direction, and only these checks and the module's own rules stand in the way. Inputs the
+adapter cannot read stop the account's sync as `unknown`.
 
 **The amount** must be digits, a point and exactly two decimals, and is read to øre
 without a float. Anything else — three decimals, a sign, an amount past `int64` — as well
@@ -84,21 +97,30 @@ books a transaction on an account, answered in the order added and filtered by
 `startDate` and `endDate` (today by `SetNow`'s clock when absent); an unknown account is a
 404 and any key but `foliotest.APIKey` a 401. `Fail(op, Failure)` answers one operation —
 `OpAccounts` or `OpTransactions`, and only that one — with a status and `Retry-After`, a
-reset connection, a redirect, a body of the test's own, or `Oversized`, one byte past the
-adapter's bound, for `Times` requests or until `Clear`. `Requests()` is every request
-received. A harness passes its `Transport()` as `Deps.HTTPTransport`.
+reset connection, a redirect, a body of the test's own, or `Oversized` — the operation's
+empty answer, valid JSON, padded with spaces to one byte past the adapter's bound — for
+`Times` requests or until `Clear`. A transaction's `Creditor` and `Debtor` are pointers,
+absent when nil, and `NullCreditor` and `NullDebtor` answer them as `null`; a booking date
+the fake cannot read is answered as it is, for the adapter to refuse. `Requests()` is
+every request received. A harness passes its `Transport()` as `Deps.HTTPTransport`.
 
 **The fixtures are hand-written.** `bankfeed/folio/testdata/accounts.json` and
 `transactions.json` are written from the schemas of Folio's OpenAPI document, not
 recorded, and each says so: an incoming transfer with a KID and one without, an outgoing
 payment, a card purchase, both directions of an internal transfer, an incoming payment to
-the account written as an IBAN with spaces, and one whose creditor has no account. Folio
+the account written as an IBAN with spaces, one whose creditor has no account, and four
+edge cases written for the adapter — a `paymentId` on a would-be credit, a creditor event
+beside a card authorization, a null card authorization with accounts written with dots,
+and a null creditor. Folio
 has no test environment, and no response has been read from a real account yet. Until one
 is, three things are unverified: that `creditor.accountNumber` is the account asked for on
 an incoming payment, in which form, and whether `kid` arrives on a payment made with one.
-A mismatch shows as the account's sync refused for an unknown direction, never as a wrong
-payment. When a real response is read, replace the fixtures with it, the customer's names
-and numbers changed, and say so in their comment.
+A form the adapter cannot read shows as the account's sync refused for an unknown
+direction; a reading that is wrong in a form it can read would not, which is why it must
+be checked against a real account. Also open until then: an answer without
+`transactions` (the document does not require it) is an error, not an empty list. When a
+real response is read, replace the fixtures with it, the customer's names and numbers
+changed, and say so in their comment.
 
 ## Adding a bank
 

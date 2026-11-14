@@ -1,5 +1,5 @@
 {
-  "_comment": "Hand-written from the Transaction and TransactionResponse schemas of Folio's OpenAPI document (https://api.folio.no/v2/api.yml, read 2026-11-13), as the answer for account 36061234567. Not recorded from a real Folio account: whether creditor.accountNumber is the account asked for on a credit, in which form, and whether kid arrives on an incoming payment are unverified (design R4, R8). The adapter ignores this field.",
+  "_comment": "Hand-written from the Transaction and TransactionResponse schemas of Folio's OpenAPI document (https://api.folio.no/v2/api.yml, read 2026-11-13), as the answer for account 36061234567. Not recorded from a real Folio account: whether creditor.accountNumber is the account asked for on a credit, in which form, and whether kid arrives on an incoming payment are unverified (design R4, R8). The last four rows are edge cases written for the adapter: a paymentId on a would-be credit, both creditorEventId and cardAuthorization, an explicit null cardAuthorization with accounts written with dots, and a null creditor. The adapter ignores this field.",
   "transactions": {
     "booked": [
       {
@@ -110,6 +110,66 @@
         "debtor": { "name": "Lise Berg", "accountNumber": "12340056789" },
         "transactionAmount": { "amount": "750.00", "currency": "NOK" },
         "currencyAmount": { "amount": "750.00", "currency": "NOK" },
+        "attachments": [],
+        "complete": false
+      },
+      {
+        "id": "0b6f3a52-6c1e-4c8e-9a43-1d2f8e7c5a09",
+        "eventId": "5d1e7a40-0f2b-4b7a-8c11-2a6e9b3f4c09",
+        "paymentId": "7c3e2b10-9a4d-4e5f-8b6a-3c2d1e0f9a09",
+        "description": "Betaling",
+        "bookingDate": "2026-11-13",
+        "creditor": { "name": "Eksempel AS", "accountNumber": "36061234567" },
+        "debtor": { "name": "Ukjent", "accountNumber": "12345678903" },
+        "transactionAmount": { "amount": "100.00", "currency": "NOK" },
+        "currencyAmount": { "amount": "100.00", "currency": "NOK" },
+        "attachments": [],
+        "complete": false
+      },
+      {
+        "id": "0b6f3a52-6c1e-4c8e-9a43-1d2f8e7c5a10",
+        "eventId": "5d1e7a40-0f2b-4b7a-8c11-2a6e9b3f4c10",
+        "description": "Kortkonto påfyll",
+        "bookingDate": "2026-11-13",
+        "creditorEventId": "5d1e7a40-0f2b-4b7a-8c11-2a6e9b3f4c60",
+        "cardAuthorization": {
+          "cardId": "8f1fc8d3-7900-4c05-8d67-f513ef760111",
+          "merchantId": "285f4fe1-00aa-40cf-8d22-d7b024473bbb",
+          "merchantName": "FOLIO",
+          "mcc": 6012,
+          "terminalId": "0",
+          "physicalTerminal": false,
+          "currencyAmount": { "amount": "200.00", "currency": "NOK" }
+        },
+        "creditor": { "name": "Kort", "accountNumber": "9836061277190" },
+        "debtor": { "name": "Driftskonto", "accountNumber": "36061234567" },
+        "transactionAmount": { "amount": "200.00", "currency": "NOK" },
+        "currencyAmount": { "amount": "200.00", "currency": "NOK" },
+        "attachments": [],
+        "complete": true
+      },
+      {
+        "id": "0b6f3a52-6c1e-4c8e-9a43-1d2f8e7c5a11",
+        "eventId": "5d1e7a40-0f2b-4b7a-8c11-2a6e9b3f4c11",
+        "description": "Betaling",
+        "bookingDate": "2026-11-13",
+        "cardAuthorization": null,
+        "creditor": { "name": "Eksempel AS", "accountNumber": "3606.12.34567" },
+        "debtor": { "name": "Nils Dahl", "accountNumber": "1234.56.78903" },
+        "transactionAmount": { "amount": "60.00", "currency": "NOK" },
+        "currencyAmount": { "amount": "60.00", "currency": "NOK" },
+        "attachments": [],
+        "complete": false
+      },
+      {
+        "id": "0b6f3a52-6c1e-4c8e-9a43-1d2f8e7c5a12",
+        "eventId": "5d1e7a40-0f2b-4b7a-8c11-2a6e9b3f4c12",
+        "description": "Gebyr",
+        "bookingDate": "2026-11-13",
+        "creditor": null,
+        "debtor": { "name": "Eksempel AS", "accountNumber": "36061234567" },
+        "transactionAmount": { "amount": "25.00", "currency": "NOK" },
+        "currencyAmount": { "amount": "25.00", "currency": "NOK" },
         "attachments": [],
         "complete": false
       }
