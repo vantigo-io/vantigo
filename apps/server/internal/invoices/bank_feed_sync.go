@@ -133,11 +133,59 @@ var errFeedAnswerTooLarge = errors.New("invoices: the bank's answer for one day 
 // stands and the lines it did not reach stay pending, matched by the next
 // cycle.
 func (s *server) syncAccount(ctx context.Context, c feedClaim) (syncOutcome, error) {
-	account := c.row.Account
 	loc, err := s.businessZone(ctx)
 	if err != nil {
 		return syncOutcome{}, err
 	}
+	out, err := s.readAccount(ctx, c, loc)
+	if errors.Is(err, errFeedClaimLost) || errors.Is(err, bankfeed.ErrUnauthorized) {
+		// Not this claim's any more, or the key refused: nothing more.
+		return out, err
+	}
+	// 7. Matching, by no user, of every feed batch of the account with a
+	// line still pending — this cycle's, and any an earlier cycle stored and
+	// did not get to match — after a refused or failed read too, so the
+	// batches it stored before are matched (second review, M1). A line that
+	// cannot be matched is passed over and named on the account; the rest
+	// are matched.
+	unmatched, merr := s.matchPendingFeed(ctx, c.row.Account, c.now, loc)
+	if err == nil && out.refused == nil {
+		out.unmatched = unmatched
+		err = merr
+	}
+	return out, err
+}
+
+// matchPendingFeed matches every feed batch of account with a line still
+// pending, oldest first, past the lines that fail (matchFilePastFailures):
+// the first such line's line_ref, and the error that stopped matching — the
+// context's, a read that failed, or errFeedMatchingStopped.
+func (s *server) matchPendingFeed(ctx context.Context, account string, now time.Time, loc *time.Location) (string, error) {
+	files, err := store.New(s.deps.Pool).PendingFeedFilesOfAccount(ctx, account)
+	if err != nil {
+		return "", fmt.Errorf("invoices: read account %s's pending feed batches: %w", account, err)
+	}
+	unmatched := ""
+	for _, id := range files {
+		failed, err := s.matchFilePastFailures(ctx, id, now, loc)
+		if unmatched == "" {
+			unmatched = failed
+		}
+		if err != nil {
+			// Logged by matching; what it did not reach stays pending for
+			// the next cycle.
+			return unmatched, err
+		}
+	}
+	return unmatched, nil
+}
+
+// readAccount is a cycle's read of the claimed account (steps 1–6): the
+// format, the windows, each judged and stored. It answers what it stored
+// and a refusal as the outcome, a failure as the error — with the outcome
+// so far, so the batches it stored before are matched all the same.
+func (s *server) readAccount(ctx context.Context, c feedClaim, loc *time.Location) (syncOutcome, error) {
+	account := c.row.Account
 	today := holidays.DayIn(c.now, loc)
 	q := store.New(s.deps.Pool)
 
@@ -293,25 +341,6 @@ spans:
 		}
 	}
 
-	// 7. Matching, by no user, of every feed batch of the account with a
-	// line still pending — this cycle's, and any an earlier cycle stored and
-	// did not get to match. A line that cannot be matched is passed over and
-	// named on the account; the rest are matched.
-	files, err := q.PendingFeedFilesOfAccount(ctx, account)
-	if err != nil {
-		return syncOutcome{}, fmt.Errorf("invoices: read account %s's pending feed batches: %w", account, err)
-	}
-	for _, id := range files {
-		failed, err := s.matchFilePastFailures(ctx, id, c.now, loc)
-		if out.unmatched == "" {
-			out.unmatched = failed
-		}
-		if err != nil {
-			// ctx's, or the file's lines unread: logged by matching; what
-			// it did not reach stays pending for the next cycle.
-			break
-		}
-	}
 	return out, nil
 }
 

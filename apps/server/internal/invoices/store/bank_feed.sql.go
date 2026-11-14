@@ -115,28 +115,32 @@ func (q *Queries) BankFeedRateLimited(ctx context.Context, arg BankFeedRateLimit
 const bankFeedRefused = `-- name: BankFeedRefused :execrows
 UPDATE invoices.bank_feed_accounts SET
     status = 'refused', reason = $1::text, detail = $2, failures = 0,
-    next_sync_at = CASE WHEN next_sync_at > $3::timestamptz THEN next_sync_at ELSE $4::timestamptz END,
+    last_bank_file_id = coalesce($3::bigint, last_bank_file_id),
+    next_sync_at = CASE WHEN next_sync_at > $4::timestamptz THEN next_sync_at ELSE $5::timestamptz END,
     rate_limited_until = NULL, lease_id = NULL, lease_until = NULL,
-    updated_at = CASE WHEN status <> 'refused' OR reason IS DISTINCT FROM $1::text THEN $3::timestamptz ELSE updated_at END
-WHERE account = $5 AND lease_id = $6::text
+    updated_at = CASE WHEN status <> 'refused' OR reason IS DISTINCT FROM $1::text THEN $4::timestamptz ELSE updated_at END
+WHERE account = $6 AND lease_id = $7::text
 `
 
 type BankFeedRefusedParams struct {
-	Reason     string
-	Detail     string
-	Now        time.Time
-	NextSyncAt time.Time
-	Account    string
-	LeaseID    string
+	Reason         string
+	Detail         string
+	LastBankFileID *int64
+	Now            time.Time
+	NextSyncAt     time.Time
+	Account        string
+	LeaseID        string
 }
 
 // BankFeedRefused ends a claim whose batch broke a rule (F5 step 2, F7):
 // refused, the rule in reason and the transaction's id in detail, no
-// failures, read again at @next_sync_at. Nothing of the batch was stored.
+// failures, read again at @next_sync_at, and the last batch a window before
+// it stored. Nothing of the refused batch was stored.
 func (q *Queries) BankFeedRefused(ctx context.Context, arg BankFeedRefusedParams) (int64, error) {
 	result, err := q.db.Exec(ctx, bankFeedRefused,
 		arg.Reason,
 		arg.Detail,
+		arg.LastBankFileID,
 		arg.Now,
 		arg.NextSyncAt,
 		arg.Account,
