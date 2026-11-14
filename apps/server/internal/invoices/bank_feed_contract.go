@@ -89,11 +89,21 @@ func (p *bankFeedProvider) Accounts(ctx context.Context) ([]bankfeed.Account, er
 }
 
 // Transactions answers an account's booked transactions, every direction
-// and kind, as the bank answered them.
+// and kind, as the bank answered them — or, with no call made, the account
+// busy while this module's own sync holds its claim (lease_until), so the
+// bank is not asked for one account by two readers at once.
 func (p *bankFeedProvider) Transactions(ctx context.Context, account string, from, to time.Time) ([]bankfeed.Transaction, error) {
 	feed, err := p.feed(ctx)
 	if err != nil {
 		return nil, err
+	}
+	now := p.s.deps.Clock()
+	switch until, err := store.New(p.s.deps.Pool).BankFeedAccountLeasedUntil(ctx,
+		store.BankFeedAccountLeasedUntilParams{Account: account, Now: now}); {
+	case err == nil && until != nil:
+		return nil, &contracts.ErrBankFeedBusy{RetryAfter: until.Sub(now)}
+	case err != nil && !errors.Is(err, pgx.ErrNoRows):
+		return nil, fmt.Errorf("invoices: read the sync's claim on account %s: %w", account, err)
 	}
 	return feed.Transactions(ctx, account, from, to)
 }

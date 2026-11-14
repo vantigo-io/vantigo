@@ -8,15 +8,22 @@ package accounting
 // keep. A cycle, per account due:
 //
 //  1. claims the account's lease in one short transaction;
-//  2. reads the bank with no transaction open, from the later of the start
-//     day and the latest line it wrote less ten days, through today — the
-//     overlap is read again, since a bank may book a transaction on an
-//     earlier day than it first showed it;
-//  3. writes the lines it does not have, the bank's transaction id as each
-//     line's id, as one statement of source feed, under the claim;
+//  2. reads the bank with no transaction open, a window of at most 31 days
+//     at a time — forward from the day after its read cursor (or the start
+//     day) through today, then the ten days before the cursor again, since a
+//     bank may book a transaction on an earlier day than it first showed it.
+//     A window the bank answers too large is halved, down to one day; a day
+//     still too large is recorded as too_large. At most eight calls a cycle:
+//     an account far behind is due again at the next poll, where it stopped;
+//  3. writes each window's lines it does not have, the bank's transaction id
+//     as each line's id, as one statement of source feed, and moves the
+//     cursor to the window's end, under the claim;
 //  4. releases the claim with what the bank said and when the account is
-//     due again: a refused key or a rate limit is recorded on the account
-//     and shown on its page, and the account read after the bank's wait.
+//     due again: a refused key, a rate limit or a day too large is recorded
+//     on the account and shown on its page, and the account read after the
+//     bank's wait. While Invoices' own sync is reading the same account the
+//     contract answers it busy: the account is read again shortly, its state
+//     as it was.
 //
 // With the feed not composed — Invoices off or INVOICES_BANK_FEED_ENABLED off
 // — the worker does nothing, and nothing is read before the books are set up.
@@ -51,6 +58,9 @@ const (
 	bankFeedOverlapDays = 10
 	// bankFeedPerRun bounds the accounts one run reads.
 	bankFeedPerRun = 50
+	// bankFeedWindowDays is the most days one call asks the bank for, as
+	// Invoices' own sync asks.
+	bankFeedWindowDays = 31
 	// bankFeedReleaseTimeout bounds the release, on a context the worker's
 	// shutdown does not reach.
 	bankFeedReleaseTimeout = 10 * time.Second
@@ -58,6 +68,11 @@ const (
 
 // bankFeedLease is the lease a claim takes. A test may shorten it.
 var bankFeedLease = 5 * time.Minute
+
+// bankFeedCallsPerCycle is the calls to the bank one account's cycle makes
+// at most, as Invoices' own sync makes, so one account far behind neither
+// outlives its lease nor holds the others up.
+var bankFeedCallsPerCycle = 8
 
 // errFeedLeaseLost is a write that found the account no longer under the
 // claim.
@@ -70,6 +85,7 @@ const (
 	feedRateLimited  = "rate_limited"
 	feedFailing      = "failing"
 	feedOff          = "off"
+	feedTooLarge     = "too_large"
 )
 
 // BankFeedWorker reads the bank accounts whose source is the feed. It
@@ -156,17 +172,33 @@ func (w *BankFeedWorker) sync(ctx context.Context, account store.ClaimFeedAccoun
 	outcome, runErr := w.read(ctx, account, lease)
 	releaseCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), bankFeedReleaseTimeout)
 	defer cancel()
+	status := &outcome.status
+	if outcome.status == "" {
+		// Busy before the account was ever read: no state yet.
+		status = nil
+	}
 	if err := store.New(w.deps.Pool).ReleaseFeedAccount(releaseCtx, store.ReleaseFeedAccountParams{ID: account.ID, LeaseID: &lease,
-		FeedStatus: &outcome.status, FeedDetail: truncate(outcome.detail, 500), NextSyncAt: &outcome.next, Synced: outcome.synced,
+		FeedStatus: status, FeedDetail: truncate(outcome.detail, 500), NextSyncAt: &outcome.next, Synced: outcome.synced,
 		Now: now()}); err != nil {
 		return errors.Join(runErr, err)
 	}
 	return runErr
 }
 
-// read is one claimed read: the bank asked with no transaction open, then
-// the new lines written under the claim. The error is the module's own
-// failure; what the bank said is the outcome.
+// read is one claimed read: the bank asked with no transaction open, a window
+// at a time, each window's new lines written and the cursor moved under the
+// claim. The error is the module's own failure; what the bank said is the
+// outcome.
+//
+// The days: forward from the day after the cursor (or the start day) to
+// today, oldest first, so every cycle moves the cursor on; then, once
+// forward is read, the ten days before the cursor the cycle started with,
+// newest first, since a bank may book a transaction on an earlier day than
+// it first showed it. A window is at most bankFeedWindowDays; one the bank
+// answers too large is halved and asked again, the smaller size kept for the
+// rest of the cycle, down to one day — a day still too large is recorded as
+// too_large. A cycle makes at most bankFeedCallsPerCycle calls: with days
+// left it is due again at the next poll, where the cursor left it.
 func (w *BankFeedWorker) read(ctx context.Context, account store.ClaimFeedAccountRow, lease uuid.UUID) (feedOutcome, error) {
 	now := clockOf(w.deps)
 	feed := w.deps.BankFeed
@@ -191,65 +223,174 @@ func (w *BankFeedWorker) read(ctx context.Context, account store.ClaimFeedAccoun
 	if err != nil {
 		return failed(feedFailing, "The business day could not be read.", 0), err
 	}
-	from := deref(account.FeedStartDay)
-	latest, err := store.New(w.deps.Pool).LatestFeedLineDay(ctx, account.ID)
-	if err != nil {
-		return failed(feedFailing, "The account's lines could not be read.", 0), err
+	startDay := deref(account.FeedStartDay)
+	started := account.FeedReadThrough
+	type span struct {
+		from, to time.Time
+		forward  bool
 	}
-	if d, err := time.Parse(time.DateOnly, latest); err == nil && d.AddDate(0, 0, -bankFeedOverlapDays).After(from) {
-		from = d.AddDate(0, 0, -bankFeedOverlapDays)
+	var spans []span
+	forward := startDay
+	if started != nil && started.AddDate(0, 0, 1).After(forward) {
+		forward = started.AddDate(0, 0, 1)
 	}
-	if from.After(today) {
-		return feedOutcome{status: feedOK, next: now().Add(interval), synced: true}, nil
+	if !forward.After(today) {
+		spans = append(spans, span{forward, today, true})
 	}
-	// The bank, with no transaction open (A29, the lease workers' rule).
-	txs, err := feed.Transactions(ctx, account.AccountNumber, from, today)
-	if err != nil {
-		var limited *bankfeed.ErrRateLimited
-		switch {
-		case errors.Is(err, bankfeed.ErrUnauthorized):
-			return failed(feedUnauthorized, "The bank refused the key Invoices holds: store a new one in Invoices' Bank integration.", 0), nil
-		case errors.As(err, &limited):
-			return failed(feedRateLimited, "The bank is limiting requests; the account is read again after its wait.", limited.RetryAfter), nil
-		case errors.Is(err, contracts.ErrBankFeedNotConnected):
-			return failed(feedOff, "No bank is connected in Invoices' Bank integration.", 0), nil
+	if started != nil {
+		back := maxDay(started.AddDate(0, 0, -bankFeedOverlapDays), startDay)
+		end := *started
+		if end.After(today) {
+			end = today
 		}
-		w.logger().WarnContext(ctx, "accounting: the bank feed could not be read", "bank_account_id", account.ID, "error", err.Error())
-		return failed(feedFailing, "The bank could not be read; it is tried again.", 0), nil
+		if !back.After(end) {
+			spans = append(spans, span{back, end, false})
+		}
 	}
+
+	windowDays, calls, skipped := bankFeedWindowDays, 0, 0
+	readThrough := started
+	done := func(more bool) feedOutcome {
+		detail := ""
+		if skipped > 0 {
+			detail = fmt.Sprintf("%d transactions the bank could not place (a direction unknown, another currency) were left out.", skipped)
+		}
+		next := now().Add(interval)
+		if more {
+			next = now().Add(bankFeedPoll)
+		}
+		return feedOutcome{status: feedOK, detail: detail, next: next, synced: true}
+	}
+	for _, sp := range spans {
+		lo, hi := sp.from, sp.to
+		for !lo.After(hi) {
+			if calls == bankFeedCallsPerCycle {
+				if !sp.forward {
+					// Only the overlap is left: the next cycle reads it again.
+					return done(false), nil
+				}
+				if readThrough == nil || (started != nil && !readThrough.After(*started)) {
+					// Every call of the cycle went on halving: nothing moved.
+					return failed(feedTooLarge, "The bank's answers are too large to read the account forward; it is tried again.", 0), nil
+				}
+				return done(true), nil
+			}
+			from, to := lo, lo.AddDate(0, 0, windowDays-1)
+			if to.After(hi) {
+				to = hi
+			}
+			if !sp.forward {
+				from, to = maxDay(hi.AddDate(0, 0, 1-windowDays), lo), hi
+			}
+			calls++
+			// The bank, with no transaction open (A29, the lease workers' rule).
+			txs, err := feed.Transactions(ctx, account.AccountNumber, from, to)
+			if errors.Is(err, bankfeed.ErrTooLarge) {
+				days := int(to.Sub(from).Hours()/24) + 1
+				if days == 1 {
+					return failed(feedTooLarge, fmt.Sprintf("The bank's answer for %s is too large to read; it is tried again.",
+						from.Format(time.DateOnly)), 0), nil
+				}
+				windowDays = (days + 1) / 2
+				continue
+			}
+			if err != nil {
+				return w.bankFailed(ctx, account, err, failed, now)
+			}
+			n, err := w.writeWindow(ctx, account, lease, txs, from, to, today)
+			skipped += n
+			if errors.Is(err, errFeedLeaseLost) {
+				return feedOutcome{status: feedOK, next: now()}, nil
+			}
+			if err != nil {
+				return failed(feedFailing, "The lines could not be written; they are read again.", 0), err
+			}
+			if readThrough == nil || to.After(*readThrough) {
+				readThrough = &to
+			}
+			if sp.forward {
+				lo = to.AddDate(0, 0, 1)
+			} else {
+				hi = from.AddDate(0, 0, -1)
+			}
+		}
+	}
+	return done(false), nil
+}
+
+// bankFailed is the outcome of a read the bank, or Invoices, answered with
+// an error: the windows before it stand.
+func (w *BankFeedWorker) bankFailed(ctx context.Context, account store.ClaimFeedAccountRow, err error,
+	failed func(status, detail string, after time.Duration) feedOutcome, now func() time.Time) (feedOutcome, error) {
+	var limited *bankfeed.ErrRateLimited
+	var busy *contracts.ErrBankFeedBusy
+	switch {
+	case errors.As(err, &busy):
+		// Invoices' own sync is reading the account: not an error, the
+		// account is read again once its claim is over, its state as it was.
+		return feedOutcome{status: deref(account.FeedStatus), detail: account.FeedDetail,
+			next: now().Add(min(max(busy.RetryAfter, bankFeedPoll), bankFeedLease))}, nil
+	case errors.Is(err, bankfeed.ErrUnauthorized):
+		return failed(feedUnauthorized, "The bank refused the key Invoices holds: store a new one in Invoices' Bank integration.", 0), nil
+	case errors.As(err, &limited):
+		return failed(feedRateLimited, "The bank is limiting requests; the account is read again after its wait.", limited.RetryAfter), nil
+	case errors.Is(err, contracts.ErrBankFeedNotConnected):
+		return failed(feedOff, "No bank is connected in Invoices' Bank integration.", 0), nil
+	}
+	w.logger().WarnContext(ctx, "accounting: the bank feed could not be read", "bank_account_id", account.ID, "error", err.Error())
+	return failed(feedFailing, "The bank could not be read; it is tried again.", 0), nil
+}
+
+// writeWindow writes the lines of one window the account does not have, as
+// one statement of source feed, and moves the cursor to the window's end,
+// both under the claim; it answers the transactions it left out.
+func (w *BankFeedWorker) writeWindow(ctx context.Context, account store.ClaimFeedAccountRow, lease uuid.UUID,
+	txs []bankfeed.Transaction, from, to, today time.Time) (int, error) {
 	lines, skipped := feedLines(txs, today)
 	ids := make([]string, 0, len(lines))
 	for _, l := range lines {
 		ids = append(ids, l.BankID)
 	}
-	have, err := store.New(w.deps.Pool).ExistingBankIDs(ctx, store.ExistingBankIDsParams{BankAccountID: account.ID, Ids: ids})
+	q := store.New(w.deps.Pool)
+	have, err := q.ExistingBankIDs(ctx, store.ExistingBankIDsParams{BankAccountID: account.ID, Ids: ids})
 	if err != nil {
-		return failed(feedFailing, "The account's lines could not be read.", 0), err
+		return skipped, err
 	}
 	known := map[string]bool{}
 	for _, id := range have {
 		known[id] = true
 	}
-	st2 := bankstmt.Statement{Account: account.AccountNumber, Currency: currency, From: from, To: today}
+	st := bankstmt.Statement{Account: account.AccountNumber, Currency: currency, From: from, To: to}
 	for _, l := range lines {
 		if !known[l.BankID] {
-			st2.Lines = append(st2.Lines, l)
+			st.Lines = append(st.Lines, l)
+			known[l.BankID] = true
 		}
 	}
-	detail := ""
-	if skipped > 0 {
-		detail = fmt.Sprintf("%d transactions the bank could not place (a direction unknown, another currency) were left out.", skipped)
-	}
-	if len(st2.Lines) > 0 {
+	if len(st.Lines) > 0 {
 		srv := &server{deps: w.deps}
-		if _, err := srv.writeStatement(ctx, account.ID, account.AccountNumber, st2, statementFeed, nil, map[string]int{}, nil, &lease); err != nil {
-			if errors.Is(err, errFeedLeaseLost) {
-				return feedOutcome{status: feedOK, next: now()}, nil
-			}
-			return failed(feedFailing, "The lines could not be written; they are read again.", 0), err
+		if _, err := srv.writeStatement(ctx, account.ID, account.AccountNumber, st, statementFeed, nil, map[string]int{}, nil, &lease); err != nil {
+			return skipped, err
 		}
 	}
-	return feedOutcome{status: feedOK, detail: detail, next: now().Add(interval), synced: true}, nil
+	// The window is read and written to its end: the cursor moves, never
+	// back. A crash before this reads the window again, its lines known.
+	n, err := q.AdvanceFeedRead(ctx, store.AdvanceFeedReadParams{ReadThrough: to, ID: account.ID, LeaseID: &lease})
+	if err != nil {
+		return skipped, err
+	}
+	if n == 0 {
+		return skipped, errFeedLeaseLost
+	}
+	return skipped, nil
+}
+
+// maxDay is the later of two days.
+func maxDay(a, b time.Time) time.Time {
+	if a.After(b) {
+		return a
+	}
+	return b
 }
 
 // today is the business calendar's day.

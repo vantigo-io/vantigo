@@ -37,6 +37,27 @@ func (q *Queries) AdvanceBankFeedRead(ctx context.Context, arg AdvanceBankFeedRe
 	return result.RowsAffected(), nil
 }
 
+const bankFeedAccountLeasedUntil = `-- name: BankFeedAccountLeasedUntil :one
+SELECT lease_until FROM invoices.bank_feed_accounts
+WHERE account = $1 AND lease_id IS NOT NULL AND lease_until > $2::timestamptz
+`
+
+type BankFeedAccountLeasedUntilParams struct {
+	Account string
+	Now     time.Time
+}
+
+// BankFeedAccountLeasedUntil is when this module's sync's claim on @account
+// runs out, while it still holds at @now: no row when the sync holds none.
+// contracts.BankFeed answers a reader busy meanwhile, so the bank is not
+// asked twice for one account at once.
+func (q *Queries) BankFeedAccountLeasedUntil(ctx context.Context, arg BankFeedAccountLeasedUntilParams) (*time.Time, error) {
+	row := q.db.QueryRow(ctx, bankFeedAccountLeasedUntil, arg.Account, arg.Now)
+	var lease_until *time.Time
+	err := row.Scan(&lease_until)
+	return lease_until, err
+}
+
 const bankFeedFailed = `-- name: BankFeedFailed :execrows
 UPDATE invoices.bank_feed_accounts SET
     failures = failures + 1,

@@ -268,3 +268,11 @@ SELECT rate_limited_until FROM invoices.bank_feed_accounts
 WHERE rate_limited_until > @now::timestamptz
 ORDER BY rate_limited_until DESC
 LIMIT 1;
+
+-- name: BankFeedAccountLeasedUntil :one
+-- BankFeedAccountLeasedUntil is when this module's sync's claim on @account
+-- runs out, while it still holds at @now: no row when the sync holds none.
+-- contracts.BankFeed answers a reader busy meanwhile, so the bank is not
+-- asked twice for one account at once.
+SELECT lease_until FROM invoices.bank_feed_accounts
+WHERE account = @account AND lease_id IS NOT NULL AND lease_until > @now::timestamptz;

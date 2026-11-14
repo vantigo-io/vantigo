@@ -30,8 +30,31 @@ func (q *Queries) AccountBalanceThrough(ctx context.Context, arg AccountBalanceT
 	return balance, err
 }
 
+const advanceFeedRead = `-- name: AdvanceFeedRead :execrows
+UPDATE accounting.bank_accounts
+SET feed_read_through = greatest(coalesce(feed_read_through, $1::date), $1::date)
+WHERE id = $2 AND feed_lease_id = $3 AND source = 'feed'
+`
+
+type AdvanceFeedReadParams struct {
+	ReadThrough time.Time
+	ID          int64
+	LeaseID     *uuid.UUID
+}
+
+// AdvanceFeedRead moves the read cursor to @read_through once a window is
+// read to its end and written — never back — only while the lease is the
+// claim's; no row is a lease lost.
+func (q *Queries) AdvanceFeedRead(ctx context.Context, arg AdvanceFeedReadParams) (int64, error) {
+	result, err := q.db.Exec(ctx, advanceFeedRead, arg.ReadThrough, arg.ID, arg.LeaseID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const bankAccountByLedger = `-- name: BankAccountByLedger :one
-SELECT id, name, account_number, iban, bic, currency, ledger_account_id, source, feed_start_day, feed_status, feed_detail, feed_last_synced_at, feed_next_sync_at, feed_lease_id, feed_lease_until, csv_mapping, active, created_at, updated_at, revision FROM accounting.bank_accounts WHERE ledger_account_id = $1
+SELECT id, name, account_number, iban, bic, currency, ledger_account_id, source, feed_start_day, feed_read_through, feed_status, feed_detail, feed_last_synced_at, feed_next_sync_at, feed_lease_id, feed_lease_until, csv_mapping, active, created_at, updated_at, revision FROM accounting.bank_accounts WHERE ledger_account_id = $1
 `
 
 func (q *Queries) BankAccountByLedger(ctx context.Context, ledgerAccountID int32) (AccountingBankAccount, error) {
@@ -47,6 +70,7 @@ func (q *Queries) BankAccountByLedger(ctx context.Context, ledgerAccountID int32
 		&i.LedgerAccountID,
 		&i.Source,
 		&i.FeedStartDay,
+		&i.FeedReadThrough,
 		&i.FeedStatus,
 		&i.FeedDetail,
 		&i.FeedLastSyncedAt,
@@ -63,7 +87,7 @@ func (q *Queries) BankAccountByLedger(ctx context.Context, ledgerAccountID int32
 }
 
 const bankAccountByNumber = `-- name: BankAccountByNumber :one
-SELECT id, name, account_number, iban, bic, currency, ledger_account_id, source, feed_start_day, feed_status, feed_detail, feed_last_synced_at, feed_next_sync_at, feed_lease_id, feed_lease_until, csv_mapping, active, created_at, updated_at, revision FROM accounting.bank_accounts WHERE account_number = $1
+SELECT id, name, account_number, iban, bic, currency, ledger_account_id, source, feed_start_day, feed_read_through, feed_status, feed_detail, feed_last_synced_at, feed_next_sync_at, feed_lease_id, feed_lease_until, csv_mapping, active, created_at, updated_at, revision FROM accounting.bank_accounts WHERE account_number = $1
 `
 
 func (q *Queries) BankAccountByNumber(ctx context.Context, accountNumber string) (AccountingBankAccount, error) {
@@ -79,6 +103,7 @@ func (q *Queries) BankAccountByNumber(ctx context.Context, accountNumber string)
 		&i.LedgerAccountID,
 		&i.Source,
 		&i.FeedStartDay,
+		&i.FeedReadThrough,
 		&i.FeedStatus,
 		&i.FeedDetail,
 		&i.FeedLastSyncedAt,
@@ -187,7 +212,7 @@ WHERE b.id = (
       AND (c.feed_lease_until IS NULL OR c.feed_lease_until < $3::timestamptz)
     ORDER BY c.feed_next_sync_at NULLS FIRST, c.id
     LIMIT 1 FOR UPDATE SKIP LOCKED)
-RETURNING b.id, b.account_number, b.feed_start_day
+RETURNING b.id, b.account_number, b.feed_start_day, b.feed_read_through, b.feed_status, b.feed_detail
 `
 
 type ClaimFeedAccountParams struct {
@@ -197,9 +222,12 @@ type ClaimFeedAccountParams struct {
 }
 
 type ClaimFeedAccountRow struct {
-	ID            int64
-	AccountNumber string
-	FeedStartDay  *time.Time
+	ID              int64
+	AccountNumber   string
+	FeedStartDay    *time.Time
+	FeedReadThrough *time.Time
+	FeedStatus      *string
+	FeedDetail      string
 }
 
 // ClaimFeedAccount takes the lease of one bank account the feed reads that is
@@ -207,7 +235,14 @@ type ClaimFeedAccountRow struct {
 func (q *Queries) ClaimFeedAccount(ctx context.Context, arg ClaimFeedAccountParams) (ClaimFeedAccountRow, error) {
 	row := q.db.QueryRow(ctx, claimFeedAccount, arg.LeaseID, arg.LeaseUntil, arg.Now)
 	var i ClaimFeedAccountRow
-	err := row.Scan(&i.ID, &i.AccountNumber, &i.FeedStartDay)
+	err := row.Scan(
+		&i.ID,
+		&i.AccountNumber,
+		&i.FeedStartDay,
+		&i.FeedReadThrough,
+		&i.FeedStatus,
+		&i.FeedDetail,
+	)
 	return i, err
 }
 
@@ -414,7 +449,7 @@ func (q *Queries) ExistingBankIDs(ctx context.Context, arg ExistingBankIDsParams
 
 const feedAttention = `-- name: FeedAttention :one
 SELECT count(*)::int AS n FROM accounting.bank_accounts
-WHERE source = 'feed' AND active AND feed_status IN ('unauthorized', 'failing', 'not_offered', 'off')
+WHERE source = 'feed' AND active AND feed_status IN ('unauthorized', 'failing', 'not_offered', 'off', 'too_large')
 `
 
 // FeedAttention counts the bank accounts whose feed is in trouble.
@@ -426,7 +461,7 @@ func (q *Queries) FeedAttention(ctx context.Context) (int32, error) {
 }
 
 const getBankAccount = `-- name: GetBankAccount :one
-SELECT b.id, b.name, b.account_number, b.iban, b.bic, b.currency, b.ledger_account_id, b.source, b.feed_start_day, b.feed_status, b.feed_detail, b.feed_last_synced_at, b.feed_next_sync_at, b.feed_lease_id, b.feed_lease_until, b.csv_mapping, b.active, b.created_at, b.updated_at, b.revision, a.number AS ledger_number, a.name AS ledger_name,
+SELECT b.id, b.name, b.account_number, b.iban, b.bic, b.currency, b.ledger_account_id, b.source, b.feed_start_day, b.feed_read_through, b.feed_status, b.feed_detail, b.feed_last_synced_at, b.feed_next_sync_at, b.feed_lease_id, b.feed_lease_until, b.csv_mapping, b.active, b.created_at, b.updated_at, b.revision, a.number AS ledger_number, a.name AS ledger_name,
     (SELECT count(*) FROM accounting.statement_lines l WHERE l.bank_account_id = b.id AND l.state = 'open')::int AS open_lines,
     coalesce((SELECT max(s.period_to) FROM accounting.statements s WHERE s.bank_account_id = b.id)::text, '')::text AS last_statement_to
 FROM accounting.bank_accounts b
@@ -444,6 +479,7 @@ type GetBankAccountRow struct {
 	LedgerAccountID  int32
 	Source           string
 	FeedStartDay     *time.Time
+	FeedReadThrough  *time.Time
 	FeedStatus       *string
 	FeedDetail       string
 	FeedLastSyncedAt *time.Time
@@ -474,6 +510,7 @@ func (q *Queries) GetBankAccount(ctx context.Context, id int64) (GetBankAccountR
 		&i.LedgerAccountID,
 		&i.Source,
 		&i.FeedStartDay,
+		&i.FeedReadThrough,
 		&i.FeedStatus,
 		&i.FeedDetail,
 		&i.FeedLastSyncedAt,
@@ -940,24 +977,9 @@ func (q *Queries) LatestCovered(ctx context.Context, id int64) (string, error) {
 	return day, err
 }
 
-const latestFeedLineDay = `-- name: LatestFeedLineDay :one
-SELECT coalesce(max(l.booked_on)::text, '')::text AS day FROM accounting.statement_lines l
-JOIN accounting.statements s ON s.id = l.statement_id
-WHERE l.bank_account_id = $1 AND s.source = 'feed'
-`
-
-// LatestFeedLineDay is the latest booking day of a line the feed wrote for
-// the account, NULL with none.
-func (q *Queries) LatestFeedLineDay(ctx context.Context, bankAccountID int64) (string, error) {
-	row := q.db.QueryRow(ctx, latestFeedLineDay, bankAccountID)
-	var day string
-	err := row.Scan(&day)
-	return day, err
-}
-
 const listBankAccounts = `-- name: ListBankAccounts :many
 
-SELECT b.id, b.name, b.account_number, b.iban, b.bic, b.currency, b.ledger_account_id, b.source, b.feed_start_day, b.feed_status, b.feed_detail, b.feed_last_synced_at, b.feed_next_sync_at, b.feed_lease_id, b.feed_lease_until, b.csv_mapping, b.active, b.created_at, b.updated_at, b.revision, a.number AS ledger_number, a.name AS ledger_name,
+SELECT b.id, b.name, b.account_number, b.iban, b.bic, b.currency, b.ledger_account_id, b.source, b.feed_start_day, b.feed_read_through, b.feed_status, b.feed_detail, b.feed_last_synced_at, b.feed_next_sync_at, b.feed_lease_id, b.feed_lease_until, b.csv_mapping, b.active, b.created_at, b.updated_at, b.revision, a.number AS ledger_number, a.name AS ledger_name,
     (SELECT count(*) FROM accounting.statement_lines l WHERE l.bank_account_id = b.id AND l.state = 'open')::int AS open_lines,
     coalesce((SELECT max(s.period_to) FROM accounting.statements s WHERE s.bank_account_id = b.id)::text, '')::text AS last_statement_to
 FROM accounting.bank_accounts b
@@ -975,6 +997,7 @@ type ListBankAccountsRow struct {
 	LedgerAccountID  int32
 	Source           string
 	FeedStartDay     *time.Time
+	FeedReadThrough  *time.Time
 	FeedStatus       *string
 	FeedDetail       string
 	FeedLastSyncedAt *time.Time
@@ -1016,6 +1039,7 @@ func (q *Queries) ListBankAccounts(ctx context.Context) ([]ListBankAccountsRow, 
 			&i.LedgerAccountID,
 			&i.Source,
 			&i.FeedStartDay,
+			&i.FeedReadThrough,
 			&i.FeedStatus,
 			&i.FeedDetail,
 			&i.FeedLastSyncedAt,
@@ -1293,7 +1317,7 @@ func (q *Queries) ListStatements(ctx context.Context, arg ListStatementsParams) 
 }
 
 const lockBankAccount = `-- name: LockBankAccount :one
-SELECT id, name, account_number, iban, bic, currency, ledger_account_id, source, feed_start_day, feed_status, feed_detail, feed_last_synced_at, feed_next_sync_at, feed_lease_id, feed_lease_until, csv_mapping, active, created_at, updated_at, revision FROM accounting.bank_accounts WHERE id = $1 FOR UPDATE
+SELECT id, name, account_number, iban, bic, currency, ledger_account_id, source, feed_start_day, feed_read_through, feed_status, feed_detail, feed_last_synced_at, feed_next_sync_at, feed_lease_id, feed_lease_until, csv_mapping, active, created_at, updated_at, revision FROM accounting.bank_accounts WHERE id = $1 FOR UPDATE
 `
 
 func (q *Queries) LockBankAccount(ctx context.Context, id int64) (AccountingBankAccount, error) {
@@ -1309,6 +1333,7 @@ func (q *Queries) LockBankAccount(ctx context.Context, id int64) (AccountingBank
 		&i.LedgerAccountID,
 		&i.Source,
 		&i.FeedStartDay,
+		&i.FeedReadThrough,
 		&i.FeedStatus,
 		&i.FeedDetail,
 		&i.FeedLastSyncedAt,
@@ -1791,8 +1816,8 @@ func (q *Queries) SetBankAccountMapping(ctx context.Context, arg SetBankAccountM
 
 const setBankAccountSource = `-- name: SetBankAccountSource :exec
 UPDATE accounting.bank_accounts
-SET source = $1, feed_start_day = $2, feed_status = $3,
-    feed_detail = '', feed_next_sync_at = $4, feed_lease_id = NULL, feed_lease_until = NULL,
+SET source = $1, feed_start_day = $2, feed_read_through = NULL,
+    feed_status = $3, feed_detail = '', feed_next_sync_at = $4, feed_lease_id = NULL, feed_lease_until = NULL,
     revision = revision + 1, updated_at = $5
 WHERE id = $6
 `
@@ -1807,7 +1832,8 @@ type SetBankAccountSourceParams struct {
 }
 
 // SetBankAccountSource switches the statement's source: to the feed from a
-// start day, due now; back to files, the feed's state cleared.
+// start day, due now, nothing read yet; back to files, the feed's state
+// cleared.
 func (q *Queries) SetBankAccountSource(ctx context.Context, arg SetBankAccountSourceParams) error {
 	_, err := q.db.Exec(ctx, setBankAccountSource,
 		arg.Source,

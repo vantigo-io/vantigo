@@ -3,6 +3,7 @@ package contracts
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/bankfeed"
@@ -25,8 +26,9 @@ import (
 // port's errors as they are — bankfeed.ErrUnauthorized when the bank refused
 // the key (Invoices records the refusal, as for its own calls), a
 // *bankfeed.ErrRateLimited with the wait the bank asked for, any other error
-// for a read that failed — and ErrBankFeedNotConnected when no key is stored
-// or it cannot be opened. It performs no authorization: a caller has checked
+// for a read that failed — ErrBankFeedNotConnected when no key is stored
+// or it cannot be opened, and a *ErrBankFeedBusy, with no call made, while
+// Invoices' own sync is reading the same account. It performs no authorization: a caller has checked
 // its own permission.
 type BankFeed interface {
 	// Status is the connection as Invoices holds it, read from its own
@@ -59,3 +61,15 @@ type BankFeedStatus struct {
 // ErrBankFeedNotConnected is a BankFeed call with no key stored in Invoices,
 // or one this server cannot open.
 var ErrBankFeedNotConnected = errors.New("contracts: no bank is connected in Invoices")
+
+// ErrBankFeedBusy is a Transactions call for an account Invoices' own sync
+// holds the claim of at the moment: nothing was asked of the bank, so one
+// account is never read twice at once. RetryAfter is what is left of the
+// claim — a short wait, never a failure; the caller reads the account later.
+type ErrBankFeedBusy struct {
+	RetryAfter time.Duration
+}
+
+func (e *ErrBankFeedBusy) Error() string {
+	return fmt.Sprintf("contracts: Invoices is reading the account; retry after %s", e.RetryAfter)
+}

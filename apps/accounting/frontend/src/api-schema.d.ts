@@ -2006,7 +2006,7 @@ export interface components {
              * @description When the account is due again.
              */
             nextSyncAt: string | null;
-            /** @description ok, unauthorized (the bank refused Invoices' key), rate_limited, failing, not_offered (the bank no longer offers the account) or off (the feed is switched off or not connected in Invoices); null before the first read. */
+            /** @description ok, unauthorized (the bank refused Invoices' key), rate_limited, failing, not_offered (the bank no longer offers the account), off (the feed is switched off or not connected in Invoices) or too_large (the bank's answer for a single day is too large to read); null before the first read. */
             status: string | null;
         };
         AccountingBankFoot: {

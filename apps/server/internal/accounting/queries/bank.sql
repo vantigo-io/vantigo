@@ -53,10 +53,11 @@ RETURNING id;
 
 -- name: SetBankAccountSource :exec
 -- SetBankAccountSource switches the statement's source: to the feed from a
--- start day, due now; back to files, the feed's state cleared.
+-- start day, due now, nothing read yet; back to files, the feed's state
+-- cleared.
 UPDATE accounting.bank_accounts
-SET source = sqlc.arg(source), feed_start_day = sqlc.narg(feed_start_day), feed_status = sqlc.narg(feed_status),
-    feed_detail = '', feed_next_sync_at = sqlc.narg(feed_next_sync_at), feed_lease_id = NULL, feed_lease_until = NULL,
+SET source = sqlc.arg(source), feed_start_day = sqlc.narg(feed_start_day), feed_read_through = NULL,
+    feed_status = sqlc.narg(feed_status), feed_detail = '', feed_next_sync_at = sqlc.narg(feed_next_sync_at), feed_lease_id = NULL, feed_lease_until = NULL,
     revision = revision + 1, updated_at = sqlc.arg(now)
 WHERE id = sqlc.arg(id);
 
@@ -130,13 +131,6 @@ WITH ins AS (
     RETURNING id
 )
 SELECT coalesce((SELECT id FROM ins), 0)::bigint AS id;
-
--- name: LatestFeedLineDay :one
--- LatestFeedLineDay is the latest booking day of a line the feed wrote for
--- the account, NULL with none.
-SELECT coalesce(max(l.booked_on)::text, '')::text AS day FROM accounting.statement_lines l
-JOIN accounting.statements s ON s.id = l.statement_id
-WHERE l.bank_account_id = sqlc.arg(bank_account_id) AND s.source = 'feed';
 
 -- name: ListStatementLines :many
 -- ListStatementLines is an account's lines booked in the period, by day, with
@@ -369,7 +363,15 @@ WHERE b.id = (
       AND (c.feed_lease_until IS NULL OR c.feed_lease_until < sqlc.arg(now)::timestamptz)
     ORDER BY c.feed_next_sync_at NULLS FIRST, c.id
     LIMIT 1 FOR UPDATE SKIP LOCKED)
-RETURNING b.id, b.account_number, b.feed_start_day;
+RETURNING b.id, b.account_number, b.feed_start_day, b.feed_read_through, b.feed_status, b.feed_detail;
+
+-- name: AdvanceFeedRead :execrows
+-- AdvanceFeedRead moves the read cursor to @read_through once a window is
+-- read to its end and written — never back — only while the lease is the
+-- claim's; no row is a lease lost.
+UPDATE accounting.bank_accounts
+SET feed_read_through = greatest(coalesce(feed_read_through, sqlc.arg(read_through)::date), sqlc.arg(read_through)::date)
+WHERE id = sqlc.arg(id) AND feed_lease_id = sqlc.arg(lease_id) AND source = 'feed';
 
 -- name: HoldsFeedLease :one
 -- HoldsFeedLease locks the account while its lease is still this claim's.
@@ -389,7 +391,7 @@ WHERE id = sqlc.arg(id) AND feed_lease_id = sqlc.arg(lease_id);
 -- name: FeedAttention :one
 -- FeedAttention counts the bank accounts whose feed is in trouble.
 SELECT count(*)::int AS n FROM accounting.bank_accounts
-WHERE source = 'feed' AND active AND feed_status IN ('unauthorized', 'failing', 'not_offered', 'off');
+WHERE source = 'feed' AND active AND feed_status IN ('unauthorized', 'failing', 'not_offered', 'off', 'too_large');
 
 -- name: OpenLinesCount :one
 SELECT count(*)::int AS n FROM accounting.statement_lines l

@@ -1038,7 +1038,7 @@ type AccountingBankFeedState struct {
 	// NextSyncAt When the account is due again.
 	NextSyncAt *time.Time `json:"nextSyncAt"`
 
-	// Status ok, unauthorized (the bank refused Invoices' key), rate_limited, failing, not_offered (the bank no longer offers the account) or off (the feed is switched off or not connected in Invoices); null before the first read.
+	// Status ok, unauthorized (the bank refused Invoices' key), rate_limited, failing, not_offered (the bank no longer offers the account), off (the feed is switched off or not connected in Invoices) or too_large (the bank's answer for a single day is too large to read); null before the first read.
 	Status *string `json:"status"`
 }
 
