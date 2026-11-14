@@ -114,6 +114,10 @@ func Module() module.Module {
 		Expenses:         newProjectExpenses,
 		BillableExpenses: newBillableExpenses,
 		InvoicedWork:     newInvoicedWorkHolder,
+		// ExpenseJournal is what a ledger posts from: the approvals and
+		// reimbursements in the order they committed (accounting design
+		// A20, R2; expense_journal.go).
+		ExpenseJournal: newExpenseJournal,
 		// CalendarSource is the caller's own travel claims on the calendar
 		// (calendar design D1, calendar_source.go).
 		CalendarSource: newCalendarSource,
