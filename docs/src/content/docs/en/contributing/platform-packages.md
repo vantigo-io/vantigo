@@ -463,6 +463,15 @@ enforce. Invoices is to be its first consumer; nothing imports it yet.
 [Bank feeds](/en/contributing/bank-feeds/) describes Folio's adapter and how to add a
 bank.
 
+**One connection, one key.** The module that holds a bank's key — Invoices — is the only
+one that builds a `bankfeed.Feed` from it. Another module that needs the same bank reads
+it through `contracts.BankFeed`, which Invoices provides
+([The bank feed contract](/en/reference/invoices/#the-bank-feed-contract)): `Status`,
+`Accounts` and `Transactions`, answering what the port answers — every direction and kind
+— with its errors as they are, and nil when the feed is switched off. Accounting reads its
+statements so ([The bank feed](/en/reference/accounting/#the-bank-feed)); it holds no key
+of its own.
+
 ### The interface
 
 `bankfeed.Feed` is one bank credential: `Verify`, the cheapest authenticated call for a

@@ -1,6 +1,6 @@
 ---
 title: "Invoices module"
-description: "The sales document: the seller record, gap-free numbering, VAT, issue and immutability, credit notes, invoicing work, consumption and orders, billing runs, the PDF, payments, write-offs and recovered payments, sending, the journal, the export and retention."
+description: "The sales document: the seller record, gap-free numbering, VAT, issue and immutability, credit notes, invoicing work, consumption and orders, billing runs, the PDF, payments, write-offs and recovered payments, sending, the journal, the bank feed a ledger reads, the export and retention."
 sources:
   - apps/server/internal/invoices
   - apps/invoices/frontend
@@ -5778,7 +5778,9 @@ after them again until a page comes back short; a page is at most 500
   payment's or write-off's id, the business day, the invoice's id, number and customer,
   the amount in NOK, the source (`manual`, `ocr`, `camt054`, `vipps`, `bank_feed`), the
   receiving account number when it came from a bank line — a file's or the bank feed's
-  (`""` otherwise), and on a write-off's fact and a recovered payment's the write-off
+  (`""` otherwise) — and that line's own reference, `BankReference`: a camt.054
+  transaction's or an OCR line's archive reference, a feed line's the bank's transaction
+  id (`""` otherwise), which a ledger's statement line is matched by; and on a write-off's fact and a recovered payment's the write-off
   (`WriteOff`: its id, reason, VAT-correction flag and amount in NOK, and on a recovered
   payment's fact `RecoveredBeforeNOK` — the amounts of the write-off's recovered payments
   registered at a lower seq and not removed at a lower seq, "0.00" on every other fact —
@@ -5804,6 +5806,36 @@ after them again until a page comes back short; a page is at most 500
 
 Amounts are exact two-decimal text. Invoices issues NOK only in this phase, so an
 amount in NOK is the document's own at its rate of 1.
+
+### The bank feed contract
+
+The fourth is **`contracts.BankFeed`** (`bank_feed_contract.go`, `Module().BankFeed`,
+`Deps.BankFeed`, resolved by Compose and by `module.Workers` alike): the bank feed this
+module holds, for a ledger's statement (accounting design A29). The one connection and
+its sealed key stay this module's ([The bank feed](#the-bank-feed)); a reader holds no key
+of its own. **Nil when invoices is disabled, and when `INVOICES_BANK_FEED_ENABLED` is
+off** — the provider answers no contract at all, so nothing composed reaches a bank the
+operator switched off.
+
+- **`Status(ctx) (BankFeedStatus, error)`** — the connection as this module holds it, from
+  its own table, no call to the bank: `Connected` (a key is stored), `Refused` (the bank
+  refused it: status `unauthorized`), `Provider` and `Interval`, the cadence the feed is
+  read on (30 minutes), which a reader of its own keeps.
+- **`Accounts(ctx) ([]bankfeed.Account, error)`** — every account the key reads, as the
+  port answers it, cards and tax accounts included.
+- **`Transactions(ctx, account, from, to) ([]bankfeed.Transaction, error)`** — an
+  account's booked transactions, both days inclusive, as the port answers them: credits and
+  debits, transfers, card purchases and internal transfers — where this module itself keeps
+  only the incoming payments.
+
+`Accounts` and `Transactions` are calls to the bank, through the same client as this
+module's own (`bankFeed`): reported as `BankFeed.<Method>` contract calls, made with no
+transaction open, never retried, and a 401 or 403 records the key as refused. They answer
+the port's errors as they are — `bankfeed.ErrUnauthorized`, a `*bankfeed.ErrRateLimited`
+with the bank's wait, any other error for a read that failed — and
+`contracts.ErrBankFeedNotConnected` when no key is stored or it cannot be opened. The
+contract stores nothing and changes nothing of what this module's own feed stores or
+registers.
 
 ### The fact log
 
