@@ -205,9 +205,11 @@ func (s *server) readAccount(ctx context.Context, c feedClaim, loc *time.Locatio
 	// 1. The days to read. Forward first: from the day after the last day
 	// read to the end (the read cursor), or from the start day, to today —
 	// so every cycle moves the cursor on, however small the bank's answers
-	// make its windows. Then the overlap again: the ten days before the
-	// cursor this cycle started with, since a bank may book a payment on an
-	// earlier day than it first showed it.
+	// make its windows. Then the overlap again, newest first: the ten days
+	// before the cursor this cycle started with, since a bank may book a
+	// payment on an earlier day than it first showed it, or later in a day
+	// already read. Its windows start at the size the forward span ended
+	// with, halved there if the bank's answers were too large.
 	startDay := utcDay(c.row.StartDay.Time)
 	var readThrough *time.Time
 	if c.row.ReadThrough.Valid {
@@ -253,8 +255,11 @@ func (s *server) readAccount(ctx context.Context, c feedClaim, loc *time.Locatio
 spans:
 	for i, sp := range spans {
 		inForward := i == 0 && sp.from.Equal(forward)
-		from := sp.from
-		for !from.After(sp.to) {
+		// The forward span is read oldest first, so the cursor moves on; the
+		// overlap newest first (third review, M-A), so calls running out
+		// cost its oldest days, never today's late bookings.
+		lo, hi := sp.from, sp.to
+		for !lo.After(hi) {
 			if calls == bankFeedCallsPerCycle {
 				if !inForward {
 					// Only the overlap is left unread: the next cycle reads
@@ -270,9 +275,15 @@ spans:
 				out.more = true
 				break spans
 			}
-			to := from.AddDate(0, 0, windowDays-1)
-			if to.After(sp.to) {
-				to = sp.to
+			from, to := lo, lo.AddDate(0, 0, windowDays-1)
+			if to.After(hi) {
+				to = hi
+			}
+			if !inForward {
+				from, to = hi.AddDate(0, 0, 1-windowDays), hi
+				if from.Before(lo) {
+					from = lo
+				}
 			}
 			calls++
 			txs, err := feed.Transactions(ctx, account, from, to)
@@ -337,7 +348,11 @@ spans:
 			if readThrough == nil || to.After(*readThrough) {
 				readThrough = &to
 			}
-			from = to.AddDate(0, 0, 1)
+			if inForward {
+				lo = to.AddDate(0, 0, 1)
+			} else {
+				hi = from.AddDate(0, 0, -1)
+			}
 		}
 	}
 
