@@ -222,8 +222,8 @@ waits under [Needs attention](#needs-attention) while the rest carries on.
 | A payment is registered | The bank account debited — Vipps clearing for a Vipps payment — and accounts receivable credited on the invoice's item. |
 | A payment is removed | The same turned back, dated the day it was removed. |
 | Reminder charges are paid | The bank debited and the charge income account credited, with tax code 7 (no VAT): fees, compensation and interest are not turnover. A removal turns it back. |
-| An invoice is written off | Bad debts debited and accounts receivable credited for what was open; with the VAT taken back, the VAT share goes back on each rate's VAT account, marked for the VAT return. A rounding goes to the rounding account. Undoing it turns the voucher back. |
-| Money arrives after a write-off | The bank debited and bad debts credited — and the VAT taken back, in proportion, returned. |
+| An invoice is written off | Bad debts debited and accounts receivable credited for what was open; with the VAT taken back, the VAT share goes back on each rate's VAT account, marked for the VAT return — shared over what is left of the invoice once its credit notes are taken off, so a rate credited away takes no VAT back. A rounding goes to the rounding account. Undoing it turns the voucher posted for it back, line for line, even if an account has changed since. |
+| Money arrives after a write-off | The bank debited and bad debts credited — and the VAT taken back, in proportion, returned. Several part payments that together pay what was written off give back exactly what it took, to the øre; an øre of rounding falls on bad debts, never on VAT. |
 
 How [writing off](/en/user/invoices/#writing-an-invoice-off) works in Invoices is on its own page.
 
@@ -239,7 +239,8 @@ The books' start and the lock decide the date:
   as the document date.
 
 The overview's **Sales from Invoices** says how far the books have read and whether
-anything is waiting.
+anything is waiting. A long backlog — after the books were set up on a busy installation,
+say — keeps reading every fifteen seconds until it is through.
 
 ## Posting rules
 
@@ -254,24 +255,32 @@ matches on one thing, and the first that matches wins:
    (3010 middle rate, 3020 low rate), exempt sales to 3100, export to 3150, domestic
    reverse charge to 3160, sales outside the VAT Act to 3200.
 
-**Add a rule** with its name, what it matches and the account. Click a rule's name to
-change its name or account: a new account makes a new **version** of the rule, and only
-vouchers posted after it follow it — what is posted stays as it was. Each revenue line of a
-voucher names the rule and version that chose its account. A default rule is never deleted;
-point it at another account instead.
+**Add a rule** with its name, what it matches and the account — an income account: the
+picker offers no other. Click a rule's name to change its name or account: either makes a
+new **version** of the rule, and only vouchers posted after it follow it — what is posted
+stays as it was. Each revenue line of a voucher names the rule and the version that chose
+its account, under the name the rule had then. **Archive** takes a rule out of use: it no
+longer matches, its name and match are free for a new rule, and vouchers it placed still
+name it. A default rule is never archived; point it at another account instead.
 
 Changing the rules needs **Manage the books**.
 
 ## Needs attention
 
 **Needs attention** lists every sale the books could not post, with why: a tax code the
-books do not have, or that is inactive; an account that is inactive; a kind of fact this
-version does not know. The overview and the dashboard count them.
+books do not have, or that is inactive; an account that is inactive, or a rule pointing at
+an account that is not an income account; a kind of fact this version does not know. The
+overview and the dashboard count them.
+
+What comes after it for the same invoice waits behind it, so the books never take a
+payment before the invoice it pays: such a line says it **waits for an earlier sale of the
+same invoice**.
 
 Fix the cause — activate the account, add the tax code, change the rule — and click
 **Retry** on the line: it reads the fact again from Invoices and posts it, and the line
-then shows its voucher. A fact is never dismissed. **Show those posted since** shows the
-ones a retry has posted.
+then shows its voucher. When it posts, what waited behind it posts too, in order. Retrying
+a line that waits keeps it waiting: retry the one it waits for. A fact is never dismissed.
+**Show those posted since** shows the ones a retry has posted.
 
 Retrying needs **Post vouchers**.
 

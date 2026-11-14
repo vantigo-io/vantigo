@@ -125,15 +125,18 @@ The setup's choices never change afterwards; nothing changes `books_start`.
 | `attachments` | `voucher_id`, `object_key`, `file_name`, `content_type`, `size_bytes`, `sha256`, `uploaded_at`, `uploaded_by_user_id`. |
 | `open_items` | `kind` (`customer`, `supplier`), the party, `unallocated`, `document_number`, `document_date`, `due_date`, `original_amount`, `source_document_id`, `opening_as_of_seq` (for an item the opening made for an invoice in Invoices, the `AsOfSeq` of the page it was read on; null otherwise). One unallocated item per party and kind; one item per source document and kind. |
 | `lock_events` | Every move of the lock: from, to, reason, when, who. |
-| `posting_rules` | `name` (unique), `scope` (`sales`; `expense` arrives with delivery C), `match` (`line_kind`, `tax_category`, `expense_category`, `tax_code`, `default`) with exactly the one value its match names, `account_id`, `version`, `revision`. One rule per scope and match value. |
+| `posting_rules` | `name` (unique among the rules in force), `scope` (`sales`; `expense` arrives with delivery C), `match` (`line_kind`, `tax_category`, `expense_category`, `tax_code`, `default`) with exactly the one value its match names, `account_id`, `version`, `revision`, `archived_at` (set when it is archived; a delete is refused). One rule in force per scope and match value. |
+| `posting_rule_versions` | Every version of a rule: `rule_id`, `version`, `name`, `account_id`, `valid_from`, written by a trigger when a rule is made and each time its version moves. |
 | `cursors` | One row per stream (`invoices.documents`, `invoices.facts`): `position` (the last document number or fact seq read), `lease_id`/`lease_until`, `last_run_at`, `last_error`. |
 | `catchup_requests` | A wake-up per stream, `requested_at`: what a handler writes and a claim deletes. |
-| `unposted` | A source fact that could not be posted: its stream and position, its source key (unique), date, the Invoices document, customer and amount it is about, `reason`, `detail`, `attempts`, and once a retry posted it `posted_voucher_id` and `posted_at`. |
+| `unposted` | A source fact that could not be posted: its stream and position, its source key (unique), date, the Invoices document, `invoice_id` (the invoice it is about — a credit note's, the one it credits), customer and amount it is about, `reason`, `detail`, `attempts`, `waiting_on` (with reason `waiting_on`, the row it waits behind), and once a retry posted it `posted_voucher_id` and `posted_at`. |
 
 Migration 00183 also adds `vouchers.source_document_id` (the Invoices document a system
 voucher belongs to — an invoice for its own voucher and for its payments', credit notes'
-and write-offs') and `postings.tax_specification` (the VAT return's specification line of
-a tax posting: `tapPåKrav` for a loss's VAT taken back; it needs a tax code).
+and write-offs'), `postings.tax_specification` (the VAT return's specification line of
+a tax posting: `tapPåKrav` for a loss's VAT taken back; it needs a tax code) and
+`postings.posting_rule_id`/`posting_rule_version` (the rule version that placed a revenue
+line, a key into `posting_rule_versions`; null on every other posting).
 
 No key crosses a schema: a customer, a project and a person are opaque ids. There is no
 department dimension in this phase; the project is the one dimension.
@@ -244,12 +247,17 @@ an invoice's item exists before its payment posts:
    last run is five minutes old; delete the wake-up. A stream not due, or held, is skipped.
 2. **Read** the journal after `position`, 200 at a time, **with no transaction open** —
    `Documents` by number, `Facts` by seq, and for a write-off or a recovery whose VAT is
-   corrected the invoice through `Document`.
+   corrected the invoice through `Document` and its credit notes through `CreditNotesOf`.
 3. **Post** each item in **its own transaction**, which also moves `position` under the
    lease (`AdvanceCursor` names `lease_id`; no row is a lost lease, which rolls the item
-   back and stops the run). A run stops 30 seconds before its lease ends.
+   back and stops the run). A run stops 30 seconds before its lease ends. A transaction
+   that meets a deadlock (SQLSTATE `40P01` — a person settling the same open item at that
+   moment) is tried once more; any other error stops the run, recorded as `last_error`,
+   and the next run takes the item up again.
 4. **Release** the lease, on a context the shutdown does not reach, with `last_run_at` and
-   the error that stopped the run, if one did.
+   the error that stopped the run, if one did. **A run that stopped at its lease's margin
+   with items left first upserts its stream's wake-up** (R15), so the next poll, fifteen
+   seconds on, takes the backlog up rather than the five-minute sweep.
 
 A crashed claim holds its stream until its lease runs out. A fact delivered twice, a
 cursor put back, and two workers at once all end on one voucher per source
@@ -280,24 +288,37 @@ a change to a rule is a new version.
 | `sales.charge_payment` (1) | `charge_payment` | `charge` | `bank` | `charge_income`, tax code 7 (`base`), one account, never split (R14) |
 | `sales.charge_payment_removed` (1) | `charge_payment_removed` | `charge` | `charge_income`, code 7 | `bank` |
 | `sales.write_off` (1) | `write_off`, reason `loss` or `other`, no VAT correction | `write_off` | `bad_debt` — the whole amount | `receivables` |
-| `sales.write_off_vat` (1) | `write_off` with the VAT correction | `write_off` | per VAT summary of the invoice, the amount's share by gross: its VAT on the code's VAT account (`tax`) and the rest on `bad_debt` (`base`), both with the code and `tax_specification = tapPåKrav`; a zero-VAT summary's share on `bad_debt` alone | `receivables` |
+| `sales.write_off_vat` (1) | `write_off` with the VAT correction | `write_off` | per VAT summary of what is left of the invoice — its summaries less its issued credit notes', per code and rate (R15) — the amount's share by gross: its VAT on the code's VAT account (`tax`) and the rest on `bad_debt` (`base`), both with the code and `tax_specification = tapPåKrav`; a zero-VAT summary's share on `bad_debt` alone | `receivables` |
 | `sales.write_off_rounding` (1) | `write_off`, reason `rounding` | `write_off` | `rounding` | `receivables` |
-| `sales.write_off_undone` (1) | `write_off_undone` | `write_off` | the write-off's voucher with every sign turned | |
-| `sales.recovered` (1) | `recovered_payment` | `customer_payment` | `bank` | the write-off's debit lines scaled by recovered ÷ written off, signs turned: `bad_debt`, and with the correction the VAT given back in proportion, `tapPåKrav` |
-| `sales.recovered_removed` (1) | `recovered_payment_removed` | `customer_payment` | `sales.recovered`'s voucher with every sign turned | |
+| `sales.write_off_undone` (1) | `write_off_undone` | `write_off` | the write-off's **stored** voucher, read back, line for line with every sign turned, on the accounts, tax codes and items it was posted to — an account inactive since included; the voucher names it as the one it `reverses` | |
+| `sales.recovered` (1) | `recovered_payment` | `customer_payment` | `bank` | the write-off's stored debit lines scaled **cumulatively** (below), signs turned: `bad_debt`, and with the correction the VAT given back in proportion, `tapPåKrav` |
+| `sales.recovered_removed` (1) | `recovered_payment_removed` | `customer_payment` | the recovery's stored voucher, line for line with every sign turned, naming it as the one it `reverses` | |
 
 A bank payment — a bank file's (`ocr`, `camt054`) or the bank feed's (`bank_feed`) — posts
 to `bank` in this delivery; delivery F maps the receiving
 account to its ledger account. Amounts are exact, in NOK, rounded to øre half away from
 zero. **A difference between the lines' nets and the summaries' bases** goes on the
 largest revenue line, so the voucher follows the document's own totals. **A share of a
-write-off** is the amount × the summary's gross ÷ the invoice's gross, rounded, the last
-summary taking what rounding left; its VAT is the share × the summary's VAT ÷ its gross,
-rounded. **A recovery's lines** are each write-off line × recovered ÷ written off,
-rounded, the last taking the rest. **Zero is not a posting** (R3): zero lines are left out
-and a document of zeros posts no voucher; the cursor moves past it. Each revenue line's
-text names the posting rule and its version that chose the account
-(`Line 2 · rule Hours v1`).
+write-off** is the amount × the remaining summary's gross ÷ the remaining gross, rounded,
+the last summary taking what rounding left; its VAT is the share × the summary's VAT ÷ its
+gross, rounded. Only the credit notes are taken off before the split: the invoice's
+payments are in proportion, so what was paid is taken to have paid each rate alike. A
+credit note cannot be issued while a write-off stands (Invoices refuses it,
+`invoice_written_off`), so the credit notes the split reads are those before it.
+**A recovery's lines** are scaled cumulatively (R15): with *before* what the write-off had
+recovered before it (the journal fact's `RecoveredBeforeNOK`) and *W* the amount written
+off, each line is round(line × (before + recovered) ÷ W) − round(line × before ÷ W); what
+rounding leaves of the recovery goes on a `bad_debt` line with no tax code — the
+write-off's own when it has one, else a line of its own — never on a VAT line. Recoveries
+that add up to the amount written off therefore give back exactly its lines. The lines
+scaled are those of the write-off's stored voucher; a write-off the books never posted —
+made before they started — is rebuilt from the journal, and its undoing and a recovery's
+removal then post as the rebuilt voucher turned. **Zero is not a posting** (R3): zero lines
+are left out and a document of zeros posts no voucher; the cursor moves past it. Each
+revenue posting stores the posting rule and the version that placed it
+(`posting_rule_id`, `posting_rule_version`, answered with the rule's name in that version
+as `postingRuleId`, `postingRuleVersion` and `postingRuleName`), and its text names them
+too (`Line 2 · rule Hours v1`).
 
 ### The books' start and the opening
 
@@ -313,18 +334,28 @@ text names the posting rule and its version that chose the account
 - A payment of an invoice with no item yet — one from before the books that the opening
   left out — opens the item for that invoice.
 
+`settings.opening_as_of_seq` — the lowest `AsOfSeq` of the opening's pages — is the
+threshold for an invoice that has no opening item, and that is sound: an invoice with no
+opening item was not open at the day before `books_start` (or was left out of the
+opening). A fact about it dated before `books_start` is then either a payment, which
+Invoices refuses on an invoice with nothing open, or a removal, which is dated its own
+business day — the day it was made, never before the books when made after the snapshot.
+So a backdated fact with a seq above the lowest page's snapshot is one the opening cannot
+have counted, and it is posted; one at or below it was in the old books.
+
 ### Posting rules
 
-A sales line's revenue account is the first rule that matches, in this order (A14):
-`line_kind` (the line's snapshot: `hours`, `expense`, `milestone`, `settlement`,
+A sales line's revenue account is the first rule in force that matches, in this order
+(A14): `line_kind` (the line's snapshot: `hours`, `expense`, `milestone`, `settlement`,
 `order_line`, `subscription_period`, `deduction`, `manual`, `mixed`), `tax_category`
 (Products' category of the line's product), `tax_code` (the line's standard code), then
 `default` for the line's code. No match waits under Needs attention as
-`posting_rule_missing`.
+`posting_rule_missing`; a match whose account is not an income account — one changed to
+another kind since — as `account_kind_mismatch` (R15), checked when the line is posted.
 
-The defaults are seeded with the books, and for books set up before 00183 on first use
-(the worker's run and `GET /posting-rules`, idempotently, when no default rule exists),
-each on the default chart's account when the chart has it:
+The defaults are seeded with the books, and for books set up before 00183 by the catch-up
+worker's first run (idempotently, when no default rule exists) — never by a read — each on
+the default chart's account when the chart has it:
 
 | Code | Account | | Code | Account |
 | --- | --- | --- | --- | --- |
@@ -334,38 +365,58 @@ each on the default chart's account when the chart has it:
 | 33 | 3020 | | 6 | 3200 |
 | 0 | 3100 | | 7 | 3100 |
 
-`GET /posting-rules` (`accounting:read`) lists them in precedence order. `POST
-/posting-rules` (`accounting:close`) takes `name` (1–100), `scope` (`sales`; `expense` is
-400 until delivery C), `match` (`line_kind`, `tax_category` or `tax_code` — a `default` is
-never created) with its value (`lineKind` one of the kinds, `taxCategoryId` above 0,
-`taxCode` an active code of the books, else 400 `tax_code_unknown`) and an active
-`accountId` (400 `account_unknown`, `account_inactive`); 409 `posting_rule_name_taken`
-and `posting_rule_match_taken`. `PUT /posting-rules/{id}` changes the name and the account
-under its `revision` (409 `revision_conflict`); a new account adds one to `version`. A
-voucher posted before keeps the version that made it. `DELETE /posting-rules/{id}` deletes
-a rule, never a default one (409 `posting_rule_default`).
+`GET /posting-rules` (`accounting:read`) lists the rules in force in precedence order and
+writes nothing. `POST /posting-rules` (`accounting:close`) takes `name` (1–100), `scope`
+(`sales`; `expense` is 400 until delivery C), `match` (`line_kind`, `tax_category` or
+`tax_code` — a `default` is never created) with its value (`lineKind` one of the kinds,
+`taxCategoryId` above 0, `taxCode` an active code of the books, else 400
+`tax_code_unknown`) and an active **income** `accountId` (400 `account_unknown`,
+`account_inactive`, `account_kind_mismatch`); 409 `posting_rule_name_taken` and
+`posting_rule_match_taken` among the rules in force. `PUT /posting-rules/{id}` changes the
+name and the account under its `revision` (409 `revision_conflict`; the account held to the
+same rules); **a new name or a new account adds one to `version`**, and every version — its
+name, account and the moment it took effect — is kept in `posting_rule_versions`, written
+by a trigger when a rule is made and each time its version moves. A posting placed before
+keeps naming the version that placed it. `DELETE /posting-rules/{id}` **archives** a rule
+(R15) — `archived_at` set; the table refuses a delete — never a default one (409
+`posting_rule_default`): it matches nothing from then on, is no longer listed, frees its
+name and match for a new rule, and a second archive is a 404. What it placed still names
+it.
 
 ### Needs attention
 
 What cannot be posted is written to `unposted` in the item's own transaction, and the
 cursor still moves (A15). Its `reason` is `tax_code_unknown` (a line's or summary's
 standard code not active in the books, or a code with VAT and no VAT account),
-`posting_rule_missing`, `unknown_kind` (a fact kind this version does not post — never
-dropped), `document_unknown` (the written-off invoice not in the journal), or an engine
-refusal's code (`account_inactive`, `account_unknown`, …) with its detail. The meta's
-`unposted` and the host's dashboard count those not posted.
+`posting_rule_missing`, `account_kind_mismatch` (a matching rule's account is not an
+income account), `unknown_kind` (a fact kind this version does not post — never dropped),
+`document_unknown` (the written-off invoice not in the journal), `waiting_on` (below), or an
+engine refusal's code (`account_inactive`, `account_unknown`, …) with its detail. Each row
+carries `invoiceId`, the invoice it is about — a credit note's, the invoice it credits.
+The meta's `unposted` and the host's dashboard count those not posted.
+
+**What waits, waits in order** (R15). A document or fact of an invoice that has an open
+row under Needs attention, met before it, is not posted ahead of it: it is stored with
+reason `waiting_on` and `waitingOn` naming that row (the earliest open one of the
+invoice), and the cursor moves on. An item already in the books is never held. So a
+payment never posts before the invoice it pays, nor an undo before its write-off.
 
 `GET /unposted` (`accounting:read`, `open` default true, `offset`, `limit` default 100 at
 most 500) lists them oldest first. `POST /unposted/{id}/retry` (`accounting:post`) reads
 the fact again through the journal with no transaction open — the document by `Document`,
 the fact by `Facts` after its seq less one — and posts it as the worker does, in one
 transaction: posted, the row records its voucher; refused again, its new reason and one
-more attempt. A fact the journal no longer answers is `document_unknown`. 409
-`unposted_already_posted` for a row that has posted. There is no dismissal.
+more attempt; an earlier open row of the same invoice, `waiting_on` again. **A retry that
+posts then retries the rows of its invoice recorded after it**, one transaction each, in
+the order they were met, until one does not post. A fact the journal no longer answers is
+`document_unknown`. 409 `unposted_already_posted` for a row that has posted. There is no
+dismissal.
 
 `GET /vouchers?sourceDocumentId=` lists the system vouchers of one Invoices document —
-the invoice's own, its credit notes', payments' and write-offs' — which an invoice's page
-links to. The `customers` report's item rows carry the Invoices `documentId` they stand
+the invoice's own, its credit notes', payments' and write-offs', and the voucher a
+document posted as itself, so a credit note's page finds its own voucher, which belongs to
+the invoice it credits — which an invoice's page links to, the first 20 with a button for
+the rest. The `customers` report's item rows carry the Invoices `documentId` they stand
 for.
 
 ## Manual journals
