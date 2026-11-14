@@ -1311,7 +1311,7 @@ overføringer mellom egne kontoer, som Fakturering ikke tar vare på — uten en
 Innbetalingene Fakturering registrerer fra integrasjonen eller fra en bankfil, avstemmes da
 mot regnskapets kontoutskriftlinjer med bankens egen referanse. En innbetaling fra en kunde
 registreres alltid her, i Fakturering, aldri kontert i Regnskap
-([hvorfor](/nb/user/accounting/#hvorfor-innbetalinger-fra-kunder-registreres-i-fakturering)).
+([hvorfor](/nb/user/accounting/#hvorfor-innbetalinger-fra-kunder-registreres-i-fakturaer)).
 
 **En ekte andre betaling som ser ut som en gjentakelse.** En betaling holdes tilbake som
 **Et mulig duplikat**, og registreres ikke, når en betaling fra **en annen fil** til samme
