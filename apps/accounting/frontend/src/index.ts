@@ -19,6 +19,8 @@ export { PostingRulesPage } from "./pages/posting-rules";
 export { ReportsPage } from "./pages/reports";
 export { SettingsPage } from "./pages/settings";
 export { SetupPage } from "./pages/setup";
+export { NewSupplierInvoicePage, SupplierInvoicePage, SupplierInvoicesPage } from "./pages/supplier-invoices";
+export { SupplierPage, SuppliersPage } from "./pages/suppliers";
 export { TaxCodesPage } from "./pages/tax-codes";
 export { VoucherPage } from "./pages/voucher";
 export { VouchersPage } from "./pages/vouchers";

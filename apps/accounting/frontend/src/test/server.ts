@@ -5,6 +5,8 @@ import type {
   AccountingOpening,
   AccountingPostingRule,
   AccountingReport,
+  AccountingSupplier,
+  AccountingSupplierInvoice,
   AccountingTaxCode,
   AccountingUnposted,
   AccountingVoucher,
@@ -35,6 +37,10 @@ export const meta = (change: Partial<AccountingMeta> = {}): AccountingMeta => ({
   vouchersThisYear: 12,
   openCustomerItems: 3,
   unposted: 0,
+  expensesEnabled: false,
+  informational: 0,
+  payablesOverdue: 0,
+  payablesDueSoon: 0,
   ...change,
 });
 
@@ -145,6 +151,9 @@ export function posting(
     postingRuleId: null,
     postingRuleName: null,
     postingRuleVersion: null,
+    currency: null,
+    currencyAmount: null,
+    exchangeRate: null,
     ...change,
   };
 }
@@ -184,6 +193,8 @@ export const report = (): AccountingReport => ({
       voucherId: null,
       accountId: 1002,
       documentId: null,
+      supplierId: null,
+      supplierInvoiceId: null,
     },
     {
       style: "total",
@@ -192,6 +203,8 @@ export const report = (): AccountingReport => ({
       voucherId: null,
       accountId: null,
       documentId: null,
+      supplierId: null,
+      supplierInvoiceId: null,
     },
   ],
 });
@@ -208,7 +221,94 @@ export interface ApiState {
   unposted: AccountingUnposted[];
   /** The table every report answers; the trial balance's unless set. */
   report?: AccountingReport;
+  suppliers: AccountingSupplier[];
+  supplierInvoices: AccountingSupplierInvoice[];
 }
+
+export const supplier = (change: Partial<AccountingSupplier> = {}): AccountingSupplier => ({
+  id: 3001,
+  number: 1,
+  name: "Rørlegger Hansen AS",
+  organisationNumber: "923609016",
+  country: "NO",
+  addressLine: "Storgata 1",
+  postalCode: "0155",
+  city: "Oslo",
+  email: null,
+  bankAccount: "12345678903",
+  iban: null,
+  bic: null,
+  paymentTermsDays: 30,
+  defaultAccountId: 1003,
+  defaultTaxCodeId: 2001,
+  currency: "NOK",
+  isPerson: false,
+  active: true,
+  hasPostings: false,
+  balance: "0.00",
+  lastVoucherDate: null,
+  retainedUntil: null,
+  revision: 1,
+  createdAt: STAMP,
+  updatedAt: STAMP,
+  ...change,
+});
+
+export const supplierInvoice = (change: Partial<AccountingSupplierInvoice> = {}): AccountingSupplierInvoice => ({
+  id: 4001,
+  supplierId: 3001,
+  supplierName: "Rørlegger Hansen AS",
+  supplierNumber: 1,
+  kind: "invoice",
+  invoiceNumber: "F-1",
+  invoiceDate: "2026-11-01",
+  dueDate: "2026-12-01",
+  currency: "NOK",
+  exchangeRate: "1.000000",
+  total: "1250.00",
+  totalNok: "1250.00",
+  linesTotal: "1250.00",
+  vat: "250.00",
+  kid: null,
+  reference: null,
+  description: "",
+  state: "draft",
+  balance: null,
+  balanceCurrency: null,
+  overdue: false,
+  lines: [
+    {
+      id: 1,
+      position: 1,
+      accountId: 1003,
+      accountNumber: "6300",
+      accountName: "Leie av lokaler",
+      taxCodeId: 2001,
+      taxCode: "1",
+      amount: "1250.00",
+      entry: "gross",
+      projectId: null,
+      projectName: null,
+      text: "",
+      net: "1000.00",
+      vat: "250.00",
+      gross: "1250.00",
+    },
+  ],
+  files: [],
+  payments: [],
+  voucher: null,
+  reversalVoucher: null,
+  openItemId: null,
+  creditsInvoiceId: null,
+  copiedFromId: null,
+  sourceExpenseEntryId: null,
+  revision: 1,
+  createdAt: STAMP,
+  updatedAt: STAMP,
+  postedAt: null,
+  ...change,
+});
 
 export const rule = (change: Partial<AccountingPostingRule> = {}): AccountingPostingRule => ({
   id: 1001,
@@ -224,6 +324,8 @@ export const rule = (change: Partial<AccountingPostingRule> = {}): AccountingPos
   version: 1,
   revision: 1,
   updatedAt: STAMP,
+  expenseCategoryId: null,
+  vatDeductible: null,
   ...change,
 });
 
@@ -247,6 +349,11 @@ export const unposted = (change: Partial<AccountingUnposted> = {}): AccountingUn
   postedVoucher: null,
   invoiceId: 9001,
   waitingOn: null,
+  orderKey: null,
+  informational: false,
+  resolvedAt: null,
+  supplierInvoiceId: null,
+  expenseLines: [],
   ...change,
 });
 
@@ -274,6 +381,8 @@ export const stubAccountingApi = (change: Partial<ApiState> = {}): StubbedFetch 
       rule({ id: 1002, name: "Timer", match: "line_kind", lineKind: "hours", taxCode: null, version: 2 }),
     ],
     unposted: [],
+    suppliers: [supplier()],
+    supplierInvoices: [],
     ...change,
   };
   return stubFetch(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -351,6 +460,66 @@ export const stubAccountingApi = (change: Partial<ApiState> = {}): StubbedFetch 
           attempts: 2,
         }),
       );
+    if (method === "GET" && path === "/api/v1/expenses/categories")
+      return jsonResponse(200, [
+        { id: 1001, name: "Materials", active: true, position: 1 },
+        { id: 1006, name: "Meals", active: true, position: 6 },
+      ]);
+    if (method === "GET" && path === "/suppliers")
+      return jsonResponse(200, { items: state.suppliers, total: state.suppliers.length });
+    if (method === "GET" && path === "/suppliers/lookup/brreg")
+      return jsonResponse(200, {
+        items: [
+          {
+            organisationNumber: "923609016",
+            name: "EQUINOR ASA",
+            addressLine: "Forusbeen 50",
+            postalCode: "4035",
+            city: "STAVANGER",
+            country: "NO",
+            vatRegistered: true,
+            deleted: false,
+          },
+        ],
+      });
+    if (method === "POST" && path === "/suppliers")
+      return jsonResponse(201, supplier({ id: 3002, number: 2, ...JSON.parse(String(init?.body)) }));
+    const supplierId = /^\/suppliers\/(\d+)$/.exec(path);
+    if (supplierId && method === "GET") {
+      const found = state.suppliers.find((x) => x.id === Number(supplierId[1]));
+      return found ? jsonResponse(200, found) : new Response(null, { status: 404 });
+    }
+    if (method === "GET" && path === "/supplier-invoices") {
+      const number = url.searchParams.get("supplierNumber");
+      const items = state.supplierInvoices.filter((i) => !number || i.invoiceNumber === number);
+      return jsonResponse(200, { items, total: items.length });
+    }
+    if (method === "POST" && path === "/supplier-invoices")
+      return jsonResponse(201, supplierInvoice({ id: 4009, ...JSON.parse(String(init?.body)) }));
+    const invoiceId = /^\/supplier-invoices\/(\d+)(\/.*)?$/.exec(path);
+    if (invoiceId) {
+      const found = state.supplierInvoices.find((x) => x.id === Number(invoiceId[1])) ?? supplierInvoice();
+      const rest = invoiceId[2] ?? "";
+      if (method === "GET" && rest === "") return jsonResponse(200, found);
+      if (method === "PUT" && rest === "") return jsonResponse(200, found);
+      if (method === "POST" && rest === "/post")
+        return jsonResponse(200, { ...found, state: "posted", voucher: { id: 5010, display: "2026-000020" } });
+      if (method === "POST" && rest === "/payments")
+        return jsonResponse(201, { ...found, state: "paid", balance: "0.00" });
+      if (method === "DELETE" && rest.startsWith("/payments/")) return jsonResponse(200, found);
+      if (method === "POST" && rest === "/reverse-and-copy")
+        return jsonResponse(201, supplierInvoice({ id: 4010, copiedFromId: found.id }));
+    }
+    const nok = /^\/unposted\/(\d+)\/nok-amounts$/.exec(path);
+    if (method === "POST" && nok)
+      return jsonResponse(
+        200,
+        unposted({ id: Number(nok[1]), postedAt: STAMP, postedVoucher: { id: 5011, display: "2026-000021" } }),
+      );
+    if (method === "POST" && /^\/unposted\/\d+\/supplier-invoice$/.test(path))
+      return jsonResponse(201, supplierInvoice({ id: 4011, sourceExpenseEntryId: 51 }));
+    const ack = /^\/unposted\/(\d+)\/acknowledge$/.exec(path);
+    if (method === "POST" && ack) return jsonResponse(200, unposted({ id: Number(ack[1]), resolvedAt: STAMP }));
     if (method === "GET" && path === "/catch-up")
       return jsonResponse(200, {
         unposted: state.unposted.length,

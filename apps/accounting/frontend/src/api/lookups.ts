@@ -3,8 +3,8 @@ import { ACCOUNTING_QUERY_KEY, request } from "./request";
 
 /**
  * What this package reads of other modules, over HTTP (module boundaries
- * rule 7): a customer search for a line's party and the active projects for
- * its project. The shapes are typed here rather than generated: this package
+ * rule 7): a customer search for a line's party, the active projects for
+ * its project, and Expenses' categories for an expense posting rule. The shapes are typed here rather than generated: this package
  * owns only the accounting contract, and these are the fields it reads. A
  * caller without the customers' or the projects' permission gets no picker.
  */
@@ -40,6 +40,24 @@ export const projectsQueryOptions = () =>
         signal,
       });
       return answer.data.map(({ id, code, name }) => ({ id, code, name }));
+    },
+    retry: false,
+    staleTime: 60_000,
+  });
+
+/** An expense category of Expenses, for an expense posting rule. */
+export interface ExpenseCategoryOption {
+  id: number;
+  name: string;
+  active: boolean;
+}
+
+export const expenseCategoriesQueryOptions = () =>
+  queryOptions({
+    queryKey: [ACCOUNTING_QUERY_KEY, "expense-categories"],
+    queryFn: async ({ signal }) => {
+      const answer = await request<ExpenseCategoryOption[]>("/api/v1/expenses/categories", { signal });
+      return answer.map(({ id, name, active }) => ({ id, name, active }));
     },
     retry: false,
     staleTime: 60_000,
