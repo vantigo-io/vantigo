@@ -53,6 +53,7 @@ type AccountingBankAccount struct {
 	LedgerAccountID  int32
 	Source           string
 	FeedStartDay     *time.Time
+	FeedReadThrough  *time.Time
 	FeedStatus       *string
 	FeedDetail       string
 	FeedLastSyncedAt *time.Time

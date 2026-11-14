@@ -871,6 +871,7 @@ export const accountingCatalog = {
     bankFeedStatus_failing: "cannot read the bank",
     bankFeedStatus_not_offered: "not offered by the bank",
     bankFeedStatus_off: "no bank connected",
+    bankFeedStatus_too_large: "the bank's answer is too large",
     bankFeedOffHint:
       "The bank feed needs a bank connected in Invoices' Bank integration, on an installation where it is switched on.",
     bankFeedHint:
@@ -1934,6 +1935,7 @@ export const accountingCatalog = {
     bankFeedStatus_failing: "får ikke lest banken",
     bankFeedStatus_not_offered: "banken tilbyr ikke kontoen",
     bankFeedStatus_off: "ingen bank koblet til",
+    bankFeedStatus_too_large: "bankens svar er for stort",
     bankFeedOffHint:
       "Bankintegrasjonen krever en bank koblet til under Bankintegrasjon i Fakturering, på en installasjon der den er slått på.",
     bankFeedHint:

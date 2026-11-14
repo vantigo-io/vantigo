@@ -8,7 +8,8 @@
 -- phase, where its statement comes from — files uploaded, or Invoices' bank
 -- feed from a start day (A29) — the CSV column mapping a file of it is read
 -- with, and the feed's own state: the lease of the accounting.bankfeed
--- worker, when it last read the bank and what the bank last said.
+-- worker, the last day it has read the bank through (its read cursor), when
+-- it last read the bank and what the bank last said.
 --
 -- statements are what was imported: a camt.053 statement, a CSV file, or one
 -- cycle of the feed, with its period and its opening and closing balances
@@ -46,6 +47,7 @@ CREATE TABLE accounting.bank_accounts (
     ledger_account_id   integer      NOT NULL REFERENCES accounting.accounts (id) ON DELETE RESTRICT,
     source              varchar(4)   NOT NULL DEFAULT 'file',
     feed_start_day      date,
+    feed_read_through   date,
     feed_status         varchar(12),
     feed_detail         varchar(500) NOT NULL DEFAULT '',
     feed_last_synced_at timestamptz,
@@ -63,7 +65,7 @@ CREATE TABLE accounting.bank_accounts (
     CONSTRAINT ck_bank_accounts_source CHECK (source IN ('file', 'feed')),
     CONSTRAINT ck_bank_accounts_feed CHECK (source <> 'feed' OR feed_start_day IS NOT NULL),
     CONSTRAINT ck_bank_accounts_feed_status CHECK (
-        feed_status IS NULL OR feed_status IN ('ok', 'unauthorized', 'rate_limited', 'failing', 'not_offered', 'off')),
+        feed_status IS NULL OR feed_status IN ('ok', 'unauthorized', 'rate_limited', 'failing', 'not_offered', 'off', 'too_large')),
     CONSTRAINT ck_bank_accounts_lease CHECK ((feed_lease_id IS NULL) = (feed_lease_until IS NULL))
 );
 CREATE UNIQUE INDEX ux_bank_accounts_number ON accounting.bank_accounts (account_number);
