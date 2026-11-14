@@ -383,6 +383,9 @@ prosjektets arbeid ([fakturere arbeid](/nb/user/invoices/#fakturere-arbeid)).
 
 Med Utlegg aktivert sier en linje under tabellen hvor mange *utlegg klare til
 fakturering* det er, med **Se utleggene** når du kan åpne Utlegg-fanen.
+På den fanen, når regnskapet føres i Regnskap og du har tilgang til det, sier typen
+leverandørfaktura i **Før en kostnad** at leverandørfakturaer føres i Regnskap
+([Leverandørfakturaer](/nb/user/accounting/#leverandørfakturaer)).
 
 ## Følg budsjettet og det førte arbeidet
 
