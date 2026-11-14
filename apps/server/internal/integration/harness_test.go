@@ -9,6 +9,7 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/google/uuid"
 
+	"github.com/vantigo-io/vantigo/server/internal/accounting"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/customers"
 	"github.com/vantigo-io/vantigo/server/internal/energy"
@@ -60,6 +61,7 @@ const (
 	modOrders        = "orders"
 	modInventory     = "inventory"
 	modManufacturing = "manufacturing"
+	modAccounting    = "accounting"
 )
 
 // moduleNamed is the real module value for one name. It is the only place this
@@ -88,6 +90,8 @@ func moduleNamed(t *testing.T, name string) module.Module {
 		return inventory.Module()
 	case modManufacturing:
 		return manufacturing.Module()
+	case modAccounting:
+		return accounting.Module()
 	}
 	t.Fatalf("integration: no module named %q", name)
 	return module.Module{}
@@ -175,7 +179,8 @@ func withStorecove(t *testing.T) (*storecovetest.Server, []modtest.Option) {
 // TestMain's job over its own contract, and a cross-module test that counted
 // towards it would let an operation look exercised without its module's suite
 // ever having exercised it.
-var recorder = mergedRecorder(modCustomers, modProjects, modTime, modExpenses, modInvoices, modEnergy, modProducts, modOrders, modInventory, modManufacturing)
+var recorder = mergedRecorder(modCustomers, modProjects, modTime, modExpenses, modInvoices, modEnergy, modProducts, modOrders, modInventory, modManufacturing,
+	modAccounting)
 
 func mergedRecorder(names ...string) *contracttest.Recorder {
 	merged := &openapi3.T{
