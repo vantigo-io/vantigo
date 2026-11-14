@@ -91,6 +91,9 @@ type syncOutcome struct {
 	// unmatched is the bank's id of the first line matching could not
 	// match, left pending; "" for none.
 	unmatched string
+	// keyVersion is the stored key's version (the connection's updated_at)
+	// the cycle read with, nil before it had one.
+	keyVersion *time.Time
 }
 
 // feedClaim is one claimed account: the row as the claim saw it, its lease
@@ -168,6 +171,9 @@ func (s *server) syncAccount(ctx context.Context, c feedClaim) (syncOutcome, err
 		return syncOutcome{}, err
 	}
 	var out syncOutcome
+	if noted, ok := feed.(notedFeed); ok {
+		out.keyVersion = noted.version
+	}
 	calls := 0
 windows:
 	for window := 0; ; window++ {
@@ -193,7 +199,7 @@ windows:
 				break
 			}
 			if err != nil && !errors.Is(err, bankfeed.ErrTooLarge) {
-				return syncOutcome{}, err
+				return syncOutcome{keyVersion: out.keyVersion}, err
 			}
 			if !to.After(from) {
 				return syncOutcome{}, errFeedAnswerTooLarge

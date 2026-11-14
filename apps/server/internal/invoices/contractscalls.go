@@ -587,10 +587,12 @@ type notedFeed struct {
 var _ bankfeed.Feed = notedFeed{}
 
 // flagged records an ErrUnauthorized as the key's refusal and answers err as
-// it was.
+// it was, joined with the record's own failure when it failed.
 func (n notedFeed) flagged(ctx context.Context, err error) error {
 	if n.version != nil && errors.Is(err, bankfeed.ErrUnauthorized) {
-		n.s.flagBankFeedUnauthorized(ctx, *n.version)
+		if ferr := n.s.flagBankFeedUnauthorized(ctx, *n.version); ferr != nil {
+			return errors.Join(err, ferr)
+		}
 	}
 	return err
 }
