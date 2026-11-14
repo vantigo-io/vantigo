@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"math/big"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/vantigo-io/vantigo/server/internal/holidays"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/bankfile"
@@ -118,14 +120,20 @@ func (s *server) matchFilePastFailures(ctx context.Context, fileID int64, now ti
 
 // matchLines is matchFile's loop; with pastFailures, a line's failure that
 // is not ctx's is logged and passed over, its line_ref answered when it is
-// the first.
+// the first — until maxLineFailuresInARow fail in a row, or one fails as
+// the database's connection does, when matching stops with
+// errFeedMatchingStopped: an outage is not passed over line by line.
 func (s *server) matchLines(ctx context.Context, fileID int64, caller *uuid.UUID, now time.Time, loc *time.Location, pastFailures bool) (matchCounts, string, error) {
 	counts := matchCounts{matchedAmount: new(big.Rat), exceptionsAmount: new(big.Rat)}
 	failedRef := ""
+	inARow := 0
 	q := store.New(s.deps.Pool)
 	stopped := func(lineID int64, err error) (matchCounts, string, error) {
 		s.deps.Logger.WarnContext(ctx, "invoices: matching stopped early; the rest of the file stays pending",
 			"bankFileId", fileID, "bankTransactionId", lineID, "error", err.Error())
+		if pastFailures && ctx.Err() == nil {
+			err = fmt.Errorf("%w: %w", errFeedMatchingStopped, err)
+		}
 		return counts, failedRef, err
 	}
 	lines, err := q.PendingTransactionsOfFile(ctx, fileID)
@@ -141,6 +149,10 @@ func (s *server) matchLines(ctx context.Context, fileID int64, caller *uuid.UUID
 		// left pending, matching going on with the next.
 		passOver := func(err error) bool {
 			if !pastFailures || ctx.Err() != nil {
+				return false
+			}
+			inARow++
+			if inARow >= maxLineFailuresInARow || connectionClass(err) {
 				return false
 			}
 			s.deps.Logger.WarnContext(ctx, "invoices: a bank line could not be matched; it stays pending",
@@ -210,8 +222,34 @@ func (s *server) matchLines(ctx context.Context, fileID int64, caller *uuid.UUID
 			counts.exceptionsAmount.Add(counts.exceptionsAmount, amount)
 		}
 		counts.done++
+		inARow = 0
 	}
 	return counts, failedRef, nil
+}
+
+// maxLineFailuresInARow is how many lines in a row may fail before the bank
+// feed's matching stops rather than passes over the next.
+const maxLineFailuresInARow = 3
+
+// errFeedMatchingStopped is the bank feed's matching stopped: lines failing
+// in a row, or the database's connection failing — a failure of the cycle,
+// never a line that cannot be matched.
+var errFeedMatchingStopped = errors.New("invoices: matching the bank feed's lines stopped")
+
+// connectionClass reports whether err is the database's connection or pool
+// failing rather than one line's: a connection that could not be made or
+// broke, a timeout, or a server refusing work (SQLSTATE classes 08, 53 and
+// 57P).
+func connectionClass(err error) bool {
+	var connect *pgconn.ConnectError
+	if errors.As(err, &connect) || pgconn.Timeout(err) || pgconn.SafeToRetry(err) {
+		return true
+	}
+	var pg *pgconn.PgError
+	if errors.As(err, &pg) {
+		return strings.HasPrefix(pg.Code, "08") || strings.HasPrefix(pg.Code, "53") || strings.HasPrefix(pg.Code, "57P")
+	}
+	return false
 }
 
 // classify is D4's steps 1–7 on the pool, in order: the reason the line is

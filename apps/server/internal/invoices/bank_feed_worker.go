@@ -218,7 +218,7 @@ func (w *BankFeedWorker) end(ctx context.Context, c feedClaim, outcome syncOutco
 		w.logger().WarnContext(ctx, "invoices: a bank feed batch was refused whole; nothing of it was stored",
 			"worker", bankFeedWorkerName, "account", account, "reason", outcome.refused.reason)
 		n, err = q.BankFeedRefused(ctx, store.BankFeedRefusedParams{
-			Reason: outcome.refused.reason, Detail: outcome.refused.detail,
+			Reason: outcome.refused.reason, Detail: outcome.refused.detail, LastBankFileID: outcome.bankFileID,
 			NextSyncAt: c.now.Add(interval), Now: c.now, Account: account, LeaseID: c.lease,
 		})
 	default:
@@ -258,6 +258,8 @@ func feedFailureDetail(err error) string {
 		return "The stored bank API key cannot be read on this server. Store the key again."
 	case errors.Is(err, errFeedAnswerTooLarge):
 		return "The bank's answer for one day is too large to read."
+	case errors.Is(err, errFeedMatchingStopped):
+		return "Matching the payments read stopped: several failed in a row, or the database could not be reached."
 	case errors.Is(err, errFeedNoProgress):
 		return "The bank's answers are too large for the account to be read forward this time."
 	case errors.Is(err, bankfeed.ErrUnauthorized):

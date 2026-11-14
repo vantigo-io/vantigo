@@ -533,8 +533,14 @@ func TestBankFeedSync_CrashPointsRegisterOnePayment(t *testing.T) {
 	feedReady(t, h)
 	h.folio.AddTransaction(sellerAccount, incoming(txID(1), "2026-10-06", "1000.00", *inv.Kid))
 
-	restore := invoices.SetBankFeedSyncAfterStore(func(context.Context, int64) error { return errors.New("the process stopped") })
-	syncNow(t, h)
+	// The process stops between the commit and the match: the cycle's
+	// context ends there, so nothing more of the cycle runs.
+	stopped, stop := context.WithCancel(context.Background())
+	restore := invoices.SetBankFeedSyncAfterStore(func(context.Context, int64) error {
+		stop()
+		return errors.New("the process stopped")
+	})
+	_ = feedWorker(t, h.Deps()).RunCycle(stopped)
 	restore()
 	if got := stateOf(t, h, feedLine(t, h, txID(1))); got != "pending -" {
 		t.Fatalf("the line after the stop = %s, want pending", got)
@@ -732,5 +738,63 @@ func TestBankFeedSync_RecoveringFromARefusal(t *testing.T) {
 	}
 	if got := livePaymentsOf(t, h, inv.ID); !slices.Equal(got, []string{"1000.00 bank_feed"}) {
 		t.Errorf("payments = %v, want the payment after the refused one registered", got)
+	}
+}
+
+// A refusal does not leave batches unmatched (second review, M1): the
+// windows stored before the one refused are matched in the same cycle, and
+// the account records the last batch stored.
+func TestBankFeedSync_ARefusalStillMatchesWhatWasStored(t *testing.T) {
+	t.Parallel()
+	h, _ := syncHarness(t)
+	inv := kidInvoice(t, h)
+	toMatchDay(h)
+	connect(t, h)
+	switchedOn(t, h, sellerAccount, "2026-08-01")
+	h.folio.AddTransaction(sellerAccount, incoming(txID(1), "2026-08-20", "70.00", ""))
+	h.folio.AddTransaction(sellerAccount, incoming(txID(2), "2026-09-20", "1000.00", *inv.Kid))
+	euro := incoming(txID(3), "2026-10-05", "10.00", "")
+	euro.TransactionAmount.Currency = "EUR"
+	h.folio.AddTransaction(sellerAccount, euro)
+	syncNow(t, h)
+	s := feedStateOf(t, h, sellerAccount)
+	if s.status != "refused" || s.reason != "currency_not_nok" {
+		t.Fatalf("the account = %+v, want refused currency_not_nok", s)
+	}
+	if got := stateOf(t, h, feedLine(t, h, txID(1))); got != "exception no_kid" {
+		t.Errorf("the first window's line = %s, want queued", got)
+	}
+	if got := livePaymentsOf(t, h, inv.ID); !slices.Equal(got, []string{"1000.00 bank_feed"}) {
+		t.Errorf("the second window's payment = %v, want matched", got)
+	}
+	last := modtest.One[int64](t, h.Harness, `SELECT bank_file_id FROM invoices.bank_transactions WHERE line_ref = $1`, txID(2))
+	if s.lastFile == nil || *s.lastFile != last {
+		t.Errorf("the last batch = %v, want %d", s.lastFile, last)
+	}
+}
+
+// Lines failing in a row stop the cycle's matching as a failure, never as a
+// line that cannot be matched (second review, low): an outage is not passed
+// over line by line.
+func TestBankFeedSync_LinesFailingInARowStopMatching(t *testing.T) {
+	t.Parallel()
+	h, _ := syncHarness(t)
+	h.Exec(t, `UPDATE invoices.settings SET default_currency = 'EUR'`)
+	euro := kidded(t, issued(t, h, createDraft(t, h, draftBody(customerEuro, line("Konsulenttime", 10, 80, vat25))).ID))
+	h.Exec(t, `UPDATE invoices.settings SET default_currency = 'NOK'`)
+	feedReady(t, h)
+	for i := range 4 {
+		h.folio.AddTransaction(sellerAccount, incoming(txID(i+1), "2026-10-05", fmt.Sprintf("10%d.00", i), *euro.Kid))
+	}
+	syncNow(t, h)
+	s := feedStateOf(t, h, sellerAccount)
+	if s.failures != 1 || s.reason != "" || !strings.Contains(s.detail, "Matching") {
+		t.Errorf("the account = %+v, want one failure saying matching stopped", s)
+	}
+	if n := strings.Count(h.Logs(), "a bank line could not be matched; it stays pending"); n != 2 {
+		t.Errorf("%d lines passed over, want 2 before the third in a row stops matching", n)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM invoices.bank_transactions WHERE status = 'pending'`); n != 4 {
+		t.Errorf("%d lines pending, want all four", n)
 	}
 }

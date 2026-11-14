@@ -222,9 +222,11 @@ WHERE account = @account AND lease_id = @lease_id::text;
 -- name: BankFeedRefused :execrows
 -- BankFeedRefused ends a claim whose batch broke a rule (F5 step 2, F7):
 -- refused, the rule in reason and the transaction's id in detail, no
--- failures, read again at @next_sync_at. Nothing of the batch was stored.
+-- failures, read again at @next_sync_at, and the last batch a window before
+-- it stored. Nothing of the refused batch was stored.
 UPDATE invoices.bank_feed_accounts SET
     status = 'refused', reason = @reason::text, detail = @detail, failures = 0,
+    last_bank_file_id = coalesce(sqlc.narg(last_bank_file_id)::bigint, last_bank_file_id),
     next_sync_at = CASE WHEN next_sync_at > @now::timestamptz THEN next_sync_at ELSE @next_sync_at::timestamptz END,
     rate_limited_until = NULL, lease_id = NULL, lease_until = NULL,
     updated_at = CASE WHEN status <> 'refused' OR reason IS DISTINCT FROM @reason::text THEN @now::timestamptz ELSE updated_at END
