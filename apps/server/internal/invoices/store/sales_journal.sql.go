@@ -218,7 +218,7 @@ SELECT f.seq, f.kind, f.subject_id, f.invoice_id, f.business_date, f.removed_at,
     COALESCE(p.amount, c.amount, w.amount)::numeric AS amount,
     COALESCE(p.source, c.source, 'manual')::text AS source,
     COALESCE(t.account, '')::text AS bank_account,
-    COALESCE(t.archive_ref, '')::text AS bank_reference,
+    (CASE WHEN t.format = 'feed' THEN t.line_ref ELSE COALESCE(t.archive_ref, '') END)::text AS bank_reference,
     w.id AS write_off_id, w.reason AS write_off_reason, w.vat_correction AS write_off_vat_correction,
     w.amount AS write_off_amount,
     COALESCE(CASE WHEN f.kind = 'recovered_payment' THEN (
