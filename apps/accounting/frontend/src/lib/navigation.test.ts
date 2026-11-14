@@ -6,6 +6,11 @@ describe("the sidebar", () => {
     expect(visibleAccountingNavItems(["accounting:read"]).map((i) => i.key)).not.toContain("journal");
     expect(visibleAccountingNavItems(["accounting:read", "accounting:post"]).map((i) => i.key)).toContain("journal");
     expect(visibleAccountingNavItems([])).toEqual([]);
-    expect(visibleAccountingNavItems(["*"]).length).toBe(13);
+    expect(visibleAccountingNavItems(["*"]).length).toBe(14);
+  });
+
+  it("offers the SAF-T export only to those who export", () => {
+    expect(visibleAccountingNavItems(["accounting:read"]).map((i) => i.key)).not.toContain("saft");
+    expect(visibleAccountingNavItems(["accounting:read", "accounting:export"]).map((i) => i.key)).toContain("saft");
   });
 });

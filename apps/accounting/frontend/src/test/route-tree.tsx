@@ -21,6 +21,7 @@ import {
   OPENING_ROUTE_PATH,
   POSTING_RULES_ROUTE_PATH,
   REPORTS_ROUTE_PATH,
+  SAFT_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
   SETUP_ROUTE_PATH,
   SUPPLIER_INVOICE_ROUTE_PATH,
@@ -43,6 +44,7 @@ import { OpeningPage } from "../pages/opening";
 import { AccountingOverviewPage } from "../pages/overview";
 import { PostingRulesPage } from "../pages/posting-rules";
 import { ReportsPage } from "../pages/reports";
+import { SaftExportPage } from "../pages/saft";
 import { SettingsPage } from "../pages/settings";
 import { SetupPage } from "../pages/setup";
 import { NewSupplierInvoicePage, SupplierInvoicePage, SupplierInvoicesPage } from "../pages/supplier-invoices";
@@ -84,6 +86,7 @@ export const makeRouteTree = () => {
     route(NEW_SUPPLIER_INVOICE_ROUTE_PATH, NewSupplierInvoicePage),
     route(SUPPLIER_INVOICE_ROUTE_PATH, SupplierInvoicePage),
     route(VAT_ROUTE_PATH, VatTermsPage),
+    route(SAFT_ROUTE_PATH, SaftExportPage),
     route(VAT_POSTINGS_ROUTE_PATH, VatPostingsPage, validateVatPostingsSearch),
     route(VAT_TERM_ROUTE_PATH, VatTermPage),
   ]);
