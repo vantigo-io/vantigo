@@ -68,6 +68,10 @@ var words = map[string]map[string]string{
 		"otherAssets": "Other assets", "otherLiabilities": "Other liabilities", "otherResult": "Other income and costs",
 		"shortTerm": "Current liabilities", "equityAndLiabilities": "Total equity and liabilities",
 		"period": "Period", "produced": "Produced",
+		"vat": "VAT specification", "vatRate": "Rate", "vatBase": "Base", "vatOutput": "Output VAT",
+		"vatCalculated": "Calculated VAT", "vatDeducted": "Deducted", "vatLoss": "Loss on receivables",
+		"vatNotDeducted": "Not deducted", "vatTotal": "VAT", "vatReported": "In the return",
+		"vatNotReported": "Not reported", "vatMovement": "The VAT accounts' movement",
 	},
 	"nb": {
 		"journal": "Bokføringsspesifikasjon", "account": "Kontospesifikasjon", "customers": "Kunder", "suppliers": "Leverandører",
@@ -87,6 +91,10 @@ var words = map[string]map[string]string{
 		"otherAssets": "Andre eiendeler", "otherLiabilities": "Annen gjeld", "otherResult": "Andre inntekter og kostnader",
 		"shortTerm": "Kortsiktig gjeld", "equityAndLiabilities": "Sum egenkapital og gjeld",
 		"period": "Periode", "produced": "Laget",
+		"vat": "Merverdiavgiftsspesifikasjon", "vatRate": "Sats", "vatBase": "Grunnlag", "vatOutput": "Utgående mva",
+		"vatCalculated": "Beregnet mva", "vatDeducted": "Fradrag", "vatLoss": "Tap på krav",
+		"vatNotDeducted": "Ikke fradragsført", "vatTotal": "Mva", "vatReported": "I mva-meldingen",
+		"vatNotReported": "Rapporteres ikke", "vatMovement": "Bevegelse på mva-kontoene",
 	},
 }
 
@@ -184,6 +192,8 @@ func (s *server) report(ctx context.Context, in reportInput) (*table, error) {
 			return t.profitAndLoss(ctx, q, in, month)
 		case gen.BalanceSheet:
 			return t.balanceSheet(ctx, q, in, month)
+		case gen.Vat:
+			return t.vatReport(ctx, q, in)
 		}
 		return invalidField("The report cannot be made", "report", "", "No such report.")
 	})

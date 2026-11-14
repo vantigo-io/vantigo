@@ -6,6 +6,7 @@ package accounting
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -61,7 +62,80 @@ func (s *server) GetAccountingMeta(ctx context.Context, _ gen.GetAccountingMetaR
 		return nil, err
 	}
 	out.PayablesOverdue, out.PayablesDueSoon = due.Overdue, due.DueSoon
+	if err := s.vatMeta(ctx, q, settings, today, &out); err != nil {
+		return nil, err
+	}
 	return out, nil
+}
+
+// vatMeta fills the meta's VAT terms (A22): the next term due and the terms
+// that wait to be closed or filed, and whether the books' VAT term disagrees
+// with the seller's registration in Invoices (R10), read with no
+// transaction open.
+func (s *server) vatMeta(ctx context.Context, q *store.Queries, settings store.AccountingSetting, today time.Time,
+	out *gen.GetAccountingMeta200JSONResponse) error {
+	if s.deps.SalesTax != nil {
+		seller, err := s.deps.SalesTax.Seller(ctx)
+		if err != nil {
+			return fmt.Errorf("accounting: read the seller: %w", err)
+		}
+		out.VatRegistrationMismatch = seller.VATRegistered != (settings.VatTerm != "none")
+	}
+	terms := termsThrough(settings.VatTerm, settings.BooksStart, today)
+	if len(terms) == 0 {
+		return nil
+	}
+	rows, err := q.ListVatTerms(ctx)
+	if err != nil {
+		return err
+	}
+	byTerm := map[[2]int32]*store.AccountingVatTerm{}
+	for i := range rows {
+		byTerm[[2]int32{rows[i].Year, rows[i].Term}] = &rows[i]
+	}
+	next := -1
+	for i, t := range terms {
+		item := termItem(t, byTerm[[2]int32{t.Year, t.Number}], settings, today, "0", nil)
+		if item.NeedsClosing {
+			out.VatTermsToClose++
+		}
+		if item.NeedsFiling {
+			out.VatTermsToFile++
+		}
+		if next < 0 && item.FiledAt == nil && t.End.Before(today) {
+			next = i
+		}
+	}
+	if next < 0 {
+		next = len(terms) - 1
+	}
+	t := terms[next]
+	row := byTerm[[2]int32{t.Year, t.Number}]
+	var total string
+	if row != nil && row.State == "closed" {
+		r, err := storedReturn(row)
+		if err != nil {
+			return err
+		}
+		total = r.Total
+	} else {
+		spec, err := computeSpecification(ctx, q, t.Start, t.End)
+		if err != nil {
+			return err
+		}
+		total = spec.ret.Total.String()
+	}
+	var ids []int64
+	if row != nil && row.SettlementVoucherID != nil {
+		ids = append(ids, *row.SettlementVoucherID)
+	}
+	refs, err := voucherRefs(ctx, q, ids)
+	if err != nil {
+		return err
+	}
+	item := termItem(t, row, settings, today, total, refs)
+	out.VatNextTerm = &item
+	return nil
 }
 
 // settingsView is the settings row as the contract answers it.
