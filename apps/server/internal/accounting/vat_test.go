@@ -675,7 +675,10 @@ func TestVatTerms_YearlyAndNone(t *testing.T) {
 		t.Fatalf("yearly terms = %+v", list)
 	}
 	d := func() gen.AccountingVatTermDetail {
-		res := c.Do(http.MethodPost, termPath(2025, 1)+"/close", nil)
+		// The term starts before the books: its return covers 15 August on
+		// only, and the close asks for that to be confirmed (M2).
+		expectProblem(t, c.Do(http.MethodPost, termPath(2025, 1)+"/close", nil), http.StatusConflict, "vat_term_partial")
+		res := c.Do(http.MethodPost, termPath(2025, 1)+"/close", map[string]any{"confirmPartial": true})
 		if res.Status != http.StatusOK {
 			t.Fatalf("close 2025 = %d %s", res.Status, res.Body)
 		}
@@ -684,7 +687,9 @@ func TestVatTerms_YearlyAndNone(t *testing.T) {
 		return d
 	}()
 	res = c.Do(http.MethodGet, termPath(2025, 1)+"/xml", nil)
-	if !bytes.Contains(res.Body, []byte("<skattleggingsperiodeAar>aarlig</skattleggingsperiodeAar>")) || d.Return.Warnings[0] == "" {
+	if !bytes.Contains(res.Body, []byte("<skattleggingsperiodeAar>aarlig</skattleggingsperiodeAar>")) ||
+		!strings.Contains(strings.Join(d.Return.Warnings, " "), "covers 2025-08-15–2025-12-31 only") || !d.Term.Partial ||
+		d.Term.CoversFrom.String() != "2025-08-15" || !d.Checks.Partial {
 		t.Errorf("the yearly return = %s, warnings %v", res.Body, d.Return.Warnings)
 	}
 

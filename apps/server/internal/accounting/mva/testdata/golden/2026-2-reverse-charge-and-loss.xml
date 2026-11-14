@@ -25,7 +25,7 @@
         <mvaSpesifikasjonslinje>
             <mvaKode>1</mvaKode>
             <spesifikasjon>tapPåKrav</spesifikasjon>
-            <mvaKodeRegnskapsystem>Utgående merverdiavgift, 25 %</mvaKodeRegnskapsystem>
+            <mvaKodeRegnskapsystem>Fradragsberettiget innenlands inngående merverdiavgift, 25 %</mvaKodeRegnskapsystem>
             <merverdiavgift>-200</merverdiavgift>
         </mvaSpesifikasjonslinje>
         <mvaSpesifikasjonslinje>
@@ -45,7 +45,7 @@
         </mvaSpesifikasjonslinje>
         <mvaSpesifikasjonslinje>
             <mvaKode>81</mvaKode>
-            <mvaKodeRegnskapsystem>Grunnlag innførsel av varer med fradragsrett for innførselsmerverdiavgift, 25 %</mvaKodeRegnskapsystem>
+            <mvaKodeRegnskapsystem>Grunnlag innførsel av varer med fradragsrett for innførselsmerverdiavgift, 25 % (fradrag)</mvaKodeRegnskapsystem>
             <merverdiavgift>-1250</merverdiavgift>
         </mvaSpesifikasjonslinje>
         <mvaSpesifikasjonslinje>
@@ -71,7 +71,7 @@
         </mvaSpesifikasjonslinje>
         <mvaSpesifikasjonslinje>
             <mvaKode>86</mvaKode>
-            <mvaKodeRegnskapsystem>Tjenester kjøpt fra utlandet med fradragsrett for merverdiavgift, 25 %</mvaKodeRegnskapsystem>
+            <mvaKodeRegnskapsystem>Tjenester kjøpt fra utlandet med fradragsrett for merverdiavgift, 25 % (fradrag)</mvaKodeRegnskapsystem>
             <merverdiavgift>-500</merverdiavgift>
         </mvaSpesifikasjonslinje>
         <mvaSpesifikasjonslinje>
@@ -90,7 +90,7 @@
         </mvaSpesifikasjonslinje>
         <mvaSpesifikasjonslinje>
             <mvaKode>88</mvaKode>
-            <mvaKodeRegnskapsystem>Tjenester kjøpt fra utlandet med fradragsrett for merverdiavgift, 12 %</mvaKodeRegnskapsystem>
+            <mvaKodeRegnskapsystem>Tjenester kjøpt fra utlandet med fradragsrett for merverdiavgift, 12 % (fradrag)</mvaKodeRegnskapsystem>
             <merverdiavgift>-18</merverdiavgift>
         </mvaSpesifikasjonslinje>
     </skattegrunnlagOgBeregnetSkatt>

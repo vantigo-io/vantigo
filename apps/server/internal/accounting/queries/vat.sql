@@ -32,7 +32,7 @@ LEFT JOIN accounting.tax_codes t ON t.id = p.tax_code_id
 LEFT JOIN accounting.tax_code_rates r ON r.tax_code_id = p.tax_code_id AND r.valid_from <= v.voucher_date
     AND (r.valid_to IS NULL OR r.valid_to >= v.voucher_date)
 WHERE v.voucher_date BETWEEN sqlc.arg(from_date)::date AND sqlc.arg(to_date)::date
-  AND v.kind <> 'vat_settlement'
+  AND v.kind NOT IN ('vat_settlement', 'opening')
   AND (p.tax_code_id IS NOT NULL OR p.account_id IN (SELECT id FROM vat_accounts))
 GROUP BY p.account_id, a.number, a.name, p.tax_code_id, t.code, t.name, t.direction, t.reverse_charge, t.reported,
     r.rate_percent, p.tax_role, p.tax_specification
@@ -60,7 +60,8 @@ WITH vat_accounts AS (
             WHEN p.tax_specification = 'tapPåKrav' AND p.tax_role = 'base' THEN 'loss_base'
             WHEN p.tax_specification = 'tapPåKrav' THEN 'loss'
             WHEN p.tax_role = 'base' THEN 'base'
-            WHEN p.tax_role = 'tax_reverse' THEN 'calculated'
+            WHEN p.tax_role = 'tax_reverse' AND t.reverse_charge THEN 'calculated'
+            WHEN p.tax_role = 'tax_reverse' THEN 'other'
             WHEN t.direction = 'output' THEN 'output'
             WHEN t.direction = 'input' AND p.account_id IN (SELECT id FROM vat_accounts) THEN 'deducted'
             WHEN t.direction = 'input' THEN 'not_deducted'
@@ -71,13 +72,13 @@ WITH vat_accounts AS (
     JOIN accounting.accounts a ON a.id = p.account_id
     LEFT JOIN accounting.tax_codes t ON t.id = p.tax_code_id
     WHERE v.voucher_date BETWEEN sqlc.arg(from_date)::date AND sqlc.arg(to_date)::date
-      AND v.kind <> 'vat_settlement'
+      AND v.kind NOT IN ('vat_settlement', 'opening')
       AND (p.tax_code_id IS NOT NULL OR p.account_id IN (SELECT id FROM vat_accounts))
 )
 SELECT c.id, c.voucher_id, c.line_no, c.account_id, c.account_number, c.account_name, c.amount::text AS amount,
     c.tax_code_id, c.tax_code, c.tax_role, coalesce(c.tax_base::text, '')::text AS tax_base, c.tax_specification, c.description,
     c.fiscal_year, c.number, c.voucher_date, c.voucher_description, c.part::text AS part,
-    count(*) OVER ()::int AS total
+    count(*) OVER ()::int AS total, (sum(c.amount) OVER ())::text AS selection_sum
 FROM classified c
 WHERE (sqlc.narg(tax_code_id)::int IS NULL OR c.tax_code_id = sqlc.narg(tax_code_id)::int)
   AND (sqlc.narg(part)::text IS NULL OR c.part = sqlc.narg(part)::text)
@@ -87,53 +88,92 @@ ORDER BY c.voucher_date, c.fiscal_year, c.number, c.line_no
 OFFSET sqlc.arg(row_offset) LIMIT sqlc.arg(row_limit);
 
 -- name: ListVatTerms :many
-SELECT * FROM accounting.vat_terms ORDER BY year, term;
+-- ListVatTerms is the books' terms of a kind that have been closed once, each
+-- with its standing closing's total (NULL while open).
+SELECT t.*, coalesce(c.figures ->> 'total', '')::text AS closed_total
+FROM accounting.vat_terms t
+LEFT JOIN accounting.vat_term_closings c ON c.id = t.current_closing_id
+WHERE t.term_kind = sqlc.arg(term_kind)
+ORDER BY t.year, t.term;
 
 -- name: GetVatTerm :one
-SELECT * FROM accounting.vat_terms WHERE year = sqlc.arg(year) AND term = sqlc.arg(term);
+SELECT * FROM accounting.vat_terms
+WHERE year = sqlc.arg(year) AND term = sqlc.arg(term) AND term_kind = sqlc.arg(term_kind);
 
 -- name: GetVatTermForUpdate :one
 -- GetVatTermForUpdate is taken after the settings row (FOR UPDATE), the order
 -- every write to a term takes them in.
-SELECT * FROM accounting.vat_terms WHERE year = sqlc.arg(year) AND term = sqlc.arg(term) FOR UPDATE;
+SELECT * FROM accounting.vat_terms
+WHERE year = sqlc.arg(year) AND term = sqlc.arg(term) AND term_kind = sqlc.arg(term_kind) FOR UPDATE;
 
--- name: CloseVatTerm :one
--- CloseVatTerm writes a term's close: made on its first close, its
--- state, figures, XML and settlement voucher replaced on a later one.
-INSERT INTO accounting.vat_terms (year, term, term_kind, period_start, period_end, state, closings, figures,
-    return_xml, settlement_voucher_id, closed_at, closed_by_user_id, updated_at)
-VALUES (sqlc.arg(year), sqlc.arg(term), sqlc.arg(term_kind), sqlc.arg(period_start), sqlc.arg(period_end), 'closed',
-    sqlc.arg(closings), sqlc.arg(figures), sqlc.arg(return_xml), sqlc.narg(settlement_voucher_id), sqlc.arg(now),
-    sqlc.arg(user_id), sqlc.arg(now))
-ON CONFLICT (year, term) DO UPDATE
-SET state = 'closed', closings = EXCLUDED.closings, figures = EXCLUDED.figures, return_xml = EXCLUDED.return_xml,
-    settlement_voucher_id = EXCLUDED.settlement_voucher_id, closed_at = EXCLUDED.closed_at,
-    closed_by_user_id = EXCLUDED.closed_by_user_id, updated_at = EXCLUDED.updated_at
+-- name: EnsureVatTerm :one
+-- EnsureVatTerm is a term's row, made open on its first close.
+INSERT INTO accounting.vat_terms (year, term, term_kind, period_start, period_end, state, updated_at)
+VALUES (sqlc.arg(year), sqlc.arg(term), sqlc.arg(term_kind), sqlc.arg(period_start), sqlc.arg(period_end), 'open', sqlc.arg(now))
+ON CONFLICT (year, term, term_kind) DO UPDATE SET updated_at = accounting.vat_terms.updated_at
 RETURNING *;
 
--- name: ReopenVatTerm :exec
--- ReopenVatTerm opens a closed term again: what the close made is history
--- now, in vat_term_events and the reversed settlement voucher.
+-- name: InsertVatTermClosing :one
+INSERT INTO accounting.vat_term_closings (vat_term_id, closing, figures, return_xml, settlement_voucher_id, closed_at,
+    closed_by_user_id)
+VALUES (sqlc.arg(vat_term_id), sqlc.arg(closing), sqlc.arg(figures), sqlc.arg(return_xml), sqlc.narg(settlement_voucher_id),
+    sqlc.arg(now), sqlc.arg(user_id))
+RETURNING *;
+
+-- name: SetVatTermClosed :exec
 UPDATE accounting.vat_terms
-SET state = 'open', figures = NULL, return_xml = NULL, settlement_voucher_id = NULL, closed_at = NULL,
-    closed_by_user_id = NULL, updated_at = sqlc.arg(now)
+SET state = 'closed', closings = sqlc.arg(closings), current_closing_id = sqlc.arg(closing_id), updated_at = sqlc.arg(now)
+WHERE id = sqlc.arg(id);
+
+-- name: ReopenVatTerm :exec
+-- ReopenVatTerm opens a closed term again; its closing stays in
+-- vat_term_closings.
+UPDATE accounting.vat_terms SET state = 'open', current_closing_id = NULL, updated_at = sqlc.arg(now)
 WHERE id = sqlc.arg(id);
 
 -- name: SetVatTermFiled :exec
 UPDATE accounting.vat_terms
 SET filed_at = sqlc.narg(filed_at), filed_reference = sqlc.narg(filed_reference),
-    filed_by_user_id = sqlc.narg(filed_by_user_id), updated_at = sqlc.arg(now)
+    filed_by_user_id = sqlc.narg(filed_by_user_id), filed_closing_id = sqlc.narg(filed_closing_id), updated_at = sqlc.arg(now)
 WHERE id = sqlc.arg(id);
 
+-- name: GetVatTermClosing :one
+SELECT * FROM accounting.vat_term_closings WHERE id = sqlc.arg(id);
+
+-- name: GetVatTermClosingByNumber :one
+SELECT * FROM accounting.vat_term_closings WHERE vat_term_id = sqlc.arg(vat_term_id) AND closing = sqlc.arg(closing);
+
+-- name: ListVatTermClosings :many
+SELECT c.id, c.closing, c.settlement_voucher_id, c.closed_at, c.closed_by_user_id, (c.figures ->> 'total')::text AS total
+FROM accounting.vat_term_closings c
+WHERE c.vat_term_id = sqlc.arg(vat_term_id)
+ORDER BY c.closing DESC;
+
+-- name: ClosedTermsFigures :many
+-- ClosedTermsFigures is every closed term with its standing closing's figures,
+-- for the close's check that none has changed since (vat_term_stale).
+SELECT t.year, t.term, t.period_start, t.period_end, c.figures
+FROM accounting.vat_terms t
+JOIN accounting.vat_term_closings c ON c.id = t.current_closing_id
+WHERE t.term_kind = sqlc.arg(term_kind)
+ORDER BY t.year, t.term;
+
+-- name: LastClosedTermEnd :one
+-- LastClosedTermEnd is the end of the latest closed term: the lock never
+-- moves back behind it (H1). No row when none is.
+SELECT period_end FROM accounting.vat_terms WHERE state = 'closed' ORDER BY period_end DESC LIMIT 1;
+
 -- name: InsertVatTermEvent :exec
-INSERT INTO accounting.vat_term_events (vat_term_id, kind, voucher_id, reason, filed_at, filed_reference, at, by_user_id)
-VALUES (sqlc.arg(vat_term_id), sqlc.arg(kind), sqlc.narg(voucher_id), sqlc.narg(reason), sqlc.narg(filed_at),
+INSERT INTO accounting.vat_term_events (vat_term_id, kind, closing_id, voucher_id, reason, filed_at, filed_reference, at,
+    by_user_id)
+VALUES (sqlc.arg(vat_term_id), sqlc.arg(kind), sqlc.narg(closing_id), sqlc.narg(voucher_id), sqlc.narg(reason), sqlc.narg(filed_at),
     sqlc.narg(filed_reference), sqlc.arg(now), sqlc.arg(user_id));
 
 -- name: ListVatTermEvents :many
-SELECT e.*, v.fiscal_year AS voucher_fiscal_year, v.number AS voucher_number
+SELECT e.*, v.fiscal_year AS voucher_fiscal_year, v.number AS voucher_number, c.closing AS closing_number
 FROM accounting.vat_term_events e
 LEFT JOIN accounting.vouchers v ON v.id = e.voucher_id
+LEFT JOIN accounting.vat_term_closings c ON c.id = e.closing_id
 WHERE e.vat_term_id = sqlc.arg(vat_term_id)
 ORDER BY e.id DESC;
 
@@ -149,3 +189,15 @@ SELECT period_end FROM accounting.vat_terms WHERE filed_at IS NOT NULL ORDER BY 
 SELECT count(*)::int FROM accounting.unposted
 WHERE posted_at IS NULL AND resolved_at IS NULL
   AND fact_date BETWEEN sqlc.arg(from_date)::date AND sqlc.arg(to_date)::date;
+
+-- name: TaxCodeHasPostings :one
+-- TaxCodeHasPostings reports whether any posting carries the code: its VAT
+-- and counter accounts are then fixed (H4).
+SELECT EXISTS (SELECT 1 FROM accounting.postings WHERE tax_code_id = sqlc.arg(tax_code_id))::boolean;
+
+-- name: VatAccountIDs :many
+-- VatAccountIDs is every account a tax code names as its VAT or counter
+-- account: no opening line may stand on one (H3).
+SELECT vat_account_id::int AS id FROM accounting.tax_codes WHERE vat_account_id IS NOT NULL
+UNION
+SELECT counter_vat_account_id::int FROM accounting.tax_codes WHERE counter_vat_account_id IS NOT NULL;

@@ -121,6 +121,27 @@ func (s *server) GetAccountingOpening(ctx context.Context, _ gen.GetAccountingOp
 	return out, nil
 }
 
+// checkOpeningLines refuses an opening voucher's line on a VAT account — an
+// account a tax code names as its VAT or counter account (H3): VAT owed or
+// due from before the books start is a balance on the VAT settlement account,
+// and a balance left on a VAT account would keep the first term's VAT
+// accounts from reconciling. Every way an opening is built goes through it,
+// a person's form and an import alike, on the caller's transaction.
+func checkOpeningLines(ctx context.Context, q *store.Queries, lines []Line) error {
+	ids, err := q.VatAccountIDs(ctx)
+	if err != nil {
+		return err
+	}
+	var f fieldErrors
+	for i, l := range lines {
+		if l.AccountID != 0 && slices.Contains(ids, l.AccountID) {
+			f.addCoded(l.field(i)+".accountId", codeOpeningVatAccount,
+				"A VAT account takes no opening balance: unpaid VAT from before the books start belongs on the VAT settlement account (2740).")
+		}
+	}
+	return f.refusal("The opening balances cannot be posted")
+}
+
 // PostAccountingOpening enters the opening balances (A9).
 func (s *server) PostAccountingOpening(ctx context.Context, req gen.PostAccountingOpeningRequestObject) (gen.PostAccountingOpeningResponseObject, error) {
 	const title = "The opening balances cannot be posted"
@@ -217,6 +238,9 @@ func (s *server) PostAccountingOpening(ctx context.Context, req gen.PostAccounti
 			Lines: lines}
 		if total.Sign() != 0 {
 			v.Lines = append(v.Lines, Line{Role: "opening", Amount: neg(total)})
+		}
+		if err := checkOpeningLines(ctx, q, v.Lines); err != nil {
+			return err
 		}
 		if posted, err = Post(ctx, tx, v); err != nil {
 			return err

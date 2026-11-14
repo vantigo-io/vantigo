@@ -133,7 +133,12 @@ type Figure struct {
 	RatePercent string
 	// Specification is TapPaaKrav for a loss's figure, "" otherwise.
 	Specification string
-	Base          *big.Rat
+	// LossName is, on a loss's figure, the name of the input code its line
+	// goes on (LossCode); DeductionName, on a reverse-charge code, the name
+	// its deduction line carries, so its two lines are two combinations of
+	// code and mvaKodeRegnskapsystem. "" leaves Name.
+	LossName, DeductionName string
+	Base                    *big.Rat
 	// Output is output VAT; Calculated reverse charge's calculated VAT;
 	// Deducted input VAT deducted; Loss the VAT a loss takes back.
 	Output, Calculated, Deducted, Loss *big.Rat
@@ -176,6 +181,9 @@ type Return struct {
 	// positive, to receive when negative. ExactTotal is the ledger's.
 	Total      *big.Int
 	ExactTotal *big.Rat
+	// Considered is how many lines the figures made, those left out as zero
+	// included: the rounding difference is less than a krone each.
+	Considered int
 }
 
 // RoundingDifference is ExactTotal − Total: the øre the return cut, which
@@ -189,12 +197,28 @@ func (r Return) RoundingDifference() *big.Rat {
 // zero once the øre are cut — its øre stay in ExactTotal.
 func Build(figures []Figure) Return {
 	out := Return{Lines: []Line{}, Total: new(big.Int), ExactTotal: new(big.Rat)}
+	// Lines of one code, specification, side, rate and name are one line
+	// (L1): Skatteetaten's model has one mvaSpesifikasjonslinje per
+	// combination of code, specification and mvaKodeRegnskapsystem. They are
+	// merged exact and cut once.
+	type key struct {
+		code, spec, rate, name string
+		side                   Side
+	}
+	merged := map[key]*Line{}
+	var order []key
 	add := func(l Line) {
-		out.ExactTotal.Add(out.ExactTotal, l.ExactVAT)
-		if (l.Base == nil || l.Base.Sign() == 0) && l.VAT.Sign() == 0 {
+		k := key{l.Code, l.Specification, l.Rate, l.Name, l.Side}
+		m, ok := merged[k]
+		if !ok {
+			c := l
+			merged[k], order = &c, append(order, k)
 			return
 		}
-		out.Lines = append(out.Lines, l)
+		m.ExactVAT = new(big.Rat).Add(m.ExactVAT, l.ExactVAT)
+		if l.ExactBase != nil {
+			m.ExactBase = new(big.Rat).Add(zero(m.ExactBase), l.ExactBase)
+		}
 	}
 	for _, f := range figures {
 		group := GroupOf(f.Code)
@@ -209,32 +233,57 @@ func Build(figures []Figure) Return {
 				groupOrder, order = Order(c)
 			}
 			vat := zero(f.Loss)
-			add(Line{Group: group, Code: c, Specification: TapPaaKrav, Name: f.Name, Side: SideDeduction, TaxCodeID: f.TaxCodeID,
-				ExactVAT: vat, VAT: cut(vat), groupOrder: groupOrder, order: order, place: 2})
+			name := f.Name
+			if f.LossName != "" {
+				name = f.LossName
+			}
+			add(Line{Group: group, Code: c, Specification: TapPaaKrav, Name: name, Side: SideDeduction, TaxCodeID: f.TaxCodeID,
+				ExactVAT: vat, groupOrder: groupOrder, order: order, place: 2})
 			continue
 		}
 		rate := satsOf(f.RatePercent)
 		switch {
 		case f.Direction == "output":
 			base, vat := zero(f.Base), zero(f.Output)
-			l := Line{Group: group, Code: f.Code, Name: f.Name, Side: SideOutput, TaxCodeID: f.TaxCodeID, ExactBase: base,
-				Base: cut(base), Rate: rate, ExactVAT: vat, VAT: cut(vat), groupOrder: groupOrder, order: order}
-			if base.Sign() < 0 {
-				l.Remark = RemarkCreditNote
-			}
-			add(l)
+			add(Line{Group: group, Code: f.Code, Name: f.Name, Side: SideOutput, TaxCodeID: f.TaxCodeID, ExactBase: base,
+				Rate: rate, ExactVAT: vat, groupOrder: groupOrder, order: order})
 		case f.ReverseCharge:
 			base, vat := zero(f.Base), zero(f.Calculated)
-			l := Line{Group: group, Code: f.Code, Name: f.Name, Side: SideOutput, TaxCodeID: f.TaxCodeID, ExactBase: base,
-				Base: cut(base), Rate: rate, ExactVAT: vat, VAT: cut(vat), groupOrder: groupOrder, order: order}
-			if base.Sign() < 0 {
-				l.Remark = RemarkCreditNote
+			add(Line{Group: group, Code: f.Code, Name: f.Name, Side: SideOutput, TaxCodeID: f.TaxCodeID, ExactBase: base,
+				Rate: rate, ExactVAT: vat, groupOrder: groupOrder, order: order})
+			d := deduction(f, group, groupOrder, order)
+			if f.DeductionName != "" {
+				d.Name = f.DeductionName
 			}
-			add(l)
+			add(d)
+		case f.Direction == "input":
 			add(deduction(f, group, groupOrder, order))
 		default:
-			add(deduction(f, group, groupOrder, order))
+			// A code of direction none is never reported; nothing of it is
+			// a line.
 		}
+	}
+	for _, k := range order {
+		l := *merged[k]
+		out.Considered++
+		out.ExactTotal.Add(out.ExactTotal, l.ExactVAT)
+		l.VAT = cut(l.ExactVAT)
+		if l.ExactBase != nil {
+			l.Base = cut(l.ExactBase)
+		}
+		l.Remark = ""
+		switch {
+		case l.Specification != "":
+			// A tapPåKrav line of either sign needs no remark (R021's exception).
+		case l.Side == SideOutput && l.ExactBase.Sign() < 0:
+			l.Remark = RemarkCreditNote
+		case l.Side == SideDeduction && l.ExactVAT.Sign() > 0:
+			l.Remark = RemarkCreditNote
+		}
+		if (l.Base == nil || l.Base.Sign() == 0) && l.VAT.Sign() == 0 {
+			continue
+		}
+		out.Lines = append(out.Lines, l)
 	}
 	slices.SortStableFunc(out.Lines, func(a, b Line) int {
 		for _, d := range []int{a.groupOrder - b.groupOrder, a.order - b.order, a.place - b.place, strings.Compare(a.Rate, b.Rate)} {
@@ -254,13 +303,27 @@ func Build(figures []Figure) Return {
 // deduction is a code's line of input VAT deducted: the VAT alone, negative;
 // positive (a term of more credit notes than purchases) with the remark.
 func deduction(f Figure, group Group, groupOrder, order int) Line {
-	vat := zero(f.Deducted)
-	l := Line{Group: group, Code: f.Code, Name: f.Name, Side: SideDeduction, TaxCodeID: f.TaxCodeID, ExactVAT: vat, VAT: cut(vat),
+	return Line{Group: group, Code: f.Code, Name: f.Name, Side: SideDeduction, TaxCodeID: f.TaxCodeID, ExactVAT: zero(f.Deducted),
 		groupOrder: groupOrder, order: order, place: 1}
-	if vat.Sign() > 0 {
-		l.Remark = RemarkCreditNote
+}
+
+// RateConsistent reports whether an output side's VAT is its base × its rate
+// cut to whole kroner, within one krone (R019, which Skatteetaten's FAQ says
+// it checks within one krone a line, ten kroner at least for the return). A
+// code's VAT is the sum of each document's VAT rounded to the øre, so a term
+// of many documents can drift past it; the return then says so. A deduction
+// or a specification line has no base to check.
+func (l Line) RateConsistent() bool {
+	if l.Side != SideOutput || l.Base == nil || l.Specification != "" {
+		return true
 	}
-	return l
+	rate, ok := new(big.Rat).SetString(strings.ReplaceAll(l.Rate, ",", "."))
+	if !ok {
+		return true
+	}
+	want := cut(new(big.Rat).Quo(new(big.Rat).Mul(new(big.Rat).SetInt(l.Base), rate), big.NewRat(100, 1)))
+	d := new(big.Int).Sub(want, l.VAT)
+	return d.CmpAbs(big.NewInt(1)) <= 0
 }
 
 // cut is r with its decimals cut, toward zero: the return's whole kroner.
