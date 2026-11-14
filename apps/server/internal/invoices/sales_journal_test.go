@@ -309,31 +309,27 @@ func TestSalesJournal_ChargePaymentFactsCarryTheirAmountAlone(t *testing.T) {
 	}
 }
 
-// A payment and a charge payment the bank feed matched name their line and
-// no registering user (bank feed design F6): each makes its fact like a bank
-// file's, its source bank_feed and its account the line's.
+// A payment and a charge payment the bank feed's sync matched (bank feed
+// design F5, F6) — registered by no user — each make their fact like a bank
+// file's, their source bank_feed and their account the feed account's: one
+// incoming payment of 1035 pays the invoice's 1000 and the 35 its letter
+// claimed, read from the bank by the worker's real cycle.
 func TestSalesJournal_BankFeedPaymentsMakeFactsWithTheirAccount(t *testing.T) {
 	t.Parallel()
-	h := readyToIssue(t)
+	h, _ := syncHarness(t)
 	ctx := context.Background()
-	id := plantOverdue(t, h, overdueSpec{number: 9001, customer: customerAcme, issue: "2026-09-01", due: "2026-09-30"})
-	batch := plantID(t, h, `INSERT INTO invoices.bank_files (format, sha256, file_identity, object_key, byte_size, accounts,
-		    transactions, ignored, ignored_kinds, uploaded_by_user_id, uploaded_at, provider)
-		VALUES ('feed', repeat('a', 64), 'folio-1', 'bank-files/folio-1', 2, ARRAY['15032080119'], 2, 0, '{}', NULL, now(), 'folio')
-		RETURNING id`)
-	line := func(ref string, ordinal int) int64 {
-		return plantID(t, h, `INSERT INTO invoices.bank_transactions (bank_file_id, line_ref, format, account, direction, booked_on,
-		    amount, currency, fingerprint, ordinal)
-		VALUES ($1, $2, 'feed', '15032080119', 'credit', DATE '2026-09-15', 300, 'NOK', repeat($3, 64), $4) RETURNING id`,
-			batch, ref, strconv.Itoa(ordinal), ordinal)
-	}
-	payment := plantID(t, h, `INSERT INTO invoices.payments (invoice_id, paid_on, amount, currency, source, bank_transaction_id,
-		    reference, registered_by_user_id, registered_at)
-		VALUES ($1, '2026-09-15', 300, 'NOK', 'bank_feed', $2, '', NULL, now()) RETURNING id`, id, line("feed-1", 1))
-	charge := plantID(t, h, `INSERT INTO invoices.charge_payments (invoice_id, paid_on, amount, currency, source, bank_transaction_id,
-		    reference, registered_by_user_id, registered_at)
-		VALUES ($1, '2026-09-15', 35, 'NOK', 'bank_feed', $2, '', NULL, now()) RETURNING id`, id, line("feed-2", 2))
+	inv := kidInvoice(t, h)
+	plantSent(t, h, inv.ID, sentFacts{1, "2026-09-28", "reminder_fee", "35", "", "0"})
+	feedReady(t, h)
+	h.folio.AddTransaction(sellerAccount, incoming(txID(1), "2026-10-06", "1035.00", *inv.Kid))
+	syncNow(t, h)
 
+	line := feedLine(t, h, txID(1))
+	if got := stateOf(t, h, line); got != "matched -" {
+		t.Fatalf("the feed's line = %s, want matched", got)
+	}
+	payment := modtest.One[int64](t, h.Harness, `SELECT id FROM invoices.payments WHERE bank_transaction_id = $1 AND registered_by_user_id IS NULL`, line)
+	charge := modtest.One[int64](t, h.Harness, `SELECT id FROM invoices.charge_payments WHERE bank_transaction_id = $1 AND registered_by_user_id IS NULL`, line)
 	facts, err := salesJournal(h).Facts(ctx, 0, 10)
 	if err != nil {
 		t.Fatal(err)
@@ -345,9 +341,9 @@ func TestSalesJournal_BankFeedPaymentsMakeFactsWithTheirAccount(t *testing.T) {
 		kind    string
 		subject int64
 		amount  string
-	}{{contracts.FactPayment, payment, "300.00"}, {contracts.FactChargePayment, charge, "35.00"}} {
-		if f := facts[i]; f.Kind != w.kind || f.SubjectID != w.subject || f.AmountNOK != w.amount ||
-			f.Source != contracts.PaymentSourceBankFeed || f.BankAccount != "15032080119" || f.Date.Format(time.DateOnly) != "2026-09-15" {
+	}{{contracts.FactPayment, payment, "1000.00"}, {contracts.FactChargePayment, charge, "35.00"}} {
+		if f := facts[i]; f.Kind != w.kind || f.SubjectID != w.subject || f.AmountNOK != w.amount || f.InvoiceID != inv.ID ||
+			f.Source != contracts.PaymentSourceBankFeed || f.BankAccount != sellerAccount || f.Date.Format(time.DateOnly) != "2026-10-06" {
 			t.Errorf("fact %d = %+v, want the bank_feed %s on the feed's account", i+1, f, w.kind)
 		}
 	}
