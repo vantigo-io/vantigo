@@ -44,7 +44,7 @@ const importRegistryConcurrency = 4
 
 // importRegistryAnswer is what Brønnøysund said about one organisation number,
 // or why it said nothing: Err is a registry that could not be reached;
-// otherwise Outcome is the entity's (brreg_entity.go), FetchedAt when it
+// otherwise Outcome is the entity's (brreg.Outcome), FetchedAt when it
 // answered.
 type importRegistryAnswer struct {
 	OrgNr     string

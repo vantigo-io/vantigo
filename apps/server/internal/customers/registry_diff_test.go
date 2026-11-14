@@ -9,8 +9,8 @@ import (
 // This file tests registry_diff.go, the pure half of a refresh (Brreg in
 // full design D4): what one fetch found different from the record on file,
 // and how each difference is rendered for the timeline. It is package
-// customers (the brreg_entity_test.go convention) because everything here is
-// unexported and needs neither a harness nor a database — a table test per
+// customers (internal/brreg/entity_test.go's convention) because everything
+// here is unexported and needs neither a harness nor a database — a table test per
 // rule is both faster and sharper than driving the same case through HTTP.
 
 func registryDate(t *testing.T, s string) *time.Time {

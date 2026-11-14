@@ -41,7 +41,7 @@ import (
 // card ask a person instead.
 
 // The four outcomes a refresh answers with (design D2), mirroring
-// brreg_entity.go's brreg.Outcome one level up as a wire string:
+// the brreg package's brreg.Outcome one level up as a wire string:
 // "found" and "deleted" both store a record, "removed" deletes the one on
 // file, "unknown" stores nothing at all.
 const (
@@ -92,7 +92,7 @@ type registryAddress struct {
 	CountryCode  string   `json:"countryCode,omitempty"`
 }
 
-// registryRecord is one stored registry record: brreg_entity.go's
+// registryRecord is one stored registry record: the brreg package's
 // brreg.Entity after truncation, plus the moment it was read. It is the
 // one shape this file's storage, diff (registry_diff.go) and response all
 // speak, so a value read back from the database and a value just fetched are
@@ -129,7 +129,7 @@ type registryRecord struct {
 	RegistryUpdatedHint *time.Time
 }
 
-// registryAddressFrom is brreg_entity.go's address translated into the
+// registryAddressFrom is brreg.Address translated into the
 // stored shape — the same five fields, a different package-level type
 // because this one carries the json tags the jsonb column is written with
 // and the wire repeats.
@@ -661,7 +661,7 @@ func invalidateRegistryRecord(ctx context.Context, q *store.Queries, customerID 
 // A failed network call returns the error with nothing stored and nothing
 // recorded: the record on file, however old, is a better answer than none.
 // Each of the four outcomes is a real answer about a real company, never an
-// error — see brreg_entity.go's own doc comment for why the registry has
+// error — see internal/brreg/entity.go's doc comment for why the registry has
 // three shapes of "gone" and only one of them is a failure.
 //
 // The answer is stored in a transaction opened on on: the pool for the

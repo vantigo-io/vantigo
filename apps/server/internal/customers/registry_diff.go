@@ -67,7 +67,7 @@ func registryAddressDisplay(a *registryAddress) string {
 }
 
 // registryEmployeesDisplay renders a headcount: the number itself, or ""
-// when the registry has not registered one at all (brreg_entity.go's
+// when the registry has not registered one at all (brreg.Entity's
 // Employees is nil for exactly that, distinct from a registered zero).
 func registryEmployeesDisplay(employees *int32) string {
 	if employees == nil {

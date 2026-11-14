@@ -25,7 +25,7 @@ import (
 // no test here opens a socket.
 
 // registryEntityResponse is a canned entity response under the pinned v2
-// media type the client asks for (brreg_entity.go's brregEntityMediaType) —
+// media type the client asks for (internal/brreg/entity.go's entityMediaType) —
 // brreg_test.go's jsonResponse answers plain application/json, which the
 // client also accepts, but the entity endpoint's own responses are the v2
 // type and these fixtures should look like what production sees.
@@ -75,7 +75,7 @@ const movedEquinorRegistryBody = `{
 }`
 
 // deletedRegistryBody is the registry's reduced body for a struck-off
-// entity: HTTP 200 with respons_klasse "SlettetEnhet" (brreg_entity.go's own
+// entity: HTTP 200 with respons_klasse "SlettetEnhet" (internal/brreg/entity.go's own
 // doc comment on why that is a body to read, not a status to branch on).
 const deletedRegistryBody = `{
 	"respons_klasse": "SlettetEnhet",
