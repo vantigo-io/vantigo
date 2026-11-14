@@ -42,6 +42,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/vantigo-io/vantigo/server/internal/accounting/store"
@@ -67,7 +68,10 @@ const (
 	reasonAmountInNOKNeeded      = "amount_in_nok_needed"
 	reasonEnterAsSupplierInvoice = "enter_as_supplier_invoice"
 	reasonVATNotDeducted         = "vat_not_deducted"
-	roleEmployeePayables         = "employee_payables"
+	// reasonExpenseInvoiceUnapproved is an approval made into a supplier
+	// invoice and then unapproved in Expenses (L1).
+	reasonExpenseInvoiceUnapproved = "expense_invoice_unapproved"
+	roleEmployeePayables           = "employee_payables"
 	// fallbackExpenseAccountNumber is the default chart's Other costs, where
 	// an expense of a category no rule names is debited.
 	fallbackExpenseAccountNumber = "7700"
@@ -119,12 +123,15 @@ func expenseNOKTotal(f contracts.ExpenseFact) (string, bool) {
 }
 
 // expenseLineNote is, on a row under Needs attention, one line of the fact
-// in another currency and the NOK amount a person entered for it.
+// in another currency and the NOK amount a person entered for it, with who
+// entered it and when (M3).
 type expenseLineNote struct {
-	Kind      string  `json:"kind"`
-	Currency  string  `json:"currency"`
-	Gross     string  `json:"gross"`
-	AmountNOK *string `json:"amountNok"`
+	Kind      string     `json:"kind"`
+	Currency  string     `json:"currency"`
+	Gross     string     `json:"gross"`
+	AmountNOK *string    `json:"amountNok"`
+	EnteredBy *uuid.UUID `json:"enteredBy,omitempty"`
+	EnteredAt *time.Time `json:"enteredAt,omitempty"`
 }
 
 // parseLineNotes is a row's nok_amounts.
@@ -137,9 +144,12 @@ func parseLineNotes(text string) map[string]expenseLineNote {
 	return out
 }
 
-// noteAmounts is the NOK amounts a row's notes carry, by entry.
-func noteAmounts(text string) map[int64]*big.Rat {
+// noteAmounts is the NOK amounts a row's notes carry, by entry, and who
+// entered the latest of them.
+func noteAmounts(text string) (map[int64]*big.Rat, *uuid.UUID) {
 	out := map[int64]*big.Rat{}
+	var by *uuid.UUID
+	var at time.Time
 	for k, n := range parseLineNotes(text) {
 		id, err := strconv.ParseInt(k, 10, 64)
 		if err != nil || n.AmountNOK == nil {
@@ -148,8 +158,11 @@ func noteAmounts(text string) map[int64]*big.Rat {
 		if a, ok := parseAmount(*n.AmountNOK); ok {
 			out[id] = a
 		}
+		if n.EnteredBy != nil && n.EnteredAt != nil && !n.EnteredAt.Before(at) {
+			by, at = n.EnteredBy, *n.EnteredAt
+		}
 	}
-	return out
+	return out, by
 }
 
 // expenseBooks is what the books hold that an expense voucher is built
@@ -197,6 +210,12 @@ func readExpenseBooks(ctx context.Context, q *store.Queries, on time.Time) (expe
 
 func (b expenseBooks) text(en, nb string, args ...any) string {
 	return salesBooks{language: b.language}.text(en, nb, args...)
+}
+
+// enteredText names, on a line posted with an amount a person entered, the
+// figure entered and the amount in the original currency (M3).
+func (b expenseBooks) enteredText(nok *big.Rat, gross, cur string) string {
+	return b.text(" · NOK %s entered for %s %s", " · NOK %s ført inn for %s %s", money(nok), cur, gross)
 }
 
 // inferredCode is the input code an expense's VAT matches (R2): VAT over net
@@ -270,6 +289,9 @@ func expenseApprovalVoucher(b expenseBooks, f contracts.ExpenseFact, nok map[int
 		text := b.text("Expense %d", "Utgift %d", l.EntryID)
 		if l.CategoryName != "" {
 			text += " · " + l.CategoryName
+		}
+		if foreign {
+			text += b.enteredText(gross, l.Gross, l.Currency)
 		}
 		if rule != nil {
 			text += b.text(" · rule %s v%d", " · regel %s v%d", rule.Name, rule.Version)
@@ -351,6 +373,7 @@ func (b expenseBooks) expenseAccount(l contracts.ExpenseLine) (int32, bool, *sto
 // owed. nil when it comes to nothing.
 func expenseReimbursementVoucher(ctx context.Context, q *store.Queries, b expenseBooks, f contracts.ExpenseFact, nok map[int64]*big.Rat) (*Voucher, error) {
 	owed := new(big.Rat)
+	var entered []string
 	cost, err := q.LatestExpenseCost(ctx, store.LatestExpenseCostParams{SourceKind: ptr(f.Subject + "." + contracts.ExpenseApproved),
 		SourceID: &f.SubjectID})
 	switch {
@@ -371,6 +394,7 @@ func expenseReimbursementVoucher(ctx context.Context, q *store.Queries, b expens
 					continue
 				}
 				gross = amount
+				entered = append(entered, strings.TrimPrefix(b.enteredText(amount, l.Gross, l.Currency), " · "))
 			}
 			owed.Add(owed, gross)
 		}
@@ -394,6 +418,9 @@ func expenseReimbursementVoucher(ctx context.Context, q *store.Queries, b expens
 	text := b.subjectText(f, "Expense %d reimbursed", "Utgift %d refundert", "Travel claim %d reimbursed", "Reiseregning %d refundert")
 	if f.ReimbursementReference != "" {
 		text += " · " + f.ReimbursementReference
+	}
+	if len(entered) > 0 {
+		text += " · " + strings.Join(entered, ", ")
 	}
 	return &Voucher{Kind: "reimbursement", Date: f.Date, DocumentDate: f.Date, Description: truncate(text, 500),
 		Source: expenseSource(f), Rule: expenseRuleReimbursed, RuleVersion: expenseRuleVersion,
@@ -471,6 +498,11 @@ func postExpense(ctx context.Context, tx pgx.Tx, it sourceItem, now time.Time) (
 	undoing := f.Occurrence == contracts.ExpenseUnapproved || f.Occurrence == contracts.ExpenseReimbursementUndone
 	if undoing && f.UndoesSeq != 0 {
 		u := undoneSource(*f)
+		// An approval made into a supplier invoice in Accounting is not
+		// undone by Expenses: the invoice stands, and a person is told (L1).
+		if out, handled, err := undoneIntoInvoice(ctx, q, it, b, u, now); err != nil || handled {
+			return out, err
+		}
 		_, err := q.OpenUnpostedBySource(ctx, store.OpenUnpostedBySourceParams{SourceModule: u.Module, SourceKind: u.Kind,
 			SourceID: u.ID, SourcePart: u.Part})
 		switch {
@@ -533,6 +565,10 @@ func postExpense(ctx context.Context, tx pgx.Tx, it sourceItem, now time.Time) (
 		return outcomeSkipped, nil
 	}
 	v.At = now
+	if it.nokBy != nil && len(it.nok) > 0 {
+		// Posted with amounts a person entered: the voucher is theirs (M3).
+		v.PostedBy = it.nokBy
+	}
 	voucher, err := Post(ctx, tx, *v)
 	var refused *refusal
 	if errors.As(err, &refused) {
@@ -544,6 +580,15 @@ func postExpense(ctx context.Context, tx pgx.Tx, it sourceItem, now time.Time) (
 	if err := q.MarkUnpostedPosted(ctx, store.MarkUnpostedPostedParams{VoucherID: &voucher.ID, Now: &now,
 		SourceModule: src.Module, SourceKind: src.Kind, SourceID: src.ID, SourcePart: src.Part}); err != nil {
 		return outcomeSkipped, err
+	}
+	if undoing && f.UndoesSeq != 0 {
+		// The voucher an informational row spoke of is turned back: there is
+		// nothing left to say about it (L6).
+		u := undoneSource(*f)
+		if err := q.ResolveInformationalBySource(ctx, store.ResolveInformationalBySourceParams{Now: &now,
+			SourceModule: u.Module, SourceKind: u.Kind, SourceID: u.ID, SourcePart: u.Part}); err != nil {
+			return outcomeSkipped, err
+		}
 	}
 	if len(notDeducted) > 0 && !voucher.Repeat {
 		ids := make([]string, 0, len(notDeducted))
@@ -564,6 +609,57 @@ func postExpense(ctx context.Context, tx pgx.Tx, it sourceItem, now time.Time) (
 		}
 	}
 	return outcomePosted, nil
+}
+
+// undoneIntoInvoice handles an undoing of an approval that was made into a
+// supplier invoice (L1): Accounting never posted the approval, and the
+// invoice is a person's, so nothing is turned back. A row under Needs
+// attention names the invoice instead — blocking while it is a draft, which
+// a person should delete or post knowing the expense is withdrawn;
+// informational once it is posted. false when the undone approval was not
+// made into an invoice.
+func undoneIntoInvoice(ctx context.Context, q *store.Queries, it sourceItem, b expenseBooks, u *Source, now time.Time) (outcome, bool, error) {
+	if it.expense.Occurrence != contracts.ExpenseUnapproved {
+		return outcomeSkipped, false, nil
+	}
+	row, err := q.UnpostedOfSource(ctx, store.UnpostedOfSourceParams{SourceModule: u.Module, SourceKind: u.Kind,
+		SourceID: u.ID, SourcePart: u.Part})
+	if noRows(err) {
+		return outcomeSkipped, false, nil
+	}
+	if err != nil {
+		return outcomeSkipped, false, err
+	}
+	if row.Reason != reasonEnterAsSupplierInvoice || row.SupplierInvoiceID == nil {
+		return outcomeSkipped, false, nil
+	}
+	inv, err := q.SupplierInvoiceState(ctx, *row.SupplierInvoiceID)
+	if noRows(err) {
+		return outcomeSkipped, false, nil
+	}
+	if err != nil {
+		return outcomeSkipped, false, err
+	}
+	f := it.expense
+	src := itemSource(it)
+	key := expenseOrderKey(*f)
+	if inv.State == "draft" {
+		detail := b.text("The expense behind draft supplier invoice %s was unapproved in Expenses. The draft is still there: delete it, or post it if the invoice is owed all the same; then retry this row.",
+			"Utgiften bak utkastet til leverandørfaktura %s ble ikke lenger godkjent i Utgifter. Utkastet står fortsatt: slett det, eller bokfør det om fakturaen likevel skyldes; prøv så denne raden på nytt.",
+			inv.SupplierNumber)
+		return outcomeUnposted, true, recordUnpostedFor(ctx, q, it, reasonExpenseInvoiceUnapproved, truncate(detail, 500),
+			row.SupplierInvoiceID, now)
+	}
+	if inv.VoucherID == nil {
+		return outcomeSkipped, false, nil
+	}
+	detail := b.text("The expense behind supplier invoice %s was unapproved in Expenses. The invoice stays posted; reverse it under Supplier invoices if it is not owed.",
+		"Utgiften bak leverandørfaktura %s ble ikke lenger godkjent i Utgifter. Fakturaen står bokført; tilbakefør den under Leverandørfakturaer om den ikke skyldes.",
+		inv.SupplierNumber)
+	p := store.RecordInformationalParams{Stream: it.stream, Position: it.position, SourceModule: src.Module,
+		SourceKind: src.Kind, SourceID: src.ID, SourcePart: src.Part, FactDate: &f.Date, Reason: reasonExpenseInvoiceUnapproved,
+		Detail: truncate(detail, 500), Now: now, VoucherID: inv.VoucherID, OrderKey: &key, SupplierInvoiceID: row.SupplierInvoiceID}
+	return outcomeSkipped, true, q.RecordInformational(ctx, p)
 }
 
 // noteForeignLines keeps, on the row of a fact waiting for its NOK amounts,

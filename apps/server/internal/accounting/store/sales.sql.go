@@ -646,36 +646,38 @@ func (q *Queries) PendingRequest(ctx context.Context, stream string) (time.Time,
 const recordUnposted = `-- name: RecordUnposted :exec
 INSERT INTO accounting.unposted (stream, position, source_module, source_kind, source_id, source_part, fact_date,
     document_id, document_number, customer_id, amount, reason, detail, first_seen_at, last_tried_at, invoice_id,
-    waiting_on, order_key)
+    waiting_on, order_key, supplier_invoice_id)
 VALUES ($1, $2, $3, $4, $5,
     $6, $7, $8, $9,
     $10, $11::text::numeric, $12, $13, $14,
-    $14, $15, $16, $17)
+    $14, $15, $16, $17, $18)
 ON CONFLICT (source_module, source_kind, source_id, source_part) DO UPDATE
 SET reason = EXCLUDED.reason, detail = EXCLUDED.detail, attempts = accounting.unposted.attempts + 1,
     last_tried_at = EXCLUDED.last_tried_at, invoice_id = coalesce(EXCLUDED.invoice_id, accounting.unposted.invoice_id),
-    waiting_on = EXCLUDED.waiting_on, order_key = coalesce(EXCLUDED.order_key, accounting.unposted.order_key)
+    waiting_on = EXCLUDED.waiting_on, order_key = coalesce(EXCLUDED.order_key, accounting.unposted.order_key),
+    supplier_invoice_id = coalesce(EXCLUDED.supplier_invoice_id, accounting.unposted.supplier_invoice_id)
 WHERE accounting.unposted.posted_at IS NULL AND accounting.unposted.resolved_at IS NULL
 `
 
 type RecordUnpostedParams struct {
-	Stream         string
-	Position       int64
-	SourceModule   string
-	SourceKind     string
-	SourceID       int64
-	SourcePart     string
-	FactDate       *time.Time
-	DocumentID     *int64
-	DocumentNumber *string
-	CustomerID     *int32
-	Amount         *string
-	Reason         string
-	Detail         string
-	Now            time.Time
-	InvoiceID      *int64
-	WaitingOn      *int64
-	OrderKey       *string
+	Stream            string
+	Position          int64
+	SourceModule      string
+	SourceKind        string
+	SourceID          int64
+	SourcePart        string
+	FactDate          *time.Time
+	DocumentID        *int64
+	DocumentNumber    *string
+	CustomerID        *int32
+	Amount            *string
+	Reason            string
+	Detail            string
+	Now               time.Time
+	InvoiceID         *int64
+	WaitingOn         *int64
+	OrderKey          *string
+	SupplierInvoiceID *int64
 }
 
 // RecordUnposted keeps a fact that could not be posted, or its new reason
@@ -699,6 +701,7 @@ func (q *Queries) RecordUnposted(ctx context.Context, arg RecordUnpostedParams) 
 		arg.InvoiceID,
 		arg.WaitingOn,
 		arg.OrderKey,
+		arg.SupplierInvoiceID,
 	)
 	return err
 }

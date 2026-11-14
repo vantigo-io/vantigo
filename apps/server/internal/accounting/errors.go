@@ -85,6 +85,16 @@ const (
 	codeUnpostedWrongReason     = "unposted_wrong_reason"
 	codeBrregUnavailable        = "brreg_unavailable"
 	codeSupplierInvHasPayments  = "supplier_invoice_has_payments"
+	// After the review of delivery C.
+	codeTaxCodeNotForSupplierInv = "tax_code_not_for_supplier_invoice"
+	codeExchangeRateMismatch     = "exchange_rate_mismatch"
+	codeCreditNoteNotPosted      = "credit_note_invoice_not_posted"
+	codeCreditNoteCurrency       = "credit_note_currency_mismatch"
+	codeCreditNoteExceeds        = "credit_note_exceeds_balance"
+	codeSupplierInvItemInUse     = "supplier_invoice_item_in_use"
+	codeSupplierRetained         = "supplier_retained"
+	codeSupplierAnonymised       = "supplier_anonymised"
+	codeExpenseAlreadyInvoiced   = "expense_already_invoiced"
 )
 
 // refusalCodes is every code above, for the test that holds the contract's
@@ -103,7 +113,9 @@ var refusalCodes = []string{
 	codeDuplicateSupplierInv, codeSupplierInvNotDraft, codeSupplierInvNotPosted, codeSupplierInvFileRequired,
 	codeSupplierInvTotal, codeTaxCodeNotPurchase, codeExchangeRateRequired, codeSupplierInvSettled,
 	codePaymentExceedsBalance, codePaymentRemoved, codeSettlementSupplierInv, codeUnpostedWrongReason,
-	codeBrregUnavailable, codeSupplierInvHasPayments,
+	codeBrregUnavailable, codeSupplierInvHasPayments, codeTaxCodeNotForSupplierInv, codeExchangeRateMismatch,
+	codeCreditNoteNotPosted, codeCreditNoteCurrency, codeCreditNoteExceeds, codeSupplierInvItemInUse,
+	codeSupplierRetained, codeSupplierAnonymised, codeExpenseAlreadyInvoiced,
 }
 
 // refusal is a request's answer that is not a success. Returned from inside a

@@ -168,6 +168,7 @@ type AccountingSupplier struct {
 	Currency           string
 	IsPerson           bool
 	Active             bool
+	AnonymisedAt       *time.Time
 	CreatedAt          time.Time
 	UpdatedAt          time.Time
 	Revision           int32

@@ -335,7 +335,9 @@ func expandJournal(ctx context.Context, q *store.Queries, in gen.AccountingJourn
 				f.addCoded(field, codeTaxCodeUnknown, "The reverse-charge code has no counter account.")
 				continue
 			}
-			out = append(out, taxLine(deductible, tax), taxLine(*code.CounterVatAccountID, neg(tax)))
+			counter := taxLine(*code.CounterVatAccountID, neg(tax))
+			counter.line.TaxRole = roleTaxReverse
+			out = append(out, taxLine(deductible, tax), counter)
 			continue
 		}
 		if code.VatAccountID == nil {

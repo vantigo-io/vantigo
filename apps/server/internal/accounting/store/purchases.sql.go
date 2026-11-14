@@ -12,6 +12,31 @@ import (
 	"github.com/google/uuid"
 )
 
+const anonymiseSupplier = `-- name: AnonymiseSupplier :execrows
+UPDATE accounting.suppliers
+SET name = $1, organisation_number = NULL, address_line = NULL, postal_code = NULL, city = NULL,
+    email = NULL, bank_account = NULL, iban = NULL, bic = NULL, active = false, anonymised_at = $2,
+    revision = revision + 1, updated_at = $2
+WHERE id = $3 AND is_person AND anonymised_at IS NULL
+`
+
+type AnonymiseSupplierParams struct {
+	Name string
+	Now  *time.Time
+	ID   int64
+}
+
+// AnonymiseSupplier takes a person out of a supplier's record once the
+// bookkeeping's retention has run out: the name becomes its number's, every
+// contact and bank field is cleared. Postings keep their supplier id.
+func (q *Queries) AnonymiseSupplier(ctx context.Context, arg AnonymiseSupplierParams) (int64, error) {
+	result, err := q.db.Exec(ctx, anonymiseSupplier, arg.Name, arg.Now, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const deleteSupplier = `-- name: DeleteSupplier :execrows
 DELETE FROM accounting.suppliers WHERE id = $1
 `
@@ -85,6 +110,20 @@ func (q *Queries) DeleteSupplierInvoiceLines(ctx context.Context, id int64) erro
 	return err
 }
 
+const expenseInvoiced = `-- name: ExpenseInvoiced :one
+SELECT EXISTS (SELECT 1 FROM accounting.supplier_invoices
+    WHERE source_expense_entry_id = $1::bigint AND state <> 'reversed')::boolean AS invoiced
+`
+
+// ExpenseInvoiced is whether an expense has a supplier invoice made from it
+// that is not reversed.
+func (q *Queries) ExpenseInvoiced(ctx context.Context, entryID int64) (bool, error) {
+	row := q.db.QueryRow(ctx, expenseInvoiced, entryID)
+	var invoiced bool
+	err := row.Scan(&invoiced)
+	return invoiced, err
+}
+
 const expenseRules = `-- name: ExpenseRules :many
 SELECT r.id, r.name, r.expense_category_id, r.account_id, r.version, coalesce(r.vat_deductible, false)::boolean AS vat_deductible,
     a.active AS account_active, a.number AS account_number, a.kind AS account_kind
@@ -137,7 +176,7 @@ func (q *Queries) ExpenseRules(ctx context.Context) ([]ExpenseRulesRow, error) {
 }
 
 const getSupplier = `-- name: GetSupplier :one
-SELECT s.id, s.number, s.name, s.organisation_number, s.country, s.address_line, s.postal_code, s.city, s.email, s.bank_account, s.iban, s.bic, s.payment_terms_days, s.default_account_id, s.default_tax_code_id, s.currency, s.is_person, s.active, s.created_at, s.updated_at, s.revision,
+SELECT s.id, s.number, s.name, s.organisation_number, s.country, s.address_line, s.postal_code, s.city, s.email, s.bank_account, s.iban, s.bic, s.payment_terms_days, s.default_account_id, s.default_tax_code_id, s.currency, s.is_person, s.active, s.anonymised_at, s.created_at, s.updated_at, s.revision,
     EXISTS (SELECT 1 FROM accounting.postings p WHERE p.supplier_id = s.id) AS has_postings,
     coalesce((SELECT sum(p.amount) FROM accounting.postings p
               JOIN accounting.accounts a ON a.id = p.account_id AND a.system_role = 'payables'
@@ -169,6 +208,7 @@ type GetSupplierRow struct {
 	Currency           string
 	IsPerson           bool
 	Active             bool
+	AnonymisedAt       *time.Time
 	CreatedAt          time.Time
 	UpdatedAt          time.Time
 	Revision           int32
@@ -201,6 +241,7 @@ func (q *Queries) GetSupplier(ctx context.Context, id int64) (GetSupplierRow, er
 		&i.Currency,
 		&i.IsPerson,
 		&i.Active,
+		&i.AnonymisedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Revision,
@@ -239,8 +280,8 @@ func (q *Queries) GetSupplierInvoiceFile(ctx context.Context, arg GetSupplierInv
 
 const getSupplierInvoices = `-- name: GetSupplierInvoices :many
 SELECT si.id, si.supplier_id, s.name AS supplier_name, s.number AS supplier_seq, si.kind, si.supplier_number,
-    si.invoice_date, si.due_date, si.currency, si.exchange_rate::text AS exchange_rate, si.total::text AS total,
-    si.total_nok::text AS total_nok, si.kid, si.reference, si.description, si.state, si.credits_invoice_id,
+    si.invoice_date, si.due_date, si.currency, coalesce(si.exchange_rate::text, '')::text AS exchange_rate, si.total::text AS total,
+    coalesce(si.total_nok::text, '')::text AS total_nok, si.kid, si.reference, si.description, si.state, si.credits_invoice_id,
     si.voucher_id, si.open_item_id, si.reversal_voucher_id, si.copied_from_id, si.source_expense_entry_id,
     si.revision, si.created_at, si.updated_at, si.posted_at,
     b.balance::text AS balance, b.balance_currency::text AS balance_currency,
@@ -496,9 +537,9 @@ type InsertSupplierInvoiceParams struct {
 	InvoiceDate          time.Time
 	DueDate              *time.Time
 	Currency             string
-	ExchangeRate         string
+	ExchangeRate         *string
 	Total                string
-	TotalNok             string
+	TotalNok             *string
 	Kid                  *string
 	Reference            *string
 	Description          string
@@ -647,6 +688,29 @@ func (q *Queries) InsertSupplierPayment(ctx context.Context, arg InsertSupplierP
 	return id, err
 }
 
+const itemHasOtherVouchers = `-- name: ItemHasOtherVouchers :one
+SELECT EXISTS (
+    SELECT 1 FROM accounting.postings p JOIN accounting.vouchers v ON v.id = p.voucher_id
+    WHERE p.open_item_id = $1::bigint AND NOT (v.id = ANY($2::bigint[]))
+      AND v.reverses_voucher_id IS NULL
+      AND NOT EXISTS (SELECT 1 FROM accounting.vouchers r WHERE r.reverses_voucher_id = v.id))::boolean AS used
+`
+
+type ItemHasOtherVouchersParams struct {
+	ItemID int64
+	Own    []int64
+}
+
+// ItemHasOtherVouchers is whether an open item carries a posting of a voucher
+// other than those named that stands: not reversed, and not itself a
+// reversal — a credit note, a payment, a settlement on it.
+func (q *Queries) ItemHasOtherVouchers(ctx context.Context, arg ItemHasOtherVouchersParams) (bool, error) {
+	row := q.db.QueryRow(ctx, itemHasOtherVouchers, arg.ItemID, arg.Own)
+	var used bool
+	err := row.Scan(&used)
+	return used, err
+}
+
 const latestExpenseCost = `-- name: LatestExpenseCost :one
 SELECT v.id FROM accounting.vouchers v
 WHERE v.source_module = 'expenses' AND v.source_kind = $1 AND v.source_id = $2
@@ -740,7 +804,7 @@ func (q *Queries) ListSupplierInvoiceIDs(ctx context.Context, arg ListSupplierIn
 }
 
 const listSuppliers = `-- name: ListSuppliers :many
-SELECT s.id, s.number, s.name, s.organisation_number, s.country, s.address_line, s.postal_code, s.city, s.email, s.bank_account, s.iban, s.bic, s.payment_terms_days, s.default_account_id, s.default_tax_code_id, s.currency, s.is_person, s.active, s.created_at, s.updated_at, s.revision,
+SELECT s.id, s.number, s.name, s.organisation_number, s.country, s.address_line, s.postal_code, s.city, s.email, s.bank_account, s.iban, s.bic, s.payment_terms_days, s.default_account_id, s.default_tax_code_id, s.currency, s.is_person, s.active, s.anonymised_at, s.created_at, s.updated_at, s.revision,
     EXISTS (SELECT 1 FROM accounting.postings p WHERE p.supplier_id = s.id) AS has_postings,
     coalesce((SELECT sum(p.amount) FROM accounting.postings p
               JOIN accounting.accounts a ON a.id = p.account_id AND a.system_role = 'payables'
@@ -752,7 +816,7 @@ LEFT JOIN LATERAL (SELECT v.voucher_date AS last_voucher_date FROM accounting.po
     JOIN accounting.vouchers v ON v.id = p.voucher_id WHERE p.supplier_id = s.id
     ORDER BY v.voucher_date DESC LIMIT 1) lv ON true
 WHERE ($1::boolean IS NULL OR s.active = $1::boolean)
-  AND ($2::text IS NULL OR s.name ILIKE '%' || $2::text || '%'
+  AND ($2::text IS NULL OR s.name ILIKE '%' || replace(replace(replace($2::text, '\', '\\'), '%', '\%'), '_', '\_') || '%'
        OR s.number::text = $2::text OR s.organisation_number = $2::text)
 ORDER BY s.number
 LIMIT $4 OFFSET $3
@@ -784,6 +848,7 @@ type ListSuppliersRow struct {
 	Currency           string
 	IsPerson           bool
 	Active             bool
+	AnonymisedAt       *time.Time
 	CreatedAt          time.Time
 	UpdatedAt          time.Time
 	Revision           int32
@@ -826,6 +891,7 @@ func (q *Queries) ListSuppliers(ctx context.Context, arg ListSuppliersParams) ([
 			&i.Currency,
 			&i.IsPerson,
 			&i.Active,
+			&i.AnonymisedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.Revision,
@@ -845,8 +911,8 @@ func (q *Queries) ListSuppliers(ctx context.Context, arg ListSuppliersParams) ([
 }
 
 const lockSupplierInvoice = `-- name: LockSupplierInvoice :one
-SELECT id, supplier_id, kind, supplier_number, invoice_date, due_date, currency, exchange_rate::text AS exchange_rate,
-    total::text AS total, total_nok::text AS total_nok, kid, reference, description, state, credits_invoice_id,
+SELECT id, supplier_id, kind, supplier_number, invoice_date, due_date, currency, coalesce(exchange_rate::text, '')::text AS exchange_rate,
+    total::text AS total, coalesce(total_nok::text, '')::text AS total_nok, kid, reference, description, state, credits_invoice_id,
     voucher_id, open_item_id, reversal_voucher_id, copied_from_id, source_expense_entry_id, revision
 FROM accounting.supplier_invoices WHERE id = $1 FOR UPDATE
 `
@@ -1095,31 +1161,35 @@ func (q *Queries) PayablesDue(ctx context.Context, arg PayablesDueParams) (Payab
 
 const recordInformational = `-- name: RecordInformational :exec
 INSERT INTO accounting.unposted (stream, position, source_module, source_kind, source_id, source_part, fact_date,
-    amount, reason, detail, first_seen_at, last_tried_at, posted_voucher_id, posted_at, order_key, informational)
+    amount, reason, detail, first_seen_at, last_tried_at, posted_voucher_id, posted_at, order_key, informational,
+    supplier_invoice_id)
 VALUES ($1, $2, $3, $4, $5,
     $6, $7, $8::text::numeric, $9, $10,
-    $11, $11, $12, $11, $13, true)
+    $11, $11, $12, $11, $13, true,
+    $14)
 ON CONFLICT (source_module, source_kind, source_id, source_part) DO UPDATE
 SET reason = EXCLUDED.reason, detail = EXCLUDED.detail, posted_voucher_id = EXCLUDED.posted_voucher_id,
     posted_at = EXCLUDED.posted_at, last_tried_at = EXCLUDED.last_tried_at, informational = true,
-    waiting_on = NULL, attempts = accounting.unposted.attempts + 1
+    waiting_on = NULL, attempts = accounting.unposted.attempts + 1,
+    supplier_invoice_id = coalesce(EXCLUDED.supplier_invoice_id, accounting.unposted.supplier_invoice_id)
 WHERE accounting.unposted.posted_at IS NULL
 `
 
 type RecordInformationalParams struct {
-	Stream       string
-	Position     int64
-	SourceModule string
-	SourceKind   string
-	SourceID     int64
-	SourcePart   string
-	FactDate     *time.Time
-	Amount       *string
-	Reason       string
-	Detail       string
-	Now          time.Time
-	VoucherID    *int64
-	OrderKey     *string
+	Stream            string
+	Position          int64
+	SourceModule      string
+	SourceKind        string
+	SourceID          int64
+	SourcePart        string
+	FactDate          *time.Time
+	Amount            *string
+	Reason            string
+	Detail            string
+	Now               time.Time
+	VoucherID         *int64
+	OrderKey          *string
+	SupplierInvoiceID *int64
 }
 
 // RecordInformational keeps a row that posted but says something a person
@@ -1139,19 +1209,70 @@ func (q *Queries) RecordInformational(ctx context.Context, arg RecordInformation
 		arg.Now,
 		arg.VoucherID,
 		arg.OrderKey,
+		arg.SupplierInvoiceID,
 	)
 	return err
 }
 
-const reopenUnpostedOfDraft = `-- name: ReopenUnpostedOfDraft :exec
+const reopenUnpostedOfEntry = `-- name: ReopenUnpostedOfEntry :exec
 UPDATE accounting.unposted SET resolved_at = NULL, supplier_invoice_id = NULL
-WHERE supplier_invoice_id = $1 AND posted_at IS NULL
+WHERE source_module = 'expenses' AND source_kind = 'entry.approved' AND source_id = $1::bigint
+  AND reason = 'enter_as_supplier_invoice' AND posted_at IS NULL AND resolved_at IS NOT NULL
+  AND id = (SELECT max(u.id) FROM accounting.unposted u
+            WHERE u.source_module = 'expenses' AND u.source_kind = 'entry.approved'
+              AND u.source_id = $1::bigint AND u.reason = 'enter_as_supplier_invoice')
 `
 
-// ReopenUnpostedOfDraft gives an expense of the supplier_invoice kind back to
-// Needs attention when the draft made from it is deleted.
-func (q *Queries) ReopenUnpostedOfDraft(ctx context.Context, supplierInvoiceID *int64) error {
-	_, err := q.db.Exec(ctx, reopenUnpostedOfDraft, supplierInvoiceID)
+// ReopenUnpostedOfEntry gives an expense of the supplier_invoice kind back to
+// Needs attention when the draft made from it — or the copy Reverse and copy
+// made of that — is deleted: its approval's row, matched by the entry.
+func (q *Queries) ReopenUnpostedOfEntry(ctx context.Context, entryID int64) error {
+	_, err := q.db.Exec(ctx, reopenUnpostedOfEntry, entryID)
+	return err
+}
+
+const repointUnpostedDraft = `-- name: RepointUnpostedDraft :exec
+UPDATE accounting.unposted SET supplier_invoice_id = $1::bigint
+WHERE supplier_invoice_id = $2::bigint
+`
+
+type RepointUnpostedDraftParams struct {
+	CopyID     int64
+	OriginalID int64
+}
+
+// RepointUnpostedDraft names the copy Reverse and copy made on the rows that
+// named the invoice it reversed.
+func (q *Queries) RepointUnpostedDraft(ctx context.Context, arg RepointUnpostedDraftParams) error {
+	_, err := q.db.Exec(ctx, repointUnpostedDraft, arg.CopyID, arg.OriginalID)
+	return err
+}
+
+const resolveInformationalBySource = `-- name: ResolveInformationalBySource :exec
+UPDATE accounting.unposted SET resolved_at = $1, last_tried_at = $1
+WHERE source_module = $2 AND source_kind = $3
+  AND source_id = $4 AND source_part = $5
+  AND informational AND resolved_at IS NULL
+`
+
+type ResolveInformationalBySourceParams struct {
+	Now          *time.Time
+	SourceModule string
+	SourceKind   string
+	SourceID     int64
+	SourcePart   string
+}
+
+// ResolveInformationalBySource closes an informational row whose voucher an
+// undoing has turned back: there is nothing left to say about it.
+func (q *Queries) ResolveInformationalBySource(ctx context.Context, arg ResolveInformationalBySourceParams) error {
+	_, err := q.db.Exec(ctx, resolveInformationalBySource,
+		arg.Now,
+		arg.SourceModule,
+		arg.SourceKind,
+		arg.SourceID,
+		arg.SourcePart,
+	)
 	return err
 }
 
@@ -1436,6 +1557,23 @@ func (q *Queries) SupplierInvoiceOfItem(ctx context.Context, openItemID int64) (
 	return id, err
 }
 
+const supplierInvoiceState = `-- name: SupplierInvoiceState :one
+SELECT state, voucher_id, supplier_number FROM accounting.supplier_invoices WHERE id = $1
+`
+
+type SupplierInvoiceStateRow struct {
+	State          string
+	VoucherID      *int64
+	SupplierNumber string
+}
+
+func (q *Queries) SupplierInvoiceState(ctx context.Context, id int64) (SupplierInvoiceStateRow, error) {
+	row := q.db.QueryRow(ctx, supplierInvoiceState, id)
+	var i SupplierInvoiceStateRow
+	err := row.Scan(&i.State, &i.VoucherID, &i.SupplierNumber)
+	return i, err
+}
+
 const supplierPayments = `-- name: SupplierPayments :many
 SELECT sp.id, sp.supplier_invoice_id, sp.paid_on, sp.amount_nok::text AS amount_nok,
     sp.amount_currency::text AS amount_currency, sp.bank_account_id, a.number AS bank_account_number, sp.voucher_id,
@@ -1693,6 +1831,48 @@ func (q *Queries) UnpostedDependantsByKey(ctx context.Context, arg UnpostedDepen
 	return items, nil
 }
 
+const unpostedOfSource = `-- name: UnpostedOfSource :one
+SELECT id, reason, posted_at, resolved_at, supplier_invoice_id, informational FROM accounting.unposted
+WHERE source_module = $1 AND source_kind = $2
+  AND source_id = $3 AND source_part = $4
+`
+
+type UnpostedOfSourceParams struct {
+	SourceModule string
+	SourceKind   string
+	SourceID     int64
+	SourcePart   string
+}
+
+type UnpostedOfSourceRow struct {
+	ID                int64
+	Reason            string
+	PostedAt          *time.Time
+	ResolvedAt        *time.Time
+	SupplierInvoiceID *int64
+	Informational     bool
+}
+
+// UnpostedOfSource is the row of a source key, open or not.
+func (q *Queries) UnpostedOfSource(ctx context.Context, arg UnpostedOfSourceParams) (UnpostedOfSourceRow, error) {
+	row := q.db.QueryRow(ctx, unpostedOfSource,
+		arg.SourceModule,
+		arg.SourceKind,
+		arg.SourceID,
+		arg.SourcePart,
+	)
+	var i UnpostedOfSourceRow
+	err := row.Scan(
+		&i.ID,
+		&i.Reason,
+		&i.PostedAt,
+		&i.ResolvedAt,
+		&i.SupplierInvoiceID,
+		&i.Informational,
+	)
+	return i, err
+}
+
 const updateSupplier = `-- name: UpdateSupplier :one
 UPDATE accounting.suppliers
 SET name = $1, organisation_number = $2, country = $3,
@@ -1773,9 +1953,9 @@ type UpdateSupplierInvoiceParams struct {
 	InvoiceDate      time.Time
 	DueDate          *time.Time
 	Currency         string
-	ExchangeRate     string
+	ExchangeRate     *string
 	Total            string
-	TotalNok         string
+	TotalNok         *string
 	Kid              *string
 	Reference        *string
 	Description      string

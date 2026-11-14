@@ -13,6 +13,7 @@ package accounting
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"regexp"
 	"strings"
@@ -207,7 +208,7 @@ func supplierView(r store.GetSupplierRow, startMonth int32) gen.AccountingSuppli
 		BankAccount: r.BankAccount, Iban: r.Iban, Bic: r.Bic, PaymentTermsDays: int32(r.PaymentTermsDays),
 		DefaultAccountId: r.DefaultAccountID, DefaultTaxCodeId: r.DefaultTaxCodeID, Currency: r.Currency,
 		IsPerson: r.IsPerson, Active: r.Active, HasPostings: r.HasPostings, Balance: money(mustRat(r.Balance)),
-		Revision: r.Revision, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt}
+		Revision: r.Revision, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt, AnonymisedAt: r.AnonymisedAt}
 	if last, err := time.Parse(time.DateOnly, r.LastVoucherDate); err == nil {
 		out.LastVoucherDate = ptr(apiDate(last))
 		if r.IsPerson {
@@ -279,7 +280,8 @@ func (s *server) ListAccountingSuppliers(ctx context.Context, req gen.ListAccoun
 			City: r.City, Email: r.Email, BankAccount: r.BankAccount, Iban: r.Iban, Bic: r.Bic,
 			PaymentTermsDays: r.PaymentTermsDays, DefaultAccountID: r.DefaultAccountID, DefaultTaxCodeID: r.DefaultTaxCodeID,
 			Currency: r.Currency, IsPerson: r.IsPerson, Active: r.Active, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
-			Revision: r.Revision, HasPostings: r.HasPostings, Balance: r.Balance, LastVoucherDate: r.LastVoucherDate},
+			Revision: r.Revision, HasPostings: r.HasPostings, Balance: r.Balance, LastVoucherDate: r.LastVoucherDate,
+			AnonymisedAt: r.AnonymisedAt},
 			int32(settings.FiscalYearStartMonth)))
 	}
 	return out, nil
@@ -345,10 +347,13 @@ func (s *server) UpdateAccountingSupplier(ctx context.Context, req gen.UpdateAcc
 		return nil, invalidField(title, "revision", "", "The revision read is required.")
 	}
 	err := s.withTx(ctx, func(_ pgx.Tx, q *store.Queries) error {
-		if _, err := q.GetSupplier(ctx, req.Id); noRows(err) {
+		if cur, err := q.GetSupplier(ctx, req.Id); noRows(err) {
 			return notFound()
 		} else if err != nil {
 			return err
+		} else if cur.AnonymisedAt != nil {
+			return conflict(codeSupplierAnonymised, "The supplier is anonymised",
+				"An anonymised supplier keeps its number and its postings, and is not changed.")
 		}
 		f, err := checkSupplier(ctx, q, *req.Body)
 		if err != nil {
@@ -375,6 +380,59 @@ func (s *server) UpdateAccountingSupplier(ctx context.Context, req gen.UpdateAcc
 		return nil, err
 	}
 	return gen.UpdateAccountingSupplier200JSONResponse(out), nil
+}
+
+// AnonymiseAccountingSupplier takes a person out of a supplier's record once
+// the bookkeeping no longer has to keep it (A17): after the retention date,
+// five years after the end of the fiscal year of its last voucher. The name
+// becomes "Anonymised supplier N", every contact and bank field is cleared
+// and the supplier is made inactive; vouchers and postings are untouched and
+// keep its id.
+func (s *server) AnonymiseAccountingSupplier(ctx context.Context, req gen.AnonymiseAccountingSupplierRequestObject) (gen.AnonymiseAccountingSupplierResponseObject, error) {
+	err := s.withTx(ctx, func(_ pgx.Tx, q *store.Queries) error {
+		cur, err := q.GetSupplier(ctx, req.Id)
+		if noRows(err) {
+			return notFound()
+		}
+		if err != nil {
+			return err
+		}
+		if cur.AnonymisedAt != nil {
+			return conflict(codeSupplierAnonymised, "The supplier is anonymised already", "")
+		}
+		if !cur.IsPerson {
+			return invalidField("The supplier cannot be anonymised", "isPerson", "",
+				"Only a supplier that is a person is anonymised; a company's record is not personal data.")
+		}
+		settings, err := q.GetSettings(ctx)
+		if err != nil {
+			return err
+		}
+		if last, err := time.Parse(time.DateOnly, cur.LastVoucherDate); err == nil {
+			until := retainedUntil(last, int32(settings.FiscalYearStartMonth))
+			if !s.now().After(until.AddDate(0, 0, 1)) {
+				return conflict(codeSupplierRetained, "The bookkeeping still keeps the supplier",
+					"The supplier's vouchers are kept through "+until.Format(time.DateOnly)+"; it can be anonymised after that day.")
+			}
+		}
+		n, err := q.AnonymiseSupplier(ctx, store.AnonymiseSupplierParams{ID: req.Id, Now: ptr(s.now()),
+			Name: fmt.Sprintf("Anonymised supplier %d", cur.Number)})
+		if err != nil {
+			return err
+		}
+		if n != 1 {
+			return conflict(codeSupplierAnonymised, "The supplier is anonymised already", "")
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	out, err := s.supplier(ctx, store.New(s.deps.Pool), req.Id)
+	if err != nil {
+		return nil, err
+	}
+	return gen.AnonymiseAccountingSupplier200JSONResponse(out), nil
 }
 
 // DeleteAccountingSupplier deletes a supplier the books do not name: no

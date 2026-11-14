@@ -11,7 +11,9 @@
 -- bank_account is a Norwegian account number of eleven digits (mod 11, as
 -- Invoices checks the seller's); iban and bic are a foreign one's. A supplier
 -- with postings is never deleted (the postings' and open items' keys below):
--- it is made inactive.
+-- it is made inactive. A person's record is anonymised (anonymised_at), name
+-- and contact cleared, once the bookkeeping's retention has run out; the
+-- vouchers are untouched. The organisation number is unique per country.
 CREATE TABLE accounting.suppliers (
     id                  bigint       GENERATED ALWAYS AS IDENTITY (START WITH 1001) PRIMARY KEY,
     number              integer      NOT NULL,
@@ -31,6 +33,7 @@ CREATE TABLE accounting.suppliers (
     currency            char(3)      NOT NULL DEFAULT 'NOK',
     is_person           boolean      NOT NULL DEFAULT false,
     active              boolean      NOT NULL DEFAULT true,
+    anonymised_at       timestamptz,
     created_at          timestamptz  NOT NULL,
     updated_at          timestamptz  NOT NULL,
     revision            integer      NOT NULL DEFAULT 1,
@@ -42,7 +45,7 @@ CREATE TABLE accounting.suppliers (
     CONSTRAINT ck_suppliers_terms CHECK (payment_terms_days BETWEEN 0 AND 365)
 );
 CREATE UNIQUE INDEX ux_suppliers_number ON accounting.suppliers (number);
-CREATE UNIQUE INDEX ux_suppliers_organisation_number ON accounting.suppliers (organisation_number)
+CREATE UNIQUE INDEX ux_suppliers_organisation_number ON accounting.suppliers (country, organisation_number)
     WHERE organisation_number IS NOT NULL;
 CREATE INDEX ix_suppliers_name ON accounting.suppliers (lower(name));
 
@@ -63,6 +66,16 @@ ALTER TABLE accounting.postings
     ADD CONSTRAINT ck_postings_currency CHECK (
         (currency IS NULL) = (currency_amount IS NULL) AND (currency IS NULL) = (exchange_rate IS NULL));
 
+-- A reverse charge's calculated side is its own tax role (tax_reverse): the
+-- VAT owed on a purchase, beside the deductible side's 'tax', so a VAT return
+-- never counts the base twice. It carries its base as a tax line does.
+ALTER TABLE accounting.postings
+    ALTER COLUMN tax_role TYPE varchar(11),
+    DROP CONSTRAINT ck_postings_tax_role,
+    DROP CONSTRAINT ck_postings_tax_base,
+    ADD CONSTRAINT ck_postings_tax_role CHECK (tax_role IN ('base', 'tax', 'tax_reverse')),
+    ADD CONSTRAINT ck_postings_tax_base CHECK (tax_base IS NULL OR tax_role IN ('tax', 'tax_reverse'));
+
 -- A supplier invoice or credit note (A18, R8). A draft is no voucher: it is
 -- edited and deleted freely. Post makes its voucher (voucher_id) and its open
 -- item on payables (open_item_id); paid is derived from that item's balance,
@@ -71,8 +84,9 @@ ALTER TABLE accounting.postings
 -- files (copied_from_id on the copy). The same supplier's number of the same
 -- kind is refused twice among the invoices that are not reversed
 -- (ux_supplier_invoices_number, 409 duplicate_supplier_invoice).
--- exchange_rate is NOK per unit of currency (1 for NOK); total is the
--- invoice's total in its currency, total_nok in NOK. A credit note may name
+-- exchange_rate is NOK per unit of currency (1 for NOK), NULL on a draft in
+-- another currency whose rate is not given yet; total is the invoice's total
+-- in its currency, total_nok in NOK, NULL with the rate. A credit note may name
 -- the invoice it credits, whose open item it lands on.
 -- source_expense_entry_id is the expense of Expenses' supplier_invoice kind
 -- the draft was made from (R2), an opaque id.
@@ -84,9 +98,9 @@ CREATE TABLE accounting.supplier_invoices (
     invoice_date            date          NOT NULL,
     due_date                date,
     currency                char(3)       NOT NULL DEFAULT 'NOK',
-    exchange_rate           numeric(12,6) NOT NULL DEFAULT 1,
+    exchange_rate           numeric(12,6),
     total                   numeric(14,2) NOT NULL,
-    total_nok               numeric(14,2) NOT NULL,
+    total_nok               numeric(14,2),
     kid                     varchar(25),
     reference               varchar(100),
     description             varchar(500)  NOT NULL DEFAULT '',
@@ -107,8 +121,10 @@ CREATE TABLE accounting.supplier_invoices (
     CONSTRAINT ck_supplier_invoices_state CHECK (state IN ('draft', 'posted', 'reversed')),
     CONSTRAINT ck_supplier_invoices_number CHECK (btrim(supplier_number) <> ''),
     CONSTRAINT ck_supplier_invoices_currency CHECK (currency ~ '^[A-Z]{3}$'),
-    CONSTRAINT ck_supplier_invoices_rate CHECK (exchange_rate > 0 AND (currency <> 'NOK' OR exchange_rate = 1)),
-    CONSTRAINT ck_supplier_invoices_totals CHECK (total >= 0 AND total_nok >= 0),
+    CONSTRAINT ck_supplier_invoices_rate CHECK (
+        (exchange_rate IS NULL OR exchange_rate > 0) AND (currency <> 'NOK' OR exchange_rate = 1)
+        AND (exchange_rate IS NULL) = (total_nok IS NULL) AND (state = 'draft' OR exchange_rate IS NOT NULL)),
+    CONSTRAINT ck_supplier_invoices_totals CHECK (total >= 0 AND (total_nok IS NULL OR total_nok >= 0)),
     CONSTRAINT ck_supplier_invoices_credits CHECK (credits_invoice_id IS NULL OR kind = 'credit_note'),
     CONSTRAINT ck_supplier_invoices_posted CHECK (
         (state = 'draft') = (voucher_id IS NULL) AND (state = 'draft') = (posted_at IS NULL)
@@ -231,6 +247,9 @@ BEGIN
     IF EXISTS (SELECT 1 FROM accounting.suppliers) THEN
         RAISE EXCEPTION 'accounting: the books hold suppliers' USING ERRCODE = 'P0001';
     END IF;
+    IF EXISTS (SELECT 1 FROM accounting.postings WHERE tax_role = 'tax_reverse') THEN
+        RAISE EXCEPTION 'accounting: the books hold reverse-charge postings' USING ERRCODE = 'P0001';
+    END IF;
 END;
 $down$;
 -- +goose StatementEnd
@@ -263,6 +282,12 @@ DROP TABLE accounting.supplier_payments;
 DROP TABLE accounting.supplier_invoice_files;
 DROP TABLE accounting.supplier_invoice_lines;
 DROP TABLE accounting.supplier_invoices;
+ALTER TABLE accounting.postings
+    DROP CONSTRAINT ck_postings_tax_role,
+    DROP CONSTRAINT ck_postings_tax_base,
+    ADD CONSTRAINT ck_postings_tax_role CHECK (tax_role IN ('base', 'tax')),
+    ADD CONSTRAINT ck_postings_tax_base CHECK (tax_base IS NULL OR tax_role = 'tax'),
+    ALTER COLUMN tax_role TYPE varchar(4);
 ALTER TABLE accounting.postings DROP CONSTRAINT ck_postings_currency;
 ALTER TABLE accounting.open_items DROP CONSTRAINT fk_open_items_supplier;
 ALTER TABLE accounting.postings DROP CONSTRAINT fk_postings_supplier;

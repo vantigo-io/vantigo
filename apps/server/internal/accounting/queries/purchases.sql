@@ -50,7 +50,7 @@ LEFT JOIN LATERAL (SELECT v.voucher_date AS last_voucher_date FROM accounting.po
     JOIN accounting.vouchers v ON v.id = p.voucher_id WHERE p.supplier_id = s.id
     ORDER BY v.voucher_date DESC LIMIT 1) lv ON true
 WHERE (sqlc.narg(active)::boolean IS NULL OR s.active = sqlc.narg(active)::boolean)
-  AND (sqlc.narg(q)::text IS NULL OR s.name ILIKE '%' || sqlc.narg(q)::text || '%'
+  AND (sqlc.narg(q)::text IS NULL OR s.name ILIKE '%' || replace(replace(replace(sqlc.narg(q)::text, '\', '\\'), '%', '\%'), '_', '\_') || '%'
        OR s.number::text = sqlc.narg(q)::text OR s.organisation_number = sqlc.narg(q)::text)
 ORDER BY s.number
 LIMIT sqlc.arg(row_limit) OFFSET sqlc.arg(row_offset);
@@ -84,8 +84,8 @@ INSERT INTO accounting.supplier_invoices (supplier_id, kind, supplier_number, in
     exchange_rate, total, total_nok, kid, reference, description, credits_invoice_id, copied_from_id,
     source_expense_entry_id, created_at, created_by_user_id, updated_at)
 VALUES (sqlc.arg(supplier_id), sqlc.arg(kind), sqlc.arg(supplier_number), sqlc.arg(invoice_date), sqlc.narg(due_date),
-    sqlc.arg(currency), sqlc.arg(exchange_rate)::text::numeric, sqlc.arg(total)::text::numeric,
-    sqlc.arg(total_nok)::text::numeric, sqlc.narg(kid), sqlc.narg(reference), sqlc.arg(description),
+    sqlc.arg(currency), sqlc.narg(exchange_rate)::text::numeric, sqlc.arg(total)::text::numeric,
+    sqlc.narg(total_nok)::text::numeric, sqlc.narg(kid), sqlc.narg(reference), sqlc.arg(description),
     sqlc.narg(credits_invoice_id), sqlc.narg(copied_from_id), sqlc.narg(source_expense_entry_id), sqlc.arg(now),
     sqlc.arg(user_id), sqlc.arg(now))
 RETURNING id;
@@ -94,8 +94,8 @@ RETURNING id;
 UPDATE accounting.supplier_invoices
 SET supplier_id = sqlc.arg(supplier_id), kind = sqlc.arg(kind), supplier_number = sqlc.arg(supplier_number),
     invoice_date = sqlc.arg(invoice_date), due_date = sqlc.narg(due_date), currency = sqlc.arg(currency),
-    exchange_rate = sqlc.arg(exchange_rate)::text::numeric, total = sqlc.arg(total)::text::numeric,
-    total_nok = sqlc.arg(total_nok)::text::numeric, kid = sqlc.narg(kid), reference = sqlc.narg(reference),
+    exchange_rate = sqlc.narg(exchange_rate)::text::numeric, total = sqlc.arg(total)::text::numeric,
+    total_nok = sqlc.narg(total_nok)::text::numeric, kid = sqlc.narg(kid), reference = sqlc.narg(reference),
     description = sqlc.arg(description), credits_invoice_id = sqlc.narg(credits_invoice_id),
     revision = revision + 1, updated_at = sqlc.arg(now)
 WHERE id = sqlc.arg(id) AND revision = sqlc.arg(revision) AND state = 'draft'
@@ -111,8 +111,8 @@ VALUES (sqlc.arg(supplier_invoice_id), sqlc.arg(position), sqlc.arg(account_id),
     sqlc.arg(amount)::text::numeric, sqlc.arg(entry), sqlc.narg(project_id), sqlc.arg(text));
 
 -- name: LockSupplierInvoice :one
-SELECT id, supplier_id, kind, supplier_number, invoice_date, due_date, currency, exchange_rate::text AS exchange_rate,
-    total::text AS total, total_nok::text AS total_nok, kid, reference, description, state, credits_invoice_id,
+SELECT id, supplier_id, kind, supplier_number, invoice_date, due_date, currency, coalesce(exchange_rate::text, '')::text AS exchange_rate,
+    total::text AS total, coalesce(total_nok::text, '')::text AS total_nok, kid, reference, description, state, credits_invoice_id,
     voucher_id, open_item_id, reversal_voucher_id, copied_from_id, source_expense_entry_id, revision
 FROM accounting.supplier_invoices WHERE id = sqlc.arg(id) FOR UPDATE;
 
@@ -120,8 +120,8 @@ FROM accounting.supplier_invoices WHERE id = sqlc.arg(id) FOR UPDATE;
 -- GetSupplierInvoices is the invoices with those ids, their supplier, and
 -- their open item's balance in NOK and in the invoice's currency.
 SELECT si.id, si.supplier_id, s.name AS supplier_name, s.number AS supplier_seq, si.kind, si.supplier_number,
-    si.invoice_date, si.due_date, si.currency, si.exchange_rate::text AS exchange_rate, si.total::text AS total,
-    si.total_nok::text AS total_nok, si.kid, si.reference, si.description, si.state, si.credits_invoice_id,
+    si.invoice_date, si.due_date, si.currency, coalesce(si.exchange_rate::text, '')::text AS exchange_rate, si.total::text AS total,
+    coalesce(si.total_nok::text, '')::text AS total_nok, si.kid, si.reference, si.description, si.state, si.credits_invoice_id,
     si.voucher_id, si.open_item_id, si.reversal_voucher_id, si.copied_from_id, si.source_expense_entry_id,
     si.revision, si.created_at, si.updated_at, si.posted_at,
     b.balance::text AS balance, b.balance_currency::text AS balance_currency,
@@ -317,14 +317,17 @@ ORDER BY t.code;
 -- RecordInformational keeps a row that posted but says something a person
 -- should see (vat_not_deducted, R2): it is posted at once and never blocks.
 INSERT INTO accounting.unposted (stream, position, source_module, source_kind, source_id, source_part, fact_date,
-    amount, reason, detail, first_seen_at, last_tried_at, posted_voucher_id, posted_at, order_key, informational)
+    amount, reason, detail, first_seen_at, last_tried_at, posted_voucher_id, posted_at, order_key, informational,
+    supplier_invoice_id)
 VALUES (sqlc.arg(stream), sqlc.arg(position), sqlc.arg(source_module), sqlc.arg(source_kind), sqlc.arg(source_id),
     sqlc.arg(source_part), sqlc.narg(fact_date), sqlc.narg(amount)::text::numeric, sqlc.arg(reason), sqlc.arg(detail),
-    sqlc.arg(now), sqlc.arg(now), sqlc.arg(voucher_id), sqlc.arg(now), sqlc.narg(order_key), true)
+    sqlc.arg(now), sqlc.arg(now), sqlc.arg(voucher_id), sqlc.arg(now), sqlc.narg(order_key), true,
+    sqlc.narg(supplier_invoice_id))
 ON CONFLICT (source_module, source_kind, source_id, source_part) DO UPDATE
 SET reason = EXCLUDED.reason, detail = EXCLUDED.detail, posted_voucher_id = EXCLUDED.posted_voucher_id,
     posted_at = EXCLUDED.posted_at, last_tried_at = EXCLUDED.last_tried_at, informational = true,
-    waiting_on = NULL, attempts = accounting.unposted.attempts + 1
+    waiting_on = NULL, attempts = accounting.unposted.attempts + 1,
+    supplier_invoice_id = coalesce(EXCLUDED.supplier_invoice_id, accounting.unposted.supplier_invoice_id)
 WHERE accounting.unposted.posted_at IS NULL;
 
 -- name: UnpostedBlockerByKey :one
@@ -367,11 +370,59 @@ UPDATE accounting.unposted
 SET resolved_at = sqlc.arg(now), supplier_invoice_id = sqlc.narg(supplier_invoice_id), last_tried_at = sqlc.arg(now)
 WHERE id = sqlc.arg(id) AND resolved_at IS NULL;
 
--- name: ReopenUnpostedOfDraft :exec
--- ReopenUnpostedOfDraft gives an expense of the supplier_invoice kind back to
--- Needs attention when the draft made from it is deleted.
+-- name: ReopenUnpostedOfEntry :exec
+-- ReopenUnpostedOfEntry gives an expense of the supplier_invoice kind back to
+-- Needs attention when the draft made from it — or the copy Reverse and copy
+-- made of that — is deleted: its approval's row, matched by the entry.
 UPDATE accounting.unposted SET resolved_at = NULL, supplier_invoice_id = NULL
-WHERE supplier_invoice_id = sqlc.narg(supplier_invoice_id) AND posted_at IS NULL;
+WHERE source_module = 'expenses' AND source_kind = 'entry.approved' AND source_id = sqlc.arg(entry_id)::bigint
+  AND reason = 'enter_as_supplier_invoice' AND posted_at IS NULL AND resolved_at IS NOT NULL
+  AND id = (SELECT max(u.id) FROM accounting.unposted u
+            WHERE u.source_module = 'expenses' AND u.source_kind = 'entry.approved'
+              AND u.source_id = sqlc.arg(entry_id)::bigint AND u.reason = 'enter_as_supplier_invoice');
+
+-- name: RepointUnpostedDraft :exec
+-- RepointUnpostedDraft names the copy Reverse and copy made on the rows that
+-- named the invoice it reversed.
+UPDATE accounting.unposted SET supplier_invoice_id = sqlc.arg(copy_id)::bigint
+WHERE supplier_invoice_id = sqlc.arg(original_id)::bigint;
+
+-- name: ItemHasOtherVouchers :one
+-- ItemHasOtherVouchers is whether an open item carries a posting of a voucher
+-- other than those named that stands: not reversed, and not itself a
+-- reversal — a credit note, a payment, a settlement on it.
+SELECT EXISTS (
+    SELECT 1 FROM accounting.postings p JOIN accounting.vouchers v ON v.id = p.voucher_id
+    WHERE p.open_item_id = sqlc.arg(item_id)::bigint AND NOT (v.id = ANY(sqlc.arg(own)::bigint[]))
+      AND v.reverses_voucher_id IS NULL
+      AND NOT EXISTS (SELECT 1 FROM accounting.vouchers r WHERE r.reverses_voucher_id = v.id))::boolean AS used;
+
+-- name: UnpostedOfSource :one
+-- UnpostedOfSource is the row of a source key, open or not.
+SELECT id, reason, posted_at, resolved_at, supplier_invoice_id, informational FROM accounting.unposted
+WHERE source_module = sqlc.arg(source_module) AND source_kind = sqlc.arg(source_kind)
+  AND source_id = sqlc.arg(source_id) AND source_part = sqlc.arg(source_part);
+
+-- name: ResolveInformationalBySource :exec
+-- ResolveInformationalBySource closes an informational row whose voucher an
+-- undoing has turned back: there is nothing left to say about it.
+UPDATE accounting.unposted SET resolved_at = sqlc.arg(now), last_tried_at = sqlc.arg(now)
+WHERE source_module = sqlc.arg(source_module) AND source_kind = sqlc.arg(source_kind)
+  AND source_id = sqlc.arg(source_id) AND source_part = sqlc.arg(source_part)
+  AND informational AND resolved_at IS NULL;
+
+-- name: SupplierInvoiceState :one
+SELECT state, voucher_id, supplier_number FROM accounting.supplier_invoices WHERE id = sqlc.arg(id);
+
+-- name: AnonymiseSupplier :execrows
+-- AnonymiseSupplier takes a person out of a supplier's record once the
+-- bookkeeping's retention has run out: the name becomes its number's, every
+-- contact and bank field is cleared. Postings keep their supplier id.
+UPDATE accounting.suppliers
+SET name = sqlc.arg(name), organisation_number = NULL, address_line = NULL, postal_code = NULL, city = NULL,
+    email = NULL, bank_account = NULL, iban = NULL, bic = NULL, active = false, anonymised_at = sqlc.arg(now),
+    revision = revision + 1, updated_at = sqlc.arg(now)
+WHERE id = sqlc.arg(id) AND is_person AND anonymised_at IS NULL;
 
 -- name: InitUnpostedLines :exec
 -- InitUnpostedLines keeps, on an expense fact's row, its lines in another
@@ -401,3 +452,9 @@ ORDER BY v.id DESC LIMIT 1;
 SELECT coalesce(sum(p.amount), 0)::text AS total FROM accounting.postings p
 JOIN accounting.accounts a ON a.id = p.account_id
 WHERE p.voucher_id = sqlc.arg(voucher_id) AND a.system_role = sqlc.arg(role)::varchar;
+
+-- name: ExpenseInvoiced :one
+-- ExpenseInvoiced is whether an expense has a supplier invoice made from it
+-- that is not reversed.
+SELECT EXISTS (SELECT 1 FROM accounting.supplier_invoices
+    WHERE source_expense_entry_id = sqlc.arg(entry_id)::bigint AND state <> 'reversed')::boolean AS invoiced;

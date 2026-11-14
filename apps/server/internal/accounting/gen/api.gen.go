@@ -365,8 +365,9 @@ func (e AccountingTaxDirection) Valid() bool {
 
 // Defines values for AccountingTaxRole.
 const (
-	Base AccountingTaxRole = "base"
-	Tax  AccountingTaxRole = "tax"
+	Base       AccountingTaxRole = "base"
+	Tax        AccountingTaxRole = "tax"
+	TaxReverse AccountingTaxRole = "tax_reverse"
 )
 
 // Valid indicates whether the value is a known member of the AccountingTaxRole enum.
@@ -375,6 +376,8 @@ func (e AccountingTaxRole) Valid() bool {
 	case Base:
 		return true
 	case Tax:
+		return true
+	case TaxReverse:
 		return true
 	default:
 		return false
@@ -669,6 +672,12 @@ type AccountingLockInput struct {
 	Reason *string `json:"reason,omitempty"`
 }
 
+// AccountingMakeSupplierInvoiceInput defines model for AccountingMakeSupplierInvoiceInput.
+type AccountingMakeSupplierInvoiceInput struct {
+	// SupplierIsPerson For a supplier created from the expense's free text: whether it is a person (a sole proprietor), whose record the bookkeeping keeps five years after the last voucher. Ignored when an existing supplier is matched; default false.
+	SupplierIsPerson *bool `json:"supplierIsPerson,omitempty"`
+}
+
 // AccountingMeta defines model for AccountingMeta.
 type AccountingMeta struct {
 	// AttachmentsEnabled Whether the installation has file storage: without it an attachment is refused (storage_not_configured), so the journal form says so before posting.
@@ -944,7 +953,7 @@ type AccountingPreviewLine struct {
 	TaxRole   *AccountingTaxRole `json:"taxRole"`
 }
 
-// AccountingProblem An RFC 9457 problem with this module's refusal code (accounting design §2, §13). code names the rule that refused and is what a client keys off, never the words: books_not_set_up (409: every operation but the meta and the setup, until Set up the books has run, R12), books_already_set_up (409: a second setup), revision_conflict (409: the revision has moved on), account_number_taken (409), account_has_postings (409: a delete of an account with postings, or a change of its number or kind), account_has_role (409: a delete of an account holding a system role; move the role first), account_inactive (400: a line on an inactive account), account_unknown (400), tax_code_unknown (400: an unknown or inactive tax code), tax_code_no_rate (400: no rate period covers the voucher's date), rate_period_invalid (400: a new rate period that does not start after the current one's start), party_required (400: a line on receivables or payables without a customer or supplier), party_not_allowed (400: a party on a line of another account, or both a customer and a supplier), open_item_unknown (400: an open item of another party or kind), voucher_unbalanced (400: the lines and their computed tax do not sum to zero; the detail names the difference), voucher_empty (400: no line, or every line zero), amount_invalid (400: not an exact decimal with at most two places, or zero), date_before_books_start (400), period_locked (409: a voucher a person posts dated on or before the lock, A8), voucher_owned_by_source (409: a reversal of a voucher the system posted, which only its source reverses, A7), voucher_already_reversed (409), opening_exists (409: an opening voucher stands and is not reversed), opening_locked (409: an opening entered or reversed after the first lock, A9), lock_not_month_end (400), lock_reason_required (400: a lock moved back without a reason), lock_before_books_start (400), settlement_source_document (409: an item that stands for a document in Invoices is paid there, R5), settlement_exceeds_balance (409: more than the item's balance), settlement_settled (409: an item with nothing left), bank_account_invalid (400: not an active asset account), attachment_too_large (400: over 20 MB), storage_not_configured (503: no object store for attachments), report_account_required (400: the account report without accountId), period_invalid (400: from after to, or a period over 366 days for the journal), open_item_source_document (400: a person's voucher naming an open item that stands for a document in Invoices, which moves with Invoices' own facts), report_too_large (400: the journal or an account's specification over 50 000 postings; choose a shorter period), lock_in_future (400: a lock after the end of the current month), books_start_too_early (400: books that start before 2022-01-01, the first day the seeded rates are known to hold), account_kind_mismatch (400: an account whose kind is not its number's class's — 1 asset, 20 equity, 21–29 liability, 3 income, 4–7 expense, 8 income or expense — or a number outside the classes 1 to 8; a system role moved to an account of another kind than the role's), reverse_charge_gross (400: a gross journal with a reverse-charge code, which is entered net), posting_rule_name_taken (409), posting_rule_match_taken (409: a rule with the same scope and match exists), posting_rule_default (409: a default rule is never deleted, only pointed at another account), unposted_already_posted (409: a retry of a fact that has posted), supplier_organisation_number_taken (409: another supplier has that organisation number), supplier_bank_account_invalid (400: not eleven digits passing mod 11), supplier_has_postings (409: a delete of a supplier with postings or invoices; make it inactive), supplier_inactive (400: a new invoice for an inactive supplier), duplicate_supplier_invoice (409: the same supplier's number of the same kind on another invoice that is not reversed), supplier_invoice_not_draft (409: a change, a delete, a post or a file removed on an invoice that is not a draft), supplier_invoice_not_posted (409: a payment or Reverse and copy on an invoice that is not posted), supplier_invoice_file_required (409: Post without an attached file), supplier_invoice_total_mismatch (400: the lines' gross does not sum to the total), tax_code_not_purchase (400: an output code on a purchase line), exchange_rate_required (400: another currency without the rate or the NOK total), supplier_invoice_settled (409: a payment on an invoice with nothing left), payment_exceeds_balance (409: a payment of more than is left), payment_removed (409: a payment removed already), settlement_supplier_invoice (409: an item that stands for a supplier invoice is paid on the invoice), unposted_wrong_reason (409: an action for another reason than the row's), brreg_unavailable (502: Brønnøysundregisteret could not be reached), supplier_invoice_has_payments (409: Reverse and copy of an invoice with a payment standing; remove the payment first). errors carries the field errors of a 400, keyed by the camelCase path (lines[2].accountId).
+// AccountingProblem An RFC 9457 problem with this module's refusal code (accounting design §2, §13). code names the rule that refused and is what a client keys off, never the words: books_not_set_up (409: every operation but the meta and the setup, until Set up the books has run, R12), books_already_set_up (409: a second setup), revision_conflict (409: the revision has moved on), account_number_taken (409), account_has_postings (409: a delete of an account with postings, or a change of its number or kind), account_has_role (409: a delete of an account holding a system role; move the role first), account_inactive (400: a line on an inactive account), account_unknown (400), tax_code_unknown (400: an unknown or inactive tax code), tax_code_no_rate (400: no rate period covers the voucher's date), rate_period_invalid (400: a new rate period that does not start after the current one's start), party_required (400: a line on receivables or payables without a customer or supplier), party_not_allowed (400: a party on a line of another account, or both a customer and a supplier), open_item_unknown (400: an open item of another party or kind), voucher_unbalanced (400: the lines and their computed tax do not sum to zero; the detail names the difference), voucher_empty (400: no line, or every line zero), amount_invalid (400: not an exact decimal with at most two places, or zero), date_before_books_start (400), period_locked (409: a voucher a person posts dated on or before the lock, A8), voucher_owned_by_source (409: a reversal of a voucher the system posted, which only its source reverses, A7), voucher_already_reversed (409), opening_exists (409: an opening voucher stands and is not reversed), opening_locked (409: an opening entered or reversed after the first lock, A9), lock_not_month_end (400), lock_reason_required (400: a lock moved back without a reason), lock_before_books_start (400), settlement_source_document (409: an item that stands for a document in Invoices is paid there, R5), settlement_exceeds_balance (409: more than the item's balance), settlement_settled (409: an item with nothing left), bank_account_invalid (400: not an active asset account), attachment_too_large (400: over 20 MB), storage_not_configured (503: no object store for attachments), report_account_required (400: the account report without accountId), period_invalid (400: from after to, or a period over 366 days for the journal), open_item_source_document (400: a person's voucher naming an open item that stands for a document in Invoices, which moves with Invoices' own facts), report_too_large (400: the journal or an account's specification over 50 000 postings; choose a shorter period), lock_in_future (400: a lock after the end of the current month), books_start_too_early (400: books that start before 2022-01-01, the first day the seeded rates are known to hold), account_kind_mismatch (400: an account whose kind is not its number's class's — 1 asset, 20 equity, 21–29 liability, 3 income, 4–7 expense, 8 income or expense — or a number outside the classes 1 to 8; a system role moved to an account of another kind than the role's), reverse_charge_gross (400: a gross journal with a reverse-charge code, which is entered net), posting_rule_name_taken (409), posting_rule_match_taken (409: a rule with the same scope and match exists), posting_rule_default (409: a default rule is never deleted, only pointed at another account), unposted_already_posted (409: a retry of a fact that has posted), supplier_organisation_number_taken (409: another supplier has that organisation number), supplier_bank_account_invalid (400: not eleven digits passing mod 11), supplier_has_postings (409: a delete of a supplier with postings or invoices; make it inactive), supplier_inactive (400: a new invoice for an inactive supplier), duplicate_supplier_invoice (409: the same supplier's number of the same kind on another invoice that is not reversed), supplier_invoice_not_draft (409: a change, a delete, a post or a file removed on an invoice that is not a draft), supplier_invoice_not_posted (409: a payment or Reverse and copy on an invoice that is not posted), supplier_invoice_file_required (409: Post without an attached file), supplier_invoice_total_mismatch (400: the lines' gross does not sum to the total), tax_code_not_purchase (400: an output code on a purchase line), exchange_rate_required (400: another currency without the rate or the NOK total), supplier_invoice_settled (409: a payment on an invoice with nothing left), payment_exceeds_balance (409: a payment of more than is left), payment_removed (409: a payment removed already), settlement_supplier_invoice (409: an item that stands for a supplier invoice is paid on the invoice), unposted_wrong_reason (409: an action for another reason than the row's), brreg_unavailable (502: Brønnøysundregisteret could not be reached), supplier_invoice_has_payments (409: Reverse and copy of an invoice with a payment standing; remove the payment first), tax_code_not_for_supplier_invoice (400: an import code — 14, 15, 20, 21, 22, 81 to 85 — on a supplier invoice line; import VAT is a manual journal), exchange_rate_mismatch (400: both the rate and the NOK total, and they disagree), credit_note_invoice_not_posted (409: Post of a credit note whose invoice is no longer posted), credit_note_currency_mismatch (409: a credit note in another currency than the invoice it credits), credit_note_exceeds_balance (409: a credit note of more than is left on the credited invoice), supplier_invoice_item_in_use (409: Reverse and copy of an invoice whose open item another voucher standing posts on — a credit note, a payment, a settlement; reverse that first), supplier_retained (409: anonymising a person supplier before its retention date), supplier_anonymised (409: a change or an anonymisation of a supplier anonymised already), expense_already_invoiced (409: an expense made into a supplier invoice already). errors carries the field errors of a 400, keyed by the camelCase path (lines[2].accountId).
 type AccountingProblem struct {
 	Code     *string              `json:"code,omitempty"`
 	Detail   *string              `json:"detail,omitempty"`
@@ -1084,6 +1093,9 @@ type AccountingSupplier struct {
 	Active      bool    `json:"active"`
 	AddressLine *string `json:"addressLine"`
 
+	// AnonymisedAt When a person supplier was anonymised after its retention date: the name is its number's, every contact and bank field is cleared.
+	AnonymisedAt *time.Time `json:"anonymisedAt"`
+
 	// Balance The supplier's balance on payables in NOK: negative is owed to the supplier.
 	Balance string `json:"balance"`
 
@@ -1201,8 +1213,8 @@ type AccountingSupplierInvoice struct {
 	Description      string              `json:"description"`
 	DueDate          *openapi_types.Date `json:"dueDate"`
 
-	// ExchangeRate NOK per unit of the currency, six decimals; 1 for NOK.
-	ExchangeRate string                 `json:"exchangeRate"`
+	// ExchangeRate NOK per unit of the currency, six decimals; 1 for NOK. Null on a draft in another currency whose rate is not set yet: Post refuses it with exchange_rate_required.
+	ExchangeRate *string                `json:"exchangeRate"`
 	Files        []AccountingAttachment `json:"files"`
 	Id           int64                  `json:"id"`
 	InvoiceDate  openapi_types.Date     `json:"invoiceDate"`
@@ -1235,8 +1247,10 @@ type AccountingSupplierInvoice struct {
 	SupplierNumber int32                          `json:"supplierNumber"`
 
 	// Total In the invoice's currency.
-	Total     string    `json:"total"`
-	TotalNok  string    `json:"totalNok"`
+	Total string `json:"total"`
+
+	// TotalNok The total in NOK; null while the rate is not set.
+	TotalNok  *string   `json:"totalNok"`
 	UpdatedAt time.Time `json:"updatedAt"`
 
 	// Vat The VAT the lines carry, in the invoice's currency.
@@ -1256,7 +1270,7 @@ type AccountingSupplierInvoiceInput struct {
 	// DueDate Default the invoice date plus the supplier's terms.
 	DueDate *openapi_types.Date `json:"dueDate,omitempty"`
 
-	// ExchangeRate NOK per unit, for another currency; give it or totalNok.
+	// ExchangeRate NOK per unit, for another currency; give it or totalNok, or both when they agree: total × rate rounded to øre within 0.01 per line of the NOK total.
 	ExchangeRate *string            `json:"exchangeRate,omitempty"`
 	InvoiceDate  openapi_types.Date `json:"invoiceDate"`
 
@@ -1434,10 +1448,10 @@ type AccountingTaxRateInput struct {
 	ValidFrom   openapi_types.Date `json:"validFrom"`
 }
 
-// AccountingTaxRole defines model for AccountingTaxRole.
+// AccountingTaxRole base: the line a tax code's base is posted on. tax: VAT posted on the code's account — output VAT on a sale, deducted input VAT on a purchase. tax_reverse: the calculated side of a reverse-charge code (86–89, 91, 92), the VAT the buyer owes, with the same base as its tax line.
 type AccountingTaxRole string
 
-// AccountingUnposted A source fact that could not be posted (A15), under Needs attention: the stream and position it was read at, its source key, what it is about, why — tax_code_unknown (the document's standard tax code is not in the books, or inactive), account_inactive or account_unknown (a rule's or a role's account), account_kind_mismatch (a rule's account is not an income account), waiting_on (another row of the same invoice is under Needs attention and was met first: this one waits behind it, waitingOn names it, and a retry that posts that row retries this one after it — R15), unknown_kind (a fact of a kind this version does not post), document_unknown (the invoice a fact is about is not in the journal), or an engine refusal's code — and, once a retry posted it, the voucher.
+// AccountingUnposted A source fact that could not be posted (A15), under Needs attention: the stream and position it was read at, its source key, what it is about, why — tax_code_unknown (the document's standard tax code is not in the books, or inactive), account_inactive or account_unknown (a rule's or a role's account), account_kind_mismatch (a rule's account is not an income account), waiting_on (another row of the same invoice is under Needs attention and was met first: this one waits behind it, waitingOn names it, and a retry that posts that row retries this one after it — R15), unknown_kind (a fact of a kind this version does not post), document_unknown (the invoice a fact is about is not in the journal), or an engine refusal's code — and, once a retry posted it, the voucher. Expenses' facts (delivery C) add amount_in_nok_needed (a line in another currency: enter its NOK amount), enter_as_supplier_invoice (an expense of the supplier_invoice kind: make it into a supplier invoice), expense_invoice_unapproved (an approval made into a supplier invoice was unapproved in Expenses: supplierInvoiceId names the invoice; it blocks while the invoice is a draft — delete or post it, then retry — and is informational once it is posted), and vat_not_deducted (informational: posted gross).
 type AccountingUnposted struct {
 	Amount       *string `json:"amount"`
 	Attempts     int32   `json:"attempts"`
@@ -1455,7 +1469,7 @@ type AccountingUnposted struct {
 	FirstSeenAt  time.Time                       `json:"firstSeenAt"`
 	Id           int64                           `json:"id"`
 
-	// Informational A row that posted but says something a person should see (vat_not_deducted): it never blocks and is not counted in unposted.
+	// Informational A row that posted but says something a person should see (vat_not_deducted, expense_invoice_unapproved once its invoice is posted): it never blocks and is not counted in unposted. A vat_not_deducted row is resolved when an undoing turns its voucher back.
 	Informational bool `json:"informational"`
 
 	// InvoiceId The invoice in Invoices the fact is about — a credit note's, the invoice it credits.
@@ -1476,7 +1490,7 @@ type AccountingUnposted struct {
 	Source AccountingSource `json:"source"`
 	Stream string           `json:"stream"`
 
-	// SupplierInvoiceId The draft supplier invoice the row was made into.
+	// SupplierInvoiceId The draft supplier invoice the row was made into — or, after Reverse and copy, the copy; on expense_invoice_unapproved, the invoice the unapproved expense was made into.
 	SupplierInvoiceId *int64 `json:"supplierInvoiceId"`
 
 	// WaitingOn With reason waiting_on, the row under Needs attention this one waits behind.
@@ -1794,6 +1808,9 @@ type AddAccountingTaxCodeRateJSONRequestBody = AccountingTaxRateInput
 // EnterAccountingUnpostedNokAmountsJSONRequestBody defines body for EnterAccountingUnpostedNokAmounts for application/json ContentType.
 type EnterAccountingUnpostedNokAmountsJSONRequestBody = AccountingNokAmountsInput
 
+// MakeAccountingUnpostedSupplierInvoiceJSONRequestBody defines body for MakeAccountingUnpostedSupplierInvoice for application/json ContentType.
+type MakeAccountingUnpostedSupplierInvoiceJSONRequestBody = AccountingMakeSupplierInvoiceInput
+
 // PostAccountingVoucherJSONRequestBody defines body for PostAccountingVoucher for application/json ContentType.
 type PostAccountingVoucherJSONRequestBody = AccountingJournalInput
 
@@ -1931,6 +1948,9 @@ type ServerInterface interface {
 	// UpdateAccountingSupplier Change a supplier
 	// (PUT /api/v1/accounting/suppliers/{id})
 	UpdateAccountingSupplier(w http.ResponseWriter, r *http.Request, id int64)
+	// AnonymiseAccountingSupplier Anonymise a person supplier after its retention date
+	// (POST /api/v1/accounting/suppliers/{id}/anonymise)
+	AnonymiseAccountingSupplier(w http.ResponseWriter, r *http.Request, id int64)
 	// ExportAccountingSupplier Export what the books hold about a supplier
 	// (GET /api/v1/accounting/suppliers/{id}/export)
 	ExportAccountingSupplier(w http.ResponseWriter, r *http.Request, id int64)
@@ -3429,6 +3449,32 @@ func (siw *ServerInterfaceWrapper) UpdateAccountingSupplier(w http.ResponseWrite
 	handler.ServeHTTP(w, r)
 }
 
+// AnonymiseAccountingSupplier operation middleware
+func (siw *ServerInterfaceWrapper) AnonymiseAccountingSupplier(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AnonymiseAccountingSupplier(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ExportAccountingSupplier operation middleware
 func (siw *ServerInterfaceWrapper) ExportAccountingSupplier(w http.ResponseWriter, r *http.Request) {
 
@@ -4136,6 +4182,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/accounting/suppliers/{id}", wrapper.DeleteAccountingSupplier)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/accounting/suppliers/{id}", wrapper.GetAccountingSupplier)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/accounting/suppliers/{id}", wrapper.UpdateAccountingSupplier)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/accounting/suppliers/{id}/anonymise", wrapper.AnonymiseAccountingSupplier)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/accounting/suppliers/{id}/export", wrapper.ExportAccountingSupplier)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/accounting/tax-codes", wrapper.ListAccountingTaxCodes)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/accounting/tax-codes/{id}", wrapper.UpdateAccountingTaxCode)
@@ -7263,6 +7310,92 @@ func (response UpdateAccountingSupplier409ApplicationProblemPlusJSONResponse) Vi
 	return err
 }
 
+type AnonymiseAccountingSupplierRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type AnonymiseAccountingSupplierResponseObject interface {
+	VisitAnonymiseAccountingSupplierResponse(w http.ResponseWriter) error
+}
+
+type AnonymiseAccountingSupplier200JSONResponse AccountingSupplier
+
+func (response AnonymiseAccountingSupplier200JSONResponse) VisitAnonymiseAccountingSupplierResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AnonymiseAccountingSupplier400ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response AnonymiseAccountingSupplier400ApplicationProblemPlusJSONResponse) VisitAnonymiseAccountingSupplierResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AnonymiseAccountingSupplier401JSONResponse externalRef0.AuthErrorResponse
+
+func (response AnonymiseAccountingSupplier401JSONResponse) VisitAnonymiseAccountingSupplierResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AnonymiseAccountingSupplier403JSONResponse externalRef0.AuthErrorResponse
+
+func (response AnonymiseAccountingSupplier403JSONResponse) VisitAnonymiseAccountingSupplierResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AnonymiseAccountingSupplier404Response struct {
+}
+
+func (response AnonymiseAccountingSupplier404Response) VisitAnonymiseAccountingSupplierResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type AnonymiseAccountingSupplier409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response AnonymiseAccountingSupplier409ApplicationProblemPlusJSONResponse) VisitAnonymiseAccountingSupplierResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ExportAccountingSupplierRequestObject struct {
 	Id int64 `json:"id"`
 }
@@ -7868,7 +8001,8 @@ func (response RetryAccountingUnposted409ApplicationProblemPlusJSONResponse) Vis
 }
 
 type MakeAccountingUnpostedSupplierInvoiceRequestObject struct {
-	Id int64 `json:"id"`
+	Id   int64 `json:"id"`
+	Body *MakeAccountingUnpostedSupplierInvoiceJSONRequestBody
 }
 
 type MakeAccountingUnpostedSupplierInvoiceResponseObject interface {
@@ -8652,6 +8786,9 @@ type StrictServerInterface interface {
 	// UpdateAccountingSupplier Change a supplier
 	// (PUT /api/v1/accounting/suppliers/{id})
 	UpdateAccountingSupplier(ctx context.Context, request UpdateAccountingSupplierRequestObject) (UpdateAccountingSupplierResponseObject, error)
+	// AnonymiseAccountingSupplier Anonymise a person supplier after its retention date
+	// (POST /api/v1/accounting/suppliers/{id}/anonymise)
+	AnonymiseAccountingSupplier(ctx context.Context, request AnonymiseAccountingSupplierRequestObject) (AnonymiseAccountingSupplierResponseObject, error)
 	// ExportAccountingSupplier Export what the books hold about a supplier
 	// (GET /api/v1/accounting/suppliers/{id}/export)
 	ExportAccountingSupplier(ctx context.Context, request ExportAccountingSupplierRequestObject) (ExportAccountingSupplierResponseObject, error)
@@ -9907,6 +10044,32 @@ func (sh *strictHandler) UpdateAccountingSupplier(w http.ResponseWriter, r *http
 	}
 }
 
+// AnonymiseAccountingSupplier operation middleware
+func (sh *strictHandler) AnonymiseAccountingSupplier(w http.ResponseWriter, r *http.Request, id int64) {
+	var request AnonymiseAccountingSupplierRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.AnonymiseAccountingSupplier(ctx, request.(AnonymiseAccountingSupplierRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AnonymiseAccountingSupplier")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(AnonymiseAccountingSupplierResponseObject); ok {
+		if err := validResponse.VisitAnonymiseAccountingSupplierResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ExportAccountingSupplier operation middleware
 func (sh *strictHandler) ExportAccountingSupplier(w http.ResponseWriter, r *http.Request, id int64) {
 	var request ExportAccountingSupplierRequestObject
@@ -10139,6 +10302,16 @@ func (sh *strictHandler) MakeAccountingUnpostedSupplierInvoice(w http.ResponseWr
 	var request MakeAccountingUnpostedSupplierInvoiceRequestObject
 
 	request.Id = id
+
+	var body MakeAccountingUnpostedSupplierInvoiceJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if !errors.Is(err, io.EOF) {
+			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+			return
+		}
+	} else {
+		request.Body = &body
+	}
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.MakeAccountingUnpostedSupplierInvoice(ctx, request.(MakeAccountingUnpostedSupplierInvoiceRequestObject))

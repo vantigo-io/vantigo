@@ -37,26 +37,28 @@ func (b *books) code(code string) int32  { return b.codes[code].Id }
 // away from zero.
 func TestJournal_TaxLinesToTheOre(t *testing.T) {
 	b := newBooks(t)
+	// role is the line's tax role: base on the entered line, tax on the VAT
+	// account, tax_reverse on a reverse charge's calculated side.
 	type posting struct {
-		account, amount string
+		account, amount, role string
 	}
 	for _, tc := range []struct {
 		name, entry, code, account, amount string
 		want                               []posting
 	}{
-		{"net 25 %", "net", "1", "6300", "1000.00", []posting{{"6300", "1000.00"}, {"2710", "250.00"}}},
-		{"gross 25 %", "gross", "1", "6300", "1000.00", []posting{{"6300", "800.00"}, {"2710", "200.00"}}},
-		{"gross 15 %", "gross", "11", "6300", "99.99", []posting{{"6300", "86.95"}, {"2711", "13.04"}}},
-		{"net 11.11 %", "net", "12", "4005", "33.33", []posting{{"4005", "33.33"}, {"2713", "3.70"}}},
-		{"net half an øre up", "net", "1", "6300", "0.02", []posting{{"6300", "0.02"}, {"2710", "0.01"}}},
-		{"gross 12 %", "gross", "13", "7000", "0.05", []posting{{"7000", "0.04"}, {"2712", "0.01"}}},
-		{"output credit net", "net", "3", "3000", "-1234.56", []posting{{"3000", "-1234.56"}, {"2700", "-308.64"}}},
-		{"output credit gross", "gross", "31", "3010", "-115.00", []posting{{"3010", "-100.00"}, {"2701", "-15.00"}}},
-		{"reverse charge", "net", "86", "6700", "400.00", []posting{{"6700", "400.00"}, {"2715", "100.00"}, {"2705", "-100.00"}}},
-		{"reverse charge without deduction", "net", "87", "6700", "400.00", []posting{{"6700", "400.00"}, {"6700", "100.00"}, {"2705", "-100.00"}}},
-		{"zero rate", "net", "5", "3100", "-500.00", []posting{{"3100", "-500.00"}}},
-		{"outside the law", "net", "6", "3200", "-500.00", []posting{{"3200", "-500.00"}}},
-		{"no VAT treatment", "gross", "0", "6300", "500.00", []posting{{"6300", "500.00"}}},
+		{"net 25 %", "net", "1", "6300", "1000.00", []posting{{"6300", "1000.00", "base"}, {"2710", "250.00", "tax"}}},
+		{"gross 25 %", "gross", "1", "6300", "1000.00", []posting{{"6300", "800.00", "base"}, {"2710", "200.00", "tax"}}},
+		{"gross 15 %", "gross", "11", "6300", "99.99", []posting{{"6300", "86.95", "base"}, {"2711", "13.04", "tax"}}},
+		{"net 11.11 %", "net", "12", "4005", "33.33", []posting{{"4005", "33.33", "base"}, {"2713", "3.70", "tax"}}},
+		{"net half an øre up", "net", "1", "6300", "0.02", []posting{{"6300", "0.02", "base"}, {"2710", "0.01", "tax"}}},
+		{"gross 12 %", "gross", "13", "7000", "0.05", []posting{{"7000", "0.04", "base"}, {"2712", "0.01", "tax"}}},
+		{"output credit net", "net", "3", "3000", "-1234.56", []posting{{"3000", "-1234.56", "base"}, {"2700", "-308.64", "tax"}}},
+		{"output credit gross", "gross", "31", "3010", "-115.00", []posting{{"3010", "-100.00", "base"}, {"2701", "-15.00", "tax"}}},
+		{"reverse charge", "net", "86", "6700", "400.00", []posting{{"6700", "400.00", "base"}, {"2715", "100.00", "tax"}, {"2705", "-100.00", "tax_reverse"}}},
+		{"reverse charge without deduction", "net", "87", "6700", "400.00", []posting{{"6700", "400.00", "base"}, {"6700", "100.00", "tax"}, {"2705", "-100.00", "tax_reverse"}}},
+		{"zero rate", "net", "5", "3100", "-500.00", []posting{{"3100", "-500.00", "base"}}},
+		{"outside the law", "net", "6", "3200", "-500.00", []posting{{"3200", "-500.00", "base"}}},
+		{"no VAT treatment", "gross", "0", "6300", "500.00", []posting{{"6300", "500.00", "base"}}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			res := b.c.Do(http.MethodPost, base+"/vouchers/preview", map[string]any{"voucherDate": "2026-03-10", "description": tc.name,
@@ -75,6 +77,9 @@ func TestJournal_TaxLinesToTheOre(t *testing.T) {
 				}
 				if p.Lines[i].TaxCodeId == nil || *p.Lines[i].TaxCodeId != b.code(tc.code) {
 					t.Errorf("line %d carries no tax code", i)
+				}
+				if p.Lines[i].TaxRole == nil || string(*p.Lines[i].TaxRole) != w.role {
+					t.Errorf("line %d's tax role = %v, want %s", i, p.Lines[i].TaxRole, w.role)
 				}
 			}
 			if p.Balanced {

@@ -173,11 +173,12 @@ func TestSuppliers(t *testing.T) {
 	}
 }
 
-// Every seeded purchase tax code (A5, A18): a line of 1 000.00 entered net,
-// to the øre — the deductible input codes' VAT on their VAT account, the
-// codes of no VAT treatment as a base alone, reverse charge on both sides
-// with the payable at the net, the codes without deduction putting the
-// deductible side on the cost line, and an output code refused.
+// Every seeded purchase tax code a supplier invoice takes (A5, A18): a line
+// of 1 000.00 entered net, to the øre — the deductible input codes' VAT on
+// their VAT account, the code of no VAT treatment as a base alone, reverse
+// charge on both sides with the payable at the net (the calculated side
+// tax_reverse), the codes without deduction putting the deductible side on
+// the cost line, and an output code and the import codes refused.
 func TestSupplierInvoices_EveryPurchaseCode(t *testing.T) {
 	b := newBooks(t)
 	s := b.aSupplier(t)
@@ -190,23 +191,13 @@ func TestSupplierInvoices_EveryPurchaseCode(t *testing.T) {
 		{"11", "1150.00", []string{"2400 -1150.00", "6300 1000.00 11 base", "2711 150.00 11 tax"}},
 		{"12", "1111.10", []string{"2400 -1111.10", "6300 1000.00 12 base", "2713 111.10 12 tax"}},
 		{"13", "1120.00", []string{"2400 -1120.00", "6300 1000.00 13 base", "2712 120.00 13 tax"}},
-		{"14", "1250.00", []string{"2400 -1250.00", "6300 1000.00 14 base", "2714 250.00 14 tax"}},
-		{"15", "1150.00", []string{"2400 -1150.00", "6300 1000.00 15 base", "2714 150.00 15 tax"}},
 		{"0", "1000.00", []string{"2400 -1000.00", "6300 1000.00 0 base"}},
-		{"20", "1000.00", []string{"2400 -1000.00", "6300 1000.00 20 base"}},
-		{"21", "1000.00", []string{"2400 -1000.00", "6300 1000.00 21 base"}},
-		{"22", "1000.00", []string{"2400 -1000.00", "6300 1000.00 22 base"}},
-		{"81", "1000.00", []string{"2400 -1000.00", "6300 1000.00 81 base", "2714 250.00 81 tax", "2705 -250.00 81 tax"}},
-		{"82", "1000.00", []string{"2400 -1000.00", "6300 1000.00 82 base", "6300 250.00 82 tax", "2705 -250.00 82 tax"}},
-		{"83", "1000.00", []string{"2400 -1000.00", "6300 1000.00 83 base", "2714 150.00 83 tax", "2705 -150.00 83 tax"}},
-		{"84", "1000.00", []string{"2400 -1000.00", "6300 1000.00 84 base", "6300 150.00 84 tax", "2705 -150.00 84 tax"}},
-		{"85", "1000.00", []string{"2400 -1000.00", "6300 1000.00 85 base"}},
-		{"86", "1000.00", []string{"2400 -1000.00", "6300 1000.00 86 base", "2715 250.00 86 tax", "2705 -250.00 86 tax"}},
-		{"87", "1000.00", []string{"2400 -1000.00", "6300 1000.00 87 base", "6300 250.00 87 tax", "2705 -250.00 87 tax"}},
-		{"88", "1000.00", []string{"2400 -1000.00", "6300 1000.00 88 base", "2715 120.00 88 tax", "2705 -120.00 88 tax"}},
-		{"89", "1000.00", []string{"2400 -1000.00", "6300 1000.00 89 base", "6300 120.00 89 tax", "2705 -120.00 89 tax"}},
-		{"91", "1000.00", []string{"2400 -1000.00", "6300 1000.00 91 base", "2715 250.00 91 tax", "2705 -250.00 91 tax"}},
-		{"92", "1000.00", []string{"2400 -1000.00", "6300 1000.00 92 base", "6300 250.00 92 tax", "2705 -250.00 92 tax"}},
+		{"86", "1000.00", []string{"2400 -1000.00", "6300 1000.00 86 base", "2715 250.00 86 tax", "2705 -250.00 86 tax_reverse"}},
+		{"87", "1000.00", []string{"2400 -1000.00", "6300 1000.00 87 base", "6300 250.00 87 tax", "2705 -250.00 87 tax_reverse"}},
+		{"88", "1000.00", []string{"2400 -1000.00", "6300 1000.00 88 base", "2715 120.00 88 tax", "2705 -120.00 88 tax_reverse"}},
+		{"89", "1000.00", []string{"2400 -1000.00", "6300 1000.00 89 base", "6300 120.00 89 tax", "2705 -120.00 89 tax_reverse"}},
+		{"91", "1000.00", []string{"2400 -1000.00", "6300 1000.00 91 base", "2715 250.00 91 tax", "2705 -250.00 91 tax_reverse"}},
+		{"92", "1000.00", []string{"2400 -1000.00", "6300 1000.00 92 base", "6300 250.00 92 tax", "2705 -250.00 92 tax_reverse"}},
 	}
 	for i, c := range cases {
 		inv := draft(t, b, map[string]any{"supplierId": s.Id, "kind": "invoice", "invoiceNumber": fmt.Sprintf("K-%s", c.code),
@@ -232,7 +223,13 @@ func TestSupplierInvoices_EveryPurchaseCode(t *testing.T) {
 	expectPostings(t, "gross", voucherByID(t, b, postInvoice(t, b, inv.Id).Voucher.Id),
 		"2400 -99.99", "6300 79.99 1 base", "2710 20.00 1 tax")
 
-	for _, refused := range []struct{ code, want string }{{"3", "tax_code_not_purchase"}, {"31", "tax_code_not_purchase"}} {
+	// An import's codes are a manual journal from the customs declaration
+	// (R8, M4): refused on a supplier invoice.
+	refusals := []struct{ code, want string }{{"3", "tax_code_not_purchase"}, {"31", "tax_code_not_purchase"}}
+	for _, code := range []string{"14", "15", "20", "21", "22", "81", "82", "83", "84", "85"} {
+		refusals = append(refusals, struct{ code, want string }{code, "tax_code_not_for_supplier_invoice"})
+	}
+	for _, refused := range refusals {
 		expectProblem(t, b.c.Do(http.MethodPost, base+"/supplier-invoices", map[string]any{"supplierId": s.Id, "kind": "invoice",
 			"invoiceNumber": "X-" + refused.code, "invoiceDate": "2026-03-01", "total": "1.00",
 			"lines": []map[string]any{{"accountId": b.acc("6300"), "taxCodeId": b.code(refused.code), "amount": "1.00"}}}),
@@ -255,12 +252,12 @@ func TestSupplierInvoices_ForeignCurrencyAndPartPayments(t *testing.T) {
 	inv := draft(t, b, map[string]any{"supplierId": s.Id, "kind": "invoice", "invoiceNumber": "INV-77", "invoiceDate": "2026-03-01",
 		"exchangeRate": "11.5", "total": "100.00",
 		"lines": []map[string]any{{"accountId": b.acc("6300"), "taxCodeId": b.code("86"), "amount": "100.00", "entry": "net"}}})
-	if inv.Currency != "EUR" || inv.TotalNok != "1150.00" || inv.ExchangeRate != "11.500000" {
+	if inv.Currency != "EUR" || deref(inv.TotalNok) != "1150.00" || deref(inv.ExchangeRate) != "11.500000" {
 		t.Fatalf("draft = %+v", inv)
 	}
 	posted := postInvoice(t, b, inv.Id)
 	v := voucherByID(t, b, posted.Voucher.Id)
-	expectPostings(t, "EUR invoice", v, "2400 -1150.00", "6300 1150.00 86 base", "2715 287.50 86 tax", "2705 -287.50 86 tax")
+	expectPostings(t, "EUR invoice", v, "2400 -1150.00", "6300 1150.00 86 base", "2715 287.50 86 tax", "2705 -287.50 86 tax_reverse")
 	if p := v.Postings[0]; p.Currency == nil || *p.Currency != "EUR" || *p.CurrencyAmount != "-100.00" || *p.ExchangeRate != "11.500000" {
 		t.Fatalf("payable's currency = %+v", p)
 	}
@@ -310,7 +307,7 @@ func TestSupplierInvoices_ForeignCurrencyAndPartPayments(t *testing.T) {
 	// The NOK total may be given instead of the rate.
 	byTotal := draft(t, b, map[string]any{"supplierId": s.Id, "kind": "invoice", "invoiceNumber": "INV-78", "invoiceDate": "2026-03-01",
 		"totalNok": "1234.56", "total": "100.00", "lines": []map[string]any{{"accountId": b.acc("6300"), "amount": "100.00"}}})
-	if byTotal.ExchangeRate != "12.345600" || byTotal.TotalNok != "1234.56" {
+	if deref(byTotal.ExchangeRate) != "12.345600" || deref(byTotal.TotalNok) != "1234.56" {
 		t.Fatalf("by total = %+v", byTotal)
 	}
 	expectProblem(t, b.c.Do(http.MethodPost, base+"/supplier-invoices", map[string]any{"supplierId": s.Id, "kind": "invoice",
@@ -640,4 +637,197 @@ func TestSupplierInvoices_Files(t *testing.T) {
 	if len(b.h.objects.data) != 0 {
 		t.Fatalf("objects left: %d", len(b.h.objects.data))
 	}
+}
+
+// reverseAndCopy asks for Reverse and copy of an invoice.
+func reverseAndCopy(b *books, id int64) *modtest.Response {
+	return b.c.Do(http.MethodPost, fmt.Sprintf("%s/supplier-invoices/%d/reverse-and-copy", base, id),
+		map[string]any{"date": "2026-03-20", "reason": "Wrong"})
+}
+
+// A credit note is held, at Post, to the invoice it credits as it stands then
+// (the review's HIGH): in its currency, for no more than is left on it in
+// NOK and in the currency, and only while it is posted. Reverse and copy of
+// an invoice is refused while another voucher stands on its open item.
+func TestSupplierInvoices_CreditNoteHeldToItsInvoice(t *testing.T) {
+	b := newBooks(t)
+	eur := supplier(t, b, map[string]any{"name": "Cloud GmbH", "country": "DE", "currency": "EUR"})
+	inv := postInvoice(t, b, draft(t, b, map[string]any{"supplierId": eur.Id, "kind": "invoice", "invoiceNumber": "E-1",
+		"invoiceDate": "2026-03-01", "exchangeRate": "11.5", "total": "100.00",
+		"lines": []map[string]any{{"accountId": b.acc("6300"), "amount": "100.00"}}}).Id)
+	post := func(id int64) *modtest.Response {
+		if res := attach(t, b, id, "k.pdf"); res.Status != http.StatusCreated {
+			t.Fatalf("attach = %d", res.Status)
+		}
+		return b.c.Do(http.MethodPost, fmt.Sprintf("%s/supplier-invoices/%d/post", base, id), nil)
+	}
+	credit := func(number, cur, total string, extra map[string]any) gen.AccountingSupplierInvoice {
+		body := map[string]any{"supplierId": eur.Id, "kind": "credit_note", "invoiceNumber": number, "invoiceDate": "2026-03-05",
+			"currency": cur, "total": total, "creditsInvoiceId": inv.Id,
+			"lines": []map[string]any{{"accountId": b.acc("6300"), "amount": total}}}
+		for k, v := range extra {
+			body[k] = v
+		}
+		return draft(t, b, body)
+	}
+
+	// A NOK credit note on a EUR invoice.
+	expectProblem(t, post(credit("K-NOK", "NOK", "100.00", nil).Id), http.StatusConflict, "credit_note_currency_mismatch")
+	// More than is left in the currency, although less in NOK.
+	expectProblem(t, post(credit("K-EUR-1", "EUR", "101.00", map[string]any{"exchangeRate": "11.0"}).Id),
+		http.StatusConflict, "credit_note_exceeds_balance")
+	// More than is left in NOK.
+	expectProblem(t, post(credit("K-EUR-2", "EUR", "90.00", map[string]any{"exchangeRate": "13.0"}).Id),
+		http.StatusConflict, "credit_note_exceeds_balance")
+	// What is left, and then nothing more.
+	part := credit("K-EUR-3", "EUR", "60.00", map[string]any{"exchangeRate": "11.5"})
+	if res := post(part.Id); res.Status != http.StatusOK {
+		t.Fatalf("credit 60 = %d %s", res.Status, res.Body)
+	}
+	expectProblem(t, post(credit("K-EUR-4", "EUR", "40.01", map[string]any{"exchangeRate": "11.5"}).Id),
+		http.StatusConflict, "credit_note_exceeds_balance")
+
+	// The invoice is not reversed under its credit note; the credit note
+	// itself is, and then the invoice.
+	expectProblem(t, reverseAndCopy(b, inv.Id), http.StatusConflict, "supplier_invoice_item_in_use")
+	if res := reverseAndCopy(b, part.Id); res.Status != http.StatusCreated {
+		t.Fatalf("reverse the credit note = %d %s", res.Status, res.Body)
+	}
+	late := credit("K-EUR-5", "EUR", "10.00", map[string]any{"exchangeRate": "11.5"})
+	if res := reverseAndCopy(b, inv.Id); res.Status != http.StatusCreated {
+		t.Fatalf("reverse the invoice = %d %s", res.Status, res.Body)
+	}
+	// A credit note drafted while its invoice stood, posted after the
+	// invoice was reversed.
+	expectProblem(t, post(late.Id), http.StatusConflict, "credit_note_invoice_not_posted")
+
+	// A payment made through a credit note's own item holds the credit note,
+	// and with it, through the shared item, the invoice.
+	nok := b.aSupplier(t)
+	inv2 := postInvoice(t, b, draft(t, b, map[string]any{"supplierId": nok.Id, "kind": "invoice", "invoiceNumber": "N-1",
+		"invoiceDate": "2026-03-01", "total": "500.00", "lines": []map[string]any{{"accountId": b.acc("6300"), "amount": "500.00"}}}).Id)
+	cn := postInvoice(t, b, draft(t, b, map[string]any{"supplierId": nok.Id, "kind": "credit_note", "invoiceNumber": "NK-1",
+		"invoiceDate": "2026-03-02", "total": "100.00", "creditsInvoiceId": inv2.Id,
+		"lines": []map[string]any{{"accountId": b.acc("6300"), "amount": "100.00"}}}).Id)
+	if res := b.c.Do(http.MethodPost, fmt.Sprintf("%s/supplier-invoices/%d/payments", base, inv2.Id),
+		map[string]any{"date": "2026-03-10", "amountNok": "50.00"}); res.Status != http.StatusCreated {
+		t.Fatalf("pay = %d %s", res.Status, res.Body)
+	}
+	expectProblem(t, reverseAndCopy(b, cn.Id), http.StatusConflict, "supplier_invoice_item_in_use")
+}
+
+// A credit note and a payment on the same open item, posted at once, cannot
+// both pass their balance checks: Post locks the credited invoice and its
+// item as a payment does, so the second sees what the first left.
+func TestSupplierInvoices_CreditNoteAndPaymentRace(t *testing.T) {
+	b := newBooks(t)
+	s := b.aSupplier(t)
+	for i := range 4 {
+		inv := postInvoice(t, b, draft(t, b, map[string]any{"supplierId": s.Id, "kind": "invoice",
+			"invoiceNumber": fmt.Sprintf("R-%d", i), "invoiceDate": "2026-03-01", "total": "1000.00",
+			"lines": []map[string]any{{"accountId": b.acc("6300"), "amount": "1000.00"}}}).Id)
+		cn := draft(t, b, map[string]any{"supplierId": s.Id, "kind": "credit_note", "invoiceNumber": fmt.Sprintf("RK-%d", i),
+			"invoiceDate": "2026-03-02", "total": "600.00", "creditsInvoiceId": inv.Id,
+			"lines": []map[string]any{{"accountId": b.acc("6300"), "amount": "600.00"}}})
+		if res := attach(t, b, cn.Id, "k.pdf"); res.Status != http.StatusCreated {
+			t.Fatalf("attach = %d", res.Status)
+		}
+		statuses := make(chan int, 2)
+		go func() {
+			statuses <- b.c.Do(http.MethodPost, fmt.Sprintf("%s/supplier-invoices/%d/post", base, cn.Id), nil).Status
+		}()
+		go func() {
+			statuses <- b.c.Do(http.MethodPost, fmt.Sprintf("%s/supplier-invoices/%d/payments", base, inv.Id),
+				map[string]any{"date": "2026-03-03", "amountNok": "600.00"}).Status
+		}()
+		got := []int{<-statuses, <-statuses}
+		slices.Sort(got)
+		if got[0] >= 300 || got[1] != http.StatusConflict {
+			t.Fatalf("round %d: statuses %v, want one success and one 409", i, got)
+		}
+		res := b.c.Do(http.MethodGet, fmt.Sprintf("%s/supplier-invoices/%d", base, inv.Id), nil)
+		res.JSON(&inv)
+		if *inv.Balance != "-400.00" {
+			t.Fatalf("round %d: balance %s, want -400.00", i, *inv.Balance)
+		}
+	}
+}
+
+// Both the rate and the NOK total (M1): they must agree to the øre, an øre
+// per line of slack; and a rate of exactly 1 is a rate (L4).
+func TestSupplierInvoices_RateAndNOKTotalAgree(t *testing.T) {
+	b := newBooks(t)
+	s := supplier(t, b, map[string]any{"name": "Cloud GmbH", "country": "DE", "currency": "EUR"})
+	body := func(number, rate, nok string) map[string]any {
+		return map[string]any{"supplierId": s.Id, "kind": "invoice", "invoiceNumber": number, "invoiceDate": "2026-03-01",
+			"exchangeRate": rate, "totalNok": nok, "total": "100.00",
+			"lines": []map[string]any{{"accountId": b.acc("6300"), "amount": "100.00"}}}
+	}
+	expectProblem(t, b.c.Do(http.MethodPost, base+"/supplier-invoices", body("M-1", "11.5", "1250.00")),
+		http.StatusBadRequest, "exchange_rate_mismatch")
+	expectProblem(t, b.c.Do(http.MethodPost, base+"/supplier-invoices", body("M-2", "11.5", "1150.02")),
+		http.StatusBadRequest, "exchange_rate_mismatch")
+	if inv := draft(t, b, body("M-3", "11.5", "1150.01")); deref(inv.TotalNok) != "1150.01" {
+		t.Fatalf("within an øre = %+v", inv)
+	}
+	one := draft(t, b, map[string]any{"supplierId": s.Id, "kind": "invoice", "invoiceNumber": "M-4", "invoiceDate": "2026-03-01",
+		"exchangeRate": "1", "total": "100.00", "lines": []map[string]any{{"accountId": b.acc("6300"), "amount": "100.00"}}})
+	if posted := postInvoice(t, b, one.Id); posted.State != "posted" || *posted.Balance != "-100.00" {
+		t.Fatalf("a rate of 1 = %+v", posted)
+	}
+}
+
+// A person supplier is anonymised once the bookkeeping no longer keeps it
+// (L5): refused before its retention date, and for a company; after it, the
+// name is its number's, the contact and bank fields are cleared, the
+// postings keep it, and it is not changed again. The organisation number is
+// unique per country, and the search takes % and _ as themselves.
+func TestSuppliers_AnonymiseAndUniqueness(t *testing.T) {
+	b := newBooks(t)
+	person := supplier(t, b, map[string]any{"name": "Kari 100%_Enkeltperson", "isPerson": true, "email": "kari@example.com",
+		"bankAccount": "1234.56.78903", "addressLine": "Gata 1"})
+	inv := postInvoice(t, b, draft(t, b, map[string]any{"supplierId": person.Id, "kind": "invoice", "invoiceNumber": "1",
+		"invoiceDate": "2026-04-01", "total": "100.00", "lines": []map[string]any{{"accountId": b.acc("6300"), "amount": "100.00"}}}).Id)
+	anonymise := func(id int64) *modtest.Response {
+		return b.c.Do(http.MethodPost, fmt.Sprintf("%s/suppliers/%d/anonymise", base, id), nil)
+	}
+	expectProblem(t, anonymise(person.Id), http.StatusConflict, "supplier_retained")
+	company := b.aSupplier(t)
+	if res := anonymise(company.Id); res.Status != http.StatusBadRequest {
+		t.Fatalf("a company anonymised = %d", res.Status)
+	}
+
+	var list gen.AccountingSupplierList
+	b.c.Do(http.MethodGet, base+"/suppliers?q=100%25_", nil).JSON(&list)
+	if list.Total != 1 || list.Items[0].Id != person.Id {
+		t.Fatalf("search for 100%%_ = %+v", list)
+	}
+	b.c.Do(http.MethodGet, base+"/suppliers?q=_", nil).JSON(&list)
+	if list.Total != 1 {
+		t.Fatalf("search for _ matched %d", list.Total)
+	}
+
+	b.h.Advance(6 * 366 * 24 * time.Hour)
+	b.c = b.h.SignIn(t, accountant...)
+	res := anonymise(person.Id)
+	if res.Status != http.StatusOK {
+		t.Fatalf("anonymise = %d %s", res.Status, res.Body)
+	}
+	var got gen.AccountingSupplier
+	res.JSON(&got)
+	if got.Name != fmt.Sprintf("Anonymised supplier %d", person.Number) || got.Email != nil || got.BankAccount != nil ||
+		got.AddressLine != nil || got.AnonymisedAt == nil || got.Active || got.Balance != "-100.00" {
+		t.Fatalf("anonymised = %+v", got)
+	}
+	if v := voucherByID(t, b, inv.Voucher.Id); v.Postings[0].SupplierId == nil || *v.Postings[0].SupplierId != person.Id {
+		t.Fatalf("the voucher lost its supplier: %+v", v.Postings[0])
+	}
+	expectProblem(t, anonymise(person.Id), http.StatusConflict, "supplier_anonymised")
+	expectProblem(t, b.c.Do(http.MethodPut, fmt.Sprintf("%s/suppliers/%d", base, person.Id),
+		map[string]any{"name": "Kari", "revision": got.Revision}), http.StatusConflict, "supplier_anonymised")
+
+	// The same organisation number in another country is another supplier.
+	supplier(t, b, map[string]any{"name": "Svensk AB", "country": "SE", "organisationNumber": *company.OrganisationNumber})
+	expectProblem(t, b.c.Do(http.MethodPost, base+"/suppliers", map[string]any{"name": "Again AS",
+		"organisationNumber": *company.OrganisationNumber}), http.StatusConflict, "supplier_organisation_number_taken")
 }
