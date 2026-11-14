@@ -2,6 +2,7 @@ import {
   IconBrandGoogle,
   IconBrandWindows,
   IconBuilding,
+  IconBuildingBank,
   IconBuildingSkyscraper,
   IconHelp,
   IconSettings,
@@ -36,8 +37,9 @@ export const accountMenuSections: readonly AccountMenuSection[] = [
     items: [
       { label: "navigation.workspaceAdmin", to: "/workspace/overview", icon: IconBuilding, ownerOnly: true },
       { label: "navigation.rolesAccess", to: "/workspace/roles", icon: IconShieldCheck, capability: "authorization" },
-      // Under Integrations in Workspace admin; here so a holder of entra:manage or google:manage who is not
-      // an Owner can reach the page, as an authorization manager reaches Roles & access. Spotlight reads this list too.
+      // Under Integrations in Workspace admin; here so a holder of entra:manage, google:manage,
+      // orders:carriers-manage or invoices:manage who is not an Owner can reach the page, as an
+      // authorization manager reaches Roles & access. Spotlight reads this list too.
       {
         label: "navigation.entra",
         to: "/workspace/entra",
@@ -58,6 +60,14 @@ export const accountMenuSections: readonly AccountMenuSection[] = [
         icon: IconTruckDelivery,
         module: "orders",
         requiredPermissions: ["orders:carriers-manage"],
+      },
+      {
+        label: "navigation.bank",
+        to: "/workspace/bank",
+        icon: IconBuildingBank,
+        module: "invoices",
+        requiredPermissions: ["invoices:manage"],
+        requiredAllPermissions: ["invoices:access"],
       },
     ],
   },

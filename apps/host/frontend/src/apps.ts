@@ -846,6 +846,16 @@ export const areas: readonly AreaDefinition[] = [
             module: "orders",
             requiredPermissions: ["orders:carriers-manage"],
           },
+          // The bank Invoices reads incoming payments from (invoices bank feed design F9), behind
+          // invoices:manage while the module is on.
+          {
+            label: "navigation.bank",
+            to: "/workspace/bank",
+            icon: IconBuildingBank,
+            module: "invoices",
+            requiredPermissions: ["invoices:manage"],
+            requiredAllPermissions: ["invoices:access"],
+          },
           // The AI plan Vantigo provisioned and the model each task uses (Integrations
           // design T13): the Owner's, and present only while the instance has an AI
           // provider, which the root layout learns from GET /owner/ai/settings.

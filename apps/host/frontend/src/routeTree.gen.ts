@@ -120,6 +120,7 @@ import { Route as TimeSettingsRouteImport } from './routes/time/settings'
 import { Route as WorkspaceIndexRouteImport } from './routes/workspace/index'
 import { Route as WorkspaceAiRouteImport } from './routes/workspace/ai'
 import { Route as WorkspaceAssistantRouteImport } from './routes/workspace/assistant'
+import { Route as WorkspaceBankRouteImport } from './routes/workspace/bank'
 import { Route as WorkspaceEntraRouteImport } from './routes/workspace/entra'
 import { Route as WorkspaceGoogleRouteImport } from './routes/workspace/google'
 import { Route as WorkspaceInvitationsRouteImport } from './routes/workspace/invitations'
@@ -781,6 +782,11 @@ const WorkspaceAiRoute = WorkspaceAiRouteImport.update({
 const WorkspaceAssistantRoute = WorkspaceAssistantRouteImport.update({
   id: '/assistant',
   path: '/assistant',
+  getParentRoute: () => WorkspaceRoute,
+} as any)
+const WorkspaceBankRoute = WorkspaceBankRouteImport.update({
+  id: '/bank',
+  path: '/bank',
   getParentRoute: () => WorkspaceRoute,
 } as any)
 const WorkspaceEntraRoute = WorkspaceEntraRouteImport.update({
@@ -1451,6 +1457,7 @@ export interface FileRoutesByFullPath {
   '/time/settings': typeof TimeSettingsRoute
   '/workspace/ai': typeof WorkspaceAiRoute
   '/workspace/assistant': typeof WorkspaceAssistantRoute
+  '/workspace/bank': typeof WorkspaceBankRoute
   '/workspace/entra': typeof WorkspaceEntraRouteWithChildren
   '/workspace/google': typeof WorkspaceGoogleRouteWithChildren
   '/workspace/invitations': typeof WorkspaceInvitationsRoute
@@ -1646,6 +1653,7 @@ export interface FileRoutesByTo {
   '/time/settings': typeof TimeSettingsRoute
   '/workspace/ai': typeof WorkspaceAiRoute
   '/workspace/assistant': typeof WorkspaceAssistantRoute
+  '/workspace/bank': typeof WorkspaceBankRoute
   '/workspace/invitations': typeof WorkspaceInvitationsRoute
   '/workspace/meta': typeof WorkspaceMetaRoute
   '/workspace/overview': typeof WorkspaceOverviewRoute
@@ -1863,6 +1871,7 @@ export interface FileRoutesById {
   '/time/settings': typeof TimeSettingsRoute
   '/workspace/ai': typeof WorkspaceAiRoute
   '/workspace/assistant': typeof WorkspaceAssistantRoute
+  '/workspace/bank': typeof WorkspaceBankRoute
   '/workspace/entra': typeof WorkspaceEntraRouteWithChildren
   '/workspace/google': typeof WorkspaceGoogleRouteWithChildren
   '/workspace/invitations': typeof WorkspaceInvitationsRoute
@@ -2083,6 +2092,7 @@ export interface FileRouteTypes {
     | '/time/settings'
     | '/workspace/ai'
     | '/workspace/assistant'
+    | '/workspace/bank'
     | '/workspace/entra'
     | '/workspace/google'
     | '/workspace/invitations'
@@ -2278,6 +2288,7 @@ export interface FileRouteTypes {
     | '/time/settings'
     | '/workspace/ai'
     | '/workspace/assistant'
+    | '/workspace/bank'
     | '/workspace/invitations'
     | '/workspace/meta'
     | '/workspace/overview'
@@ -2494,6 +2505,7 @@ export interface FileRouteTypes {
     | '/time/settings'
     | '/workspace/ai'
     | '/workspace/assistant'
+    | '/workspace/bank'
     | '/workspace/entra'
     | '/workspace/google'
     | '/workspace/invitations'
@@ -3436,6 +3448,13 @@ declare module '@tanstack/react-router' {
       path: '/assistant'
       fullPath: '/workspace/assistant'
       preLoaderRoute: typeof WorkspaceAssistantRouteImport
+      parentRoute: typeof WorkspaceRoute
+    }
+    '/workspace/bank': {
+      id: '/workspace/bank'
+      path: '/bank'
+      fullPath: '/workspace/bank'
+      preLoaderRoute: typeof WorkspaceBankRouteImport
       parentRoute: typeof WorkspaceRoute
     }
     '/workspace/entra': {
@@ -4755,6 +4774,7 @@ const WorkspaceGoogleRouteWithChildren = WorkspaceGoogleRoute._addFileChildren(
 interface WorkspaceRouteChildren {
   WorkspaceAiRoute: typeof WorkspaceAiRoute
   WorkspaceAssistantRoute: typeof WorkspaceAssistantRoute
+  WorkspaceBankRoute: typeof WorkspaceBankRoute
   WorkspaceEntraRoute: typeof WorkspaceEntraRouteWithChildren
   WorkspaceGoogleRoute: typeof WorkspaceGoogleRouteWithChildren
   WorkspaceInvitationsRoute: typeof WorkspaceInvitationsRoute
@@ -4770,6 +4790,7 @@ interface WorkspaceRouteChildren {
 const WorkspaceRouteChildren: WorkspaceRouteChildren = {
   WorkspaceAiRoute: WorkspaceAiRoute,
   WorkspaceAssistantRoute: WorkspaceAssistantRoute,
+  WorkspaceBankRoute: WorkspaceBankRoute,
   WorkspaceEntraRoute: WorkspaceEntraRouteWithChildren,
   WorkspaceGoogleRoute: WorkspaceGoogleRouteWithChildren,
   WorkspaceInvitationsRoute: WorkspaceInvitationsRoute,
