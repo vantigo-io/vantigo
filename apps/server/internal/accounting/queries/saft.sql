@@ -38,6 +38,13 @@ WHERE e.id = (
     FOR UPDATE SKIP LOCKED)
 RETURNING *;
 
+-- name: GiveUpSaftExports :exec
+-- GiveUpSaftExports fails the exports whose lease ran out after their last
+-- allowed attempt: a run that keeps stopping is not taken up for ever.
+UPDATE accounting.saft_exports
+SET state = 'failed', error = sqlc.arg(error), finished_at = sqlc.arg(now), lease_id = NULL, lease_until = NULL
+WHERE state = 'running' AND lease_until < sqlc.arg(now) AND attempts >= sqlc.arg(max_attempts)::int;
+
 -- name: ExtendSaftExportLease :execrows
 UPDATE accounting.saft_exports SET lease_until = sqlc.arg(lease_until)
 WHERE id = sqlc.arg(id) AND lease_id = sqlc.arg(lease_id) AND state = 'running';
@@ -99,7 +106,9 @@ GROUP BY a.id;
 -- name: SaftEarlierResult :one
 -- SaftEarlierResult is every income and expense posting before year_start:
 -- the earlier years' result the books have not closed, which the file
--- carries on the year_result account.
+-- carries on the year_result account. This phase has no year-end closing:
+-- once one exists (phase 3) and posts the result to year_result, this sum
+-- must leave out what the closings have posted, or it is counted twice.
 SELECT coalesce(sum(p.amount), 0)::text AS result
 FROM accounting.postings p
 JOIN accounting.accounts a ON a.id = p.account_id

@@ -226,6 +226,25 @@ func (q *Queries) GetSaftImport(ctx context.Context, id int64) (AccountingSaftIm
 	return i, err
 }
 
+const giveUpSaftExports = `-- name: GiveUpSaftExports :exec
+UPDATE accounting.saft_exports
+SET state = 'failed', error = $1, finished_at = $2, lease_id = NULL, lease_until = NULL
+WHERE state = 'running' AND lease_until < $2 AND attempts >= $3::int
+`
+
+type GiveUpSaftExportsParams struct {
+	Error       *string
+	Now         *time.Time
+	MaxAttempts int32
+}
+
+// GiveUpSaftExports fails the exports whose lease ran out after their last
+// allowed attempt: a run that keeps stopping is not taken up for ever.
+func (q *Queries) GiveUpSaftExports(ctx context.Context, arg GiveUpSaftExportsParams) error {
+	_, err := q.db.Exec(ctx, giveUpSaftExports, arg.Error, arg.Now, arg.MaxAttempts)
+	return err
+}
+
 const insertSaftExport = `-- name: InsertSaftExport :one
 
 INSERT INTO accounting.saft_exports (fiscal_year, from_period, to_period, period_start, period_end, unmapped_accounts,
@@ -709,7 +728,9 @@ type SaftEarlierResultParams struct {
 
 // SaftEarlierResult is every income and expense posting before year_start:
 // the earlier years' result the books have not closed, which the file
-// carries on the year_result account.
+// carries on the year_result account. This phase has no year-end closing:
+// once one exists (phase 3) and posts the result to year_result, this sum
+// must leave out what the closings have posted, or it is counted twice.
 func (q *Queries) SaftEarlierResult(ctx context.Context, arg SaftEarlierResultParams) (string, error) {
 	row := q.db.QueryRow(ctx, saftEarlierResult, arg.YearStart, arg.ThroughVoucherID)
 	var result string
