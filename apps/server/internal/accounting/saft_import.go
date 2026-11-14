@@ -1080,6 +1080,11 @@ func (s *server) ApplyAccountingSaftImport(ctx context.Context, req gen.ApplyAcc
 			}
 			lines = append(lines, l)
 		}
+		// The opening's own rule: no line on a tax code's VAT or counter
+		// account; the plan has put their balances on vat_settlement.
+		if err := checkOpeningLines(ctx, q, lines); err != nil {
+			return err
+		}
 		if len(lines) > 0 {
 			posted, err := Post(ctx, tx, Voucher{Kind: "opening", Date: p.booksStart,
 				Description: fmt.Sprintf("SAF-T %s %s–%s", p.file.CompanyName, p.file.SelectionStart.Format(time.DateOnly), p.file.SelectionEnd.Format(time.DateOnly)),
