@@ -173,6 +173,9 @@ export const refusalCodes = [
   "saft_import_unmatched_customers",
   "saft_import_parties_mismatch",
   "saft_import_books_start_mismatch",
+  "saft_import_link_unknown",
+  "saft_import_other_company",
+  "saft_export_file_removed",
 ] as const;
 export type RefusalCode = (typeof refusalCodes)[number];
 
