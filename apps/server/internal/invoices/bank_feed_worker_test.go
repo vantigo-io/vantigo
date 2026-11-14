@@ -162,6 +162,7 @@ func TestBankFeedWorker_OneClaimPerAccount(t *testing.T) {
 	if n := transactionReads(h); n != 1 {
 		t.Errorf("an account not due was read: %d reads", n)
 	}
+	h.Advance(3 * time.Minute) // a read of the last two minutes is the fetch
 	res := importer(t, h).Do(http.MethodPost, bankFeedPath+"/sync", map[string]any{"account": sellerAccount})
 	if res.Status != http.StatusAccepted || !strings.Contains(string(res.Body), sellerAccount) {
 		t.Fatalf("Fetch now = %d %s, want 202 naming the account", res.Status, res.Body)
@@ -367,5 +368,101 @@ func TestBankFeedSync_MatchRacesAnApply(t *testing.T) {
 	}
 	if after := deadlocks(t, probeConn); after != before {
 		t.Errorf("Postgres broke %d deadlock(s)", after-before)
+	}
+}
+
+// Fetch now while a cycle is in flight (plan C review, item 2): the cycle
+// finishes and keeps the next_sync_at the fetch moved after its claim, so
+// the next claim reads the account again at once.
+func TestBankFeedWorker_FetchNowDuringACycleReadsAgain(t *testing.T) {
+	h, _ := syncHarness(t)
+	inv := kidInvoice(t, h)
+	feedReady(t, h)
+	h.folio.AddTransaction(sellerAccount, incoming(txID(1), "2026-10-06", "1000.00", *inv.Kid))
+	parked, release := make(chan struct{}), make(chan struct{})
+	var once sync.Once
+	restore := invoices.SetBankFeedSyncAfterStore(func(context.Context, int64) error {
+		once.Do(func() { close(parked); <-release })
+		return nil
+	})
+	defer restore()
+	done := make(chan error, 1)
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		_, err := feedWorker(t, h.Deps()).ProcessOne(ctx)
+		done <- err
+	}()
+	<-parked
+	h.Advance(3 * time.Minute)
+	if res := importer(t, h).Do(http.MethodPost, bankFeedPath+"/sync", map[string]any{}); res.Status != http.StatusAccepted {
+		t.Fatalf("Fetch now = %d %s", res.Status, res.Body)
+	}
+	close(release)
+	if err := <-done; err != nil {
+		t.Fatalf("the cycle in flight: %v", err)
+	}
+	if s := feedStateOf(t, h, sellerAccount); s.next == nil || !s.next.Equal(h.Now()) {
+		t.Fatalf("after the cycle: %+v, want due now, as the fetch made it", s)
+	}
+	syncNow(t, h)
+	if n := transactionReads(h); n != 2 {
+		t.Errorf("the bank was read %d times, want twice: the cycle and the fetch", n)
+	}
+}
+
+// Fetch now respects the bank (plan C review, item 3): never due before the
+// bank's 429 allows, nothing for an account read in the last two minutes,
+// and over a failure's backoff it wins.
+func TestBankFeedWorker_FetchNowRespectsTheBank(t *testing.T) {
+	t.Parallel()
+	h, _ := syncHarness(t)
+	feedReady(t, h)
+	fetch := func() {
+		t.Helper()
+		if res := importer(t, h).Do(http.MethodPost, bankFeedPath+"/sync", map[string]any{}); res.Status != http.StatusAccepted {
+			t.Fatalf("Fetch now = %d %s", res.Status, res.Body)
+		}
+	}
+	h.folio.Fail(foliotest.OpTransactions, foliotest.Failure{Status: http.StatusTooManyRequests, RetryAfter: "7200", Times: 1})
+	syncNow(t, h)
+	waitUntil := h.Now().Add(2 * time.Hour)
+	h.Advance(5 * time.Minute)
+	fetch()
+	if s := feedStateOf(t, h, sellerAccount); s.next == nil || !s.next.Equal(waitUntil) {
+		t.Errorf("Fetch now after a 429: %+v, want due when the bank allows, %v", s, waitUntil)
+	}
+	h.Advance(time.Hour)
+	syncNow(t, h)
+	if n := transactionReads(h); n != 1 {
+		t.Errorf("the bank was asked %d times before its wait was over, want once", n)
+	}
+	h.Advance(time.Hour)
+	syncNow(t, h)
+	if n := transactionReads(h); n != 2 {
+		t.Errorf("after the wait: %d reads, want 2", n)
+	}
+	if got := modtest1(t, h, `SELECT coalesce(rate_limited_until::text, '-') FROM invoices.bank_feed_accounts`); got != "-" {
+		t.Errorf("rate_limited_until after a success = %s, want cleared", got)
+	}
+
+	// Read a minute ago: the fetch changes nothing.
+	h.Advance(time.Minute)
+	fetch()
+	if s := feedStateOf(t, h, sellerAccount); s.next == nil || !s.next.Equal(h.Now().Add(29*time.Minute)) {
+		t.Errorf("Fetch now a minute after a read: %+v, want left due after the interval", s)
+	}
+
+	// Over a failure's backoff, the fetch wins.
+	h.folio.Fail(foliotest.OpTransactions, foliotest.Failure{Status: http.StatusInternalServerError, Times: 1})
+	h.Advance(30 * time.Minute)
+	syncNow(t, h)
+	if s := feedStateOf(t, h, sellerAccount); s.failures != 1 || !s.next.Equal(h.Now().Add(time.Hour)) {
+		t.Fatalf("after a failure: %+v, want one failure, due in an hour", s)
+	}
+	h.Advance(3 * time.Minute)
+	fetch()
+	if s := feedStateOf(t, h, sellerAccount); s.next == nil || !s.next.Equal(h.Now()) {
+		t.Errorf("Fetch now after a failure: %+v, want due now", s)
 	}
 }

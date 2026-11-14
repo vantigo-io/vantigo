@@ -40,9 +40,10 @@ UPDATE invoices.bank_feed_accounts SET
     failures = failures + 1,
     reason = coalesce($1::text, CASE WHEN status = 'refused' AND failures + 1 < $2::integer THEN reason END),
     status = CASE WHEN failures + 1 >= $2::integer THEN 'failing' ELSE status END,
-    detail = $3, next_sync_at = $4::timestamptz, lease_id = NULL, lease_until = NULL,
+    detail = $3, next_sync_at = CASE WHEN next_sync_at > $4::timestamptz THEN next_sync_at ELSE $5::timestamptz END,
+    rate_limited_until = NULL, lease_id = NULL, lease_until = NULL,
     updated_at = CASE WHEN failures + 1 >= $2::integer AND status <> 'failing'
-        THEN $5::timestamptz ELSE updated_at END
+        THEN $4::timestamptz ELSE updated_at END
 WHERE account = $6 AND lease_id = $7::text
 `
 
@@ -50,8 +51,8 @@ type BankFeedFailedParams struct {
 	Reason       *string
 	FailingAfter int32
 	Detail       string
-	NextSyncAt   time.Time
 	Now          time.Time
+	NextSyncAt   time.Time
 	Account      string
 	LeaseID      string
 }
@@ -65,8 +66,8 @@ func (q *Queries) BankFeedFailed(ctx context.Context, arg BankFeedFailedParams) 
 		arg.Reason,
 		arg.FailingAfter,
 		arg.Detail,
-		arg.NextSyncAt,
 		arg.Now,
+		arg.NextSyncAt,
 		arg.Account,
 		arg.LeaseID,
 	)
@@ -78,24 +79,28 @@ func (q *Queries) BankFeedFailed(ctx context.Context, arg BankFeedFailedParams) 
 
 const bankFeedRateLimited = `-- name: BankFeedRateLimited :execrows
 UPDATE invoices.bank_feed_accounts SET
-    detail = $1, next_sync_at = $2::timestamptz, lease_id = NULL, lease_until = NULL
-WHERE account = $3 AND lease_id = $4::text
+    detail = $1, next_sync_at = $2::timestamptz, rate_limited_until = $3::timestamptz,
+    lease_id = NULL, lease_until = NULL
+WHERE account = $4 AND lease_id = $5::text
 `
 
 type BankFeedRateLimitedParams struct {
-	Detail     string
-	NextSyncAt time.Time
-	Account    string
-	LeaseID    string
+	Detail           string
+	NextSyncAt       time.Time
+	RateLimitedUntil time.Time
+	Account          string
+	LeaseID          string
 }
 
 // BankFeedRateLimited ends a claim the bank asked to wait (a 429; F7): the
 // status and the failures as they were, the wait in detail, read again at
-// @next_sync_at.
+// @next_sync_at, and @rate_limited_until kept, before which Fetch now does
+// not make the account due.
 func (q *Queries) BankFeedRateLimited(ctx context.Context, arg BankFeedRateLimitedParams) (int64, error) {
 	result, err := q.db.Exec(ctx, bankFeedRateLimited,
 		arg.Detail,
 		arg.NextSyncAt,
+		arg.RateLimitedUntil,
 		arg.Account,
 		arg.LeaseID,
 	)
@@ -108,16 +113,17 @@ func (q *Queries) BankFeedRateLimited(ctx context.Context, arg BankFeedRateLimit
 const bankFeedRefused = `-- name: BankFeedRefused :execrows
 UPDATE invoices.bank_feed_accounts SET
     status = 'refused', reason = $1::text, detail = $2, failures = 0,
-    next_sync_at = $3::timestamptz, lease_id = NULL, lease_until = NULL,
-    updated_at = CASE WHEN status <> 'refused' OR reason IS DISTINCT FROM $1::text THEN $4::timestamptz ELSE updated_at END
+    next_sync_at = CASE WHEN next_sync_at > $3::timestamptz THEN next_sync_at ELSE $4::timestamptz END,
+    rate_limited_until = NULL, lease_id = NULL, lease_until = NULL,
+    updated_at = CASE WHEN status <> 'refused' OR reason IS DISTINCT FROM $1::text THEN $3::timestamptz ELSE updated_at END
 WHERE account = $5 AND lease_id = $6::text
 `
 
 type BankFeedRefusedParams struct {
 	Reason     string
 	Detail     string
-	NextSyncAt time.Time
 	Now        time.Time
+	NextSyncAt time.Time
 	Account    string
 	LeaseID    string
 }
@@ -129,8 +135,8 @@ func (q *Queries) BankFeedRefused(ctx context.Context, arg BankFeedRefusedParams
 	result, err := q.db.Exec(ctx, bankFeedRefused,
 		arg.Reason,
 		arg.Detail,
-		arg.NextSyncAt,
 		arg.Now,
+		arg.NextSyncAt,
 		arg.Account,
 		arg.LeaseID,
 	)
@@ -144,7 +150,8 @@ const bankFeedSynced = `-- name: BankFeedSynced :execrows
 UPDATE invoices.bank_feed_accounts SET
     status = 'ok', reason = NULL, detail = '', failures = 0, last_synced_at = $1::timestamptz,
     last_bank_file_id = coalesce($2::bigint, last_bank_file_id),
-    next_sync_at = $3::timestamptz, lease_id = NULL, lease_until = NULL,
+    next_sync_at = CASE WHEN next_sync_at > $1::timestamptz THEN next_sync_at ELSE $3::timestamptz END,
+    rate_limited_until = NULL, lease_id = NULL, lease_until = NULL,
     updated_at = CASE WHEN status <> 'ok' THEN $1::timestamptz ELSE updated_at END
 WHERE account = $4 AND lease_id = $5::text
 `
@@ -161,7 +168,9 @@ type BankFeedSyncedParams struct {
 // the reason and detail cleared, last_synced_at the claim's time, the batch
 // it stored when it stored one, read again at @next_sync_at. Only under the
 // claim's lease, which it clears; no row is a claim lost. updated_at moves
-// only with the status, so attention dates an item by its change.
+// only with the status, so attention dates an item by its change. Like the
+// claim's other ends, it keeps a next_sync_at Fetch now moved after the
+// claim (@now), and clears the bank's wait.
 func (q *Queries) BankFeedSynced(ctx context.Context, arg BankFeedSyncedParams) (int64, error) {
 	result, err := q.db.Exec(ctx, bankFeedSynced,
 		arg.Now,
@@ -457,25 +466,32 @@ func (q *Queries) ListBankFeedAccounts(ctx context.Context) ([]InvoicesBankFeedA
 }
 
 const makeBankFeedAccountsDue = `-- name: MakeBankFeedAccountsDue :exec
-UPDATE invoices.bank_feed_accounts SET next_sync_at = $1::timestamptz
+UPDATE invoices.bank_feed_accounts
+SET next_sync_at = greatest($1::timestamptz, coalesce(rate_limited_until, $1::timestamptz))
 WHERE enabled AND status <> 'unauthorized'
   AND ($2::text IS NULL OR account = $2::text)
-  AND (next_sync_at IS NULL OR next_sync_at > $1::timestamptz)
+  AND (last_synced_at IS NULL OR last_synced_at <= $3::timestamptz)
+  AND (next_sync_at IS NULL OR lease_id IS NOT NULL
+       OR next_sync_at > greatest($1::timestamptz, coalesce(rate_limited_until, $1::timestamptz)))
 `
 
 type MakeBankFeedAccountsDueParams struct {
-	Now     time.Time
-	Account *string
+	Now        time.Time
+	Account    *string
+	ReadBefore time.Time
 }
 
 // MakeBankFeedAccountsDue is Fetch now (POST /invoices/bank-feed/sync, F5):
 // the account named, or every one when @account is NULL, that the feed is
-// switched on for and the bank did not refuse the key for, due now where it
-// was due later. The lease is left: a cycle in flight finishes and the next
-// claim takes the account. A refused account is made due too — its next read
-// is its own — and an unauthorized one waits for a new key.
+// switched on for and the bank did not refuse the key for, due now — never
+// before the bank's 429 said it may be asked again (rate_limited_until), and
+// not at all when it was read after @read_before (two minutes ago). It overrides a
+// failure's backoff. The lease is left: a cycle in flight finishes, keeps
+// the next_sync_at moved after its claim, and the next claim reads the
+// account again. A refused account is made due too — its next read is its
+// own — and an unauthorized one waits for a new key.
 func (q *Queries) MakeBankFeedAccountsDue(ctx context.Context, arg MakeBankFeedAccountsDueParams) error {
-	_, err := q.db.Exec(ctx, makeBankFeedAccountsDue, arg.Now, arg.Account)
+	_, err := q.db.Exec(ctx, makeBankFeedAccountsDue, arg.Now, arg.Account, arg.ReadBefore)
 	return err
 }
 

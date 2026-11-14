@@ -173,9 +173,12 @@ func (w *BankFeedWorker) end(ctx context.Context, c feedClaim, outcome syncOutco
 		return nil
 	case errors.As(syncErr, &limited):
 		wait := max(limited.RetryAfter, interval)
+		// Fetch now may not ask before the bank's wait is over — a minute
+		// when the bank named none.
 		n, err = q.BankFeedRateLimited(ctx, store.BankFeedRateLimitedParams{
 			Detail:     fmt.Sprintf("The bank asked to wait %s.", limited.RetryAfter.Round(time.Second)),
-			NextSyncAt: c.now.Add(wait), Account: account, LeaseID: c.lease,
+			NextSyncAt: c.now.Add(wait), RateLimitedUntil: c.now.Add(max(limited.RetryAfter, time.Minute)),
+			Account: account, LeaseID: c.lease,
 		})
 	case syncErr != nil:
 		failures := c.row.Failures + 1
