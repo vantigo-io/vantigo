@@ -223,8 +223,8 @@ venter det under [Trenger oppmerksomhet](#trenger-oppmerksomhet) mens resten gå
 | En betaling registreres | Bankkontoen debiteres — Vipps-mellomkontoen for en Vipps-betaling — og kundefordringer krediteres på fakturaens post. |
 | En betaling fjernes | Det samme snudd tilbake, datert dagen den ble fjernet. |
 | Purrekostnader betales | Banken debiteres og kontoen for purreinntekter krediteres, med mva-kode 7 (uten mva): gebyr, erstatning og renter er ikke omsetning. Fjernes betalingen, snus det tilbake. |
-| En faktura avskrives | Tap på fordringer debiteres og kundefordringer krediteres for det som var åpent; tilbakeføres merverdiavgiften, føres mva-andelen tilbake på hver sats' mva-konto, merket for mva-meldingen. En avrunding føres på avrundingskontoen. Angres avskrivningen, snus bilaget tilbake. |
-| Det kommer penger etter en avskrivning | Banken debiteres og tap på fordringer krediteres — og den tilbakeførte merverdiavgiften føres tilbake, forholdsmessig. |
+| En faktura avskrives | Tap på fordringer debiteres og kundefordringer krediteres for det som var åpent; tilbakeføres merverdiavgiften, føres mva-andelen tilbake på hver sats' mva-konto, merket for mva-meldingen — fordelt på det som er igjen av fakturaen når kreditnotaene er trukket fra, så en sats som er kreditert bort, tar ingen merverdiavgift tilbake. En avrunding føres på avrundingskontoen. Angres avskrivningen, snus bilaget som ble bokført for den, tilbake linje for linje, selv om en konto er endret siden. |
+| Det kommer penger etter en avskrivning | Banken debiteres og tap på fordringer krediteres — og den tilbakeførte merverdiavgiften føres tilbake, forholdsmessig. Flere delbetalinger som til sammen betaler det som ble avskrevet, fører tilbake nøyaktig det avskrivningen tok, på øret; en øre i avrunding havner på tap på fordringer, aldri på merverdiavgiften. |
 
 Hvordan du [avskriver en faktura](/nb/user/invoices/#å-avskrive-en-faktura) i Fakturaer, står på den siden.
 
@@ -240,6 +240,8 @@ Regnskapets start og sperren bestemmer datoen:
   dokumentdato.
 
 **Salg fra Fakturaer** på oversikten viser hvor langt regnskapet har lest, og om noe venter.
+Et langt etterslep — etter at regnskapet ble satt opp på en travel installasjon, for eksempel —
+leses videre hvert femtende sekund til det er tatt igjen.
 
 ## Posteringsregler
 
@@ -254,24 +256,32 @@ treffer på én ting, og den første som treffer, gjelder:
    (3010 middels sats, 3020 lav sats), avgiftsfritt salg på 3100, utførsel på 3150,
    innenlands omvendt avgiftsplikt på 3160, salg utenfor merverdiavgiftsloven på 3200.
 
-**Legg til en regel** med navn, hva den treffer, og kontoen. Klikk på navnet til en regel
-for å endre navn eller konto: en ny konto gir en ny **versjon** av regelen, og bare bilag
-som bokføres etter det, følger den — det som er bokført, blir stående. Hver inntektslinje i
-et bilag oppgir regelen og versjonen som valgte kontoen. En standardregel slettes aldri; pek
-den til en annen konto i stedet.
+**Legg til en regel** med navn, hva den treffer, og kontoen — en inntektskonto: velgeren
+tilbyr ingen andre. Klikk på navnet til en regel for å endre navn eller konto: begge gir en
+ny **versjon** av regelen, og bare bilag som bokføres etter det, følger den — det som er
+bokført, blir stående. Hver inntektslinje i et bilag oppgir regelen og versjonen som valgte
+kontoen, under navnet regelen hadde da. **Arkiver** tar en regel ut av bruk: den treffer
+ikke lenger, navnet og det den treffer, er ledig for en ny regel, og bilag den har plassert,
+oppgir den fortsatt. En standardregel arkiveres aldri; pek den til en annen konto i stedet.
 
 Å endre reglene krever **Forvalte regnskapet**.
 
 ## Trenger oppmerksomhet
 
 **Trenger oppmerksomhet** viser hvert salg regnskapet ikke kunne bokføre, med årsaken: en
-mva-kode regnskapet ikke har, eller som er inaktiv; en konto som er inaktiv; en type faktum
-denne versjonen ikke kjenner. Oversikten og dashbordet teller dem.
+mva-kode regnskapet ikke har, eller som er inaktiv; en konto som er inaktiv, eller en regel som
+peker til en konto som ikke er en inntektskonto; en type faktum denne versjonen ikke kjenner.
+Oversikten og dashbordet teller dem.
+
+Det som kommer etter for samme faktura, venter bak, så regnskapet tar aldri en betaling før
+fakturaen den betaler: en slik linje sier at den **venter på et tidligere salg på samme
+faktura**.
 
 Rett årsaken — aktiver kontoen, legg til mva-koden, endre regelen — og klikk **Prøv igjen** på
 linjen: faktumet leses på nytt fra Fakturaer og bokføres, og linjen viser deretter bilaget.
-Et faktum avvises aldri. **Vis også dem som er bokført siden** viser dem et nytt forsøk har
-bokført.
+Når den bokføres, bokføres det som ventet bak den også, i rekkefølge. Prøver du igjen en linje
+som venter, venter den fortsatt: prøv igjen den den venter på. Et faktum avvises aldri.
+**Vis også dem som er bokført siden** viser dem et nytt forsøk har bokført.
 
 Å prøve igjen krever **Bokføre bilag**.
 
