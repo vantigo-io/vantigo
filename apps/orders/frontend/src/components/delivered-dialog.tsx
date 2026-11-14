@@ -2,7 +2,7 @@ import { Button, Group, Modal, NumberInput, Stack, Table, Text } from "@mantine/
 import { useState } from "react";
 import type { DeliveredLine, Line } from "../api/types";
 import { useOrdersFormat } from "../lib/format";
-import { remainingToDeliver } from "../lib/lines";
+import { kitNamesOf, remainingToDeliver } from "../lib/lines";
 
 export interface DeliveredDialogProps {
   /** Register adds delivered quantities; undo takes them back (O32). */
@@ -21,11 +21,14 @@ export interface DeliveredDialogProps {
  * ordered less cancelled (`over_delivery`) and below 0. A kit
  * (manufacturing phase 2 M145) delivered by delivery documents is delivered
  * as its child lines and is not offered; a kit marked by hand marks its
- * children with it, and they are not offered.
+ * children with it, and they are not offered. A child offered is shown under
+ * its kit's name, as the order's lines show it, so a component is told apart
+ * from a line of the same product on its own.
  */
 export const DeliveredDialog = ({ mode, lines, loading, error, onSubmit, onClose }: DeliveredDialogProps) => {
   const { t, quantity } = useOrdersFormat();
   const kits = new Set(lines.flatMap((line) => (line.parentLineId == null ? [] : [line.parentLineId])));
+  const kitNames = kitNamesOf(lines);
   const byDocuments = new Set(lines.filter((line) => line.deliveryMethod === "delivery").map((line) => line.id));
   const products = lines.filter(
     (line) =>
@@ -60,15 +63,31 @@ export const DeliveredDialog = ({ mode, lines, loading, error, onSubmit, onClose
             <Table.Tbody>
               {products.map((line) => {
                 const max = mode === "mark" ? remainingToDeliver(line) : line.qtyDelivered;
+                const kit = kitNames.get(line.id);
+                const name = line.name ?? line.description;
                 return (
-                  <Table.Tr key={line.id}>
+                  <Table.Tr key={line.id} data-testid={kit ? "kit-child-row" : undefined}>
                     <Table.Td>
-                      <Text size="sm">{line.name ?? line.description}</Text>
-                      {line.sku && (
-                        <Text size="xs" c="dimmed" ff="monospace">
-                          {line.sku}
-                        </Text>
-                      )}
+                      <Group gap="xs" pl={kit ? "md" : 0} wrap="nowrap" align="flex-start">
+                        {kit && (
+                          <Text size="sm" c="dimmed">
+                            ↳
+                          </Text>
+                        )}
+                        <Stack gap={0}>
+                          <Text size="sm">{name}</Text>
+                          {line.sku && (
+                            <Text size="xs" c="dimmed" ff="monospace">
+                              {line.sku}
+                            </Text>
+                          )}
+                          {kit && (
+                            <Text size="xs" c="dimmed">
+                              {t("inKit", { kit })}
+                            </Text>
+                          )}
+                        </Stack>
+                      </Group>
                     </Table.Td>
                     <Table.Td ta="right">
                       {quantity(line.quantity ?? 0)} {line.unit}
@@ -77,7 +96,9 @@ export const DeliveredDialog = ({ mode, lines, loading, error, onSubmit, onClose
                     <Table.Td w={140}>
                       <NumberInput
                         size="xs"
-                        aria-label={t("deliverQuantityFor", { line: line.name ?? line.description })}
+                        aria-label={t("deliverQuantityFor", {
+                          line: kit ? `${name} ${t("inKit", { kit })}` : name,
+                        })}
                         min={0}
                         max={max}
                         decimalScale={3}

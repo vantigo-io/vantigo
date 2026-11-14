@@ -14,6 +14,7 @@ import {
   updateDelivery,
 } from "../api/deliveries";
 import { metaQueryOptions } from "../api/meta";
+import { orderQueryOptions } from "../api/orders";
 import { NotFoundError, ORDERS_QUERY_KEY, refusedLines } from "../api/request";
 import type { Delivery, DeliveryLineInput } from "../api/types";
 import { ConfirmDialog } from "../components/confirm-dialog";
@@ -27,6 +28,7 @@ import { type LotPickRow, lotsTotal } from "../lib/delivery-lots";
 import { lineRefusalWords, refusalMessage } from "../lib/errors";
 import { useOrdersFormat } from "../lib/format";
 import { addressLine } from "../lib/header";
+import { kitNamesOf } from "../lib/lines";
 import { DELIVERIES_ROUTE_PATH, salesOrderLinkOptions } from "../lib/routes";
 
 export interface DeliveryEditorPageProps {
@@ -42,7 +44,9 @@ export interface DeliveryEditorPageProps {
  * it was posted and no longer changes, and is shipped from its Shipments card
  * (O50). A line of an item tracked by lot or serial number is picked by lot
  * instead of by location (manufacturing phase 2 M77): its lots, proposed
- * FEFO, are shown under it and changed there.
+ * FEFO, are shown under it and changed there. A kit's component (manufacturing
+ * phase 2 M145) is shown under its kit's name, read from the order, so it is
+ * told apart from a line of the same product on its own.
  */
 export const DeliveryEditorPage = ({ deliveryId, access = noOrdersAccess }: DeliveryEditorPageProps) => {
   const { t } = useOrdersFormat();
@@ -127,6 +131,8 @@ const DeliveryEditor = ({ delivery, access }: { delivery: Delivery; access: Orde
   const draft = delivery.status === "draft";
   const editable = draft && access.canManageDeliveries;
   const meta = useQuery({ ...metaQueryOptions(), enabled: editable });
+  const order = useQuery(orderQueryOptions(delivery.orderId));
+  const kitNames = kitNamesOf(order.data?.lines ?? []);
   const [rows, setRows] = useState<Row[]>(() =>
     delivery.lines.map((line) => ({
       orderLineId: line.orderLineId,
@@ -333,6 +339,7 @@ const DeliveryEditor = ({ delivery, access }: { delivery: Delivery; access: Orde
                   if (line.fromLocationId != null && !options.some((o) => o.value === String(line.fromLocationId)))
                     options.unshift({ value: String(line.fromLocationId), label: line.fromLocationCode ?? "" });
                   const problem = refused.get(index);
+                  const kit = kitNames.get(line.orderLineId);
                   const lotProblems = new Map<number, string>();
                   for (const [key, words] of refusedLots) {
                     const [lineIndex, lotIndex] = key.split(":").map(Number);
@@ -341,8 +348,20 @@ const DeliveryEditor = ({ delivery, access }: { delivery: Delivery; access: Orde
                   return (
                     <Fragment key={line.id}>
                       <Table.Tr>
-                        <Table.Td>
-                          <Text size="sm">{[line.sku, line.name].filter(Boolean).join(" ")}</Text>
+                        <Table.Td pl={kit ? "xl" : undefined}>
+                          <Text size="sm">
+                            {kit && (
+                              <Text span c="dimmed">
+                                {"↳ "}
+                              </Text>
+                            )}
+                            {[line.sku, line.name].filter(Boolean).join(" ")}
+                          </Text>
+                          {kit && (
+                            <Text size="xs" c="dimmed" data-testid="kit-child-of">
+                              {t("inKit", { kit })}
+                            </Text>
+                          )}
                           {problem && (
                             <Text size="xs" c="red" role="alert">
                               {problem}

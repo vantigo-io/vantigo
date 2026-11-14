@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import type { Order } from "../api/types";
+import type { Delivery, Order } from "../api/types";
 import { commonAnswers, fakeServer, jsonResponse, refusal } from "../test/api";
 import { line, meta, order, settings } from "../test/fixtures";
 import { renderRoute } from "../test/render";
@@ -93,7 +93,7 @@ describe("an order's kit lines", () => {
 
     await userEvent.click(await screen.findByRole("button", { name: "Register delivered" }));
     const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByLabelText("Quantity for Hylle")).toBeInTheDocument();
+    expect(within(dialog).getByLabelText("Quantity for Hylle in Verktøysett")).toBeInTheDocument();
     expect(within(dialog).queryByLabelText("Quantity for Verktøysett")).not.toBeInTheDocument();
   });
 
@@ -131,5 +131,99 @@ describe("an order's kit lines", () => {
     await userEvent.click(await screen.findByRole("button", { name: "Confirm" }));
     const dialog = await screen.findByRole("dialog", { name: "Not enough available" });
     expect(within(dialog).getByTestId("shortfall-line")).toHaveTextContent("Line 1: Verktøysett (available 3)");
+  });
+
+  it("tells a kit's component from a line of the same product on its own", async () => {
+    const both = kitOrder();
+    both.lines = [
+      ...both.lines,
+      line({
+        id: 5003,
+        position: 3,
+        variantId: 302,
+        sku: "HYL-1",
+        name: "Hylle",
+        quantity: 1,
+        deliveryMethod: "delivery",
+      }),
+    ];
+    fakeServer((call) => {
+      if (call.method === "GET" && call.url === url) return jsonResponse(200, both);
+      if (call.method === "GET" && call.url === `${url}/changes`) return jsonResponse(200, { items: [] });
+      return commonAnswers(call, settings());
+    });
+    renderRoute("/orders/orders/2001");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Register delivered" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByLabelText("Quantity for Hylle in Verktøysett")).toBeInTheDocument();
+    expect(within(dialog).getByLabelText("Quantity for Hylle")).toBeInTheDocument();
+    const children = within(dialog).getAllByTestId("kit-child-row");
+    expect(children).toHaveLength(1);
+    expect(children[0]).toHaveTextContent("in Verktøysett");
+  });
+
+  it("shows a delivery's kit component under its kit's name", async () => {
+    const both = kitOrder();
+    both.lines = [
+      ...both.lines,
+      line({
+        id: 5003,
+        position: 3,
+        variantId: 302,
+        sku: "HYL-1",
+        name: "Hylle",
+        quantity: 1,
+        deliveryMethod: "delivery",
+      }),
+    ];
+    const deliveryLine = (id: number, orderLineId: number): Delivery["lines"][number] => ({
+      id,
+      position: id,
+      orderLineId,
+      variantId: 302,
+      sku: "HYL-1",
+      name: "Hylle",
+      unit: "stk",
+      quantity: 1,
+      ordered: 1,
+      open: 0,
+      fromLocationId: 11,
+      fromLocationCode: "OSL-A-01",
+      locations: [],
+      tracked: false,
+      lots: [],
+      lotChoices: [],
+      short: 0,
+    });
+    const posted: Delivery = {
+      id: 7001,
+      number: 12,
+      orderId: 2001,
+      orderNumber: 5001,
+      customerId: 42,
+      customerName: "Acme AS",
+      orderOnHold: false,
+      siteId: 1,
+      status: "posted",
+      postedAt: "2026-11-05T09:00:00Z",
+      packingSlipStored: false,
+      version: 2,
+      createdAt: "2026-11-05T08:00:00Z",
+      updatedAt: "2026-11-05T09:00:00Z",
+      deliveryAddress: { name: "Acme lager", line1: "Lagerveien 2", postalCode: "2000", city: "Lillestrøm" },
+      lines: [deliveryLine(1, 5002), deliveryLine(2, 5003)],
+    };
+    fakeServer((call) => {
+      if (call.method === "GET" && call.url === url) return jsonResponse(200, both);
+      if (call.method === "GET" && call.url === "/api/v1/orders/deliveries/7001") return jsonResponse(200, posted);
+      return commonAnswers(call, settings(), meta({ stockKept: true }));
+    });
+    renderRoute("/orders/deliveries/7001");
+
+    const of = await screen.findByTestId("kit-child-of");
+    expect(of).toHaveTextContent("in Verktøysett");
+    expect(screen.getAllByTestId("kit-child-of")).toHaveLength(1);
+    expect(screen.getAllByText("HYL-1 Hylle", { exact: false })).toHaveLength(2);
   });
 });

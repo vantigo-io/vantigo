@@ -85,6 +85,21 @@ export const kitChildrenOf = (lines: readonly Line[]): Map<number, Line[]> => {
   return out;
 };
 
+/**
+ * The name of the kit each child line is a component of, by the child's id
+ * (manufacturing phase 2 M145): what tells a component apart from a line of
+ * the same product on its own.
+ */
+export const kitNamesOf = (lines: readonly Line[]): Map<number, string> => {
+  const byId = new Map(lines.map((line) => [line.id, line]));
+  const out = new Map<number, string>();
+  for (const line of lines) {
+    const kit = line.parentLineId == null ? undefined : byId.get(line.parentLineId);
+    if (kit) out.set(line.id, kit.name ?? kit.description);
+  }
+  return out;
+};
+
 /** A line the server answered, as an editor row, offered its variant's current packagings when they are known. */
 export const fromLine = (line: Line, current?: readonly VariantPackaging[]): EditableLine => ({
   key: `line-${line.id}`,

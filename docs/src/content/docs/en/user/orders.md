@@ -238,8 +238,9 @@ kit's line. The pick list prints the components only; the packing slip prints th
 its components under it.
 
 **Register delivered** treats a kit by how the order is delivered. On an order delivered by
-delivery documents the kit's line is not offered — its components are, and the kit counts
-the whole kits they make. Taking a component back is refused when it would leave fewer
+delivery documents the kit's line is not offered — its components are, each marked *in*
+and the kit's name, as is a component on a delivery's lines, so it is told apart from a
+line of the same product on its own — and the kit counts the whole kits they make. Taking a component back is refused when it would leave fewer
 whole kits delivered than are invoiced or in a draft invoice. On an order marked delivered by hand (no site, or Inventory not
 keeping stock) the kit's line is offered and its components are not: registering the kit
 registers each component with it, the kit's quantity times how many one kit holds, and
