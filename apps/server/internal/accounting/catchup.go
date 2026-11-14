@@ -144,8 +144,11 @@ func clockOf(d module.Deps) func() time.Time {
 	return time.Now
 }
 
-// workers is the module's background work: the catch-up.
-func workers(d module.Deps) []worker.Worker { return []worker.Worker{NewCatchUpWorker(d)} }
+// workers is the module's background work: the catch-up and the SAF-T
+// exports.
+func workers(d module.Deps) []worker.Worker {
+	return []worker.Worker{NewCatchUpWorker(d), NewSaftWorker(d)}
+}
 
 // CatchUpWorker posts Invoices' sales journal into the books. It implements
 // worker.Worker.

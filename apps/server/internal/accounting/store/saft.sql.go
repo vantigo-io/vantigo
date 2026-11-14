@@ -968,7 +968,7 @@ func (q *Queries) SaftSupplierBalances(ctx context.Context, arg SaftSupplierBala
 
 const saftTaxCodes = `-- name: SaftTaxCodes :many
 SELECT t.id, t.code, t.name, t.direction, t.reverse_charge, t.vat_account_id, t.active,
-    coalesce(r.rate_percent::text, '')::text AS rate_percent, r.valid_from, r.valid_to
+    coalesce(r.rate_percent::text, '')::text AS rate_percent, coalesce(r.valid_from::text, '')::text AS valid_from
 FROM accounting.tax_codes t
 LEFT JOIN LATERAL (
     SELECT tr.rate_percent, tr.valid_from, tr.valid_to FROM accounting.tax_code_rates tr
@@ -986,8 +986,7 @@ type SaftTaxCodesRow struct {
 	VatAccountID  *int32
 	Active        bool
 	RatePercent   string
-	ValidFrom     time.Time
-	ValidTo       *time.Time
+	ValidFrom     string
 }
 
 // SaftTaxCodes is every tax code (Skatteetaten's rule: all of them), with the
@@ -1011,7 +1010,6 @@ func (q *Queries) SaftTaxCodes(ctx context.Context, atDate time.Time) ([]SaftTax
 			&i.Active,
 			&i.RatePercent,
 			&i.ValidFrom,
-			&i.ValidTo,
 		); err != nil {
 			return nil, err
 		}

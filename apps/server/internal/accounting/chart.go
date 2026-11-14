@@ -351,23 +351,30 @@ func rateLabel(rate, language string) string {
 	return label + " %"
 }
 
-// seedBooks writes the default chart, its groupings, the standard tax codes
-// with their rates from firstRateDay and the system roles, named in language
-// (R12), on the setup's transaction.
-func seedBooks(ctx context.Context, q *store.Queries, language string, booksStart time.Time, now time.Time) error {
-	list, err := groupingsFor(booksStart.Year())
-	if err != nil {
-		return err
-	}
-	ids := map[string]int32{}
+// seedAccount is an account as Set up the books writes it: from the default
+// chart, or from a SAF-T file (A25). category and code are its grouping, ""
+// for none; taxCode the standard code it defaults to, "" for none.
+type seedAccount struct {
+	number, name, kind string
+	role               string
+	category, code     string
+	taxCode            string
+}
+
+// defaultAccount is the default chart's account of number in language, with
+// its grouping from list; false when the chart has no such account.
+func defaultAccount(number, language string, list groupingList) (seedAccount, bool, error) {
 	for _, a := range defaultChart {
+		if a.number != number {
+			continue
+		}
 		code := a.code
 		if code == "" {
 			code = a.number
 		}
 		g, ok := list.byCode[code]
 		if !ok {
-			return fmt.Errorf("accounting: the default chart's account %s names grouping code %s, which the %d list has not", a.number, code, list.year)
+			return seedAccount{}, false, fmt.Errorf("accounting: the default chart's account %s names grouping code %s, which the %d list has not", a.number, code, list.year)
 		}
 		name := g.NameNb
 		if language == "en" {
@@ -379,26 +386,80 @@ func seedBooks(ctx context.Context, q *store.Queries, language string, booksStar
 				name = a.en
 			}
 		}
+		return seedAccount{number: a.number, name: name, kind: kindOf(a.number), role: a.role, category: g.Category,
+			code: g.Code, taxCode: a.taxCode}, true, nil
+	}
+	return seedAccount{}, false, nil
+}
+
+// defaultChartAccounts is the whole default chart in language, grouped from
+// the list in force for year.
+func defaultChartAccounts(language string, year int) ([]seedAccount, error) {
+	list, err := groupingsFor(year)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]seedAccount, 0, len(defaultChart))
+	for _, a := range defaultChart {
+		acc, _, err := defaultAccount(a.number, language, list)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, acc)
+	}
+	return out, nil
+}
+
+// seedChart writes accounts with their groupings from year and their roles,
+// and answers their ids by number. Set up the books and a SAF-T import's
+// apply both go through it, then seedTaxCodes (A25: two ways to one end).
+func seedChart(ctx context.Context, q *store.Queries, accounts []seedAccount, year int, now time.Time) (map[string]int32, error) {
+	ids := map[string]int32{}
+	for _, a := range accounts {
 		var role *string
 		if a.role != "" {
 			role = ptr(a.role)
 		}
-		id, err := q.InsertAccount(ctx, store.InsertAccountParams{Number: a.number, Name: name, Kind: kindOf(a.number),
+		id, err := q.InsertAccount(ctx, store.InsertAccountParams{Number: a.number, Name: a.name, Kind: a.kind,
 			SystemRole: role, Now: now})
 		if err != nil {
-			return fmt.Errorf("accounting: seed account %s: %w", a.number, err)
+			return nil, fmt.Errorf("accounting: seed account %s: %w", a.number, err)
 		}
 		ids[a.number] = id
-		if err := q.InsertGrouping(ctx, store.InsertGroupingParams{AccountID: id, FromYear: int32(booksStart.Year()),
-			Category: g.Category, Code: g.Code}); err != nil {
-			return err
+		if a.code == "" {
+			continue
+		}
+		if err := q.InsertGrouping(ctx, store.InsertGroupingParams{AccountID: id, FromYear: int32(year),
+			Category: a.category, Code: a.code}); err != nil {
+			return nil, err
 		}
 	}
+	return ids, nil
+}
+
+// taxCodeAccountNumbers is every account number a standard tax code posts
+// its VAT to: the VAT accounts and the counter account.
+func taxCodeAccountNumbers() map[string]bool {
+	out := map[string]bool{}
+	for _, t := range standardTaxCodes {
+		if t.vatAccount != "" {
+			out[t.vatAccount] = true
+		}
+		if t.counterAccount != "" {
+			out[t.counterAccount] = true
+		}
+	}
+	return out
+}
+
+// seedTaxCodes writes the standard tax codes with their rates from
+// firstRateDay, each on its VAT account by number from ids, named in
+// language, then the accounts' default codes; it answers the codes' ids.
+func seedTaxCodes(ctx context.Context, q *store.Queries, language string, ids map[string]int32, accounts []seedAccount, now time.Time) error {
 	names, err := taxCodeNames()
 	if err != nil {
 		return err
 	}
-	rateStart := firstRateDay
 	codes := map[string]int32{}
 	for _, t := range standardTaxCodes {
 		n := names[t.code]
@@ -411,10 +472,18 @@ func seedBooks(ctx context.Context, q *store.Queries, language string, booksStar
 		}
 		var vat, counter *int32
 		if t.vatAccount != "" {
-			vat = ptr(ids[t.vatAccount])
+			id, ok := ids[t.vatAccount]
+			if !ok {
+				return fmt.Errorf("accounting: tax code %s needs account %s", t.code, t.vatAccount)
+			}
+			vat = ptr(id)
 		}
 		if t.counterAccount != "" {
-			counter = ptr(ids[t.counterAccount])
+			id, ok := ids[t.counterAccount]
+			if !ok {
+				return fmt.Errorf("accounting: tax code %s needs account %s", t.code, t.counterAccount)
+			}
+			counter = ptr(id)
 		}
 		id, err := q.InsertTaxCode(ctx, store.InsertTaxCodeParams{Code: t.code, Name: name, Direction: t.direction,
 			ReverseCharge: t.reverseCharge, VatAccountID: vat, CounterVatAccountID: counter, Reported: !t.notReported, Now: now})
@@ -424,12 +493,12 @@ func seedBooks(ctx context.Context, q *store.Queries, language string, booksStar
 		codes[t.code] = id
 		if t.rate != "" {
 			if err := q.InsertTaxRate(ctx, store.InsertTaxRateParams{TaxCodeID: id, RatePercent: t.rate,
-				ValidFrom: rateStart, Now: now}); err != nil {
+				ValidFrom: firstRateDay, Now: now}); err != nil {
 				return err
 			}
 		}
 	}
-	for _, a := range defaultChart {
+	for _, a := range accounts {
 		if a.taxCode != "" {
 			if err := q.SetDefaultTaxCode(ctx, store.SetDefaultTaxCodeParams{ID: ids[a.number], TaxCodeID: ptr(codes[a.taxCode])}); err != nil {
 				return err
@@ -437,4 +506,19 @@ func seedBooks(ctx context.Context, q *store.Queries, language string, booksStar
 		}
 	}
 	return nil
+}
+
+// seedBooks writes the default chart, its groupings, the standard tax codes
+// with their rates from firstRateDay and the system roles, named in language
+// (R12), on the setup's transaction.
+func seedBooks(ctx context.Context, q *store.Queries, language string, booksStart time.Time, now time.Time) error {
+	accounts, err := defaultChartAccounts(language, booksStart.Year())
+	if err != nil {
+		return err
+	}
+	ids, err := seedChart(ctx, q, accounts, booksStart.Year(), now)
+	if err != nil {
+		return err
+	}
+	return seedTaxCodes(ctx, q, language, ids, accounts, now)
 }
