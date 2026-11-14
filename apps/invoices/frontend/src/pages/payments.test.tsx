@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { jsonResponse, path, problemResponse, refusal } from "../test/api";
 import { bankServer } from "../test/bank-server";
 import { requestTo } from "../test/document-server";
-import { bankAccount, bankFile, bankImportResult, OTHER_USER_ID, pageOf } from "../test/fixtures";
+import { bankAccount, bankFile, bankImportResult, bankTransaction, OTHER_USER_ID, pageOf } from "../test/fixtures";
 import { renderRoute } from "../test/route-tree";
 
 /** Chooses a file in the upload's input and clicks Import. */
@@ -130,6 +130,79 @@ describe("the Payments area", () => {
         setLanguagePreference("auto");
       }
     });
+  });
+
+  // A batch the bank feed fetched (invoices bank feed design F5, F6, F9):
+  // listed as Bank feed · Folio, by the bank feed rather than a person; its
+  // page and its lines' events say the same; Fetch now beside Import makes
+  // every account due, each account's status and last read under it.
+  it("PaymentsPage_FeedBatchesAndFetchNow", async () => {
+    const feedBatch = bankFile({ format: "feed", provider: "folio", uploadedBy: undefined });
+    const fetchMock = bankServer({
+      bankFeed: {
+        connected: true,
+        enabledOnInstance: true,
+        provider: "folio",
+        keyLastFour: "abcd",
+        status: "ok",
+        accounts: [
+          {
+            account: "86011117947",
+            enabled: true,
+            startDay: "2026-09-01",
+            status: "ok",
+            lastSyncedAt: "2026-09-12T08:00:00Z",
+          },
+        ],
+      },
+      answers: {
+        "GET /api/v1/invoices/bank-files": jsonResponse(200, pageOf([feedBatch])),
+        "GET /api/v1/invoices/bank-files/1001": jsonResponse(200, {
+          file: feedBatch,
+          transactions: [
+            bankTransaction({
+              bankFile: { id: 1001, format: "feed", provider: "folio", uploadedAt: "2026-09-12T08:00:00Z" },
+              status: "matched",
+              reason: undefined,
+              events: [{ id: 1, event: "matched", note: "", at: "2026-09-12T08:00:00Z" }],
+            }),
+          ],
+        }),
+        "POST /api/v1/invoices/bank-feed/sync": jsonResponse(202, { accounts: [] }),
+      },
+    });
+    renderRoute("/invoices/payments");
+
+    const files = await screen.findByTestId("bank-files");
+    expect(await within(files).findByText("Bank feed · Folio")).toBeInTheDocument();
+    expect(within(files).getByText("the bank feed")).toBeInTheDocument();
+    expect(await screen.findByTestId("bank-feed-status")).toHaveTextContent(
+      /^Bank feed for 8601\.11\.17947: OK, last read Sep 12, 2026/,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Fetch now" }));
+    await waitFor(() =>
+      expect(
+        fetchMock.actualCalls.some(
+          ([url, init]) => path(url) === "/api/v1/invoices/bank-feed/sync" && init?.method === "POST",
+        ),
+      ).toBe(true),
+    );
+    expect(await screen.findByText("The bank feed reads the accounts within a minute")).toBeInTheDocument();
+
+    cleanup();
+    renderRoute("/invoices/payments/files/1001");
+    expect(await screen.findByText(/^Bank feed · Folio, fetched by the bank feed /)).toBeInTheDocument();
+    await userEvent.click(await screen.findByRole("button", { name: /^Details of line / }));
+    expect(await screen.findByText(/^Matched .* by the bank feed$/)).toBeInTheDocument();
+  });
+
+  it("PaymentsPage_NoFetchNowWithoutAFeedAccount", async () => {
+    bankServer();
+    renderRoute("/invoices/payments");
+    await screen.findByRole("heading", { name: "Import a bank file" });
+    await screen.findByTestId("bank-files");
+    expect(screen.queryByRole("button", { name: "Fetch now" })).not.toBeInTheDocument();
+    expect(screen.queryByTestId("bank-feed-status")).not.toBeInTheDocument();
   });
 
   it("PaymentsPage_AccountsAndTheFormatChange", async () => {

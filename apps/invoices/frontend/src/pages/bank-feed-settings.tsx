@@ -2,7 +2,7 @@ import { Alert, Badge, Button, Group, PasswordInput, Select, Stack, Switch, Tabl
 import { DateInput } from "@mantine/dates";
 import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
-import { IconAlertCircle, IconPlugConnectedX } from "@tabler/icons-react";
+import { IconAlertCircle, IconPlugConnectedX, IconRefresh } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ContentSkeleton, PageHeader, PageSection } from "@vantigo/frontend-shell";
 import dayjs from "dayjs";
@@ -15,6 +15,7 @@ import {
   bankFeedOffersQueryOptions,
   bankFeedQueryOptions,
   deleteBankFeed,
+  postBankFeedSync,
   putBankFeed,
   putBankFeedAccount,
 } from "../api/bank-feed";
@@ -34,7 +35,9 @@ const statusColours: Record<string, string> = { ok: "green", unauthorized: "red"
  * Workspace admin › Integrations › Bank (invoices bank feed design F3, F4,
  * F9): the bank connection — the bank and its API key, write-only, verified
  * by the bank before it is stored, and what a key can and cannot do — the
- * bank's accounts with a switch and a start day each, and Disconnect. The
+ * bank's accounts with a switch and a start day each — and each one's
+ * status, the rule a refused batch broke and what failed — Fetch now for a
+ * caller who may register payments, and Disconnect. The
  * host gates the page on the invoices module and `invoices:manage`.
  */
 export const BankFeedSettingsPage = () => {
@@ -214,6 +217,18 @@ const AccountsCard = ({ feed }: { feed: BankFeed }) => {
   const canRead = feed.connected && feed.enabledOnInstance;
   const offers = useQuery({ ...bankFeedOffersQueryOptions(), enabled: canRead });
   const meta = useQuery(invoicesMetaQueryOptions());
+  const queryClient = useQueryClient();
+  // Fetch now is invoices:payments' (F8); a manager without it is not offered it.
+  const canFetch = canRead && Boolean(meta.data?.capabilities.canImportBankFiles);
+  const fetchNow = useMutation({
+    mutationFn: () => postBankFeedSync(),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: [INVOICES_QUERY_KEY] });
+      notifications.show({ color: "green", message: t("bank.fetchNowDone") });
+    },
+    onError: (error) =>
+      notifications.show({ color: "red", title: t("bank.couldNotFetch"), message: refusalMessage(error, t, date) }),
+  });
   const byAccount = new Map(feed.accounts.map((a) => [a.account, a]));
   const offered = offers.data?.data ?? [];
   const rows: BankFeedOffer[] = [
@@ -225,7 +240,20 @@ const AccountsCard = ({ feed }: { feed: BankFeed }) => {
   return (
     <PageSection data-testid="bank-feed-accounts">
       <Stack gap="sm">
-        <Title order={4}>{t("bankFeed.accounts")}</Title>
+        <Group justify="space-between">
+          <Title order={4}>{t("bankFeed.accounts")}</Title>
+          {canFetch && feed.accounts.some((a) => a.enabled) && (
+            <Button
+              variant="default"
+              size="xs"
+              leftSection={<IconRefresh size={14} />}
+              loading={fetchNow.isPending}
+              onClick={() => fetchNow.mutate()}
+            >
+              {t("bank.fetchNow")}
+            </Button>
+          )}
+        </Group>
         <Text size="sm" c="dimmed">
           {t("bankFeed.accountsDescription")}
         </Text>
@@ -341,6 +369,16 @@ const AccountRow = ({
             {reading.lastSyncedAt && (
               <Text size="xs" c="dimmed">
                 {t("bankFeed.lastSynced", { at: dateTime(reading.lastSyncedAt) })}
+              </Text>
+            )}
+            {reading.reason && (
+              <Text size="xs" c="red">
+                {t(`bankFeed.reason.${reading.reason}`, { defaultValue: reading.reason })}
+              </Text>
+            )}
+            {reading.detail && (
+              <Text size="xs" c="dimmed">
+                {reading.detail}
               </Text>
             )}
           </Stack>

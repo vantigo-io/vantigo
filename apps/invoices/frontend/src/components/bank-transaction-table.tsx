@@ -8,7 +8,7 @@ import { Fragment, type ReactNode, useState } from "react";
 import { type BankTransaction, type BankTransactionApplied, reopenTransaction, treatAsDistinct } from "../api/bank";
 import { INVOICES_QUERY_KEY } from "../api/request";
 import "../i18n";
-import { accountNumber, useWho } from "../lib/bank";
+import { accountNumber, useWhoOrFeed } from "../lib/bank";
 import { refusalMessage } from "../lib/errors";
 import { useInvoiceFormat } from "../lib/format";
 import { bankFileHref, bankFileLinkOptions } from "../lib/routes";
@@ -88,7 +88,7 @@ export const BankTransactionTable = ({
   showFile = false,
 }: BankTransactionTableProps) => {
   const { t, money, date, dateTime } = useInvoiceFormat();
-  const who = useWho(currentUserId);
+  const who = useWhoOrFeed(currentUserId);
   const queryClient = useQueryClient();
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const [open, setOpen] = useState<Open | null>(null);

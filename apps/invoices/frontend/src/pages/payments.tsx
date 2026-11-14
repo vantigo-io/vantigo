@@ -14,7 +14,7 @@ import {
   Title,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { IconAlertCircle, IconFileUpload } from "@tabler/icons-react";
+import { IconAlertCircle, IconFileUpload, IconRefresh } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ContentSkeleton, PageHeader, PageSection } from "@vantigo/frontend-shell";
 import { useState } from "react";
@@ -37,11 +37,12 @@ import {
   setAccountFormat,
   uploadBankFile,
 } from "../api/bank";
+import { bankFeedQueryOptions, postBankFeedSync } from "../api/bank-feed";
 import { invoicesMetaQueryOptions } from "../api/meta";
 import { ApiValidationError, INVOICES_QUERY_KEY } from "../api/request";
 import { BankFileLink, BankTransactionTable } from "../components/bank-transaction-table";
 import "../i18n";
-import { accountNumber, useWho } from "../lib/bank";
+import { accountNumber, useWhoOrFeed } from "../lib/bank";
 import { fieldRefusals, refusalCode, refusalMessage, refusalProblem } from "../lib/errors";
 import { useInvoiceFormat } from "../lib/format";
 import { PaymentsTabs } from "./vipps-payments";
@@ -126,7 +127,7 @@ const UploadCard = ({
   onResult: (result: BankImportResult) => void;
 }) => {
   const { t, money, date, dateTime } = useInvoiceFormat();
-  const who = useWho(currentUserId);
+  const who = useWhoOrFeed(currentUserId);
   const queryClient = useQueryClient();
   const [file, setFile] = useState<File | null>(null);
   const [refusal, setRefusal] = useState<UploadRefusal | null>(null);
@@ -197,7 +198,9 @@ const UploadCard = ({
           >
             {t("bank.import")}
           </Button>
+          <FetchNowButton />
         </Group>
+        <FeedAccountsLine />
         {refusal && (
           <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("bank.couldNotImport")}>
             <Stack gap={4}>
@@ -209,7 +212,9 @@ const UploadCard = ({
               )}
               {refusal.earlier && (
                 <Text size="sm">
-                  {t("bank.duplicateUploadedBy", { who: who(refusal.earlier.uploadedBy) })}{" "}
+                  {refusal.earlier.uploadedBy
+                    ? t("bank.duplicateUploadedBy", { who: who(refusal.earlier.uploadedBy) })
+                    : t("bank.duplicateFetched")}{" "}
                   <BankFileLink bankFileId={refusal.earlier.id}>
                     {t("bank.openEarlierFile", { id: refusal.earlier.id })}
                   </BankFileLink>
@@ -220,6 +225,63 @@ const UploadCard = ({
         )}
       </Stack>
     </PageSection>
+  );
+};
+
+/** The accounts the bank feed reads, when it reads any (F9); nothing else is shown without one. */
+const useFeedAccounts = () => {
+  const feed = useQuery(bankFeedQueryOptions());
+  return feed.data?.enabledOnInstance && feed.data.connected ? feed.data.accounts.filter((a) => a.enabled) : [];
+};
+
+/**
+ * Fetch now (F5, F9): every account the bank feed reads made due at once —
+ * the worker reads them within a minute. Shown beside Import while the feed
+ * reads an account; the route already needs `invoices:payments`.
+ */
+const FetchNowButton = () => {
+  const { t, date } = useInvoiceFormat();
+  const queryClient = useQueryClient();
+  const accounts = useFeedAccounts();
+  const fetchNow = useMutation({
+    mutationFn: () => postBankFeedSync(),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: [INVOICES_QUERY_KEY] });
+      notifications.show({ color: "green", message: t("bank.fetchNowDone") });
+    },
+    onError: (error) =>
+      notifications.show({ color: "red", title: t("bank.couldNotFetch"), message: refusalMessage(error, t, date) }),
+  });
+  if (accounts.length === 0) return null;
+  return (
+    <Button
+      variant="default"
+      leftSection={<IconRefresh size={16} />}
+      loading={fetchNow.isPending}
+      onClick={() => fetchNow.mutate()}
+    >
+      {t("bank.fetchNow")}
+    </Button>
+  );
+};
+
+/** Each account the bank feed reads: its status and its last read, under Import and Fetch now. */
+const FeedAccountsLine = () => {
+  const { t, dateTime } = useInvoiceFormat();
+  const accounts = useFeedAccounts();
+  if (accounts.length === 0) return null;
+  return (
+    <Stack gap={2} data-testid="bank-feed-status">
+      {accounts.map((a) => (
+        <Text key={a.account} size="xs" c={a.status === "ok" ? "dimmed" : "red"}>
+          {t("bank.feedAccountLine", {
+            account: accountNumber(a.account),
+            status: t(`bankFeed.accountStatus.${a.status}`),
+            at: a.lastSyncedAt ? dateTime(a.lastSyncedAt) : t("bank.feedNeverRead"),
+          })}
+        </Text>
+      ))}
+    </Stack>
   );
 };
 
@@ -301,7 +363,7 @@ export const ImportResultCard = ({
     ["bank.count.pending", file.pending],
     ["bank.count.ignored", file.ignored],
   ];
-  const ignoredKinds = (["debit", "notBooked", "cardInformation", "zeroAmount"] as const).filter(
+  const ignoredKinds = (["debit", "notBooked", "cardInformation", "zeroAmount", "internalTransfer"] as const).filter(
     (kind) => file.ignoredKinds[kind] > 0,
   );
   return (
@@ -362,6 +424,16 @@ export const ImportResultCard = ({
 /** A line format in words: the two of files, and feed — the bank feed's, which only its switch sets. */
 const formatLabel = (t: (key: string) => string, format: string): string =>
   [...BANK_FORMATS, "feed"].includes(format) ? t(`bank.format.${format}`) : format;
+
+/** A file's format in words, a feed batch with its bank: "Bank feed · Folio" (F9). */
+export const feedFormatLabel = (
+  t: (key: string, options?: Record<string, unknown>) => string,
+  format: string,
+  provider: string | undefined,
+): string =>
+  format === "feed" && provider
+    ? t("bank.format.feedProvider", { provider: t(`bankFeed.provider.${provider}`) })
+    : formatLabel(t, format);
 
 const AccountsCard = ({ canManage }: { canManage: boolean }) => {
   const { t, date, dateTime } = useInvoiceFormat();
@@ -528,7 +600,7 @@ const FilesCard = ({
   onMatched: (result: BankImportResult) => void;
 }) => {
   const { t, date, dateTime } = useInvoiceFormat();
-  const who = useWho(currentUserId);
+  const who = useWhoOrFeed(currentUserId);
   const [page, setPage] = useState(1);
   const files = useQuery(bankFilesQueryOptions(page));
   return (
@@ -568,7 +640,7 @@ const FilesCard = ({
                     <Table.Td>
                       <BankFileLink bankFileId={f.id}>{t("bank.fileName", { id: f.id })}</BankFileLink>
                     </Table.Td>
-                    <Table.Td>{formatLabel(t, f.format)}</Table.Td>
+                    <Table.Td>{feedFormatLabel(t, f.format, f.provider)}</Table.Td>
                     <Table.Td>
                       <Stack gap={0}>
                         <Text size="sm">{dateTime(f.uploadedAt)}</Text>
