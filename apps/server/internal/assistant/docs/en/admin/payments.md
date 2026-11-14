@@ -172,9 +172,11 @@ in Folio when it is no longer used or may have leaked.
 
 **The installation's settings** (`vantigo.env`, [Configuration](/en/admin/configuration/)):
 
-- `INVOICES_BANK_FEED_ENABLED` — default `1`. `0` sends no request to any bank: a key is
-  refused `bank_feed_disabled`, the bank's accounts are not read, and what is stored is
-  kept. The page says the feed is switched off.
+- `INVOICES_BANK_FEED_ENABLED` — default `0` in this release, since the feed reads no
+  payments yet; set `1` to let the workspace connect the bank and choose its accounts. `0`
+  sends no request to any bank: a key is refused `bank_feed_disabled`, the bank's accounts
+  are not read, and what is stored is kept. The page says the feed is switched off, and
+  still lists every account the feed is switched on for, so it can be switched off.
 - `INVOICES_FOLIO_BASE_URL` — default `https://api.folio.no/v2`. It must be an `https` URL:
   the server refuses to start on anything else, since the key goes with every request. It
   is the operator's setting; nobody in the workspace can point the key at another host.
@@ -200,8 +202,10 @@ and replaces the old.
 the key reads, as Folio answers them now. An account can be switched on when it is the
 seller's **Bank account** in **Invoice settings** or one an issued invoice printed — the
 rule a bank file's accounts are held to — and never when it is a card account. Switching
-one on asks for a **start day**, today by default and never later: nothing booked before
-it is read, so payments already registered from files are not registered again.
+one on asks for a **start day**, today by default, never later and at most 13 months
+earlier: nothing booked before it is read, so payments already registered from files are
+not registered again. Should another key be saved while an account is being switched on,
+the switch is refused `bank_feed_key_changed`; try again.
 
 **The cutover from files.** Switching an account on sets its format to **feed**, as a
 change of format does ([the format of each account](#the-format-of-each-account)): an
@@ -213,7 +217,8 @@ and refuses a change away from it with `bank_feed_enabled` while the feed is on 
 account; switch the feed off first.
 
 **Disconnect.** **Disconnect** on the page (or `DELETE /api/v1/invoices/bank-feed`) removes
-the key and switches every account off. Bank files, their payments and each account's
+the key and switches every account off. Who disconnected, and who switched an account off,
+is logged at info with their user id. Bank files, their payments and each account's
 format stay: to go back to files, change each account's format under **Payments**.
 Delete the key in Folio too.
 

@@ -173,9 +173,12 @@ bare for Vantigo, og slett den i Folio når den ikke lenger brukes eller kan ha 
 
 **Installasjonens innstillinger** (`vantigo.env`, [Konfigurasjon](/nb/admin/configuration/)):
 
-- `INVOICES_BANK_FEED_ENABLED` — standard `1`. `0` sender ingen forespørsel til noen bank:
-  en nøkkel avvises med `bank_feed_disabled`, bankens kontoer leses ikke, og det som er
-  lagret, beholdes. Siden sier at integrasjonen er slått av.
+- `INVOICES_BANK_FEED_ENABLED` — standard `0` i denne versjonen, fordi integrasjonen ennå
+  ikke leser betalinger; sett `1` for å la arbeidsområdet koble til banken og velge
+  kontoene. `0` sender ingen forespørsel til noen bank: en nøkkel avvises med
+  `bank_feed_disabled`, bankens kontoer leses ikke, og det som er lagret, beholdes. Siden
+  sier at integrasjonen er slått av, og lister fortsatt hver konto integrasjonen er slått
+  på for, så den kan slås av.
 - `INVOICES_FOLIO_BASE_URL` — standard `https://api.folio.no/v2`. Den må være en
   `https`-URL: serveren nekter å starte med noe annet, fordi nøkkelen følger med hver
   forespørsel. Den er driftsansvarliges innstilling; ingen i arbeidsområdet kan sende
@@ -203,8 +206,10 @@ samme måte og erstatter den gamle.
 slik Folio svarer nå. En konto kan slås på når den er selgerens **Bankkonto** i
 **Fakturainnstillinger** eller en som en utstedt faktura har skrevet ut — regelen en
 bankfils kontoer holdes til — og aldri når den er en kortkonto. Å slå en på ber om en
-**startdag**, i dag som standard og aldri senere: ingenting som er bokført før den, leses,
-så betalinger som allerede er registrert fra filer, registreres ikke på nytt.
+**startdag**, i dag som standard, aldri senere og høyst 13 måneder tidligere: ingenting som
+er bokført før den, leses, så betalinger som allerede er registrert fra filer, registreres
+ikke på nytt. Lagres en annen nøkkel mens en konto slås på, avvises det med
+`bank_feed_key_changed`; prøv igjen.
 
 **Overgangen fra filer.** Å slå på en konto setter formatet til **feed**, slik en endring
 av formatet gjør ([formatet til hver konto](#formatet-til-hver-konto)): en konto som hadde
@@ -216,7 +221,8 @@ og avviser en endring bort fra det med `bank_feed_enabled` mens integrasjonen er
 kontoen; slå integrasjonen av først.
 
 **Koble fra.** **Koble fra** på siden (eller `DELETE /api/v1/invoices/bank-feed`) fjerner
-nøkkelen og slår av alle kontoer. Bankfilene, innbetalingene deres og formatet til hver
+nøkkelen og slår av alle kontoer. Hvem som koblet fra, og hvem som slo av en konto, logges
+som info med bruker-ID-en. Bankfilene, innbetalingene deres og formatet til hver
 konto blir stående: for å gå tilbake til filer endrer du formatet til hver konto under
 **Innbetalinger**. Slett nøkkelen i Folio også.
 

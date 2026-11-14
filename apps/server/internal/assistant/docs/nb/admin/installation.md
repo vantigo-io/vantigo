@@ -740,7 +740,7 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
   Peppol-oppslagets; å sette opp sending som EHF — Storecove-kontoen, påloggingsdataene
   og KID-avtalen — er en egen prosedyre ([E-faktura](/nb/admin/e-invoicing/)).
 - `vantigo.env.example` dokumenterer også, kommentert ut, innstillingene for
-  bankintegrasjonen, `INVOICES_BANK_FEED_ENABLED` (standard på) og `INVOICES_FOLIO_BASE_URL`
+  bankintegrasjonen, `INVOICES_BANK_FEED_ENABLED` (standard av så lenge integrasjonen ikke leser betalinger) og `INVOICES_FOLIO_BASE_URL`
   (standard `https://api.folio.no/v2`, bare https). Når et arbeidsområde har lagret en
   Folio-nøkkel, kaller serveren den verten over utgående HTTPS — slipp den gjennom et
   eventuelt utgående filter; den trenger ingen offentlig vert, fordi Folio ikke sender noe

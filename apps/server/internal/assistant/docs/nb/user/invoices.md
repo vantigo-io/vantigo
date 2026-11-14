@@ -1201,8 +1201,8 @@ I stedet for å importere filer kan en konto leses fra banken selv. I dag er den
    hva en nøkkel kan gjøre: den leser alle kontoer og transaksjoner i selskapet, og den kan
    ikke flytte penger — en betaling laget med den er et utkast til en person signerer den
    med BankID.
-2. Under **Kontoer** listes bankens kontoer slik banken svarer nå. Velg **Startdag** —
-   ingenting som er bokført før den, leses, så betalinger som allerede er registrert,
+2. Under **Kontoer** listes bankens kontoer slik banken svarer nå. Velg **Startdag** — i dag
+   eller tidligere, høyst 13 måneder tilbake; ingenting som er bokført før den, leses, så betalinger som allerede er registrert,
    registreres ikke på nytt — og slå på bryteren. Bare selgerens **Bankkonto**, eller en som
    en utstedt faktura har skrevet ut, kan slås på, og aldri en kortkonto; raden sier hvorfor
    når en ikke kan.
@@ -1213,8 +1213,9 @@ I stedet for å importere filer kan en konto leses fra banken selv. I dag er den
 **Bytt nøkkel** lagrer en ny nøkkel på samme måte, og henter tilbake en konto banken hadde
 avvist den gamle nøkkelen for. **Koble fra** fjerner nøkkelen og slår av alle kontoer;
 bankfilene, betalingene som er registrert fra dem, og formatet til hver konto blir stående.
-Når installasjonen ikke tillater bankintegrasjon, sier siden det og tilbyr ingen **Koble
-til**. I denne versjonen leser integrasjonen ennå ikke betalingene: en konto som er slått på,
+Når installasjonen ikke tillater bankintegrasjon — standard i denne versjonen — sier siden
+det, og knappen **Koble til** er ikke aktiv; en konto integrasjonen er slått på for, listes
+fortsatt, så den kan slås av. I denne versjonen leser integrasjonen ennå ikke betalingene: en konto som er slått på,
 får ingenting fra banken, og det importeres ikke lenger filer for den, så slå integrasjonen
 på for en konto først når Vantigo leser betalingene ([Innbetalinger fra
 banken](/nb/admin/payments/#bankintegrasjonen)).
