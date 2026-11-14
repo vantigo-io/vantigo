@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/vantigo-io/vantigo/server/internal/invoices/bankfile"
@@ -73,16 +75,7 @@ func (s *server) PutInvoicesBankAccountsByAccountFormat(ctx context.Context, req
 				return errRefused
 			}
 		}
-		cutover, err := txq.LatestBookedInFormat(ctx, store.LatestBookedInFormatParams{Account: current.Account, Format: current.Format})
-		if err != nil {
-			return fmt.Errorf("invoices: read account %s's latest booking in %s: %w", current.Account, current.Format, err)
-		}
-		if _, err := txq.ChangeImportFormat(ctx, store.ChangeImportFormatParams{
-			Account: current.Account, Format: format, CutoverThrough: cutover, SetByUserID: by, SetAt: now,
-		}); err != nil {
-			return fmt.Errorf("invoices: change account %s's format: %w", current.Account, err)
-		}
-		return nil
+		return changeImportFormat(ctx, txq, current, format, by, now)
 	})
 	switch {
 	case missing:
@@ -100,6 +93,31 @@ func (s *server) PutInvoicesBankAccountsByAccountFormat(ctx context.Context, req
 		return nil, fmt.Errorf("invoices: re-read bank import account %s: %d rows, want one", req.Account, len(rows))
 	}
 	return gen.PutInvoicesBankAccountsByAccountFormat200JSONResponse(bankAccountResponse(rows[0])), nil
+}
+
+// changeImportFormat changes current's format to format under its lock: the
+// old format kept as previous_format with cutover_through the latest booking
+// day of the account's own lines in it. A detour through the bank feed loses
+// no cutover: when the change goes to or from feed and the old format brought
+// the account no lines, the previous format and cutover a file format left
+// are carried forward instead (bank feed review) — camt054 → feed → ocr keeps
+// camt054's cutover while the feed booked nothing.
+func changeImportFormat(ctx context.Context, txq *store.Queries, current store.InvoicesBankImportAccount, format string, by uuid.UUID, now time.Time) error {
+	cutover, err := txq.LatestBookedInFormat(ctx, store.LatestBookedInFormatParams{Account: current.Account, Format: current.Format})
+	if err != nil {
+		return fmt.Errorf("invoices: read account %s's latest booking in %s: %w", current.Account, current.Format, err)
+	}
+	previous := current.Format
+	viaFeed := current.Format == string(bankfile.FormatFeed) || format == string(bankfile.FormatFeed)
+	if viaFeed && !cutover.Valid && current.PreviousFormat != nil && *current.PreviousFormat != format {
+		previous, cutover = *current.PreviousFormat, current.CutoverThrough
+	}
+	if _, err := txq.ChangeImportFormat(ctx, store.ChangeImportFormatParams{
+		Account: current.Account, Format: format, PreviousFormat: previous, CutoverThrough: cutover, SetByUserID: by, SetAt: now,
+	}); err != nil {
+		return fmt.Errorf("invoices: change account %s's format: %w", current.Account, err)
+	}
+	return nil
 }
 
 // bankAccountResponse is one account on the wire.

@@ -60,13 +60,14 @@ func (q *Queries) BankFileBySHA(ctx context.Context, sha256 string) (BankFileByS
 
 const changeImportFormat = `-- name: ChangeImportFormat :one
 UPDATE invoices.bank_import_accounts
-SET previous_format = format, format = $1, cutover_through = $2,
-    set_by_user_id = $3, set_at = $4::timestamptz
-WHERE account = $5
+SET previous_format = $1::text, format = $2, cutover_through = $3,
+    set_by_user_id = $4, set_at = $5::timestamptz
+WHERE account = $6
 RETURNING account, format, previous_format, cutover_through, set_by_user_id, set_at
 `
 
 type ChangeImportFormatParams struct {
+	PreviousFormat string
 	Format         string
 	CutoverThrough pgtype.Date
 	SetByUserID    uuid.UUID
@@ -75,10 +76,12 @@ type ChangeImportFormatParams struct {
 }
 
 // ChangeImportFormat is the format PUT's write, under LockImportAccount: the
-// old format kept as previous_format with its cutover, the new one set, and
-// who and when.
+// previous format with its cutover — the old format, or the one a detour
+// through the bank feed carries forward (changeImportFormat) — the new one
+// set, and who and when.
 func (q *Queries) ChangeImportFormat(ctx context.Context, arg ChangeImportFormatParams) (InvoicesBankImportAccount, error) {
 	row := q.db.QueryRow(ctx, changeImportFormat,
+		arg.PreviousFormat,
 		arg.Format,
 		arg.CutoverThrough,
 		arg.SetByUserID,

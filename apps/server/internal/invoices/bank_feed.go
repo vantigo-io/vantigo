@@ -47,6 +47,7 @@ const (
 	codeBankFeedUnavailable        = "bank_feed_unavailable"
 	codeBankFeedAccountNotOffered  = "bank_feed_account_not_offered"
 	codeBankFeedEnabled            = "bank_feed_enabled"
+	codeBankFeedKeyChanged         = "bank_feed_key_changed"
 
 	invalidBankFeedTitle           = "Invalid bank feed request"
 	bankFeedDisabledTitle          = "The bank feed is switched off"
@@ -55,6 +56,12 @@ const (
 	bankFeedUnavailableTitle       = "The bank cannot be reached"
 	bankFeedAccountNotOfferedTitle = "The bank does not offer this account"
 	bankFeedEnabledTitle           = "The bank feed reads this account"
+	bankFeedKeyChangedTitle        = "The bank key changed meanwhile"
+
+	// maxStartDayMonths is how far back a start day may lie: a little over a
+	// year, which a first read can cover without reading years of a bank's
+	// history.
+	maxStartDayMonths = 13
 
 	// The reasons an account the bank answers cannot be switched on.
 	whyNotCard           = "card"
@@ -258,7 +265,8 @@ func (s *server) PutInvoicesBankFeed(ctx context.Context, req gen.PutInvoicesBan
 // format stay (F8).
 func (s *server) DeleteInvoicesBankFeed(ctx context.Context, _ gen.DeleteInvoicesBankFeedRequestObject) (gen.DeleteInvoicesBankFeedResponseObject, error) {
 	now := s.deps.Clock()
-	err := s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
+	var removed bool
+	err := s.withLockedTx(ctx, func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error {
 		if _, err := lockBankFeedConnection(ctx, txq); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return nil
@@ -271,10 +279,18 @@ func (s *server) DeleteInvoicesBankFeed(ctx context.Context, _ gen.DeleteInvoice
 		if err := txq.DisableBankFeedAccounts(ctx, now); err != nil {
 			return fmt.Errorf("invoices: switch the bank feed's accounts off: %w", err)
 		}
+		if hook := bankFeedDeleteAfterWrite; hook != nil {
+			hook(ctx, tx)
+		}
+		removed = true
 		return nil
 	})
 	if err != nil {
 		return nil, err
+	}
+	// The table keeps no record of who disconnected; the log does.
+	if removed {
+		s.deps.Logger.InfoContext(ctx, "invoices: the bank was disconnected", "userId", callerID(ctx).String())
 	}
 	return gen.DeleteInvoicesBankFeed204Response{}, nil
 }
@@ -292,7 +308,7 @@ func bankFeedAccountNumber(a bankfeed.Account) (string, bool) {
 // switch on would judge it: never a card, and only the seller's — the rule
 // the bank import holds a file's accounts to.
 func (s *server) GetInvoicesBankFeedAccounts(ctx context.Context, _ gen.GetInvoicesBankFeedAccountsRequestObject) (gen.GetInvoicesBankFeedAccountsResponseObject, error) {
-	accounts, problem, err := s.bankFeedAccounts(ctx)
+	accounts, _, problem, err := s.bankFeedAccounts(ctx)
 	switch {
 	case err != nil:
 		return nil, err
@@ -328,28 +344,40 @@ func (s *server) GetInvoicesBankFeedAccounts(ctx context.Context, _ gen.GetInvoi
 	return gen.GetInvoicesBankFeedAccounts200JSONResponse(gen.InvoicesBankFeedBankAccountsResponse{Data: data}), nil
 }
 
-// bankFeedAccounts is the accounts the stored key reads, from the bank, or
+// bankFeedAccounts is the accounts the stored key reads, from the bank, and
+// the key's version (the connection's updated_at) they were read with, or
 // the problem to answer when the feed could not be made or the bank refused
 // or failed the call. err is the module's own failure, a 500.
-func (s *server) bankFeedAccounts(ctx context.Context) ([]bankfeed.Account, *gen.InvoicesConflictProblem, error) {
+func (s *server) bankFeedAccounts(ctx context.Context) ([]bankfeed.Account, time.Time, *gen.InvoicesConflictProblem, error) {
 	feed, err := s.bankFeed(ctx)
 	switch {
 	case errors.Is(err, errBankFeedSwitchedOff), errors.Is(err, errBankFeedNotConnected), errors.Is(err, errBankFeedKeyUnreadable):
-		return nil, ptr(s.bankFeedRefusal(ctx, err)), nil
+		return nil, time.Time{}, ptr(s.bankFeedRefusal(ctx, err)), nil
 	case err != nil:
-		return nil, nil, err
+		return nil, time.Time{}, nil, err
+	}
+	var version time.Time
+	if noted, ok := feed.(notedFeed); ok && noted.version != nil {
+		version = *noted.version
 	}
 	accounts, err := feed.Accounts(ctx)
 	if err != nil {
-		return nil, ptr(s.bankFeedRefusal(ctx, err)), nil
+		return nil, time.Time{}, ptr(s.bankFeedRefusal(ctx, err)), nil
 	}
-	return accounts, nil, nil
+	return accounts, version, nil, nil
 }
 
-// bankFeedSwitchAfterLock, when a test installs it, runs inside an account
-// switch's transaction right after the account's bank import row is locked;
-// nil in production.
-var bankFeedSwitchAfterLock func(ctx context.Context, tx pgx.Tx)
+// The account switch's and the DELETE's test seams; nil in production.
+// bankFeedSwitchBeforeTx runs after a switch on read the bank, before its
+// transaction; bankFeedSwitchAfterLock inside a switch's transaction once its
+// locks are taken — the account's bank import row, and for a switch on the
+// connection too; bankFeedDeleteAfterWrite inside the DELETE's transaction
+// once the key is removed and the accounts switched off.
+var (
+	bankFeedSwitchBeforeTx   func()
+	bankFeedSwitchAfterLock  func(ctx context.Context, tx pgx.Tx)
+	bankFeedDeleteAfterWrite func(ctx context.Context, tx pgx.Tx)
+)
 
 // PutInvoicesBankFeedAccountsByAccount Switch the bank feed on or off for an account
 // (PUT /api/v1/invoices/bank-feed/accounts/{account})
@@ -411,6 +439,9 @@ func (s *server) switchBankFeedOff(ctx context.Context, account string) (gen.Put
 	case err != nil:
 		return nil, err
 	}
+	// The row keeps who switched it on, not who switched it off; the log does.
+	s.deps.Logger.InfoContext(ctx, "invoices: the bank feed was switched off for an account",
+		"account", account, "userId", callerID(ctx).String())
 	return gen.PutInvoicesBankFeedAccountsByAccount200JSONResponse(bankFeedAccountResponse(row)), nil
 }
 
@@ -429,9 +460,13 @@ func (s *server) switchBankFeedOn(ctx context.Context, account string, startDay 
 			return gen.PutInvoicesBankFeedAccountsByAccount400ApplicationProblemPlusJSONResponse(invalid(invalidBankFeedTitle,
 				fieldError("startDay", "The start day may not be after today."))), nil
 		}
+		if start.Before(today.AddDate(0, -maxStartDayMonths, 0)) {
+			return gen.PutInvoicesBankFeedAccountsByAccount400ApplicationProblemPlusJSONResponse(invalid(invalidBankFeedTitle,
+				fieldError("startDay", fmt.Sprintf("The start day may be at most %d months before today.", maxStartDayMonths)))), nil
+		}
 	}
 
-	offered, problem, err := s.bankFeedAccounts(ctx)
+	offered, version, problem, err := s.bankFeedAccounts(ctx)
 	switch {
 	case err != nil:
 		return nil, err
@@ -459,9 +494,12 @@ func (s *server) switchBankFeedOn(ctx context.Context, account string, startDay 
 			fmt.Sprintf("The account ending %s is neither the seller's bank account nor one an issued invoice printed. Nothing was changed.", account[len(account)-4:]))), nil
 	}
 
+	if hook := bankFeedSwitchBeforeTx; hook != nil {
+		hook()
+	}
 	by := callerID(ctx)
 	var row store.InvoicesBankFeedAccount
-	var disconnected bool
+	var disconnected, keyChanged bool
 	err = s.withLockedTx(ctx, func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error {
 		// An account no file named yet is made with format feed, the import's
 		// own statement; an existing one is left to the lock below, which a
@@ -475,24 +513,25 @@ func (s *server) switchBankFeedOn(ctx context.Context, account string, startDay 
 		if err != nil {
 			return fmt.Errorf("invoices: lock bank import account %s: %w", account, err)
 		}
-		if hook := bankFeedSwitchAfterLock; hook != nil {
-			hook(ctx, tx)
-		}
-		if _, err := shareBankFeedConnection(ctx, txq); errors.Is(err, pgx.ErrNoRows) {
+		conn, err := shareBankFeedConnection(ctx, txq)
+		if errors.Is(err, pgx.ErrNoRows) {
 			disconnected = true
 			return errRefused
 		} else if err != nil {
 			return fmt.Errorf("invoices: share the bank connection: %w", err)
 		}
+		// The account was judged with the key of version; another key stored
+		// since may not read it.
+		if !conn.UpdatedAt.Equal(version) {
+			keyChanged = true
+			return errRefused
+		}
+		if hook := bankFeedSwitchAfterLock; hook != nil {
+			hook(ctx, tx)
+		}
 		if locked.Format != bankFeedFormatFeed {
-			cutover, err := txq.LatestBookedInFormat(ctx, store.LatestBookedInFormatParams{Account: account, Format: locked.Format})
-			if err != nil {
-				return fmt.Errorf("invoices: read account %s's latest booking in %s: %w", account, locked.Format, err)
-			}
-			if _, err := txq.ChangeImportFormat(ctx, store.ChangeImportFormatParams{
-				Account: account, Format: bankFeedFormatFeed, CutoverThrough: cutover, SetByUserID: by, SetAt: now,
-			}); err != nil {
-				return fmt.Errorf("invoices: change account %s's format: %w", account, err)
+			if err := changeImportFormat(ctx, txq, locked, bankFeedFormatFeed, by, now); err != nil {
+				return err
 			}
 		}
 		row, err = txq.EnableBankFeedAccount(ctx, store.EnableBankFeedAccountParams{
@@ -506,6 +545,9 @@ func (s *server) switchBankFeedOn(ctx context.Context, account string, startDay 
 	switch {
 	case disconnected:
 		return gen.PutInvoicesBankFeedAccountsByAccount409ApplicationProblemPlusJSONResponse(s.bankFeedRefusal(ctx, errBankFeedNotConnected)), nil
+	case keyChanged:
+		return gen.PutInvoicesBankFeedAccountsByAccount409ApplicationProblemPlusJSONResponse(conflict(codeBankFeedKeyChanged, bankFeedKeyChangedTitle,
+			"Another bank key was stored while the account was being switched on. Nothing was changed; read the accounts again and try again.")), nil
 	case err != nil:
 		return nil, err
 	}

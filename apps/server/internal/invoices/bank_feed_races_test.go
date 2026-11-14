@@ -97,3 +97,60 @@ func TestBankFeed_SwitchAgainstFormatPut(t *testing.T) {
 		t.Errorf("the format = %s, want feed", row.Format)
 	}
 }
+
+// TestBankFeed_SwitchOnAgainstDelete: a switch on and a DELETE, both orders.
+// A switch on parked under its locks — the account's import row, the
+// connection shared — makes the DELETE wait on it, and the DELETE then
+// switches the account off with the rest. A DELETE parked before its commit
+// makes the switch on wait on the connection, find it gone, and answer 409
+// bank_feed_not_connected, leaving no import row behind.
+func TestBankFeed_SwitchOnAgainstDelete(t *testing.T) {
+	h := feedHarness(t, modtest.WithPoolMaxConns(2))
+	probeConn := ownConn(t, h)
+	before := deadlocks(t, probeConn)
+	manager := feedManager(t, h)
+	connect(t, h)
+
+	// The switch first.
+	hook, parked, release := parkOnce(t)
+	restore := invoices.SetBankFeedSwitchAfterLock(hook)
+	on := startRequest(manager, http.MethodPut, bankFeedAccountsPath+"/"+sellerAccount, map[string]any{"enabled": true})
+	switchPID := parkedPID(t, "the switch on", parked)
+	del := startRequest(manager, http.MethodDelete, bankFeedPath, nil)
+	waiter := newWaiter(t, probeConn)
+	if got := blockersOf(t, probeConn, waiter); !slices.Equal(got, []uint32{switchPID}) {
+		t.Fatalf("the DELETE waits on %v, want the switch's %d", got, switchPID)
+	}
+	release.Close()
+	finished(t, "the switch on", on, http.StatusOK)
+	finished(t, "the DELETE after the switch", del, http.StatusNoContent)
+	restore()
+	if n := h.Count(t, `SELECT count(*) FROM invoices.bank_feed_accounts WHERE enabled`); n != 0 {
+		t.Errorf("enabled accounts after the DELETE = %d, want none", n)
+	}
+
+	// The DELETE first, on an account no file named.
+	connect(t, h)
+	hook, parked, release = parkOnce(t)
+	restore = invoices.SetBankFeedDeleteAfterWrite(hook)
+	defer restore()
+	del = startRequest(manager, http.MethodDelete, bankFeedPath, nil)
+	deletePID := parkedPID(t, "the DELETE", parked)
+	on = startRequest(manager, http.MethodPut, bankFeedAccountsPath+"/"+olderAccount, map[string]any{"enabled": true})
+	waiter = newWaiter(t, probeConn, waiter)
+	if got := blockersOf(t, probeConn, waiter); !slices.Equal(got, []uint32{deletePID}) {
+		t.Fatalf("the switch on waits on %v, want the DELETE's %d", got, deletePID)
+	}
+	release.Close()
+	finished(t, "the DELETE", del, http.StatusNoContent)
+	res := finished(t, "the switch on after the DELETE", on, http.StatusConflict)
+	if code := problemOf(t, res).Code; code != "bank_feed_not_connected" {
+		t.Errorf("the switch on's code = %q, want bank_feed_not_connected", code)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM invoices.bank_import_accounts WHERE account = $1`, olderAccount); n != 0 {
+		t.Errorf("import rows of the account = %d, want none", n)
+	}
+	if after := deadlocks(t, probeConn); after != before {
+		t.Errorf("deadlocks = %d, want %d", after, before)
+	}
+}

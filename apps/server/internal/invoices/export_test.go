@@ -668,12 +668,29 @@ func SetBankFeedPutAfterWrite(hook func(ctx context.Context, tx pgx.Tx)) func() 
 }
 
 // SetBankFeedSwitchAfterLock installs a hook an account's bank feed switch
-// calls inside its transaction right after the account's bank import row is
-// locked, and answers the function that removes it. A test using it does not
-// run in parallel.
+// calls inside its transaction once its locks are taken — the account's bank
+// import row, and for a switch on the connection too — and answers the
+// function that removes it. A test using it does not run in parallel.
 func SetBankFeedSwitchAfterLock(hook func(ctx context.Context, tx pgx.Tx)) func() {
 	bankFeedSwitchAfterLock = hook
 	return func() { bankFeedSwitchAfterLock = nil }
+}
+
+// SetBankFeedSwitchBeforeTx installs a hook a switch on calls after it read
+// the bank and before its transaction, and answers the function that removes
+// it. A test using it does not run in parallel.
+func SetBankFeedSwitchBeforeTx(hook func()) func() {
+	bankFeedSwitchBeforeTx = hook
+	return func() { bankFeedSwitchBeforeTx = nil }
+}
+
+// SetBankFeedDeleteAfterWrite installs a hook the bank DELETE calls inside its
+// transaction once the key is removed and the accounts switched off, and
+// answers the function that removes it. A test using it does not run in
+// parallel.
+func SetBankFeedDeleteAfterWrite(hook func(ctx context.Context, tx pgx.Tx)) func() {
+	bankFeedDeleteAfterWrite = hook
+	return func() { bankFeedDeleteAfterWrite = nil }
 }
 
 // SetVippsVerifyBeforeClear installs a hook the Vipps verify calls after Vipps

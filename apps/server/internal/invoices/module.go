@@ -110,11 +110,16 @@ var permissions = []contracts.Permission{
 // installation's SMTP server: 60 sends per client per 10 minutes (payments
 // and delivery design D4). A send as EHF renders, looks up the receiver on
 // the Peppol network and stores a UBL each time: the same 60 per 10 minutes
-// under a policy of its own (EHF and KID design D8). The pay page's
-// operations follow.
+// under a policy of its own (EHF and KID design D8). The bank feed's calls to
+// the bank follow (bank feed review): a connection PUT tries a key against
+// the bank, 10 per 10 minutes; reading the bank's accounts and switching one
+// on call it too, 60 per 10 minutes each. The pay page's operations follow.
 var limits = map[string]ratelimit.Policy{
-	"postInvoicesByIdSend":    {Name: "invoices-send", Limit: 60, Window: 10 * time.Minute},
-	"postInvoicesByIdSendEhf": {Name: "invoices-send-ehf", Limit: 60, Window: 10 * time.Minute},
+	"postInvoicesByIdSend":                 {Name: "invoices-send", Limit: 60, Window: 10 * time.Minute},
+	"postInvoicesByIdSendEhf":              {Name: "invoices-send-ehf", Limit: 60, Window: 10 * time.Minute},
+	"putInvoicesBankFeed":                  {Name: "invoices-bank-feed-key", Limit: 10, Window: 10 * time.Minute},
+	"getInvoicesBankFeedAccounts":          {Name: "invoices-bank-feed-accounts", Limit: 60, Window: 10 * time.Minute},
+	"putInvoicesBankFeedAccountsByAccount": {Name: "invoices-bank-feed-switch", Limit: 60, Window: 10 * time.Minute},
 	// The pay page's three anonymous operations (invoices payments and
 	// reminders design D15, I2), each a bucket of its own: the read 60, the
 	// attempt's create 10 — each makes a Vipps payment — and the status read
