@@ -223,6 +223,8 @@ export interface ApiState {
   report?: AccountingReport;
   suppliers: AccountingSupplier[];
   supplierInvoices: AccountingSupplierInvoice[];
+  /** Refusals by "METHOD /path": the problem's status and code the request is answered with. */
+  refusals?: Record<string, { status: number; code: string }>;
 }
 
 export const supplier = (change: Partial<AccountingSupplier> = {}): AccountingSupplier => ({
@@ -248,6 +250,7 @@ export const supplier = (change: Partial<AccountingSupplier> = {}): AccountingSu
   balance: "0.00",
   lastVoucherDate: null,
   retainedUntil: null,
+  anonymisedAt: null,
   revision: 1,
   createdAt: STAMP,
   updatedAt: STAMP,
@@ -389,6 +392,8 @@ export const stubAccountingApi = (change: Partial<ApiState> = {}): StubbedFetch 
     const url = new URL(String(input), "http://localhost");
     const method = init?.method ?? "GET";
     const path = url.pathname.replace("/api/v1/accounting", "");
+    const refused = state.refusals?.[`${method} ${path}`];
+    if (refused) return jsonResponse(refused.status, { ...refused, title: "Refused" });
     if (method === "GET" && path === "/meta") return jsonResponse(200, state.meta);
     if (method === "GET" && path === "/accounts") return jsonResponse(200, { items: state.accounts });
     if (method === "GET" && path === "/tax-codes") return jsonResponse(200, { items: state.taxCodes });
@@ -488,6 +493,16 @@ export const stubAccountingApi = (change: Partial<ApiState> = {}): StubbedFetch 
     if (supplierId && method === "GET") {
       const found = state.suppliers.find((x) => x.id === Number(supplierId[1]));
       return found ? jsonResponse(200, found) : new Response(null, { status: 404 });
+    }
+    const anonymise = /^\/suppliers\/(\d+)\/anonymise$/.exec(path);
+    if (anonymise && method === "POST") {
+      const found = state.suppliers.find((x) => x.id === Number(anonymise[1])) ?? supplier();
+      return jsonResponse(200, {
+        ...found,
+        name: `Anonymised supplier ${found.number}`,
+        anonymisedAt: STAMP,
+        active: false,
+      });
     }
     if (method === "GET" && path === "/supplier-invoices") {
       const number = url.searchParams.get("supplierNumber");

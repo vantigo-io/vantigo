@@ -182,6 +182,7 @@ export const accountingCatalog = {
     previewWaiting: "Choose an account and an amount on every line to see the postings.",
     taxLine: "VAT {{rate}} %",
     taxLineShort: "VAT",
+    taxReverseLineShort: "VAT owed (reverse charge)",
     balances: "Balances: {{amount}} on each side.",
     doesNotBalance: "Does not balance: the difference is {{amount}}.",
     attachments: "Attachments",
@@ -564,6 +565,32 @@ export const accountingCatalog = {
     "refusal.unposted_wrong_reason": "That is not what this row waits for.",
     "refusal.brreg_unavailable": "Brønnøysundregisteret could not be reached. Try again, or fill it in by hand.",
     "refusal.supplier_invoice_has_payments": "Remove the invoice's payments before reversing it.",
+    "refusal.tax_code_not_for_supplier_invoice":
+      "An import code is not used on a supplier invoice: enter the import VAT as a journal from the customs declaration.",
+    "refusal.exchange_rate_mismatch":
+      "The rate and the total in NOK do not agree. Correct one of them, or give only one.",
+    "refusal.credit_note_invoice_not_posted": "The invoice this credit note credits is no longer posted.",
+    "refusal.credit_note_currency_mismatch": "A credit note is in the currency of the invoice it credits.",
+    "refusal.credit_note_exceeds_balance": "The credit note is more than is left on the invoice it credits.",
+    "refusal.supplier_invoice_item_in_use":
+      "A credit note, a payment or a settlement stands on this invoice. Reverse or remove it first.",
+    "refusal.supplier_retained":
+      "The bookkeeping still keeps this supplier; it can be anonymised after its retention date.",
+    "refusal.supplier_anonymised": "The supplier is anonymised and is not changed.",
+    "refusal.expense_already_invoiced": "This expense is made into a supplier invoice already.",
+    unpostedReason_expense_invoice_unapproved:
+      "The expense behind a supplier invoice was unapproved in Expenses. Delete or post the draft, then retry.",
+    makeSupplierInvoiceHint:
+      "A draft supplier invoice is made with the expense's amount, VAT, date and receipts. The supplier is matched by name, or made from the expense's text.",
+    makeSupplierIsPersonLabel: "A new supplier is a person (sole proprietor)",
+    makeSupplierIsPersonHint:
+      "A person's record is personal data: the bookkeeping keeps it five years after the last voucher, and it can then be anonymised.",
+    anonymiseSupplier: "Anonymise",
+    anonymiseSupplierHint:
+      "The name becomes Anonymised supplier {{number}}, and the contact and bank details are cleared. The vouchers stay as they are. This cannot be undone.",
+    supplierAnonymised: "Anonymised",
+    supplierAnonymisedHint: "Anonymised on {{date}}: the bookkeeping no longer needed the person's details.",
+    supplierAnonymisedDone: "The supplier is anonymised.",
   },
   nb: {
     accounting: "Regnskap",
@@ -734,6 +761,7 @@ export const accountingCatalog = {
     previewWaiting: "Velg konto og beløp på hver linje for å se posteringene.",
     taxLine: "Mva {{rate}} %",
     taxLineShort: "Mva",
+    taxReverseLineShort: "Beregnet mva (omvendt avgiftsplikt)",
     balances: "Går i balanse: {{amount}} på hver side.",
     doesNotBalance: "Går ikke i balanse: differansen er {{amount}}.",
     attachments: "Vedlegg",
@@ -1110,6 +1138,31 @@ export const accountingCatalog = {
     "refusal.unposted_wrong_reason": "Det er ikke det denne raden venter på.",
     "refusal.brreg_unavailable": "Brønnøysundregisteret svarte ikke. Prøv igjen, eller fyll inn for hånd.",
     "refusal.supplier_invoice_has_payments": "Fjern fakturaens betalinger før du tilbakefører den.",
+    "refusal.tax_code_not_for_supplier_invoice":
+      "En importkode brukes ikke på en leverandørfaktura: før innførselsmerverdiavgiften som et bilag fra tolldeklarasjonen.",
+    "refusal.exchange_rate_mismatch": "Kursen og summen i NOK stemmer ikke. Rett en av dem, eller oppgi bare én.",
+    "refusal.credit_note_invoice_not_posted": "Fakturaen kreditnotaen krediterer er ikke lenger bokført.",
+    "refusal.credit_note_currency_mismatch": "En kreditnota er i valutaen til fakturaen den krediterer.",
+    "refusal.credit_note_exceeds_balance": "Kreditnotaen er på mer enn det som gjenstår på fakturaen den krediterer.",
+    "refusal.supplier_invoice_item_in_use":
+      "En kreditnota, en betaling eller en avregning står på denne fakturaen. Tilbakefør eller fjern den først.",
+    "refusal.supplier_retained":
+      "Regnskapet oppbevarer fortsatt denne leverandøren; den kan anonymiseres etter oppbevaringsdatoen.",
+    "refusal.supplier_anonymised": "Leverandøren er anonymisert og endres ikke.",
+    "refusal.expense_already_invoiced": "Denne utgiften er allerede gjort om til en leverandørfaktura.",
+    unpostedReason_expense_invoice_unapproved:
+      "Utgiften bak en leverandørfaktura ble ikke lenger godkjent i Utgifter. Slett eller bokfør utkastet, og prøv igjen.",
+    makeSupplierInvoiceHint:
+      "Et utkast til leverandørfaktura lages med utgiftens beløp, mva, dato og kvitteringer. Leverandøren finnes på navn, eller lages fra teksten i utgiften.",
+    makeSupplierIsPersonLabel: "En ny leverandør er en person (enkeltpersonforetak)",
+    makeSupplierIsPersonHint:
+      "Opplysninger om en person er personopplysninger: regnskapet oppbevarer dem fem år etter siste bilag, og de kan da anonymiseres.",
+    anonymiseSupplier: "Anonymiser",
+    anonymiseSupplierHint:
+      "Navnet blir Anonymised supplier {{number}}, og kontakt- og bankopplysningene slettes. Bilagene står som de er. Dette kan ikke angres.",
+    supplierAnonymised: "Anonymisert",
+    supplierAnonymisedHint: "Anonymisert {{date}}: regnskapet trengte ikke lenger personens opplysninger.",
+    supplierAnonymisedDone: "Leverandøren er anonymisert.",
   },
 } satisfies CatalogResources;
 

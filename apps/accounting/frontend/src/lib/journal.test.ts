@@ -88,6 +88,30 @@ describe("the journal form's arithmetic", () => {
     ]);
   });
 
+  it("copies a reverse charge's voucher without either of its tax lines", () => {
+    const line = (accountId: number, amount: string, taxRole: string | null) => ({
+      accountId,
+      amount,
+      taxCodeId: taxRole ? 86 : null,
+      taxRole,
+      customerId: null,
+      projectId: null,
+      description: "",
+    });
+    const voucher = {
+      postings: [
+        line(1, "1000.00", "base"),
+        line(2, "250.00", "tax"),
+        line(4, "-250.00", "tax_reverse"),
+        line(3, "-1000.00", null),
+      ],
+    } as unknown as AccountingVoucher;
+    expect(linesFromVoucher(voucher).map((l) => [l.accountId, l.debit, l.credit])).toEqual([
+      ["1", "1000.00", ""],
+      ["3", "", "1000.00"],
+    ]);
+  });
+
   it("keys a refusal's lines by the lines sent, blank lines left out", () => {
     const first = { ...emptyLine(), accountId: "1001", debit: "1" };
     const blank = emptyLine();

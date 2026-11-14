@@ -62,14 +62,7 @@ const Unposted = ({ canPost }: { canPost: boolean }) => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [entering, setEntering] = useState<AccountingUnposted | null>(null);
-  const makeInvoice = useMutation({
-    mutationFn: (id: number) => makeSupplierInvoiceFromUnposted(id),
-    onSuccess: async (draft) => {
-      await queryClient.invalidateQueries({ queryKey: [ACCOUNTING_QUERY_KEY] });
-      await navigate({ to: supplierInvoicePath(draft.id) });
-    },
-    onError: (error) => notifications.show({ color: "red", message: refusalMessage(t, error) }),
-  });
+  const [making, setMaking] = useState<AccountingUnposted | null>(null);
   const acknowledge = useMutation({
     mutationFn: (id: number) => acknowledgeUnposted(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: [ACCOUNTING_QUERY_KEY] }),
@@ -166,16 +159,24 @@ const Unposted = ({ canPost }: { canPost: boolean }) => {
                       )}
                     </Group>
                   ) : u.supplierInvoiceId ? (
-                    <Anchor component={Link} to={supplierInvoicePath(u.supplierInvoiceId)}>
-                      {t("openSupplierInvoice")}
-                    </Anchor>
+                    <Group justify="flex-end" gap="xs">
+                      <Anchor component={Link} to={supplierInvoicePath(u.supplierInvoiceId)}>
+                        {t("openSupplierInvoice")}
+                      </Anchor>
+                      {canPost && u.reason === "expense_invoice_unapproved" && (
+                        <Button
+                          size="xs"
+                          variant="light"
+                          leftSection={<IconRefresh size={14} />}
+                          loading={retry.isPending && retry.variables === u.id}
+                          onClick={() => retry.mutate(u.id)}
+                        >
+                          {t("retry")}
+                        </Button>
+                      )}
+                    </Group>
                   ) : canPost && u.reason === "enter_as_supplier_invoice" ? (
-                    <Button
-                      size="xs"
-                      variant="light"
-                      loading={makeInvoice.isPending && makeInvoice.variables === u.id}
-                      onClick={() => makeInvoice.mutate(u.id)}
-                    >
+                    <Button size="xs" variant="light" onClick={() => setMaking(u)}>
                       {t("makeSupplierInvoice")}
                     </Button>
                   ) : canPost && u.reason === "amount_in_nok_needed" ? (
@@ -205,7 +206,64 @@ const Unposted = ({ canPost }: { canPost: boolean }) => {
         </Table>
       )}
       {entering && <NokAmountsModal row={entering} onClose={() => setEntering(null)} />}
+      {making && (
+        <MakeInvoiceModal
+          row={making}
+          onClose={() => setMaking(null)}
+          onMade={(id) => navigate({ to: supplierInvoicePath(id) })}
+        />
+      )}
     </Stack>
+  );
+};
+
+/**
+ * Make a supplier invoice from an expense (R2): whether the supplier, when
+ * one is made from the expense's text, is a person — whose record the
+ * bookkeeping keeps five years and may then anonymise (A17) — asked, never
+ * guessed.
+ */
+const MakeInvoiceModal = ({
+  row,
+  onClose,
+  onMade,
+}: {
+  row: AccountingUnposted;
+  onClose: () => void;
+  onMade: (id: number) => void;
+}) => {
+  const { t } = useAccountingFormat();
+  const queryClient = useQueryClient();
+  const [isPerson, setIsPerson] = useState(false);
+  const make = useMutation({
+    mutationFn: () => makeSupplierInvoiceFromUnposted(row.id, isPerson),
+    onSuccess: async (draft) => {
+      await queryClient.invalidateQueries({ queryKey: [ACCOUNTING_QUERY_KEY] });
+      onClose();
+      onMade(draft.id);
+    },
+    onError: (error) => notifications.show({ color: "red", message: refusalMessage(t, error) }),
+  });
+  return (
+    <Modal opened onClose={onClose} title={t("makeSupplierInvoice")}>
+      <Stack>
+        <Text size="sm">{t("makeSupplierInvoiceHint")}</Text>
+        <Checkbox
+          label={t("makeSupplierIsPersonLabel")}
+          description={t("makeSupplierIsPersonHint")}
+          checked={isPerson}
+          onChange={(e) => setIsPerson(e.currentTarget.checked)}
+        />
+        <Group justify="flex-end">
+          <Button variant="default" onClick={onClose}>
+            {t("cancel")}
+          </Button>
+          <Button loading={make.isPending} onClick={() => make.mutate()}>
+            {t("makeSupplierInvoice")}
+          </Button>
+        </Group>
+      </Stack>
+    </Modal>
   );
 };
 

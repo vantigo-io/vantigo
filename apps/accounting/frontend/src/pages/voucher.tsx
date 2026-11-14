@@ -157,6 +157,11 @@ const VoucherView = ({ id, meta }: { id: number; meta: AccountingMeta }) => {
                     {t("taxLineShort")}
                   </Badge>
                 )}
+                {p.taxRole === "tax_reverse" && (
+                  <Badge ml="xs" variant="light" color="grape">
+                    {t("taxReverseLineShort")}
+                  </Badge>
+                )}
                 {p.taxSpecification && (
                   <Badge ml="xs" color="orange" variant="light">
                     {p.taxSpecification}

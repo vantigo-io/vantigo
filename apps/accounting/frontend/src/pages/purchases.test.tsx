@@ -41,6 +41,18 @@ describe("suppliers", () => {
     renderRoute("/accounting/suppliers/3001");
     expect(await screen.findByText("This supplier is a person")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Export the supplier's data" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Anonymise" })).not.toBeInTheDocument();
+  });
+
+  it("anonymises a person once the retention has run out", async () => {
+    const fetchMock = stubAccountingApi({ suppliers: [supplier({ isPerson: true, retainedUntil: "2020-12-31" })] });
+    renderRoute("/accounting/suppliers/3001");
+    await userEvent.click(await screen.findByRole("button", { name: "Anonymise" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(/Anonymised supplier 1/)).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Anonymise" }));
+    await waitFor(() => expect(sent(fetchMock, "POST", /\/suppliers\/3001\/anonymise$/)).toHaveLength(1));
+    expect(await screen.findByText("The supplier is anonymised.")).toBeInTheDocument();
   });
 });
 
@@ -99,6 +111,54 @@ describe("a supplier invoice", () => {
     await waitFor(() => expect(sent(fetchMock, "POST", /\/supplier-invoices\/4001\/post$/)).toHaveLength(1));
     expect(sent(fetchMock, "PUT", /\/supplier-invoices\/4001$/)).toHaveLength(1);
     expect(await screen.findByText("Voucher 2026-000020 is posted.")).toBeInTheDocument();
+  });
+
+  it.each([
+    ["credit_note_exceeds_balance", "The credit note is more than is left on the invoice it credits."],
+    ["credit_note_currency_mismatch", "A credit note is in the currency of the invoice it credits."],
+    ["credit_note_invoice_not_posted", "The invoice this credit note credits is no longer posted."],
+  ])("says why Post refused a credit note: %s", async (code, words) => {
+    stubAccountingApi({
+      supplierInvoices: [
+        supplierInvoice({
+          kind: "credit_note",
+          creditsInvoiceId: 4000,
+          files: [
+            {
+              id: 1,
+              fileName: "k.pdf",
+              contentType: "application/pdf",
+              sizeBytes: 3,
+              sha256: "0".repeat(64),
+              uploadedAt: "2026-11-01T00:00:00Z",
+            },
+          ],
+        }),
+      ],
+      refusals: { "POST /supplier-invoices/4001/post": { status: 409, code } },
+    });
+    renderRoute("/accounting/supplier-invoices/4001");
+    await userEvent.click(await screen.findByRole("button", { name: "Post" }));
+    expect(await screen.findByText(words)).toBeInTheDocument();
+  });
+
+  it("says why Reverse and copy was refused while a credit note stands on the invoice", async () => {
+    stubAccountingApi({
+      supplierInvoices: [
+        supplierInvoice({ state: "posted", balance: "-1000.00", voucher: { id: 5010, display: "2026-000020" } }),
+      ],
+      refusals: {
+        "POST /supplier-invoices/4001/reverse-and-copy": { status: 409, code: "supplier_invoice_item_in_use" },
+      },
+    });
+    renderRoute("/accounting/supplier-invoices/4001");
+    await userEvent.click(await screen.findByRole("button", { name: "Reverse and copy" }));
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.type(within(dialog).getByRole("textbox", { name: /^Reason/ }), "Wrong");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Reverse and copy" }));
+    expect(
+      await screen.findByText(/A credit note, a payment or a settlement stands on this invoice/),
+    ).toBeInTheDocument();
   });
 
   it("registers a payment in NOK with the share settled in the currency", async () => {
@@ -248,6 +308,33 @@ describe("expense rules and Needs attention", () => {
     await userEvent.click(within(table).getByRole("button", { name: "Acknowledge" }));
     await waitFor(() => expect(sent(fetchMock, "POST", /\/unposted\/7003\/acknowledge$/)).toHaveLength(1));
     await userEvent.click(within(table).getByRole("button", { name: "Make a supplier invoice" }));
+    // The dialog asks whether a supplier made from the expense is a person.
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(within(dialog).getByRole("checkbox", { name: /A new supplier is a person/ }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Make a supplier invoice" }));
     await waitFor(() => expect(router.state.location.pathname).toBe("/accounting/supplier-invoices/4011"));
+    expect(sent(fetchMock, "POST", /\/unposted\/7002\/supplier-invoice$/)[0].body).toEqual({ supplierIsPerson: true });
+  });
+
+  it("keeps the invoice of an unapproved expense in view, with a retry", async () => {
+    const fetchMock = stubAccountingApi({
+      unposted: [
+        unposted({
+          id: 7004,
+          stream: "expenses.facts",
+          source: { module: "expenses", kind: "entry.unapproved", id: 81, part: "6" },
+          documentId: null,
+          documentNumber: null,
+          reason: "expense_invoice_unapproved",
+          supplierInvoiceId: 4011,
+        }),
+      ],
+    });
+    renderRoute("/accounting/needs-attention");
+    const table = await screen.findByTestId("unposted");
+    expect(within(table).getByText(/was unapproved in Expenses/)).toBeInTheDocument();
+    expect(within(table).getByRole("link", { name: "Open the supplier invoice" })).toBeInTheDocument();
+    await userEvent.click(within(table).getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(sent(fetchMock, "POST", /\/unposted\/7004\/retry$/)).toHaveLength(1));
   });
 });
