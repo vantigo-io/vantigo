@@ -135,6 +135,7 @@ dispatcher, `events.dispatch`, has neither: it runs wherever the workers run, ev
 | --- | --- | --- |
 | `BRREG_BASE_URL`, `BRREG_TIMEOUT` | `https://data.brreg.no`, `15s` | The company register lookup |
 | `ACCOUNTING_SAFT_IMPORT_MAX_BYTES` | 512 MiB, from 1 MiB to 4 GiB | The largest SAF-T file Accounting takes to set up the books from ([Coming from another system](/en/user/accounting/#coming-from-another-system)) |
+| `ACCOUNTING_SAFT_EXPORT_RETENTION_DAYS` | `90`, from `0` to `3650` | How many days a SAF-T export's files are kept before the worker deletes them — they carry personal data; `0` keeps them. The export's record and checksum stay |
 | `ACCOUNTING_SAFT_SPLIT_BYTES` | 2 000 000 000, from 1024 | The size past which a SAF-T export is split by period into files each valid alone; Skatteetaten takes files up to 2 GB |
 | `PEPPOL_LOOKUP_ENABLED`, `PEPPOL_SML_ZONE`, `PEPPOL_DNS_SERVER`, `PEPPOL_TIMEOUT` | `1`, the production zone, unset, `10s` | The Peppol capability lookup |
 | `INVOICES_EHF_ENABLED`, `INVOICES_STORECOVE_BASE_URL` | `1`, Storecove's API | Sending invoices as EHF ([E-invoicing](/en/admin/e-invoicing/)) |
