@@ -693,8 +693,8 @@ func TestCatchUp_Guarantees(t *testing.T) {
 
 	// A handler only asks; the claim takes the wake-up and runs at once.
 	handlers := accounting.Module().EventHandlers(h.Deps())
-	if len(handlers) != 3 {
-		t.Fatalf("%d handlers", len(handlers))
+	if len(handlers) != 4 {
+		t.Fatalf("%d handlers, want Invoices' three and Expenses' one", len(handlers))
 	}
 	if err := db.WithTx(t.Context(), h.Pool(), pgx.TxOptions{}, func(tx pgx.Tx) error {
 		return handlers[0].Handle(t.Context(), tx, events.Delivered{ID: 1, Name: "invoices.document.issued", Version: 1})
@@ -725,7 +725,7 @@ func TestCatchUp_Guarantees(t *testing.T) {
 	}
 	var status gen.AccountingCatchUp
 	c.Do(http.MethodGet, base+"/catch-up", nil).JSON(&status)
-	if len(status.Streams) != 2 || status.Streams[0].Position != 101 || deref(status.Streams[0].Behind) != 1 || status.Streams[0].LastRunAt == nil {
+	if len(status.Streams) != 3 || status.Streams[2].Stream != "expenses.facts" || status.Streams[0].Position != 101 || deref(status.Streams[0].Behind) != 1 || status.Streams[0].LastRunAt == nil {
 		t.Errorf("status = %+v", status)
 	}
 	// The sweep alone — no event, as after a late handler or a pruned one.
