@@ -112,8 +112,11 @@ reports them — codes 0, 7, 20, 21 and 22 are not reported. Reverse-charge code
 bought abroad, imports) post to two accounts: the deductible VAT and the calculated VAT.
 
 Click a code to change its name, its VAT account (and, for reverse charge, its counter
-account) or whether it is offered. **Add rate** starts a new rate from a date; the current
-rate ends the day before. A voucher takes the rate valid on its own date.
+account) or whether it is offered. Once anything has been posted with a code, its VAT
+account and counter account can no longer change — the VAT return reads what is deducted
+from where the code's VAT lies — but its name and whether it is offered still can. **Add
+rate** starts a new rate from a date; the current rate ends the day before. A voucher takes
+the rate valid on its own date.
 
 ## Posting a journal entry
 
@@ -188,8 +191,9 @@ the lock's history with who made it and why, because opening closed books is som
 law asks to be accounted for.
 
 Closing a [VAT term](#closing-the-term) moves the lock to the term's last day, and
-reopening one moves it back. The lock never moves back behind a VAT term marked as filed
-at Skatteetaten: correct such a term in the open term instead.
+reopening one moves it back. The lock never moves back behind a closed VAT term: reopen
+the term instead ([Reopening a term](#reopening-a-term)), or, once it is filed at
+Skatteetaten, correct it in the open term.
 
 While a month is locked, a journal entry dated in it is refused. What the system posts by
 itself for a locked day is booked on the first open day, keeping its document date.
@@ -213,6 +217,12 @@ the day the books start, as one voucher dated that day.
 
 An invoice added from Invoices keeps its customer and the amount open on that day; a line
 that names it with another customer or amount is refused.
+
+**VAT at the books' start.** VAT owed or due from before the books start — the last term of
+the old books, not yet paid — goes on **2740**, the VAT settlement account, not on a VAT
+account such as 2700 or 2710: an opening line on a VAT account is refused. Enter VAT to pay
+as a credit on 2740 and VAT to receive as a debit; the payment to or from Skatteetaten then
+settles it ([Paying the VAT](#paying-the-vat)).
 
 The opening balances can be reversed from their voucher and entered again until the first
 month is locked; after that they are final, even if the lock is later moved back or
@@ -622,7 +632,13 @@ says what closing does and anything that stops it now:
 - Nothing dated in the term may wait under [Needs attention](#needs-attention).
 - The books must not be locked through the term's last day: move the lock back first
   ([Locking a period](#locking-a-period)).
+- Every closed term must still have the figures it was closed with.
+- Every code in the return must have a rate on its postings' dates.
 - The VAT accounts must reconcile.
+
+A term that starts before the books do — books starting on 15 August in a yearly term, say
+— has a return that covers only the days from the books' start. Its page says so, and the
+dialog asks you to confirm it when you close.
 
 Closing then:
 
@@ -650,7 +666,7 @@ Skatteetaten, by hand.
 3. Back in Vantigo, click **Mark as filed**, enter the day you filed and Skatteetaten's
    reference from the receipt, and click **Mark as filed**. This needs **Post vouchers**.
 
-A filed term cannot be reopened, and the lock cannot be moved back behind it. If a term was
+A filed term cannot be reopened. If a term was
 marked as filed by mistake, **Remove the filing mark** with a reason; it needs **Manage
 the books**, and the term's history keeps who did it and why.
 
@@ -661,6 +677,9 @@ A closed term that is not filed can be opened again — the latest closed one on
 books' first term, it is lifted), and the settlement voucher is reversed on the term's last
 day. Correct what was wrong, then close the term again. The reopening is kept in the lock's
 history and the term's. Reopening needs **Manage the books**.
+
+Nothing a close made is lost: **Closings** on the term's page lists every close, its total,
+which one stands and which one was filed, each with **Download XML**.
 
 ### Correcting a term after filing
 
