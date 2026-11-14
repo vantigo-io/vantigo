@@ -40,7 +40,10 @@ func (s *server) GetInvoicesBankAccounts(ctx context.Context, _ gen.GetInvoicesB
 // it as it is; another keeps the old one as previous_format with
 // cutover_through the latest booking day of the account's own lines in it —
 // never a file's last_booked_on, which a file naming two accounts can push
-// past this one's (plan reading 51) — NULL when it has none.
+// past this one's (plan reading 51) — NULL when it has none. feed is never
+// taken here, only set by switching the bank feed on; a change away from it
+// is refused while the feed reads the account (bank feed plan finding 9),
+// judged under the same lock every switch of the feed takes first.
 func (s *server) PutInvoicesBankAccountsByAccountFormat(ctx context.Context, req gen.PutInvoicesBankAccountsByAccountFormatRequestObject) (gen.PutInvoicesBankAccountsByAccountFormatResponseObject, error) {
 	format := req.Body.Format
 	if format != string(bankfile.FormatOCR) && format != string(bankfile.FormatCamt054) {
@@ -49,7 +52,7 @@ func (s *server) PutInvoicesBankAccountsByAccountFormat(ctx context.Context, req
 	}
 	now := s.deps.Clock()
 	by := callerID(ctx)
-	var missing bool
+	var missing, feedOn bool
 	err := s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		current, err := lockImportAccount(ctx, txq, req.Account)
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -61,6 +64,14 @@ func (s *server) PutInvoicesBankAccountsByAccountFormat(ctx context.Context, req
 		}
 		if current.Format == format {
 			return nil
+		}
+		if current.Format == string(bankfile.FormatFeed) {
+			if feedOn, err = bankFeedEnabledOn(ctx, txq, current.Account); err != nil {
+				return err
+			}
+			if feedOn {
+				return errRefused
+			}
 		}
 		cutover, err := txq.LatestBookedInFormat(ctx, store.LatestBookedInFormatParams{Account: current.Account, Format: current.Format})
 		if err != nil {
@@ -76,6 +87,8 @@ func (s *server) PutInvoicesBankAccountsByAccountFormat(ctx context.Context, req
 	switch {
 	case missing:
 		return gen.PutInvoicesBankAccountsByAccountFormat404Response{}, nil
+	case feedOn:
+		return gen.PutInvoicesBankAccountsByAccountFormat409ApplicationProblemPlusJSONResponse(bankFeedEnabledConflict(req.Account)), nil
 	case err != nil:
 		return nil, err
 	}

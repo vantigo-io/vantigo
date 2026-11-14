@@ -246,6 +246,40 @@ func sharePaymentCredentials(ctx context.Context, txq *store.Queries) (store.Inv
 	return row, nil
 }
 
+// lockBankFeedConnection takes the bank connection FOR UPDATE, reported
+// "bank_feed_connection" (the DELETE's only lock, bank feed design F8).
+func lockBankFeedConnection(ctx context.Context, txq *store.Queries) (store.InvoicesBankFeedConnection, error) {
+	row, err := txq.LockBankFeedConnection(ctx)
+	if err != nil {
+		return row, err
+	}
+	noteLock(ctx, "bank_feed_connection", "1")
+	return row, nil
+}
+
+// shareBankFeedConnection reads the bank connection FOR SHARE, reported
+// "bank_feed_connection" (an account's switch on, after the account's bank
+// import row).
+func shareBankFeedConnection(ctx context.Context, txq *store.Queries) (store.InvoicesBankFeedConnection, error) {
+	row, err := txq.ShareBankFeedConnection(ctx)
+	if err != nil {
+		return row, err
+	}
+	noteLock(ctx, "bank_feed_connection", "1")
+	return row, nil
+}
+
+// upsertBankFeedConnection writes the bank connection, which the statement
+// locks, reported "bank_feed_connection" (a connection PUT's only lock).
+func upsertBankFeedConnection(ctx context.Context, txq *store.Queries, arg store.UpsertBankFeedConnectionParams) (store.InvoicesBankFeedConnection, error) {
+	row, err := txq.UpsertBankFeedConnection(ctx, arg)
+	if err != nil {
+		return row, err
+	}
+	noteLock(ctx, "bank_feed_connection", "1")
+	return row, nil
+}
+
 // lockPaymentSettings takes the payment settings row FOR UPDATE, reported
 // "payment_settings" (a payment settings PUT: its only lock).
 func lockPaymentSettings(ctx context.Context, txq *store.Queries) (store.InvoicesPaymentSetting, error) {
