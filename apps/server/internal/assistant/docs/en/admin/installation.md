@@ -289,7 +289,8 @@ customers import worker `customers-import`, the energy import worker `energy-imp
 `INVOICES_EHF_ENABLED` is on, the invoices reminder worker `invoices-reminders`,
 always, the invoices billing worker `invoices-billing`, always, the invoices order allocations reconcile
 `invoices.allocation_reconcile`, always, the invoices payments worker `invoices-payments` when
-`INVOICES_VIPPS_ENABLED` is on, the calendar cancellations worker
+`INVOICES_VIPPS_ENABLED` is on, the invoices bank feed worker `invoices-bank-feed` unless
+`INVOICES_BANK_FEED_ENABLED=0`, the calendar cancellations worker
 `calendar-cancellations` unless `CALENDAR_CANCELLATIONS_ENABLED=0`, the calendar
 subscriptions worker `calendar-subscriptions` unless `CALENDAR_SUBSCRIPTIONS_ENABLED=0`, and the
 calendar mailbox sync worker `calendar-mailbox-sync` unless `CALENDAR_MAILBOX_SYNC_ENABLED=0`, and the
@@ -329,7 +330,7 @@ instead of `api`; it serves only, whatever `WORKERS_IN_PROCESS` says. Whichever 
 you use, retention cleanup, the registry workers, the EHF events worker, the
 calendar cancellations worker, `entra-outlook-sweep` and `assistant-retention` take a PostgreSQL advisory lock, so each runs on exactly one instance per cycle; the outbox,
 the `invoices-ehf` worker, the `invoices-reminders` worker, the `invoices-billing` worker,
-the `invoices-payments` worker, `communications-mailbox-sync`, `communications-messenger-sync`, the calendar subscriptions and mailbox sync workers and `events.dispatch` instead take one row at a time under a time-limited lease, so any number of
+the `invoices-payments` worker, the `invoices-bank-feed` worker, `communications-mailbox-sync`, `communications-messenger-sync`, the calendar subscriptions and mailbox sync workers and `events.dispatch` instead take one row at a time under a time-limited lease, so any number of
 instances share the work without sending anything twice. `meta-split` takes the stored
 events under a lease and `meta-retention` deletes in batches, so both are safe on any
 number of instances. `google-sweep` and
@@ -718,9 +719,10 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
   EHF — the Storecove account, the credentials and the KID agreement — is its own
   procedure ([E-invoicing](/en/admin/e-invoicing/)).
 - `vantigo.env.example` also documents, commented out, the bank feed's settings,
-  `INVOICES_BANK_FEED_ENABLED` (default off while the feed reads no payments) and `INVOICES_FOLIO_BASE_URL` (default
-  `https://api.folio.no/v2`, https only). With a workspace's Folio key stored, the server
-  calls that host over outbound HTTPS — let it through any egress filter; it needs no
+  `INVOICES_BANK_FEED_ENABLED` (default on), `INVOICES_FOLIO_BASE_URL` (default
+  `https://api.folio.no/v2`, https only) and `INVOICES_BANK_FEED_INTERVAL` (default `30m`,
+  `5m` to `24h`). With a workspace's Folio key stored, the server — the `invoices-bank-feed`
+  worker every interval, and the Bank page — calls that host over outbound HTTPS — let it through any egress filter; it needs no
   public host, since Folio sends nothing in ([The bank feed](/en/admin/payments/#the-bank-feed)).
 - `vantigo.env.example` also documents, commented out, the settings for Vipps MobilePay
   payments of invoices: `PUBLIC_BASE_URL`, where the pay page is reachable from the

@@ -6,6 +6,7 @@ sidebar:
 sources:
   - apps/server/internal/storage
   - apps/server/internal/invoices/bankimport.go
+  - apps/server/internal/invoices/bank_feed_sync.go
   - apps/server/internal/invoices/reminderpdf.go
   - apps/server/internal/invoices/print_batches.go
   - apps/server/internal/staff/objects.go
@@ -119,7 +120,12 @@ oppbevares slik den ble lastet opp, under `bank-files/<sha256>.ocr` (en OCR-giro
 én gang før importens transaksjon og aldri slettet eller overskrevet, siden den er
 dokumentasjonen for innbetalingene som bokføres fra den (bokføringsloven § 10); en import
 som feiler etter å ha lagret den, etterlater et objekt som neste import av de samme
-bytene bruker igjen ([Innbetalinger fra banken](/nb/admin/payments/)). PDF-en til et
+bytene bruker igjen ([Innbetalinger fra banken](/nb/admin/payments/)). En bunke
+bankintegrasjonen hentet, oppbevares på samme måte, slik banken sendte innbetalingene, under
+`bank-files/<sha256>.json` — en JSON-liste med transaksjonene som ble beholdt, aldri
+utbetalingene, kortkjøpene eller de interne overføringene. Bankintegrasjonen trenger
+objektlageret: uten et, eller med et som feiler, feiler hver lesing av en konto og prøves
+igjen, og ingenting registreres ([Bankintegrasjonen](/nb/admin/payments/#bankintegrasjonen)). PDF-en til et
 purrebrev lagres under `reminders/<invoiceId>/<reminderId>-<sentOn>-<sha256>.pdf` — med
 hashen av innholdet som nøkkel, lagt inn bare når ingenting ligger der fra før, før brevet
 sendes på e-post eller når det skrives ut, og aldri slettet eller overskrevet: et brev som
