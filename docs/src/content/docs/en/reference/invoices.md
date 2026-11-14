@@ -2346,7 +2346,11 @@ registers a payment of kind `recovered`, naming the standing write-off (`writeOf
 `no_write_off` without one, and `recovery_exceeds_written_off` above what is written off
 less the live recoveries, with `openAmount` the room left. A recovery is not part of the
 open amount — the write-off closed that — so the invoice stays `written_off`; it is
-removed like any payment.
+removed like any payment. A recovery is always a person's: a bank line paying a
+written-off invoice — an `ocr` or `camt054` file's, or a `feed` line the bank feed read,
+judged by the same matching — finds nothing open and is queued `invoice_settled` (or pays
+the invoice's outstanding charges, as on any settled invoice), never registered as
+recovered; a person registers the money with `kind: recovered`.
 
 **The database keeps it.** `invoices.write_offs` (migration 00182) is immutable but for
 the undo (`tr_write_offs_immutable`), belongs to an issued invoice

@@ -286,7 +286,8 @@ a change to a rule is a new version.
 | `sales.recovered` (1) | `recovered_payment` | `customer_payment` | `bank` | the write-off's debit lines scaled by recovered ÷ written off, signs turned: `bad_debt`, and with the correction the VAT given back in proportion, `tapPåKrav` |
 | `sales.recovered_removed` (1) | `recovered_payment_removed` | `customer_payment` | `sales.recovered`'s voucher with every sign turned | |
 
-A bank file's payment posts to `bank` in this delivery; delivery F maps the receiving
+A bank payment — a bank file's (`ocr`, `camt054`) or the bank feed's (`bank_feed`) — posts
+to `bank` in this delivery; delivery F maps the receiving
 account to its ledger account. Amounts are exact, in NOK, rounded to øre half away from
 zero. **A difference between the lines' nets and the summaries' bases** goes on the
 largest revenue line, so the voucher follows the document's own totals. **A share of a

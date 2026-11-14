@@ -1136,7 +1136,10 @@ those payments first.
 Money that arrives after a write-off is not an ordinary payment: click **Register
 recovered payment** on the write-off. The amount is prefilled with what is left to
 recover, and at most that. The invoice stays written off; the payment is listed as
-**Recovered after write-off**, and the write-off shows what has been recovered.
+**Recovered after write-off**, and the write-off shows what has been recovered. A bank
+payment of a written-off invoice — from a bank file or from the bank feed — is never
+registered on its own: it waits in [the exception queue](#the-exception-queue) as
+**Nothing is left to pay**, and you register it here as recovered.
 
 Writing off, undoing and registering a recovered payment need `invoices:payments`. With
 [Accounting](/en/user/accounting/#how-sales-arrive-from-invoices) on, each posts itself,
