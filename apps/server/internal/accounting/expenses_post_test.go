@@ -453,3 +453,160 @@ func TestPostingRules_ExpenseScope(t *testing.T) {
 		t.Fatalf("%d versions keep the change", n)
 	}
 }
+
+// makeInvoice makes the draft of an expense's row under Needs attention.
+func makeInvoice(t *testing.T, b *books, row int64, body any) gen.AccountingSupplierInvoice {
+	t.Helper()
+	res := b.c.Do(http.MethodPost, fmt.Sprintf("%s/unposted/%d/supplier-invoice", base, row), body)
+	if res.Status != http.StatusCreated {
+		t.Fatalf("make = %d %s", res.Status, res.Body)
+	}
+	var inv gen.AccountingSupplierInvoice
+	res.JSON(&inv)
+	return inv
+}
+
+// supplierInvoiceKind is an expense of the supplier_invoice kind.
+func supplierInvoiceKind(id int64, supplier, number string) contracts.ExpenseLine {
+	return contracts.ExpenseLine{EntryID: id, Kind: contracts.ExpenseKindSupplierInvoice, Date: time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC),
+		CategoryName: "Materials", PaidBy: "company", Currency: "NOK", Gross: "500.00", VAT: "100.00", Supplier: supplier,
+		SupplierInvoiceNumber: number}
+}
+
+// The expense behind a supplier invoice survives the invoice's life (M2):
+// made into a draft, posted, reversed and copied, the copy deleted — the
+// expense is back under Needs attention, to be made again. A supplier made
+// from the expense's text is a person when the dialog says so (L5).
+func TestExpenses_SupplierInvoiceKindThroughReverseAndCopy(t *testing.T) {
+	b, j := expenseBooks(t)
+	j.add(entryFact(contracts.ExpenseApproved, supplierInvoiceKind(71, "Ola Snekker", "S-1")))
+	catchUp(t, b.h)
+	rows := unposted(t, b, true)
+	if len(rows) != 1 || rows[0].Reason != "enter_as_supplier_invoice" {
+		t.Fatalf("rows = %+v", rows)
+	}
+	inv := makeInvoice(t, b, rows[0].Id, map[string]any{"supplierIsPerson": true})
+	var s gen.AccountingSupplier
+	b.c.Do(http.MethodGet, fmt.Sprintf("%s/suppliers/%d", base, inv.SupplierId), nil).JSON(&s)
+	if !s.IsPerson {
+		t.Fatalf("supplier = %+v, want a person", s)
+	}
+	postInvoice(t, b, inv.Id)
+	res := b.c.Do(http.MethodPost, fmt.Sprintf("%s/supplier-invoices/%d/reverse-and-copy", base, inv.Id),
+		map[string]any{"date": "2026-03-20", "reason": "Wrong supplier"})
+	if res.Status != http.StatusCreated {
+		t.Fatalf("reverse and copy = %d %s", res.Status, res.Body)
+	}
+	var copied gen.AccountingSupplierInvoice
+	res.JSON(&copied)
+	if got := unposted(t, b, false); len(got) != 1 || got[0].SupplierInvoiceId == nil || *got[0].SupplierInvoiceId != copied.Id {
+		t.Fatalf("the row names %+v, want the copy %d", got, copied.Id)
+	}
+	if res := b.c.Do(http.MethodDelete, fmt.Sprintf("%s/supplier-invoices/%d", base, copied.Id), nil); res.Status != http.StatusNoContent {
+		t.Fatalf("delete the copy = %d %s", res.Status, res.Body)
+	}
+	rows = unposted(t, b, true)
+	if len(rows) != 1 || rows[0].Reason != "enter_as_supplier_invoice" || rows[0].SupplierInvoiceId != nil {
+		t.Fatalf("after deleting the copy, rows = %+v", rows)
+	}
+	again := makeInvoice(t, b, rows[0].Id, nil)
+	if *again.SourceExpenseEntryId != 71 || again.State != "draft" {
+		t.Fatalf("made again = %+v", again)
+	}
+}
+
+// An approval made into a supplier invoice and then unapproved in Expenses
+// (L1) turns nothing back: while the invoice is a draft a row blocks, naming
+// it; once it is posted the row only says so. Make a second time answers its
+// own conflict.
+func TestExpenses_UnapprovedAfterMakingTheInvoice(t *testing.T) {
+	b, j := expenseBooks(t)
+	approved := j.add(entryFact(contracts.ExpenseApproved, supplierInvoiceKind(81, "Byggmakker AS", "B-1")))
+	catchUp(t, b.h)
+	row := unposted(t, b, true)[0]
+	inv := makeInvoice(t, b, row.Id, nil)
+	b.h.Exec(t, "UPDATE accounting.unposted SET resolved_at = NULL, supplier_invoice_id = NULL WHERE id = $1", row.Id)
+	expectProblem(t, b.c.Do(http.MethodPost, fmt.Sprintf("%s/unposted/%d/supplier-invoice", base, row.Id), nil),
+		http.StatusConflict, "expense_already_invoiced")
+	b.h.Exec(t, "UPDATE accounting.unposted SET resolved_at = now(), supplier_invoice_id = $2 WHERE id = $1", row.Id, inv.Id)
+
+	undo := entryFact(contracts.ExpenseUnapproved, supplierInvoiceKind(81, "Byggmakker AS", "B-1"))
+	undo.UndoesSeq = approved.Seq
+	j.add(undo)
+	catchUp(t, b.h)
+	rows := unposted(t, b, true)
+	if len(rows) != 1 || rows[0].Reason != "expense_invoice_unapproved" || rows[0].Informational ||
+		rows[0].SupplierInvoiceId == nil || *rows[0].SupplierInvoiceId != inv.Id || !strings.Contains(rows[0].Detail, "B-1") {
+		t.Fatalf("while a draft, rows = %+v", rows)
+	}
+	postInvoice(t, b, inv.Id)
+	res := b.c.Do(http.MethodPost, fmt.Sprintf("%s/unposted/%d/retry", base, rows[0].Id), nil)
+	if res.Status != http.StatusOK {
+		t.Fatalf("retry = %d %s", res.Status, res.Body)
+	}
+	rows = unposted(t, b, true)
+	if len(rows) != 1 || rows[0].Reason != "expense_invoice_unapproved" || !rows[0].Informational || rows[0].PostedVoucher == nil {
+		t.Fatalf("once posted, rows = %+v", rows)
+	}
+	if b.h.Count(t, "SELECT count(*) FROM accounting.vouchers WHERE source_module = 'expenses'") != 0 {
+		t.Fatal("an unapproval of an invoiced expense posted something")
+	}
+	var meta gen.AccountingMeta
+	b.c.Do(http.MethodGet, base+"/meta", nil).JSON(&meta)
+	if meta.Unposted != 0 || meta.Informational != 1 {
+		t.Fatalf("meta = %+v", meta)
+	}
+}
+
+// An amount in NOK a person entered is theirs (M3): kept with who and when,
+// the voucher posted with it is theirs, and its line names the figure
+// entered and the amount in the currency.
+func TestExpenses_EnteredNOKIsThePersons(t *testing.T) {
+	b, j := expenseBooks(t)
+	line := outlay(91, "employee", "80.00", "", nil)
+	line.Currency = "EUR"
+	approved := j.add(entryFact(contracts.ExpenseApproved, line))
+	catchUp(t, b.h)
+	rows := unposted(t, b, true)
+	if len(rows) != 1 {
+		t.Fatalf("rows = %+v", rows)
+	}
+	expectProblem(t, b.c.Do(http.MethodPost, fmt.Sprintf("%s/unposted/%d/nok-amounts", base, rows[0].Id),
+		map[string]any{"amounts": []map[string]any{{"entryId": 91, "amountNok": "0.00"}}}), http.StatusBadRequest, "amount_invalid")
+	if res := b.c.Do(http.MethodPost, fmt.Sprintf("%s/unposted/%d/nok-amounts", base, rows[0].Id),
+		map[string]any{"amounts": []map[string]any{{"entryId": 91, "amountNok": "921.50"}}}); res.Status != http.StatusOK {
+		t.Fatalf("enter = %d %s", res.Status, res.Body)
+	}
+	v := expectExpense(t, b, approved, "7700 921.50", "2910 -921.50")
+	if v.PostedByUserId == nil {
+		t.Fatal("the voucher posted with an entered amount names no one")
+	}
+	if !strings.Contains(v.Postings[0].Description, "NOK 921.50") || !strings.Contains(v.Postings[0].Description, "EUR 80.00") {
+		t.Fatalf("line text = %q", v.Postings[0].Description)
+	}
+	if b.h.Count(t, `SELECT count(*) FROM accounting.unposted
+		WHERE nok_amounts->'91'->>'enteredBy' = $1 AND nok_amounts->'91'->>'enteredAt' IS NOT NULL`, v.PostedByUserId.String()) != 1 {
+		t.Fatal("the entered amount does not keep who entered it")
+	}
+}
+
+// An informational row about a voucher is resolved when an undoing turns
+// the voucher back (L6).
+func TestExpenses_UndoResolvesTheInformationalRow(t *testing.T) {
+	b, j := expenseBooks(t)
+	cat := int32(1001)
+	expenseRule(t, b, cat, "6300", true)
+	line := outlay(95, "employee", "100.02", "20.02", &cat)
+	approved := j.add(entryFact(contracts.ExpenseApproved, line))
+	catchUp(t, b.h)
+	if rows := unposted(t, b, true); len(rows) != 1 || rows[0].Reason != "vat_not_deducted" {
+		t.Fatalf("rows = %+v", rows)
+	}
+	undo := entryFact(contracts.ExpenseUnapproved, line)
+	undo.UndoesSeq = approved.Seq
+	j.add(undo)
+	catchUp(t, b.h)
+	if rows := unposted(t, b, true); len(rows) != 0 {
+		t.Fatalf("after the undo, rows = %+v", rows)
+	}
+}

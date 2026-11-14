@@ -54,6 +54,30 @@ type draftInput struct {
 // rateText is a rate as the column keeps it.
 func rateText(r *big.Rat) string { return r.FloatString(rateScale) }
 
+// rateColumn is a rate for the nullable column: nil while it is not set.
+func rateColumn(r *big.Rat) *string {
+	if r == nil {
+		return nil
+	}
+	return ptr(rateText(r))
+}
+
+// moneyColumn is an amount for a nullable column: nil while it is not set.
+func moneyColumn(r *big.Rat) *string {
+	if r == nil {
+		return nil
+	}
+	return ptr(money(r))
+}
+
+// optRat is a nullable numeric column read as text: nil when empty.
+func optRat(s string) *big.Rat {
+	if s == "" {
+		return nil
+	}
+	return mustRat(s)
+}
+
 // roundRate is a rate at six decimals, half away from zero.
 func roundRate(r *big.Rat) *big.Rat {
 	scale := new(big.Rat).SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(rateScale), nil))
@@ -146,6 +170,14 @@ func checkDraft(ctx context.Context, q *store.Queries, b gen.AccountingSupplierI
 		case rate == nil:
 			out.rate, out.totalNOK = roundRate(new(big.Rat).Quo(nok, total)), nok
 		default:
+			// Both given: they must agree, total × rate to the øre within an
+			// øre per line, or one of them is mistyped (M1).
+			diff := new(big.Rat).Sub(docmath.Round2(new(big.Rat).Mul(total, rate)), nok)
+			slack := new(big.Rat).Mul(big.NewRat(1, 100), big.NewRat(int64(max(1, len(b.Lines))), 1))
+			if diff.Abs(diff).Cmp(slack) > 0 {
+				f.addCoded("totalNok", codeExchangeRateMismatch, "The total in NOK is not the total at the rate: "+
+					money(docmath.Round2(new(big.Rat).Mul(total, rate)))+" at "+rateText(rate)+". Correct one of them, or give only one.")
+			}
 			out.rate, out.totalNOK = rate, nok
 		}
 	}
@@ -250,7 +282,7 @@ func taxCodesOn(ctx context.Context, q *store.Queries, ids []int32, on time.Time
 // duplicateConflict is the 409 of the duplicate guard, nil for any other
 // error.
 func duplicateConflict(err error) error {
-	if violates(err, "ux_supplier_invoices_number") || violates(err, "ux_supplier_invoices_expense") {
+	if violates(err, "ux_supplier_invoices_number") {
 		return conflict(codeDuplicateSupplierInv, "The supplier's invoice is already entered",
 			"Another invoice of this supplier, not reversed, has the same number.")
 	}
@@ -280,7 +312,7 @@ func writeDraftLines(ctx context.Context, q *store.Queries, id int64, lines []pu
 func insertDraft(ctx context.Context, q *store.Queries, d draftInput, copiedFrom, expense *int64, by uuid.UUID, now time.Time) (int64, error) {
 	id, err := q.InsertSupplierInvoice(ctx, store.InsertSupplierInvoiceParams{SupplierID: d.supplierID, Kind: d.kind,
 		SupplierNumber: d.number, InvoiceDate: d.invoiceDate, DueDate: d.dueDate, Currency: d.currency,
-		ExchangeRate: rateText(d.rate), Total: money(d.total), TotalNok: money(d.totalNOK), Kid: d.kid, Reference: d.reference,
+		ExchangeRate: rateColumn(d.rate), Total: money(d.total), TotalNok: moneyColumn(d.totalNOK), Kid: d.kid, Reference: d.reference,
 		Description: d.description, CreditsInvoiceID: d.creditsInvoiceID, CopiedFromID: copiedFrom,
 		SourceExpenseEntryID: expense, Now: now, UserID: by})
 	if err != nil {
@@ -417,7 +449,7 @@ func (s *server) supplierInvoiceView(ctx context.Context, q *store.Queries, r st
 	out := gen.AccountingSupplierInvoice{Id: r.ID, SupplierId: r.SupplierID, SupplierName: r.SupplierName,
 		SupplierNumber: r.SupplierSeq, Kind: gen.AccountingSupplierInvoiceKind(r.Kind), InvoiceNumber: r.SupplierNumber,
 		InvoiceDate: apiDate(r.InvoiceDate), DueDate: apiDatePtr(r.DueDate), Currency: r.Currency,
-		ExchangeRate: rateText(mustRat(r.ExchangeRate)), Total: money(mustRat(r.Total)), TotalNok: money(mustRat(r.TotalNok)),
+		ExchangeRate: rateColumn(optRat(r.ExchangeRate)), Total: money(mustRat(r.Total)), TotalNok: moneyColumn(optRat(r.TotalNok)),
 		Kid: r.Kid, Reference: r.Reference, Description: r.Description, State: gen.AccountingSupplierInvoiceState(r.State),
 		OpenItemId: r.OpenItemID, CreditsInvoiceId: r.CreditsInvoiceID, CopiedFromId: r.CopiedFromID,
 		SourceExpenseEntryId: r.SourceExpenseEntryID, Revision: r.Revision, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
@@ -559,7 +591,7 @@ func (s *server) UpdateAccountingSupplierInvoice(ctx context.Context, req gen.Up
 		}
 		_, err = q.UpdateSupplierInvoice(ctx, store.UpdateSupplierInvoiceParams{ID: req.Id, Revision: *req.Body.Revision,
 			SupplierID: d.supplierID, Kind: d.kind, SupplierNumber: d.number, InvoiceDate: d.invoiceDate, DueDate: d.dueDate,
-			Currency: d.currency, ExchangeRate: rateText(d.rate), Total: money(d.total), TotalNok: money(d.totalNOK), Kid: d.kid,
+			Currency: d.currency, ExchangeRate: rateColumn(d.rate), Total: money(d.total), TotalNok: moneyColumn(d.totalNOK), Kid: d.kid,
 			Reference: d.reference, Description: d.description, CreditsInvoiceID: d.creditsInvoiceID, Now: s.now()})
 		if noRows(err) {
 			return conflict(codeRevisionConflict, "The supplier invoice has changed", "Read it again and repeat the change.")
@@ -587,7 +619,8 @@ func (s *server) UpdateAccountingSupplierInvoice(ctx context.Context, req gen.Up
 func (s *server) DeleteAccountingSupplierInvoice(ctx context.Context, req gen.DeleteAccountingSupplierInvoiceRequestObject) (gen.DeleteAccountingSupplierInvoiceResponseObject, error) {
 	var keys []string
 	err := s.withTx(ctx, func(_ pgx.Tx, q *store.Queries) error {
-		if _, err := lockDraft(ctx, q, req.Id); err != nil {
+		inv, err := lockDraft(ctx, q, req.Id)
+		if err != nil {
 			return err
 		}
 		got, err := q.DeleteSupplierInvoice(ctx, req.Id)
@@ -599,9 +632,13 @@ func (s *server) DeleteAccountingSupplierInvoice(ctx context.Context, req gen.De
 				keys = append(keys, k)
 			}
 		}
-		// The draft named by an expense under Needs attention gives the
-		// expense back to it.
-		return q.ReopenUnpostedOfDraft(ctx, &req.Id)
+		// A draft made from an expense — or a copy of one — gives the
+		// expense back to Needs attention: its approval's row, matched by the
+		// entry, whichever draft the row last named (M2).
+		if inv.SourceExpenseEntryID == nil {
+			return nil
+		}
+		return q.ReopenUnpostedOfEntry(ctx, *inv.SourceExpenseEntryID)
 	})
 	if err != nil {
 		return nil, err
@@ -654,8 +691,13 @@ func (s *server) PostAccountingSupplierInvoice(ctx context.Context, req gen.Post
 			return conflict(codeSupplierInvFileRequired, "The supplier invoice has no file",
 				"Attach the invoice as received before posting it.")
 		}
-		if inv.Currency != currency && mustRat(inv.ExchangeRate).Cmp(big.NewRat(1, 1)) == 0 {
+		if inv.ExchangeRate == "" {
 			return invalidField(title, "exchangeRate", codeExchangeRateRequired, "Enter the rate or the total in NOK.")
+		}
+		if inv.CreditsInvoiceID != nil {
+			if err := checkCredit(ctx, q, inv); err != nil {
+				return err
+			}
 		}
 		doc, err := s.purchaseDocOf(ctx, q, inv)
 		if err != nil {
@@ -703,6 +745,47 @@ func (s *server) PostAccountingSupplierInvoice(ctx context.Context, req gen.Post
 		return nil, err
 	}
 	return gen.PostAccountingSupplierInvoice200JSONResponse(out), nil
+}
+
+// checkCredit holds a credit note to the invoice it credits, as it stands
+// when it is posted: the invoice and its open item are locked — in the order
+// a payment takes them — so a payment or another credit note on the same
+// item waits, and then the invoice must still be posted, be in the credit
+// note's currency, and have at least the credit note's total left on it, in
+// NOK and in its currency.
+func checkCredit(ctx context.Context, q *store.Queries, inv store.LockSupplierInvoiceRow) error {
+	credited, err := q.LockSupplierInvoice(ctx, *inv.CreditsInvoiceID)
+	if err != nil {
+		return err
+	}
+	if credited.State != "posted" || credited.OpenItemID == nil {
+		return conflict(codeCreditNoteNotPosted, "The credited invoice is not posted",
+			"The invoice this credit note credits is "+credited.State+". Credit a posted invoice, or post the credit note on its own.")
+	}
+	if credited.Currency != inv.Currency {
+		return conflict(codeCreditNoteCurrency, "The credit note is in another currency",
+			"The credited invoice is in "+credited.Currency+", the credit note in "+inv.Currency+". A credit note is in its invoice's currency.")
+	}
+	if err := q.LockOpenItem(ctx, *credited.OpenItemID); err != nil {
+		return err
+	}
+	bal, err := q.OpenItemCurrencyBalance(ctx, *credited.OpenItemID)
+	if err != nil {
+		return err
+	}
+	left := new(big.Rat).Abs(mustRat(bal.Balance))
+	if mustRat(inv.TotalNok).Cmp(left) > 0 {
+		return conflict(codeCreditNoteExceeds, "The credit note is more than is left on the invoice",
+			"NOK "+money(left)+" is left on the invoice; the credit note is NOK "+money(mustRat(inv.TotalNok))+".")
+	}
+	if inv.Currency != currency {
+		leftCur := new(big.Rat).Abs(mustRat(bal.BalanceCurrency))
+		if mustRat(inv.Total).Cmp(leftCur) > 0 {
+			return conflict(codeCreditNoteExceeds, "The credit note is more than is left on the invoice",
+				inv.Currency+" "+money(leftCur)+" is left on the invoice; the credit note is "+inv.Currency+" "+money(mustRat(inv.Total))+".")
+		}
+	}
+	return nil
 }
 
 // language is the chart's language, en when the settings cannot be read.
@@ -847,6 +930,34 @@ func (s *server) ReverseAndCopyAccountingSupplierInvoice(ctx context.Context, re
 					"Remove its payments first; then reverse it.")
 			}
 		}
+		// Nothing else may stand on the invoice's open item: a credit note,
+		// a payment made through a credit note's row, a settlement. Turning
+		// the invoice back under them would leave them on an item with
+		// nothing to settle. A credit note's item is its invoice's, whose
+		// own voucher is not in the way.
+		if inv.OpenItemID != nil {
+			if err := q.LockOpenItem(ctx, *inv.OpenItemID); err != nil {
+				return err
+			}
+			own := []int64{*inv.VoucherID}
+			if inv.CreditsInvoiceID != nil {
+				credited, err := q.SupplierInvoiceState(ctx, *inv.CreditsInvoiceID)
+				if err != nil {
+					return err
+				}
+				if credited.VoucherID != nil {
+					own = append(own, *credited.VoucherID)
+				}
+			}
+			used, err := q.ItemHasOtherVouchers(ctx, store.ItemHasOtherVouchersParams{ItemID: *inv.OpenItemID, Own: own})
+			if err != nil {
+				return err
+			}
+			if used {
+				return conflict(codeSupplierInvItemInUse, "Other vouchers stand on the supplier invoice",
+					"A credit note, a payment or a settlement posts on this invoice's open item. Reverse or remove it first; then reverse the invoice.")
+			}
+		}
 		stored, err := storedVoucherOf(ctx, q, *inv.VoucherID)
 		if err != nil {
 			return err
@@ -878,14 +989,19 @@ func (s *server) ReverseAndCopyAccountingSupplierInvoice(ctx context.Context, re
 			return err
 		}
 		d := draftInput{supplierID: inv.SupplierID, kind: inv.Kind, number: inv.SupplierNumber, invoiceDate: inv.InvoiceDate,
-			dueDate: inv.DueDate, currency: inv.Currency, rate: mustRat(inv.ExchangeRate), total: mustRat(inv.Total),
-			totalNOK: mustRat(inv.TotalNok), kid: inv.Kid, reference: inv.Reference, description: inv.Description,
+			dueDate: inv.DueDate, currency: inv.Currency, rate: optRat(inv.ExchangeRate), total: mustRat(inv.Total),
+			totalNOK: optRat(inv.TotalNok), kid: inv.Kid, reference: inv.Reference, description: inv.Description,
 			creditsInvoiceID: inv.CreditsInvoiceID}
 		for _, l := range rows {
 			d.lines = append(d.lines, purchaseLineIn{AccountID: l.AccountID, TaxCodeID: l.TaxCodeID, Amount: mustRat(l.Amount),
 				Gross: l.Entry == "gross", ProjectID: l.ProjectID, Text: l.Text})
 		}
 		if copyID, err = insertDraft(ctx, q, d, &inv.ID, inv.SourceExpenseEntryID, by, s.now()); err != nil {
+			return err
+		}
+		// A row under Needs attention that named the invoice names the copy:
+		// deleting the copy then gives the expense back (M2).
+		if err := q.RepointUnpostedDraft(ctx, store.RepointUnpostedDraftParams{CopyID: copyID, OriginalID: inv.ID}); err != nil {
 			return err
 		}
 		files, err := q.SupplierInvoiceFiles(ctx, []int64{inv.ID})

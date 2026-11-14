@@ -73,8 +73,9 @@ type Line struct {
 	// Amount is signed: debit positive, credit negative. A zero line is left
 	// out (R3); its tax code rides on the base posting.
 	Amount *big.Rat
-	// TaxCodeID and TaxRole ("base" or "tax"; "" is base) carry the line's VAT
-	// treatment; TaxBase is, on a tax line, the base it was computed from.
+	// TaxCodeID and TaxRole ("base", "tax", or "tax_reverse" for a reverse
+	// charge's calculated side; "" is base) carry the line's VAT treatment;
+	// TaxBase is, on a tax line, the base it was computed from.
 	TaxCodeID *int32
 	TaxRole   string
 	TaxBase   *big.Rat
@@ -142,6 +143,10 @@ type Posted struct {
 	// written.
 	Repeat bool
 }
+
+// roleTaxReverse is the tax role of a reverse charge's calculated side: the
+// VAT owed on a purchase, which the deductible side ("tax") mirrors.
+const roleTaxReverse = "tax_reverse"
 
 // The control accounts' roles, whose lines carry a party and an open item.
 const (
@@ -326,7 +331,7 @@ func post(ctx context.Context, tx pgx.Tx, v Voucher) (Posted, error) {
 				role = "base"
 			}
 			p.TaxRole = &role
-			if role == "tax" && l.TaxBase != nil {
+			if (role == "tax" || role == roleTaxReverse) && l.TaxBase != nil {
 				p.TaxBase = ptr(money(l.TaxBase))
 			}
 			if l.TaxSpecification != "" {
@@ -432,7 +437,7 @@ func resolveLines(ctx context.Context, q *store.Queries, in []Line, reversal boo
 				f.addCoded(field+".openItemId", codeOpenItemUnknown, "Only a line on receivables or payables belongs to an open item.")
 			}
 		}
-		if l.TaxRole != "" && !slices.Contains([]string{"base", "tax"}, l.TaxRole) {
+		if l.TaxRole != "" && !slices.Contains([]string{"base", "tax", roleTaxReverse}, l.TaxRole) {
 			return nil, fmt.Errorf("accounting: tax role %q", l.TaxRole)
 		}
 	}

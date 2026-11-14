@@ -57,6 +57,7 @@ func (s *server) EnterAccountingUnpostedNokAmounts(ctx context.Context, req gen.
 		return nil, err
 	}
 	notes := parseLineNotes(row.NokAmounts)
+	by, now := callerID(ctx), s.now()
 	var f fieldErrors
 	for i, a := range req.Body.Amounts {
 		key := strconv.FormatInt(a.EntryId, 10)
@@ -70,7 +71,7 @@ func (s *server) EnterAccountingUnpostedNokAmounts(ctx context.Context, req gen.
 			f.addCoded(fmt.Sprintf("amounts[%d].amountNok", i), codeAmountInvalid, "A positive amount in NOK, with at most two decimals.")
 			continue
 		}
-		n.AmountNOK = ptr(money(amount))
+		n.AmountNOK, n.EnteredBy, n.EnteredAt = ptr(money(amount)), &by, &now
 		notes[key] = n
 	}
 	if err := f.refusal(title); err != nil {
@@ -157,6 +158,7 @@ func (s *server) MakeAccountingUnpostedSupplierInvoice(ctx context.Context, req 
 	if supplierName == "" {
 		return nil, invalidField(title, "id", "", "The expense names no supplier.")
 	}
+	isPerson := req.Body != nil && req.Body.SupplierIsPerson != nil && *req.Body.SupplierIsPerson
 	by := callerID(ctx)
 	var id int64
 	err = s.withTx(ctx, func(_ pgx.Tx, q *store.Queries) error {
@@ -164,10 +166,16 @@ func (s *server) MakeAccountingUnpostedSupplierInvoice(ctx context.Context, req 
 		if err != nil {
 			return err
 		}
+		if invoiced, err := q.ExpenseInvoiced(ctx, line.EntryID); err != nil {
+			return err
+		} else if invoiced {
+			return conflict(codeExpenseAlreadyInvoiced, "The expense is made into a supplier invoice already",
+				"A supplier invoice that is not reversed was made from this expense. Open it under Supplier invoices.")
+		}
 		supplierID, err := q.SupplierByName(ctx, supplierName)
 		if noRows(err) {
 			supplierID, err = insertSupplier(ctx, q, supplierFields{name: truncate(supplierName, 200), country: "NO",
-				currency: line.Currency, paymentTermsDays: 14, active: true}, s.now())
+				currency: line.Currency, paymentTermsDays: 14, active: true, isPerson: isPerson}, s.now())
 		}
 		if err != nil {
 			return err
@@ -192,14 +200,31 @@ func (s *server) MakeAccountingUnpostedSupplierInvoice(ctx context.Context, req 
 			due = ptr(line.Date.AddDate(0, 0, 14))
 		}
 		d := draftInput{supplierID: supplierID, kind: "invoice", number: truncate(number, 60), invoiceDate: line.Date,
-			dueDate: due, currency: line.Currency, rate: big.NewRat(1, 1), total: gross, totalNOK: gross,
+			dueDate: due, currency: line.Currency, total: gross,
 			description: b.text("From expense %d", "Fra utgift %d", line.EntryID), lines: []purchaseLineIn{in}}
+		if line.Currency == currency {
+			// In another currency the rate is not known: the draft keeps
+			// none, and Post asks for it (L4).
+			d.rate, d.totalNOK = big.NewRat(1, 1), gross
+		}
 		if id, err = insertDraft(ctx, q, d, nil, &line.EntryID, by, s.now()); err != nil {
 			return err
 		}
-		_, err = q.ResolveUnposted(ctx, store.ResolveUnpostedParams{ID: row.ID, Now: ptr(s.now()), SupplierInvoiceID: &id})
-		return err
+		// The row is resolved by this transaction or by none: another Make,
+		// or an unapproval, that got to it first wins (L1).
+		n, err := q.ResolveUnposted(ctx, store.ResolveUnpostedParams{ID: row.ID, Now: ptr(s.now()), SupplierInvoiceID: &id})
+		if err != nil {
+			return err
+		}
+		if n != 1 {
+			return conflict(codeExpenseAlreadyInvoiced, "The expense is made into a supplier invoice already", "")
+		}
+		return nil
 	})
+	if violates(err, "ux_supplier_invoices_expense") {
+		return nil, conflict(codeExpenseAlreadyInvoiced, "The expense is made into a supplier invoice already",
+			"A supplier invoice that is not reversed was made from this expense. Open it under Supplier invoices.")
+	}
 	if c := duplicateConflict(err); c != nil {
 		return nil, c
 	}

@@ -129,15 +129,16 @@ WHERE id = sqlc.arg(id) AND match <> 'default' AND archived_at IS NULL;
 -- when it failed again.
 INSERT INTO accounting.unposted (stream, position, source_module, source_kind, source_id, source_part, fact_date,
     document_id, document_number, customer_id, amount, reason, detail, first_seen_at, last_tried_at, invoice_id,
-    waiting_on, order_key)
+    waiting_on, order_key, supplier_invoice_id)
 VALUES (sqlc.arg(stream), sqlc.arg(position), sqlc.arg(source_module), sqlc.arg(source_kind), sqlc.arg(source_id),
     sqlc.arg(source_part), sqlc.narg(fact_date), sqlc.narg(document_id), sqlc.narg(document_number),
     sqlc.narg(customer_id), sqlc.narg(amount)::text::numeric, sqlc.arg(reason), sqlc.arg(detail), sqlc.arg(now),
-    sqlc.arg(now), sqlc.narg(invoice_id), sqlc.narg(waiting_on), sqlc.narg(order_key))
+    sqlc.arg(now), sqlc.narg(invoice_id), sqlc.narg(waiting_on), sqlc.narg(order_key), sqlc.narg(supplier_invoice_id))
 ON CONFLICT (source_module, source_kind, source_id, source_part) DO UPDATE
 SET reason = EXCLUDED.reason, detail = EXCLUDED.detail, attempts = accounting.unposted.attempts + 1,
     last_tried_at = EXCLUDED.last_tried_at, invoice_id = coalesce(EXCLUDED.invoice_id, accounting.unposted.invoice_id),
-    waiting_on = EXCLUDED.waiting_on, order_key = coalesce(EXCLUDED.order_key, accounting.unposted.order_key)
+    waiting_on = EXCLUDED.waiting_on, order_key = coalesce(EXCLUDED.order_key, accounting.unposted.order_key),
+    supplier_invoice_id = coalesce(EXCLUDED.supplier_invoice_id, accounting.unposted.supplier_invoice_id)
 WHERE accounting.unposted.posted_at IS NULL AND accounting.unposted.resolved_at IS NULL;
 
 -- name: UnpostedBlocker :one

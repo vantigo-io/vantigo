@@ -9,23 +9,25 @@ package accounting
 // The tax code decides the VAT, by its direction and flags as the books
 // seeded them (A5):
 //
-//   - an input code with a VAT account (1, 11, 12, 13; the import VAT paid,
-//     14 and 15): the invoice's VAT is debited to the code's VAT account;
+//   - an input code with a VAT account (1, 11, 12, 13): the invoice's VAT is
+//     debited to the code's VAT account (tax role "tax");
 //   - an input code without one: the VAT is not deductible and is debited to
-//     the line's own account, on the cost;
-//   - a reverse-charge code (81–89, 91, 92): the invoice carries no VAT; the
-//     buyer calculates it on the NOK base at the code's rate and posts both
-//     sides — the deductible side on the code's VAT account, or, for the
-//     codes without deduction (82, 84, 87, 89, 92), on the line's own account,
-//     and the calculated side on its counter account — so the payable is the
-//     net. 85 has a rate of nothing and posts its base alone;
-//   - a code of no VAT treatment (0, 20, 21, 22): the base alone, with the
-//     code, no VAT;
+//     the line's own account, on the cost ("tax");
+//   - a reverse-charge code for services (86–89, 91, 92): the invoice carries
+//     no VAT; the buyer calculates it on the NOK base at the code's rate and
+//     posts both sides — the deductible side ("tax") on the code's VAT
+//     account, or, for the codes without deduction (87, 89, 92), on the
+//     line's own account, and the calculated side ("tax_reverse") on its
+//     counter account — so the payable is the net;
+//   - code 0 (no VAT treatment): the base alone, with the code;
 //   - an output code is a sale's: refused (tax_code_not_purchase).
 //
-// Import of goods proper is not a supplier invoice's: its VAT base is the
-// customs declaration's, so it is a manual journal with the import codes
-// (R8), and the user guide shows the entry.
+// Import is never a supplier invoice's (R8): the VAT base of imported goods
+// is the customs declaration's, so the import codes — 14 and 15 (import VAT
+// paid), 20–22 (the goods' cost on import) and 81–85 (the import VAT's
+// reverse charge) — are refused on a supplier invoice
+// (tax_code_not_for_supplier_invoice) and entered as a manual journal; the
+// user guide shows the entry.
 
 import (
 	"fmt"
@@ -76,6 +78,11 @@ type purchaseLine struct {
 	deductible bool
 }
 
+// importCodes are the standard codes of an import, which a supplier invoice
+// never carries (R8).
+var importCodes = map[string]bool{"14": true, "15": true, "20": true, "21": true, "22": true,
+	"81": true, "82": true, "83": true, "84": true, "85": true}
+
 // computePurchaseLine is one line's net, VAT and gross in the invoice's
 // currency, or the field error that refuses it: an unknown or inactive code,
 // an output code, a code with no rate on the day, a reverse-charge code
@@ -88,6 +95,9 @@ func computePurchaseLine(in purchaseLineIn, code *store.TaxCodesForPostingRow) (
 			return out, codeTaxCodeUnknown, "No such active tax code."
 		case code.Direction == "output":
 			return out, codeTaxCodeNotPurchase, "An output code is a sale's, not a purchase's."
+		case importCodes[code.Code]:
+			return out, codeTaxCodeNotForSupplierInv,
+				"An import code is entered as a journal from the customs declaration, not on a supplier invoice."
 		case code.Direction == "input":
 			rate := numText(code.RatePercent)
 			if rate == nil {
@@ -132,9 +142,10 @@ type purchaseDoc struct {
 // says (above), and the payable — the total in NOK, credited on the
 // supplier's item. On an invoice in another currency each posting is its
 // currency amount at the rate, rounded to øre, and the difference between
-// their sum and the NOK total rounding leaves goes on the largest base line,
-// so the voucher follows the invoice's own total. A reverse-charge VAT is
-// computed on the NOK base. A credit note turns every sign.
+// their sum and the NOK total rounding leaves goes on the largest base line
+// before any tax line is built, so every tax line's base is the base posted
+// and the voucher follows the invoice's own total. A reverse-charge VAT is
+// computed on that NOK base. A credit note turns every sign.
 func purchaseVoucherLines(d purchaseDoc) []Line {
 	sign := big.NewRat(1, 1)
 	if d.CreditNote {
@@ -153,31 +164,44 @@ func purchaseVoucherLines(d purchaseDoc) []Line {
 			l.Currency, l.CurrencyAmount, l.ExchangeRate = d.Currency, signed(amount), new(big.Rat).Set(d.Rate)
 		}
 	}
-	var lines []Line
+	// First the NOK of every base and every invoice VAT, and the rounding's
+	// øre onto the largest base.
+	bases := make([]*big.Rat, len(d.Lines))
+	vats := make([]*big.Rat, len(d.Lines))
 	nokSum := new(big.Rat)
 	largest := -1
-	var largestNet *big.Rat
+	for i, l := range d.Lines {
+		bases[i] = toNOK(l.net)
+		nokSum.Add(nokSum, bases[i])
+		if l.hasVAT && !l.reverse {
+			vats[i] = toNOK(l.vat)
+			nokSum.Add(nokSum, vats[i])
+		}
+		if largest < 0 || abs(l.net).Cmp(abs(d.Lines[largest].net)) > 0 {
+			largest = i
+		}
+	}
+	if diff := sub(d.TotalNOK, nokSum); diff.Sign() != 0 && largest >= 0 {
+		bases[largest] = add(bases[largest], diff)
+	}
+	var lines []Line
 	for i, l := range d.Lines {
 		text := l.Text
 		if text == "" {
 			text = fmt.Sprintf("Line %d", i+1)
 		}
-		baseNOK := toNOK(l.net)
+		baseNOK := bases[i]
 		base := Line{AccountID: l.AccountID, Amount: signed(baseNOK), ProjectID: l.ProjectID, Text: text}
 		if l.code != nil {
 			base.TaxCodeID, base.TaxRole = &l.code.ID, "base"
 		}
 		inCurrency(&base, l.net)
 		lines = append(lines, base)
-		nokSum.Add(nokSum, baseNOK)
-		if largest < 0 || abs(l.net).Cmp(largestNet) > 0 {
-			largest, largestNet = len(lines)-1, abs(l.net)
-		}
 		if !l.hasVAT {
 			continue
 		}
-		tax := func(account int32, amount *big.Rat) Line {
-			return Line{AccountID: account, Amount: amount, TaxCodeID: &l.code.ID, TaxRole: "tax", TaxBase: signed(baseNOK),
+		tax := func(account int32, amount *big.Rat, role string) Line {
+			return Line{AccountID: account, Amount: amount, TaxCodeID: &l.code.ID, TaxRole: role, TaxBase: signed(baseNOK),
 				ProjectID: l.ProjectID, Text: text}
 		}
 		if l.reverse {
@@ -190,21 +214,16 @@ func purchaseVoucherLines(d purchaseDoc) []Line {
 			if l.code.CounterVatAccountID != nil {
 				counter = *l.code.CounterVatAccountID
 			}
-			lines = append(lines, tax(deductible, signed(vat)), tax(counter, neg(signed(vat))))
+			lines = append(lines, tax(deductible, signed(vat), "tax"), tax(counter, neg(signed(vat)), roleTaxReverse))
 			continue
 		}
-		vatNOK := toNOK(l.vat)
 		account := l.AccountID
 		if l.code.VatAccountID != nil {
 			account = *l.code.VatAccountID
 		}
-		t := tax(account, signed(vatNOK))
+		t := tax(account, signed(vats[i]), "tax")
 		inCurrency(&t, l.vat)
 		lines = append(lines, t)
-		nokSum.Add(nokSum, vatNOK)
-	}
-	if diff := sub(d.TotalNOK, nokSum); diff.Sign() != 0 && largest >= 0 {
-		lines[largest].Amount = add(lines[largest].Amount, signed(diff))
 	}
 	payable := Line{Role: rolePayables, Amount: neg(signed(d.TotalNOK)), SupplierID: &d.Supplier,
 		Text: d.Description}

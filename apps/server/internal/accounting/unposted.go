@@ -209,7 +209,7 @@ func (s *server) reread(ctx context.Context, row store.GetUnpostedRow) (*sourceI
 		if len(items) != 1 || items[0].expense.Seq != row.Position || items[0].expense.SubjectID != row.SourceID {
 			return nil, nil
 		}
-		items[0].nok = noteAmounts(row.NokAmounts)
+		items[0].nok, items[0].nokBy = noteAmounts(row.NokAmounts)
 		return &items[0], nil
 	}
 	journal := s.deps.SalesJournal

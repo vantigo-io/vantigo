@@ -340,6 +340,9 @@ type sourceItem struct {
 	credits  []contracts.JournalDocument
 	expense  *contracts.ExpenseFact
 	nok      map[int64]*big.Rat
+	// nokBy is who entered the NOK amounts (M3): the voucher posted with them
+	// is that person's.
+	nokBy *uuid.UUID
 }
 
 // readAny reads up to limit items of any stream after position, from the
@@ -551,6 +554,19 @@ func itemSource(it sourceItem) *Source {
 // recordUnposted writes the item under Needs attention, or its new reason;
 // waitingOn is the row it waits behind, with reason waiting_on.
 func recordUnposted(ctx context.Context, q *store.Queries, it sourceItem, reason, detail string, waitingOn *int64, now time.Time) error {
+	return q.RecordUnposted(ctx, unpostedParams(it, reason, detail, waitingOn, now))
+}
+
+// recordUnpostedFor records a row that names a supplier invoice: the one an
+// unapproved expense was made into (L1).
+func recordUnpostedFor(ctx context.Context, q *store.Queries, it sourceItem, reason, detail string, invoice *int64, now time.Time) error {
+	p := unpostedParams(it, reason, detail, nil, now)
+	p.SupplierInvoiceID = invoice
+	return q.RecordUnposted(ctx, p)
+}
+
+// unpostedParams is the row of an item that did not post.
+func unpostedParams(it sourceItem, reason, detail string, waitingOn *int64, now time.Time) store.RecordUnpostedParams {
 	src := itemSource(it)
 	p := store.RecordUnpostedParams{Stream: it.stream, Position: it.position, SourceModule: src.Module, SourceKind: src.Kind,
 		SourceID: src.ID, SourcePart: src.Part, Reason: truncate(reason, 40), Detail: truncate(detail, 500), Now: now,
@@ -579,7 +595,7 @@ func recordUnposted(ctx context.Context, q *store.Queries, it sourceItem, reason
 			p.Amount = nil
 		}
 	}
-	return q.RecordUnposted(ctx, p)
+	return p
 }
 
 // refusalReason is a refusal's code, "refused" without one.
