@@ -53,6 +53,14 @@ type Company struct {
 	VATNumber              string
 	BankAccount, IBAN, BIC string
 	BankLedgerAccount      string
+	// Banks are the company's bank accounts, each with its ledger account;
+	// when there are any they are written instead of BankAccount.
+	Banks []Bank
+}
+
+// Bank is one BankAccountStructure.
+type Bank struct {
+	Number, Name, BIC, LedgerAccount string
 }
 
 // Header is the file's Header.
@@ -264,6 +272,17 @@ func (w *Writer) address(a *Address) {
 }
 
 func (w *Writer) bank(c Company) {
+	if len(c.Banks) > 0 {
+		for _, b := range c.Banks {
+			w.open("BankAccount")
+			w.text("BankAccountNumber", b.Number, middle1, true)
+			w.text("BankAccountName", b.Name, middle2, false)
+			w.text("BIC", b.BIC, shortLen, false)
+			w.text("GeneralLedgerAccountID", b.LedgerAccount, middle2, false)
+			w.close("BankAccount")
+		}
+		return
+	}
 	if c.IBAN == "" && c.BankAccount == "" {
 		return
 	}

@@ -48,6 +48,12 @@ const (
 	salesRuleRecoveredRemoved = "sales.recovered_removed"
 
 	salesRuleVersion int32 = 1
+	// salesRulePaymentVersion is the version of the payments' rules —
+	// sales.payment, sales.charge_payment, sales.recovered and their
+	// removals: version 2 posts the bank side to the ledger account of the
+	// bank account the payment was received on (A26), version 1 always to
+	// the bank role's.
+	salesRulePaymentVersion int32 = 2
 )
 
 // The reasons a fact waits under Needs attention, besides an engine
@@ -94,6 +100,10 @@ type salesBooks struct {
 	openingSeq *int64
 	taxCodes   map[string]store.TaxCodesByCodeRow
 	rules      []store.SalesRulesRow
+	// bankLedgers is each active bank account's ledger account by its
+	// account number (A26): a payment from Invoices posts to the one its
+	// receiving account names, else to the bank role's.
+	bankLedgers map[string]int32
 }
 
 // readSalesBooks reads them on q, the fact's own transaction.
@@ -110,10 +120,17 @@ func readSalesBooks(ctx context.Context, q *store.Queries) (salesBooks, error) {
 	if err != nil {
 		return salesBooks{}, err
 	}
+	ledgers, err := q.BankLedgers(ctx)
+	if err != nil {
+		return salesBooks{}, err
+	}
 	b := salesBooks{language: settings.ChartLanguage, booksStart: settings.BooksStart, openingSeq: settings.OpeningAsOfSeq,
-		taxCodes: map[string]store.TaxCodesByCodeRow{}, rules: rules}
+		taxCodes: map[string]store.TaxCodesByCodeRow{}, rules: rules, bankLedgers: map[string]int32{}}
 	for _, c := range codes {
 		b.taxCodes[c.Code] = c
+	}
+	for _, l := range ledgers {
+		b.bankLedgers[l.AccountNumber] = l.LedgerAccountID
 	}
 	return b, nil
 }
@@ -348,15 +365,18 @@ func factVoucher(b salesBooks, f contracts.JournalFact, in factInputs) (*Voucher
 		return Line{Role: roleReceivables, Amount: a, CustomerID: &f.CustomerID, SourceDocumentID: &f.InvoiceID,
 			Item: &OpenItemSpec{DocumentNumber: fmt.Sprint(f.InvoiceNumber)}}
 	}
-	bank := roleBank
-	if f.Source == contracts.PaymentSourceVipps {
-		bank = roleClearingVipps
+	bank := b.bankLine(f, in.original)
+	if f.BankAccount != "" || f.BankReference != "" {
+		switch f.Kind {
+		case contracts.FactPayment, contracts.FactChargePayment, contracts.FactRecoveredPayment:
+			v.BankRef = &BankRef{Account: f.BankAccount, Reference: f.BankReference, Source: f.Source}
+		}
 	}
 	switch f.Kind {
 	case contracts.FactPayment, contracts.FactPaymentRemoved:
 		v.Kind, v.Rule = "customer_payment", salesRulePayment
 		v.Description = b.text("Payment of invoice %d", "Innbetaling på faktura %d", f.InvoiceNumber)
-		v.Lines = []Line{{Role: bank, Amount: amount}, receivables(neg(amount))}
+		v.Lines = []Line{withAmount(bank, amount), receivables(neg(amount))}
 		if f.Kind == contracts.FactPaymentRemoved {
 			v.Rule = salesRulePaymentRemoved
 			v.Description = b.text("Payment of invoice %d removed", "Innbetaling på faktura %d fjernet", f.InvoiceNumber)
@@ -369,7 +389,7 @@ func factVoucher(b salesBooks, f contracts.JournalFact, in factInputs) (*Voucher
 		}
 		v.Kind, v.Rule = "charge", salesRuleCharge
 		v.Description = b.text("Reminder charges paid, invoice %d", "Purrekostnader betalt, faktura %d", f.InvoiceNumber)
-		v.Lines = []Line{{Role: bank, Amount: amount}, {Role: roleChargeIncome, Amount: neg(amount), TaxCodeID: &tc.ID, TaxRole: "base"}}
+		v.Lines = []Line{withAmount(bank, amount), {Role: roleChargeIncome, Amount: neg(amount), TaxCodeID: &tc.ID, TaxRole: "base"}}
 		if f.Kind == contracts.FactChargePaymentRemoved {
 			v.Rule = salesRuleChargeRemoved
 			v.Description = b.text("Reminder charges payment removed, invoice %d", "Betaling av purrekostnader fjernet, faktura %d", f.InvoiceNumber)
@@ -439,7 +459,7 @@ func factVoucher(b salesBooks, f contracts.JournalFact, in factInputs) (*Voucher
 			// is removed as if it were the write-off's only one.
 			before = new(big.Rat)
 		}
-		v.Lines = append([]Line{{Role: bank, Amount: amount}}, scaleRecovery(loss, before, amount, written)...)
+		v.Lines = append([]Line{withAmount(bank, amount)}, scaleRecovery(loss, before, amount, written)...)
 		if f.Kind == contracts.FactRecoveredPaymentRemoved {
 			v.Rule = salesRuleRecoveredRemoved
 			v.Description = b.text("Recovery on invoice %d removed", "Innbetaling på avskrevet faktura %d fjernet", f.InvoiceNumber)
@@ -449,7 +469,38 @@ func factVoucher(b salesBooks, f contracts.JournalFact, in factInputs) (*Voucher
 		return nil, &unpostable{reason: reasonUnknownKind,
 			detail: fmt.Sprintf("Invoices' journal holds a fact of kind %q, which this version does not post.", f.Kind)}
 	}
+	switch f.Kind {
+	case contracts.FactPayment, contracts.FactPaymentRemoved, contracts.FactChargePayment, contracts.FactChargePaymentRemoved,
+		contracts.FactRecoveredPayment, contracts.FactRecoveredPaymentRemoved:
+		v.RuleVersion = salesRulePaymentVersion
+	}
 	return v, nil
+}
+
+// bankLine is the bank side of a payment fact (A26, R11, rule
+// sales.payment v2): a Vipps payment's clearing account; a removal's the
+// account its registration posted to, when the books have it, so a removal
+// always turns back what was posted; else the ledger account of the bank
+// account whose number is the receiving account the bank line named; else
+// the bank role's.
+func (b salesBooks) bankLine(f contracts.JournalFact, original *storedVoucher) Line {
+	removal := f.Kind == contracts.FactPaymentRemoved || f.Kind == contracts.FactChargePaymentRemoved
+	switch {
+	case f.Source == contracts.PaymentSourceVipps:
+		return Line{Role: roleClearingVipps}
+	case removal && original != nil && len(original.lines) > 0:
+		return Line{AccountID: original.lines[0].AccountID}
+	}
+	if id, ok := b.bankLedgers[f.BankAccount]; ok && f.BankAccount != "" {
+		return Line{AccountID: id}
+	}
+	return Line{Role: roleBank}
+}
+
+// withAmount is l with amount.
+func withAmount(l Line, amount *big.Rat) Line {
+	l.Amount = amount
+	return l
 }
 
 // turn turns every line's sign, and a tax line's base with it.

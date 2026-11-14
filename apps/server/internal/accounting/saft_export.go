@@ -796,6 +796,18 @@ func (g *saftGenerator) document(ctx context.Context, out io.Writer, sel saftSel
 	if g.seller.VATRegistered {
 		header.Company.VATNumber = g.org + "MVA"
 	}
+	// The company's bank accounts (A26), each with its ledger account, where
+	// the books keep them; else the seller's account in Invoices.
+	banks, err := q.ListBankAccounts(ctx)
+	if err != nil {
+		return err
+	}
+	for _, b := range banks {
+		if b.Active {
+			header.Company.Banks = append(header.Company.Banks, saft.Bank{Number: b.AccountNumber, Name: b.Name,
+				BIC: deref(b.Bic), LedgerAccount: b.LedgerNumber})
+		}
+	}
 	if g.seller.AddressLine1 != "" || g.seller.City != "" {
 		header.Company.Address = &saft.Address{Street: g.seller.AddressLine1, Additional: g.seller.AddressLine2,
 			City: g.seller.City, PostalCode: g.seller.PostalCode, Country: countryCode(g.seller.Country), Type: "StreetAddress"}
