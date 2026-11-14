@@ -16,7 +16,7 @@ import {
 import { IconAlertCircle, IconFileInvoice, IconPlus, IconReceipt } from "@tabler/icons-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ContentSkeleton, EmptyState, PageSection, useI18n, useShellLink } from "@vantigo/frontend-shell";
-import { useRef, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
 import { type Expense, expensesQueryOptions } from "../api/entries";
 import { expensesMetaQueryOptions } from "../api/meta";
 import {
@@ -40,6 +40,8 @@ import { expenseKindLabelKey } from "../lib/status";
 type ProjectExpenseFilter = "all" | "ready";
 
 export interface ProjectExpensesPanelProps {
+  /** What the expense form shows on the supplier invoice kind; the host's (accounting design A20). */
+  supplierInvoiceNotice?: ReactNode;
   /** The project the page is on. */
   projectId: number;
   /**
@@ -77,7 +79,12 @@ export interface ProjectExpensesPanelProps {
  * its filter and its page in local state rather than in the URL, and links
  * through the shell's link component rather than this package's router.
  */
-export const ProjectExpensesPanel = ({ projectId, onChanged, invoiceHref }: ProjectExpensesPanelProps) => {
+export const ProjectExpensesPanel = ({
+  projectId,
+  onChanged,
+  invoiceHref,
+  supplierInvoiceNotice,
+}: ProjectExpensesPanelProps) => {
   const { t } = useI18n("expenses");
   const format = useExpenseFormat();
   const Link = useShellLink();
@@ -457,7 +464,12 @@ export const ProjectExpensesPanel = ({ projectId, onChanged, invoiceHref }: Proj
         onChanged={onChanged}
         invoiceHref={invoiceHref}
       />
-      <ExpenseFormModal state={recording} onClose={() => setRecording(null)} onSaved={() => onChanged?.()} />
+      <ExpenseFormModal
+        state={recording}
+        onClose={() => setRecording(null)}
+        onSaved={() => onChanged?.()}
+        supplierInvoiceNotice={supplierInvoiceNotice}
+      />
     </Stack>
   );
 };

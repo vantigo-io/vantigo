@@ -20,7 +20,7 @@ import { useForm } from "@mantine/form";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ContentSkeleton, useI18n } from "@vantigo/frontend-shell";
-import { useId, useRef, useState } from "react";
+import { type ReactNode, useId, useRef, useState } from "react";
 import { deleteReceipt } from "../api/attachments";
 import type { Claim } from "../api/claims";
 import {
@@ -94,6 +94,13 @@ export interface ExpenseFormModalProps {
    * modal's own cache invalidation cannot reach another module's.
    */
   onSaved?: (expense: Expense) => void;
+  /**
+   * What the host shows on the supplier invoice kind when the books are kept
+   * in Accounting (accounting design A20, R2): a pointer to Accounting's
+   * supplier invoices, where new ones belong. This package does not know
+   * Accounting; the host passes it, and nothing is shown without it.
+   */
+  supplierInvoiceNotice?: ReactNode;
 }
 
 interface ExpenseFormValues {
@@ -168,7 +175,7 @@ const subcontractorOf = (categories: ExpensesMeta["categories"] | undefined): st
  * The form lives in `ExpenseForm`, which the modal mounts fresh every time it
  * opens, so no previous expense's values survive a close.
  */
-export const ExpenseFormModal = ({ state, onClose, onSaved }: ExpenseFormModalProps) => {
+export const ExpenseFormModal = ({ state, onClose, onSaved, supplierInvoiceNotice }: ExpenseFormModalProps) => {
   const { t } = useI18n("expenses");
   return (
     <Modal
@@ -184,6 +191,7 @@ export const ExpenseFormModal = ({ state, onClose, onSaved }: ExpenseFormModalPr
           state={state}
           onClose={onClose}
           onSaved={onSaved}
+          supplierInvoiceNotice={supplierInvoiceNotice}
         />
       )}
     </Modal>
@@ -194,10 +202,12 @@ const ExpenseForm = ({
   state,
   onClose,
   onSaved,
+  supplierInvoiceNotice,
 }: {
   state: ExpenseModalState;
   onClose: () => void;
   onSaved?: (expense: Expense) => void;
+  supplierInvoiceNotice?: ReactNode;
 }) => {
   const { t } = useI18n("expenses");
   const format = useExpenseFormat();
@@ -692,6 +702,8 @@ const ExpenseForm = ({
             />
           </Input.Wrapper>
         )}
+
+        {values.kind === "supplier_invoice" && supplierInvoiceNotice}
 
         <Group grow align="start">
           <DateInput

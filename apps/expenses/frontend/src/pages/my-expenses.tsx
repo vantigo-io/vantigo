@@ -19,7 +19,7 @@ import { IconAlertCircle, IconPencil, IconPlus, IconRoute, IconSend, IconTrash }
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { ContentSkeleton, EmptyState, PageHeader, PageSection, useI18n } from "@vantigo/frontend-shell";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { expenseClaimsQueryOptions } from "../api/claims";
 import { deleteExpense, type Expense, expensesQueryOptions, submitUnits } from "../api/entries";
 import { expensesMetaQueryOptions } from "../api/meta";
@@ -49,6 +49,8 @@ export interface MyExpensesProps {
    * endpoint would otherwise widen for somebody who may see everybody's.
    */
   userId: string;
+  /** What the expense form shows on the supplier invoice kind; the host's (accounting design A20). */
+  supplierInvoiceNotice?: ReactNode;
 }
 
 /**
@@ -57,7 +59,7 @@ export interface MyExpensesProps {
  * `capabilities` allow. Nothing here re-derives a rule: what may be done to
  * an expense is what the server said may be done to it.
  */
-export const MyExpensesPage = ({ userId }: MyExpensesProps) => {
+export const MyExpensesPage = ({ userId, supplierInvoiceNotice }: MyExpensesProps) => {
   const { t } = useI18n("expenses");
   const format = useExpenseFormat();
   const queryClient = useQueryClient();
@@ -216,7 +218,11 @@ export const MyExpensesPage = ({ userId }: MyExpensesProps) => {
 
       <StatusStrip stats={stats} loading={statsPending} />
 
-      <ExpenseFormModal state={modalState} onClose={() => setModalState(null)} />
+      <ExpenseFormModal
+        state={modalState}
+        onClose={() => setModalState(null)}
+        supplierInvoiceNotice={supplierInvoiceNotice}
+      />
       <ClaimFormModal
         state={claimModal}
         onClose={() => {
