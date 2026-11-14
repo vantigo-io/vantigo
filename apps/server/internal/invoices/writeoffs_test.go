@@ -8,10 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
-
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
-	"github.com/vantigo-io/vantigo/server/internal/invoices"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/bankfile/bankfiletest"
 )
 
@@ -293,7 +290,7 @@ func TestWriteOff_NeverOpenOverdueOrReminded(t *testing.T) {
 // always manual (ck_payments_recovered).
 func TestWriteOff_ALineForAWrittenOffInvoiceIsQueued(t *testing.T) {
 	t.Parallel()
-	h, _ := matchHarness(t)
+	h, _ := syncHarness(t)
 	byFile, byFeed := kidInvoice(t, h), kidInvoice(t, h)
 	for _, inv := range []invoiceJSON{byFile, byFeed} {
 		// A fee of 35 is outstanding: a line of 35 would otherwise pay it.
@@ -302,20 +299,18 @@ func TestWriteOff_ALineForAWrittenOffInvoiceIsQueued(t *testing.T) {
 			VALUES ($1, DATE '2026-09-12', 1000, 'NOK', 'loss', gen_random_uuid(), now())`, inv.ID)
 	}
 	toMatchDay(h)
-	r := imported(t, importer(t, h), bankfiletest.OCR("1", kidPay(sellerAccount, 6, 35, *byFile.Kid, "1")))
+	r := imported(t, importer(t, h), bankfiletest.OCR("1", kidPay(sellerAccount, 5, 35, *byFile.Kid, "1")))
 	fileLine := lineID(t, h, r.File.ID, "1")
 
-	batch := plantID(t, h, `INSERT INTO invoices.bank_files (format, sha256, file_identity, object_key, byte_size, accounts,
-		    transactions, ignored, ignored_kinds, uploaded_by_user_id, uploaded_at, provider)
-		VALUES ('feed', repeat('b', 64), 'folio-1', 'bank-files/folio-1', 2, ARRAY[$1::text], 1, 0, '{}', NULL, now(), 'folio')
-		RETURNING id`, sellerAccount)
-	feedLine := plantID(t, h, `INSERT INTO invoices.bank_transactions (bank_file_id, line_ref, format, account, direction, booked_on,
-		    amount, currency, kid, fingerprint, ordinal)
-		VALUES ($1, 'feed-1', 'feed', $2, 'credit', DATE '2026-10-06', 35, 'NOK', $3, repeat('e', 64), 1) RETURNING id`,
-		batch, sellerAccount, *byFeed.Kid)
-	if err := invoices.MatchFile(context.Background(), h.Deps(), batch, uuid.New(), h.Now()); err != nil {
-		t.Fatalf("matching the feed batch: %v", err)
-	}
+	// The feed's line: read from the bank and matched by the worker's own
+	// cycle, by no user (bank feed design F5, F6).
+	connect(t, h)
+	switchedOn(t, h, sellerAccount, feedStart)
+	// Booked after the file's last day, the account's cutover: on or before
+	// it, the line would be held back possible_duplicate (F4).
+	h.folio.AddTransaction(sellerAccount, incoming(txID(1), "2026-10-06", "35.00", *byFeed.Kid))
+	syncNow(t, h)
+	feedLine := feedLine(t, h, txID(1))
 
 	for name, id := range map[string]int64{"the file's line": fileLine, "the feed's line": feedLine} {
 		if got := stateOf(t, h, id); got != "exception invoice_written_off" {
@@ -332,6 +327,24 @@ func TestWriteOff_ALineForAWrittenOffInvoiceIsQueued(t *testing.T) {
 		if got := getInvoice(t, h, inv.ID); got.State != "written_off" {
 			t.Errorf("invoice %d = %s, want still written_off", inv.ID, got.State)
 		}
+	}
+	// Queued is final for the feed: the next cycle reads the line again in
+	// its overlap, stores nothing again, judges nothing again and goes on —
+	// the account ok, one batch, one queued event by no one.
+	h.Advance(30 * time.Minute)
+	syncNow(t, h)
+	if st := feedStateOf(t, h, sellerAccount); st.status != "ok" || st.failures != 0 {
+		t.Errorf("the account after the next cycle = %+v, want ok", st)
+	}
+	if got := feedFiles(t, h); len(got) != 1 {
+		t.Errorf("feed batches = %v, want the one", got)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM invoices.bank_transaction_events WHERE bank_transaction_id = $1 AND event = 'queued'
+		AND reason = 'invoice_written_off' AND by_user_id IS NULL`, feedLine); n != 1 {
+		t.Errorf("the feed line's queued events = %d, want one by no one", n)
+	}
+	if got := stateOf(t, h, feedLine); got != "exception invoice_written_off" {
+		t.Errorf("the feed's line after the next cycle = %s", got)
 	}
 }
 

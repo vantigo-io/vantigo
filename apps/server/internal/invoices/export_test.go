@@ -901,12 +901,3 @@ func SetBankFeedCallsPerCycle(n int) func() {
 	bankFeedCallsPerCycle = n
 	return func() { bankFeedCallsPerCycle = before }
 }
-
-// MatchFile runs matching over bank file fileID's pending lines as caller at
-// now, the import's and POST …/match's own pass, without the endpoint's
-// answer — which still requires a file's uploader, so a feed batch's match is
-// judged here until the bank feed's sync answers one (bank feed plan B3).
-func MatchFile(ctx context.Context, deps module.Deps, fileID int64, caller uuid.UUID, now time.Time) error {
-	_, err := (&server{deps: deps}).matchFile(ctx, fileID, &caller, now, time.UTC)
-	return err
-}
