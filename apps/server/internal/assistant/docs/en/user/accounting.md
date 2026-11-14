@@ -98,16 +98,26 @@ needs **Manage the books**.
      use Skatteetaten's standard codes.
    - **Suppliers** — made from the file with their organisation number, address and bank
      account. A number that is not valid is left out and said so.
-   - **Customers** — matched to the customers in **Customers** by organisation number.
-     Accounting does not make customers: one with a balance that Customers does not hold,
-     or holds twice, must be created or found there first; then give its customer number
-     in the field under the list.
+   - **Customers** — matched to the customers in **Customers** by organisation number when
+     the file is read. Accounting does not make customers: one with a balance that
+     Customers does not hold, or holds twice, must be created or found there first; then
+     search for it in the field under the list, by name or number, and pick it. The list
+     shows the customer it is linked to with its organisation number: check that it is the
+     right one. **Match in Customers again** looks the organisation numbers up again, for
+     customers created since.
    - **The opening balances** — the voucher the books start with: each balance-sheet
-     account's closing balance, one open item per customer and supplier with a balance,
-     and the result of the period to the opening balance account. The VAT accounts'
+     account's closing balance and one open item per customer and supplier with a balance.
+     When the books start a fiscal year, the file's result goes to the opening balance
+     account in equity. When they start inside one — a file to the end of June, say — the
+     income and expense accounts open with their balances so far this year, so the year's
+     result is the whole year's. The VAT accounts'
      balances are put on the VAT settlement account (2740) together — *VAT owed at the
      start* — since that is what is left to pay or to receive.
-4. Choose the **VAT term** and the language of the names, and click **Set up the books
+4. Check **The fiscal year starts in**. A file that names its period by month numbers
+   rather than dates (some systems do) needs it to know the days; the preview says so.
+5. If the file is another company's than the one in Invoices' settings, the preview says so
+   in red: tick that the books are to start from it all the same, or upload the right file.
+6. Choose the **VAT term** and the language of the names, and click **Set up the books
    from the file**. Everything is written at once; it cannot be undone.
 
 Apply is refused while an account needs a number, a customer with a balance is not in
@@ -802,6 +812,11 @@ account's balances, the customers, the suppliers and the tax codes. Vantigo writ
 5. Click the file's name to download it: `SAF-T Financial_<organisation number>_<date and
    time>_1_1.xml`. A very large year — over 2 GB — comes as several files, split by
    period, each complete on its own: `…_1_2.xml`, `…_2_2.xml`.
+
+**How long the files are kept.** The files hold personal data, so Vantigo deletes each one
+90 days after it was written (an administrator can change this). The list keeps the export —
+who, when, the period and the file's checksum — and says *Removed after its retention*;
+export again if you need the file once more.
 
 **Handing it over.** Upload the file in the audit case on skatteetaten.no, as the
 case officer asks; don't send it by e-mail. To check a file first, Skatteetaten's test
