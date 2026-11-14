@@ -1,6 +1,6 @@
 ---
 title: Invoices
-description: Invoicing work, consumption and orders, billing runs, drafting, issuing and sending invoices, credit notes, payments, the journal and the export.
+description: Invoicing work, consumption and orders, billing runs, drafting, issuing and sending invoices, credit notes, payments, write-offs, the journal and the export.
 sidebar:
   order: 50
 sources:
@@ -1104,13 +1104,43 @@ Click **Register**. The table lists each payment's **Paid on**, **Amount**, its
 **Reference**, **Note** and when it was **Registered**, and the totals gain **Paid** and
 **Open** — the total less what is credited and paid. A payment of exactly the open
 amount makes the invoice **Paid**; a smaller one makes it **Partially paid**, or leaves
-it **Overdue** when the due date has passed. A credit note takes no payment
+it **Overdue** when the due date has passed. An invoice whose open amount is
+[written off](#writing-an-invoice-off) is **Written off**. A credit note takes no payment
 ([payments and the state](/en/reference/invoices/#payments-and-the-state-of-an-invoice)).
 
 A wrong registration is never edited: click **Remove** beside it, give a **Reason** in
 the dialog **Remove the payment**, and confirm. *The payment stays on the invoice,
 struck through with the reason. A removal cannot be undone; register the payment again
 if it was right after all.*
+
+## Writing an invoice off
+
+When an invoice will not be paid, give up what is left of it. Under **Payments** click
+**Write off** — offered while something is open — and fill in:
+
+- **Written off on**: prefilled with today; on or after the issue date and not after today.
+- **Reason**: **Loss (konstatert tap)**, **Rounding** for a small difference, or **Other**.
+- **Take the VAT back (mval. § 4-7)**: only for a loss that is konstatert. The books then
+  take the invoice's VAT back on the VAT return.
+
+Click **Write off**. The whole open amount is written off: the invoice becomes **Written
+off**, is no longer open or overdue, and is never reminded. The write-off is shown under
+**Payments** with its day, amount and reason. A write-off is refused while a Vipps payment
+of the invoice is being completed.
+
+**Undo write-off**, with a reason, opens the invoice again; the write-off stays on the
+invoice, struck through with the reason. It can always be undone — the books record the
+undoing in their first open month — except while money recovered after it stands: remove
+those payments first.
+
+Money that arrives after a write-off is not an ordinary payment: click **Register
+recovered payment** on the write-off. The amount is prefilled with what is left to
+recover, and at most that. The invoice stays written off; the payment is listed as
+**Recovered after write-off**, and the write-off shows what has been recovered.
+
+Writing off, undoing and registering a recovered payment need `invoices:payments`. With
+[Accounting](/en/user/accounting/#how-sales-arrive-from-invoices) on, each posts itself,
+and an issued invoice's page shows **In the books:** with a link to each of its vouchers.
 
 ## Importing payments from the bank
 
