@@ -70,6 +70,43 @@ func (q *Queries) CountVouchers(ctx context.Context) (int64, error) {
 	return n, err
 }
 
+const expiredSaftExportFiles = `-- name: ExpiredSaftExportFiles :many
+SELECT f.export_id, f.part, f.object_key
+FROM accounting.saft_export_files f
+JOIN accounting.saft_exports e ON e.id = f.export_id
+WHERE f.removed_at IS NULL AND e.finished_at < $1
+ORDER BY f.export_id, f.part
+LIMIT 100
+`
+
+type ExpiredSaftExportFilesRow struct {
+	ExportID  int64
+	Part      int32
+	ObjectKey string
+}
+
+// ExpiredSaftExportFiles is the files of exports finished before the day
+// their retention ends, whose objects are still there.
+func (q *Queries) ExpiredSaftExportFiles(ctx context.Context, before *time.Time) ([]ExpiredSaftExportFilesRow, error) {
+	rows, err := q.db.Query(ctx, expiredSaftExportFiles, before)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ExpiredSaftExportFilesRow
+	for rows.Next() {
+		var i ExpiredSaftExportFilesRow
+		if err := rows.Scan(&i.ExportID, &i.Part, &i.ObjectKey); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const extendSaftExportLease = `-- name: ExtendSaftExportLease :execrows
 UPDATE accounting.saft_exports SET lease_until = $1
 WHERE id = $2 AND lease_id = $3 AND state = 'running'
@@ -172,7 +209,7 @@ func (q *Queries) GetSaftExport(ctx context.Context, id int64) (AccountingSaftEx
 }
 
 const getSaftExportFile = `-- name: GetSaftExportFile :one
-SELECT export_id, part, parts, file_name, object_key, size_bytes, sha256, from_period, to_period, period_start, period_end FROM accounting.saft_export_files WHERE export_id = $1 AND part = $2
+SELECT export_id, part, parts, file_name, object_key, size_bytes, sha256, from_period, to_period, period_start, period_end, removed_at FROM accounting.saft_export_files WHERE export_id = $1 AND part = $2
 `
 
 type GetSaftExportFileParams struct {
@@ -195,12 +232,13 @@ func (q *Queries) GetSaftExportFile(ctx context.Context, arg GetSaftExportFilePa
 		&i.ToPeriod,
 		&i.PeriodStart,
 		&i.PeriodEnd,
+		&i.RemovedAt,
 	)
 	return i, err
 }
 
 const getSaftImport = `-- name: GetSaftImport :one
-SELECT id, state, file_name, object_key, size_bytes, sha256, audit_file_version, selection_start, selection_end, preview, uploaded_at, uploaded_by_user_id, applied_at, applied_by_user_id, opening_voucher_id FROM accounting.saft_imports WHERE id = $1
+SELECT id, state, file_name, object_key, size_bytes, sha256, audit_file_version, selection_start, selection_end, preview, matched_at, uploaded_at, uploaded_by_user_id, applied_at, applied_by_user_id, opening_voucher_id FROM accounting.saft_imports WHERE id = $1
 `
 
 func (q *Queries) GetSaftImport(ctx context.Context, id int64) (AccountingSaftImport, error) {
@@ -217,11 +255,54 @@ func (q *Queries) GetSaftImport(ctx context.Context, id int64) (AccountingSaftIm
 		&i.SelectionStart,
 		&i.SelectionEnd,
 		&i.Preview,
+		&i.MatchedAt,
 		&i.UploadedAt,
 		&i.UploadedByUserID,
 		&i.AppliedAt,
 		&i.AppliedByUserID,
 		&i.OpeningVoucherID,
+	)
+	return i, err
+}
+
+const getSaftImportParty = `-- name: GetSaftImportParty :one
+SELECT position, file_id, name, party, closing::text AS closing, coalesce(match, '')::text AS match, customer_id,
+    customer_name, customer_org
+FROM accounting.saft_import_parties
+WHERE import_id = $1 AND kind = $2 AND position = $3
+`
+
+type GetSaftImportPartyParams struct {
+	ImportID int64
+	Kind     string
+	Position int32
+}
+
+type GetSaftImportPartyRow struct {
+	Position     int32
+	FileID       string
+	Name         string
+	Party        []byte
+	Closing      string
+	Match        string
+	CustomerID   *int32
+	CustomerName *string
+	CustomerOrg  *string
+}
+
+func (q *Queries) GetSaftImportParty(ctx context.Context, arg GetSaftImportPartyParams) (GetSaftImportPartyRow, error) {
+	row := q.db.QueryRow(ctx, getSaftImportParty, arg.ImportID, arg.Kind, arg.Position)
+	var i GetSaftImportPartyRow
+	err := row.Scan(
+		&i.Position,
+		&i.FileID,
+		&i.Name,
+		&i.Party,
+		&i.Closing,
+		&i.Match,
+		&i.CustomerID,
+		&i.CustomerName,
+		&i.CustomerOrg,
 	)
 	return i, err
 }
@@ -386,6 +467,38 @@ func (q *Queries) InsertSaftImport(ctx context.Context, arg InsertSaftImportPara
 	return id, err
 }
 
+const insertSaftImportParties = `-- name: InsertSaftImportParties :exec
+INSERT INTO accounting.saft_import_parties (import_id, kind, position, file_id, name, party, closing)
+SELECT $1, $2, p.position, p.file_id, p.name, p.party, p.closing::numeric
+FROM (SELECT unnest($3::int[]) AS position, unnest($4::text[]) AS file_id,
+    unnest($5::text[]) AS name, unnest($6::jsonb[]) AS party,
+    unnest($7::text[]) AS closing) p
+`
+
+type InsertSaftImportPartiesParams struct {
+	ImportID  int64
+	Kind      string
+	Positions []int32
+	FileIds   []string
+	Names     []string
+	Parties   [][]byte
+	Closings  []string
+}
+
+// InsertSaftImportParties writes a page of an import's parties at once.
+func (q *Queries) InsertSaftImportParties(ctx context.Context, arg InsertSaftImportPartiesParams) error {
+	_, err := q.db.Exec(ctx, insertSaftImportParties,
+		arg.ImportID,
+		arg.Kind,
+		arg.Positions,
+		arg.FileIds,
+		arg.Names,
+		arg.Parties,
+		arg.Closings,
+	)
+	return err
+}
+
 const listSaftExports = `-- name: ListSaftExports :many
 SELECT id, fiscal_year, from_period, to_period, period_start, period_end, state, error, attempts, lease_id, lease_until, unmapped_accounts, total_bytes, requested_at, requested_by_user_id, started_at, finished_at FROM accounting.saft_exports ORDER BY id DESC LIMIT $1
 `
@@ -485,7 +598,7 @@ func (q *Queries) ListSaftImports(ctx context.Context) ([]ListSaftImportsRow, er
 }
 
 const lockSaftImport = `-- name: LockSaftImport :one
-SELECT id, state, file_name, object_key, size_bytes, sha256, audit_file_version, selection_start, selection_end, preview, uploaded_at, uploaded_by_user_id, applied_at, applied_by_user_id, opening_voucher_id FROM accounting.saft_imports WHERE id = $1 FOR UPDATE
+SELECT id, state, file_name, object_key, size_bytes, sha256, audit_file_version, selection_start, selection_end, preview, matched_at, uploaded_at, uploaded_by_user_id, applied_at, applied_by_user_id, opening_voucher_id FROM accounting.saft_imports WHERE id = $1 FOR UPDATE
 `
 
 func (q *Queries) LockSaftImport(ctx context.Context, id int64) (AccountingSaftImport, error) {
@@ -502,6 +615,7 @@ func (q *Queries) LockSaftImport(ctx context.Context, id int64) (AccountingSaftI
 		&i.SelectionStart,
 		&i.SelectionEnd,
 		&i.Preview,
+		&i.MatchedAt,
 		&i.UploadedAt,
 		&i.UploadedByUserID,
 		&i.AppliedAt,
@@ -509,6 +623,22 @@ func (q *Queries) LockSaftImport(ctx context.Context, id int64) (AccountingSaftI
 		&i.OpeningVoucherID,
 	)
 	return i, err
+}
+
+const markSaftExportFileRemoved = `-- name: MarkSaftExportFileRemoved :exec
+UPDATE accounting.saft_export_files SET removed_at = $1
+WHERE export_id = $2 AND part = $3 AND removed_at IS NULL
+`
+
+type MarkSaftExportFileRemovedParams struct {
+	Now      *time.Time
+	ExportID int64
+	Part     int32
+}
+
+func (q *Queries) MarkSaftExportFileRemoved(ctx context.Context, arg MarkSaftExportFileRemovedParams) error {
+	_, err := q.db.Exec(ctx, markSaftExportFileRemoved, arg.Now, arg.ExportID, arg.Part)
+	return err
 }
 
 const markSaftImportApplied = `-- name: MarkSaftImportApplied :exec
@@ -544,6 +674,76 @@ func (q *Queries) MaxVoucherID(ctx context.Context) (int64, error) {
 	var id int64
 	err := row.Scan(&id)
 	return id, err
+}
+
+const pageSaftImportParties = `-- name: PageSaftImportParties :many
+SELECT position, file_id, name, party, closing::text AS closing, coalesce(match, '')::text AS match, customer_id,
+    customer_name, customer_org, count(*) OVER ()::int AS total
+FROM accounting.saft_import_parties
+WHERE import_id = $1 AND kind = $2
+  AND (NOT $3::boolean OR (closing <> 0 AND coalesce(match, '') NOT IN ('matched', 'linked')))
+ORDER BY position
+OFFSET $4 LIMIT $5
+`
+
+type PageSaftImportPartiesParams struct {
+	ImportID  int64
+	Kind      string
+	Attention bool
+	RowOffset int32
+	RowLimit  int32
+}
+
+type PageSaftImportPartiesRow struct {
+	Position     int32
+	FileID       string
+	Name         string
+	Party        []byte
+	Closing      string
+	Match        string
+	CustomerID   *int32
+	CustomerName *string
+	CustomerOrg  *string
+	Total        int32
+}
+
+// PageSaftImportParties is a page of an import's parties; with attention,
+// the customers with a balance that are not matched or linked.
+func (q *Queries) PageSaftImportParties(ctx context.Context, arg PageSaftImportPartiesParams) ([]PageSaftImportPartiesRow, error) {
+	rows, err := q.db.Query(ctx, pageSaftImportParties,
+		arg.ImportID,
+		arg.Kind,
+		arg.Attention,
+		arg.RowOffset,
+		arg.RowLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []PageSaftImportPartiesRow
+	for rows.Next() {
+		var i PageSaftImportPartiesRow
+		if err := rows.Scan(
+			&i.Position,
+			&i.FileID,
+			&i.Name,
+			&i.Party,
+			&i.Closing,
+			&i.Match,
+			&i.CustomerID,
+			&i.CustomerName,
+			&i.CustomerOrg,
+			&i.Total,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const saftAccountBalances = `-- name: SaftAccountBalances :many
@@ -739,7 +939,7 @@ func (q *Queries) SaftEarlierResult(ctx context.Context, arg SaftEarlierResultPa
 }
 
 const saftExportFiles = `-- name: SaftExportFiles :many
-SELECT export_id, part, parts, file_name, object_key, size_bytes, sha256, from_period, to_period, period_start, period_end FROM accounting.saft_export_files WHERE export_id = ANY($1::bigint[]) ORDER BY export_id, part
+SELECT export_id, part, parts, file_name, object_key, size_bytes, sha256, from_period, to_period, period_start, period_end, removed_at FROM accounting.saft_export_files WHERE export_id = ANY($1::bigint[]) ORDER BY export_id, part
 `
 
 func (q *Queries) SaftExportFiles(ctx context.Context, ids []int64) ([]AccountingSaftExportFile, error) {
@@ -763,6 +963,64 @@ func (q *Queries) SaftExportFiles(ctx context.Context, ids []int64) ([]Accountin
 			&i.ToPeriod,
 			&i.PeriodStart,
 			&i.PeriodEnd,
+			&i.RemovedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const saftImportParties = `-- name: SaftImportParties :many
+SELECT position, file_id, name, party, closing::text AS closing, coalesce(match, '')::text AS match, customer_id,
+    customer_name, customer_org
+FROM accounting.saft_import_parties
+WHERE import_id = $1 AND kind = $2
+ORDER BY position
+`
+
+type SaftImportPartiesParams struct {
+	ImportID int64
+	Kind     string
+}
+
+type SaftImportPartiesRow struct {
+	Position     int32
+	FileID       string
+	Name         string
+	Party        []byte
+	Closing      string
+	Match        string
+	CustomerID   *int32
+	CustomerName *string
+	CustomerOrg  *string
+}
+
+// SaftImportParties is every party of a kind, in the file's order: what the
+// plan reads.
+func (q *Queries) SaftImportParties(ctx context.Context, arg SaftImportPartiesParams) ([]SaftImportPartiesRow, error) {
+	rows, err := q.db.Query(ctx, saftImportParties, arg.ImportID, arg.Kind)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SaftImportPartiesRow
+	for rows.Next() {
+		var i SaftImportPartiesRow
+		if err := rows.Scan(
+			&i.Position,
+			&i.FileID,
+			&i.Name,
+			&i.Party,
+			&i.Closing,
+			&i.Match,
+			&i.CustomerID,
+			&i.CustomerName,
+			&i.CustomerOrg,
 		); err != nil {
 			return nil, err
 		}
@@ -1151,4 +1409,50 @@ func (q *Queries) SaftVoucherPage(ctx context.Context, arg SaftVoucherPageParams
 		return nil, err
 	}
 	return items, nil
+}
+
+const setSaftImportMatchedAt = `-- name: SetSaftImportMatchedAt :exec
+UPDATE accounting.saft_imports SET matched_at = $1 WHERE id = $2
+`
+
+type SetSaftImportMatchedAtParams struct {
+	Now *time.Time
+	ID  int64
+}
+
+func (q *Queries) SetSaftImportMatchedAt(ctx context.Context, arg SetSaftImportMatchedAtParams) error {
+	_, err := q.db.Exec(ctx, setSaftImportMatchedAt, arg.Now, arg.ID)
+	return err
+}
+
+const setSaftImportMatches = `-- name: SetSaftImportMatches :exec
+UPDATE accounting.saft_import_parties sp
+SET match = m.match, customer_id = nullif(m.customer_id, 0), customer_name = nullif(m.customer_name, ''),
+    customer_org = nullif(m.customer_org, '')
+FROM (SELECT unnest($2::int[]) AS position, unnest($3::text[]) AS match,
+    unnest($4::int[]) AS customer_id, unnest($5::text[]) AS customer_name,
+    unnest($6::text[]) AS customer_org) m
+WHERE sp.import_id = $1 AND sp.kind = 'customer' AND sp.position = m.position
+`
+
+type SetSaftImportMatchesParams struct {
+	ImportID      int64
+	Positions     []int32
+	Matches       []string
+	CustomerIds   []int32
+	CustomerNames []string
+	CustomerOrgs  []string
+}
+
+// SetSaftImportMatches records the customers' matches at once.
+func (q *Queries) SetSaftImportMatches(ctx context.Context, arg SetSaftImportMatchesParams) error {
+	_, err := q.db.Exec(ctx, setSaftImportMatches,
+		arg.ImportID,
+		arg.Positions,
+		arg.Matches,
+		arg.CustomerIds,
+		arg.CustomerNames,
+		arg.CustomerOrgs,
+	)
+	return err
 }

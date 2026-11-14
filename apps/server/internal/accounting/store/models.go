@@ -168,6 +168,7 @@ type AccountingSaftExportFile struct {
 	ToPeriod    int16
 	PeriodStart time.Time
 	PeriodEnd   time.Time
+	RemovedAt   *time.Time
 }
 
 type AccountingSaftImport struct {
@@ -181,11 +182,26 @@ type AccountingSaftImport struct {
 	SelectionStart   time.Time
 	SelectionEnd     time.Time
 	Preview          []byte
+	MatchedAt        *time.Time
 	UploadedAt       time.Time
 	UploadedByUserID uuid.UUID
 	AppliedAt        *time.Time
 	AppliedByUserID  *uuid.UUID
 	OpeningVoucherID *int64
+}
+
+type AccountingSaftImportParty struct {
+	ImportID     int64
+	Kind         string
+	Position     int32
+	FileID       string
+	Name         string
+	Party        []byte
+	Closing      pgtype.Numeric
+	Match        *string
+	CustomerID   *int32
+	CustomerName *string
+	CustomerOrg  *string
 }
 
 type AccountingSetting struct {

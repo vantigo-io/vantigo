@@ -127,6 +127,10 @@ const (
 	codeSaftUnmatchedCustomers = "saft_import_unmatched_customers"
 	codeSaftPartiesMismatch    = "saft_import_parties_mismatch"
 	codeSaftBooksStartMismatch = "saft_import_books_start_mismatch"
+	// After the review of delivery E.
+	codeSaftLinkUnknown       = "saft_import_link_unknown"
+	codeSaftOtherCompany      = "saft_import_other_company"
+	codeSaftExportFileRemoved = "saft_export_file_removed"
 )
 
 // refusalCodes is every code above, for the test that holds the contract's
@@ -154,7 +158,7 @@ var refusalCodes = []string{
 	codeVatTermPartial, codeVatTermRateMissing,
 	codeSaftSellerMissing, codeSaftFileInvalid, codeSaftVersionUnsupported, codeSaftFileTooLarge,
 	codeSaftLedgerHasVouchers, codeSaftImportApplied, codeSaftImportUnresolved, codeSaftUnmatchedCustomers,
-	codeSaftPartiesMismatch, codeSaftBooksStartMismatch,
+	codeSaftPartiesMismatch, codeSaftBooksStartMismatch, codeSaftLinkUnknown, codeSaftOtherCompany, codeSaftExportFileRemoved,
 }
 
 // refusal is a request's answer that is not a success. Returned from inside a

@@ -115,7 +115,8 @@ func (s *server) withReadTx(ctx context.Context, fn func(q *store.Queries) error
 // operations answer before the books are set up too.
 var ungated = map[string]bool{"GetAccountingMeta": true, "SetUpAccountingBooks": true,
 	"ListAccountingSaftImports": true, "UploadAccountingSaftImport": true, "GetAccountingSaftImport": true,
-	"ApplyAccountingSaftImport": true, "DownloadAccountingSaftImportFile": true}
+	"ApplyAccountingSaftImport": true, "DownloadAccountingSaftImportFile": true, "LinkAccountingSaftImportCustomer": true,
+	"MatchAccountingSaftImport": true, "ListAccountingSaftImportCustomers": true, "ListAccountingSaftImportSuppliers": true}
 
 // setupGate answers 409 books_not_set_up for every other operation until Set
 // up the books has run, so nothing else runs before it (R12).

@@ -2,17 +2,22 @@ package saft
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 )
 
 // Xmllint validates doc against the XSD at xsd with xmllint, for the tests:
 // ran is false when xmllint is not on the PATH, which a test says in its log
-// (CI's oracle, tools/saft, validates the same files with the JDK). The
-// network is never used.
+// — but with CI set, where the test job installs it, a missing xmllint is an
+// error, so no file goes unvalidated there. The network is never used.
 func Xmllint(doc []byte, xsd string) (ran bool, err error) {
 	if _, err := exec.LookPath("xmllint"); err != nil {
+		if os.Getenv("CI") != "" {
+			return false, errors.New("xmllint is not on the PATH in CI: the file is not validated")
+		}
 		return false, nil
 	}
 	abs, err := filepath.Abs(xsd)

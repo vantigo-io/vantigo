@@ -36,6 +36,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/accounting/gen"
 	"github.com/vantigo-io/vantigo/server/internal/accounting/saft"
 	"github.com/vantigo-io/vantigo/server/internal/accounting/store"
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/storage"
 )
 
@@ -143,10 +144,15 @@ func (s *server) UploadAccountingSaftImport(ctx context.Context, req gen.UploadA
 	if _, err := tmp.Seek(0, io.SeekStart); err != nil {
 		return nil, err
 	}
-	file, err := saft.Read(tmp)
+	file, err := saft.Read(tmp, saft.Limits{Accounts: saftMaxAccounts, Parties: saftMaxParties})
 	if err != nil {
 		var inv *saft.InvalidError
+		var many *saft.TooManyError
 		switch {
+		case errors.As(err, &many):
+			return nil, invalidField("The file cannot be imported", attachmentFormField, codeSaftFileTooLarge,
+				fmt.Sprintf("The file has too many %s: a SAF-T file to set up books from holds at most %d accounts and %d customers and suppliers.",
+					strings.TrimPrefix(many.What, "too many "), saftMaxAccounts, saftMaxParties))
 		case errors.Is(err, saft.ErrUnsupportedVersion):
 			return nil, invalidField("The file cannot be imported", attachmentFormField, codeSaftVersionUnsupported,
 				"This is not SAF-T Financial 1.30 or 1.40 ("+err.Error()+"). Export the file again from the other system as version 1.30 or 1.40.")
@@ -156,6 +162,8 @@ func (s *server) UploadAccountingSaftImport(ctx context.Context, req gen.UploadA
 		}
 		return nil, err
 	}
+	customers, suppliers := file.Customers, file.Suppliers
+	file.Customers, file.Suppliers = nil, nil
 	preview, err := json.Marshal(file)
 	if err != nil {
 		return nil, err
@@ -175,9 +183,26 @@ func (s *server) UploadAccountingSaftImport(ctx context.Context, req gen.UploadA
 		s.logger().ErrorContext(ctx, "accounting: a SAF-T file could not be written to the store", "error", err.Error())
 		return nil, storageRefusal(err)
 	}
-	id, err := q.InsertSaftImport(ctx, store.InsertSaftImportParams{FileName: cleanFileName(name), ObjectKey: key,
-		SizeBytes: size, Sha256: sum, AuditFileVersion: file.Version, SelectionStart: file.SelectionStart,
-		SelectionEnd: file.SelectionEnd, Preview: preview, Now: s.now(), UserID: callerID(ctx)})
+	var id int64
+	err = s.withTx(ctx, func(_ pgx.Tx, q *store.Queries) error {
+		var err error
+		if id, err = q.InsertSaftImport(ctx, store.InsertSaftImportParams{FileName: cleanFileName(name), ObjectKey: key,
+			SizeBytes: size, Sha256: sum, AuditFileVersion: file.Version, SelectionStart: file.SelectionStart,
+			SelectionEnd: file.SelectionEnd, Preview: preview, Now: s.now(), UserID: callerID(ctx)}); err != nil {
+			return err
+		}
+		if err := storeParties(ctx, q, id, "customer", customers); err != nil {
+			return err
+		}
+		return storeParties(ctx, q, id, "supplier", suppliers)
+	})
+	if err == nil {
+		// The customers are matched once, now, with no transaction open.
+		var row store.AccountingSaftImport
+		if row, err = q.GetSaftImport(ctx, id); err == nil {
+			err = s.matchCustomers(ctx, row)
+		}
+	}
 	if err != nil {
 		if derr := st.Delete(context.WithoutCancel(ctx), key); derr != nil {
 			s.logger().ErrorContext(ctx, "accounting: an orphaned SAF-T object could not be removed", "error", derr.Error())
@@ -263,14 +288,16 @@ type importAccount struct {
 
 // importParty is a file customer or supplier as the plan takes it.
 type importParty struct {
-	file    saft.FileParty
-	closing *big.Rat
+	position int32
+	file     saft.FileParty
+	closing  *big.Rat
 	// accounts are the file accounts its balances are on.
 	accounts []string
 	// customer: the match.
 	match        string
 	customerID   *int32
 	customerName *string
+	customerOrg  *string
 	// supplier: what is kept, and what was dropped.
 	fields supplierFields
 	notes  []string
@@ -280,6 +307,12 @@ type importParty struct {
 // importPlan is everything Apply writes, and what stands in its way.
 type importPlan struct {
 	row                       store.AccountingSaftImport
+	month                     int32
+	monthGiven, needsMonth    bool
+	selectionStart            time.Time
+	selectionEnd              time.Time
+	midYear, companyMismatch  bool
+	sellerOrg                 string
 	file                      saft.File
 	booksStart                time.Time
 	year                      int
@@ -338,22 +371,65 @@ func (s *server) plan(ctx context.Context, row store.AccountingSaftImport, body 
 	if body != nil {
 		language = string(body.Language)
 	}
-	p := &importPlan{row: row, file: file, booksStart: file.SelectionEnd.AddDate(0, 0, 1), roles: map[string]string{},
+	p := &importPlan{row: row, file: file, roles: map[string]string{},
 		addedReason: map[string]string{}, result: new(big.Rat), vatMoved: new(big.Rat), recvDiff: new(big.Rat), payDiff: new(big.Rat)}
-	p.year = p.booksStart.Year()
 	word := func(en, nb string) string {
 		if language == "en" {
 			return en
 		}
 		return nb
 	}
+	// The fiscal year's first month: as the apply says; else, from the file —
+	// the selection's first month when it is twelve months, January
+	// otherwise. A file that names its selection by periods says nothing of
+	// the days they are until the month is known: Apply asks for it.
+	p.month = 1
+	start, end := file.SelectionStart, file.SelectionEnd
+	if !file.SelectionByPeriod && start.Day() == 1 && start.AddDate(1, 0, -1).Equal(end) {
+		p.month = int32(start.Month())
+	}
+	if file.SelectionByPeriod && file.PeriodStart == 1 && file.PeriodEnd == 12 && file.PeriodStartYear == file.PeriodEndYear {
+		p.month = 1
+	}
+	if body != nil && body.FiscalYearStartMonth != nil {
+		p.month = *body.FiscalYearStartMonth
+		p.monthGiven = true
+	}
+	if file.SelectionByPeriod {
+		p.needsMonth = true
+		fy := func(year, period int) time.Time {
+			return time.Date(year, time.Month(p.month), 1, 0, 0, 0, 0, time.UTC).AddDate(0, period-1, 0)
+		}
+		start = fy(file.PeriodStartYear, max(1, min(file.PeriodStart, 12)))
+		end = fy(file.PeriodEndYear, max(1, min(file.PeriodEnd, 12))).AddDate(0, 1, -1)
+		p.notes = append(p.notes, fmt.Sprintf("The file names its selection by periods %d/%d to %d/%d: with the fiscal year starting in month %d they are %s to %s. Confirm the month before applying.",
+			file.PeriodStart, file.PeriodStartYear, file.PeriodEnd, file.PeriodEndYear, p.month, start.Format(time.DateOnly), end.Format(time.DateOnly)))
+	}
+	p.selectionStart, p.selectionEnd = start, end
+	p.booksStart = end.AddDate(0, 0, 1)
+	p.year = p.booksStart.Year()
+	p.midYear = !(p.booksStart.Day() == 1 && int32(p.booksStart.Month()) == p.month)
+	if p.midYear {
+		p.notes = append(p.notes, "The books start inside a fiscal year: the income and expense accounts open with their year-to-date balances, and no result goes to equity.")
+	} else {
+		p.notes = append(p.notes, "The books start a fiscal year: the income and expense accounts open at zero, and the file's result goes to the opening balance account in equity.")
+	}
 	if p.booksStart.Before(firstRateDay) {
 		p.block(codeBooksStartTooEarly, fmt.Sprintf("The books would start on %s; they start on %s or later.",
 			p.booksStart.Format(time.DateOnly), firstRateDay.Format(time.DateOnly)))
 	}
-	if file.SelectionByPeriod {
-		p.notes = append(p.notes, "The file names its selection by periods; they are read as calendar months, so the books start on "+
-			p.booksStart.Format(time.DateOnly)+".")
+	// The file's company against the seller in Invoices.
+	if _, org, err := sellerOf(ctx, s.deps.SalesTax); err != nil {
+		return nil, err
+	} else if org != "" {
+		p.sellerOrg = org
+		if fileOrg := digitsOnly(file.CompanyNumber); fileOrg != "" && fileOrg != org {
+			p.companyMismatch = true
+			if body == nil || body.ConfirmOtherCompany == nil || !*body.ConfirmOtherCompany {
+				p.block(codeSaftOtherCompany, fmt.Sprintf("The file is %s's (%s), and the company in Invoices is %s: confirm that these books are to start from another company's file.",
+					file.CompanyName, fileOrg, org))
+			}
+		}
 	}
 	p.notes = append(p.notes, fmt.Sprintf("The file's %d transactions are not imported as vouchers: the file is kept as the record of those years, and the law asks you to keep it.", file.Entries))
 	list, err := groupingsFor(p.year)
@@ -451,12 +527,37 @@ func (s *server) plan(ctx context.Context, row store.AccountingSaftImport, body 
 		}
 	}
 
-	// The parties and their control accounts.
-	control := func(parties []saft.FileParty, customer bool) ([]importParty, string, error) {
+	// The parties, from their table, and their control accounts.
+	load := func(kind string) ([]importParty, error) {
+		rows, err := store.New(s.deps.Pool).SaftImportParties(ctx, store.SaftImportPartiesParams{ImportID: row.ID, Kind: kind})
+		if err != nil {
+			return nil, err
+		}
+		out := make([]importParty, 0, len(rows))
+		for _, r := range rows {
+			var fp saft.FileParty
+			if err := json.Unmarshal(r.Party, &fp); err != nil {
+				return nil, fmt.Errorf("accounting: read import %d's party: %w", row.ID, err)
+			}
+			out = append(out, importParty{position: r.Position, file: fp, match: r.Match, customerID: r.CustomerID,
+				customerName: r.CustomerName, customerOrg: r.CustomerOrg})
+		}
+		return out, nil
+	}
+	customers, err := load("customer")
+	if err != nil {
+		return nil, err
+	}
+	suppliers, err := load("supplier")
+	if err != nil {
+		return nil, err
+	}
+	control := func(parties []importParty, customer bool) ([]importParty, string, error) {
 		out := make([]importParty, 0, len(parties))
 		accounts := map[string]bool{}
-		for _, fp := range parties {
-			ip := importParty{file: fp, closing: new(big.Rat)}
+		for _, ip := range parties {
+			fp := ip.file
+			ip.closing = new(big.Rat)
 			for _, b := range fp.Balances {
 				c := signedRat(b.Closing)
 				if c.Sign() == 0 {
@@ -492,10 +593,10 @@ func (s *server) plan(ctx context.Context, row store.AccountingSaftImport, body 
 		}
 		return out, a.number, nil
 	}
-	if p.customers, p.receivablesNo, err = control(file.Customers, true); err != nil {
+	if p.customers, p.receivablesNo, err = control(customers, true); err != nil {
 		return nil, err
 	}
-	if p.suppliers, p.payablesNo, err = control(file.Suppliers, false); err != nil {
+	if p.suppliers, p.payablesNo, err = control(suppliers, false); err != nil {
 		return nil, err
 	}
 
@@ -651,14 +752,7 @@ func (s *server) plan(ctx context.Context, row store.AccountingSaftImport, body 
 		sp.fields = f
 	}
 
-	// The customers, matched to Customers.
-	var links map[string]int32
-	if body != nil && body.CustomerLinks != nil {
-		links = *body.CustomerLinks
-	}
-	if err := s.matchCustomers(ctx, p.customers, links); err != nil {
-		return nil, err
-	}
+	// The customers, as matched at the upload or linked by a person since.
 	for _, c := range p.customers {
 		if c.closing.Sign() != 0 && c.match != "matched" && c.match != "linked" {
 			p.block(codeSaftUnmatchedCustomers, fmt.Sprintf("Customer %s %s has a balance of %s and is %s in Customers: create or find it there, and link it.",
@@ -683,7 +777,16 @@ func (s *server) plan(ctx context.Context, row store.AccountingSaftImport, body 
 	vatAccount := p.roles["vat_settlement"]
 	controlBalance := map[string]*big.Rat{}
 	for _, a := range p.accounts {
-		if a.action != "import" || !isBalanceKind(a.kind) || a.closing.Sign() == 0 {
+		if a.action != "import" || a.closing.Sign() == 0 {
+			continue
+		}
+		// Inside a fiscal year the income and expense accounts open with
+		// their year-to-date balances; at its start they open at zero, and
+		// their sum is the result the opening account takes.
+		if !isBalanceKind(a.kind) {
+			if p.midYear {
+				addLine(a.number, a.closing, a.name, nil, 0, Line{})
+			}
 			continue
 		}
 		switch {
@@ -701,7 +804,7 @@ func (s *server) plan(ctx context.Context, row store.AccountingSaftImport, body 
 		p.notes = append(p.notes, fmt.Sprintf("VAT owed at the start: NOK %s, placed on %s.", money(neg(p.vatMoved)), vatAccount))
 	}
 	docNumber := word("Opening balance", "Inngående saldo")
-	docDate := file.SelectionEnd
+	docDate := p.selectionEnd
 	partySum := func(parties []importParty, number string) *big.Rat {
 		total := new(big.Rat)
 		for _, ip := range parties {
@@ -788,84 +891,144 @@ func sortedKeys(m map[string]bool) []string {
 	return out
 }
 
-// matchCustomers finds each file customer in Customers: by a link the apply
-// gives, else by organisation number. Accounting writes no customer.
-func (s *server) matchCustomers(ctx context.Context, customers []importParty, links map[string]int32) error {
-	linked := []int32{}
-	for _, id := range links {
-		linked = append(linked, id)
-	}
-	names := map[int32]string{}
-	if s.deps.Directory != nil && len(linked) > 0 {
-		entries, err := s.deps.Directory.Customers(ctx, linked)
-		if err != nil {
-			return fmt.Errorf("accounting: read the customers: %w", err)
-		}
-		for _, e := range entries {
-			names[e.ID] = e.Name
-		}
-	}
-	orgs := []string{}
-	for i := range customers {
-		if org := digitsOnly(customers[i].file.RegistrationNumber); validOrganisationNumber(org) {
-			customers[i].org = ptr(org)
-			orgs = append(orgs, org)
-		}
-	}
-	holders := map[string][]struct {
-		id   int32
-		name string
-	}{}
-	if s.deps.Directory != nil && len(orgs) > 0 {
-		found, err := s.deps.Directory.CustomersByLegalID(ctx, "no", orgs)
-		if err != nil {
-			return fmt.Errorf("accounting: match the customers: %w", err)
-		}
-		for org, entries := range found {
-			for _, e := range entries {
-				id := e.ID
-				if e.MergedInto != nil {
-					id = *e.MergedInto
-				}
-				holders[org] = append(holders[org], struct {
-					id   int32
-					name string
-				}{id, e.Name})
+// saftMaxAccounts and saftMaxParties bound a file an import takes: a company
+// has fewer, and a file past them is refused rather than held (M6).
+const (
+	saftMaxAccounts = 20_000
+	saftMaxParties  = 200_000
+	// saftPreviewParties is how many customers and suppliers a preview
+	// lists; the rest are paged.
+	saftPreviewParties = 200
+	// saftPreviewBlockers is how many blockers a preview lists.
+	saftPreviewBlockers = 100
+	// saftMatchBatch is how many organisation numbers one directory read
+	// takes, and how many matches one write records.
+	saftMatchBatch = 1000
+)
+
+// storeParties writes a file's customers and suppliers to their table, a
+// page at a time, on the upload's transaction.
+func storeParties(ctx context.Context, q *store.Queries, id int64, kind string, parties []saft.FileParty) error {
+	for start := 0; start < len(parties); start += saftMatchBatch {
+		page := parties[start:min(start+saftMatchBatch, len(parties))]
+		arg := store.InsertSaftImportPartiesParams{ImportID: id, Kind: kind}
+		for i, fp := range page {
+			data, err := json.Marshal(fp)
+			if err != nil {
+				return err
 			}
-		}
-	}
-	for i := range customers {
-		c := &customers[i]
-		if id, ok := links[c.file.ID]; ok {
-			if name, found := names[id]; found {
-				c.match, c.customerID, c.customerName = "linked", ptr(id), ptr(name)
-				continue
+			closing := new(big.Rat)
+			for _, b := range fp.Balances {
+				closing.Add(closing, signedRat(b.Closing))
 			}
+			arg.Positions = append(arg.Positions, int32(start+i+1))
+			arg.FileIds = append(arg.FileIds, clipText(fp.ID, 70))
+			arg.Names = append(arg.Names, clipText(fp.Name, 256))
+			arg.Parties = append(arg.Parties, data)
+			arg.Closings = append(arg.Closings, closing.FloatString(2))
 		}
-		var hs []struct {
-			id   int32
-			name string
-		}
-		if c.org != nil {
-			hs = holders[*c.org]
-		}
-		switch {
-		case len(hs) == 1:
-			c.match, c.customerID, c.customerName = "matched", ptr(hs[0].id), ptr(hs[0].name)
-		case c.closing.Sign() == 0:
-			c.match = "not_needed"
-		case len(hs) > 1:
-			c.match = "ambiguous"
-		default:
-			c.match = "unmatched"
+		if err := q.InsertSaftImportParties(ctx, arg); err != nil {
+			return err
 		}
 	}
 	return nil
 }
 
-// importView is an import as the contract answers it.
+// matchCustomers matches an import's customers to Customers by organisation
+// number and records it: once at the upload, and again when a person asks.
+// A link a person made is kept. Accounting writes no customer.
+func (s *server) matchCustomers(ctx context.Context, row store.AccountingSaftImport) error {
+	q := store.New(s.deps.Pool)
+	rows, err := q.SaftImportParties(ctx, store.SaftImportPartiesParams{ImportID: row.ID, Kind: "customer"})
+	if err != nil {
+		return err
+	}
+	type holder struct {
+		id        int32
+		name, org string
+	}
+	holders := map[string][]holder{}
+	var orgs []string
+	for _, r := range rows {
+		if r.Match == "linked" {
+			continue
+		}
+		var fp saft.FileParty
+		if err := json.Unmarshal(r.Party, &fp); err != nil {
+			return err
+		}
+		if org := digitsOnly(fp.RegistrationNumber); validOrganisationNumber(org) {
+			orgs = append(orgs, org)
+		}
+	}
+	if s.deps.Directory != nil {
+		for start := 0; start < len(orgs); start += saftMatchBatch {
+			found, err := s.deps.Directory.CustomersByLegalID(ctx, "no", orgs[start:min(start+saftMatchBatch, len(orgs))])
+			if err != nil {
+				return fmt.Errorf("accounting: match the customers: %w", err)
+			}
+			for org, entries := range found {
+				for _, e := range entries {
+					id, name := e.ID, e.Name
+					if e.MergedInto != nil {
+						id = *e.MergedInto
+					}
+					holders[org] = append(holders[org], holder{id: id, name: name, org: org})
+				}
+			}
+		}
+	}
+	arg := store.SetSaftImportMatchesParams{ImportID: row.ID}
+	flush := func() error {
+		if len(arg.Positions) == 0 {
+			return nil
+		}
+		if err := q.SetSaftImportMatches(ctx, arg); err != nil {
+			return err
+		}
+		arg = store.SetSaftImportMatchesParams{ImportID: row.ID}
+		return nil
+	}
+	for _, r := range rows {
+		if r.Match == "linked" {
+			continue
+		}
+		var fp saft.FileParty
+		if err := json.Unmarshal(r.Party, &fp); err != nil {
+			return err
+		}
+		match, id, name, org := "unmatched", int32(0), "", ""
+		hs := holders[digitsOnly(fp.RegistrationNumber)]
+		switch {
+		case len(hs) == 1:
+			match, id, name, org = "matched", hs[0].id, hs[0].name, hs[0].org
+		case mustRat(r.Closing).Sign() == 0:
+			match = "not_needed"
+		case len(hs) > 1:
+			match = "ambiguous"
+		}
+		arg.Positions = append(arg.Positions, r.Position)
+		arg.Matches = append(arg.Matches, match)
+		arg.CustomerIds = append(arg.CustomerIds, id)
+		arg.CustomerNames = append(arg.CustomerNames, name)
+		arg.CustomerOrgs = append(arg.CustomerOrgs, org)
+		if len(arg.Positions) == saftMatchBatch {
+			if err := flush(); err != nil {
+				return err
+			}
+		}
+	}
+	if err := flush(); err != nil {
+		return err
+	}
+	return q.SetSaftImportMatchedAt(ctx, store.SetSaftImportMatchedAtParams{ID: row.ID, Now: ptr(s.now())})
+}
+
+// importView is an import as the contract answers it: its plan, with the
+// first customers and suppliers and the first blockers; the rest are paged.
 func (s *server) importView(ctx context.Context, id int64, body *gen.AccountingSaftImportApply) (gen.AccountingSaftImport, error) {
-	row, err := store.New(s.deps.Pool).GetSaftImport(ctx, id)
+	q := store.New(s.deps.Pool)
+	row, err := q.GetSaftImport(ctx, id)
 	if noRows(err) {
 		return gen.AccountingSaftImport{}, notFound()
 	}
@@ -879,17 +1042,54 @@ func (s *server) importView(ctx context.Context, id int64, body *gen.AccountingS
 	return p.view(), nil
 }
 
+func customerView(c importParty) gen.AccountingSaftImportCustomer {
+	match := c.match
+	if match == "" {
+		match = "unmatched"
+	}
+	org := (*string)(nil)
+	if o := digitsOnly(c.file.RegistrationNumber); o != "" {
+		org = ptr(o)
+	}
+	closing := c.closing
+	if closing == nil {
+		closing = new(big.Rat)
+		for _, b := range c.file.Balances {
+			closing.Add(closing, signedRat(b.Closing))
+		}
+	}
+	return gen.AccountingSaftImportCustomer{Position: c.position, FileCustomerId: c.file.ID, Name: c.file.Name,
+		OrganisationNumber: org, ClosingBalance: money(closing), Match: gen.AccountingSaftImportCustomerMatch(match),
+		CustomerId: c.customerID, CustomerName: c.customerName, CustomerOrganisationNumber: c.customerOrg}
+}
+
+func importSupplierView(sp importParty) gen.AccountingSaftImportSupplier {
+	notes := sp.notes
+	if notes == nil {
+		notes = []string{}
+	}
+	return gen.AccountingSaftImportSupplier{Position: sp.position, FileSupplierId: sp.file.ID, Name: sp.fields.name,
+		OrganisationNumber: sp.fields.organisationNumber, City: sp.fields.city, BankAccount: sp.fields.bankAccount,
+		Iban: sp.fields.iban, ClosingBalance: money(sp.closing), Notes: notes}
+}
+
 func (p *importPlan) view() gen.AccountingSaftImport {
 	f := p.file
 	out := gen.AccountingSaftImport{Id: p.row.ID, State: gen.AccountingSaftImportState(p.row.State), FileName: p.row.FileName,
 		SizeBytes: p.row.SizeBytes, Sha256: p.row.Sha256, UploadedAt: p.row.UploadedAt, AppliedAt: p.row.AppliedAt,
 		OpeningVoucherId: p.row.OpeningVoucherID, AuditFileVersion: f.Version, CompanyName: f.CompanyName,
-		CompanyOrganisationNumber: f.CompanyNumber, SelectionStart: apiDate(f.SelectionStart), SelectionEnd: apiDate(f.SelectionEnd),
-		BooksStart: apiDate(p.booksStart), FiscalYearStartMonth: int32(f.SelectionStart.Month()), Transactions: f.Entries,
-		Blockers: p.blockers, Notes: p.notes, TaxCodes: p.taxCodes,
+		CompanyOrganisationNumber: f.CompanyNumber, SelectionStart: apiDate(p.selectionStart), SelectionEnd: apiDate(p.selectionEnd),
+		BooksStart: apiDate(p.booksStart), FiscalYearStartMonth: p.month, Transactions: f.Entries,
+		Notes: p.notes, TaxCodes: p.taxCodes, MatchedAt: p.row.MatchedAt, MidYear: p.midYear,
+		NeedsFiscalYearStartMonth: p.needsMonth, CompanyMismatch: p.companyMismatch,
+		BlockersTotal: int32(len(p.blockers)), CustomersTotal: int32(len(p.customers)), SuppliersTotal: int32(len(p.suppliers)),
 		Accounts: []gen.AccountingSaftImportAccount{}, AddedAccounts: []gen.AccountingSaftImportAddedAccount{},
 		Roles: []gen.AccountingSaftImportRole{}, Customers: []gen.AccountingSaftImportCustomer{},
 		Suppliers: []gen.AccountingSaftImportSupplier{}}
+	if p.sellerOrg != "" {
+		out.SellerOrganisationNumber = ptr(p.sellerOrg)
+	}
+	out.Blockers = p.blockers[:min(len(p.blockers), saftPreviewBlockers)]
 	if out.Blockers == nil {
 		out.Blockers = []string{}
 	}
@@ -928,19 +1128,11 @@ func (p *importPlan) view() gen.AccountingSaftImport {
 			out.Roles = append(out.Roles, gen.AccountingSaftImportRole{Role: gen.AccountingSystemRole(role), AccountNumber: n, Added: added[n]})
 		}
 	}
-	for _, c := range p.customers {
-		out.Customers = append(out.Customers, gen.AccountingSaftImportCustomer{FileCustomerId: c.file.ID, Name: c.file.Name,
-			OrganisationNumber: c.org, ClosingBalance: money(c.closing), Match: gen.AccountingSaftImportCustomerMatch(c.match),
-			CustomerId: c.customerID, CustomerName: c.customerName})
+	for _, c := range p.customers[:min(len(p.customers), saftPreviewParties)] {
+		out.Customers = append(out.Customers, customerView(c))
 	}
-	for _, sp := range p.suppliers {
-		notes := sp.notes
-		if notes == nil {
-			notes = []string{}
-		}
-		out.Suppliers = append(out.Suppliers, gen.AccountingSaftImportSupplier{FileSupplierId: sp.file.ID, Name: sp.fields.name,
-			OrganisationNumber: sp.fields.organisationNumber, City: sp.fields.city, BankAccount: sp.fields.bankAccount,
-			Iban: sp.fields.iban, ClosingBalance: money(sp.closing), Notes: notes})
+	for _, sp := range p.suppliers[:min(len(p.suppliers), saftPreviewParties)] {
+		out.Suppliers = append(out.Suppliers, importSupplierView(sp))
 	}
 	lines := p.lines
 	if lines == nil {
@@ -952,6 +1144,162 @@ func (p *importPlan) view() gen.AccountingSaftImport {
 		out.Opening.VatSettlementAccount = ptr(n)
 	}
 	return out
+}
+
+// pageParams is a page's offset and limit, at most 500.
+func pageParams(offset, limit *int32) (int32, int32) {
+	o, l := int32(0), int32(100)
+	if offset != nil && *offset > 0 {
+		o = *offset
+	}
+	if limit != nil && *limit > 0 {
+		l = min(*limit, 500)
+	}
+	return o, l
+}
+
+// ListAccountingSaftImportCustomers is a page of the file's customers.
+func (s *server) ListAccountingSaftImportCustomers(ctx context.Context, req gen.ListAccountingSaftImportCustomersRequestObject) (gen.ListAccountingSaftImportCustomersResponseObject, error) {
+	q := store.New(s.deps.Pool)
+	if _, err := q.GetSaftImport(ctx, req.Id); noRows(err) {
+		return nil, notFound()
+	} else if err != nil {
+		return nil, err
+	}
+	offset, limit := pageParams(req.Params.Offset, req.Params.Limit)
+	rows, err := q.PageSaftImportParties(ctx, store.PageSaftImportPartiesParams{ImportID: req.Id, Kind: "customer",
+		Attention: req.Params.Attention != nil && *req.Params.Attention, RowOffset: offset, RowLimit: limit})
+	if err != nil {
+		return nil, err
+	}
+	out := gen.ListAccountingSaftImportCustomers200JSONResponse{Items: []gen.AccountingSaftImportCustomer{}}
+	for _, r := range rows {
+		var fp saft.FileParty
+		if err := json.Unmarshal(r.Party, &fp); err != nil {
+			return nil, err
+		}
+		out.Total = r.Total
+		out.Items = append(out.Items, customerView(importParty{position: r.Position, file: fp, match: r.Match,
+			customerID: r.CustomerID, customerName: r.CustomerName, customerOrg: r.CustomerOrg, closing: mustRat(r.Closing)}))
+	}
+	return out, nil
+}
+
+// ListAccountingSaftImportSuppliers is a page of the suppliers Apply makes,
+// as the plan makes them.
+func (s *server) ListAccountingSaftImportSuppliers(ctx context.Context, req gen.ListAccountingSaftImportSuppliersRequestObject) (gen.ListAccountingSaftImportSuppliersResponseObject, error) {
+	q := store.New(s.deps.Pool)
+	row, err := q.GetSaftImport(ctx, req.Id)
+	if noRows(err) {
+		return nil, notFound()
+	}
+	if err != nil {
+		return nil, err
+	}
+	p, err := s.plan(ctx, row, nil)
+	if err != nil {
+		return nil, err
+	}
+	offset, limit := pageParams(req.Params.Offset, req.Params.Limit)
+	out := gen.ListAccountingSaftImportSuppliers200JSONResponse{Items: []gen.AccountingSaftImportSupplier{}, Total: int32(len(p.suppliers))}
+	for _, sp := range p.suppliers[min(int(offset), len(p.suppliers)):min(int(offset+limit), len(p.suppliers))] {
+		out.Items = append(out.Items, importSupplierView(sp))
+	}
+	return out, nil
+}
+
+// LinkAccountingSaftImportCustomer links a file customer to the customer a
+// person picked in Customers: refused when it names none, the one it was
+// merged into when it was merged away.
+func (s *server) LinkAccountingSaftImportCustomer(ctx context.Context, req gen.LinkAccountingSaftImportCustomerRequestObject) (gen.LinkAccountingSaftImportCustomerResponseObject, error) {
+	const title = "The customer cannot be linked"
+	if req.Body == nil {
+		return nil, invalidField(title, "body", "", "A body is required.")
+	}
+	q := store.New(s.deps.Pool)
+	row, err := q.GetSaftImport(ctx, req.Id)
+	if noRows(err) {
+		return nil, notFound()
+	}
+	if err != nil {
+		return nil, err
+	}
+	if row.State == "applied" {
+		return nil, conflict(codeSaftImportApplied, "The file is applied already", "")
+	}
+	party, err := q.GetSaftImportParty(ctx, store.GetSaftImportPartyParams{ImportID: req.Id, Kind: "customer", Position: req.Position})
+	if noRows(err) {
+		return nil, notFound()
+	}
+	if err != nil {
+		return nil, err
+	}
+	id := req.Body.CustomerId
+	resolve := func(id int32) (*contracts.CustomerEntry, error) {
+		if s.deps.Directory == nil {
+			return nil, nil
+		}
+		entries, err := s.deps.Directory.Customers(ctx, []int32{id})
+		if err != nil || len(entries) == 0 {
+			return nil, err
+		}
+		return &entries[0], nil
+	}
+	entry, err := resolve(id)
+	if err != nil {
+		return nil, fmt.Errorf("accounting: read the customer: %w", err)
+	}
+	if entry != nil && entry.MergedInto != nil {
+		if entry, err = resolve(*entry.MergedInto); err != nil {
+			return nil, fmt.Errorf("accounting: read the customer: %w", err)
+		}
+	}
+	if entry == nil {
+		return nil, invalidField(title, "customerId", codeSaftLinkUnknown, "Customers holds no such customer.")
+	}
+	org := ""
+	if profile, err := s.deps.Directory.BillingProfile(ctx, entry.ID, contracts.BillingProfileOptions{}); err != nil {
+		return nil, fmt.Errorf("accounting: read the customer: %w", err)
+	} else if profile != nil {
+		org = digitsOnly(profile.LegalID)
+	}
+	if err := q.SetSaftImportMatches(ctx, store.SetSaftImportMatchesParams{ImportID: req.Id, Positions: []int32{party.Position},
+		Matches: []string{"linked"}, CustomerIds: []int32{entry.ID}, CustomerNames: []string{entry.Name},
+		CustomerOrgs: []string{org}}); err != nil {
+		return nil, err
+	}
+	var fp saft.FileParty
+	if err := json.Unmarshal(party.Party, &fp); err != nil {
+		return nil, err
+	}
+	var orgPtr *string
+	if org != "" {
+		orgPtr = &org
+	}
+	return gen.LinkAccountingSaftImportCustomer200JSONResponse(customerView(importParty{position: party.Position, file: fp,
+		match: "linked", customerID: &entry.ID, customerName: &entry.Name, customerOrg: orgPtr, closing: mustRat(party.Closing)})), nil
+}
+
+// MatchAccountingSaftImport matches the customers again, on a person's ask.
+func (s *server) MatchAccountingSaftImport(ctx context.Context, req gen.MatchAccountingSaftImportRequestObject) (gen.MatchAccountingSaftImportResponseObject, error) {
+	row, err := store.New(s.deps.Pool).GetSaftImport(ctx, req.Id)
+	if noRows(err) {
+		return nil, notFound()
+	}
+	if err != nil {
+		return nil, err
+	}
+	if row.State == "applied" {
+		return nil, conflict(codeSaftImportApplied, "The file is applied already", "")
+	}
+	if err := s.matchCustomers(ctx, row); err != nil {
+		return nil, err
+	}
+	view, err := s.importView(ctx, row.ID, nil)
+	if err != nil {
+		return nil, err
+	}
+	return gen.MatchAccountingSaftImport200JSONResponse(view), nil
 }
 
 // ApplyAccountingSaftImport sets the books up from the file, in one
@@ -991,18 +1339,19 @@ func (s *server) ApplyAccountingSaftImport(ctx context.Context, req gen.ApplyAcc
 	if err := importGate(ctx, q); err != nil {
 		return nil, err
 	}
-	// The plan is read with no transaction open: matching the customers is a
-	// read of Customers.
+	// The plan is read with no transaction open; the customers' matches are
+	// the stored ones, made at the upload or by a person's link.
 	p, err := s.plan(ctx, row, &b)
 	if err != nil {
 		return nil, err
 	}
-	month = int32(p.file.SelectionStart.Month())
-	if b.FiscalYearStartMonth != nil {
-		month = *b.FiscalYearStartMonth
-		if month < 1 || month > 12 {
-			return nil, invalidField(title, "fiscalYearStartMonth", "", "A month, 1 to 12.")
-		}
+	month = p.month
+	if month < 1 || month > 12 {
+		return nil, invalidField(title, "fiscalYearStartMonth", "", "A month, 1 to 12.")
+	}
+	if p.needsMonth && !p.monthGiven {
+		return nil, invalidField(title, "fiscalYearStartMonth", "",
+			"The file names its selection by periods: say which month the fiscal year starts in, so the books start on the right day.")
 	}
 	if b.BooksStart != nil && !day(*b.BooksStart).Equal(p.booksStart) {
 		return nil, invalidField(title, "booksStart", codeSaftBooksStartMismatch,
