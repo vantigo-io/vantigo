@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -74,11 +75,12 @@ func feedManager(t *testing.T, h *harness) *modtest.Client {
 	return h.SignIn(t, "invoices:access", "invoices:manage")
 }
 
-// feedHarness is bankHarness with the fake answering the seller's account
-// (as an IBAN), the older one, a card and a stranger's.
+// feedHarness is bankHarness with the bank feed switched on — it is off by
+// default until the sync exists — and the fake answering the seller's
+// account (as an IBAN), the older one, a card and a stranger's.
 func feedHarness(t *testing.T, opts ...modtest.Option) *harness {
 	t.Helper()
-	h := bankHarness(t, opts...)
+	h := bankHarness(t, append([]modtest.Option{modtest.WithEnv("INVOICES_BANK_FEED_ENABLED", "1")}, opts...)...)
 	h.folio.SetAccounts(
 		foliotest.Account{AccountNumber: "NO93 8601 1117 947", Name: "Drift", Type: "Operational", Balance: "0.00"},
 		foliotest.Account{AccountNumber: olderAccount, Name: "Gamle driftskonto", Type: "Savings", Balance: "0.00"},
@@ -607,5 +609,143 @@ func TestBankFeed_LockOrder(t *testing.T) {
 	}
 	if got, want := seen.take(), []string{"bank_feed_connection 1"}; !slices.Equal(got, want) {
 		t.Errorf("the DELETE's locks = %v, want %v", got, want)
+	}
+}
+
+// A detour through the bank feed loses no cutover (bank feed review): an
+// account taken from camt054 to feed keeps camt054's cutover, and switched
+// off and back to files while the feed booked nothing, it still holds back
+// what camt054 may have registered.
+func TestBankFeed_CutoverSurvivesAFeedDetour(t *testing.T) {
+	t.Parallel()
+	h := feedHarness(t)
+	imported(t, importer(t, h), camtOn("OLD-1", olderAccount, 5, bankfiletest.CamtTx{AmountMinor: 125000, KID: "0010017"}))
+	connect(t, h)
+	manager := feedManager(t, h)
+	switchedOn(t, h, olderAccount, "")
+	if res := switchFeed(manager, olderAccount, false, ""); res.Status != http.StatusOK {
+		t.Fatalf("switch off = %d %s", res.Status, res.Body)
+	}
+	res := manager.Do(http.MethodPut, bankAccountsPath+"/"+olderAccount+"/format", map[string]any{"format": "ocr"})
+	if res.Status != http.StatusOK {
+		t.Fatalf("PUT format ocr = %d %s", res.Status, res.Body)
+	}
+	row := importAccount(t, h, olderAccount)
+	if row.Format != "ocr" || row.PreviousFormat == nil || *row.PreviousFormat != "camt054" ||
+		!row.CutoverThrough.Valid || row.CutoverThrough.Time.Format(time.DateOnly) != "2026-10-05" {
+		t.Errorf("after camt054 → feed → ocr the import row = %+v, want ocr after camt054 through 2026-10-05", row)
+	}
+	// And back on: ocr brought nothing, so camt054's cutover is kept again.
+	switchedOn(t, h, olderAccount, "")
+	if row := importAccount(t, h, olderAccount); row.Format != "feed" || row.PreviousFormat == nil || *row.PreviousFormat != "camt054" ||
+		!row.CutoverThrough.Valid || row.CutoverThrough.Time.Format(time.DateOnly) != "2026-10-05" {
+		t.Errorf("after ocr → feed the import row = %+v, want feed after camt054 through 2026-10-05", row)
+	}
+}
+
+// A key stored while an account is being switched on — between the bank's
+// read and the switch's transaction — refuses the switch: the account was
+// judged with the old key (bank feed review).
+func TestBankFeed_SwitchRefusedWhenTheKeyChanged(t *testing.T) {
+	h := feedHarness(t)
+	connect(t, h)
+	manager := feedManager(t, h)
+	var once sync.Once
+	restore := invoices.SetBankFeedSwitchBeforeTx(func() {
+		once.Do(func() {
+			h.Advance(time.Second)
+			if res := manager.Do(http.MethodPut, bankFeedPath, folioKey()); res.Status != http.StatusOK {
+				t.Errorf("the PUT meanwhile = %d %s", res.Status, res.Body)
+			}
+		})
+	})
+	defer restore()
+	res := switchFeed(manager, sellerAccount, true, "")
+	if res.Status != http.StatusConflict || problemOf(t, res).Code != "bank_feed_key_changed" {
+		t.Errorf("switch on across a new key = %d %s, want 409 bank_feed_key_changed", res.Status, res.Body)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM invoices.bank_feed_accounts`) + h.Count(t, `SELECT count(*) FROM invoices.bank_import_accounts`); n != 0 {
+		t.Errorf("rows after the refusal = %d, want none", n)
+	}
+	if res := switchFeed(manager, sellerAccount, true, ""); res.Status != http.StatusOK {
+		t.Errorf("switch on again = %d %s, want 200", res.Status, res.Body)
+	}
+}
+
+// A start day is at most 13 months before today (bank feed review).
+func TestBankFeed_StartDayAtMostThirteenMonthsBack(t *testing.T) {
+	t.Parallel()
+	h := feedHarness(t)
+	connect(t, h)
+	manager := feedManager(t, h)
+	if res := switchFeed(manager, sellerAccount, true, "2025-09-06"); res.Status != http.StatusBadRequest || len(problemOf(t, res).Errors["startDay"]) != 1 {
+		t.Errorf("a start day 13 months and a day back = %d %s, want 400 on startDay", res.Status, res.Body)
+	}
+	if got := switchedOn(t, h, sellerAccount, "2025-09-07"); got.StartDay != "2025-09-07" {
+		t.Errorf("a start day 13 months back = %s, want it taken", got.StartDay)
+	}
+}
+
+// Nothing of the key reaches the log, whatever the bank answers: a reset
+// connection, a redirect or a 500, to the PUT's verify and to the accounts'
+// read (bank feed review).
+func TestBankFeed_TheKeyNeverReachesTheLog(t *testing.T) {
+	t.Parallel()
+	for name, f := range map[string]foliotest.Failure{
+		"reset":    {Reset: true},
+		"redirect": {Redirect: "https://elsewhere.example.test/accounts"},
+		"500":      {Status: http.StatusInternalServerError},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			h := feedHarness(t)
+			manager := feedManager(t, h)
+			connect(t, h)
+			h.folio.Fail(foliotest.OpAccounts, f)
+			if res := manager.Do(http.MethodPut, bankFeedPath, folioKey()); res.Status != http.StatusServiceUnavailable {
+				t.Errorf("PUT while the bank fails = %d %s, want 503", res.Status, res.Body)
+			}
+			if res := manager.Do(http.MethodGet, bankFeedAccountsPath, nil); res.Status != http.StatusServiceUnavailable {
+				t.Errorf("GET accounts while the bank fails = %d %s, want 503", res.Status, res.Body)
+			}
+			logs := h.Logs()
+			if !strings.Contains(logs, "the bank could not be reached") {
+				t.Errorf("the log has no line about the failure: %s", logs)
+			}
+			if strings.Contains(logs, foliotest.APIKey) {
+				t.Errorf("the log carries the key:\n%s", logs)
+			}
+		})
+	}
+}
+
+// Who disconnected the bank and who switched an account off is logged with
+// the caller's user id: the tables keep neither (bank feed review).
+func TestBankFeed_LogsWhoDisconnectsAndSwitchesOff(t *testing.T) {
+	t.Parallel()
+	h := feedHarness(t)
+	connect(t, h)
+	switchedOn(t, h, sellerAccount, "")
+	manager, managerID := h.SignInUser(t, "invoices:access", "invoices:manage")
+	if res := switchFeed(manager, sellerAccount, false, ""); res.Status != http.StatusOK {
+		t.Fatalf("switch off = %d %s", res.Status, res.Body)
+	}
+	if res := manager.Do(http.MethodDelete, bankFeedPath, nil); res.Status != http.StatusNoContent {
+		t.Fatalf("DELETE = %d %s", res.Status, res.Body)
+	}
+	logs := h.Logs()
+	for _, line := range []string{"the bank feed was switched off for an account", "the bank was disconnected"} {
+		i := strings.Index(logs, line)
+		if i < 0 {
+			t.Errorf("no log line %q", line)
+			continue
+		}
+		end := strings.IndexByte(logs[i:], '\n')
+		if end < 0 {
+			end = len(logs) - i
+		}
+		if !strings.Contains(logs[i:i+end], managerID.String()) {
+			t.Errorf("the line %q = %s, want the caller's id %s", line, logs[i:i+end], managerID)
+		}
 	}
 }
