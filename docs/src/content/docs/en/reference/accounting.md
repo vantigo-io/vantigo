@@ -1,6 +1,6 @@
 ---
 title: "Accounting module"
-description: "The company's books: SAF-T Financial — the export by fiscal year and periods, its worker, lease and streaming, the split by period, the element mapping, the journals, the TaxInformation mapping, the file name and the checks; the import as the other way to set up the books — the stream reader and what it refuses, the preview, the chart and its fixes, the roles, the tax codes, the suppliers, the customers matched in Customers, the opening voucher with the VAT owed on the settlement account, and the refusals; VAT — the specification by tax code with its parts, drill-down and reconciliation against the VAT accounts, the terms derived from the settings with their due dates, close with its refusals, every closing kept, the settlement voucher and the lock, reopen, filing and unfiling, the lock held behind no closed term, the VAT accounts kept out of the opening and fixed on a used tax code, the return laid out as Skatteetaten's with each code's lines, the øre cut, kreditnota and tapPåKrav, and the skattemeldingformerverdiavgift XML; purchases — suppliers with the Brønnøysund lookup and a person's retention, supplier invoices from draft to voucher with every tax code's direction, foreign currency, credit notes, Reverse and copy, payments with the currency difference — and expenses that post themselves from Expenses' journal with the VAT inference, the amount in NOK and the supplier_invoice kind; sales that post themselves — the catch-up worker, its event handlers, streams, cursors and leases, what each document and fact posts as with every system rule and its version, the books' start and the opening's seqs, the posting rules, Needs attention and retry; the module and the module it requires; the four permissions; Set up the books and the gate before it; the settings; the default chart with Skatteetaten's grouping codes, the system roles and the standard tax codes with their rates from 2022; accounts and their rules; groupings per year; tax codes and rate periods; vouchers and postings and the rules the database keeps — balance, a voucher has postings, immutability, postings only on the voucher just inserted, the books' start and the lock read under a share lock; the posting engine — numbering, dating, the lock rule, zero lines, open items and idempotence on the source key; manual journals and their VAT lines; reversal; attachments; the lock and its history; the opening balances and Invoices' open invoices; open items and settlements; the reports and their CSV; the refusals and the endpoints."
+description: "The company's books: the bank — bank accounts, camt.053 and CSV statements with the duplicate guard, the bank feed through Invoices as a third source and its worker, reconciliation with each suggestion kind in order, every bank rule and its version, undo and the lock's warning; SAF-T Financial — the export by fiscal year and periods, its worker, lease and streaming, the split by period, the element mapping, the journals, the TaxInformation mapping, the file name and the checks; the import as the other way to set up the books — the stream reader and what it refuses, the preview, the chart and its fixes, the roles, the tax codes, the suppliers, the customers matched in Customers, the opening voucher with the VAT owed on the settlement account, and the refusals; VAT — the specification by tax code with its parts, drill-down and reconciliation against the VAT accounts, the terms derived from the settings with their due dates, close with its refusals, every closing kept, the settlement voucher and the lock, reopen, filing and unfiling, the lock held behind no closed term, the VAT accounts kept out of the opening and fixed on a used tax code, the return laid out as Skatteetaten's with each code's lines, the øre cut, kreditnota and tapPåKrav, and the skattemeldingformerverdiavgift XML; purchases — suppliers with the Brønnøysund lookup and a person's retention, supplier invoices from draft to voucher with every tax code's direction, foreign currency, credit notes, Reverse and copy, payments with the currency difference — and expenses that post themselves from Expenses' journal with the VAT inference, the amount in NOK and the supplier_invoice kind; sales that post themselves — the catch-up worker, its event handlers, streams, cursors and leases, what each document and fact posts as with every system rule and its version, the books' start and the opening's seqs, the posting rules, Needs attention and retry; the module and the module it requires; the four permissions; Set up the books and the gate before it; the settings; the default chart with Skatteetaten's grouping codes, the system roles and the standard tax codes with their rates from 2022; accounts and their rules; groupings per year; tax codes and rate periods; vouchers and postings and the rules the database keeps — balance, a voucher has postings, immutability, postings only on the voucher just inserted, the books' start and the lock read under a share lock; the posting engine — numbering, dating, the lock rule, zero lines, open items and idempotence on the source key; manual journals and their VAT lines; reversal; attachments; the lock and its history; the opening balances and Invoices' open invoices; open items and settlements; the reports and their CSV; the refusals and the endpoints."
 sources:
   - apps/server/internal/accounting
   - openapi/accounting.yaml
@@ -10,6 +10,7 @@ sources:
   - apps/server/internal/db/migrations/00185_accounting_purchases.sql
   - apps/server/internal/db/migrations/00186_accounting_vat.sql
   - apps/server/internal/db/migrations/00187_accounting_saft.sql
+  - apps/server/internal/db/migrations/00188_accounting_bank.sql
 ---
 
 Accounting keeps the company's books as bokføringsloven asks for them. Its package is
@@ -20,7 +21,8 @@ mounted at `/api/v1/accounting`. The design is
 `docs/superpowers/specs/2026-11-14-accounting-design.md`; this page is what deliveries A
 (the ledger), B (sales post themselves, migration `00183_accounting_sales.sql`), C
 (purchases and expenses, migration `00185_accounting_purchases.sql`), D (VAT, migration
-`00186_accounting_vat.sql`) and E (SAF-T, migration `00187_accounting_saft.sql`) built. The user guide is [Accounting](/en/user/accounting/).
+`00186_accounting_vat.sql`), E (SAF-T, migration `00187_accounting_saft.sql`) and F (the
+bank, migration `00188_accounting_bank.sql`) built. The user guide is [Accounting](/en/user/accounting/).
 
 ## The module
 
@@ -29,7 +31,8 @@ mounted at `/api/v1/accounting`. The design is
   open invoices for the opening balances), `contracts.CustomerDirectory` (customers'
   names), when Expenses is on `contracts.ExpenseJournal` ([Expenses post
   themselves](#expenses-post-themselves)), and when Projects is on
-  `contracts.ProjectDirectory` (projects' names). Every call out of the module is made
+  `contracts.ProjectDirectory` (projects' names), and when Invoices' bank feed is on
+  `contracts.BankFeed` ([The bank feed](#the-bank-feed)). Every call out of the module is made
   with no transaction of its own open. It works with Expenses off: the expenses stream is
   then not read, and the meta's `expensesEnabled` is false.
 - It calls Brønnøysundregisteret through the platform package `internal/brreg` for the
@@ -42,12 +45,14 @@ mounted at `/api/v1/accounting`. The design is
   number and invoice address) and `CustomersByLegalID` (the import's matching), the
   projects' names, and the names of who asked for an export
   ([SAF-T Financial](#saf-t-financial)).
-- It publishes no event. It starts two workers, `accounting.catchup` and `accounting.saft`, and declares four
+- It publishes no event. It starts three workers, `accounting.catchup`, `accounting.saft`
+  and `accounting.bankfeed` ([The bank feed](#the-bank-feed)), and declares four
   event handlers ([Sales post themselves](#sales-post-themselves)); before the books are
   set up both return at once, and the handlers do nothing with the module off in
   `MODULES`.
-- Attachments, SAF-T exports (`saft-exports/<id>/<uuid>.xml`) and uploaded SAF-T files
-  (`saft-imports/<uuid>.xml`) live in the object store under the scope `accounting`.
+- Attachments, SAF-T exports (`saft-exports/<id>/<uuid>.xml`), uploaded SAF-T files
+  (`saft-imports/<uuid>.xml`) and imported bank statements (`bank-statements/<sha256>.xml`
+  or `.csv`) live in the object store under the scope `accounting`.
 
 ## Permissions
 
@@ -331,20 +336,29 @@ a change to a rule is a new version.
 | --- | --- | --- | --- | --- |
 | `sales.invoice` (1) | an issued invoice | `sales_invoice` | `receivables` — the summaries' bases plus VAT, on the invoice's item | each line's net on its [posting rule](#posting-rules)'s account, with the line's tax code as `base`; each VAT summary's VAT on its tax code's VAT account, as `tax` with the summary's base |
 | `sales.credit_note` (1) | an issued credit note | `sales_credit_note` | the invoice's lines with every sign turned | `receivables` on **the credited invoice's item** — its opening item when the invoice predates the books |
-| `sales.payment` (1) | `payment` | `customer_payment` | `bank`, or `clearing_vipps` for a Vipps payment | `receivables` on the invoice's item |
-| `sales.payment_removed` (1) | `payment_removed` | `customer_payment` | `receivables` | `bank` / `clearing_vipps` — dated the removal's business day |
-| `sales.charge_payment` (1) | `charge_payment` | `charge` | `bank` | `charge_income`, tax code 7 (`base`), one account, never split (R14) |
-| `sales.charge_payment_removed` (1) | `charge_payment_removed` | `charge` | `charge_income`, code 7 | `bank` |
+| `sales.payment` (2) | `payment` | `customer_payment` | the receiving bank account's ledger account (below), else `bank`; `clearing_vipps` for a Vipps payment | `receivables` on the invoice's item |
+| `sales.payment_removed` (2) | `payment_removed` | `customer_payment` | `receivables` | the account its registration's voucher debited — else as `sales.payment` — dated the removal's business day |
+| `sales.charge_payment` (2) | `charge_payment` | `charge` | the receiving bank account's ledger account, else `bank` | `charge_income`, tax code 7 (`base`), one account, never split (R14) |
+| `sales.charge_payment_removed` (2) | `charge_payment_removed` | `charge` | `charge_income`, code 7 | the account its registration's voucher debited |
 | `sales.write_off` (1) | `write_off`, reason `loss` or `other`, no VAT correction | `write_off` | `bad_debt` — the whole amount | `receivables` |
 | `sales.write_off_vat` (1) | `write_off` with the VAT correction | `write_off` | per VAT summary of what is left of the invoice — its summaries less its issued credit notes', per code and rate (R15) — the amount's share by gross: its VAT on the code's VAT account (`tax`) and the rest on `bad_debt` (`base`), both with the code and `tax_specification = tapPåKrav`; a zero-VAT summary's share on `bad_debt` alone | `receivables` |
 | `sales.write_off_rounding` (1) | `write_off`, reason `rounding` | `write_off` | `rounding` | `receivables` |
 | `sales.write_off_undone` (1) | `write_off_undone` | `write_off` | the write-off's **stored** voucher, read back, line for line with every sign turned, on the accounts, tax codes and items it was posted to — an account inactive since included; the voucher names it as the one it `reverses` | |
-| `sales.recovered` (1) | `recovered_payment` | `customer_payment` | `bank` | the write-off's stored debit lines scaled **cumulatively** (below), signs turned: `bad_debt`, and with the correction the VAT given back in proportion, `tapPåKrav` |
-| `sales.recovered_removed` (1) | `recovered_payment_removed` | `customer_payment` | the recovery's stored voucher, line for line with every sign turned, naming it as the one it `reverses` | |
+| `sales.recovered` (2) | `recovered_payment` | `customer_payment` | the receiving bank account's ledger account, else `bank` | the write-off's stored debit lines scaled **cumulatively** (below), signs turned: `bad_debt`, and with the correction the VAT given back in proportion, `tapPåKrav` |
+| `sales.recovered_removed` (2) | `recovered_payment_removed` | `customer_payment` | the recovery's stored voucher, line for line with every sign turned, naming it as the one it `reverses` | |
 
-A bank payment — a bank file's (`ocr`, `camt054`) or the bank feed's (`bank_feed`) — posts
-to `bank` in this delivery; delivery F maps the receiving
-account to its ledger account. Amounts are exact, in NOK, rounded to øre half away from
+**The bank side of a payment** (version 2, delivery F): a bank payment — a bank file's
+(`ocr`, `camt054`) or the bank feed's (`bank_feed`) — names the account it was received on
+(`JournalFact.BankAccount`); it posts to the ledger account of the active
+[bank account](#bank-accounts) with that number, and to the `bank` role's when the books
+have none. A manual payment names none and posts to `bank`, a Vipps payment to
+`clearing_vipps`. A removal posts to the account its registration's voucher debited, read
+back, so it always turns back what was posted. Version 1, before delivery F, posted every
+bank payment to `bank`; vouchers posted under it are never rewritten. A payment from a bank
+line also stores its bank reference (`JournalFact.BankReference`: a camt.054 transaction's
+or an OCR line's archive reference, the feed's transaction id), its receiving account and
+its source in `voucher_bank_refs`, which reconciliation matches the statement's line by.
+Amounts are exact, in NOK, rounded to øre half away from
 zero. **A difference between the lines' nets and the summaries' bases** goes on the
 largest revenue line, so the voucher follows the document's own totals. **A share of a
 write-off** is the amount × the remaining summary's gross ÷ the remaining gross, rounded,
@@ -1323,6 +1337,247 @@ and `seedTaxCodes` Set up the books uses, the default posting rules, the supplie
 opening voucher through `Post` as the person's, and marks the import applied with its
 voucher. History is not imported as vouchers: the uploaded file is the record of those years.
 
+## The bank
+
+Delivery F (A26–A29, R5, R11): the company's bank accounts, their statements from camt.053,
+CSV or the bank feed, and reconciliation, which ends each statement line matched to the
+postings on its ledger account or leaves it open. Migration `00188_accounting_bank.sql`.
+
+| Table | What it holds |
+| --- | --- |
+| `bank_accounts` | name, `account_number` (11 digits, mod 11), IBAN, BIC, `currency` (NOK only), `ledger_account_id` (unique: one bank account a ledger account), `source` (`file` or `feed`), the feed's start day, status, detail, last and next read and lease, the CSV mapping (jsonb), active, revision |
+| `statements` | the bank account, `source` (`camt053`, `csv`, `feed`), the statement's own id, the period, the opening and closing balances when the source gives them, `continuity` (`ok`, `gap`, `overlap`, `mismatch`, `unknown`) with its detail, the file's name, object key and SHA-256 (none for the feed), lines imported and skipped, who imported it (none for the feed) and when |
+| `statement_lines` | the statement and bank account, booking and value day, `amount` signed (money in positive), NOK, text, reference, KID, counterparty name and account, `bank_id`, `fingerprint`, `ordinal`, `kind` (`transfer`, `card`, `internal`, `other`), `reversal`, `batch` (a camt.053 batch's transactions, jsonb), `state` (`open`, `matched`) |
+| `statement_matches` | the line, `kind`, the request key, the reason shown, the voucher it posted, the supplier payment it registered, the bank rule and its version, who matched it and when; and once undone, who, when and the reversal. One standing match a line (`ux_statement_matches_line`) |
+| `statement_match_postings` | the match's postings, `standing`; a posting is matched to one line at most while the match stands (`ux_statement_match_postings_posting`) |
+| `bank_rules` | name, bank account (none: every one), `text_contains`, `counterparty_contains`, `direction` (`in`, `out`, `any`), the account, tax code and project, description, active, version |
+| `voucher_bank_refs` | a payment voucher's receiving account, bank reference and source, as Invoices registered it; never changed |
+
+### Bank accounts
+
+`GET /bank/accounts` (`accounting:read`) answers every bank account with its ledger account,
+its open lines and its last statement's day; `suggested`, while no bank account has its
+number, the seller's account from `SalesTax.Seller()` — its name, number, IBAN and BIC —
+on the `bank` role's account when no bank account holds it; and `feed` — whether
+`contracts.BankFeed` is composed, connected and refused. `POST /bank/accounts`, `PUT
+/bank/accounts/{id}` (at the revision read, else 409 `revision_conflict`) and `DELETE
+/bank/accounts/{id}` need `accounting:close`. The number is read as 11 digits with spaces
+and dots dropped, or a Norwegian IBAN as its BBAN, and must pass mod 11 (400
+`bank_account_number_invalid`); the currency is NOK (400 `bank_account_currency`); the
+ledger account an active asset account (400 `bank_account_invalid`). Another bank account
+with the number or the ledger account is 409 `bank_account_number_taken` or
+`bank_account_ledger_taken`. A bank account with statements, or with bank rules, is not
+deleted (409 `bank_account_has_statements`): make it inactive. An inactive bank account is
+left out of the payments' mapping, the status and the meta.
+
+### Statements
+
+`POST /bank/imports` (`accounting:post`, multipart field `file`, at most 20 MB and 100 000
+lines, else 400 `bank_statement_too_large`) reads the file before anything is written. A
+file whose first byte past a byte order mark and white space is `<` is camt.053; any other
+is CSV of the bank account `bankAccountId` names (400 `bank_statement_account_required`
+without it).
+
+**camt.053** (`bankstmt.ReadCamt053`) is read as a stream of tokens: a DOCTYPE — and with it
+every entity and external reference — is refused before anything is read; the root must be
+`Document` in `urn:iso:std:iso:20022:tech:xsd:camt.053.001.<v>` with `<v>` from `02` on
+(another camt message, or `.01`, is refused naming itself); UTF-8 or ISO-8859-1. Each `Stmt`
+is decoded alone. Its account is `Acct/Id/IBAN` (a Norwegian IBAN read as its BBAN) or
+`Acct/Id/Othr/Id`; its currency must be NOK; its balances `OPBD` (or `PRCD`) and `CLBD`,
+signed by `CdtDbtInd`, kept only as a pair; its period `FrToDt`, else its entries' days.
+Only entries with status `BOOK` (`Sts` as text in .02, `Sts/Cd` from .08) are read; the
+rest are counted as `notBooked`. An entry's amount is signed by its `CdtDbtInd` — a reversal
+(`RvslInd`) keeps its own direction and is marked; its bank id is `AcctSvcrRef`, else
+`NtryRef`, else the one transaction's `AcctSvcrRef`; with one transaction its reference is
+`EndToEndId` (not `NOTPROVIDED`), its KID the first `Strd/CdtrRefInf/Ref` of digits, its
+text `Ustrd`, `AddtlTxInf` or `AddtlNtryInf`, and its counterparty the debtor of money in, the
+creditor of money out; with several the transactions are kept as `batch`, each with its
+amount, KID, reference and name. The bank transaction code says the kind: card families
+(`CCRD`, `DCRD`, `POSD`, `CWDL`) are `card`, the sub-family `BOOK` or `ACCT` is `internal`.
+An amount that is not a decimal with at most two places, an entry without a booking day or
+neither CRDT nor DBIT refuses the file (400 `bank_statement_invalid`).
+
+The statements are routed by account number: one of an account the books do not have is
+left out and named in `unknownAccounts`; a file with none the books have is refused (400
+`bank_statement_account_unknown`, the detail naming them).
+
+**CSV** (`bankstmt.ReadCSV`) is read by the mapping saved on the bank account (`PUT
+/bank/accounts/{id}/csv-mapping`, `accounting:close`), or the one sent in the field
+`mapping`: the separator, the encoding (`utf-8`, its byte order mark dropped, or
+`iso-8859-1`), header rows skipped (0–20), the date format (`DD.MM.YYYY`, `DD.MM.YY`,
+`YYYY-MM-DD`, `DD/MM/YYYY`, `MM/DD/YYYY`, `YYYYMMDD`), the decimal and thousands separators,
+and the columns from 0 — the booking day, and either a signed amount (`invertSign` for a
+bank that shows money out as positive) or a debit and a credit column, and optionally the
+value day, text, reference, KID, counterparty, its account and the bank's id. A mapping with
+no amount, both kinds or a column twice is 400 `bank_csv_mapping_invalid`; a bank account
+with none is 409 `bank_csv_mapping_required`. A row that cannot be read refuses the file,
+naming the row. `POST /bank/accounts/{id}/csv-preview` (`accounting:post`) answers the first
+20 rows as they would be imported, with each row's error, and writes nothing.
+
+The file is kept in the object store under `bank-statements/<sha256>` (503
+`storage_not_configured` without one). Each statement is written in its own transaction,
+the bank account FOR UPDATE. The same statement of the same file again writes nothing
+(`repeated`). **The duplicate guard**: a line with a bank id is skipped when the account has
+a line with that id (`ux_statement_lines_bank_id`); one without, when it has one with the
+same fingerprint and ordinal (`ux_statement_lines_fingerprint`). The fingerprint is the
+SHA-256 of the account, the booking and value days, the amount, the text, the reference,
+the KID and the counterparty; the ordinal is the line's place among the file's lines of
+that fingerprint, so two genuine identical lines of one day in one file both stay, and the
+same file again adds neither. **Continuity**: with balances, against the latest statement
+of the account with balances starting on or before it — `overlap` when it starts within it,
+`gap` when days lie between, `mismatch` when its opening is not that one's closing, else
+`ok`; flagged, never refused. Without balances it is `unknown`.
+
+`GET /bank/statements?bankAccountId=` lists the statements, newest first, at most 200;
+`GET /bank/statements/{id}/file` streams a statement's file as uploaded (404 for the feed's).
+
+### The bank feed
+
+A bank account whose number is one of the accounts Invoices' bank feed reads can take its
+statement from the feed (A29). Invoices keeps the one connection and its sealed key
+([`contracts.BankFeed`](/en/reference/invoices/#the-bank-feed-contract)); Accounting holds
+no second key. `GET /bank/feed/accounts` (`accounting:close`) asks the bank — with no
+transaction open — for every account the key reads, cards and tax accounts too, each with
+the bank account here with its number. `PUT /bank/accounts/{id}/source` (`accounting:close`)
+switches the source: to `feed` from `startDay` (default today, at most 13 months back), only
+when the bank answers the account's number (409 `bank_feed_account_not_offered`); to `file`,
+the feed's state cleared and its lines kept. With the feed not composed — Invoices off or
+`INVOICES_BANK_FEED_ENABLED` off — it is 409 `bank_feed_off`; with no key in Invoices
+`bank_feed_not_connected`; with the key refused `bank_feed_refused`; with the bank not
+reached or limiting, 503 `bank_feed_unreachable`.
+
+Worker **`accounting.bankfeed`** polls every minute and reads each feed account that is due
+— at most 50 a run — on the feed's interval (`BankFeedStatus.Interval`, 30 minutes):
+
+1. it claims the account's lease (five minutes) in one short statement, `FOR UPDATE SKIP
+   LOCKED`;
+2. it reads the bank with no transaction open, from the later of the start day and the
+   latest line it wrote less **ten days**, through today: the overlap is read every time;
+3. it writes the transactions the account does not have, each the bank's transaction id as
+   its `bank_id` — every direction and kind, a debit negative — as one statement of source
+   `feed`, in one transaction that holds the claim (a lost claim writes nothing); a
+   transaction whose direction is unknown, in another currency, of no amount or booked after
+   today is left out and counted in the detail;
+4. it releases the claim with what the bank said: `ok` and the next read an interval on;
+   `unauthorized` when the bank refused the key (Invoices records the refusal too);
+   `rate_limited`, the next read after the bank's `Retry-After`, at least the interval;
+   `off` with no key; `failing` for any other error.
+
+The meta's `bankFeedProblems` counts the feed accounts in `unauthorized`, `failing`
+or `off`; `bankFeedEnabled` says whether the feed is composed.
+
+### Reconciliation
+
+`GET /bank/accounts/{id}/reconciliation?from=&to=&state=` (`accounting:read`; at most 366
+days, else 400 `period_invalid`) answers the lines booked in the period, each with its
+standing match, an open line with its suggestions, and the **foot**: the statement's balance
+at the period's end — the latest closing balance given on or before it and the lines booked
+after that statement's period, none when no statement gave one — the ledger account's
+balance at the end, the difference, and the ledger's postings dated in the period that no
+standing match holds (at most 200 listed, the count of all).
+
+**The suggestions** are computed from the books alone, no call out, in this order, then
+ordered `exact`, `likely`, `possible`; at most eight. A posting is a candidate when it is on
+the ledger account, dated within ten days of the line, held by no standing match, and its
+voucher neither reversed nor a reversal.
+
+| Kind | When | Certainty | What accepting does |
+| --- | --- | --- | --- |
+| `feed_payment` | a candidate of the line's amount whose voucher's bank reference is the line's bank id or reference: the payment Invoices registered from the same bank transaction, a feed's or a file's | exact | links it |
+| `posting` | a candidate of the same amount, nearest day first, at most five | exact the same day, likely within three days, else possible | links it |
+| `batch` | money in that several of Invoices' payment postings sum to: by camt.053's batch transactions one by one, each to a payment of its amount nearest the day; else the payments of one day — of one source (`ocr`, `camt054`, `bank_feed`) first, then of any — from the booking day back three days | exact by the transactions, likely by source, possible by day | links them |
+| `supplier_invoice` | money out and a posted supplier invoice owed (at most three): its KID, the amount with the supplier's bank account as the counterparty's, its number or reference in the text, or the amount alone | exact by KID and amount, likely, possible | registers the payment through the supplier payment's own path (A19, R8): the invoice and its item FOR UPDATE, the line's amount as the NOK the bank took, on the bank account's ledger account, all that is left settled in the invoice's currency, the difference to `currency_gain` or `currency_loss` |
+| `vipps_payout` | money in whose text, counterparty or reference names Vipps, at most what `clearing_vipps` holds through the day before (or the day itself, when the day before holds less) | exact with no fees, else likely | posts `bank.vipps_payout` |
+| `vat` | the line is the balance of `vat_settlement` through its day, or a closed term's settlement on it (A22) | likely when the text names Skatteetaten, skatt or mva, else possible | posts `bank.vat_settlement` |
+| `transfer` | an open line on another bank account's statement of the opposite amount within three days, or money to or from another active bank account's number | exact the same day, else likely | posts `bank.transfer`, and matches the other line too |
+| `rule` | an active bank rule — of this bank account or every one — whose direction and words (case aside) the line holds; at most two | likely | posts `bank.rule` |
+| `invoices` | money in with a KID, or a batch, that none of the first three explains | likely | nothing: it points to Invoices' bank import (R11); accepting it is 409 `bank_line_customer_payment` |
+
+A line's lone first suggestion that is `exact` is marked `exact`: the one bulk accept takes.
+
+**The bank's vouchers.** Every voucher a match posts is kind `bank`, dated the line's
+booking day, posted by the person with the source key `(accounting, bank_match, line id,
+<uuid>)`; a day before the books' start or in a locked period is refused (400
+`date_before_books_start`, 409 `period_locked`), as a person's voucher would be. It is a
+system voucher: only the bank's undo reverses it (409 `voucher_owned_by_source` otherwise).
+
+| Rule (version) | Lines |
+| --- | --- |
+| `bank.vipps_payout` (1) | the bank account's ledger account debited with the line; `payment_fees` with what the clearing holds beyond it; `clearing_vipps` credited with all it holds through the day used |
+| `bank.vat_settlement` (1) | the ledger account by the line; `vat_settlement` the other way: a payment debits it, a refund credits it |
+| `bank.transfer` (1) | the ledger account by the line; the other bank account's ledger account the other way |
+| `bank.rule` (1) | the ledger account by the line; the rule's account the other way, the amount gross with the rule's tax code, through the manual journal's tax computation (A6); the match keeps the rule's id and version |
+| `bank.coded` (1) | the ledger account by the line; the lines the person gave (below) |
+| `bank.match_undone` (1) | the matched voucher's reversal, line for line, dated its day, with the source key `(accounting, bank_match_undone, match id, '')` |
+| `purchase.payment` (1) | a supplier invoice's payment, as [Payments](#payments) |
+
+**Accept** — `POST /bank/lines/{id}/accept` with `key` (`accounting:post`) — runs in one
+transaction that takes the line FOR UPDATE first, computes the suggestions again and
+accepts the one with that key: 409 `bank_suggestion_stale` when none has it, 409
+`bank_line_matched` when another match stands, and the same key again answers the match it
+made (a double click posts once; two people accepting the same suggestion at once leave one
+match). Linked postings are taken FOR SHARE; one another line holds meanwhile is 409
+`bank_posting_matched`. A transfer takes the other line FOR UPDATE too, and two people
+matching its two sides at once is answered 409 `bank_line_matched`.
+
+**Code it** — `POST /bank/lines/{id}/code` with `key`, `description`, `entry` (`gross` by
+default) and `lines` (`accounting:post`) — posts `bank.coded`: the bank account's ledger
+account by the line's amount, then the lines given, through the manual journal's validation
+and tax computation (A6), so they must balance it (400 `voucher_unbalanced`). A line naming
+a party's open item settles it (R5); an item that stands for a document in Invoices is 409
+`settlement_source_document`, a supplier invoice's 409 `settlement_supplier_invoice`.
+**A customer payment is never coded here** (R11): money in with a KID or a batch, or money
+in coded to a sales income account (class 3), is 409 `bank_line_customer_payment`: it is
+registered in Invoices, and its posting then matches the line. The same key again answers
+the first's match.
+
+**Undo** — `POST /bank/lines/{id}/undo` (`accounting:post`) — while the line's day is after
+the lock (409 `period_locked` otherwise): a supplier payment is removed through its own
+path; another voucher is reversed (`bank.match_undone`) and every match standing on it is
+undone, so a transfer's other line opens too; a match of postings that were there lets them
+go. The match row is kept, undone, with who and the reversal. With no standing match it is
+409 `bank_line_not_matched`.
+
+**Accept the exact ones** — `POST /bank/lines/accept-exact` with up to 500 `lineIds`
+(`accounting:post`) — accepts each line's lone exact suggestion, each in its own
+transaction, and answers the lines `accepted` and `skipped`.
+
+### The lock and the status
+
+`GET /bank/status?through=` (`accounting:read`) answers, per active bank account, the lines
+booked on or before the day not matched, the statement's and the ledger's balance at it,
+the difference, and whether all is reconciled. `PUT /lock` moving the lock forward over a
+bank account that is not — a line not matched through the new lock, or a statement balance
+that differs from the ledger's — is refused 409 `bank_unreconciled`, the detail naming the
+accounts, unless the body says `confirmUnreconciled: true`; the check is read before the
+lock's transaction, a warning, not a lock of the bank. Closing a VAT term, which moves the
+lock too, shows the same status on the screen and does not block. The meta's
+`openBankLines` counts the active bank accounts' lines not matched; the host's dashboard
+shows them, and the feed's problems, when nothing more pressing waits.
+
+### Bank rules
+
+`GET /bank/rules` (`accounting:read`); `POST`, `PUT /bank/rules/{id}` and `DELETE`
+(`accounting:close`). A rule needs words in the text or the counterparty (at most 140
+characters each), an active account (400 `account_unknown`) and an active tax code when it
+names one (400 `tax_code_unknown`). A change is a new version. A rule a match was made with
+is not deleted (409 `bank_rule_in_use`): make it inactive.
+
+### SAF-T and the bank
+
+The bank's vouchers are kind `bank`, in the `BANK` journal with the payments; a supplier
+payment is `supplier_payment`. The SAF-T header names the company's active bank accounts,
+each as a `BankAccount` with its number, name, BIC and `GeneralLedgerAccountID`; with none,
+the seller's account in Invoices as before.
+
+### Status codes of the bank
+
+| Status | Codes |
+| --- | --- |
+| 400 | `bank_account_number_invalid`, `bank_account_currency`, `bank_account_invalid`, `bank_statement_invalid`, `bank_statement_too_large`, `bank_statement_account_unknown`, `bank_statement_account_required`, `bank_csv_mapping_invalid`, `voucher_unbalanced`, `period_invalid` |
+| 409 | `bank_account_number_taken`, `bank_account_ledger_taken`, `bank_account_has_statements`, `bank_feed_off`, `bank_feed_not_connected`, `bank_feed_refused`, `bank_feed_account_not_offered`, `bank_csv_mapping_required`, `bank_line_matched`, `bank_line_not_matched`, `bank_suggestion_stale`, `bank_posting_matched`, `bank_line_customer_payment`, `bank_rule_in_use`, `bank_unreconciled`, `period_locked`, `settlement_source_document`, `settlement_supplier_invoice` |
+| 503 | `bank_feed_unreachable`, `storage_not_configured` |
+
 ## The reports
 
 `GET /reports/{report}` (`accounting:read`) and `GET /reports/{report}/csv`
@@ -1389,7 +1644,8 @@ Every refusal is an RFC 9457 problem (`AccountingProblem`) with its `code`: 400 
 request's fields (`errors` keyed by the camelCase path, such as `lines[2].accountId`), 404
 bare for an unknown id, 409 for the state of the books, and 503 for a missing object
 store. The contract's `AccountingProblem` description names every code; the module's test
-holds it to the list in `errors.go`.
+holds it to the list in `errors.go`. The bank's are listed under [Status codes of the
+bank](#status-codes-of-the-bank).
 
 ## Endpoints
 

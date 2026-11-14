@@ -1304,6 +1304,15 @@ ingenting i mellomtiden**: det samme svaret avvises ved hver lesing. Veien ut, f
 var en — eller gå tilbake til å importere kontoens bankfiler (**Endre formatet** under
 **Innbetalinger**).
 
+**Regnskapet leser den samme tilkoblingen.** Med Regnskap slått på kan en bankkonto i
+regnskapet få hele kontoutskriften fra denne tilkoblingen — også utbetalinger, kortkjøp og
+overføringer mellom egne kontoer, som Fakturering ikke tar vare på — uten en ny nøkkel
+([Regnskap › Bankintegrasjonen som kilde](/nb/user/accounting/#bankintegrasjonen-som-kilde)).
+Innbetalingene Fakturering registrerer fra integrasjonen eller fra en bankfil, avstemmes da
+mot regnskapets kontoutskriftlinjer med bankens egen referanse. En innbetaling fra en kunde
+registreres alltid her, i Fakturering, aldri kontert i Regnskap
+([hvorfor](/nb/user/accounting/#hvorfor-innbetalinger-fra-kunder-registreres-i-fakturering)).
+
 **En ekte andre betaling som ser ut som en gjentakelse.** En betaling holdes tilbake som
 **Et mulig duplikat**, og registreres ikke, når en betaling fra **en annen fil** til samme
 konto, bokført samme dag, med samme beløp og samme KID, allerede er registrert — fordi det

@@ -1,6 +1,6 @@
 ---
 title: Accounting
-description: The Accounting app — setting up the books, the chart of accounts with its grouping codes and system accounts, the tax codes and their rates, posting a journal entry net or gross with its VAT lines, copying a voucher, attaching files, reversing a voucher, locking a period and moving the lock back, the opening balances and Invoices' open invoices, how invoices, payments, charges and write-offs post themselves, suppliers and the Brønnøysund lookup, entering, posting and paying a supplier invoice, another currency, reverse charge and import of goods, credit notes, Reverse and copy, how expenses arrive from Expenses, the posting rules for sales and expense categories, Needs attention with Retry, the amount in NOK and Make a supplier invoice, open items and registering a receipt, payment or refund, the VAT term — checking its figures, closing it, downloading the return, filing it at Skatteetaten and marking it as filed, reopening it, correcting after filing and paying the VAT — the reports and their CSV, the SAF-T file an audit asks for and the grouping codes it needs, coming from another system with its SAF-T file, and inviting an accountant.
+description: The Accounting app — setting up the books, the chart of accounts with its grouping codes and system accounts, the tax codes and their rates, posting a journal entry net or gross with its VAT lines, copying a voucher, attaching files, reversing a voucher, locking a period and moving the lock back, the opening balances and Invoices' open invoices, how invoices, payments, charges and write-offs post themselves, suppliers and the Brønnøysund lookup, entering, posting and paying a supplier invoice, another currency, reverse charge and import of goods, credit notes, Reverse and copy, how expenses arrive from Expenses, the posting rules for sales and expense categories, Needs attention with Retry, the amount in NOK and Make a supplier invoice, open items and registering a receipt, payment or refund, the VAT term — checking its figures, closing it, downloading the return, filing it at Skatteetaten and marking it as filed, reopening it, correcting after filing and paying the VAT — the bank — bank accounts, importing a camt.053 or CSV statement and its mapping, the bank feed as a source, reconciling with each suggestion, Vipps payouts, paying the VAT from the bank, bank rules, why customer payments are registered in Invoices and locking a month with lines not matched — the reports and their CSV, the SAF-T file an audit asks for and the grouping codes it needs, coming from another system with its SAF-T file, and inviting an accountant.
 sidebar:
   order: 67
 sources:
@@ -40,6 +40,7 @@ the permission each request is checked against — are in the
 | **Supplier invoices** | Invoices and credit notes from suppliers: drafts, posted, paid, reversed. |
 | **Suppliers** | The companies and people you buy from. |
 | **Open items** | What customers owe and what is owed to suppliers, document by document. |
+| **Bank** | The bank accounts, their statements imported or read from the bank, and each line matched to the books. |
 | **VAT** | The VAT terms: each term's return, its close, the XML and the filing mark. Not shown when the company is not VAT-registered. |
 | **Reports** | The journal, an account, customers, suppliers, the trial balance, profit and loss, the balance sheet and the VAT specification. |
 | **SAF-T** | The file Skatteetaten asks for in an audit, and every export made. Shown to those who may export the books. |
@@ -261,6 +262,10 @@ Skatteetaten, correct it in the open term.
 
 While a month is locked, a journal entry dated in it is refused. What the system posts by
 itself for a locked day is booked on the first open day, keeping its document date.
+
+A bank account with lines not matched in the month, or whose statement balance differs
+from the ledger's, is named before the lock moves, and you confirm with **Lock anyway**
+([Locking a month](#locking-a-month)).
 
 Moving the lock needs **Manage the books**.
 
@@ -758,7 +763,168 @@ After the close, the term's VAT stands on 2740, the VAT settlement account (*Unp
 pay, a debit when there is VAT to receive. When you pay Skatteetaten by the due date, post
 the payment as a journal entry dated the day the bank paid: debit 2740 and credit the bank
 account (1920), with Skatteetaten's KID in the text. A refund is the other way round: debit
-the bank, credit 2740. Once 2740 is back at zero, the term is settled.
+the bank, credit 2740. Once 2740 is back at zero, the term is settled. With the bank's
+statement in **Bank**, the payment's line is suggested as **VAT paid or refunded** and
+posts the same voucher for you ([Paying the VAT from the bank](#paying-the-vat-from-the-bank)).
+
+## The bank
+
+**Bank** is where the books meet the bank: each of the company's bank accounts, its
+statement — imported as a file or read from the bank — and every line of it matched to
+what the books hold. When every line is matched and the statement's balance is the
+ledger's, the account is reconciled.
+
+Reading the bank needs **Use Accounting**; importing a statement and reconciling need
+**Post vouchers**; adding a bank account, choosing where its statement comes from, its
+CSV mapping and the bank rules need **Manage the books**.
+
+### Bank accounts
+
+Each bank account is the statement of one account in the chart: the operating account on
+1920, a savings account on 1950, a card's account on its own asset account. One ledger
+account belongs to one bank account.
+
+The first time you open **Bank**, the account Invoices prints on your invoices is offered
+as the first bank account, on 1920: click **Add it**. To add another, click **Add a bank
+account** and give its name, its **Account number** (eleven digits; spaces, dots or a
+Norwegian IBAN are fine), the IBAN and BIC if you like, and its **Ledger account**. Bank
+accounts are in NOK in this version.
+
+From the moment a bank account is added, the customer payments Invoices registers from a
+bank file or the bank feed are posted to the ledger account of the bank account they were
+received on — a payment into the savings account lands on 1950, not 1920. A payment entered
+by hand in Invoices names no account and goes to the bank account in the chart (1920).
+Payments posted before are left as they are.
+
+A bank account's **settings** (the cog in the list) change its record, where its statement
+comes from, and its CSV mapping, and list its statements with their files. A bank account
+with statements is not deleted: make it inactive.
+
+### Importing a statement
+
+Click **Import a statement**, choose the file and click **Import**.
+
+- **camt.053** is the account statement every Norwegian bank offers in the online bank,
+  often under *Kontoutskrift* or *Avtalegiro/regnskapsfiler* as *camt.053* or *ISO 20022
+  kontoutskrift*. One file may hold several accounts: each statement goes to the bank
+  account with its number. An account that is no bank account here is named in the answer
+  and left out — add it and import the file again.
+- **CSV** is what a smaller bank may export instead. Choose the bank account it is of: the
+  file is read by that account's **CSV mapping**.
+
+The answer says, per account, the period, how many lines were imported, how many were
+already there, and whether the statement follows on from the previous one. A line already
+imported is never imported twice: the same file again, or a later statement overlapping an
+earlier one, adds only what is new — and two genuine identical lines on one day both stay.
+When the bank gives balances, a gap between two statements, an overlap, or an opening
+balance that is not the previous closing balance is shown, never refused. Pending entries
+are left out until the bank books them. The file itself is kept with the books.
+
+### The CSV mapping
+
+In a bank account's settings, **CSV mapping** says how its bank's CSV export is read: the
+separator, the encoding (UTF-8, or ISO-8859-1 for most Norwegian banks' exports), how many
+header rows to skip, the date format, the decimal and thousands separators, and the column
+numbers (from 1) of the booking date and of either one signed amount or separate *money
+out* and *money in* columns — with the text, reference, KID and counterparty if the file
+has them. Choose a file under **A file to try** and click **Preview** to see the first rows
+as they will be imported, then **Save the mapping**.
+
+### The bank feed as the source
+
+When Invoices is connected to the bank (Workspace admin › **Integrations** › **Bank**, see
+[Invoices](/en/user/invoices/)), a bank account the bank offers can take its statement from
+the bank itself. In the bank account's settings, under **Statement source**, choose **Bank
+feed**, the day to read from (**Read from**, at most 13 months back), and click **Save the
+source**. The account is then read about every half hour.
+
+Invoices reads only the money that comes in, to register customer payments. The books read
+the account's whole movement — supplier payments, salaries, fees, card purchases and
+transfers between your own accounts — so a card account or a tax deduction account can be
+read too. There is one connection and one key, Invoices'; nothing is entered twice.
+
+The settings show how the feed stands: when it last read the bank, when it reads next, and
+what went wrong — **the bank refused the key** (store a new key in Invoices' Bank
+integration), **the bank asked to wait** (it is read again after the bank's wait), or **no
+bank connected**. The Overview and the dashboard say so too.
+
+### Reconciling a bank account
+
+Click a bank account to reconcile it. Choose the period (the current month by default)
+and, under **Show**, all lines, those **Not matched** or those **Matched**. Each line shows
+what the bank said — the day, the text, the counterparty, the KID — and its amount.
+
+A line not matched shows its **suggestions**, the most certain first, each with why it is
+suggested and, when it would post a voucher, what it would post. Click **Accept** to take
+one; **Code it** to post the line yourself; or leave it for later. A matched line shows
+what it was matched to, and **Undo** while its month is not locked.
+
+What the suggestions are:
+
+| Suggestion | When | What accepting does |
+| --- | --- | --- |
+| **The payment Invoices registered** | Invoices registered a customer payment from this very bank line — a bank file's or the bank feed's | links the line to that payment's posting |
+| **A posting of the same amount** | the books have a posting on the account of the same amount, within ten days | links them |
+| **A batch of Invoices' payments** | several KID payments arrive as one line: the bank's batch, or the payments Invoices registered one day | links the line to all of them |
+| **Pay a supplier invoice** | money out with a supplier invoice's KID, its number in the text, or its amount to the supplier's account | registers the payment on the supplier invoice, as **Register payment** would; an invoice in another currency gets its exchange difference |
+| **A Vipps payout** | money in from Vipps | moves it from the Vipps clearing account to the bank, and what Vipps kept to bank and payment fees (7770) |
+| **VAT paid or refunded** | money to or from Skatteetaten that is what the VAT term left on 2740 | debits or credits 2740 against the bank |
+| **A transfer between your accounts** | the same amount leaves one of your bank accounts and arrives in another | one voucher between their ledger accounts, matched on both statements |
+| **A bank rule** | the text or the counterparty holds a rule's words | posts the line to the rule's account and tax code |
+| **Register it in Invoices** | money in from a customer that Invoices has not registered | nothing here: see below |
+
+Several suggestions marked **Exact** — one posting of the same amount the same day, or the
+same bank reference — can be accepted at once: click **Accept the exact ones** and confirm.
+
+**Code it** posts a bank voucher: the bank account's side is added by itself, and you give
+the account, the amount and the tax code of the rest, which together must balance the
+line. With a tax code the amount is gross: a card purchase of 349.00 on 6300 with code 1
+posts 279.20 on 6300 and 69.80 on 2710. A line can settle a customer's or a supplier's
+open item that does not stand for an invoice in Invoices or a supplier invoice — an opening
+balance, for instance.
+
+### Why customer payments are registered in Invoices
+
+A customer's payment of an invoice belongs on the invoice, in Invoices: that is where the
+invoice is marked paid, where its reminders stop, and where it is posted from. So money in
+with a KID, or a batch of payments, is never coded here, and neither is money in coded to a
+sales account. When Invoices has not registered it yet, the suggestion is **Register it in
+Invoices**: import the bank file there, or let the bank feed do it, or register the payment
+on the invoice — and its posting then matches the line here.
+
+### Vipps payouts
+
+Vipps pays out the day's sales less its fees. The Vipps payments Invoices registers stand
+on the Vipps clearing account (1580); the payout's suggestion takes what the clearing holds
+through the day before, moves the payout to the bank and the rest — Vipps' fees — to 7770,
+and shows the voucher before you accept it.
+
+### Paying the VAT from the bank
+
+When the VAT term is closed, its VAT stands on 2740. The bank line of the payment to
+Skatteetaten — or of the refund — is suggested as **VAT paid or refunded**: accepting it
+debits 2740 (a refund credits it) against the bank, and 2740 is back at zero.
+
+### Bank rules
+
+**Bank rules** save coding the same kind of line every month: a rule says which words the
+line's text or counterparty holds, which way the money goes, and the account and tax code
+it goes to — *Gebyr* to 7770, the bank's interest to 8050. A rule then shows as a
+suggestion on every line it fits. A change is a new version; a rule that was used is made
+inactive rather than deleted.
+
+### Undoing a match
+
+**Undo** on a matched line, while its month is not locked, takes the match back: a voucher
+the match posted is reversed (a supplier payment is removed), a transfer opens both lines,
+and a match to postings that were there lets them go. Nothing is deleted.
+
+### Locking a month
+
+When you lock a month (**Settings** › **Lock date**) while a bank account has lines in it
+not matched, or its statement balance differs from the ledger's, you are told which and
+asked to click **Lock anyway**. You may: the lock's history keeps it. Closing a VAT term shows the
+same warning and goes ahead.
 
 ## Reports
 

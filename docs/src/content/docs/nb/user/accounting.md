@@ -1,6 +1,6 @@
 ---
 title: Regnskap
-description: Regnskap-appen — å sette opp regnskapet, kontoplanen med grupperingskoder og systemkontoer, mva-kodene og satsene deres, å bokføre en postering netto eller brutto med mva-linjene, å kopiere et bilag, å legge ved filer, å tilbakeføre et bilag, å sperre en periode og flytte sperren tilbake, inngående balanse og de åpne fakturaene fra Fakturaer, hvordan fakturaer, innbetalinger, purrekostnader og avskrivninger bokføres av seg selv, leverandører og oppslaget i Brønnøysundregisteret, å føre, bokføre og betale en leverandørfaktura, annen valuta, omvendt avgiftsplikt og innførsel av varer, kreditnotaer, Tilbakefør og kopier, hvordan utgifter kommer inn fra Utgifter, posteringsreglene for salg og utgiftskategorier, Trenger oppmerksomhet med Prøv igjen, beløpet i NOK og Lag leverandørfaktura, åpne poster og å registrere en innbetaling, utbetaling eller tilbakebetaling, mva-terminen — å kontrollere tallene, lukke den, laste ned mva-meldingen, levere den hos Skatteetaten og merke den som levert, åpne den igjen, rette etter levering og betale mvaen — rapportene og CSV-filene deres, SAF-T-filen en kontroll ber om og grupperingskodene den trenger, å komme fra et annet system med SAF-T-filen derfra, og å invitere en regnskapsfører.
+description: Regnskap-appen — å sette opp regnskapet, kontoplanen med grupperingskoder og systemkontoer, mva-kodene og satsene deres, å bokføre en postering netto eller brutto med mva-linjene, å kopiere et bilag, å legge ved filer, å tilbakeføre et bilag, å sperre en periode og flytte sperren tilbake, inngående balanse og de åpne fakturaene fra Fakturaer, hvordan fakturaer, innbetalinger, purrekostnader og avskrivninger bokføres av seg selv, leverandører og oppslaget i Brønnøysundregisteret, å føre, bokføre og betale en leverandørfaktura, annen valuta, omvendt avgiftsplikt og innførsel av varer, kreditnotaer, Tilbakefør og kopier, hvordan utgifter kommer inn fra Utgifter, posteringsreglene for salg og utgiftskategorier, Trenger oppmerksomhet med Prøv igjen, beløpet i NOK og Lag leverandørfaktura, åpne poster og å registrere en innbetaling, utbetaling eller tilbakebetaling, mva-terminen — å kontrollere tallene, lukke den, laste ned mva-meldingen, levere den hos Skatteetaten og merke den som levert, åpne den igjen, rette etter levering og betale mvaen — banken med bankkontoer, å importere en kontoutskrift i camt.053 eller CSV med oppsettet, bankintegrasjonen som kilde, å avstemme med hvert forslag, utbetalinger fra Vipps, å betale mvaen fra banken, bankregler, hvorfor innbetalinger fra kunder registreres i Fakturering og å sperre en måned med linjer som ikke er avstemt — rapportene og CSV-filene deres, SAF-T-filen en kontroll ber om og grupperingskodene den trenger, å komme fra et annet system med SAF-T-filen derfra, og å invitere en regnskapsfører.
 sidebar:
   order: 67
 sources:
@@ -40,6 +40,7 @@ og tillatelsen hver forespørsel sjekkes mot — står i
 | **Leverandørfakturaer** | Fakturaer og kreditnotaer fra leverandører: utkast, bokført, betalt, tilbakeført. |
 | **Leverandører** | Selskapene og personene dere kjøper fra. |
 | **Åpne poster** | Det kundene skylder og det dere skylder leverandørene, dokument for dokument. |
+| **Bank** | Bankkontoene, kontoutskriftene importert eller lest fra banken, og hver linje avstemt mot regnskapet. |
 | **Mva** | Mva-terminene: hver termins mva-melding, lukkingen, XML-filen og leveringsmerket. Vises ikke når selskapet ikke er mva-registrert. |
 | **Rapporter** | Bokføringsspesifikasjon, kontospesifikasjon, kunder, leverandører, saldobalanse, resultatregnskap, balanse og merverdiavgiftsspesifikasjon. |
 | **SAF-T** | Filen Skatteetaten ber om ved kontroll, og alle eksporter som er laget. Vises for dem som kan eksportere regnskapet. |
@@ -262,6 +263,10 @@ den er levert hos Skatteetaten, rett den i den åpne terminen.
 
 Mens en måned er sperret, avvises en postering datert i den. Det systemet bokfører av seg
 selv for en sperret dag, bokføres på første åpne dag og beholder dokumentdatoen.
+
+En bankkonto med linjer i måneden som ikke er avstemt, eller der saldoen etter
+kontoutskriften er en annen enn hovedbokens, nevnes før sperren flyttes, og du bekrefter med
+**Sperr likevel** ([Å sperre en måned](#å-sperre-en-måned)).
 
 Å flytte sperren krever **Forvalte regnskapet**.
 
@@ -756,7 +761,173 @@ Etter lukkingen står terminens mva på 2740 Skyldig merverdiavgift, oppgjørsko
 mva å betale, debet når det er mva til gode. Når du betaler Skatteetaten innen fristen,
 fører du betalingen som en postering datert dagen banken betalte: debet 2740 og kredit
 bankkontoen (1920), med Skatteetatens KID i teksten. En tilbakebetaling går motsatt vei:
-debet banken, kredit 2740. Når 2740 er tilbake på null, er terminen gjort opp.
+debet banken, kredit 2740. Når 2740 er tilbake på null, er terminen gjort opp. Med bankens
+kontoutskrift i **Bank** foreslås betalingens linje som **Merverdiavgift betalt eller
+tilbakebetalt** og fører det samme bilaget for deg ([Å betale mvaen fra
+banken](#å-betale-mvaen-fra-banken)).
+
+## Banken
+
+**Bank** er der regnskapet møter banken: hver av selskapets bankkontoer, kontoutskriften —
+importert som fil eller lest fra banken — og hver linje i den avstemt mot det regnskapet
+har. Når alle linjene er avstemt og saldoen etter kontoutskriften er hovedbokens, er
+kontoen avstemt.
+
+Å se banken krever **Bruke Regnskap**; å importere en kontoutskrift og avstemme krever
+**Bokføre bilag**; å legge til en bankkonto, velge hvor kontoutskriften kommer fra,
+CSV-oppsettet og bankreglene krever **Forvalte regnskapet**.
+
+### Bankkontoer
+
+Hver bankkonto er kontoutskriften for én konto i kontoplanen: driftskontoen på 1920, en
+sparekonto på 1950, en kortkonto på sin egen eiendelskonto. Én hovedbokskonto hører til én
+bankkonto.
+
+Første gang du åpner **Bank**, foreslås kontoen Fakturering skriver på fakturaene som den
+første bankkontoen, på 1920: klikk **Legg den til**. For å legge til en annen, klikk **Legg
+til bankkonto** og oppgi navnet, **Kontonummer** (elleve sifre; mellomrom, punktum eller et
+norsk IBAN går fint), IBAN og BIC om du vil, og **Hovedbokskonto**. Bankkontoer er i NOK i
+denne versjonen.
+
+Fra bankkontoen er lagt til, bokføres innbetalingene Fakturering registrerer fra en
+bankfil eller bankintegrasjonen på hovedbokskontoen til bankkontoen de kom inn på — en
+innbetaling til sparekontoen havner på 1950, ikke 1920. En innbetaling ført for hånd i
+Fakturering har ingen konto og går til bankkontoen i kontoplanen (1920). Innbetalinger som
+er bokført før, blir stående som de er.
+
+En bankkontos **innstillinger** (tannhjulet i listen) endrer opplysningene, hvor
+kontoutskriften kommer fra og CSV-oppsettet, og viser kontoutskriftene med filene. En
+bankkonto med kontoutskrifter slettes ikke: gjør den inaktiv.
+
+### Å importere en kontoutskrift
+
+Klikk **Importer kontoutskrift**, velg filen og klikk **Importer**.
+
+- **camt.053** er kontoutskriften alle norske banker tilbyr i nettbanken, ofte under
+  *Kontoutskrift* eller *regnskapsfiler* som *camt.053* eller *ISO 20022 kontoutskrift*. Én
+  fil kan ha flere kontoer: hver utskrift går til bankkontoen med det nummeret. En konto som
+  ikke er en bankkonto her, nevnes i svaret og utelates — legg den til og importer filen på
+  nytt.
+- **CSV** er det en mindre bank kan eksportere i stedet. Velg bankkontoen filen gjelder:
+  filen leses med kontoens **CSV-oppsett**.
+
+Svaret viser for hver konto perioden, hvor mange linjer som ble importert, hvor mange som
+fantes fra før, og om utskriften henger sammen med den forrige. En linje som er importert,
+importeres aldri to ganger: den samme filen igjen, eller en senere utskrift som overlapper
+en tidligere, legger bare til det som er nytt — og to virkelige like linjer samme dag blir
+begge stående. Når banken oppgir saldo, vises et hull mellom to utskrifter, en overlapp
+eller en inngående saldo som ikke er forrige utgående saldo, uten at noe avvises. Poster
+som ikke er bokført i banken ennå, utelates til de er bokført. Selve filen tas vare på
+sammen med regnskapet.
+
+### CSV-oppsettet
+
+I en bankkontos innstillinger sier **CSV-oppsett** hvordan bankens CSV-eksport leses:
+skilletegnet, tegnsettet (UTF-8, eller ISO-8859-1 for de fleste norske bankers eksporter),
+hvor mange overskriftsrader som hoppes over, datoformatet, desimaltegn og tusenskille, og
+kolonnenumrene (fra 1) for bokført dato og enten ett beløp med fortegn eller egne kolonner
+for *ut* og *inn* — med tekst, referanse, KID og motpart hvis filen har dem. Velg en fil
+under **En fil å prøve** og klikk **Forhåndsvis** for å se de første radene slik de vil bli
+importert, og deretter **Lagre oppsettet**.
+
+### Bankintegrasjonen som kilde
+
+Når Fakturering er koblet til banken (Administrer arbeidsområde › **Integrasjoner** › **Bank**, se
+[Fakturering](/nb/user/invoices/)), kan en bankkonto banken tilbyr, få kontoutskriften fra
+banken selv. I bankkontoens innstillinger, under **Kontoutskrift fra**, velger du
+**Bankintegrasjon**, dagen det skal leses fra (**Les fra**, høyst 13 måneder tilbake), og
+klikker **Lagre kilden**. Kontoen leses da omtrent hver halvtime.
+
+Fakturering leser bare pengene som kommer inn, for å registrere innbetalinger fra kunder.
+Regnskapet leser hele bevegelsen på kontoen — betalinger til leverandører, lønn, gebyrer,
+kortkjøp og overføringer mellom egne kontoer — så også en kortkonto eller en
+skattetrekkskonto kan leses. Det er én tilkobling og én nøkkel, Faktureringens; ingenting
+legges inn to ganger.
+
+Innstillingene viser hvordan integrasjonen står: når banken sist ble lest, når den leses
+neste gang, og hva som gikk galt — **banken avviste nøkkelen** (lagre en ny nøkkel under
+Bankintegrasjon i Fakturering), **banken ba om å vente** (den leses igjen etter bankens
+ventetid) eller **ingen bank koblet til**. Oversikten og dashbordet sier det også.
+
+### Å avstemme en bankkonto
+
+Klikk en bankkonto for å avstemme den. Velg perioden (inneværende måned som standard) og,
+under **Vis**, alle linjer, de som er **Ikke avstemt**, eller de som er **Avstemt**. Hver
+linje viser det banken oppga — dagen, teksten, motparten, KID-en — og beløpet.
+
+En linje som ikke er avstemt, viser **forslagene**, det sikreste først, hvert med hvorfor
+det foreslås og, når det fører et bilag, hva det vil føre. Klikk **Godta** for å ta et;
+**Konter** for å føre linjen selv; eller la den stå til senere. En avstemt linje viser hva
+den er avstemt mot, og **Angre** så lenge måneden ikke er sperret.
+
+Forslagene:
+
+| Forslag | Når | Hva det å godta gjør |
+| --- | --- | --- |
+| **Innbetalingen Fakturering registrerte** | Fakturering registrerte en innbetaling fra akkurat denne banklinjen — fra en bankfil eller bankintegrasjonen | knytter linjen til innbetalingens postering |
+| **En postering med samme beløp** | regnskapet har en postering på kontoen med samme beløp, innen ti dager | knytter dem sammen |
+| **En bunt med innbetalinger fra Fakturering** | flere KID-innbetalinger kommer som én linje: bankens bunt, eller innbetalingene Fakturering registrerte én dag | knytter linjen til alle |
+| **Betal en leverandørfaktura** | penger ut med en leverandørfakturas KID, nummeret i teksten, eller beløpet til leverandørens konto | registrerer betalingen på leverandørfakturaen, som **Registrer betaling** ville gjort; en faktura i annen valuta får valutadifferansen sin |
+| **En utbetaling fra Vipps** | penger inn fra Vipps | flytter den fra Vipps-oppgjørskontoen til banken, og det Vipps holdt tilbake til bank- og betalingsgebyrer (7770) |
+| **Merverdiavgift betalt eller tilbakebetalt** | penger til eller fra Skatteetaten som er det mva-terminen etterlot på 2740 | debiterer eller krediterer 2740 mot banken |
+| **En overføring mellom kontoene dine** | samme beløp går ut av én av bankkontoene og inn på en annen | ett bilag mellom hovedbokskontoene, avstemt på begge utskriftene |
+| **En bankregel** | teksten eller motparten inneholder en regels ord | fører linjen på regelens konto og mva-kode |
+| **Registrer den i Fakturering** | penger inn fra en kunde som Fakturering ikke har registrert | ingenting her: se under |
+
+Flere forslag merket **Sikker** — én postering med samme beløp samme dag, eller samme
+bankreferanse — kan godtas samtidig: klikk **Godta de sikre** og bekreft.
+
+**Konter** fører et bankbilag: bankkontoens side legges til av seg selv, og du oppgir
+konto, beløp og mva-kode for resten, som til sammen må gå i balanse med linjen. Med en
+mva-kode er beløpet brutto: et kortkjøp på 349,00 på 6300 med kode 1 fører 279,20 på 6300 og
+69,80 på 2710. En linje kan gjøre opp en åpen post hos en kunde eller leverandør som ikke
+står for en faktura i Fakturering eller en leverandørfaktura — en inngående saldo, for
+eksempel.
+
+### Hvorfor innbetalinger fra kunder registreres i Fakturering
+
+En kundes betaling av en faktura hører hjemme på fakturaen, i Fakturering: det er der
+fakturaen merkes betalt, der purringene stopper, og der den bokføres fra. Penger inn med
+KID, eller en bunt med innbetalinger, konteres derfor aldri her, og heller ikke penger inn
+kontert på en salgskonto. Når Fakturering ikke har registrert den ennå, er forslaget
+**Registrer den i Fakturering**: importer bankfilen der, la bankintegrasjonen gjøre det,
+eller registrer betalingen på fakturaen — så avstemmes posteringen mot linjen her.
+
+### Utbetalinger fra Vipps
+
+Vipps betaler ut dagens salg minus gebyrene. Vipps-betalingene Fakturering registrerer, står
+på Vipps-oppgjørskontoen (1580); utbetalingens forslag tar det oppgjørskontoen har til og med
+dagen før, flytter utbetalingen til banken og resten — Vipps' gebyrer — til 7770, og viser
+bilaget før du godtar det.
+
+### Å betale mvaen fra banken
+
+Når mva-terminen er lukket, står merverdiavgiften på 2740. Banklinjen for betalingen til
+Skatteetaten — eller for tilbakebetalingen — foreslås som **Merverdiavgift betalt eller
+tilbakebetalt**: å godta den debiterer 2740 (en tilbakebetaling krediterer den) mot banken,
+og 2740 er tilbake på null.
+
+### Bankregler
+
+**Bankregler** sparer deg for å kontere den samme typen linje hver måned: en regel sier
+hvilke ord linjens tekst eller motpart inneholder, hvilken vei pengene går, og kontoen og
+mva-koden den føres på — *Gebyr* til 7770, bankens renter til 8050. Regelen vises da som et
+forslag på hver linje den passer på. En endring er en ny versjon; en regel som er brukt,
+gjøres inaktiv i stedet for å slettes.
+
+### Å angre en avstemming
+
+**Angre** på en avstemt linje, så lenge måneden ikke er sperret, tar avstemmingen tilbake:
+et bilag avstemmingen førte, tilbakeføres (en leverandørbetaling fjernes), en overføring
+åpner begge linjene, og en avstemming mot posteringer som fantes, slipper dem. Ingenting
+slettes.
+
+### Å sperre en måned
+
+Når du sperrer en måned (**Innstillinger** › **Sperredato**) mens en bankkonto har linjer i
+den som ikke er avstemt, eller saldoen etter kontoutskriften er en annen enn hovedbokens,
+får du vite hvilke og blir bedt om å klikke **Sperr likevel**. Det kan du: sperrehistorikken tar
+vare på det. Å lukke en mva-termin viser den samme advarselen og går videre.
 
 ## Rapporter
 
