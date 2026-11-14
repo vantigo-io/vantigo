@@ -341,6 +341,12 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 	if deps, err = withSalesTax(deps, mods); err != nil {
 		return nil, nil, err
 	}
+	// The sales journal (contracts.SalesJournal, accounting design A12)
+	// resolves right after sales tax: the same module provides it, from its
+	// own tables only.
+	if deps, err = withSalesJournal(deps, mods); err != nil {
+		return nil, nil, err
+	}
 
 	// The three billable reads, consumption and billable orders resolve
 	// beside actuals and expenses, after the project directory (withBillables
