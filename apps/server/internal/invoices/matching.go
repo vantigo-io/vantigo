@@ -49,6 +49,11 @@ const (
 	reasonPaidBeforeIssue   = "paid_before_issue"
 	reasonInvoiceSettled    = "invoice_settled"
 	reasonExceedsOpen       = "exceeds_open"
+	// reasonInvoiceWrittenOff is a line for an invoice a write-off stands on
+	// (accounting design R15): nothing is open, and money after a write-off
+	// is a recovery, which a person registers — never a payment of the
+	// principal or of the charges.
+	reasonInvoiceWrittenOff = "invoice_written_off"
 )
 
 // The outcomes of one line: matched, queued (with its reason), or nothing
@@ -492,10 +497,16 @@ func judgeMatch(ctx context.Context, txq *store.Queries, line store.InvoicesBank
 	if err != nil {
 		return "", nil, nil, err
 	}
+	writtenOff, err := writtenOffOf(ctx, txq, inv.ID)
+	if err != nil {
+		return "", nil, nil, err
+	}
 	zero := new(big.Rat)
 	switch {
 	case credited.Sign() > 0 && credited.Cmp(gross) >= 0:
 		return reasonInvoiceCredited, nil, nil, nil
+	case writtenOff:
+		return reasonInvoiceWrittenOff, nil, nil, nil
 	case line.BookedOn.Time.Before(inv.IssueDate.Time):
 		return reasonPaidBeforeIssue, nil, nil, nil
 	case open.Sign() > 0 && amount.Cmp(open) <= 0:

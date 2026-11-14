@@ -89,7 +89,19 @@ func (s *server) PostInvoicesByIdCredit(ctx context.Context, req gen.PostInvoice
 		return nil, err
 	}
 	var created store.InvoicesInvoice
+	var refusal *gen.InvoicesConflictProblem
 	err = s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
+		// The original's lock, so a write-off made at the same moment is seen
+		// (accounting design R15).
+		if _, err := txq.LockInvoice(ctx, original.ID); err != nil {
+			return fmt.Errorf("invoices: lock document %d: %w", original.ID, err)
+		}
+		if refusal, err = writtenOffRefusal(ctx, txq, original.ID, cannotCreditTitle); err != nil || refusal != nil {
+			if err == nil {
+				err = errRefused
+			}
+			return err
+		}
 		created, err = txq.InsertCreditDraft(ctx, store.InsertCreditDraftParams{
 			OriginalID: original.ID, CreatedByUserID: callerID(ctx), Now: s.deps.Clock(),
 		})
@@ -104,6 +116,9 @@ func (s *server) PostInvoicesByIdCredit(ctx context.Context, req gen.PostInvoice
 		}
 		return nil
 	})
+	if refusal != nil {
+		return gen.PostInvoicesByIdCredit409ApplicationProblemPlusJSONResponse(*refusal), nil
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -112,6 +127,17 @@ func (s *server) PostInvoicesByIdCredit(ctx context.Context, req gen.PostInvoice
 		return nil, err
 	}
 	return gen.PostInvoicesByIdCredit201JSONResponse(resp), nil
+}
+
+// writtenOffRefusal is the 409 of a credit note of an invoice a write-off
+// stands on (accounting design R15), read with q, which holds the original's
+// lock; nil when none stands.
+func writtenOffRefusal(ctx context.Context, q *store.Queries, originalID int64, title string) (*gen.InvoicesConflictProblem, error) {
+	if writtenOff, err := writtenOffOf(ctx, q, originalID); err != nil || !writtenOff {
+		return nil, err
+	}
+	return ptr(conflict(codeInvoiceWrittenOff, title,
+		"A write-off stands on this invoice. Undo the write-off first, then credit it.")), nil
 }
 
 // creditAfterCopy is called inside a credit-note draft's creation right after
@@ -651,6 +677,9 @@ func creditIssueChecks(ctx context.Context, txq *store.Queries, locked store.Inv
 	}
 	if creditIssueAfterOriginalLock != nil {
 		creditIssueAfterOriginalLock(ctx, original.ID)
+	}
+	if r, err := writtenOffRefusal(ctx, txq, original.ID, cannotIssueTitle); err != nil || r != nil {
+		return issuePlan{}, r, err
 	}
 	book, err := readCreditBook(ctx, txq, original)
 	if err != nil {

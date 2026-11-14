@@ -48,6 +48,11 @@ type SalesJournal interface {
 	// is none or it is a draft. A ledger reads a written-off invoice's VAT
 	// summaries through it, and a fact it retries.
 	Document(ctx context.Context, id int64) (*JournalDocument, error)
+	// CreditNotesOf is the issued credit notes of the invoice with that id,
+	// as Documents answers them, in number order: none when it has none. A
+	// ledger shares a write-off's VAT correction over what the invoice's VAT
+	// summaries less its credit notes' leave (accounting design R15).
+	CreditNotesOf(ctx context.Context, invoiceID int64) ([]JournalDocument, error)
 	// Facts is up to limit facts with a seq after afterSeq, in seq order (0
 	// reads from the first).
 	Facts(ctx context.Context, afterSeq int64, limit int) ([]JournalFact, error)
@@ -178,11 +183,17 @@ type JournalWriteOff struct {
 	// Reason is one of the WriteOff constants.
 	Reason string
 	// VATCorrection is whether the loss takes its VAT back: the write-off's
-	// amount is then shared over the invoice's VAT summaries in proportion
-	// (read them with Document).
+	// amount is then shared in proportion over the invoice's VAT summaries
+	// less its credit notes' (read them with Document and CreditNotesOf).
 	VATCorrection bool
 	// AmountNOK is the open amount the write-off closed, in NOK.
 	AmountNOK string
+	// RecoveredBeforeNOK is, on a recovered payment's fact, what the
+	// write-off had recovered before it: the amounts of its recovered
+	// payments registered at a lower seq and not removed at a lower seq, in
+	// NOK, so a ledger scales each recovery cumulatively (R15). "0.00" on
+	// every other fact.
+	RecoveredBeforeNOK string
 }
 
 // The sources of JournalFact.Source, as Invoices stores them. A bank_feed

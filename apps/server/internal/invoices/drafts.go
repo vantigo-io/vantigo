@@ -833,6 +833,20 @@ func (s *server) saveDraft(ctx context.Context, id int64, revision int32, in dra
 			out.refusal = ptr(revisionConflict("Invoice", locked.Revision, revision))
 			return errRefused
 		}
+		// A credit note's original after the draft, as the issue takes them:
+		// no credit note is saved while a write-off of it stands (accounting
+		// design R15).
+		if locked.Kind == kindCreditNote && locked.CreditsInvoiceID != nil {
+			if _, err := txq.LockInvoice(ctx, *locked.CreditsInvoiceID); err != nil {
+				return fmt.Errorf("invoices: lock the original %d: %w", *locked.CreditsInvoiceID, err)
+			}
+			if out.refusal, err = writtenOffRefusal(ctx, txq, *locked.CreditsInvoiceID, "The credit note cannot be saved"); err != nil || out.refusal != nil {
+				if err == nil {
+					err = errRefused
+				}
+				return err
+			}
+		}
 		var released []sourceRef
 		if in.customerID != locked.CustomerID && len(held) > 0 {
 			dropped, err := txq.DeleteHeldSourcesOf(ctx, id)

@@ -35,6 +35,11 @@ const (
 	codeNoWriteOff              = "no_write_off"
 	codeWriteOffRecovered       = "write_off_recovered"
 	codeRecoveryExceedsWriteOff = "recovery_exceeds_written_off"
+	// codeInvoiceWrittenOff refuses a credit note of an invoice a write-off
+	// stands on, its draft's creation and save as its issue (accounting
+	// design R15): the customer would be shown a refund of money never paid,
+	// and a ledger would take the VAT back twice.
+	codeInvoiceWrittenOff = "invoice_written_off"
 
 	cannotWriteOffTitle  = "The invoice cannot be written off"
 	cannotUndoTitle      = "The write-off cannot be undone"
@@ -218,6 +223,19 @@ func (s *server) PostInvoicesByIdWriteOffUndo(ctx context.Context, req gen.PostI
 		return nil, err
 	}
 	return gen.PostInvoicesByIdWriteOffUndo200JSONResponse(resp), nil
+}
+
+// writtenOffOf reports whether a write-off of the invoice stands, read with
+// q, which holds the invoice's lock.
+func writtenOffOf(ctx context.Context, q *store.Queries, invoiceID int64) (bool, error) {
+	_, err := q.LiveWriteOff(ctx, invoiceID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("invoices: read the write-off of %d: %w", invoiceID, err)
+	}
+	return true, nil
 }
 
 // recoveryRoom is what a write-off has left to recover — its amount less its
