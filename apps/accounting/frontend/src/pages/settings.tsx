@@ -1,10 +1,16 @@
-import { Alert, Button, Card, Group, SimpleGrid, Stack, Table, Text, TextInput, Title } from "@mantine/core";
+import { Alert, Anchor, Button, Card, Group, SimpleGrid, Stack, Table, Text, TextInput, Title } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconLock } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ContentSkeleton, PageHeader } from "@vantigo/frontend-shell";
 import { useState } from "react";
-import { type AccountingMeta, lockQueryOptions, putLock } from "../api/accounting";
+import {
+  type AccountingMeta,
+  lockQueryOptions,
+  putLock,
+  saftImportFileUrl,
+  saftImportsQueryOptions,
+} from "../api/accounting";
 import { ACCOUNTING_QUERY_KEY, refusedFields } from "../api/request";
 import { BooksGate } from "../components/books-gate";
 import { refusalMessage, useAccountingFormat } from "../lib/format";
@@ -23,6 +29,7 @@ export const SettingsPage = () => {
         <Stack gap="lg">
           <PageHeader title={t("navSettings")} description={t("settingsDescription")} />
           <FiscalSettings meta={meta} />
+          {meta.canClose && <ImportedFrom />}
           <Lock canClose={meta.canClose} />
         </Stack>
       )}
@@ -68,6 +75,31 @@ const FiscalSettings = ({ meta }: { meta: AccountingMeta }) => {
       <Text size="sm" c="dimmed" mt="sm">
         {t("fiscalSettingsFixed")}
       </Text>
+    </Card>
+  );
+};
+
+/** The SAF-T file the books were set up from (A25): the record of the years before them. */
+const ImportedFrom = () => {
+  const { t, day, stamp } = useAccountingFormat();
+  const imports = useQuery(saftImportsQueryOptions());
+  const applied = imports.data?.find((i) => i.state === "applied");
+  if (!applied) return null;
+  return (
+    <Card withBorder padding="md">
+      <Title order={4} mb="xs">
+        {t("saftImportedFrom")}
+      </Title>
+      <Text size="sm">
+        {t("saftImportedFromHint", {
+          from: day(applied.selectionStart),
+          to: day(applied.selectionEnd),
+          at: applied.appliedAt ? stamp(applied.appliedAt) : "",
+        })}
+      </Text>
+      <Anchor href={saftImportFileUrl(applied.id)} size="sm">
+        {applied.fileName}
+      </Anchor>
     </Card>
   );
 };
