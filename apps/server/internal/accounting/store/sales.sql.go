@@ -117,10 +117,23 @@ func (q *Queries) CountDefaultRules(ctx context.Context) (int32, error) {
 	return column_1, err
 }
 
-const countUnposted = `-- name: CountUnposted :one
-SELECT count(*)::int FROM accounting.unposted WHERE posted_at IS NULL
+const countInformational = `-- name: CountInformational :one
+SELECT count(*)::int FROM accounting.unposted WHERE informational AND resolved_at IS NULL
 `
 
+func (q *Queries) CountInformational(ctx context.Context) (int32, error) {
+	row := q.db.QueryRow(ctx, countInformational)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const countUnposted = `-- name: CountUnposted :one
+SELECT count(*)::int FROM accounting.unposted WHERE posted_at IS NULL AND resolved_at IS NULL
+`
+
+// CountUnposted is the rows that wait: not posted and not resolved. An
+// informational row posted and is counted apart (CountInformational).
 func (q *Queries) CountUnposted(ctx context.Context) (int32, error) {
 	row := q.db.QueryRow(ctx, countUnposted)
 	var column_1 int32
@@ -144,7 +157,7 @@ func (q *Queries) EnsureCursor(ctx context.Context, arg EnsureCursorParams) erro
 }
 
 const getPostingRule = `-- name: GetPostingRule :one
-SELECT r.id, r.name, r.scope, r.match, r.line_kind, r.tax_category_id, r.expense_category_id, r.tax_code, r.account_id, r.version, r.created_at, r.updated_at, r.revision, r.archived_at, a.number AS account_number, a.name AS account_name
+SELECT r.id, r.name, r.scope, r.match, r.line_kind, r.tax_category_id, r.expense_category_id, r.tax_code, r.account_id, r.version, r.created_at, r.updated_at, r.revision, r.archived_at, r.vat_deductible, a.number AS account_number, a.name AS account_name
 FROM accounting.posting_rules r
 JOIN accounting.accounts a ON a.id = r.account_id
 WHERE r.id = $1 AND r.archived_at IS NULL
@@ -165,6 +178,7 @@ type GetPostingRuleRow struct {
 	UpdatedAt         time.Time
 	Revision          int32
 	ArchivedAt        *time.Time
+	VatDeductible     *bool
 	AccountNumber     string
 	AccountName       string
 }
@@ -187,6 +201,7 @@ func (q *Queries) GetPostingRule(ctx context.Context, id int32) (GetPostingRuleR
 		&i.UpdatedAt,
 		&i.Revision,
 		&i.ArchivedAt,
+		&i.VatDeductible,
 		&i.AccountNumber,
 		&i.AccountName,
 	)
@@ -197,36 +212,42 @@ const getUnposted = `-- name: GetUnposted :one
 SELECT u.id, u.stream, u.position, u.source_module, u.source_kind, u.source_id, u.source_part, u.fact_date, u.document_id,
     u.document_number, u.customer_id, coalesce(u.amount, 0)::text AS amount, u.reason, u.detail, u.attempts, u.first_seen_at,
     u.last_tried_at, u.posted_voucher_id, u.posted_at, v.fiscal_year AS voucher_year, v.number AS voucher_number,
-    u.invoice_id, u.waiting_on
+    u.invoice_id, u.waiting_on, u.order_key, u.informational, u.resolved_at, u.supplier_invoice_id,
+    coalesce(u.nok_amounts::text, '')::text AS nok_amounts
 FROM accounting.unposted u
 LEFT JOIN accounting.vouchers v ON v.id = u.posted_voucher_id
 WHERE u.id = $1
 `
 
 type GetUnpostedRow struct {
-	ID              int64
-	Stream          string
-	Position        int64
-	SourceModule    string
-	SourceKind      string
-	SourceID        int64
-	SourcePart      string
-	FactDate        *time.Time
-	DocumentID      *int64
-	DocumentNumber  *string
-	CustomerID      *int32
-	Amount          string
-	Reason          string
-	Detail          string
-	Attempts        int32
-	FirstSeenAt     time.Time
-	LastTriedAt     time.Time
-	PostedVoucherID *int64
-	PostedAt        *time.Time
-	VoucherYear     *int32
-	VoucherNumber   *int32
-	InvoiceID       *int64
-	WaitingOn       *int64
+	ID                int64
+	Stream            string
+	Position          int64
+	SourceModule      string
+	SourceKind        string
+	SourceID          int64
+	SourcePart        string
+	FactDate          *time.Time
+	DocumentID        *int64
+	DocumentNumber    *string
+	CustomerID        *int32
+	Amount            string
+	Reason            string
+	Detail            string
+	Attempts          int32
+	FirstSeenAt       time.Time
+	LastTriedAt       time.Time
+	PostedVoucherID   *int64
+	PostedAt          *time.Time
+	VoucherYear       *int32
+	VoucherNumber     *int32
+	InvoiceID         *int64
+	WaitingOn         *int64
+	OrderKey          *string
+	Informational     bool
+	ResolvedAt        *time.Time
+	SupplierInvoiceID *int64
+	NokAmounts        string
 }
 
 func (q *Queries) GetUnposted(ctx context.Context, id int64) (GetUnpostedRow, error) {
@@ -256,15 +277,21 @@ func (q *Queries) GetUnposted(ctx context.Context, id int64) (GetUnpostedRow, er
 		&i.VoucherNumber,
 		&i.InvoiceID,
 		&i.WaitingOn,
+		&i.OrderKey,
+		&i.Informational,
+		&i.ResolvedAt,
+		&i.SupplierInvoiceID,
+		&i.NokAmounts,
 	)
 	return i, err
 }
 
 const insertPostingRule = `-- name: InsertPostingRule :one
 INSERT INTO accounting.posting_rules (name, scope, match, line_kind, tax_category_id, expense_category_id, tax_code,
-    account_id, created_at, updated_at)
+    account_id, created_at, updated_at, vat_deductible)
 VALUES ($1, $2, $3, $4, $5,
-    $6, $7, $8, $9, $9)
+    $6, $7, $8, $9, $9,
+    $10)
 ON CONFLICT DO NOTHING
 RETURNING id
 `
@@ -279,6 +306,7 @@ type InsertPostingRuleParams struct {
 	TaxCode           *string
 	AccountID         int32
 	Now               time.Time
+	VatDeductible     *bool
 }
 
 // InsertPostingRule writes a rule; a default rule seeded again is left as it
@@ -294,6 +322,7 @@ func (q *Queries) InsertPostingRule(ctx context.Context, arg InsertPostingRulePa
 		arg.TaxCode,
 		arg.AccountID,
 		arg.Now,
+		arg.VatDeductible,
 	)
 	var id int32
 	err := row.Scan(&id)
@@ -302,9 +331,10 @@ func (q *Queries) InsertPostingRule(ctx context.Context, arg InsertPostingRulePa
 
 const insertPostingRuleStrict = `-- name: InsertPostingRuleStrict :one
 INSERT INTO accounting.posting_rules (name, scope, match, line_kind, tax_category_id, expense_category_id, tax_code,
-    account_id, created_at, updated_at)
+    account_id, created_at, updated_at, vat_deductible)
 VALUES ($1, $2, $3, $4, $5,
-    $6, $7, $8, $9, $9)
+    $6, $7, $8, $9, $9,
+    $10)
 RETURNING id
 `
 
@@ -318,6 +348,7 @@ type InsertPostingRuleStrictParams struct {
 	TaxCode           *string
 	AccountID         int32
 	Now               time.Time
+	VatDeductible     *bool
 }
 
 // InsertPostingRuleStrict writes a person's rule; a name or match taken is
@@ -333,6 +364,7 @@ func (q *Queries) InsertPostingRuleStrict(ctx context.Context, arg InsertPosting
 		arg.TaxCode,
 		arg.AccountID,
 		arg.Now,
+		arg.VatDeductible,
 	)
 	var id int32
 	err := row.Scan(&id)
@@ -381,7 +413,7 @@ func (q *Queries) ListCursors(ctx context.Context) ([]ListCursorsRow, error) {
 }
 
 const listPostingRules = `-- name: ListPostingRules :many
-SELECT r.id, r.name, r.scope, r.match, r.line_kind, r.tax_category_id, r.expense_category_id, r.tax_code, r.account_id, r.version, r.created_at, r.updated_at, r.revision, r.archived_at, a.number AS account_number, a.name AS account_name
+SELECT r.id, r.name, r.scope, r.match, r.line_kind, r.tax_category_id, r.expense_category_id, r.tax_code, r.account_id, r.version, r.created_at, r.updated_at, r.revision, r.archived_at, r.vat_deductible, a.number AS account_number, a.name AS account_name
 FROM accounting.posting_rules r
 JOIN accounting.accounts a ON a.id = r.account_id
 WHERE r.archived_at IS NULL
@@ -404,6 +436,7 @@ type ListPostingRulesRow struct {
 	UpdatedAt         time.Time
 	Revision          int32
 	ArchivedAt        *time.Time
+	VatDeductible     *bool
 	AccountNumber     string
 	AccountName       string
 }
@@ -434,6 +467,7 @@ func (q *Queries) ListPostingRules(ctx context.Context) ([]ListPostingRulesRow, 
 			&i.UpdatedAt,
 			&i.Revision,
 			&i.ArchivedAt,
+			&i.VatDeductible,
 			&i.AccountNumber,
 			&i.AccountName,
 		); err != nil {
@@ -451,10 +485,11 @@ const listUnposted = `-- name: ListUnposted :many
 SELECT u.id, u.stream, u.position, u.source_module, u.source_kind, u.source_id, u.source_part, u.fact_date, u.document_id,
     u.document_number, u.customer_id, coalesce(u.amount, 0)::text AS amount, u.reason, u.detail, u.attempts, u.first_seen_at,
     u.last_tried_at, u.posted_voucher_id, u.posted_at, v.fiscal_year AS voucher_year, v.number AS voucher_number,
-    u.invoice_id, u.waiting_on, count(*) OVER () AS total
+    u.invoice_id, u.waiting_on, u.order_key, u.informational, u.resolved_at, u.supplier_invoice_id,
+    coalesce(u.nok_amounts::text, '')::text AS nok_amounts, count(*) OVER () AS total
 FROM accounting.unposted u
 LEFT JOIN accounting.vouchers v ON v.id = u.posted_voucher_id
-WHERE (NOT $1::boolean OR u.posted_at IS NULL)
+WHERE (NOT $1::boolean OR (u.resolved_at IS NULL AND (u.posted_at IS NULL OR u.informational)))
 ORDER BY u.first_seen_at, u.id
 LIMIT $3 OFFSET $2
 `
@@ -466,30 +501,35 @@ type ListUnpostedParams struct {
 }
 
 type ListUnpostedRow struct {
-	ID              int64
-	Stream          string
-	Position        int64
-	SourceModule    string
-	SourceKind      string
-	SourceID        int64
-	SourcePart      string
-	FactDate        *time.Time
-	DocumentID      *int64
-	DocumentNumber  *string
-	CustomerID      *int32
-	Amount          string
-	Reason          string
-	Detail          string
-	Attempts        int32
-	FirstSeenAt     time.Time
-	LastTriedAt     time.Time
-	PostedVoucherID *int64
-	PostedAt        *time.Time
-	VoucherYear     *int32
-	VoucherNumber   *int32
-	InvoiceID       *int64
-	WaitingOn       *int64
-	Total           int64
+	ID                int64
+	Stream            string
+	Position          int64
+	SourceModule      string
+	SourceKind        string
+	SourceID          int64
+	SourcePart        string
+	FactDate          *time.Time
+	DocumentID        *int64
+	DocumentNumber    *string
+	CustomerID        *int32
+	Amount            string
+	Reason            string
+	Detail            string
+	Attempts          int32
+	FirstSeenAt       time.Time
+	LastTriedAt       time.Time
+	PostedVoucherID   *int64
+	PostedAt          *time.Time
+	VoucherYear       *int32
+	VoucherNumber     *int32
+	InvoiceID         *int64
+	WaitingOn         *int64
+	OrderKey          *string
+	Informational     bool
+	ResolvedAt        *time.Time
+	SupplierInvoiceID *int64
+	NokAmounts        string
+	Total             int64
 }
 
 func (q *Queries) ListUnposted(ctx context.Context, arg ListUnpostedParams) ([]ListUnpostedRow, error) {
@@ -525,6 +565,11 @@ func (q *Queries) ListUnposted(ctx context.Context, arg ListUnpostedParams) ([]L
 			&i.VoucherNumber,
 			&i.InvoiceID,
 			&i.WaitingOn,
+			&i.OrderKey,
+			&i.Informational,
+			&i.ResolvedAt,
+			&i.SupplierInvoiceID,
+			&i.NokAmounts,
 			&i.Total,
 		); err != nil {
 			return nil, err
@@ -601,16 +646,16 @@ func (q *Queries) PendingRequest(ctx context.Context, stream string) (time.Time,
 const recordUnposted = `-- name: RecordUnposted :exec
 INSERT INTO accounting.unposted (stream, position, source_module, source_kind, source_id, source_part, fact_date,
     document_id, document_number, customer_id, amount, reason, detail, first_seen_at, last_tried_at, invoice_id,
-    waiting_on)
+    waiting_on, order_key)
 VALUES ($1, $2, $3, $4, $5,
     $6, $7, $8, $9,
     $10, $11::text::numeric, $12, $13, $14,
-    $14, $15, $16)
+    $14, $15, $16, $17)
 ON CONFLICT (source_module, source_kind, source_id, source_part) DO UPDATE
 SET reason = EXCLUDED.reason, detail = EXCLUDED.detail, attempts = accounting.unposted.attempts + 1,
     last_tried_at = EXCLUDED.last_tried_at, invoice_id = coalesce(EXCLUDED.invoice_id, accounting.unposted.invoice_id),
-    waiting_on = EXCLUDED.waiting_on
-WHERE accounting.unposted.posted_at IS NULL
+    waiting_on = EXCLUDED.waiting_on, order_key = coalesce(EXCLUDED.order_key, accounting.unposted.order_key)
+WHERE accounting.unposted.posted_at IS NULL AND accounting.unposted.resolved_at IS NULL
 `
 
 type RecordUnpostedParams struct {
@@ -630,6 +675,7 @@ type RecordUnpostedParams struct {
 	Now            time.Time
 	InvoiceID      *int64
 	WaitingOn      *int64
+	OrderKey       *string
 }
 
 // RecordUnposted keeps a fact that could not be posted, or its new reason
@@ -652,6 +698,7 @@ func (q *Queries) RecordUnposted(ctx context.Context, arg RecordUnpostedParams) 
 		arg.Now,
 		arg.InvoiceID,
 		arg.WaitingOn,
+		arg.OrderKey,
 	)
 	return err
 }
@@ -883,7 +930,7 @@ func (q *Queries) TaxCodesByCode(ctx context.Context) ([]TaxCodesByCodeRow, erro
 
 const unpostedBlocker = `-- name: UnpostedBlocker :one
 SELECT u.id, u.document_number, u.source_kind FROM accounting.unposted u
-WHERE u.invoice_id = $1 AND u.posted_at IS NULL
+WHERE u.invoice_id = $1 AND u.posted_at IS NULL AND u.resolved_at IS NULL
   AND NOT (u.source_module = $2 AND u.source_kind = $3
            AND u.source_id = $4 AND u.source_part = $5)
   AND u.id < coalesce((SELECT o.id FROM accounting.unposted o
@@ -929,9 +976,10 @@ const unpostedDependants = `-- name: UnpostedDependants :many
 SELECT u.id, u.stream, u.position, u.source_module, u.source_kind, u.source_id, u.source_part, u.fact_date, u.document_id,
     u.document_number, u.customer_id, coalesce(u.amount, 0)::text AS amount, u.reason, u.detail, u.attempts, u.first_seen_at,
     u.last_tried_at, u.posted_voucher_id, u.posted_at, NULL::integer AS voucher_year, NULL::integer AS voucher_number,
-    u.invoice_id, u.waiting_on
+    u.invoice_id, u.waiting_on, u.order_key, u.informational, u.resolved_at, u.supplier_invoice_id,
+    coalesce(u.nok_amounts::text, '')::text AS nok_amounts
 FROM accounting.unposted u
-WHERE u.invoice_id = $1 AND u.posted_at IS NULL AND u.id > $2
+WHERE u.invoice_id = $1 AND u.posted_at IS NULL AND u.resolved_at IS NULL AND u.id > $2
 ORDER BY u.id
 `
 
@@ -941,29 +989,34 @@ type UnpostedDependantsParams struct {
 }
 
 type UnpostedDependantsRow struct {
-	ID              int64
-	Stream          string
-	Position        int64
-	SourceModule    string
-	SourceKind      string
-	SourceID        int64
-	SourcePart      string
-	FactDate        *time.Time
-	DocumentID      *int64
-	DocumentNumber  *string
-	CustomerID      *int32
-	Amount          string
-	Reason          string
-	Detail          string
-	Attempts        int32
-	FirstSeenAt     time.Time
-	LastTriedAt     time.Time
-	PostedVoucherID *int64
-	PostedAt        *time.Time
-	VoucherYear     *int32
-	VoucherNumber   *int32
-	InvoiceID       *int64
-	WaitingOn       *int64
+	ID                int64
+	Stream            string
+	Position          int64
+	SourceModule      string
+	SourceKind        string
+	SourceID          int64
+	SourcePart        string
+	FactDate          *time.Time
+	DocumentID        *int64
+	DocumentNumber    *string
+	CustomerID        *int32
+	Amount            string
+	Reason            string
+	Detail            string
+	Attempts          int32
+	FirstSeenAt       time.Time
+	LastTriedAt       time.Time
+	PostedVoucherID   *int64
+	PostedAt          *time.Time
+	VoucherYear       *int32
+	VoucherNumber     *int32
+	InvoiceID         *int64
+	WaitingOn         *int64
+	OrderKey          *string
+	Informational     bool
+	ResolvedAt        *time.Time
+	SupplierInvoiceID *int64
+	NokAmounts        string
 }
 
 // UnpostedDependants is the open rows of an invoice recorded after the row
@@ -1001,6 +1054,11 @@ func (q *Queries) UnpostedDependants(ctx context.Context, arg UnpostedDependants
 			&i.VoucherNumber,
 			&i.InvoiceID,
 			&i.WaitingOn,
+			&i.OrderKey,
+			&i.Informational,
+			&i.ResolvedAt,
+			&i.SupplierInvoiceID,
+			&i.NokAmounts,
 		); err != nil {
 			return nil, err
 		}
@@ -1015,18 +1073,22 @@ func (q *Queries) UnpostedDependants(ctx context.Context, arg UnpostedDependants
 const updatePostingRule = `-- name: UpdatePostingRule :one
 UPDATE accounting.posting_rules
 SET name = $1::varchar, account_id = $2,
-    version = version + CASE WHEN account_id <> $2 OR name <> $1::varchar THEN 1 ELSE 0 END,
-    revision = revision + 1, updated_at = $3
-WHERE id = $4 AND revision = $5 AND archived_at IS NULL
+    vat_deductible = CASE WHEN scope = 'expense' THEN coalesce($3::boolean, vat_deductible) END,
+    version = version + CASE WHEN account_id <> $2 OR name <> $1::varchar
+        OR (scope = 'expense' AND vat_deductible IS DISTINCT FROM coalesce($3::boolean, vat_deductible))
+        THEN 1 ELSE 0 END,
+    revision = revision + 1, updated_at = $4
+WHERE id = $5 AND revision = $6 AND archived_at IS NULL
 RETURNING id
 `
 
 type UpdatePostingRuleParams struct {
-	Name      string
-	AccountID int32
-	Now       time.Time
-	ID        int32
-	Revision  int32
+	Name          string
+	AccountID     int32
+	VatDeductible *bool
+	Now           time.Time
+	ID            int32
+	Revision      int32
 }
 
 // UpdatePostingRule changes a rule's name and account under its revision; a
@@ -1036,6 +1098,7 @@ func (q *Queries) UpdatePostingRule(ctx context.Context, arg UpdatePostingRulePa
 	row := q.db.QueryRow(ctx, updatePostingRule,
 		arg.Name,
 		arg.AccountID,
+		arg.VatDeductible,
 		arg.Now,
 		arg.ID,
 		arg.Revision,

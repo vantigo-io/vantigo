@@ -3371,3 +3371,34 @@ func TestCompose_InjectsTheSalesJournal(t *testing.T) {
 		t.Errorf("two sales journals: %v, want an error naming the slot", err)
 	}
 }
+
+// fakeExpenseJournal is a contracts.ExpenseJournal no test calls.
+type fakeExpenseJournal struct{ contracts.ExpenseJournal }
+
+// The expense journal (contracts.ExpenseJournal, accounting design A20)
+// resolves like the sales journal: onto every module's Deps before any Mount
+// runs, and two providers are a compose error naming the slot.
+func TestCompose_InjectsTheExpenseJournal(t *testing.T) {
+	journal := &fakeExpenseJournal{}
+	var got Deps
+	_, err := compose(Deps{Access: &fakeAccess{}}, fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract}),
+		Module{Name: "beta", ExpenseJournal: func(Deps) contracts.ExpenseJournal { return journal }, Mount: staticHandler("beta")},
+		Module{Name: "alpha", Mount: func(d Deps) (http.Handler, error) {
+			got = d
+			return staticHandler("alpha")(d)
+		}},
+	)
+	if err != nil {
+		t.Fatalf("compose: %v", err)
+	}
+	if got.ExpenseJournal != journal {
+		t.Errorf("Deps.ExpenseJournal = %v, want the provider's", got.ExpenseJournal)
+	}
+	_, err = compose(Deps{Access: &fakeAccess{}}, fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract}),
+		Module{Name: "alpha", ExpenseJournal: func(Deps) contracts.ExpenseJournal { return &fakeExpenseJournal{} }, Mount: staticHandler("alpha")},
+		Module{Name: "beta", ExpenseJournal: func(Deps) contracts.ExpenseJournal { return &fakeExpenseJournal{} }, Mount: staticHandler("beta")},
+	)
+	if err == nil || !strings.Contains(err.Error(), "an expense journal") {
+		t.Errorf("two expense journals: %v, want an error naming the slot", err)
+	}
+}

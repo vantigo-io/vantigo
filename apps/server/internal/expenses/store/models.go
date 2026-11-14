@@ -57,6 +57,11 @@ type ExpensesClaim struct {
 	UpdatedAt              time.Time
 }
 
+type ExpensesCounter struct {
+	CounterName string
+	NextValue   int64
+}
+
 type ExpensesEntry struct {
 	ID                      int64
 	UserID                  uuid.UUID
@@ -112,6 +117,20 @@ type ExpensesEntry struct {
 	SupplierDueDate         pgtype.Date
 	InvoicedInvoiceID       *int64
 	InvoicedNumber          *int64
+}
+
+type ExpensesJournalFact struct {
+	Seq                    int64
+	Occurrence             string
+	Subject                string
+	SubjectID              int64
+	UserID                 uuid.UUID
+	BusinessDate           pgtype.Date
+	UndoesSeq              *int64
+	ReimbursementReference *string
+	Lines                  []byte
+	OccurredAt             time.Time
+	CreatedAt              time.Time
 }
 
 type ExpensesRate struct {

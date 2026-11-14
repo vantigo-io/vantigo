@@ -94,9 +94,10 @@ WHERE r.id = sqlc.arg(id) AND r.archived_at IS NULL;
 -- InsertPostingRule writes a rule; a default rule seeded again is left as it
 -- is (the seed is idempotent).
 INSERT INTO accounting.posting_rules (name, scope, match, line_kind, tax_category_id, expense_category_id, tax_code,
-    account_id, created_at, updated_at)
+    account_id, created_at, updated_at, vat_deductible)
 VALUES (sqlc.arg(name), sqlc.arg(scope), sqlc.arg(match), sqlc.narg(line_kind), sqlc.narg(tax_category_id),
-    sqlc.narg(expense_category_id), sqlc.narg(tax_code), sqlc.arg(account_id), sqlc.arg(now), sqlc.arg(now))
+    sqlc.narg(expense_category_id), sqlc.narg(tax_code), sqlc.arg(account_id), sqlc.arg(now), sqlc.arg(now),
+    sqlc.narg(vat_deductible))
 ON CONFLICT DO NOTHING
 RETURNING id;
 
@@ -109,7 +110,10 @@ SELECT count(*)::int FROM accounting.posting_rules WHERE match = 'default';
 -- keeps (R15).
 UPDATE accounting.posting_rules
 SET name = sqlc.arg(name)::varchar, account_id = sqlc.arg(account_id),
-    version = version + CASE WHEN account_id <> sqlc.arg(account_id) OR name <> sqlc.arg(name)::varchar THEN 1 ELSE 0 END,
+    vat_deductible = CASE WHEN scope = 'expense' THEN coalesce(sqlc.narg(vat_deductible)::boolean, vat_deductible) END,
+    version = version + CASE WHEN account_id <> sqlc.arg(account_id) OR name <> sqlc.arg(name)::varchar
+        OR (scope = 'expense' AND vat_deductible IS DISTINCT FROM coalesce(sqlc.narg(vat_deductible)::boolean, vat_deductible))
+        THEN 1 ELSE 0 END,
     revision = revision + 1, updated_at = sqlc.arg(now)
 WHERE id = sqlc.arg(id) AND revision = sqlc.arg(revision) AND archived_at IS NULL
 RETURNING id;
@@ -125,16 +129,16 @@ WHERE id = sqlc.arg(id) AND match <> 'default' AND archived_at IS NULL;
 -- when it failed again.
 INSERT INTO accounting.unposted (stream, position, source_module, source_kind, source_id, source_part, fact_date,
     document_id, document_number, customer_id, amount, reason, detail, first_seen_at, last_tried_at, invoice_id,
-    waiting_on)
+    waiting_on, order_key)
 VALUES (sqlc.arg(stream), sqlc.arg(position), sqlc.arg(source_module), sqlc.arg(source_kind), sqlc.arg(source_id),
     sqlc.arg(source_part), sqlc.narg(fact_date), sqlc.narg(document_id), sqlc.narg(document_number),
     sqlc.narg(customer_id), sqlc.narg(amount)::text::numeric, sqlc.arg(reason), sqlc.arg(detail), sqlc.arg(now),
-    sqlc.arg(now), sqlc.narg(invoice_id), sqlc.narg(waiting_on))
+    sqlc.arg(now), sqlc.narg(invoice_id), sqlc.narg(waiting_on), sqlc.narg(order_key))
 ON CONFLICT (source_module, source_kind, source_id, source_part) DO UPDATE
 SET reason = EXCLUDED.reason, detail = EXCLUDED.detail, attempts = accounting.unposted.attempts + 1,
     last_tried_at = EXCLUDED.last_tried_at, invoice_id = coalesce(EXCLUDED.invoice_id, accounting.unposted.invoice_id),
-    waiting_on = EXCLUDED.waiting_on
-WHERE accounting.unposted.posted_at IS NULL;
+    waiting_on = EXCLUDED.waiting_on, order_key = coalesce(EXCLUDED.order_key, accounting.unposted.order_key)
+WHERE accounting.unposted.posted_at IS NULL AND accounting.unposted.resolved_at IS NULL;
 
 -- name: UnpostedBlocker :one
 -- UnpostedBlocker is the row under Needs attention a source of the invoice
@@ -142,7 +146,7 @@ WHERE accounting.unposted.posted_at IS NULL;
 -- the source's own and was recorded before it — any, for a source with no
 -- row yet.
 SELECT u.id, u.document_number, u.source_kind FROM accounting.unposted u
-WHERE u.invoice_id = sqlc.arg(invoice_id) AND u.posted_at IS NULL
+WHERE u.invoice_id = sqlc.arg(invoice_id) AND u.posted_at IS NULL AND u.resolved_at IS NULL
   AND NOT (u.source_module = sqlc.arg(source_module) AND u.source_kind = sqlc.arg(source_kind)
            AND u.source_id = sqlc.arg(source_id) AND u.source_part = sqlc.arg(source_part))
   AND u.id < coalesce((SELECT o.id FROM accounting.unposted o
@@ -158,9 +162,10 @@ LIMIT 1;
 SELECT u.id, u.stream, u.position, u.source_module, u.source_kind, u.source_id, u.source_part, u.fact_date, u.document_id,
     u.document_number, u.customer_id, coalesce(u.amount, 0)::text AS amount, u.reason, u.detail, u.attempts, u.first_seen_at,
     u.last_tried_at, u.posted_voucher_id, u.posted_at, NULL::integer AS voucher_year, NULL::integer AS voucher_number,
-    u.invoice_id, u.waiting_on
+    u.invoice_id, u.waiting_on, u.order_key, u.informational, u.resolved_at, u.supplier_invoice_id,
+    coalesce(u.nok_amounts::text, '')::text AS nok_amounts
 FROM accounting.unposted u
-WHERE u.invoice_id = sqlc.arg(invoice_id) AND u.posted_at IS NULL AND u.id > sqlc.arg(after_id)
+WHERE u.invoice_id = sqlc.arg(invoice_id) AND u.posted_at IS NULL AND u.resolved_at IS NULL AND u.id > sqlc.arg(after_id)
 ORDER BY u.id;
 
 -- name: MarkUnpostedPosted :exec
@@ -176,10 +181,11 @@ WHERE source_module = sqlc.arg(source_module) AND source_kind = sqlc.arg(source_
 SELECT u.id, u.stream, u.position, u.source_module, u.source_kind, u.source_id, u.source_part, u.fact_date, u.document_id,
     u.document_number, u.customer_id, coalesce(u.amount, 0)::text AS amount, u.reason, u.detail, u.attempts, u.first_seen_at,
     u.last_tried_at, u.posted_voucher_id, u.posted_at, v.fiscal_year AS voucher_year, v.number AS voucher_number,
-    u.invoice_id, u.waiting_on, count(*) OVER () AS total
+    u.invoice_id, u.waiting_on, u.order_key, u.informational, u.resolved_at, u.supplier_invoice_id,
+    coalesce(u.nok_amounts::text, '')::text AS nok_amounts, count(*) OVER () AS total
 FROM accounting.unposted u
 LEFT JOIN accounting.vouchers v ON v.id = u.posted_voucher_id
-WHERE (NOT sqlc.arg(open_only)::boolean OR u.posted_at IS NULL)
+WHERE (NOT sqlc.arg(open_only)::boolean OR (u.resolved_at IS NULL AND (u.posted_at IS NULL OR u.informational)))
 ORDER BY u.first_seen_at, u.id
 LIMIT sqlc.arg(row_limit) OFFSET sqlc.arg(row_offset);
 
@@ -187,21 +193,28 @@ LIMIT sqlc.arg(row_limit) OFFSET sqlc.arg(row_offset);
 SELECT u.id, u.stream, u.position, u.source_module, u.source_kind, u.source_id, u.source_part, u.fact_date, u.document_id,
     u.document_number, u.customer_id, coalesce(u.amount, 0)::text AS amount, u.reason, u.detail, u.attempts, u.first_seen_at,
     u.last_tried_at, u.posted_voucher_id, u.posted_at, v.fiscal_year AS voucher_year, v.number AS voucher_number,
-    u.invoice_id, u.waiting_on
+    u.invoice_id, u.waiting_on, u.order_key, u.informational, u.resolved_at, u.supplier_invoice_id,
+    coalesce(u.nok_amounts::text, '')::text AS nok_amounts
 FROM accounting.unposted u
 LEFT JOIN accounting.vouchers v ON v.id = u.posted_voucher_id
 WHERE u.id = sqlc.arg(id);
 
 -- name: CountUnposted :one
-SELECT count(*)::int FROM accounting.unposted WHERE posted_at IS NULL;
+-- CountUnposted is the rows that wait: not posted and not resolved. An
+-- informational row posted and is counted apart (CountInformational).
+SELECT count(*)::int FROM accounting.unposted WHERE posted_at IS NULL AND resolved_at IS NULL;
+
+-- name: CountInformational :one
+SELECT count(*)::int FROM accounting.unposted WHERE informational AND resolved_at IS NULL;
 
 -- name: InsertPostingRuleStrict :one
 -- InsertPostingRuleStrict writes a person's rule; a name or match taken is
 -- the unique index's violation.
 INSERT INTO accounting.posting_rules (name, scope, match, line_kind, tax_category_id, expense_category_id, tax_code,
-    account_id, created_at, updated_at)
+    account_id, created_at, updated_at, vat_deductible)
 VALUES (sqlc.arg(name), sqlc.arg(scope), sqlc.arg(match), sqlc.narg(line_kind), sqlc.narg(tax_category_id),
-    sqlc.narg(expense_category_id), sqlc.narg(tax_code), sqlc.arg(account_id), sqlc.arg(now), sqlc.arg(now))
+    sqlc.narg(expense_category_id), sqlc.narg(tax_code), sqlc.arg(account_id), sqlc.arg(now), sqlc.arg(now),
+    sqlc.narg(vat_deductible))
 RETURNING id;
 
 -- name: SourcePostings :many

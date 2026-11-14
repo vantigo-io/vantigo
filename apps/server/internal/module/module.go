@@ -151,6 +151,12 @@ type Deps struct {
 	// enabled module declares Module.SalesJournal, right after SalesTax; it is
 	// nil when invoices is disabled.
 	SalesJournal contracts.SalesJournal
+	// ExpenseJournal is what Expenses has approved and reimbursed, in an
+	// order a reader resumes from (contracts.ExpenseJournal, accounting
+	// design A20, R2). Compose and Workers set it, on every module's Deps
+	// copy, from whichever enabled module declares Module.ExpenseJournal,
+	// right after SalesJournal; it is nil when expenses is disabled.
+	ExpenseJournal contracts.ExpenseJournal
 	// CustomerReferenceHolders are every given module's
 	// contracts.CustomerReferenceHolder (customers merge design D1), enabled
 	// or not, in the order the modules were given to Compose — the one
@@ -591,6 +597,12 @@ type Module struct {
 	// SalesTax and put the result on every module's Deps, including the
 	// provider's own.
 	SalesJournal func(Deps) contracts.SalesJournal
+	// ExpenseJournal builds this module's contracts.ExpenseJournal
+	// implementation, if it provides one (expenses, accounting design A20,
+	// R2). At most one enabled module may set it; Compose and Workers call it
+	// right after SalesJournal and put the result on every module's Deps,
+	// including the provider's own.
+	ExpenseJournal func(Deps) contracts.ExpenseJournal
 	// EventHandlers builds this module's handlers of the domain-events outbox
 	// (events.Handler, orders design O2), if it has any — a many-provider
 	// slot. Like CustomerReferences it is called for a module MODULES leaves

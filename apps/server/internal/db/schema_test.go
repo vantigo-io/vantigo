@@ -1921,9 +1921,10 @@ func TestExpensesBaseline_AppliesAndIsIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("collect tables: %v", err)
 	}
-	// claims is 00013's, and applyUpDownUp ends with every migration applied,
-	// so it stands here beside the five this one creates.
-	if want := []string{"attachments", "categories", "claims", "entries", "rates", "settings"}; !equalStrings(gotTables, want) {
+	// claims is 00013's, and counters and journal_facts 00184's, and
+	// applyUpDownUp ends with every migration applied, so they stand here
+	// beside the five this one creates.
+	if want := []string{"attachments", "categories", "claims", "counters", "entries", "journal_facts", "rates", "settings"}; !equalStrings(gotTables, want) {
 		t.Errorf("tables = %v, want %v", gotTables, want)
 	}
 
@@ -2051,7 +2052,8 @@ func TestExpensesClaims_AppliesAndIsIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("collect tables: %v", err)
 	}
-	if want := []string{"attachments", "categories", "claims", "entries", "rates", "settings"}; !equalStrings(gotTables, want) {
+	// counters and journal_facts are 00184's: every migration is applied.
+	if want := []string{"attachments", "categories", "claims", "counters", "entries", "journal_facts", "rates", "settings"}; !equalStrings(gotTables, want) {
 		t.Errorf("tables = %v, want %v", gotTables, want)
 	}
 

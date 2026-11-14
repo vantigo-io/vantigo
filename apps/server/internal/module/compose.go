@@ -347,6 +347,12 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 	if deps, err = withSalesJournal(deps, mods); err != nil {
 		return nil, nil, err
 	}
+	// The expense journal (contracts.ExpenseJournal, accounting design A20)
+	// resolves right after it: its own module provides it, from its own
+	// tables only.
+	if deps, err = withExpenseJournal(deps, mods); err != nil {
+		return nil, nil, err
+	}
 
 	// The three billable reads, consumption and billable orders resolve
 	// beside actuals and expenses, after the project directory (withBillables

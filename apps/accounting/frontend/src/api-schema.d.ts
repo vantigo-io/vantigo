@@ -308,6 +308,244 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/accounting/supplier-invoices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the supplier invoices
+         * @description Newest invoice date first.
+         */
+        get: operations["listAccountingSupplierInvoices"];
+        put?: never;
+        /** Enter a supplier invoice as a draft */
+        post: operations["createAccountingSupplierInvoice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/supplier-invoices/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read a supplier invoice */
+        get: operations["getAccountingSupplierInvoice"];
+        /** Change a draft supplier invoice */
+        put: operations["updateAccountingSupplierInvoice"];
+        post?: never;
+        /** Delete a draft supplier invoice */
+        delete: operations["deleteAccountingSupplierInvoice"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/supplier-invoices/{id}/files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Attach a file to a draft supplier invoice
+         * @description At most 20 MB in the multipart field file, on a draft.
+         */
+        post: operations["uploadAccountingSupplierInvoiceFile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/supplier-invoices/{id}/files/{fileId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download a supplier invoice's file */
+        get: operations["getAccountingSupplierInvoiceFile"];
+        put?: never;
+        post?: never;
+        /** Remove a file from a draft supplier invoice */
+        delete: operations["deleteAccountingSupplierInvoiceFile"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/supplier-invoices/{id}/payments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Register a payment of a supplier invoice
+         * @description Debits payables on the invoice's open item and credits the bank account; for an invoice in another currency the difference between the NOK paid and the settled share at the invoice's rate goes to currency_loss or currency_gain (R8).
+         */
+        post: operations["payAccountingSupplierInvoice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/supplier-invoices/{id}/payments/{paymentId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove a payment of a supplier invoice
+         * @description Posts the payment's voucher reversed, dated the payment's day, while its period is open.
+         */
+        delete: operations["removeAccountingSupplierPayment"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/supplier-invoices/{id}/post": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post a supplier invoice
+         * @description Debits each line's account for its net with its tax code, the code's VAT account for the VAT (both sides for reverse charge), and credits payables on a new open item for the supplier; the draft's files become the voucher's attachments.
+         */
+        post: operations["postAccountingSupplierInvoice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/supplier-invoices/{id}/reverse-and-copy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reverse a posted supplier invoice and copy it to a new draft */
+        post: operations["reverseAndCopyAccountingSupplierInvoice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/suppliers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the suppliers
+         * @description By number.
+         */
+        get: operations["listAccountingSuppliers"];
+        put?: never;
+        /** Create a supplier */
+        post: operations["createAccountingSupplier"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/suppliers/lookup/brreg": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Look a supplier up in Brønnøysundregisteret
+         * @description Read-only, rate-limited. By organisation number it reads the entity, with its business address; by name it searches, at most ten.
+         */
+        get: operations["lookupAccountingSupplierBrreg"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/suppliers/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read a supplier */
+        get: operations["getAccountingSupplier"];
+        /** Change a supplier */
+        put: operations["updateAccountingSupplier"];
+        post?: never;
+        /**
+         * Delete a supplier with no postings
+         * @description Only a supplier with no postings and no invoices; any other is made inactive instead.
+         */
+        delete: operations["deleteAccountingSupplier"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/suppliers/{id}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export what the books hold about a supplier
+         * @description The supplier, its invoices with their lines and payments, and every posting naming it: the answer to a person's access request (A17). The bookkeeping keeps them five years after the last voucher.
+         */
+        get: operations["exportAccountingSupplier"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/accounting/tax-codes": {
         parameters: {
             query?: never;
@@ -382,6 +620,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/accounting/unposted/{id}/acknowledge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Acknowledge an informational row
+         * @description For an informational row (vat_not_deducted): it is resolved and leaves the list.
+         */
+        post: operations["acknowledgeAccountingUnposted"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/unposted/{id}/nok-amounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Enter the amount in NOK of an expense in another currency, and post it
+         * @description For a row of reason amount_in_nok_needed: the amount in NOK of each of its lines in another currency, normally from the bank statement. The amounts are kept on the row, and the fact is read again and posted with them.
+         */
+        post: operations["enterAccountingUnpostedNokAmounts"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/accounting/unposted/{id}/retry": {
         parameters: {
             query?: never;
@@ -396,6 +674,26 @@ export interface paths {
          * @description Reads the fact again through Invoices' sales journal, with no transaction open, and posts it. The answer is the item, with its voucher when it posted and its new reason when it did not.
          */
         post: operations["retryAccountingUnposted"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/unposted/{id}/supplier-invoice": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Make a supplier invoice from an expense of the supplier_invoice kind
+         * @description For a row of reason enter_as_supplier_invoice: a draft supplier invoice with the expense's amount, VAT, date, project and receipts, the supplier matched by name or created; the row is resolved.
+         */
+        post: operations["makeAccountingUnpostedSupplierInvoice"];
         delete?: never;
         options?: never;
         head?: never;
@@ -420,6 +718,26 @@ export interface paths {
          * @description Each line with a tax code gets its tax line, computed with docmath's rounding from the net or the gross (A6). Posted means posted: there is no draft.
          */
         post: operations["postAccountingVoucher"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/vouchers/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview a manual journal's postings and its tax lines
+         * @description Writes nothing.
+         */
+        post: operations["previewAccountingVoucher"];
         delete?: never;
         options?: never;
         head?: never;
@@ -500,26 +818,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/accounting/vouchers/preview": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Preview a manual journal's postings and its tax lines
-         * @description Writes nothing.
-         */
-        post: operations["previewAccountingVoucher"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -576,6 +874,20 @@ export interface components {
             /** Format: date-time */
             uploadedAt: string;
         };
+        AccountingBrregEntity: {
+            addressLine: string | null;
+            city: string | null;
+            country: string | null;
+            /** @description Struck off the register. */
+            deleted: boolean;
+            name: string;
+            organisationNumber: string;
+            postalCode: string | null;
+            vatRegistered: boolean | null;
+        };
+        AccountingBrregList: {
+            items: components["schemas"]["AccountingBrregEntity"][];
+        };
         /** @description Where the catch-up stands (A12, R7): each stream's cursor, when it last ran, whether a wake-up waits, and how far the books are behind Invoices — the facts after the cursor, counted up to 500. */
         AccountingCatchUp: {
             streams: components["schemas"]["AccountingCatchUpStream"][];
@@ -598,7 +910,7 @@ export interface components {
             lastRunAt: string | null;
             /**
              * Format: int64
-             * @description The last document number (invoices.documents) or fact seq (invoices.facts) the books have read.
+             * @description The last document number (invoices.documents) or fact seq (invoices.facts, expenses.facts) the books have read.
              */
             position: number;
             /**
@@ -607,7 +919,7 @@ export interface components {
              */
             requestedAt: string | null;
             /** @enum {string} */
-            stream: "invoices.documents" | "invoices.facts";
+            stream: "invoices.documents" | "invoices.facts" | "expenses.facts";
         };
         /**
          * @description How a line with a tax code is entered (A6): net of VAT, or gross with the VAT in it.
@@ -718,6 +1030,13 @@ export interface components {
             canPost: boolean;
             /** @description NOK. */
             currency: string;
+            /** @description Whether Expenses' journal is composed: approved expenses post themselves. */
+            expensesEnabled: boolean;
+            /**
+             * Format: int32
+             * @description Rows under Needs attention that posted and say something (vat_not_deducted), not acknowledged.
+             */
+            informational: number;
             /** @description Whether Invoices' sales journal is composed: open invoices are offered on the opening form, and sales post themselves. */
             invoicesEnabled: boolean;
             /**
@@ -725,6 +1044,16 @@ export interface components {
              * @description Customer open items with a balance.
              */
             openCustomerItems: number;
+            /**
+             * Format: int32
+             * @description Posted supplier invoices not settled due today or in the next seven days.
+             */
+            payablesDueSoon: number;
+            /**
+             * Format: int32
+             * @description Posted supplier invoices not settled whose due date has passed.
+             */
+            payablesOverdue: number;
             /** @description Whether Projects is composed: the project dimension is offered. */
             projectsEnabled: boolean;
             /** @description Whether Set up the books has run (R12). */
@@ -746,6 +1075,14 @@ export interface components {
              * @description Vouchers in the fiscal year of today.
              */
             vouchersThisYear: number;
+        };
+        AccountingNokAmountsInput: {
+            amounts: {
+                /** @description Positive, two decimals. */
+                amountNok: string;
+                /** Format: int64 */
+                entryId: number;
+            }[];
         };
         AccountingOpenInvoice: {
             /** @description Open at the day before booksStart; below zero is credit due back. */
@@ -849,8 +1186,6 @@ export interface components {
             lineNo: number;
             /** Format: int64 */
             openItemId: number | null;
-            /** Format: int32 */
-            projectId: number | null;
             /**
              * Format: int32
              * @description On a revenue line, the posting rule that placed it (A14, R15); null on every other line.
@@ -863,6 +1198,8 @@ export interface components {
              * @description The version of the rule that placed the line.
              */
             postingRuleVersion: number | null;
+            /** Format: int32 */
+            projectId: number | null;
             projectName: string | null;
             /** Format: int64 */
             supplierId: number | null;
@@ -875,12 +1212,17 @@ export interface components {
             /** @description The VAT return's specification line the posting belongs to — tapPåKrav for the VAT a konstatert loss takes back (R4); null for an ordinary posting. */
             taxSpecification: string | null;
         };
-        /** @description A posting rule (A14): the account a sales line's net is credited to, matched on exactly one of the line's kind, its product's tax category or its standard tax code; a default rule (match default) is seeded per tax code and is the last resort. version counts the changes of its name or account (R15), each kept; a sales rule credits an income account; a revenue line's posting names the rule and the version that placed it, and a change affects future vouchers only. A rule is archived, never deleted: an archived one matches nothing and is not listed, and what it placed still names it. */
+        /** @description A posting rule (A14): for a sales rule, the account a sales line's net is credited to, matched on exactly one of the line's kind, its product's tax category or its standard tax code; a default rule (match default) is seeded per tax code and is the last resort. For an expense rule (delivery C), the expense account an expense category's cost is debited to, and whether its VAT may be deducted. version counts the changes of its name, account or deductibility (R15), each kept; a sales rule credits an income account and an expense rule debits an expense account; a posting names the rule and the version that placed it, and a change affects future vouchers only. A rule is archived, never deleted: an archived one matches nothing and is not listed, and what it placed still names it. */
         AccountingPostingRule: {
             /** Format: int32 */
             accountId: number;
             accountName: string;
             accountNumber: string;
+            /**
+             * Format: int32
+             * @description On an expense_category rule, Expenses' category id.
+             */
+            expenseCategoryId: number | null;
             /** Format: int32 */
             id: number;
             /** @description On a line_kind rule, the line kind (hours, expense, milestone, settlement, order_line, subscription_period, deduction, manual, mixed). */
@@ -899,13 +1241,17 @@ export interface components {
             taxCode: string | null;
             /** Format: date-time */
             updatedAt: string;
+            /** @description On an expense rule: whether the VAT on the category's expenses may be deducted (R2). */
+            vatDeductible: boolean | null;
             /** Format: int32 */
             version: number;
         };
-        /** @description A new rule: a name (1–100, unique), the scope (sales in this delivery), a match of line_kind, tax_category or tax_code with its one value, and an active account. */
+        /** @description A new rule: a name (1–100, unique), the scope, a match — for sales line_kind, tax_category or tax_code, for expense expense_category — with its one value, an active account of the scope's kind, and for an expense rule vatDeductible. */
         AccountingPostingRuleInput: {
             /** Format: int32 */
             accountId: number;
+            /** Format: int32 */
+            expenseCategoryId?: number;
             lineKind?: string;
             match: components["schemas"]["AccountingRuleMatch"];
             name: string;
@@ -913,18 +1259,22 @@ export interface components {
             /** Format: int32 */
             taxCategoryId?: number;
             taxCode?: string;
+            /** @description On an expense rule; default true. */
+            vatDeductible?: boolean;
         };
         AccountingPostingRuleList: {
             /** @description In precedence order — line kind, tax category, tax code, the defaults — and by name. */
             items: components["schemas"]["AccountingPostingRule"][];
         };
-        /** @description A rule's name and account under its revision; its match never changes. A changed account is a new version. */
+        /** @description A rule's name and account (and an expense rule's deductibility) under its revision; its match never changes. A change of any of them is a new version. */
         AccountingPostingRuleUpdate: {
             /** Format: int32 */
             accountId: number;
             name: string;
             /** Format: int32 */
             revision: number;
+            /** @description On an expense rule; unchanged when left out. */
+            vatDeductible?: boolean | null;
         };
         AccountingPreviewLine: {
             /** Format: int32 */
@@ -945,7 +1295,7 @@ export interface components {
             taxCodeId: number | null;
             taxRole: components["schemas"]["AccountingTaxRole"] | null;
         };
-        /** @description An RFC 9457 problem with this module's refusal code (accounting design §2, §13). code names the rule that refused and is what a client keys off, never the words: books_not_set_up (409: every operation but the meta and the setup, until Set up the books has run, R12), books_already_set_up (409: a second setup), revision_conflict (409: the revision has moved on), account_number_taken (409), account_has_postings (409: a delete of an account with postings, or a change of its number or kind), account_has_role (409: a delete of an account holding a system role; move the role first), account_inactive (400: a line on an inactive account), account_unknown (400), tax_code_unknown (400: an unknown or inactive tax code), tax_code_no_rate (400: no rate period covers the voucher's date), rate_period_invalid (400: a new rate period that does not start after the current one's start), party_required (400: a line on receivables or payables without a customer or supplier), party_not_allowed (400: a party on a line of another account, or both a customer and a supplier), open_item_unknown (400: an open item of another party or kind), voucher_unbalanced (400: the lines and their computed tax do not sum to zero; the detail names the difference), voucher_empty (400: no line, or every line zero), amount_invalid (400: not an exact decimal with at most two places, or zero), date_before_books_start (400), period_locked (409: a voucher a person posts dated on or before the lock, A8), voucher_owned_by_source (409: a reversal of a voucher the system posted, which only its source reverses, A7), voucher_already_reversed (409), opening_exists (409: an opening voucher stands and is not reversed), opening_locked (409: an opening entered or reversed after the first lock, A9), lock_not_month_end (400), lock_reason_required (400: a lock moved back without a reason), lock_before_books_start (400), settlement_source_document (409: an item that stands for a document in Invoices is paid there, R5), settlement_exceeds_balance (409: more than the item's balance), settlement_settled (409: an item with nothing left), bank_account_invalid (400: not an active asset account), attachment_too_large (400: over 20 MB), storage_not_configured (503: no object store for attachments), report_account_required (400: the account report without accountId), period_invalid (400: from after to, or a period over 366 days for the journal), open_item_source_document (400: a person's voucher naming an open item that stands for a document in Invoices, which moves with Invoices' own facts), report_too_large (400: the journal or an account's specification over 50 000 postings; choose a shorter period), lock_in_future (400: a lock after the end of the current month), books_start_too_early (400: books that start before 2022-01-01, the first day the seeded rates are known to hold), account_kind_mismatch (400: an account whose kind is not its number's class's — 1 asset, 20 equity, 21–29 liability, 3 income, 4–7 expense, 8 income or expense — or a number outside the classes 1 to 8; a system role moved to an account of another kind than the role's), reverse_charge_gross (400: a gross journal with a reverse-charge code, which is entered net), posting_rule_name_taken (409), posting_rule_match_taken (409: a rule with the same scope and match exists), posting_rule_default (409: a default rule is never deleted, only pointed at another account), unposted_already_posted (409: a retry of a fact that has posted). errors carries the field errors of a 400, keyed by the camelCase path (lines[2].accountId). */
+        /** @description An RFC 9457 problem with this module's refusal code (accounting design §2, §13). code names the rule that refused and is what a client keys off, never the words: books_not_set_up (409: every operation but the meta and the setup, until Set up the books has run, R12), books_already_set_up (409: a second setup), revision_conflict (409: the revision has moved on), account_number_taken (409), account_has_postings (409: a delete of an account with postings, or a change of its number or kind), account_has_role (409: a delete of an account holding a system role; move the role first), account_inactive (400: a line on an inactive account), account_unknown (400), tax_code_unknown (400: an unknown or inactive tax code), tax_code_no_rate (400: no rate period covers the voucher's date), rate_period_invalid (400: a new rate period that does not start after the current one's start), party_required (400: a line on receivables or payables without a customer or supplier), party_not_allowed (400: a party on a line of another account, or both a customer and a supplier), open_item_unknown (400: an open item of another party or kind), voucher_unbalanced (400: the lines and their computed tax do not sum to zero; the detail names the difference), voucher_empty (400: no line, or every line zero), amount_invalid (400: not an exact decimal with at most two places, or zero), date_before_books_start (400), period_locked (409: a voucher a person posts dated on or before the lock, A8), voucher_owned_by_source (409: a reversal of a voucher the system posted, which only its source reverses, A7), voucher_already_reversed (409), opening_exists (409: an opening voucher stands and is not reversed), opening_locked (409: an opening entered or reversed after the first lock, A9), lock_not_month_end (400), lock_reason_required (400: a lock moved back without a reason), lock_before_books_start (400), settlement_source_document (409: an item that stands for a document in Invoices is paid there, R5), settlement_exceeds_balance (409: more than the item's balance), settlement_settled (409: an item with nothing left), bank_account_invalid (400: not an active asset account), attachment_too_large (400: over 20 MB), storage_not_configured (503: no object store for attachments), report_account_required (400: the account report without accountId), period_invalid (400: from after to, or a period over 366 days for the journal), open_item_source_document (400: a person's voucher naming an open item that stands for a document in Invoices, which moves with Invoices' own facts), report_too_large (400: the journal or an account's specification over 50 000 postings; choose a shorter period), lock_in_future (400: a lock after the end of the current month), books_start_too_early (400: books that start before 2022-01-01, the first day the seeded rates are known to hold), account_kind_mismatch (400: an account whose kind is not its number's class's — 1 asset, 20 equity, 21–29 liability, 3 income, 4–7 expense, 8 income or expense — or a number outside the classes 1 to 8; a system role moved to an account of another kind than the role's), reverse_charge_gross (400: a gross journal with a reverse-charge code, which is entered net), posting_rule_name_taken (409), posting_rule_match_taken (409: a rule with the same scope and match exists), posting_rule_default (409: a default rule is never deleted, only pointed at another account), unposted_already_posted (409: a retry of a fact that has posted), supplier_organisation_number_taken (409: another supplier has that organisation number), supplier_bank_account_invalid (400: not eleven digits passing mod 11), supplier_has_postings (409: a delete of a supplier with postings or invoices; make it inactive), supplier_inactive (400: a new invoice for an inactive supplier), duplicate_supplier_invoice (409: the same supplier's number of the same kind on another invoice that is not reversed), supplier_invoice_not_draft (409: a change, a delete, a post or a file removed on an invoice that is not a draft), supplier_invoice_not_posted (409: a payment or Reverse and copy on an invoice that is not posted), supplier_invoice_file_required (409: Post without an attached file), supplier_invoice_total_mismatch (400: the lines' gross does not sum to the total), tax_code_not_purchase (400: an output code on a purchase line), exchange_rate_required (400: another currency without the rate or the NOK total), supplier_invoice_settled (409: a payment on an invoice with nothing left), payment_exceeds_balance (409: a payment of more than is left), payment_removed (409: a payment removed already), settlement_supplier_invoice (409: an item that stands for a supplier invoice is paid on the invoice), unposted_wrong_reason (409: an action for another reason than the row's), brreg_unavailable (502: Brønnøysundregisteret could not be reached). errors carries the field errors of a 400, keyed by the camelCase path (lines[2].accountId). */
         AccountingProblem: {
             code?: string | null;
             detail?: string | null;
@@ -991,15 +1341,34 @@ export interface components {
             };
             /** Format: int32 */
             depth: number;
-            /** @enum {string} */
-            style: "line" | "heading" | "subtotal" | "total";
             /**
              * Format: int64
              * @description The document in Invoices the row stands for (a customer's open item for an invoice), which the screen links to.
              */
             documentId: number | null;
+            /** @enum {string} */
+            style: "line" | "heading" | "subtotal" | "total";
+            /**
+             * Format: int64
+             * @description On the suppliers report, the supplier a row belongs to.
+             */
+            supplierId: number | null;
+            /**
+             * Format: int64
+             * @description The supplier invoice an item row stands for, which the screen links to.
+             */
+            supplierInvoiceId: number | null;
             /** Format: int64 */
             voucherId: number | null;
+        };
+        AccountingReverseCopyInput: {
+            /**
+             * Format: date
+             * @description The reversal's date.
+             */
+            date: string;
+            /** @description 1 to 500. */
+            reason: string;
         };
         AccountingReverseInput: {
             /**
@@ -1016,7 +1385,7 @@ export interface components {
         /** @enum {string} */
         AccountingRuleMatch: "line_kind" | "tax_category" | "expense_category" | "tax_code" | "default";
         /**
-         * @description sales for Invoices' lines; expense arrives with purchases (delivery C).
+         * @description sales for Invoices' lines; expense for Expenses' categories (delivery C).
          * @enum {string}
          */
         AccountingRuleScope: "sales" | "expense";
@@ -1073,6 +1442,306 @@ export interface components {
             kind: string;
             module: string;
             part: string;
+        };
+        /** @description A supplier (A17). */
+        AccountingSupplier: {
+            active: boolean;
+            addressLine: string | null;
+            /** @description The supplier's balance on payables in NOK: negative is owed to the supplier. */
+            balance: string;
+            /** @description A Norwegian account number, eleven digits (mod 11). */
+            bankAccount: string | null;
+            bic: string | null;
+            city: string | null;
+            /** @description ISO 3166 alpha-2. */
+            country: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** @description The currency a new invoice proposes. */
+            currency: string;
+            /**
+             * Format: int32
+             * @description The cost account a new invoice line proposes.
+             */
+            defaultAccountId: number | null;
+            /**
+             * Format: int32
+             * @description The tax code a new invoice line proposes.
+             */
+            defaultTaxCodeId: number | null;
+            email: string | null;
+            /** @description A supplier with postings is never deleted, only made inactive. */
+            hasPostings: boolean;
+            iban: string | null;
+            /** Format: int64 */
+            id: number;
+            /** @description A sole proprietor: personal data, kept five years after the last voucher (A17). */
+            isPerson: boolean;
+            /**
+             * Format: date
+             * @description The date of the supplier's last voucher.
+             */
+            lastVoucherDate: string | null;
+            name: string;
+            /**
+             * Format: int32
+             * @description Gap-free, from the supplier counter.
+             */
+            number: number;
+            /** @description Nine digits for a Norwegian entity. */
+            organisationNumber: string | null;
+            /**
+             * Format: int32
+             * @description Days from the invoice date to the due date a new invoice proposes.
+             */
+            paymentTermsDays: number;
+            postalCode: string | null;
+            /**
+             * Format: date
+             * @description For a person: five years after the end of the year of the last voucher, until when the bookkeeping keeps them.
+             */
+            retainedUntil: string | null;
+            /** Format: int32 */
+            revision: number;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        /** @description Everything the books hold about one supplier: what a person's access request is answered with (A17). */
+        AccountingSupplierExport: {
+            invoices: components["schemas"]["AccountingSupplierInvoice"][];
+            postings: components["schemas"]["AccountingSupplierExportPosting"][];
+            /** Format: date-time */
+            producedAt: string;
+            supplier: components["schemas"]["AccountingSupplier"];
+        };
+        AccountingSupplierExportPosting: {
+            accountNumber: string;
+            amount: string;
+            description: string;
+            voucher: components["schemas"]["AccountingVoucherRef"];
+            /** Format: date */
+            voucherDate: string;
+        };
+        /** @description A supplier's fields; on an update, with its revision. */
+        AccountingSupplierInput: {
+            /** @description On an update; default true. */
+            active?: boolean | null;
+            addressLine?: string | null;
+            /** @description Eleven digits, spaces and dots allowed; mod 11. */
+            bankAccount?: string | null;
+            bic?: string | null;
+            city?: string | null;
+            /** @description Default NO. */
+            country?: string | null;
+            /** @description Default NOK. */
+            currency?: string | null;
+            /** Format: int32 */
+            defaultAccountId?: number | null;
+            /** Format: int32 */
+            defaultTaxCodeId?: number | null;
+            email?: string | null;
+            iban?: string | null;
+            isPerson?: boolean | null;
+            /** @description 1 to 200 characters. */
+            name: string;
+            organisationNumber?: string | null;
+            /**
+             * Format: int32
+             * @description 0 to 365, default 14.
+             */
+            paymentTermsDays?: number | null;
+            postalCode?: string | null;
+            /**
+             * Format: int32
+             * @description Required on an update.
+             */
+            revision?: number | null;
+        };
+        /** @description A supplier invoice or credit note (A18, R8). */
+        AccountingSupplierInvoice: {
+            /** @description The open item's balance in NOK, negative while owed; null for a draft. */
+            balance: string | null;
+            /** @description The open item's balance in the invoice's currency; null for a draft. */
+            balanceCurrency: string | null;
+            /** Format: int64 */
+            copiedFromId: number | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: int64 */
+            creditsInvoiceId: number | null;
+            currency: string;
+            description: string;
+            /** Format: date */
+            dueDate: string | null;
+            /** @description NOK per unit of the currency, six decimals; 1 for NOK. */
+            exchangeRate: string;
+            files: components["schemas"]["AccountingAttachment"][];
+            /** Format: int64 */
+            id: number;
+            /** Format: date */
+            invoiceDate: string;
+            /** @description The supplier's own number. */
+            invoiceNumber: string;
+            kid: string | null;
+            kind: components["schemas"]["AccountingSupplierInvoiceKind"];
+            lines: components["schemas"]["AccountingSupplierInvoiceLine"][];
+            /** @description The lines' gross summed, in the invoice's currency: Post needs it to equal total. */
+            linesTotal: string;
+            /** Format: int64 */
+            openItemId: number | null;
+            /** @description Posted, not settled, and due before today. */
+            overdue: boolean;
+            payments: components["schemas"]["AccountingSupplierPayment"][];
+            /** Format: date-time */
+            postedAt: string | null;
+            reference: string | null;
+            reversalVoucher: components["schemas"]["AccountingVoucherRef"] | null;
+            /** Format: int32 */
+            revision: number;
+            /**
+             * Format: int64
+             * @description The expense of Expenses' supplier_invoice kind the draft was made from.
+             */
+            sourceExpenseEntryId: number | null;
+            state: components["schemas"]["AccountingSupplierInvoiceState"];
+            /** Format: int64 */
+            supplierId: number;
+            supplierName: string;
+            /** Format: int32 */
+            supplierNumber: number;
+            /** @description In the invoice's currency. */
+            total: string;
+            totalNok: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** @description The VAT the lines carry, in the invoice's currency. */
+            vat: string;
+            voucher: components["schemas"]["AccountingVoucherRef"] | null;
+        };
+        AccountingSupplierInvoiceInput: {
+            /**
+             * Format: int64
+             * @description On a credit note: the posted invoice it credits.
+             */
+            creditsInvoiceId?: number | null;
+            /** @description Default the supplier's. */
+            currency?: string | null;
+            description?: string | null;
+            /**
+             * Format: date
+             * @description Default the invoice date plus the supplier's terms.
+             */
+            dueDate?: string | null;
+            /** @description NOK per unit, for another currency; give it or totalNok. */
+            exchangeRate?: string | null;
+            /** Format: date */
+            invoiceDate: string;
+            /** @description The supplier's number, 1 to 60. */
+            invoiceNumber: string;
+            kid?: string | null;
+            kind: components["schemas"]["AccountingSupplierInvoiceKind"];
+            /** @description At most 200. */
+            lines: components["schemas"]["AccountingSupplierInvoiceLineInput"][];
+            reference?: string | null;
+            /**
+             * Format: int32
+             * @description Required on an update.
+             */
+            revision?: number | null;
+            /** Format: int64 */
+            supplierId: number;
+            /** @description In the invoice's currency. */
+            total: string;
+            /** @description The total in NOK, for another currency; give it or exchangeRate. */
+            totalNok?: string | null;
+        };
+        /** @enum {string} */
+        AccountingSupplierInvoiceKind: "invoice" | "credit_note";
+        AccountingSupplierInvoiceLine: {
+            /** Format: int32 */
+            accountId: number;
+            accountName: string;
+            accountNumber: string;
+            /** @description As entered, in the invoice's currency. */
+            amount: string;
+            entry: components["schemas"]["AccountingEntryMode"];
+            /** @description Net plus the invoice's VAT: what the line adds to the total. */
+            gross: string;
+            /** Format: int64 */
+            id: number;
+            /** @description The line's net in the invoice's currency. */
+            net: string;
+            /** Format: int32 */
+            position: number;
+            /** Format: int32 */
+            projectId: number | null;
+            projectName: string | null;
+            taxCode: string | null;
+            /** Format: int32 */
+            taxCodeId: number | null;
+            text: string;
+            /** @description The VAT the invoice carries on the line, in its currency; 0.00 for a reverse-charge code, whose VAT is the buyer's to calculate. */
+            vat: string;
+        };
+        AccountingSupplierInvoiceLineInput: {
+            /** Format: int32 */
+            accountId: number;
+            /** @description Exact, two decimals, in the invoice's currency; negative on a discount line. */
+            amount: string;
+            /** @description Default gross; a reverse-charge code is entered net. */
+            entry?: components["schemas"]["AccountingEntryMode"];
+            /** Format: int32 */
+            projectId?: number | null;
+            /** Format: int32 */
+            taxCodeId?: number | null;
+            text?: string | null;
+        };
+        AccountingSupplierInvoiceList: {
+            items: components["schemas"]["AccountingSupplierInvoice"][];
+            /** Format: int32 */
+            total: number;
+        };
+        /**
+         * @description paid is derived from the open item: a posted invoice whose balance is zero.
+         * @enum {string}
+         */
+        AccountingSupplierInvoiceState: "draft" | "posted" | "paid" | "reversed";
+        AccountingSupplierList: {
+            items: components["schemas"]["AccountingSupplier"][];
+            /** Format: int32 */
+            total: number;
+        };
+        AccountingSupplierPayment: {
+            /** @description The share of the invoice it settles, in the invoice's currency. */
+            amountCurrency: string;
+            /** @description What the bank took, in NOK. */
+            amountNok: string;
+            /** Format: int32 */
+            bankAccountId: number;
+            bankAccountNumber: string;
+            /** @description To currency_loss (positive) or currency_gain (negative); 0.00 for a NOK invoice. */
+            currencyDifference: string;
+            /** Format: int64 */
+            id: number;
+            /** Format: date */
+            paidOn: string;
+            removalVoucher: components["schemas"]["AccountingVoucherRef"] | null;
+            /** Format: date-time */
+            removedAt: string | null;
+            voucher: components["schemas"]["AccountingVoucherRef"];
+        };
+        AccountingSupplierPaymentInput: {
+            /** @description For an invoice in another currency: the share settled, default what is left. */
+            amountCurrency?: string | null;
+            /** @description Positive, as the bank took it. */
+            amountNok: string;
+            /**
+             * Format: int32
+             * @description An active asset account; default the bank role's.
+             */
+            bankAccountId?: number | null;
+            /** Format: date */
+            date: string;
         };
         /**
          * @description The accounts the module posts to by itself (A3, R8, R11). Every charge payment posts to charge_income; interest income is an ordinary account.
@@ -1150,32 +1819,57 @@ export interface components {
              */
             documentId: number | null;
             documentNumber: string | null;
+            /** @description An expense fact's lines in another currency, for amount_in_nok_needed; empty otherwise. */
+            expenseLines: components["schemas"]["AccountingUnpostedExpenseLine"][];
             /** Format: date */
             factDate: string | null;
+            /** Format: date-time */
+            firstSeenAt: string;
+            /** Format: int64 */
+            id: number;
+            /** @description A row that posted but says something a person should see (vat_not_deducted): it never blocks and is not counted in unposted. */
+            informational: boolean;
             /**
              * Format: int64
              * @description The invoice in Invoices the fact is about — a credit note's, the invoice it credits.
              */
             invoiceId: number | null;
             /** Format: date-time */
-            firstSeenAt: string;
-            /** Format: int64 */
-            id: number;
-            /** Format: date-time */
             lastTriedAt: string;
+            /** @description What an expense fact waits behind: entry:<id> or claim:<id>. */
+            orderKey: string | null;
+            /** Format: int64 */
+            position: number;
             /** Format: date-time */
             postedAt: string | null;
             postedVoucher: components["schemas"]["AccountingVoucherRef"] | null;
-            /** Format: int64 */
-            position: number;
             reason: string;
+            /**
+             * Format: date-time
+             * @description When an informational row was acknowledged, or the expense was made into a supplier invoice.
+             */
+            resolvedAt: string | null;
             source: components["schemas"]["AccountingSource"];
             stream: string;
+            /**
+             * Format: int64
+             * @description The draft supplier invoice the row was made into.
+             */
+            supplierInvoiceId: number | null;
             /**
              * Format: int64
              * @description With reason waiting_on, the row under Needs attention this one waits behind.
              */
             waitingOn: number | null;
+        };
+        AccountingUnpostedExpenseLine: {
+            /** @description The amount in NOK a person entered, null until then. */
+            amountNok: string | null;
+            currency: string;
+            /** Format: int64 */
+            entryId: number;
+            gross: string;
+            kind: string;
         };
         AccountingUnpostedList: {
             items: components["schemas"]["AccountingUnposted"][];
@@ -2620,6 +3314,1192 @@ export interface operations {
             };
         };
     };
+    listAccountingSupplierInvoices: {
+        parameters: {
+            query?: {
+                state?: components["schemas"]["AccountingSupplierInvoiceState"];
+                supplierId?: number;
+                /** @description The supplier's own number, for the duplicate warning; with supplierId. */
+                supplierNumber?: string;
+                dueFrom?: string;
+                dueTo?: string;
+                overdue?: boolean;
+                offset?: number;
+                /** @description Default 100, at most 500. */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingSupplierInvoiceList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — books_not_set_up. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+        };
+    };
+    createAccountingSupplierInvoice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountingSupplierInvoiceInput"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingSupplierInvoice"];
+                };
+            };
+            /** @description Bad Request — field errors, supplier_inactive, account_unknown, account_inactive, tax_code_unknown, tax_code_not_purchase, amount_invalid, exchange_rate_required. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — books_not_set_up; duplicate_supplier_invoice. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+        };
+    };
+    getAccountingSupplierInvoice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingSupplierInvoice"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — books_not_set_up. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+        };
+    };
+    updateAccountingSupplierInvoice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountingSupplierInvoiceInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingSupplierInvoice"];
+                };
+            };
+            /** @description Bad Request — as for a new one. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — books_not_set_up; revision_conflict, supplier_invoice_not_draft, duplicate_supplier_invoice. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+        };
+    };
+    deleteAccountingSupplierInvoice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — books_not_set_up; supplier_invoice_not_draft. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+        };
+    };
+    uploadAccountingSupplierInvoiceFile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingAttachment"];
+                };
+            };
+            /** @description Bad Request — attachment_too_large, or no file in the multipart field file. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — books_not_set_up; supplier_invoice_not_draft. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+            /** @description Service Unavailable — storage_not_configured, or the store failed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+        };
+    };
+    getAccountingSupplierInvoiceFile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                fileId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": string;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — books_not_set_up. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+            /** @description Service Unavailable — the store failed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+        };
+    };
+    deleteAccountingSupplierInvoiceFile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                fileId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — books_not_set_up; supplier_invoice_not_draft. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+        };
+    };
+    payAccountingSupplierInvoice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountingSupplierPaymentInput"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingSupplierInvoice"];
+                };
+            };
+            /** @description Bad Request — field errors, amount_invalid, bank_account_invalid, date_before_books_start. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — books_not_set_up; supplier_invoice_not_posted, supplier_invoice_settled, payment_exceeds_balance, period_locked. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+        };
+    };
+    removeAccountingSupplierPayment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                paymentId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingSupplierInvoice"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — books_not_set_up; payment_removed, period_locked. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+        };
+    };
+    postAccountingSupplierInvoice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingSupplierInvoice"];
+                };
+            };
+            /** @description Bad Request — supplier_invoice_total_mismatch, tax_code_no_rate, reverse_charge_gross, date_before_books_start, and the engine's refusals. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — books_not_set_up; supplier_invoice_not_draft, supplier_invoice_file_required, period_locked. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+        };
+    };
+    reverseAndCopyAccountingSupplierInvoice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountingReverseCopyInput"];
+            };
+        };
+        responses: {
+            /** @description Created — the new draft */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingSupplierInvoice"];
+                };
+            };
+            /** @description Bad Request — field errors, date_before_books_start. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — books_not_set_up; supplier_invoice_not_posted, period_locked, voucher_already_reversed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+        };
+    };
+    listAccountingSuppliers: {
+        parameters: {
+            query?: {
+                /** @description By name, number or organisation number. */
+                q?: string;
+                /** @description Default: every supplier. */
+                active?: boolean;
+                offset?: number;
+                /** @description Default 100, at most 500. */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingSupplierList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — books_not_set_up. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+        };
+    };
+    createAccountingSupplier: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountingSupplierInput"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingSupplier"];
+                };
+            };
+            /** @description Bad Request — field errors, supplier_bank_account_invalid, account_unknown, tax_code_unknown. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — books_not_set_up; supplier_organisation_number_taken. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+        };
+    };
+    lookupAccountingSupplierBrreg: {
+        parameters: {
+            query?: {
+                /** @description Nine digits: the entity itself, with its address. */
+                organisationNumber?: string;
+                /** @description A name, at least two characters. */
+                q?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingBrregList"];
+                };
+            };
+            /** @description Bad Request — neither an organisation number of nine digits nor a name of two characters. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — books_not_set_up. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Gateway — brreg_unavailable. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+        };
+    };
+    getAccountingSupplier: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingSupplier"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — books_not_set_up. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+        };
+    };
+    updateAccountingSupplier: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountingSupplierInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingSupplier"];
+                };
+            };
+            /** @description Bad Request — field errors, supplier_bank_account_invalid, account_unknown, tax_code_unknown. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — books_not_set_up; revision_conflict, supplier_organisation_number_taken. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+        };
+    };
+    deleteAccountingSupplier: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — books_not_set_up; supplier_has_postings. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+        };
+    };
+    exportAccountingSupplier: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingSupplierExport"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — books_not_set_up. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+        };
+    };
     listAccountingTaxCodes: {
         parameters: {
             query?: never;
@@ -2858,6 +4738,131 @@ export interface operations {
             };
         };
     };
+    acknowledgeAccountingUnposted: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingUnposted"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — books_not_set_up; unposted_wrong_reason. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+        };
+    };
+    enterAccountingUnpostedNokAmounts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountingNokAmountsInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingUnposted"];
+                };
+            };
+            /** @description Bad Request — field errors, amount_invalid. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — books_not_set_up; unposted_already_posted, unposted_wrong_reason. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+        };
+    };
     retryAccountingUnposted: {
         parameters: {
             query?: never;
@@ -2904,6 +4909,71 @@ export interface operations {
                 content?: never;
             };
             /** @description Conflict — books_not_set_up; unposted_already_posted. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+        };
+    };
+    makeAccountingUnpostedSupplierInvoice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Created — the draft */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingSupplierInvoice"];
+                };
+            };
+            /** @description Bad Request — the expense's figures do not make a draft (no supplier to match or create). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — books_not_set_up; unposted_wrong_reason, duplicate_supplier_invoice. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3026,6 +5096,66 @@ export interface operations {
                 };
             };
             /** @description Conflict — books_not_set_up; period_locked. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+        };
+    };
+    previewAccountingVoucher: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountingJournalInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingJournalPreview"];
+                };
+            };
+            /** @description Bad Request — the same field errors as posting, but voucher_unbalanced, which the preview reports. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — books_not_set_up. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3298,66 +5428,6 @@ export interface operations {
                 content?: never;
             };
             /** @description Conflict — books_not_set_up; voucher_owned_by_source, voucher_already_reversed, period_locked, opening_locked. */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["AccountingProblem"];
-                };
-            };
-        };
-    };
-    previewAccountingVoucher: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AccountingJournalInput"];
-            };
-        };
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AccountingJournalPreview"];
-                };
-            };
-            /** @description Bad Request — the same field errors as posting, but voucher_unbalanced, which the preview reports. */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["AccountingProblem"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthErrorResponse"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthErrorResponse"];
-                };
-            };
-            /** @description Conflict — books_not_set_up. */
             409: {
                 headers: {
                     [name: string]: unknown;

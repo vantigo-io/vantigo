@@ -138,6 +138,51 @@ components:
                 - sizeBytes
                 - uploadedAt
             type: object
+        AccountingBrregEntity:
+            additionalProperties: false
+            properties:
+                addressLine:
+                    nullable: true
+                    type: string
+                city:
+                    nullable: true
+                    type: string
+                country:
+                    nullable: true
+                    type: string
+                deleted:
+                    description: Struck off the register.
+                    type: boolean
+                name:
+                    type: string
+                organisationNumber:
+                    type: string
+                postalCode:
+                    nullable: true
+                    type: string
+                vatRegistered:
+                    nullable: true
+                    type: boolean
+            required:
+                - addressLine
+                - city
+                - country
+                - deleted
+                - name
+                - organisationNumber
+                - postalCode
+                - vatRegistered
+            type: object
+        AccountingBrregList:
+            additionalProperties: false
+            properties:
+                items:
+                    items:
+                        $ref: '#/components/schemas/AccountingBrregEntity'
+                    type: array
+            required:
+                - items
+            type: object
         AccountingCatchUp:
             additionalProperties: false
             description: 'Where the catch-up stands (A12, R7): each stream''s cursor, when it last ran, whether a wake-up waits, and how far the books are behind Invoices — the facts after the cursor, counted up to 500.'
@@ -173,7 +218,7 @@ components:
                     nullable: true
                     type: string
                 position:
-                    description: The last document number (invoices.documents) or fact seq (invoices.facts) the books have read.
+                    description: The last document number (invoices.documents) or fact seq (invoices.facts, expenses.facts) the books have read.
                     format: int64
                     type: integer
                 requestedAt:
@@ -185,6 +230,7 @@ components:
                     enum:
                         - invoices.documents
                         - invoices.facts
+                        - expenses.facts
                     type: string
             required:
                 - behind
@@ -431,11 +477,26 @@ components:
                 currency:
                     description: NOK.
                     type: string
+                expensesEnabled:
+                    description: 'Whether Expenses'' journal is composed: approved expenses post themselves.'
+                    type: boolean
+                informational:
+                    description: Rows under Needs attention that posted and say something (vat_not_deducted), not acknowledged.
+                    format: int32
+                    type: integer
                 invoicesEnabled:
                     description: 'Whether Invoices'' sales journal is composed: open invoices are offered on the opening form, and sales post themselves.'
                     type: boolean
                 openCustomerItems:
                     description: Customer open items with a balance.
+                    format: int32
+                    type: integer
+                payablesDueSoon:
+                    description: Posted supplier invoices not settled due today or in the next seven days.
+                    format: int32
+                    type: integer
+                payablesOverdue:
+                    description: Posted supplier invoices not settled whose due date has passed.
                     format: int32
                     type: integer
                 projectsEnabled:
@@ -467,14 +528,39 @@ components:
                 - canExport
                 - canPost
                 - currency
+                - expensesEnabled
+                - informational
                 - invoicesEnabled
                 - openCustomerItems
+                - payablesDueSoon
+                - payablesOverdue
                 - projectsEnabled
                 - setUp
                 - settings
                 - today
                 - unposted
                 - vouchersThisYear
+            type: object
+        AccountingNokAmountsInput:
+            additionalProperties: false
+            properties:
+                amounts:
+                    items:
+                        additionalProperties: false
+                        properties:
+                            amountNok:
+                                description: Positive, two decimals.
+                                type: string
+                            entryId:
+                                format: int64
+                                type: integer
+                        required:
+                            - amountNok
+                            - entryId
+                        type: object
+                    type: array
+            required:
+                - amounts
             type: object
         AccountingOpenInvoice:
             additionalProperties: false
@@ -702,10 +788,6 @@ components:
                     format: int64
                     nullable: true
                     type: integer
-                projectId:
-                    format: int32
-                    nullable: true
-                    type: integer
                 postingRuleId:
                     description: On a revenue line, the posting rule that placed it (A14, R15); null on every other line.
                     format: int32
@@ -717,6 +799,10 @@ components:
                     type: string
                 postingRuleVersion:
                     description: The version of the rule that placed the line.
+                    format: int32
+                    nullable: true
+                    type: integer
+                projectId:
                     format: int32
                     nullable: true
                     type: integer
@@ -770,7 +856,7 @@ components:
             type: object
         AccountingPostingRule:
             additionalProperties: false
-            description: 'A posting rule (A14): the account a sales line''s net is credited to, matched on exactly one of the line''s kind, its product''s tax category or its standard tax code; a default rule (match default) is seeded per tax code and is the last resort. version counts the changes of its name or account (R15), each kept; a sales rule credits an income account; a revenue line''s posting names the rule and the version that placed it, and a change affects future vouchers only. A rule is archived, never deleted: an archived one matches nothing and is not listed, and what it placed still names it.'
+            description: 'A posting rule (A14): for a sales rule, the account a sales line''s net is credited to, matched on exactly one of the line''s kind, its product''s tax category or its standard tax code; a default rule (match default) is seeded per tax code and is the last resort. For an expense rule (delivery C), the expense account an expense category''s cost is debited to, and whether its VAT may be deducted. version counts the changes of its name, account or deductibility (R15), each kept; a sales rule credits an income account and an expense rule debits an expense account; a posting names the rule and the version that placed it, and a change affects future vouchers only. A rule is archived, never deleted: an archived one matches nothing and is not listed, and what it placed still names it.'
             properties:
                 accountId:
                     format: int32
@@ -779,6 +865,11 @@ components:
                     type: string
                 accountNumber:
                     type: string
+                expenseCategoryId:
+                    description: On an expense_category rule, Expenses' category id.
+                    format: int32
+                    nullable: true
+                    type: integer
                 id:
                     format: int32
                     type: integer
@@ -807,6 +898,10 @@ components:
                 updatedAt:
                     format: date-time
                     type: string
+                vatDeductible:
+                    description: 'On an expense rule: whether the VAT on the category''s expenses may be deducted (R2).'
+                    nullable: true
+                    type: boolean
                 version:
                     format: int32
                     type: integer
@@ -814,6 +909,7 @@ components:
                 - accountId
                 - accountName
                 - accountNumber
+                - expenseCategoryId
                 - id
                 - lineKind
                 - match
@@ -823,13 +919,17 @@ components:
                 - taxCategoryId
                 - taxCode
                 - updatedAt
+                - vatDeductible
                 - version
             type: object
         AccountingPostingRuleInput:
             additionalProperties: false
-            description: 'A new rule: a name (1–100, unique), the scope (sales in this delivery), a match of line_kind, tax_category or tax_code with its one value, and an active account.'
+            description: 'A new rule: a name (1–100, unique), the scope, a match — for sales line_kind, tax_category or tax_code, for expense expense_category — with its one value, an active account of the scope''s kind, and for an expense rule vatDeductible.'
             properties:
                 accountId:
+                    format: int32
+                    type: integer
+                expenseCategoryId:
                     format: int32
                     type: integer
                 lineKind:
@@ -845,6 +945,9 @@ components:
                     type: integer
                 taxCode:
                     type: string
+                vatDeductible:
+                    description: On an expense rule; default true.
+                    type: boolean
             required:
                 - accountId
                 - match
@@ -864,7 +967,7 @@ components:
             type: object
         AccountingPostingRuleUpdate:
             additionalProperties: false
-            description: A rule's name and account under its revision; its match never changes. A changed account is a new version.
+            description: A rule's name and account (and an expense rule's deductibility) under its revision; its match never changes. A change of any of them is a new version.
             properties:
                 accountId:
                     format: int32
@@ -874,6 +977,10 @@ components:
                 revision:
                     format: int32
                     type: integer
+                vatDeductible:
+                    description: On an expense rule; unchanged when left out.
+                    nullable: true
+                    type: boolean
             required:
                 - accountId
                 - name
@@ -921,7 +1028,7 @@ components:
                 - taxRole
             type: object
         AccountingProblem:
-            description: 'An RFC 9457 problem with this module''s refusal code (accounting design §2, §13). code names the rule that refused and is what a client keys off, never the words: books_not_set_up (409: every operation but the meta and the setup, until Set up the books has run, R12), books_already_set_up (409: a second setup), revision_conflict (409: the revision has moved on), account_number_taken (409), account_has_postings (409: a delete of an account with postings, or a change of its number or kind), account_has_role (409: a delete of an account holding a system role; move the role first), account_inactive (400: a line on an inactive account), account_unknown (400), tax_code_unknown (400: an unknown or inactive tax code), tax_code_no_rate (400: no rate period covers the voucher''s date), rate_period_invalid (400: a new rate period that does not start after the current one''s start), party_required (400: a line on receivables or payables without a customer or supplier), party_not_allowed (400: a party on a line of another account, or both a customer and a supplier), open_item_unknown (400: an open item of another party or kind), voucher_unbalanced (400: the lines and their computed tax do not sum to zero; the detail names the difference), voucher_empty (400: no line, or every line zero), amount_invalid (400: not an exact decimal with at most two places, or zero), date_before_books_start (400), period_locked (409: a voucher a person posts dated on or before the lock, A8), voucher_owned_by_source (409: a reversal of a voucher the system posted, which only its source reverses, A7), voucher_already_reversed (409), opening_exists (409: an opening voucher stands and is not reversed), opening_locked (409: an opening entered or reversed after the first lock, A9), lock_not_month_end (400), lock_reason_required (400: a lock moved back without a reason), lock_before_books_start (400), settlement_source_document (409: an item that stands for a document in Invoices is paid there, R5), settlement_exceeds_balance (409: more than the item''s balance), settlement_settled (409: an item with nothing left), bank_account_invalid (400: not an active asset account), attachment_too_large (400: over 20 MB), storage_not_configured (503: no object store for attachments), report_account_required (400: the account report without accountId), period_invalid (400: from after to, or a period over 366 days for the journal), open_item_source_document (400: a person''s voucher naming an open item that stands for a document in Invoices, which moves with Invoices'' own facts), report_too_large (400: the journal or an account''s specification over 50 000 postings; choose a shorter period), lock_in_future (400: a lock after the end of the current month), books_start_too_early (400: books that start before 2022-01-01, the first day the seeded rates are known to hold), account_kind_mismatch (400: an account whose kind is not its number''s class''s — 1 asset, 20 equity, 21–29 liability, 3 income, 4–7 expense, 8 income or expense — or a number outside the classes 1 to 8; a system role moved to an account of another kind than the role''s), reverse_charge_gross (400: a gross journal with a reverse-charge code, which is entered net), posting_rule_name_taken (409), posting_rule_match_taken (409: a rule with the same scope and match exists), posting_rule_default (409: a default rule is never deleted, only pointed at another account), unposted_already_posted (409: a retry of a fact that has posted). errors carries the field errors of a 400, keyed by the camelCase path (lines[2].accountId).'
+            description: 'An RFC 9457 problem with this module''s refusal code (accounting design §2, §13). code names the rule that refused and is what a client keys off, never the words: books_not_set_up (409: every operation but the meta and the setup, until Set up the books has run, R12), books_already_set_up (409: a second setup), revision_conflict (409: the revision has moved on), account_number_taken (409), account_has_postings (409: a delete of an account with postings, or a change of its number or kind), account_has_role (409: a delete of an account holding a system role; move the role first), account_inactive (400: a line on an inactive account), account_unknown (400), tax_code_unknown (400: an unknown or inactive tax code), tax_code_no_rate (400: no rate period covers the voucher''s date), rate_period_invalid (400: a new rate period that does not start after the current one''s start), party_required (400: a line on receivables or payables without a customer or supplier), party_not_allowed (400: a party on a line of another account, or both a customer and a supplier), open_item_unknown (400: an open item of another party or kind), voucher_unbalanced (400: the lines and their computed tax do not sum to zero; the detail names the difference), voucher_empty (400: no line, or every line zero), amount_invalid (400: not an exact decimal with at most two places, or zero), date_before_books_start (400), period_locked (409: a voucher a person posts dated on or before the lock, A8), voucher_owned_by_source (409: a reversal of a voucher the system posted, which only its source reverses, A7), voucher_already_reversed (409), opening_exists (409: an opening voucher stands and is not reversed), opening_locked (409: an opening entered or reversed after the first lock, A9), lock_not_month_end (400), lock_reason_required (400: a lock moved back without a reason), lock_before_books_start (400), settlement_source_document (409: an item that stands for a document in Invoices is paid there, R5), settlement_exceeds_balance (409: more than the item''s balance), settlement_settled (409: an item with nothing left), bank_account_invalid (400: not an active asset account), attachment_too_large (400: over 20 MB), storage_not_configured (503: no object store for attachments), report_account_required (400: the account report without accountId), period_invalid (400: from after to, or a period over 366 days for the journal), open_item_source_document (400: a person''s voucher naming an open item that stands for a document in Invoices, which moves with Invoices'' own facts), report_too_large (400: the journal or an account''s specification over 50 000 postings; choose a shorter period), lock_in_future (400: a lock after the end of the current month), books_start_too_early (400: books that start before 2022-01-01, the first day the seeded rates are known to hold), account_kind_mismatch (400: an account whose kind is not its number''s class''s — 1 asset, 20 equity, 21–29 liability, 3 income, 4–7 expense, 8 income or expense — or a number outside the classes 1 to 8; a system role moved to an account of another kind than the role''s), reverse_charge_gross (400: a gross journal with a reverse-charge code, which is entered net), posting_rule_name_taken (409), posting_rule_match_taken (409: a rule with the same scope and match exists), posting_rule_default (409: a default rule is never deleted, only pointed at another account), unposted_already_posted (409: a retry of a fact that has posted), supplier_organisation_number_taken (409: another supplier has that organisation number), supplier_bank_account_invalid (400: not eleven digits passing mod 11), supplier_has_postings (409: a delete of a supplier with postings or invoices; make it inactive), supplier_inactive (400: a new invoice for an inactive supplier), duplicate_supplier_invoice (409: the same supplier''s number of the same kind on another invoice that is not reversed), supplier_invoice_not_draft (409: a change, a delete, a post or a file removed on an invoice that is not a draft), supplier_invoice_not_posted (409: a payment or Reverse and copy on an invoice that is not posted), supplier_invoice_file_required (409: Post without an attached file), supplier_invoice_total_mismatch (400: the lines'' gross does not sum to the total), tax_code_not_purchase (400: an output code on a purchase line), exchange_rate_required (400: another currency without the rate or the NOK total), supplier_invoice_settled (409: a payment on an invoice with nothing left), payment_exceeds_balance (409: a payment of more than is left), payment_removed (409: a payment removed already), settlement_supplier_invoice (409: an item that stands for a supplier invoice is paid on the invoice), unposted_wrong_reason (409: an action for another reason than the row''s), brreg_unavailable (502: Brønnøysundregisteret could not be reached). errors carries the field errors of a 400, keyed by the camelCase path (lines[2].accountId).'
             properties:
                 code:
                     nullable: true
@@ -1035,6 +1142,11 @@ components:
                 depth:
                     format: int32
                     type: integer
+                documentId:
+                    description: The document in Invoices the row stands for (a customer's open item for an invoice), which the screen links to.
+                    format: int64
+                    nullable: true
+                    type: integer
                 style:
                     enum:
                         - line
@@ -1042,8 +1154,13 @@ components:
                         - subtotal
                         - total
                     type: string
-                documentId:
-                    description: The document in Invoices the row stands for (a customer's open item for an invoice), which the screen links to.
+                supplierId:
+                    description: On the suppliers report, the supplier a row belongs to.
+                    format: int64
+                    nullable: true
+                    type: integer
+                supplierInvoiceId:
+                    description: The supplier invoice an item row stands for, which the screen links to.
                     format: int64
                     nullable: true
                     type: integer
@@ -1057,7 +1174,23 @@ components:
                 - depth
                 - documentId
                 - style
+                - supplierId
+                - supplierInvoiceId
                 - voucherId
+            type: object
+        AccountingReverseCopyInput:
+            additionalProperties: false
+            properties:
+                date:
+                    description: The reversal's date.
+                    format: date
+                    type: string
+                reason:
+                    description: 1 to 500.
+                    type: string
+            required:
+                - date
+                - reason
             type: object
         AccountingReverseInput:
             additionalProperties: false
@@ -1091,7 +1224,7 @@ components:
                 - default
             type: string
         AccountingRuleScope:
-            description: sales for Invoices' lines; expense arrives with purchases (delivery C).
+            description: sales for Invoices' lines; expense for Expenses' categories (delivery C).
             enum:
                 - sales
                 - expense
@@ -1186,6 +1319,649 @@ components:
                 - kind
                 - module
                 - part
+            type: object
+        AccountingSupplier:
+            additionalProperties: false
+            description: A supplier (A17).
+            properties:
+                active:
+                    type: boolean
+                addressLine:
+                    nullable: true
+                    type: string
+                balance:
+                    description: 'The supplier''s balance on payables in NOK: negative is owed to the supplier.'
+                    type: string
+                bankAccount:
+                    description: A Norwegian account number, eleven digits (mod 11).
+                    nullable: true
+                    type: string
+                bic:
+                    nullable: true
+                    type: string
+                city:
+                    nullable: true
+                    type: string
+                country:
+                    description: ISO 3166 alpha-2.
+                    type: string
+                createdAt:
+                    format: date-time
+                    type: string
+                currency:
+                    description: The currency a new invoice proposes.
+                    type: string
+                defaultAccountId:
+                    description: The cost account a new invoice line proposes.
+                    format: int32
+                    nullable: true
+                    type: integer
+                defaultTaxCodeId:
+                    description: The tax code a new invoice line proposes.
+                    format: int32
+                    nullable: true
+                    type: integer
+                email:
+                    nullable: true
+                    type: string
+                hasPostings:
+                    description: A supplier with postings is never deleted, only made inactive.
+                    type: boolean
+                iban:
+                    nullable: true
+                    type: string
+                id:
+                    format: int64
+                    type: integer
+                isPerson:
+                    description: 'A sole proprietor: personal data, kept five years after the last voucher (A17).'
+                    type: boolean
+                lastVoucherDate:
+                    description: The date of the supplier's last voucher.
+                    format: date
+                    nullable: true
+                    type: string
+                name:
+                    type: string
+                number:
+                    description: Gap-free, from the supplier counter.
+                    format: int32
+                    type: integer
+                organisationNumber:
+                    description: Nine digits for a Norwegian entity.
+                    nullable: true
+                    type: string
+                paymentTermsDays:
+                    description: Days from the invoice date to the due date a new invoice proposes.
+                    format: int32
+                    type: integer
+                postalCode:
+                    nullable: true
+                    type: string
+                retainedUntil:
+                    description: 'For a person: five years after the end of the year of the last voucher, until when the bookkeeping keeps them.'
+                    format: date
+                    nullable: true
+                    type: string
+                revision:
+                    format: int32
+                    type: integer
+                updatedAt:
+                    format: date-time
+                    type: string
+            required:
+                - active
+                - addressLine
+                - balance
+                - bankAccount
+                - bic
+                - city
+                - country
+                - createdAt
+                - currency
+                - defaultAccountId
+                - defaultTaxCodeId
+                - email
+                - hasPostings
+                - iban
+                - id
+                - isPerson
+                - lastVoucherDate
+                - name
+                - number
+                - organisationNumber
+                - paymentTermsDays
+                - postalCode
+                - retainedUntil
+                - revision
+                - updatedAt
+            type: object
+        AccountingSupplierExport:
+            additionalProperties: false
+            description: 'Everything the books hold about one supplier: what a person''s access request is answered with (A17).'
+            properties:
+                invoices:
+                    items:
+                        $ref: '#/components/schemas/AccountingSupplierInvoice'
+                    type: array
+                postings:
+                    items:
+                        $ref: '#/components/schemas/AccountingSupplierExportPosting'
+                    type: array
+                producedAt:
+                    format: date-time
+                    type: string
+                supplier:
+                    $ref: '#/components/schemas/AccountingSupplier'
+            required:
+                - invoices
+                - postings
+                - producedAt
+                - supplier
+            type: object
+        AccountingSupplierExportPosting:
+            additionalProperties: false
+            properties:
+                accountNumber:
+                    type: string
+                amount:
+                    type: string
+                description:
+                    type: string
+                voucher:
+                    $ref: '#/components/schemas/AccountingVoucherRef'
+                voucherDate:
+                    format: date
+                    type: string
+            required:
+                - accountNumber
+                - amount
+                - description
+                - voucher
+                - voucherDate
+            type: object
+        AccountingSupplierInput:
+            additionalProperties: false
+            description: A supplier's fields; on an update, with its revision.
+            properties:
+                active:
+                    description: On an update; default true.
+                    nullable: true
+                    type: boolean
+                addressLine:
+                    nullable: true
+                    type: string
+                bankAccount:
+                    description: Eleven digits, spaces and dots allowed; mod 11.
+                    nullable: true
+                    type: string
+                bic:
+                    nullable: true
+                    type: string
+                city:
+                    nullable: true
+                    type: string
+                country:
+                    description: Default NO.
+                    nullable: true
+                    type: string
+                currency:
+                    description: Default NOK.
+                    nullable: true
+                    type: string
+                defaultAccountId:
+                    format: int32
+                    nullable: true
+                    type: integer
+                defaultTaxCodeId:
+                    format: int32
+                    nullable: true
+                    type: integer
+                email:
+                    nullable: true
+                    type: string
+                iban:
+                    nullable: true
+                    type: string
+                isPerson:
+                    nullable: true
+                    type: boolean
+                name:
+                    description: 1 to 200 characters.
+                    type: string
+                organisationNumber:
+                    nullable: true
+                    type: string
+                paymentTermsDays:
+                    description: 0 to 365, default 14.
+                    format: int32
+                    nullable: true
+                    type: integer
+                postalCode:
+                    nullable: true
+                    type: string
+                revision:
+                    description: Required on an update.
+                    format: int32
+                    nullable: true
+                    type: integer
+            required:
+                - name
+            type: object
+        AccountingSupplierInvoice:
+            additionalProperties: false
+            description: A supplier invoice or credit note (A18, R8).
+            properties:
+                balance:
+                    description: The open item's balance in NOK, negative while owed; null for a draft.
+                    nullable: true
+                    type: string
+                balanceCurrency:
+                    description: The open item's balance in the invoice's currency; null for a draft.
+                    nullable: true
+                    type: string
+                copiedFromId:
+                    format: int64
+                    nullable: true
+                    type: integer
+                createdAt:
+                    format: date-time
+                    type: string
+                creditsInvoiceId:
+                    format: int64
+                    nullable: true
+                    type: integer
+                currency:
+                    type: string
+                description:
+                    type: string
+                dueDate:
+                    format: date
+                    nullable: true
+                    type: string
+                exchangeRate:
+                    description: NOK per unit of the currency, six decimals; 1 for NOK.
+                    type: string
+                files:
+                    items:
+                        $ref: '#/components/schemas/AccountingAttachment'
+                    type: array
+                id:
+                    format: int64
+                    type: integer
+                invoiceDate:
+                    format: date
+                    type: string
+                invoiceNumber:
+                    description: The supplier's own number.
+                    type: string
+                kid:
+                    nullable: true
+                    type: string
+                kind:
+                    $ref: '#/components/schemas/AccountingSupplierInvoiceKind'
+                lines:
+                    items:
+                        $ref: '#/components/schemas/AccountingSupplierInvoiceLine'
+                    type: array
+                linesTotal:
+                    description: 'The lines'' gross summed, in the invoice''s currency: Post needs it to equal total.'
+                    type: string
+                openItemId:
+                    format: int64
+                    nullable: true
+                    type: integer
+                overdue:
+                    description: Posted, not settled, and due before today.
+                    type: boolean
+                payments:
+                    items:
+                        $ref: '#/components/schemas/AccountingSupplierPayment'
+                    type: array
+                postedAt:
+                    format: date-time
+                    nullable: true
+                    type: string
+                reference:
+                    nullable: true
+                    type: string
+                reversalVoucher:
+                    allOf:
+                        - $ref: '#/components/schemas/AccountingVoucherRef'
+                    nullable: true
+                revision:
+                    format: int32
+                    type: integer
+                sourceExpenseEntryId:
+                    description: The expense of Expenses' supplier_invoice kind the draft was made from.
+                    format: int64
+                    nullable: true
+                    type: integer
+                state:
+                    $ref: '#/components/schemas/AccountingSupplierInvoiceState'
+                supplierId:
+                    format: int64
+                    type: integer
+                supplierName:
+                    type: string
+                supplierNumber:
+                    format: int32
+                    type: integer
+                total:
+                    description: In the invoice's currency.
+                    type: string
+                totalNok:
+                    type: string
+                updatedAt:
+                    format: date-time
+                    type: string
+                vat:
+                    description: The VAT the lines carry, in the invoice's currency.
+                    type: string
+                voucher:
+                    allOf:
+                        - $ref: '#/components/schemas/AccountingVoucherRef'
+                    nullable: true
+            required:
+                - balance
+                - balanceCurrency
+                - copiedFromId
+                - createdAt
+                - creditsInvoiceId
+                - currency
+                - description
+                - dueDate
+                - exchangeRate
+                - files
+                - id
+                - invoiceDate
+                - invoiceNumber
+                - kid
+                - kind
+                - lines
+                - linesTotal
+                - openItemId
+                - overdue
+                - payments
+                - postedAt
+                - reference
+                - reversalVoucher
+                - revision
+                - sourceExpenseEntryId
+                - state
+                - supplierId
+                - supplierName
+                - supplierNumber
+                - total
+                - totalNok
+                - updatedAt
+                - vat
+                - voucher
+            type: object
+        AccountingSupplierInvoiceInput:
+            additionalProperties: false
+            properties:
+                creditsInvoiceId:
+                    description: 'On a credit note: the posted invoice it credits.'
+                    format: int64
+                    nullable: true
+                    type: integer
+                currency:
+                    description: Default the supplier's.
+                    nullable: true
+                    type: string
+                description:
+                    nullable: true
+                    type: string
+                dueDate:
+                    description: Default the invoice date plus the supplier's terms.
+                    format: date
+                    nullable: true
+                    type: string
+                exchangeRate:
+                    description: NOK per unit, for another currency; give it or totalNok.
+                    nullable: true
+                    type: string
+                invoiceDate:
+                    format: date
+                    type: string
+                invoiceNumber:
+                    description: The supplier's number, 1 to 60.
+                    type: string
+                kid:
+                    nullable: true
+                    type: string
+                kind:
+                    $ref: '#/components/schemas/AccountingSupplierInvoiceKind'
+                lines:
+                    description: At most 200.
+                    items:
+                        $ref: '#/components/schemas/AccountingSupplierInvoiceLineInput'
+                    type: array
+                reference:
+                    nullable: true
+                    type: string
+                revision:
+                    description: Required on an update.
+                    format: int32
+                    nullable: true
+                    type: integer
+                supplierId:
+                    format: int64
+                    type: integer
+                total:
+                    description: In the invoice's currency.
+                    type: string
+                totalNok:
+                    description: The total in NOK, for another currency; give it or exchangeRate.
+                    nullable: true
+                    type: string
+            required:
+                - invoiceDate
+                - invoiceNumber
+                - kind
+                - lines
+                - supplierId
+                - total
+            type: object
+        AccountingSupplierInvoiceKind:
+            enum:
+                - invoice
+                - credit_note
+            type: string
+        AccountingSupplierInvoiceLine:
+            additionalProperties: false
+            properties:
+                accountId:
+                    format: int32
+                    type: integer
+                accountName:
+                    type: string
+                accountNumber:
+                    type: string
+                amount:
+                    description: As entered, in the invoice's currency.
+                    type: string
+                entry:
+                    $ref: '#/components/schemas/AccountingEntryMode'
+                gross:
+                    description: 'Net plus the invoice''s VAT: what the line adds to the total.'
+                    type: string
+                id:
+                    format: int64
+                    type: integer
+                net:
+                    description: The line's net in the invoice's currency.
+                    type: string
+                position:
+                    format: int32
+                    type: integer
+                projectId:
+                    format: int32
+                    nullable: true
+                    type: integer
+                projectName:
+                    nullable: true
+                    type: string
+                taxCode:
+                    nullable: true
+                    type: string
+                taxCodeId:
+                    format: int32
+                    nullable: true
+                    type: integer
+                text:
+                    type: string
+                vat:
+                    description: The VAT the invoice carries on the line, in its currency; 0.00 for a reverse-charge code, whose VAT is the buyer's to calculate.
+                    type: string
+            required:
+                - accountId
+                - accountName
+                - accountNumber
+                - amount
+                - entry
+                - gross
+                - id
+                - net
+                - position
+                - projectId
+                - projectName
+                - taxCode
+                - taxCodeId
+                - text
+                - vat
+            type: object
+        AccountingSupplierInvoiceLineInput:
+            additionalProperties: false
+            properties:
+                accountId:
+                    format: int32
+                    type: integer
+                amount:
+                    description: Exact, two decimals, in the invoice's currency; negative on a discount line.
+                    type: string
+                entry:
+                    allOf:
+                        - $ref: '#/components/schemas/AccountingEntryMode'
+                    description: Default gross; a reverse-charge code is entered net.
+                projectId:
+                    format: int32
+                    nullable: true
+                    type: integer
+                taxCodeId:
+                    format: int32
+                    nullable: true
+                    type: integer
+                text:
+                    nullable: true
+                    type: string
+            required:
+                - accountId
+                - amount
+            type: object
+        AccountingSupplierInvoiceList:
+            additionalProperties: false
+            properties:
+                items:
+                    items:
+                        $ref: '#/components/schemas/AccountingSupplierInvoice'
+                    type: array
+                total:
+                    format: int32
+                    type: integer
+            required:
+                - items
+                - total
+            type: object
+        AccountingSupplierInvoiceState:
+            description: 'paid is derived from the open item: a posted invoice whose balance is zero.'
+            enum:
+                - draft
+                - posted
+                - paid
+                - reversed
+            type: string
+        AccountingSupplierList:
+            additionalProperties: false
+            properties:
+                items:
+                    items:
+                        $ref: '#/components/schemas/AccountingSupplier'
+                    type: array
+                total:
+                    format: int32
+                    type: integer
+            required:
+                - items
+                - total
+            type: object
+        AccountingSupplierPayment:
+            additionalProperties: false
+            properties:
+                amountCurrency:
+                    description: The share of the invoice it settles, in the invoice's currency.
+                    type: string
+                amountNok:
+                    description: What the bank took, in NOK.
+                    type: string
+                bankAccountId:
+                    format: int32
+                    type: integer
+                bankAccountNumber:
+                    type: string
+                currencyDifference:
+                    description: To currency_loss (positive) or currency_gain (negative); 0.00 for a NOK invoice.
+                    type: string
+                id:
+                    format: int64
+                    type: integer
+                paidOn:
+                    format: date
+                    type: string
+                removalVoucher:
+                    allOf:
+                        - $ref: '#/components/schemas/AccountingVoucherRef'
+                    nullable: true
+                removedAt:
+                    format: date-time
+                    nullable: true
+                    type: string
+                voucher:
+                    $ref: '#/components/schemas/AccountingVoucherRef'
+            required:
+                - amountCurrency
+                - amountNok
+                - bankAccountId
+                - bankAccountNumber
+                - currencyDifference
+                - id
+                - paidOn
+                - removalVoucher
+                - removedAt
+                - voucher
+            type: object
+        AccountingSupplierPaymentInput:
+            additionalProperties: false
+            properties:
+                amountCurrency:
+                    description: 'For an invoice in another currency: the share settled, default what is left.'
+                    nullable: true
+                    type: string
+                amountNok:
+                    description: Positive, as the bank took it.
+                    type: string
+                bankAccountId:
+                    description: An active asset account; default the bank role's.
+                    format: int32
+                    nullable: true
+                    type: integer
+                date:
+                    format: date
+                    type: string
+            required:
+                - amountNok
+                - date
             type: object
         AccountingSystemRole:
             description: The accounts the module posts to by itself (A3, R8, R11). Every charge payment posts to charge_income; interest income is an ordinary account.
@@ -1364,24 +2140,39 @@ components:
                 documentNumber:
                     nullable: true
                     type: string
+                expenseLines:
+                    description: An expense fact's lines in another currency, for amount_in_nok_needed; empty otherwise.
+                    items:
+                        $ref: '#/components/schemas/AccountingUnpostedExpenseLine'
+                    type: array
                 factDate:
                     format: date
                     nullable: true
                     type: string
-                invoiceId:
-                    description: The invoice in Invoices the fact is about — a credit note's, the invoice it credits.
-                    format: int64
-                    nullable: true
-                    type: integer
                 firstSeenAt:
                     format: date-time
                     type: string
                 id:
                     format: int64
                     type: integer
+                informational:
+                    description: 'A row that posted but says something a person should see (vat_not_deducted): it never blocks and is not counted in unposted.'
+                    type: boolean
+                invoiceId:
+                    description: The invoice in Invoices the fact is about — a credit note's, the invoice it credits.
+                    format: int64
+                    nullable: true
+                    type: integer
                 lastTriedAt:
                     format: date-time
                     type: string
+                orderKey:
+                    description: 'What an expense fact waits behind: entry:<id> or claim:<id>.'
+                    nullable: true
+                    type: string
+                position:
+                    format: int64
+                    type: integer
                 postedAt:
                     format: date-time
                     nullable: true
@@ -1390,15 +2181,22 @@ components:
                     allOf:
                         - $ref: '#/components/schemas/AccountingVoucherRef'
                     nullable: true
-                position:
-                    format: int64
-                    type: integer
                 reason:
+                    type: string
+                resolvedAt:
+                    description: When an informational row was acknowledged, or the expense was made into a supplier invoice.
+                    format: date-time
+                    nullable: true
                     type: string
                 source:
                     $ref: '#/components/schemas/AccountingSource'
                 stream:
                     type: string
+                supplierInvoiceId:
+                    description: The draft supplier invoice the row was made into.
+                    format: int64
+                    nullable: true
+                    type: integer
                 waitingOn:
                     description: With reason waiting_on, the row under Needs attention this one waits behind.
                     format: int64
@@ -1412,18 +2210,46 @@ components:
                 - detail
                 - documentId
                 - documentNumber
+                - expenseLines
                 - factDate
                 - firstSeenAt
                 - id
+                - informational
                 - invoiceId
                 - lastTriedAt
+                - orderKey
+                - position
                 - postedAt
                 - postedVoucher
-                - position
                 - reason
+                - resolvedAt
                 - source
                 - stream
+                - supplierInvoiceId
                 - waitingOn
+            type: object
+        AccountingUnpostedExpenseLine:
+            additionalProperties: false
+            properties:
+                amountNok:
+                    description: The amount in NOK a person entered, null until then.
+                    nullable: true
+                    type: string
+                currency:
+                    type: string
+                entryId:
+                    format: int64
+                    type: integer
+                gross:
+                    type: string
+                kind:
+                    type: string
+            required:
+                - amountNok
+                - currency
+                - entryId
+                - gross
+                - kind
             type: object
         AccountingUnpostedList:
             additionalProperties: false
@@ -2771,6 +3597,963 @@ paths:
             tags:
                 - Accounting
             x-vantigo-access: permission:accounting:close+accounting:read
+    /api/v1/accounting/supplier-invoices:
+        get:
+            description: Newest invoice date first.
+            operationId: listAccountingSupplierInvoices
+            parameters:
+                - in: query
+                  name: state
+                  required: false
+                  schema:
+                    $ref: '#/components/schemas/AccountingSupplierInvoiceState'
+                - in: query
+                  name: supplierId
+                  required: false
+                  schema:
+                    format: int64
+                    type: integer
+                - description: The supplier's own number, for the duplicate warning; with supplierId.
+                  in: query
+                  name: supplierNumber
+                  required: false
+                  schema:
+                    type: string
+                - in: query
+                  name: dueFrom
+                  required: false
+                  schema:
+                    format: date
+                    type: string
+                - in: query
+                  name: dueTo
+                  required: false
+                  schema:
+                    format: date
+                    type: string
+                - in: query
+                  name: overdue
+                  required: false
+                  schema:
+                    description: Only posted invoices not settled and due before today.
+                    type: boolean
+                - in: query
+                  name: offset
+                  required: false
+                  schema:
+                    format: int32
+                    type: integer
+                - description: Default 100, at most 500.
+                  in: query
+                  name: limit
+                  required: false
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingSupplierInvoiceList'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Conflict — books_not_set_up.
+            summary: List the supplier invoices
+            tags:
+                - Accounting
+            x-vantigo-access: permission:accounting:read
+        post:
+            operationId: createAccountingSupplierInvoice
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/AccountingSupplierInvoiceInput'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingSupplierInvoice'
+                    description: Created
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Bad Request — field errors, supplier_inactive, account_unknown, account_inactive, tax_code_unknown, tax_code_not_purchase, amount_invalid, exchange_rate_required.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Conflict — books_not_set_up; duplicate_supplier_invoice.
+            summary: Enter a supplier invoice as a draft
+            tags:
+                - Accounting
+            x-vantigo-access: permission:accounting:post+accounting:read
+    /api/v1/accounting/supplier-invoices/{id}:
+        delete:
+            operationId: deleteAccountingSupplierInvoice
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "204":
+                    description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Conflict — books_not_set_up; supplier_invoice_not_draft.
+            summary: Delete a draft supplier invoice
+            tags:
+                - Accounting
+            x-vantigo-access: permission:accounting:post+accounting:read
+        get:
+            operationId: getAccountingSupplierInvoice
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingSupplierInvoice'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Conflict — books_not_set_up.
+            summary: Read a supplier invoice
+            tags:
+                - Accounting
+            x-vantigo-access: permission:accounting:read
+        put:
+            operationId: updateAccountingSupplierInvoice
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/AccountingSupplierInvoiceInput'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingSupplierInvoice'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Bad Request — as for a new one.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Conflict — books_not_set_up; revision_conflict, supplier_invoice_not_draft, duplicate_supplier_invoice.
+            summary: Change a draft supplier invoice
+            tags:
+                - Accounting
+            x-vantigo-access: permission:accounting:post+accounting:read
+    /api/v1/accounting/supplier-invoices/{id}/files:
+        post:
+            description: At most 20 MB in the multipart field file, on a draft.
+            operationId: uploadAccountingSupplierInvoiceFile
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            requestBody:
+                content:
+                    multipart/form-data:
+                        schema:
+                            properties:
+                                file:
+                                    format: binary
+                                    type: string
+                            required:
+                                - file
+                            type: object
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingAttachment'
+                    description: Created
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Bad Request — attachment_too_large, or no file in the multipart field file.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Conflict — books_not_set_up; supplier_invoice_not_draft.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Service Unavailable — storage_not_configured, or the store failed. Nothing was changed.
+            summary: Attach a file to a draft supplier invoice
+            tags:
+                - Accounting
+            x-vantigo-access: permission:accounting:post+accounting:read
+            x-vantigo-assistant: never
+    /api/v1/accounting/supplier-invoices/{id}/files/{fileId}:
+        delete:
+            operationId: deleteAccountingSupplierInvoiceFile
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+                - in: path
+                  name: fileId
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "204":
+                    description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Conflict — books_not_set_up; supplier_invoice_not_draft.
+            summary: Remove a file from a draft supplier invoice
+            tags:
+                - Accounting
+            x-vantigo-access: permission:accounting:post+accounting:read
+            x-vantigo-assistant: never
+        get:
+            operationId: getAccountingSupplierInvoiceFile
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+                - in: path
+                  name: fileId
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        '*/*':
+                            schema:
+                                format: binary
+                                type: string
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Conflict — books_not_set_up.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Service Unavailable — the store failed.
+            summary: Download a supplier invoice's file
+            tags:
+                - Accounting
+            x-vantigo-access: permission:accounting:read
+            x-vantigo-assistant: never
+    /api/v1/accounting/supplier-invoices/{id}/payments:
+        post:
+            description: Debits payables on the invoice's open item and credits the bank account; for an invoice in another currency the difference between the NOK paid and the settled share at the invoice's rate goes to currency_loss or currency_gain (R8).
+            operationId: payAccountingSupplierInvoice
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/AccountingSupplierPaymentInput'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingSupplierInvoice'
+                    description: Created
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Bad Request — field errors, amount_invalid, bank_account_invalid, date_before_books_start.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Conflict — books_not_set_up; supplier_invoice_not_posted, supplier_invoice_settled, payment_exceeds_balance, period_locked.
+            summary: Register a payment of a supplier invoice
+            tags:
+                - Accounting
+            x-vantigo-access: permission:accounting:post+accounting:read
+    /api/v1/accounting/supplier-invoices/{id}/payments/{paymentId}:
+        delete:
+            description: Posts the payment's voucher reversed, dated the payment's day, while its period is open.
+            operationId: removeAccountingSupplierPayment
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+                - in: path
+                  name: paymentId
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingSupplierInvoice'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Conflict — books_not_set_up; payment_removed, period_locked.
+            summary: Remove a payment of a supplier invoice
+            tags:
+                - Accounting
+            x-vantigo-access: permission:accounting:post+accounting:read
+    /api/v1/accounting/supplier-invoices/{id}/post:
+        post:
+            description: Debits each line's account for its net with its tax code, the code's VAT account for the VAT (both sides for reverse charge), and credits payables on a new open item for the supplier; the draft's files become the voucher's attachments.
+            operationId: postAccountingSupplierInvoice
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingSupplierInvoice'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Bad Request — supplier_invoice_total_mismatch, tax_code_no_rate, reverse_charge_gross, date_before_books_start, and the engine's refusals.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Conflict — books_not_set_up; supplier_invoice_not_draft, supplier_invoice_file_required, period_locked.
+            summary: Post a supplier invoice
+            tags:
+                - Accounting
+            x-vantigo-access: permission:accounting:post+accounting:read
+    /api/v1/accounting/supplier-invoices/{id}/reverse-and-copy:
+        post:
+            operationId: reverseAndCopyAccountingSupplierInvoice
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/AccountingReverseCopyInput'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingSupplierInvoice'
+                    description: Created — the new draft
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Bad Request — field errors, date_before_books_start.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Conflict — books_not_set_up; supplier_invoice_not_posted, period_locked, voucher_already_reversed.
+            summary: Reverse a posted supplier invoice and copy it to a new draft
+            tags:
+                - Accounting
+            x-vantigo-access: permission:accounting:post+accounting:read
+    /api/v1/accounting/suppliers:
+        get:
+            description: By number.
+            operationId: listAccountingSuppliers
+            parameters:
+                - description: By name, number or organisation number.
+                  in: query
+                  name: q
+                  required: false
+                  schema:
+                    type: string
+                - description: 'Default: every supplier.'
+                  in: query
+                  name: active
+                  required: false
+                  schema:
+                    type: boolean
+                - in: query
+                  name: offset
+                  required: false
+                  schema:
+                    format: int32
+                    type: integer
+                - description: Default 100, at most 500.
+                  in: query
+                  name: limit
+                  required: false
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingSupplierList'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Conflict — books_not_set_up.
+            summary: List the suppliers
+            tags:
+                - Accounting
+            x-vantigo-access: permission:accounting:read
+        post:
+            operationId: createAccountingSupplier
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/AccountingSupplierInput'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingSupplier'
+                    description: Created
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Bad Request — field errors, supplier_bank_account_invalid, account_unknown, tax_code_unknown.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Conflict — books_not_set_up; supplier_organisation_number_taken.
+            summary: Create a supplier
+            tags:
+                - Accounting
+            x-vantigo-access: permission:accounting:post+accounting:read
+    /api/v1/accounting/suppliers/lookup/brreg:
+        get:
+            description: Read-only, rate-limited. By organisation number it reads the entity, with its business address; by name it searches, at most ten.
+            operationId: lookupAccountingSupplierBrreg
+            parameters:
+                - description: 'Nine digits: the entity itself, with its address.'
+                  in: query
+                  name: organisationNumber
+                  required: false
+                  schema:
+                    type: string
+                - description: A name, at least two characters.
+                  in: query
+                  name: q
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingBrregList'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Bad Request — neither an organisation number of nine digits nor a name of two characters.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Conflict — books_not_set_up.
+                "429":
+                    description: Too Many Requests
+                "502":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Bad Gateway — brreg_unavailable.
+            summary: Look a supplier up in Brønnøysundregisteret
+            tags:
+                - Accounting
+            x-vantigo-access: permission:accounting:post+accounting:read
+    /api/v1/accounting/suppliers/{id}:
+        delete:
+            description: Only a supplier with no postings and no invoices; any other is made inactive instead.
+            operationId: deleteAccountingSupplier
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "204":
+                    description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Conflict — books_not_set_up; supplier_has_postings.
+            summary: Delete a supplier with no postings
+            tags:
+                - Accounting
+            x-vantigo-access: permission:accounting:post+accounting:read
+        get:
+            operationId: getAccountingSupplier
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingSupplier'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Conflict — books_not_set_up.
+            summary: Read a supplier
+            tags:
+                - Accounting
+            x-vantigo-access: permission:accounting:read
+        put:
+            operationId: updateAccountingSupplier
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/AccountingSupplierInput'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingSupplier'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Bad Request — field errors, supplier_bank_account_invalid, account_unknown, tax_code_unknown.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Conflict — books_not_set_up; revision_conflict, supplier_organisation_number_taken.
+            summary: Change a supplier
+            tags:
+                - Accounting
+            x-vantigo-access: permission:accounting:post+accounting:read
+    /api/v1/accounting/suppliers/{id}/export:
+        get:
+            description: 'The supplier, its invoices with their lines and payments, and every posting naming it: the answer to a person''s access request (A17). The bookkeeping keeps them five years after the last voucher.'
+            operationId: exportAccountingSupplier
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingSupplierExport'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Conflict — books_not_set_up.
+            summary: Export what the books hold about a supplier
+            tags:
+                - Accounting
+            x-vantigo-access: permission:accounting:export+accounting:read
+            x-vantigo-assistant: never
     /api/v1/accounting/tax-codes:
         get:
             operationId: listAccountingTaxCodes
@@ -2963,6 +4746,102 @@ paths:
             tags:
                 - Accounting
             x-vantigo-access: permission:accounting:read
+    /api/v1/accounting/unposted/{id}/acknowledge:
+        post:
+            description: 'For an informational row (vat_not_deducted): it is resolved and leaves the list.'
+            operationId: acknowledgeAccountingUnposted
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingUnposted'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Conflict — books_not_set_up; unposted_wrong_reason.
+            summary: Acknowledge an informational row
+            tags:
+                - Accounting
+            x-vantigo-access: permission:accounting:post+accounting:read
+    /api/v1/accounting/unposted/{id}/nok-amounts:
+        post:
+            description: 'For a row of reason amount_in_nok_needed: the amount in NOK of each of its lines in another currency, normally from the bank statement. The amounts are kept on the row, and the fact is read again and posted with them.'
+            operationId: enterAccountingUnpostedNokAmounts
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/AccountingNokAmountsInput'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingUnposted'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Bad Request — field errors, amount_invalid.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Conflict — books_not_set_up; unposted_already_posted, unposted_wrong_reason.
+            summary: Enter the amount in NOK of an expense in another currency, and post it
+            tags:
+                - Accounting
+            x-vantigo-access: permission:accounting:post+accounting:read
     /api/v1/accounting/unposted/{id}/retry:
         post:
             description: Reads the fact again through Invoices' sales journal, with no transaction open, and posts it. The answer is the item, with its voucher when it posted and its new reason when it did not.
@@ -3002,6 +4881,54 @@ paths:
                                 $ref: '#/components/schemas/AccountingProblem'
                     description: Conflict — books_not_set_up; unposted_already_posted.
             summary: Retry posting a fact
+            tags:
+                - Accounting
+            x-vantigo-access: permission:accounting:post+accounting:read
+    /api/v1/accounting/unposted/{id}/supplier-invoice:
+        post:
+            description: 'For a row of reason enter_as_supplier_invoice: a draft supplier invoice with the expense''s amount, VAT, date, project and receipts, the supplier matched by name or created; the row is resolved.'
+            operationId: makeAccountingUnpostedSupplierInvoice
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingSupplierInvoice'
+                    description: Created — the draft
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Bad Request — the expense's figures do not make a draft (no supplier to match or create).
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Conflict — books_not_set_up; unposted_wrong_reason, duplicate_supplier_invoice.
+            summary: Make a supplier invoice from an expense of the supplier_invoice kind
             tags:
                 - Accounting
             x-vantigo-access: permission:accounting:post+accounting:read
@@ -3145,6 +5072,52 @@ paths:
             tags:
                 - Accounting
             x-vantigo-access: permission:accounting:post+accounting:read
+    /api/v1/accounting/vouchers/preview:
+        post:
+            description: Writes nothing.
+            operationId: previewAccountingVoucher
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/AccountingJournalInput'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingJournalPreview'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Bad Request — the same field errors as posting, but voucher_unbalanced, which the preview reports.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Conflict — books_not_set_up.
+            summary: Preview a manual journal's postings and its tax lines
+            tags:
+                - Accounting
+            x-vantigo-access: permission:accounting:post+accounting:read
+            x-vantigo-assistant: auto
     /api/v1/accounting/vouchers/{id}:
         get:
             operationId: getAccountingVoucher
@@ -3362,51 +5335,5 @@ paths:
             tags:
                 - Accounting
             x-vantigo-access: permission:accounting:post+accounting:read
-    /api/v1/accounting/vouchers/preview:
-        post:
-            description: Writes nothing.
-            operationId: previewAccountingVoucher
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/AccountingJournalInput'
-                required: true
-            responses:
-                "200":
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/AccountingJournalPreview'
-                    description: OK
-                "400":
-                    content:
-                        application/problem+json:
-                            schema:
-                                $ref: '#/components/schemas/AccountingProblem'
-                    description: Bad Request — the same field errors as posting, but voucher_unbalanced, which the preview reports.
-                "401":
-                    content:
-                        application/json:
-                            schema:
-                                $ref: common.yaml#/components/schemas/AuthErrorResponse
-                    description: Unauthorized
-                "403":
-                    content:
-                        application/json:
-                            schema:
-                                $ref: common.yaml#/components/schemas/AuthErrorResponse
-                    description: Forbidden
-                "409":
-                    content:
-                        application/problem+json:
-                            schema:
-                                $ref: '#/components/schemas/AccountingProblem'
-                    description: Conflict — books_not_set_up.
-            summary: Preview a manual journal's postings and its tax lines
-            tags:
-                - Accounting
-            x-vantigo-access: permission:accounting:post+accounting:read
-            x-vantigo-assistant: auto
 servers:
     - url: /
