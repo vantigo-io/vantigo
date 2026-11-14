@@ -821,7 +821,7 @@ func (s *server) applyLocked(ctx context.Context, txq *store.Queries, line store
 		}
 		if a.amount.Sign() > 0 {
 			if _, err := txq.InsertImportedPayment(ctx, store.InsertImportedPaymentParams{
-				InvoiceID: inv.ID, PaidOn: line.BookedOn, Amount: a.amountN, Currency: inv.Currency, Source: line.Format,
+				InvoiceID: inv.ID, PaidOn: line.BookedOn, Amount: a.amountN, Currency: inv.Currency, Source: paymentSourceOf(line.Format),
 				BankTransactionID: line.ID, Reference: reference, RegisteredByUserID: &caller, RegisteredAt: now,
 			}); err != nil {
 				return nil, fmt.Errorf("invoices: apply line %d's payment to %d: %w", line.ID, inv.ID, err)
@@ -829,7 +829,7 @@ func (s *server) applyLocked(ctx context.Context, txq *store.Queries, line store
 		}
 		if a.charges.Sign() > 0 {
 			if _, err := insertChargePayment(ctx, txq, store.InsertChargePaymentParams{
-				InvoiceID: inv.ID, PaidOn: line.BookedOn, Amount: a.chargesN, Currency: inv.Currency, Source: line.Format,
+				InvoiceID: inv.ID, PaidOn: line.BookedOn, Amount: a.chargesN, Currency: inv.Currency, Source: paymentSourceOf(line.Format),
 				BankTransactionID: &line.ID, Reference: reference, RegisteredByUserID: &caller, RegisteredAt: now,
 			}); err != nil {
 				return nil, err
@@ -839,7 +839,7 @@ func (s *server) applyLocked(ctx context.Context, txq *store.Queries, line store
 		if err != nil {
 			return nil, err
 		}
-		if err := waiveDeadlineMet(ctx, txq, inv.ID, in, line, caller, now); err != nil {
+		if err := waiveDeadlineMet(ctx, txq, inv.ID, in, line, &caller, now); err != nil {
 			return nil, err
 		}
 	}

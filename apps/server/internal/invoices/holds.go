@@ -300,7 +300,7 @@ func waiveClaimedCharges(ctx context.Context, txq *store.Queries, invoiceID int6
 		}
 		ws = append(ws, waiverRequest{reminderID: c.ReminderID, kind: kind})
 	}
-	return waiveCharges(ctx, txq, invoiceID, ws, waiverObjectionUpheld, note, by, at)
+	return waiveCharges(ctx, txq, invoiceID, ws, waiverObjectionUpheld, note, &by, at)
 }
 
 // waiverObjectionUpheld is the reason a barring lift's waivers carry.

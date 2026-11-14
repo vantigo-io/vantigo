@@ -216,6 +216,15 @@ func (s *Server) AddTransaction(account string, tx Transaction) {
 	s.transactions[account] = append(s.transactions[account], tx)
 }
 
+// SetTransactions books txs on account in place of everything booked there
+// before, in order: the bank's answer as it now stands, a transaction moved
+// to another booking day among them.
+func (s *Server) SetTransactions(account string, txs ...Transaction) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.transactions[account] = append([]Transaction(nil), txs...)
+}
+
 // Fail sets how op is answered until Clear (or for f.Times requests). It
 // touches no other operation.
 func (s *Server) Fail(op Op, f Failure) {

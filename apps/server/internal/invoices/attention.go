@@ -18,8 +18,9 @@ import (
 // This file is the dashboard's attention items (invoices payments and
 // reminders design D12; plan reading 29), in the item shape every module's
 // /stats/attention shares: the 20 most overdue invoices and every refund due
-// for every caller, and — for a caller holding invoices:payments, never a
-// 403 for one without — the bank files with open lines, the failed letters,
+// for every caller; for a caller holding invoices:manage, the bank feed's
+// accounts that need a manager (attentionBankFeed); and — for a caller
+// holding invoices:payments, never a 403 for one without — the bank files with open lines, the failed letters,
 // the letters held by a cause, the print batches not confirmed posted, and
 // the Vipps payments needing a person (attentionPayments). Every item is derived from the rows as they are, so none needs dismissing:
 // each clears when what it is about is done. One clock read; every read on
@@ -57,6 +58,13 @@ func (s *server) GetInvoicesStatsAttention(ctx context.Context, _ gen.GetInvoice
 		return nil, err
 	}
 	items = append(items, refunds...)
+	if s.has(ctx, "invoices:manage") {
+		feed, err := attentionBankFeed(ctx, q)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, feed...)
+	}
 	if !s.has(ctx, "invoices:payments") {
 		return gen.GetInvoicesStatsAttention200JSONResponse(items), nil
 	}
@@ -70,6 +78,38 @@ func (s *server) GetInvoicesStatsAttention(ctx context.Context, _ gen.GetInvoice
 	}
 	items = append(items, queue...)
 	return gen.GetInvoicesStatsAttention200JSONResponse(append(items, vipps...)), nil
+}
+
+// bankFeedAttention is each status of a bank feed account a manager must
+// look at as its attention type (invoices bank feed design F7).
+var bankFeedAttention = map[string]gen.InvoicesStatsAttentionItemType{
+	"unauthorized": gen.BankFeedUnauthorized,
+	"failing":      gen.BankFeedFailing,
+	"refused":      gen.BankFeedRefused,
+}
+
+// attentionBankFeed is one item per account the bank feed is switched on for
+// whose status is unauthorized, failing or refused (F7): entityId the
+// account, title its last four digits, occurredAt when its status changed.
+// It is a manager's: Integrations › Bank is where each is fixed.
+func attentionBankFeed(ctx context.Context, q *store.Queries) ([]gen.InvoicesStatsAttentionItem, error) {
+	rows, err := q.AttentionBankFeedAccounts(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("invoices: read the bank feed's accounts for attention: %w", err)
+	}
+	items := make([]gen.InvoicesStatsAttentionItem, 0, len(rows))
+	for _, r := range rows {
+		typ, ok := bankFeedAttention[r.Status]
+		if !ok {
+			continue
+		}
+		title := r.Account
+		if len(title) > 4 {
+			title = title[len(title)-4:]
+		}
+		items = append(items, attentionItem(typ, r.Account, title, r.UpdatedAt, 0))
+	}
+	return items, nil
 }
 
 // attentionItem is one item; count is left out when it is 0.

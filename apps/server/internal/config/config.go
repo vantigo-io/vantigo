@@ -366,12 +366,12 @@ type Config struct {
 	// Vipps' test environment or a mock host.
 	InvoicesVippsBaseURL string
 	// InvoicesBankFeedEnabled is the on/off switch for the bank feed
-	// (INVOICES_BANK_FEED_ENABLED, invoices bank feed design F3). Default OFF
-	// while the sync is not built (bank feed plan delivery B): switching an
-	// account on stops its file imports, and nothing reads the feed yet. The
-	// delivery that adds the sync makes it default on. Off sends no request
-	// to any bank and keeps what is stored: a key is refused 409
-	// bank_feed_disabled and the bank's accounts are not read.
+	// (INVOICES_BANK_FEED_ENABLED, invoices bank feed design F3, F5). Default
+	// ON: nothing is read until a workspace connects its bank and switches an
+	// account on. On, the invoices-bank-feed worker runs. Off sends no
+	// request to any bank — the worker is not handed to the runner — and
+	// keeps what is stored: a key is refused 409 bank_feed_disabled and the
+	// bank's accounts are not read.
 	InvoicesBankFeedEnabled bool
 	// InvoicesFolioBaseURL is the origin Folio's bank feed adapter calls
 	// (INVOICES_FOLIO_BASE_URL, F3), default Folio's API; no trailing slash.
@@ -1193,12 +1193,12 @@ func invoicesVipps(p *problems, env map[string]string, c *Config) {
 // defaultFolioBaseURL is Folio's API (invoices bank feed design F3).
 const defaultFolioBaseURL = "https://api.folio.no/v2"
 
-// invoicesBankFeed loads the Invoices bank feed settings (F3): the switch,
-// off by default until the sync exists, and Folio's base URL, which must be https — the adapter
+// invoicesBankFeed loads the Invoices bank feed settings (F3, F5): the
+// switch, on by default; Folio's base URL, which must be https — the adapter
 // refuses anything else, so the server refuses to start on it rather than
 // fail every call.
 func invoicesBankFeed(p *problems, env map[string]string, c *Config) {
-	c.InvoicesBankFeedEnabled = boolean(p, env, "INVOICES_BANK_FEED_ENABLED", false)
+	c.InvoicesBankFeedEnabled = boolean(p, env, "INVOICES_BANK_FEED_ENABLED", true)
 	c.InvoicesFolioBaseURL = httpsBaseURL(p, env, "INVOICES_FOLIO_BASE_URL", defaultFolioBaseURL)
 	c.InvoicesBankFeedInterval = defaultBankFeedInterval
 	if v := env["INVOICES_BANK_FEED_INTERVAL"]; v != "" {

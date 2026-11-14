@@ -81,14 +81,14 @@ func (q *Queries) BankFeedRateLimited(ctx context.Context, arg BankFeedRateLimit
 
 const bankFeedRefused = `-- name: BankFeedRefused :execrows
 UPDATE invoices.bank_feed_accounts SET
-    status = 'refused', reason = $1, detail = $2, failures = 0,
+    status = 'refused', reason = $1::text, detail = $2, failures = 0,
     next_sync_at = $3::timestamptz, lease_id = NULL, lease_until = NULL,
-    updated_at = CASE WHEN status <> 'refused' OR reason IS DISTINCT FROM $1 THEN $4::timestamptz ELSE updated_at END
+    updated_at = CASE WHEN status <> 'refused' OR reason IS DISTINCT FROM $1::text THEN $4::timestamptz ELSE updated_at END
 WHERE account = $5 AND lease_id = $6::text
 `
 
 type BankFeedRefusedParams struct {
-	Reason     *string
+	Reason     string
 	Detail     string
 	NextSyncAt time.Time
 	Now        time.Time
@@ -498,6 +498,30 @@ func (q *Queries) PendingFeedFilesOfAccount(ctx context.Context, account string)
 		return nil, err
 	}
 	return items, nil
+}
+
+const releaseBankFeedClaim = `-- name: ReleaseBankFeedClaim :execrows
+UPDATE invoices.bank_feed_accounts SET next_sync_at = $1::timestamptz, lease_id = NULL, lease_until = NULL
+WHERE account = $2 AND lease_id = $3::text
+`
+
+type ReleaseBankFeedClaimParams struct {
+	Now     time.Time
+	Account string
+	LeaseID string
+}
+
+// ReleaseBankFeedClaim ends a claim whose key the bank refused but whose
+// refusal recorded nothing — a newer key was stored while the call was out —
+// with nothing written but the lease cleared and the account due now, for
+// the newer key. After MarkBankFeedUnauthorized the lease is gone and it
+// writes nothing.
+func (q *Queries) ReleaseBankFeedClaim(ctx context.Context, arg ReleaseBankFeedClaimParams) (int64, error) {
+	result, err := q.db.Exec(ctx, releaseBankFeedClaim, arg.Now, arg.Account, arg.LeaseID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const reviveUnauthorizedBankFeedAccounts = `-- name: ReviveUnauthorizedBankFeedAccounts :exec

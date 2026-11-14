@@ -693,7 +693,7 @@ func (s *server) postLetter(ctx context.Context, txq *store.Queries, inv store.I
 	if reason == "" {
 		reason = withdrawnActionChanged
 	}
-	problem, err := waiveCharges(ctx, txq, inv.ID, ws, waiverClaimedInError, postedWaiverNote(reason), by, now)
+	problem, err := waiveCharges(ctx, txq, inv.ID, ws, waiverClaimedInError, postedWaiverNote(reason), &by, now)
 	if err != nil {
 		return nil, err
 	}

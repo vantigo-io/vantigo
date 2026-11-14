@@ -1641,3 +1641,37 @@ func TestErase_RevokesPayLinks(t *testing.T) {
 		t.Errorf("a second erase = %+v, want zeros", got)
 	}
 }
+
+// TestExport_CarriesABankFeedPayment: a payment the bank feed's sync
+// registered — source bank_feed, its line from a feed batch, by no user —
+// is exported as any imported one, with its source and its bank line (D19;
+// invoices bank feed design F6).
+func TestExport_CarriesABankFeedPayment(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	inv := plantOverdue(t, h, overdueSpec{number: 1, customer: customerPerson, issue: "2026-07-01", due: "2026-08-03"})
+	at := h.Now()
+	file := plantID(t, h, `
+		INSERT INTO invoices.bank_files (format, provider, sha256, file_identity, object_key, byte_size, accounts, transactions,
+		    ignored, ignored_kinds, first_booked_on, last_booked_on, uploaded_by_user_id, uploaded_at)
+		VALUES ('feed', 'folio', md5(random()::text) || md5(random()::text), 'folio|15032080119|x', 'bank-files/f.json', 40,
+		    ARRAY['15032080119'], 1, 0, '{}', DATE '2026-08-10', DATE '2026-08-10', NULL, $1) RETURNING id`, at)
+	line := plantID(t, h, `
+		INSERT INTO invoices.bank_transactions (bank_file_id, line_ref, format, account, direction, booked_on, amount, currency,
+		    debtor_name, debtor_account, remittance_text, archive_ref, fingerprint, ordinal, status)
+		VALUES ($1, '00000001-aaaa-4bbb-8ccc-000000000001', 'feed', '15032080119', 'credit', DATE '2026-08-10', 500, 'NOK',
+		    'Kari Nordmann', '12345678903', 'Faktura 1', '00000001aaaa4bbb8ccc000000000001', md5(random()::text) || md5(random()::text), 1, 'matched')
+		RETURNING id`, file)
+	h.Exec(t, `INSERT INTO invoices.payments (invoice_id, paid_on, amount, currency, source, bank_transaction_id, registered_at)
+		VALUES ($1, DATE '2026-08-10', 500, 'NOK', 'bank_feed', $2, $3)`, inv, line, at)
+	section, err := invoices.Module().CustomerPersonalData(disabledDeps(h)).ExportCustomerData(context.Background(), customerPerson)
+	if err != nil {
+		t.Fatalf("ExportCustomerData: %v", err)
+	}
+	b, _ := json.Marshal(section)
+	want := `{"paidOn":"2026-08-10","amount":"500.00","currency":"NOK","source":"bank_feed","registeredAt":"2026-09-12T12:00:00Z",` +
+		`"bankLine":{"bookedOn":"2026-08-10","debtorName":"Kari Nordmann","debtorAccount":"12345678903","text":"Faktura 1"}}`
+	if !strings.Contains(string(b), want) {
+		t.Errorf("the export = %s\nwant it to carry %s", b, want)
+	}
+}

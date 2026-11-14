@@ -119,13 +119,17 @@ func bankFilePart(mr *multipart.Reader) ([]byte, bool) {
 }
 
 // bankFileKey is where a file's bytes are stored, under this module's
-// scope: bank-files/<sha256>.<ocr|xml> — keyed by the hash, so the same
+// scope: bank-files/<sha256>.<ocr|xml|json> — a feed batch's document is
+// JSON (invoices bank feed design F5 step 5) — keyed by the hash, so the same
 // bytes land on the same object and an import that fails after storing them
 // leaves nothing a later one does not reuse.
 func bankFileKey(sha string, f bankfile.Format) string {
 	ext := "xml"
-	if f == bankfile.FormatOCR {
+	switch f {
+	case bankfile.FormatOCR:
 		ext = "ocr"
+	case bankfile.FormatFeed:
+		ext = "json"
 	}
 	return "bank-files/" + sha + "." + ext
 }
@@ -241,7 +245,7 @@ func (s *server) PostInvoicesBankFiles(ctx context.Context, req gen.PostInvoices
 	}
 	// The stop, when matching stops early, is logged by matchFile; what it
 	// did not reach stays pending, and the 201 says so.
-	counts, _ := s.matchFile(ctx, result.file.ID, by, now, loc)
+	counts, _ := s.matchFile(ctx, result.file.ID, &by, now, loc)
 	result.matched, result.matchedAmount = counts.matched, counts.matchedAmount
 	result.exceptions, result.exceptionsAmount = counts.exceptions, counts.exceptionsAmount
 	result.pending -= counts.done
@@ -252,19 +256,73 @@ func (s *server) PostInvoicesBankFiles(ctx context.Context, req gen.PostInvoices
 	return gen.PostInvoicesBankFiles201JSONResponse(body201), nil
 }
 
-// importBankFile is D3 step 7, one transaction: the file's accounts
-// upserted and read FOR SHARE in account order (lockImportAccounts), a
-// format other than the file's refused; the file row; every line in one
-// insert ordered by fingerprint; the lines it skipped inserted again as
-// duplicate rows; the file's duplicates set. A unique violation on the
-// file's hash or identity is an import that committed after the pool read:
-// the same 409, naming it.
+// importBankFile is D3 step 7 for an upload by by: storeBankFile under the
+// uploader's own account locks (lockImportAccounts), a format other than the
+// file's refused 409 bank_import_format_mismatch, and a unique violation on
+// the file's hash or identity — an import that committed after the pool
+// read — the same 409 bank_file_duplicate, naming it.
 func (s *server) importBankFile(ctx context.Context, file *bankfile.File, sha, key string, size int, by uuid.UUID, now time.Time, loc *time.Location) (
 	importResult, gen.PostInvoicesBankFilesResponseObject, error,
 ) {
+	result, err := s.storeBankFile(ctx, file, sha, key, size, bankFileOrigin{by: &by}, now)
+	var mismatch *formatMismatch
+	switch {
+	case errors.As(err, &mismatch):
+		return importResult{}, gen.PostInvoicesBankFilesResponseObject(gen.PostInvoicesBankFiles409ApplicationProblemPlusJSONResponse(conflict(codeBankFormatMismatch, bankFormatMismatchTitle,
+			fmt.Sprintf("The bank files of account %s are imported as %s; this file is %s. Nothing was imported. A manager can change the account's format.",
+				mismatch.account, mismatch.format, file.Format)))), nil
+	case errors.Is(err, errBankFileRaced):
+		id, at, uploader, found, err := earlierImport(ctx, store.New(s.deps.Pool), sha, file)
+		if err != nil {
+			return importResult{}, nil, err
+		}
+		if !found {
+			return importResult{}, nil, fmt.Errorf("invoices: bank file %s collided with an import that cannot be read", sha)
+		}
+		return importResult{}, bankFileDuplicate(id, at, uploader, loc), nil
+	case err != nil:
+		return importResult{}, nil, err
+	}
+	return result, nil, nil
+}
+
+// bankFileOrigin is who or what brings a file to storeBankFile: an upload's
+// person (by), or a bank feed batch — no person, the bank as provider, and
+// the claim whose lease the import holds (invoices bank feed design F5 step
+// 6, plan finding 10).
+type bankFileOrigin struct {
+	by       *uuid.UUID
+	provider *string
+	// feedLease is the claim's lease on the batch's one account; set for a
+	// feed batch only.
+	feedLease string
+}
+
+// formatMismatch is an account of the file whose format is not the file's,
+// or — for a feed batch — that has no bank import row at all.
+type formatMismatch struct{ account, format string }
+
+func (e *formatMismatch) Error() string {
+	return fmt.Sprintf("invoices: account %s's lines come in format %q", e.account, e.format)
+}
+
+// errBankFileRaced is a unique violation on the file's hash or identity: an
+// import of the same file committed after the pool read.
+var errBankFileRaced = errors.New("invoices: the same bank file was imported meanwhile")
+
+// storeBankFile is D3 step 7, one transaction: the file's accounts — for an
+// upload upserted and read FOR SHARE in account order (lockImportAccounts),
+// for a feed batch read FOR SHARE only (shareImportAccounts) and its claim's
+// lease read FOR SHARE after them, so a disconnect or a key refusal meanwhile
+// waits for the import or ends it (errFeedClaimLost) — a format other than the
+// file's refused (*formatMismatch); the file row, with its uploader or its
+// provider; every line in one insert ordered by fingerprint; the lines it
+// skipped inserted again as duplicate rows; the file's duplicates set. A
+// unique violation on the file's hash or identity is errBankFileRaced.
+func (s *server) storeBankFile(ctx context.Context, file *bankfile.File, sha, key string, size int, origin bankFileOrigin, now time.Time) (importResult, error) {
 	ignoredKinds, err := json.Marshal(file.Ignored)
 	if err != nil {
-		return importResult{}, nil, fmt.Errorf("invoices: encode the ignored kinds: %w", err)
+		return importResult{}, fmt.Errorf("invoices: encode the ignored kinds: %w", err)
 	}
 	ignored := 0
 	for _, n := range file.Ignored {
@@ -272,23 +330,39 @@ func (s *server) importBankFile(ctx context.Context, file *bankfile.File, sha, k
 	}
 	lines, err := bankLineParams(file)
 	if err != nil {
-		return importResult{}, nil, err
+		return importResult{}, err
 	}
 
 	var result importResult
-	var refusal gen.PostInvoicesBankFilesResponseObject
-	var raced bool
 	err = s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
-		accounts, err := lockImportAccounts(ctx, txq, file.Accounts, string(file.Format), by, now)
-		if err != nil {
-			return err
+		var accounts []store.InvoicesBankImportAccount
+		if origin.feedLease == "" {
+			if origin.by == nil {
+				return errors.New("invoices: a bank file upload without its uploader")
+			}
+			if accounts, err = lockImportAccounts(ctx, txq, file.Accounts, string(file.Format), *origin.by, now); err != nil {
+				return err
+			}
+		} else {
+			if accounts, err = shareImportAccounts(ctx, txq, file.Accounts); err != nil {
+				return err
+			}
+			// An account with no bank import row is no account in format
+			// feed: the switch on always makes one.
+			for _, a := range file.Accounts {
+				if !slices.ContainsFunc(accounts, func(r store.InvoicesBankImportAccount) bool { return r.Account == a }) {
+					return &formatMismatch{account: a, format: ""}
+				}
+			}
+			if err := shareBankFeedLease(ctx, txq, file.Accounts[0], origin.feedLease); errors.Is(err, pgx.ErrNoRows) {
+				return errFeedClaimLost
+			} else if err != nil {
+				return fmt.Errorf("invoices: read account %s's bank feed lease: %w", file.Accounts[0], err)
+			}
 		}
 		for _, a := range accounts {
 			if a.Format != string(file.Format) {
-				refusal = gen.PostInvoicesBankFiles409ApplicationProblemPlusJSONResponse(conflict(codeBankFormatMismatch, bankFormatMismatchTitle,
-					fmt.Sprintf("The bank files of account %s are imported as %s; this file is %s. Nothing was imported. A manager can change the account's format.",
-						a.Account, a.Format, file.Format)))
-				return errRefused
+				return &formatMismatch{account: a.Account, format: a.Format}
 			}
 		}
 		row, err := txq.InsertBankFile(ctx, store.InsertBankFileParams{
@@ -296,11 +370,10 @@ func (s *server) importBankFile(ctx context.Context, file *bankfile.File, sha, k
 			ByteSize: int32(size), Accounts: file.Accounts, //nolint:gosec // at most bankfile.MaxBytes
 			FirstBookedOn: dateOrNull(file.FirstBookedOn), LastBookedOn: dateOrNull(file.LastBookedOn),
 			Transactions: int32(len(file.Transactions)), Ignored: int32(ignored), //nolint:gosec // at most bankfile.MaxTransactions
-			IgnoredKinds: ignoredKinds, UploadedByUserID: &by, UploadedAt: now,
+			IgnoredKinds: ignoredKinds, UploadedByUserID: origin.by, Provider: origin.provider, UploadedAt: now,
 		})
 		if db.IsUniqueViolation(err, "uq_bank_files_sha256", "uq_bank_files_identity") {
-			raced = true
-			return errRefused
+			return errBankFileRaced
 		}
 		if err != nil {
 			return fmt.Errorf("invoices: insert the bank file: %w", err)
@@ -340,22 +413,10 @@ func (s *server) importBankFile(ctx context.Context, file *bankfile.File, sha, k
 		}
 		return nil
 	})
-	switch {
-	case errors.Is(err, errRefused) && raced:
-		id, at, uploader, found, err := earlierImport(ctx, store.New(s.deps.Pool), sha, file)
-		if err != nil {
-			return importResult{}, nil, err
-		}
-		if !found {
-			return importResult{}, nil, fmt.Errorf("invoices: bank file %s collided with an import that cannot be read", sha)
-		}
-		return importResult{}, bankFileDuplicate(id, at, uploader, loc), nil
-	case errors.Is(err, errRefused):
-		return importResult{}, refusal, nil
-	case err != nil:
-		return importResult{}, nil, err
+	if err != nil {
+		return importResult{}, err
 	}
-	return result, nil, nil
+	return result, nil
 }
 
 // bankLineParams is every transaction of file as InsertBankTransactions'

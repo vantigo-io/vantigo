@@ -162,10 +162,10 @@ func (q *Queries) GetBankFile(ctx context.Context, id int64) (GetBankFileRow, er
 const insertBankFile = `-- name: InsertBankFile :one
 INSERT INTO invoices.bank_files (
     format, sha256, file_identity, object_key, byte_size, accounts, first_booked_on, last_booked_on,
-    transactions, ignored, ignored_kinds, uploaded_by_user_id, uploaded_at
+    transactions, ignored, ignored_kinds, uploaded_by_user_id, provider, uploaded_at
 ) VALUES (
     $1, $2, $3, $4, $5, $6::text[], $7, $8,
-    $9, $10, $11, $12, $13::timestamptz
+    $9, $10, $11, $12, $13, $14::timestamptz
 )
 RETURNING id, format, sha256, file_identity, object_key, byte_size, accounts, first_booked_on, last_booked_on, transactions, duplicates, ignored, ignored_kinds, uploaded_by_user_id, uploaded_at, provider
 `
@@ -183,13 +183,16 @@ type InsertBankFileParams struct {
 	Ignored          int32
 	IgnoredKinds     []byte
 	UploadedByUserID *uuid.UUID
+	Provider         *string
 	UploadedAt       time.Time
 }
 
 // InsertBankFile is the file row (D3 step 7.2), after the accounts' locks;
 // duplicates stays NULL until SetBankFileDuplicates, in the same
 // transaction (plan reading 3). uq_bank_files_sha256 and
-// uq_bank_files_identity refuse an import the pool read did not see.
+// uq_bank_files_identity refuse an import the pool read did not see. An
+// upload has its uploader and no provider, a bank feed batch the reverse
+// (ck_bank_files_origin).
 func (q *Queries) InsertBankFile(ctx context.Context, arg InsertBankFileParams) (InvoicesBankFile, error) {
 	row := q.db.QueryRow(ctx, insertBankFile,
 		arg.Format,
@@ -204,6 +207,7 @@ func (q *Queries) InsertBankFile(ctx context.Context, arg InsertBankFileParams) 
 		arg.Ignored,
 		arg.IgnoredKinds,
 		arg.UploadedByUserID,
+		arg.Provider,
 		arg.UploadedAt,
 	)
 	var i InvoicesBankFile
