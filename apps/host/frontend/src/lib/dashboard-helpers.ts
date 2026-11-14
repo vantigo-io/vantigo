@@ -421,6 +421,9 @@ export const attentionHref = (item: { module: ModuleKey; type: string; entityId:
     if (item.type === "bankTransactionsOpen") return `/invoices/payments/files/${encodeURIComponent(item.entityId)}`;
     if (item.type === "remindersHeld") return "/invoices/overdue";
     if (item.type === "reminderBatchUnposted") return "/invoices/reminders/print";
+    // The bank feed's three carry an account; each is fixed on Workspace
+    // admin › Integrations › Bank (invoices bank feed design F7).
+    if (["bankFeedUnauthorized", "bankFeedFailing", "bankFeedRefused"].includes(item.type)) return "/workspace/bank";
     return "/invoices";
   }
   if (item.module === "staff") {
@@ -535,6 +538,9 @@ const invoicesAttentionTitleKeys: Record<string, string> = {
   paymentCaptureFailed: "dashboard.invoicePaymentCaptureFailed",
   paymentReservationStranded: "dashboard.invoicePaymentReservationStranded",
   vippsRefundSeen: "dashboard.invoiceVippsRefundSeen",
+  bankFeedUnauthorized: "dashboard.invoiceBankFeedUnauthorized",
+  bankFeedFailing: "dashboard.invoiceBankFeedFailing",
+  bankFeedRefused: "dashboard.invoiceBankFeedRefused",
 };
 
 const invoicesHeldTitleKeys: Record<string, string> = {

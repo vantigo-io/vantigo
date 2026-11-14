@@ -1330,6 +1330,45 @@ describe("Dashboard_PaymentAttentionSentences", () => {
 });
 
 /**
+ * The bank feed's three attention types (invoices bank feed design F7): the
+ * server's title is the account's last four digits and the entity id the
+ * account, so each sentence is the catalog's, and each item leads to
+ * Workspace admin › Integrations › Bank, where it is fixed.
+ */
+describe("Dashboard_BankFeedAttentionSentences", () => {
+  const item = (type: string) => ({ module: "invoices" as const, type, entityId: "86011117947", title: "7947" });
+  const types = ["bankFeedUnauthorized", "bankFeedFailing", "bankFeedRefused"];
+  const sentences = (lng: "en" | "nb") =>
+    types.map((type) =>
+      attentionTitle(
+        item(type),
+        (key, values) => i18n.t(key, { ns: "host", lng, ...values }),
+        (v) => v,
+      ),
+    );
+
+  it("says every type in English", () => {
+    expect(sentences("en")).toEqual([
+      "The bank refused its API key: the account ending 7947 is not read",
+      "The bank feed cannot read the account ending 7947",
+      "The bank feed refused a batch for the account ending 7947",
+    ]);
+  });
+
+  it("says every type in Norwegian", () => {
+    expect(sentences("nb")).toEqual([
+      "Banken avviste API-nøkkelen: kontoen som slutter på 7947, leses ikke",
+      "Bankintegrasjonen klarer ikke å lese kontoen som slutter på 7947",
+      "Bankintegrasjonen avviste en bunke for kontoen som slutter på 7947",
+    ]);
+  });
+
+  it("leads each item to the Bank page", () => {
+    expect(types.map((type) => attentionHref(item(type)))).toEqual(types.map(() => "/workspace/bank"));
+  });
+});
+
+/**
  * Inventory's cards (inventory design §7): the module card, shown with either
  * view permission, and a KPI card fed by `GET /inventory/stats` — the stock
  * lines, a quantity, so the KPI card asks for inventory:stock-view beside the
