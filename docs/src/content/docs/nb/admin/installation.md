@@ -115,7 +115,11 @@ avslutter med 2 utenfor det): den kjører migreringer og fyller inn et idempoten
 demodatasett på tvers av alle moduler (20 brukere fordelt på 9 tilgangsroller, 200
 bedrifter med 400 kontakter, 62 produkter, 75 prosjekter, timeregistreringer, utlegg,
 fakturaer, målepunkter, kundesamtaler og et lite verksted med lager, stykklister,
-produksjonsordrer og salgsordrer). Ingen kommando, eller en ukjent en, skriver
+produksjonsordrer og salgsordrer) og, når `accounting` er aktivert, et regnskap
+opprettet fra 1. januar med demoens salg og utlegg bokført, leverandører med fakturaene
+sine, mva-terminene som er over lukket og levert, og forrige måneds kontoutskrift halvveis
+avstemt. Leverandørfakturaene og kontoutskriften lagrer filer og utelates, som seeden
+logger, når ingen objektlagring (`STORAGE_PROVIDER`) er satt opp. Ingen kommando, eller en ukjent en, skriver
 bruksanvisning til stderr og avslutter med 2, så en skrivefeil i en jobbdefinisjon
 feiler høylytt i stedet for stille å bli en webserver.
 

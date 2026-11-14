@@ -59,8 +59,9 @@ Running `mise run server:seed` populates a rich, idempotent showcase dataset (`V
 - **200 customer companies** (with realistic Norwegian organization numbers, industries, and credit limits) and **400 contacts** (2 contacts per company)
 - **50 products** across consulting, cloud, energy, software, and training categories
 - **75 projects** with tasks, member allocations, and billable rate overrides
-- **240 time entries** and **30 expenses** (mix of approved and submitted)
-- **30 invoices** across paid, partially paid, open, overdue, and draft states
+- **240 time entries** and **31 expenses** (submitted, approved and reimbursed, with categories; one approved in euros)
+- **30 invoices** across paid, partially paid, open, overdue, written-off (as a loss with the VAT corrected, a third recovered) and draft states
+- **Accounting's books** when `accounting` is enabled: set up from 1 January (last year's while it is January) with the Norwegian chart, bimonthly VAT, a consulting revenue account and an expense rule per expense category; an opening balance (bank, office machines, share capital, a bank loan, equity); the demo's invoices, payments, write-off and expenses posted by the catch-up; **7 suppliers** with **15 supplier invoices** across the year (one foreign in EUR with reverse charge, paid with a currency difference, a credit note, two owed — one overdue — and one draft), each with a small PDF; every VAT term that has ended closed, all but the latest marked filed, and the lock at the latest's end; the seller's bank account with last month's camt.053 statement, about half its lines reconciled and the rest — a bank fee with its bank rule, a card purchase no one has entered — left to try; and the euro expense waiting under *Needs attention* for its NOK amount. The supplier invoices and the statement keep files, so they need an object store: run the seed with `STORAGE_PROVIDER=fs STORAGE_FS_ROOT=<an absolute path>` to get them; without one they are left out and the seed logs it
 - **10 energy metering points** (`NO1`–`NO5`) and **10 customer support conversations**
 - **A small furniture and metal workshop** for Inventory, Manufacturing and Orders (below)
 
