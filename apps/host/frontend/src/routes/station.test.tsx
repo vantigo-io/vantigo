@@ -60,11 +60,16 @@ const allowed = (method: string, url: string) => {
   );
 };
 
-/** Every request the SPA makes, recorded, answered as a station's server would. */
+/**
+ * Every request the SPA makes, recorded, answered as a station's server would.
+ * Each switch-in is a session of its own; a refused request ends them all, as
+ * `endSessions` does — an administrator's End.
+ */
 const recordFetch = (refuse: (path: string) => boolean = () => false) => {
   const requests: { url: string; method: string; authorization: string | null }[] = [];
   let paired = false;
   let operators: unknown[] = [];
+  let sessions = 0;
   vi.stubGlobal(
     "fetch",
     vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
@@ -72,8 +77,10 @@ const recordFetch = (refuse: (path: string) => boolean = () => false) => {
       const method = init?.method ?? "GET";
       requests.push({ url, method, authorization: new Headers(init?.headers).get("Authorization") });
       const path = new URL(url, "http://localhost").pathname;
-      if (refuse(path))
+      if (refuse(path)) {
+        operators = [];
         return Promise.resolve(json({ error: { code: "operator_session_ended", message: "Signed out." } }, 401));
+      }
       if (path === "/api/v1/identity/station" && method === "GET")
         return Promise.resolve(
           paired ? json(self(operators)) : json({ error: { code: "station_unknown", message: "Not paired." } }, 401),
@@ -90,7 +97,7 @@ const recordFetch = (refuse: (path: string) => boolean = () => false) => {
         );
       if (path === "/api/v1/identity/station/operators" && method === "POST") {
         const session = {
-          sessionId: "5b1f2c3d-0000-4000-8000-000000000001",
+          sessionId: `5b1f2c3d-0000-4000-8000-${String(++sessions).padStart(12, "0")}`,
           userId: ADA,
           displayName: "Ada Lovelace",
           initials: "AL",
@@ -151,7 +158,11 @@ const recordFetch = (refuse: (path: string) => boolean = () => false) => {
       return Promise.resolve(new Response(null, { status: 404 }));
     }),
   );
-  return requests;
+  return Object.assign(requests, {
+    endSessions: () => {
+      operators = [];
+    },
+  });
 };
 
 /** A WebSocket that never connects: the station's live socket, out of the test's way. */
@@ -259,4 +270,57 @@ describe("the /station route", () => {
     expect(await screen.findByRole("button", { name: "Dismiss" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /SAW/ })).not.toBeInTheDocument();
   });
+
+  it("keeps one chip per person: switching in again replaces the signed-out one", async () => {
+    vi.stubGlobal("WebSocket", QuietSocket);
+    let refusing = true;
+    recordFetch((path) => refusing && path.startsWith("/api/v1/manufacturing/work-centers"));
+    renderSpaAt("/station");
+    await userEvent.type(await screen.findByLabelText("Pairing code"), "ABCD-EFGH");
+    await userEvent.click(screen.getByRole("button", { name: "Pair" }));
+
+    await switchInAda();
+    expect(await screen.findByText("Ada Lovelace · Signed out")).toBeInTheDocument();
+
+    refusing = false;
+    await switchInAda();
+    await screen.findByRole("button", { name: /SAW/ });
+    expect(screen.queryByText("Ada Lovelace · Signed out")).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Ada Lovelace" })).toHaveLength(1);
+
+    // Signed out again: still the one chip.
+    refusing = true;
+    await userEvent.click(screen.getByRole("button", { name: /SAW/ }));
+    expect(await screen.findByText("Ada Lovelace · Signed out")).toBeInTheDocument();
+    expect(screen.getAllByText("Ada Lovelace · Signed out")).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: "Ada Lovelace" })).toHaveLength(1);
+  });
+
+  it("notices a session ended elsewhere without a tap", async () => {
+    vi.stubGlobal("WebSocket", QuietSocket);
+    const server = recordFetch();
+    renderSpaAt("/station");
+    await userEvent.type(await screen.findByLabelText("Pairing code"), "ABCD-EFGH");
+    await userEvent.click(screen.getByRole("button", { name: "Pair" }));
+    await switchInAda();
+    await screen.findByRole("button", { name: /SAW/ });
+
+    // An administrator ends Ada's session: the station's next read of itself says so.
+    server.endSessions();
+    expect(await screen.findByText("Ada Lovelace · Signed out", {}, { timeout: 8_000 })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /SAW/ })).not.toBeInTheDocument();
+  }, 15_000);
 });
+
+/** Switch in, Ada, her PIN. */
+const switchInAda = async () => {
+  await userEvent.click(await screen.findByRole("button", { name: "Switch in" }));
+  const dialog = await screen.findByRole("dialog");
+  await userEvent.click(await within(dialog).findByRole("button", { name: /Ada Lovelace/ }));
+  const pinField = await vi.waitFor(() => {
+    const field = dialog.querySelector<HTMLInputElement>("input");
+    if (!field) throw new Error("no PIN field yet");
+    return field;
+  });
+  await userEvent.type(pinField, "482915");
+};

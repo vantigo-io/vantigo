@@ -207,4 +207,76 @@ describe("the shop floor on a shared station", () => {
     expect(answered).toContain("second-operator");
     expect(refused).not.toContain("second-operator");
   });
+
+  it("leaves a signed-out operator's refusal to the station: no failure of its own", async () => {
+    let signedOut = false;
+    stubManufacturingApi({
+      meta: { canWorkShopFloor: true },
+      workOrders: [workOrderFixture({ status: "ready" })],
+      write: (method, path) =>
+        method === "POST" && path.endsWith("/start") ? manufacturingProblem(401, "operator_session_ended") : undefined,
+    });
+    setStationOperator(
+      () => TOKEN,
+      () => {
+        signedOut = true;
+      },
+    );
+    renderStation();
+    await userEvent.click(await screen.findByRole("button", { name: /SAW/ }));
+    await userEvent.click(await screen.findByRole("button", { name: "MO-12 · Cut" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Start" }));
+    await waitFor(() => expect(signedOut).toBe(true));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.queryByText("Could not do that")).not.toBeInTheDocument();
+  });
+
+  it("wraps the actions' labels rather than cutting them off", async () => {
+    stubManufacturingApi({
+      meta: { canWorkShopFloor: true },
+      workOrders: [workOrderFixture({ status: "in_progress" })],
+    });
+    setStationOperator(() => TOKEN);
+    renderStation();
+    await userEvent.click(await screen.findByRole("button", { name: /SAW/ }));
+    await userEvent.click(await screen.findByRole("button", { name: "MO-12 · Cut" }));
+    for (const action of ["Register quantity", "Report a deviation", "Report scrap"]) {
+      const label = (await screen.findByRole("button", { name: action })).querySelector(".mantine-Button-label");
+      expect(label).toHaveStyle({ whiteSpace: "normal" });
+    }
+  });
+
+  it("shows a work order's registered quantity, and no remaining work once it is done", async () => {
+    const done = workOrderFixture({
+      status: "done",
+      quantityDone: "4",
+      order: { ...workOrderFixture().order, quantity: "4", produced: "0", remaining: "4" },
+    });
+    // A done work order is no queue's: it is reached here as group work.
+    stubManufacturingApi({ meta: { canWorkShopFloor: true }, workOrders: [done], groupWork: { 1: [done] } });
+    setStationOperator(() => TOKEN);
+    renderStation();
+    await userEvent.click(await screen.findByRole("button", { name: /SAW/ }));
+    const card = await screen.findByRole("button", { name: "MO-12 · Cut" });
+    expect(card).toHaveTextContent("4 of 4 pcs");
+    expect(card).not.toHaveTextContent("remaining");
+    await userEvent.click(card);
+    expect(await screen.findByText("4 of 4 pcs")).toBeInTheDocument();
+    expect(screen.queryByText(/remaining/)).not.toBeInTheDocument();
+  });
+
+  it("counts what is left from the quantity the work order registered", async () => {
+    stubManufacturingApi({
+      meta: { canWorkShopFloor: true },
+      workOrders: [workOrderFixture({ status: "in_progress", quantityDone: "3" })],
+    });
+    setStationOperator(() => TOKEN);
+    renderStation();
+    await userEvent.click(await screen.findByRole("button", { name: /SAW/ }));
+    const card = await screen.findByRole("button", { name: "MO-12 · Cut" });
+    expect(card).toHaveTextContent("3 of 10 pcs");
+    expect(card).toHaveTextContent("7 pcs remaining");
+    await userEvent.click(card);
+    expect(await screen.findByText("3 of 10 pcs · 7 pcs remaining")).toBeInTheDocument();
+  });
 });

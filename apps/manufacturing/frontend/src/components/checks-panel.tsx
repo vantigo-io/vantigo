@@ -11,6 +11,7 @@ import {
   recordCheckResult,
   uploadCheckPhoto,
 } from "../api/quality";
+import { isStationSignOut } from "../api/request";
 import { isMeasure } from "../lib/bom-body";
 import { refusalMessage, useInvalidateManufacturing, useManufacturingFormat } from "../lib/format";
 import { resizePhoto } from "../lib/photo";
@@ -69,7 +70,8 @@ const CheckRow = ({
         });
       else notifications.show({ color: "teal", title: t("checkRecorded"), message: check.title });
     } catch (error) {
-      notifications.show({ color: "red", title: t("couldNotDoThat"), message: refusalMessage(t, error as Error) });
+      if (!isStationSignOut(error))
+        notifications.show({ color: "red", title: t("couldNotDoThat"), message: refusalMessage(t, error as Error) });
     } finally {
       setBusy(false);
       await invalidate();
@@ -84,7 +86,8 @@ const CheckRow = ({
       const photo = await uploadCheckPhoto(workOrderId, await resizePhoto(file));
       await record({ photoId: photo.id });
     } catch (error) {
-      notifications.show({ color: "red", title: t("couldNotDoThat"), message: refusalMessage(t, error as Error) });
+      if (!isStationSignOut(error))
+        notifications.show({ color: "red", title: t("couldNotDoThat"), message: refusalMessage(t, error as Error) });
       setBusy(false);
     } finally {
       if (camera.current) camera.current.value = "";

@@ -43,6 +43,14 @@ export const setStationOperator = (
 /** Whether this package's requests go out as a station's operator. */
 export const inStationMode = () => stationToken !== undefined;
 
+/**
+ * Whether a failure is the station's operator being signed out: a 401 in
+ * station mode. The station says so itself (its *Signed out* notice), so the
+ * page shows no failure of its own for it.
+ */
+export const isStationSignOut = (error: unknown): boolean =>
+  stationToken !== undefined && (error as { status?: unknown } | null)?.status === 401;
+
 /** init with the active operator's Authorization header, in station mode. */
 export const stationInit = <T extends RequestInit>(init: T): T => withStation(init, stationToken?.());
 

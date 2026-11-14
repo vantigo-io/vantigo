@@ -802,8 +802,9 @@ again.
 
 The work center page shows its **Queue**: the work orders that are ready, in progress or
 paused, of orders still open — first by planned start, then the urgent orders, then by
-due date. Each shows the order's number, the product, the quantity still to make, the due
-date, whether its components are reserved, and who is running it. The queue updates by
+due date. Each shows the order's number, the product, the good units the operation has
+registered of the order's quantity — *4 of 10 pcs* — and, while it is open, how many are
+still to go, the due date, whether its components are reserved, and who is running it. The queue updates by
 itself as others start and finish work. **My work** is at the top of every shop-floor
 screen.
 
@@ -1003,8 +1004,9 @@ PIN** first; ask an administrator for a badge.
    it warns 30 seconds before, with **Stay signed in**; working on the screen and the live
    updates of what you are looking at keep you signed in — and after 12 hours.
 5. A chip that says **Signed out** is someone the station has signed out — idle, ended by an
-   administrator, their PIN or badge changed, or no longer allowed on the shop floor. Tap
-   **Dismiss** to put it away; they switch in again to go on.
+   administrator, their PIN or badge changed, or no longer allowed on the shop floor. The
+   station notices within a few seconds, without a tap. Tap **Dismiss** to put it away; they
+   switch in again to go on, and their chip replaces the signed-out one — one chip per person.
 
 What a station shows is the shop floor of its own work centers and nothing more, whoever is
 switched in: no costs, no order lots or other pages, no product images. Reloading the page

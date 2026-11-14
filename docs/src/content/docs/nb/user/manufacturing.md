@@ -815,8 +815,9 @@ bare på nytt.
 
 Siden for arbeidsstasjonen viser **Kø**: arbeidsordrene som er klare, pågår eller er
 pauset, i ordrer som fortsatt er åpne — først etter planlagt start, så de hastende
-ordrene, så etter forfallsdato. Hver viser ordrens nummer, produktet, antallet som
-gjenstår, forfallsdatoen, om komponentene er reservert, og hvem som kjører den. Køen
+ordrene, så etter forfallsdato. Hver viser ordrens nummer, produktet, de godkjente enhetene
+operasjonen har registrert av ordrens antall — *4 av 10 stk* — og, så lenge den er åpen, hvor
+mange som gjenstår, forfallsdatoen, om komponentene er reservert, og hvem som kjører den. Køen
 oppdaterer seg selv når andre starter og fullfører arbeid. **Mitt arbeid** står øverst på
 hver side i verkstedet.
 
@@ -1022,7 +1023,9 @@ Sikkerhet → PIN-kode for nettbrettstasjoner** først; be en administrator om e
    etter 12 timer.
 5. En brikke som sier **Logget av**, er en nettbrettstasjonen har logget av — inaktiv, avsluttet av en
    administrator, PIN-koden eller kortet endret, eller ikke lenger tillatt i verkstedet.
-   Trykk **Fjern** for å legge den bort; de logger på igjen for å fortsette.
+   Nettbrettstasjonen merker det i løpet av noen sekunder, uten at noen trykker. Trykk
+   **Fjern** for å legge den bort; de logger på igjen for å fortsette, og brikken deres
+   erstatter den som sier **Logget av** — én brikke per person.
 
 En nettbrettstasjon viser verkstedet for sine egne arbeidsstasjoner og ikke noe mer, uansett hvem som
 er pålogget: ingen kostnader, ingen partier eller andre sider for ordren, ingen

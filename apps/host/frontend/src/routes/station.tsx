@@ -49,6 +49,14 @@ const refusalOf = (error: unknown) => {
 
 const stationQueryKey = ["station", "self"] as const;
 
+/**
+ * How often the station reads itself again: an operator's session ended
+ * elsewhere — by an administrator, a replacement — shows here within this,
+ * without a tap. The read is the station's own, with its cookie alone, so it
+ * keeps no operator's session alive.
+ */
+const STATION_POLL_MS = 5_000;
+
 /** The station as read, and when the read was sent: a sign-in after that is not in it. */
 type StationRead = { self: StationSelf; startedAt: number };
 
@@ -73,6 +81,12 @@ type HeldOperator = {
   lastRequestAt: number;
   signedOut?: boolean;
 };
+
+/** The held operators but for the person's signed-out chips: switching in again replaces them. */
+const withoutSignedOut = (held: Record<string, HeldOperator>, userId: string) =>
+  Object.fromEntries(
+    Object.entries(held).filter(([, operator]) => !(operator.signedOut && operator.userId === userId)),
+  );
 
 /** How long before an idle session ends the warning shows (M140). */
 const IDLE_WARNING_MS = 30_000;
@@ -100,7 +114,12 @@ const expiresAt = (operator: HeldOperator, idleMinutes: number) =>
 const StationPage = () => {
   const { t } = useI18n("host");
   const queryClient = useQueryClient();
-  const station = useQuery({ queryKey: stationQueryKey, queryFn: readStationNow, retry: false });
+  const station = useQuery({
+    queryKey: stationQueryKey,
+    queryFn: readStationNow,
+    retry: false,
+    refetchInterval: (query) => (query.state.error ? false : STATION_POLL_MS),
+  });
   const [held, setHeld] = useState<Record<string, HeldOperator>>({});
   const [active, setActive] = useState<string | null>(null);
   const zone = station.data?.self.timeZone;
@@ -108,14 +127,20 @@ const StationPage = () => {
     if (zone) setTimeZones({ timeZone: zone, businessTimeZone: zone });
   }, [zone]);
 
-  /** The operator is signed out: their token is dropped, their chip says so. */
+  /**
+   * The operator is signed out: their token is dropped, their chip says so —
+   * the one chip that does for that person, an older signed-out one put away.
+   */
   const forget = useCallback(
     (sessionId: string) => {
-      setHeld((current) =>
-        current[sessionId]
-          ? { ...current, [sessionId]: { ...current[sessionId], signedOut: true, token: "" } }
-          : current,
-      );
+      setHeld((current) => {
+        const operator = current[sessionId];
+        if (!operator) return current;
+        return {
+          ...withoutSignedOut(current, operator.userId),
+          [sessionId]: { ...operator, signedOut: true, token: "" },
+        };
+      });
       setActive((current) => (current === sessionId ? null : current));
       void queryClient.invalidateQueries({ queryKey: stationQueryKey });
     },
@@ -206,7 +231,7 @@ const StationPage = () => {
       active={active}
       onActive={choose}
       onSignedIn={(operator) => {
-        setHeld((current) => ({ ...current, [operator.sessionId]: operator }));
+        setHeld((current) => ({ ...withoutSignedOut(current, operator.userId), [operator.sessionId]: operator }));
         queryClient.removeQueries({ queryKey: [MANUFACTURING_QUERY_KEY] });
         setActive(operator.sessionId);
         void queryClient.invalidateQueries({ queryKey: stationQueryKey });

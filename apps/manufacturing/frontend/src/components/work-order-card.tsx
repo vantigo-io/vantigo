@@ -1,9 +1,9 @@
 import { Badge, Card, Group, Stack, Text } from "@mantine/core";
 import { Link } from "@tanstack/react-router";
-import type { ManufacturingWorkOrder } from "../api/shop-floor";
+import { isClosedWorkOrder, type ManufacturingWorkOrder } from "../api/shop-floor";
 import { reservationColor, useManufacturingFormat, workOrderStatusColor } from "../lib/format";
 import { workOrderLinkOptions } from "../lib/routes";
-import { TOUCH_CARD_MIN_HEIGHT } from "../lib/shop-floor";
+import { operationProgress, TOUCH_CARD_MIN_HEIGHT } from "../lib/shop-floor";
 
 /** Who runs a work order: the names of those with an open log on it. */
 const operatorsText = (workOrder: ManufacturingWorkOrder) =>
@@ -12,12 +12,14 @@ const operatorsText = (workOrder: ManufacturingWorkOrder) =>
 /**
  * One work order of a queue or a list as a large card linking to its view
  * (M31); with `onOpen`, a button that opens it in place instead (a station's
- * page, which links nowhere).
+ * page, which links nowhere). It shows the good units the work order has
+ * registered of the order's quantity, and what is left while it is open.
  */
 export const WorkOrderCard = ({ workOrder, onOpen }: { workOrder: ManufacturingWorkOrder; onOpen?: () => void }) => {
   const { t, quantity, day } = useManufacturingFormat();
   const { order } = workOrder;
   const running = operatorsText(workOrder);
+  const progress = operationProgress(workOrder);
   return (
     <Card
       withBorder
@@ -59,8 +61,14 @@ export const WorkOrderCard = ({ workOrder, onOpen }: { workOrder: ManufacturingW
         </Stack>
         <Stack gap={4} align="flex-end">
           <Text size="lg" fw={600}>
-            {t("remainingValue", { quantity: quantity(order.remaining, order.variant.unit) })}
+            {t("doneOfQuantity", {
+              done: quantity(progress.done),
+              quantity: quantity(order.quantity, order.variant.unit),
+            })}
           </Text>
+          {!isClosedWorkOrder(workOrder) && (
+            <Text size="md">{t("remainingValue", { quantity: quantity(progress.remaining, order.variant.unit) })}</Text>
+          )}
           <Text size="md">{t("dueValue", { date: order.dueDate ? day(order.dueDate) : "—" })}</Text>
           {order.reservationStatus && (
             <Badge size="lg" variant="light" color={reservationColor[order.reservationStatus]}>
