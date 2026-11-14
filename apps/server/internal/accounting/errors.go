@@ -116,6 +116,17 @@ const (
 	codeVatTermInconsistent = "vat_term_inconsistent"
 	codeVatTermPartial      = "vat_term_partial"
 	codeVatTermRateMissing  = "vat_term_rate_missing"
+	// Delivery E, SAF-T.
+	codeSaftSellerMissing      = "saft_seller_missing"
+	codeSaftFileInvalid        = "saft_file_invalid"
+	codeSaftVersionUnsupported = "saft_version_unsupported"
+	codeSaftFileTooLarge       = "saft_file_too_large"
+	codeSaftLedgerHasVouchers  = "saft_import_ledger_has_vouchers"
+	codeSaftImportApplied      = "saft_import_applied"
+	codeSaftImportUnresolved   = "saft_import_unresolved"
+	codeSaftUnmatchedCustomers = "saft_import_unmatched_customers"
+	codeSaftPartiesMismatch    = "saft_import_parties_mismatch"
+	codeSaftBooksStartMismatch = "saft_import_books_start_mismatch"
 )
 
 // refusalCodes is every code above, for the test that holds the contract's
@@ -141,6 +152,9 @@ var refusalCodes = []string{
 	codeVatTermNotClosed, codeVatTermFiled, codeVatTermNotLatest, codeVatTermNotFiled, codeLockBehindFiled,
 	codeLockBehindClosed, codeVatTermStale, codeOpeningVatAccount, codeTaxCodeInUse, codeVatTermInconsistent,
 	codeVatTermPartial, codeVatTermRateMissing,
+	codeSaftSellerMissing, codeSaftFileInvalid, codeSaftVersionUnsupported, codeSaftFileTooLarge,
+	codeSaftLedgerHasVouchers, codeSaftImportApplied, codeSaftImportUnresolved, codeSaftUnmatchedCustomers,
+	codeSaftPartiesMismatch, codeSaftBooksStartMismatch,
 }
 
 // refusal is a request's answer that is not a success. Returned from inside a

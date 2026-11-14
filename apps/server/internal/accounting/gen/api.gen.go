@@ -249,6 +249,96 @@ func (e AccountingRuleScope) Valid() bool {
 	}
 }
 
+// Defines values for AccountingSaftExportState.
+const (
+	Done    AccountingSaftExportState = "done"
+	Failed  AccountingSaftExportState = "failed"
+	Queued  AccountingSaftExportState = "queued"
+	Running AccountingSaftExportState = "running"
+)
+
+// Valid indicates whether the value is a known member of the AccountingSaftExportState enum.
+func (e AccountingSaftExportState) Valid() bool {
+	switch e {
+	case Done:
+		return true
+	case Failed:
+		return true
+	case Queued:
+		return true
+	case Running:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AccountingSaftImportState.
+const (
+	Applied AccountingSaftImportState = "applied"
+	Preview AccountingSaftImportState = "preview"
+)
+
+// Valid indicates whether the value is a known member of the AccountingSaftImportState enum.
+func (e AccountingSaftImportState) Valid() bool {
+	switch e {
+	case Applied:
+		return true
+	case Preview:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AccountingSaftImportAccountAction.
+const (
+	AccountingSaftImportAccountActionImport      AccountingSaftImportAccountAction = "import"
+	AccountingSaftImportAccountActionLeaveOut    AccountingSaftImportAccountAction = "leave_out"
+	AccountingSaftImportAccountActionNeedsNumber AccountingSaftImportAccountAction = "needs_number"
+)
+
+// Valid indicates whether the value is a known member of the AccountingSaftImportAccountAction enum.
+func (e AccountingSaftImportAccountAction) Valid() bool {
+	switch e {
+	case AccountingSaftImportAccountActionImport:
+		return true
+	case AccountingSaftImportAccountActionLeaveOut:
+		return true
+	case AccountingSaftImportAccountActionNeedsNumber:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AccountingSaftImportCustomerMatch.
+const (
+	Ambiguous AccountingSaftImportCustomerMatch = "ambiguous"
+	Linked    AccountingSaftImportCustomerMatch = "linked"
+	Matched   AccountingSaftImportCustomerMatch = "matched"
+	NotNeeded AccountingSaftImportCustomerMatch = "not_needed"
+	Unmatched AccountingSaftImportCustomerMatch = "unmatched"
+)
+
+// Valid indicates whether the value is a known member of the AccountingSaftImportCustomerMatch enum.
+func (e AccountingSaftImportCustomerMatch) Valid() bool {
+	switch e {
+	case Ambiguous:
+		return true
+	case Linked:
+		return true
+	case Matched:
+		return true
+	case NotNeeded:
+		return true
+	case Unmatched:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AccountingSupplierInvoiceKind.
 const (
 	CreditNote AccountingSupplierInvoiceKind = "credit_note"
@@ -1124,7 +1214,7 @@ type AccountingPreviewLine struct {
 	TaxRole   *AccountingTaxRole `json:"taxRole"`
 }
 
-// AccountingProblem An RFC 9457 problem with this module's refusal code (accounting design §2, §13). code names the rule that refused and is what a client keys off, never the words: books_not_set_up (409: every operation but the meta and the setup, until Set up the books has run, R12), books_already_set_up (409: a second setup), revision_conflict (409: the revision has moved on), account_number_taken (409), account_has_postings (409: a delete of an account with postings, or a change of its number or kind), account_has_role (409: a delete of an account holding a system role; move the role first), account_inactive (400: a line on an inactive account), account_unknown (400), tax_code_unknown (400: an unknown or inactive tax code), tax_code_no_rate (400: no rate period covers the voucher's date), rate_period_invalid (400: a new rate period that does not start after the current one's start), party_required (400: a line on receivables or payables without a customer or supplier), party_not_allowed (400: a party on a line of another account, or both a customer and a supplier), open_item_unknown (400: an open item of another party or kind), voucher_unbalanced (400: the lines and their computed tax do not sum to zero; the detail names the difference), voucher_empty (400: no line, or every line zero), amount_invalid (400: not an exact decimal with at most two places, or zero), date_before_books_start (400), period_locked (409: a voucher a person posts dated on or before the lock, A8), voucher_owned_by_source (409: a reversal of a voucher the system posted, which only its source reverses, A7), voucher_already_reversed (409), opening_exists (409: an opening voucher stands and is not reversed), opening_locked (409: an opening entered or reversed after the first lock, A9), lock_not_month_end (400), lock_reason_required (400: a lock moved back without a reason), lock_before_books_start (400), settlement_source_document (409: an item that stands for a document in Invoices is paid there, R5), settlement_exceeds_balance (409: more than the item's balance), settlement_settled (409: an item with nothing left), bank_account_invalid (400: not an active asset account), attachment_too_large (400: over 20 MB), storage_not_configured (503: no object store for attachments), report_account_required (400: the account report without accountId), period_invalid (400: from after to, or a period over 366 days for the journal), open_item_source_document (400: a person's voucher naming an open item that stands for a document in Invoices, which moves with Invoices' own facts), report_too_large (400: the journal or an account's specification over 50 000 postings; choose a shorter period), lock_in_future (400: a lock after the end of the current month), books_start_too_early (400: books that start before 2022-01-01, the first day the seeded rates are known to hold), account_kind_mismatch (400: an account whose kind is not its number's class's — 1 asset, 20 equity, 21–29 liability, 3 income, 4–7 expense, 8 income or expense — or a number outside the classes 1 to 8; a system role moved to an account of another kind than the role's), reverse_charge_gross (400: a gross journal with a reverse-charge code, which is entered net), posting_rule_name_taken (409), posting_rule_match_taken (409: a rule with the same scope and match exists), posting_rule_default (409: a default rule is never deleted, only pointed at another account), unposted_already_posted (409: a retry of a fact that has posted), supplier_organisation_number_taken (409: another supplier has that organisation number), supplier_bank_account_invalid (400: not eleven digits passing mod 11), supplier_has_postings (409: a delete of a supplier with postings or invoices; make it inactive), supplier_inactive (400: a new invoice for an inactive supplier), duplicate_supplier_invoice (409: the same supplier's number of the same kind on another invoice that is not reversed), supplier_invoice_not_draft (409: a change, a delete, a post or a file removed on an invoice that is not a draft), supplier_invoice_not_posted (409: a payment or Reverse and copy on an invoice that is not posted), supplier_invoice_file_required (409: Post without an attached file), supplier_invoice_total_mismatch (400: the lines' gross does not sum to the total), tax_code_not_purchase (400: an output code on a purchase line), exchange_rate_required (400: another currency without the rate or the NOK total), supplier_invoice_settled (409: a payment on an invoice with nothing left), payment_exceeds_balance (409: a payment of more than is left), payment_removed (409: a payment removed already), settlement_supplier_invoice (409: an item that stands for a supplier invoice is paid on the invoice), unposted_wrong_reason (409: an action for another reason than the row's), brreg_unavailable (502: Brønnøysundregisteret could not be reached), supplier_invoice_has_payments (409: Reverse and copy of an invoice with a payment standing; remove the payment first), tax_code_not_for_supplier_invoice (400: an import code — 14, 15, 20, 21, 22, 81 to 85 — on a supplier invoice line; import VAT is a manual journal), exchange_rate_mismatch (400: both the rate and the NOK total, and they disagree), credit_note_invoice_not_posted (409: Post of a credit note whose invoice is no longer posted), credit_note_currency_mismatch (409: a credit note in another currency than the invoice it credits), credit_note_exceeds_balance (409: a credit note of more than is left on the credited invoice), supplier_invoice_item_in_use (409: Reverse and copy of an invoice whose open item another voucher standing posts on — a credit note, a payment, a settlement; reverse that first), supplier_retained (409: anonymising a person supplier before its retention date), supplier_anonymised (409: a change or an anonymisation of a supplier anonymised already), expense_already_invoiced (409: an expense made into a supplier invoice already), vat_not_registered (409: a VAT term of books whose vatTerm is none), vat_term_closed (409: a close of a closed term), vat_term_not_ended (409: a close before the term's last day has passed), vat_term_out_of_order (409: a close while an earlier term is open), vat_term_attention (409: a close while Needs attention holds facts that wait dated in the term; the detail counts them), vat_term_lock_after_end (409: a close while the lock is on or after the term's last day; move the lock back first), vat_term_unreconciled (409: a close while the VAT accounts' movement differs from the return's VAT; the detail names the vouchers), vat_term_not_closed (409: a reopening, a filing or the XML of an open term), vat_term_filed (409: a reopening or a second filing of a filed term), vat_term_not_latest (409: a reopening while a later term is closed), vat_term_not_filed (409: an unfiling of a term not filed), lock_behind_filed_term (409: the lock moved back behind a term filed at Skatteetaten, R10), lock_behind_closed_term (409: the lock moved back behind a closed VAT term; reopen the term instead), vat_term_stale (409: a close while a closed term's figures, computed again, differ from the return it was closed with), opening_vat_account (400: an opening line on a tax code's VAT or counter account; VAT owed from before the books start belongs on the VAT settlement account), tax_code_in_use (409: a change of a tax code's VAT or counter account once a posting carries the code), vat_term_inconsistent (409: a close whose counted VAT is not the return's exact total, or whose rounding difference is a krone a line or more), vat_term_partial (409: a close of a term that starts before the books without confirmPartial), vat_term_rate_missing (409: a close while a reported code has no rate on a posting's date). errors carries the field errors of a 400, keyed by the camelCase path (lines[2].accountId).
+// AccountingProblem An RFC 9457 problem with this module's refusal code (accounting design §2, §13). code names the rule that refused and is what a client keys off, never the words: books_not_set_up (409: every operation but the meta and the setup, until Set up the books has run, R12), books_already_set_up (409: a second setup), revision_conflict (409: the revision has moved on), account_number_taken (409), account_has_postings (409: a delete of an account with postings, or a change of its number or kind), account_has_role (409: a delete of an account holding a system role; move the role first), account_inactive (400: a line on an inactive account), account_unknown (400), tax_code_unknown (400: an unknown or inactive tax code), tax_code_no_rate (400: no rate period covers the voucher's date), rate_period_invalid (400: a new rate period that does not start after the current one's start), party_required (400: a line on receivables or payables without a customer or supplier), party_not_allowed (400: a party on a line of another account, or both a customer and a supplier), open_item_unknown (400: an open item of another party or kind), voucher_unbalanced (400: the lines and their computed tax do not sum to zero; the detail names the difference), voucher_empty (400: no line, or every line zero), amount_invalid (400: not an exact decimal with at most two places, or zero), date_before_books_start (400), period_locked (409: a voucher a person posts dated on or before the lock, A8), voucher_owned_by_source (409: a reversal of a voucher the system posted, which only its source reverses, A7), voucher_already_reversed (409), opening_exists (409: an opening voucher stands and is not reversed), opening_locked (409: an opening entered or reversed after the first lock, A9), lock_not_month_end (400), lock_reason_required (400: a lock moved back without a reason), lock_before_books_start (400), settlement_source_document (409: an item that stands for a document in Invoices is paid there, R5), settlement_exceeds_balance (409: more than the item's balance), settlement_settled (409: an item with nothing left), bank_account_invalid (400: not an active asset account), attachment_too_large (400: over 20 MB), storage_not_configured (503: no object store for attachments), report_account_required (400: the account report without accountId), period_invalid (400: from after to, or a period over 366 days for the journal), open_item_source_document (400: a person's voucher naming an open item that stands for a document in Invoices, which moves with Invoices' own facts), report_too_large (400: the journal or an account's specification over 50 000 postings; choose a shorter period), lock_in_future (400: a lock after the end of the current month), books_start_too_early (400: books that start before 2022-01-01, the first day the seeded rates are known to hold), account_kind_mismatch (400: an account whose kind is not its number's class's — 1 asset, 20 equity, 21–29 liability, 3 income, 4–7 expense, 8 income or expense — or a number outside the classes 1 to 8; a system role moved to an account of another kind than the role's), reverse_charge_gross (400: a gross journal with a reverse-charge code, which is entered net), posting_rule_name_taken (409), posting_rule_match_taken (409: a rule with the same scope and match exists), posting_rule_default (409: a default rule is never deleted, only pointed at another account), unposted_already_posted (409: a retry of a fact that has posted), supplier_organisation_number_taken (409: another supplier has that organisation number), supplier_bank_account_invalid (400: not eleven digits passing mod 11), supplier_has_postings (409: a delete of a supplier with postings or invoices; make it inactive), supplier_inactive (400: a new invoice for an inactive supplier), duplicate_supplier_invoice (409: the same supplier's number of the same kind on another invoice that is not reversed), supplier_invoice_not_draft (409: a change, a delete, a post or a file removed on an invoice that is not a draft), supplier_invoice_not_posted (409: a payment or Reverse and copy on an invoice that is not posted), supplier_invoice_file_required (409: Post without an attached file), supplier_invoice_total_mismatch (400: the lines' gross does not sum to the total), tax_code_not_purchase (400: an output code on a purchase line), exchange_rate_required (400: another currency without the rate or the NOK total), supplier_invoice_settled (409: a payment on an invoice with nothing left), payment_exceeds_balance (409: a payment of more than is left), payment_removed (409: a payment removed already), settlement_supplier_invoice (409: an item that stands for a supplier invoice is paid on the invoice), unposted_wrong_reason (409: an action for another reason than the row's), brreg_unavailable (502: Brønnøysundregisteret could not be reached), supplier_invoice_has_payments (409: Reverse and copy of an invoice with a payment standing; remove the payment first), tax_code_not_for_supplier_invoice (400: an import code — 14, 15, 20, 21, 22, 81 to 85 — on a supplier invoice line; import VAT is a manual journal), exchange_rate_mismatch (400: both the rate and the NOK total, and they disagree), credit_note_invoice_not_posted (409: Post of a credit note whose invoice is no longer posted), credit_note_currency_mismatch (409: a credit note in another currency than the invoice it credits), credit_note_exceeds_balance (409: a credit note of more than is left on the credited invoice), supplier_invoice_item_in_use (409: Reverse and copy of an invoice whose open item another voucher standing posts on — a credit note, a payment, a settlement; reverse that first), supplier_retained (409: anonymising a person supplier before its retention date), supplier_anonymised (409: a change or an anonymisation of a supplier anonymised already), expense_already_invoiced (409: an expense made into a supplier invoice already), vat_not_registered (409: a VAT term of books whose vatTerm is none), vat_term_closed (409: a close of a closed term), vat_term_not_ended (409: a close before the term's last day has passed), vat_term_out_of_order (409: a close while an earlier term is open), vat_term_attention (409: a close while Needs attention holds facts that wait dated in the term; the detail counts them), vat_term_lock_after_end (409: a close while the lock is on or after the term's last day; move the lock back first), vat_term_unreconciled (409: a close while the VAT accounts' movement differs from the return's VAT; the detail names the vouchers), vat_term_not_closed (409: a reopening, a filing or the XML of an open term), vat_term_filed (409: a reopening or a second filing of a filed term), vat_term_not_latest (409: a reopening while a later term is closed), vat_term_not_filed (409: an unfiling of a term not filed), lock_behind_filed_term (409: the lock moved back behind a term filed at Skatteetaten, R10), lock_behind_closed_term (409: the lock moved back behind a closed VAT term; reopen the term instead), vat_term_stale (409: a close while a closed term's figures, computed again, differ from the return it was closed with), opening_vat_account (400: an opening line on a tax code's VAT or counter account; VAT owed from before the books start belongs on the VAT settlement account), tax_code_in_use (409: a change of a tax code's VAT or counter account once a posting carries the code), vat_term_inconsistent (409: a close whose counted VAT is not the return's exact total, or whose rounding difference is a krone a line or more), vat_term_partial (409: a close of a term that starts before the books without confirmPartial), vat_term_rate_missing (409: a close while a reported code has no rate on a posting's date), saft_seller_missing (409: a SAF-T export with no company in Invoices that has an organisation number), saft_file_invalid (400: an upload that is not a readable SAF-T Financial file, or one with a DOCTYPE, an entity or an external reference), saft_version_unsupported (400: a SAF-T file of version 1.20 or older; export it again as 1.30 or 1.40), saft_file_too_large (400: an upload over ACCOUNTING_SAFT_IMPORT_MAX_BYTES), saft_import_ledger_has_vouchers (409: an import while the ledger has vouchers), saft_import_applied (409: an import applied already), saft_import_unresolved (409: Apply while an account needs a number or a problem stands; the detail names them), saft_import_unmatched_customers (409: Apply while a customer with a balance is matched to no customer in Customers, or to several; create or link them there), saft_import_parties_mismatch (409: Apply of a file whose customers' or suppliers' balances differ from the control account's; the detail shows the difference), saft_import_books_start_mismatch (400: a booksStart that is not the day after the file's selection ends). errors carries the field errors of a 400, keyed by the camelCase path (lines[2].accountId).
 type AccountingProblem struct {
 	Code     *string              `json:"code,omitempty"`
 	Detail   *string              `json:"detail,omitempty"`
@@ -1213,6 +1303,307 @@ type AccountingRuleMatch string
 
 // AccountingRuleScope sales for Invoices' lines; expense for Expenses' categories (delivery C).
 type AccountingRuleScope string
+
+// AccountingSaftExport A SAF-T Financial export (A24): the selection asked for, who asked and when, the state the worker moves it through and, once done, its files. Every export is kept: it is the record of what was handed over.
+type AccountingSaftExport struct {
+	// Attempts How many times a worker has taken it up; more than one after a worker stopped mid-run.
+	Attempts int32 `json:"attempts"`
+
+	// Error Why it failed; null unless failed.
+	Error      *string                    `json:"error"`
+	Files      []AccountingSaftExportFile `json:"files"`
+	FinishedAt *time.Time                 `json:"finishedAt"`
+	FiscalYear int32                      `json:"fiscalYear"`
+
+	// From The selection's first day.
+	From openapi_types.Date `json:"from"`
+
+	// FromPeriod The first period of the fiscal year in the selection, 1 to 12.
+	FromPeriod  int32              `json:"fromPeriod"`
+	Id          int64              `json:"id"`
+	RequestedAt time.Time          `json:"requestedAt"`
+	RequestedBy openapi_types.UUID `json:"requestedBy"`
+
+	// RequestedByName The person's name, as the user directory answers it; null when it does not.
+	RequestedByName *string                   `json:"requestedByName"`
+	StartedAt       *time.Time                `json:"startedAt"`
+	State           AccountingSaftExportState `json:"state"`
+
+	// To The selection's last day.
+	To         openapi_types.Date `json:"to"`
+	ToPeriod   int32              `json:"toPeriod"`
+	TotalBytes *int64             `json:"totalBytes"`
+
+	// UnmappedAccounts How many accounts had no grouping code for the year when it was asked for; they export NA.
+	UnmappedAccounts int32 `json:"unmappedAccounts"`
+}
+
+// AccountingSaftExportCheck What an export of the selection would meet, read before it is asked for (A24): the accounts with no grouping code for the year, which export NA, and whether the company's details are there.
+type AccountingSaftExportCheck struct {
+	FiscalYear int32              `json:"fiscalYear"`
+	From       openapi_types.Date `json:"from"`
+	FromPeriod int32              `json:"fromPeriod"`
+
+	// SellerMissing True when Invoices has no seller with an organisation number; an export is then refused (saft_seller_missing).
+	SellerMissing    bool                            `json:"sellerMissing"`
+	To               openapi_types.Date              `json:"to"`
+	ToPeriod         int32                           `json:"toPeriod"`
+	UnmappedAccounts []AccountingSaftUnmappedAccount `json:"unmappedAccounts"`
+
+	// Vouchers The vouchers dated in the selection.
+	Vouchers int64 `json:"vouchers"`
+}
+
+// AccountingSaftExportCreated defines model for AccountingSaftExportCreated.
+type AccountingSaftExportCreated struct {
+	// Export A SAF-T Financial export (A24): the selection asked for, who asked and when, the state the worker moves it through and, once done, its files. Every export is kept: it is the record of what was handed over.
+	Export AccountingSaftExport `json:"export"`
+
+	// UnmappedAccounts The accounts that export NA as their grouping code, as the export was asked for.
+	UnmappedAccounts []AccountingSaftUnmappedAccount `json:"unmappedAccounts"`
+}
+
+// AccountingSaftExportFile One file of an export. An export over the split threshold is split by period into parts, each a valid file alone.
+type AccountingSaftExportFile struct {
+	// FileName As Skatteetaten recommends, SAF-T Financial_<orgnr>_<yyyymmddhhmmss>_<part>_<parts>.xml.
+	FileName   string             `json:"fileName"`
+	From       openapi_types.Date `json:"from"`
+	FromPeriod int32              `json:"fromPeriod"`
+	Part       int32              `json:"part"`
+	Parts      int32              `json:"parts"`
+	Sha256     string             `json:"sha256"`
+	SizeBytes  int64              `json:"sizeBytes"`
+	To         openapi_types.Date `json:"to"`
+	ToPeriod   int32              `json:"toPeriod"`
+}
+
+// AccountingSaftExportInput defines model for AccountingSaftExportInput.
+type AccountingSaftExportInput struct {
+	// FiscalYear The fiscal year (the calendar year in which it begins).
+	FiscalYear int32 `json:"fiscalYear"`
+
+	// FromPeriod The first period of the fiscal year, 1 to 12; default 1.
+	FromPeriod *int32 `json:"fromPeriod,omitempty"`
+
+	// ToPeriod The last period, from fromPeriod to 12; default 12.
+	ToPeriod *int32 `json:"toPeriod,omitempty"`
+}
+
+// AccountingSaftExportList defines model for AccountingSaftExportList.
+type AccountingSaftExportList struct {
+	Items []AccountingSaftExport `json:"items"`
+}
+
+// AccountingSaftExportState defines model for AccountingSaftExportState.
+type AccountingSaftExportState string
+
+// AccountingSaftImport A SAF-T file uploaded to set the books up from another system (A25), and its preview: what applying it would write. The customers' matching is read again from Customers each time it is answered.
+type AccountingSaftImport struct {
+	Accounts []AccountingSaftImportAccount `json:"accounts"`
+
+	// AddedAccounts Accounts of the default chart added because a system role or a tax code needs an account the file has not.
+	AddedAccounts []AccountingSaftImportAddedAccount `json:"addedAccounts"`
+	AppliedAt     *time.Time                         `json:"appliedAt"`
+
+	// AuditFileVersion 1.30 or 1.40.
+	AuditFileVersion string `json:"auditFileVersion"`
+
+	// Blockers What stands in the way of Apply, in words; empty when it may be applied.
+	Blockers []string `json:"blockers"`
+
+	// BooksStart The day after the file's selection ends, the day the books start on.
+	BooksStart                openapi_types.Date             `json:"booksStart"`
+	CanApply                  bool                           `json:"canApply"`
+	CompanyName               string                         `json:"companyName"`
+	CompanyOrganisationNumber string                         `json:"companyOrganisationNumber"`
+	Customers                 []AccountingSaftImportCustomer `json:"customers"`
+	FileName                  string                         `json:"fileName"`
+
+	// FiscalYearStartMonth The month the file's selection starts in, proposed as the fiscal year's first month.
+	FiscalYearStartMonth int32 `json:"fiscalYearStartMonth"`
+	Id                   int64 `json:"id"`
+
+	// Notes What the import does not take, and what it changed, in words.
+	Notes []string `json:"notes"`
+
+	// Opening The opening voucher Apply posts, dated booksStart, from the file's closing balances of the balance-sheet accounts.
+	Opening          AccountingSaftImportOpening    `json:"opening"`
+	OpeningVoucherId *int64                         `json:"openingVoucherId"`
+	Roles            []AccountingSaftImportRole     `json:"roles"`
+	SelectionEnd     openapi_types.Date             `json:"selectionEnd"`
+	SelectionStart   openapi_types.Date             `json:"selectionStart"`
+	Sha256           string                         `json:"sha256"`
+	SizeBytes        int64                          `json:"sizeBytes"`
+	State            AccountingSaftImportState      `json:"state"`
+	Suppliers        []AccountingSaftImportSupplier `json:"suppliers"`
+	TaxCodes         []AccountingSaftImportTaxCode  `json:"taxCodes"`
+
+	// Transactions The transactions in the file. History is not imported as vouchers; the file is kept as the record of those years.
+	Transactions int64     `json:"transactions"`
+	UploadedAt   time.Time `json:"uploadedAt"`
+}
+
+// AccountingSaftImportState defines model for AccountingSaftImport.State.
+type AccountingSaftImportState string
+
+// AccountingSaftImportAccount defines model for AccountingSaftImportAccount.
+type AccountingSaftImportAccount struct {
+	// Action import (into the chart), leave_out (not taken; only an account with no balance, or an income or expense account, whose balance is part of the result), or needs_number (its number does not fit the chart's rules and it has a balance; give one).
+	Action AccountingSaftImportAccountAction `json:"action"`
+
+	// ClosingBalance The file's closing balance, signed, debit positive.
+	ClosingBalance   string                 `json:"closingBalance"`
+	FileAccountId    string                 `json:"fileAccountId"`
+	GroupingCategory *string                `json:"groupingCategory"`
+	GroupingCode     *string                `json:"groupingCode"`
+	Kind             *AccountingAccountKind `json:"kind"`
+	Name             string                 `json:"name"`
+
+	// Number The number it is taken with; null when it is left out or needs one.
+	Number *string `json:"number"`
+
+	// Problem What is wrong with it, and the fix proposed; null when nothing is.
+	Problem *string `json:"problem"`
+}
+
+// AccountingSaftImportAccountAction import (into the chart), leave_out (not taken; only an account with no balance, or an income or expense account, whose balance is part of the result), or needs_number (its number does not fit the chart's rules and it has a balance; give one).
+type AccountingSaftImportAccountAction string
+
+// AccountingSaftImportAddedAccount defines model for AccountingSaftImportAddedAccount.
+type AccountingSaftImportAddedAccount struct {
+	Kind   AccountingAccountKind `json:"kind"`
+	Name   string                `json:"name"`
+	Number string                `json:"number"`
+	Reason string                `json:"reason"`
+}
+
+// AccountingSaftImportApply defines model for AccountingSaftImportApply.
+type AccountingSaftImportApply struct {
+	// Accounts Per file account id, the number to take it with, or "" to leave it out; overrides the proposal.
+	Accounts *map[string]string `json:"accounts,omitempty"`
+
+	// BooksStart Optional; must be the day after the file's selection ends (saft_import_books_start_mismatch).
+	BooksStart *openapi_types.Date `json:"booksStart,omitempty"`
+
+	// CustomerLinks Per file customer id, the customer in Customers its balance belongs to; overrides the match by organisation number.
+	CustomerLinks        *map[string]int32  `json:"customerLinks,omitempty"`
+	FiscalYearStartMonth *int32             `json:"fiscalYearStartMonth,omitempty"`
+	Language             AccountingLanguage `json:"language"`
+
+	// Roles Per system role, the number of the account to hold it; overrides the proposal.
+	Roles *map[string]string `json:"roles,omitempty"`
+
+	// VatTerm The VAT terms (A2): none when the seller is not VAT-registered.
+	VatTerm AccountingVatTerm `json:"vatTerm"`
+}
+
+// AccountingSaftImportCustomer defines model for AccountingSaftImportCustomer.
+type AccountingSaftImportCustomer struct {
+	ClosingBalance string `json:"closingBalance"`
+
+	// CustomerId The customer in Customers its balance goes to; null when none is found.
+	CustomerId     *int32  `json:"customerId"`
+	CustomerName   *string `json:"customerName"`
+	FileCustomerId string  `json:"fileCustomerId"`
+
+	// Match matched (one customer holds the organisation number), linked (named in the apply's customerLinks), ambiguous (several hold it), unmatched, or not_needed (no balance to carry).
+	Match              AccountingSaftImportCustomerMatch `json:"match"`
+	Name               string                            `json:"name"`
+	OrganisationNumber *string                           `json:"organisationNumber"`
+}
+
+// AccountingSaftImportCustomerMatch matched (one customer holds the organisation number), linked (named in the apply's customerLinks), ambiguous (several hold it), unmatched, or not_needed (no balance to carry).
+type AccountingSaftImportCustomerMatch string
+
+// AccountingSaftImportList defines model for AccountingSaftImportList.
+type AccountingSaftImportList struct {
+	Items []AccountingSaftImportSummary `json:"items"`
+}
+
+// AccountingSaftImportOpening The opening voucher Apply posts, dated booksStart, from the file's closing balances of the balance-sheet accounts.
+type AccountingSaftImportOpening struct {
+	Lines []AccountingSaftImportOpeningLine `json:"lines"`
+
+	// PayablesDifference The suppliers' balances less the payables account's; Apply is refused unless 0.00.
+	PayablesDifference string `json:"payablesDifference"`
+
+	// ReceivablesDifference The customers' balances less the receivables account's; Apply is refused unless 0.00.
+	ReceivablesDifference string `json:"receivablesDifference"`
+
+	// Result The result the file's income and expense accounts hold, which goes to the opening account in equity.
+	Result string `json:"result"`
+
+	// VatMoved The VAT owed at the start — the tax codes' VAT accounts' closing balances — placed on the vat_settlement account rather than on the VAT accounts.
+	VatMoved             string  `json:"vatMoved"`
+	VatSettlementAccount *string `json:"vatSettlementAccount"`
+}
+
+// AccountingSaftImportOpeningLine defines model for AccountingSaftImportOpeningLine.
+type AccountingSaftImportOpeningLine struct {
+	AccountNumber string `json:"accountNumber"`
+
+	// Amount Signed, debit positive.
+	Amount string `json:"amount"`
+
+	// Party The customer's or supplier's name on a receivables or payables line.
+	Party *string `json:"party"`
+	Text  string  `json:"text"`
+}
+
+// AccountingSaftImportRole defines model for AccountingSaftImportRole.
+type AccountingSaftImportRole struct {
+	AccountNumber string `json:"accountNumber"`
+
+	// Added True when the account comes from the default chart, the file having none for the role.
+	Added bool `json:"added"`
+
+	// Role The accounts the module posts to by itself (A3, R8, R11). Every charge payment posts to charge_income; interest income is an ordinary account.
+	Role AccountingSystemRole `json:"role"`
+}
+
+// AccountingSaftImportSummary defines model for AccountingSaftImportSummary.
+type AccountingSaftImportSummary struct {
+	AppliedAt        *time.Time         `json:"appliedAt"`
+	AuditFileVersion string             `json:"auditFileVersion"`
+	FileName         string             `json:"fileName"`
+	Id               int64              `json:"id"`
+	OpeningVoucherId *int64             `json:"openingVoucherId"`
+	SelectionEnd     openapi_types.Date `json:"selectionEnd"`
+	SelectionStart   openapi_types.Date `json:"selectionStart"`
+	Sha256           string             `json:"sha256"`
+	SizeBytes        int64              `json:"sizeBytes"`
+	State            string             `json:"state"`
+	UploadedAt       time.Time          `json:"uploadedAt"`
+}
+
+// AccountingSaftImportSupplier defines model for AccountingSaftImportSupplier.
+type AccountingSaftImportSupplier struct {
+	BankAccount        *string  `json:"bankAccount"`
+	City               *string  `json:"city"`
+	ClosingBalance     string   `json:"closingBalance"`
+	FileSupplierId     string   `json:"fileSupplierId"`
+	Iban               *string  `json:"iban"`
+	Name               string   `json:"name"`
+	Notes              []string `json:"notes"`
+	OrganisationNumber *string  `json:"organisationNumber"`
+}
+
+// AccountingSaftImportTaxCode defines model for AccountingSaftImportTaxCode.
+type AccountingSaftImportTaxCode struct {
+	// Code The standard code it maps to in these books; null when it maps to none.
+	Code            *string `json:"code"`
+	Description     string  `json:"description"`
+	FileTaxCode     string  `json:"fileTaxCode"`
+	Percentage      *string `json:"percentage"`
+	StandardTaxCode string  `json:"standardTaxCode"`
+}
+
+// AccountingSaftUnmappedAccount defines model for AccountingSaftUnmappedAccount.
+type AccountingSaftUnmappedAccount struct {
+	AccountId int32  `json:"accountId"`
+	Name      string `json:"name"`
+	Number    string `json:"number"`
+}
 
 // AccountingSettings defines model for AccountingSettings.
 type AccountingSettings struct {
@@ -2199,6 +2590,18 @@ type ExportAccountingReportParams struct {
 	ProjectId *int32 `form:"projectId,omitempty" json:"projectId,omitempty"`
 }
 
+// CheckAccountingSaftExportParams defines parameters for CheckAccountingSaftExport.
+type CheckAccountingSaftExportParams struct {
+	FiscalYear int32  `form:"fiscalYear" json:"fiscalYear"`
+	FromPeriod *int32 `form:"fromPeriod,omitempty" json:"fromPeriod,omitempty"`
+	ToPeriod   *int32 `form:"toPeriod,omitempty" json:"toPeriod,omitempty"`
+}
+
+// UploadAccountingSaftImportMultipartBody defines parameters for UploadAccountingSaftImport.
+type UploadAccountingSaftImportMultipartBody struct {
+	File openapi_types.File `json:"file"`
+}
+
 // ListAccountingSupplierInvoicesParams defines parameters for ListAccountingSupplierInvoices.
 type ListAccountingSupplierInvoicesParams struct {
 	State      *AccountingSupplierInvoiceState `form:"state,omitempty" json:"state,omitempty"`
@@ -2326,6 +2729,15 @@ type UpdateAccountingPostingRuleJSONRequestBody = AccountingPostingRuleUpdate
 
 // AssignAccountingRoleJSONRequestBody defines body for AssignAccountingRole for application/json ContentType.
 type AssignAccountingRoleJSONRequestBody = AccountingRoleInput
+
+// CreateAccountingSaftExportJSONRequestBody defines body for CreateAccountingSaftExport for application/json ContentType.
+type CreateAccountingSaftExportJSONRequestBody = AccountingSaftExportInput
+
+// UploadAccountingSaftImportMultipartRequestBody defines body for UploadAccountingSaftImport for multipart/form-data ContentType.
+type UploadAccountingSaftImportMultipartRequestBody UploadAccountingSaftImportMultipartBody
+
+// ApplyAccountingSaftImportJSONRequestBody defines body for ApplyAccountingSaftImport for application/json ContentType.
+type ApplyAccountingSaftImportJSONRequestBody = AccountingSaftImportApply
 
 // SetUpAccountingBooksJSONRequestBody defines body for SetUpAccountingBooks for application/json ContentType.
 type SetUpAccountingBooksJSONRequestBody = AccountingSetupInput
@@ -2455,6 +2867,36 @@ type ServerInterface interface {
 	// AssignAccountingRole Move a system role to an account
 	// (PUT /api/v1/accounting/roles/{role})
 	AssignAccountingRole(w http.ResponseWriter, r *http.Request, role AccountingSystemRole)
+	// ListAccountingSaftExports List the SAF-T exports
+	// (GET /api/v1/accounting/saft-exports)
+	ListAccountingSaftExports(w http.ResponseWriter, r *http.Request)
+	// CreateAccountingSaftExport Export SAF-T Financial
+	// (POST /api/v1/accounting/saft-exports)
+	CreateAccountingSaftExport(w http.ResponseWriter, r *http.Request)
+	// CheckAccountingSaftExport Check a SAF-T export before asking for it
+	// (GET /api/v1/accounting/saft-exports/check)
+	CheckAccountingSaftExport(w http.ResponseWriter, r *http.Request, params CheckAccountingSaftExportParams)
+	// GetAccountingSaftExport Get a SAF-T export
+	// (GET /api/v1/accounting/saft-exports/{id})
+	GetAccountingSaftExport(w http.ResponseWriter, r *http.Request, id int64)
+	// DownloadAccountingSaftExport Download a SAF-T export's file
+	// (GET /api/v1/accounting/saft-exports/{id}/files/{part})
+	DownloadAccountingSaftExport(w http.ResponseWriter, r *http.Request, id int64, part int32)
+	// ListAccountingSaftImports List the SAF-T imports
+	// (GET /api/v1/accounting/saft-imports)
+	ListAccountingSaftImports(w http.ResponseWriter, r *http.Request)
+	// UploadAccountingSaftImport Upload a SAF-T file to set up the books from
+	// (POST /api/v1/accounting/saft-imports)
+	UploadAccountingSaftImport(w http.ResponseWriter, r *http.Request)
+	// GetAccountingSaftImport Get a SAF-T import's preview
+	// (GET /api/v1/accounting/saft-imports/{id})
+	GetAccountingSaftImport(w http.ResponseWriter, r *http.Request, id int64)
+	// ApplyAccountingSaftImport Set up the books from a SAF-T file
+	// (POST /api/v1/accounting/saft-imports/{id}/apply)
+	ApplyAccountingSaftImport(w http.ResponseWriter, r *http.Request, id int64)
+	// DownloadAccountingSaftImportFile Download an imported SAF-T file
+	// (GET /api/v1/accounting/saft-imports/{id}/file)
+	DownloadAccountingSaftImportFile(w http.ResponseWriter, r *http.Request, id int64)
 	// SetUpAccountingBooks Set up the books
 	// (POST /api/v1/accounting/setup)
 	SetUpAccountingBooks(w http.ResponseWriter, r *http.Request)
@@ -3388,6 +3830,260 @@ func (siw *ServerInterfaceWrapper) AssignAccountingRole(w http.ResponseWriter, r
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.AssignAccountingRole(w, r, role)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListAccountingSaftExports operation middleware
+func (siw *ServerInterfaceWrapper) ListAccountingSaftExports(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAccountingSaftExports(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateAccountingSaftExport operation middleware
+func (siw *ServerInterfaceWrapper) CreateAccountingSaftExport(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateAccountingSaftExport(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CheckAccountingSaftExport operation middleware
+func (siw *ServerInterfaceWrapper) CheckAccountingSaftExport(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CheckAccountingSaftExportParams
+
+	// ------------- Required query parameter "fiscalYear" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "fiscalYear", r.URL.Query(), &params.FiscalYear, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "fiscalYear"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "fiscalYear", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "fromPeriod" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "fromPeriod", r.URL.Query(), &params.FromPeriod, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "fromPeriod"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "fromPeriod", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "toPeriod" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "toPeriod", r.URL.Query(), &params.ToPeriod, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "toPeriod"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "toPeriod", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CheckAccountingSaftExport(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAccountingSaftExport operation middleware
+func (siw *ServerInterfaceWrapper) GetAccountingSaftExport(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAccountingSaftExport(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DownloadAccountingSaftExport operation middleware
+func (siw *ServerInterfaceWrapper) DownloadAccountingSaftExport(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "part" -------------
+	var part int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "part", r.PathValue("part"), &part, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "part", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DownloadAccountingSaftExport(w, r, id, part)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListAccountingSaftImports operation middleware
+func (siw *ServerInterfaceWrapper) ListAccountingSaftImports(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAccountingSaftImports(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UploadAccountingSaftImport operation middleware
+func (siw *ServerInterfaceWrapper) UploadAccountingSaftImport(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UploadAccountingSaftImport(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAccountingSaftImport operation middleware
+func (siw *ServerInterfaceWrapper) GetAccountingSaftImport(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAccountingSaftImport(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ApplyAccountingSaftImport operation middleware
+func (siw *ServerInterfaceWrapper) ApplyAccountingSaftImport(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ApplyAccountingSaftImport(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DownloadAccountingSaftImportFile operation middleware
+func (siw *ServerInterfaceWrapper) DownloadAccountingSaftImportFile(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DownloadAccountingSaftImportFile(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5229,6 +5925,16 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/accounting/reports/{report}", wrapper.GetAccountingReport)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/accounting/reports/{report}/csv", wrapper.ExportAccountingReport)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/accounting/roles/{role}", wrapper.AssignAccountingRole)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/accounting/saft-exports", wrapper.ListAccountingSaftExports)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/accounting/saft-exports", wrapper.CreateAccountingSaftExport)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/accounting/saft-exports/check", wrapper.CheckAccountingSaftExport)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/accounting/saft-exports/{id}", wrapper.GetAccountingSaftExport)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/accounting/saft-exports/{id}/files/{part}", wrapper.DownloadAccountingSaftExport)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/accounting/saft-imports", wrapper.ListAccountingSaftImports)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/accounting/saft-imports", wrapper.UploadAccountingSaftImport)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/accounting/saft-imports/{id}", wrapper.GetAccountingSaftImport)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/accounting/saft-imports/{id}/apply", wrapper.ApplyAccountingSaftImport)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/accounting/saft-imports/{id}/file", wrapper.DownloadAccountingSaftImportFile)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/accounting/setup", wrapper.SetUpAccountingBooks)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/accounting/supplier-invoices", wrapper.ListAccountingSupplierInvoices)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/accounting/supplier-invoices", wrapper.CreateAccountingSupplierInvoice)
@@ -6876,6 +7582,768 @@ func (response AssignAccountingRole409ApplicationProblemPlusJSONResponse) VisitA
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccountingSaftExportsRequestObject struct {
+}
+
+type ListAccountingSaftExportsResponseObject interface {
+	VisitListAccountingSaftExportsResponse(w http.ResponseWriter) error
+}
+
+type ListAccountingSaftExports200JSONResponse AccountingSaftExportList
+
+func (response ListAccountingSaftExports200JSONResponse) VisitListAccountingSaftExportsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccountingSaftExports401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListAccountingSaftExports401JSONResponse) VisitListAccountingSaftExportsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccountingSaftExports403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListAccountingSaftExports403JSONResponse) VisitListAccountingSaftExportsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccountingSaftExports409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response ListAccountingSaftExports409ApplicationProblemPlusJSONResponse) VisitListAccountingSaftExportsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccountingSaftExportRequestObject struct {
+	Body *CreateAccountingSaftExportJSONRequestBody
+}
+
+type CreateAccountingSaftExportResponseObject interface {
+	VisitCreateAccountingSaftExportResponse(w http.ResponseWriter) error
+}
+
+type CreateAccountingSaftExport202JSONResponse AccountingSaftExportCreated
+
+func (response CreateAccountingSaftExport202JSONResponse) VisitCreateAccountingSaftExportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(202)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccountingSaftExport400ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response CreateAccountingSaftExport400ApplicationProblemPlusJSONResponse) VisitCreateAccountingSaftExportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccountingSaftExport401JSONResponse externalRef0.AuthErrorResponse
+
+func (response CreateAccountingSaftExport401JSONResponse) VisitCreateAccountingSaftExportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccountingSaftExport403JSONResponse externalRef0.AuthErrorResponse
+
+func (response CreateAccountingSaftExport403JSONResponse) VisitCreateAccountingSaftExportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccountingSaftExport409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response CreateAccountingSaftExport409ApplicationProblemPlusJSONResponse) VisitCreateAccountingSaftExportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccountingSaftExport503ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response CreateAccountingSaftExport503ApplicationProblemPlusJSONResponse) VisitCreateAccountingSaftExportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CheckAccountingSaftExportRequestObject struct {
+	Params CheckAccountingSaftExportParams
+}
+
+type CheckAccountingSaftExportResponseObject interface {
+	VisitCheckAccountingSaftExportResponse(w http.ResponseWriter) error
+}
+
+type CheckAccountingSaftExport200JSONResponse AccountingSaftExportCheck
+
+func (response CheckAccountingSaftExport200JSONResponse) VisitCheckAccountingSaftExportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CheckAccountingSaftExport400ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response CheckAccountingSaftExport400ApplicationProblemPlusJSONResponse) VisitCheckAccountingSaftExportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CheckAccountingSaftExport401JSONResponse externalRef0.AuthErrorResponse
+
+func (response CheckAccountingSaftExport401JSONResponse) VisitCheckAccountingSaftExportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CheckAccountingSaftExport403JSONResponse externalRef0.AuthErrorResponse
+
+func (response CheckAccountingSaftExport403JSONResponse) VisitCheckAccountingSaftExportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CheckAccountingSaftExport409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response CheckAccountingSaftExport409ApplicationProblemPlusJSONResponse) VisitCheckAccountingSaftExportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountingSaftExportRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type GetAccountingSaftExportResponseObject interface {
+	VisitGetAccountingSaftExportResponse(w http.ResponseWriter) error
+}
+
+type GetAccountingSaftExport200JSONResponse AccountingSaftExport
+
+func (response GetAccountingSaftExport200JSONResponse) VisitGetAccountingSaftExportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountingSaftExport401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetAccountingSaftExport401JSONResponse) VisitGetAccountingSaftExportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountingSaftExport403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetAccountingSaftExport403JSONResponse) VisitGetAccountingSaftExportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountingSaftExport404Response struct {
+}
+
+func (response GetAccountingSaftExport404Response) VisitGetAccountingSaftExportResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type GetAccountingSaftExport409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response GetAccountingSaftExport409ApplicationProblemPlusJSONResponse) VisitGetAccountingSaftExportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DownloadAccountingSaftExportRequestObject struct {
+	Id   int64 `json:"id"`
+	Part int32 `json:"part"`
+}
+
+type DownloadAccountingSaftExportResponseObject interface {
+	VisitDownloadAccountingSaftExportResponse(w http.ResponseWriter) error
+}
+
+type DownloadAccountingSaftExport200ApplicationxmlResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response DownloadAccountingSaftExport200ApplicationxmlResponse) VisitDownloadAccountingSaftExportResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "application/xml")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type DownloadAccountingSaftExport401JSONResponse externalRef0.AuthErrorResponse
+
+func (response DownloadAccountingSaftExport401JSONResponse) VisitDownloadAccountingSaftExportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DownloadAccountingSaftExport403JSONResponse externalRef0.AuthErrorResponse
+
+func (response DownloadAccountingSaftExport403JSONResponse) VisitDownloadAccountingSaftExportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DownloadAccountingSaftExport404Response struct {
+}
+
+func (response DownloadAccountingSaftExport404Response) VisitDownloadAccountingSaftExportResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type DownloadAccountingSaftExport409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response DownloadAccountingSaftExport409ApplicationProblemPlusJSONResponse) VisitDownloadAccountingSaftExportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DownloadAccountingSaftExport503ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response DownloadAccountingSaftExport503ApplicationProblemPlusJSONResponse) VisitDownloadAccountingSaftExportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccountingSaftImportsRequestObject struct {
+}
+
+type ListAccountingSaftImportsResponseObject interface {
+	VisitListAccountingSaftImportsResponse(w http.ResponseWriter) error
+}
+
+type ListAccountingSaftImports200JSONResponse AccountingSaftImportList
+
+func (response ListAccountingSaftImports200JSONResponse) VisitListAccountingSaftImportsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccountingSaftImports401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListAccountingSaftImports401JSONResponse) VisitListAccountingSaftImportsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccountingSaftImports403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListAccountingSaftImports403JSONResponse) VisitListAccountingSaftImportsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UploadAccountingSaftImportRequestObject struct {
+	Body *multipart.Reader
+}
+
+type UploadAccountingSaftImportResponseObject interface {
+	VisitUploadAccountingSaftImportResponse(w http.ResponseWriter) error
+}
+
+type UploadAccountingSaftImport201JSONResponse AccountingSaftImport
+
+func (response UploadAccountingSaftImport201JSONResponse) VisitUploadAccountingSaftImportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UploadAccountingSaftImport400ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response UploadAccountingSaftImport400ApplicationProblemPlusJSONResponse) VisitUploadAccountingSaftImportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UploadAccountingSaftImport401JSONResponse externalRef0.AuthErrorResponse
+
+func (response UploadAccountingSaftImport401JSONResponse) VisitUploadAccountingSaftImportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UploadAccountingSaftImport403JSONResponse externalRef0.AuthErrorResponse
+
+func (response UploadAccountingSaftImport403JSONResponse) VisitUploadAccountingSaftImportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UploadAccountingSaftImport409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response UploadAccountingSaftImport409ApplicationProblemPlusJSONResponse) VisitUploadAccountingSaftImportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UploadAccountingSaftImport503ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response UploadAccountingSaftImport503ApplicationProblemPlusJSONResponse) VisitUploadAccountingSaftImportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountingSaftImportRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type GetAccountingSaftImportResponseObject interface {
+	VisitGetAccountingSaftImportResponse(w http.ResponseWriter) error
+}
+
+type GetAccountingSaftImport200JSONResponse AccountingSaftImport
+
+func (response GetAccountingSaftImport200JSONResponse) VisitGetAccountingSaftImportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountingSaftImport401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetAccountingSaftImport401JSONResponse) VisitGetAccountingSaftImportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountingSaftImport403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetAccountingSaftImport403JSONResponse) VisitGetAccountingSaftImportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountingSaftImport404Response struct {
+}
+
+func (response GetAccountingSaftImport404Response) VisitGetAccountingSaftImportResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type ApplyAccountingSaftImportRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *ApplyAccountingSaftImportJSONRequestBody
+}
+
+type ApplyAccountingSaftImportResponseObject interface {
+	VisitApplyAccountingSaftImportResponse(w http.ResponseWriter) error
+}
+
+type ApplyAccountingSaftImport201JSONResponse AccountingSaftImport
+
+func (response ApplyAccountingSaftImport201JSONResponse) VisitApplyAccountingSaftImportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApplyAccountingSaftImport400ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response ApplyAccountingSaftImport400ApplicationProblemPlusJSONResponse) VisitApplyAccountingSaftImportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApplyAccountingSaftImport401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ApplyAccountingSaftImport401JSONResponse) VisitApplyAccountingSaftImportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApplyAccountingSaftImport403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ApplyAccountingSaftImport403JSONResponse) VisitApplyAccountingSaftImportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApplyAccountingSaftImport404Response struct {
+}
+
+func (response ApplyAccountingSaftImport404Response) VisitApplyAccountingSaftImportResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type ApplyAccountingSaftImport409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response ApplyAccountingSaftImport409ApplicationProblemPlusJSONResponse) VisitApplyAccountingSaftImportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DownloadAccountingSaftImportFileRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type DownloadAccountingSaftImportFileResponseObject interface {
+	VisitDownloadAccountingSaftImportFileResponse(w http.ResponseWriter) error
+}
+
+type DownloadAccountingSaftImportFile200ApplicationxmlResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response DownloadAccountingSaftImportFile200ApplicationxmlResponse) VisitDownloadAccountingSaftImportFileResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "application/xml")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type DownloadAccountingSaftImportFile401JSONResponse externalRef0.AuthErrorResponse
+
+func (response DownloadAccountingSaftImportFile401JSONResponse) VisitDownloadAccountingSaftImportFileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DownloadAccountingSaftImportFile403JSONResponse externalRef0.AuthErrorResponse
+
+func (response DownloadAccountingSaftImportFile403JSONResponse) VisitDownloadAccountingSaftImportFileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DownloadAccountingSaftImportFile404Response struct {
+}
+
+func (response DownloadAccountingSaftImportFile404Response) VisitDownloadAccountingSaftImportFileResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type DownloadAccountingSaftImportFile503ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response DownloadAccountingSaftImportFile503ApplicationProblemPlusJSONResponse) VisitDownloadAccountingSaftImportFileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -10669,6 +12137,36 @@ type StrictServerInterface interface {
 	// AssignAccountingRole Move a system role to an account
 	// (PUT /api/v1/accounting/roles/{role})
 	AssignAccountingRole(ctx context.Context, request AssignAccountingRoleRequestObject) (AssignAccountingRoleResponseObject, error)
+	// ListAccountingSaftExports List the SAF-T exports
+	// (GET /api/v1/accounting/saft-exports)
+	ListAccountingSaftExports(ctx context.Context, request ListAccountingSaftExportsRequestObject) (ListAccountingSaftExportsResponseObject, error)
+	// CreateAccountingSaftExport Export SAF-T Financial
+	// (POST /api/v1/accounting/saft-exports)
+	CreateAccountingSaftExport(ctx context.Context, request CreateAccountingSaftExportRequestObject) (CreateAccountingSaftExportResponseObject, error)
+	// CheckAccountingSaftExport Check a SAF-T export before asking for it
+	// (GET /api/v1/accounting/saft-exports/check)
+	CheckAccountingSaftExport(ctx context.Context, request CheckAccountingSaftExportRequestObject) (CheckAccountingSaftExportResponseObject, error)
+	// GetAccountingSaftExport Get a SAF-T export
+	// (GET /api/v1/accounting/saft-exports/{id})
+	GetAccountingSaftExport(ctx context.Context, request GetAccountingSaftExportRequestObject) (GetAccountingSaftExportResponseObject, error)
+	// DownloadAccountingSaftExport Download a SAF-T export's file
+	// (GET /api/v1/accounting/saft-exports/{id}/files/{part})
+	DownloadAccountingSaftExport(ctx context.Context, request DownloadAccountingSaftExportRequestObject) (DownloadAccountingSaftExportResponseObject, error)
+	// ListAccountingSaftImports List the SAF-T imports
+	// (GET /api/v1/accounting/saft-imports)
+	ListAccountingSaftImports(ctx context.Context, request ListAccountingSaftImportsRequestObject) (ListAccountingSaftImportsResponseObject, error)
+	// UploadAccountingSaftImport Upload a SAF-T file to set up the books from
+	// (POST /api/v1/accounting/saft-imports)
+	UploadAccountingSaftImport(ctx context.Context, request UploadAccountingSaftImportRequestObject) (UploadAccountingSaftImportResponseObject, error)
+	// GetAccountingSaftImport Get a SAF-T import's preview
+	// (GET /api/v1/accounting/saft-imports/{id})
+	GetAccountingSaftImport(ctx context.Context, request GetAccountingSaftImportRequestObject) (GetAccountingSaftImportResponseObject, error)
+	// ApplyAccountingSaftImport Set up the books from a SAF-T file
+	// (POST /api/v1/accounting/saft-imports/{id}/apply)
+	ApplyAccountingSaftImport(ctx context.Context, request ApplyAccountingSaftImportRequestObject) (ApplyAccountingSaftImportResponseObject, error)
+	// DownloadAccountingSaftImportFile Download an imported SAF-T file
+	// (GET /api/v1/accounting/saft-imports/{id}/file)
+	DownloadAccountingSaftImportFile(ctx context.Context, request DownloadAccountingSaftImportFileRequestObject) (DownloadAccountingSaftImportFileResponseObject, error)
 	// SetUpAccountingBooks Set up the books
 	// (POST /api/v1/accounting/setup)
 	SetUpAccountingBooks(ctx context.Context, request SetUpAccountingBooksRequestObject) (SetUpAccountingBooksResponseObject, error)
@@ -11463,6 +12961,280 @@ func (sh *strictHandler) AssignAccountingRole(w http.ResponseWriter, r *http.Req
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(AssignAccountingRoleResponseObject); ok {
 		if err := validResponse.VisitAssignAccountingRoleResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListAccountingSaftExports operation middleware
+func (sh *strictHandler) ListAccountingSaftExports(w http.ResponseWriter, r *http.Request) {
+	var request ListAccountingSaftExportsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListAccountingSaftExports(ctx, request.(ListAccountingSaftExportsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListAccountingSaftExports")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListAccountingSaftExportsResponseObject); ok {
+		if err := validResponse.VisitListAccountingSaftExportsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateAccountingSaftExport operation middleware
+func (sh *strictHandler) CreateAccountingSaftExport(w http.ResponseWriter, r *http.Request) {
+	var request CreateAccountingSaftExportRequestObject
+
+	var body CreateAccountingSaftExportJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateAccountingSaftExport(ctx, request.(CreateAccountingSaftExportRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateAccountingSaftExport")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateAccountingSaftExportResponseObject); ok {
+		if err := validResponse.VisitCreateAccountingSaftExportResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CheckAccountingSaftExport operation middleware
+func (sh *strictHandler) CheckAccountingSaftExport(w http.ResponseWriter, r *http.Request, params CheckAccountingSaftExportParams) {
+	var request CheckAccountingSaftExportRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CheckAccountingSaftExport(ctx, request.(CheckAccountingSaftExportRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CheckAccountingSaftExport")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CheckAccountingSaftExportResponseObject); ok {
+		if err := validResponse.VisitCheckAccountingSaftExportResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAccountingSaftExport operation middleware
+func (sh *strictHandler) GetAccountingSaftExport(w http.ResponseWriter, r *http.Request, id int64) {
+	var request GetAccountingSaftExportRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAccountingSaftExport(ctx, request.(GetAccountingSaftExportRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAccountingSaftExport")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAccountingSaftExportResponseObject); ok {
+		if err := validResponse.VisitGetAccountingSaftExportResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DownloadAccountingSaftExport operation middleware
+func (sh *strictHandler) DownloadAccountingSaftExport(w http.ResponseWriter, r *http.Request, id int64, part int32) {
+	var request DownloadAccountingSaftExportRequestObject
+
+	request.Id = id
+	request.Part = part
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DownloadAccountingSaftExport(ctx, request.(DownloadAccountingSaftExportRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DownloadAccountingSaftExport")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DownloadAccountingSaftExportResponseObject); ok {
+		if err := validResponse.VisitDownloadAccountingSaftExportResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListAccountingSaftImports operation middleware
+func (sh *strictHandler) ListAccountingSaftImports(w http.ResponseWriter, r *http.Request) {
+	var request ListAccountingSaftImportsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListAccountingSaftImports(ctx, request.(ListAccountingSaftImportsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListAccountingSaftImports")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListAccountingSaftImportsResponseObject); ok {
+		if err := validResponse.VisitListAccountingSaftImportsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UploadAccountingSaftImport operation middleware
+func (sh *strictHandler) UploadAccountingSaftImport(w http.ResponseWriter, r *http.Request) {
+	var request UploadAccountingSaftImportRequestObject
+
+	if reader, err := r.MultipartReader(); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode multipart body: %w", err))
+		return
+	} else {
+		request.Body = reader
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UploadAccountingSaftImport(ctx, request.(UploadAccountingSaftImportRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UploadAccountingSaftImport")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UploadAccountingSaftImportResponseObject); ok {
+		if err := validResponse.VisitUploadAccountingSaftImportResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAccountingSaftImport operation middleware
+func (sh *strictHandler) GetAccountingSaftImport(w http.ResponseWriter, r *http.Request, id int64) {
+	var request GetAccountingSaftImportRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAccountingSaftImport(ctx, request.(GetAccountingSaftImportRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAccountingSaftImport")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAccountingSaftImportResponseObject); ok {
+		if err := validResponse.VisitGetAccountingSaftImportResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ApplyAccountingSaftImport operation middleware
+func (sh *strictHandler) ApplyAccountingSaftImport(w http.ResponseWriter, r *http.Request, id int64) {
+	var request ApplyAccountingSaftImportRequestObject
+
+	request.Id = id
+
+	var body ApplyAccountingSaftImportJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ApplyAccountingSaftImport(ctx, request.(ApplyAccountingSaftImportRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ApplyAccountingSaftImport")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ApplyAccountingSaftImportResponseObject); ok {
+		if err := validResponse.VisitApplyAccountingSaftImportResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DownloadAccountingSaftImportFile operation middleware
+func (sh *strictHandler) DownloadAccountingSaftImportFile(w http.ResponseWriter, r *http.Request, id int64) {
+	var request DownloadAccountingSaftImportFileRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DownloadAccountingSaftImportFile(ctx, request.(DownloadAccountingSaftImportFileRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DownloadAccountingSaftImportFile")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DownloadAccountingSaftImportFileResponseObject); ok {
+		if err := validResponse.VisitDownloadAccountingSaftImportFileResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
