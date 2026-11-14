@@ -80,6 +80,7 @@ var markedByHand = map[string]string{
 	"postCommunicationsChannels":                  "never", // the SMTP password in the body
 	"putCommunicationsChannelsById":               "never",
 	"postInventoryLotAttachment":                  "never", // a lot's file is uploaded by a person (manufacturing phase 2 M54)
+	"putInvoicesBankFeed":                         "never", // the bank's API key in the body (bank feed plan finding 13)
 
 	// The assistant never calls itself (S4). Every operation of its own API says
 	// so, though its access rules (session, OwnerManagement) already close them.
