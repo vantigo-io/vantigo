@@ -11,6 +11,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/vantigo-io/vantigo/server/internal/bankfeed"
+	"github.com/vantigo-io/vantigo/server/internal/bankfeed/folio"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/accesspoint"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/store"
@@ -27,7 +29,8 @@ import (
 // (deps.Consumption) and their invoiced-work holders
 // (deps.InvoicedWork), the object store (server.objects), the outbound mail
 // channels (deps.OutboundMail), the Peppol network (server.peppolLookup), the access
-// point (accessPoint) and the payment provider (paymentProvider). Every call is made through one of the thin accessors
+// point (accessPoint), the payment provider (paymentProvider) and the bank
+// feed (bankFeed, bankFeedWith). Every call is made through one of the thin accessors
 // below and through nowhere else, so "what does Invoices ask of its
 // neighbours, and when" has one place to read the answer and one place to
 // check it from.
@@ -509,4 +512,102 @@ func (n notedProvider) VerifyWebhook(r payments.WebhookRequest, secret string, r
 func (n notedProvider) Verify(ctx context.Context) error {
 	noteContractCall(ctx, "payments.Verify")
 	return n.flagged(ctx, n.p.Verify(ctx))
+}
+
+// bankFeed is the bank the stored connection names, its key opened (invoices
+// bank feed design F1, F3), dialling Config.InvoicesFolioBaseURL through
+// Deps.HTTPTransport on the module's clock. Every call on it is reported as
+// BankFeed.<Method>, and a 401 or 403 it answers records the key as refused
+// (the connection unauthorized). With INVOICES_BANK_FEED_ENABLED off it makes
+// no client and answers errBankFeedSwitchedOff, so nothing is sent to any
+// bank; without a connection it answers errBankFeedNotConnected, and for a
+// key the secrets box cannot open errBankFeedKeyUnreadable. It reads the row
+// on the pool: it is never called inside withLockedTx, and no call on what it
+// answers may be.
+func (s *server) bankFeed(ctx context.Context) (bankfeed.Feed, error) {
+	cfg := s.deps.Config
+	if cfg == nil || !cfg.InvoicesBankFeedEnabled {
+		return nil, errBankFeedSwitchedOff
+	}
+	row, err := store.New(s.deps.Pool).GetBankFeedConnection(ctx)
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		return nil, errBankFeedNotConnected
+	case err != nil:
+		return nil, fmt.Errorf("invoices: read the bank connection: %w", err)
+	}
+	if row.Provider != providerFolio {
+		return nil, fmt.Errorf("invoices: unknown bank %q", row.Provider)
+	}
+	key, err := s.bankFeedKeyOf(row)
+	if err != nil {
+		return nil, err
+	}
+	feed, err := s.folioFeed(key)
+	if err != nil {
+		return nil, err
+	}
+	return notedFeed{f: feed, s: s, version: &row.UpdatedAt}, nil
+}
+
+// bankFeedWith is bankFeed for a key not stored yet — a connection PUT's
+// verify: the same client and the same reporting, and a refusal recorded
+// against nothing. With the switch off it makes no client either.
+func (s *server) bankFeedWith(key string) (bankfeed.Feed, error) {
+	if s.deps.Config == nil || !s.deps.Config.InvoicesBankFeedEnabled {
+		return nil, errBankFeedSwitchedOff
+	}
+	feed, err := s.folioFeed(key)
+	if err != nil {
+		return nil, err
+	}
+	return notedFeed{f: feed, s: s}, nil
+}
+
+// folioFeed is Folio's adapter for key. Its error names no key.
+func (s *server) folioFeed(key string) (bankfeed.Feed, error) {
+	client, err := folio.New(folio.Options{
+		BaseURL: s.deps.Config.InvoicesFolioBaseURL, APIKey: key, Transport: s.deps.HTTPTransport, Now: s.deps.Clock,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("invoices: build the Folio client: %w", err)
+	}
+	return client, nil
+}
+
+// notedFeed reports every call on the bank feed before making it, and
+// records a 401 or 403 as the refusal of the key's version it was built from
+// (none for a key not stored yet), on the pool.
+type notedFeed struct {
+	f       bankfeed.Feed
+	s       *server
+	version *time.Time
+}
+
+var _ bankfeed.Feed = notedFeed{}
+
+// flagged records an ErrUnauthorized as the key's refusal and answers err as
+// it was.
+func (n notedFeed) flagged(ctx context.Context, err error) error {
+	if n.version != nil && errors.Is(err, bankfeed.ErrUnauthorized) {
+		n.s.flagBankFeedUnauthorized(ctx, *n.version)
+	}
+	return err
+}
+
+func (n notedFeed) Verify(ctx context.Context) error {
+	noteContractCall(ctx, "BankFeed.Verify")
+	return n.flagged(ctx, n.f.Verify(ctx))
+}
+
+func (n notedFeed) Accounts(ctx context.Context) ([]bankfeed.Account, error) {
+	noteContractCall(ctx, "BankFeed.Accounts")
+	accounts, err := n.f.Accounts(ctx)
+	return accounts, n.flagged(ctx, err)
+}
+
+func (n notedFeed) Transactions(ctx context.Context, account string, from, to time.Time) ([]bankfeed.Transaction, error) {
+	noteContractCall(ctx, "BankFeed.Transactions")
+	txs, err := n.f.Transactions(ctx, account, from, to)
+	return txs, n.flagged(ctx, err)
 }

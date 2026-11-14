@@ -19,6 +19,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/vantigo-io/vantigo/server/internal/bankfeed/folio/foliotest"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/invoices"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/accesspoint/storecovetest"
@@ -52,6 +53,10 @@ type harness struct {
 	vipps *vippstest.Server
 	// vippsWire is the road to vipps, which a test may cut on the way back.
 	vippsWire *vippsWire
+	// folio is the bank every harness points INVOICES_FOLIO_BASE_URL at, on
+	// a TLS listener of its own reached through the same Deps.HTTPTransport,
+	// so no test ever calls Folio.
+	folio *foliotest.Server
 }
 
 // vippsWire carries the module's requests to vippstest. A test may observe
@@ -100,7 +105,7 @@ func (w *vippsWire) observeRequests(fn func(r *http.Request)) {
 }
 
 // hostTransport routes each request to the test server listening on its
-// host: Deps.HTTPTransport is one RoundTripper, and the harness has two
+// host: Deps.HTTPTransport is one RoundTripper, and the harness has three
 // providers, each trusting its own certificate.
 type hostTransport map[string]http.RoundTripper
 
@@ -141,22 +146,25 @@ func newInvoicesHarness(t *testing.T, objects *fakeObjectStore, opts ...modtest.
 	storecove := storecovetest.New(t)
 	vippsServer := vippstest.New(t)
 	wire := &vippsWire{rt: vippsServer.Transport()}
+	folio := foliotest.New(t)
 	base := []modtest.Option{
 		modtest.WithRecorder(recorder),
 		modtest.WithModule(invoices.Module()),
 		modtest.WithDirectory(customers),
 		modtest.WithEnv("INVOICES_STORECOVE_BASE_URL", storecove.URL()),
 		modtest.WithEnv("INVOICES_VIPPS_BASE_URL", vippsServer.URL()),
+		modtest.WithEnv("INVOICES_FOLIO_BASE_URL", folio.URL()),
 		modtest.WithTransport(hostTransport{
 			hostOf(t, storecove.URL()):   storecove.Transport(),
 			hostOf(t, vippsServer.URL()): wire,
+			hostOf(t, folio.URL()):       folio.Transport(),
 		}),
 	}
 	if objects != nil {
 		base = append(base, modtest.WithObjectStore(objects))
 	}
 	before, beforeTx := lockedContractCalls.count(), lockedContractCalls.txCount()
-	h := &harness{Harness: modtest.New(t, append(base, opts...)...), customers: customers, objects: objects, storecove: storecove, vipps: vippsServer, vippsWire: wire}
+	h := &harness{Harness: modtest.New(t, append(base, opts...)...), customers: customers, objects: objects, storecove: storecove, vipps: vippsServer, vippsWire: wire, folio: folio}
 	t.Cleanup(func() {
 		if calls := lockedContractCalls.since(before); len(calls) > 0 {
 			t.Errorf("a call outside this module's own database was made from inside one of its transactions:\n%s",

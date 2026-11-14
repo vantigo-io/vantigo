@@ -74,7 +74,7 @@ const (
 	descAccess = "Use the Invoices app and read every invoice, credit note, PDF, payment and delivery, the journal, " +
 		"the CSV export and the stats; the overdue list and an invoice's reminder letters and their PDFs, " +
 		"hold, hand-off, manual deliveries and charges; the collection rates, the reminder settings, the " +
-		"payment settings and a customer's reminder policy; an invoice's pay link and Vipps payment attempts, " +
+		"payment settings, the bank feed's connection and a customer's reminder policy; an invoice's pay link and Vipps payment attempts, " +
 		"and the day's Vipps payments and their reconciliations; and the attention items about overdue " +
 		"invoices and refunds due."
 	descIssue = "Issue a draft into a numbered document that can never be changed, create credit notes, send an " +
@@ -86,8 +86,9 @@ const (
 	descManage = "Change the seller record and its Peppol id, the number series start, the KID agreement, the " +
 		"e-invoicing access point's credentials, the VAT codes and their rates, the reminder settings and the " +
 		"regime review, the collection rates — add one ahead of a release, or delete one nothing has relied " +
-		"on — and the format a bank account's files are imported in; the Vipps credentials and the payment " +
-		"settings — pay links, payment on site and its kontantsalg acknowledgement — and abandon a stuck " +
+		"on — and the format a bank account's files are imported in; the bank feed — connect the bank with an " +
+		"API key, switch the feed on or off for an account and disconnect it; the Vipps credentials and the " +
+		"payment settings — pay links, payment on site and its kontantsalg acknowledgement — and abandon a stuck " +
 		"Vipps payment once it has been checked in the Vipps portal."
 	descPayments = "Register payments against issued invoices and remove a registration with a reason; import bank " +
 		"files, read the imported files, the bank accounts and their lines, and work the exception queue; " +
@@ -109,7 +110,7 @@ func TestPermissions_Descriptions(t *testing.T) {
 	t.Parallel()
 	gains := map[string][]string{
 		"invoices:access": {"the overdue list", "an invoice's reminder letters and their PDFs, hold, hand-off, manual deliveries and charges",
-			"the collection rates, the reminder settings, the payment settings and a customer's reminder policy",
+			"the collection rates, the reminder settings, the payment settings, the bank feed's connection and a customer's reminder policy",
 			"an invoice's pay link and Vipps payment attempts", "the day's Vipps payments and their reconciliations",
 			"attention items about overdue invoices and refunds due"},
 		"invoices:issue": {"record that an invoice was handed over or posted", "make or revoke an invoice's pay link",
@@ -117,6 +118,7 @@ func TestPermissions_Descriptions(t *testing.T) {
 			"with Create invoices, make a quick invoice"},
 		"invoices:manage": {"the reminder settings and the regime review", "add one ahead of a release",
 			"delete one nothing has relied on", "the format a bank account's files are imported in",
+			"the bank feed — connect the bank with an API key, switch the feed on or off for an account and disconnect it",
 			"the Vipps credentials and the payment settings", "kontantsalg acknowledgement", "abandon a stuck Vipps payment"},
 		"invoices:payments": {"import bank files", "the bank accounts and their lines", "exception queue", "reminder runs",
 			"print paper letters and confirm them posted or reprint them", "withdraw and retry letters",
