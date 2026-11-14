@@ -1475,22 +1475,42 @@ Worker **`accounting.bankfeed`** polls every minute and reads each feed account 
 
 1. it claims the account's lease (five minutes) in one short statement, `FOR UPDATE SKIP
    LOCKED`;
-2. it reads the bank with no transaction open, from the later of the start day and the
-   latest line it wrote less **ten days**, through today: the overlap is read every time;
-3. it writes the transactions the account does not have, each the bank's transaction id as
-   its `bank_id` — every direction and kind, a debit negative — as one statement of source
-   `feed`, in one transaction that holds the claim (a lost claim writes nothing); a
-   transaction whose direction is unknown, in another currency, of no amount or booked after
-   today is left out and counted in the detail;
+2. it reads the bank with no transaction open, **in windows** of at most 31 days, as
+   Invoices' own sync does: forward first, oldest first, from the day after the account's
+   read cursor (`feed_read_through`; the start day before the first read) through today;
+   then, once forward is read, the **ten days** before the cursor the cycle started with,
+   newest first — the overlap is read every time, since a bank may book a transaction on an
+   earlier day than it first showed it. A window the bank answers too large
+   (`bankfeed.ErrTooLarge`) is halved, rounded up, and asked again, the smaller size kept
+   for the rest of the cycle, down to one day. A cycle makes at most **eight** calls: an
+   account with days left is due again at the next poll (a minute on), where its cursor
+   stopped, so one account far behind neither outlives its lease nor holds the others up;
+3. each window's transactions the account does not have are written, each the bank's
+   transaction id as its `bank_id` — every direction and kind, a debit negative — as one
+   statement of source `feed` for the window's days, in one transaction that holds the
+   claim (a lost claim writes nothing), and the cursor then moves to the window's end under
+   the claim, never back. A worker that stops between the two reads the window again, its
+   lines known by their ids. A transaction whose direction is unknown, in another currency,
+   of no amount or booked after today is left out and counted in the detail;
 4. it releases the claim with what the bank said: `ok` and the next read an interval on;
    `unauthorized` when the bank refused the key (Invoices records the refusal too);
    `rate_limited`, the next read after the bank's `Retry-After`, at least the interval —
    also while the bank's 429 to Invoices' own sync still holds, when the contract calls
    nothing and answers the wait that is left, so the two readers of one key back off together;
-   `off` with no key; `failing` for any other error.
+   `too_large` when the bank's answer for a single day is still too large, the day in the
+   detail, read again an interval on — also when every call of a cycle went on halving and
+   the cursor did not move; `off` with no key; `failing` for any other error. The windows
+   read before an error stand.
 
-The meta's `bankFeedProblems` counts the feed accounts in `unauthorized`, `failing`
-or `off`; `bankFeedEnabled` says whether the feed is composed.
+While Invoices' own sync holds the claim of the same account, the contract answers
+`contracts.ErrBankFeedBusy` and calls nothing: the account is released with its status and
+detail as they were, no error recorded, and read again when the sync's claim ends (at least
+a minute, at most five minutes on).
+
+Switching the source to `feed` clears the cursor, so the read starts at the start day.
+
+The meta's `bankFeedProblems` counts the feed accounts in `unauthorized`, `failing`,
+`not_offered`, `too_large` or `off`; `bankFeedEnabled` says whether the feed is composed.
 
 ### Reconciliation
 

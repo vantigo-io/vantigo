@@ -5838,8 +5838,12 @@ with the bank's wait, any other error for a read that failed — and
 limits the key, not a reader: while the bank's 429 to this module's own sync still holds
 (`rate_limited_until` on any feed account, `BankFeedRateLimitedUntil`), `Accounts` and
 `Transactions` call nothing and answer a `*bankfeed.ErrRateLimited` with the wait that is
-left, so a reader backs off with the sync; the sync alone writes the wait. The
-contract stores nothing and changes nothing of what this module's own feed stores or
+left, so a reader backs off with the sync; the sync alone writes the wait. And while this
+module's own sync holds the account's claim (`lease_until` still ahead on its
+`bank_feed_accounts` row, `BankFeedAccountLeasedUntil`), `Transactions` calls nothing and
+answers a `*contracts.ErrBankFeedBusy` with what is left of the claim — at most the sync's
+five-minute lease — so one account is never read by two readers at once; a reader treats it
+as "later", never as a failure. The contract stores nothing and changes nothing of what this module's own feed stores or
 registers.
 
 ### The fact log
