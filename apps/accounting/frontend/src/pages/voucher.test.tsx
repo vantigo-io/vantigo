@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { sent } from "../test/helpers";
 import { renderRoute } from "../test/route-tree";
-import { stubAccountingApi, voucher } from "../test/server";
+import { meta, stubAccountingApi, voucher } from "../test/server";
 
 describe("a voucher", () => {
   it("shows its postings and reverses it with a reason", async () => {
@@ -34,5 +34,15 @@ describe("a voucher", () => {
     expect(await screen.findByText("Posted by the system")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Reverse" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Copy" })).not.toBeInTheDocument();
+  });
+
+  it("offers Reverse on the opening only to who may manage the books", async () => {
+    stubAccountingApi({
+      meta: meta({ canClose: false }),
+      vouchers: [voucher({ kind: "opening", description: "Inngående balanse" })],
+    });
+    renderRoute("/accounting/vouchers/5001");
+    expect(await screen.findByText("Voucher 2026-000007")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Reverse" })).not.toBeInTheDocument();
   });
 });

@@ -7,6 +7,8 @@ export interface FormLine {
   debit: string;
   credit: string;
   taxCodeId: string | null;
+  /** Whether the person chose the tax code: an account's default replaces it only when not. */
+  taxCodeChosen: boolean;
   customerId: string;
   projectId: string;
   text: string;
@@ -23,11 +25,29 @@ export const emptyLine = (): FormLine => {
     debit: "",
     credit: "",
     taxCodeId: null,
+    taxCodeChosen: false,
     customerId: "",
     projectId: "",
     text: "",
   };
 };
+
+/**
+ * A line with its account changed (L6): the new account's default tax code
+ * replaces the line's unless the person chose the code.
+ */
+export const withAccount = (line: FormLine, accountId: string | null, defaultTaxCodeId: number | null): FormLine => ({
+  ...line,
+  accountId,
+  taxCodeId: line.taxCodeChosen ? line.taxCodeId : defaultTaxCodeId ? String(defaultTaxCodeId) : null,
+});
+
+/**
+ * The keys of the lines a journal sends, in the order it sends them: a
+ * refusal's lines[i] is the line keyed i here, blank lines left out (L5).
+ */
+export const sentKeys = (lines: readonly FormLine[]): string[] =>
+  lines.filter((line) => !lineIsBlank(line)).map((line) => line.key);
 
 const amountPattern = /^\d{1,12}([.,]\d{1,2})?$/;
 
@@ -112,6 +132,7 @@ export const linesFromVoucher = (voucher: AccountingVoucher): FormLine[] =>
         debit: credit ? "" : fromOre(ore),
         credit: credit ? fromOre(ore) : "",
         taxCodeId: posting.taxCodeId === null ? null : String(posting.taxCodeId),
+        taxCodeChosen: posting.taxCodeId !== null,
         customerId: posting.customerId === null ? "" : String(posting.customerId),
         projectId: posting.projectId === null ? "" : String(posting.projectId),
         text: posting.description,

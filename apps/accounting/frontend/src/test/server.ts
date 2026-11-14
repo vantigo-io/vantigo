@@ -29,6 +29,7 @@ export const meta = (change: Partial<AccountingMeta> = {}): AccountingMeta => ({
   },
   projectsEnabled: false,
   invoicesEnabled: true,
+  attachmentsEnabled: true,
   vouchersThisYear: 12,
   openCustomerItems: 3,
   ...change,
@@ -184,6 +185,8 @@ export interface ApiState {
   taxCodes: AccountingTaxCode[];
   vouchers: AccountingVoucher[];
   opening: AccountingOpening;
+  /** Whether an attachment's upload is refused, as an installation without storage refuses it. */
+  attachmentFails?: boolean;
 }
 
 /**
@@ -248,7 +251,18 @@ export const stubAccountingApi = (change: Partial<ApiState> = {}): StubbedFetch 
     if (method === "PUT" && path === "/lock")
       return jsonResponse(200, { ...lock(), lockedThrough: JSON.parse(String(init?.body)).lockedThrough });
     if (method === "GET" && path === "/opening") return jsonResponse(200, state.opening);
-    if (method === "GET" && path === "/open-items") return jsonResponse(200, { items: [] });
+    if (method === "GET" && path === "/open-items") return jsonResponse(200, { items: [], total: 0 });
+    if (method === "POST" && /^\/vouchers\/\d+\/attachments$/.test(path))
+      return state.attachmentFails
+        ? jsonResponse(503, { status: 503, code: "storage_not_configured", title: "File storage is not configured" })
+        : jsonResponse(201, {
+            id: 9001,
+            fileName: "receipt.pdf",
+            contentType: "application/pdf",
+            sizeBytes: 10,
+            sha256: "0".repeat(64),
+            uploadedAt: STAMP,
+          });
     if (method === "GET" && path.startsWith("/reports/")) return jsonResponse(200, report());
     return new Response(null, { status: 404 });
   });

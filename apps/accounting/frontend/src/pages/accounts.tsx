@@ -25,6 +25,24 @@ import { TaxCodeSelect } from "../components/pickers";
 import { refusalMessage, useAccountingFormat } from "../lib/format";
 
 /** The chart of accounts (A3): the list, and an account's editor with its grouping and roles. */
+/**
+ * The kind an account number's class gives (A3): 1 asset, 20 equity, 21–29
+ * liability, 3 income, 4–7 expense, 8 expense (or income, which the person
+ * may choose); undefined before the class is typed or outside 1–8.
+ */
+const kindOfNumber = (number: string): "asset" | "equity" | "liability" | "income" | "expense" | undefined => {
+  const first = number.trim().charAt(0);
+  if (first === "1") return "asset";
+  if (first === "2") {
+    const second = number.trim().charAt(1);
+    if (second === "") return undefined;
+    return second === "0" ? "equity" : "liability";
+  }
+  if (first === "3") return "income";
+  if (first >= "4" && first <= "8") return first === "8" && number.trim().startsWith("80") ? "income" : "expense";
+  return undefined;
+};
+
 export const AccountsPage = () => {
   const { t } = useAccountingFormat();
   return (
@@ -194,7 +212,13 @@ const AccountEditor = ({
           <TextInput
             label={t("accountNumber")}
             value={number}
-            onChange={(event) => setNumber(event.currentTarget.value)}
+            onChange={(event) => {
+              const typed = event.currentTarget.value;
+              setNumber(typed);
+              // The kind follows the number's class (A3); class 8 is income or expense.
+              const proposed = kindOfNumber(typed);
+              if (proposed && !(typed.startsWith("8") && (kind === "income" || kind === "expense"))) setKind(proposed);
+            }}
             disabled={!canClose || locked}
             description={locked ? t("numberFixed") : undefined}
             error={fields.number}

@@ -58,7 +58,9 @@ const VoucherView = ({ id, meta }: { id: number; meta: AccountingMeta }) => {
     );
   if (voucher.isPending) return <ContentSkeleton rows={6} />;
   const v = voucher.data;
-  const canReverse = meta.canPost && !v.system && !v.reversedBy && !v.reverses;
+  // The opening is reversed only by who may enter it (A9, M1).
+  const canReverse =
+    meta.canPost && !v.system && !v.reversedBy && !v.reverses && (v.kind !== "opening" || meta.canClose);
   const debit = v.postings.reduce((sum, p) => (p.amount.startsWith("-") ? sum : sum + Number(p.amount)), 0);
   return (
     <Stack gap="lg">

@@ -16,6 +16,7 @@ import {
 import { BooksGate } from "../components/books-gate";
 import { AccountSelect, ProjectSelect } from "../components/pickers";
 import { refusalMessage, useAccountingFormat } from "../lib/format";
+import { fiscalYearStart, yearBefore } from "../lib/periods";
 import { voucherPath } from "../lib/routes";
 
 /** The reports with a comparison period (A11). */
@@ -40,14 +41,10 @@ export const ReportsPage = () => {
   );
 };
 
-/** The year before a date's: the default comparison. */
-const yearBefore = (date: string) => `${Number(date.slice(0, 4)) - 1}${date.slice(4)}`;
-
 const Reports = ({ meta }: { meta: AccountingMeta }) => {
   const { t } = useAccountingFormat();
-  const year = meta.today.slice(0, 4);
   const [kind, setKind] = useState<AccountingReportKind>("trial_balance");
-  const [from, setFrom] = useState(`${year}-01-01`);
+  const [from, setFrom] = useState(() => fiscalYearStart(meta.today, meta.settings?.fiscalYearStartMonth ?? 1));
   const [to, setTo] = useState(meta.today);
   const [compare, setCompare] = useState(false);
   const [account, setAccount] = useState<string | null>(null);
