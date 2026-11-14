@@ -480,8 +480,8 @@ func TestFolio_SizeBound(t *testing.T) {
 		t.Errorf("Verify of 10 MiB + 1 = %v, want a plain error", err)
 	}
 	ft.Fail(foliotest.OpTransactions, foliotest.Failure{Oversized: true})
-	if got, err := c.Transactions(ctx, operational, day("2026-11-01"), day("2026-11-13")); !isPlain(err) {
-		t.Errorf("Transactions of 10 MiB + 1 = %d transactions, %v; want a plain error", len(got), err)
+	if got, err := c.Transactions(ctx, operational, day("2026-11-01"), day("2026-11-13")); !isPlain(err) || !errors.Is(err, bankfeed.ErrTooLarge) {
+		t.Errorf("Transactions of 10 MiB + 1 = %d transactions, %v; want bankfeed.ErrTooLarge", len(got), err)
 	}
 }
 

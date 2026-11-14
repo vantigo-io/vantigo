@@ -38,6 +38,9 @@ const (
 	// bankFeedFailingAfter is how many failures in a row make an account
 	// failing (F7); maxBankFeedBackoff caps the wait after one.
 	bankFeedFailingAfter = 3
+	// failedAnswerTooLarge is the reason of a failure that is not the
+	// bank's reachability: one day's answer is too large to read.
+	failedAnswerTooLarge = "answer_too_large"
 	maxBankFeedBackoff   = 6 * time.Hour
 )
 
@@ -176,10 +179,17 @@ func (w *BankFeedWorker) end(ctx context.Context, c feedClaim, outcome syncOutco
 		})
 	case syncErr != nil:
 		failures := c.row.Failures + 1
-		w.logger().WarnContext(ctx, "invoices: a bank feed sync failed; the bank could not be reached or did not answer as it should",
-			"worker", bankFeedWorkerName, "account", account, "failures", failures, "error", syncErr.Error())
+		var reason *string
+		if errors.Is(syncErr, errFeedAnswerTooLarge) {
+			reason = ptr(failedAnswerTooLarge)
+			w.logger().WarnContext(ctx, "invoices: a bank feed sync failed; the bank's answer for one day is too large",
+				"worker", bankFeedWorkerName, "account", account, "failures", failures)
+		} else {
+			w.logger().WarnContext(ctx, "invoices: a bank feed sync failed; the bank could not be reached or did not answer as it should",
+				"worker", bankFeedWorkerName, "account", account, "failures", failures, "error", syncErr.Error())
+		}
 		n, err = q.BankFeedFailed(ctx, store.BankFeedFailedParams{
-			FailingAfter: bankFeedFailingAfter, Detail: feedFailureDetail(syncErr),
+			FailingAfter: bankFeedFailingAfter, Detail: feedFailureDetail(syncErr), Reason: reason,
 			NextSyncAt: c.now.Add(bankFeedBackoff(interval, failures)), Now: c.now, Account: account, LeaseID: c.lease,
 		})
 	case outcome.refused != nil:
@@ -190,8 +200,13 @@ func (w *BankFeedWorker) end(ctx context.Context, c feedClaim, outcome syncOutco
 			NextSyncAt: c.now.Add(interval), Now: c.now, Account: account, LeaseID: c.lease,
 		})
 	default:
+		next := c.now.Add(interval)
+		if outcome.more {
+			// A backlog of windows: due again at once, until it is read.
+			next = c.now
+		}
 		n, err = q.BankFeedSynced(ctx, store.BankFeedSyncedParams{
-			Now: c.now, LastBankFileID: outcome.bankFileID, NextSyncAt: c.now.Add(interval), Account: account, LeaseID: c.lease,
+			Now: c.now, LastBankFileID: outcome.bankFileID, NextSyncAt: next, Account: account, LeaseID: c.lease,
 		})
 	}
 	if err != nil {
@@ -213,6 +228,8 @@ func feedFailureDetail(err error) string {
 		return "No bank API key is stored."
 	case errors.Is(err, errBankFeedKeyUnreadable):
 		return "The stored bank API key cannot be read on this server. Store the key again."
+	case errors.Is(err, errFeedAnswerTooLarge):
+		return "The bank's answer for one day is too large to read."
 	case errors.Is(err, context.DeadlineExceeded):
 		return "The bank did not answer in time."
 	case errors.Is(err, errFeedStorage):

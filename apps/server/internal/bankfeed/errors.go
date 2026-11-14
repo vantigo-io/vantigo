@@ -14,6 +14,11 @@ import (
 // ErrUnauthorized is a 401 or 403: the bank refused the credential.
 var ErrUnauthorized = errors.New("bankfeed: the bank refused the credential")
 
+// ErrTooLarge is an answer larger than the adapter reads (10 MiB for
+// Folio): nothing of it is answered, and the consumer asks again for fewer
+// days.
+var ErrTooLarge = errors.New("bankfeed: the bank's answer is too large")
+
 // ErrRateLimited is a 429: the bank asks for a later read. RetryAfter is
 // what it asked for, zero when it named nothing.
 type ErrRateLimited struct {

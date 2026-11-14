@@ -79,11 +79,14 @@ var bankFeedSyncAfterStore func(ctx context.Context, bankFileID int64) error
 // of the transaction that broke it — never a name or a text.
 type feedRefusal struct{ reason, detail string }
 
-// syncOutcome is what a cycle that did not fail did: the batch it stored,
-// nil when nothing new was read, or the refusal of the batch.
+// syncOutcome is what a cycle that did not fail did: the last batch it
+// stored, nil when nothing new was read, or the refusal of a batch; and more
+// when the read stopped short of today — a backlog the account is due again
+// at once to drain.
 type syncOutcome struct {
 	bankFileID *int64
 	refused    *feedRefusal
+	more       bool
 }
 
 // feedClaim is one claimed account: the row as the claim saw it, its lease
@@ -94,12 +97,28 @@ type feedClaim struct {
 	now   time.Time
 }
 
+// The windows a cycle reads (plan C review, item 1): at most 31 days each,
+// each its own batch, at most bankFeedWindowsPerCycle of them and
+// bankFeedCallsPerCycle calls to the bank in all — a window too large for
+// one answer halved and asked again — so a cycle never outlives its lease.
+const (
+	bankFeedWindowDays      = 31
+	bankFeedWindowsPerCycle = 4
+	bankFeedCallsPerCycle   = 8
+)
+
+// errFeedAnswerTooLarge is a window of a single day whose answer is still too
+// large to read or to store as one batch: the account fails with its own
+// reason, never as a bank that could not be reached.
+var errFeedAnswerTooLarge = errors.New("invoices: the bank's answer for one day is too large")
+
 // syncAccount is one cycle of F5 for the claimed account. A failure is
 // answered as an error — the bank's typed ones (bankfeed.ErrUnauthorized,
 // *bankfeed.ErrRateLimited) among them — and a refusal as the outcome;
-// either way nothing of the batch is stored. Matching stopping early is not
-// a failure: the batch stands and the lines it did not reach stay pending,
-// matched by the next cycle.
+// either way nothing of the window that failed is stored, and the windows
+// before it stand. Matching stopping early is not a failure: the batch
+// stands and the lines it did not reach stay pending, matched by the next
+// cycle.
 func (s *server) syncAccount(ctx context.Context, c feedClaim) (syncOutcome, error) {
 	account := c.row.Account
 	loc, err := s.businessZone(ctx)
@@ -122,14 +141,17 @@ func (s *server) syncAccount(ctx context.Context, c feedClaim) (syncOutcome, err
 		return syncOutcome{refused: &feedRefusal{reason: refusedFormatMismatch, detail: "The account's format is " + acct.Format + "."}}, nil
 	}
 
-	// 1. The days to read.
-	from := utcDay(c.row.StartDay.Time)
-	latest, err := q.LatestBookedInFormat(ctx, store.LatestBookedInFormatParams{Account: account, Format: bankFeedFormatFeed})
-	if err != nil {
-		return syncOutcome{}, fmt.Errorf("invoices: read account %s's latest feed day: %w", account, err)
-	}
-	if latest.Valid {
-		if back := utcDay(latest.Time).Add(-bankFeedOverlap); back.After(from) {
+	// 1. The days to read: from the start day, or ten days before the last
+	// day read to the end, whichever is later — the read cursor, not the
+	// last payment kept, so an account with few payments reads a short
+	// window too.
+	startDay := utcDay(c.row.StartDay.Time)
+	from := startDay
+	var readThrough *time.Time
+	if c.row.ReadThrough.Valid {
+		rt := utcDay(c.row.ReadThrough.Time)
+		readThrough = &rt
+		if back := rt.Add(-bankFeedOverlap); back.After(from) {
 			from = back
 		}
 	}
@@ -141,37 +163,83 @@ func (s *server) syncAccount(ctx context.Context, c feedClaim) (syncOutcome, err
 	if err != nil {
 		return syncOutcome{}, err
 	}
-	txs, err := feed.Transactions(ctx, account, from, today)
-	if err != nil {
-		return syncOutcome{}, err
-	}
-
-	// 2 and 3. Refuse the whole batch, or keep the incoming credit transfers.
-	kept, raws, ignored, refusal := judgeFeedBatch(txs, account, today, utcDay(c.row.StartDay.Time))
-	if refusal != nil {
-		return syncOutcome{refused: refusal}, nil
-	}
-
-	// 4. Drop what an earlier cycle stored.
-	kept, raws, err = dropStoredFeedLines(ctx, q, account, kept, raws)
-	if err != nil {
-		return syncOutcome{}, err
-	}
 	var out syncOutcome
-	if len(kept) > 0 {
-		id, err := s.storeFeedBatch(ctx, c, kept, raws, ignored)
+	calls := 0
+windows:
+	for window := 0; ; window++ {
+		if window == bankFeedWindowsPerCycle {
+			out.more = true
+			break
+		}
+		to := from.AddDate(0, 0, bankFeedWindowDays-1)
+		if to.After(today) {
+			to = today
+		}
+		var txs []bankfeed.Transaction
+		for {
+			if calls == bankFeedCallsPerCycle {
+				// The calls of this cycle are spent: the rest is the next
+				// cycle's, due at once.
+				out.more = true
+				break windows
+			}
+			calls++
+			txs, err = feed.Transactions(ctx, account, from, to)
+			if err == nil && !feedAnswerTooLarge(txs) {
+				break
+			}
+			if err != nil && !errors.Is(err, bankfeed.ErrTooLarge) {
+				return syncOutcome{}, err
+			}
+			if !to.After(from) {
+				return syncOutcome{}, errFeedAnswerTooLarge
+			}
+			// Too large for one answer or one batch: half the days.
+			to = from.AddDate(0, 0, int(to.Sub(from).Hours()/24)/2)
+		}
+
+		// 2 and 3. Refuse the whole batch, or keep the incoming credit
+		// transfers; what is not kept is counted only when booked after the
+		// last day read, so the overlap is not counted in every batch.
+		kept, raws, ignored, refusal := judgeFeedBatch(txs, account, today, startDay, readThrough)
+		if refusal != nil {
+			out.refused = refusal
+			return out, nil
+		}
+		// 4. Drop what an earlier cycle stored.
+		kept, raws, err = dropStoredFeedLines(ctx, q, account, kept, raws)
 		if err != nil {
 			return syncOutcome{}, err
 		}
-		if id == nil {
-			return syncOutcome{refused: &feedRefusal{reason: refusedFormatMismatch, detail: "The account's format is no longer feed."}}, nil
-		}
-		out.bankFileID = id
-		if hook := bankFeedSyncAfterStore; hook != nil {
-			if err := hook(ctx, *id); err != nil {
+		if len(kept) > 0 {
+			id, err := s.storeFeedBatch(ctx, c, from, to, kept, raws, ignored)
+			if err != nil {
 				return syncOutcome{}, err
 			}
+			if id == nil {
+				out.refused = &feedRefusal{reason: refusedFormatMismatch, detail: "The account's format is no longer feed."}
+				return out, nil
+			}
+			out.bankFileID = id
+			if hook := bankFeedSyncAfterStore; hook != nil {
+				if err := hook(ctx, *id); err != nil {
+					return syncOutcome{}, err
+				}
+			}
 		}
+		// The window is read and judged to its end: the cursor moves.
+		n, err := q.AdvanceBankFeedRead(ctx, store.AdvanceBankFeedReadParams{ReadThrough: pgDate(to), Account: account, LeaseID: c.lease})
+		if err != nil {
+			return syncOutcome{}, fmt.Errorf("invoices: move account %s's read cursor: %w", account, err)
+		}
+		if n == 0 {
+			return syncOutcome{}, errFeedClaimLost
+		}
+		readThrough = &to
+		if !to.Before(today) {
+			break
+		}
+		from = to.AddDate(0, 0, 1)
 	}
 
 	// 7. Matching, by no user, of every feed batch of the account with a
@@ -190,14 +258,35 @@ func (s *server) syncAccount(ctx context.Context, c feedClaim) (syncOutcome, err
 	return out, nil
 }
 
+// feedAnswerTooLarge reports whether an answer is more than one batch may
+// hold — the transactions a bank file may carry, or their bytes past a bank
+// file's bound — so the window is halved rather than stored.
+func feedAnswerTooLarge(txs []bankfeed.Transaction) bool {
+	if len(txs) > bankfile.MaxTransactions {
+		return true
+	}
+	size := 0
+	for _, tx := range txs {
+		size += len(tx.Raw) + 1
+	}
+	return size > bankfile.MaxBytes
+}
+
 // judgeFeedBatch is F5 steps 2 and 3 over everything the bank answered, in
 // the order it answered: the batch refused whole on the first transaction
 // that breaks a rule, else the incoming credit transfers above zero built as
 // lines (findings 1 and 12) with the bytes the bank sent for each, and the
 // rest counted by kind. A transaction booked before the start day is left
 // out uncounted: a person chose to read nothing before it.
-func judgeFeedBatch(txs []bankfeed.Transaction, account string, today, startDay time.Time) ([]bankfile.Transaction, []json.RawMessage, map[bankfile.IgnoredKind]int, *feedRefusal) {
+func judgeFeedBatch(txs []bankfeed.Transaction, account string, today, startDay time.Time, readThrough *time.Time) ([]bankfile.Transaction, []json.RawMessage, map[bankfile.IgnoredKind]int, *feedRefusal) {
 	ignored := map[bankfile.IgnoredKind]int{}
+	// count is a transaction not kept, counted on the batch unless an
+	// earlier window already read its day.
+	count := func(kind bankfile.IgnoredKind, booked time.Time) {
+		if readThrough == nil || booked.After(*readThrough) {
+			ignored[kind]++
+		}
+	}
 	seen := make(map[string]bool, len(txs))
 	var kept []bankfile.Transaction
 	var raws []json.RawMessage
@@ -225,21 +314,21 @@ func judgeFeedBatch(txs []bankfeed.Transaction, account string, today, startDay 
 		}
 		switch {
 		case tx.Kind == bankfeed.KindInternal:
-			ignored[bankfile.IgnoredInternalTransfer]++
+			count(bankfile.IgnoredInternalTransfer, booked)
 			continue
 		case tx.Kind == bankfeed.KindCard:
-			ignored[bankfile.IgnoredCardInformation]++
+			count(bankfile.IgnoredCardInformation, booked)
 			continue
 		case tx.Kind != bankfeed.KindTransfer:
 			// A kind the port does not name is no transfer: counted with the
 			// card transactions, never kept.
-			ignored[bankfile.IgnoredCardInformation]++
+			count(bankfile.IgnoredCardInformation, booked)
 			continue
 		case tx.Direction == bankfeed.DirectionDebit:
-			ignored[bankfile.IgnoredDebit]++
+			count(bankfile.IgnoredDebit, booked)
 			continue
 		case tx.AmountMinor == 0:
-			ignored[bankfile.IgnoredZeroAmount]++
+			count(bankfile.IgnoredZeroAmount, booked)
 			continue
 		}
 		kid := strings.TrimSpace(tx.KID)
@@ -330,10 +419,10 @@ func dropStoredFeedLines(ctx context.Context, q *store.Queries, account string, 
 // JSON array, in the order the bank answered them, stored once under
 // bank-files/<sha256>.json — Exists, then Put, outside any transaction, as
 // an upload's file — then the import's transaction with no uploader, the
-// bank as provider and the identity folio|<account>|<claim time>. It answers
+// bank as provider and the identity folio|<account>|<from>..<to>|<lease>. It answers
 // the batch's id, or nil when the import found the account's format no
 // longer feed.
-func (s *server) storeFeedBatch(ctx context.Context, c feedClaim, kept []bankfile.Transaction, raws []json.RawMessage, ignored map[bankfile.IgnoredKind]int) (*int64, error) {
+func (s *server) storeFeedBatch(ctx context.Context, c feedClaim, from, to time.Time, kept []bankfile.Transaction, raws []json.RawMessage, ignored map[bankfile.IgnoredKind]int) (*int64, error) {
 	var doc bytes.Buffer
 	doc.WriteByte('[')
 	for i, raw := range raws {
@@ -366,7 +455,9 @@ func (s *server) storeFeedBatch(ctx context.Context, c feedClaim, kept []bankfil
 		return nil, fmt.Errorf("%w (%s): %w", errFeedStorage, key, err)
 	}
 
-	identity := providerFolio + "|" + c.row.Account + "|" + c.now.UTC().Format(time.RFC3339)
+	// Unique per batch: the window's days and the claim's lease, so two
+	// windows of one cycle, or two claims of one second, are two files.
+	identity := providerFolio + "|" + c.row.Account + "|" + from.Format(time.DateOnly) + ".." + to.Format(time.DateOnly) + "|" + c.lease
 	file := bankfile.FeedFile(identity, c.row.Account, kept, ignored)
 	result, err := s.storeBankFile(ctx, file, sha, key, doc.Len(), bankFileOrigin{provider: ptr(providerFolio), feedLease: c.lease}, c.now)
 	var mismatch *formatMismatch

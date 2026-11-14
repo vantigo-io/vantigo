@@ -27,7 +27,7 @@ const (
 	// payerAccount is the account the customers pay from.
 	payerAccount = strangerAccount
 	// feedStart is the start day every sync test switches the feed on from.
-	feedStart = "2026-09-01"
+	feedStart = "2026-09-10"
 )
 
 // syncHarness is matchHarness — a KID agreement, an invoice issued on
@@ -368,10 +368,10 @@ func TestBankFeedSync_OverlapStoresNothingAgain(t *testing.T) {
 	if state := feedStateOf(t, h, sellerAccount); state.status != "ok" || state.lastFile == nil || fmt.Sprint(*state.lastFile) != first[0] {
 		t.Errorf("the account = %+v, want ok keeping batch %s", state, first[0])
 	}
-	// From the latest booking day less ten days.
+	// From the last day read less ten days.
 	reqs := h.folio.Requests()
-	if last := reqs[len(reqs)-1].Path; !strings.Contains(last, "startDate=2026-09-26") || !strings.Contains(last, "endDate=2026-10-07") {
-		t.Errorf("the last read = %s, want from 2026-09-26 to 2026-10-07", last)
+	if last := reqs[len(reqs)-1].Path; !strings.Contains(last, "startDate=2026-09-27") || !strings.Contains(last, "endDate=2026-10-07") {
+		t.Errorf("the last read = %s, want from 2026-09-27 — ten days before the last day read — to 2026-10-07", last)
 	}
 }
 

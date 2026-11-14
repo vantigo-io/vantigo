@@ -450,7 +450,7 @@ func readLimited(r io.Reader) ([]byte, error) {
 		return nil, err
 	}
 	if len(read) > maxAnswerBytes {
-		return nil, fmt.Errorf("larger than %d bytes", maxAnswerBytes)
+		return nil, fmt.Errorf("%w: larger than %d bytes", bankfeed.ErrTooLarge, maxAnswerBytes)
 	}
 	return read, nil
 }

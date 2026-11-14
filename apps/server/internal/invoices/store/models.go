@@ -21,20 +21,22 @@ type InvoicesAccessPointCredential struct {
 }
 
 type InvoicesBankFeedAccount struct {
-	Account         string
-	Enabled         bool
-	StartDay        pgtype.Date
-	Status          string
-	Reason          *string
-	Detail          string
-	Failures        int32
-	LastSyncedAt    *time.Time
-	LastBankFileID  *int64
-	NextSyncAt      *time.Time
-	LeaseID         *string
-	LeaseUntil      *time.Time
-	EnabledByUserID uuid.UUID
-	UpdatedAt       time.Time
+	Account          string
+	Enabled          bool
+	StartDay         pgtype.Date
+	Status           string
+	Reason           *string
+	Detail           string
+	Failures         int32
+	LastSyncedAt     *time.Time
+	LastBankFileID   *int64
+	NextSyncAt       *time.Time
+	LeaseID          *string
+	LeaseUntil       *time.Time
+	EnabledByUserID  uuid.UUID
+	UpdatedAt        time.Time
+	ReadThrough      pgtype.Date
+	RateLimitedUntil *time.Time
 }
 
 type InvoicesBankFeedConnection struct {
