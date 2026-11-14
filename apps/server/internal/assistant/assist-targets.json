@@ -15,6 +15,16 @@
     "description": "The list of accounts with their kind, default tax code, grouping code and system role; a row opens the account."
   },
   {
+    "key": "accounting.bank.file",
+    "route": "/accounting/bank/import",
+    "description": "Where the camt.053 or CSV file from the bank is chosen."
+  },
+  {
+    "key": "accounting.bank.import",
+    "route": "/accounting/bank",
+    "description": "The button on the Bank page that opens the import of a camt.053 or CSV statement."
+  },
+  {
     "key": "accounting.journal.entry-mode",
     "route": "/accounting/journal",
     "description": "The switch that says whether lines with a tax code are entered net or gross."
