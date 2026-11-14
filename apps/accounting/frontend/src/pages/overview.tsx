@@ -2,6 +2,7 @@ import { Alert, Anchor, Button, Card, Group, SimpleGrid, Stack, Text, Title } fr
 import {
   IconAlertCircle,
   IconAlertTriangle,
+  IconBuildingBank,
   IconChecks,
   IconFileSpreadsheet,
   IconList,
@@ -13,10 +14,17 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ContentSkeleton, KpiCard, PageHeader } from "@vantigo/frontend-shell";
-import { type AccountingMeta, catchUpQueryOptions, metaQueryOptions } from "../api/accounting";
+import {
+  type AccountingMeta,
+  bankAccountsQueryOptions,
+  catchUpQueryOptions,
+  metaQueryOptions,
+} from "../api/accounting";
 import { NotSetUp } from "../components/books-gate";
 import { useAccountingFormat } from "../lib/format";
 import {
+  BANK_ROUTE_PATH,
+  bankAccountPath,
   JOURNAL_ROUTE_PATH,
   NEEDS_ATTENTION_ROUTE_PATH,
   OPEN_ITEMS_ROUTE_PATH,
@@ -103,6 +111,7 @@ export const AccountingOverviewPage = () => {
           {t("vatRegistrationMismatch")}
         </Alert>
       )}
+      <BankCard meta={m} />
       {m.vatNextTerm && <VatCard meta={m} />}
       {m.invoicesEnabled && <CatchUpCard />}
       <Group gap="sm">
@@ -192,6 +201,47 @@ const CatchUpCard = () => {
               <Text span c="red" size="sm">
                 {" "}
                 · {t("catchUpError", { error: s.lastError })}
+              </Text>
+            )}
+          </Text>
+        ))}
+      </Stack>
+    </Card>
+  );
+};
+
+/** The bank (A28, A29): each bank account's lines not matched, and a feed that cannot read. */
+const BankCard = ({ meta }: { meta: AccountingMeta }) => {
+  const { t } = useAccountingFormat();
+  const accounts = useQuery(bankAccountsQueryOptions());
+  const items = (accounts.data?.items ?? []).filter((a) => a.active);
+  if (items.length === 0 && meta.openBankLines === 0) return null;
+  const attention = meta.openBankLines > 0 || meta.bankFeedProblems > 0;
+  return (
+    <Card withBorder padding="md" data-testid="bank-card">
+      <Group gap="xs" mb="xs">
+        {attention ? (
+          <IconAlertTriangle size={18} color="var(--mantine-color-orange-6)" />
+        ) : (
+          <IconBuildingBank size={18} />
+        )}
+        <Title order={4}>
+          <Anchor component={Link} to={BANK_ROUTE_PATH} inherit>
+            {t("navBank")}
+          </Anchor>
+        </Title>
+      </Group>
+      <Stack gap={4}>
+        {items.map((a) => (
+          <Text size="sm" key={a.id}>
+            <Anchor component={Link} to={bankAccountPath(a.id)} size="sm">
+              {a.name}
+            </Anchor>{" "}
+            · {a.openLines > 0 ? t("bankOpenLines", { count: a.openLines }) : t("bankAllMatched")}
+            {a.feed?.status && a.feed.status !== "ok" && (
+              <Text span c="red" size="sm">
+                {" "}
+                · {t(`bankFeedStatus_${a.feed.status}`)}
               </Text>
             )}
           </Text>

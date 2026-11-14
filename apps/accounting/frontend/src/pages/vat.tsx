@@ -38,6 +38,7 @@ import {
   vatTermsQueryOptions,
 } from "../api/accounting";
 import { ACCOUNTING_QUERY_KEY } from "../api/request";
+import { BankWarning } from "../components/bank-warning";
 import { BooksGate } from "../components/books-gate";
 import { refusalMessage, useAccountingFormat } from "../lib/format";
 import { VAT_ROUTE_PATH, vatPostingsPath, vatTermPath, voucherPath } from "../lib/routes";
@@ -604,6 +605,7 @@ const CloseDialog = ({
             {t("vatPartial", { from: day(it.coversFrom), to: day(it.periodEnd) })}
           </Alert>
         )}
+        <BankWarning through={it.periodEnd} />
         {blockers.length > 0 && (
           <Alert color="orange" icon={<IconAlertTriangle size={16} />} title={t("vatCloseBlocked")}>
             <List size="sm">

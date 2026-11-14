@@ -370,5 +370,29 @@
       "en": "The button that sets the books up from the SAF-T file's preview.",
       "nb": "Knappen som setter opp regnskapet fra forhåndsvisningen av SAF-T-filen."
     }
+  },
+  {
+    "key": "accounting.bank.import",
+    "route": "/accounting/bank",
+    "label": {
+      "en": "Import a statement",
+      "nb": "Importer kontoutskrift"
+    },
+    "description": {
+      "en": "The button on the Bank page that opens the import of a camt.053 or CSV statement.",
+      "nb": "Knappen på Bank-siden som åpner importen av en kontoutskrift i camt.053 eller CSV."
+    }
+  },
+  {
+    "key": "accounting.bank.file",
+    "route": "/accounting/bank/import",
+    "label": {
+      "en": "Statement file",
+      "nb": "Kontoutskriftfil"
+    },
+    "description": {
+      "en": "Where the camt.053 or CSV file from the bank is chosen.",
+      "nb": "Der camt.053- eller CSV-filen fra banken velges."
+    }
   }
 ]

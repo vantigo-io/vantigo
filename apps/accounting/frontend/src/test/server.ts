@@ -1,5 +1,9 @@
 import type {
   AccountingAccount,
+  AccountingBankAccount,
+  AccountingBankLine,
+  AccountingBankReconciliation,
+  AccountingBankRule,
   AccountingLock,
   AccountingMeta,
   AccountingOpening,
@@ -49,6 +53,9 @@ export const meta = (change: Partial<AccountingMeta> = {}): AccountingMeta => ({
   vatRegistrationMismatch: false,
   vatTermsToClose: 0,
   vatTermsToFile: 0,
+  openBankLines: 0,
+  bankFeedProblems: 0,
+  bankFeedEnabled: false,
   ...change,
 });
 
@@ -238,7 +245,103 @@ export interface ApiState {
   vatTerm?: AccountingVatTermDetail;
   /** Refusals by "METHOD /path": the problem's status and code the request is answered with. */
   refusals?: Record<string, { status: number; code: string }>;
+  bankAccounts?: AccountingBankAccount[];
+  bankLines?: AccountingBankLine[];
+  bankRules?: AccountingBankRule[];
+  /** The seller's account offered while no bank account has it. */
+  bankSuggested?: boolean;
+  /** Whether a lock moved forward is refused bank_unreconciled until confirmed. */
+  bankUnreconciled?: boolean;
 }
+
+export const bankAccount = (change: Partial<AccountingBankAccount> = {}): AccountingBankAccount => ({
+  id: 7001,
+  name: "Driftskonto",
+  accountNumber: "15030012345",
+  iban: null,
+  bic: null,
+  currency: "NOK",
+  ledgerAccountId: 1002,
+  ledgerAccountNumber: "1920",
+  ledgerAccountName: "Bankinnskudd",
+  source: "file",
+  feedStartDay: null,
+  feed: null,
+  csvMapping: null,
+  active: true,
+  openLines: 2,
+  lastStatementTo: "2026-11-07",
+  revision: 1,
+  ...change,
+});
+
+export const bankLine = (change: Partial<AccountingBankLine> = {}): AccountingBankLine => ({
+  id: 8101,
+  statementId: 9001,
+  bankAccountId: 7001,
+  bookedOn: "2026-11-04",
+  valueOn: null,
+  amount: "-95.00",
+  text: "Gebyr nettbank",
+  reference: "",
+  kid: null,
+  counterpartyName: "",
+  counterpartyAccount: "",
+  bankId: "DNB-1",
+  kind: "transfer",
+  reversal: false,
+  source: "camt053",
+  batch: [],
+  state: "open",
+  match: null,
+  suggestions: [
+    {
+      key: "rule:1:1",
+      kind: "rule",
+      certainty: "likely",
+      exact: false,
+      reason: "The bank rule Bankgebyr: to account 7770.",
+      postings: [],
+      lines: [
+        {
+          accountId: 1002,
+          accountNumber: "1920",
+          accountName: "Bankinnskudd",
+          amount: "-95.00",
+          taxCodeId: null,
+          taxCode: null,
+        },
+        {
+          accountId: 1006,
+          accountNumber: "7770",
+          accountName: "Bankgebyrer",
+          amount: "95.00",
+          taxCodeId: null,
+          taxCode: null,
+        },
+      ],
+      supplierInvoiceId: null,
+      otherLineId: null,
+      bankRuleId: 1,
+    },
+  ],
+  customerPayment: false,
+  ...change,
+});
+
+const reconciliation = (state: ApiState): AccountingBankReconciliation => ({
+  bankAccount: (state.bankAccounts ?? [bankAccount()])[0],
+  from: "2026-11-01",
+  to: "2026-11-30",
+  lines: state.bankLines ?? [],
+  foot: {
+    statementBalance: "88655.00",
+    ledgerBalance: "88750.00",
+    difference: "-95.00",
+    unmatchedPostings: [],
+    unmatchedPostingsTotal: 0,
+  },
+});
 
 export const supplier = (change: Partial<AccountingSupplier> = {}): AccountingSupplier => ({
   id: 3001,
@@ -562,6 +665,18 @@ export const stubAccountingApi = (change: Partial<ApiState> = {}): StubbedFetch 
       );
     if (method === "POST" && path === "/setup") return jsonResponse(201, state.meta.settings);
     if (method === "GET" && path === "/lock") return jsonResponse(200, lock());
+    if (
+      method === "PUT" &&
+      path === "/lock" &&
+      state.bankUnreconciled &&
+      !JSON.parse(String(init?.body)).confirmUnreconciled
+    )
+      return jsonResponse(409, {
+        status: 409,
+        code: "bank_unreconciled",
+        title: "The bank is not reconciled through 2026-10-31",
+        detail: "Driftskonto: 2 lines not matched.",
+      });
     if (method === "PUT" && path === "/lock")
       return jsonResponse(200, { ...lock(), lockedThrough: JSON.parse(String(init?.body)).lockedThrough });
     if (method === "GET" && path === "/opening") return jsonResponse(200, state.opening);
@@ -779,6 +894,129 @@ export const stubAccountingApi = (change: Partial<ApiState> = {}): StubbedFetch 
             lastError: null,
           },
         ],
+      });
+    if (method === "GET" && path === "/bank/accounts")
+      return jsonResponse(200, {
+        items: state.bankAccounts ?? [],
+        suggested: state.bankSuggested
+          ? { name: "Fjord Bygg AS", accountNumber: "15030012345", iban: null, bic: null, ledgerAccountId: 1002 }
+          : null,
+        feed: { enabled: state.meta.bankFeedEnabled, connected: false, refused: false, provider: null },
+      });
+    if (method === "POST" && path === "/bank/accounts") return jsonResponse(201, bankAccount());
+    const bankOne = /^\/bank\/accounts\/(\d+)$/.exec(path);
+    if (method === "GET" && bankOne) return jsonResponse(200, (state.bankAccounts ?? [bankAccount()])[0]);
+    if (method === "GET" && /^\/bank\/accounts\/\d+\/reconciliation$/.test(path))
+      return jsonResponse(200, reconciliation(state));
+    if (method === "PUT" && /^\/bank\/accounts\/\d+\/csv-mapping$/.test(path)) return jsonResponse(200, bankAccount());
+    if (method === "POST" && /^\/bank\/accounts\/\d+\/csv-preview$/.test(path))
+      return jsonResponse(200, {
+        total: 2,
+        errors: 0,
+        rows: [
+          {
+            row: 2,
+            bookedOn: "2026-11-02",
+            amount: "10000.00",
+            text: "Innskudd",
+            reference: "",
+            kid: null,
+            counterpartyName: "",
+            error: null,
+          },
+          {
+            row: 3,
+            bookedOn: "2026-11-03",
+            amount: "-12.50",
+            text: "Gebyr",
+            reference: "",
+            kid: null,
+            counterpartyName: "",
+            error: null,
+          },
+        ],
+      });
+    if (method === "GET" && path === "/bank/statements") return jsonResponse(200, { items: [] });
+    if (method === "POST" && path === "/bank/imports")
+      return jsonResponse(201, {
+        statements: [
+          {
+            bankAccountId: 7001,
+            bankAccountName: "Driftskonto",
+            statementId: 9001,
+            source: "camt053",
+            periodFrom: "2026-11-01",
+            periodTo: "2026-11-07",
+            imported: 5,
+            skipped: 1,
+            continuity: "gap",
+            continuityDetail: "No statement covers 2026-10-25 to 2026-10-31.",
+            repeated: false,
+          },
+        ],
+        unknownAccounts: ["30001234567"],
+        notBooked: 1,
+      });
+    const lineAction = /^\/bank\/lines\/(\d+)\/(accept|code|undo)$/.exec(path);
+    if (method === "POST" && lineAction) {
+      const found = (state.bankLines ?? []).find((l) => l.id === Number(lineAction[1])) ?? bankLine();
+      const matched: AccountingBankLine =
+        lineAction[2] === "undo"
+          ? { ...found, state: "open", match: null }
+          : {
+              ...found,
+              state: "matched",
+              suggestions: [],
+              match: {
+                id: 1,
+                kind: lineAction[2] === "code" ? "coded" : "rule",
+                reason: "Coded",
+                voucherId: 5002,
+                matchedAt: STAMP,
+                matchedByUserId: "11111111-1111-1111-1111-111111111111",
+                postings: [],
+              },
+            };
+      return jsonResponse(lineAction[2] === "code" ? 201 : 200, matched);
+    }
+    if (method === "POST" && path === "/bank/lines/accept-exact") {
+      const body = JSON.parse(String(init?.body));
+      return jsonResponse(200, { accepted: body.lineIds, skipped: [] });
+    }
+    if (method === "GET" && path === "/bank/status")
+      return jsonResponse(200, {
+        through: url.searchParams.get("through"),
+        reconciled: (state.bankLines ?? []).length === 0,
+        accounts: [
+          {
+            bankAccountId: 7001,
+            name: "Driftskonto",
+            openLines: (state.bankLines ?? []).length,
+            statementBalance: null,
+            ledgerBalance: "0.00",
+            difference: null,
+            reconciled: (state.bankLines ?? []).length === 0,
+          },
+        ],
+      });
+    if (method === "GET" && path === "/bank/rules") return jsonResponse(200, { items: state.bankRules ?? [] });
+    if (method === "POST" && path === "/bank/rules")
+      return jsonResponse(201, {
+        id: 1,
+        name: "Bankgebyr",
+        bankAccountId: null,
+        textContains: "gebyr",
+        counterpartyContains: null,
+        direction: "out",
+        accountId: 1006,
+        accountNumber: "7770",
+        accountName: "Bankgebyrer",
+        taxCodeId: null,
+        taxCode: null,
+        projectId: null,
+        description: "",
+        active: true,
+        version: 1,
       });
     return new Response(null, { status: 404 });
   });
