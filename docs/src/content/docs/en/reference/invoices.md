@@ -1,6 +1,6 @@
 ---
 title: "Invoices module"
-description: "The sales document: the seller record, gap-free numbering, VAT, issue and immutability, credit notes, invoicing work, consumption and orders, billing runs, the PDF, payments, sending, the journal, the export and retention."
+description: "The sales document: the seller record, gap-free numbering, VAT, issue and immutability, credit notes, invoicing work, consumption and orders, billing runs, the PDF, payments, write-offs and recovered payments, sending, the journal, the export and retention."
 sources:
   - apps/server/internal/invoices
   - apps/invoices/frontend
@@ -14,6 +14,7 @@ sources:
   - apps/server/internal/db/migrations/00178_invoices_bank_feed.sql
   - apps/server/internal/db/migrations/00179_invoices_bank_feed_cursor.sql
   - apps/server/internal/db/migrations/00180_invoices_journal.sql
+  - apps/server/internal/db/migrations/00182_invoices_write_offs.sql
   - apps/server/internal/docmath
 ---
 The Invoices module issues the sales document of Norwegian bookkeeping: a draft
@@ -2262,7 +2263,9 @@ reason non-empty, another the amount above 0, and the foreign key is `ON DELETE
 RESTRICT`. The API refuses first, with its own codes; the triggers are the floor.
 
 **The state is derived, never stored.** Judged against today's [business day](#the-business-day), with `credited`
-the issued credit notes' gross (0 for a credit note) and `paid` the live payments' sum,
+the issued credit notes' gross (0 for a credit note), `paid` what settles the principal —
+the live payments that are not recoveries, plus the standing
+[write-off](#write-offs-and-recovered-payments) — and `writtenOff` that write-off's amount,
 the first match wins:
 
 | State | When |
@@ -2270,6 +2273,7 @@ the first match wins:
 | `draft` | a draft, invoice or credit note |
 | `issued` | an issued credit note |
 | `credited` | an issued invoice with `credited > 0` and `credited ≥ gross` |
+| `written_off` | gross − credited − paid ≤ 0 and `writtenOff > 0` |
 | `paid` | gross − credited − paid ≤ 0 |
 | `overdue` | the due date is before today |
 | `partially_paid` | something is paid |
@@ -2280,17 +2284,25 @@ first (the money is then a refund due); a paid invoice is never `overdue`; a lat
 payment is `overdue`, not `partially_paid` — overdue is the fact that matters. An invoice
 is not overdue on its due date, and is from the day after. `credited > 0` keeps an
 invoice of free lines only (gross 0, which can never be credited) out of `credited`: it is
-`paid`, nothing being open. The rule lives once in SQL, `invoices.document_state(kind,
-status, gross, credited, paid, due_date, today)`, `IMMUTABLE`, with `today` always a
-parameter from the server's clock and never `CURRENT_DATE`; the list and the stats filter
-with it. `documentState` in `state.go` is its Go mirror, for one response at a time, and
+`paid`, nothing being open. The rule lives once in SQL, `invoices.invoice_state(kind,
+status, gross, credited, paid, written_off, due_date, today)` (migration 00182; 00035's
+`document_state` is its rule without the write-off, which the overdue checks still call
+with the write-off counted in `paid`), `IMMUTABLE`, with `today` always a parameter from
+the server's clock and never `CURRENT_DATE`; the list and the stats filter with it. What
+settles the principal is one SQL function too, `invoices.settled_amount(invoice_id)`, which
+every open amount this module derives reads — the list, the stats, the customer's
+receivables, the overdue list and the reminder runs, the attention items, the bank queue's
+candidates, the pay page — so a written-off invoice is not open, not overdue and never
+reminded. `documentState` in `state.go` is its Go mirror, for one response at a time, and
 a test runs every combination through both.
 
 Every document answers `state`. An issued invoice also answers `paidAmount`,
 `openAmount` (which may be negative), `refundDue` only while the open amount is below
 zero, and `payments`; a draft and a credit note answer none of them — money is absent,
-not null, where it does not apply. `GET /invoices?state=` takes one of `open`,
-`partially_paid`, `overdue`, `paid` or `credited` — anything else is a 400 — combines with
+not null, where it does not apply. An issued invoice answers `writtenOffAmount`,
+`recoveredAmount` and `writeOffs` too, and each payment its `kind`. `GET /invoices?state=`
+takes one of `open`, `partially_paid`, `overdue`, `paid`, `written_off` or `credited` —
+anything else is a 400 — combines with
 the other filters, and only an issued invoice can match it. Each list item answers
 `state` and, on an issued invoice, `openAmount`. The list's order is unchanged: there is
 no sort by state.
@@ -2299,6 +2311,49 @@ no sort by state.
 says to do with it today — a reminder or the collection notice with the letter as it
 would go, a suggested hand-off, or why it waits or is blocked ([The rules](#the-rules)) —
 and `reminders`, its letters ([Runs](#runs)). A paid invoice answers `none`.
+
+## Write-offs and recovered payments
+
+Decided in [`docs/superpowers/specs/2026-11-14-accounting-design.md`](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-11-14-accounting-design.md)
+(A16 as amended by R4): an invoice's receivable given up, which a ledger cannot do
+without. All three writes are `invoices:payments` — "what the company says it is owed",
+as registering and removing a payment are; the design's `invoices:write` is no key of this
+module, and payments are the nearest precedent.
+
+**Writing off.** `POST /invoices/{id}/write-off` takes `writtenOffOn` (on or after the
+issue date and not after today's business day), `reason` — `loss` (a loss that is
+konstatert), `rounding` (a small difference) or `other` — and `vatCorrection` (default
+false; only with `loss`, else 400: mval. § 4-7 takes back the VAT of a konstatert loss).
+A credit note is refused 409 `credit_note_no_payments`, a draft `invoice_draft`. The
+write locks the invoice `FOR UPDATE`, reads the open amount and the live Vipps
+reservations under the lock ([Payments and the state of an invoice](#payments-and-the-state-of-an-invoice)),
+refuses 409 `vipps_in_progress` while a reservation holds part of it and `invoice_settled`
+when nothing is open — a standing write-off included — and writes the whole open amount
+off: an `invoices.write_offs` row with the day, the amount, the currency, the reason, the
+flag and who and when. The invoice is then `written_off`.
+
+**The undo.** `POST /invoices/{id}/write-off/undo` takes a `reason` (1–200 characters
+once trimmed), locks the invoice, and sets `undone_at`, `undone_by_user_id` and
+`undo_reason` together on the standing write-off; none standing is 409 `no_write_off`.
+It is always allowed — Invoices cannot see a ledger's lock and does not need to: the
+ledger books the undoing in its first open period — **except while a recovered payment of
+it stands** (409 `write_off_recovered`), for that money would then belong to no
+write-off: remove the recoveries first, undo, and register them as payments. A new
+write-off may follow an undo.
+
+**Money that arrives after it.** `POST /invoices/{id}/payments` with `kind: recovered`
+registers a payment of kind `recovered`, naming the standing write-off (`writeOffId`): 409
+`no_write_off` without one, and `recovery_exceeds_written_off` above what is written off
+less the live recoveries, with `openAmount` the room left. A recovery is not part of the
+open amount — the write-off closed that — so the invoice stays `written_off`; it is
+removed like any payment.
+
+**The database keeps it.** `invoices.write_offs` (migration 00182) is immutable but for
+the undo (`tr_write_offs_immutable`), belongs to an issued invoice
+(`tr_write_offs_parent`, `FOR SHARE`), holds at most one standing write-off per invoice
+(`ux_write_offs_live`), and keeps `vat_correction` to a loss. A payment's `kind` is
+`payment` or `recovered`, a recovery names its write-off and is `manual`
+(`ck_payments_recovered`). The Down refuses while a write-off or a recovery exists.
 
 ## Charges
 
@@ -5697,13 +5752,18 @@ after them again until a page comes back short; a page is at most 500
   (`issueDraft`), the quick invoice (`issueLocked`), a credit note, a settlement — takes
   its number with `AllocateNumber`, which holds the `documents` counter row from the
   allocation to the commit, so numbers become visible in order.
+- **`Document(ctx, id)`** — the issued invoice or credit note with that id, as `Documents`
+  answers one, read by its key; nil when there is none or it is a draft. A ledger reads a
+  written-off invoice's VAT summaries through it, and a fact it retries.
 - **`Facts(ctx, afterSeq, limit)`** — [the fact log](#the-fact-log) after `afterSeq`, in
-  seq order, each joined to what it is about: kind, seq, the payment's or charge
-  payment's id, the business day, the invoice's id, number and customer, the amount in
-  NOK, the source (`manual`, `ocr`, `camt054`, `vipps`, `bank_feed`), and the receiving
-  account number when it came from a bank line — a file's or the bank feed's (`""`
-  otherwise). A `bank_feed` payment the feed matched has no registering user and makes
-  its facts like any other. A charge payment's fact, and its
+  seq order, each joined to what it is about: kind, seq, the payment's, charge
+  payment's or write-off's id, the business day, the invoice's id, number and customer,
+  the amount in NOK, the source (`manual`, `ocr`, `camt054`, `vipps`, `bank_feed`), the
+  receiving account number when it came from a bank line — a file's or the bank feed's
+  (`""` otherwise), and on a write-off's fact and a recovered payment's the write-off
+  (`WriteOff`: its id, reason, VAT-correction flag and amount in NOK). A `bank_feed`
+  payment the feed matched has no registering user and makes its facts like any other.
+  A charge payment's fact, and its
   removal's, carries its amount and nothing more: it has no parts. A charge payment pays
   whatever the invoice's letters claimed, and how that divides between fees, interest and
   what was paid beyond them moves as later letters, waivers and removals change
@@ -5713,7 +5773,8 @@ after them again until a page comes back short; a page is at most 500
   invoices numbered after `afterNumber`, in number order, that were issued on or before
   `day` and whose open amount at the end of that day is not zero: the gross, less the
   credit notes issued on or before the day, less the payments paid on or before it and not
-  removed by the end of it in the workspace's business time zone. Charges are never in it;
+  removed by the end of it in the workspace's business time zone, less the write-offs made
+  on or before it and not undone by the end of it. A recovered payment is not in it. Charges are never in it;
   below zero is credit owed back. The page is read in one read-only `REPEATABLE READ`
   snapshot, and its `AsOfSeq` is the highest fact seq that snapshot saw (0 when there is
   none): for every invoice numbered within the page — after `afterNumber`, up to its last
@@ -5729,7 +5790,9 @@ A document has its number; a payment does not have an order a reader can resume 
 its id is taken before its transaction commits, and a removal is an update.
 `invoices.journal_facts` (migration 00180) gives them one: a row for every registration
 and every removal of a payment and of a charge payment, with `seq`, `kind` (`payment`,
-`payment_removed`, `charge_payment`, `charge_payment_removed`), the row it is about
+`payment_removed`, `charge_payment`, `charge_payment_removed`; migration 00182 adds
+`write_off`, `write_off_undone`, `recovered_payment` and `recovered_payment_removed`), the
+row it is about
 (`subject_id`), the invoice, and the day — a registration's `paid_on` in
 `business_date`; a removal's moment in `removed_at`, whose business day the provider
 takes, since this schema cannot read the workspace's time zone. Exactly one of the two is
@@ -5744,6 +5807,11 @@ set, and one fact of each kind exists for a row (`ux_journal_facts_subject`).
   registration and then its removal; a savepoint rolled back takes its facts with it.
   Every path that registers or removes — a person, a bank line matched or applied, a
   reversal, a Vipps capture — writes its fact without knowing it.
+  Migration 00182 names a recovered payment's facts `recovered_payment` and
+  `recovered_payment_removed` (the trigger reads the row's `kind`), and adds two more
+  deferred triggers on `write_offs` (`tr_write_offs_journal_made`,
+  `tr_write_offs_journal_undone`): a write-off is `write_off` on its `written_off_on`, its
+  undoing `write_off_undone` at `undone_at`, whose business day the provider takes.
 - **Numbered at commit.** `seq` comes from the counter row `journal`, beside `documents`
   in `invoices.counters`, made by the first fact. The deferred trigger takes it last thing
   before the commit and holds it for that instant, so two transactions take their seqs in
