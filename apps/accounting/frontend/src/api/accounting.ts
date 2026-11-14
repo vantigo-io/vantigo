@@ -528,3 +528,71 @@ export const vatPostingsQueryOptions = (filters: VatPostingFilters) =>
     queryFn: ({ signal }) =>
       request<AccountingVatPostingList>(`${BASE}/vat/postings${queryString({ ...filters })}`, { signal }),
   });
+
+export type AccountingSaftExport = Schemas["AccountingSaftExport"];
+export type AccountingSaftExportCheck = Schemas["AccountingSaftExportCheck"];
+export type AccountingSaftExportCreated = Schemas["AccountingSaftExportCreated"];
+export type AccountingSaftExportList = Schemas["AccountingSaftExportList"];
+export type AccountingSaftImport = Schemas["AccountingSaftImport"];
+export type AccountingSaftImportApply = Schemas["AccountingSaftImportApply"];
+export type AccountingSaftImportList = Schemas["AccountingSaftImportList"];
+
+/** The SAF-T exports (A24), newest first; refetched while one is queued or running. */
+export const saftExportsQueryOptions = () =>
+  queryOptions({
+    queryKey: [ACCOUNTING_QUERY_KEY, "saft", "exports"],
+    queryFn: ({ signal }) => request<AccountingSaftExportList>(`${BASE}/saft-exports`, { signal }),
+    select: (answer) => answer.items,
+    refetchInterval: (query) =>
+      query.state.data?.items.some((e) => e.state === "queued" || e.state === "running") ? 3000 : false,
+  });
+
+/** What an export of the selection would meet: the accounts with no grouping code, the company's details. */
+export const saftExportCheckQueryOptions = (fiscalYear: number, fromPeriod: number, toPeriod: number) =>
+  queryOptions({
+    queryKey: [ACCOUNTING_QUERY_KEY, "saft", "check", fiscalYear, fromPeriod, toPeriod],
+    queryFn: ({ signal }) =>
+      request<AccountingSaftExportCheck>(
+        `${BASE}/saft-exports/check${queryString({ fiscalYear, fromPeriod, toPeriod })}`,
+        {
+          signal,
+        },
+      ),
+  });
+
+export const createSaftExport = (body: { fiscalYear: number; fromPeriod: number; toPeriod: number }) =>
+  send<AccountingSaftExportCreated>(`${BASE}/saft-exports`, json("POST", body));
+
+/** The address an export's file downloads from. */
+export const saftExportFileUrl = (id: number, part: number) => appUrl(`${BASE}/saft-exports/${id}/files/${part}`);
+
+/** The SAF-T files uploaded to set up the books from (A25). */
+export const saftImportsQueryOptions = () =>
+  queryOptions({
+    queryKey: [ACCOUNTING_QUERY_KEY, "saft", "imports"],
+    queryFn: ({ signal }) => request<AccountingSaftImportList>(`${BASE}/saft-imports`, { signal }),
+    select: (answer) => answer.items,
+  });
+
+/** An import's preview, its customers matched again through Customers. */
+export const saftImportQueryOptions = (id: number) =>
+  queryOptions({
+    queryKey: [ACCOUNTING_QUERY_KEY, "saft", "import", id],
+    queryFn: ({ signal }) => request<AccountingSaftImport>(`${BASE}/saft-imports/${id}`, { signal }),
+  });
+
+/** Uploads a SAF-T file: multipart, the field `file`; answers its preview. */
+export const uploadSaftImport = async (file: File): Promise<AccountingSaftImport> => {
+  const form = new FormData();
+  form.append("file", file);
+  const response = await fetch(appUrl(`${BASE}/saft-imports`), { method: "POST", body: form, credentials: "include" });
+  if (response.status === 401) await handleUnauthorized();
+  if (response.ok) return (await response.json()) as AccountingSaftImport;
+  throw await refusalOf(response);
+};
+
+export const applySaftImport = (id: number, body: AccountingSaftImportApply) =>
+  send<AccountingSaftImport>(`${BASE}/saft-imports/${id}/apply`, json("POST", body));
+
+/** The address an imported file downloads from, as it was uploaded. */
+export const saftImportFileUrl = (id: number) => appUrl(`${BASE}/saft-imports/${id}/file`);

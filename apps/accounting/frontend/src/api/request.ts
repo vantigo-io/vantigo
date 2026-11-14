@@ -163,6 +163,16 @@ export const refusalCodes = [
   "vat_term_inconsistent",
   "vat_term_partial",
   "vat_term_rate_missing",
+  "saft_seller_missing",
+  "saft_file_invalid",
+  "saft_version_unsupported",
+  "saft_file_too_large",
+  "saft_import_ledger_has_vouchers",
+  "saft_import_applied",
+  "saft_import_unresolved",
+  "saft_import_unmatched_customers",
+  "saft_import_parties_mismatch",
+  "saft_import_books_start_mismatch",
 ] as const;
 export type RefusalCode = (typeof refusalCodes)[number];
 

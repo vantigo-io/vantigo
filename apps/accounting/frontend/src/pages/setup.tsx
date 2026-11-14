@@ -9,11 +9,13 @@ import { type AccountingVatTerm, metaQueryOptions, setUpBooks, vatTerms } from "
 import { ACCOUNTING_QUERY_KEY, refusedFields } from "../api/request";
 import { refusalMessage, useAccountingFormat } from "../lib/format";
 import { ACCOUNTING_HOME_ROUTE_PATH, OPENING_ROUTE_PATH } from "../lib/routes";
+import { SaftImportPanel } from "./saft-import";
 
 /**
  * Set up the books (R12): the first day the books cover, the fiscal year's
  * first month, the VAT term and the language the default chart is named in.
- * It seeds the chart, the tax codes and the system roles, once.
+ * It seeds the chart, the tax codes and the system roles, once. Coming from
+ * another system, the SAF-T file sets the books up instead (A25).
  */
 export const SetupPage = () => {
   const { t, locale } = useAccountingFormat();
@@ -122,6 +124,11 @@ export const SetupPage = () => {
           </Stack>
         </form>
       </Card>
+      {meta.data?.canClose && (
+        <Stack maw={960}>
+          <SaftImportPanel />
+        </Stack>
+      )}
     </Stack>
   );
 };

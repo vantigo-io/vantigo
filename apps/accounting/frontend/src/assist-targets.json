@@ -310,5 +310,65 @@
       "en": "The button on a closed VAT term's page that downloads the return as Skatteetaten's XML, to file at Skatteetaten by hand.",
       "nb": "Knappen på en lukket mva-termins side som laster ned mva-meldingen som Skatteetatens XML, til å levere hos Skatteetaten."
     }
+  },
+  {
+    "key": "accounting.saft.year",
+    "route": "/accounting/saft",
+    "label": {
+      "en": "SAF-T fiscal year",
+      "nb": "Regnskapsår for SAF-T"
+    },
+    "description": {
+      "en": "The fiscal year, and the periods beside it, a SAF-T export covers.",
+      "nb": "Regnskapsåret, og periodene ved siden av, en SAF-T-eksport dekker."
+    }
+  },
+  {
+    "key": "accounting.saft.export",
+    "route": "/accounting/saft",
+    "label": {
+      "en": "Export SAF-T",
+      "nb": "Eksporter SAF-T"
+    },
+    "description": {
+      "en": "The button that asks for the SAF-T Financial file of the selection.",
+      "nb": "Knappen som bestiller SAF-T Financial-filen for utvalget."
+    }
+  },
+  {
+    "key": "accounting.saft.exports",
+    "route": "/accounting/saft",
+    "label": {
+      "en": "SAF-T exports",
+      "nb": "SAF-T-eksporter"
+    },
+    "description": {
+      "en": "The list of exports with who asked, when, the state and the files to download.",
+      "nb": "Listen over eksporter med hvem som bestilte, når, status og filene som kan lastes ned."
+    }
+  },
+  {
+    "key": "accounting.saft.import",
+    "route": "/accounting/setup",
+    "label": {
+      "en": "Coming from another system?",
+      "nb": "Kommer du fra et annet system?"
+    },
+    "description": {
+      "en": "Where the SAF-T file from the old system is uploaded to set up the books.",
+      "nb": "Der SAF-T-filen fra det gamle systemet lastes opp for å sette opp regnskapet."
+    }
+  },
+  {
+    "key": "accounting.saft.apply",
+    "route": "/accounting/setup",
+    "label": {
+      "en": "Set up the books from the file",
+      "nb": "Sett opp regnskapet fra filen"
+    },
+    "description": {
+      "en": "The button that sets the books up from the SAF-T file's preview.",
+      "nb": "Knappen som setter opp regnskapet fra forhåndsvisningen av SAF-T-filen."
+    }
   }
 ]
