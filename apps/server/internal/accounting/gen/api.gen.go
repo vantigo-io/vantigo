@@ -153,6 +153,7 @@ const (
 	ProfitAndLoss AccountingReportKind = "profit_and_loss"
 	Suppliers     AccountingReportKind = "suppliers"
 	TrialBalance  AccountingReportKind = "trial_balance"
+	Vat           AccountingReportKind = "vat"
 )
 
 // Valid indicates whether the value is a known member of the AccountingReportKind enum.
@@ -171,6 +172,8 @@ func (e AccountingReportKind) Valid() bool {
 	case Suppliers:
 		return true
 	case TrialBalance:
+		return true
+	case Vat:
 		return true
 	default:
 		return false
@@ -365,19 +368,133 @@ func (e AccountingTaxDirection) Valid() bool {
 
 // Defines values for AccountingTaxRole.
 const (
-	Base       AccountingTaxRole = "base"
-	Tax        AccountingTaxRole = "tax"
-	TaxReverse AccountingTaxRole = "tax_reverse"
+	AccountingTaxRoleBase       AccountingTaxRole = "base"
+	AccountingTaxRoleTax        AccountingTaxRole = "tax"
+	AccountingTaxRoleTaxReverse AccountingTaxRole = "tax_reverse"
 )
 
 // Valid indicates whether the value is a known member of the AccountingTaxRole enum.
 func (e AccountingTaxRole) Valid() bool {
 	switch e {
-	case Base:
+	case AccountingTaxRoleBase:
 		return true
-	case Tax:
+	case AccountingTaxRoleTax:
 		return true
-	case TaxReverse:
+	case AccountingTaxRoleTaxReverse:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AccountingVatGroup.
+const (
+	EmissionsGold     AccountingVatGroup = "emissions_gold"
+	Fish              AccountingVatGroup = "fish"
+	ImportGoods       AccountingVatGroup = "import_goods"
+	ImportServices    AccountingVatGroup = "import_services"
+	NotReported       AccountingVatGroup = "not_reported"
+	PurchasesDomestic AccountingVatGroup = "purchases_domestic"
+	SalesAbroad       AccountingVatGroup = "sales_abroad"
+	SalesDomestic     AccountingVatGroup = "sales_domestic"
+)
+
+// Valid indicates whether the value is a known member of the AccountingVatGroup enum.
+func (e AccountingVatGroup) Valid() bool {
+	switch e {
+	case EmissionsGold:
+		return true
+	case Fish:
+		return true
+	case ImportGoods:
+		return true
+	case ImportServices:
+		return true
+	case NotReported:
+		return true
+	case PurchasesDomestic:
+		return true
+	case SalesAbroad:
+		return true
+	case SalesDomestic:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AccountingVatPart.
+const (
+	AccountingVatPartBase        AccountingVatPart = "base"
+	AccountingVatPartCalculated  AccountingVatPart = "calculated"
+	AccountingVatPartDeducted    AccountingVatPart = "deducted"
+	AccountingVatPartLoss        AccountingVatPart = "loss"
+	AccountingVatPartLossBase    AccountingVatPart = "loss_base"
+	AccountingVatPartNotDeducted AccountingVatPart = "not_deducted"
+	AccountingVatPartOther       AccountingVatPart = "other"
+	AccountingVatPartOutput      AccountingVatPart = "output"
+	AccountingVatPartUntaxed     AccountingVatPart = "untaxed"
+)
+
+// Valid indicates whether the value is a known member of the AccountingVatPart enum.
+func (e AccountingVatPart) Valid() bool {
+	switch e {
+	case AccountingVatPartBase:
+		return true
+	case AccountingVatPartCalculated:
+		return true
+	case AccountingVatPartDeducted:
+		return true
+	case AccountingVatPartLoss:
+		return true
+	case AccountingVatPartLossBase:
+		return true
+	case AccountingVatPartNotDeducted:
+		return true
+	case AccountingVatPartOther:
+		return true
+	case AccountingVatPartOutput:
+		return true
+	case AccountingVatPartUntaxed:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AccountingVatReturnDirection.
+const (
+	Pay     AccountingVatReturnDirection = "pay"
+	Receive AccountingVatReturnDirection = "receive"
+	Zero    AccountingVatReturnDirection = "zero"
+)
+
+// Valid indicates whether the value is a known member of the AccountingVatReturnDirection enum.
+func (e AccountingVatReturnDirection) Valid() bool {
+	switch e {
+	case Pay:
+		return true
+	case Receive:
+		return true
+	case Zero:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AccountingVatReturnLineSide.
+const (
+	AccountingVatReturnLineSideDeduction AccountingVatReturnLineSide = "deduction"
+	AccountingVatReturnLineSideOutput    AccountingVatReturnLineSide = "output"
+)
+
+// Valid indicates whether the value is a known member of the AccountingVatReturnLineSide enum.
+func (e AccountingVatReturnLineSide) Valid() bool {
+	switch e {
+	case AccountingVatReturnLineSideDeduction:
+		return true
+	case AccountingVatReturnLineSideOutput:
 		return true
 	default:
 		return false
@@ -399,6 +516,48 @@ func (e AccountingVatTerm) Valid() bool {
 	case AccountingVatTermNone:
 		return true
 	case AccountingVatTermYearly:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AccountingVatTermEventKind.
+const (
+	AccountingVatTermEventKindClosed   AccountingVatTermEventKind = "closed"
+	AccountingVatTermEventKindFiled    AccountingVatTermEventKind = "filed"
+	AccountingVatTermEventKindReopened AccountingVatTermEventKind = "reopened"
+	AccountingVatTermEventKindUnfiled  AccountingVatTermEventKind = "unfiled"
+)
+
+// Valid indicates whether the value is a known member of the AccountingVatTermEventKind enum.
+func (e AccountingVatTermEventKind) Valid() bool {
+	switch e {
+	case AccountingVatTermEventKindClosed:
+		return true
+	case AccountingVatTermEventKindFiled:
+		return true
+	case AccountingVatTermEventKindReopened:
+		return true
+	case AccountingVatTermEventKindUnfiled:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AccountingVatTermState.
+const (
+	AccountingVatTermStateClosed AccountingVatTermState = "closed"
+	AccountingVatTermStateOpen   AccountingVatTermState = "open"
+)
+
+// Valid indicates whether the value is a known member of the AccountingVatTermState enum.
+func (e AccountingVatTermState) Valid() bool {
+	switch e {
+	case AccountingVatTermStateClosed:
+		return true
+	case AccountingVatTermStateOpen:
 		return true
 	default:
 		return false
@@ -728,6 +887,18 @@ type AccountingMeta struct {
 	// Unposted Source facts under Needs attention, not yet posted (A15).
 	Unposted int32 `json:"unposted"`
 
+	// VatNextTerm The next VAT term due — the earliest not filed that has ended, else the one that holds today; null when vatTerm is none.
+	VatNextTerm *AccountingVatTermItem `json:"vatNextTerm"`
+
+	// VatRegistrationMismatch Whether the books' vatTerm disagrees with the seller's VAT registration in Invoices (R10).
+	VatRegistrationMismatch bool `json:"vatRegistrationMismatch"`
+
+	// VatTermsToClose VAT terms that have ended and are not closed.
+	VatTermsToClose int32 `json:"vatTermsToClose"`
+
+	// VatTermsToFile VAT terms past their due date and not marked as filed.
+	VatTermsToFile int32 `json:"vatTermsToFile"`
+
 	// VouchersThisYear Vouchers in the fiscal year of today.
 	VouchersThisYear int32 `json:"vouchersThisYear"`
 }
@@ -953,7 +1124,7 @@ type AccountingPreviewLine struct {
 	TaxRole   *AccountingTaxRole `json:"taxRole"`
 }
 
-// AccountingProblem An RFC 9457 problem with this module's refusal code (accounting design §2, §13). code names the rule that refused and is what a client keys off, never the words: books_not_set_up (409: every operation but the meta and the setup, until Set up the books has run, R12), books_already_set_up (409: a second setup), revision_conflict (409: the revision has moved on), account_number_taken (409), account_has_postings (409: a delete of an account with postings, or a change of its number or kind), account_has_role (409: a delete of an account holding a system role; move the role first), account_inactive (400: a line on an inactive account), account_unknown (400), tax_code_unknown (400: an unknown or inactive tax code), tax_code_no_rate (400: no rate period covers the voucher's date), rate_period_invalid (400: a new rate period that does not start after the current one's start), party_required (400: a line on receivables or payables without a customer or supplier), party_not_allowed (400: a party on a line of another account, or both a customer and a supplier), open_item_unknown (400: an open item of another party or kind), voucher_unbalanced (400: the lines and their computed tax do not sum to zero; the detail names the difference), voucher_empty (400: no line, or every line zero), amount_invalid (400: not an exact decimal with at most two places, or zero), date_before_books_start (400), period_locked (409: a voucher a person posts dated on or before the lock, A8), voucher_owned_by_source (409: a reversal of a voucher the system posted, which only its source reverses, A7), voucher_already_reversed (409), opening_exists (409: an opening voucher stands and is not reversed), opening_locked (409: an opening entered or reversed after the first lock, A9), lock_not_month_end (400), lock_reason_required (400: a lock moved back without a reason), lock_before_books_start (400), settlement_source_document (409: an item that stands for a document in Invoices is paid there, R5), settlement_exceeds_balance (409: more than the item's balance), settlement_settled (409: an item with nothing left), bank_account_invalid (400: not an active asset account), attachment_too_large (400: over 20 MB), storage_not_configured (503: no object store for attachments), report_account_required (400: the account report without accountId), period_invalid (400: from after to, or a period over 366 days for the journal), open_item_source_document (400: a person's voucher naming an open item that stands for a document in Invoices, which moves with Invoices' own facts), report_too_large (400: the journal or an account's specification over 50 000 postings; choose a shorter period), lock_in_future (400: a lock after the end of the current month), books_start_too_early (400: books that start before 2022-01-01, the first day the seeded rates are known to hold), account_kind_mismatch (400: an account whose kind is not its number's class's — 1 asset, 20 equity, 21–29 liability, 3 income, 4–7 expense, 8 income or expense — or a number outside the classes 1 to 8; a system role moved to an account of another kind than the role's), reverse_charge_gross (400: a gross journal with a reverse-charge code, which is entered net), posting_rule_name_taken (409), posting_rule_match_taken (409: a rule with the same scope and match exists), posting_rule_default (409: a default rule is never deleted, only pointed at another account), unposted_already_posted (409: a retry of a fact that has posted), supplier_organisation_number_taken (409: another supplier has that organisation number), supplier_bank_account_invalid (400: not eleven digits passing mod 11), supplier_has_postings (409: a delete of a supplier with postings or invoices; make it inactive), supplier_inactive (400: a new invoice for an inactive supplier), duplicate_supplier_invoice (409: the same supplier's number of the same kind on another invoice that is not reversed), supplier_invoice_not_draft (409: a change, a delete, a post or a file removed on an invoice that is not a draft), supplier_invoice_not_posted (409: a payment or Reverse and copy on an invoice that is not posted), supplier_invoice_file_required (409: Post without an attached file), supplier_invoice_total_mismatch (400: the lines' gross does not sum to the total), tax_code_not_purchase (400: an output code on a purchase line), exchange_rate_required (400: another currency without the rate or the NOK total), supplier_invoice_settled (409: a payment on an invoice with nothing left), payment_exceeds_balance (409: a payment of more than is left), payment_removed (409: a payment removed already), settlement_supplier_invoice (409: an item that stands for a supplier invoice is paid on the invoice), unposted_wrong_reason (409: an action for another reason than the row's), brreg_unavailable (502: Brønnøysundregisteret could not be reached), supplier_invoice_has_payments (409: Reverse and copy of an invoice with a payment standing; remove the payment first), tax_code_not_for_supplier_invoice (400: an import code — 14, 15, 20, 21, 22, 81 to 85 — on a supplier invoice line; import VAT is a manual journal), exchange_rate_mismatch (400: both the rate and the NOK total, and they disagree), credit_note_invoice_not_posted (409: Post of a credit note whose invoice is no longer posted), credit_note_currency_mismatch (409: a credit note in another currency than the invoice it credits), credit_note_exceeds_balance (409: a credit note of more than is left on the credited invoice), supplier_invoice_item_in_use (409: Reverse and copy of an invoice whose open item another voucher standing posts on — a credit note, a payment, a settlement; reverse that first), supplier_retained (409: anonymising a person supplier before its retention date), supplier_anonymised (409: a change or an anonymisation of a supplier anonymised already), expense_already_invoiced (409: an expense made into a supplier invoice already). errors carries the field errors of a 400, keyed by the camelCase path (lines[2].accountId).
+// AccountingProblem An RFC 9457 problem with this module's refusal code (accounting design §2, §13). code names the rule that refused and is what a client keys off, never the words: books_not_set_up (409: every operation but the meta and the setup, until Set up the books has run, R12), books_already_set_up (409: a second setup), revision_conflict (409: the revision has moved on), account_number_taken (409), account_has_postings (409: a delete of an account with postings, or a change of its number or kind), account_has_role (409: a delete of an account holding a system role; move the role first), account_inactive (400: a line on an inactive account), account_unknown (400), tax_code_unknown (400: an unknown or inactive tax code), tax_code_no_rate (400: no rate period covers the voucher's date), rate_period_invalid (400: a new rate period that does not start after the current one's start), party_required (400: a line on receivables or payables without a customer or supplier), party_not_allowed (400: a party on a line of another account, or both a customer and a supplier), open_item_unknown (400: an open item of another party or kind), voucher_unbalanced (400: the lines and their computed tax do not sum to zero; the detail names the difference), voucher_empty (400: no line, or every line zero), amount_invalid (400: not an exact decimal with at most two places, or zero), date_before_books_start (400), period_locked (409: a voucher a person posts dated on or before the lock, A8), voucher_owned_by_source (409: a reversal of a voucher the system posted, which only its source reverses, A7), voucher_already_reversed (409), opening_exists (409: an opening voucher stands and is not reversed), opening_locked (409: an opening entered or reversed after the first lock, A9), lock_not_month_end (400), lock_reason_required (400: a lock moved back without a reason), lock_before_books_start (400), settlement_source_document (409: an item that stands for a document in Invoices is paid there, R5), settlement_exceeds_balance (409: more than the item's balance), settlement_settled (409: an item with nothing left), bank_account_invalid (400: not an active asset account), attachment_too_large (400: over 20 MB), storage_not_configured (503: no object store for attachments), report_account_required (400: the account report without accountId), period_invalid (400: from after to, or a period over 366 days for the journal), open_item_source_document (400: a person's voucher naming an open item that stands for a document in Invoices, which moves with Invoices' own facts), report_too_large (400: the journal or an account's specification over 50 000 postings; choose a shorter period), lock_in_future (400: a lock after the end of the current month), books_start_too_early (400: books that start before 2022-01-01, the first day the seeded rates are known to hold), account_kind_mismatch (400: an account whose kind is not its number's class's — 1 asset, 20 equity, 21–29 liability, 3 income, 4–7 expense, 8 income or expense — or a number outside the classes 1 to 8; a system role moved to an account of another kind than the role's), reverse_charge_gross (400: a gross journal with a reverse-charge code, which is entered net), posting_rule_name_taken (409), posting_rule_match_taken (409: a rule with the same scope and match exists), posting_rule_default (409: a default rule is never deleted, only pointed at another account), unposted_already_posted (409: a retry of a fact that has posted), supplier_organisation_number_taken (409: another supplier has that organisation number), supplier_bank_account_invalid (400: not eleven digits passing mod 11), supplier_has_postings (409: a delete of a supplier with postings or invoices; make it inactive), supplier_inactive (400: a new invoice for an inactive supplier), duplicate_supplier_invoice (409: the same supplier's number of the same kind on another invoice that is not reversed), supplier_invoice_not_draft (409: a change, a delete, a post or a file removed on an invoice that is not a draft), supplier_invoice_not_posted (409: a payment or Reverse and copy on an invoice that is not posted), supplier_invoice_file_required (409: Post without an attached file), supplier_invoice_total_mismatch (400: the lines' gross does not sum to the total), tax_code_not_purchase (400: an output code on a purchase line), exchange_rate_required (400: another currency without the rate or the NOK total), supplier_invoice_settled (409: a payment on an invoice with nothing left), payment_exceeds_balance (409: a payment of more than is left), payment_removed (409: a payment removed already), settlement_supplier_invoice (409: an item that stands for a supplier invoice is paid on the invoice), unposted_wrong_reason (409: an action for another reason than the row's), brreg_unavailable (502: Brønnøysundregisteret could not be reached), supplier_invoice_has_payments (409: Reverse and copy of an invoice with a payment standing; remove the payment first), tax_code_not_for_supplier_invoice (400: an import code — 14, 15, 20, 21, 22, 81 to 85 — on a supplier invoice line; import VAT is a manual journal), exchange_rate_mismatch (400: both the rate and the NOK total, and they disagree), credit_note_invoice_not_posted (409: Post of a credit note whose invoice is no longer posted), credit_note_currency_mismatch (409: a credit note in another currency than the invoice it credits), credit_note_exceeds_balance (409: a credit note of more than is left on the credited invoice), supplier_invoice_item_in_use (409: Reverse and copy of an invoice whose open item another voucher standing posts on — a credit note, a payment, a settlement; reverse that first), supplier_retained (409: anonymising a person supplier before its retention date), supplier_anonymised (409: a change or an anonymisation of a supplier anonymised already), expense_already_invoiced (409: an expense made into a supplier invoice already), vat_not_registered (409: a VAT term of books whose vatTerm is none), vat_term_closed (409: a close of a closed term), vat_term_not_ended (409: a close before the term's last day has passed), vat_term_out_of_order (409: a close while an earlier term is open), vat_term_attention (409: a close while Needs attention holds facts that wait dated in the term; the detail counts them), vat_term_lock_after_end (409: a close while the lock is on or after the term's last day; move the lock back first), vat_term_unreconciled (409: a close while the VAT accounts' movement differs from the return's VAT; the detail names the vouchers), vat_term_not_closed (409: a reopening, a filing or the XML of an open term), vat_term_filed (409: a reopening or a second filing of a filed term), vat_term_not_latest (409: a reopening while a later term is closed), vat_term_not_filed (409: an unfiling of a term not filed), lock_behind_filed_term (409: the lock moved back behind a term filed at Skatteetaten, R10). errors carries the field errors of a 400, keyed by the camelCase path (lines[2].accountId).
 type AccountingProblem struct {
 	Code     *string              `json:"code,omitempty"`
 	Detail   *string              `json:"detail,omitempty"`
@@ -1007,7 +1178,10 @@ type AccountingReportRow struct {
 
 	// SupplierInvoiceId The supplier invoice an item row stands for, which the screen links to.
 	SupplierInvoiceId *int64 `json:"supplierInvoiceId"`
-	VoucherId         *int64 `json:"voucherId"`
+
+	// TaxCodeId On the VAT specification, the tax code a row is about, which the screen drills into.
+	TaxCodeId *int32 `json:"taxCodeId"`
+	VoucherId *int64 `json:"voucherId"`
 }
 
 // AccountingReportRowStyle defines model for AccountingReportRow.Style.
@@ -1513,8 +1687,310 @@ type AccountingUnpostedList struct {
 	Total int32                `json:"total"`
 }
 
+// AccountingVatCloseChecks What a term's close would refuse now, each check apart, so the confirm dialog can say so before it is asked (A22, R10).
+type AccountingVatCloseChecks struct {
+	// Attention Facts under Needs attention that wait, dated in the term (vat_term_attention when above zero).
+	Attention int32 `json:"attention"`
+
+	// EarlierOpen The earliest term before this one that is not closed (vat_term_out_of_order); null when none.
+	EarlierOpen *AccountingVatTermItem `json:"earlierOpen"`
+
+	// Ended Whether the term's last day has passed (vat_term_not_ended when not).
+	Ended bool `json:"ended"`
+
+	// LockAfterEnd Whether the lock is on or after the term's last day (vat_term_lock_after_end), so the settlement voucher cannot be posted on it.
+	LockAfterEnd bool `json:"lockAfterEnd"`
+
+	// Reconciled Whether the VAT accounts' movement in the term is the return's VAT (vat_term_unreconciled when not).
+	Reconciled bool `json:"reconciled"`
+}
+
+// AccountingVatCodeFigures One tax code's figures in a period, at one rate and one specification (A21). Every amount is exact, in the return's sign: a base sales or purchases positive, VAT owed positive and VAT deducted negative.
+type AccountingVatCodeFigures struct {
+	// Base The base, from the postings with the code as their base.
+	Base string `json:"base"`
+
+	// CalculatedVat Reverse charge and import's calculated VAT (tax_reverse), owed.
+	CalculatedVat string `json:"calculatedVat"`
+	Code          string `json:"code"`
+
+	// DeductedVat Input VAT deducted (tax on a VAT account), negative.
+	DeductedVat string                 `json:"deductedVat"`
+	Direction   AccountingTaxDirection `json:"direction"`
+
+	// Group The return's groups, in its order (Skatteetaten's mvaKodeSAFT list's temaRekkefoelge): sales in Norway, sales abroad, purchases in Norway, goods from abroad, services from abroad, fish, emission allowances and gold; not_reported for 0, 7, 20, 21 and 22.
+	Group AccountingVatGroup `json:"group"`
+
+	// LossVat The VAT a konstatert loss takes back (tapPåKrav), negative; a recovery gives it back.
+	LossVat string `json:"lossVat"`
+	Name    string `json:"name"`
+
+	// NotDeductedVat Input VAT posted on a cost account, not deducted; the return leaves it out.
+	NotDeductedVat string `json:"notDeductedVat"`
+
+	// OutputVat Output VAT on sales.
+	OutputVat string `json:"outputVat"`
+
+	// Postings The postings behind the row.
+	Postings int32 `json:"postings"`
+
+	// RatePercent The rate on the postings' voucher dates; null for a code without one.
+	RatePercent *string `json:"ratePercent"`
+
+	// Reported false for 0, 7, 20, 21 and 22, which the return leaves out.
+	Reported      bool `json:"reported"`
+	ReverseCharge bool `json:"reverseCharge"`
+
+	// Specification tapPåKrav for a loss's row; null otherwise.
+	Specification *string `json:"specification"`
+	TaxCodeId     int32   `json:"taxCodeId"`
+
+	// Vat outputVat + calculatedVat + deductedVat + lossVat.
+	Vat string `json:"vat"`
+}
+
+// AccountingVatFilingInput defines model for AccountingVatFilingInput.
+type AccountingVatFilingInput struct {
+	// FiledAt The day the return was filed at Skatteetaten; not before the term's close, not after today.
+	FiledAt openapi_types.Date `json:"filedAt"`
+
+	// Reference Skatteetaten's reference for the filing (the receipt's).
+	Reference string `json:"reference"`
+}
+
+// AccountingVatGroup The return's groups, in its order (Skatteetaten's mvaKodeSAFT list's temaRekkefoelge): sales in Norway, sales abroad, purchases in Norway, goods from abroad, services from abroad, fish, emission allowances and gold; not_reported for 0, 7, 20, 21 and 22.
+type AccountingVatGroup string
+
+// AccountingVatPart A posting's part of the specification: base, output (output VAT), calculated (tax_reverse), deducted (input VAT on a VAT account), not_deducted (input VAT on a cost account), loss (tapPåKrav VAT), loss_base (the loss's share on bad_debt), untaxed (no tax code, on a VAT account), other.
+type AccountingVatPart string
+
+// AccountingVatPosting defines model for AccountingVatPosting.
+type AccountingVatPosting struct {
+	AccountId     int32  `json:"accountId"`
+	AccountName   string `json:"accountName"`
+	AccountNumber string `json:"accountNumber"`
+
+	// Amount Signed: debit positive, credit negative.
+	Amount      string `json:"amount"`
+	Description string `json:"description"`
+	LineNo      int32  `json:"lineNo"`
+
+	// Part A posting's part of the specification: base, output (output VAT), calculated (tax_reverse), deducted (input VAT on a VAT account), not_deducted (input VAT on a cost account), loss (tapPåKrav VAT), loss_base (the loss's share on bad_debt), untaxed (no tax code, on a VAT account), other.
+	Part               AccountingVatPart    `json:"part"`
+	TaxBase            *string              `json:"taxBase"`
+	TaxCode            *string              `json:"taxCode"`
+	TaxCodeId          *int32               `json:"taxCodeId"`
+	TaxRole            *AccountingTaxRole   `json:"taxRole"`
+	TaxSpecification   *string              `json:"taxSpecification"`
+	Voucher            AccountingVoucherRef `json:"voucher"`
+	VoucherDate        openapi_types.Date   `json:"voucherDate"`
+	VoucherDescription string               `json:"voucherDescription"`
+}
+
+// AccountingVatPostingList defines model for AccountingVatPostingList.
+type AccountingVatPostingList struct {
+	Items []AccountingVatPosting `json:"items"`
+
+	// Total The postings that match, beyond this page too.
+	Total int32 `json:"total"`
+}
+
+// AccountingVatReasonInput defines model for AccountingVatReasonInput.
+type AccountingVatReasonInput struct {
+	Reason string `json:"reason"`
+}
+
+// AccountingVatReconciliation The VAT accounts' movement in the period beside the VAT the return counts (R10). They differ when a posting lands on a VAT account without a tax code the return counts — a manual posting straight onto 2700 — or a counted tax posting is not on a VAT account; those postings are listed.
+type AccountingVatReconciliation struct {
+	Accounts []AccountingVatReconciliationAccount `json:"accounts"`
+
+	// Counted The tax postings the return counts, in the ledger's sign.
+	Counted string `json:"counted"`
+
+	// Difference movement − counted.
+	Difference string `json:"difference"`
+
+	// Movement The VAT accounts' movement (debit positive), the settlement vouchers left out.
+	Movement string `json:"movement"`
+
+	// Postings The postings that cause the difference, the first 200.
+	Postings   []AccountingVatPosting `json:"postings"`
+	Reconciled bool                   `json:"reconciled"`
+}
+
+// AccountingVatReconciliationAccount defines model for AccountingVatReconciliationAccount.
+type AccountingVatReconciliationAccount struct {
+	AccountId     int32  `json:"accountId"`
+	AccountName   string `json:"accountName"`
+	AccountNumber string `json:"accountNumber"`
+	Counted       string `json:"counted"`
+	Difference    string `json:"difference"`
+	Movement      string `json:"movement"`
+
+	// VatAccount Whether a tax code names it as its VAT or counter account.
+	VatAccount bool `json:"vatAccount"`
+}
+
+// AccountingVatReturn The return laid out as Skatteetaten's (A23): the code lines in the return's groups and order, reverse charge and import as two lines of one code, the specification lines, in whole kroner with the decimals cut (rules R082 and R019), and the total to pay (positive) or to receive (negative). exactTotal is the ledger's; roundingDifference = exactTotal − total, which the settlement voucher posts to the rounding account.
+type AccountingVatReturn struct {
+	Direction  AccountingVatReturnDirection `json:"direction"`
+	ExactTotal string                       `json:"exactTotal"`
+	Lines      []AccountingVatReturnLine    `json:"lines"`
+
+	// OrganisationNumber The seller's, from Invoices; null when it has none, and the XML is then without it.
+	OrganisationNumber *string            `json:"organisationNumber"`
+	PeriodEnd          openapi_types.Date `json:"periodEnd"`
+
+	// PeriodName The term as the schema names it — januar-februar … november-desember, or aarlig.
+	PeriodName         string             `json:"periodName"`
+	PeriodStart        openapi_types.Date `json:"periodStart"`
+	RoundingDifference string             `json:"roundingDifference"`
+
+	// Total fastsattMerverdiavgift, whole kroner.
+	Total string `json:"total"`
+
+	// Warnings What Skatteetaten's validation will ask about (a line with the opposite sign carries the remark kreditnota; no organisation number).
+	Warnings []string `json:"warnings"`
+	Year     int32    `json:"year"`
+}
+
+// AccountingVatReturnDirection defines model for AccountingVatReturn.Direction.
+type AccountingVatReturnDirection string
+
+// AccountingVatReturnLine One mvaSpesifikasjonslinje. A code with an output side carries base and rate (grunnlag, sats); a deduction carries the VAT alone, negative.
+type AccountingVatReturnLine struct {
+	// Base grunnlag, whole kroner; null on a deduction or a specification line.
+	Base *string `json:"base"`
+
+	// Code mvaKode, the tax code's own code.
+	Code      string  `json:"code"`
+	ExactBase *string `json:"exactBase"`
+	ExactVat  string  `json:"exactVat"`
+
+	// Group The return's groups, in its order (Skatteetaten's mvaKodeSAFT list's temaRekkefoelge): sales in Norway, sales abroad, purchases in Norway, goods from abroad, services from abroad, fish, emission allowances and gold; not_reported for 0, 7, 20, 21 and 22.
+	Group AccountingVatGroup `json:"group"`
+
+	// Name mvaKodeRegnskapsystem, the tax code's name in the books.
+	Name string `json:"name"`
+
+	// Rate sats as the return writes it (25, 15, 12, 11,11, 0); null on a deduction.
+	Rate *string `json:"rate"`
+
+	// Remark utvalgtMerknad — kreditnota on a line with the sign opposite to the code's (rules R020, R021); null otherwise.
+	Remark *string                     `json:"remark"`
+	Side   AccountingVatReturnLineSide `json:"side"`
+
+	// Specification spesifikasjon — tapPåKrav; null otherwise.
+	Specification *string `json:"specification"`
+
+	// TaxCodeId The tax code the line is computed from (for tapPåKrav, the output code the loss was posted with).
+	TaxCodeId int32 `json:"taxCodeId"`
+
+	// Vat merverdiavgift, whole kroner.
+	Vat string `json:"vat"`
+}
+
+// AccountingVatReturnLineSide defines model for AccountingVatReturnLine.Side.
+type AccountingVatReturnLineSide string
+
+// AccountingVatSpecification The merverdiavgiftsspesifikasjon (A11, A21), computed from the postings by voucher date, never stored.
+type AccountingVatSpecification struct {
+	// Codes The reported codes, in the return's order.
+	Codes []AccountingVatCodeFigures `json:"codes"`
+	From  openapi_types.Date         `json:"from"`
+
+	// NotReported The codes the return leaves out (reported false), listed apart.
+	NotReported []AccountingVatCodeFigures `json:"notReported"`
+	ProducedAt  time.Time                  `json:"producedAt"`
+
+	// Reconciliation The VAT accounts' movement in the period beside the VAT the return counts (R10). They differ when a posting lands on a VAT account without a tax code the return counts — a manual posting straight onto 2700 — or a counted tax posting is not on a VAT account; those postings are listed.
+	Reconciliation AccountingVatReconciliation `json:"reconciliation"`
+	To             openapi_types.Date          `json:"to"`
+}
+
 // AccountingVatTerm The VAT terms (A2): none when the seller is not VAT-registered.
 type AccountingVatTerm string
+
+// AccountingVatTermDetail defines model for AccountingVatTermDetail.
+type AccountingVatTermDetail struct {
+	// Checks What a term's close would refuse now, each check apart, so the confirm dialog can say so before it is asked (A22, R10).
+	Checks AccountingVatCloseChecks `json:"checks"`
+
+	// Events Newest first.
+	Events []AccountingVatTermEvent `json:"events"`
+
+	// Return The return as figures — as closed (the snapshot) for a closed term, as the books stand now for an open one.
+	Return AccountingVatReturn `json:"return"`
+
+	// Specification The merverdiavgiftsspesifikasjon (A11, A21), computed from the postings by voucher date, never stored.
+	Specification AccountingVatSpecification `json:"specification"`
+
+	// Term A VAT term (A22): derived from the settings — six two-month terms a calendar year, or one — from the term that holds books_start.
+	Term AccountingVatTermItem `json:"term"`
+}
+
+// AccountingVatTermEvent defines model for AccountingVatTermEvent.
+type AccountingVatTermEvent struct {
+	At             time.Time                  `json:"at"`
+	ByUserId       openapi_types.UUID         `json:"byUserId"`
+	FiledAt        *openapi_types.Date        `json:"filedAt"`
+	FiledReference *string                    `json:"filedReference"`
+	Kind           AccountingVatTermEventKind `json:"kind"`
+	Reason         *string                    `json:"reason"`
+
+	// Voucher The settlement voucher a close posted, or its reversal a reopening posted.
+	Voucher *AccountingVoucherRef `json:"voucher"`
+}
+
+// AccountingVatTermEventKind defines model for AccountingVatTermEvent.Kind.
+type AccountingVatTermEventKind string
+
+// AccountingVatTermItem A VAT term (A22): derived from the settings — six two-month terms a calendar year, or one — from the term that holds books_start.
+type AccountingVatTermItem struct {
+	ClosedAt       *time.Time          `json:"closedAt"`
+	ClosedByUserId *openapi_types.UUID `json:"closedByUserId"`
+
+	// DueDate The day the return and the payment are due — one month and ten days after the term, the third two-month term on 31 August, a yearly term on 10 March.
+	DueDate        openapi_types.Date  `json:"dueDate"`
+	FiledAt        *openapi_types.Date `json:"filedAt"`
+	FiledByUserId  *openapi_types.UUID `json:"filedByUserId"`
+	FiledReference *string             `json:"filedReference"`
+
+	// LockCovers Whether the lock reaches the term's last day. A closed term the lock was moved back behind may have postings the return does not hold.
+	LockCovers bool `json:"lockCovers"`
+
+	// NeedsClosing The term has ended and is not closed.
+	NeedsClosing bool `json:"needsClosing"`
+
+	// NeedsFiling The term is past its due date and not marked as filed.
+	NeedsFiling bool `json:"needsFiling"`
+
+	// Number The term in its year, 1 to 6 (bimonthly) or 1 (yearly).
+	Number      int32              `json:"number"`
+	PeriodEnd   openapi_types.Date `json:"periodEnd"`
+	PeriodName  string             `json:"periodName"`
+	PeriodStart openapi_types.Date `json:"periodStart"`
+
+	// SettlementVoucher The settlement voucher of a closed term; null when nothing moved, and on an open term.
+	SettlementVoucher *AccountingVoucherRef  `json:"settlementVoucher"`
+	State             AccountingVatTermState `json:"state"`
+
+	// Total The return's total in whole kroner, to pay (positive) or to receive (negative) — as closed, or as the books stand now.
+	Total string `json:"total"`
+	Year  int32  `json:"year"`
+}
+
+// AccountingVatTermList defines model for AccountingVatTermList.
+type AccountingVatTermList struct {
+	// Terms Oldest first, through the term that holds today; empty when vatTerm is none.
+	Terms []AccountingVatTermItem `json:"terms"`
+
+	// VatTerm The VAT terms (A2): none when the seller is not VAT-registered.
+	VatTerm AccountingVatTerm `json:"vatTerm"`
+}
+
+// AccountingVatTermState defines model for AccountingVatTermState.
+type AccountingVatTermState string
 
 // AccountingVoucher defines model for AccountingVoucher.
 type AccountingVoucher struct {
@@ -1721,6 +2197,27 @@ type ListAccountingUnpostedParams struct {
 	Limit *int32 `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// ListAccountingVatPostingsParams defines parameters for ListAccountingVatPostings.
+type ListAccountingVatPostingsParams struct {
+	From      openapi_types.Date `form:"from" json:"from"`
+	To        openapi_types.Date `form:"to" json:"to"`
+	TaxCodeId *int32             `form:"taxCodeId,omitempty" json:"taxCodeId,omitempty"`
+	Part      *AccountingVatPart `form:"part,omitempty" json:"part,omitempty"`
+
+	// Unreconciled Only the postings that make the VAT accounts' movement differ from the return's VAT.
+	Unreconciled *bool  `form:"unreconciled,omitempty" json:"unreconciled,omitempty"`
+	Offset       *int32 `form:"offset,omitempty" json:"offset,omitempty"`
+
+	// Limit Default 100, at most 500.
+	Limit *int32 `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// GetAccountingVatSpecificationParams defines parameters for GetAccountingVatSpecification.
+type GetAccountingVatSpecificationParams struct {
+	From openapi_types.Date `form:"from" json:"from"`
+	To   openapi_types.Date `form:"to" json:"to"`
+}
+
 // ListAccountingVouchersParams defines parameters for ListAccountingVouchers.
 type ListAccountingVouchersParams struct {
 	From *openapi_types.Date    `form:"from,omitempty" json:"from,omitempty"`
@@ -1810,6 +2307,15 @@ type EnterAccountingUnpostedNokAmountsJSONRequestBody = AccountingNokAmountsInpu
 
 // MakeAccountingUnpostedSupplierInvoiceJSONRequestBody defines body for MakeAccountingUnpostedSupplierInvoice for application/json ContentType.
 type MakeAccountingUnpostedSupplierInvoiceJSONRequestBody = AccountingMakeSupplierInvoiceInput
+
+// FileAccountingVatTermJSONRequestBody defines body for FileAccountingVatTerm for application/json ContentType.
+type FileAccountingVatTermJSONRequestBody = AccountingVatFilingInput
+
+// ReopenAccountingVatTermJSONRequestBody defines body for ReopenAccountingVatTerm for application/json ContentType.
+type ReopenAccountingVatTermJSONRequestBody = AccountingVatReasonInput
+
+// UnfileAccountingVatTermJSONRequestBody defines body for UnfileAccountingVatTerm for application/json ContentType.
+type UnfileAccountingVatTermJSONRequestBody = AccountingVatReasonInput
 
 // PostAccountingVoucherJSONRequestBody defines body for PostAccountingVoucher for application/json ContentType.
 type PostAccountingVoucherJSONRequestBody = AccountingJournalInput
@@ -1978,6 +2484,33 @@ type ServerInterface interface {
 	// MakeAccountingUnpostedSupplierInvoice Make a supplier invoice from an expense of the supplier_invoice kind
 	// (POST /api/v1/accounting/unposted/{id}/supplier-invoice)
 	MakeAccountingUnpostedSupplierInvoice(w http.ResponseWriter, r *http.Request, id int64)
+	// ListAccountingVatPostings List the postings behind a VAT figure
+	// (GET /api/v1/accounting/vat/postings)
+	ListAccountingVatPostings(w http.ResponseWriter, r *http.Request, params ListAccountingVatPostingsParams)
+	// GetAccountingVatSpecification Get the VAT specification
+	// (GET /api/v1/accounting/vat/specification)
+	GetAccountingVatSpecification(w http.ResponseWriter, r *http.Request, params GetAccountingVatSpecificationParams)
+	// ListAccountingVatTerms List the VAT terms
+	// (GET /api/v1/accounting/vat/terms)
+	ListAccountingVatTerms(w http.ResponseWriter, r *http.Request)
+	// GetAccountingVatTerm Get a VAT term
+	// (GET /api/v1/accounting/vat/terms/{year}/{number})
+	GetAccountingVatTerm(w http.ResponseWriter, r *http.Request, year int32, number int32)
+	// CloseAccountingVatTerm Close a VAT term
+	// (POST /api/v1/accounting/vat/terms/{year}/{number}/close)
+	CloseAccountingVatTerm(w http.ResponseWriter, r *http.Request, year int32, number int32)
+	// FileAccountingVatTerm Mark a VAT term as filed
+	// (POST /api/v1/accounting/vat/terms/{year}/{number}/filing)
+	FileAccountingVatTerm(w http.ResponseWriter, r *http.Request, year int32, number int32)
+	// ReopenAccountingVatTerm Reopen a VAT term
+	// (POST /api/v1/accounting/vat/terms/{year}/{number}/reopen)
+	ReopenAccountingVatTerm(w http.ResponseWriter, r *http.Request, year int32, number int32)
+	// UnfileAccountingVatTerm Remove a VAT term's filing mark
+	// (POST /api/v1/accounting/vat/terms/{year}/{number}/unfile)
+	UnfileAccountingVatTerm(w http.ResponseWriter, r *http.Request, year int32, number int32)
+	// DownloadAccountingVatReturn Download a VAT term's return as XML
+	// (GET /api/v1/accounting/vat/terms/{year}/{number}/xml)
+	DownloadAccountingVatReturn(w http.ResponseWriter, r *http.Request, year int32, number int32)
 	// ListAccountingVouchers List vouchers
 	// (GET /api/v1/accounting/vouchers)
 	ListAccountingVouchers(w http.ResponseWriter, r *http.Request, params ListAccountingVouchersParams)
@@ -3730,6 +4263,387 @@ func (siw *ServerInterfaceWrapper) MakeAccountingUnpostedSupplierInvoice(w http.
 	handler.ServeHTTP(w, r)
 }
 
+// ListAccountingVatPostings operation middleware
+func (siw *ServerInterfaceWrapper) ListAccountingVatPostings(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListAccountingVatPostingsParams
+
+	// ------------- Required query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "string", Format: "date"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Required query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "string", Format: "date"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "taxCodeId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "taxCodeId", r.URL.Query(), &params.TaxCodeId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "taxCodeId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "taxCodeId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "part" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "part", r.URL.Query(), &params.Part, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "part"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "part", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "unreconciled" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "unreconciled", r.URL.Query(), &params.Unreconciled, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "unreconciled"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "unreconciled", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "offset", r.URL.Query(), &params.Offset, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "offset"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "offset", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAccountingVatPostings(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAccountingVatSpecification operation middleware
+func (siw *ServerInterfaceWrapper) GetAccountingVatSpecification(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetAccountingVatSpecificationParams
+
+	// ------------- Required query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "string", Format: "date"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Required query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "string", Format: "date"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAccountingVatSpecification(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListAccountingVatTerms operation middleware
+func (siw *ServerInterfaceWrapper) ListAccountingVatTerms(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAccountingVatTerms(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAccountingVatTerm operation middleware
+func (siw *ServerInterfaceWrapper) GetAccountingVatTerm(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "year" -------------
+	var year int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "year", r.PathValue("year"), &year, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "year", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "number" -------------
+	var number int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "number", r.PathValue("number"), &number, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "number", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAccountingVatTerm(w, r, year, number)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CloseAccountingVatTerm operation middleware
+func (siw *ServerInterfaceWrapper) CloseAccountingVatTerm(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "year" -------------
+	var year int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "year", r.PathValue("year"), &year, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "year", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "number" -------------
+	var number int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "number", r.PathValue("number"), &number, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "number", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CloseAccountingVatTerm(w, r, year, number)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// FileAccountingVatTerm operation middleware
+func (siw *ServerInterfaceWrapper) FileAccountingVatTerm(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "year" -------------
+	var year int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "year", r.PathValue("year"), &year, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "year", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "number" -------------
+	var number int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "number", r.PathValue("number"), &number, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "number", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.FileAccountingVatTerm(w, r, year, number)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ReopenAccountingVatTerm operation middleware
+func (siw *ServerInterfaceWrapper) ReopenAccountingVatTerm(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "year" -------------
+	var year int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "year", r.PathValue("year"), &year, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "year", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "number" -------------
+	var number int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "number", r.PathValue("number"), &number, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "number", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ReopenAccountingVatTerm(w, r, year, number)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UnfileAccountingVatTerm operation middleware
+func (siw *ServerInterfaceWrapper) UnfileAccountingVatTerm(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "year" -------------
+	var year int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "year", r.PathValue("year"), &year, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "year", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "number" -------------
+	var number int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "number", r.PathValue("number"), &number, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "number", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UnfileAccountingVatTerm(w, r, year, number)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DownloadAccountingVatReturn operation middleware
+func (siw *ServerInterfaceWrapper) DownloadAccountingVatReturn(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "year" -------------
+	var year int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "year", r.PathValue("year"), &year, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "year", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "number" -------------
+	var number int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "number", r.PathValue("number"), &number, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "number", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DownloadAccountingVatReturn(w, r, year, number)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListAccountingVouchers operation middleware
 func (siw *ServerInterfaceWrapper) ListAccountingVouchers(w http.ResponseWriter, r *http.Request) {
 
@@ -4192,6 +5106,15 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/accounting/unposted/{id}/nok-amounts", wrapper.EnterAccountingUnpostedNokAmounts)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/accounting/unposted/{id}/retry", wrapper.RetryAccountingUnposted)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/accounting/unposted/{id}/supplier-invoice", wrapper.MakeAccountingUnpostedSupplierInvoice)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/accounting/vat/postings", wrapper.ListAccountingVatPostings)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/accounting/vat/specification", wrapper.GetAccountingVatSpecification)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/accounting/vat/terms", wrapper.ListAccountingVatTerms)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/accounting/vat/terms/{year}/{number}", wrapper.GetAccountingVatTerm)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/accounting/vat/terms/{year}/{number}/close", wrapper.CloseAccountingVatTerm)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/accounting/vat/terms/{year}/{number}/filing", wrapper.FileAccountingVatTerm)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/accounting/vat/terms/{year}/{number}/reopen", wrapper.ReopenAccountingVatTerm)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/accounting/vat/terms/{year}/{number}/unfile", wrapper.UnfileAccountingVatTerm)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/accounting/vat/terms/{year}/{number}/xml", wrapper.DownloadAccountingVatReturn)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/accounting/vouchers", wrapper.ListAccountingVouchers)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/accounting/vouchers", wrapper.PostAccountingVoucher)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/accounting/vouchers/preview", wrapper.PreviewAccountingVoucher)
@@ -8087,6 +9010,714 @@ func (response MakeAccountingUnpostedSupplierInvoice409ApplicationProblemPlusJSO
 	return err
 }
 
+type ListAccountingVatPostingsRequestObject struct {
+	Params ListAccountingVatPostingsParams
+}
+
+type ListAccountingVatPostingsResponseObject interface {
+	VisitListAccountingVatPostingsResponse(w http.ResponseWriter) error
+}
+
+type ListAccountingVatPostings200JSONResponse AccountingVatPostingList
+
+func (response ListAccountingVatPostings200JSONResponse) VisitListAccountingVatPostingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccountingVatPostings400ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response ListAccountingVatPostings400ApplicationProblemPlusJSONResponse) VisitListAccountingVatPostingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccountingVatPostings401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListAccountingVatPostings401JSONResponse) VisitListAccountingVatPostingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccountingVatPostings403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListAccountingVatPostings403JSONResponse) VisitListAccountingVatPostingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccountingVatPostings409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response ListAccountingVatPostings409ApplicationProblemPlusJSONResponse) VisitListAccountingVatPostingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountingVatSpecificationRequestObject struct {
+	Params GetAccountingVatSpecificationParams
+}
+
+type GetAccountingVatSpecificationResponseObject interface {
+	VisitGetAccountingVatSpecificationResponse(w http.ResponseWriter) error
+}
+
+type GetAccountingVatSpecification200JSONResponse AccountingVatSpecification
+
+func (response GetAccountingVatSpecification200JSONResponse) VisitGetAccountingVatSpecificationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountingVatSpecification400ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response GetAccountingVatSpecification400ApplicationProblemPlusJSONResponse) VisitGetAccountingVatSpecificationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountingVatSpecification401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetAccountingVatSpecification401JSONResponse) VisitGetAccountingVatSpecificationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountingVatSpecification403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetAccountingVatSpecification403JSONResponse) VisitGetAccountingVatSpecificationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountingVatSpecification409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response GetAccountingVatSpecification409ApplicationProblemPlusJSONResponse) VisitGetAccountingVatSpecificationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccountingVatTermsRequestObject struct {
+}
+
+type ListAccountingVatTermsResponseObject interface {
+	VisitListAccountingVatTermsResponse(w http.ResponseWriter) error
+}
+
+type ListAccountingVatTerms200JSONResponse AccountingVatTermList
+
+func (response ListAccountingVatTerms200JSONResponse) VisitListAccountingVatTermsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccountingVatTerms401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListAccountingVatTerms401JSONResponse) VisitListAccountingVatTermsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccountingVatTerms403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListAccountingVatTerms403JSONResponse) VisitListAccountingVatTermsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccountingVatTerms409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response ListAccountingVatTerms409ApplicationProblemPlusJSONResponse) VisitListAccountingVatTermsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountingVatTermRequestObject struct {
+	Year   int32 `json:"year"`
+	Number int32 `json:"number"`
+}
+
+type GetAccountingVatTermResponseObject interface {
+	VisitGetAccountingVatTermResponse(w http.ResponseWriter) error
+}
+
+type GetAccountingVatTerm200JSONResponse AccountingVatTermDetail
+
+func (response GetAccountingVatTerm200JSONResponse) VisitGetAccountingVatTermResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountingVatTerm401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetAccountingVatTerm401JSONResponse) VisitGetAccountingVatTermResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountingVatTerm403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetAccountingVatTerm403JSONResponse) VisitGetAccountingVatTermResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountingVatTerm404Response struct {
+}
+
+func (response GetAccountingVatTerm404Response) VisitGetAccountingVatTermResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type GetAccountingVatTerm409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response GetAccountingVatTerm409ApplicationProblemPlusJSONResponse) VisitGetAccountingVatTermResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CloseAccountingVatTermRequestObject struct {
+	Year   int32 `json:"year"`
+	Number int32 `json:"number"`
+}
+
+type CloseAccountingVatTermResponseObject interface {
+	VisitCloseAccountingVatTermResponse(w http.ResponseWriter) error
+}
+
+type CloseAccountingVatTerm200JSONResponse AccountingVatTermDetail
+
+func (response CloseAccountingVatTerm200JSONResponse) VisitCloseAccountingVatTermResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CloseAccountingVatTerm401JSONResponse externalRef0.AuthErrorResponse
+
+func (response CloseAccountingVatTerm401JSONResponse) VisitCloseAccountingVatTermResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CloseAccountingVatTerm403JSONResponse externalRef0.AuthErrorResponse
+
+func (response CloseAccountingVatTerm403JSONResponse) VisitCloseAccountingVatTermResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CloseAccountingVatTerm404Response struct {
+}
+
+func (response CloseAccountingVatTerm404Response) VisitCloseAccountingVatTermResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type CloseAccountingVatTerm409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response CloseAccountingVatTerm409ApplicationProblemPlusJSONResponse) VisitCloseAccountingVatTermResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type FileAccountingVatTermRequestObject struct {
+	Year   int32 `json:"year"`
+	Number int32 `json:"number"`
+	Body   *FileAccountingVatTermJSONRequestBody
+}
+
+type FileAccountingVatTermResponseObject interface {
+	VisitFileAccountingVatTermResponse(w http.ResponseWriter) error
+}
+
+type FileAccountingVatTerm200JSONResponse AccountingVatTermDetail
+
+func (response FileAccountingVatTerm200JSONResponse) VisitFileAccountingVatTermResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type FileAccountingVatTerm400ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response FileAccountingVatTerm400ApplicationProblemPlusJSONResponse) VisitFileAccountingVatTermResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type FileAccountingVatTerm401JSONResponse externalRef0.AuthErrorResponse
+
+func (response FileAccountingVatTerm401JSONResponse) VisitFileAccountingVatTermResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type FileAccountingVatTerm403JSONResponse externalRef0.AuthErrorResponse
+
+func (response FileAccountingVatTerm403JSONResponse) VisitFileAccountingVatTermResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type FileAccountingVatTerm404Response struct {
+}
+
+func (response FileAccountingVatTerm404Response) VisitFileAccountingVatTermResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type FileAccountingVatTerm409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response FileAccountingVatTerm409ApplicationProblemPlusJSONResponse) VisitFileAccountingVatTermResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReopenAccountingVatTermRequestObject struct {
+	Year   int32 `json:"year"`
+	Number int32 `json:"number"`
+	Body   *ReopenAccountingVatTermJSONRequestBody
+}
+
+type ReopenAccountingVatTermResponseObject interface {
+	VisitReopenAccountingVatTermResponse(w http.ResponseWriter) error
+}
+
+type ReopenAccountingVatTerm200JSONResponse AccountingVatTermDetail
+
+func (response ReopenAccountingVatTerm200JSONResponse) VisitReopenAccountingVatTermResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReopenAccountingVatTerm400ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response ReopenAccountingVatTerm400ApplicationProblemPlusJSONResponse) VisitReopenAccountingVatTermResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReopenAccountingVatTerm401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ReopenAccountingVatTerm401JSONResponse) VisitReopenAccountingVatTermResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReopenAccountingVatTerm403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ReopenAccountingVatTerm403JSONResponse) VisitReopenAccountingVatTermResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReopenAccountingVatTerm404Response struct {
+}
+
+func (response ReopenAccountingVatTerm404Response) VisitReopenAccountingVatTermResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type ReopenAccountingVatTerm409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response ReopenAccountingVatTerm409ApplicationProblemPlusJSONResponse) VisitReopenAccountingVatTermResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnfileAccountingVatTermRequestObject struct {
+	Year   int32 `json:"year"`
+	Number int32 `json:"number"`
+	Body   *UnfileAccountingVatTermJSONRequestBody
+}
+
+type UnfileAccountingVatTermResponseObject interface {
+	VisitUnfileAccountingVatTermResponse(w http.ResponseWriter) error
+}
+
+type UnfileAccountingVatTerm200JSONResponse AccountingVatTermDetail
+
+func (response UnfileAccountingVatTerm200JSONResponse) VisitUnfileAccountingVatTermResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnfileAccountingVatTerm400ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response UnfileAccountingVatTerm400ApplicationProblemPlusJSONResponse) VisitUnfileAccountingVatTermResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnfileAccountingVatTerm401JSONResponse externalRef0.AuthErrorResponse
+
+func (response UnfileAccountingVatTerm401JSONResponse) VisitUnfileAccountingVatTermResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnfileAccountingVatTerm403JSONResponse externalRef0.AuthErrorResponse
+
+func (response UnfileAccountingVatTerm403JSONResponse) VisitUnfileAccountingVatTermResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnfileAccountingVatTerm404Response struct {
+}
+
+func (response UnfileAccountingVatTerm404Response) VisitUnfileAccountingVatTermResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type UnfileAccountingVatTerm409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response UnfileAccountingVatTerm409ApplicationProblemPlusJSONResponse) VisitUnfileAccountingVatTermResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DownloadAccountingVatReturnRequestObject struct {
+	Year   int32 `json:"year"`
+	Number int32 `json:"number"`
+}
+
+type DownloadAccountingVatReturnResponseObject interface {
+	VisitDownloadAccountingVatReturnResponse(w http.ResponseWriter) error
+}
+
+type DownloadAccountingVatReturn200ApplicationxmlResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response DownloadAccountingVatReturn200ApplicationxmlResponse) VisitDownloadAccountingVatReturnResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "application/xml")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type DownloadAccountingVatReturn401JSONResponse externalRef0.AuthErrorResponse
+
+func (response DownloadAccountingVatReturn401JSONResponse) VisitDownloadAccountingVatReturnResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DownloadAccountingVatReturn403JSONResponse externalRef0.AuthErrorResponse
+
+func (response DownloadAccountingVatReturn403JSONResponse) VisitDownloadAccountingVatReturnResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DownloadAccountingVatReturn404Response struct {
+}
+
+func (response DownloadAccountingVatReturn404Response) VisitDownloadAccountingVatReturnResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type DownloadAccountingVatReturn409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response DownloadAccountingVatReturn409ApplicationProblemPlusJSONResponse) VisitDownloadAccountingVatReturnResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListAccountingVouchersRequestObject struct {
 	Params ListAccountingVouchersParams
 }
@@ -8816,6 +10447,33 @@ type StrictServerInterface interface {
 	// MakeAccountingUnpostedSupplierInvoice Make a supplier invoice from an expense of the supplier_invoice kind
 	// (POST /api/v1/accounting/unposted/{id}/supplier-invoice)
 	MakeAccountingUnpostedSupplierInvoice(ctx context.Context, request MakeAccountingUnpostedSupplierInvoiceRequestObject) (MakeAccountingUnpostedSupplierInvoiceResponseObject, error)
+	// ListAccountingVatPostings List the postings behind a VAT figure
+	// (GET /api/v1/accounting/vat/postings)
+	ListAccountingVatPostings(ctx context.Context, request ListAccountingVatPostingsRequestObject) (ListAccountingVatPostingsResponseObject, error)
+	// GetAccountingVatSpecification Get the VAT specification
+	// (GET /api/v1/accounting/vat/specification)
+	GetAccountingVatSpecification(ctx context.Context, request GetAccountingVatSpecificationRequestObject) (GetAccountingVatSpecificationResponseObject, error)
+	// ListAccountingVatTerms List the VAT terms
+	// (GET /api/v1/accounting/vat/terms)
+	ListAccountingVatTerms(ctx context.Context, request ListAccountingVatTermsRequestObject) (ListAccountingVatTermsResponseObject, error)
+	// GetAccountingVatTerm Get a VAT term
+	// (GET /api/v1/accounting/vat/terms/{year}/{number})
+	GetAccountingVatTerm(ctx context.Context, request GetAccountingVatTermRequestObject) (GetAccountingVatTermResponseObject, error)
+	// CloseAccountingVatTerm Close a VAT term
+	// (POST /api/v1/accounting/vat/terms/{year}/{number}/close)
+	CloseAccountingVatTerm(ctx context.Context, request CloseAccountingVatTermRequestObject) (CloseAccountingVatTermResponseObject, error)
+	// FileAccountingVatTerm Mark a VAT term as filed
+	// (POST /api/v1/accounting/vat/terms/{year}/{number}/filing)
+	FileAccountingVatTerm(ctx context.Context, request FileAccountingVatTermRequestObject) (FileAccountingVatTermResponseObject, error)
+	// ReopenAccountingVatTerm Reopen a VAT term
+	// (POST /api/v1/accounting/vat/terms/{year}/{number}/reopen)
+	ReopenAccountingVatTerm(ctx context.Context, request ReopenAccountingVatTermRequestObject) (ReopenAccountingVatTermResponseObject, error)
+	// UnfileAccountingVatTerm Remove a VAT term's filing mark
+	// (POST /api/v1/accounting/vat/terms/{year}/{number}/unfile)
+	UnfileAccountingVatTerm(ctx context.Context, request UnfileAccountingVatTermRequestObject) (UnfileAccountingVatTermResponseObject, error)
+	// DownloadAccountingVatReturn Download a VAT term's return as XML
+	// (GET /api/v1/accounting/vat/terms/{year}/{number}/xml)
+	DownloadAccountingVatReturn(ctx context.Context, request DownloadAccountingVatReturnRequestObject) (DownloadAccountingVatReturnResponseObject, error)
 	// ListAccountingVouchers List vouchers
 	// (GET /api/v1/accounting/vouchers)
 	ListAccountingVouchers(ctx context.Context, request ListAccountingVouchersRequestObject) (ListAccountingVouchersResponseObject, error)
@@ -10326,6 +11984,265 @@ func (sh *strictHandler) MakeAccountingUnpostedSupplierInvoice(w http.ResponseWr
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(MakeAccountingUnpostedSupplierInvoiceResponseObject); ok {
 		if err := validResponse.VisitMakeAccountingUnpostedSupplierInvoiceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListAccountingVatPostings operation middleware
+func (sh *strictHandler) ListAccountingVatPostings(w http.ResponseWriter, r *http.Request, params ListAccountingVatPostingsParams) {
+	var request ListAccountingVatPostingsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListAccountingVatPostings(ctx, request.(ListAccountingVatPostingsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListAccountingVatPostings")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListAccountingVatPostingsResponseObject); ok {
+		if err := validResponse.VisitListAccountingVatPostingsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAccountingVatSpecification operation middleware
+func (sh *strictHandler) GetAccountingVatSpecification(w http.ResponseWriter, r *http.Request, params GetAccountingVatSpecificationParams) {
+	var request GetAccountingVatSpecificationRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAccountingVatSpecification(ctx, request.(GetAccountingVatSpecificationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAccountingVatSpecification")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAccountingVatSpecificationResponseObject); ok {
+		if err := validResponse.VisitGetAccountingVatSpecificationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListAccountingVatTerms operation middleware
+func (sh *strictHandler) ListAccountingVatTerms(w http.ResponseWriter, r *http.Request) {
+	var request ListAccountingVatTermsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListAccountingVatTerms(ctx, request.(ListAccountingVatTermsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListAccountingVatTerms")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListAccountingVatTermsResponseObject); ok {
+		if err := validResponse.VisitListAccountingVatTermsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAccountingVatTerm operation middleware
+func (sh *strictHandler) GetAccountingVatTerm(w http.ResponseWriter, r *http.Request, year int32, number int32) {
+	var request GetAccountingVatTermRequestObject
+
+	request.Year = year
+	request.Number = number
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAccountingVatTerm(ctx, request.(GetAccountingVatTermRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAccountingVatTerm")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAccountingVatTermResponseObject); ok {
+		if err := validResponse.VisitGetAccountingVatTermResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CloseAccountingVatTerm operation middleware
+func (sh *strictHandler) CloseAccountingVatTerm(w http.ResponseWriter, r *http.Request, year int32, number int32) {
+	var request CloseAccountingVatTermRequestObject
+
+	request.Year = year
+	request.Number = number
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CloseAccountingVatTerm(ctx, request.(CloseAccountingVatTermRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CloseAccountingVatTerm")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CloseAccountingVatTermResponseObject); ok {
+		if err := validResponse.VisitCloseAccountingVatTermResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// FileAccountingVatTerm operation middleware
+func (sh *strictHandler) FileAccountingVatTerm(w http.ResponseWriter, r *http.Request, year int32, number int32) {
+	var request FileAccountingVatTermRequestObject
+
+	request.Year = year
+	request.Number = number
+
+	var body FileAccountingVatTermJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.FileAccountingVatTerm(ctx, request.(FileAccountingVatTermRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "FileAccountingVatTerm")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(FileAccountingVatTermResponseObject); ok {
+		if err := validResponse.VisitFileAccountingVatTermResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ReopenAccountingVatTerm operation middleware
+func (sh *strictHandler) ReopenAccountingVatTerm(w http.ResponseWriter, r *http.Request, year int32, number int32) {
+	var request ReopenAccountingVatTermRequestObject
+
+	request.Year = year
+	request.Number = number
+
+	var body ReopenAccountingVatTermJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ReopenAccountingVatTerm(ctx, request.(ReopenAccountingVatTermRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ReopenAccountingVatTerm")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ReopenAccountingVatTermResponseObject); ok {
+		if err := validResponse.VisitReopenAccountingVatTermResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UnfileAccountingVatTerm operation middleware
+func (sh *strictHandler) UnfileAccountingVatTerm(w http.ResponseWriter, r *http.Request, year int32, number int32) {
+	var request UnfileAccountingVatTermRequestObject
+
+	request.Year = year
+	request.Number = number
+
+	var body UnfileAccountingVatTermJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UnfileAccountingVatTerm(ctx, request.(UnfileAccountingVatTermRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UnfileAccountingVatTerm")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UnfileAccountingVatTermResponseObject); ok {
+		if err := validResponse.VisitUnfileAccountingVatTermResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DownloadAccountingVatReturn operation middleware
+func (sh *strictHandler) DownloadAccountingVatReturn(w http.ResponseWriter, r *http.Request, year int32, number int32) {
+	var request DownloadAccountingVatReturnRequestObject
+
+	request.Year = year
+	request.Number = number
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DownloadAccountingVatReturn(ctx, request.(DownloadAccountingVatReturnRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DownloadAccountingVatReturn")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DownloadAccountingVatReturnResponseObject); ok {
+		if err := validResponse.VisitDownloadAccountingVatReturnResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
