@@ -1,6 +1,6 @@
 ---
 title: Expenses
-description: Outlays, mileage and travel claims, receipts, approval and reimbursement.
+description: Outlays, mileage and travel claims, receipts, approval and reimbursement, and what posting to the books changes when Accounting is on.
 sidebar:
   order: 40
 sources:
@@ -109,6 +109,11 @@ After **Save draft** the form stays open so you can attach **The supplier's
 invoice**; **Save and submit** is unavailable until it is attached. Once submitted it
 follows the ordinary approval flow. See [the supplier
 invoice](/en/reference/expenses/#the-supplier-invoice).
+
+With the books kept in [Accounting](/en/user/accounting/), supplier invoices belong there:
+the form says so on this kind, with a link to **Supplier invoices**, where they are posted
+and paid. One you approve here is not posted to the books by itself; it waits in
+Accounting's Needs attention until someone there makes it into a supplier invoice.
 
 ## Record a travel claim
 
@@ -236,6 +241,25 @@ row per line with the trip's purpose beside each of its lines, named
 `expenses-reimbursements-<date>.csv`. An export over 5 000 rows is refused with
 **Too many rows to export** — narrow the dates instead. The columns are listed under
 [the payroll CSV](/en/reference/expenses/#the-payroll-csv).
+
+## When Accounting keeps the books
+
+With [Accounting](/en/user/accounting/) on and the books set up, what you do here posts to
+the books by itself, within minutes; nobody types it again:
+
+- **Approving** an expense or a travel claim posts its cost: on its category's account, owed
+  to the employee — or, for one the company paid, out of the bank.
+- **Paying back** posts the payment out of the bank, on the day you give.
+- **Unapproving** or **undoing a payment** posts the reversal of what was posted; nothing in
+  the books is changed or deleted. Approving again posts it again.
+
+The VAT on a receipt is deducted only for a category whose posting rule allows it and when
+the VAT is one of the Norwegian rates on the amount. An expense in another currency waits in
+Accounting for its amount in NOK, which an accountant enters from the bank statement. A
+supplier invoice is entered in Accounting (above). Nothing here changes how you record,
+submit, approve or pay back; the period lock here is Expenses' own, and Accounting books a
+change in a month it has locked on its first open day. See
+[How expenses arrive](/en/user/accounting/#how-expenses-arrive-from-expenses).
 
 ## Expenses on a project
 
