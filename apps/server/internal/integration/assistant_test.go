@@ -374,15 +374,25 @@ func TestOperations_TheRealContract(t *testing.T) {
 	// reversed and copied, paid or its payment removed, a person supplier anonymised, the opening and the
 	// lock (the last two under accounting:close, which no agent level can raise, reference/agents.md),
 	// and a VAT term closed, reopened, marked as filed or unmarked (the close, the reopening and the
-	// unmarking under accounting:close), a SAF-T export asked for (accounting:export, sensitive) and the
-	// books set up from a SAF-T file (under accounting:close).
+	// unmarking under accounting:close), and the books set up from a SAF-T file (under accounting:close).
 	for _, id := range []string{"postAccountingVoucher", "reverseAccountingVoucher", "postAccountingOpening", "putAccountingLock",
 		"settleAccountingOpenItem", "postAccountingSupplierInvoice", "reverseAndCopyAccountingSupplierInvoice",
 		"payAccountingSupplierInvoice", "removeAccountingSupplierPayment", "anonymiseAccountingSupplier",
 		"closeAccountingVatTerm", "reopenAccountingVatTerm", "fileAccountingVatTerm", "unfileAccountingVatTerm",
-		"createAccountingSaftExport", "applyAccountingSaftImport"} {
+		"applyAccountingSaftImport"} {
 		if got, _ := ops.Effective(context.Background(), id); got != operations.ModeConfirm {
 			t.Errorf("%s: the default gate's mode %q, want confirm", id, got)
+		}
+	}
+	// A SAF-T export is a write of consequence the contract confirms, and it
+	// names the sensitive accounting:export: the default gate closes it, as
+	// every sensitive operation (accounting design A24).
+	for _, info := range all {
+		if info.ID != "createAccountingSaftExport" {
+			continue
+		}
+		if got, _ := ops.Effective(context.Background(), info.ID); info.Mode != operations.ModeConfirm || !info.Sensitive || got != operations.ModeNever {
+			t.Errorf("createAccountingSaftExport: contract mode %q, sensitive %v, the default gate's %q; want confirm, true, never", info.Mode, info.Sensitive, got)
 		}
 	}
 
