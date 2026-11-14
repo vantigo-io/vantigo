@@ -304,3 +304,33 @@ func TestBankFeedCursor_ANewStartDayDuringACycleWins(t *testing.T) {
 		t.Errorf("payments = %v, want one", got)
 	}
 }
+
+// The overlap is read newest first (third review, M-A): on a bank whose
+// answers fit two days, a cycle that runs out of calls skips the oldest
+// overlap days, never today's — a payment booked later today is read by the
+// next cycle the same day, and a late booking of yesterday by the next day's.
+func TestBankFeedCursor_TheOverlapIsReadNewestFirst(t *testing.T) {
+	t.Parallel()
+	h, _ := syncHarness(t)
+	today, late := kidInvoice(t, h), kidInvoice(t, h)
+	feedReady(t, h)
+	h.folio.Fail(foliotest.OpTransactions, foliotest.Failure{Oversized: true, OverDays: 2})
+	syncNow(t, h) // drains to today, cycle after cycle
+	if got := readThroughOf(t, h, sellerAccount); got != "2026-10-07" {
+		t.Fatalf("the cursor = %s, want today", got)
+	}
+
+	h.folio.AddTransaction(sellerAccount, incoming(txID(1), "2026-10-07", "1000.00", *today.Kid))
+	h.Advance(30 * time.Minute)
+	syncNow(t, h)
+	if got := livePaymentsOf(t, h, today.ID); !slices.Equal(got, []string{"1000.00 bank_feed"}) {
+		t.Errorf("a payment booked later today = %v, want registered by the next cycle", got)
+	}
+
+	h.folio.AddTransaction(sellerAccount, incoming(txID(2), "2026-10-07", "1000.00", *late.Kid))
+	h.Advance(24 * time.Hour)
+	syncNow(t, h)
+	if got := livePaymentsOf(t, h, late.ID); !slices.Equal(got, []string{"1000.00 bank_feed"}) {
+		t.Errorf("yesterday's late booking = %v, want registered the next day", got)
+	}
+}
