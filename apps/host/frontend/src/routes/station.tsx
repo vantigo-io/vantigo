@@ -82,11 +82,25 @@ type HeldOperator = {
   signedOut?: boolean;
 };
 
-/** The held operators but for the person's signed-out chips: switching in again replaces them. */
+/** The held operators but for the person's signed-out chips: one chip says it for them. */
 const withoutSignedOut = (held: Record<string, HeldOperator>, userId: string) =>
   Object.fromEntries(
     Object.entries(held).filter(([, operator]) => !(operator.signedOut && operator.userId === userId)),
   );
+
+/**
+ * The held operators but for the person altogether: switching in again replaces
+ * every chip of theirs, the live one too — the server ends a person's other
+ * sessions at the station when it starts a new one.
+ */
+const withoutPerson = (held: Record<string, HeldOperator>, userId: string) =>
+  Object.fromEntries(Object.entries(held).filter(([, operator]) => operator.userId !== userId));
+
+/** A refusal that says this browser is no station now: unpaired, revoked, or a person's. */
+const isNoStation = (error: unknown) => {
+  const refusal = refusalOf(error);
+  return refusal.status === 401 || refusal.code === "station_has_session";
+};
 
 /** How long before an idle session ends the warning shows (M140). */
 const IDLE_WARNING_MS = 30_000;
@@ -118,7 +132,9 @@ const StationPage = () => {
     queryKey: stationQueryKey,
     queryFn: readStationNow,
     retry: false,
-    refetchInterval: (query) => (query.state.error ? false : STATION_POLL_MS),
+    // A read that merely failed — the network, a deploy — is asked again; only a
+    // browser that is no station stops asking.
+    refetchInterval: (query) => (query.state.error && isNoStation(query.state.error) ? false : STATION_POLL_MS),
   });
   const [held, setHeld] = useState<Record<string, HeldOperator>>({});
   const [active, setActive] = useState<string | null>(null);
@@ -215,7 +231,8 @@ const StationPage = () => {
   const refusal = station.error ? refusalOf(station.error) : undefined;
   if (refusal?.code === "station_has_session") return <SignedInHere />;
   if (refusal?.status === 401) return <PairingForm />;
-  if (station.error || !station.data)
+  // A read that failed after one that answered keeps the station as last read.
+  if (!station.data)
     return (
       <Center h="100vh" p="md">
         <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("stations.couldNotLoad")}>
@@ -231,7 +248,7 @@ const StationPage = () => {
       active={active}
       onActive={choose}
       onSignedIn={(operator) => {
-        setHeld((current) => ({ ...withoutSignedOut(current, operator.userId), [operator.sessionId]: operator }));
+        setHeld((current) => ({ ...withoutPerson(current, operator.userId), [operator.sessionId]: operator }));
         queryClient.removeQueries({ queryKey: [MANUFACTURING_QUERY_KEY] });
         setActive(operator.sessionId);
         void queryClient.invalidateQueries({ queryKey: stationQueryKey });

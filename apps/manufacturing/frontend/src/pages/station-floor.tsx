@@ -437,11 +437,19 @@ const StationWorkOrder = ({
         <Text size="lg">{`${order.variant.sku} · ${order.variant.productName}`}</Text>
         <Text size="md" c="dimmed">
           {[
-            t("doneOfQuantity", {
-              done: quantity(progress.done),
-              quantity: quantity(order.quantity, order.variant.unit),
-            }),
-            ...(closed ? [] : [t("remainingValue", { quantity: quantity(progress.remaining, order.variant.unit) })]),
+            progress
+              ? t("doneOfQuantity", {
+                  done: quantity(progress.done),
+                  quantity: quantity(order.quantity, order.variant.unit),
+                })
+              : quantity(order.quantity, order.variant.unit),
+            ...(closed
+              ? []
+              : [
+                  t("remainingValue", {
+                    quantity: quantity(progress?.remaining ?? order.remaining, order.variant.unit),
+                  }),
+                ]),
           ].join(" · ")}
         </Text>
       </Stack>
@@ -479,7 +487,7 @@ const StationWorkOrder = ({
         <SimpleGrid cols={{ base: 1, xs: 2, lg: 4 }} spacing="md">
           {!runningHere && (
             <Button
-              h={ACTION_HEIGHT}
+              mih={ACTION_HEIGHT}
               styles={ACTION_STYLES}
               size="xl"
               color="teal"
@@ -493,7 +501,7 @@ const StationWorkOrder = ({
           )}
           {runningHere && (
             <Button
-              h={ACTION_HEIGHT}
+              mih={ACTION_HEIGHT}
               styles={ACTION_STYLES}
               size="xl"
               color="yellow"
@@ -506,7 +514,7 @@ const StationWorkOrder = ({
           )}
           {finishable && (
             <Button
-              h={ACTION_HEIGHT}
+              mih={ACTION_HEIGHT}
               styles={ACTION_STYLES}
               size="xl"
               variant={workOrder.last ? "default" : "filled"}
@@ -519,7 +527,7 @@ const StationWorkOrder = ({
           )}
           {finishable && !workOrder.last && (
             <Button
-              h={ACTION_HEIGHT}
+              mih={ACTION_HEIGHT}
               styles={ACTION_STYLES}
               size="xl"
               variant="default"
@@ -531,7 +539,7 @@ const StationWorkOrder = ({
           )}
           {finishable && workOrder.last && (
             <Button
-              h={ACTION_HEIGHT}
+              mih={ACTION_HEIGHT}
               styles={ACTION_STYLES}
               size="xl"
               leftSection={<IconClipboardCheck size={28} />}
@@ -541,7 +549,7 @@ const StationWorkOrder = ({
             </Button>
           )}
           <Button
-            h={ACTION_HEIGHT}
+            mih={ACTION_HEIGHT}
             styles={ACTION_STYLES}
             size="xl"
             variant="default"
@@ -552,7 +560,7 @@ const StationWorkOrder = ({
             {t("reportScrap")}
           </Button>
           <Button
-            h={ACTION_HEIGHT}
+            mih={ACTION_HEIGHT}
             styles={ACTION_STYLES}
             size="xl"
             variant="default"
