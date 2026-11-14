@@ -87,7 +87,7 @@ The Customers, Products, Energy, Communications, Projects, Time, Expenses, Invoi
 Staff, Planning, Inventory, Orders, Manufacturing, Knowledge, Calendar, Microsoft Entra ID, Google Workspace and Assistant modules are enabled by default
 (`MODULES` in `vantigo.env`). They share one PostgreSQL database named `vantigo`, with
 independent `identity`, `customers`, `products`, `energy`, `communications`,
-`projects`, `time`, `expenses`, `invoices`, `staff`, `planning`, `inventory`, `orders`, `manufacturing`, `knowledge`, `calendar`, `entra`, `google` and `assistant`
+`projects`, `time`, `expenses`, `invoices`, `staff`, `planning`, `inventory`, `orders`, `manufacturing`, `accounting`, `knowledge`, `calendar`, `entra`, `google` and `assistant`
 schemas and migration histories.
 
 ## What the stack contains
@@ -189,7 +189,7 @@ and the recovery.
   deployment enables. `identity` is always mounted and never listed. Unset enables
   every module the binary can mount: `customers`, `products`, `energy`,
   `communications`, `projects`, `time`, `expenses`, `invoices`, `staff`, `planning`,
-  `inventory`, `orders`, `manufacturing`, `knowledge`, `calendar`, `entra`, `google` and `assistant`. `energy`, `communications`, `projects` and `invoices` each
+  `inventory`, `orders`, `manufacturing`, `accounting`, `knowledge`, `calendar`, `entra`, `google` and `assistant`. `energy`, `communications`, `projects` and `invoices` each
   require `customers`, `time` requires `projects`, `planning` requires both `projects`
   and `staff`, `inventory` requires `products`, `orders` requires `products`, `customers`
   and `invoices`, `manufacturing` requires `products` and `inventory`, and `entra` and `google` each require `staff`; `projects` also
@@ -269,9 +269,9 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "vantigo" GRANT USAGE, SELECT ON SEQUENCES TO 
 -- Default privileges only cover objects created afterwards; grant on the
 -- schemas the enabled modules already created (add/remove schemas to match
 -- the MODULES enabled in your installation).
-GRANT USAGE ON SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, orders, manufacturing, knowledge, calendar, entra, google, assistant TO "vantigo_app";
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, orders, manufacturing, knowledge, calendar, entra, google, assistant TO "vantigo_app";
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, orders, manufacturing, knowledge, calendar, entra, google, assistant TO "vantigo_app";
+GRANT USAGE ON SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, orders, manufacturing, accounting, knowledge, calendar, entra, google, assistant TO "vantigo_app";
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, orders, manufacturing, accounting, knowledge, calendar, entra, google, assistant TO "vantigo_app";
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, orders, manufacturing, accounting, knowledge, calendar, entra, google, assistant TO "vantigo_app";
 ```
 
 ## Background workers and scaling
@@ -527,7 +527,7 @@ must be registered on the Internal web client
 prefixes remain `/api/v1/identity`, `/api/v1/customers`, `/api/v1/products`,
 `/api/v1/energy`, `/api/v1/communications`, `/api/v1/projects`, `/api/v1/time`,
 `/api/v1/expenses`, `/api/v1/invoices`, `/api/v1/staff`, `/api/v1/planning`,
-`/api/v1/inventory`, `/api/v1/orders`, `/api/v1/manufacturing`, `/api/v1/knowledge`, `/api/v1/calendar`, `/api/v1/entra`, `/api/v1/google` and `/api/v1/assistant`.
+`/api/v1/inventory`, `/api/v1/orders`, `/api/v1/manufacturing`, `/api/v1/accounting`, `/api/v1/knowledge`, `/api/v1/calendar`, `/api/v1/entra`, `/api/v1/google` and `/api/v1/assistant`.
 
 For example, with nginx:
 
@@ -695,6 +695,42 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
 # OTEL_EXPORTER_OTLP_PROTOCOL=grpc
 # OTEL_EXPORTER_OTLP_HEADERS=x-api-key=secret
 ```
+
+## The books
+
+With the Accounting module on, the database holds the company's books, and the law has
+rules for where they are and how they are kept. These are the operator's to keep; Vantigo
+cannot check them.
+
+**Preconditions.** Accounting is in `MODULES` beside `invoices`, and the books are set up
+(*Set up the books*, see [Accounting](/en/user/accounting/#setting-up-the-books)).
+
+**Where the books may be stored** (bokføringsforskriften § 7-2). The database, its backups
+and the object store with the vouchers' attachments are kept in Norway — or in another EEA
+state, the United Kingdom or Switzerland when the tax office (Skatteetaten) has been
+notified that the books are kept there. Choose the hosting region of the database, the
+backups and the [object store](/en/admin/object-storage/) with that in mind, and keep the
+notice with the company's papers.
+
+**How long.** Vouchers, postings and attachments are never changed or deleted by the
+application. The law keeps them five years after the end of the fiscal year; a backup
+rotation that discards older copies must still keep a copy that covers them.
+
+**The yearly backup test** (bokføringsforskriften § 7-5). Once a year, prove that the books
+can be read back from the backup:
+
+1. Restore the newest database backup and the object store's copy to a separate
+   environment.
+2. Start Vantigo against it, sign in with a user holding `accounting:read`, and open
+   **Reports** → **Journal** for the last closed month; open a voucher with an attachment
+   and download it.
+3. Compare the **Trial balance** at the year's end with the one produced in production.
+4. Write down the date, who did it and the outcome, and keep it with the company's papers.
+
+**What can go wrong.** A restore that lacks the object store's copy shows every voucher
+but answers 503 on its attachments; the backup of the files is part of the books. A
+database role without the `accounting` schema granted answers 500 on every Accounting
+page ([Database roles](#database-roles)).
 
 ## Production notes
 
@@ -1065,6 +1101,18 @@ From this release Products also refuses to delete a variant, or to make its prod
 service, while an active bill of materials names it. Rolling the migration back drops the
 schema with every work center and bill of materials. See
 [Manufacturing](/en/admin/manufacturing/).
+
+**The release with Accounting.** It brings `00179_accounting_baseline.sql`, the
+`accounting` schema, empty. An installation that leaves `MODULES` unset gets the module, its
+**Accounting** tile for everyone given `accounting:read`, on upgrade; one that lists
+`MODULES` gets it once `accounting` is added beside `invoices`, which it requires —
+`accounting` without it refuses to start, naming it. The app does nothing until a person
+with **Manage the books** (`accounting:close`) completes *Set up the books*; the four
+permissions are new and held by no custom role until an Owner adds them. A least-privilege
+role needs the `accounting` schema granted ([Database roles](#database-roles)). It starts no
+worker and needs no setting; attachments use the [object store](/en/admin/object-storage/).
+Read [The books](#the-books) before the first voucher. Rolling the migration back drops the
+schema with every voucher — do not, once the books are in use.
 
 **The release with Staff competence.** It brings `00066_staff_competence.sql`: the
 competence catalogue — five categories and fifteen Norwegian certificates seeded — and
