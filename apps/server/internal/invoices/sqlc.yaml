@@ -19,6 +19,7 @@ sql:
       - ../db/migrations/00122_invoices_order_sources.sql
       - ../db/migrations/00123_invoices_order_allocation_ledger.sql
       - ../db/migrations/00150_invoices_events.sql
+      - ../db/migrations/00178_invoices_bank_feed.sql
     queries: queries
     gen:
       go:

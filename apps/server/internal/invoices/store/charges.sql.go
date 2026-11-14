@@ -110,7 +110,7 @@ type InsertChargePaymentParams struct {
 	BankTransactionID  *int64
 	Reference          string
 	Note               string
-	RegisteredByUserID uuid.UUID
+	RegisteredByUserID *uuid.UUID
 	RegisteredAt       time.Time
 }
 
@@ -170,7 +170,7 @@ type InsertWaiverParams struct {
 	InterestThrough pgtype.Date
 	Reason          string
 	Note            string
-	WaivedByUserID  uuid.UUID
+	WaivedByUserID  *uuid.UUID
 	WaivedAt        time.Time
 }
 

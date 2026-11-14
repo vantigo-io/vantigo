@@ -137,31 +137,31 @@ func invalidBankFile(message string) gen.PostInvoicesBankFiles400ApplicationProb
 
 // bankFileDuplicate is the 409 naming the earlier import of the same file,
 // its time told in loc, the business time zone.
-func bankFileDuplicate(id int64, at time.Time, by uuid.UUID, loc *time.Location) gen.PostInvoicesBankFiles409ApplicationProblemPlusJSONResponse {
+func bankFileDuplicate(id int64, at time.Time, by *uuid.UUID, loc *time.Location) gen.PostInvoicesBankFiles409ApplicationProblemPlusJSONResponse {
 	c := conflict(codeBankFileDuplicate, bankFileDuplicateTitle,
 		fmt.Sprintf("This file was imported before, as bank file %d on %s. Nothing was imported again.", id, at.In(loc).Format("2006-01-02 15:04")))
-	c.BankFileId, c.UploadedAt, c.UploadedBy = &id, &at, &by
+	c.BankFileId, c.UploadedAt, c.UploadedBy = &id, &at, by
 	return gen.PostInvoicesBankFiles409ApplicationProblemPlusJSONResponse(c)
 }
 
 // earlierImport is the earlier import of the same bytes, else of the same
 // file identity, read on the pool (D3 step 5); found false when neither.
-func earlierImport(ctx context.Context, q *store.Queries, sha string, f *bankfile.File) (id int64, at time.Time, by uuid.UUID, found bool, err error) {
+func earlierImport(ctx context.Context, q *store.Queries, sha string, f *bankfile.File) (id int64, at time.Time, by *uuid.UUID, found bool, err error) {
 	bySHA, err := q.BankFileBySHA(ctx, sha)
 	if err == nil {
 		return bySHA.ID, bySHA.UploadedAt, bySHA.UploadedByUserID, true, nil
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
-		return 0, time.Time{}, uuid.Nil, false, fmt.Errorf("invoices: read the bank file by hash: %w", err)
+		return 0, time.Time{}, nil, false, fmt.Errorf("invoices: read the bank file by hash: %w", err)
 	}
 	byIdentity, err := q.BankFileByIdentity(ctx, store.BankFileByIdentityParams{Format: string(f.Format), FileIdentity: f.Identity})
 	if err == nil {
 		return byIdentity.ID, byIdentity.UploadedAt, byIdentity.UploadedByUserID, true, nil
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
-		return 0, time.Time{}, uuid.Nil, false, fmt.Errorf("invoices: read the bank file by identity: %w", err)
+		return 0, time.Time{}, nil, false, fmt.Errorf("invoices: read the bank file by identity: %w", err)
 	}
-	return 0, time.Time{}, uuid.Nil, false, nil
+	return 0, time.Time{}, nil, false, nil
 }
 
 // PostInvoicesBankFiles Import a bank file
@@ -296,7 +296,7 @@ func (s *server) importBankFile(ctx context.Context, file *bankfile.File, sha, k
 			ByteSize: int32(size), Accounts: file.Accounts, //nolint:gosec // at most bankfile.MaxBytes
 			FirstBookedOn: dateOrNull(file.FirstBookedOn), LastBookedOn: dateOrNull(file.LastBookedOn),
 			Transactions: int32(len(file.Transactions)), Ignored: int32(ignored), //nolint:gosec // at most bankfile.MaxTransactions
-			IgnoredKinds: ignoredKinds, UploadedByUserID: by, UploadedAt: now,
+			IgnoredKinds: ignoredKinds, UploadedByUserID: &by, UploadedAt: now,
 		})
 		if db.IsUniqueViolation(err, "uq_bank_files_sha256", "uq_bank_files_identity") {
 			raced = true
@@ -529,6 +529,17 @@ func ignoredResponse(kinds map[bankfile.IgnoredKind]int) gen.InvoicesBankIgnored
 	}
 }
 
+// requiredUser is the user a row of what names, which every row written
+// before the bank feed's sync has: the wire still requires it, and a row
+// without one is refused rather than answered as no one (bank feed plan B3;
+// delivery C makes the field optional).
+func requiredUser(by *uuid.UUID, what string, id int64) (uuid.UUID, error) {
+	if by == nil {
+		return uuid.Nil, fmt.Errorf("invoices: %s %d has no user", what, id)
+	}
+	return *by, nil
+}
+
 // bankFileResponse is one file on the wire, with its lines counted by
 // status.
 func bankFileResponse(f store.InvoicesBankFile, pending, exceptions, matched int64) (gen.InvoicesBankFile, error) {
@@ -540,11 +551,15 @@ func bankFileResponse(f store.InvoicesBankFile, pending, exceptions, matched int
 	if f.Duplicates != nil {
 		duplicates = *f.Duplicates
 	}
+	uploadedBy, err := requiredUser(f.UploadedByUserID, "bank file", f.ID)
+	if err != nil {
+		return gen.InvoicesBankFile{}, err
+	}
 	return gen.InvoicesBankFile{
 		Id: f.ID, Format: f.Format, Sha256: f.Sha256, Accounts: f.Accounts,
 		FirstBookedOn: wireDateOf(f.FirstBookedOn), LastBookedOn: wireDateOf(f.LastBookedOn),
 		Transactions: f.Transactions, Duplicates: duplicates, Ignored: f.Ignored, IgnoredKinds: ignoredResponse(kinds),
-		UploadedBy: f.UploadedByUserID, UploadedAt: f.UploadedAt,
+		UploadedBy: uploadedBy, UploadedAt: f.UploadedAt,
 		Pending: int32(pending), Exceptions: int32(exceptions), Matched: int32(matched), //nolint:gosec // counts of one file's lines
 	}, nil
 }

@@ -286,7 +286,7 @@ func waiveCharges(ctx context.Context, txq *store.Queries, invoiceID int64, ws [
 		}
 		params := store.InsertWaiverParams{
 			InvoiceID: invoiceID, ReminderID: letter.ID, Kind: w.kind, Amount: n,
-			Reason: reason, Note: note, WaivedByUserID: by, WaivedAt: at,
+			Reason: reason, Note: note, WaivedByUserID: &by, WaivedAt: at,
 		}
 		if through != nil {
 			params.InterestThrough = pgDate(*through)
@@ -320,10 +320,14 @@ func withCharges(ctx context.Context, q *store.Queries, inv store.InvoicesInvoic
 		if err != nil {
 			return err
 		}
+		registeredBy, err := requiredUser(p.RegisteredByUserID, "charge payment", p.ID)
+		if err != nil {
+			return err
+		}
 		payments = append(payments, gen.InvoicesChargePayment{
 			Id: p.ID, PaidOn: wireDate(p.PaidOn.Time), Amount: floatFromRat(amount, 2), Currency: p.Currency,
 			Source: gen.InvoicesChargePaymentSource(p.Source), BankTransactionId: p.BankTransactionID,
-			Reference: p.Reference, Note: p.Note, RegisteredAt: p.RegisteredAt, RegisteredByUserId: p.RegisteredByUserID,
+			Reference: p.Reference, Note: p.Note, RegisteredAt: p.RegisteredAt, RegisteredByUserId: registeredBy,
 			RemovedAt: p.RemovedAt, RemovedByUserId: p.RemovedByUserID, RemovalReason: p.RemovalReason,
 		})
 	}
@@ -334,10 +338,14 @@ func withCharges(ctx context.Context, q *store.Queries, inv store.InvoicesInvoic
 		if err != nil {
 			return err
 		}
+		waivedBy, err := requiredUser(w.WaivedByUserID, "charge waiver", w.ID)
+		if err != nil {
+			return err
+		}
 		waivers = append(waivers, gen.InvoicesChargeWaiver{
 			Id: w.ID, ReminderId: w.ReminderID, Kind: gen.InvoicesChargeWaiverKind(w.Kind), Amount: floatFromRat(amount, 2),
 			InterestThrough: wireDateOf(w.InterestThrough), Reason: gen.InvoicesChargeWaiverReason(w.Reason), Note: w.Note,
-			WaivedBy: w.WaivedByUserID, WaivedAt: w.WaivedAt,
+			WaivedBy: waivedBy, WaivedAt: w.WaivedAt,
 		})
 	}
 	resp.Waivers = &waivers
@@ -449,7 +457,7 @@ func (s *server) PostInvoicesByIdChargePayments(ctx context.Context, req gen.Pos
 		}
 		_, err = insertChargePayment(ctx, txq, store.InsertChargePaymentParams{
 			InvoiceID: locked.ID, PaidOn: payment.PaidOn, Amount: payment.Amount, Currency: locked.Currency, Source: sourceManual,
-			Reference: payment.Reference, Note: payment.Note, RegisteredByUserID: callerID(ctx), RegisteredAt: s.deps.Clock(),
+			Reference: payment.Reference, Note: payment.Note, RegisteredByUserID: ptr(callerID(ctx)), RegisteredAt: s.deps.Clock(),
 		})
 		return err
 	})

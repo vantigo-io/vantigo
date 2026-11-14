@@ -2471,9 +2471,9 @@ func TestInvoicesBaseline_AppliesAndIsIdempotent(t *testing.T) {
 	// line_sources and timesheet_rows 00040's, and the bank, rate, reminder,
 	// charge, hold and hand-off tables 00041's, and the payment credentials,
 	// settings, pay links, attempts and day reconciliations 00046's, and the
-	// billing runs and their items 00079's, and tax_category_vat_codes 00118's; applyUpDownUp ends with every migration applied, so they stand here
+	// billing runs and their items 00079's, and tax_category_vat_codes 00118's, and the bank feed's connection and accounts 00178's; applyUpDownUp ends with every migration applied, so they stand here
 	// beside the seven this one creates.
-	if want := []string{"access_point_credentials", "bank_files", "bank_import_accounts", "bank_transaction_events",
+	if want := []string{"access_point_credentials", "bank_feed_accounts", "bank_feed_connections", "bank_files", "bank_import_accounts", "bank_transaction_events",
 		"bank_transactions", "billing_run_items", "billing_runs", "charge_payments", "charge_waivers", "collection_handoffs", "collection_rates", "counters",
 		"customer_reminder_policies", "deliveries", "erased_customers", "invoice_holds", "invoices", "line_releases",
 		"line_sources", "lines", "manual_deliveries", "order_allocations_taken", "overdue_announced", "pay_links", "payment_attempts", "payment_provider_credentials",

@@ -43,7 +43,7 @@ type InsertBankTransactionEventParams struct {
 	Event             string
 	Reason            *string
 	Note              string
-	ByUserID          uuid.UUID
+	ByUserID          *uuid.UUID
 	At                time.Time
 }
 
@@ -79,14 +79,15 @@ type InsertImportedPaymentParams struct {
 	Source             string
 	BankTransactionID  int64
 	Reference          string
-	RegisteredByUserID uuid.UUID
+	RegisteredByUserID *uuid.UUID
 	RegisteredAt       time.Time
 }
 
 // InsertImportedPayment registers a payment a bank line was matched or
 // applied to (D2, D4): its source the file's format, the line, paid on the
 // line's booking day, its reference the KID, registered by the uploader or
-// the caller. The caller holds the line and the invoice and has judged the
+// the caller (none for a bank_feed line the feed matched, bank feed design
+// F6). The caller holds the line and the invoice and has judged the
 // open amount under the invoice's lock; ck_payments_origin holds the origin.
 func (q *Queries) InsertImportedPayment(ctx context.Context, arg InsertImportedPaymentParams) (InvoicesPayment, error) {
 	row := q.db.QueryRow(ctx, insertImportedPayment,

@@ -365,6 +365,17 @@ type Config struct {
 	// slash. The operator's, never the tenant's: an operator points it at
 	// Vipps' test environment or a mock host.
 	InvoicesVippsBaseURL string
+	// InvoicesBankFeedEnabled is the on/off switch for the bank feed
+	// (INVOICES_BANK_FEED_ENABLED, invoices bank feed design F3). Default ON:
+	// a workspace still needs a bank's API key before anything is read. A 0
+	// sends no request to any bank and keeps what is stored: a key is refused
+	// 409 bank_feed_disabled and the bank's accounts are not read.
+	InvoicesBankFeedEnabled bool
+	// InvoicesFolioBaseURL is the origin Folio's bank feed adapter calls
+	// (INVOICES_FOLIO_BASE_URL, F3), default Folio's API; no trailing slash.
+	// The operator's, never the workspace's, and https only — the adapter
+	// sends the API key on every request and refuses anything else.
+	InvoicesFolioBaseURL string
 
 	// ShippingCarriers are the carrier adapters this installation allows
 	// (SHIPPING_CARRIERS, orders design O51), a comma-separated list of known
@@ -692,6 +703,7 @@ func Load(env map[string]string) (*Config, error) {
 	energySpotPriceService(&p, env, c)
 	invoicesEhf(&p, env, c)
 	invoicesVipps(&p, env, c)
+	invoicesBankFeed(&p, env, c)
 	shippingCarriers(&p, env, c)
 	c.StaffImportMaxRows = integer(&p, env, "STAFF_IMPORT_MAX_ROWS", 5000, 5000, 20000)
 	staffWorkers(&p, env, c)
@@ -1168,6 +1180,35 @@ const defaultVippsBaseURL = "https://api.vipps.no"
 func invoicesVipps(p *problems, env map[string]string, c *Config) {
 	c.InvoicesVippsEnabled = boolean(p, env, "INVOICES_VIPPS_ENABLED", true)
 	c.InvoicesVippsBaseURL = httpBaseURL(p, env, "INVOICES_VIPPS_BASE_URL", defaultVippsBaseURL)
+}
+
+// defaultFolioBaseURL is Folio's API (invoices bank feed design F3).
+const defaultFolioBaseURL = "https://api.folio.no/v2"
+
+// invoicesBankFeed loads the Invoices bank feed settings (F3): the switch,
+// on by default, and Folio's base URL, which must be https — the adapter
+// refuses anything else, so the server refuses to start on it rather than
+// fail every call.
+func invoicesBankFeed(p *problems, env map[string]string, c *Config) {
+	c.InvoicesBankFeedEnabled = boolean(p, env, "INVOICES_BANK_FEED_ENABLED", true)
+	c.InvoicesFolioBaseURL = httpsBaseURL(p, env, "INVOICES_FOLIO_BASE_URL", defaultFolioBaseURL)
+}
+
+// httpsBaseURL is httpBaseURL for a client that sends a secret on every
+// request: unset is the default; set, it must be an absolute https URL. No
+// trailing slash.
+func httpsBaseURL(p *problems, env map[string]string, key, def string) string {
+	def = strings.TrimSuffix(def, "/")
+	v := env[key]
+	if v == "" {
+		return def
+	}
+	u, err := url.Parse(v)
+	if err != nil || u.Scheme != "https" || u.Hostname() == "" {
+		p.add(key, "must be an absolute https URL")
+		return def
+	}
+	return strings.TrimSuffix(v, "/")
 }
 
 // KnownShippingCarriers are the carrier adapters this build has (orders

@@ -20,6 +20,35 @@ type InvoicesAccessPointCredential struct {
 	UpdatedAt        time.Time
 }
 
+type InvoicesBankFeedAccount struct {
+	Account         string
+	Enabled         bool
+	StartDay        pgtype.Date
+	Status          string
+	Reason          *string
+	Detail          string
+	Failures        int32
+	LastSyncedAt    *time.Time
+	LastBankFileID  *int64
+	NextSyncAt      *time.Time
+	LeaseID         *string
+	LeaseUntil      *time.Time
+	EnabledByUserID uuid.UUID
+	UpdatedAt       time.Time
+}
+
+type InvoicesBankFeedConnection struct {
+	ID                int32
+	Provider          string
+	SecretCiphertext  string
+	KeyLast4          string
+	Status            string
+	RejectedAt        *time.Time
+	ConnectedByUserID uuid.UUID
+	ConnectedAt       time.Time
+	UpdatedAt         time.Time
+}
+
 type InvoicesBankFile struct {
 	ID               int64
 	Format           string
@@ -34,8 +63,9 @@ type InvoicesBankFile struct {
 	Duplicates       *int32
 	Ignored          int32
 	IgnoredKinds     []byte
-	UploadedByUserID uuid.UUID
+	UploadedByUserID *uuid.UUID
 	UploadedAt       time.Time
+	Provider         *string
 }
 
 type InvoicesBankImportAccount struct {
@@ -84,7 +114,7 @@ type InvoicesBankTransactionEvent struct {
 	Event             string
 	Reason            *string
 	Note              string
-	ByUserID          uuid.UUID
+	ByUserID          *uuid.UUID
 	At                time.Time
 }
 
@@ -127,7 +157,7 @@ type InvoicesChargePayment struct {
 	BankTransactionID  *int64
 	Reference          string
 	Note               string
-	RegisteredByUserID uuid.UUID
+	RegisteredByUserID *uuid.UUID
 	RegisteredAt       time.Time
 	RemovedAt          *time.Time
 	RemovedByUserID    *uuid.UUID
@@ -143,7 +173,7 @@ type InvoicesChargeWaiver struct {
 	InterestThrough pgtype.Date
 	Reason          string
 	Note            string
-	WaivedByUserID  uuid.UUID
+	WaivedByUserID  *uuid.UUID
 	WaivedAt        time.Time
 }
 

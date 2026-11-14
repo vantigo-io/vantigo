@@ -45,6 +45,29 @@ func (q *Queries) CollectionRatesInForce(ctx context.Context, day pgtype.Date) (
 	return items, nil
 }
 
+const lockBankFeedConnection = `-- name: LockBankFeedConnection :one
+SELECT id, provider, secret_ciphertext, key_last4, status, rejected_at, connected_by_user_id, connected_at, updated_at FROM invoices.bank_feed_connections WHERE id = 1 FOR UPDATE
+`
+
+// LockBankFeedConnection takes the bank connection FOR UPDATE: the DELETE's
+// only lock, before it switches every account off (bank feed design F8).
+func (q *Queries) LockBankFeedConnection(ctx context.Context) (InvoicesBankFeedConnection, error) {
+	row := q.db.QueryRow(ctx, lockBankFeedConnection)
+	var i InvoicesBankFeedConnection
+	err := row.Scan(
+		&i.ID,
+		&i.Provider,
+		&i.SecretCiphertext,
+		&i.KeyLast4,
+		&i.Status,
+		&i.RejectedAt,
+		&i.ConnectedByUserID,
+		&i.ConnectedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const lockBankTransaction = `-- name: LockBankTransaction :one
 
 SELECT id, bank_file_id, line_ref, format, account, direction, negative, booked_on, value_on, ordered_on, amount, currency, kid, remittance_text, debtor_name, debtor_account, archive_ref, bank_code, fingerprint, ordinal, duplicate_of_id, status, reason, suggested_invoice_id, resolution, resolved_by_user_id, resolved_at, resolution_note FROM invoices.bank_transactions WHERE id = $1 FOR NO KEY UPDATE
@@ -522,6 +545,30 @@ func (q *Queries) LockReminder(ctx context.Context, id int64) (InvoicesReminder,
 		&i.WithdrawnByUserID,
 		&i.WithdrawalReason,
 		&i.PayLinkID,
+	)
+	return i, err
+}
+
+const shareBankFeedConnection = `-- name: ShareBankFeedConnection :one
+SELECT id, provider, secret_ciphertext, key_last4, status, rejected_at, connected_by_user_id, connected_at, updated_at FROM invoices.bank_feed_connections WHERE id = 1 FOR SHARE
+`
+
+// ShareBankFeedConnection reads the bank connection FOR SHARE: a switch of an
+// account on, after the account's own row, so a DELETE waits for it and then
+// switches it off with the rest.
+func (q *Queries) ShareBankFeedConnection(ctx context.Context) (InvoicesBankFeedConnection, error) {
+	row := q.db.QueryRow(ctx, shareBankFeedConnection)
+	var i InvoicesBankFeedConnection
+	err := row.Scan(
+		&i.ID,
+		&i.Provider,
+		&i.SecretCiphertext,
+		&i.KeyLast4,
+		&i.Status,
+		&i.RejectedAt,
+		&i.ConnectedByUserID,
+		&i.ConnectedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }

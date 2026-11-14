@@ -292,7 +292,7 @@ func queueLine(ctx context.Context, txq *store.Queries, lineID int64, reason str
 		return outcomeNone, nil
 	}
 	if err := txq.InsertBankTransactionEvent(ctx, store.InsertBankTransactionEventParams{
-		BankTransactionID: lineID, Event: eventQueued, Reason: &reason, ByUserID: by, At: at,
+		BankTransactionID: lineID, Event: eventQueued, Reason: &reason, ByUserID: &by, At: at,
 	}); err != nil {
 		return outcomeNone, fmt.Errorf("invoices: record line %d queued: %w", lineID, err)
 	}
@@ -434,7 +434,7 @@ func registerMatch(ctx context.Context, txq *store.Queries, line store.InvoicesB
 		}
 		if _, err := txq.InsertImportedPayment(ctx, store.InsertImportedPaymentParams{
 			InvoiceID: inv.ID, PaidOn: line.BookedOn, Amount: n, Currency: inv.Currency, Source: line.Format,
-			BankTransactionID: line.ID, Reference: reference, RegisteredByUserID: caller, RegisteredAt: now,
+			BankTransactionID: line.ID, Reference: reference, RegisteredByUserID: &caller, RegisteredAt: now,
 		}); err != nil {
 			return fmt.Errorf("invoices: register line %d's payment against %d: %w", line.ID, inv.ID, err)
 		}
@@ -446,7 +446,7 @@ func registerMatch(ctx context.Context, txq *store.Queries, line store.InvoicesB
 		}
 		if _, err := insertChargePayment(ctx, txq, store.InsertChargePaymentParams{
 			InvoiceID: inv.ID, PaidOn: line.BookedOn, Amount: n, Currency: inv.Currency, Source: line.Format,
-			BankTransactionID: &line.ID, Reference: reference, RegisteredByUserID: caller, RegisteredAt: now,
+			BankTransactionID: &line.ID, Reference: reference, RegisteredByUserID: &caller, RegisteredAt: now,
 		}); err != nil {
 			return err
 		}
@@ -459,7 +459,7 @@ func registerMatch(ctx context.Context, txq *store.Queries, line store.InvoicesB
 		return fmt.Errorf("invoices: mark line %d matched: %d rows, want 1", line.ID, n)
 	}
 	if err := txq.InsertBankTransactionEvent(ctx, store.InsertBankTransactionEventParams{
-		BankTransactionID: line.ID, Event: eventMatched, ByUserID: caller, At: now,
+		BankTransactionID: line.ID, Event: eventMatched, ByUserID: &caller, At: now,
 	}); err != nil {
 		return fmt.Errorf("invoices: record line %d matched: %w", line.ID, err)
 	}
