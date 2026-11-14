@@ -177,8 +177,9 @@ func sellerResponse(inv store.InvoicesInvoice) *gen.InvoicesSeller {
 
 // settle answers an issued invoice's money on resp (D3): what its issued
 // credit notes credit and what is left uncredited, what its live payments
-// paid, what is open (gross − credited − paid, which a credit note after a
-// payment takes below zero), the refund due only then, its state through the
+// paid, what its standing write-off wrote off and its recoveries recovered
+// (A16, R4), what is open (gross − credited − paid − written off, which a
+// credit note after a payment takes below zero), every write-off, the refund due only then, its state through the
 // Go mirror with today the business day, and every payment, removed ones
 // included with their removal (D2), each with its source and the bank line a
 // match or the queue took it from (payments and reminders design D2). Every
@@ -192,9 +193,14 @@ func settle(ctx context.Context, q *store.Queries, inv store.InvoicesInvoice, to
 	if err != nil {
 		return fmt.Errorf("invoices: read what document %d is paid: %w", inv.ID, err)
 	}
-	paid, err := ratFromNumeric(sum)
-	if err != nil {
-		return err
+	var paid, writtenOff, recovered *big.Rat
+	for _, f := range []struct {
+		dst **big.Rat
+		n   pgtype.Numeric
+	}{{&paid, sum.Paid}, {&writtenOff, sum.WrittenOff}, {&recovered, sum.Recovered}} {
+		if *f.dst, err = ratFromNumeric(f.n); err != nil {
+			return err
+		}
 	}
 	gross, err := ratFromNumeric(inv.GrossTotal)
 	if err != nil {
@@ -204,12 +210,19 @@ func settle(ctx context.Context, q *store.Queries, inv store.InvoicesInvoice, to
 	if inv.DueDate.Valid {
 		due = &inv.DueDate.Time
 	}
-	open := new(big.Rat).Sub(left, paid)
-	resp.State = documentState(inv.Kind, inv.Status, gross, credited, paid, due, today)
+	// A standing write-off settles the principal as a payment does (A16); a
+	// recovery is beside it, never part of the open amount.
+	settled := new(big.Rat).Add(paid, writtenOff)
+	open := new(big.Rat).Sub(left, settled)
+	resp.State = documentState(inv.Kind, inv.Status, gross, credited, settled, writtenOff, due, today)
 	resp.CreditedAmount, resp.UncreditedAmount = ptr(floatFromRat(credited, 2)), ptr(floatFromRat(left, 2))
 	resp.PaidAmount, resp.OpenAmount = ptr(floatFromRat(paid, 2)), ptr(floatFromRat(open, 2))
+	resp.WrittenOffAmount, resp.RecoveredAmount = ptr(floatFromRat(writtenOff, 2)), ptr(floatFromRat(recovered, 2))
 	if open.Sign() < 0 {
 		resp.RefundDue = ptr(floatFromRat(new(big.Rat).Neg(open), 2))
+	}
+	if resp.WriteOffs, err = writeOffsResponse(ctx, q, inv.ID); err != nil {
+		return err
 	}
 	rows, err := q.PaymentsOf(ctx, inv.ID)
 	if err != nil {
@@ -223,6 +236,7 @@ func settle(ctx context.Context, q *store.Queries, inv store.InvoicesInvoice, to
 		}
 		payments = append(payments, gen.InvoicesPayment{
 			Id: p.ID, PaidOn: wireDate(p.PaidOn.Time), Amount: floatFromRat(amount, 2), Currency: p.Currency,
+			Kind: gen.InvoicesPaymentKind(p.Kind), WriteOffId: p.WriteOffID,
 			Source: gen.InvoicesPaymentSource(p.Source), BankTransactionId: p.BankTransactionID, PaymentAttemptId: p.PaymentAttemptID,
 			Reference: p.Reference, Note: p.Note, RegisteredAt: p.RegisteredAt, RegisteredByUserId: p.RegisteredByUserID,
 			RemovedAt: p.RemovedAt, RemovedByUserId: p.RemovedByUserID, RemovalReason: p.RemovalReason,
@@ -320,7 +334,7 @@ func (s *server) renderInvoice(ctx context.Context, q *store.Queries, inv store.
 	// A draft's and a credit note's state reads no money; an issued
 	// invoice's is settle's.
 	if inv.Kind != kindInvoice || inv.Status != statusIssued {
-		resp.State = documentState(inv.Kind, inv.Status, nil, nil, nil, nil, today)
+		resp.State = documentState(inv.Kind, inv.Status, nil, nil, nil, nil, nil, today)
 	}
 	if inv.Status == statusIssued {
 		rows, err := q.VatSummaries(ctx, inv.ID)

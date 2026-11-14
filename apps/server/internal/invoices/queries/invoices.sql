@@ -76,15 +76,15 @@ DELETE FROM invoices.invoices WHERE id = @id AND status = 'draft';
 -- shows.
 SELECT sqlc.embed(i),
        (i.gross_total - coalesce(cr.credited, 0) - coalesce(pd.paid, 0))::numeric(14,2) AS open_amount,
-       invoices.document_state(i.kind, i.status, i.gross_total, coalesce(cr.credited, 0), coalesce(pd.paid, 0), i.due_date, @today::date)::text AS state
+       invoices.invoice_state(i.kind, i.status, i.gross_total, coalesce(cr.credited, 0), coalesce(pd.paid, 0), coalesce(pd.written_off, 0), i.due_date, @today::date)::text AS state
 FROM invoices.invoices i
 LEFT JOIN LATERAL (
     SELECT coalesce(sum(c.gross_total), 0)::numeric(14,2) AS credited
     FROM invoices.invoices c WHERE c.credits_invoice_id = i.id AND c.status = 'issued'
 ) cr ON true
 LEFT JOIN LATERAL (
-    SELECT coalesce(sum(p.amount), 0)::numeric(14,2) AS paid
-    FROM invoices.payments p WHERE p.invoice_id = i.id AND p.removed_at IS NULL
+    SELECT invoices.settled_amount(i.id)::numeric(14,2) AS paid,
+        invoices.written_off_amount(i.id)::numeric(14,2) AS written_off
 ) pd ON true
 WHERE (sqlc.narg(status)::text IS NULL OR i.status = sqlc.narg(status)::text)
   AND (sqlc.narg(kind)::text IS NULL OR i.kind = sqlc.narg(kind)::text)
@@ -96,7 +96,7 @@ WHERE (sqlc.narg(status)::text IS NULL OR i.status = sqlc.narg(status)::text)
   AND (sqlc.narg(issued_from)::date IS NULL OR i.issue_date >= sqlc.narg(issued_from)::date)
   AND (sqlc.narg(issued_to)::date IS NULL OR i.issue_date <= sqlc.narg(issued_to)::date)
   AND (sqlc.narg(state)::text IS NULL
-       OR invoices.document_state(i.kind, i.status, i.gross_total, coalesce(cr.credited, 0), coalesce(pd.paid, 0), i.due_date, @today::date) = sqlc.narg(state)::text)
+       OR invoices.invoice_state(i.kind, i.status, i.gross_total, coalesce(cr.credited, 0), coalesce(pd.paid, 0), coalesce(pd.written_off, 0), i.due_date, @today::date) = sqlc.narg(state)::text)
 ORDER BY i.number DESC NULLS FIRST, i.id DESC
 LIMIT @page_size OFFSET @page_offset;
 
@@ -110,8 +110,8 @@ LEFT JOIN LATERAL (
     FROM invoices.invoices c WHERE c.credits_invoice_id = i.id AND c.status = 'issued'
 ) cr ON true
 LEFT JOIN LATERAL (
-    SELECT coalesce(sum(p.amount), 0)::numeric(14,2) AS paid
-    FROM invoices.payments p WHERE p.invoice_id = i.id AND p.removed_at IS NULL
+    SELECT invoices.settled_amount(i.id)::numeric(14,2) AS paid,
+        invoices.written_off_amount(i.id)::numeric(14,2) AS written_off
 ) pd ON true
 WHERE (sqlc.narg(status)::text IS NULL OR i.status = sqlc.narg(status)::text)
   AND (sqlc.narg(kind)::text IS NULL OR i.kind = sqlc.narg(kind)::text)
@@ -123,7 +123,7 @@ WHERE (sqlc.narg(status)::text IS NULL OR i.status = sqlc.narg(status)::text)
   AND (sqlc.narg(issued_from)::date IS NULL OR i.issue_date >= sqlc.narg(issued_from)::date)
   AND (sqlc.narg(issued_to)::date IS NULL OR i.issue_date <= sqlc.narg(issued_to)::date)
   AND (sqlc.narg(state)::text IS NULL
-       OR invoices.document_state(i.kind, i.status, i.gross_total, coalesce(cr.credited, 0), coalesce(pd.paid, 0), i.due_date, @today::date) = sqlc.narg(state)::text);
+       OR invoices.invoice_state(i.kind, i.status, i.gross_total, coalesce(cr.credited, 0), coalesce(pd.paid, 0), coalesce(pd.written_off, 0), i.due_date, @today::date) = sqlc.narg(state)::text);
 
 -- name: IssueDocument :one
 -- IssueDocument turns a draft into an issued document (D6 step 6), last of the

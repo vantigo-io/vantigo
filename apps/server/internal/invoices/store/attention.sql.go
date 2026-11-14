@@ -104,8 +104,8 @@ LEFT JOIN LATERAL (
     FROM invoices.invoices c WHERE c.credits_invoice_id = i.id AND c.status = 'issued'
 ) cr ON true
 LEFT JOIN LATERAL (
-    SELECT coalesce(sum(p.amount), 0)::numeric(14,2) AS paid
-    FROM invoices.payments p WHERE p.invoice_id = i.id AND p.removed_at IS NULL
+    SELECT invoices.settled_amount(i.id)::numeric(14,2) AS paid,
+        invoices.written_off_amount(i.id)::numeric(14,2) AS written_off
 ) pd ON true
 WHERE a.state = 'capture_failed' AND a.finished_at >= $1::timestamptz
   AND a.registration_failed_at IS NULL
@@ -286,8 +286,8 @@ LEFT JOIN LATERAL (
     FROM invoices.invoices c WHERE c.credits_invoice_id = i.id AND c.status = 'issued'
 ) cr ON true
 LEFT JOIN LATERAL (
-    SELECT coalesce(sum(p.amount), 0)::numeric(14,2) AS paid
-    FROM invoices.payments p WHERE p.invoice_id = i.id AND p.removed_at IS NULL
+    SELECT invoices.settled_amount(i.id)::numeric(14,2) AS paid,
+        invoices.written_off_amount(i.id)::numeric(14,2) AS written_off
 ) pd ON true
 LEFT JOIN LATERAL (
     SELECT coalesce(sum(a.reserved_amount), 0)::numeric(14,2) AS reserved
@@ -354,9 +354,11 @@ LEFT JOIN LATERAL (
     FROM invoices.invoices c WHERE c.credits_invoice_id = i.id AND c.status = 'issued'
 ) cr ON true
 LEFT JOIN LATERAL (
-    SELECT coalesce(sum(p.amount) FILTER (WHERE p.removed_at IS NULL), 0)::numeric(14,2) AS paid,
-        max(p.registered_at) AS last_at
-    FROM invoices.payments p WHERE p.invoice_id = i.id
+    SELECT invoices.settled_amount(i.id)::numeric(14,2) AS paid,
+        greatest(max(p.registered_at), max(wo.registered_at), max(wo.undone_at)) AS last_at
+    FROM (SELECT 1) one
+    LEFT JOIN invoices.payments p ON p.invoice_id = i.id
+    LEFT JOIN invoices.write_offs wo ON wo.invoice_id = i.id
 ) pd ON true
 LEFT JOIN LATERAL (
     SELECT count(*) FILTER (WHERE c.removed_at IS NULL) AS live, max(c.registered_at) AS last_at

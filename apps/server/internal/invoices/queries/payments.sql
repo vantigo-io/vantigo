@@ -1,7 +1,12 @@
 -- name: LivePaymentsSum :one
 -- LivePaymentsSum is what an invoice's live registrations add up to — the
--- paid of the open amount (D2, D3). A removed registration counts for nothing.
-SELECT coalesce(sum(amount), 0)::numeric(14,2) AS paid FROM invoices.payments
+-- paid of the open amount (D2, D3) — beside its standing write-off and its
+-- live recoveries (A16, R4). A removed registration counts for nothing; a
+-- recovery is not part of the open amount, which the write-off closed.
+SELECT coalesce(sum(amount) FILTER (WHERE kind = 'payment'), 0)::numeric(14,2) AS paid,
+    invoices.written_off_amount(@invoice_id)::numeric(14,2) AS written_off,
+    coalesce(sum(amount) FILTER (WHERE kind = 'recovered'), 0)::numeric(14,2) AS recovered
+FROM invoices.payments
 WHERE invoice_id = @invoice_id AND removed_at IS NULL;
 
 -- name: PaymentsOf :many
@@ -15,10 +20,12 @@ ORDER BY paid_on, id;
 -- InsertPayment registers money received against an issued invoice (D2). The
 -- caller holds the invoice FOR UPDATE and has judged the open amount under
 -- that lock; tr_payments_parent refuses a draft's or a credit note's anyway.
+-- A recovery (kind recovered, A16) names the standing write-off it recovers.
 INSERT INTO invoices.payments (
-    invoice_id, paid_on, amount, currency, reference, note, registered_by_user_id, registered_at
+    invoice_id, paid_on, amount, currency, reference, note, registered_by_user_id, registered_at, kind, write_off_id
 ) VALUES (
-    @invoice_id, @paid_on, @amount, @currency, @reference, @note, @registered_by_user_id, @registered_at::timestamptz
+    @invoice_id, @paid_on, @amount, @currency, @reference, @note, @registered_by_user_id, @registered_at::timestamptz,
+    @kind::text, sqlc.narg(write_off_id)::bigint
 )
 RETURNING *;
 

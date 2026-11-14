@@ -21,8 +21,8 @@ LEFT JOIN LATERAL (
     FROM invoices.invoices c WHERE c.credits_invoice_id = i.id AND c.status = 'issued'
 ) cr ON true
 LEFT JOIN LATERAL (
-    SELECT coalesce(sum(p.amount), 0)::numeric(14,2) AS paid
-    FROM invoices.payments p WHERE p.invoice_id = i.id AND p.removed_at IS NULL
+    SELECT invoices.settled_amount(i.id)::numeric(14,2) AS paid,
+        invoices.written_off_amount(i.id)::numeric(14,2) AS written_off
 ) pd ON true
 WHERE ($1::text IS NULL OR i.status = $1::text)
   AND ($2::text IS NULL OR i.kind = $2::text)
@@ -34,7 +34,7 @@ WHERE ($1::text IS NULL OR i.status = $1::text)
   AND ($7::date IS NULL OR i.issue_date >= $7::date)
   AND ($8::date IS NULL OR i.issue_date <= $8::date)
   AND ($9::text IS NULL
-       OR invoices.document_state(i.kind, i.status, i.gross_total, coalesce(cr.credited, 0), coalesce(pd.paid, 0), i.due_date, $10::date) = $9::text)
+       OR invoices.invoice_state(i.kind, i.status, i.gross_total, coalesce(cr.credited, 0), coalesce(pd.paid, 0), coalesce(pd.written_off, 0), i.due_date, $10::date) = $9::text)
 `
 
 type CountInvoicesParams struct {
@@ -535,15 +535,15 @@ func (q *Queries) IssueDocument(ctx context.Context, arg IssueDocumentParams) (I
 const listInvoices = `-- name: ListInvoices :many
 SELECT i.id, i.kind, i.status, i.number, i.customer_id, i.credits_invoice_id, i.issue_date, i.delivery_date, i.delivery_from, i.delivery_to, i.delivery_address_line1, i.delivery_address_line2, i.delivery_postal_code, i.delivery_city, i.delivery_country, i.payment_terms_days, i.due_date, i.currency, i.exchange_rate, i.exchange_rate_date, i.your_reference, i.our_reference, i.order_reference, i.note, i.internal_note, i.buyer_customer_number, i.buyer_type, i.buyer_name, i.buyer_organisation_number, i.buyer_foreign_id, i.buyer_address_line1, i.buyer_address_line2, i.buyer_postal_code, i.buyer_city, i.buyer_region, i.buyer_country, i.buyer_peppol_id, i.buyer_gln, i.buyer_language, i.seller_legal_name, i.seller_organisation_number, i.seller_vat_registered, i.seller_in_foretaksregisteret, i.seller_address_line1, i.seller_address_line2, i.seller_postal_code, i.seller_city, i.seller_country, i.seller_bank_account, i.seller_iban, i.seller_bic, i.seller_email, i.seller_footer_text, i.net_total, i.vat_total, i.gross_total, i.vat_total_nok, i.pdf_object_key, i.pdf_sha256, i.issued_at, i.issued_by_user_id, i.created_by_user_id, i.created_at, i.updated_at, i.revision, i.kid, i.kid_algorithm, i.project_id, i.project_reference, i.timesheet,
        (i.gross_total - coalesce(cr.credited, 0) - coalesce(pd.paid, 0))::numeric(14,2) AS open_amount,
-       invoices.document_state(i.kind, i.status, i.gross_total, coalesce(cr.credited, 0), coalesce(pd.paid, 0), i.due_date, $1::date)::text AS state
+       invoices.invoice_state(i.kind, i.status, i.gross_total, coalesce(cr.credited, 0), coalesce(pd.paid, 0), coalesce(pd.written_off, 0), i.due_date, $1::date)::text AS state
 FROM invoices.invoices i
 LEFT JOIN LATERAL (
     SELECT coalesce(sum(c.gross_total), 0)::numeric(14,2) AS credited
     FROM invoices.invoices c WHERE c.credits_invoice_id = i.id AND c.status = 'issued'
 ) cr ON true
 LEFT JOIN LATERAL (
-    SELECT coalesce(sum(p.amount), 0)::numeric(14,2) AS paid
-    FROM invoices.payments p WHERE p.invoice_id = i.id AND p.removed_at IS NULL
+    SELECT invoices.settled_amount(i.id)::numeric(14,2) AS paid,
+        invoices.written_off_amount(i.id)::numeric(14,2) AS written_off
 ) pd ON true
 WHERE ($2::text IS NULL OR i.status = $2::text)
   AND ($3::text IS NULL OR i.kind = $3::text)
@@ -555,7 +555,7 @@ WHERE ($2::text IS NULL OR i.status = $2::text)
   AND ($8::date IS NULL OR i.issue_date >= $8::date)
   AND ($9::date IS NULL OR i.issue_date <= $9::date)
   AND ($10::text IS NULL
-       OR invoices.document_state(i.kind, i.status, i.gross_total, coalesce(cr.credited, 0), coalesce(pd.paid, 0), i.due_date, $1::date) = $10::text)
+       OR invoices.invoice_state(i.kind, i.status, i.gross_total, coalesce(cr.credited, 0), coalesce(pd.paid, 0), coalesce(pd.written_off, 0), i.due_date, $1::date) = $10::text)
 ORDER BY i.number DESC NULLS FIRST, i.id DESC
 LIMIT $12 OFFSET $11
 `

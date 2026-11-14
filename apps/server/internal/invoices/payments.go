@@ -140,6 +140,7 @@ func (s *server) PostInvoicesByIdPayments(ctx context.Context, req gen.PostInvoi
 	if err != nil {
 		return nil, err
 	}
+	recovering := req.Body.Kind != nil && *req.Body.Kind == gen.InvoicesPaymentKindRecovered
 
 	var refusal *gen.InvoicesConflictProblem
 	err = s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
@@ -156,11 +157,34 @@ func (s *server) PostInvoicesByIdPayments(ctx context.Context, req gen.PostInvoi
 		if paymentAfterLock != nil {
 			paymentAfterLock(ctx, locked.ID)
 		}
+		if recovering {
+			// Money after a write-off (R4): up to what is written off less
+			// what is already recovered; the open amount stays as it is.
+			writeOff, room, ok, err := recoveryRoom(ctx, txq, locked.ID)
+			if err != nil {
+				return err
+			}
+			switch {
+			case !ok:
+				refusal = ptr(conflict(codeNoWriteOff, cannotRegisterTitle,
+					"No write-off of this invoice stands: register the money as an ordinary payment."))
+				return errRefused
+			case amt.Cmp(room) > 0:
+				refusal = ptr(conflict(codeRecoveryExceedsWriteOff, cannotRegisterTitle,
+					fmt.Sprintf("This payment is %s, and %s of the write-off is left to recover.", amt.FloatString(2), room.FloatString(2))))
+				refusal.OpenAmount = ptr(floatFromRat(room, 2))
+				return errRefused
+			}
+			payment.Kind, payment.WriteOffID = "recovered", &writeOff
+		} else {
+			payment.Kind = "payment"
+		}
 		open, reserved, err := openAndReserved(ctx, txq, locked)
 		if err != nil {
 			return err
 		}
 		switch {
+		case recovering:
 		case open.Sign() <= 0 && reserved.Sign() > 0:
 			refusal = ptr(conflict(codeInvoiceSettled, cannotRegisterTitle,
 				"Nothing else is open on this invoice. "+vippsInProgress(reserved)))

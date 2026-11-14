@@ -190,11 +190,11 @@ func SetPDFModelText(hook func(invoiceID int64, meta [][2]string, lines [][]stri
 	return func() { pdfModelBuilt = nil }
 }
 
-// DocumentState is documentState, the Go mirror of invoices.document_state,
+// DocumentState is documentState, the Go mirror of invoices.invoice_state,
 // for the test that holds the two to each other.
 var DocumentState = documentState
 
-// InvoiceStates is the five states an issued invoice can be in, the ones the
+// InvoiceStates is the six states an issued invoice can be in, the ones the
 // list filters by.
 var InvoiceStates = invoiceStates
 

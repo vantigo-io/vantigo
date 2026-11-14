@@ -348,11 +348,18 @@ func (q *Queries) RuleLetters(ctx context.Context, ids []int64) ([]InvoicesRemin
 }
 
 const rulePayments = `-- name: RulePayments :many
-SELECT p.invoice_id, p.paid_on, p.amount, t.ordered_on
-FROM invoices.payments p
-LEFT JOIN invoices.bank_transactions t ON t.id = p.bank_transaction_id
-WHERE p.invoice_id = ANY($1::bigint[]) AND p.removed_at IS NULL
-ORDER BY p.invoice_id, p.paid_on, p.id
+SELECT r.invoice_id, r.paid_on, r.amount, r.ordered_on
+FROM (
+    SELECT p.invoice_id, p.paid_on, p.amount, t.ordered_on, p.id, 0 AS writeoff
+    FROM invoices.payments p
+    LEFT JOIN invoices.bank_transactions t ON t.id = p.bank_transaction_id
+    WHERE p.invoice_id = ANY($1::bigint[]) AND p.removed_at IS NULL AND p.kind = 'payment'
+    UNION ALL
+    SELECT w.invoice_id, w.written_off_on, w.amount, NULL::date, w.id, 1
+    FROM invoices.write_offs w
+    WHERE w.invoice_id = ANY($1::bigint[]) AND w.undone_at IS NULL
+) r
+ORDER BY r.invoice_id, r.paid_on, r.writeoff, r.id
 `
 
 type RulePaymentsRow struct {
@@ -364,7 +371,10 @@ type RulePaymentsRow struct {
 
 // RulePayments is the live payments of the invoices, each with its bank
 // line's ordered_on (OCR's oppdragsdato; NULL for a manual payment and for
-// camt, reading 32), the deadline-met rule's day.
+// camt, reading 32), the deadline-met rule's day — and a standing write-off
+// (accounting design A16) as what settled the principal on its day, so a
+// written-off invoice is never reminded. A recovered payment is not part of
+// the principal and is left out.
 func (q *Queries) RulePayments(ctx context.Context, ids []int64) ([]RulePaymentsRow, error) {
 	rows, err := q.db.Query(ctx, rulePayments, ids)
 	if err != nil {
