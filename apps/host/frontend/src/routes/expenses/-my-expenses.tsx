@@ -1,7 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
+import { SupplierInvoicesNotice } from "@vantigo/accounting-ui/components/supplier-invoices-notice";
 import { MyExpensesPage } from "@vantigo/expenses-ui/pages/my-expenses";
 import { ContentSkeleton } from "@vantigo/frontend-shell";
 import { fetchSession, sessionQueryKey } from "../../api/auth";
+import { useAccountingNotice } from "../../lib/accounting-notice";
 import "../../i18n";
 
 /**
@@ -22,6 +24,12 @@ import "../../i18n";
  */
 export const MyExpenses = () => {
   const session = useQuery({ queryKey: sessionQueryKey, queryFn: fetchSession, staleTime: 300_000 });
+  const notice = useAccountingNotice();
   if (!session.data) return <ContentSkeleton rows={4} rowHeight={52} />;
-  return <MyExpensesPage userId={session.data.user.id} />;
+  return (
+    <MyExpensesPage
+      userId={session.data.user.id}
+      supplierInvoiceNotice={notice ? <SupplierInvoicesNotice /> : undefined}
+    />
+  );
 };
