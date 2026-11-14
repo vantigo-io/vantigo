@@ -39,8 +39,11 @@ const (
 const maxOverdue = 5000
 
 // freshness is the bank data's (D10, I3): the latest booking day of any
-// imported file, nil when none was ever imported; stale when it is more than
-// stale_import_days before today, and always without one (m8); and the
+// imported file, or the latest day an account the bank feed reads was read
+// through while its reads are ok, nil when there is neither; stale when it is
+// more than stale_import_days before today, always without one (m8), and
+// whenever an account the feed reads is refused, failing or unauthorized —
+// its payments may be missing (bank feed plan, delivery C's review); and the
 // accounts imported as OCR giro, whose payments without a KID never arrive.
 type freshness struct {
 	LastBookedOn *time.Time
@@ -59,11 +62,18 @@ func (s *server) bankFreshness(ctx context.Context, q *store.Queries, today time
 	if err != nil {
 		return freshness{}, fmt.Errorf("invoices: read the OCR accounts: %w", err)
 	}
+	feed, err := q.FeedFreshness(ctx)
+	if err != nil {
+		return freshness{}, fmt.Errorf("invoices: read the bank feed's freshness: %w", err)
+	}
 	f := freshness{LastBookedOn: pgDateOf(last), OCRAccounts: accounts}
+	if read := pgDateOf(feed.ReadThrough); read != nil && (f.LastBookedOn == nil || read.After(*f.LastBookedOn)) {
+		f.LastBookedOn = read
+	}
 	if f.OCRAccounts == nil {
 		f.OCRAccounts = []string{}
 	}
-	f.Stale = f.LastBookedOn == nil || f.LastBookedOn.Before(today.AddDate(0, 0, -staleDays))
+	f.Stale = f.LastBookedOn == nil || f.LastBookedOn.Before(today.AddDate(0, 0, -staleDays)) || feed.AnyNotOk
 	return f, nil
 }
 

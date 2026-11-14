@@ -62,6 +62,29 @@ func (q *Queries) CountOverdueCandidates(ctx context.Context, arg CountOverdueCa
 	return column_1, err
 }
 
+const feedFreshness = `-- name: FeedFreshness :one
+SELECT max(read_through) FILTER (WHERE status = 'ok')::date AS read_through,
+       (count(*) FILTER (WHERE status <> 'ok') > 0)::boolean AS any_not_ok
+FROM invoices.bank_feed_accounts WHERE enabled
+`
+
+type FeedFreshnessRow struct {
+	ReadThrough pgtype.Date
+	AnyNotOk    bool
+}
+
+// FeedFreshness is the bank feed's part of the bank data's freshness
+// (invoices bank feed plan, delivery C's review): the latest day an account
+// the feed reads and whose last read was ok was read through, NULL with
+// none, and whether any account it reads is not ok — refused, failing or
+// unauthorized — whose payments may then be missing.
+func (q *Queries) FeedFreshness(ctx context.Context) (FeedFreshnessRow, error) {
+	row := q.db.QueryRow(ctx, feedFreshness)
+	var i FeedFreshnessRow
+	err := row.Scan(&i.ReadThrough, &i.AnyNotOk)
+	return i, err
+}
+
 const invoiceCustomers = `-- name: InvoiceCustomers :many
 SELECT id, customer_id FROM invoices.invoices
 WHERE id = ANY($1::bigint[]) AND kind = 'invoice' AND status = 'issued'

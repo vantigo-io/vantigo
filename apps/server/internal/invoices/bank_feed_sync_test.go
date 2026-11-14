@@ -623,3 +623,31 @@ func TestBankFeedSync_AFailingLineDoesNotStopLaterBatches(t *testing.T) {
 		t.Error("no warning names the line passed over")
 	}
 }
+
+// The bank data's freshness knows the feed (plan C review, item 5): an
+// account the feed reads whose reads are ok is fresh through its last day
+// read, with no file imported at all; one that is refused, failing or
+// unauthorized makes the bank data stale — its payments may be missing — so
+// a reminder run asks to acknowledge it (bank_import_stale), as for files.
+func TestBankFeedSync_FreshnessKnowsTheFeed(t *testing.T) {
+	t.Parallel()
+	h, _ := syncHarness(t)
+	remindersOn(t, h, "late_interest = true")
+	feedReady(t, h)
+	syncNow(t, h)
+	c := reader(t, h)
+	got := overdueOf(t, c, "")
+	if got.Freshness.Stale || got.Freshness.LastBookedOn == nil || *got.Freshness.LastBookedOn != "2026-10-07" || slices.Contains(got.Warnings, "bank_data_stale") {
+		t.Errorf("a feed account read through today = %+v %v, want fresh through 2026-10-07", got.Freshness, got.Warnings)
+	}
+	for _, status := range []string{"refused", "failing", "unauthorized"} {
+		h.Exec(t, `UPDATE invoices.bank_feed_accounts SET status = $1`, status)
+		if got := overdueOf(t, c, ""); !got.Freshness.Stale || !slices.Contains(got.Warnings, "bank_data_stale") {
+			t.Errorf("a feed account %s = %+v %v, want stale", status, got.Freshness, got.Warnings)
+		}
+	}
+	h.Exec(t, `UPDATE invoices.bank_feed_accounts SET status = 'ok', enabled = false`)
+	if got := overdueOf(t, c, ""); !got.Freshness.Stale || got.Freshness.LastBookedOn != nil {
+		t.Errorf("the feed switched off and no file = %+v, want stale with no booking: a switched-off account counts for nothing", got.Freshness)
+	}
+}
