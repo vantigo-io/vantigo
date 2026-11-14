@@ -5374,7 +5374,7 @@ Decided in
 [`docs/superpowers/specs/2026-11-14-accounting-design.md`](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-11-14-accounting-design.md)
 (A12, R1, R6). Nil when invoices is disabled. A reader keeps its own cursors and asks
 after them again until a page comes back short; a page is at most 500
-(`contracts.MaxJournalPage`).
+(`contracts.MaxJournalPage`), and a limit below 1 is read as 1.
 
 - **`Documents(ctx, afterNumber, limit)`** — the issued invoices and credit notes numbered
   after `afterNumber`, in number order: id, number, kind, issue and due date, customer,
@@ -5390,19 +5390,23 @@ after them again until a page comes back short; a page is at most 500
 - **`Facts(ctx, afterSeq, limit)`** — [the fact log](#the-fact-log) after `afterSeq`, in
   seq order, each joined to what it is about: kind, seq, the payment's or charge
   payment's id, the business day, the invoice's id, number and customer, the amount in
-  NOK, the source (`manual`, `ocr`, `camt054`, `vipps`), the receiving account number
-  when it came from a bank line (`""` otherwise), and for a charge payment what it paid:
-  its parts `reminder_fee`, `compensation`, `interest` and `refund_due` (paid beyond every
-  charge). A charge payment pays an invoice's charges, not one of its own, so the parts
-  are [the charges' allocation](#charges) — the sent letters' fees and compensation
-  oldest first, then the interest — over the letters sent and the waivers made by the
-  time it was registered, with it and without it, the charge payments registered before
-  it and not yet removed counted first. A removal answers its registration's parts.
-- **`OpenAt(ctx, day)`** — every invoice issued on or before `day` whose open amount at
-  the end of that day is not zero, in number order: the gross, less the credit notes
-  issued on or before the day, less the payments paid on or before it and not removed by
-  the end of it in the workspace's business time zone. Charges are never in it; below
-  zero is credit owed back.
+  NOK, the source (`manual`, `ocr`, `camt054`, `vipps`), and the receiving account number
+  when it came from a bank line (`""` otherwise). A charge payment's fact, and its
+  removal's, carries its amount and nothing more: it has no parts. A charge payment pays
+  whatever the invoice's letters claimed, and how that divides between fees, interest and
+  what was paid beyond them moves as later letters, waivers and removals change
+  [the charges' allocation](#charges), so it is not a fact a ledger could post once and
+  reverse exactly.
+- **`OpenAt(ctx, day, afterNumber, limit)`** — a page (`contracts.OpenPage`) of the
+  invoices numbered after `afterNumber`, in number order, that were issued on or before
+  `day` and whose open amount at the end of that day is not zero: the gross, less the
+  credit notes issued on or before the day, less the payments paid on or before it and not
+  removed by the end of it in the workspace's business time zone. Charges are never in it;
+  below zero is credit owed back. The page is read in one read-only `REPEATABLE READ`
+  snapshot, and its `AsOfSeq` is the highest fact seq that snapshot saw (0 when there is
+  none): for every invoice numbered within the page — after `afterNumber`, up to its last
+  document's number, or without end on a short page — a fact up to `AsOfSeq` is in the open
+  amount as the day rule says, and a fact after it is not, whatever its day.
 
 Amounts are exact two-decimal text. Invoices issues NOK only in this phase, so an
 amount in NOK is the document's own at its rate of 1.
@@ -5422,7 +5426,10 @@ set, and one fact of each kind exists for a row (`ux_journal_facts_subject`).
 - **Written by the database.** Four deferred constraint triggers
   (`tr_payments_journal_registered`, `tr_payments_journal_removed` and the two on
   `charge_payments`, `DEFERRABLE INITIALLY DEFERRED`) write the row when the transaction
-  commits: an insert is a registration, an update that sets `removed_at` a removal.
+  commits: an insert is a registration, an update that sets `removed_at` a removal, and a
+  row inserted already removed writes both. Each writes the row as the statement that
+  queued it left it, so a registration removed in its own transaction writes its
+  registration and then its removal; a savepoint rolled back takes its facts with it.
   Every path that registers or removes — a person, a bank line matched or applied, a
   reversal, a Vipps capture — writes its fact without knowing it.
 - **Numbered at commit.** `seq` comes from the counter row `journal`, beside `documents`
@@ -5433,10 +5440,13 @@ set, and one fact of each kind exists for a row (`ux_journal_facts_subject`).
   rolls back gives its seq back. A bank line paying several invoices takes it after every
   invoice lock it needs, so it cannot deadlock on it.
 - **Append-only.** `tr_journal_facts_immutable` refuses every update and delete.
-- **History.** The migration numbered what was there before it: every registration,
-  payments and charge payments together, in (`registered_at`, id) order, then every
-  removal in (`removed_at`, id) order. A company that turns the ledger on later finds its
-  whole history.
+- **History.** The migration numbered what was there before it in one order, the order it
+  happened in: every registration at its `registered_at` and every removal at its
+  `removed_at`, payments and charge payments together, a registration before a removal at
+  the same moment, then by id. A removal that came before a later registration keeps its
+  place. A company that turns the ledger on later finds its whole history.
+- **Kept.** The migration's Down refuses while the log holds a fact: a Down never deletes
+  bookkeeping.
 
 ### What a line was made from
 
@@ -5447,11 +5457,12 @@ writes its VAT (`SnapshotLine`), while the document is still a draft —
 | Column | Is |
 | --- | --- |
 | `line_kind` | `hours`, `expense`, `milestone` (a project's work), `settlement` (energy), `order_line`, `subscription_period` (an order allocation's), `deduction` (an a-konto deducted), `manual` (made from nothing), or `mixed` (sources of more than one kind) |
-| `tax_category_id` | the product's tax category in Products, for a line billing an order line with a product; the From orders wizard reads it through the product catalog when it makes the draft and keeps it on the held row (`line_sources.tax_category_id`) |
+| `tax_category_id` | the product's tax category in Products, for a line billing an order line with a product; the From orders wizard and the billing run read it through the product catalog when they make the draft and keep it on the held row (`line_sources.tax_category_id`); a catalog that cannot be read is logged and the draft is made without it |
 | `project_id` | the project every source of the line belongs to; none when they are several or there are none |
 
 They are read from the line's sources — an energy settlement's covering all its lines —
-and a credit note's line takes its original line's. A draft made before migration 00178
+and a credit note's line takes its original line's. A source of a kind the statement does
+not know fails the issue (`ck_lines_line_kind`) rather than call the line `mixed`. A draft made before migration 00178
 gets them at its issue like any other; a line issued before it has none, and a reader
 falls back to its VAT code.
 
@@ -5765,7 +5776,8 @@ purge of anything.
 Four events go onto the [domain-events outbox](/en/contributing/platform-packages/#the-domain-events-outbox): two for the
 [virtual employees](/en/reference/agents/) (design V30), and two that wake a ledger's reader of
 [`contracts.SalesJournal`](#what-invoices-reports-to-other-modules) (accounting design A12) — the contract is the source, the
-event only makes the reader prompt. A payload carries ids, numbers, amounts and dates and never personal
+event only makes the reader prompt. A charge payment, and its removal, wakes no reader: it has no event, and its facts are read
+on the reader's next pass. A payload carries ids, numbers, amounts and dates and never personal
 data: no buyer name, address or e-mail, and none of a payment's free text (`reference`, `note`).
 
 | Event (v1) | When | Payload |
