@@ -22,6 +22,8 @@ export { OpeningPage } from "./pages/opening";
 export { AccountingOverviewPage } from "./pages/overview";
 export { PostingRulesPage } from "./pages/posting-rules";
 export { ReportsPage } from "./pages/reports";
+export { SaftExportPage } from "./pages/saft";
+export { SaftImportPanel } from "./pages/saft-import";
 export { SettingsPage } from "./pages/settings";
 export { SetupPage } from "./pages/setup";
 export { NewSupplierInvoicePage, SupplierInvoicePage, SupplierInvoicesPage } from "./pages/supplier-invoices";

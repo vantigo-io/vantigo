@@ -20,6 +20,7 @@ export const NEW_SUPPLIER_INVOICE_ROUTE_PATH = "/accounting/supplier-invoices/ne
 export const VAT_ROUTE_PATH = "/accounting/vat";
 export const VAT_TERM_ROUTE_PATH = "/accounting/vat/$year/$number";
 export const VAT_POSTINGS_ROUTE_PATH = "/accounting/vat/postings";
+export const SAFT_ROUTE_PATH = "/accounting/saft";
 
 /** A voucher's page. */
 export const voucherPath = (id: number) => `/accounting/vouchers/${id}`;
