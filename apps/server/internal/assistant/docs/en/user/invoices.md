@@ -1427,10 +1427,11 @@ invoices whose fee or interest is still owed. More than 5 000 overdue invoices m
 narrowed by customer or due date.
 
 Above the list stands the bank data's freshness: *Bank data booked up to …*, or **The
-bank data is old** when the latest booking imported — or the last day the bank feed read
-an account through — is older than the reminder settings' stale limit, always when there
-is neither, and whenever an account the bank feed reads is **Refused**, **Failing** or
-**Key refused**, since its payments may be missing. Letters judged on old bank
+bank data is old** when the latest booking imported — or the earliest day the bank feed
+read any of its accounts through — is older than the reminder settings' stale limit,
+always when there is neither, and whenever an account the bank feed reads is not read yet,
+is **Refused**, **Failing** or **Key refused**, or holds a payment it could not match,
+since payments may be missing. Letters judged on old bank
 data may claim charges on invoices already paid. When an account is imported as OCR giro,
 a note says payments without a KID never reach such a file: **register the payments
 without a KID by hand first, then make the run**.
