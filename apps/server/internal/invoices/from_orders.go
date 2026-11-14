@@ -528,10 +528,8 @@ func (s *server) fromOrders(ctx context.Context, lines []orderLineInput, subs []
 
 	// The tax categories of the allocations' products, read now, on the
 	// pool: the issue snapshots them onto the lines (accounting design R6).
-	categories, err := s.variantTaxCategories(ctx, allocations)
-	if err != nil {
-		return ordersOutcome{}, err
-	}
+	// A catalog that fails costs the lines their category, not the draft.
+	categories := s.variantTaxCategories(ctx, allocations)
 
 	byOrder := map[docKey][]contracts.OrderAllocation{}
 	for _, a := range allocations {

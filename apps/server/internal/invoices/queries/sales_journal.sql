@@ -50,36 +50,17 @@ WHERE f.seq > sqlc.arg(after_seq)::bigint
 ORDER BY f.seq
 LIMIT sqlc.arg(row_limit)::int;
 
--- name: JournalChargeFactsOf :many
--- JournalChargeFactsOf is every charge-payment fact of the invoices named,
--- in seq order, with the charge payment's amount and the moment it was
--- registered: what a charge payment's split is computed from.
-SELECT f.seq, f.kind, f.subject_id, f.invoice_id, c.amount, c.paid_on, c.registered_at
-FROM invoices.journal_facts f
-JOIN invoices.charge_payments c ON c.id = f.subject_id
-WHERE f.invoice_id = ANY(sqlc.arg(invoice_ids)::bigint[])
-  AND f.kind IN ('charge_payment', 'charge_payment_removed')
-ORDER BY f.seq;
-
--- name: JournalLettersOf :many
--- JournalLettersOf is the sent letters of the invoices named, as
--- SentLettersOf reads one invoice's.
-SELECT * FROM invoices.reminders
-WHERE invoice_id = ANY(sqlc.arg(invoice_ids)::bigint[]) AND status = 'sent'
-ORDER BY invoice_id, sequence, id;
-
--- name: JournalWaiversOf :many
--- JournalWaiversOf is every charge waiver of the invoices named, as WaiversOf
--- reads one invoice's.
-SELECT * FROM invoices.charge_waivers
-WHERE invoice_id = ANY(sqlc.arg(invoice_ids)::bigint[])
-ORDER BY invoice_id, id;
+-- name: JournalLastSeq :one
+-- JournalLastSeq is the highest seq of a fact this snapshot sees, 0 when it
+-- sees none: OpenAt's AsOfSeq, read in its page's snapshot.
+SELECT COALESCE(max(seq), 0)::bigint AS last_seq FROM invoices.journal_facts;
 
 -- name: JournalOpenAt :many
--- JournalOpenAt is every invoice issued on or before day whose open amount at
--- the end of that day is not zero: its gross, less the credit notes issued on
--- or before day, less the payments paid on or before day that were not
--- removed before live_until — the first moment of the next business day.
+-- JournalOpenAt is up to row_limit invoices numbered after after_number, in
+-- number order, issued on or before day and whose open amount at the end of
+-- that day is not zero: its gross, less the credit notes issued on or before
+-- day, less the payments paid on or before day that were not removed before
+-- live_until — the first moment of the next business day.
 SELECT i.id, i.number::bigint AS number, i.customer_id, i.issue_date, i.due_date, i.currency, i.exchange_rate,
     (i.gross_total - COALESCE(cr.credited, 0) - COALESCE(pd.paid, 0))::numeric AS open_amount
 FROM invoices.invoices i
@@ -93,5 +74,7 @@ CROSS JOIN LATERAL (
       AND (p.removed_at IS NULL OR p.removed_at >= sqlc.arg(live_until)::timestamptz)
 ) AS pd
 WHERE i.kind = 'invoice' AND i.status = 'issued' AND i.issue_date <= sqlc.arg(day)::date
+  AND i.number > sqlc.arg(after_number)::bigint
   AND i.gross_total - COALESCE(cr.credited, 0) - COALESCE(pd.paid, 0) <> 0
-ORDER BY i.number;
+ORDER BY i.number
+LIMIT sqlc.arg(row_limit)::int;
