@@ -25,7 +25,9 @@ notes, payments, reminder charges and write-offs — posts itself
 ([How expenses arrive](#how-expenses-arrive-from-expenses)). You enter what suppliers bill
 as [supplier invoices](#supplier-invoices) and register their payments. Each
 [VAT term](#the-vat-term) is checked and closed here, and its return filed at
-Skatteetaten. SAF-T and the bank follow with the next releases. The rules behind every screen — what is refused and why, the status codes and
+Skatteetaten. The [bank](#the-bank) is reconciled against its statements, and the
+[SAF-T file](#the-file-an-audit-asks-for-saf-t) is what an audit asks for and the way in from another system.
+The rules behind every screen — what is refused and why, the status codes and
 the permission each request is checked against — are in the
 [Accounting module reference](/en/reference/accounting/).
 

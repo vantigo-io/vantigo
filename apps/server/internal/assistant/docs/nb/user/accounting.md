@@ -1,6 +1,6 @@
 ---
 title: Regnskap
-description: Regnskap-appen — å sette opp regnskapet, kontoplanen med grupperingskoder og systemkontoer, mva-kodene og satsene deres, å bokføre en postering netto eller brutto med mva-linjene, å kopiere et bilag, å legge ved filer, å tilbakeføre et bilag, å sperre en periode og flytte sperren tilbake, inngående balanse og de åpne fakturaene fra Fakturaer, hvordan fakturaer, innbetalinger, purrekostnader og avskrivninger bokføres av seg selv, leverandører og oppslaget i Brønnøysundregisteret, å føre, bokføre og betale en leverandørfaktura, annen valuta, omvendt avgiftsplikt og innførsel av varer, kreditnotaer, Tilbakefør og kopier, hvordan utgifter kommer inn fra Utgifter, posteringsreglene for salg og utgiftskategorier, Trenger oppmerksomhet med Prøv igjen, beløpet i NOK og Lag leverandørfaktura, åpne poster og å registrere en innbetaling, utbetaling eller tilbakebetaling, mva-terminen — å kontrollere tallene, lukke den, laste ned mva-meldingen, levere den hos Skatteetaten og merke den som levert, åpne den igjen, rette etter levering og betale mvaen — banken med bankkontoer, å importere en kontoutskrift i camt.053 eller CSV med oppsettet, bankintegrasjonen som kilde, å avstemme med hvert forslag, utbetalinger fra Vipps, å betale mvaen fra banken, bankregler, hvorfor innbetalinger fra kunder registreres i Fakturering og å sperre en måned med linjer som ikke er avstemt — rapportene og CSV-filene deres, SAF-T-filen en kontroll ber om og grupperingskodene den trenger, å komme fra et annet system med SAF-T-filen derfra, og å invitere en regnskapsfører.
+description: Regnskap-appen — å sette opp regnskapet, kontoplanen med grupperingskoder og systemkontoer, mva-kodene og satsene deres, å bokføre en postering netto eller brutto med mva-linjene, å kopiere et bilag, å legge ved filer, å tilbakeføre et bilag, å sperre en periode og flytte sperren tilbake, inngående balanse og de åpne fakturaene fra Fakturaer, hvordan fakturaer, innbetalinger, purrekostnader og avskrivninger bokføres av seg selv, leverandører og oppslaget i Brønnøysundregisteret, å føre, bokføre og betale en leverandørfaktura, annen valuta, omvendt avgiftsplikt og innførsel av varer, kreditnotaer, Tilbakefør og kopier, hvordan utgifter kommer inn fra Utgifter, posteringsreglene for salg og utgiftskategorier, Trenger oppmerksomhet med Prøv igjen, beløpet i NOK og Lag leverandørfaktura, åpne poster og å registrere en innbetaling, utbetaling eller tilbakebetaling, mva-terminen — å kontrollere tallene, lukke den, laste ned mva-meldingen, levere den hos Skatteetaten og merke den som levert, åpne den igjen, rette etter levering og betale mvaen — banken med bankkontoer, å importere en kontoutskrift i camt.053 eller CSV med oppsettet, bankintegrasjonen som kilde, å avstemme med hvert forslag, utbetalinger fra Vipps, å betale mvaen fra banken, bankregler, hvorfor innbetalinger fra kunder registreres i Fakturaer og å sperre en måned med linjer som ikke er avstemt — rapportene og CSV-filene deres, SAF-T-filen en kontroll ber om og grupperingskodene den trenger, å komme fra et annet system med SAF-T-filen derfra, og å invitere en regnskapsfører.
 sidebar:
   order: 67
 sources:
@@ -25,7 +25,9 @@ kreditnotaer, innbetalinger, purrekostnader og avskrivninger — bokføres av se
 ([Slik kommer utgiftene inn](#slik-kommer-utgiftene-inn-fra-utgifter)). Det leverandørene
 fakturerer, fører du som [leverandørfakturaer](#leverandørfakturaer) og registrerer betalingene
 av. Hver [mva-termin](#mva-terminen) kontrolleres og lukkes her, og mva-meldingen leveres hos
-Skatteetaten. SAF-T og bank kommer i de neste utgavene. Reglene bak hvert skjermbilde — hva som avvises og hvorfor, statuskodene
+Skatteetaten. [Banken](#banken) avstemmes mot kontoutskriftene, og
+[SAF-T-filen](#filen-en-kontroll-ber-om-saf-t) er det en kontroll ber om og veien inn fra et annet system.
+Reglene bak hvert skjermbilde — hva som avvises og hvorfor, statuskodene
 og tillatelsen hver forespørsel sjekkes mot — står i
 [referansen for Regnskap-modulen](/en/reference/accounting/) (på engelsk).
 
@@ -114,7 +116,7 @@ opp på, og det krever **Forvalte regnskapet**.
 4. Sjekk **Regnskapsåret starter i**. En fil som oppgir perioden med månedsnumre i stedet
    for datoer (noen systemer gjør det), trenger den for å vite dagene; forhåndsvisningen
    sier fra.
-5. Gjelder filen et annet selskap enn det i innstillingene i Fakturering, sier
+5. Gjelder filen et annet selskap enn det i innstillingene i Fakturaer, sier
    forhåndsvisningen det i rødt: kryss av for at regnskapet likevel skal starte fra den,
    eller last opp riktig fil.
 6. Velg **Mva-termin** og språket for navnene, og klikk **Sett opp regnskapet fra filen**.
@@ -783,16 +785,16 @@ Hver bankkonto er kontoutskriften for én konto i kontoplanen: driftskontoen på
 sparekonto på 1950, en kortkonto på sin egen eiendelskonto. Én hovedbokskonto hører til én
 bankkonto.
 
-Første gang du åpner **Bank**, foreslås kontoen Fakturering skriver på fakturaene som den
+Første gang du åpner **Bank**, foreslås kontoen Fakturaer skriver på fakturaene som den
 første bankkontoen, på 1920: klikk **Legg den til**. For å legge til en annen, klikk **Legg
 til bankkonto** og oppgi navnet, **Kontonummer** (elleve sifre; mellomrom, punktum eller et
 norsk IBAN går fint), IBAN og BIC om du vil, og **Hovedbokskonto**. Bankkontoer er i NOK i
 denne versjonen.
 
-Fra bankkontoen er lagt til, bokføres innbetalingene Fakturering registrerer fra en
+Fra bankkontoen er lagt til, bokføres innbetalingene Fakturaer registrerer fra en
 bankfil eller bankintegrasjonen på hovedbokskontoen til bankkontoen de kom inn på — en
 innbetaling til sparekontoen havner på 1950, ikke 1920. En innbetaling ført for hånd i
-Fakturering har ingen konto og går til bankkontoen i kontoplanen (1920). Innbetalinger som
+Fakturaer har ingen konto og går til bankkontoen i kontoplanen (1920). Innbetalinger som
 er bokført før, blir stående som de er.
 
 En bankkontos **innstillinger** (tannhjulet i listen) endrer opplysningene, hvor
@@ -846,23 +848,23 @@ importert, og deretter **Lagre oppsettet**.
 
 ### Bankintegrasjonen som kilde
 
-Når Fakturering er koblet til banken (Administrer arbeidsområde › **Integrasjoner** › **Bank**, se
-[Fakturering](/nb/user/invoices/)), kan en bankkonto banken tilbyr, få kontoutskriften fra
+Når Fakturaer er koblet til banken (Administrer arbeidsområde › **Integrasjoner** › **Bank**, se
+[Fakturaer](/nb/user/invoices/)), kan en bankkonto banken tilbyr, få kontoutskriften fra
 banken selv. I bankkontoens innstillinger, under **Kontoutskrift fra**, velger du
 **Bankintegrasjon** og klikker **Lagre kilden**. Integrasjonen leser fra dagen etter den
 siste kontoutskriften du importerte for kontoen; du kan oppgi en senere dag under **Les
 fra**, men ikke en tidligere, så ingen dag leses to ganger (og høyst 13 måneder tilbake).
 Kontoen leses da omtrent hver halvtime.
 
-Fakturering leser bare pengene som kommer inn, for å registrere innbetalinger fra kunder.
+Fakturaer leser bare pengene som kommer inn, for å registrere innbetalinger fra kunder.
 Regnskapet leser hele bevegelsen på kontoen — betalinger til leverandører, lønn, gebyrer,
 kortkjøp og overføringer mellom egne kontoer — så også en kortkonto eller en
-skattetrekkskonto kan leses. Det er én tilkobling og én nøkkel, Faktureringens; ingenting
+skattetrekkskonto kan leses. Det er én tilkobling og én nøkkel, Fakturaerens; ingenting
 legges inn to ganger.
 
 Innstillingene viser hvordan integrasjonen står: når banken sist ble lest, når den leses
 neste gang, og hva som gikk galt — **banken avviste nøkkelen** (lagre en ny nøkkel under
-Bankintegrasjon i Fakturering), **banken ba om å vente** (den leses igjen etter bankens
+Bankintegrasjon i Fakturaer), **banken ba om å vente** (den leses igjen etter bankens
 ventetid), **bankens svar er for stort** (banken klarer ikke å svare for én enkelt dag av
 kontoen i ett svar; det prøves igjen, og vedvarer det, spør banken) eller **ingen bank
 koblet til**. En startdag langt tilbake leses noen uker om gangen, så de eldste linjene kan
@@ -879,22 +881,22 @@ En linje som ikke er avstemt, viser **forslagene**, det sikreste først, hvert m
 det foreslås og, når det fører et bilag, hva det vil føre. Klikk **Godta** for å ta et;
 **Konter** for å føre linjen selv; eller la den stå til senere. En avstemt linje viser hva
 den er avstemt mot, og **Angre** så lenge måneden ikke er sperret. En linje som var avstemt
-mot en betaling som er fjernet siden — i Fakturering eller på leverandørfakturaen — eller mot
+mot en betaling som er fjernet siden — i Fakturaer eller på leverandørfakturaen — eller mot
 et bilag som er tilbakeført, er åpen igjen, med en merknad om hvorfor.
 
 Forslagene:
 
 | Forslag | Når | Hva det å godta gjør |
 | --- | --- | --- |
-| **Innbetalingen Fakturering registrerte** | Fakturering registrerte en innbetaling fra akkurat denne banklinjen — fra en bankfil eller bankintegrasjonen | knytter linjen til innbetalingens postering |
+| **Innbetalingen Fakturaer registrerte** | Fakturaer registrerte en innbetaling fra akkurat denne banklinjen — fra en bankfil eller bankintegrasjonen | knytter linjen til innbetalingens postering |
 | **En postering med samme beløp** | regnskapet har en postering på kontoen med samme beløp, innen ti dager | knytter dem sammen |
-| **En bunt med innbetalinger fra Fakturering** | flere KID-innbetalinger kommer som én linje: bankens bunt, eller innbetalingene Fakturering registrerte én dag | knytter linjen til alle |
+| **En bunt med innbetalinger fra Fakturaer** | flere KID-innbetalinger kommer som én linje: bankens bunt, eller innbetalingene Fakturaer registrerte én dag | knytter linjen til alle |
 | **Betal en leverandørfaktura** | penger ut med en leverandørfakturas KID, nummeret i teksten, eller beløpet til leverandørens konto | registrerer betalingen på leverandørfakturaen, som **Registrer betaling** ville gjort; for en faktura i annen valuta, se under |
 | **En utbetaling fra Vipps** | penger inn fra Vipps | flytter den fra Vipps-oppgjørskontoen til banken, med Vipps' gebyr til bank- og betalingsgebyrer (7770): se under |
 | **Merverdiavgift betalt eller tilbakebetalt** | penger til eller fra Skatteetaten som er beløpet for en lukket mva-termin, ikke betalt ennå, som fortsatt står på 2740 | debiterer eller krediterer 2740 mot banken |
 | **En overføring mellom kontoene dine** | samme beløp går ut av én av bankkontoene og inn på en annen, og ingen overføring er ført for det ennå | ett bilag mellom hovedbokskontoene, avstemt på begge utskriftene |
 | **En bankregel** | teksten eller motparten inneholder en regels ord — aldri penger inn med KID eller med et beløp en kunde skylder | fører linjen på regelens konto og mva-kode |
-| **Registrer den i Fakturering** | penger inn fra en kunde som Fakturering ikke har registrert | ingenting her: se under |
+| **Registrer den i Fakturaer** | penger inn fra en kunde som Fakturaer ikke har registrert | ingenting her: se under |
 
 Flere forslag merket **Sikker** — én postering med samme beløp samme dag, eller samme
 bankreferanse — kan godtas samtidig: klikk **Godta de sikre** og bekreft.
@@ -903,7 +905,7 @@ bankreferanse — kan godtas samtidig: klikk **Godta de sikre** og bekreft.
 konto, beløp og mva-kode for resten, som til sammen må gå i balanse med linjen. Med en
 mva-kode er beløpet brutto: et kortkjøp på 349,00 på 6300 med kode 1 fører 279,20 på 6300 og
 69,80 på 2710. En linje kan gjøre opp en åpen post hos en kunde eller leverandør som ikke
-står for en faktura i Fakturering eller en leverandørfaktura — en inngående saldo, for
+står for en faktura i Fakturaer eller en leverandørfaktura — en inngående saldo, for
 eksempel; en linje mot kundefordringer eller leverandørgjeld må oppgi den åpne posten den
 gjør opp.
 
@@ -913,19 +915,19 @@ differansen er en valutagevinst eller et valutatap. Når det ikke gjør det, er 
 delbetaling: **Godta** spør om **Beløp gjort opp i** fakturaens valuta, med det betalingen er
 verdt etter fakturaens kurs som forslag, og fakturaen skylder fortsatt resten.
 
-### Hvorfor innbetalinger fra kunder registreres i Fakturering
+### Hvorfor innbetalinger fra kunder registreres i Fakturaer
 
-En kundes betaling av en faktura hører hjemme på fakturaen, i Fakturering: det er der
+En kundes betaling av en faktura hører hjemme på fakturaen, i Fakturaer: det er der
 fakturaen merkes betalt, der purringene stopper, og der den bokføres fra. Penger inn med
 KID, eller en bunt med innbetalinger, konteres derfor aldri her, og heller ikke penger inn
-kontert på en salgskonto. Når Fakturering ikke har registrert den ennå, er forslaget
-**Registrer den i Fakturering**: importer bankfilen der, la bankintegrasjonen gjøre det,
+kontert på en salgskonto. Når Fakturaer ikke har registrert den ennå, er forslaget
+**Registrer den i Fakturaer**: importer bankfilen der, la bankintegrasjonen gjøre det,
 eller registrer betalingen på fakturaen — så avstemmes posteringen mot linjen her.
 
 ### Utbetalinger fra Vipps
 
 Vipps betaler ut salget for hver oppgjørsdag minus gebyrene, en dag eller to senere.
-Vipps-betalingene Fakturering registrerer, står på Vipps-oppgjørskontoen (1580). Når salget
+Vipps-betalingene Fakturaer registrerer, står på Vipps-oppgjørskontoen (1580). Når salget
 for en dag — eller for noen dager på rad — som ikke er utbetalt ennå, stemmer med
 utbetalingen eller er inntil 3 % mer, sier forslaget hvilke dager, flytter det salget fra
 oppgjørskontoen, utbetalingen til banken og differansen — Vipps' gebyr — til 7770. Neste
@@ -949,7 +951,7 @@ mva-koden den føres på — *Gebyr* til 7770, bankens renter til 8050. Regelen 
 forslag på hver linje den passer på. En endring er en ny versjon; en regel som er brukt,
 gjøres inaktiv i stedet for å slettes. En regel for penger inn kan ikke gå til en salgskonto
 eller til kundefordringer, og penger inn med KID eller med et beløp en kunde skylder, får
-ikke forslag fra noen regel: det er innbetalinger fra kunder, som registreres i Fakturering.
+ikke forslag fra noen regel: det er innbetalinger fra kunder, som registreres i Fakturaer.
 
 ### Å angre en avstemming
 
@@ -1009,7 +1011,7 @@ filen navngir kunder og leverandører — personer blant dem.
    - *kontoer har ingen grupperingskode* — de eksporteres med koden **NA**. Åpne
      kontoplanen, gi hver sin **Grupperingskode** for året, og kom tilbake.
    - *Selskapets opplysninger mangler* — fyll inn selskapets navn og organisasjonsnummer i
-     innstillingene i Fakturering: filen navngir selskapet med nummeret.
+     innstillingene i Fakturaer: filen navngir selskapet med nummeret.
 4. Klikk **Eksporter SAF-T**. Filen skrives i bakgrunnen; listen under viser den som *I
    kø*, *Skrives* og så *Ferdig*, med hvem som bestilte den og når. En eksport som feilet,
    sier hvorfor.
