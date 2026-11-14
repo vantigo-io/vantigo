@@ -1,6 +1,6 @@
 ---
 title: Accounting
-description: The Accounting app — setting up the books, the chart of accounts with its grouping codes and system accounts, the tax codes and their rates, posting a journal entry net or gross with its VAT lines, copying a voucher, attaching files, reversing a voucher, locking a period and moving the lock back, the opening balances and Invoices' open invoices, open items and registering a receipt, payment or refund, the reports and their CSV, and inviting an accountant.
+description: The Accounting app — setting up the books, the chart of accounts with its grouping codes and system accounts, the tax codes and their rates, posting a journal entry net or gross with its VAT lines, copying a voucher, attaching files, reversing a voucher, locking a period and moving the lock back, the opening balances and Invoices' open invoices, how invoices, payments, charges and write-offs post themselves, the posting rules, Needs attention and Retry, open items and registering a receipt, payment or refund, the reports and their CSV, and inviting an accountant.
 sidebar:
   order: 67
 sources:
@@ -17,10 +17,11 @@ changed or deleted once it is posted; a mistake is corrected by **reversing** it
 customer owes, document by document. The **lock date** closes the months behind it, and
 the **reports** are the specifications the law asks a company to be able to produce.
 
-Accounting needs [Invoices](/en/user/invoices/) switched on. In this release you post
-journal entries by hand and enter the opening balances; with the next releases, issued
-invoices and their payments post themselves, and purchases, VAT returns, SAF-T and the
-bank follow. The rules behind every screen — what is refused and why, the status codes and
+Accounting needs [Invoices](/en/user/invoices/) switched on. You post journal entries by
+hand and enter the opening balances; what Invoices issues and is paid — invoices, credit
+notes, payments, reminder charges and write-offs — posts itself
+([How sales arrive](#how-sales-arrive-from-invoices)). Purchases, VAT returns, SAF-T and the
+bank follow with the next releases. The rules behind every screen — what is refused and why, the status codes and
 the permission each request is checked against — are in the
 [Accounting module reference](/en/reference/accounting/).
 
@@ -31,10 +32,12 @@ the permission each request is checked against — are in the
 | **Overview** | Whether the books are set up, the vouchers of the fiscal year, the open customer items, the lock date, what needs attention and shortcuts. |
 | **New journal entry** | The journal entry form. Shown to those who may post vouchers. |
 | **Vouchers** | Every voucher, newest first. |
+| **Needs attention** | The sales the books could not post, with why and **Retry**. |
 | **Open items** | What customers owe, document by document. |
 | **Reports** | The journal, an account, customers, suppliers, the trial balance, profit and loss and the balance sheet. |
 | **Chart of accounts** | The accounts, their grouping codes and the system accounts. |
 | **Tax codes** | The standard VAT codes, their accounts and their rates. |
+| **Posting rules** | Which revenue account each sales line goes to. |
 | **Settings** | The fiscal settings and the lock date. |
 
 ## Setting up the books
@@ -150,7 +153,8 @@ A voucher's page shows its dates — the **Voucher date** it is booked on and th
 date** of what it records — its kind, when it was posted, every posting with its account,
 text, tax code, customer and project, debit and credit, and its attachments. **Attach a
 file** adds one; an attachment is never removed. A voucher the system posted for something
-another app recorded says so, and names its source.
+another app recorded says so, names its source and the rule that made it with its version,
+and links to the invoice in Invoices it belongs to.
 
 ## Reversing a voucher
 
@@ -204,7 +208,73 @@ month is locked; after that they are final, even if the lock is later moved back
 lifted. Entering them, and reversing them, needs **Manage the books**: someone who may only
 post vouchers sees no **Reverse** on the opening voucher.
 
-## Open items
+## How sales arrive from Invoices
+
+Once the books are set up, everything Invoices issues and is paid posts itself, a voucher
+for each, usually within seconds and at the latest within five minutes. Nobody types them,
+and an invoice is never held back because of the books: if something cannot be posted, it
+waits under [Needs attention](#needs-attention) while the rest carries on.
+
+| In Invoices | The voucher |
+| --- | --- |
+| An invoice is issued | Accounts receivable debited for the total on the invoice's own open item; each line's amount credited to its revenue account ([Posting rules](#posting-rules)); each VAT rate's VAT credited to its tax code's VAT account. A line of zero is left out, and an invoice of nothing but zeros posts nothing. |
+| A credit note is issued | The same with every sign turned, on the open item of the invoice it credits. |
+| A payment is registered | The bank account debited — Vipps clearing for a Vipps payment — and accounts receivable credited on the invoice's item. |
+| A payment is removed | The same turned back, dated the day it was removed. |
+| Reminder charges are paid | The bank debited and the charge income account credited, with tax code 7 (no VAT): fees, compensation and interest are not turnover. A removal turns it back. |
+| An invoice is written off | Bad debts debited and accounts receivable credited for what was open; with the VAT taken back, the VAT share goes back on each rate's VAT account, marked for the VAT return. A rounding goes to the rounding account. Undoing it turns the voucher back. |
+| Money arrives after a write-off | The bank debited and bad debts credited — and the VAT taken back, in proportion, returned. |
+
+How [writing off](/en/user/invoices/#writing-an-invoice-off) works in Invoices is on its own page.
+
+The books' start and the lock decide the date:
+
+- An invoice issued before the books start is not posted: it belongs in the opening
+  balances.
+- A payment of an invoice from before the books start posts on that invoice's opening
+  item. One dated before the books start but registered after you entered the opening
+  balances is booked on the books' start, so it is counted once; one the opening balances
+  already reflect is not posted again.
+- A voucher dated in a locked month is booked on the first open day, keeping its own date
+  as the document date.
+
+The overview's **Sales from Invoices** says how far the books have read and whether
+anything is waiting.
+
+## Posting rules
+
+**Posting rules** decide which revenue account each invoice line is credited to. A rule
+matches on one thing, and the first that matches wins:
+
+1. the line's **kind** — hours, expenses, milestones, energy settlements, order lines,
+   subscription periods, a-konto deductions, lines typed by hand;
+2. the product's **tax category**, for a line from an order;
+3. the line's **tax code**;
+4. the **default** rule of the tax code, set up with the books: taxable sales to 3000
+   (3010 middle rate, 3020 low rate), exempt sales to 3100, export to 3150, domestic
+   reverse charge to 3160, sales outside the VAT Act to 3200.
+
+**Add a rule** with its name, what it matches and the account. Click a rule's name to
+change its name or account: a new account makes a new **version** of the rule, and only
+vouchers posted after it follow it — what is posted stays as it was. Each revenue line of a
+voucher names the rule and version that chose its account. A default rule is never deleted;
+point it at another account instead.
+
+Changing the rules needs **Manage the books**.
+
+## Needs attention
+
+**Needs attention** lists every sale the books could not post, with why: a tax code the
+books do not have, or that is inactive; an account that is inactive; a kind of fact this
+version does not know. The overview and the dashboard count them.
+
+Fix the cause — activate the account, add the tax code, change the rule — and click
+**Retry** on the line: it reads the fact again from Invoices and posts it, and the line
+then shows its voucher. A fact is never dismissed. **Show those posted since** shows the
+ones a retry has posted.
+
+Retrying needs **Post vouchers**.
+
 
 **Open items** lists, per customer, every document not yet settled: its number, dates, the
 original amount and the balance, 200 at a time with **Previous** and **Next**. **Show
@@ -229,6 +299,7 @@ Registering needs **Post vouchers**.
   closing balance.
 - **Customers** and **Suppliers** — per party, the items with a balance or a movement in the
   period, and the balance aged by due date: not due, 1–30, 31–60, 61–90 and over 90 days.
+  An item for an invoice links to it in Invoices.
 - **Trial balance** (saldobalanse), **Profit and loss** and **Balance sheet**. **Compare
   with the year before** adds the same period a year earlier (29 February compares with 28
   February). The balance sheet shows the result not yet closed to equity as two lines in
@@ -253,8 +324,8 @@ the permissions they need:
 | Permission | What it allows |
 | --- | --- |
 | **Use Accounting** (`accounting:read`) | Every screen and report. |
-| **Post vouchers** (`accounting:post`) | Journal entries, reversals, attachments and settlements. |
-| **Manage the books** (`accounting:close`) | Setting up the books, the chart, the tax codes, the opening balances and the lock. Only an Owner can give it. |
+| **Post vouchers** (`accounting:post`) | Journal entries, reversals, attachments, settlements and **Retry** under Needs attention. |
+| **Manage the books** (`accounting:close`) | Setting up the books, the chart, the tax codes, the posting rules, the opening balances and the lock. Only an Owner can give it. |
 | **Export the books** (`accounting:export`) | The reports as CSV. |
 
 When the engagement ends, remove the role or disable the user: everything they posted
