@@ -1,6 +1,6 @@
 ---
 title: Fakturaer
-description: Fakturering av arbeid, forbruk og ordre, fakturakjøringer, utkast, utstedelse og sending av fakturaer, kreditnotaer, betalinger, journalen og eksporten.
+description: Fakturering av arbeid, forbruk og ordre, fakturakjøringer, utkast, utstedelse og sending av fakturaer, kreditnotaer, betalinger, avskrivninger, journalen og eksporten.
 sidebar:
   order: 50
 sources:
@@ -1121,13 +1121,44 @@ viser sin **Banklinje**, lenket til **Innbetalinger** for den som har `invoices:
 dens **Referanse**, **Merknad** og når den ble **Registrert**, og summene får **Betalt** og
 **Utestående** — summen minus det som er kreditert og betalt. En betaling på hele det
 utestående gjør fakturaen **Betalt**; en mindre gjør den **Delvis betalt**, eller lar den
-stå som **Forfalt** etter forfall. En kreditnota tar ingen betaling
+stå som **Forfalt** etter forfall. En faktura der det utestående er
+[avskrevet](#å-avskrive-en-faktura), er **Avskrevet**. En kreditnota tar ingen betaling
 ([betalinger og tilstanden](/en/reference/invoices/#payments-and-the-state-of-an-invoice)).
 
 En feil registrering redigeres aldri: klikk **Fjern** ved siden av den, oppgi en
 **Begrunnelse** i dialogen **Fjern betalingen**, og bekreft. *Betalingen blir stående på
 fakturaen, gjennomstreket med begrunnelsen. En fjerning kan ikke angres; registrer
 betalingen på nytt om den likevel var riktig.*
+
+## Å avskrive en faktura
+
+Når en faktura ikke vil bli betalt, gir du opp det som er igjen av den. Under
+**Betalinger** klikker du **Avskriv** — tilbys så lenge noe er utestående — og fyller ut:
+
+- **Avskrevet den**: forhåndsutfylt med i dag; på eller etter fakturadatoen, og ikke etter i
+  dag.
+- **Årsak**: **Konstatert tap**, **Avrunding** for en liten differanse, eller **Annet**.
+- **Tilbakefør merverdiavgiften (mval. § 4-7)**: bare for et tap som er konstatert.
+  Regnskapet tar da fakturaens merverdiavgift tilbake på mva-meldingen.
+
+Klikk **Avskriv**. Hele det utestående beløpet avskrives: fakturaen blir **Avskrevet**, er
+ikke lenger åpen eller forfalt, og purres aldri. Avskrivningen vises under **Betalinger**
+med dag, beløp og årsak. En avskrivning avvises mens en Vipps-betaling av fakturaen er under
+behandling.
+
+**Angre avskrivning**, med en årsak, åpner fakturaen igjen; avskrivningen blir stående på
+fakturaen, gjennomstreket med årsaken. Den kan alltid angres — regnskapet fører angringen i
+første åpne måned — unntatt mens det står innbetalinger etter avskrivningen: fjern dem først.
+
+Penger som kommer inn etter en avskrivning, er ikke en vanlig betaling: klikk **Registrer
+innbetaling etter avskrivning** på avskrivningen. Beløpet er forhåndsutfylt med det som
+gjenstår å kreve inn, og høyst det. Fakturaen forblir avskrevet; betalingen vises som
+**Innbetalt etter avskrivning**, og avskrivningen viser hvor mye som er innbetalt.
+
+Å avskrive, å angre og å registrere en innbetaling etter avskrivning krever
+`invoices:payments`. Med [Regnskap](/nb/user/accounting/#slik-kommer-salget-inn-fra-fakturaer)
+slått på bokføres hver av dem av seg selv, og siden til en utstedt faktura viser
+**I regnskapet:** med en lenke til hvert av bilagene.
 
 ## Importere innbetalinger fra banken
 
