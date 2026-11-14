@@ -215,9 +215,10 @@ type exportedPayment struct {
 	PaidOn   string `json:"paidOn"`
 	Amount   string `json:"amount"`
 	Currency string `json:"currency"`
-	// Source is how it was registered — manual, ocr or camt054 — and
-	// BankLine, for an imported one, what the bank said of the payer
-	// (invoices payments and reminders design D19).
+	// Source is how it was registered — manual, ocr, camt054, vipps or
+	// bank_feed (a line the bank feed fetched, invoices bank feed design F6)
+	// — and BankLine, for one from a bank line, what the bank said of the
+	// payer (invoices payments and reminders design D19).
 	Source        string            `json:"source"`
 	Reference     string            `json:"reference,omitempty"`
 	Note          string            `json:"note,omitempty"`

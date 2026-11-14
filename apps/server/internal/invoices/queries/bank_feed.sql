@@ -202,7 +202,16 @@ WHERE account = @account AND lease_id = @lease_id::text;
 -- refused, the rule in reason and the transaction's id in detail, no
 -- failures, read again at @next_sync_at. Nothing of the batch was stored.
 UPDATE invoices.bank_feed_accounts SET
-    status = 'refused', reason = @reason, detail = @detail, failures = 0,
+    status = 'refused', reason = @reason::text, detail = @detail, failures = 0,
     next_sync_at = @next_sync_at::timestamptz, lease_id = NULL, lease_until = NULL,
-    updated_at = CASE WHEN status <> 'refused' OR reason IS DISTINCT FROM @reason THEN @now::timestamptz ELSE updated_at END
+    updated_at = CASE WHEN status <> 'refused' OR reason IS DISTINCT FROM @reason::text THEN @now::timestamptz ELSE updated_at END
+WHERE account = @account AND lease_id = @lease_id::text;
+
+-- name: ReleaseBankFeedClaim :execrows
+-- ReleaseBankFeedClaim ends a claim whose key the bank refused but whose
+-- refusal recorded nothing — a newer key was stored while the call was out —
+-- with nothing written but the lease cleared and the account due now, for
+-- the newer key. After MarkBankFeedUnauthorized the lease is gone and it
+-- writes nothing.
+UPDATE invoices.bank_feed_accounts SET next_sync_at = @now::timestamptz, lease_id = NULL, lease_until = NULL
 WHERE account = @account AND lease_id = @lease_id::text;

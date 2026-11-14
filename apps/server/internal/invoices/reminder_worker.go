@@ -621,7 +621,7 @@ func (c *reminderClaim) markSent(ctx context.Context) error {
 		if in.ChargesBarred {
 			note = "Sent after a lift that barred charges on the invoice."
 		}
-		problem, err := waiveCharges(ctx, txq, inv.ID, ws, waiverClaimedInError, note, sent.CreatedByUserID, c.now)
+		problem, err := waiveCharges(ctx, txq, inv.ID, ws, waiverClaimedInError, note, &sent.CreatedByUserID, c.now)
 		if err != nil {
 			return err
 		}

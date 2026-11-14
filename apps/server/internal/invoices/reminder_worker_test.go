@@ -698,31 +698,33 @@ func TestReminderWorker_BackoffAndFailedAfter48Hours(t *testing.T) {
 }
 
 // The workers per switch (D1): INVOICES_EHF_ENABLED adds the two EHF
-// workers, INVOICES_VIPPS_ENABLED the payments worker; the reminder worker,
+// workers, INVOICES_VIPPS_ENABLED the payments worker,
+// INVOICES_BANK_FEED_ENABLED the bank feed worker; the reminder worker,
 // the billing worker (energy consumption billing design D10) and the order
 // allocations' reconcile (orders design O36) are always there.
 func TestWorkers_PerSwitch(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	for _, c := range []struct {
-		ehf, vipps bool
-		want       []string
+		ehf, vipps, feed bool
+		want             []string
 	}{
-		{false, false, []string{"invoices-reminders", "invoices-billing", "invoices.allocation_reconcile", "invoices-overdue-events"}},
-		{true, false, []string{"invoices-ehf", "invoices-ehf-events", "invoices-reminders", "invoices-billing", "invoices.allocation_reconcile", "invoices-overdue-events"}},
-		{false, true, []string{"invoices-reminders", "invoices-billing", "invoices.allocation_reconcile", "invoices-overdue-events", "invoices-payments"}},
-		{true, true, []string{"invoices-ehf", "invoices-ehf-events", "invoices-reminders", "invoices-billing", "invoices.allocation_reconcile", "invoices-overdue-events", "invoices-payments"}},
+		{false, false, false, []string{"invoices-reminders", "invoices-billing", "invoices.allocation_reconcile", "invoices-overdue-events"}},
+		{true, false, false, []string{"invoices-ehf", "invoices-ehf-events", "invoices-reminders", "invoices-billing", "invoices.allocation_reconcile", "invoices-overdue-events"}},
+		{false, true, false, []string{"invoices-reminders", "invoices-billing", "invoices.allocation_reconcile", "invoices-overdue-events", "invoices-payments"}},
+		{false, false, true, []string{"invoices-reminders", "invoices-billing", "invoices.allocation_reconcile", "invoices-overdue-events", "invoices-bank-feed"}},
+		{true, true, true, []string{"invoices-ehf", "invoices-ehf-events", "invoices-reminders", "invoices-billing", "invoices.allocation_reconcile", "invoices-overdue-events", "invoices-payments", "invoices-bank-feed"}},
 	} {
 		d := h.Deps()
 		cfg := *d.Config
-		cfg.InvoicesEhfEnabled, cfg.InvoicesVippsEnabled = c.ehf, c.vipps
+		cfg.InvoicesEhfEnabled, cfg.InvoicesVippsEnabled, cfg.InvoicesBankFeedEnabled = c.ehf, c.vipps, c.feed
 		d.Config = &cfg
 		var names []string
 		for _, w := range invoices.Module().Workers(d) {
 			names = append(names, w.Name())
 		}
 		if !slices.Equal(names, c.want) {
-			t.Errorf("INVOICES_EHF_ENABLED %v, INVOICES_VIPPS_ENABLED %v: workers %v, want %v", c.ehf, c.vipps, names, c.want)
+			t.Errorf("INVOICES_EHF_ENABLED %v, INVOICES_VIPPS_ENABLED %v, INVOICES_BANK_FEED_ENABLED %v: workers %v, want %v", c.ehf, c.vipps, c.feed, names, c.want)
 		}
 	}
 }

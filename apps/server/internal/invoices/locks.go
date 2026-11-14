@@ -84,6 +84,33 @@ func lockImportAccounts(ctx context.Context, txq *store.Queries, accounts []stri
 	return rows, nil
 }
 
+// shareImportAccounts is a bank feed batch's first statement (invoices bank
+// feed design F5 step 6, plan finding 10): the accounts read FOR SHARE in
+// account order, each reported "account", and none inserted — the switch on,
+// a person, makes the row; the sync only reads it.
+func shareImportAccounts(ctx context.Context, txq *store.Queries, accounts []string) ([]store.InvoicesBankImportAccount, error) {
+	rows, err := txq.ShareImportAccounts(ctx, accounts)
+	if err != nil {
+		return nil, fmt.Errorf("invoices: lock the batch's accounts: %w", err)
+	}
+	for _, row := range rows {
+		noteLock(ctx, "account", row.Account)
+	}
+	return rows, nil
+}
+
+// shareBankFeedLease reads a sync's account FOR SHARE under its claim's lease,
+// reported "bank_feed_account" (a feed batch's import, after the account's
+// bank import row). No row — switched off, or the lease gone — is
+// pgx.ErrNoRows.
+func shareBankFeedLease(ctx context.Context, txq *store.Queries, account, lease string) error {
+	if _, err := txq.ShareBankFeedLease(ctx, store.ShareBankFeedLeaseParams{Account: account, LeaseID: lease}); err != nil {
+		return err
+	}
+	noteLock(ctx, "bank_feed_account", account)
+	return nil
+}
+
 // lockImportAccount takes one account FOR UPDATE, reported "account".
 func lockImportAccount(ctx context.Context, txq *store.Queries, account string) (store.InvoicesBankImportAccount, error) {
 	row, err := txq.LockImportAccount(ctx, account)

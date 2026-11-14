@@ -29,13 +29,15 @@ WHERE format = @format AND file_identity = @file_identity;
 -- InsertBankFile is the file row (D3 step 7.2), after the accounts' locks;
 -- duplicates stays NULL until SetBankFileDuplicates, in the same
 -- transaction (plan reading 3). uq_bank_files_sha256 and
--- uq_bank_files_identity refuse an import the pool read did not see.
+-- uq_bank_files_identity refuse an import the pool read did not see. An
+-- upload has its uploader and no provider, a bank feed batch the reverse
+-- (ck_bank_files_origin).
 INSERT INTO invoices.bank_files (
     format, sha256, file_identity, object_key, byte_size, accounts, first_booked_on, last_booked_on,
-    transactions, ignored, ignored_kinds, uploaded_by_user_id, uploaded_at
+    transactions, ignored, ignored_kinds, uploaded_by_user_id, provider, uploaded_at
 ) VALUES (
     @format, @sha256, @file_identity, @object_key, @byte_size, sqlc.arg(accounts)::text[], @first_booked_on, @last_booked_on,
-    @transactions, @ignored, @ignored_kinds, @uploaded_by_user_id, @uploaded_at::timestamptz
+    @transactions, @ignored, @ignored_kinds, @uploaded_by_user_id, @provider, @uploaded_at::timestamptz
 )
 RETURNING *;
 

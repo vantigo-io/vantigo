@@ -1,7 +1,9 @@
 package bankfile_test
 
 import (
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/invoices/bankfile"
 )
@@ -104,5 +106,30 @@ func TestFingerprint_OrdinalsAndNormalisation(t *testing.T) {
 
 	if got := bankfile.NormaliseText("  Faktura\t1001 \n ÆØÅ  "); got != "faktura 1001 æøå" {
 		t.Errorf("NormaliseText = %q", got)
+	}
+}
+
+// Two feed lines of one day, amount and KID are two payments (invoices bank
+// feed design F5): the archive reference is the bank's own id of each, so
+// their fingerprints differ and each is ordinal 1. FeedFile counts every
+// ignored kind, internal_transfer among them, and bounds the booking days.
+func TestFeedFile_TwoPaymentsOfOneDayAreTwoLines(t *testing.T) {
+	t.Parallel()
+	day := time.Date(2026, 10, 6, 0, 0, 0, 0, time.UTC)
+	line := func(id string) bankfile.Transaction {
+		return bankfile.Transaction{LineRef: id, Account: "86011117947", BookedOn: day, AmountMinor: 100000, Currency: "NOK",
+			KID: "0010017", ArchiveRef: strings.ReplaceAll(id, "-", "")}
+	}
+	f := bankfile.FeedFile("folio|86011117947|2026-10-07T10:00:00Z", "86011117947",
+		[]bankfile.Transaction{line("aaaa-0001"), line("aaaa-0002")}, map[bankfile.IgnoredKind]int{bankfile.IgnoredDebit: 2})
+	if f.Format != bankfile.FormatFeed || len(f.Accounts) != 1 || !f.FirstBookedOn.Equal(day) || !f.LastBookedOn.Equal(day) {
+		t.Errorf("the batch = %s %v %v–%v", f.Format, f.Accounts, f.FirstBookedOn, f.LastBookedOn)
+	}
+	a, b := f.Transactions[0], f.Transactions[1]
+	if a.Fingerprint == b.Fingerprint || a.Ordinal != 1 || b.Ordinal != 1 {
+		t.Errorf("fingerprints %s, %s ordinals %d, %d; want two fingerprints, each ordinal 1", a.Fingerprint, b.Fingerprint, a.Ordinal, b.Ordinal)
+	}
+	if f.Ignored[bankfile.IgnoredDebit] != 2 || f.Ignored[bankfile.IgnoredInternalTransfer] != 0 || len(f.Ignored) != 5 {
+		t.Errorf("ignored = %v, want debit 2 and every other kind at 0", f.Ignored)
 	}
 }

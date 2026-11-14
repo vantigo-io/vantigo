@@ -14,6 +14,7 @@ import (
 	"github.com/johnfercher/go-tree/node"
 	"github.com/johnfercher/maroto/v2/pkg/core"
 
+	"github.com/vantigo-io/vantigo/server/internal/bankfeed"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/reminderrules"
@@ -842,4 +843,45 @@ func SetAbandonAfterRead(hook func()) func() {
 func SetAttemptInvoiceLocked(hook func(ctx context.Context, tx pgx.Tx)) func() {
 	attemptInvoiceLocked = hook
 	return func() { attemptInvoiceLocked = nil }
+}
+
+// SetBankFeedSyncAfterStore installs a hook a bank feed sync calls after its
+// batch's import has committed and before matching it — the crash point
+// between the two — and answers the function that removes it. An error ends
+// the cycle there, as a stopped process would. A test using it does not run
+// in parallel: the hook is the package's.
+func SetBankFeedSyncAfterStore(hook func(ctx context.Context, bankFileID int64) error) func() {
+	bankFeedSyncAfterStore = hook
+	return func() { bankFeedSyncAfterStore = nil }
+}
+
+// SetBankFeedWorkerLease sets the lease a bank feed claim takes, and answers
+// the function that restores the default.
+func SetBankFeedWorkerLease(d time.Duration) func() {
+	bankFeedWorkerLease = d
+	return func() { bankFeedWorkerLease = bankFeedWorkerDefaultLease }
+}
+
+// BankFeedBackoff is the worker's wait after the n-th failure in a row.
+func BankFeedBackoff(interval time.Duration, failures int32) time.Duration {
+	return bankFeedBackoff(interval, failures)
+}
+
+// JudgeFeedBatch is a sync's F5 steps 2 and 3 over txs: the bank ids of the
+// lines it keeps, the counts of what it does not, and the reason it refuses
+// the batch whole ("" when it does not).
+func JudgeFeedBatch(txs []bankfeed.Transaction, account string, today, startDay time.Time) ([]string, map[string]int, string) {
+	kept, _, ignored, refusal := judgeFeedBatch(txs, account, today, startDay)
+	if refusal != nil {
+		return nil, nil, refusal.reason
+	}
+	refs := make([]string, 0, len(kept))
+	for _, tx := range kept {
+		refs = append(refs, tx.LineRef+" kid="+tx.KID)
+	}
+	counts := map[string]int{}
+	for k, n := range ignored {
+		counts[string(k)] = n
+	}
+	return refs, counts, ""
 }

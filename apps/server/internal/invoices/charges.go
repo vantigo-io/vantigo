@@ -208,7 +208,9 @@ type waiverRequest struct {
 // left. A refusal answers the problem and writes nothing the caller keeps:
 // it rolls back with errRefused. The bank match (deadline_met), the lift that
 // bars charges and the posted re-judge call it too, with their own reason.
-func waiveCharges(ctx context.Context, txq *store.Queries, invoiceID int64, ws []waiverRequest, reason, note string, by uuid.UUID, at time.Time) (*gen.InvoicesConflictProblem, error) {
+// by is the person waiving; nil only for the deadline_met waiver of a line
+// the bank feed's sync matched (ck_charge_waivers_by).
+func waiveCharges(ctx context.Context, txq *store.Queries, invoiceID int64, ws []waiverRequest, reason, note string, by *uuid.UUID, at time.Time) (*gen.InvoicesConflictProblem, error) {
 	_, rows, err := chargesOf(ctx, txq, invoiceID)
 	if err != nil {
 		return nil, err
@@ -286,7 +288,7 @@ func waiveCharges(ctx context.Context, txq *store.Queries, invoiceID int64, ws [
 		}
 		params := store.InsertWaiverParams{
 			InvoiceID: invoiceID, ReminderID: letter.ID, Kind: w.kind, Amount: n,
-			Reason: reason, Note: note, WaivedByUserID: &by, WaivedAt: at,
+			Reason: reason, Note: note, WaivedByUserID: by, WaivedAt: at,
 		}
 		if through != nil {
 			params.InterestThrough = pgDate(*through)
@@ -593,7 +595,7 @@ func (s *server) PostInvoicesByIdChargesWaive(ctx context.Context, req gen.PostI
 		if err != nil {
 			return fmt.Errorf("invoices: lock document %d: %w", inv.ID, err)
 		}
-		problem, err := waiveCharges(ctx, txq, locked.ID, ws, string(req.Body.Reason), note, callerID(ctx), s.deps.Clock())
+		problem, err := waiveCharges(ctx, txq, locked.ID, ws, string(req.Body.Reason), note, ptr(callerID(ctx)), s.deps.Clock())
 		if err != nil {
 			return err
 		}
