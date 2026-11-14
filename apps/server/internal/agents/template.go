@@ -290,13 +290,14 @@ var templateOrder = []string{templateFrontDesk, templateReminderReplies, templat
 // every approval in Time, Expenses and Staff; and every other permission that
 // cannot be delegated (Delegable false), which is Owner-tier: Entra's and
 // Google's administration, Knowledge's, Orders' carriers and settings, and
-// Manufacturing's costs (manufacturing design §8). The Assistant's API is not
-// here:
-// it names no permission, and the dispatcher refuses it by its path. A new
+// Manufacturing's costs (manufacturing design §8), and Accounting's close —
+// the chart, the opening balances and the lock (accounting design A1). The
+// Assistant's API is not here: it names no permission, and the dispatcher refuses it by its path. A new
 // permission that matches one of these families must be added (the test in
 // internal/integration fails until it is), and a level for a listed key is
 // refused 409 level_locked.
 var agentNever = []string{
+	"accounting:close",
 	"agents:activity", "agents:manage", "agents:review", "agents:view",
 	"customers:personal-data",
 	"entra:manage",

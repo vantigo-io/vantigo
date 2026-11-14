@@ -1,0 +1,2761 @@
+components:
+    schemas:
+        AccountingAccount:
+            additionalProperties: false
+            properties:
+                active:
+                    type: boolean
+                defaultTaxCodeId:
+                    format: int32
+                    nullable: true
+                    type: integer
+                groupings:
+                    description: By fromYear.
+                    items:
+                        $ref: '#/components/schemas/AccountingGrouping'
+                    type: array
+                hasPostings:
+                    description: Number and kind are fixed once true.
+                    type: boolean
+                id:
+                    format: int32
+                    type: integer
+                kind:
+                    $ref: '#/components/schemas/AccountingAccountKind'
+                name:
+                    type: string
+                number:
+                    description: 4 to 6 digits.
+                    type: string
+                revision:
+                    format: int32
+                    type: integer
+                systemRole:
+                    allOf:
+                        - $ref: '#/components/schemas/AccountingSystemRole'
+                    nullable: true
+            required:
+                - active
+                - defaultTaxCodeId
+                - groupings
+                - hasPostings
+                - id
+                - kind
+                - name
+                - number
+                - revision
+                - systemRole
+            type: object
+        AccountingAccountInput:
+            additionalProperties: false
+            properties:
+                defaultTaxCodeId:
+                    format: int32
+                    nullable: true
+                    type: integer
+                grouping:
+                    allOf:
+                        - $ref: '#/components/schemas/AccountingGrouping'
+                    nullable: true
+                kind:
+                    $ref: '#/components/schemas/AccountingAccountKind'
+                name:
+                    type: string
+                number:
+                    type: string
+            required:
+                - kind
+                - name
+                - number
+            type: object
+        AccountingAccountKind:
+            enum:
+                - asset
+                - liability
+                - equity
+                - income
+                - expense
+            type: string
+        AccountingAccountList:
+            additionalProperties: false
+            properties:
+                items:
+                    items:
+                        $ref: '#/components/schemas/AccountingAccount'
+                    type: array
+            required:
+                - items
+            type: object
+        AccountingAccountUpdate:
+            additionalProperties: false
+            properties:
+                active:
+                    type: boolean
+                defaultTaxCodeId:
+                    format: int32
+                    nullable: true
+                    type: integer
+                kind:
+                    $ref: '#/components/schemas/AccountingAccountKind'
+                name:
+                    type: string
+                number:
+                    type: string
+                revision:
+                    format: int32
+                    type: integer
+            required:
+                - active
+                - defaultTaxCodeId
+                - kind
+                - name
+                - number
+                - revision
+            type: object
+        AccountingAttachment:
+            additionalProperties: false
+            properties:
+                contentType:
+                    type: string
+                fileName:
+                    type: string
+                id:
+                    format: int64
+                    type: integer
+                sha256:
+                    type: string
+                sizeBytes:
+                    format: int64
+                    type: integer
+                uploadedAt:
+                    format: date-time
+                    type: string
+            required:
+                - contentType
+                - fileName
+                - id
+                - sha256
+                - sizeBytes
+                - uploadedAt
+            type: object
+        AccountingEntryMode:
+            description: 'How a line with a tax code is entered (A6): net of VAT, or gross with the VAT in it.'
+            enum:
+                - net
+                - gross
+            type: string
+        AccountingGrouping:
+            additionalProperties: false
+            properties:
+                category:
+                    description: SAF-T grouping category, such as salgsinntekt.
+                    type: string
+                code:
+                    description: SAF-T grouping code, such as 3000.
+                    type: string
+                fromYear:
+                    description: The first fiscal year the grouping applies to.
+                    format: int32
+                    type: integer
+            required:
+                - category
+                - code
+                - fromYear
+            type: object
+        AccountingGroupingCode:
+            additionalProperties: false
+            properties:
+                category:
+                    type: string
+                code:
+                    type: string
+                nameEn:
+                    type: string
+                nameNb:
+                    type: string
+            required:
+                - category
+                - code
+                - nameEn
+                - nameNb
+            type: object
+        AccountingGroupingCodeList:
+            additionalProperties: false
+            properties:
+                items:
+                    items:
+                        $ref: '#/components/schemas/AccountingGroupingCode'
+                    type: array
+                year:
+                    description: The year of the list answered.
+                    format: int32
+                    type: integer
+            required:
+                - items
+                - year
+            type: object
+        AccountingGroupingsInput:
+            additionalProperties: false
+            properties:
+                groupings:
+                    items:
+                        $ref: '#/components/schemas/AccountingGrouping'
+                    maxItems: 50
+                    type: array
+            required:
+                - groupings
+            type: object
+        AccountingJournalInput:
+            additionalProperties: false
+            description: A manual journal (A6).
+            properties:
+                description:
+                    maxLength: 500
+                    type: string
+                entry:
+                    $ref: '#/components/schemas/AccountingEntryMode'
+                lines:
+                    items:
+                        $ref: '#/components/schemas/AccountingJournalLineInput'
+                    maxItems: 200
+                    type: array
+                voucherDate:
+                    format: date
+                    type: string
+            required:
+                - description
+                - lines
+                - voucherDate
+            type: object
+        AccountingJournalLineInput:
+            additionalProperties: false
+            properties:
+                accountId:
+                    format: int32
+                    type: integer
+                amount:
+                    description: 'Signed: debit positive, credit negative; never zero.'
+                    type: string
+                customerId:
+                    format: int32
+                    nullable: true
+                    type: integer
+                openItemId:
+                    format: int64
+                    nullable: true
+                    type: integer
+                projectId:
+                    format: int32
+                    nullable: true
+                    type: integer
+                supplierId:
+                    format: int64
+                    nullable: true
+                    type: integer
+                taxCodeId:
+                    format: int32
+                    nullable: true
+                    type: integer
+                text:
+                    maxLength: 500
+                    type: string
+            required:
+                - accountId
+                - amount
+            type: object
+        AccountingJournalPreview:
+            additionalProperties: false
+            properties:
+                balanced:
+                    type: boolean
+                credit:
+                    description: Positive.
+                    type: string
+                debit:
+                    description: Exact decimal NOK, two places, signed where the field says so.
+                    type: string
+                difference:
+                    description: 'Debit less credit: zero when the voucher balances.'
+                    type: string
+                lines:
+                    items:
+                        $ref: '#/components/schemas/AccountingPreviewLine'
+                    type: array
+            required:
+                - balanced
+                - credit
+                - debit
+                - difference
+                - lines
+            type: object
+        AccountingLanguage:
+            enum:
+                - en
+                - nb
+            type: string
+        AccountingLock:
+            additionalProperties: false
+            properties:
+                booksStart:
+                    format: date
+                    type: string
+                events:
+                    description: Newest first.
+                    items:
+                        $ref: '#/components/schemas/AccountingLockEvent'
+                    type: array
+                lockedThrough:
+                    format: date
+                    nullable: true
+                    type: string
+            required:
+                - booksStart
+                - events
+                - lockedThrough
+            type: object
+        AccountingLockEvent:
+            additionalProperties: false
+            properties:
+                changedAt:
+                    format: date-time
+                    type: string
+                changedByUserId:
+                    format: uuid
+                    type: string
+                lockedFrom:
+                    format: date
+                    nullable: true
+                    type: string
+                lockedTo:
+                    format: date
+                    nullable: true
+                    type: string
+                reason:
+                    nullable: true
+                    type: string
+            required:
+                - changedAt
+                - changedByUserId
+                - lockedFrom
+                - lockedTo
+                - reason
+            type: object
+        AccountingLockInput:
+            additionalProperties: false
+            properties:
+                lockedThrough:
+                    description: A month end on or after booksStart; null unlocks every month.
+                    format: date
+                    nullable: true
+                    type: string
+                reason:
+                    description: Required when the lock moves back.
+                    maxLength: 500
+                    nullable: true
+                    type: string
+            required:
+                - lockedThrough
+            type: object
+        AccountingMeta:
+            additionalProperties: false
+            properties:
+                canClose:
+                    description: accounting:close
+                    type: boolean
+                canExport:
+                    description: accounting:export
+                    type: boolean
+                canPost:
+                    description: accounting:post
+                    type: boolean
+                currency:
+                    description: NOK.
+                    type: string
+                invoicesEnabled:
+                    description: 'Whether Invoices'' sales journal is composed: open invoices are offered on the opening form.'
+                    type: boolean
+                openCustomerItems:
+                    description: Customer open items with a balance.
+                    format: int32
+                    type: integer
+                projectsEnabled:
+                    description: 'Whether Projects is composed: the project dimension is offered.'
+                    type: boolean
+                setUp:
+                    description: Whether Set up the books has run (R12).
+                    type: boolean
+                settings:
+                    allOf:
+                        - $ref: '#/components/schemas/AccountingSettings'
+                    description: Null until the books are set up.
+                    nullable: true
+                today:
+                    description: The business calendar's today.
+                    format: date
+                    type: string
+                vouchersThisYear:
+                    description: Vouchers in the fiscal year of today.
+                    format: int32
+                    type: integer
+            required:
+                - canClose
+                - canExport
+                - canPost
+                - currency
+                - invoicesEnabled
+                - openCustomerItems
+                - projectsEnabled
+                - setUp
+                - settings
+                - today
+                - vouchersThisYear
+            type: object
+        AccountingOpenInvoice:
+            additionalProperties: false
+            properties:
+                amount:
+                    description: Open at the day before booksStart; below zero is credit due back.
+                    type: string
+                customerId:
+                    format: int32
+                    type: integer
+                customerName:
+                    type: string
+                documentId:
+                    format: int64
+                    type: integer
+                dueDate:
+                    format: date
+                    type: string
+                issueDate:
+                    format: date
+                    type: string
+                number:
+                    format: int64
+                    type: integer
+            required:
+                - amount
+                - customerId
+                - customerName
+                - documentId
+                - dueDate
+                - issueDate
+                - number
+            type: object
+        AccountingOpenItem:
+            additionalProperties: false
+            properties:
+                balance:
+                    description: 'The sum of the item''s postings: positive is owed to the company.'
+                    type: string
+                customerId:
+                    format: int32
+                    nullable: true
+                    type: integer
+                customerName:
+                    nullable: true
+                    type: string
+                documentDate:
+                    format: date
+                    nullable: true
+                    type: string
+                documentNumber:
+                    nullable: true
+                    type: string
+                dueDate:
+                    format: date
+                    nullable: true
+                    type: string
+                id:
+                    format: int64
+                    type: integer
+                kind:
+                    $ref: '#/components/schemas/AccountingPartyKind'
+                originalAmount:
+                    description: Exact decimal NOK, two places, signed where the field says so.
+                    type: string
+                settled:
+                    type: boolean
+                sourceDocumentId:
+                    format: int64
+                    nullable: true
+                    type: integer
+                supplierId:
+                    format: int64
+                    nullable: true
+                    type: integer
+                unallocated:
+                    description: The party's item for postings that name no document (R5).
+                    type: boolean
+            required:
+                - balance
+                - customerId
+                - customerName
+                - documentDate
+                - documentNumber
+                - dueDate
+                - id
+                - kind
+                - originalAmount
+                - settled
+                - sourceDocumentId
+                - supplierId
+                - unallocated
+            type: object
+        AccountingOpenItemList:
+            additionalProperties: false
+            properties:
+                items:
+                    items:
+                        $ref: '#/components/schemas/AccountingOpenItem'
+                    type: array
+            required:
+                - items
+            type: object
+        AccountingOpening:
+            additionalProperties: false
+            properties:
+                booksStart:
+                    format: date
+                    type: string
+                canEnter:
+                    description: No standing opening voucher and no lock yet.
+                    type: boolean
+                invoicesAvailable:
+                    type: boolean
+                locked:
+                    description: 'The first lock is set: the opening is final (A9).'
+                    type: boolean
+                openInvoices:
+                    description: Invoices' open invoices at the day before booksStart (A9).
+                    items:
+                        $ref: '#/components/schemas/AccountingOpenInvoice'
+                    type: array
+                voucher:
+                    allOf:
+                        - $ref: '#/components/schemas/AccountingVoucherSummary'
+                    description: The standing opening voucher, null when none.
+                    nullable: true
+            required:
+                - booksStart
+                - canEnter
+                - invoicesAvailable
+                - locked
+                - openInvoices
+                - voucher
+            type: object
+        AccountingOpeningInput:
+            additionalProperties: false
+            description: The opening balances (A9); the difference goes to the opening account.
+            properties:
+                lines:
+                    items:
+                        $ref: '#/components/schemas/AccountingOpeningLineInput'
+                    maxItems: 2000
+                    type: array
+            required:
+                - lines
+            type: object
+        AccountingOpeningLineInput:
+            additionalProperties: false
+            properties:
+                accountId:
+                    format: int32
+                    type: integer
+                amount:
+                    description: 'Signed: debit positive.'
+                    type: string
+                customerId:
+                    format: int32
+                    nullable: true
+                    type: integer
+                documentDate:
+                    format: date
+                    nullable: true
+                    type: string
+                documentNumber:
+                    maxLength: 40
+                    nullable: true
+                    type: string
+                dueDate:
+                    format: date
+                    nullable: true
+                    type: string
+                sourceDocumentId:
+                    description: The invoice in Invoices this line stands for (R5).
+                    format: int64
+                    nullable: true
+                    type: integer
+                supplierId:
+                    format: int64
+                    nullable: true
+                    type: integer
+                text:
+                    maxLength: 500
+                    type: string
+            required:
+                - accountId
+                - amount
+            type: object
+        AccountingPartyKind:
+            enum:
+                - customer
+                - supplier
+            type: string
+        AccountingPosting:
+            additionalProperties: false
+            properties:
+                accountId:
+                    format: int32
+                    type: integer
+                accountName:
+                    type: string
+                accountNumber:
+                    type: string
+                amount:
+                    description: 'Signed: debit positive, credit negative.'
+                    type: string
+                customerId:
+                    format: int32
+                    nullable: true
+                    type: integer
+                customerName:
+                    nullable: true
+                    type: string
+                description:
+                    type: string
+                lineNo:
+                    format: int32
+                    type: integer
+                openItemId:
+                    format: int64
+                    nullable: true
+                    type: integer
+                projectId:
+                    format: int32
+                    nullable: true
+                    type: integer
+                projectName:
+                    nullable: true
+                    type: string
+                supplierId:
+                    format: int64
+                    nullable: true
+                    type: integer
+                taxBase:
+                    description: On a tax line, the base it was computed from.
+                    nullable: true
+                    type: string
+                taxCode:
+                    nullable: true
+                    type: string
+                taxCodeId:
+                    format: int32
+                    nullable: true
+                    type: integer
+                taxRole:
+                    allOf:
+                        - $ref: '#/components/schemas/AccountingTaxRole'
+                    nullable: true
+            required:
+                - accountId
+                - accountName
+                - accountNumber
+                - amount
+                - customerId
+                - customerName
+                - description
+                - lineNo
+                - openItemId
+                - projectId
+                - projectName
+                - supplierId
+                - taxBase
+                - taxCode
+                - taxCodeId
+                - taxRole
+            type: object
+        AccountingPreviewLine:
+            additionalProperties: false
+            properties:
+                accountId:
+                    format: int32
+                    type: integer
+                amount:
+                    description: Exact decimal NOK, two places, signed where the field says so.
+                    type: string
+                fromLine:
+                    description: The index of the entered line this posting comes from.
+                    format: int32
+                    type: integer
+                lineNo:
+                    format: int32
+                    type: integer
+                ratePercent:
+                    nullable: true
+                    type: string
+                taxBase:
+                    description: Exact decimal NOK, two places, signed where the field says so.
+                    nullable: true
+                    type: string
+                taxCodeId:
+                    format: int32
+                    nullable: true
+                    type: integer
+                taxRole:
+                    allOf:
+                        - $ref: '#/components/schemas/AccountingTaxRole'
+                    nullable: true
+            required:
+                - accountId
+                - amount
+                - fromLine
+                - lineNo
+                - ratePercent
+                - taxBase
+                - taxCodeId
+                - taxRole
+            type: object
+        AccountingProblem:
+            description: 'An RFC 9457 problem with this module''s refusal code (accounting design §2, §13). code names the rule that refused and is what a client keys off, never the words: books_not_set_up (409: every operation but the meta and the setup, until Set up the books has run, R12), books_already_set_up (409: a second setup), revision_conflict (409: the revision has moved on), account_number_taken (409), account_has_postings (409: a delete of an account with postings, or a change of its number or kind), account_has_role (409: a delete of an account holding a system role; move the role first), account_inactive (400: a line on an inactive account), account_unknown (400), tax_code_unknown (400: an unknown or inactive tax code), tax_code_no_rate (400: no rate period covers the voucher''s date), rate_period_invalid (400: a new rate period that does not start after the current one''s start), party_required (400: a line on receivables or payables without a customer or supplier), party_not_allowed (400: a party on a line of another account, or both a customer and a supplier), open_item_unknown (400: an open item of another party or kind), voucher_unbalanced (400: the lines and their computed tax do not sum to zero; the detail names the difference), voucher_empty (400: no line, or every line zero), amount_invalid (400: not an exact decimal with at most two places, or zero), date_before_books_start (400), period_locked (409: a voucher a person posts dated on or before the lock, A8), voucher_owned_by_source (409: a reversal of a voucher the system posted, which only its source reverses, A7), voucher_already_reversed (409), opening_exists (409: an opening voucher stands and is not reversed), opening_locked (409: an opening entered or reversed after the first lock, A9), lock_not_month_end (400), lock_reason_required (400: a lock moved back without a reason), lock_before_books_start (400), settlement_source_document (409: an item that stands for a document in Invoices is paid there, R5), settlement_exceeds_balance (409: more than the item''s balance), settlement_settled (409: an item with nothing left), bank_account_invalid (400: not an active asset account), attachment_too_large (400: over 20 MB), storage_not_configured (503: no object store for attachments), report_account_required (400: the account report without accountId), period_invalid (400: from after to, or a period over 366 days for the journal). errors carries the field errors of a 400, keyed by the camelCase path (lines[2].accountId).'
+            properties:
+                code:
+                    nullable: true
+                    type: string
+                detail:
+                    nullable: true
+                    type: string
+                errors:
+                    additionalProperties:
+                        items:
+                            type: string
+                        type: array
+                    type: object
+                instance:
+                    nullable: true
+                    type: string
+                status:
+                    format: int32
+                    nullable: true
+                    type: integer
+                title:
+                    nullable: true
+                    type: string
+                type:
+                    nullable: true
+                    type: string
+            type: object
+        AccountingReport:
+            additionalProperties: false
+            properties:
+                columns:
+                    items:
+                        $ref: '#/components/schemas/AccountingReportColumn'
+                    type: array
+                compareFrom:
+                    format: date
+                    nullable: true
+                    type: string
+                compareTo:
+                    format: date
+                    nullable: true
+                    type: string
+                from:
+                    format: date
+                    type: string
+                kind:
+                    $ref: '#/components/schemas/AccountingReportKind'
+                producedAt:
+                    format: date-time
+                    type: string
+                rows:
+                    items:
+                        $ref: '#/components/schemas/AccountingReportRow'
+                    type: array
+                title:
+                    type: string
+                to:
+                    format: date
+                    type: string
+            required:
+                - columns
+                - compareFrom
+                - compareTo
+                - from
+                - kind
+                - producedAt
+                - rows
+                - title
+                - to
+            type: object
+        AccountingReportColumn:
+            additionalProperties: false
+            properties:
+                key:
+                    type: string
+                label:
+                    type: string
+                type:
+                    enum:
+                        - text
+                        - amount
+                        - date
+                    type: string
+            required:
+                - key
+                - label
+                - type
+            type: object
+        AccountingReportKind:
+            enum:
+                - journal
+                - account
+                - customers
+                - suppliers
+                - trial_balance
+                - profit_and_loss
+                - balance_sheet
+            type: string
+        AccountingReportRow:
+            additionalProperties: false
+            properties:
+                accountId:
+                    format: int32
+                    nullable: true
+                    type: integer
+                cells:
+                    additionalProperties:
+                        type: string
+                    description: By column key.
+                    type: object
+                depth:
+                    format: int32
+                    type: integer
+                style:
+                    enum:
+                        - line
+                        - heading
+                        - subtotal
+                        - total
+                    type: string
+                voucherId:
+                    format: int64
+                    nullable: true
+                    type: integer
+            required:
+                - accountId
+                - cells
+                - depth
+                - style
+                - voucherId
+            type: object
+        AccountingReverseInput:
+            additionalProperties: false
+            properties:
+                date:
+                    description: The reversal's voucher date.
+                    format: date
+                    type: string
+                reason:
+                    maxLength: 500
+                    type: string
+            required:
+                - date
+                - reason
+            type: object
+        AccountingRoleInput:
+            additionalProperties: false
+            properties:
+                accountId:
+                    format: int32
+                    type: integer
+            required:
+                - accountId
+            type: object
+        AccountingSettings:
+            additionalProperties: false
+            properties:
+                booksStart:
+                    description: The first day the ledger covers (A2). Nothing is posted before it.
+                    format: date
+                    type: string
+                chartLanguage:
+                    $ref: '#/components/schemas/AccountingLanguage'
+                fiscalYearStartMonth:
+                    description: 1–12.
+                    format: int32
+                    type: integer
+                lockedThrough:
+                    description: The last day of the last locked month (A8), null before the first lock.
+                    format: date
+                    nullable: true
+                    type: string
+                setUpAt:
+                    format: date-time
+                    type: string
+                vatTerm:
+                    $ref: '#/components/schemas/AccountingVatTerm'
+            required:
+                - booksStart
+                - chartLanguage
+                - fiscalYearStartMonth
+                - lockedThrough
+                - setUpAt
+                - vatTerm
+            type: object
+        AccountingSettlementInput:
+            additionalProperties: false
+            description: A receipt, a payment or a refund against an open item (R5).
+            properties:
+                amount:
+                    description: Positive; at most the item's balance.
+                    type: string
+                bankAccountId:
+                    description: The ledger account the money moved through; default the bank role's.
+                    format: int32
+                    type: integer
+                date:
+                    format: date
+                    type: string
+                text:
+                    maxLength: 500
+                    type: string
+            required:
+                - amount
+                - date
+            type: object
+        AccountingSetupInput:
+            additionalProperties: false
+            description: 'Set up the books (R12): the default chart, tax codes and system roles are seeded, named in language.'
+            properties:
+                booksStart:
+                    format: date
+                    type: string
+                fiscalYearStartMonth:
+                    description: 1–12, default 1.
+                    format: int32
+                    type: integer
+                language:
+                    $ref: '#/components/schemas/AccountingLanguage'
+                vatTerm:
+                    $ref: '#/components/schemas/AccountingVatTerm'
+            required:
+                - booksStart
+                - language
+                - vatTerm
+            type: object
+        AccountingSource:
+            additionalProperties: false
+            description: The fact a system voucher records (A4).
+            properties:
+                id:
+                    format: int64
+                    type: integer
+                kind:
+                    type: string
+                module:
+                    type: string
+                part:
+                    type: string
+            required:
+                - id
+                - kind
+                - module
+                - part
+            type: object
+        AccountingSystemRole:
+            description: The accounts the module posts to by itself (A3, R8, R11). Every charge payment posts to charge_income; interest income is an ordinary account.
+            enum:
+                - receivables
+                - payables
+                - bank
+                - vat_settlement
+                - rounding
+                - bad_debt
+                - employee_payables
+                - opening
+                - year_result
+                - clearing_vipps
+                - charge_income
+                - currency_gain
+                - currency_loss
+                - payment_fees
+            type: string
+        AccountingTaxCode:
+            additionalProperties: false
+            properties:
+                active:
+                    type: boolean
+                code:
+                    description: The SAF-T standard tax code.
+                    type: string
+                counterVatAccountId:
+                    description: 'Reverse charge only: the account of the other side.'
+                    format: int32
+                    nullable: true
+                    type: integer
+                currentRate:
+                    description: The rate valid today, null when none is.
+                    nullable: true
+                    type: string
+                direction:
+                    $ref: '#/components/schemas/AccountingTaxDirection'
+                id:
+                    format: int32
+                    type: integer
+                name:
+                    type: string
+                rates:
+                    description: By validFrom.
+                    items:
+                        $ref: '#/components/schemas/AccountingTaxRate'
+                    type: array
+                reported:
+                    description: 'False for 0, 7, 20, 21 and 22: the VAT return leaves them out.'
+                    type: boolean
+                reverseCharge:
+                    type: boolean
+                revision:
+                    format: int32
+                    type: integer
+                vatAccountId:
+                    format: int32
+                    nullable: true
+                    type: integer
+            required:
+                - active
+                - code
+                - counterVatAccountId
+                - currentRate
+                - direction
+                - id
+                - name
+                - rates
+                - reported
+                - reverseCharge
+                - revision
+                - vatAccountId
+            type: object
+        AccountingTaxCodeList:
+            additionalProperties: false
+            properties:
+                items:
+                    items:
+                        $ref: '#/components/schemas/AccountingTaxCode'
+                    type: array
+            required:
+                - items
+            type: object
+        AccountingTaxCodeUpdate:
+            additionalProperties: false
+            properties:
+                active:
+                    type: boolean
+                counterVatAccountId:
+                    format: int32
+                    nullable: true
+                    type: integer
+                name:
+                    type: string
+                revision:
+                    format: int32
+                    type: integer
+                vatAccountId:
+                    format: int32
+                    nullable: true
+                    type: integer
+            required:
+                - active
+                - counterVatAccountId
+                - name
+                - revision
+                - vatAccountId
+            type: object
+        AccountingTaxDirection:
+            enum:
+                - output
+                - input
+                - none
+            type: string
+        AccountingTaxRate:
+            additionalProperties: false
+            properties:
+                ratePercent:
+                    description: Exact decimal, two places.
+                    type: string
+                validFrom:
+                    format: date
+                    type: string
+                validTo:
+                    format: date
+                    nullable: true
+                    type: string
+            required:
+                - ratePercent
+                - validFrom
+                - validTo
+            type: object
+        AccountingTaxRateInput:
+            additionalProperties: false
+            properties:
+                ratePercent:
+                    description: Exact decimal, at most two places, 0 to 99.99.
+                    type: string
+                validFrom:
+                    format: date
+                    type: string
+            required:
+                - ratePercent
+                - validFrom
+            type: object
+        AccountingTaxRole:
+            enum:
+                - base
+                - tax
+            type: string
+        AccountingVatTerm:
+            description: 'The VAT terms (A2): none when the seller is not VAT-registered.'
+            enum:
+                - bimonthly
+                - yearly
+                - none
+            type: string
+        AccountingVoucher:
+            additionalProperties: false
+            properties:
+                amount:
+                    description: The sum of the debits.
+                    type: string
+                attachments:
+                    items:
+                        $ref: '#/components/schemas/AccountingAttachment'
+                    type: array
+                description:
+                    type: string
+                display:
+                    type: string
+                documentDate:
+                    format: date
+                    type: string
+                fiscalYear:
+                    format: int32
+                    type: integer
+                id:
+                    format: int64
+                    type: integer
+                kind:
+                    $ref: '#/components/schemas/AccountingVoucherKind'
+                number:
+                    format: int32
+                    type: integer
+                postedAt:
+                    format: date-time
+                    type: string
+                postedByUserId:
+                    format: uuid
+                    nullable: true
+                    type: string
+                postings:
+                    items:
+                        $ref: '#/components/schemas/AccountingPosting'
+                    type: array
+                reversalReason:
+                    nullable: true
+                    type: string
+                reversedBy:
+                    allOf:
+                        - $ref: '#/components/schemas/AccountingVoucherRef'
+                    nullable: true
+                reverses:
+                    allOf:
+                        - $ref: '#/components/schemas/AccountingVoucherRef'
+                    nullable: true
+                rule:
+                    nullable: true
+                    type: string
+                ruleVersion:
+                    format: int32
+                    nullable: true
+                    type: integer
+                source:
+                    allOf:
+                        - $ref: '#/components/schemas/AccountingSource'
+                    nullable: true
+                system:
+                    type: boolean
+                voucherDate:
+                    format: date
+                    type: string
+            required:
+                - amount
+                - attachments
+                - description
+                - display
+                - documentDate
+                - fiscalYear
+                - id
+                - kind
+                - number
+                - postedAt
+                - postedByUserId
+                - postings
+                - reversalReason
+                - reversedBy
+                - reverses
+                - rule
+                - ruleVersion
+                - source
+                - system
+                - voucherDate
+            type: object
+        AccountingVoucherKind:
+            enum:
+                - manual
+                - opening
+                - sales_invoice
+                - sales_credit_note
+                - customer_payment
+                - charge
+                - write_off
+                - supplier_invoice
+                - supplier_credit_note
+                - supplier_payment
+                - expense
+                - reimbursement
+                - vat_settlement
+                - bank
+                - import
+            type: string
+        AccountingVoucherList:
+            additionalProperties: false
+            properties:
+                items:
+                    items:
+                        $ref: '#/components/schemas/AccountingVoucherSummary'
+                    type: array
+                total:
+                    description: Every voucher the filters match.
+                    format: int32
+                    type: integer
+            required:
+                - items
+                - total
+            type: object
+        AccountingVoucherRef:
+            additionalProperties: false
+            properties:
+                display:
+                    description: 2027-000123.
+                    type: string
+                id:
+                    format: int64
+                    type: integer
+            required:
+                - display
+                - id
+            type: object
+        AccountingVoucherSummary:
+            additionalProperties: false
+            properties:
+                amount:
+                    description: The sum of the debits.
+                    type: string
+                description:
+                    type: string
+                display:
+                    description: 'The voucher''s number as shown: 2027-000123.'
+                    type: string
+                documentDate:
+                    format: date
+                    type: string
+                fiscalYear:
+                    format: int32
+                    type: integer
+                id:
+                    format: int64
+                    type: integer
+                kind:
+                    $ref: '#/components/schemas/AccountingVoucherKind'
+                number:
+                    format: int32
+                    type: integer
+                postedAt:
+                    format: date-time
+                    type: string
+                reversedBy:
+                    allOf:
+                        - $ref: '#/components/schemas/AccountingVoucherRef'
+                    nullable: true
+                reverses:
+                    allOf:
+                        - $ref: '#/components/schemas/AccountingVoucherRef'
+                    nullable: true
+                source:
+                    allOf:
+                        - $ref: '#/components/schemas/AccountingSource'
+                    nullable: true
+                system:
+                    description: Posted by the system for a source fact; only its source reverses it.
+                    type: boolean
+                voucherDate:
+                    format: date
+                    type: string
+            required:
+                - amount
+                - description
+                - display
+                - documentDate
+                - fiscalYear
+                - id
+                - kind
+                - number
+                - postedAt
+                - reversedBy
+                - reverses
+                - source
+                - system
+                - voucherDate
+            type: object
+info:
+    title: Vantigo Accounting API
+    version: "1"
+openapi: 3.0.3
+paths:
+    /api/v1/accounting/accounts:
+        get:
+            operationId: listAccountingAccounts
+            parameters:
+                - description: Matched against number and name.
+                  in: query
+                  name: q
+                  required: false
+                  schema:
+                    type: string
+                - description: Only active, or only inactive, accounts.
+                  in: query
+                  name: active
+                  required: false
+                  schema:
+                    type: boolean
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingAccountList'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Conflict — books_not_set_up.
+            summary: List the chart of accounts
+            tags:
+                - Accounting
+            x-vantigo-access: permission:accounting:read
+        post:
+            operationId: createAccountingAccount
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/AccountingAccountInput'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingAccount'
+                    description: Created
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Bad Request — field errors.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Conflict — books_not_set_up; account_number_taken.
+            summary: Create an account
+            tags:
+                - Accounting
+            x-vantigo-access: permission:accounting:close+accounting:read
+    /api/v1/accounting/accounts/{id}:
+        delete:
+            operationId: deleteAccountingAccount
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "204":
+                    description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Conflict — books_not_set_up; account_has_postings, account_has_role.
+            summary: Delete an account that has no postings
+            tags:
+                - Accounting
+            x-vantigo-access: permission:accounting:close+accounting:read
+        get:
+            operationId: getAccountingAccount
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingAccount'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Conflict — books_not_set_up.
+            summary: Get an account
+            tags:
+                - Accounting
+            x-vantigo-access: permission:accounting:read
+        put:
+            operationId: updateAccountingAccount
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/AccountingAccountUpdate'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingAccount'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Bad Request — field errors.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Conflict — books_not_set_up; revision_conflict, account_number_taken, account_has_postings (number or kind changed).
+            summary: Change an account
+            tags:
+                - Accounting
+            x-vantigo-access: permission:accounting:close+accounting:read
+    /api/v1/accounting/accounts/{id}/groupings:
+        put:
+            operationId: putAccountingAccountGroupings
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/AccountingGroupingsInput'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingAccount'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: 'Bad Request — field errors: a year twice, a code that is not in the year''s list.'
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Conflict — books_not_set_up.
+            summary: Set an account's grouping codes
+            tags:
+                - Accounting
+            x-vantigo-access: permission:accounting:close+accounting:read
+    /api/v1/accounting/grouping-codes:
+        get:
+            operationId: listAccountingGroupingCodes
+            parameters:
+                - description: Default the current year; the latest list not after it is answered.
+                  in: query
+                  name: year
+                  required: false
+                  schema:
+                    format: int32
+                    type: integer
+                - description: Matched against code and both names.
+                  in: query
+                  name: q
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingGroupingCodeList'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Conflict — books_not_set_up.
+            summary: List Skatteetaten's grouping codes
+            tags:
+                - Accounting
+            x-vantigo-access: permission:accounting:read
+    /api/v1/accounting/lock:
+        get:
+            operationId: getAccountingLock
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingLock'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Conflict — books_not_set_up.
+            summary: Get the lock date and its history
+            tags:
+                - Accounting
+            x-vantigo-access: permission:accounting:read
+        put:
+            description: Forward to a month end, or back with a reason, which the lock's history keeps (A8, R10).
+            operationId: putAccountingLock
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/AccountingLockInput'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingLock'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Bad Request — lock_not_month_end, lock_before_books_start, lock_reason_required.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Conflict — books_not_set_up.
+            summary: Move the lock date
+            tags:
+                - Accounting
+            x-vantigo-access: permission:accounting:close+accounting:read
+    /api/v1/accounting/meta:
+        get:
+            operationId: getAccountingMeta
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingMeta'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: Get what the caller may do in Accounting and whether the books are set up
+            tags:
+                - Accounting
+            x-vantigo-access: permission:accounting:read
+    /api/v1/accounting/open-items:
+        get:
+            operationId: listAccountingOpenItems
+            parameters:
+                - in: query
+                  name: kind
+                  required: false
+                  schema:
+                    $ref: '#/components/schemas/AccountingPartyKind'
+                - in: query
+                  name: customerId
+                  required: false
+                  schema:
+                    format: int32
+                    type: integer
+                - in: query
+                  name: supplierId
+                  required: false
+                  schema:
+                    format: int64
+                    type: integer
+                - description: 'Default true: only items with a balance.'
+                  in: query
+                  name: open
+                  required: false
+                  schema:
+                    type: boolean
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingOpenItemList'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Conflict — books_not_set_up.
+            summary: List open items
+            tags:
+                - Accounting
+            x-vantigo-access: permission:accounting:read
+    /api/v1/accounting/open-items/{id}/settlements:
+        post:
+            operationId: settleAccountingOpenItem
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/AccountingSettlementInput'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingVoucher'
+                    description: Created
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Bad Request — field errors, amount_invalid, bank_account_invalid, date_before_books_start.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Conflict — books_not_set_up; settlement_source_document, settlement_exceeds_balance, settlement_settled, period_locked.
+            summary: Register a receipt, payment or refund on an open item
+            tags:
+                - Accounting
+            x-vantigo-access: permission:accounting:post+accounting:read
+    /api/v1/accounting/opening:
+        get:
+            operationId: getAccountingOpening
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingOpening'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Conflict — books_not_set_up.
+            summary: Get the opening balances and the open invoices to offer
+            tags:
+                - Accounting
+            x-vantigo-access: permission:accounting:read
+        post:
+            description: One voucher of kind opening dated booksStart; a receivables or payables line opens one item per document, and the difference goes to the opening account (A9).
+            operationId: postAccountingOpening
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/AccountingOpeningInput'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingVoucher'
+                    description: Created
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Bad Request — field errors; account_unknown, account_inactive, party_required, party_not_allowed, amount_invalid, voucher_empty.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Conflict — books_not_set_up; opening_exists, opening_locked.
+            summary: Enter the opening balances
+            tags:
+                - Accounting
+            x-vantigo-access: permission:accounting:close+accounting:read
+    /api/v1/accounting/reports/{report}:
+        get:
+            description: Computed from the postings by voucher date when it is asked for, with when it was produced (A11).
+            operationId: getAccountingReport
+            parameters:
+                - in: path
+                  name: report
+                  required: true
+                  schema:
+                    $ref: '#/components/schemas/AccountingReportKind'
+                - description: The period's first day.
+                  in: query
+                  name: from
+                  required: true
+                  schema:
+                    format: date
+                    type: string
+                - description: The period's last day; the balance sheet's and the aged balances' day.
+                  in: query
+                  name: to
+                  required: true
+                  schema:
+                    format: date
+                    type: string
+                - description: The comparison period's first day (trial balance, profit and loss, balance sheet).
+                  in: query
+                  name: compareFrom
+                  required: false
+                  schema:
+                    format: date
+                    type: string
+                - in: query
+                  name: compareTo
+                  required: false
+                  schema:
+                    format: date
+                    type: string
+                - description: The account report's account; required for it.
+                  in: query
+                  name: accountId
+                  required: false
+                  schema:
+                    format: int32
+                    type: integer
+                - description: 'The customers report: one customer.'
+                  in: query
+                  name: customerId
+                  required: false
+                  schema:
+                    format: int32
+                    type: integer
+                - description: 'The suppliers report: one supplier.'
+                  in: query
+                  name: supplierId
+                  required: false
+                  schema:
+                    format: int64
+                    type: integer
+                - description: Postings on one project only.
+                  in: query
+                  name: projectId
+                  required: false
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingReport'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Bad Request — period_invalid, report_account_required.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Conflict — books_not_set_up.
+            summary: Get a report
+            tags:
+                - Accounting
+            x-vantigo-access: permission:accounting:read
+    /api/v1/accounting/reports/{report}/csv:
+        get:
+            description: The report as a semicolon-separated file with a byte order mark and the decimal comma, served as an attachment and never cached.
+            operationId: exportAccountingReport
+            parameters:
+                - in: path
+                  name: report
+                  required: true
+                  schema:
+                    $ref: '#/components/schemas/AccountingReportKind'
+                - description: The period's first day.
+                  in: query
+                  name: from
+                  required: true
+                  schema:
+                    format: date
+                    type: string
+                - description: The period's last day; the balance sheet's and the aged balances' day.
+                  in: query
+                  name: to
+                  required: true
+                  schema:
+                    format: date
+                    type: string
+                - description: The comparison period's first day (trial balance, profit and loss, balance sheet).
+                  in: query
+                  name: compareFrom
+                  required: false
+                  schema:
+                    format: date
+                    type: string
+                - in: query
+                  name: compareTo
+                  required: false
+                  schema:
+                    format: date
+                    type: string
+                - description: The account report's account; required for it.
+                  in: query
+                  name: accountId
+                  required: false
+                  schema:
+                    format: int32
+                    type: integer
+                - description: 'The customers report: one customer.'
+                  in: query
+                  name: customerId
+                  required: false
+                  schema:
+                    format: int32
+                    type: integer
+                - description: 'The suppliers report: one supplier.'
+                  in: query
+                  name: supplierId
+                  required: false
+                  schema:
+                    format: int64
+                    type: integer
+                - description: Postings on one project only.
+                  in: query
+                  name: projectId
+                  required: false
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        text/csv:
+                            schema:
+                                format: binary
+                                type: string
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Bad Request — period_invalid, report_account_required.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Conflict — books_not_set_up.
+            summary: Download a report as CSV
+            tags:
+                - Accounting
+            x-vantigo-access: permission:accounting:export+accounting:read
+            x-vantigo-assistant: never
+    /api/v1/accounting/roles/{role}:
+        put:
+            description: The role leaves the account that held it; a role is never removed (A3).
+            operationId: assignAccountingRole
+            parameters:
+                - in: path
+                  name: role
+                  required: true
+                  schema:
+                    $ref: '#/components/schemas/AccountingSystemRole'
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/AccountingRoleInput'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingAccountList'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Bad Request — account_unknown, account_inactive.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Conflict — books_not_set_up.
+            summary: Move a system role to an account
+            tags:
+                - Accounting
+            x-vantigo-access: permission:accounting:close+accounting:read
+    /api/v1/accounting/setup:
+        post:
+            description: Writes the settings and seeds the default chart with its grouping codes, the standard tax codes with the 2026 rates and the system roles, named in language (R12). Once only.
+            operationId: setUpAccountingBooks
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/AccountingSetupInput'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingSettings'
+                    description: Created
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: 'Bad Request — field errors: booksStart, fiscalYearStartMonth, vatTerm, language.'
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Conflict — books_already_set_up.
+            summary: Set up the books
+            tags:
+                - Accounting
+            x-vantigo-access: permission:accounting:close+accounting:read
+    /api/v1/accounting/tax-codes:
+        get:
+            operationId: listAccountingTaxCodes
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingTaxCodeList'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Conflict — books_not_set_up.
+            summary: List the tax codes
+            tags:
+                - Accounting
+            x-vantigo-access: permission:accounting:read
+    /api/v1/accounting/tax-codes/{id}:
+        put:
+            operationId: updateAccountingTaxCode
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/AccountingTaxCodeUpdate'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingTaxCode'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Bad Request — field errors, account_unknown.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Conflict — books_not_set_up; revision_conflict.
+            summary: Change a tax code's name, accounts or activity
+            tags:
+                - Accounting
+            x-vantigo-access: permission:accounting:close+accounting:read
+    /api/v1/accounting/tax-codes/{id}/rates:
+        post:
+            description: The open period ends the day before validFrom (A5).
+            operationId: addAccountingTaxCodeRate
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/AccountingTaxRateInput'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingTaxCode'
+                    description: Created
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Bad Request — amount_invalid, rate_period_invalid.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Conflict — books_not_set_up.
+            summary: Add a rate period to a tax code
+            tags:
+                - Accounting
+            x-vantigo-access: permission:accounting:close+accounting:read
+    /api/v1/accounting/vouchers:
+        get:
+            description: In voucher date order, newest first.
+            operationId: listAccountingVouchers
+            parameters:
+                - in: query
+                  name: from
+                  required: false
+                  schema:
+                    format: date
+                    type: string
+                - in: query
+                  name: to
+                  required: false
+                  schema:
+                    format: date
+                    type: string
+                - in: query
+                  name: kind
+                  required: false
+                  schema:
+                    $ref: '#/components/schemas/AccountingVoucherKind'
+                - description: Vouchers with a posting on the account.
+                  in: query
+                  name: accountId
+                  required: false
+                  schema:
+                    format: int32
+                    type: integer
+                - in: query
+                  name: customerId
+                  required: false
+                  schema:
+                    format: int32
+                    type: integer
+                - in: query
+                  name: supplierId
+                  required: false
+                  schema:
+                    format: int64
+                    type: integer
+                - description: Matched against the description, a posting's text and the number (2027-000123).
+                  in: query
+                  name: q
+                  required: false
+                  schema:
+                    type: string
+                - in: query
+                  name: offset
+                  required: false
+                  schema:
+                    format: int32
+                    type: integer
+                - description: Default 50, at most 200.
+                  in: query
+                  name: limit
+                  required: false
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingVoucherList'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Conflict — books_not_set_up.
+            summary: List vouchers
+            tags:
+                - Accounting
+            x-vantigo-access: permission:accounting:read
+        post:
+            description: 'Each line with a tax code gets its tax line, computed with docmath''s rounding from the net or the gross (A6). Posted means posted: there is no draft.'
+            operationId: postAccountingVoucher
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/AccountingJournalInput'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingVoucher'
+                    description: Created
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Bad Request — field errors; account_unknown, account_inactive, tax_code_unknown, tax_code_no_rate, party_required, party_not_allowed, open_item_unknown, amount_invalid, voucher_empty, voucher_unbalanced, date_before_books_start.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Conflict — books_not_set_up; period_locked.
+            summary: Post a manual journal
+            tags:
+                - Accounting
+            x-vantigo-access: permission:accounting:post+accounting:read
+    /api/v1/accounting/vouchers/{id}:
+        get:
+            operationId: getAccountingVoucher
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingVoucher'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Conflict — books_not_set_up.
+            summary: Get a voucher with its postings and attachments
+            tags:
+                - Accounting
+            x-vantigo-access: permission:accounting:read
+    /api/v1/accounting/vouchers/{id}/attachments:
+        post:
+            description: At most 20 MB in the multipart field file. An attachment is never removed (A4).
+            operationId: uploadAccountingAttachment
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            requestBody:
+                content:
+                    multipart/form-data:
+                        schema:
+                            properties:
+                                file:
+                                    format: binary
+                                    type: string
+                            required:
+                                - file
+                            type: object
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingAttachment'
+                    description: Created
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Bad Request — attachment_too_large, or no file in the multipart field file.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Conflict — books_not_set_up.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Service Unavailable — storage_not_configured, or the store failed. Nothing was changed.
+            summary: Attach a file to a voucher
+            tags:
+                - Accounting
+            x-vantigo-access: permission:accounting:post+accounting:read
+            x-vantigo-assistant: never
+    /api/v1/accounting/vouchers/{id}/attachments/{attachmentId}:
+        get:
+            operationId: getAccountingAttachment
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+                - in: path
+                  name: attachmentId
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        '*/*':
+                            schema:
+                                format: binary
+                                type: string
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Conflict — books_not_set_up.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Service Unavailable — the store failed.
+            summary: Download a voucher's attachment
+            tags:
+                - Accounting
+            x-vantigo-access: permission:accounting:read
+            x-vantigo-assistant: never
+    /api/v1/accounting/vouchers/{id}/reverse:
+        post:
+            description: A new voucher with every sign turned, naming the original (A7).
+            operationId: reverseAccountingVoucher
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/AccountingReverseInput'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingVoucher'
+                    description: Created
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Bad Request — field errors, date_before_books_start.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Conflict — books_not_set_up; voucher_owned_by_source, voucher_already_reversed, period_locked, opening_locked.
+            summary: Reverse a voucher
+            tags:
+                - Accounting
+            x-vantigo-access: permission:accounting:post+accounting:read
+    /api/v1/accounting/vouchers/preview:
+        post:
+            description: Writes nothing.
+            operationId: previewAccountingVoucher
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/AccountingJournalInput'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingJournalPreview'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Bad Request — the same field errors as posting, but voucher_unbalanced, which the preview reports.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
+                    description: Conflict — books_not_set_up.
+            summary: Preview a manual journal's postings and its tax lines
+            tags:
+                - Accounting
+            x-vantigo-access: permission:accounting:post+accounting:read
+            x-vantigo-assistant: auto
+servers:
+    - url: /

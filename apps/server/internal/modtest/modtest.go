@@ -764,6 +764,11 @@ func WithEnv(key, value string) Option {
 // the catalog and the stock (WithProducts, WithStock) rather than compose
 // them.
 //
+// "invoices" is likewise included whenever "accounting" is among mods:
+// config.go rejects "accounting" without it (accounting design A1), and
+// accounting's own tests stand in a fake sales journal (WithSalesJournal)
+// rather than compose it.
+//
 // "staff" is likewise included whenever "entra" or "google" is among mods:
 // config.go rejects either without "staff" (Staff's accounts worker is the
 // provider's only caller), and their own tests drive the provider and its
@@ -804,6 +809,9 @@ func modulesEnv(mods []module.Module, stubbed ...string) string {
 	if moduleSet["manufacturing"] {
 		moduleSet["products"] = true
 		moduleSet["inventory"] = true
+	}
+	if moduleSet["accounting"] {
+		moduleSet["invoices"] = true
 	}
 	for _, name := range stubbed {
 		moduleSet[name] = true

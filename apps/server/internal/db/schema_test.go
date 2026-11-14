@@ -25,7 +25,7 @@ import (
 // moduleSchemas are the PostgreSQL schemas owned by one module each. The
 // platform schema is deliberately not one of these: internal/ratelimit
 // reaches it from outside its own module, by design (Global Constraints).
-var moduleSchemas = []string{"identity", "customers", "products", "energy", "communications", "projects", "time", "expenses", "invoices", "staff", "planning", "inventory", "orders", "manufacturing", "knowledge", "calendar", "entra", "google", "meta", "assistant", "agents"}
+var moduleSchemas = []string{"identity", "customers", "products", "energy", "communications", "projects", "time", "expenses", "invoices", "staff", "planning", "inventory", "orders", "manufacturing", "accounting", "knowledge", "calendar", "entra", "google", "meta", "assistant", "agents"}
 
 // schemaOwnedFile is one migration or query file, with the module that owns
 // it and its full text.

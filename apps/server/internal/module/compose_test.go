@@ -615,7 +615,7 @@ func TestCompose_MergesEveryRealContract(t *testing.T) {
 
 	// Every business module contract here must actually mount, so all of
 	// them are enabled; identity mounts regardless.
-	handler, err := Compose(Deps{Access: access, Config: &config.Config{Modules: []string{"customers", "products", "energy", "communications", "projects", "time", "expenses", "invoices", "staff", "planning", "inventory", "orders", "manufacturing", "knowledge", "calendar", "entra", "google", "meta", "assistant", "agents"}}}, mods...)
+	handler, err := Compose(Deps{Access: access, Config: &config.Config{Modules: []string{"customers", "products", "energy", "communications", "projects", "time", "expenses", "invoices", "staff", "planning", "inventory", "orders", "manufacturing", "accounting", "knowledge", "calendar", "entra", "google", "meta", "assistant", "agents"}}}, mods...)
 	if err != nil {
 		t.Fatalf("Compose: %v", err)
 	}
