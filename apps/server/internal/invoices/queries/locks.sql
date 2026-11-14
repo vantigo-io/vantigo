@@ -154,6 +154,17 @@ FOR NO KEY UPDATE OF l;
 -- attempts are counted (D14, I20).
 SELECT * FROM invoices.payment_provider_credentials WHERE id = 1 FOR UPDATE;
 
+-- name: LockBankFeedConnection :one
+-- LockBankFeedConnection takes the bank connection FOR UPDATE: the DELETE's
+-- only lock, before it switches every account off (bank feed design F8).
+SELECT * FROM invoices.bank_feed_connections WHERE id = 1 FOR UPDATE;
+
+-- name: ShareBankFeedConnection :one
+-- ShareBankFeedConnection reads the bank connection FOR SHARE: a switch of an
+-- account on, after the account's own row, so a DELETE waits for it and then
+-- switches it off with the rest.
+SELECT * FROM invoices.bank_feed_connections WHERE id = 1 FOR SHARE;
+
 -- name: SharePaymentCredentials :one
 -- SharePaymentCredentials reads the payment provider's credentials FOR
 -- SHARE: an attempt's create, after the invoice, so a sales-unit change

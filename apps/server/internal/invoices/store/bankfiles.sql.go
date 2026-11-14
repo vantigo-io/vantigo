@@ -26,7 +26,7 @@ type BankFileByIdentityParams struct {
 type BankFileByIdentityRow struct {
 	ID               int64
 	UploadedAt       time.Time
-	UploadedByUserID uuid.UUID
+	UploadedByUserID *uuid.UUID
 }
 
 // BankFileByIdentity is the earlier import of the same file identity in the
@@ -46,7 +46,7 @@ SELECT id, uploaded_at, uploaded_by_user_id FROM invoices.bank_files WHERE sha25
 type BankFileBySHARow struct {
 	ID               int64
 	UploadedAt       time.Time
-	UploadedByUserID uuid.UUID
+	UploadedByUserID *uuid.UUID
 }
 
 // BankFileBySHA is the earlier import of the same bytes, with its uploader
@@ -110,7 +110,7 @@ func (q *Queries) CountBankFiles(ctx context.Context) (int64, error) {
 }
 
 const getBankFile = `-- name: GetBankFile :one
-SELECT f.id, f.format, f.sha256, f.file_identity, f.object_key, f.byte_size, f.accounts, f.first_booked_on, f.last_booked_on, f.transactions, f.duplicates, f.ignored, f.ignored_kinds, f.uploaded_by_user_id, f.uploaded_at, c.pending, c.exceptions, c.matched
+SELECT f.id, f.format, f.sha256, f.file_identity, f.object_key, f.byte_size, f.accounts, f.first_booked_on, f.last_booked_on, f.transactions, f.duplicates, f.ignored, f.ignored_kinds, f.uploaded_by_user_id, f.uploaded_at, f.provider, c.pending, c.exceptions, c.matched
 FROM invoices.bank_files f
 CROSS JOIN LATERAL (
     SELECT count(*) FILTER (WHERE t.status = 'pending')   AS pending,
@@ -148,6 +148,7 @@ func (q *Queries) GetBankFile(ctx context.Context, id int64) (GetBankFileRow, er
 		&i.InvoicesBankFile.IgnoredKinds,
 		&i.InvoicesBankFile.UploadedByUserID,
 		&i.InvoicesBankFile.UploadedAt,
+		&i.InvoicesBankFile.Provider,
 		&i.Pending,
 		&i.Exceptions,
 		&i.Matched,
@@ -163,7 +164,7 @@ INSERT INTO invoices.bank_files (
     $1, $2, $3, $4, $5, $6::text[], $7, $8,
     $9, $10, $11, $12, $13::timestamptz
 )
-RETURNING id, format, sha256, file_identity, object_key, byte_size, accounts, first_booked_on, last_booked_on, transactions, duplicates, ignored, ignored_kinds, uploaded_by_user_id, uploaded_at
+RETURNING id, format, sha256, file_identity, object_key, byte_size, accounts, first_booked_on, last_booked_on, transactions, duplicates, ignored, ignored_kinds, uploaded_by_user_id, uploaded_at, provider
 `
 
 type InsertBankFileParams struct {
@@ -178,7 +179,7 @@ type InsertBankFileParams struct {
 	Transactions     int32
 	Ignored          int32
 	IgnoredKinds     []byte
-	UploadedByUserID uuid.UUID
+	UploadedByUserID *uuid.UUID
 	UploadedAt       time.Time
 }
 
@@ -219,6 +220,7 @@ func (q *Queries) InsertBankFile(ctx context.Context, arg InsertBankFileParams) 
 		&i.IgnoredKinds,
 		&i.UploadedByUserID,
 		&i.UploadedAt,
+		&i.Provider,
 	)
 	return i, err
 }
@@ -467,7 +469,7 @@ func (q *Queries) LatestBookedInFormat(ctx context.Context, arg LatestBookedInFo
 }
 
 const listBankFiles = `-- name: ListBankFiles :many
-SELECT f.id, f.format, f.sha256, f.file_identity, f.object_key, f.byte_size, f.accounts, f.first_booked_on, f.last_booked_on, f.transactions, f.duplicates, f.ignored, f.ignored_kinds, f.uploaded_by_user_id, f.uploaded_at, c.pending, c.exceptions, c.matched
+SELECT f.id, f.format, f.sha256, f.file_identity, f.object_key, f.byte_size, f.accounts, f.first_booked_on, f.last_booked_on, f.transactions, f.duplicates, f.ignored, f.ignored_kinds, f.uploaded_by_user_id, f.uploaded_at, f.provider, c.pending, c.exceptions, c.matched
 FROM invoices.bank_files f
 CROSS JOIN LATERAL (
     SELECT count(*) FILTER (WHERE t.status = 'pending')   AS pending,
@@ -518,6 +520,7 @@ func (q *Queries) ListBankFiles(ctx context.Context, arg ListBankFilesParams) ([
 			&i.InvoicesBankFile.IgnoredKinds,
 			&i.InvoicesBankFile.UploadedByUserID,
 			&i.InvoicesBankFile.UploadedAt,
+			&i.InvoicesBankFile.Provider,
 			&i.Pending,
 			&i.Exceptions,
 			&i.Matched,

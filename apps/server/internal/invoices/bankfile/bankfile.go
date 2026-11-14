@@ -18,10 +18,12 @@ import (
 // Format is a bank file's format, as invoices.bank_files stores it.
 type Format string
 
-// The two formats.
+// The three formats. Parse reads the two of files; FormatFeed is a bank
+// feed's batch (invoices bank feed design F5), which nothing here parses.
 const (
 	FormatOCR     Format = "ocr"
 	FormatCamt054 Format = "camt054"
+	FormatFeed    Format = "feed"
 )
 
 // IgnoredKind is why a line of a file did not become a transaction; the

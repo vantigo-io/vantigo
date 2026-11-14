@@ -104,6 +104,9 @@ func TestInvoicesPaymentsPort_AppliesAndIsIdempotent(t *testing.T) {
 	t.Parallel()
 	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, paymentsPortVersion) // 00046_invoices_payments_port.sql
+	// 00178 replaces the payments' two CHECKs again (the bank feed's
+	// bank_feed); its own test pins them, so this one reads 00046's at 46.
+	migrateTo(t, url, paymentsPortVersion)
 
 	ctx := context.Background()
 	pool, err := db.Open(ctx, url)

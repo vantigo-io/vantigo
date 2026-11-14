@@ -354,9 +354,13 @@ func bankTransactionsResponse(ctx context.Context, q *store.Queries, lines []sto
 	}
 	events := map[int64][]gen.InvoicesBankTransactionEvent{}
 	for _, e := range eventRows {
+		by, err := requiredUser(e.ByUserID, "bank transaction event", e.ID)
+		if err != nil {
+			return nil, err
+		}
 		events[e.BankTransactionID] = append(events[e.BankTransactionID], gen.InvoicesBankTransactionEvent{
 			Id: e.ID, Event: gen.InvoicesBankTransactionEventEvent(e.Event), Reason: reasonWire(e.Reason),
-			Note: e.Note, By: e.ByUserID, At: e.At,
+			Note: e.Note, By: by, At: e.At,
 		})
 	}
 	appliedWires := func(id int64) ([]gen.InvoicesBankTransactionApplied, error) {
@@ -572,7 +576,7 @@ func (s *server) queueAction(ctx context.Context, id int64, judge lineJudge,
 // lineEvent records what an action did to line, by and at.
 func lineEvent(ctx context.Context, txq *store.Queries, lineID int64, event string, reason *string, note string, by uuid.UUID, at time.Time) error {
 	if err := txq.InsertBankTransactionEvent(ctx, store.InsertBankTransactionEventParams{
-		BankTransactionID: lineID, Event: event, Reason: reason, Note: note, ByUserID: by, At: at,
+		BankTransactionID: lineID, Event: event, Reason: reason, Note: note, ByUserID: &by, At: at,
 	}); err != nil {
 		return fmt.Errorf("invoices: record line %d %s: %w", lineID, event, err)
 	}
@@ -820,7 +824,7 @@ func (s *server) applyLocked(ctx context.Context, txq *store.Queries, line store
 		if a.amount.Sign() > 0 {
 			if _, err := txq.InsertImportedPayment(ctx, store.InsertImportedPaymentParams{
 				InvoiceID: inv.ID, PaidOn: line.BookedOn, Amount: a.amountN, Currency: inv.Currency, Source: line.Format,
-				BankTransactionID: line.ID, Reference: reference, RegisteredByUserID: caller, RegisteredAt: now,
+				BankTransactionID: line.ID, Reference: reference, RegisteredByUserID: &caller, RegisteredAt: now,
 			}); err != nil {
 				return nil, fmt.Errorf("invoices: apply line %d's payment to %d: %w", line.ID, inv.ID, err)
 			}
@@ -828,7 +832,7 @@ func (s *server) applyLocked(ctx context.Context, txq *store.Queries, line store
 		if a.charges.Sign() > 0 {
 			if _, err := insertChargePayment(ctx, txq, store.InsertChargePaymentParams{
 				InvoiceID: inv.ID, PaidOn: line.BookedOn, Amount: a.chargesN, Currency: inv.Currency, Source: line.Format,
-				BankTransactionID: &line.ID, Reference: reference, RegisteredByUserID: caller, RegisteredAt: now,
+				BankTransactionID: &line.ID, Reference: reference, RegisteredByUserID: &caller, RegisteredAt: now,
 			}); err != nil {
 				return nil, err
 			}

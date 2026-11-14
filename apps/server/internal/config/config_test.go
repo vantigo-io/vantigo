@@ -2070,6 +2070,33 @@ func TestConfig_InvoicesVipps(t *testing.T) {
 	}
 }
 
+// The bank feed's switch and Folio's base URL (invoices bank feed design
+// F3): the switch defaults on and is strict; the base URL defaults to Folio's
+// API and must be https — the adapter sends the API key on every request.
+func TestConfig_InvoicesBankFeed(t *testing.T) {
+	cfg := mustLoad(t, validEnv())
+	if !cfg.InvoicesBankFeedEnabled {
+		t.Error("INVOICES_BANK_FEED_ENABLED unset did not default to on")
+	}
+	if cfg.InvoicesFolioBaseURL != "https://api.folio.no/v2" {
+		t.Errorf("InvoicesFolioBaseURL = %q, want Folio's API", cfg.InvoicesFolioBaseURL)
+	}
+	if cfg := mustLoad(t, with(validEnv(), "INVOICES_BANK_FEED_ENABLED", "0")); cfg.InvoicesBankFeedEnabled {
+		t.Error("INVOICES_BANK_FEED_ENABLED=0 left the switch on")
+	}
+	if msg := loadError(t, with(validEnv(), "INVOICES_BANK_FEED_ENABLED", "yes")); !strings.Contains(msg, `INVOICES_BANK_FEED_ENABLED: must be "0" or "1"`) {
+		t.Errorf("error = %q", msg)
+	}
+	if cfg := mustLoad(t, with(validEnv(), "INVOICES_FOLIO_BASE_URL", "https://folio.example.test/v2/")); cfg.InvoicesFolioBaseURL != "https://folio.example.test/v2" {
+		t.Errorf("INVOICES_FOLIO_BASE_URL = %q, want the mock host without its trailing slash", cfg.InvoicesFolioBaseURL)
+	}
+	for _, bad := range []string{"not-a-url", "http://folio.example.test/v2", "ftp://folio.example.test", "https://"} {
+		if msg := loadError(t, with(validEnv(), "INVOICES_FOLIO_BASE_URL", bad)); !strings.Contains(msg, "INVOICES_FOLIO_BASE_URL: must be an absolute https URL") {
+			t.Errorf("%q: error = %q", bad, msg)
+		}
+	}
+}
+
 // TestLoad_AIContextTokens pins AI_CONTEXT_TOKENS (the Assistant design S7):
 // 16000 unless set (150000 for anthropic), from 2000 to 1000000.
 func TestLoad_AIContextTokens(t *testing.T) {
