@@ -309,6 +309,50 @@ func TestSalesJournal_ChargePaymentFactsCarryTheirAmountAlone(t *testing.T) {
 	}
 }
 
+// A payment and a charge payment the bank feed matched name their line and
+// no registering user (bank feed design F6): each makes its fact like a bank
+// file's, its source bank_feed and its account the line's.
+func TestSalesJournal_BankFeedPaymentsMakeFactsWithTheirAccount(t *testing.T) {
+	t.Parallel()
+	h := readyToIssue(t)
+	ctx := context.Background()
+	id := plantOverdue(t, h, overdueSpec{number: 9001, customer: customerAcme, issue: "2026-09-01", due: "2026-09-30"})
+	batch := plantID(t, h, `INSERT INTO invoices.bank_files (format, sha256, file_identity, object_key, byte_size, accounts,
+		    transactions, ignored, ignored_kinds, uploaded_by_user_id, uploaded_at, provider)
+		VALUES ('feed', repeat('a', 64), 'folio-1', 'bank-files/folio-1', 2, ARRAY['15032080119'], 2, 0, '{}', NULL, now(), 'folio')
+		RETURNING id`)
+	line := func(ref string, ordinal int) int64 {
+		return plantID(t, h, `INSERT INTO invoices.bank_transactions (bank_file_id, line_ref, format, account, direction, booked_on,
+		    amount, currency, fingerprint, ordinal)
+		VALUES ($1, $2, 'feed', '15032080119', 'credit', DATE '2026-09-15', 300, 'NOK', repeat($3, 64), $4) RETURNING id`,
+			batch, ref, strconv.Itoa(ordinal), ordinal)
+	}
+	payment := plantID(t, h, `INSERT INTO invoices.payments (invoice_id, paid_on, amount, currency, source, bank_transaction_id,
+		    reference, registered_by_user_id, registered_at)
+		VALUES ($1, '2026-09-15', 300, 'NOK', 'bank_feed', $2, '', NULL, now()) RETURNING id`, id, line("feed-1", 1))
+	charge := plantID(t, h, `INSERT INTO invoices.charge_payments (invoice_id, paid_on, amount, currency, source, bank_transaction_id,
+		    reference, registered_by_user_id, registered_at)
+		VALUES ($1, '2026-09-15', 35, 'NOK', 'bank_feed', $2, '', NULL, now()) RETURNING id`, id, line("feed-2", 2))
+
+	facts, err := salesJournal(h).Facts(ctx, 0, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(facts) != 2 {
+		t.Fatalf("facts = %+v, want the payment's and the charge payment's", facts)
+	}
+	for i, w := range []struct {
+		kind    string
+		subject int64
+		amount  string
+	}{{contracts.FactPayment, payment, "300.00"}, {contracts.FactChargePayment, charge, "35.00"}} {
+		if f := facts[i]; f.Kind != w.kind || f.SubjectID != w.subject || f.AmountNOK != w.amount ||
+			f.Source != contracts.PaymentSourceBankFeed || f.BankAccount != "15032080119" || f.Date.Format(time.DateOnly) != "2026-09-15" {
+			t.Errorf("fact %d = %+v, want the bank_feed %s on the feed's account", i+1, f, w.kind)
+		}
+	}
+}
+
 func TestSalesJournal_OpenAt(t *testing.T) {
 	t.Parallel()
 	h := readyToIssue(t)

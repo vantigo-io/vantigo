@@ -5700,8 +5700,10 @@ after them again until a page comes back short; a page is at most 500
 - **`Facts(ctx, afterSeq, limit)`** — [the fact log](#the-fact-log) after `afterSeq`, in
   seq order, each joined to what it is about: kind, seq, the payment's or charge
   payment's id, the business day, the invoice's id, number and customer, the amount in
-  NOK, the source (`manual`, `ocr`, `camt054`, `vipps`), and the receiving account number
-  when it came from a bank line (`""` otherwise). A charge payment's fact, and its
+  NOK, the source (`manual`, `ocr`, `camt054`, `vipps`, `bank_feed`), and the receiving
+  account number when it came from a bank line — a file's or the bank feed's (`""`
+  otherwise). A `bank_feed` payment the feed matched has no registering user and makes
+  its facts like any other. A charge payment's fact, and its
   removal's, carries its amount and nothing more: it has no parts. A charge payment pays
   whatever the invoice's letters claimed, and how that divides between fees, interest and
   what was paid beyond them moves as later letters, waivers and removals change
