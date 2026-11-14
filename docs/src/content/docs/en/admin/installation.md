@@ -718,7 +718,7 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
   EHF — the Storecove account, the credentials and the KID agreement — is its own
   procedure ([E-invoicing](/en/admin/e-invoicing/)).
 - `vantigo.env.example` also documents, commented out, the bank feed's settings,
-  `INVOICES_BANK_FEED_ENABLED` (default on) and `INVOICES_FOLIO_BASE_URL` (default
+  `INVOICES_BANK_FEED_ENABLED` (default off while the feed reads no payments) and `INVOICES_FOLIO_BASE_URL` (default
   `https://api.folio.no/v2`, https only). With a workspace's Folio key stored, the server
   calls that host over outbound HTTPS — let it through any egress filter; it needs no
   public host, since Folio sends nothing in ([The bank feed](/en/admin/payments/#the-bank-feed)).
