@@ -5,8 +5,10 @@ import {
   ACCOUNTS_ROUTE_PATH,
   accountingNavItems,
   JOURNAL_ROUTE_PATH,
+  NEEDS_ATTENTION_ROUTE_PATH,
   OPEN_ITEMS_ROUTE_PATH,
   OPENING_ROUTE_PATH,
+  POSTING_RULES_ROUTE_PATH,
   REPORTS_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
   SETUP_ROUTE_PATH,
@@ -45,6 +47,8 @@ describe("the Accounting routes", () => {
       OPENING_ROUTE_PATH,
       REPORTS_ROUTE_PATH,
       SETTINGS_ROUTE_PATH,
+      POSTING_RULES_ROUTE_PATH,
+      NEEDS_ATTENTION_ROUTE_PATH,
     ]) {
       const concrete = path.replace("$voucherId", "7");
       const ids = matchedRouteIds(concrete);

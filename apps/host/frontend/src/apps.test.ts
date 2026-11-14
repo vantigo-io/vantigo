@@ -182,10 +182,12 @@ describe("the app registry", () => {
       "/accounting",
       "/accounting/journal",
       "/accounting/vouchers",
+      "/accounting/needs-attention",
       "/accounting/open-items",
       "/accounting/reports",
       "/accounting/accounts",
       "/accounting/tax-codes",
+      "/accounting/posting-rules",
       "/accounting/settings",
       "/energy/metering-points",
       "/energy/prices",
@@ -809,7 +811,7 @@ describe("the app registry", () => {
 
   // Accounting's destinations are the package's (`accountingNavItems`, A1):
   // every one is accounting:read's but a new journal entry, which posts.
-  it("registers Accounting with the package's eight destinations", () => {
+  it("registers Accounting with the package's ten destinations", () => {
     const accounting = appForKey("accounting");
     expect(accounting).toMatchObject({ module: "accounting", label: "navigation.accounting", home: "/accounting" });
     const items = accounting.navSections.flatMap((section) => section.items);

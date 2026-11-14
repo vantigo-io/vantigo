@@ -26,6 +26,7 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { metaQueryOptions } from "@vantigo/accounting-ui/api/accounting";
+import "@vantigo/accounting-ui/i18n";
 import { reviewCountQueryOptions } from "@vantigo/agents-ui/api/agents";
 import { AgendaWidget } from "@vantigo/calendar-ui/components/agenda-widget";
 import { PageHeader, useI18n } from "@vantigo/frontend-shell";
@@ -88,6 +89,8 @@ export * from "../lib/dashboard-helpers";
 
 const DashboardPage = () => {
   const { t, formatters, locale } = useI18n("host");
+  // What the books could not post is Accounting's own words (accounting design A15).
+  const { t: tAccounting } = useI18n("accounting");
   const search = Route.useSearch();
   const navigate = useNavigate({ from: "/dashboard" });
   const { data: session } = useQuery({ queryKey: sessionQueryKey, queryFn: fetchSession, staleTime: 300_000 });
@@ -708,6 +711,9 @@ const DashboardPage = () => {
                 key={module.module}
                 label={t("dashboard.accountingVouchers")}
                 {...accountingKpi(accountingMeta.data, formatters.formatNumber, t)}
+                {...(accountingMeta.data?.setUp && accountingMeta.data.unposted > 0
+                  ? { hint: tAccounting("needsAttentionCount", { count: accountingMeta.data.unposted }) }
+                  : {})}
                 href={href}
                 loading={accountingMeta.isPending}
               />
