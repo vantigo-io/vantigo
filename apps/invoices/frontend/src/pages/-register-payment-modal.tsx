@@ -14,6 +14,11 @@ export interface RegisterPaymentModalProps {
   invoice: InvoiceDocument;
   /** Today in Oslo, meta's: the day a payment is prefilled with and the latest it may be. */
   today: string;
+  /**
+   * Money that arrived after a write-off (accounting design R4): registered as
+   * kind recovered, prefilled with what is left to recover.
+   */
+  recovered?: boolean;
   onClose: () => void;
 }
 
@@ -28,11 +33,18 @@ const paymentInputs = new Set(["paidOn", "amount", "reference", "note"]);
  * registers twice; every refusal is said in the reader's language, an
  * overpayment with the open amount the server names.
  */
-export const RegisterPaymentModal = ({ invoice, today, onClose }: RegisterPaymentModalProps) => {
+export const RegisterPaymentModal = ({ invoice, today, recovered = false, onClose }: RegisterPaymentModalProps) => {
   const { t, money, date } = useInvoiceFormat();
   const queryClient = useQueryClient();
   const [paidOn, setPaidOn] = useState<string | null>(today);
-  const [amount, setAmount] = useState<number | string>(Math.max(invoice.openAmount ?? 0, 0));
+  const [amount, setAmount] = useState<number | string>(
+    Math.max(
+      recovered
+        ? Math.round(((invoice.writtenOffAmount ?? 0) - (invoice.recoveredAmount ?? 0)) * 100) / 100
+        : (invoice.openAmount ?? 0),
+      0,
+    ),
+  );
   const [reference, setReference] = useState("");
   const [note, setNote] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -45,6 +57,7 @@ export const RegisterPaymentModal = ({ invoice, today, onClose }: RegisterPaymen
         amount: typeof amount === "number" ? amount : Number(amount),
         ...(reference.trim() ? { reference: reference.trim() } : {}),
         ...(note.trim() ? { note: note.trim() } : {}),
+        ...(recovered ? { kind: "recovered" as const } : {}),
       }),
     onSuccess: async () => {
       // The answer carries no send defaults (design D4): the document is read again.
@@ -69,7 +82,7 @@ export const RegisterPaymentModal = ({ invoice, today, onClose }: RegisterPaymen
     },
   });
   return (
-    <Modal opened onClose={onClose} title={t("registerPayment")}>
+    <Modal opened onClose={onClose} title={t(recovered ? "writeOff.registerRecovered" : "registerPayment")}>
       <Stack>
         <DateInput
           label={t("paidOn")}

@@ -36,7 +36,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { ContentSkeleton, PageHeader, PageSection } from "@vantigo/frontend-shell";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import type { LetterLeft } from "../api/collection";
 import { SETTLEMENT_KIND } from "../api/consumption";
 import { deductibleQueryOptions } from "../api/deductible";
@@ -87,13 +87,19 @@ export interface InvoicePageProps {
   canViewCustomers: boolean;
   /** The signed-in user, so a hold, a waiver or a letter withdrawn by them says "you". */
   currentUserId?: string;
+  /**
+   * What the books say of an issued document — a link to its vouchers — when
+   * the host has Accounting on (accounting design A13); the host renders it,
+   * since one app's package never reads another's API.
+   */
+  ledger?: (documentId: number) => ReactNode;
 }
 
 /**
  * One document (D12): a draft's editor, or an issued document's page. The
  * route owns the id and hands it over as a number.
  */
-export const InvoicePage = ({ invoiceId, canViewCustomers, currentUserId }: InvoicePageProps) => {
+export const InvoicePage = ({ invoiceId, canViewCustomers, currentUserId, ledger }: InvoicePageProps) => {
   const { t, date } = useInvoiceFormat();
   const meta = useQuery(invoicesMetaQueryOptions());
   const document = useQuery(invoiceQueryOptions(invoiceId));
@@ -138,7 +144,7 @@ export const InvoicePage = ({ invoiceId, canViewCustomers, currentUserId }: Invo
       canViewCustomers={canViewCustomers}
     />
   ) : (
-    <IssuedDocument document={document.data} meta={meta.data} currentUserId={currentUserId} />
+    <IssuedDocument document={document.data} meta={meta.data} currentUserId={currentUserId} ledger={ledger} />
   );
 };
 
@@ -1328,10 +1334,12 @@ const IssuedDocument = ({
   document: doc,
   meta,
   currentUserId,
+  ledger,
 }: {
   document: InvoiceDocument;
   meta: InvoicesMeta;
   currentUserId?: string;
+  ledger?: (documentId: number) => ReactNode;
 }) => {
   const { t, money, unitPrice, date, number } = useInvoiceFormat();
   const { canIssue, canManage, canRegisterPayments, canSend, canSendEhf, canTakeOnSitePayment } = meta.capabilities;
@@ -1407,6 +1415,7 @@ const IssuedDocument = ({
         }
       />
       <CreditsLink doc={doc} />
+      {ledger?.(doc.id)}
       {doc.pdfStored === false && <Alert color="yellow">{t("pdfNotStoredYet")}</Alert>}
       {doc.warnings.includes("issued_late") && <Alert color="yellow">{t("warning.issued_late")}</Alert>}
       <PageSection>
