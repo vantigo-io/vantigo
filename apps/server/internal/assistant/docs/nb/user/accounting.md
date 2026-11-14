@@ -111,8 +111,11 @@ kjøpt fra utlandet, innførsel) bokfører på to kontoer: den fradragsberettige
 beregnede merverdiavgiften.
 
 Klikk på en kode for å endre navnet, mva-kontoen (og, ved omvendt avgiftsplikt,
-motkontoen) eller om den tilbys. **Legg til sats** starter en ny sats fra en dato; den
-gjeldende satsen slutter dagen før. Et bilag får satsen som gjelder på bilagets egen dato.
+motkontoen) eller om den tilbys. Når noe er bokført med en kode, kan mva-kontoen og
+motkontoen ikke lenger endres — mva-meldingen leser fradraget fra der kodens mva ligger —
+men navnet og om den tilbys, kan fortsatt endres. **Legg til sats** starter en ny sats fra en
+dato; den gjeldende satsen slutter dagen før. Et bilag får satsen som gjelder på bilagets
+egen dato.
 
 ## Å bokføre en postering
 
@@ -189,8 +192,9 @@ flytting lagres i sperrens historikk med hvem som gjorde det og hvorfor, fordi l
 at det å åpne lukkede perioder kan gjøres rede for.
 
 Å lukke en [mva-termin](#å-lukke-terminen) flytter sperren til terminens siste dag, og å
-åpne en igjen flytter den tilbake. Sperren flyttes aldri tilbake bak en mva-termin som er
-merket som levert hos Skatteetaten: rett en slik termin i den åpne terminen i stedet.
+åpne en igjen flytter den tilbake. Sperren flyttes aldri tilbake bak en lukket mva-termin:
+åpne terminen igjen i stedet ([Å åpne en termin igjen](#å-åpne-en-termin-igjen)), eller, når
+den er levert hos Skatteetaten, rett den i den åpne terminen.
 
 Mens en måned er sperret, avvises en postering datert i den. Det systemet bokfører av seg
 selv for en sperret dag, bokføres på første åpne dag og beholder dokumentdatoen.
@@ -214,6 +218,12 @@ den dagen regnskapet starter, som ett bilag datert den dagen.
 
 En faktura lagt til fra Fakturaer beholder kunden sin og beløpet som var åpent den dagen;
 en linje som oppgir den med en annen kunde eller et annet beløp, avvises.
+
+**Mva ved regnskapets start.** Mva som var skyldig eller til gode før regnskapet starter —
+den siste terminen i det gamle regnskapet, ennå ikke betalt — føres på **2740**,
+oppgjørskontoen for mva, ikke på en mva-konto som 2700 eller 2710: en linje for inngående
+balanse på en mva-konto avvises. Før mva å betale som kredit på 2740 og mva til gode som
+debet; betalingen til eller fra Skatteetaten gjør den så opp ([Å betale mvaen](#å-betale-mvaen)).
 
 Inngående balanse kan tilbakeføres fra bilaget sitt og registreres på nytt til første
 måned er sperret; etter det ligger den fast, også om sperren senere flyttes tilbake eller
@@ -618,7 +628,13 @@ lukkingen gjør og alt som stopper den nå:
 - Ingenting datert i terminen kan vente under [Trenger oppmerksomhet](#trenger-oppmerksomhet).
 - Regnskapet kan ikke være sperret til og med terminens siste dag: flytt sperren tilbake
   først ([Å sperre en periode](#å-sperre-en-periode)).
+- Hver lukket termin må fortsatt ha tallene den ble lukket med.
+- Hver kode i mva-meldingen må ha en sats på posteringenes datoer.
 - Mva-kontoene må stemme.
+
+En termin som starter før regnskapet — regnskap som starter 15. august i en årlig termin,
+for eksempel — har en mva-melding som bare dekker dagene fra regnskapets start. Siden sier
+det, og dialogen ber deg bekrefte det når du lukker.
 
 Lukkingen
 
@@ -647,7 +663,7 @@ Skatteetaten, for hånd.
    Skatteetatens referanse fra kvitteringen, og klikker **Merk som levert**. Det krever
    **Bokføre bilag**.
 
-En levert termin kan ikke åpnes igjen, og sperren kan ikke flyttes tilbake bak den. Er en
+En levert termin kan ikke åpnes igjen. Er en
 termin merket som levert ved en feil, klikker du **Fjern leveringsmerket** og oppgir en
 begrunnelse; det krever **Forvalte regnskapet**, og terminens historikk tar vare på hvem som
 gjorde det og hvorfor.
@@ -659,6 +675,9 @@ igjen** og si hvorfor. Sperren flyttes tilbake til dagen før terminens første 
 regnskapets første termin oppheves den), og oppgjørsbilaget tilbakeføres på terminens siste
 dag. Rett det som var feil, og lukk terminen igjen. Gjenåpningen lagres i sperrens og
 terminens historikk. Å åpne igjen krever **Forvalte regnskapet**.
+
+Ingenting en lukking laget, går tapt: **Lukkinger** på terminens side viser hver lukking,
+summen, hvilken som gjelder og hvilken som ble levert, hver med **Last ned XML**.
 
 ### Å rette en termin etter levering
 
