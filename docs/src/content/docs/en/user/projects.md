@@ -380,6 +380,9 @@ project's work ([invoicing work](/en/user/invoices/#invoicing-work)).
 
 With Expenses enabled, a line under the table says how many *billable expenses ready
 to invoice* there are, with **View the expenses** when you may open the Expenses tab.
+On that tab, with the books kept in Accounting and your access to them, the supplier
+invoice kind of **Record a cost** says that supplier invoices are entered in Accounting
+([Supplier invoices](/en/user/accounting/#supplier-invoices)).
 
 ## Follow the budget and logged work
 

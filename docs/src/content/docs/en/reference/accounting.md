@@ -1,12 +1,13 @@
 ---
 title: "Accounting module"
-description: "The company's books: sales that post themselves — the catch-up worker, its event handlers, streams, cursors and leases, what each document and fact posts as with every system rule and its version, the books' start and the opening's seqs, the posting rules, Needs attention and retry; the module and the module it requires; the four permissions; Set up the books and the gate before it; the settings; the default chart with Skatteetaten's grouping codes, the system roles and the standard tax codes with their rates from 2022; accounts and their rules; groupings per year; tax codes and rate periods; vouchers and postings and the rules the database keeps — balance, a voucher has postings, immutability, postings only on the voucher just inserted, the books' start and the lock read under a share lock; the posting engine — numbering, dating, the lock rule, zero lines, open items and idempotence on the source key; manual journals and their VAT lines; reversal; attachments; the lock and its history; the opening balances and Invoices' open invoices; open items and settlements; the reports and their CSV; the refusals and the endpoints."
+description: "The company's books: purchases — suppliers with the Brønnøysund lookup and a person's retention, supplier invoices from draft to voucher with every tax code's direction, foreign currency, credit notes, Reverse and copy, payments with the currency difference — and expenses that post themselves from Expenses' journal with the VAT inference, the amount in NOK and the supplier_invoice kind; sales that post themselves — the catch-up worker, its event handlers, streams, cursors and leases, what each document and fact posts as with every system rule and its version, the books' start and the opening's seqs, the posting rules, Needs attention and retry; the module and the module it requires; the four permissions; Set up the books and the gate before it; the settings; the default chart with Skatteetaten's grouping codes, the system roles and the standard tax codes with their rates from 2022; accounts and their rules; groupings per year; tax codes and rate periods; vouchers and postings and the rules the database keeps — balance, a voucher has postings, immutability, postings only on the voucher just inserted, the books' start and the lock read under a share lock; the posting engine — numbering, dating, the lock rule, zero lines, open items and idempotence on the source key; manual journals and their VAT lines; reversal; attachments; the lock and its history; the opening balances and Invoices' open invoices; open items and settlements; the reports and their CSV; the refusals and the endpoints."
 sources:
   - apps/server/internal/accounting
   - openapi/accounting.yaml
   - apps/server/internal/openapi/specs/accounting.yaml
   - apps/server/internal/db/migrations/00181_accounting_baseline.sql
   - apps/server/internal/db/migrations/00183_accounting_sales.sql
+  - apps/server/internal/db/migrations/00185_accounting_purchases.sql
 ---
 
 Accounting keeps the company's books as bokføringsloven asks for them. Its package is
@@ -15,16 +16,23 @@ its schema `accounting` (migration `00181_accounting_baseline.sql`), its contrac
 [`openapi/accounting.yaml`](https://github.com/vantigo-io/vantigo/blob/main/openapi/accounting.yaml),
 mounted at `/api/v1/accounting`. The design is
 `docs/superpowers/specs/2026-11-14-accounting-design.md`; this page is what deliveries A
-(the ledger) and B (sales post themselves, migration `00183_accounting_sales.sql`) built. The user guide is [Accounting](/en/user/accounting/).
+(the ledger), B (sales post themselves, migration `00183_accounting_sales.sql`) and C
+(purchases and expenses, migration `00185_accounting_purchases.sql`) built. The user guide is [Accounting](/en/user/accounting/).
 
 ## The module
 
 - `MODULES`: **`accounting` requires `invoices`** (which requires `customers`); without it
   the server refuses to start, naming it. It reads `contracts.SalesJournal` (Invoices'
   open invoices for the opening balances), `contracts.CustomerDirectory` (customers'
-  names) and, when Projects is on, `contracts.ProjectDirectory` (projects' names). Every
-  call out of the module is made with no transaction of its own open.
-- It publishes no event. It starts one worker, `accounting.catchup`, and declares three
+  names), when Expenses is on `contracts.ExpenseJournal` ([Expenses post
+  themselves](#expenses-post-themselves)), and when Projects is on
+  `contracts.ProjectDirectory` (projects' names). Every call out of the module is made
+  with no transaction of its own open. It works with Expenses off: the expenses stream is
+  then not read, and the meta's `expensesEnabled` is false.
+- It calls Brønnøysundregisteret through the platform package `internal/brreg` for the
+  supplier lookup (`BRREG_BASE_URL`, `BRREG_TIMEOUT`, as Customers does), read-only and
+  rate-limited.
+- It publishes no event. It starts one worker, `accounting.catchup`, and declares four
   event handlers ([Sales post themselves](#sales-post-themselves)); before the books are
   set up both return at once, and the handlers do nothing with the module off in
   `MODULES`.
@@ -35,9 +43,9 @@ mounted at `/api/v1/accounting`. The design is
 | Key | Display | Delegable | Sensitive | Asked by |
 | --- | --- | --- | --- | --- |
 | `accounting:read` | Use Accounting | yes | no | every operation |
-| `accounting:post` | Post vouchers | yes | no | manual journals, their preview, reversal, attachments, settlements, a retry under Needs attention |
+| `accounting:post` | Post vouchers | yes | no | manual journals, their preview, reversal, attachments, settlements, suppliers and the Brønnøysund lookup, supplier invoices, their files, Post, Reverse and copy and payments, a retry and the actions under Needs attention |
 | `accounting:close` | Manage the books | **no** | no | setup, the chart, the roles, the tax codes, the posting rules, the opening balances, the lock |
-| `accounting:export` | Export the books | yes | **yes** | the reports' CSV |
+| `accounting:export` | Export the books | yes | **yes** | the reports' CSV, a supplier's export |
 
 A write asks for `accounting:read` and its own key (`permission:accounting:post+accounting:read`
 and so on). `accounting:close` is in the agents' never list: no virtual employee may hold
@@ -121,15 +129,20 @@ The setup's choices never change afterwards; nothing changes `books_start`.
 | `account_groupings` | `account_id`, `from_year`, `category`, `code`: the grouping in force a year is the row with the greatest `from_year` not after it. |
 | `tax_codes`, `tax_code_rates` | The codes and their rate periods; no two periods of a code overlap (an exclusion constraint). |
 | `vouchers` | `fiscal_year`, `number`, `voucher_date`, `document_date`, `description`, `kind`, `source_module`/`source_kind`/`source_id`/`source_part`, `rule`/`rule_version`, `reverses_voucher_id` with `reversal_reason`, `posted_at`, `posted_by_user_id`. |
-| `postings` | `voucher_id`, `line_no`, `account_id`, `amount` (signed numeric(14,2): debit positive, never zero), the currency columns (null in this phase), `tax_code_id`/`tax_role`/`tax_base`, `customer_id` (Customers' integer id) or `supplier_id` (this module's bigint, delivery C), `open_item_id`, `project_id` (Projects' integer id), `description`. |
+| `postings` | `voucher_id`, `line_no`, `account_id`, `amount` (signed numeric(14,2): debit positive, never zero), `currency`/`currency_amount`/`exchange_rate` (a purchase in another currency's, all three or none — `ck_postings_currency`), `tax_code_id`/`tax_role`/`tax_base`, `customer_id` (Customers' integer id) or `supplier_id` (a `suppliers` row: `fk_postings_supplier`, `NOT VALID` so a journal's supplier id from before the table stays), `open_item_id`, `project_id` (Projects' integer id), `description`. |
 | `attachments` | `voucher_id`, `object_key`, `file_name`, `content_type`, `size_bytes`, `sha256`, `uploaded_at`, `uploaded_by_user_id`. |
 | `open_items` | `kind` (`customer`, `supplier`), the party, `unallocated`, `document_number`, `document_date`, `due_date`, `original_amount`, `source_document_id`, `opening_as_of_seq` (for an item the opening made for an invoice in Invoices, the `AsOfSeq` of the page it was read on; null otherwise). One unallocated item per party and kind; one item per source document and kind. |
 | `lock_events` | Every move of the lock: from, to, reason, when, who. |
-| `posting_rules` | `name` (unique among the rules in force), `scope` (`sales`; `expense` arrives with delivery C), `match` (`line_kind`, `tax_category`, `expense_category`, `tax_code`, `default`) with exactly the one value its match names, `account_id`, `version`, `revision`, `archived_at` (set when it is archived; a delete is refused). One rule in force per scope and match value. |
-| `posting_rule_versions` | Every version of a rule: `rule_id`, `version`, `name`, `account_id`, `valid_from`, written by a trigger when a rule is made and each time its version moves. |
-| `cursors` | One row per stream (`invoices.documents`, `invoices.facts`): `position` (the last document number or fact seq read), `lease_id`/`lease_until`, `last_run_at`, `last_error`. |
+| `posting_rules` | `name` (unique among the rules in force), `scope` (`sales`, `expense`), `match` (`line_kind`, `tax_category`, `expense_category`, `tax_code`, `default`) with exactly the one value its match names, `account_id`, `vat_deductible` (an expense rule's, null on a sales rule), `version`, `revision`, `archived_at` (set when it is archived; a delete is refused). One rule in force per scope and match value. |
+| `posting_rule_versions` | Every version of a rule: `rule_id`, `version`, `name`, `account_id`, `vat_deductible`, `valid_from`, written by a trigger when a rule is made and each time its version moves. |
+| `cursors` | One row per stream (`invoices.documents`, `invoices.facts`, `expenses.facts`): `position` (the last document number or fact seq read), `lease_id`/`lease_until`, `last_run_at`, `last_error`. |
 | `catchup_requests` | A wake-up per stream, `requested_at`: what a handler writes and a claim deletes. |
-| `unposted` | A source fact that could not be posted: its stream and position, its source key (unique), date, the Invoices document, `invoice_id` (the invoice it is about — a credit note's, the one it credits), customer and amount it is about, `reason`, `detail`, `attempts`, `waiting_on` (with reason `waiting_on`, the row it waits behind), and once a retry posted it `posted_voucher_id` and `posted_at`. |
+| `unposted` | A source fact that could not be posted: its stream and position, its source key (unique), date, the Invoices document, `invoice_id` (the invoice it is about — a credit note's, the one it credits), customer and amount it is about, `reason`, `detail`, `attempts`, `waiting_on` (with reason `waiting_on`, the row it waits behind), and once a retry posted it `posted_voucher_id` and `posted_at`; for an expense fact `order_key` (`entry:<id>` or `claim:<id>`, what it waits behind) and `nok_amounts` (its lines in another currency, with the NOK a person entered); `informational` (a row that posted and says something, `vat_not_deducted`); `resolved_at` (acknowledged, made into a supplier invoice — `supplier_invoice_id` — or undone before it posted). |
+| `suppliers` | `number` (gap-free, from the counter row `supplier`), `name`, `organisation_number` (unique when set), `country`, `address_line`, `postal_code`, `city`, `email`, `bank_account` (eleven digits), `iban`, `bic`, `payment_terms_days` (0–365, default 14), `default_account_id`, `default_tax_code_id`, `currency`, `is_person`, `active`, `revision`. Never deleted once a posting, an item or an invoice names it. |
+| `supplier_invoices` | `supplier_id`, `kind` (`invoice`, `credit_note`), `supplier_number` (the supplier's own), `invoice_date`, `due_date`, `currency`, `exchange_rate` (NOK per unit, 1 for NOK), `total` (in the currency), `total_nok`, `kid`, `reference`, `description`, `state` (`draft`, `posted`, `reversed`; paid is derived), `credits_invoice_id`, `voucher_id`, `open_item_id`, `reversal_voucher_id`, `copied_from_id`, `source_expense_entry_id`, `revision`, who and when. Unique: the supplier, kind and number (case and spaces aside) among those not reversed (`ux_supplier_invoices_number`); one not reversed per expense (`ux_supplier_invoices_expense`). |
+| `supplier_invoice_lines` | `supplier_invoice_id`, `position`, `account_id`, `tax_code_id`, `amount` (as entered, in the currency), `entry` (`net`, `gross`), `project_id`, `text`. |
+| `supplier_invoice_files` | A draft's files: the object key, name, type, size and SHA-256. At posting each becomes an `attachments` row of the voucher, the same object. |
+| `supplier_payments` | `supplier_invoice_id`, `paid_on`, `amount_nok`, `amount_currency`, `bank_account_id`, `voucher_id`, and once removed `removed_at`, `removed_by_user_id`, `removal_voucher_id`. |
 
 Migration 00183 also adds `vouchers.source_document_id` (the Invoices document a system
 voucher belongs to — an invoice for its own voucher and for its payments', credit notes'
@@ -155,6 +168,9 @@ department dimension in this phase; the project is the one dimension.
 | A voucher is reversed at most once | unique index on `reverses_voucher_id` |
 | An account's number and kind freeze at its first posting | `freeze_posted_account()` before update |
 | An account with postings is never deleted | the postings' `ON DELETE RESTRICT` |
+| A posting's currency, currency amount and rate are set together or not at all | `ck_postings_currency` |
+| A supplier with postings or open items is never deleted | `fk_postings_supplier`, `fk_open_items_supplier` (`ON DELETE RESTRICT`, `NOT VALID`) |
+| A supplier's number of a kind is entered once among the invoices not reversed | `ux_supplier_invoices_number` |
 
 The lock and a post cannot pass each other: a post holds the settings row FOR SHARE to its
 commit, and moving the lock takes it FOR UPDATE, so each waits for the other and a post
@@ -234,13 +250,15 @@ of it refuses an invoice: what cannot be posted waits under
 | `accounting.catchup.document-issued` | `invoices.document.issued` v1 | a wake-up for `invoices.documents` |
 | `accounting.catchup.payment-received` | `invoices.payment.received` v1 | a wake-up for `invoices.facts` |
 | `accounting.catchup.payment-removed` | `invoices.payment.removed` v1 | a wake-up for `invoices.facts` |
+| `accounting.catchup.expenses` | `expenses.entry.*` and `expenses.claim.*` v1 (approved, unapproved, reimbursed, reimbursement_undone) | a wake-up for `expenses.facts` |
 
 Each upserts its stream's `catchup_requests` row on the delivery's transaction and does
 nothing else (module-boundaries rule 23): it reads no contract and locks nothing but that
 row. Charge payments and write-offs publish no event; the sweep finds them.
 
-Worker **`accounting.catchup`** runs every 15 seconds. For each stream, documents first so
-an invoice's item exists before its payment posts:
+Worker **`accounting.catchup`** runs every 15 seconds. For each stream whose journal is
+composed — Invoices' two, then Expenses' — documents first so an invoice's item exists
+before its payment posts:
 
 1. **Claim**, in one short transaction: make the cursor row if missing, then take its lease
    (`lease_until` two minutes on) when no live lease holds it **and** a wake-up waits or the
@@ -263,8 +281,9 @@ A crashed claim holds its stream until its lease runs out. A fact delivered twic
 cursor put back, and two workers at once all end on one voucher per source
 (`ux_vouchers_source`, and the engine's `Repeat`). A handler added late, a pruned event
 and a dead delivery end the same way: the next sweep posts what is missing. Nothing runs
-before the books are set up, nor without Invoices' journal. The worker reads the journal
-from `module.Workers`' Deps, which resolves `SalesJournal` as Compose does.
+before the books are set up; a stream whose journal is not composed is not read. The worker
+reads the journals from `module.Workers`' Deps, which resolves `SalesJournal` and
+`ExpenseJournal` as Compose does.
 
 `GET /catch-up` (`accounting:read`) answers each stream's `position`, `lastRunAt`,
 `requestedAt`, `lastError` and `behind` — the items after the cursor, read from the
@@ -367,14 +386,17 @@ the default chart's account when the chart has it:
 
 `GET /posting-rules` (`accounting:read`) lists the rules in force in precedence order and
 writes nothing. `POST /posting-rules` (`accounting:close`) takes `name` (1–100), `scope`
-(`sales`; `expense` is 400 until delivery C), `match` (`line_kind`, `tax_category` or
-`tax_code` — a `default` is never created) with its value (`lineKind` one of the kinds,
-`taxCategoryId` above 0, `taxCode` an active code of the books, else 400
-`tax_code_unknown`) and an active **income** `accountId` (400 `account_unknown`,
+(`sales` or `expense`), `match` — for sales `line_kind`, `tax_category` or `tax_code` (a
+`default` is never created), for expense `expense_category` — with its value (`lineKind`
+one of the kinds, `taxCategoryId` above 0, `taxCode` an active code of the books, else 400
+`tax_code_unknown`, `expenseCategoryId` above 0: Expenses' category, an opaque id), for an
+expense rule `vatDeductible` (default true), and an active `accountId` of the scope's kind
+— **income** for sales, **expense** for expense (400 `account_unknown`,
 `account_inactive`, `account_kind_mismatch`); 409 `posting_rule_name_taken` and
 `posting_rule_match_taken` among the rules in force. `PUT /posting-rules/{id}` changes the
-name and the account under its `revision` (409 `revision_conflict`; the account held to the
-same rules); **a new name or a new account adds one to `version`**, and every version — its
+name and the account — and an expense rule's `vatDeductible` — under its `revision` (409
+`revision_conflict`; the account held to the same rules); **a new name, account or
+deductibility adds one to `version`**, and every version — its
 name, account and the moment it took effect — is kept in `posting_rule_versions`, written
 by a trigger when a rule is made and each time its version moves. A posting placed before
 keeps naming the version that placed it. `DELETE /posting-rules/{id}` **archives** a rule
@@ -391,9 +413,13 @@ standard code not active in the books, or a code with VAT and no VAT account),
 `posting_rule_missing`, `account_kind_mismatch` (a matching rule's account is not an
 income account), `unknown_kind` (a fact kind this version does not post — never dropped),
 `document_unknown` (the written-off invoice not in the journal), `waiting_on` (below), or an
-engine refusal's code (`account_inactive`, `account_unknown`, …) with its detail. Each row
-carries `invoiceId`, the invoice it is about — a credit note's, the invoice it credits.
-The meta's `unposted` and the host's dashboard count those not posted.
+engine refusal's code (`account_inactive`, `account_unknown`, …) with its detail; for an
+expense fact also `amount_in_nok_needed`, `enter_as_supplier_invoice` and
+`vat_not_deducted` ([Expenses post themselves](#expenses-post-themselves)). Each sales row
+carries `invoiceId`, the invoice it is about — a credit note's, the invoice it credits; an
+expense row `orderKey`. The meta's `unposted` and the host's dashboard count the rows that
+wait — not posted and not resolved; an **informational** row (`informational`, posted, its
+voucher named) is counted apart in the meta's `informational` and never blocks.
 
 **What waits, waits in order** (R15). A document or fact of an invoice that has an open
 row under Needs attention, met before it, is not posted ahead of it: it is stored with
@@ -409,8 +435,33 @@ transaction: posted, the row records its voucher; refused again, its new reason 
 more attempt; an earlier open row of the same invoice, `waiting_on` again. **A retry that
 posts then retries the rows of its invoice recorded after it**, one transaction each, in
 the order they were met, until one does not post. A fact the journal no longer answers is
-`document_unknown`. 409 `unposted_already_posted` for a row that has posted. There is no
-dismissal.
+`document_unknown`. 409 `unposted_already_posted` for a row that has posted (an
+informational one included), `unposted_wrong_reason` for one resolved. A row that waits is
+never dismissed; an informational one is acknowledged (below). An expense row's retry reads
+the fact through `ExpenseJournal.Facts` and posts its dependants by `orderKey`.
+
+`GET /unposted` with `open` lists the rows that wait and the informational ones not yet
+acknowledged. Three actions answer expense rows (`accounting:post`):
+
+- `POST /unposted/{id}/nok-amounts` takes `amounts` — per `entryId` of the row's
+  `expenseLines` (its lines in another currency) an `amountNok` above zero — keeps them on
+  the row, and retries it as above. 400 for an entry not on the row or an amount that is
+  not one (`amount_invalid`); 409 `unposted_wrong_reason` for another reason.
+- `POST /unposted/{id}/supplier-invoice` reads the fact again, takes its line of the
+  `supplier_invoice` kind and, in one transaction, makes a draft supplier invoice — the
+  active supplier of the line's supplier name, case aside (the lowest number), or a new
+  one; kind invoice; the expense's number or `EXP-<entry id>`; its date; its due date or
+  14 days on; its currency (another currency is drafted at rate 1, which Post refuses
+  until a rate is given); one gross line of its amount on the account its category's rule
+  names (7700 without one), with the input code its VAT matches when the rule allows
+  deduction, and its project — and resolves the row naming the draft. Then, with no
+  transaction open, it copies the expense's receipts through `ExpenseJournal.Attachments`
+  and `OpenAttachment` into the draft's files; one that cannot be copied is logged and left
+  for the person to attach. 201 with the draft; 409 `duplicate_supplier_invoice` when one
+  not reversed exists for the expense or the number; `unposted_wrong_reason`. Deleting the
+  draft reopens the row.
+- `POST /unposted/{id}/acknowledge` resolves an informational row; 409
+  `unposted_wrong_reason` for any other.
 
 `GET /vouchers?sourceDocumentId=` lists the system vouchers of one Invoices document —
 the invoice's own, its credit notes', payments' and write-offs', and the voucher a
@@ -418,6 +469,192 @@ document posted as itself, so a credit note's page finds its own voucher, which 
 the invoice it credits — which an invoice's page links to, the first 20 with a button for
 the rest. The `customers` report's item rows carry the Invoices `documentId` they stand
 for.
+
+## Purchases
+
+Delivery C (design A17–A19, R5, R8). Every write here needs `accounting:post`.
+
+### Suppliers
+
+`GET /suppliers` (`accounting:read`; `q` — a name's part, the number or the organisation
+number —, `active`, `offset`, `limit` default 100 at most 500) lists them by number, each
+with `hasPostings`, its `balance` on `payables`, `lastVoucherDate` and, for a person,
+`retainedUntil`: the last day of the fiscal year of its last voucher, five years on
+(bokføringsloven § 13). `POST /suppliers` takes the next number from the counter row
+`supplier` — held to the commit, so a refused one gives its number back — and `name` (1–200),
+`organisationNumber` (for a Norwegian supplier nine digits passing mod 11; spaces and dots
+are taken out), `country` (two letters, default `NO`), the address, `email`,
+`bankAccount` (eleven digits passing mod 11, else 400 `supplier_bank_account_invalid`),
+`iban`, `bic`, `paymentTermsDays` (0–365, default 14), `currency` (default NOK),
+`defaultAccountId` (active, else `account_unknown`/`account_inactive`),
+`defaultTaxCodeId` (active, else `tax_code_unknown`; not an output code, else
+`tax_code_not_purchase`) and `isPerson`; 409 `supplier_organisation_number_taken`. `PUT
+/suppliers/{id}` replaces them, with `active`, under `revision` (400 without it, 409
+`revision_conflict`). `DELETE /suppliers/{id}` deletes one no posting, open item or invoice
+names; any other is 409 `supplier_has_postings` — the postings' and items' foreign keys
+refuse it too.
+
+`GET /suppliers/lookup/brreg` (`accounting:post`, rate-limited to 600 an hour per client
+address) takes `organisationNumber` (nine digits: the entity itself, with its business
+address — its postal one without — and its VAT registration; a struck-off one is answered
+`deleted`, an unknown number nothing) or `q` (two characters at least: a name search of at
+most ten, names and numbers only). It writes nothing. An unreachable or unreadable registry
+is 502 `brreg_unavailable`.
+
+**A supplier who is a person.** Customers' personal-data slot
+(`contracts.CustomerPersonalData`) is keyed by a customer of Customers and cannot name this
+module's supplier, so Accounting answers a person's access request itself: `GET
+/suppliers/{id}/export` (`accounting:export`, never called by the Assistant) answers the
+supplier, its invoices with their lines, files and payments, and every posting naming it,
+with `producedAt`, and logs that it was asked. Nothing is erased: the record is
+bookkeeping material, kept until `retainedUntil`.
+
+### Supplier invoices
+
+`GET /supplier-invoices` (`accounting:read`) filters on `state` (`draft`, `posted` — not
+settled —, `paid` — posted, its item at zero —, `reversed`), `supplierId`,
+`supplierNumber` (with the supplier: the duplicate warning's read), `dueFrom`, `dueTo` and
+`overdue` (posted, not settled, due before today), newest invoice date first, `offset` and
+`limit` (default 100, at most 500). Each invoice is answered with its lines computed at its
+invoice date — `net`, `vat` (the invoice's VAT in its currency; 0.00 on a reverse-charge
+code, whose VAT the buyer calculates) and `gross` —, `linesTotal`, `vat`, its files,
+payments, voucher and reversal, and once posted `balance` and `balanceCurrency`, its item's
+in NOK and in its currency (negative while owed), and `overdue`.
+
+**A draft** — `POST /supplier-invoices`, `PUT /supplier-invoices/{id}` under `revision` —
+takes `supplierId` (an active supplier for a new one, else 400 `supplier_inactive`),
+`kind`, `invoiceNumber` (1–60), `invoiceDate`, `dueDate` (on or after it; default the
+supplier's terms after the invoice date), `currency` (default the supplier's), `total`
+(zero or more), `kid`, `reference`, `description`, for a credit note `creditsInvoiceId` (a
+posted invoice of the same supplier), and up to 200 `lines`: `accountId` (active, not the
+receivables or payables account), `taxCodeId`, `amount` (two decimals, negative for a
+discount), `entry` (`gross` default, or `net`), `projectId` and `text`. In another currency
+it takes `exchangeRate` (NOK per unit, kept to six decimals; the NOK total is the total at
+it, rounded) or `totalNok` (the rate is then the NOK total over the total), else 400
+`exchange_rate_required`. Each line's code is held to the purchase rules below at the
+invoice date. The lines need not make the total yet. 409 `duplicate_supplier_invoice` for
+the same supplier, kind and number on another invoice not reversed; a change of a posted
+or reversed one is 409 `supplier_invoice_not_draft`. `DELETE /supplier-invoices/{id}`
+deletes a draft with its lines and files; a file's object is deleted from the store once
+no file and no attachment names it.
+
+**Files.** `POST /supplier-invoices/{id}/files` (multipart `file`, at most 20 MB, 400
+`attachment_too_large`; rate-limited to 600 an hour per client address) keeps a file on a
+draft — the object first, then the row under the draft's lock; refused 409
+`supplier_invoice_not_draft` otherwise, the object removed again. `GET
+.../files/{fileId}` streams it as a download; `DELETE .../files/{fileId}` removes it from a
+draft. Without an object store, 503 `storage_not_configured`.
+
+**Post** — `POST /supplier-invoices/{id}/post` — takes the draft FOR UPDATE and refuses it
+without a file (409 `supplier_invoice_file_required`), in another currency at rate 1
+(`exchange_rate_required`), without lines (`voucher_empty`) or when the lines' gross does
+not make the total (400 `supplier_invoice_total_mismatch`). It posts through the engine
+with the source key `(accounting, supplier_invoice, id, '')` and the person as poster; a
+date before `books_start` (400 `date_before_books_start`) or on or before the lock (409
+`period_locked`) is refused rather than moved, as for any person's voucher. The draft's
+files become the voucher's attachments, the same objects; the invoice records its voucher
+and the open item its payables line opened, and is `posted`. The voucher is a system
+voucher: the generic reversal refuses it (`voucher_owned_by_source`).
+
+| Rule (version) | Voucher kind | Lines |
+| --- | --- | --- |
+| `purchase.supplier_invoice` (1) | `supplier_invoice` | `payables` credited with the NOK total, on a new item (the supplier's number, the invoice and due dates; the supplier); per line its net debited on its account with its code as `base` and its project, and its VAT as the code says (below); in another currency each posting is its currency amount × the rate, rounded half away from zero, with `currency`, `currency_amount` and `exchange_rate` kept, and what rounding leaves against the NOK total goes on the largest base line |
+| `purchase.supplier_credit_note` (1) | `supplier_credit_note` | the same with every sign turned; `payables` on the credited invoice's item when it names one, else on its own |
+| `purchase.supplier_invoice_reversed` (1) | as the original | the original's stored voucher, line for line with every sign turned (source part `reversal`) |
+
+A line's VAT, computed per line with docmath's rounding — net: round(amount × rate ÷ 100);
+gross: round(amount × rate ÷ (100 + rate)) out of it — follows the code's direction and
+flags as seeded:
+
+| Codes | Direction, flags | Postings beside the base |
+| --- | --- | --- |
+| 1, 11, 12, 13; 14, 15 | input, a VAT account | the VAT debited on the code's VAT account (`tax`, with the base); in currency it carries its currency amount |
+| an input code without a VAT account | input, not deductible | the VAT debited on the line's own account (`tax`) |
+| 81, 83, 86, 88, 91 | input, reverse charge, a VAT account | entered net (gross is 400 `reverse_charge_gross`); VAT = round(NOK base × rate ÷ 100), debited on the VAT account and credited on the counter account (2705), both `tax`; no currency amount; the payable is the net |
+| 82, 84, 87, 89, 92 | input, reverse charge, no VAT account | the same, the debit on the line's own account: the VAT is a cost |
+| 85 | input, reverse charge, rate 0 | none |
+| 0, 20, 21, 22 | none | none: the base alone, with its code |
+| 3, 31, 32, 33, 5, 51, 52, 6, 7 | output | refused, 400 `tax_code_not_purchase` |
+
+Import of goods is not a supplier invoice's VAT (R8): the supplier's invoice is coded 21 or
+22, and the import VAT is a manual journal from the customs declaration with 81–84 on a
+base line and its counter line (the user guide shows the entry).
+
+**Reverse and copy** — `POST /supplier-invoices/{id}/reverse-and-copy` with `date` and
+`reason` (1–500) — takes a posted invoice FOR UPDATE (409 `supplier_invoice_not_posted`
+otherwise; `supplier_invoice_has_payments` while a payment stands), posts the reversal
+above dated `date` (held to the books' start and the lock as Post is), marks it
+`reversed`, and makes a draft with its supplier, kind, number, dates, currency, rate,
+totals, lines and files (the same objects), `copiedFromId` naming it, which it answers
+(201). The duplicate guard lets the copy through: the original is reversed.
+
+### Payments
+
+`POST /supplier-invoices/{id}/payments` takes `date`, `amountNok` (above zero, as the bank
+took it), `bankAccountId` (an active asset account, else 400 `bank_account_invalid`;
+default the `bank` role's) and, for another currency, `amountCurrency` (the share settled,
+default all that is left). It takes the invoice and its item FOR UPDATE; 409
+`supplier_invoice_not_posted`, `supplier_invoice_settled` (nothing left), and
+`payment_exceeds_balance` for more than is left — in NOK for a NOK invoice, in the currency
+otherwise. The share settled in NOK is the share × the invoice's rate, rounded; the last
+share settles exactly what is left in NOK, so the item ends at zero in both.
+
+| Rule (version) | Voucher kind | Lines |
+| --- | --- | --- |
+| `purchase.payment` (1) | `supplier_payment` | owed: `payables` debited with the share in NOK on the item (with its currency amount and the invoice's rate), the bank credited with what it took; a credit (the item above zero): the other way; the difference on `currency_loss` (debit: more NOK went) or `currency_gain` (credit) |
+| `purchase.payment_removed` (1) | `supplier_payment` | the payment's stored voucher turned back, line for line, dated the payment's day |
+
+The source key is `(accounting, supplier_payment, invoice id, <uuid>)`, and a removal's
+`(accounting, supplier_payment_removed, payment id, '')`. Both are a person's: a date before
+the books' start or in a locked period is refused. `DELETE
+/supplier-invoices/{id}/payments/{paymentId}` posts the removal and keeps the row with
+`removedAt` and its voucher; a second removal is 409 `payment_removed`. Each payment
+answers its `currencyDifference` (positive a loss). A supplier invoice's item is refused by
+the open-item settlement (`settlement_supplier_invoice`): its payments are recorded here.
+
+The meta's `payablesOverdue` and `payablesDueSoon` count the posted supplier invoices not
+settled that are due before today, and due today or in the next seven days; the host's
+dashboard shows them when nothing waits under Needs attention.
+
+## Expenses post themselves
+
+Expenses' [`contracts.ExpenseJournal`](/en/reference/expenses/#what-expenses-reports-to-other-modules)
+is the catch-up's third stream, `expenses.facts`, read by seq (design A20, R2). Each fact
+posts in its own transaction with the source key `(expenses, <subject>.<occurrence>,
+<entry or claim id>, <seq>)`: approve, unapprove, approve is three vouchers. A fact dated
+before `books_start` is skipped and the cursor moves past it. A fact of an entry or claim
+with an earlier open row under Needs attention waits behind it (`waiting_on`, by
+`order_key`). An undoing whose undone fact is itself still waiting resolves that row
+instead — nothing was posted to turn back.
+
+| Rule (version) | Fact | Voucher kind | Lines |
+| --- | --- | --- | --- |
+| `expense.approved` (1) | `approved` | `expense` | per line: its gross — or its net with the inferred code (`base`) and its VAT on the code's VAT account (`tax`) — debited on the account of its category's expense rule (naming the rule and version), else on 7700, with the line's project; credited on `employee_payables` for a line the employee is owed (an outlay `paid_by` employee, mileage, a per diem), on `bank` for one the company paid. Dated the fact's day: the entry's date, a claim's latest line date. |
+| `expense.reimbursed` (1) | `reimbursed` | `reimbursement` | `employee_payables` debited and `bank` credited with what the standing approval's voucher credited `employee_payables` — or, for an approval before the books, the lines the employee is owed. Dated the reimbursement's day, the reference in its text. |
+| `expense.unapproved` (1) | `unapproved` | `expense` | the voucher of the approval it undoes (`undoesSeq`), line for line, every sign turned, naming it |
+| `expense.reimbursement_undone` (1) | `reimbursement_undone` | `reimbursement` | the same for the reimbursement |
+
+**The account.** The expense rule in force for the line's category, which must name an
+expense account (else the fact waits, `account_kind_mismatch`); no rule — mileage and per
+diem have no category — is the default chart's 7700, and without 7700 the fact waits
+(`posting_rule_missing`).
+
+**VAT** (R2). A line's VAT is deducted when its category's rule says `vat_deductible`, the
+books' `vat_term` is not `none`, the line is an outlay in NOK with VAT above zero, and VAT
+÷ (gross − VAT) matches an active input code of 1, 11, 12 or 13 at its rate on the fact's
+day: |VAT − round((gross − VAT) × rate ÷ 100)| at most one øre per hundred kroner of the
+net, and at least one øre — the nearest rate wins. Otherwise the line posts gross. When the
+rule allowed deduction and the VAT matched no rate, an informational row
+`vat_not_deducted` names the voucher. A foreign outlay's VAT is never deducted. Mileage and
+per diem carry none.
+
+**Another currency.** A line not in NOK has no rate in Expenses: the fact waits as
+`amount_in_nok_needed`, the row's `expenseLines` naming those lines, until
+`/unposted/{id}/nok-amounts` gives each its NOK; the line then posts that amount, with no
+VAT deducted.
+
+**The `supplier_invoice` kind** is never posted from Expenses: its approval waits as
+`enter_as_supplier_invoice` for `/unposted/{id}/supplier-invoice`.
 
 ## Manual journals
 
@@ -527,8 +764,9 @@ default the `bank` role's) and `text`. It posts, for a customer item, a
 `customer_payment` voucher that moves the item toward zero against the bank — a receipt for
 a balance owed, a refund for a credit — and for a supplier item a `supplier_payment`. It
 refuses 409 `settlement_source_document` for an item that stands for an Invoices document
-(its payment belongs there), `settlement_settled` for one with nothing left and
-`settlement_exceeds_balance` for more than its balance.
+(its payment belongs there), `settlement_supplier_invoice` for a supplier invoice's item
+(paid on the invoice, [Payments](#payments)), `settlement_settled` for one with nothing left
+and `settlement_exceeds_balance` for more than its balance.
 
 ## The reports
 
@@ -545,7 +783,7 @@ label in the books' language and a type, rows with a style (`line`, `heading`, `
 | --- | --- |
 | `journal` | Every posting of the vouchers in the period, in number order, and the total; at most 366 days and 50 000 postings. |
 | `account` | The account's opening balance, its postings with the running balance, the closing balance; `accountId` is required (400 `report_account_required`); at most 50 000 postings. |
-| `customers`, `suppliers` | Per party a heading, its items with a balance at `to` or a movement in the period, the balance aged by due date at `to` (not due, 1–30, 31–60, 61–90, over 90 days), the party's subtotal and the total. |
+| `customers`, `suppliers` | Per party a heading, its items with a balance at `to` or a movement in the period, the balance aged by due date at `to` (not due, 1–30, 31–60, 61–90, over 90 days), the party's subtotal and the total. A supplier's heading is its name and carries `supplierId`; an item row carries the `supplierInvoiceId` it stands for. The suppliers' total is the balance of `payables`. |
 | `trial_balance` | Per account the opening balance, the debits, the credits and the closing balance, and with a comparison the closing balance at `compareTo`. |
 | `profit_and_loss` | The period's movement on income and expense accounts, income positive and costs negative, grouped by class with the operating result, the result before tax and the result; an income or expense account in no class group is under **Other income and costs**, before the result. |
 | `balance_sheet` | The balances at `to`, each account on the side of its kind: the asset accounts, then equity with two computed lines — **Earlier years' result, not yet closed** (every income and expense posting up to the day before the fiscal year of `to` begins) and **Result for the year, not yet closed** (the rest up to `to`) — and the liability accounts, shown positive. An asset or a liability account in no class group is under **Other assets** or **Other liabilities**, so the sheet always balances. |

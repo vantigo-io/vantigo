@@ -252,8 +252,10 @@ whose adoption is waiting to be confirmed — and
 **Quick actions** for the things you do most. Staff's and Planning's cards carry their
 numbers for those who may read them — `staff:view` or `staff:manage`, and
 `planning:view`. Accounting's card shows the vouchers of the fiscal year and, when there
-are any, how many sales wait under [Needs attention](/en/user/accounting/#needs-attention)
-in the books; its sidebar also has **Needs attention** and **Posting rules**. A new workspace also shows **Finish your
+are any, how many facts wait under [Needs attention](/en/user/accounting/#needs-attention)
+in the books — or else how many supplier invoices are overdue or due within a week; its
+sidebar also has **Needs attention**, **Supplier invoices**, **Suppliers** and **Posting
+rules**. A new workspace also shows **Finish your
 setup**, a short list of first steps (the first customer, a mailbox, a product, a
 project…) that disappears once they are all done.
 
