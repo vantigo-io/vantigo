@@ -10,6 +10,8 @@ sources:
   - apps/host/frontend/src/routes/invoices
   - apps/host/frontend/src/routes/pay.tsx
   - apps/host/frontend/src/lib/public-paths.ts
+  - apps/host/frontend/src/lib/dashboard-helpers.ts
+  - apps/host/frontend/src/catalogs/dashboard.ts
 ---
 
 The Invoices app issues the sales documents of your bookkeeping: a draft becomes a
@@ -1191,15 +1193,47 @@ Instead of importing files, an account can be read from the bank itself. Today t
    **camt.054** keeps the old format as its earlier one, with its cutover, as a change of
    format does.
 
+From then on the account's payments come in by themselves: see
+[Payments fetched from the bank](#payments-fetched-from-the-bank). Each account's row shows
+its status, when it was last read and, when the bank's answer was refused, why.
+
 **Replace the key** saves a new key the same way, and brings back an account the bank had
 refused the old key for. **Disconnect** removes the key and switches every account off;
 the bank files, the payments registered from them and each account's format stay. When the
-installation allows no bank feed — the default in this release — the page says so and
-the **Connect** button stays disabled; an account the feed is switched on for is still
-listed, so it can be switched off. In this
-release the feed does not yet read the payments: an account switched on gets nothing from
-the bank, and files are no longer imported for it, so switch the feed on for an account
-only when Vantigo reads the payments ([Payments from the bank](/en/admin/payments/#the-bank-feed)).
+installation allows no bank feed, the page says so and the **Connect** button stays
+disabled; an account the feed is switched on for is still listed, so it can be switched
+off ([Payments from the bank](/en/admin/payments/#the-bank-feed)).
+
+### Payments fetched from the bank
+
+An account the bank feed reads needs no file. Every 30 minutes or so Vantigo asks the bank
+for the account's incoming payments of the last days, and each one is matched on its KID
+as a file's payment would be: one that names an issued invoice is registered at once, and
+the rest go to [the exception queue](#the-exception-queue). Payments out of the account —
+salaries, suppliers — card purchases and transfers between the company's own accounts are
+only counted, never kept.
+
+- **Fetch now**, beside **Import** on **Payments** (and on the Bank page, for someone with
+  `invoices:payments`), asks for every account at once; the payments arrive within a
+  minute. Under the buttons each account the feed reads shows its status and when it was
+  last read.
+- Each fetch that brought new payments is listed among the files as **Bank feed · Folio**,
+  with its counts, and opens like a file. A payment the bank shows again on a later fetch is
+  recognised and not registered twice.
+- Where a file names who uploaded it, and a line or a payment who registered it, a payment
+  the feed registered by itself says **the bank feed**. One you apply from the exception
+  queue is registered by you.
+- A payment without a KID waits in the queue as **No KID**, with the suggestions, for one
+  click to apply it.
+- **The bank sending a payment back** is a payment out, which the feed does not keep: the
+  payment stays registered until someone removes it with a reason.
+
+When the bank refuses the key, cannot be reached three times in a row, or answers a fetch
+Vantigo cannot take, the account's status says so on the Bank page, and the dashboard's
+**Needs attention** list tells everyone with `invoices:manage` — *The bank refused its API
+key*, *The bank feed cannot read the account ending …* or *The bank feed refused a batch
+for the account ending …* — leading to the Bank page. Nothing is registered from a refused
+fetch.
 
 **A genuine second payment that looks like a repeat.** A payment is held back as **A
 possible duplicate**, and not registered, when a payment from **another file** to the
@@ -1215,7 +1249,8 @@ would any other payment. Two such payments in the same file are both registered.
 ## The exception queue
 
 **The exception queue**, at the foot of **Payments**, holds the payments matching could
-not place, and the duplicates — what waits for a person. It opens on **In the queue**;
+not place, from a file or [from the bank feed](#payments-fetched-from-the-bank), and the
+duplicates — what waits for a person. It opens on **In the queue**;
 the duplicates are under the status **Duplicate**. Filter it by **Status**, **Reason**
 and **File** (type to find a file; it offers the latest 500 files and says so when there
 are more), or tick **Only payments with an
@@ -1223,8 +1258,8 @@ unapplied rest** to see the payments applied in part, matched and since removed,
 dismissed as money owed back. Each line shows the day the bank booked it, its KID or else
 its text, the debtor and their account, the amount, what is applied — each payment linked
 to its invoice, a removed one struck through — what is unapplied, and its state and reason.
-**Details** shows what happened to the line, each step with when, and whether by you or
-another user, the
+**Details** shows what happened to the line, each step with when, and whether by you,
+another user or the bank feed, the
 invoices it may pay, and, for a possible duplicate, the line it may repeat: that line's
 file, booking day and payments, and whether the bank reversed a payment of it.
 
@@ -2050,7 +2085,12 @@ still in it, which leads to **Paper letters**; and the Vipps payments that need 
 each leading to its invoice — *A Vipps payment from … needs a check: whether the money
 was taken is unknown*, *… could not be taken*, *… is stuck and needs a person* and *… was
 refunded in the Vipps portal*
-([When a Vipps payment needs you](#when-a-vipps-payment-needs-you)). An invoice a Vipps
+([When a Vipps payment needs you](#when-a-vipps-payment-needs-you)); and with
+`invoices:manage` the bank feed's accounts that need a manager, each leading to
+**Workspace admin** › **Integrations** › **Bank** — *The bank refused its API key: the
+account ending … is not read*, *The bank feed cannot read the account ending …* and *The
+bank feed refused a batch for the account ending …*
+([Payments fetched from the bank](#payments-fetched-from-the-bank)). An invoice a Vipps
 payment in progress covers in full is not listed as overdue
 ([attention](/en/reference/invoices/#stats)).
 
@@ -2105,7 +2145,7 @@ No built-in role holds these; an Owner holds everything
 | Create, edit, preview and delete drafts | `invoices:create`, and `customers:view` to pick the buyer |
 | See the uninvoiced work — its hours, people and rates — on a customer's Invoices tab or a project's Invoicing tab, make a draft of it or add it to one, refresh a draft's work, turn its timesheet on or off, deduct earlier invoices; see a customer's consumption due and make a draft of it, or add it to one; invoice orders with **From orders**; make, follow and cancel billing runs | `invoices:create` (and `invoices:issue` for a run that issues the invoices) |
 | Issue a draft — which marks its work invoiced in Time, Expenses and Projects, its consumption in Energy and its order lines in Orders, without asking for their permissions — make a credit note, send a document by e-mail or as EHF, see where each send went, cancel or resolve an EHF transmission, record a delivery by hand or remove one, make or revoke a pay link and see its address and QR code while payment on site is offered, take a Vipps payment on site | `invoices:issue` |
-| Register a payment or remove one with a reason; import bank files, and use **Payments** and its exception queue; set a customer's reminder policy; preview and make reminder runs, print paper letters, confirm a batch posted or reprint it; withdraw a letter or send a failed one again; register a charge payment, remove one, waive a charge; put an invoice on hold and lift the hold, record a hand-off to a collection agency and withdraw it, export the collection file; mark a day's Vipps payments reconciled; see the dashboard's notices about bank lines, letters, print batches and Vipps payments | `invoices:payments` |
+| Register a payment or remove one with a reason; import bank files, **Fetch now** from the bank feed, and use **Payments** and its exception queue; set a customer's reminder policy; preview and make reminder runs, print paper letters, confirm a batch posted or reprint it; withdraw a letter or send a failed one again; register a charge payment, remove one, waive a charge; put an invoice on hold and lift the hold, record a hand-off to a collection agency and withdraw it, export the collection file; mark a day's Vipps payments reconciled; see the dashboard's notices about bank lines, letters, print batches and Vipps payments | `invoices:payments` |
 | Make a quick invoice — created and issued in one step, recorded as handed over — and take payment for it with Vipps on the spot | `invoices:create` and `invoices:issue` |
 | Edit the seller record, the number series, the Peppol id, the access point, the KID agreement, the VAT codes, the cards **Work to invoice** and **Consumption to invoice**, the collection rates and the reminder settings, the regime's review among them; change a bank account's file format under **Payments**, which also needs `invoices:payments` to open; set up Vipps and the payment settings, acknowledge kontantsalg, abandon a stuck Vipps payment; connect the bank, switch its accounts on and off, and disconnect it, under **Workspace admin** › **Integrations** › **Bank** | `invoices:manage` |
 

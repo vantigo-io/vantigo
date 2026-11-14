@@ -6,6 +6,7 @@ sidebar:
 sources:
   - apps/server/internal/storage
   - apps/server/internal/invoices/bankimport.go
+  - apps/server/internal/invoices/bank_feed_sync.go
   - apps/server/internal/invoices/reminderpdf.go
   - apps/server/internal/invoices/print_batches.go
   - apps/server/internal/staff/objects.go
@@ -117,7 +118,12 @@ kept as it was uploaded, under `bank-files/<sha256>.ocr` (an OCR giro file) or
 before the import's transaction and never deleted or overwritten, since it is the
 documentation of the payments booked from it (bokføringsloven § 10); an import that
 fails after storing it leaves an object the next import of the same bytes reuses
-([Payments from the bank](/en/admin/payments/)). A reminder letter's PDF is stored
+([Payments from the bank](/en/admin/payments/)). A batch the bank feed fetched is kept the
+same way, as the bank sent its incoming payments, under `bank-files/<sha256>.json` — a JSON
+array of the transactions kept, never the payments out, card purchases or internal
+transfers. The bank feed needs the object store: without one, or with one that fails,
+every read of an account fails and is tried again, and nothing is registered
+([The bank feed](/en/admin/payments/#the-bank-feed)). A reminder letter's PDF is stored
 under `reminders/<invoiceId>/<reminderId>-<sentOn>-<sha256>.pdf` — keyed by the hash of
 its bytes, put only when nothing is there yet, before the letter is mailed or when it is
 printed, and never deleted or overwritten: a letter rendered again with other figures
