@@ -82,27 +82,36 @@ func (q *Queries) BankFeedFailed(ctx context.Context, arg BankFeedFailedParams) 
 const bankFeedRateLimited = `-- name: BankFeedRateLimited :execrows
 UPDATE invoices.bank_feed_accounts SET
     detail = $1, next_sync_at = $2::timestamptz, rate_limited_until = $3::timestamptz,
+    failures = failures + 1,
+    status = CASE WHEN failures + 1 >= $4::integer THEN 'failing' ELSE status END,
+    updated_at = CASE WHEN failures + 1 >= $4::integer AND status <> 'failing'
+        THEN $5::timestamptz ELSE updated_at END,
     lease_id = NULL, lease_until = NULL
-WHERE account = $4 AND lease_id = $5::text
+WHERE account = $6 AND lease_id = $7::text
 `
 
 type BankFeedRateLimitedParams struct {
 	Detail           string
 	NextSyncAt       time.Time
 	RateLimitedUntil time.Time
+	FailingAfter     int32
+	Now              time.Time
 	Account          string
 	LeaseID          string
 }
 
 // BankFeedRateLimited ends a claim the bank asked to wait (a 429; F7): the
-// status and the failures as they were, the wait in detail, read again at
-// @next_sync_at, and @rate_limited_until kept, before which Fetch now does
-// not make the account due.
+// wait in detail, read again at @next_sync_at, and @rate_limited_until kept,
+// before which neither the claim nor Fetch now makes the account due. It
+// counts as a cycle that read nothing: failing from the same count in a row
+// as a failure, so an account the bank keeps putting off is not ok for ever.
 func (q *Queries) BankFeedRateLimited(ctx context.Context, arg BankFeedRateLimitedParams) (int64, error) {
 	result, err := q.db.Exec(ctx, bankFeedRateLimited,
 		arg.Detail,
 		arg.NextSyncAt,
 		arg.RateLimitedUntil,
+		arg.FailingAfter,
+		arg.Now,
 		arg.Account,
 		arg.LeaseID,
 	)
@@ -203,6 +212,7 @@ WHERE account = (
     SELECT a.account FROM invoices.bank_feed_accounts a
     WHERE a.enabled AND a.next_sync_at <= $3::timestamptz
       AND (a.lease_until IS NULL OR a.lease_until <= $3::timestamptz)
+      AND (a.rate_limited_until IS NULL OR a.rate_limited_until <= $3::timestamptz)
       AND EXISTS (SELECT 1 FROM invoices.bank_feed_connections c WHERE c.id = 1 AND c.status = 'ok')
     ORDER BY a.next_sync_at, a.account
     LIMIT 1
@@ -571,7 +581,8 @@ func (q *Queries) PendingFeedFilesOfAccount(ctx context.Context, account string)
 }
 
 const releaseBankFeedClaim = `-- name: ReleaseBankFeedClaim :execrows
-UPDATE invoices.bank_feed_accounts SET next_sync_at = $1::timestamptz, lease_id = NULL, lease_until = NULL
+UPDATE invoices.bank_feed_accounts
+SET next_sync_at = greatest($1::timestamptz, coalesce(rate_limited_until, $1::timestamptz)), lease_id = NULL, lease_until = NULL
 WHERE account = $2 AND lease_id = $3::text
 `
 
@@ -597,7 +608,7 @@ func (q *Queries) ReleaseBankFeedClaim(ctx context.Context, arg ReleaseBankFeedC
 const reviveUnauthorizedBankFeedAccounts = `-- name: ReviveUnauthorizedBankFeedAccounts :exec
 UPDATE invoices.bank_feed_accounts SET
     status = 'ok', reason = NULL, detail = '', failures = 0,
-    next_sync_at = CASE WHEN enabled THEN $1::timestamptz END,
+    next_sync_at = CASE WHEN enabled THEN greatest($1::timestamptz, coalesce(rate_limited_until, $1::timestamptz)) END,
     updated_at = $1::timestamptz
 WHERE status = 'unauthorized'
 `
