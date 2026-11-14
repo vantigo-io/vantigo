@@ -138,14 +138,15 @@ func (s *server) syncAccount(ctx context.Context, c feedClaim) (syncOutcome, err
 		return syncOutcome{}, err
 	}
 	out, err := s.readAccount(ctx, c, loc)
-	if errors.Is(err, errFeedClaimLost) || errors.Is(err, bankfeed.ErrUnauthorized) {
-		// Not this claim's any more, or the key refused: nothing more.
+	if errors.Is(err, errFeedClaimLost) {
+		// Not this claim's any more: nothing more.
 		return out, err
 	}
 	// 7. Matching, by no user, of every feed batch of the account with a
 	// line still pending — this cycle's, and any an earlier cycle stored and
-	// did not get to match — after a refused or failed read too, so the
-	// batches it stored before are matched (second review, M1). A line that
+	// did not get to match — after a refused or failed read too, a refused
+	// key among them, since matching needs no bank, so the batches it stored
+	// before are matched (second review, M1; third review). A line that
 	// cannot be matched is passed over and named on the account; the rest
 	// are matched.
 	unmatched, merr := s.matchPendingFeed(ctx, c.row.Account, c.now, loc)
@@ -163,22 +164,34 @@ func (s *server) syncAccount(ctx context.Context, c feedClaim) (syncOutcome, err
 func (s *server) matchPendingFeed(ctx context.Context, account string, now time.Time, loc *time.Location) (string, error) {
 	files, err := store.New(s.deps.Pool).PendingFeedFilesOfAccount(ctx, account)
 	if err != nil {
-		return "", fmt.Errorf("invoices: read account %s's pending feed batches: %w", account, err)
+		return "", fmt.Errorf("%w: account %s: %w", errFeedPendingUnread, account, err)
 	}
 	unmatched := ""
+	var batchStopped error
 	for _, id := range files {
 		failed, err := s.matchFilePastFailures(ctx, id, now, loc)
 		if unmatched == "" {
 			unmatched = failed
 		}
-		if err != nil {
+		switch {
+		case errors.Is(err, errFeedBatchStopped):
+			// Lines failing in a row stopped this batch; the next is
+			// matched all the same, and the cycle fails at the end.
+			if batchStopped == nil {
+				batchStopped = fmt.Errorf("%w: %w", errFeedMatchingStopped, err)
+			}
+		case err != nil:
 			// Logged by matching; what it did not reach stays pending for
 			// the next cycle.
 			return unmatched, err
 		}
 	}
-	return unmatched, nil
+	return unmatched, batchStopped
 }
+
+// errFeedPendingUnread is the account's pending feed batches that could not
+// be read for matching.
+var errFeedPendingUnread = errors.New("invoices: the bank feed's stored batches could not be read for matching")
 
 // readAccount is a cycle's read of the claimed account (steps 1–6): the
 // format, the windows, each judged and stored. It answers what it stored

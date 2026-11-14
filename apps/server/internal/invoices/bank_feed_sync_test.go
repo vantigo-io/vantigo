@@ -845,3 +845,38 @@ func TestBankFeedSync_FreshnessIsTheFurthestBehind(t *testing.T) {
 		}
 	}
 }
+
+// Lines failing in a row stop their batch's matching alone (third review,
+// low): the next batch is matched all the same, the cycle fails as
+// matching stopped — never as a bank that could not be reached — and keeps
+// the last batch it stored.
+func TestBankFeedSync_AStoppedBatchDoesNotStopTheNext(t *testing.T) {
+	t.Parallel()
+	h, _ := syncHarness(t)
+	h.Exec(t, `UPDATE invoices.settings SET default_currency = 'EUR'`)
+	euro := kidded(t, issued(t, h, createDraft(t, h, draftBody(customerEuro, line("Konsulenttime", 10, 80, vat25))).ID))
+	h.Exec(t, `UPDATE invoices.settings SET default_currency = 'NOK'`)
+	inv := kidInvoice(t, h)
+	feedReady(t, h)
+	for i := range 3 {
+		h.folio.AddTransaction(sellerAccount, incoming(txID(i+1), "2026-10-05", fmt.Sprintf("10%d.00", i), *euro.Kid))
+	}
+	syncNow(t, h)
+	if s := feedStateOf(t, h, sellerAccount); s.failures != 1 {
+		t.Fatalf("after the first batch: %+v, want one failure", s)
+	}
+	h.folio.AddTransaction(sellerAccount, incoming(txID(9), "2026-10-07", "1000.00", *inv.Kid))
+	h.Advance(2 * time.Hour)
+	syncNow(t, h)
+	if got := livePaymentsOf(t, h, inv.ID); !slices.Equal(got, []string{"1000.00 bank_feed"}) {
+		t.Errorf("the next batch's payment = %v, want matched past the stopped batch", got)
+	}
+	s := feedStateOf(t, h, sellerAccount)
+	last := modtest.One[int64](t, h.Harness, `SELECT bank_file_id FROM invoices.bank_transactions WHERE line_ref = $1`, txID(9))
+	if s.failures != 2 || !strings.Contains(s.detail, "Matching") || s.lastFile == nil || *s.lastFile != last {
+		t.Errorf("the account = %+v, want a second failure naming matching and the last batch %d", s, last)
+	}
+	if strings.Contains(h.Logs(), "the bank could not be reached") {
+		t.Error("matching that stopped was logged as a bank that could not be reached")
+	}
+}
