@@ -20,15 +20,15 @@ LEFT JOIN LATERAL (
     FROM invoices.invoices c WHERE c.credits_invoice_id = i.id AND c.status = 'issued'
 ) cr ON true
 LEFT JOIN LATERAL (
-    SELECT coalesce(sum(p.amount), 0)::numeric(14,2) AS paid
-    FROM invoices.payments p WHERE p.invoice_id = i.id AND p.removed_at IS NULL
+    SELECT invoices.settled_amount(i.id)::numeric(14,2) AS paid,
+        invoices.written_off_amount(i.id)::numeric(14,2) AS written_off
 ) pd ON true
 WHERE i.kind = 'invoice' AND i.status = 'issued'
   AND ($1::int IS NULL OR i.customer_id = $1::int)
   AND ($2::date IS NULL OR i.due_date < $2::date)
-  AND (invoices.document_state(i.kind, i.status, i.gross_total, coalesce(cr.credited, 0), coalesce(pd.paid, 0), i.due_date, $3::date) = 'overdue'
+  AND (invoices.invoice_state(i.kind, i.status, i.gross_total, coalesce(cr.credited, 0), coalesce(pd.paid, 0), coalesce(pd.written_off, 0), i.due_date, $3::date) = 'overdue'
        OR ($4::boolean
-           AND invoices.document_state(i.kind, i.status, i.gross_total, coalesce(cr.credited, 0), coalesce(pd.paid, 0), i.due_date, $3::date) = 'paid'
+           AND invoices.invoice_state(i.kind, i.status, i.gross_total, coalesce(cr.credited, 0), coalesce(pd.paid, 0), coalesce(pd.written_off, 0), i.due_date, $3::date) = 'paid'
            AND EXISTS (SELECT 1 FROM invoices.reminders r
                        WHERE r.invoice_id = i.id AND r.status = 'sent'
                          AND (r.fee > 0 OR r.compensation > 0 OR r.interest > 0))))
@@ -246,15 +246,15 @@ LEFT JOIN LATERAL (
     FROM invoices.invoices c WHERE c.credits_invoice_id = i.id AND c.status = 'issued'
 ) cr ON true
 LEFT JOIN LATERAL (
-    SELECT coalesce(sum(p.amount), 0)::numeric(14,2) AS paid
-    FROM invoices.payments p WHERE p.invoice_id = i.id AND p.removed_at IS NULL
+    SELECT invoices.settled_amount(i.id)::numeric(14,2) AS paid,
+        invoices.written_off_amount(i.id)::numeric(14,2) AS written_off
 ) pd ON true
 WHERE i.kind = 'invoice' AND i.status = 'issued'
   AND ($1::int IS NULL OR i.customer_id = $1::int)
   AND ($2::date IS NULL OR i.due_date < $2::date)
-  AND (invoices.document_state(i.kind, i.status, i.gross_total, coalesce(cr.credited, 0), coalesce(pd.paid, 0), i.due_date, $3::date) = 'overdue'
+  AND (invoices.invoice_state(i.kind, i.status, i.gross_total, coalesce(cr.credited, 0), coalesce(pd.paid, 0), coalesce(pd.written_off, 0), i.due_date, $3::date) = 'overdue'
        OR ($4::boolean
-           AND invoices.document_state(i.kind, i.status, i.gross_total, coalesce(cr.credited, 0), coalesce(pd.paid, 0), i.due_date, $3::date) = 'paid'
+           AND invoices.invoice_state(i.kind, i.status, i.gross_total, coalesce(cr.credited, 0), coalesce(pd.paid, 0), coalesce(pd.written_off, 0), i.due_date, $3::date) = 'paid'
            AND EXISTS (SELECT 1 FROM invoices.reminders r
                        WHERE r.invoice_id = i.id AND r.status = 'sent'
                          AND (r.fee > 0 OR r.compensation > 0 OR r.interest > 0))))

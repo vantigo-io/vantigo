@@ -8,15 +8,15 @@
 -- at its own level.
 WITH d AS (
     SELECT (i.gross_total - coalesce(cr.credited, 0) - coalesce(pd.paid, 0))::numeric(14,2) AS open_amount,
-           invoices.document_state(i.kind, i.status, i.gross_total, coalesce(cr.credited, 0), coalesce(pd.paid, 0), i.due_date, @today::date)::text AS state
+           invoices.invoice_state(i.kind, i.status, i.gross_total, coalesce(cr.credited, 0), coalesce(pd.paid, 0), coalesce(pd.written_off, 0), i.due_date, @today::date)::text AS state
     FROM invoices.invoices i
     LEFT JOIN LATERAL (
         SELECT coalesce(sum(c.gross_total), 0)::numeric(14,2) AS credited
         FROM invoices.invoices c WHERE c.credits_invoice_id = i.id AND c.status = 'issued'
     ) cr ON true
     LEFT JOIN LATERAL (
-        SELECT coalesce(sum(p.amount), 0)::numeric(14,2) AS paid
-        FROM invoices.payments p WHERE p.invoice_id = i.id AND p.removed_at IS NULL
+        SELECT invoices.settled_amount(i.id)::numeric(14,2) AS paid,
+            invoices.written_off_amount(i.id)::numeric(14,2) AS written_off
     ) pd ON true
     WHERE i.status = 'issued'
 )

@@ -51,9 +51,10 @@ func (q *Queries) GetPayment(ctx context.Context, arg GetPaymentParams) (Invoice
 
 const insertPayment = `-- name: InsertPayment :one
 INSERT INTO invoices.payments (
-    invoice_id, paid_on, amount, currency, reference, note, registered_by_user_id, registered_at
+    invoice_id, paid_on, amount, currency, reference, note, registered_by_user_id, registered_at, kind, write_off_id
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8::timestamptz
+    $1, $2, $3, $4, $5, $6, $7, $8::timestamptz,
+    $9::text, $10::bigint
 )
 RETURNING id, invoice_id, paid_on, amount, currency, reference, note, registered_by_user_id, registered_at, removed_at, removed_by_user_id, removal_reason, source, bank_transaction_id, payment_attempt_id, kind, write_off_id
 `
@@ -67,11 +68,14 @@ type InsertPaymentParams struct {
 	Note               string
 	RegisteredByUserID *uuid.UUID
 	RegisteredAt       time.Time
+	Kind               string
+	WriteOffID         *int64
 }
 
 // InsertPayment registers money received against an issued invoice (D2). The
 // caller holds the invoice FOR UPDATE and has judged the open amount under
 // that lock; tr_payments_parent refuses a draft's or a credit note's anyway.
+// A recovery (kind recovered, A16) names the standing write-off it recovers.
 func (q *Queries) InsertPayment(ctx context.Context, arg InsertPaymentParams) (InvoicesPayment, error) {
 	row := q.db.QueryRow(ctx, insertPayment,
 		arg.InvoiceID,
@@ -82,6 +86,8 @@ func (q *Queries) InsertPayment(ctx context.Context, arg InsertPaymentParams) (I
 		arg.Note,
 		arg.RegisteredByUserID,
 		arg.RegisteredAt,
+		arg.Kind,
+		arg.WriteOffID,
 	)
 	var i InvoicesPayment
 	err := row.Scan(
@@ -165,17 +171,28 @@ func (q *Queries) InsertVippsPayment(ctx context.Context, arg InsertVippsPayment
 }
 
 const livePaymentsSum = `-- name: LivePaymentsSum :one
-SELECT coalesce(sum(amount), 0)::numeric(14,2) AS paid FROM invoices.payments
+SELECT coalesce(sum(amount) FILTER (WHERE kind = 'payment'), 0)::numeric(14,2) AS paid,
+    invoices.written_off_amount($1)::numeric(14,2) AS written_off,
+    coalesce(sum(amount) FILTER (WHERE kind = 'recovered'), 0)::numeric(14,2) AS recovered
+FROM invoices.payments
 WHERE invoice_id = $1 AND removed_at IS NULL
 `
 
+type LivePaymentsSumRow struct {
+	Paid       pgtype.Numeric
+	WrittenOff pgtype.Numeric
+	Recovered  pgtype.Numeric
+}
+
 // LivePaymentsSum is what an invoice's live registrations add up to — the
-// paid of the open amount (D2, D3). A removed registration counts for nothing.
-func (q *Queries) LivePaymentsSum(ctx context.Context, invoiceID int64) (pgtype.Numeric, error) {
+// paid of the open amount (D2, D3) — beside its standing write-off and its
+// live recoveries (A16, R4). A removed registration counts for nothing; a
+// recovery is not part of the open amount, which the write-off closed.
+func (q *Queries) LivePaymentsSum(ctx context.Context, invoiceID int64) (LivePaymentsSumRow, error) {
 	row := q.db.QueryRow(ctx, livePaymentsSum, invoiceID)
-	var paid pgtype.Numeric
-	err := row.Scan(&paid)
-	return paid, err
+	var i LivePaymentsSumRow
+	err := row.Scan(&i.Paid, &i.WrittenOff, &i.Recovered)
+	return i, err
 }
 
 const paymentsOf = `-- name: PaymentsOf :many

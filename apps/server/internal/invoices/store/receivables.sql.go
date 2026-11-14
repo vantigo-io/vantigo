@@ -16,15 +16,15 @@ const customerReceivablesByCurrency = `-- name: CustomerReceivablesByCurrency :m
 WITH d AS (
     SELECT i.kind, i.currency, i.gross_total, i.issue_date,
            (i.gross_total - coalesce(cr.credited, 0) - coalesce(pd.paid, 0))::numeric(14,2) AS open_amount,
-           invoices.document_state(i.kind, i.status, i.gross_total, coalesce(cr.credited, 0), coalesce(pd.paid, 0), i.due_date, $4::date)::text AS state
+           invoices.invoice_state(i.kind, i.status, i.gross_total, coalesce(cr.credited, 0), coalesce(pd.paid, 0), coalesce(pd.written_off, 0), i.due_date, $4::date)::text AS state
     FROM invoices.invoices i
     LEFT JOIN LATERAL (
         SELECT coalesce(sum(c.gross_total), 0)::numeric(14,2) AS credited
         FROM invoices.invoices c WHERE c.credits_invoice_id = i.id AND c.status = 'issued'
     ) cr ON true
     LEFT JOIN LATERAL (
-        SELECT coalesce(sum(p.amount), 0)::numeric(14,2) AS paid
-        FROM invoices.payments p WHERE p.invoice_id = i.id AND p.removed_at IS NULL
+        SELECT invoices.settled_amount(i.id)::numeric(14,2) AS paid,
+            invoices.written_off_amount(i.id)::numeric(14,2) AS written_off
     ) pd ON true
     WHERE i.customer_id = $5 AND i.status = 'issued'
 )
@@ -110,15 +110,15 @@ func (q *Queries) CustomerReceivablesByCurrency(ctx context.Context, arg Custome
 const customerReceivablesCounts = `-- name: CustomerReceivablesCounts :one
 WITH d AS (
     SELECT i.id, i.issue_date, i.due_date,
-           invoices.document_state(i.kind, i.status, i.gross_total, coalesce(cr.credited, 0), coalesce(pd.paid, 0), i.due_date, $2::date)::text AS state
+           invoices.invoice_state(i.kind, i.status, i.gross_total, coalesce(cr.credited, 0), coalesce(pd.paid, 0), coalesce(pd.written_off, 0), i.due_date, $2::date)::text AS state
     FROM invoices.invoices i
     LEFT JOIN LATERAL (
         SELECT coalesce(sum(c.gross_total), 0)::numeric(14,2) AS credited
         FROM invoices.invoices c WHERE c.credits_invoice_id = i.id AND c.status = 'issued'
     ) cr ON true
     LEFT JOIN LATERAL (
-        SELECT coalesce(sum(p.amount), 0)::numeric(14,2) AS paid
-        FROM invoices.payments p WHERE p.invoice_id = i.id AND p.removed_at IS NULL
+        SELECT invoices.settled_amount(i.id)::numeric(14,2) AS paid,
+            invoices.written_off_amount(i.id)::numeric(14,2) AS written_off
     ) pd ON true
     WHERE i.customer_id = $1 AND i.status = 'issued'
 )

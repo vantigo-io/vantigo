@@ -158,8 +158,8 @@ LEFT JOIN LATERAL (
     FROM invoices.invoices c WHERE c.credits_invoice_id = i.id AND c.status = 'issued'
 ) cr ON true
 LEFT JOIN LATERAL (
-    SELECT coalesce(sum(p.amount), 0)::numeric(14,2) AS paid
-    FROM invoices.payments p WHERE p.invoice_id = i.id AND p.removed_at IS NULL
+    SELECT invoices.settled_amount(i.id)::numeric(14,2) AS paid,
+        invoices.written_off_amount(i.id)::numeric(14,2) AS written_off
 ) pd ON true
 WHERE i.kind = 'invoice' AND i.status = 'issued' AND i.number = ANY(sqlc.arg(numbers)::bigint[])
 ORDER BY i.id
@@ -176,8 +176,8 @@ LEFT JOIN LATERAL (
     FROM invoices.invoices c WHERE c.credits_invoice_id = i.id AND c.status = 'issued'
 ) cr ON true
 LEFT JOIN LATERAL (
-    SELECT coalesce(sum(p.amount), 0)::numeric(14,2) AS paid
-    FROM invoices.payments p WHERE p.invoice_id = i.id AND p.removed_at IS NULL
+    SELECT invoices.settled_amount(i.id)::numeric(14,2) AS paid,
+        invoices.written_off_amount(i.id)::numeric(14,2) AS written_off
 ) pd ON true
 CROSS JOIN LATERAL (
     SELECT (i.gross_total - coalesce(cr.credited, 0) - coalesce(pd.paid, 0))::numeric(14,2) AS open_amount
@@ -198,8 +198,8 @@ LEFT JOIN LATERAL (
     FROM invoices.invoices c WHERE c.credits_invoice_id = i.id AND c.status = 'issued'
 ) cr ON true
 LEFT JOIN LATERAL (
-    SELECT coalesce(sum(p.amount), 0)::numeric(14,2) AS paid
-    FROM invoices.payments p WHERE p.invoice_id = i.id AND p.removed_at IS NULL
+    SELECT invoices.settled_amount(i.id)::numeric(14,2) AS paid,
+        invoices.written_off_amount(i.id)::numeric(14,2) AS written_off
 ) pd ON true
 CROSS JOIN LATERAL (
     SELECT (i.gross_total - coalesce(cr.credited, 0) - coalesce(pd.paid, 0))::numeric(14,2) AS open_amount

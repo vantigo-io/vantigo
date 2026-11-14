@@ -122,10 +122,16 @@ func openAndReserved(ctx context.Context, q *store.Queries, inv store.InvoicesIn
 	if err != nil {
 		return nil, nil, fmt.Errorf("invoices: read what document %d is paid: %w", inv.ID, err)
 	}
-	paid, err := ratFromNumeric(sum)
+	paid, err := ratFromNumeric(sum.Paid)
 	if err != nil {
 		return nil, nil, err
 	}
+	// A standing write-off settles the principal too (A16).
+	written, err := ratFromNumeric(sum.WrittenOff)
+	if err != nil {
+		return nil, nil, err
+	}
+	paid.Add(paid, written)
 	held, err := q.LiveReservationsSum(ctx, inv.ID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("invoices: read what document %d's reservations hold: %w", inv.ID, err)
