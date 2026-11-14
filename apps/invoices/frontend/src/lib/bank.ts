@@ -14,3 +14,15 @@ export const useWho = (currentUserId: string | undefined) => {
   const { t } = useInvoiceFormat();
   return (userId: string | undefined) => (userId && userId === currentUserId ? t("bank.you") : t("bank.anotherUser"));
 };
+
+/**
+ * useWho for what the bank feed may have done by itself (invoices bank feed
+ * design F6): a feed batch no person uploaded, a line it matched or queued,
+ * a payment it registered and the waiver it wrote carry no user, and say
+ * "the bank feed" where a person would be named.
+ */
+export const useWhoOrFeed = (currentUserId: string | undefined) => {
+  const { t } = useInvoiceFormat();
+  const who = useWho(currentUserId);
+  return (userId: string | undefined) => (userId ? who(userId) : t("bank.byFeed"));
+};

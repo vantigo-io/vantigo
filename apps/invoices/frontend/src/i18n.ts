@@ -1146,6 +1146,7 @@ export const invoicesCatalog = {
     "paymentSource.manual": "By hand",
     "paymentSource.ocr": "OCR giro",
     "paymentSource.camt054": "camt.054",
+    "paymentSource.bank_feed": "Bank feed",
     paymentBankLine: "Bank line {{id}}",
     "bank.title": "Payments",
     "bank.description":
@@ -1154,6 +1155,7 @@ export const invoicesCatalog = {
     "bank.failedToLoad": "Could not load the bank data",
     "bank.you": "you",
     "bank.anotherUser": "another user",
+    "bank.byFeed": "the bank feed",
     "bank.upload": "Import a bank file",
     "bank.uploadDescription":
       "An OCR giro or camt.054 file of incoming payments, downloaded from the online bank. Each payment is matched to an invoice on its KID; what cannot be placed waits in the exception queue.",
@@ -1168,6 +1170,7 @@ export const invoicesCatalog = {
     "bank.uploadRefusal.storage_unavailable":
       "The document store is unavailable, so no bank file can be imported now. Nothing was imported.",
     "bank.duplicateUploadedBy": "That import was uploaded by {{who}}.",
+    "bank.duplicateFetched": "That batch was fetched by the bank feed.",
     "bank.openEarlierFile": "Open file {{id}}",
     "bank.result": "The import's result",
     "bank.count.transactions": "Payments in the file",
@@ -1180,6 +1183,7 @@ export const invoicesCatalog = {
     "bank.ignored.notBooked": "Entries not booked: {{count}}",
     "bank.ignored.cardInformation": "Card information: {{count}}",
     "bank.ignored.zeroAmount": "Amounts of zero: {{count}}",
+    "bank.ignored.internalTransfer": "Transfers between your own accounts: {{count}}",
     "bank.matchedAmount": "{{amount}} registered as payments.",
     "bank.exceptionsAmount": "{{amount}} waiting in the exception queue.",
     "bank.pendingNote": "Matching stopped before every payment was placed. Match the rest to finish the file.",
@@ -1196,6 +1200,7 @@ export const invoicesCatalog = {
     "bank.format.ocr": "OCR giro",
     "bank.format.camt054": "camt.054",
     "bank.format.feed": "Bank feed",
+    "bank.format.feedProvider": "Bank feed · {{provider}}",
     "bank.lastFile": "Latest file",
     "bank.lastBookedOn": "Latest booking day",
     "bank.cutover":
@@ -1218,6 +1223,12 @@ export const invoicesCatalog = {
     "bank.fileName": "File {{id}}",
     "bank.fileTitle": "Bank file {{id}}",
     "bank.fileUploaded": "{{format}}, uploaded {{at}} by {{who}}.",
+    "bank.fileFetched": "{{format}}, fetched by the bank feed {{at}}.",
+    "bank.fetchNow": "Fetch now",
+    "bank.fetchNowDone": "The bank feed reads the accounts within a minute",
+    "bank.couldNotFetch": "Could not fetch from the bank",
+    "bank.feedAccountLine": "Bank feed for {{account}}: {{status}}, last read {{at}}",
+    "bank.feedNeverRead": "never",
     "bank.accountsInFile": "Accounts: {{accounts}}",
     "bank.backToPayments": "Back to Payments",
     "bank.lines": "The payments in the file",
@@ -1957,7 +1968,7 @@ export const invoicesCatalog = {
     "bankFeed.couldNotDisconnect": "The bank was not disconnected",
     "bankFeed.accounts": "Accounts",
     "bankFeed.accountsDescription":
-      "Switching the feed on for an account sets its format to Bank feed from the start day, so files are no longer imported for it. In this release the feed does not read the account's payments yet; switch an account off to import its files again. Nothing booked before the start day will be read.",
+      "Switching the feed on for an account sets its format to Bank feed from the start day, so files are no longer imported for it: the feed reads its incoming payments at regular intervals (every 30 minutes by default), registers those whose KID names an invoice and puts the rest in the exception queue. Nothing booked before the start day is read. Switch an account off to import its files again.",
     "bankFeed.couldNotReadAccounts": "Could not read the bank's accounts",
     "bankFeed.noAccounts": "The bank answers no account for this key.",
     "bankFeed.kind": "Kind",
@@ -1981,6 +1992,18 @@ export const invoicesCatalog = {
     "bankFeed.accountStatus.failing": "Failing",
     "bankFeed.accountStatus.refused": "Refused",
     "bankFeed.accountStatus.unauthorized": "Key refused",
+    "bankFeed.reason.booked_in_future":
+      "The bank answered a transaction booked after today. Nothing of the batch was stored.",
+    "bankFeed.reason.currency_not_nok":
+      "The bank answered a transaction in another currency than NOK. Nothing of the batch was stored.",
+    "bankFeed.reason.direction_unknown":
+      "The bank answered a transaction it could not tell was money in or out. Nothing of the batch was stored.",
+    "bankFeed.reason.duplicate_transaction":
+      "The bank answered the same transaction twice. Nothing of the batch was stored.",
+    "bankFeed.reason.transaction_unreadable":
+      "The bank answered a transaction that could not be read. Nothing of the batch was stored.",
+    "bankFeed.reason.format_mismatch":
+      "The account's format is no longer Bank feed. Switch the feed off for it, or back on.",
     "fieldInvalid.bankFeed.provider": "Choose the bank.",
     "fieldInvalid.bankFeed.apiKey": "Enter the API key: 12 to 1 000 letters, digits or punctuation, without spaces.",
     "fieldInvalid.bankFeed.startDay": "The start day may be neither after today nor more than 13 months before it.",
@@ -3389,6 +3412,7 @@ export const invoicesCatalog = {
     "paymentSource.manual": "Manuelt",
     "paymentSource.ocr": "OCR giro",
     "paymentSource.camt054": "camt.054",
+    "paymentSource.bank_feed": "Bankintegrasjon",
     paymentBankLine: "Banklinje {{id}}",
     "bank.title": "Innbetalinger",
     "bank.description":
@@ -3397,6 +3421,7 @@ export const invoicesCatalog = {
     "bank.failedToLoad": "Kunne ikke laste bankdataene",
     "bank.you": "deg",
     "bank.anotherUser": "en annen bruker",
+    "bank.byFeed": "bankintegrasjonen",
     "bank.upload": "Importer en bankfil",
     "bank.uploadDescription":
       "En OCR giro- eller camt.054-fil med innbetalinger, lastet ned fra nettbanken. Hver betaling avstemmes mot en faktura på KID-en; det som ikke kan plasseres, venter i avvikskøen.",
@@ -3411,6 +3436,7 @@ export const invoicesCatalog = {
     "bank.uploadRefusal.storage_unavailable":
       "Dokumentlageret er utilgjengelig, så ingen bankfil kan importeres nå. Ingenting ble importert.",
     "bank.duplicateUploadedBy": "Den importen ble lastet opp av {{who}}.",
+    "bank.duplicateFetched": "Den bunken ble hentet av bankintegrasjonen.",
     "bank.openEarlierFile": "Åpne fil {{id}}",
     "bank.result": "Resultatet av importen",
     "bank.count.transactions": "Betalinger i filen",
@@ -3423,6 +3449,7 @@ export const invoicesCatalog = {
     "bank.ignored.notBooked": "Poster som ikke er bokført: {{count}}",
     "bank.ignored.cardInformation": "Kortinformasjon: {{count}}",
     "bank.ignored.zeroAmount": "Beløp på null: {{count}}",
+    "bank.ignored.internalTransfer": "Overføringer mellom egne kontoer: {{count}}",
     "bank.matchedAmount": "{{amount}} registrert som betalinger.",
     "bank.exceptionsAmount": "{{amount}} venter i avvikskøen.",
     "bank.pendingNote":
@@ -3440,6 +3467,7 @@ export const invoicesCatalog = {
     "bank.format.ocr": "OCR giro",
     "bank.format.camt054": "camt.054",
     "bank.format.feed": "Bankintegrasjon",
+    "bank.format.feedProvider": "Bankintegrasjon · {{provider}}",
     "bank.lastFile": "Siste fil",
     "bank.lastBookedOn": "Siste bokføringsdag",
     "bank.cutover":
@@ -3462,6 +3490,12 @@ export const invoicesCatalog = {
     "bank.fileName": "Fil {{id}}",
     "bank.fileTitle": "Bankfil {{id}}",
     "bank.fileUploaded": "{{format}}, lastet opp {{at}} av {{who}}.",
+    "bank.fileFetched": "{{format}}, hentet av bankintegrasjonen {{at}}.",
+    "bank.fetchNow": "Hent nå",
+    "bank.fetchNowDone": "Bankintegrasjonen leser kontoene innen ett minutt",
+    "bank.couldNotFetch": "Kunne ikke hente fra banken",
+    "bank.feedAccountLine": "Bankintegrasjon for {{account}}: {{status}}, sist lest {{at}}",
+    "bank.feedNeverRead": "aldri",
     "bank.accountsInFile": "Kontoer: {{accounts}}",
     "bank.backToPayments": "Tilbake til Innbetalinger",
     "bank.lines": "Betalingene i filen",
@@ -4203,7 +4237,7 @@ export const invoicesCatalog = {
     "bankFeed.couldNotDisconnect": "Banken ble ikke koblet fra",
     "bankFeed.accounts": "Kontoer",
     "bankFeed.accountsDescription":
-      "Å slå på integrasjonen for en konto setter formatet til Bankintegrasjon fra startdagen, så det importeres ikke lenger filer for den. I denne versjonen leser integrasjonen ennå ikke kontoens innbetalinger; slå en konto av for å importere filene igjen. Ingenting som er bokført før startdagen, vil bli lest.",
+      "Å slå på integrasjonen for en konto setter formatet til Bankintegrasjon fra startdagen, så det importeres ikke lenger filer for den: integrasjonen leser kontoens innbetalinger med jevne mellomrom (hvert 30. minutt som standard), registrerer dem der KID-en peker på en faktura, og legger resten i avvikskøen. Ingenting som er bokført før startdagen, leses. Slå en konto av for å importere filene igjen.",
     "bankFeed.couldNotReadAccounts": "Kunne ikke lese bankens kontoer",
     "bankFeed.noAccounts": "Banken svarer ingen kontoer for denne nøkkelen.",
     "bankFeed.kind": "Type",
@@ -4227,6 +4261,18 @@ export const invoicesCatalog = {
     "bankFeed.accountStatus.failing": "Feiler",
     "bankFeed.accountStatus.refused": "Avvist",
     "bankFeed.accountStatus.unauthorized": "Nøkkel avvist",
+    "bankFeed.reason.booked_in_future":
+      "Banken svarte en transaksjon bokført etter i dag. Ingenting av bunken ble lagret.",
+    "bankFeed.reason.currency_not_nok":
+      "Banken svarte en transaksjon i en annen valuta enn NOK. Ingenting av bunken ble lagret.",
+    "bankFeed.reason.direction_unknown":
+      "Banken svarte en transaksjon som ikke kunne leses som penger inn eller ut. Ingenting av bunken ble lagret.",
+    "bankFeed.reason.duplicate_transaction":
+      "Banken svarte den samme transaksjonen to ganger. Ingenting av bunken ble lagret.",
+    "bankFeed.reason.transaction_unreadable":
+      "Banken svarte en transaksjon som ikke kunne leses. Ingenting av bunken ble lagret.",
+    "bankFeed.reason.format_mismatch":
+      "Kontoens format er ikke lenger Bankintegrasjon. Slå integrasjonen av for den, eller på igjen.",
     "fieldInvalid.bankFeed.provider": "Velg banken.",
     "fieldInvalid.bankFeed.apiKey": "Skriv inn API-nøkkelen: 12 til 1 000 bokstaver, sifre eller tegn, uten mellomrom.",
     "fieldInvalid.bankFeed.startDay": "Startdagen kan verken være etter i dag eller mer enn 13 måneder før.",

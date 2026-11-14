@@ -11,7 +11,7 @@ import { accountNumber, useWho } from "../lib/bank";
 import { refusalMessage } from "../lib/errors";
 import { useInvoiceFormat } from "../lib/format";
 import { PAYMENTS_ROUTE_PATH } from "../lib/routes";
-import { ImportResultCard } from "./payments";
+import { feedFormatLabel, ImportResultCard } from "./payments";
 
 export interface BankFilePageProps {
   bankFileId: number;
@@ -51,11 +51,16 @@ export const BankFilePage = ({ bankFileId, currentUserId }: BankFilePageProps) =
         title={t("bank.fileTitle", { id: bankFileId })}
         description={
           file
-            ? t("bank.fileUploaded", {
-                format: t(`bank.format.${file.format}`),
-                at: dateTime(file.uploadedAt),
-                who: who(file.uploadedBy),
-              })
+            ? file.uploadedBy
+              ? t("bank.fileUploaded", {
+                  format: t(`bank.format.${file.format}`),
+                  at: dateTime(file.uploadedAt),
+                  who: who(file.uploadedBy),
+                })
+              : t("bank.fileFetched", {
+                  format: feedFormatLabel(t, file.format, file.provider),
+                  at: dateTime(file.uploadedAt),
+                })
             : undefined
         }
       />

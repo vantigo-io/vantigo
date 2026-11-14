@@ -19,6 +19,8 @@ export type BankFeedOffer = Schemas["InvoicesBankFeedBankAccount"];
 export type BankFeedInput = Schemas["InvoicesBankFeedRequest"];
 /** PUT /invoices/bank-feed/accounts/{account}'s body: on or off, and from which day. */
 export type BankFeedAccountInput = Schemas["InvoicesBankFeedAccountRequest"];
+/** POST /invoices/bank-feed/sync's answer: the accounts made due. */
+export type BankFeedSyncResult = Schemas["InvoicesBankFeedSyncResponse"];
 
 /** The banks the screen offers, in order: Folio, the only one. */
 export const BANK_FEED_PROVIDERS = ["folio"] as const;
@@ -61,3 +63,11 @@ export const deleteBankFeed = (): Promise<void> => request<void>("/api/v1/invoic
  */
 export const putBankFeedAccount = (account: string, input: BankFeedAccountInput): Promise<BankFeedAccount> =>
   request<BankFeedAccount>(`/api/v1/invoices/bank-feed/accounts/${encodeURIComponent(account)}`, json("PUT", input));
+
+/**
+ * Fetch now (`invoices:payments`): the account, or every account the feed
+ * reads, made due at once — the bank feed worker reads it within a minute.
+ * The caller invalidates `[INVOICES_QUERY_KEY]`.
+ */
+export const postBankFeedSync = (account?: string): Promise<BankFeedSyncResult> =>
+  request<BankFeedSyncResult>("/api/v1/invoices/bank-feed/sync", json("POST", account ? { account } : {}));

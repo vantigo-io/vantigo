@@ -5,7 +5,7 @@ import { useState } from "react";
 import { type ChargePayment, removeChargePayment } from "../api/charges";
 import type { InvoiceDocument } from "../api/invoices";
 import { invoicesCatalog } from "../i18n";
-import { useWho } from "../lib/bank";
+import { useWhoOrFeed } from "../lib/bank";
 import { useInvoiceFormat } from "../lib/format";
 import { letterName, waivableCharges } from "../lib/reminders";
 import { ChargePaymentModal } from "../pages/-charge-payment-modal";
@@ -34,7 +34,7 @@ export interface ChargesCardProps {
  */
 export const ChargesCard = ({ invoice, canAct, today, currentUserId }: ChargesCardProps) => {
   const { t, money, date, dateTime } = useInvoiceFormat();
-  const who = useWho(currentUserId);
+  const who = useWhoOrFeed(currentUserId);
   const [registering, setRegistering] = useState(false);
   const [waiving, setWaiving] = useState(false);
   const [removing, setRemoving] = useState<ChargePayment | null>(null);

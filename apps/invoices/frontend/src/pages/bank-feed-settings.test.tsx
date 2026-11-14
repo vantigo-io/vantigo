@@ -166,6 +166,48 @@ describe("BankFeedSettings_ConnectAndAccounts", () => {
     );
   });
 
+  // A refused batch's rule and its detail under the account's status, and
+  // Fetch now for a manager who may register payments (F7, F8).
+  it("BankFeedSettings_ReasonDetailAndFetchNow", async () => {
+    const fetchMock = bankServer({
+      bankFeed: connected({
+        accounts: [
+          {
+            account: "86011117947",
+            enabled: true,
+            startDay: "2026-09-01",
+            status: "refused",
+            reason: "direction_unknown",
+            detail: "Transaction 0000001-aaaa.",
+          },
+        ],
+      }),
+      offers,
+      capabilities: { canImportBankFiles: true },
+      answers: { "POST /api/v1/invoices/bank-feed/sync": jsonResponse(202, { accounts: [] }) },
+    });
+    renderWithProviders(<BankFeedSettingsPage />);
+    const row = await screen.findByTestId("bank-feed-account-86011117947");
+    expect(within(row).getByText("Refused")).toBeInTheDocument();
+    expect(within(row).getByText(/could not tell was money in or out/)).toBeInTheDocument();
+    expect(within(row).getByText("Transaction 0000001-aaaa.")).toBeInTheDocument();
+    await userEvent.click(await screen.findByRole("button", { name: "Fetch now" }));
+    await waitFor(() => expect(bodyOf(fetchMock, "POST", "/api/v1/invoices/bank-feed/sync")).toEqual({}));
+  });
+
+  it("offers no Fetch now to a manager who may not register payments", async () => {
+    bankServer({
+      bankFeed: connected({
+        accounts: [{ account: "86011117947", enabled: true, startDay: "2026-09-01", status: "ok" }],
+      }),
+      offers,
+      capabilities: { canImportBankFiles: false },
+    });
+    renderWithProviders(<BankFeedSettingsPage />);
+    await screen.findByTestId("bank-feed-account-86011117947");
+    expect(screen.queryByRole("button", { name: "Fetch now" })).not.toBeInTheDocument();
+  });
+
   it("says a key the bank refuses when the accounts are read", async () => {
     bankServer({
       bankFeed: connected(),

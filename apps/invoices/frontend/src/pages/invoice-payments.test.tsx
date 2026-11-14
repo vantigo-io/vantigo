@@ -232,6 +232,17 @@ describe("the payments card", () => {
             note: "",
             registeredAt: "2026-09-12T08:00:00Z",
           },
+          {
+            id: 1005,
+            paidOn: "2026-09-11",
+            amount: 1,
+            currency: "NOK",
+            source: "bank_feed",
+            bankTransactionId: 3003,
+            reference: "0010017",
+            note: "",
+            registeredAt: "2026-09-12T08:30:00Z",
+          },
         ],
       });
     };
@@ -247,6 +258,10 @@ describe("the payments card", () => {
     const camt = screen.getByTestId("payment-source-1004");
     expect(within(camt).getByText("camt.054")).toBeInTheDocument();
     expect(within(camt).getByRole("link", { name: "Bank line 3002" })).toBeInTheDocument();
+    // A payment the bank feed registered by itself: its source, its line, and no registrar needed.
+    const feed = screen.getByTestId("payment-source-1005");
+    expect(within(feed).getByText("Bank feed")).toBeInTheDocument();
+    expect(within(feed).getByRole("link", { name: "Bank line 3003" })).toBeInTheDocument();
   });
 
   it("names a bank line without a link for a reader who cannot open the Payments area", async () => {
