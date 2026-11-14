@@ -64,10 +64,12 @@ func loadGroupings() ([]groupingList, error) {
 		}
 		for _, e := range entries {
 			name := strings.TrimSuffix(e.Name(), ".csv")
-			year, err := strconv.Atoi(name)
+			// A year is read as 32 bits: it is answered as an int32.
+			parsed, err := strconv.ParseInt(name, 10, 32)
 			if err != nil {
 				continue
 			}
+			year := int(parsed)
 			data, err := groupingFiles.ReadFile("grouping/" + e.Name())
 			if err != nil {
 				groupingErr = err
