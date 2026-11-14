@@ -1,6 +1,7 @@
 package invoices_test
 
 import (
+	"context"
 	"net/http"
 	"net/url"
 	"slices"
@@ -264,5 +265,42 @@ func TestBankFeedCursor_NoProgressBacksOff(t *testing.T) {
 	}
 	if n := len(transactionWindows(t, h)); n != 2 {
 		t.Errorf("%d calls, want the budget of 2", n)
+	}
+}
+
+// Switching the feed on again during a cycle in flight (second review, H2):
+// the new start day clears the cursor and the cycle's lease, so the cycle
+// loses its claim at its next write and cannot move the cursor back on; the
+// next cycle reads from the new start day.
+func TestBankFeedCursor_ANewStartDayDuringACycleWins(t *testing.T) {
+	h, _ := syncHarness(t)
+	inv := kidInvoice(t, h)
+	feedReady(t, h)
+	h.folio.AddTransaction(sellerAccount, incoming(txID(1), "2026-10-06", "1000.00", *inv.Kid))
+	once := false
+	restore := invoices.SetBankFeedSyncAfterStore(func(context.Context, int64) error {
+		if !once {
+			once = true
+			switchedOn(t, h, sellerAccount, "2026-09-01")
+		}
+		return nil
+	})
+	defer restore()
+	w := feedWorker(t, h.Deps())
+	if _, err := w.ProcessOne(t.Context()); err != nil {
+		t.Fatalf("the cycle in flight: %v", err)
+	}
+	if got := readThroughOf(t, h, sellerAccount); got != "-" {
+		t.Errorf("the cursor after the cycle in flight = %s, want still none", got)
+	}
+	before := len(transactionWindows(t, h))
+	if _, err := w.ProcessOne(t.Context()); err != nil {
+		t.Fatalf("the next cycle: %v", err)
+	}
+	if got := transactionWindows(t, h)[before]; got != "2026-09-01..2026-10-01" {
+		t.Errorf("the next cycle's first read = %s, want from the new start day", got)
+	}
+	if got := livePaymentsOf(t, h, inv.ID); !slices.Equal(got, []string{"1000.00 bank_feed"}) {
+		t.Errorf("payments = %v, want one", got)
 	}
 }

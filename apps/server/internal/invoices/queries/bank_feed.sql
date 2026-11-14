@@ -89,7 +89,9 @@ SELECT * FROM invoices.bank_feed_accounts WHERE account = @account;
 -- (F4): ok, no failures, due now, read from the start day again — the read
 -- cursor and the bank's wait cleared (00179). The caller holds the account's
 -- bank import row FOR UPDATE and has set its format to feed. A lease held by
--- a cycle in flight is left to it.
+-- a cycle in flight is cleared, as a switch off clears it: that cycle loses
+-- its claim at its next write, so it cannot move the cursor the new start
+-- day reset.
 INSERT INTO invoices.bank_feed_accounts (account, enabled, start_day, status, enabled_by_user_id, next_sync_at, updated_at)
 VALUES (@account, true, @start_day, 'ok', @enabled_by_user_id, @now::timestamptz, @now::timestamptz)
 ON CONFLICT (account) DO UPDATE SET
@@ -101,6 +103,8 @@ ON CONFLICT (account) DO UPDATE SET
     failures = 0,
     read_through = NULL,
     rate_limited_until = NULL,
+    lease_id = NULL,
+    lease_until = NULL,
     enabled_by_user_id = EXCLUDED.enabled_by_user_id,
     next_sync_at = EXCLUDED.next_sync_at,
     updated_at = EXCLUDED.updated_at
