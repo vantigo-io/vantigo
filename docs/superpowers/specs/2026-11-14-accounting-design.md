@@ -637,6 +637,20 @@ Fees, compensation and interest are not turnover: they post with code **7**, whi
 return leaves out, not code 6. Compensation credits `charge_income` as the reminder fee
 does. A removed charge payment posts the reversal.
 
+### R14 — After the review of delivery 0 (A3, A12, A13, R5, R9)
+
+- **Charges post as cash received, on one account.** A charge payment is not split into
+  fee, compensation and interest: what a payment paid depends on letters and waivers that
+  can still change after the ledger has read it. Every charge payment credits
+  `charge_income`, code 7, and its removal reverses it. `interest_income` is not a role.
+- **`OpenAt` answers with `AsOfSeq`**, the highest fact its snapshot reflects, and is
+  paged by number. Set-up stores it. A fact at or before it is posted only when its date
+  is on or after `books_start`; a fact after it is always posted, a date before
+  `books_start` booked on `books_start`. That is what keeps a late or backdated payment
+  from being counted both in the opening balance and as a voucher.
+- **The fact log's backfill is in event order**: registrations and removals interleaved
+  by when they happened.
+
 ### R10 — The lock is read under a lock (A8, A22)
 
 - The posting trigger reads `settings` `FOR SHARE`; moving the lock, closing and
