@@ -96,7 +96,7 @@ func TestWriter_ValidAgainstTheXSD(t *testing.T) {
 	w.Start(Header{Created: day, SoftwareCompany: "Vantigo", SoftwareID: "Vantigo", SoftwareVersion: "dev",
 		Company: Company{RegistrationNumber: "999999999", Name: "Firma <&> AS", VATNumber: "999999999MVA",
 			Address: &Address{Street: "Gata 1", City: "Oslo", PostalCode: "0150", Country: "NO", Type: "StreetAddress"}},
-		PeriodStart: 1, PeriodStartYear: 2026, PeriodEnd: 12, PeriodEndYear: 2026})
+		From: day, To: day.AddDate(1, 0, -1)})
 	r := func(s string) *big.Rat { v, _ := new(big.Rat).SetString(s); return v }
 	w.MasterFiles(
 		[]Account{{ID: "1500", Description: "Kundefordringer", GroupingCategory: "balanseverdiForOmloepsmiddel", GroupingCode: "1500", Opening: r("0"), Closing: r("125")},

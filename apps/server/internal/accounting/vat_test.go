@@ -128,7 +128,7 @@ func (b *books) writeOff(t *testing.T, date string, id int64, net, vat string) {
 	code := b.code("3")
 	customer := customerAcme
 	err := db.WithTx(t.Context(), b.h.Pool(), pgx.TxOptions{}, func(tx pgx.Tx) error {
-		_, err := accounting.Post(t.Context(), tx, accounting.Voucher{Kind: "write_off", Date: day, Description: "Write-off",
+		_, err := accounting.Post(t.Context(), tx, accounting.Voucher{Kind: "write_off", Date: day, Description: "Write-off", At: b.h.Now(),
 			Source: &accounting.Source{Module: "invoices", Kind: "write_off", ID: id}, Rule: "sales.write_off_vat", RuleVersion: 1,
 			Lines: []accounting.Line{
 				{AccountID: b.acc("2700"), Amount: mustRat(t, vat), TaxCodeID: &code, TaxRole: "tax", TaxBase: mustRat(t, net), TaxSpecification: "tapPåKrav"},
@@ -584,7 +584,7 @@ func TestVatClose_LateSystemVoucherShowsInTheNextTerm(t *testing.T) {
 	var posted accounting.Posted
 	err := db.WithTx(t.Context(), b.h.Pool(), pgx.TxOptions{}, func(tx pgx.Tx) error {
 		var err error
-		posted, err = accounting.Post(t.Context(), tx, accounting.Voucher{Kind: "sales_invoice", Date: day, Description: "Late invoice",
+		posted, err = accounting.Post(t.Context(), tx, accounting.Voucher{Kind: "sales_invoice", Date: day, Description: "Late invoice", At: b.h.Now(),
 			Source: &accounting.Source{Module: "invoices", Kind: "document", ID: 4242}, Rule: "sales.invoice", RuleVersion: 1,
 			Lines: []accounting.Line{
 				{Role: "receivables", Amount: big.NewRat(125, 1), CustomerID: &customer},
