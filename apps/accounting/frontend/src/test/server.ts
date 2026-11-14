@@ -742,6 +742,18 @@ export const stubAccountingApi = (change: Partial<ApiState> = {}): StubbedFetch 
     if (method === "GET" && path === "/saft-imports") return jsonResponse(200, { items: [] });
     if (method === "POST" && path === "/saft-imports") return jsonResponse(201, saftImport());
     if (method === "GET" && /^\/saft-imports\/\d+$/.test(path)) return jsonResponse(200, saftImport());
+    if (method === "GET" && /^\/saft-imports\/\d+\/customers$/.test(path))
+      return jsonResponse(200, { items: saftImport().customers, total: 1 });
+    if (method === "PUT" && /^\/saft-imports\/\d+\/customers\/\d+\/link$/.test(path))
+      return jsonResponse(200, {
+        ...saftImport().customers[0],
+        match: "linked",
+        customerId: 501,
+        customerName: "Acme AS",
+        customerOrganisationNumber: "914778271",
+      });
+    if (method === "GET" && path === "/api/v1/customers")
+      return jsonResponse(200, { data: [{ id: 501, name: "Acme AS", customerNumber: 10501 }] });
     if (method === "POST" && /^\/saft-imports\/\d+\/apply$/.test(path))
       return jsonResponse(201, saftImport({ state: "applied", appliedAt: STAMP, openingVoucherId: 5030 }));
     if (method === "GET" && path === "/catch-up")
@@ -801,6 +813,7 @@ export const saftExport = (change: Partial<AccountingSaftExport> = {}): Accounti
       toPeriod: 12,
       from: "2026-01-01",
       to: "2026-12-31",
+      removedAt: null,
     },
   ],
   ...change,
@@ -825,6 +838,14 @@ export const saftImport = (change: Partial<AccountingSaftImport> = {}): Accounti
   fiscalYearStartMonth: 1,
   transactions: 120,
   canApply: false,
+  blockersTotal: 1,
+  companyMismatch: false,
+  customersTotal: 1,
+  suppliersTotal: 0,
+  matchedAt: STAMP,
+  midYear: false,
+  needsFiscalYearStartMonth: true,
+  sellerOrganisationNumber: "923609016",
   blockers: ["Customer 15000 Local Retail Inc has a balance of 12500.00 and is unmatched in Customers."],
   notes: ["The file's 120 transactions are not imported as vouchers."],
   accounts: [
@@ -864,6 +885,8 @@ export const saftImport = (change: Partial<AccountingSaftImport> = {}): Accounti
       match: "unmatched",
       customerId: null,
       customerName: null,
+      customerOrganisationNumber: null,
+      position: 1,
     },
   ],
   opening: {

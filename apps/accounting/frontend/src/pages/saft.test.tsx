@@ -31,7 +31,7 @@ describe("SAF-T export", () => {
 });
 
 describe("Coming from another system", () => {
-  it("uploads the file, shows its preview, links the customer and applies it", async () => {
+  it("uploads the file, shows its preview, links the customer picked in Customers and applies it", async () => {
     const fetchMock = stubAccountingApi({ meta: meta({ setUp: false, settings: null }) });
     renderRoute("/accounting/setup");
     await screen.findByText("Coming from another system?");
@@ -42,13 +42,16 @@ describe("Coming from another system", () => {
     expect(await screen.findByText(/Fjord Bygg AS \(923609016\), SAF-T 1\.40/)).toBeInTheDocument();
     expect(screen.getByText("Not in Customers")).toBeInTheDocument();
     expect(screen.getByText(/2060 Åpningsbalanse, motkonto/)).toBeInTheDocument();
-    await userEvent.type(screen.getByLabelText("Customer in Customers for Local Retail Inc"), "501");
+    await userEvent.click((await screen.findAllByLabelText("Customer in Customers for Local Retail Inc"))[0]);
+    await userEvent.click(await screen.findByRole("option", { name: "10501 Acme AS" }));
+    await waitFor(() => expect(sent(fetchMock, "PUT", /\/saft-imports\/8001\/customers\/1\/link$/)).toHaveLength(1));
+    expect(sent(fetchMock, "PUT", /\/saft-imports\/8001\/customers\/1\/link$/)[0].body).toEqual({ customerId: 501 });
     await userEvent.click(screen.getByRole("button", { name: "Set up the books from the file" }));
     await waitFor(() => expect(sent(fetchMock, "POST", /\/saft-imports\/8001\/apply$/)).toHaveLength(1));
     expect(sent(fetchMock, "POST", /\/saft-imports\/8001\/apply$/)[0].body).toEqual({
       vatTerm: "bimonthly",
       language: "en",
-      customerLinks: { "15000": 501 },
+      fiscalYearStartMonth: 1,
     });
   });
 });
