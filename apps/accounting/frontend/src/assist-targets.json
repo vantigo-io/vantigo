@@ -1,0 +1,278 @@
+[
+  {
+    "key": "accounting.overview.new-entry",
+    "route": "/accounting",
+    "label": {
+      "en": "New journal entry",
+      "nb": "Ny postering"
+    },
+    "description": {
+      "en": "The button on the Accounting overview that opens a new journal entry.",
+      "nb": "Knappen på Regnskap-oversikten som åpner en ny postering."
+    }
+  },
+  {
+    "key": "accounting.overview.cards",
+    "route": "/accounting",
+    "label": {
+      "en": "Overview cards",
+      "nb": "Oversiktskortene"
+    },
+    "description": {
+      "en": "The cards on the Accounting overview: the year's vouchers, the open customer items and the lock date.",
+      "nb": "Kortene på Regnskap-oversikten: årets bilag, åpne kundeposter og sperredatoen."
+    }
+  },
+  {
+    "key": "accounting.setup.start",
+    "route": "/accounting",
+    "label": {
+      "en": "Set up the books",
+      "nb": "Sett opp regnskapet"
+    },
+    "description": {
+      "en": "The button that opens Set up the books, shown until the books are set up.",
+      "nb": "Knappen som åpner Sett opp regnskapet, vist til regnskapet er satt opp."
+    }
+  },
+  {
+    "key": "accounting.setup.submit",
+    "route": "/accounting/setup",
+    "label": {
+      "en": "Set up the books",
+      "nb": "Sett opp regnskapet"
+    },
+    "description": {
+      "en": "The button that sets the books up with the chosen start, fiscal year and VAT term.",
+      "nb": "Knappen som setter opp regnskapet med valgt start, regnskapsår og mva-termin."
+    }
+  },
+  {
+    "key": "accounting.accounts.new",
+    "route": "/accounting/accounts",
+    "label": {
+      "en": "New account",
+      "nb": "Ny konto"
+    },
+    "description": {
+      "en": "The button on the chart of accounts that adds an account.",
+      "nb": "Knappen i kontoplanen som legger til en konto."
+    }
+  },
+  {
+    "key": "accounting.accounts.table",
+    "route": "/accounting/accounts",
+    "label": {
+      "en": "Chart of accounts",
+      "nb": "Kontoplanen"
+    },
+    "description": {
+      "en": "The list of accounts with their kind, default tax code, grouping code and system role; a row opens the account.",
+      "nb": "Listen over kontoer med type, standard mva-kode, grupperingskode og systemrolle; en rad åpner kontoen."
+    }
+  },
+  {
+    "key": "accounting.accounts.grouping",
+    "route": "/accounting/accounts",
+    "label": {
+      "en": "Grouping code",
+      "nb": "Grupperingskode"
+    },
+    "description": {
+      "en": "The picker in an account's editor that sets the SAF-T grouping code from Skatteetaten's list.",
+      "nb": "Velgeren i en kontos redigering som setter SAF-T-grupperingskoden fra Skatteetatens liste."
+    }
+  },
+  {
+    "key": "accounting.tax-codes.table",
+    "route": "/accounting/tax-codes",
+    "label": {
+      "en": "Tax codes",
+      "nb": "Mva-kodene"
+    },
+    "description": {
+      "en": "The standard tax codes with direction, rate and VAT account; a row opens the code.",
+      "nb": "Standard mva-kodene med retning, sats og mva-konto; en rad åpner koden."
+    }
+  },
+  {
+    "key": "accounting.journal.entry-mode",
+    "route": "/accounting/journal",
+    "label": {
+      "en": "Net or gross",
+      "nb": "Netto eller brutto"
+    },
+    "description": {
+      "en": "The switch that says whether lines with a tax code are entered net or gross.",
+      "nb": "Bryteren som sier om linjer med mva-kode føres netto eller brutto."
+    }
+  },
+  {
+    "key": "accounting.journal.lines",
+    "route": "/accounting/journal",
+    "label": {
+      "en": "Lines",
+      "nb": "Linjene"
+    },
+    "description": {
+      "en": "The journal entry's lines: account, debit, credit, tax code, party, project and text.",
+      "nb": "Posteringens linjer: konto, debet, kredit, mva-kode, part, prosjekt og tekst."
+    }
+  },
+  {
+    "key": "accounting.journal.preview",
+    "route": "/accounting/journal",
+    "label": {
+      "en": "Postings",
+      "nb": "Posteringene"
+    },
+    "description": {
+      "en": "The live preview of the postings with the VAT lines the server computes.",
+      "nb": "Forhåndsvisningen av posteringene med mva-linjene serveren regner ut."
+    }
+  },
+  {
+    "key": "accounting.journal.post",
+    "route": "/accounting/journal",
+    "label": {
+      "en": "Post",
+      "nb": "Bokfør"
+    },
+    "description": {
+      "en": "The button that posts the journal entry as a voucher.",
+      "nb": "Knappen som bokfører posteringen som et bilag."
+    }
+  },
+  {
+    "key": "accounting.vouchers.filters",
+    "route": "/accounting/vouchers",
+    "label": {
+      "en": "Voucher filters",
+      "nb": "Bilagsfiltrene"
+    },
+    "description": {
+      "en": "The filters on the vouchers list: period, kind and text or number.",
+      "nb": "Filtrene på bilagslisten: periode, type og tekst eller nummer."
+    }
+  },
+  {
+    "key": "accounting.voucher.postings",
+    "route": "/accounting/vouchers/{voucherId}",
+    "label": {
+      "en": "Postings",
+      "nb": "Posteringene"
+    },
+    "description": {
+      "en": "A voucher's postings with account, text, tax code, party, project, debit and credit.",
+      "nb": "Et bilags posteringer med konto, tekst, mva-kode, part, prosjekt, debet og kredit."
+    }
+  },
+  {
+    "key": "accounting.voucher.reverse",
+    "route": "/accounting/vouchers/{voucherId}",
+    "label": {
+      "en": "Reverse",
+      "nb": "Tilbakefør"
+    },
+    "description": {
+      "en": "The button that reverses a voucher a person posted.",
+      "nb": "Knappen som tilbakefører et bilag en person har bokført."
+    }
+  },
+  {
+    "key": "accounting.voucher.copy",
+    "route": "/accounting/vouchers/{voucherId}",
+    "label": {
+      "en": "Copy",
+      "nb": "Kopier"
+    },
+    "description": {
+      "en": "The button that opens a new journal entry with this voucher's lines.",
+      "nb": "Knappen som åpner en ny postering med dette bilagets linjer."
+    }
+  },
+  {
+    "key": "accounting.open-items.table",
+    "route": "/accounting/open-items",
+    "label": {
+      "en": "Open items",
+      "nb": "Åpne poster"
+    },
+    "description": {
+      "en": "The open items per customer or supplier with their balance; Register settles one.",
+      "nb": "De åpne postene per kunde eller leverandør med saldo; Registrer gjør opp en."
+    }
+  },
+  {
+    "key": "accounting.opening.add-invoices",
+    "route": "/accounting/opening",
+    "label": {
+      "en": "Add the open invoices",
+      "nb": "Legg til de åpne fakturaene"
+    },
+    "description": {
+      "en": "The button that adds Invoices' open invoices at the books' start as receivables lines.",
+      "nb": "Knappen som legger til de åpne fakturaene fra Fakturaer ved regnskapets start som kundefordringslinjer."
+    }
+  },
+  {
+    "key": "accounting.opening.post",
+    "route": "/accounting/opening",
+    "label": {
+      "en": "Post the opening balances",
+      "nb": "Bokfør inngående balanse"
+    },
+    "description": {
+      "en": "The button that posts the opening balances as one voucher.",
+      "nb": "Knappen som bokfører inngående balanse som ett bilag."
+    }
+  },
+  {
+    "key": "accounting.reports.picker",
+    "route": "/accounting/reports",
+    "label": {
+      "en": "Report and period",
+      "nb": "Rapport og periode"
+    },
+    "description": {
+      "en": "The report picker with the period, the account, the project and the comparison.",
+      "nb": "Rapportvelgeren med periode, konto, prosjekt og sammenligning."
+    }
+  },
+  {
+    "key": "accounting.reports.table",
+    "route": "/accounting/reports",
+    "label": {
+      "en": "Report",
+      "nb": "Rapporten"
+    },
+    "description": {
+      "en": "The chosen report's table, with when it was produced.",
+      "nb": "Tabellen for valgt rapport, med når den ble laget."
+    }
+  },
+  {
+    "key": "accounting.reports.csv",
+    "route": "/accounting/reports",
+    "label": {
+      "en": "Download CSV",
+      "nb": "Last ned CSV"
+    },
+    "description": {
+      "en": "The button that downloads the report as a CSV file.",
+      "nb": "Knappen som laster ned rapporten som en CSV-fil."
+    }
+  },
+  {
+    "key": "accounting.settings.lock",
+    "route": "/accounting/settings",
+    "label": {
+      "en": "Lock date",
+      "nb": "Sperredato"
+    },
+    "description": {
+      "en": "The lock date, the way to move it and its history.",
+      "nb": "Sperredatoen, hvordan den flyttes, og historikken."
+    }
+  }
+]
