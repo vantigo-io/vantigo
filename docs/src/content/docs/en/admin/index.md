@@ -50,6 +50,12 @@ application.
 - **Manufacturing.** [Manufacturing](/en/admin/manufacturing/) is on when `manufacturing` is
   in `MODULES` beside `products` and `inventory`, which it requires; its five permissions,
   of which **See manufacturing costs** is sensitive and cannot be delegated.
+- **Accounting.** Accounting is on when `accounting` is in `MODULES` beside `invoices`,
+  which it requires. It does nothing until a person with **Manage the books**
+  (`accounting:close`) sets the books up; its four permissions, of which **Manage the
+  books** cannot be delegated and **Export the books** is sensitive. Where the books may be
+  stored and the yearly backup test are under [Installation](/en/admin/installation/#the-books).
+  See [Accounting](/en/user/accounting/).
 - **Knowledge.** Knowledge is on when `knowledge` is in `MODULES` (or `MODULES` is unset); it needs
   no other module. Nobody has access until you give a role **Use Knowledge**
   (`knowledge:articles`); **Administer Knowledge** (`knowledge:manage`) adds the access

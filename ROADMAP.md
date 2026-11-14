@@ -1094,6 +1094,46 @@ What the design deferred, each waiting for what is named:
 - **OEE, maintenance, MPS, BoM change control** wait for phase 3.
 - **WIP valuation** waits for a ledger.
 
+## Accounting
+
+A new module that keeps the company's books — Accounting, in Norwegian **Regnskap**: the
+ledger, sales and purchases that post themselves, VAT, SAF-T and the bank. Researched in
+[`docs/superpowers/research/2026-11-14-accounting-module.md`](docs/superpowers/research/2026-11-14-accounting-module.md),
+decided in [`docs/superpowers/specs/2026-11-14-accounting-design.md`](docs/superpowers/specs/2026-11-14-accounting-design.md)
+and planned in [`docs/superpowers/plans/2026-11-14-accounting-plan.md`](docs/superpowers/plans/2026-11-14-accounting-plan.md),
+landing as one stack of pull requests, one delivery each. Accounting requires Invoices.
+
+### Phase 1 — The ledger, sales, purchases, VAT, SAF-T and bank
+
+- **0 — The seams (done).** Invoices' sales journal (`contracts.SalesJournal`) with its
+  documents, its fact log and the open invoices at a day; the events
+  `invoices.document.issued` and `invoices.payment.removed`; the Brønnøysund client as a
+  platform package.
+- **A — The ledger (built).** The `accounting` module and its four permissions; *Set up
+  the books*, which seeds the chart of about 130 accounts with Skatteetaten's grouping
+  codes, the standard tax codes with the 2026 rates and the system roles; the chart, the
+  tax codes and their rate periods; vouchers and postings kept by the database — balanced,
+  never changed, never before the books' start or inside the lock — through one posting
+  engine; manual journals net or gross with their VAT lines and a live preview, copying a
+  voucher, attachments, reversal; the lock with its history; the opening balances with
+  Invoices' open invoices; open items and their settlements; the journal, account,
+  customer and supplier, trial balance, profit and loss and balance sheet reports with
+  CSV ([Accounting](docs/src/content/docs/en/user/accounting.md), the
+  [reference](docs/src/content/docs/en/reference/accounting.md)).
+- **B — Sales post themselves.** Invoices' documents, payments and charges through the
+  catch-up worker; posting rules; *Needs attention*; write-offs.
+- **C — Purchases.** Suppliers, supplier invoices, the supplier ledger, payments; expenses
+  post.
+- **D — VAT.** The specification, terms, the return as figures and XML, the settlement
+  voucher.
+- **E — SAF-T.** Financial 1.40 export, and import as opening balances.
+- **F — Bank.** camt.053 and CSV statements, reconciliation; the Folio bank feed.
+
+### Later
+
+- **MVA-melding submission and Maskinporten**, year-end, several legal entities, foreign
+  currency ledgers, fixed assets and payroll (the design's §12).
+
 ## Projects
 
 ### Phase 1 — Projects, roles and billing lines (done)
