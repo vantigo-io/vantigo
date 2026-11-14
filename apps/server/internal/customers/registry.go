@@ -13,6 +13,7 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/vantigo-io/vantigo/server/internal/apicommon"
+	"github.com/vantigo-io/vantigo/server/internal/brreg"
 	"github.com/vantigo-io/vantigo/server/internal/customers/gen"
 	"github.com/vantigo-io/vantigo/server/internal/customers/store"
 	"github.com/vantigo-io/vantigo/server/internal/db"
@@ -40,7 +41,7 @@ import (
 // card ask a person instead.
 
 // The four outcomes a refresh answers with (design D2), mirroring
-// brreg_entity.go's brregEntityOutcome one level up as a wire string:
+// brreg_entity.go's brreg.Outcome one level up as a wire string:
 // "found" and "deleted" both store a record, "removed" deletes the one on
 // file, "unknown" stores nothing at all.
 const (
@@ -92,7 +93,7 @@ type registryAddress struct {
 }
 
 // registryRecord is one stored registry record: brreg_entity.go's
-// brregEntityRecord after truncation, plus the moment it was read. It is the
+// brreg.Entity after truncation, plus the moment it was read. It is the
 // one shape this file's storage, diff (registry_diff.go) and response all
 // speak, so a value read back from the database and a value just fetched are
 // compared as equals rather than each against its own representation.
@@ -132,7 +133,7 @@ type registryRecord struct {
 // stored shape — the same five fields, a different package-level type
 // because this one carries the json tags the jsonb column is written with
 // and the wire repeats.
-func registryAddressFrom(a *brregAddress) *registryAddress {
+func registryAddressFrom(a *brreg.Address) *registryAddress {
 	if a == nil {
 		return nil
 	}
@@ -152,7 +153,7 @@ func registryAddressFrom(a *brregAddress) *registryAddress {
 // registryRecordFrom is what the registry just said, ready to store: every
 // text field truncated to its column, the addresses translated, and now as
 // the moment it was read.
-func registryRecordFrom(e brregEntityRecord, now time.Time) registryRecord {
+func registryRecordFrom(e brreg.Entity, now time.Time) registryRecord {
 	return registryRecord{
 		OrganisationNumber:       truncateUTF16(e.OrganisationNumber, registryOrganisationNumberMax),
 		Name:                     truncateUTF16(e.Name, registryNameMax),
@@ -181,7 +182,7 @@ func registryRecordFrom(e brregEntityRecord, now time.Time) registryRecord {
 }
 
 // deletedRegistryRecordFrom is registryRecordFrom for a struck-off entity
-// (brregEntityDeleted): the registry's reduced body carries only the name,
+// (brreg.Deleted): the registry's reduced body carries only the name,
 // the organisation number and the deletion date, so everything else is
 // carried over from the record on file rather than blanked. A company that
 // goes under keeps the industry, headcount and address it had on the day it
@@ -199,7 +200,7 @@ func registryRecordFrom(e brregEntityRecord, now time.Time) registryRecord {
 // the date already on file, because deletedOn is a diffed field and the
 // attention item's occurredAt, and re-stamping it would write a false
 // registry.change every day and re-float a settled deletion on every click.
-func deletedRegistryRecordFrom(before *registryRecord, e brregEntityRecord, now time.Time) registryRecord {
+func deletedRegistryRecordFrom(before *registryRecord, e brreg.Entity, now time.Time) registryRecord {
 	rec := registryRecord{}
 	if before != nil {
 		rec = *before
@@ -481,7 +482,7 @@ func registryErrorKind(err error) string {
 		return "timeout"
 	case errors.Is(err, context.Canceled):
 		return "canceled"
-	case errors.Is(err, errBrregUnavailable):
+	case errors.Is(err, brreg.ErrUnavailable):
 		return "registry_unavailable"
 	default:
 		return registryErrorKindDatabase
@@ -564,7 +565,7 @@ func registryIdentityConflict(detail string) gen.CustomerConflictProblem {
 //
 // A var, not a const, only so a test can shorten it (export_test.go's
 // SetRegistryHookTimeout); nothing at runtime writes it.
-var registryHookTimeout = brregAttemptTimeout
+var registryHookTimeout = brreg.AttemptTimeout
 
 // fetchAndStoreRegistryRecord is the create/legal-identity-PUT hook (design
 // D2): one fetch, stored, with whatever it changed recorded on the timeline,
@@ -679,7 +680,7 @@ func (s *server) refreshRegistryRecord(ctx context.Context, on db.TxBeginner, cu
 	// The registry does not know this organisation number: nothing to store,
 	// nothing to report, and deliberately not an error — the identity is
 	// what needs a person's attention, and the 200 says so.
-	if outcome == brregEntityUnknown {
+	if outcome == brreg.Unknown {
 		return registryRefreshResult{Status: registryStatusUnknown}, nil
 	}
 
@@ -701,9 +702,9 @@ func (s *server) refreshRegistryRecord(ctx context.Context, on db.TxBeginner, cu
 // most one event recorded for what differed. It is its own function so the
 // import can store the record it already fetched for a row inside that row's
 // own transaction (import_registry.go) rather than fetch it a second time;
-// outcome is never brregEntityUnknown here, which stores nothing.
+// outcome is never brreg.Unknown here, which stores nothing.
 func storeRegistryAnswer(ctx context.Context, txq *store.Queries, customerID int32, orgnr, legalName string,
-	entity brregEntityRecord, outcome brregEntityOutcome, now time.Time, act actor) (registryRefreshResult, error) {
+	entity brreg.Entity, outcome brreg.Outcome, now time.Time, act actor) (registryRefreshResult, error) {
 	locked, err := lockWritableCustomer(ctx, txq, customerID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -730,7 +731,7 @@ func storeRegistryAnswer(ctx context.Context, txq *store.Queries, customerID int
 		return registryRefreshResult{}, err
 	}
 
-	if outcome == brregEntityRemoved {
+	if outcome == brreg.Removed {
 		// Removed from open data: the copy goes (Brreg's own terms), and
 		// the only thing kept is the fact that it left, and when. There is
 		// no record to return and no before/after to diff — the one change
@@ -755,7 +756,7 @@ func storeRegistryAnswer(ctx context.Context, txq *store.Queries, customerID int
 
 	after := registryRecordFrom(entity, now)
 	status := registryStatusFound
-	if outcome == brregEntityDeleted {
+	if outcome == brreg.Deleted {
 		after = deletedRegistryRecordFrom(before, entity, now)
 		status = registryStatusDeleted
 	}
@@ -907,7 +908,7 @@ func (s *server) PostCustomersByIdRegistryRefresh(ctx context.Context, req gen.P
 	}
 
 	result, err := s.refreshRegistryRecord(ctx, s.deps.Pool, req.Id, orgnr, identity.Name, act)
-	if errors.Is(err, errBrregUnavailable) {
+	if errors.Is(err, brreg.ErrUnavailable) {
 		s.deps.Logger.WarnContext(ctx, "customers: registry refresh failed", "customerId", req.Id, "errorKind", registryErrorKind(err))
 		return registryRefreshUnavailableResponse(), nil
 	}

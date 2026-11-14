@@ -1,6 +1,6 @@
 ---
 title: Platform packages
-description: The packages under the server's internal/ that every module may use — the secrets box that seals and MACs values under keys derived from APP_SECRET, the mail package's outbound message, its calendar part and its rendering as MIME, its reading of a received message and the sanitising of its HTML, the AI client with its model-per-task seam and its chat, the operations dispatcher the assistant calls the API through, the payments port with its Vipps MobilePay adapter, the public-holiday calendar, the image metadata stripper, the address rule a directory provider makes an account's address by, and live updates — the topics a module serves, notifying on the transaction that writes, the endpoint and its station path, presence and the limits, and the binary frames and document topics that carry a collaboratively edited document.
+description: The packages under the server's internal/ that every module may use — the secrets box that seals and MACs values under keys derived from APP_SECRET, the mail package's outbound message, its calendar part and its rendering as MIME, its reading of a received message and the sanitising of its HTML, the AI client with its model-per-task seam and its chat, the operations dispatcher the assistant calls the API through, the payments port with its Vipps MobilePay adapter, the public-holiday calendar, the Brønnøysund client, the image metadata stripper, the address rule a directory provider makes an account's address by, and live updates — the topics a module serves, notifying on the transaction that writes, the endpoint and its station path, presence and the limits, and the binary frames and document topics that carry a collaboratively edited document.
 sidebar:
   order: 5
 sources:
@@ -10,6 +10,7 @@ sources:
   - apps/server/internal/operations
   - apps/server/internal/payments
   - apps/server/internal/holidays
+  - apps/server/internal/brreg
   - apps/server/internal/imagemeta
   - apps/server/internal/directoryaddress
   - apps/server/internal/events
@@ -21,7 +22,7 @@ A module may import the platform but never another module (see
 [Module boundaries](/en/contributing/module-boundaries/)). This page describes the
 platform packages a module reaches for when it holds something it must not store in
 clear, when it sends a mail of its own, when it asks an AI model for something, when it takes a payment, when it counts days
-around the public holidays, when it stores a picture people will see, when it makes an address for an account in a directory, when it tells other modules what happened to one of its own rows, and when it computes a sales document's amounts.
+around the public holidays, when it looks a company up in Brønnøysund, when it stores a picture people will see, when it makes an address for an account in a directory, when it tells other modules what happened to one of its own rows, and when it computes a sales document's amounts.
 
 ## The secrets box
 
@@ -482,6 +483,37 @@ midnight is read by the holiday functions as its civil date in its own location 
 
 The calendar is **Norway's only**. A region beyond it would be a later column on a
 module's settings, passed in by the caller; nothing in the package reads a setting.
+
+## The Brønnøysund client
+
+[`apps/server/internal/brreg`](https://github.com/vantigo-io/vantigo/tree/main/apps/server/internal/brreg)
+is the client of Brønnøysundregisteret's open Enhetsregisteret API. It was Customers'
+own; it moved here unchanged so the coming Accounting module can look suppliers up too (a
+module may not import another): the same requests, retry policy, caps and errors.
+It knows no module and stores nothing; it answers plain Go types, and the caller maps
+them onto its own. Customers keeps everything that is a customer's — the lookup
+endpoint, the registry records, the refresh and the feed worker
+([Registry record](/en/reference/customers/#registry-record)).
+
+`brreg.New(baseURL, timeout, transport, backoff)` builds it from `BRREG_BASE_URL` and
+`BRREG_TIMEOUT`; `transport` and `backoff` are `Deps.HTTPTransport` and
+`Deps.HTTPBackoff`, nil in production (`http.DefaultTransport` and the jittered
+backoff), a fake and a zero delay in a test.
+
+| Method | Answers |
+|---|---|
+| `Search(ctx, SearchQuery{OrganisationNumber, Name, Size})` | up to `Size` matches, each an organisation number and a name; by organisation number when one is given, else by name. No `_embedded` in the answer is no matches, never an error. |
+| `Entity(ctx, orgnr)` | one entity's record (`Entity`: name, form, industry, headcount, VAT registration, the bankruptcy and liquidation flags with their dates, founding and deletion dates, website, e-mail, phones, parent, business and postal `Address`) and one of four outcomes: `Found`; `Deleted` (a 200 whose body is `SlettetEnhet`: only the name, number and deletion date); `Removed` (a 410, gone from open data); `Unknown` (a 404). It asks for the v2 media type and refuses any other, a body over 1 MiB, and a record about another organisation number. |
+| `Updates(ctx, FeedQuery{UpdateID, Since, Size})` | one page of the update feed, from an inclusive `oppdateringsid` or, without one, from a moment; a page over 4 MiB is refused. |
+
+**Every read retries the same way:** each attempt is bounded by `AttemptTimeout` (4 s)
+and the whole read by the client's timeout; a transport error, a timeout, a 5xx or a
+408 is retried up to three more times after an exponential backoff with full jitter
+from 200 ms; any other non-2xx status ends the read. Redirects are never followed.
+**Every failure wraps `ErrUnavailable`**, so a caller decides one thing; a search whose
+2xx body will not decode wraps `ErrUndecodable` too, and an entity read that spent
+every attempt without an answer wraps `ErrUnreachable`, which Customers' import reads
+to stop asking for the rest of a run. A 404 or a 410 is an answer, never an error.
 
 ## The image metadata stripper
 

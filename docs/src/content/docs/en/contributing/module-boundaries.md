@@ -50,7 +50,9 @@ lag, never what must refuse — go through the platform's domain-events outbox,
    `internal/module`, `internal/contracts`, `internal/peppol` — the Peppol
    SML/SMP lookup, shared by Customers and Invoices — `internal/holidays` — the
    Norwegian public-holiday calendar, by which Invoices moves its due dates, Staff
-   counts working days and Calendar marks the holidays beside a person's items — `internal/netguard`
+   counts working days and Calendar marks the holidays beside a person's items — `internal/brreg`
+   — the Brønnøysund Enhetsregisteret client, Customers' lookups and registry
+   records today, the Accounting module's supplier lookup when it comes — `internal/netguard`
    — the shared table of addresses the guarded outbound clients refuse to
    dial (today `internal/mail`'s SMTP guard, `internal/peppol`'s SMP
    client, the calendar's fetch of the calendars a person subscribes to and the
