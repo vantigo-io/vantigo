@@ -37,14 +37,6 @@ func (s *server) ListAccountingGroupingCodes(context.Context, gen.ListAccounting
 	return nil, module.ErrNotImplemented
 }
 
-func (s *server) GetAccountingLock(context.Context, gen.GetAccountingLockRequestObject) (gen.GetAccountingLockResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (s *server) PutAccountingLock(context.Context, gen.PutAccountingLockRequestObject) (gen.PutAccountingLockResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
 func (s *server) ListAccountingOpenItems(context.Context, gen.ListAccountingOpenItemsRequestObject) (gen.ListAccountingOpenItemsResponseObject, error) {
 	return nil, module.ErrNotImplemented
 }
@@ -82,25 +74,5 @@ func (s *server) UpdateAccountingTaxCode(context.Context, gen.UpdateAccountingTa
 }
 
 func (s *server) AddAccountingTaxCodeRate(context.Context, gen.AddAccountingTaxCodeRateRequestObject) (gen.AddAccountingTaxCodeRateResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (s *server) ListAccountingVouchers(context.Context, gen.ListAccountingVouchersRequestObject) (gen.ListAccountingVouchersResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (s *server) PostAccountingVoucher(context.Context, gen.PostAccountingVoucherRequestObject) (gen.PostAccountingVoucherResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (s *server) PreviewAccountingVoucher(context.Context, gen.PreviewAccountingVoucherRequestObject) (gen.PreviewAccountingVoucherResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (s *server) GetAccountingVoucher(context.Context, gen.GetAccountingVoucherRequestObject) (gen.GetAccountingVoucherResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (s *server) ReverseAccountingVoucher(context.Context, gen.ReverseAccountingVoucherRequestObject) (gen.ReverseAccountingVoucherResponseObject, error) {
 	return nil, module.ErrNotImplemented
 }
