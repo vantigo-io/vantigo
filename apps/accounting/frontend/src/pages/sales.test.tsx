@@ -21,13 +21,15 @@ describe("the posting rules", () => {
     expect(within(table).getByText("Tax code (default)")).toBeInTheDocument();
     expect(within(table).getByText("Hours")).toBeInTheDocument();
     // A default rule is never deleted; another rule is.
-    expect(within(table).getAllByRole("button", { name: /^Delete the rule/ })).toHaveLength(1);
+    expect(within(table).getAllByRole("button", { name: /^Archive the rule/ })).toHaveLength(1);
 
     await userEvent.click(screen.getByRole("button", { name: "Add a rule" }));
     const dialog = await screen.findByRole("dialog");
     await userEvent.type(within(dialog).getByRole("textbox", { name: /^Name/ }), "Milestones");
     await userEvent.click(within(dialog).getByRole("combobox", { name: /^Account/ }));
-    await userEvent.click(await screen.findByRole("option", { name: "6300 Leie av lokaler" }));
+    // A sales rule credits income (R15): the picker offers no other account.
+    expect(screen.queryByRole("option", { name: "6300 Leie av lokaler" })).not.toBeInTheDocument();
+    await userEvent.click(await screen.findByRole("option", { name: "3000 Salgsinntekt, avgiftspliktig" }));
     await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
     await waitFor(() => expect(sent(fetchMock, "POST", /\/posting-rules$/)).toHaveLength(1));
     expect(sent(fetchMock, "POST", /\/posting-rules$/)[0].body).toEqual({
@@ -35,7 +37,7 @@ describe("the posting rules", () => {
       scope: "sales",
       match: "line_kind",
       lineKind: "hours",
-      accountId: 1003,
+      accountId: 1005,
     });
   });
 
@@ -54,7 +56,7 @@ describe("the posting rules", () => {
     renderRoute("/accounting/posting-rules");
     await screen.findByTestId("posting-rules");
     expect(screen.queryByRole("button", { name: "Add a rule" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /^Delete the rule/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Archive the rule/ })).not.toBeInTheDocument();
   });
 });
 
@@ -145,5 +147,27 @@ describe("a voucher and its invoice", () => {
       "href",
       "/accounting/vouchers/5001",
     );
+    expect(within(vouchers).queryByRole("button", { name: /more/ })).not.toBeInTheDocument();
+  });
+
+  it("says how many more vouchers an invoice has past the first page, and reads them", async () => {
+    const many = Array.from({ length: 23 }, (_, i) =>
+      voucher({ id: 5001 + i, number: 7 + i, display: `2026-${String(7 + i).padStart(6, "0")}`, system: true }),
+    );
+    stubAccountingApi({ vouchers: many });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <MantineProvider env="test">
+        <QueryClientProvider client={client}>
+          <InvoiceVouchers documentId={9001} />
+        </QueryClientProvider>
+      </MantineProvider>,
+    );
+    const vouchers = await screen.findByTestId("invoice-vouchers");
+    expect(within(vouchers).getAllByRole("link")).toHaveLength(20);
+    await userEvent.click(within(vouchers).getByRole("button", { name: "3 more" }));
+    expect(await within(vouchers).findByRole("link", { name: "2026-000029" })).toBeInTheDocument();
+    expect(within(vouchers).getAllByRole("link")).toHaveLength(23);
+    expect(within(vouchers).queryByRole("button", { name: /more/ })).not.toBeInTheDocument();
   });
 });
