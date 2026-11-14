@@ -238,8 +238,11 @@ func (s *server) releaseAllocations(ctx context.Context, ids []int64) error {
 // on the pool, before any lock: the From orders wizard keeps it on the held
 // row, and the issue snapshots it onto the line. Empty when no allocation
 // names a variant or Products is switched off; a variant gone from the
-// catalog is absent, as the catalog answers it.
-func (s *server) variantTaxCategories(ctx context.Context, allocations []contracts.OrderAllocation) (map[int32]int32, error) {
+// catalog is absent, as the catalog answers it. A catalog that fails is
+// logged and answered as empty: the tax category is a ledger's hint, and a
+// draft is not refused for it — its lines are issued without one, as a line
+// with no product is.
+func (s *server) variantTaxCategories(ctx context.Context, allocations []contracts.OrderAllocation) map[int32]int32 {
 	out := map[int32]int32{}
 	var ids []int32
 	for _, a := range allocations {
@@ -248,20 +251,22 @@ func (s *server) variantTaxCategories(ctx context.Context, allocations []contrac
 		}
 	}
 	if len(ids) == 0 || s.deps.Products == nil {
-		return out, nil
+		return out
 	}
 	slices.Sort(ids)
 	noteContractCall(ctx, "Products.Variants")
 	variants, err := s.deps.Products.Variants(ctx, ids)
 	if err != nil {
-		return nil, fmt.Errorf("invoices: read the order lines' products: %w", err)
+		s.deps.Logger.WarnContext(ctx, "invoices: the order lines' tax categories are unread; the draft goes on without them",
+			"variants", len(ids), "error", err.Error())
+		return out
 	}
 	for _, v := range variants {
 		if v.TaxCategoryID != 0 {
 			out[v.ID] = v.TaxCategoryID
 		}
 	}
-	return out, nil
+	return out
 }
 
 func (s *server) billableExpenses(ctx context.Context, req contracts.BillableRequest) (contracts.BillableExpensesPage, error) {

@@ -3,11 +3,14 @@ package invoices_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
@@ -99,14 +102,83 @@ func TestSalesJournal_DocumentsByNumberWithLinesAndSummaries(t *testing.T) {
 			t.Errorf("the event carries %q, which is not in the contract", k)
 		}
 	}
-	if n := h.Count(t, `SELECT count(*) FROM platform.events WHERE name = 'invoices.document.issued' AND aggregate = 'invoices.document' AND aggregate_id = $1`, strconv.FormatInt(first.ID, 10)); n != 1 {
-		t.Errorf("the first invoice's event is not under its aggregate")
-	}
-	// A refused issue publishes nothing.
+	// A refused issue publishes nothing: a draft with no lines, and a
+	// document issued already.
 	empty := createDraft(t, h, draftBody(customerAcme))
 	refusedWith(t, h, empty.ID, "", "no_lines")
+	refusedWith(t, h, first.ID, "", "invoice_issued")
 	if n := len(eventPayloads(t, h, "invoices.document.issued")); n != 3 {
-		t.Errorf("%d issued events after a refused issue, want still three", n)
+		t.Errorf("%d issued events after the refused issues, want still three", n)
+	}
+	// Exactly one event for each document, under its own aggregate.
+	for _, id := range []int64{first.ID, second.ID, credit.ID} {
+		if n := h.Count(t, `SELECT count(*) FROM platform.events WHERE name = 'invoices.document.issued' AND aggregate = 'invoices.document' AND aggregate_id = $1`, strconv.FormatInt(id, 10)); n != 1 {
+			t.Errorf("document %d has %d issued events, want one", id, n)
+		}
+	}
+}
+
+// Drafts issued at once while a reader pages by number the way a ledger's
+// catch-up does: every number it reads is the one after the last it read —
+// a number never becomes visible behind one already read — and it ends
+// having read every document.
+func TestSalesJournal_DocumentsNeverSkipUnderConcurrentIssues(t *testing.T) {
+	t.Parallel()
+	h := readyToIssue(t)
+	ctx := context.Background()
+	const n = 12
+	drafts := make([]int64, n)
+	for i := range drafts {
+		drafts[i] = createDraft(t, h, draftBody(customerAcme, line("Konsulenttime", 1, 100, vat25))).ID
+	}
+	statuses := make([]int, n)
+	var wg sync.WaitGroup
+	for i, id := range drafts {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			statuses[i] = issueWith(t, h, id, "").Status
+		}()
+	}
+	done := make(chan struct{})
+	go func() { wg.Wait(); close(done) }()
+
+	j := salesJournal(h)
+	var last int64
+	seen := map[int64]bool{}
+	read := func() {
+		for {
+			page, err := j.Documents(ctx, last, 3)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, d := range page {
+				if last != 0 && d.Number != last+1 {
+					t.Fatalf("read number %d after %d: the reader would have passed %d", d.Number, last, last+1)
+				}
+				last, seen[d.ID] = d.Number, true
+			}
+			if len(page) < 3 {
+				return
+			}
+		}
+	}
+	for reading := true; reading; {
+		select {
+		case <-done:
+			reading = false
+		default:
+		}
+		read()
+	}
+	read()
+	for i, st := range statuses {
+		if st != http.StatusOK {
+			t.Errorf("issue of draft %d = %d, want 200", drafts[i], st)
+		}
+		if !seen[drafts[i]] {
+			t.Errorf("draft %d was issued and the reader never read it", drafts[i])
+		}
 	}
 }
 
@@ -141,7 +213,7 @@ func TestSalesJournal_FactsAndThePaymentRemovedEvent(t *testing.T) {
 	}
 	for i, f := range facts {
 		if f.Seq != int64(i+1) || f.InvoiceID != inv.ID || f.InvoiceNumber != *inv.Number || f.CustomerID != customerAcme ||
-			f.Source != contracts.PaymentSourceManual || f.BankAccount != "" || f.Charges != nil {
+			f.Source != contracts.PaymentSourceManual || f.BankAccount != "" {
 			t.Errorf("fact %d = %+v, want seq %d of the invoice, manual, no account", i, f, i+1)
 		}
 	}
@@ -199,43 +271,41 @@ func TestSalesJournal_FactsAndThePaymentRemovedEvent(t *testing.T) {
 	}
 }
 
-func TestSalesJournal_ChargePaymentsAreSplitByWhatTheyPaid(t *testing.T) {
+// A charge payment's facts carry its amount, its day and its source, and
+// nothing of the charges it paid; and no event wakes a reader for one.
+func TestSalesJournal_ChargePaymentFactsCarryTheirAmountAlone(t *testing.T) {
 	t.Parallel()
 	h := readyToIssue(t)
 	ctx := context.Background()
 	id := plantOverdue(t, h, overdueSpec{number: 9001, customer: customerAcme, issue: "2026-07-01", due: "2026-08-01", deliveredOnIssueOn: true})
 	plantLetterSent(t, h, id, 1, "reminder", "2026-08-15", "35.00", "12.00")
-	// 40 pays the fee (35) and 5 of the interest; then 10 pays the other 7 of
-	// it and 3 beyond every charge.
 	first := plantID(t, h, `INSERT INTO invoices.charge_payments (invoice_id, paid_on, amount, currency, source, registered_by_user_id, registered_at)
 		VALUES ($1, '2026-09-01', 40, 'NOK', 'manual', gen_random_uuid(), now()) RETURNING id`, id)
-	plantID(t, h, `INSERT INTO invoices.charge_payments (invoice_id, paid_on, amount, currency, source, registered_by_user_id, registered_at)
+	second := plantID(t, h, `INSERT INTO invoices.charge_payments (invoice_id, paid_on, amount, currency, source, registered_by_user_id, registered_at)
 		VALUES ($1, '2026-09-02', 10, 'NOK', 'manual', gen_random_uuid(), now()) RETURNING id`, id)
-	h.Exec(t, `UPDATE invoices.charge_payments SET removed_at = now(), removed_by_user_id = gen_random_uuid(), removal_reason = 'Feil' WHERE id = $1`, first)
+	h.Exec(t, `UPDATE invoices.charge_payments SET removed_at = '2026-09-03T10:00:00Z', removed_by_user_id = gen_random_uuid(), removal_reason = 'Feil'
+		WHERE id = $1`, first)
 
 	facts, err := salesJournal(h).Facts(ctx, 0, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(facts) != 3 || facts[0].Kind != contracts.FactChargePayment || facts[1].Kind != contracts.FactChargePayment ||
-		facts[2].Kind != contracts.FactChargePaymentRemoved || facts[2].SubjectID != first {
+	want := []contracts.JournalFact{
+		{Seq: 1, Kind: contracts.FactChargePayment, SubjectID: first, Date: time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC), AmountNOK: "40.00"},
+		{Seq: 2, Kind: contracts.FactChargePayment, SubjectID: second, Date: time.Date(2026, 9, 2, 0, 0, 0, 0, time.UTC), AmountNOK: "10.00"},
+		{Seq: 3, Kind: contracts.FactChargePaymentRemoved, SubjectID: first, Date: time.Date(2026, 9, 3, 0, 0, 0, 0, time.UTC), AmountNOK: "40.00"},
+	}
+	if len(facts) != len(want) {
 		t.Fatalf("facts = %+v, want two charge payments and the first's removal", facts)
 	}
-	parts := func(f contracts.JournalFact) map[string]string {
-		out := map[string]string{}
-		for _, p := range f.Charges {
-			out[p.Kind] = p.AmountNOK
+	for i, w := range want {
+		w.InvoiceID, w.InvoiceNumber, w.CustomerID, w.Source = id, 9001, customerAcme, contracts.PaymentSourceManual
+		if facts[i] != w {
+			t.Errorf("fact %d = %+v, want %+v", i+1, facts[i], w)
 		}
-		return out
 	}
-	if got := parts(facts[0]); len(got) != 2 || got[contracts.ChargeReminderFee] != "35.00" || got[contracts.ChargeInterest] != "5.00" {
-		t.Errorf("first = %v, want the fee and 5 of the interest", got)
-	}
-	if got := parts(facts[1]); len(got) != 2 || got[contracts.ChargeInterest] != "7.00" || got[contracts.ChargeRefundDue] != "3.00" {
-		t.Errorf("second = %v, want the rest of the interest and 3 beyond", got)
-	}
-	if got := parts(facts[2]); len(got) != 2 || got[contracts.ChargeReminderFee] != "35.00" || got[contracts.ChargeInterest] != "5.00" {
-		t.Errorf("removal = %v, want what its registration paid", got)
+	if n := h.Count(t, `SELECT count(*) FROM platform.events WHERE name LIKE 'invoices.payment.%'`); n != 0 {
+		t.Errorf("%d payment events for charge payments, want none", n)
 	}
 }
 
@@ -262,13 +332,14 @@ func TestSalesJournal_OpenAt(t *testing.T) {
 	registered(t, h, paid.ID, pay(1000, "2026-09-12"))
 
 	j := salesJournal(h)
-	if before, err := j.OpenAt(ctx, time.Date(2026, 9, 11, 0, 0, 0, 0, time.UTC)); err != nil || len(before) != 0 {
+	if before, err := j.OpenAt(ctx, time.Date(2026, 9, 11, 0, 0, 0, 0, time.UTC), 0, 10); err != nil || len(before.Documents) != 0 {
 		t.Errorf("the day before = %+v, %v; want none issued yet", before, err)
 	}
-	open, err := j.OpenAt(ctx, time.Date(2026, 9, 12, 0, 0, 0, 0, time.UTC))
+	page, err := j.OpenAt(ctx, time.Date(2026, 9, 12, 0, 0, 0, 0, time.UTC), 0, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
+	open := page.Documents
 	got := map[int64]string{}
 	for _, o := range open {
 		got[o.ID] = o.OpenNOK
@@ -282,6 +353,37 @@ func TestSalesJournal_OpenAt(t *testing.T) {
 	}
 	if len(open) == 2 && open[0].Number > open[1].Number {
 		t.Errorf("open = %+v, want number order", open)
+	}
+	// Four payments and two removals: the snapshot's last seq is 6.
+	if page.AsOfSeq != 6 {
+		t.Errorf("AsOfSeq = %d, want 6, the last fact's", page.AsOfSeq)
+	}
+
+	// Paged by number: one at a time, the second after the first.
+	one, err := j.OpenAt(ctx, time.Date(2026, 9, 12, 0, 0, 0, 0, time.UTC), 0, 1)
+	if err != nil || len(one.Documents) != 1 || one.Documents[0].ID != partly.ID {
+		t.Fatalf("the first page of one = %+v, %v; want the partly paid one", one, err)
+	}
+	two, err := j.OpenAt(ctx, time.Date(2026, 9, 12, 0, 0, 0, 0, time.UTC), one.Documents[0].Number, 1)
+	if err != nil || len(two.Documents) != 1 || two.Documents[0].ID != removed.ID {
+		t.Fatalf("the second page of one = %+v, %v; want the one whose payment was removed", two, err)
+	}
+	if rest, err := j.OpenAt(ctx, time.Date(2026, 9, 12, 0, 0, 0, 0, time.UTC), two.Documents[0].Number, 0); err != nil || len(rest.Documents) != 0 {
+		t.Errorf("after the last, a limit of 0 = %+v, %v; want none", rest, err)
+	}
+}
+
+// With no fact at all, AsOfSeq is 0.
+func TestSalesJournal_OpenAtWithNoFactsIsAsOfZero(t *testing.T) {
+	t.Parallel()
+	h := readyToIssue(t)
+	inv := thousand(t, h)
+	page, err := salesJournal(h).OpenAt(context.Background(), time.Date(2026, 9, 12, 0, 0, 0, 0, time.UTC), 0, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.AsOfSeq != 0 || len(page.Documents) != 1 || page.Documents[0].ID != inv.ID || page.Documents[0].OpenNOK != "1000.00" {
+		t.Errorf("page = %+v, want the invoice open in full, as of seq 0", page)
 	}
 }
 
@@ -379,6 +481,24 @@ func TestSalesJournal_LineSnapshotsForEachSource(t *testing.T) {
 		}
 	}
 
+	// A source of a kind SnapshotLine does not know fails the snapshot, and so
+	// the issue, rather than call the line mixed. No kind but the four can be
+	// a source today, so the shape's CHECK is dropped to plant one.
+	h.Exec(t, `ALTER TABLE invoices.line_sources DROP CONSTRAINT ck_line_sources_point`)
+	unknown := lineAt(11, "1", nil)
+	h.Exec(t, `INSERT INTO invoices.line_sources (line_id, invoice_id, source_kind, source_id, source_revision, source_subkind,
+		quantity, amount, currency, source_date) VALUES ($1, $2, 'stock.move', 10, 1, 'out', 1, 100, 'NOK', '2026-08-31')`, unknown, draft)
+	var unknownRate pgtype.Numeric
+	if err := unknownRate.Scan("25"); err != nil {
+		t.Fatal(err)
+	}
+	err := q.SnapshotLine(ctx, store.SnapshotLineParams{ID: unknown, VatRatePercent: unknownRate, VatCategory: str("S"), SafTCode: str("3")})
+	if pgErr := (*pgconn.PgError)(nil); !errors.As(err, &pgErr) || pgErr.ConstraintName != "ck_lines_line_kind" {
+		t.Errorf("the snapshot of a line of an unknown kind of source = %v, want ck_lines_line_kind's refusal", err)
+	}
+	h.Exec(t, `DELETE FROM invoices.line_sources WHERE line_id = $1`, unknown)
+	h.Exec(t, `DELETE FROM invoices.lines WHERE id = $1`, unknown)
+
 	// A credit note's line takes its original's: issue the draft by hand,
 	// then snapshot a credit-note line naming the order line.
 	h.Exec(t, `UPDATE invoices.invoices SET status = 'issued', number = 77, issue_date = '2026-09-12', due_date = '2026-10-12',
@@ -398,7 +518,7 @@ func TestSalesJournal_LineSnapshotsForEachSource(t *testing.T) {
 		t.Errorf("the credit note's line = %+v, want its original's", got)
 	}
 	// And an issued line is never written again.
-	err := q.SnapshotLine(ctx, store.SnapshotLineParams{ID: manual, VatRatePercent: rate, VatCategory: str("S"), SafTCode: str("3")})
+	err = q.SnapshotLine(ctx, store.SnapshotLineParams{ID: manual, VatRatePercent: rate, VatCategory: str("S"), SafTCode: str("3")})
 	if err == nil {
 		t.Error("a snapshot of an issued line went through")
 	}
@@ -412,12 +532,17 @@ func deref32(p *int32) any {
 }
 
 // fakeCatalog answers each variant's tax category, as Products would.
+// With err set, it fails every read.
 type fakeCatalog struct {
 	contracts.ProductCatalog
 	categories map[int32]int32
+	err        error
 }
 
 func (f fakeCatalog) Variants(_ context.Context, ids []int32) ([]contracts.VariantEntry, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
 	var out []contracts.VariantEntry
 	for _, id := range ids {
 		if c, ok := f.categories[id]; ok {
@@ -459,5 +584,24 @@ func TestSalesJournal_AnOrderLineRemembersItsProductsTaxCategory(t *testing.T) {
 	}
 	if withProduct != 1 || freeText != 1 {
 		t.Errorf("lines = %+v, want one order line with the product's category and one without", docs[0].Lines)
+	}
+}
+
+// A catalog that cannot be read costs the lines their tax category, not the
+// draft: the From orders wizard makes it, without one, and logs why.
+func TestSalesJournal_AnUnreadableCatalogLeavesTheDraftWithoutCategories(t *testing.T) {
+	t.Parallel()
+	f := newOrdersFixture(t, modtest.WithProducts(fakeCatalog{err: errors.New("products: down")}))
+	f.orders.put(acmeOrder(order2210, 2210, "PO-1", "2026-09-01"),
+		orderLine{id: 1, description: "Hylle", unit: "stk", quantity: "2", price: "1000.00000000", discount: "0.00", vatCode: vat25})
+	f.orders.mu.Lock()
+	f.orders.variants[1] = 501
+	f.orders.mu.Unlock()
+	drafts := fromOrders(t, f.h, false, pick(order2210, 1, 2))
+	if len(drafts) != 1 {
+		t.Fatalf("drafts = %+v, want one", drafts)
+	}
+	if got := f.h.Count(t, `SELECT count(*) FROM invoices.line_sources WHERE invoice_id = $1 AND tax_category_id IS NULL`, drafts[0].InvoiceID); got != 1 {
+		t.Errorf("%d held rows without a category, want the line's one", got)
 	}
 }

@@ -13,9 +13,10 @@ import (
 //
 // It is the source a ledger posts from; Invoices' events
 // (invoices.document.issued, invoices.payment.received and
-// invoices.payment.removed) only make a reader prompt. A reader keeps its own
-// cursors — the last number, the last seq — and asks after them again until a
-// page comes back short. Both cursors never skip:
+// invoices.payment.removed) only make a reader prompt, and a charge payment
+// has none: its facts are found by the reader's next pass. A reader keeps its
+// own cursors — the last number, the last seq — and asks after them again
+// until a page comes back short. Both cursors never skip:
 //
 //   - A document's number comes from Invoices' documents counter, whose row
 //     every issue holds locked from the number's allocation to its commit, so
@@ -25,11 +26,14 @@ import (
 //     row held for that instant: seqs become visible in order too. Facts
 //     exist for every payment and charge payment registered or removed since
 //     Invoices' migration 00178, and for every one before it, numbered then
-//     in registration order and then removal order.
+//     in the order they happened: a registration at its registration's
+//     moment, a removal at its removal's, a registration first at the same
+//     moment.
 //
 // Every method runs on the pool, holds no lock and is called with no
-// transaction of the caller's open (module-boundaries rule 8's discipline).
-// It performs no authorization. Every amount is exact decimal text with two
+// transaction of the caller's open (module-boundaries rule 8's discipline);
+// OpenAt opens a read-only one of its own, for its snapshot. It performs no
+// authorization. Every amount is exact decimal text with two
 // decimals, as every money figure crosses a contract. Invoices issues NOK
 // only in this phase; an amount named NOK is the document's own figure at its
 // own exchange rate, which is 1 for NOK. Credit notes, and every line and
@@ -42,13 +46,21 @@ type SalesJournal interface {
 	// Facts is up to limit facts with a seq after afterSeq, in seq order (0
 	// reads from the first).
 	Facts(ctx context.Context, afterSeq int64, limit int) ([]JournalFact, error)
-	// OpenAt is every invoice issued on or before day whose open amount at
-	// the end of that day is not zero, in number order: its gross, less the
-	// credit notes issued on or before day, less the payments paid on or
-	// before day and not removed by then (a payment removed on a later
+	// OpenAt is up to limit invoices numbered after afterNumber (0 reads
+	// from the first), in number order, that were issued on or before day
+	// and whose open amount at the end of that day is not zero: its gross,
+	// less the credit notes issued on or before day, less the payments paid
+	// on or before day and not removed by then (a payment removed on a later
 	// business day still counts). Charges are never in it. Below zero is
 	// credit the customer has to come back.
-	OpenAt(ctx context.Context, day time.Time) ([]OpenDocument, error)
+	//
+	// The page is read in one snapshot, and AsOfSeq says which: the highest
+	// seq of a fact committed in it (0 when there is none). For every
+	// invoice numbered within the page — after afterNumber, and up to its
+	// last document's number, or without end on a page that comes back
+	// short — a fact with a seq up to AsOfSeq is in the open amount as the
+	// day rule above says, and a fact after it is not, whatever its day.
+	OpenAt(ctx context.Context, day time.Time, afterNumber int64, limit int) (OpenPage, error)
 }
 
 // MaxJournalPage is the most a SalesJournal page answers; a larger limit is
@@ -157,7 +169,9 @@ type JournalFact struct {
 	InvoiceID     int64
 	InvoiceNumber int64
 	CustomerID    int32
-	// AmountNOK is the payment's amount in NOK, positive on a removal too.
+	// AmountNOK is the payment's amount in NOK, positive on a removal too. A
+	// charge payment's is all it carries of what it paid: it is not split
+	// by the charges it covered.
 	AmountNOK string
 	// Source is one of the PaymentSource constants (a charge payment is never
 	// vipps).
@@ -165,28 +179,15 @@ type JournalFact struct {
 	// BankAccount is the account number of the receiving account the bank
 	// file named, when the payment came from a bank line; "" otherwise.
 	BankAccount string
-	// Charges is, for a charge payment and its removal, what it paid: the
-	// charges oldest letter first, then interest, then what was paid beyond
-	// every charge. A removal answers the same parts as its registration.
-	// nil for a payment of the principal.
-	Charges []ChargePart
 }
 
-// The kinds of ChargePart.Kind: a reminder letter's fee or compensation, as
-// the letter claimed it, the interest, and what was paid beyond every charge
-// (refund due).
-const (
-	ChargeReminderFee  = "reminder_fee"
-	ChargeCompensation = "compensation"
-	ChargeInterest     = "interest"
-	ChargeRefundDue    = "refund_due"
-)
-
-// ChargePart is the part of a charge payment that paid one kind of charge.
-// The parts of a fact sum to its AmountNOK.
-type ChargePart struct {
-	Kind      string
-	AmountNOK string
+// OpenPage is one page of OpenAt: the invoices open at its day, and the
+// snapshot they were read in.
+type OpenPage struct {
+	// AsOfSeq is the highest seq of a fact the page's snapshot saw, 0 when
+	// it saw none.
+	AsOfSeq   int64
+	Documents []OpenDocument
 }
 
 // OpenDocument is one invoice open at OpenAt's day.

@@ -12,56 +12,6 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const journalChargeFactsOf = `-- name: JournalChargeFactsOf :many
-SELECT f.seq, f.kind, f.subject_id, f.invoice_id, c.amount, c.paid_on, c.registered_at
-FROM invoices.journal_facts f
-JOIN invoices.charge_payments c ON c.id = f.subject_id
-WHERE f.invoice_id = ANY($1::bigint[])
-  AND f.kind IN ('charge_payment', 'charge_payment_removed')
-ORDER BY f.seq
-`
-
-type JournalChargeFactsOfRow struct {
-	Seq          int64
-	Kind         string
-	SubjectID    int64
-	InvoiceID    int64
-	Amount       pgtype.Numeric
-	PaidOn       pgtype.Date
-	RegisteredAt time.Time
-}
-
-// JournalChargeFactsOf is every charge-payment fact of the invoices named,
-// in seq order, with the charge payment's amount and the moment it was
-// registered: what a charge payment's split is computed from.
-func (q *Queries) JournalChargeFactsOf(ctx context.Context, invoiceIds []int64) ([]JournalChargeFactsOfRow, error) {
-	rows, err := q.db.Query(ctx, journalChargeFactsOf, invoiceIds)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []JournalChargeFactsOfRow
-	for rows.Next() {
-		var i JournalChargeFactsOfRow
-		if err := rows.Scan(
-			&i.Seq,
-			&i.Kind,
-			&i.SubjectID,
-			&i.InvoiceID,
-			&i.Amount,
-			&i.PaidOn,
-			&i.RegisteredAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const journalDocuments = `-- name: JournalDocuments :many
 
 SELECT i.id, i.number::bigint AS number, i.kind, i.issue_date, i.due_date, i.customer_id, i.currency, i.exchange_rate,
@@ -209,79 +159,17 @@ func (q *Queries) JournalFacts(ctx context.Context, arg JournalFactsParams) ([]J
 	return items, nil
 }
 
-const journalLettersOf = `-- name: JournalLettersOf :many
-SELECT id, invoice_id, run_id, print_batch_id, sequence, level, announces_collection, channel, recipient, language, created_at, created_by_user_id, sent_on, deadline, regime, principal_open, credited, fee_kind, fee, compensation, charges_earlier, interest, interest_waived, interest_paid, interest_from, interest_segments, inkassosats, total, charge_notes, pdf_object_key, pdf_sha256, message_id, sent_at, status, held_reason, attempts, next_attempt_at, first_attempt_at, lease_id, lease_until, last_error, failed_at, withdrawn_at, withdrawn_by_user_id, withdrawal_reason, pay_link_id FROM invoices.reminders
-WHERE invoice_id = ANY($1::bigint[]) AND status = 'sent'
-ORDER BY invoice_id, sequence, id
+const journalLastSeq = `-- name: JournalLastSeq :one
+SELECT COALESCE(max(seq), 0)::bigint AS last_seq FROM invoices.journal_facts
 `
 
-// JournalLettersOf is the sent letters of the invoices named, as
-// SentLettersOf reads one invoice's.
-func (q *Queries) JournalLettersOf(ctx context.Context, invoiceIds []int64) ([]InvoicesReminder, error) {
-	rows, err := q.db.Query(ctx, journalLettersOf, invoiceIds)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []InvoicesReminder
-	for rows.Next() {
-		var i InvoicesReminder
-		if err := rows.Scan(
-			&i.ID,
-			&i.InvoiceID,
-			&i.RunID,
-			&i.PrintBatchID,
-			&i.Sequence,
-			&i.Level,
-			&i.AnnouncesCollection,
-			&i.Channel,
-			&i.Recipient,
-			&i.Language,
-			&i.CreatedAt,
-			&i.CreatedByUserID,
-			&i.SentOn,
-			&i.Deadline,
-			&i.Regime,
-			&i.PrincipalOpen,
-			&i.Credited,
-			&i.FeeKind,
-			&i.Fee,
-			&i.Compensation,
-			&i.ChargesEarlier,
-			&i.Interest,
-			&i.InterestWaived,
-			&i.InterestPaid,
-			&i.InterestFrom,
-			&i.InterestSegments,
-			&i.Inkassosats,
-			&i.Total,
-			&i.ChargeNotes,
-			&i.PdfObjectKey,
-			&i.PdfSha256,
-			&i.MessageID,
-			&i.SentAt,
-			&i.Status,
-			&i.HeldReason,
-			&i.Attempts,
-			&i.NextAttemptAt,
-			&i.FirstAttemptAt,
-			&i.LeaseID,
-			&i.LeaseUntil,
-			&i.LastError,
-			&i.FailedAt,
-			&i.WithdrawnAt,
-			&i.WithdrawnByUserID,
-			&i.WithdrawalReason,
-			&i.PayLinkID,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+// JournalLastSeq is the highest seq of a fact this snapshot sees, 0 when it
+// sees none: OpenAt's AsOfSeq, read in its page's snapshot.
+func (q *Queries) JournalLastSeq(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, journalLastSeq)
+	var last_seq int64
+	err := row.Scan(&last_seq)
+	return last_seq, err
 }
 
 const journalLines = `-- name: JournalLines :many
@@ -352,13 +240,17 @@ CROSS JOIN LATERAL (
       AND (p.removed_at IS NULL OR p.removed_at >= $2::timestamptz)
 ) AS pd
 WHERE i.kind = 'invoice' AND i.status = 'issued' AND i.issue_date <= $1::date
+  AND i.number > $3::bigint
   AND i.gross_total - COALESCE(cr.credited, 0) - COALESCE(pd.paid, 0) <> 0
 ORDER BY i.number
+LIMIT $4::int
 `
 
 type JournalOpenAtParams struct {
-	Day       pgtype.Date
-	LiveUntil time.Time
+	Day         pgtype.Date
+	LiveUntil   time.Time
+	AfterNumber int64
+	RowLimit    int32
 }
 
 type JournalOpenAtRow struct {
@@ -372,12 +264,18 @@ type JournalOpenAtRow struct {
 	OpenAmount   pgtype.Numeric
 }
 
-// JournalOpenAt is every invoice issued on or before day whose open amount at
-// the end of that day is not zero: its gross, less the credit notes issued on
-// or before day, less the payments paid on or before day that were not
-// removed before live_until — the first moment of the next business day.
+// JournalOpenAt is up to row_limit invoices numbered after after_number, in
+// number order, issued on or before day and whose open amount at the end of
+// that day is not zero: its gross, less the credit notes issued on or before
+// day, less the payments paid on or before day that were not removed before
+// live_until — the first moment of the next business day.
 func (q *Queries) JournalOpenAt(ctx context.Context, arg JournalOpenAtParams) ([]JournalOpenAtRow, error) {
-	rows, err := q.db.Query(ctx, journalOpenAt, arg.Day, arg.LiveUntil)
+	rows, err := q.db.Query(ctx, journalOpenAt,
+		arg.Day,
+		arg.LiveUntil,
+		arg.AfterNumber,
+		arg.RowLimit,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -441,45 +339,6 @@ func (q *Queries) JournalVatSummaries(ctx context.Context, invoiceIds []int64) (
 			&i.TaxableAmount,
 			&i.VatAmount,
 			&i.VatAmountNok,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const journalWaiversOf = `-- name: JournalWaiversOf :many
-SELECT id, invoice_id, reminder_id, kind, amount, interest_through, reason, note, waived_by_user_id, waived_at FROM invoices.charge_waivers
-WHERE invoice_id = ANY($1::bigint[])
-ORDER BY invoice_id, id
-`
-
-// JournalWaiversOf is every charge waiver of the invoices named, as WaiversOf
-// reads one invoice's.
-func (q *Queries) JournalWaiversOf(ctx context.Context, invoiceIds []int64) ([]InvoicesChargeWaiver, error) {
-	rows, err := q.db.Query(ctx, journalWaiversOf, invoiceIds)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []InvoicesChargeWaiver
-	for rows.Next() {
-		var i InvoicesChargeWaiver
-		if err := rows.Scan(
-			&i.ID,
-			&i.InvoiceID,
-			&i.ReminderID,
-			&i.Kind,
-			&i.Amount,
-			&i.InterestThrough,
-			&i.Reason,
-			&i.Note,
-			&i.WaivedByUserID,
-			&i.WaivedAt,
 		); err != nil {
 			return nil, err
 		}

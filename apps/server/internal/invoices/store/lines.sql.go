@@ -180,7 +180,7 @@ FROM (
             WHEN s.kinds[1] = 'projects.milestone' THEN 'milestone'
             WHEN s.kinds[1] = 'settlement' THEN 'settlement'
             WHEN s.kinds[1] IN ('order_line', 'subscription_period') THEN s.kinds[1]
-            ELSE 'mixed'
+            ELSE left(s.kinds[1], 20)
         END::text AS line_kind,
         CASE WHEN b.line_kind IS NOT NULL THEN b.tax_category_id ELSE s.tax_category_id END AS tax_category_id,
         CASE WHEN b.line_kind IS NOT NULL THEN b.project_id ELSE s.project_id END AS project_id
@@ -226,7 +226,9 @@ type SnapshotLineParams struct {
 // on its first line and covers line_count of them, and is told by its metering
 // point, as 00078 tells it, without naming another schema). One kind of source names
 // the kind; an order allocation's is its subkind; sources of several kinds are
-// mixed; a deduction line deducts an a-konto; a line with no source is
+// mixed; a source of a kind this statement does not know is written as its own
+// kind, which ck_lines_line_kind refuses, so the issue fails rather than call
+// a new kind of work mixed; a deduction line deducts an a-konto; a line with no source is
 // manual. The project and the tax category are the sources' when they all
 // share one, else NULL.
 func (q *Queries) SnapshotLine(ctx context.Context, arg SnapshotLineParams) error {
