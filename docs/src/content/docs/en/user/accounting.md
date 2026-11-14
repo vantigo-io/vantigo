@@ -797,8 +797,11 @@ by hand in Invoices names no account and goes to the bank account in the chart (
 Payments posted before are left as they are.
 
 A bank account's **settings** (the cog in the list) change its record, where its statement
-comes from, and its CSV mapping, and list its statements with their files. A bank account
-with statements is not deleted: make it inactive.
+comes from, and its CSV mapping, and list its statements with their files. Once a bank
+account has statement lines, its account number and ledger account stay as they are — its
+lines are matched to postings on that ledger account; add a new bank account instead. A bank
+account with statements is not deleted: make it inactive. An inactive account that still
+has lines not matched keeps counting when you lock a month.
 
 ### Importing a statement
 
@@ -820,6 +823,17 @@ When the bank gives balances, a gap between two statements, an overlap, or an op
 balance that is not the previous closing balance is shown, never refused. Pending entries
 are left out until the bank books them. The file itself is kept with the books.
 
+A CSV export and a camt.053 file of the same days hold the same movements with nothing to
+tell them apart. So a line that has the same day and amount as a line already imported from
+another kind of file, or from the bank feed, and the same KID, counterparty account or text,
+is imported marked **Possible duplicate**: the answer counts them, and in the
+reconciliation it gets no suggestion until you click **Set aside as a duplicate** (it then
+counts in no balance) or **Keep it, it is not a duplicate**.
+
+For a bank account read by the bank feed, a file imported afterwards brings only the days
+before the day the feed reads from; the answer counts the lines left out, which the feed
+brings.
+
 ### The CSV mapping
 
 In a bank account's settings, **CSV mapping** says how its bank's CSV export is read: the
@@ -835,8 +849,10 @@ as they will be imported, then **Save the mapping**.
 When Invoices is connected to the bank (Workspace admin › **Integrations** › **Bank**, see
 [Invoices](/en/user/invoices/)), a bank account the bank offers can take its statement from
 the bank itself. In the bank account's settings, under **Statement source**, choose **Bank
-feed**, the day to read from (**Read from**, at most 13 months back), and click **Save the
-source**. The account is then read about every half hour.
+feed** and click **Save the source**. The feed reads from the day after the last statement
+you imported for the account; you may give a later day under **Read from**, but not an
+earlier one, so no day is read twice (and at most 13 months back). The account is then read
+about every half hour.
 
 Invoices reads only the money that comes in, to register customer payments. The books read
 the account's whole movement — supplier payments, salaries, fees, card purchases and
@@ -851,13 +867,16 @@ bank connected**. The Overview and the dashboard say so too.
 ### Reconciling a bank account
 
 Click a bank account to reconcile it. Choose the period (the current month by default)
-and, under **Show**, all lines, those **Not matched** or those **Matched**. Each line shows
-what the bank said — the day, the text, the counterparty, the KID — and its amount.
+and, under **Show**, all lines, those **Not matched**, those **Matched**, or those **Set
+aside** as duplicates. Each line shows what the bank said — the day, the text, the
+counterparty, the KID — and its amount. A long period comes in pages of 200 lines.
 
 A line not matched shows its **suggestions**, the most certain first, each with why it is
 suggested and, when it would post a voucher, what it would post. Click **Accept** to take
 one; **Code it** to post the line yourself; or leave it for later. A matched line shows
-what it was matched to, and **Undo** while its month is not locked.
+what it was matched to, and **Undo** while its month is not locked. A line that was matched
+to a payment removed since — in Invoices, or on the supplier invoice — or to a voucher that
+was reversed, is open again, with a note saying why.
 
 What the suggestions are:
 
@@ -866,11 +885,11 @@ What the suggestions are:
 | **The payment Invoices registered** | Invoices registered a customer payment from this very bank line — a bank file's or the bank feed's | links the line to that payment's posting |
 | **A posting of the same amount** | the books have a posting on the account of the same amount, within ten days | links them |
 | **A batch of Invoices' payments** | several KID payments arrive as one line: the bank's batch, or the payments Invoices registered one day | links the line to all of them |
-| **Pay a supplier invoice** | money out with a supplier invoice's KID, its number in the text, or its amount to the supplier's account | registers the payment on the supplier invoice, as **Register payment** would; an invoice in another currency gets its exchange difference |
-| **A Vipps payout** | money in from Vipps | moves it from the Vipps clearing account to the bank, and what Vipps kept to bank and payment fees (7770) |
-| **VAT paid or refunded** | money to or from Skatteetaten that is what the VAT term left on 2740 | debits or credits 2740 against the bank |
-| **A transfer between your accounts** | the same amount leaves one of your bank accounts and arrives in another | one voucher between their ledger accounts, matched on both statements |
-| **A bank rule** | the text or the counterparty holds a rule's words | posts the line to the rule's account and tax code |
+| **Pay a supplier invoice** | money out with a supplier invoice's KID, its number in the text, or its amount to the supplier's account | registers the payment on the supplier invoice, as **Register payment** would; for an invoice in another currency, see below |
+| **A Vipps payout** | money in from Vipps | moves it from the Vipps clearing account to the bank, with Vipps' fee to bank and payment fees (7770): see below |
+| **VAT paid or refunded** | money to or from Skatteetaten that is a closed VAT term's amount, not yet paid, still on 2740 | debits or credits 2740 against the bank |
+| **A transfer between your accounts** | the same amount leaves one of your bank accounts and arrives in another, and no transfer is posted for it yet | one voucher between their ledger accounts, matched on both statements |
+| **A bank rule** | the text or the counterparty holds a rule's words — never money in with a KID or of an amount a customer owes | posts the line to the rule's account and tax code |
 | **Register it in Invoices** | money in from a customer that Invoices has not registered | nothing here: see below |
 
 Several suggestions marked **Exact** — one posting of the same amount the same day, or the
@@ -881,7 +900,13 @@ the account, the amount and the tax code of the rest, which together must balanc
 line. With a tax code the amount is gross: a card purchase of 349.00 on 6300 with code 1
 posts 279.20 on 6300 and 69.80 on 2710. A line can settle a customer's or a supplier's
 open item that does not stand for an invoice in Invoices or a supplier invoice — an opening
-balance, for instance.
+balance, for instance; a line to receivables or payables must name the open item it settles.
+
+A supplier invoice in another currency is settled in its currency. When what the bank took
+is close to what is left at the invoice's rate — within 5 % — the payment settles all of it,
+and the difference is a currency gain or loss. When it is not, it is a part payment:
+**Accept** asks **Amount settled in** the invoice's currency, proposing what the payment is
+worth at the invoice's rate, and the invoice stays owed the rest.
 
 ### Why customer payments are registered in Invoices
 
@@ -894,16 +919,22 @@ on the invoice — and its posting then matches the line here.
 
 ### Vipps payouts
 
-Vipps pays out the day's sales less its fees. The Vipps payments Invoices registers stand
-on the Vipps clearing account (1580); the payout's suggestion takes what the clearing holds
-through the day before, moves the payout to the bank and the rest — Vipps' fees — to 7770,
-and shows the voucher before you accept it.
+Vipps pays out each settlement day's sales less its fees, a day or two later. The Vipps
+payments Invoices registers stand on the Vipps clearing account (1580). When the sales of a
+day — or of a few days in a row — not yet paid out come to the payout or up to 3 % more,
+the suggestion says which days, moves those sales off the clearing account, the payout to
+the bank and the difference — Vipps' fee — to 7770. The next payout then starts from the day
+after. When no run of days fits, no fee is guessed: the payout alone moves from the clearing
+account to the bank. **Accept** shows the fee and lets you change it to what Vipps'
+settlement report says, at most 5 % of the payout; what is left on 1580 is the sales not
+paid out yet.
 
 ### Paying the VAT from the bank
 
 When the VAT term is closed, its VAT stands on 2740. The bank line of the payment to
 Skatteetaten — or of the refund — is suggested as **VAT paid or refunded**: accepting it
-debits 2740 (a refund credits it) against the bank, and 2740 is back at zero.
+debits 2740 (a refund credits it) against the bank, and 2740 is back at zero. A term paid
+through the bank is not suggested again.
 
 ### Bank rules
 
@@ -911,13 +942,16 @@ debits 2740 (a refund credits it) against the bank, and 2740 is back at zero.
 line's text or counterparty holds, which way the money goes, and the account and tax code
 it goes to — *Gebyr* to 7770, the bank's interest to 8050. A rule then shows as a
 suggestion on every line it fits. A change is a new version; a rule that was used is made
-inactive rather than deleted.
+inactive rather than deleted. A rule for money in cannot go to a sales income account or to
+receivables, and money in with a KID or of an amount a customer owes gets no rule's
+suggestion: those are customer payments, registered in Invoices.
 
 ### Undoing a match
 
 **Undo** on a matched line, while its month is not locked, takes the match back: a voucher
-the match posted is reversed (a supplier payment is removed), a transfer opens both lines,
-and a match to postings that were there lets them go. Nothing is deleted.
+the match posted is reversed (a supplier payment is removed), a transfer opens both lines —
+also when the other side was matched to the transfer's posting — and a match to postings
+that were there lets them go. Nothing is deleted.
 
 ### Locking a month
 
