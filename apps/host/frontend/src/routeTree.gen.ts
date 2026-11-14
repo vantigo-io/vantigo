@@ -142,6 +142,11 @@ import { Route as WorkspaceRolesRouteImport } from './routes/workspace/roles'
 import { Route as WorkspaceShippingRouteImport } from './routes/workspace/shipping'
 import { Route as WorkspaceStationsRouteImport } from './routes/workspace/stations'
 import { Route as WorkspaceUsersRouteImport } from './routes/workspace/users'
+import { Route as AccountingSupplierInvoicesIndexRouteImport } from './routes/accounting/supplier-invoices.index'
+import { Route as AccountingSupplierInvoicesSupplierInvoiceIdRouteImport } from './routes/accounting/supplier-invoices.$supplierInvoiceId'
+import { Route as AccountingSupplierInvoicesNewRouteImport } from './routes/accounting/supplier-invoices.new'
+import { Route as AccountingSuppliersIndexRouteImport } from './routes/accounting/suppliers.index'
+import { Route as AccountingSuppliersSupplierIdRouteImport } from './routes/accounting/suppliers.$supplierId'
 import { Route as AccountingVouchersIndexRouteImport } from './routes/accounting/vouchers.index'
 import { Route as AccountingVouchersVoucherIdRouteImport } from './routes/accounting/vouchers.$voucherId'
 import { Route as AgentsAgentIdIndexRouteImport } from './routes/agents/$agentId.index'
@@ -909,6 +914,36 @@ const WorkspaceUsersRoute = WorkspaceUsersRouteImport.update({
   path: '/users',
   getParentRoute: () => WorkspaceRoute,
 } as any)
+const AccountingSupplierInvoicesIndexRoute =
+  AccountingSupplierInvoicesIndexRouteImport.update({
+    id: '/supplier-invoices/',
+    path: '/supplier-invoices/',
+    getParentRoute: () => AccountingRoute,
+  } as any)
+const AccountingSupplierInvoicesSupplierInvoiceIdRoute =
+  AccountingSupplierInvoicesSupplierInvoiceIdRouteImport.update({
+    id: '/supplier-invoices/$supplierInvoiceId',
+    path: '/supplier-invoices/$supplierInvoiceId',
+    getParentRoute: () => AccountingRoute,
+  } as any)
+const AccountingSupplierInvoicesNewRoute =
+  AccountingSupplierInvoicesNewRouteImport.update({
+    id: '/supplier-invoices/new',
+    path: '/supplier-invoices/new',
+    getParentRoute: () => AccountingRoute,
+  } as any)
+const AccountingSuppliersIndexRoute =
+  AccountingSuppliersIndexRouteImport.update({
+    id: '/suppliers/',
+    path: '/suppliers/',
+    getParentRoute: () => AccountingRoute,
+  } as any)
+const AccountingSuppliersSupplierIdRoute =
+  AccountingSuppliersSupplierIdRouteImport.update({
+    id: '/suppliers/$supplierId',
+    path: '/suppliers/$supplierId',
+    getParentRoute: () => AccountingRoute,
+  } as any)
 const AccountingVouchersIndexRoute = AccountingVouchersIndexRouteImport.update({
   id: '/vouchers/',
   path: '/vouchers/',
@@ -1586,6 +1621,9 @@ export interface FileRoutesByFullPath {
   '/staff/': typeof StaffIndexRoute
   '/time/': typeof TimeIndexRoute
   '/workspace/': typeof WorkspaceIndexRoute
+  '/accounting/supplier-invoices/$supplierInvoiceId': typeof AccountingSupplierInvoicesSupplierInvoiceIdRoute
+  '/accounting/supplier-invoices/new': typeof AccountingSupplierInvoicesNewRoute
+  '/accounting/suppliers/$supplierId': typeof AccountingSuppliersSupplierIdRoute
   '/accounting/vouchers/$voucherId': typeof AccountingVouchersVoucherIdRoute
   '/agents/review/$itemId': typeof AgentsReviewItemIdRoute
   '/agents/runs/$runId': typeof AgentsRunsRunIdRoute
@@ -1643,6 +1681,8 @@ export interface FileRoutesByFullPath {
   '/workspace/google/accounts': typeof WorkspaceGoogleAccountsRoute
   '/workspace/google/calendar-gmail': typeof WorkspaceGoogleCalendarGmailRoute
   '/workspace/google/connection': typeof WorkspaceGoogleConnectionRoute
+  '/accounting/supplier-invoices/': typeof AccountingSupplierInvoicesIndexRoute
+  '/accounting/suppliers/': typeof AccountingSuppliersIndexRoute
   '/accounting/vouchers/': typeof AccountingVouchersIndexRoute
   '/agents/$agentId/': typeof AgentsAgentIdIndexRoute
   '/agents/review/': typeof AgentsReviewIndexRoute
@@ -1793,6 +1833,9 @@ export interface FileRoutesByTo {
   '/staff': typeof StaffIndexRoute
   '/time': typeof TimeIndexRoute
   '/workspace': typeof WorkspaceIndexRoute
+  '/accounting/supplier-invoices/$supplierInvoiceId': typeof AccountingSupplierInvoicesSupplierInvoiceIdRoute
+  '/accounting/supplier-invoices/new': typeof AccountingSupplierInvoicesNewRoute
+  '/accounting/suppliers/$supplierId': typeof AccountingSuppliersSupplierIdRoute
   '/accounting/vouchers/$voucherId': typeof AccountingVouchersVoucherIdRoute
   '/agents/review/$itemId': typeof AgentsReviewItemIdRoute
   '/agents/runs/$runId': typeof AgentsRunsRunIdRoute
@@ -1850,6 +1893,8 @@ export interface FileRoutesByTo {
   '/workspace/google/accounts': typeof WorkspaceGoogleAccountsRoute
   '/workspace/google/calendar-gmail': typeof WorkspaceGoogleCalendarGmailRoute
   '/workspace/google/connection': typeof WorkspaceGoogleConnectionRoute
+  '/accounting/supplier-invoices': typeof AccountingSupplierInvoicesIndexRoute
+  '/accounting/suppliers': typeof AccountingSuppliersIndexRoute
   '/accounting/vouchers': typeof AccountingVouchersIndexRoute
   '/agents/$agentId': typeof AgentsAgentIdIndexRoute
   '/agents/review': typeof AgentsReviewIndexRoute
@@ -2027,6 +2072,9 @@ export interface FileRoutesById {
   '/staff/': typeof StaffIndexRoute
   '/time/': typeof TimeIndexRoute
   '/workspace/': typeof WorkspaceIndexRoute
+  '/accounting/supplier-invoices/$supplierInvoiceId': typeof AccountingSupplierInvoicesSupplierInvoiceIdRoute
+  '/accounting/supplier-invoices/new': typeof AccountingSupplierInvoicesNewRoute
+  '/accounting/suppliers/$supplierId': typeof AccountingSuppliersSupplierIdRoute
   '/accounting/vouchers/$voucherId': typeof AccountingVouchersVoucherIdRoute
   '/agents/review/$itemId': typeof AgentsReviewItemIdRoute
   '/agents/runs/$runId': typeof AgentsRunsRunIdRoute
@@ -2084,6 +2132,8 @@ export interface FileRoutesById {
   '/workspace/google/accounts': typeof WorkspaceGoogleAccountsRoute
   '/workspace/google/calendar-gmail': typeof WorkspaceGoogleCalendarGmailRoute
   '/workspace/google/connection': typeof WorkspaceGoogleConnectionRoute
+  '/accounting/supplier-invoices/': typeof AccountingSupplierInvoicesIndexRoute
+  '/accounting/suppliers/': typeof AccountingSuppliersIndexRoute
   '/accounting/vouchers/': typeof AccountingVouchersIndexRoute
   '/agents/$agentId/': typeof AgentsAgentIdIndexRoute
   '/agents/review/': typeof AgentsReviewIndexRoute
@@ -2262,6 +2312,9 @@ export interface FileRouteTypes {
     | '/staff/'
     | '/time/'
     | '/workspace/'
+    | '/accounting/supplier-invoices/$supplierInvoiceId'
+    | '/accounting/supplier-invoices/new'
+    | '/accounting/suppliers/$supplierId'
     | '/accounting/vouchers/$voucherId'
     | '/agents/review/$itemId'
     | '/agents/runs/$runId'
@@ -2319,6 +2372,8 @@ export interface FileRouteTypes {
     | '/workspace/google/accounts'
     | '/workspace/google/calendar-gmail'
     | '/workspace/google/connection'
+    | '/accounting/supplier-invoices/'
+    | '/accounting/suppliers/'
     | '/accounting/vouchers/'
     | '/agents/$agentId/'
     | '/agents/review/'
@@ -2469,6 +2524,9 @@ export interface FileRouteTypes {
     | '/staff'
     | '/time'
     | '/workspace'
+    | '/accounting/supplier-invoices/$supplierInvoiceId'
+    | '/accounting/supplier-invoices/new'
+    | '/accounting/suppliers/$supplierId'
     | '/accounting/vouchers/$voucherId'
     | '/agents/review/$itemId'
     | '/agents/runs/$runId'
@@ -2526,6 +2584,8 @@ export interface FileRouteTypes {
     | '/workspace/google/accounts'
     | '/workspace/google/calendar-gmail'
     | '/workspace/google/connection'
+    | '/accounting/supplier-invoices'
+    | '/accounting/suppliers'
     | '/accounting/vouchers'
     | '/agents/$agentId'
     | '/agents/review'
@@ -2702,6 +2762,9 @@ export interface FileRouteTypes {
     | '/staff/'
     | '/time/'
     | '/workspace/'
+    | '/accounting/supplier-invoices/$supplierInvoiceId'
+    | '/accounting/supplier-invoices/new'
+    | '/accounting/suppliers/$supplierId'
     | '/accounting/vouchers/$voucherId'
     | '/agents/review/$itemId'
     | '/agents/runs/$runId'
@@ -2759,6 +2822,8 @@ export interface FileRouteTypes {
     | '/workspace/google/accounts'
     | '/workspace/google/calendar-gmail'
     | '/workspace/google/connection'
+    | '/accounting/supplier-invoices/'
+    | '/accounting/suppliers/'
     | '/accounting/vouchers/'
     | '/agents/$agentId/'
     | '/agents/review/'
@@ -3773,6 +3838,41 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof WorkspaceUsersRouteImport
       parentRoute: typeof WorkspaceRoute
     }
+    '/accounting/supplier-invoices/': {
+      id: '/accounting/supplier-invoices/'
+      path: '/supplier-invoices'
+      fullPath: '/accounting/supplier-invoices/'
+      preLoaderRoute: typeof AccountingSupplierInvoicesIndexRouteImport
+      parentRoute: typeof AccountingRoute
+    }
+    '/accounting/supplier-invoices/$supplierInvoiceId': {
+      id: '/accounting/supplier-invoices/$supplierInvoiceId'
+      path: '/supplier-invoices/$supplierInvoiceId'
+      fullPath: '/accounting/supplier-invoices/$supplierInvoiceId'
+      preLoaderRoute: typeof AccountingSupplierInvoicesSupplierInvoiceIdRouteImport
+      parentRoute: typeof AccountingRoute
+    }
+    '/accounting/supplier-invoices/new': {
+      id: '/accounting/supplier-invoices/new'
+      path: '/supplier-invoices/new'
+      fullPath: '/accounting/supplier-invoices/new'
+      preLoaderRoute: typeof AccountingSupplierInvoicesNewRouteImport
+      parentRoute: typeof AccountingRoute
+    }
+    '/accounting/suppliers/': {
+      id: '/accounting/suppliers/'
+      path: '/suppliers'
+      fullPath: '/accounting/suppliers/'
+      preLoaderRoute: typeof AccountingSuppliersIndexRouteImport
+      parentRoute: typeof AccountingRoute
+    }
+    '/accounting/suppliers/$supplierId': {
+      id: '/accounting/suppliers/$supplierId'
+      path: '/suppliers/$supplierId'
+      fullPath: '/accounting/suppliers/$supplierId'
+      preLoaderRoute: typeof AccountingSuppliersSupplierIdRouteImport
+      parentRoute: typeof AccountingRoute
+    }
     '/accounting/vouchers/': {
       id: '/accounting/vouchers/'
       path: '/vouchers'
@@ -4474,7 +4574,12 @@ interface AccountingRouteChildren {
   AccountingSetupRoute: typeof AccountingSetupRoute
   AccountingTaxCodesRoute: typeof AccountingTaxCodesRoute
   AccountingIndexRoute: typeof AccountingIndexRoute
+  AccountingSupplierInvoicesSupplierInvoiceIdRoute: typeof AccountingSupplierInvoicesSupplierInvoiceIdRoute
+  AccountingSupplierInvoicesNewRoute: typeof AccountingSupplierInvoicesNewRoute
+  AccountingSuppliersSupplierIdRoute: typeof AccountingSuppliersSupplierIdRoute
   AccountingVouchersVoucherIdRoute: typeof AccountingVouchersVoucherIdRoute
+  AccountingSupplierInvoicesIndexRoute: typeof AccountingSupplierInvoicesIndexRoute
+  AccountingSuppliersIndexRoute: typeof AccountingSuppliersIndexRoute
   AccountingVouchersIndexRoute: typeof AccountingVouchersIndexRoute
 }
 
@@ -4490,7 +4595,13 @@ const AccountingRouteChildren: AccountingRouteChildren = {
   AccountingSetupRoute: AccountingSetupRoute,
   AccountingTaxCodesRoute: AccountingTaxCodesRoute,
   AccountingIndexRoute: AccountingIndexRoute,
+  AccountingSupplierInvoicesSupplierInvoiceIdRoute:
+    AccountingSupplierInvoicesSupplierInvoiceIdRoute,
+  AccountingSupplierInvoicesNewRoute: AccountingSupplierInvoicesNewRoute,
+  AccountingSuppliersSupplierIdRoute: AccountingSuppliersSupplierIdRoute,
   AccountingVouchersVoucherIdRoute: AccountingVouchersVoucherIdRoute,
+  AccountingSupplierInvoicesIndexRoute: AccountingSupplierInvoicesIndexRoute,
+  AccountingSuppliersIndexRoute: AccountingSuppliersIndexRoute,
   AccountingVouchersIndexRoute: AccountingVouchersIndexRoute,
 }
 

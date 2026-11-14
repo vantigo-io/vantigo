@@ -1,7 +1,9 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useParams } from "@tanstack/react-router";
+import { SupplierInvoicesNotice } from "@vantigo/accounting-ui/components/supplier-invoices-notice";
 import { ProjectExpensesPanel } from "@vantigo/expenses-ui/components/project-expenses-panel";
 import { useI18n } from "@vantigo/frontend-shell";
+import { useAccountingNotice } from "../../lib/accounting-notice";
 import { useInvoiceHref } from "../../lib/invoice-access";
 import { ModuleTabGate } from "./-module-tab-gate";
 import "../../i18n";
@@ -30,6 +32,8 @@ export const ProjectExpensesTab = () => {
   const queryClient = useQueryClient();
   // Where a line the Invoices module invoiced links to, when the caller may open invoices.
   const invoiceHref = useInvoiceHref();
+  // Where new supplier invoices belong once the books are in Accounting (accounting design A20).
+  const notice = useAccountingNotice();
   return (
     <ModuleTabGate module="expenses" permission="expenses:access" appLabel={t("navigation.expenses")}>
       {/* Keyed on the project: the panel keeps its filter, its page and its
@@ -41,6 +45,7 @@ export const ProjectExpensesTab = () => {
         key={projectId}
         projectId={projectId}
         invoiceHref={invoiceHref}
+        supplierInvoiceNotice={notice ? <SupplierInvoicesNotice /> : undefined}
         onChanged={() => void queryClient.invalidateQueries({ queryKey: ["projects", "economy"] })}
       />
     </ModuleTabGate>

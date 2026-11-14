@@ -713,7 +713,16 @@ const DashboardPage = () => {
                 {...accountingKpi(accountingMeta.data, formatters.formatNumber, t)}
                 {...(accountingMeta.data?.setUp && accountingMeta.data.unposted > 0
                   ? { hint: tAccounting("needsAttentionCount", { count: accountingMeta.data.unposted }) }
-                  : {})}
+                  : accountingMeta.data?.setUp &&
+                      accountingMeta.data.payablesOverdue + accountingMeta.data.payablesDueSoon > 0
+                    ? {
+                        // What is owed to suppliers and due (accounting design A19).
+                        hint: tAccounting("payablesCount", {
+                          overdue: accountingMeta.data.payablesOverdue,
+                          soon: accountingMeta.data.payablesDueSoon,
+                        }),
+                      }
+                    : {})}
                 href={href}
                 loading={accountingMeta.isPending}
               />
