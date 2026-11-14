@@ -48,9 +48,11 @@ mise run saft:validate
 ```
 
 The Go tests (`internal/accounting/saft` and the accounting module's `TestSaftExport_*`)
-validate every file they write with `xmllint` when it is on the PATH, and say in the log
-when it is not; CI's `🧾 Validate SAF-T files` job runs the oracle whatever the tests
-found, and `✅ CI passed` needs it.
+validate every file they write with `xmllint`. Locally a missing `xmllint` is said in the
+log and the file left to the oracle; in CI — where `CI` is set and the Go test job installs
+`libxml2-utils` — a missing `xmllint` fails the test, so every file written, not only the
+golden, is held to the XSD there. CI's `🧾 Validate SAF-T files` job runs the oracle over
+the goldens and examples as well, and `✅ CI passed` needs it.
 
 ## Changing the export
 

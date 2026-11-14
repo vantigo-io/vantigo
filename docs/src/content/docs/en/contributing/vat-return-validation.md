@@ -49,7 +49,8 @@ mise run mva:validate
 
 The Go tests (`internal/accounting/mva` and the accounting module's
 `TestVatReturn_Goldens`) validate the same files with `xmllint` when it is on the PATH,
-and say in the log when it is not; CI's `🧾 Validate VAT returns` job runs the oracle
+and say in the log when it is not — but in CI, where the Go test job installs it, a
+missing `xmllint` fails them; CI's `🧾 Validate VAT returns` job runs the oracle
 whatever the tests found, and `✅ CI passed` needs it.
 
 ## Changing the return

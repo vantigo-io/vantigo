@@ -97,15 +97,26 @@ opp på, og det krever **Forvalte regnskapet**.
      Skatteetatens standardkoder.
    - **Leverandører** — opprettes fra filen med organisasjonsnummer, adresse og
      bankkonto. Et nummer som ikke er gyldig, utelates, og det står hvorfor.
-   - **Kunder** — funnet blant kundene i **Kunder** på organisasjonsnummer. Regnskap
-     oppretter ikke kunder: en kunde med saldo som Kunder ikke har, eller har to ganger, må
-     opprettes eller finnes der først; oppgi så kundenummeret i feltet under listen.
+   - **Kunder** — funnet blant kundene i **Kunder** på organisasjonsnummer når filen leses.
+     Regnskap oppretter ikke kunder: en kunde med saldo som Kunder ikke har, eller har to
+     ganger, må opprettes eller finnes der først; søk den så opp i feltet under listen, på
+     navn eller nummer, og velg den. Listen viser kunden den er koblet til med
+     organisasjonsnummeret: sjekk at det er riktig kunde. **Søk i Kunder på nytt** slår opp
+     organisasjonsnumrene igjen, for kunder som er opprettet siden.
    - **Åpningsbalansen** — bilaget regnskapet starter med: hver balansekontos utgående
-     saldo, én åpen post per kunde og leverandør med saldo, og periodens resultat på
-     motkontoen for inngående balanse. Mva-kontoenes saldoer føres samlet på kontoen for
+     saldo og én åpen post per kunde og leverandør med saldo. Når regnskapet starter et
+     regnskapsår, går filens resultat til motkontoen for inngående balanse i egenkapitalen.
+     Når det starter midt i et — en fil til utgangen av juni, for eksempel — åpner
+     resultatkontoene med saldoene så langt i året, så årets resultat blir hele årets. Mva-kontoenes saldoer føres samlet på kontoen for
      mva-oppgjør (2740) — *Skyldig mva ved start* — fordi det er det som gjenstår å betale
      eller få tilbake.
-4. Velg **Mva-termin** og språket for navnene, og klikk **Sett opp regnskapet fra filen**.
+4. Sjekk **Regnskapsåret starter i**. En fil som oppgir perioden med månedsnumre i stedet
+   for datoer (noen systemer gjør det), trenger den for å vite dagene; forhåndsvisningen
+   sier fra.
+5. Gjelder filen et annet selskap enn det i innstillingene i Fakturering, sier
+   forhåndsvisningen det i rødt: kryss av for at regnskapet likevel skal starte fra den,
+   eller last opp riktig fil.
+6. Velg **Mva-termin** og språket for navnene, og klikk **Sett opp regnskapet fra filen**.
    Alt skrives på én gang; det kan ikke angres.
 
 Det avvises mens en konto trenger et nummer, en kunde med saldo ikke finnes i Kunder, eller
@@ -798,6 +809,11 @@ filen navngir kunder og leverandører — personer blant dem.
 5. Klikk filnavnet for å laste den ned: `SAF-T Financial_<organisasjonsnummer>_<dato og
    tid>_1_1.xml`. Et svært stort år — over 2 GB — kommer som flere filer, delt etter
    periode, hver fullstendig for seg: `…_1_2.xml`, `…_2_2.xml`.
+
+**Hvor lenge filene oppbevares.** Filene inneholder personopplysninger, så Vantigo sletter
+hver av dem 90 dager etter at den ble skrevet (en administrator kan endre det). Listen
+beholder eksporten — hvem, når, perioden og filens kontrollsum — og viser *Slettet etter
+oppbevaringstiden*; eksporter på nytt om du trenger filen igjen.
 
 **Å levere den.** Last opp filen i kontrollsaken på skatteetaten.no, slik saksbehandleren
 ber om; ikke send den på e-post. For å sjekke en fil først tar Skatteetatens
