@@ -249,7 +249,11 @@ lag, never what must refuse — go through the platform's domain-events outbox,
    (`contracts.ExpenseJournal`, expenses — its fact log of approvals, undoings and
    reimbursements, and an expense's receipts to copy; `modtest.WithExpenseJournal` is the
    seam), each from its provider's own tables only, since Accounting's catch-up worker reads
-   both in worker mode. Two providers are a compose error naming both, and a panic in
+   both in worker mode. Right after them both resolve `BankFeed` (`contracts.BankFeed`,
+   invoices — the bank feed over Invoices' one connection and sealed key, every direction
+   and kind; its provider answers nil while `INVOICES_BANK_FEED_ENABLED` is off;
+   `modtest.WithBankFeed` is the seam), which Accounting's `accounting.bankfeed` worker reads
+   in worker mode. Two providers are a compose error naming both, and a panic in
    Workers.
    Twelve slots are *many-provider* instead — any number of modules may fill them,
    and Compose collects them in module order: `Workers` (background work, from
@@ -1317,7 +1321,10 @@ lag, never what must refuse — go through the platform's domain-events outbox,
     upsert a wake-up in `accounting.catchup_requests` and nothing else; the worker
     `accounting.catchup` claims a stream's lease, reads `contracts.SalesJournal` — its
     `Documents`, `Facts` and `Document` — or `contracts.ExpenseJournal`'s `Facts` with no
-    transaction open, and posts each fact in its own transaction. Expenses publishes its
+    transaction open, and posts each fact in its own transaction. Its worker
+    `accounting.bankfeed` likewise claims a bank account's lease, calls `contracts.BankFeed`
+    — which calls the bank — with no transaction open, and writes the lines in its own
+    schema. Expenses publishes its
     events from the deferred trigger that writes the fact, so every write path does, under
     the row lock the change took.
 24. **Inventory reserves and issues on the caller's transaction.** The thirteenth
