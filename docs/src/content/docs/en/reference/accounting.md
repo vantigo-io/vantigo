@@ -50,6 +50,13 @@ bank, migration `00188_accounting_bank.sql`) built. The user guide is [Accountin
   event handlers ([Sales post themselves](#sales-post-themselves)); before the books are
   set up both return at once, and the handlers do nothing with the module off in
   `MODULES`.
+- **The demo seed** (`vantigo seed`, [Installation](/en/admin/installation/)) writes its
+  books through the module's own paths, never its tables: `accounting.Operations(deps)` is
+  the module's operations as Go calls — each the handler the API runs, without the router's
+  authentication and permission check, acting as the principal on the context — beside the
+  bank's entry points `AddBankAccount`, `ImportBankStatement`, `BankSuggestionKeys` and
+  `AcceptBankSuggestion`, and `RefusalProblem`, the problem a refusal carries. The catch-up
+  is run as the worker runs it, `NewCatchUpWorker(deps).RunOnce`.
 - Attachments, SAF-T exports (`saft-exports/<id>/<uuid>.xml`), uploaded SAF-T files
   (`saft-imports/<uuid>.xml`) and imported bank statements (`bank-statements/<sha256>.xml`
   or `.csv`) live in the object store under the scope `accounting`.

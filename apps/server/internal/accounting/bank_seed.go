@@ -7,6 +7,7 @@ package accounting
 
 import (
 	"context"
+	"errors"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -15,6 +16,23 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/accounting/store"
 	"github.com/vantigo-io/vantigo/server/internal/module"
 )
+
+// Operations is the module's operations as Go calls, for the demo seed: each
+// the handler the API runs — its checks, its transaction, its refusals as
+// errors — with the router's authentication and permission check left out, so
+// the caller acts as the principal on ctx (contracts.WithPrincipal) and must
+// itself be entitled to. It writes nothing the API could not.
+func Operations(d module.Deps) gen.StrictServerInterface { return newServer(d) }
+
+// RefusalProblem is the problem a refusal of Operations carries, for the
+// seed to report what was refused and why; false for any other error.
+func RefusalProblem(err error) (gen.AccountingProblem, bool) {
+	var r *refusal
+	if errors.As(err, &r) {
+		return r.problem, true
+	}
+	return gen.AccountingProblem{}, false
+}
 
 // AddBankAccount adds a bank account on a ledger account (A26), checked as
 // the API checks it; it answers its id.
