@@ -232,7 +232,8 @@ const Lock = ({ canClose }: { canClose: boolean }) => {
           </Table.Thead>
           <Table.Tbody>
             {lock.data.events.map((e) => (
-              <Table.Tr key={e.changedAt}>
+              // Two changes can share a second; what the lock moved between tells them apart.
+              <Table.Tr key={`${e.changedAt}/${e.lockedFrom ?? ""}/${e.lockedTo ?? ""}`}>
                 <Table.Td>{stamp(e.changedAt)}</Table.Td>
                 <Table.Td>{e.lockedFrom ? day(e.lockedFrom) : t("notLocked")}</Table.Td>
                 <Table.Td>{e.lockedTo ? day(e.lockedTo) : t("notLocked")}</Table.Td>
