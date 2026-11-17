@@ -45,6 +45,7 @@ const (
 	codeDependencyUnavailable = "dependency_unavailable"
 	codeSendingDisabled       = "sending_disabled"
 	codeMailFailed            = "mail_failed"
+	codeAmountOutOfRange      = "amount_out_of_range"
 
 	// A line's codes (PurchasingProblemLine.code).
 	codeTooManyLines          = "too_many_lines"
@@ -66,7 +67,7 @@ var refusalCodes = []string{
 	codeSendChannelUnknown, codeRecipientMissing, codeOrderEmpty, codeImportInvalid, codeVersionConflict,
 	codeOrderNotDraft, codeOrderNotSent, codeOrderNotClosed, codeOrderHasReceipts, codeLineClosed,
 	codeLineKindChanged, codeCurrencyFixed, codeSupplierInactive, codeSupplierChanged, codeSupplierItemExists,
-	codeClientRequestReused, codeDependencyUnavailable, codeSendingDisabled, codeMailFailed,
+	codeClientRequestReused, codeDependencyUnavailable, codeSendingDisabled, codeMailFailed, codeAmountOutOfRange,
 	codeTooManyLines, codeLineInvalid, codeLineNotFound, codeVariantNotFound, codeVariantDiscontinued,
 	codePackagingNotFound, codeQuantityInvalid, codePriceInvalid, codeDiscountInvalid, codeQuantityBelowReceived,
 }

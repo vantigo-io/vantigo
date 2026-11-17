@@ -16,6 +16,7 @@ package purchasing
 import (
 	"fmt"
 	"math/big"
+	"net/http"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -156,7 +157,15 @@ func planLines(lc lineContext, in []lineInput) ([]plannedLine, []lineFailure, er
 			fail(code, detail)
 			continue
 		}
+		if p.net != nil && p.net.Cmp(maxAmount) > 0 {
+			fail(codeAmountOutOfRange, "The line's amount is more than an amount can be (999 999 999 999,99)")
+			continue
+		}
 		out = append(out, p)
+	}
+	if len(failures) == 0 && netTotal(out).Cmp(maxAmount) > 0 {
+		return nil, nil, refuse(problem(http.StatusBadRequest, codeAmountOutOfRange, invalidOrderTitle,
+			"The order's total is more than an amount can be (999 999 999 999,99)."))
 	}
 	return out, failures, nil
 }
@@ -243,7 +252,10 @@ func planNewLine(lc lineContext, l lineInput) (plannedLine, string, string) {
 		// the supplier item when the line leaves them out.
 		switch {
 		case l.has("supplierItemNumber", l.SupplierItemNumber != nil):
-			p.supplierItemNumber = textPtr(deref(l.SupplierItemNumber))
+			p.supplierItemNumber = textPtr(strings.TrimSpace(deref(l.SupplierItemNumber)))
+			if utf8.RuneCountInString(deref(p.supplierItemNumber)) > 60 {
+				return p, codeLineInvalid, "A supplier's item number is at most 60 characters"
+			}
 		case hasItem:
 			p.supplierItemNumber = item.SupplierItemNumber
 		}
@@ -380,6 +392,9 @@ func planSavedLine(lc lineContext, l lineInput, e store.PurchasingOrderLine) (pl
 	}
 	if e.Kind == kindText && l.has("unit", l.Unit != nil) {
 		p.unit = strings.TrimSpace(deref(l.Unit))
+		if utf8.RuneCountInString(p.unit) > 20 {
+			return p, codeLineInvalid, "A unit is at most 20 characters", nil
+		}
 	}
 	if l.has("unitPrice", l.UnitPrice != nil) {
 		price, ok := readPrice(l.UnitPrice)
@@ -399,7 +414,10 @@ func planSavedLine(lc lineContext, l lineInput, e store.PurchasingOrderLine) (pl
 		p.expectedOn = dateFromAPI(l.ExpectedOn)
 	}
 	if l.has("supplierItemNumber", l.SupplierItemNumber != nil) {
-		p.supplierItemNumber = textPtr(deref(l.SupplierItemNumber))
+		p.supplierItemNumber = textPtr(strings.TrimSpace(deref(l.SupplierItemNumber)))
+		if utf8.RuneCountInString(deref(p.supplierItemNumber)) > 60 {
+			return p, codeLineInvalid, "A supplier's item number is at most 60 characters", nil
+		}
 	}
 	packagingChanged := l.has("packagingId", l.PackagingId != nil) && !samePackaging(l.PackagingId, e.PackagingID)
 	switch {
