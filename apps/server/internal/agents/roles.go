@@ -182,7 +182,7 @@ func (s *server) UpdateAgentRole(ctx context.Context, req gen.UpdateAgentRoleReq
 		if err != nil {
 			return nil, fmt.Errorf("agents: read the recipient: %w", err)
 		}
-		if u == nil || !u.Active || u.Kind == contracts.UserKindAgent {
+		if u == nil || !u.Active || u.Kind != contracts.UserKindPerson {
 			errs["recipientUserId"] = []string{"recipientUserId must be an active person"}
 		}
 	}
@@ -191,7 +191,7 @@ func (s *server) UpdateAgentRole(ctx context.Context, req gen.UpdateAgentRoleReq
 		if err != nil {
 			return nil, fmt.Errorf("agents: read the hand-off person: %w", err)
 		}
-		if u == nil || !u.Active || u.Kind == contracts.UserKindAgent {
+		if u == nil || !u.Active || u.Kind != contracts.UserKindPerson {
 			errs["handOffUserId"] = []string{"handOffUserId must be an active person"}
 		}
 	}
