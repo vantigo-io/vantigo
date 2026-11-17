@@ -371,6 +371,8 @@ export const purchasingCatalog = {
     "refusal.price_invalid": "The price must be 0 or more, with at most four decimals.",
     "refusal.discount_invalid": "The discount must be between 0 and 100.",
     "refusal.quantity_below_received": "The quantity cannot be less than what is received.",
+    "refusal.amount_out_of_range":
+      "The amount is too large: a line or the order's total can be at most 999 999 999 999.99.",
     "refusal.version_conflict": "Somebody changed it since you opened it. Load it again and repeat your change.",
     "refusal.order_not_draft": "The order is no longer a draft.",
     "refusal.order_not_sent": "The order is not sent, so this cannot be done.",
@@ -737,6 +739,8 @@ export const purchasingCatalog = {
     "refusal.price_invalid": "Prisen må være 0 eller mer, med høyst fire desimaler.",
     "refusal.discount_invalid": "Rabatten må være mellom 0 og 100.",
     "refusal.quantity_below_received": "Antallet kan ikke være lavere enn det som er mottatt.",
+    "refusal.amount_out_of_range":
+      "Beløpet er for stort: en linje eller ordrens sum kan være høyst 999 999 999 999,99.",
     "refusal.version_conflict": "Noen har endret det siden du åpnet det. Last inn på nytt og gjenta endringen.",
     "refusal.order_not_draft": "Ordren er ikke lenger et utkast.",
     "refusal.order_not_sent": "Ordren er ikke sendt, så dette kan ikke gjøres.",

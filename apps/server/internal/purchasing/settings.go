@@ -118,6 +118,28 @@ func addressIn(siteID int64, a gen.PurchasingAddress) siteAddress {
 		City: strings.TrimSpace(deref(a.City)), Country: strings.ToUpper(strings.TrimSpace(deref(a.Country)))}
 }
 
+// judgeAddress records on f a settings address's fields that would not fit
+// an order's delivery snapshot: the lengths its columns take, and a country
+// as a two-letter code.
+func judgeAddress(f *fieldErrors, field string, a siteAddress) {
+	for _, c := range []struct {
+		name, value string
+		limit       int
+	}{{"name", a.Name, 255}, {"line1", a.Line1, 255}, {"line2", a.Line2, 255}, {"postalCode", a.PostalCode, 20}, {"city", a.City, 100}} {
+		if utf8.RuneCountInString(c.value) > c.limit {
+			f.add(field+"."+c.name, fmt.Sprintf("At most %d characters", c.limit))
+		}
+	}
+	if a.Country != "" && !isCountryCode(a.Country) {
+		f.add(field+".country", "A country is a two-letter code, as NO")
+	}
+}
+
+// isCountryCode reports whether s is two letters A to Z.
+func isCountryCode(s string) bool {
+	return len(s) == 2 && s[0] >= 'A' && s[0] <= 'Z' && s[1] >= 'A' && s[1] <= 'Z'
+}
+
 // addressOut is a settings address as the API answers it.
 func addressOut(a siteAddress) gen.PurchasingAddress {
 	return gen.PurchasingAddress{Name: textPtr(a.Name), Line1: textPtr(a.Line1), Line2: textPtr(a.Line2),
@@ -266,7 +288,9 @@ func (s *server) PutPurchasingSettings(ctx context.Context, req gen.PutPurchasin
 			continue
 		}
 		seen[a.SiteId] = true
-		addresses = append(addresses, addressIn(a.SiteId, a.Address))
+		in := addressIn(a.SiteId, a.Address)
+		judgeAddress(&f, fmt.Sprintf("deliveryAddresses[%d].address", i), in)
+		addresses = append(addresses, in)
 	}
 	var channel *uuid.UUID
 	if b.SendChannelId != nil {

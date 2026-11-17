@@ -30,6 +30,7 @@ const (
 var (
 	maxQuantity = mustRat("999999999.999")
 	maxPrice    = mustRat("99999999999999.9999")
+	maxAmount   = mustRat("999999999999.99") // numeric(14,2)
 	hundred     = big.NewRat(100, 1)
 	// decimalText is a decimal as the API takes it: digits, an optional
 	// point and decimals, no sign, no exponent, no thousands separator.
