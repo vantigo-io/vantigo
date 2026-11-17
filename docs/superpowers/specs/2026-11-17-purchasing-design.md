@@ -1063,9 +1063,10 @@ From the independent code review of delivery D. Each wins over what it names.
   mark off a text or service line leaves nothing of it billable; while `invoiced` is above
   0 it is refused `receipt_invoiced`, as a receipt's undo is.
 - **A85 — The last price's guard on the invoice's own day, and the rest of the review**
-  (P39, A75). A price a person or an import set on the invoice's own date stands; a price an
-  invoice set that day is replaced, so a second run of the worker changes nothing a person
-  did. The worker logs its last failed attempt at ERROR. `differences`, on the panel and in
+  (P39, A75). A price a person or an import set on the invoice's own date once Purchasing
+  took the posting — the item's `updated_at` later than the matches' `posted_at` — stands,
+  so a second run of the worker changes nothing a person did after the first; one set that
+  day before the posting, or by an invoice, is replaced, as P39 has it. The worker logs its last failed attempt at ERROR. `differences`, on the panel and in
   the badge, counts a line's own warnings — invoiced more than received or ordered — once
   per order line, however many matches bill it. The panel is read again after a refused
   write, a reversed or deleted invoice still offers Unmatch, and the allocation's quantity
