@@ -148,7 +148,7 @@ func TestProposals_ListAndRound(t *testing.T) {
 		deref(g.Price) != "1.10" || g.Currency != "EUR" {
 		t.Errorf("the German option = %+v", g)
 	}
-	if n.OrderBy.Time.AddDate(0, 0, 7) != g.OrderBy.Time {
+	if n.OrderBy.AddDate(0, 0, 7) != g.OrderBy.Time {
 		t.Errorf("order by %s and %s: want the lead time of 7 days between them", n.OrderBy, g.OrderBy)
 	}
 	// 5 pcs at the second site: 1 box, the minimum 3, the multiple: 4.
@@ -285,7 +285,7 @@ func TestProposals_CreateOrders(t *testing.T) {
 	l := o.Lines[0]
 	if o.Status != gen.PurchasingOrderStatusDraft || o.SiteId != siteSecond || o.Currency != "NOK" || len(o.Lines) != 1 ||
 		l.OrderQuantity != "4" || l.Quantity != "40" || l.UnitPrice != "12.50" || deref(l.SupplierItemNumber) != "NS-88" ||
-		l.PackagingId == nil || *l.PackagingId != packBox || l.ExpectedOn == nil || l.ExpectedOn.Time != o.OrderDate.Time.AddDate(0, 0, 7) {
+		l.PackagingId == nil || *l.PackagingId != packBox || l.ExpectedOn == nil || l.ExpectedOn.Time != o.OrderDate.AddDate(0, 0, 7) {
 		t.Errorf("the second site's draft = %+v %+v", o, l)
 	}
 	if o = getOrder(t, c, german.OrderId); o.Currency != "NOK" || o.Lines[0].UnitPrice != "0.0000" && o.Lines[0].UnitPrice != "0" && o.Lines[0].UnitPrice != "0.00" {
