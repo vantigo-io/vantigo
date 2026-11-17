@@ -85,16 +85,22 @@ once, without **Save**; *Logo uploaded* confirms it. **Remove logo** takes it aw
 Both need `invoices:manage`. A file that breaks a rule is refused in words — *A logo is a
 PNG or a JPEG file*, *A logo is at most 512 KB*, and so on — and nothing is saved.
 
-The logo is printed top left on the invoice, the credit note and every reminder letter,
-fitted inside 45 × 20 mm with its proportions kept, with the title beside it; the e-mail
-a document is sent with shows it at the top. It is taken, like the rest of the seller
-record, when a document is issued: documents issued from now on carry the logo, and
-documents already issued keep the logo they were issued with — or none, when they were
-issued without. Removing or replacing the logo changes nothing issued. A draft's
-preview shows the logo as it is now. The EHF e-invoice carries no logo.
+The logo is printed top left on the invoice and the credit note, fitted inside 45 × 20 mm
+with its proportions kept, with the title beside it; the e-mail a document is sent with
+shows it at the top. It is taken, like the rest of the seller record, when a document is
+issued: invoices and credit notes issued from now on carry the logo, and so do the
+reminder letters for them and their e-mails. Documents already issued, and their
+reminder letters, keep the logo they were issued with — or none, when they were issued
+without. Removing or replacing the logo changes nothing issued. A draft's preview shows
+the logo as it is now. The EHF e-invoice carries no logo.
 
-Uploading or removing the logo is a save of the settings: if you have unsaved edits in
-the form at the same time, it then says **The settings changed**.
+Uploading or removing the logo leaves the rest of the form alone: edits you have not
+saved yet stay, and **Save** still saves them.
+
+If the logo's file has gone missing from the document store, the block says so — *The
+logo's file is no longer in the document store, so new documents are issued without it.
+Upload the logo again.* — and documents are issued without a logo until you do. Uploading
+the same file again restores it, for the documents issued with it too.
 
 ### Set up e-invoicing
 
