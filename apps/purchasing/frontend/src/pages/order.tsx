@@ -29,18 +29,22 @@ import {
   confirmPurchaseOrder,
   copyPurchaseOrder,
   deletePurchaseOrder,
+  markPurchaseOrderLineDelivered,
   markPurchaseOrderSent,
   type PurchaseOrder,
   type PurchaseOrderLine,
   type PurchasingAddress,
+  type PurchasingReceipt,
   purchaseOrderDocumentUrl,
   purchaseOrderHistoryQueryOptions,
   purchaseOrderPdfUrl,
   purchaseOrderQueryOptions,
+  purchaseOrderReceiptsQueryOptions,
   purchasingMetaQueryOptions,
   reopenPurchaseOrder,
   sendPurchaseOrder,
   sendPurchaseOrderAgain,
+  undoPurchasingReceipt,
 } from "../api/purchasing";
 import { PURCHASING_QUERY_KEY, refusalCode } from "../api/request";
 import { ConfirmDialog, OrderStatusBadges, PdfButton } from "../components/common";
@@ -49,9 +53,18 @@ import "../i18n";
 import { noPurchasingAccess, type PurchasingAccess } from "../lib/access";
 import { hasWords, refusalMessage } from "../lib/errors";
 import { newRequestId, usePurchasingFormat } from "../lib/format";
-import { PURCHASE_ORDERS_ROUTE_PATH, purchaseOrderLinkOptions, supplierLinkOptions } from "../lib/routes";
+import {
+  inventoryMovementLinkOptions,
+  PURCHASE_ORDERS_ROUTE_PATH,
+  purchaseOrderLinkOptions,
+  receivePurchaseOrderLinkOptions,
+  supplierLinkOptions,
+} from "../lib/routes";
 
 const openStates = new Set(["sent", "partially_received"]);
+
+/** A goods line is received into stock; a text or a service line is marked delivered instead (P16). */
+const isGoods = (line: PurchaseOrderLine) => line.kind === "variant" && line.productType === "Goods";
 
 /** A day picked in the calendar as the contract writes one. */
 const dayOf = (value: string | Date | null): string | null =>
@@ -67,7 +80,9 @@ const dayOf = (value: string | Date | null): string | null =>
  * only while nothing is received; *Edit*, *Record confirmation*, *Close* and
  * *Close line* (orders-manage) on a sent or partially received one;
  * *Reopen* (orders-manage) on a closed one; *Copy* (orders-manage) on any;
- * and the PDF for everyone who reads the order.
+ * *Receive* (receive) on a sent or partially received one with an open
+ * goods line, *Undo* on a posted receipt and *Mark delivered* on a text or
+ * service line (receive, P24–P29); and the PDF for everyone who reads the order.
  */
 export const PurchaseOrderPage = ({
   orderId,
@@ -134,14 +149,19 @@ const OrderView = ({
   const navigate = useNavigate();
   const [dialog, setDialog] = useState<Dialog>(null);
   const [closingLine, setClosingLine] = useState<PurchaseOrderLine | null>(null);
+  const [undoing, setUndoing] = useState<PurchasingReceipt | null>(null);
   const draft = order.status === "draft";
   const open = openStates.has(order.status);
   const nothingReceived = order.lines.every((l) => Number(l.received) === 0);
+  const receivable = order.lines.some((l) => isGoods(l) && !l.closedAt && Number(l.open) > 0);
+  // A delivered mark is put on while the order is open, and taken off a received one too (P16).
+  const markable = open || order.status === "received";
   const sendingAvailable = meta.data?.sendingAvailable === true;
   const done = async (message: string) => {
     await queryClient.invalidateQueries({ queryKey: [PURCHASING_QUERY_KEY] });
     setDialog(null);
     setClosingLine(null);
+    setUndoing(null);
     notifications.show({ color: "green", message });
   };
   const failed = (error: unknown) => notifications.show({ color: "red", message: refusalMessage(error, t) });
@@ -214,6 +234,14 @@ const OrderView = ({
         }
       />
       <Group gap="xs" data-testid="order-actions">
+        {open && receivable && access.canReceive && (
+          <Button
+            renderRoot={(props) => <Link {...receivePurchaseOrderLinkOptions(order.id)} {...props} />}
+            data-assist="purchasing.order.receive"
+          >
+            {t("receive")}
+          </Button>
+        )}
         {(draft || open) && access.canManageOrders && (
           <Button variant="default" onClick={onEdit} data-assist="purchasing.order.edit">
             {t("editOrder")}
@@ -356,6 +384,19 @@ const OrderView = ({
                       currency={order.currency}
                       canClose={open && access.canManageOrders && !line.closedAt}
                       onClose={() => setClosingLine(line)}
+                      canMarkDelivered={
+                        markable &&
+                        access.canReceive &&
+                        !isGoods(line) &&
+                        !line.closedAt &&
+                        (open || !!line.deliveredAt)
+                      }
+                      onMarkDelivered={() =>
+                        run(
+                          () => markPurchaseOrderLineDelivered(order.id, line.id, !line.deliveredAt, order.updatedAt),
+                          t(line.deliveredAt ? "lineMarkedNotDelivered" : "lineMarkedDelivered"),
+                        )
+                      }
                     />
                   ))}
                 </Table.Tbody>
@@ -372,6 +413,14 @@ const OrderView = ({
           </Group>
         </Stack>
       </PageSection>
+      {!draft && (
+        <ReceiptsCard
+          order={order}
+          canUndo={access.canReceive}
+          canOpenMovements={access.canOpenInventoryMovements === true}
+          onUndo={setUndoing}
+        />
+      )}
       {!draft && <HistoryCard order={order} />}
 
       {dialog === "send" && (
@@ -483,6 +532,19 @@ const OrderView = ({
           }
         />
       )}
+      {undoing && (
+        <UndoDialog
+          receipt={undoing}
+          loading={action.isPending}
+          onClose={() => setUndoing(null)}
+          onUndo={(note) =>
+            run(
+              () => undoPurchasingReceipt(undoing.id, note.trim() || undefined),
+              t("receiptWasUndone", { number: undoing.number }),
+            )
+          }
+        />
+      )}
       {closingLine && (
         <ConfirmDialog
           title={t("closeLine")}
@@ -523,13 +585,17 @@ const LineRow = ({
   currency,
   canClose,
   onClose,
+  canMarkDelivered,
+  onMarkDelivered,
 }: {
   line: PurchaseOrderLine;
   currency: string;
   canClose: boolean;
   onClose: () => void;
+  canMarkDelivered: boolean;
+  onMarkDelivered: () => void;
 }) => {
-  const { t, money, unitPrice, quantity, date } = usePurchasingFormat();
+  const { t, money, unitPrice, quantity, date, dateTime } = usePurchasingFormat();
   const unit = line.packagingName ?? line.unit;
   return (
     <Table.Tr>
@@ -559,17 +625,30 @@ const LineRow = ({
         )}
       </Table.Td>
       <Table.Td ta="right">
-        {line.kind === "variant" && line.productType === "Goods"
-          ? `${quantity(line.received)} / ${quantity(line.quantity)}`
-          : ""}
+        {isGoods(line) ? (
+          `${quantity(line.received)} / ${quantity(line.quantity)}`
+        ) : line.deliveredAt ? (
+          <Text size="sm" data-testid="line-delivered">
+            {t("deliveredAt", { when: dateTime(line.deliveredAt) })}
+          </Text>
+        ) : (
+          ""
+        )}
       </Table.Td>
       <Table.Td ta="right">{money(line.lineNet, currency)}</Table.Td>
       <Table.Td>
-        {canClose && (
-          <Button size="compact-xs" variant="subtle" onClick={onClose}>
-            {t("closeLine")}
-          </Button>
-        )}
+        <Group gap={4} wrap="nowrap">
+          {canMarkDelivered && (
+            <Button size="compact-xs" variant="subtle" onClick={onMarkDelivered}>
+              {line.deliveredAt ? t("notDelivered") : t("markDelivered")}
+            </Button>
+          )}
+          {canClose && (
+            <Button size="compact-xs" variant="subtle" onClick={onClose}>
+              {t("closeLine")}
+            </Button>
+          )}
+        </Group>
       </Table.Td>
     </Table.Tr>
   );
@@ -802,6 +881,160 @@ const ConfirmationDialog = ({
         </Group>
       </Stack>
     </Modal>
+  );
+};
+
+/**
+ * The order's receipts, newest first (P28): who received what, where and in
+ * which lot, with Inventory's movement linked when the caller may open it,
+ * and *Undo* on a posted one (P29). No prices (A21).
+ */
+const ReceiptsCard = ({
+  order,
+  canUndo,
+  canOpenMovements,
+  onUndo,
+}: {
+  order: PurchaseOrder;
+  canUndo: boolean;
+  canOpenMovements: boolean;
+  onUndo: (receipt: PurchasingReceipt) => void;
+}) => {
+  const { t, date, dateTime, quantity } = usePurchasingFormat();
+  const receipts = useQuery(purchaseOrderReceiptsQueryOptions(order.id));
+  const movementLink = (movementId: number, label: string) =>
+    canOpenMovements ? (
+      <Anchor size="sm" renderRoot={(props) => <Link {...inventoryMovementLinkOptions(movementId)} {...props} />}>
+        {label}
+      </Anchor>
+    ) : null;
+  return (
+    <PageSection>
+      <Stack gap="sm">
+        <Title order={4}>{t("receipts")}</Title>
+        {receipts.isPending && <ContentSkeleton rows={2} rowHeight={32} />}
+        {receipts.isError && (
+          <Alert color="red" title={t("couldNotLoad")}>
+            {refusalMessage(receipts.error, t)}
+          </Alert>
+        )}
+        {receipts.data &&
+          (receipts.data.items.length === 0 ? (
+            <Text size="sm" c="dimmed">
+              {t("noReceipts")}
+            </Text>
+          ) : (
+            <Stack gap="md" data-testid="order-receipts">
+              {receipts.data.items.map((r) => (
+                <Stack key={r.id} gap={4} data-testid="receipt">
+                  <Group justify="space-between" wrap="nowrap">
+                    <Group gap="xs">
+                      <Text fw={600}>{t("receiptTitle", { number: r.number })}</Text>
+                      <Badge variant="light" color={r.status === "posted" ? "green" : "gray"}>
+                        {t(`receiptStatus.${r.status}`)}
+                      </Badge>
+                      {movementLink(r.movementId, t("stockMovement"))}
+                      {r.reversalMovementId ? movementLink(r.reversalMovementId, t("undoMovement")) : null}
+                    </Group>
+                    {canUndo && r.status === "posted" && (
+                      <Button size="compact-xs" variant="subtle" color="red" onClick={() => onUndo(r)}>
+                        {t("undo")}
+                      </Button>
+                    )}
+                  </Group>
+                  <Text size="xs" c="dimmed">
+                    {[
+                      date(r.receivedOn),
+                      r.receivedBy?.displayName ?? t("someone"),
+                      r.deliveryNote ? t("deliveryNoteIs", { note: r.deliveryNote }) : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </Text>
+                  {r.note && <Text size="sm">{r.note}</Text>}
+                  {r.status === "undone" && r.undoneAt && (
+                    <Text size="xs" c="dimmed">
+                      {t("undoneAt", { when: dateTime(r.undoneAt), who: r.undoneBy?.displayName ?? t("someone") })}
+                      {r.undoNote ? ` — ${r.undoNote}` : ""}
+                    </Text>
+                  )}
+                  <Table.ScrollContainer minWidth={700}>
+                    <Table data-testid="receipt-lines">
+                      <Table.Tbody>
+                        {r.lines.map((l) => (
+                          <Table.Tr key={l.id}>
+                            <Table.Td>{l.sku ? `${l.sku} · ${l.name}` : l.name}</Table.Td>
+                            <Table.Td ta="right">
+                              {l.inPackaging && l.packagingName
+                                ? `${quantity(l.enteredQuantity)} ${l.packagingName} (${quantity(l.quantity)} ${l.unit})`
+                                : `${quantity(l.quantity)} ${l.unit}`}
+                            </Table.Td>
+                            <Table.Td>{l.locationCode || "—"}</Table.Td>
+                            <Table.Td>
+                              {[
+                                l.lotNumber ? t("lotIs", { lot: l.lotNumber }) : null,
+                                l.supplierLot ? t("supplierLotIs", { lot: l.supplierLot }) : null,
+                                l.serials.length > 0 ? l.serials.join(", ") : null,
+                              ]
+                                .filter(Boolean)
+                                .join(" · ")}
+                            </Table.Td>
+                            <Table.Td>
+                              {[
+                                l.productionDate ? t("producedOn", { day: date(l.productionDate) }) : null,
+                                l.bestBefore ? t("bestBeforeOn", { day: date(l.bestBefore) }) : null,
+                                l.expiry ? t("expiresOn", { day: date(l.expiry) }) : null,
+                              ]
+                                .filter(Boolean)
+                                .join(" · ")}
+                            </Table.Td>
+                          </Table.Tr>
+                        ))}
+                      </Table.Tbody>
+                    </Table>
+                  </Table.ScrollContainer>
+                </Stack>
+              ))}
+            </Stack>
+          ))}
+      </Stack>
+    </PageSection>
+  );
+};
+
+/** Undo a receipt (P29), with an optional note the reversal carries. */
+const UndoDialog = ({
+  receipt,
+  loading,
+  onClose,
+  onUndo,
+}: {
+  receipt: PurchasingReceipt;
+  loading: boolean;
+  onClose: () => void;
+  onUndo: (note: string) => void;
+}) => {
+  const { t } = usePurchasingFormat();
+  const [note, setNote] = useState("");
+  return (
+    <ConfirmDialog
+      title={t("undoTitle", { number: receipt.number })}
+      body={t("undoBody")}
+      confirm={t("undo")}
+      color="red"
+      loading={loading}
+      onClose={onClose}
+      onConfirm={() => onUndo(note)}
+    >
+      <Textarea
+        label={t("undoNote")}
+        autosize
+        minRows={2}
+        maxLength={1000}
+        value={note}
+        onChange={(e) => setNote(e.currentTarget.value)}
+      />
+    </ConfirmDialog>
   );
 };
 

@@ -9,5 +9,6 @@ export { type PurchasingNavItem, purchasingNavItems, visiblePurchasingNavItems }
 export * from "./lib/routes";
 export { NewPurchaseOrderPage, PurchaseOrderPage } from "./pages/order";
 export { PurchaseOrdersPage } from "./pages/orders";
+export { ReceivePurchaseOrderPage } from "./pages/receive";
 export { PurchasingSettingsPage } from "./pages/settings";
 export { type RenderSupplierForm, type SupplierFormSlotProps, SupplierPage, SuppliersPage } from "./pages/suppliers";

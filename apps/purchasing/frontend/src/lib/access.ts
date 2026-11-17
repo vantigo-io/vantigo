@@ -14,6 +14,10 @@ export interface PurchasingAccess {
   canManageSupplierItems: boolean;
   /** `purchasing:settings`: the settings. */
   canManageSettings: boolean;
+  /** `purchasing:receive`: receive goods, undo a receipt, mark a text or service line delivered (P24–P30). */
+  canReceive: boolean;
+  /** Inventory is enabled and the caller holds inventory:stock-view: a receipt links its movement. */
+  canOpenInventoryMovements?: boolean;
   /** The signed-in user, our reference on a new order. */
   userId?: string;
 }
@@ -24,4 +28,5 @@ export const noPurchasingAccess: PurchasingAccess = {
   canSendOrders: false,
   canManageSupplierItems: false,
   canManageSettings: false,
+  canReceive: false,
 };
