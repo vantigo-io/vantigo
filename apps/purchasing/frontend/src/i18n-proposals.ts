@@ -29,7 +29,7 @@ export const proposalWords = {
     proposalSelect: "Select {{sku}} at {{site}}",
     proposalQuantityOf: "Quantity of {{sku}} at {{site}}",
     proposalSupplierOf: "Supplier of {{sku}} at {{site}}",
-    proposalRounded: "Rounded to the supplier's packaging, minimum and multiple",
+    proposalRounded: "Rounded up to the supplier's packaging, minimum quantity and multiple",
     proposalLate: "Late",
     proposalsNoSupplier: "No supplier",
     proposalsNoSupplierDescription:
@@ -72,7 +72,7 @@ export const proposalWords = {
     proposalSelect: "Velg {{sku}} på {{site}}",
     proposalQuantityOf: "Antall {{sku}} på {{site}}",
     proposalSupplierOf: "Leverandør for {{sku}} på {{site}}",
-    proposalRounded: "Rundet av til leverandørens innkjøpsenhet, minimum og multippel",
+    proposalRounded: "Rundet opp til leverandørens innkjøpsenhet, minste antall og multippel",
     proposalLate: "Forsinket",
     proposalsNoSupplier: "Uten leverandør",
     proposalsNoSupplierDescription:
