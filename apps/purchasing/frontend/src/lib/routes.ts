@@ -3,8 +3,10 @@ export const PURCHASING_HOME_ROUTE_PATH = "/purchasing";
 export const PURCHASE_ORDERS_ROUTE_PATH = "/purchasing/orders";
 export const NEW_PURCHASE_ORDER_ROUTE_PATH = "/purchasing/orders/new";
 export const PURCHASE_ORDER_ROUTE_PATH = "/purchasing/orders/$orderId";
-/** The receive screen of a sent order (P24). */
-export const RECEIVE_PURCHASE_ORDER_ROUTE_PATH = "/purchasing/orders/$orderId/receive";
+/** The orders to receive (P30, A47): purchasing:receive's own list, beside the orders. */
+export const RECEIVING_ROUTE_PATH = "/purchasing/receive";
+/** The receive screen of a sent order (P24), under the receiving list so purchasing:receive alone reaches it. */
+export const RECEIVE_PURCHASE_ORDER_ROUTE_PATH = "/purchasing/receive/$orderId";
 export const SUPPLIERS_ROUTE_PATH = "/purchasing/suppliers";
 export const SUPPLIER_ROUTE_PATH = "/purchasing/suppliers/$supplierId";
 export const SETTINGS_ROUTE_PATH = "/purchasing/settings";

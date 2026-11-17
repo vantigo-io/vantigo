@@ -73,7 +73,7 @@
   },
   {
     "key": "purchasing.receive.scan",
-    "route": "/purchasing/orders/{orderId}/receive",
+    "route": "/purchasing/receive/{orderId}",
     "label": {
       "en": "Scan an item",
       "nb": "Skann en vare"
@@ -85,7 +85,7 @@
   },
   {
     "key": "purchasing.receive.submit",
-    "route": "/purchasing/orders/{orderId}/receive",
+    "route": "/purchasing/receive/{orderId}",
     "label": {
       "en": "Receive",
       "nb": "Motta"

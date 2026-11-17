@@ -23,15 +23,28 @@ export interface Gs1Read {
   bestBefore?: string;
   /** (17) expiry, as YYYY-MM-DD. */
   expiry?: string;
+  /**
+   * The lot, or the serial, may be in the code but could not be read for
+   * sure — a variable-length field ran to the end with no FNC1 though more
+   * fields could follow it, or an AI this reader does not know stopped it —:
+   * the screen asks for it rather than guess.
+   */
+  lotUnread?: boolean;
+  serialUnread?: boolean;
 }
 
 const GS = "\u001d";
 
-/** The fixed lengths of the data of the AIs read here and of the common ones a label carries beside them. */
+/**
+ * The fixed lengths of the data of the AIs whose data has a fixed length, by
+ * the AI's digits: those read here and the common ones a label carries
+ * beside them, which are skipped (GS1 General Specifications 3.2).
+ */
 const fixedLength: Record<string, number> = {
   "00": 18,
   "01": 14,
   "02": 14,
+  "03": 14,
   "11": 6,
   "12": 6,
   "13": 6,
@@ -39,14 +52,59 @@ const fixedLength: Record<string, number> = {
   "16": 6,
   "17": 6,
   "20": 2,
+  "410": 13,
+  "411": 13,
+  "412": 13,
+  "413": 13,
+  "414": 13,
+  "415": 13,
+  "416": 13,
+  "417": 13,
+  "422": 3,
+  "424": 3,
+  "426": 3,
 };
 
-/** The variable-length AIs understood, with their longest data. */
+/** The variable-length AIs understood, with their longest data; all but 10 and 21 are skipped. */
 const variableLength: Record<string, number> = {
   "10": 20,
   "21": 20,
+  "22": 20,
+  "240": 30,
+  "241": 30,
+  "250": 30,
+  "251": 30,
   "30": 8,
   "37": 8,
+  "400": 30,
+  "401": 30,
+  "403": 30,
+  "420": 20,
+  "90": 30,
+  "91": 90,
+  "92": 90,
+  "93": 90,
+  "94": 90,
+  "95": 90,
+  "96": 90,
+  "97": 90,
+  "98": 90,
+  "99": 90,
+};
+
+/**
+ * The AI at the head of text and its data's length: fixed, or the longest a
+ * variable one takes. 310n–369n, a measure with n decimals, is four digits
+ * and six of data.
+ */
+const aiAt = (text: string): { ai: string; fixed?: number; longest?: number } | undefined => {
+  if (/^3[1-6]\d\d/.test(text)) return { ai: text.slice(0, 4), fixed: 6 };
+  for (const n of [2, 3]) {
+    const ai = text.slice(0, n);
+    if (fixedLength[ai] !== undefined) return { ai, fixed: fixedLength[ai] };
+    if (variableLength[ai] !== undefined) return { ai, longest: variableLength[ai] };
+  }
+  return undefined;
 };
 
 /** Symbology identifiers a scanner may put first: GS1-128, GS1 DataMatrix, GS1 QR. */
@@ -112,34 +170,95 @@ const readHumanReadable = (text: string, now: Date): Gs1Read | null => {
   return fromPairs(pairs, now);
 };
 
-/** The raw form: fixed-length fields run on, variable ones end at GS or at the end. */
-const readRaw = (text: string, now: Date): Gs1Read | null => {
-  const pairs: [string, string][] = [];
+/**
+ * Whether text reads through to its end as known fixed-length fields whose
+ * data fits — dates that are dates —: what fields swallowed by a variable
+ * one before them would be. A tail that would be another variable field is
+ * not judged, or every lot with a 10 or 21 in it would be.
+ */
+const readsThrough = (text: string, now: Date): boolean => {
+  const read = rawPairs(text);
+  if (!read || read.stopped || read.pairs.length === 0) return false;
+  return read.pairs.every(
+    ([ai, data]) =>
+      (fixedLength[ai] !== undefined || ai.length === 4) && (!/^1[1-7]$/.test(ai) || gs1Date(data, now) !== undefined),
+  );
+};
+
+interface RawPairs {
+  pairs: [string, string][];
+  /** An AI this reader does not know stopped the reading there. */
+  stopped: boolean;
+  /** The variable-length fields that ran to the end without an FNC1, by AI. */
+  open: string[];
+}
+
+/** The raw form's AI and data pairs: fixed-length fields run on, variable ones end at GS or at the end. */
+const rawPairs = (text: string): RawPairs | null => {
+  const out: RawPairs = { pairs: [], stopped: false, open: [] };
   let at = 0;
   while (at < text.length) {
     if (text[at] === GS) {
       at += 1;
       continue;
     }
-    const ai = text.slice(at, at + 2);
-    at += 2;
-    const fixed = fixedLength[ai];
-    if (fixed !== undefined) {
-      const data = text.slice(at, at + fixed);
-      if (data.length !== fixed || data.includes(GS)) return null;
-      pairs.push([ai, data]);
-      at += fixed;
+    const head = aiAt(text.slice(at));
+    if (!head) {
+      out.stopped = true;
+      return out;
+    }
+    at += head.ai.length;
+    if (head.fixed !== undefined) {
+      const data = text.slice(at, at + head.fixed);
+      if (data.length !== head.fixed || data.includes(GS)) return null;
+      out.pairs.push([head.ai, data]);
+      at += head.fixed;
       continue;
     }
-    const longest = variableLength[ai];
-    if (longest === undefined) return null;
     const end = text.indexOf(GS, at);
     const data = text.slice(at, end === -1 ? text.length : end);
-    if (data.length === 0 || data.length > longest) return null;
-    pairs.push([ai, data]);
+    if (data.length === 0 || data.length > (head.longest ?? 0)) return null;
+    if (end === -1) out.open.push(head.ai);
+    out.pairs.push([head.ai, data]);
     at += data.length;
   }
-  return fromPairs(pairs, now);
+  return out;
+};
+
+/**
+ * The raw form. A variable-length field that runs to the end of a string
+ * with no FNC1 in it might have swallowed fields after it — a scanner that
+ * drops FNC1 sends `…10LOT4217270531` for lot LOT42 and expiry 2027-05-31 —:
+ * when some tail of its data reads as known fields, the lot or serial is
+ * reported unread instead of guessed. An AI this reader does not know ends
+ * the reading of a string a scanner marked GS1: what came before it stands,
+ * and a lot or serial not read by then is reported unread. Without the mark
+ * the string is GS1 only when it reads through.
+ */
+const readRaw = (text: string, prefixed: boolean, now: Date): Gs1Read | null => {
+  const raw = rawPairs(text);
+  if (!raw || (raw.stopped && !prefixed)) return null;
+  const read = fromPairs(raw.pairs, now);
+  if (!read) return null;
+  const noSeparator = !text.includes(GS);
+  for (const [ai, data] of raw.pairs) {
+    if (!raw.open.includes(ai) || !noSeparator || (ai !== "10" && ai !== "21")) continue;
+    let ambiguous = false;
+    for (let cut = 1; cut < data.length && !ambiguous; cut++) ambiguous = readsThrough(data.slice(cut), now);
+    if (!ambiguous) continue;
+    if (ai === "10") {
+      delete read.lot;
+      read.lotUnread = true;
+    } else {
+      delete read.serial;
+      read.serialUnread = true;
+    }
+  }
+  if (raw.stopped) {
+    if (read.lot === undefined) read.lotUnread = true;
+    if (read.serial === undefined) read.serialUnread = true;
+  }
+  return read;
 };
 
 /**
@@ -154,5 +273,5 @@ export const readGs1 = (scan: string, now: Date = new Date()): Gs1Read | null =>
   const prefixed = symbologyPrefix.test(text);
   const body = text.replace(symbologyPrefix, "");
   if (!prefixed && !/^0[12]\d{14}/.test(body)) return null;
-  return readRaw(body, now);
+  return readRaw(body, prefixed, now);
 };

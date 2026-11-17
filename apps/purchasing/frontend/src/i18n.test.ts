@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import errorsGo from "../../../server/internal/purchasing/errors.go?raw";
 import { purchasingCatalog } from "./i18n";
 import { purchasingNavItems } from "./lib/navigation";
 
@@ -126,11 +127,22 @@ describe("the purchasing catalog", () => {
         "receipt_undone",
         "receipt_invoiced",
         "line_not_deliverable",
+        "lot_dates_differ",
+        "receipt_unknown",
       ],
       receiptStatus: ["posted", "undone"],
     };
     for (const [family, values] of Object.entries(families))
       for (const value of values)
         expect(purchasingCatalog.en, `${family}.${value}`).toHaveProperty([`${family}.${value}`]);
+  });
+
+  it("words every refusal code the server's errors.go declares, in both languages", () => {
+    const codes = [...errorsGo.matchAll(/^\s*code\w+\s*=\s*"([a-z_]+)"/gm)].map((m) => m[1]);
+    expect(codes.length).toBeGreaterThan(30);
+    for (const code of codes) {
+      expect(purchasingCatalog.en, `en refusal.${code}`).toHaveProperty([`refusal.${code}`]);
+      expect(purchasingCatalog.nb, `nb refusal.${code}`).toHaveProperty([`refusal.${code}`]);
+    }
   });
 });

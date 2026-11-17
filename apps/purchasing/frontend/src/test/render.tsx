@@ -19,6 +19,7 @@ import {
   PURCHASE_ORDER_ROUTE_PATH,
   PURCHASE_ORDERS_ROUTE_PATH,
   RECEIVE_PURCHASE_ORDER_ROUTE_PATH,
+  RECEIVING_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
   SUPPLIER_ROUTE_PATH,
   SUPPLIERS_ROUTE_PATH,
@@ -27,6 +28,7 @@ import {
 import { NewPurchaseOrderPage, PurchaseOrderPage } from "../pages/order";
 import { PurchaseOrdersPage } from "../pages/orders";
 import { ReceivePurchaseOrderPage } from "../pages/receive";
+import { ReceivingPage } from "../pages/receiving";
 import { PurchasingSettingsPage } from "../pages/settings";
 import { type RenderSupplierForm, SupplierPage, SuppliersPage } from "../pages/suppliers";
 
@@ -37,6 +39,7 @@ export const fullAccess: PurchasingAccess = {
   canManageSupplierItems: true,
   canManageSettings: true,
   canReceive: true,
+  canRead: true,
   canOpenInventoryMovements: true,
   userId: "00000000-0000-4000-8000-000000000001",
 };
@@ -92,6 +95,7 @@ const routeTree = (access: PurchasingAccess, renderSupplierForm?: RenderSupplier
     newOrder,
     orderRoute,
     receiveRoute,
+    route(RECEIVING_ROUTE_PATH, () => <ReceivingPage />),
     route(SUPPLIERS_ROUTE_PATH, () => <SuppliersPage renderSupplierForm={renderSupplierForm} />),
     supplierRoute,
     route(SETTINGS_ROUTE_PATH, () => <PurchasingSettingsPage access={access} />),

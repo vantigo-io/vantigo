@@ -14,6 +14,7 @@ export const purchasingCatalog = {
   en: {
     purchasing: "Purchasing",
     navOrders: "Purchase orders",
+    navReceive: "Receive",
     navSuppliers: "Suppliers",
     navSettings: "Settings",
 
@@ -474,10 +475,21 @@ export const purchasingCatalog = {
     "refusal.lot_blocked": "The lot is blocked.",
     "refusal.site_unknown": "The site no longer exists.",
     "refusal.document_reused": "Inventory has already posted this receipt.",
+    "refusal.lot_dates_differ": "The lot exists with other dates: give its own dates, or another lot.",
+    "refusal.receipt_unknown": "Inventory has no movement of this receipt.",
+    receivingTitle: "Receive",
+    receivingDescription: "Sent orders with goods still to come, the earliest expected first.",
+    nothingToReceiveTitle: "Nothing to receive",
+    nothingToReceiveDescription: "No sent order has goods still to come.",
+    linesLeft: "Lines left",
+    linesLeftOf: "{{open}} of {{total}}",
+    scanSerial: "Scan the serial number: this code names no serial.",
+    scanLotUnread: "The lot could not be read from the code: type the lot number.",
   },
   nb: {
     purchasing: "Innkjøp",
     navOrders: "Innkjøpsordrer",
+    navReceive: "Motta",
     navSuppliers: "Leverandører",
     navSettings: "Innstillinger",
 
@@ -928,6 +940,16 @@ export const purchasingCatalog = {
     "refusal.lot_blocked": "Partiet er sperret.",
     "refusal.site_unknown": "Lagerstedet finnes ikke lenger.",
     "refusal.document_reused": "Lageret har allerede bokført dette varemottaket.",
+    "refusal.lot_dates_differ": "Partiet finnes med andre datoer: oppgi partiets egne datoer, eller et annet parti.",
+    "refusal.receipt_unknown": "Lageret har ingen bevegelse for dette varemottaket.",
+    receivingTitle: "Motta",
+    receivingDescription: "Sendte ordrer med varer som ennå skal komme, den som er forventet først, øverst.",
+    nothingToReceiveTitle: "Ingenting å motta",
+    nothingToReceiveDescription: "Ingen sendt ordre har varer som ennå skal komme.",
+    linesLeft: "Linjer igjen",
+    linesLeftOf: "{{open}} av {{total}}",
+    scanSerial: "Skann serienummeret: denne koden har ikke noe serienummer.",
+    scanLotUnread: "Partiet kunne ikke leses av koden: skriv inn partinummeret.",
   },
 } satisfies CatalogResources;
 

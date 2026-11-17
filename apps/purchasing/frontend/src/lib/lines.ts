@@ -143,7 +143,7 @@ export const lineWarnings = (line: EditorLine): PurchaseLineWarning[] => {
 };
 
 /** A decimal as typed, with a comma read as the point. */
-const decimal = (value: string) => value.trim().replace(",", ".");
+export const decimal = (value: string) => value.trim().replace(",", ".");
 
 /**
  * The line as the contract takes it. Every saved line is named by its id; a
