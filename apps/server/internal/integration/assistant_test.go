@@ -249,6 +249,13 @@ var markedByHand = map[string]string{
 	"getAccountingSupplierInvoiceFile":    "never",
 	"deleteAccountingSupplierInvoiceFile": "never",
 	"exportAccountingSupplier":            "never",
+	// A supplier's create, change and lookup are a buyer's as well as a
+	// bookkeeper's (purchasing design A12): their rule is a session, which the
+	// handler narrows, so the default would be never; they keep the modes a
+	// permission rule gives them.
+	"createAccountingSupplier":      "confirm",
+	"updateAccountingSupplier":      "confirm",
+	"lookupAccountingSupplierBrreg": "auto",
 	// A VAT term's return as XML is a file a person downloads and files at
 	// Skatteetaten by hand in this phase (accounting design A23).
 	"downloadAccountingVatReturn":      "never",
