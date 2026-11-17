@@ -1,7 +1,8 @@
 # API access — integrations, scoped API keys and the reference at /api (phase 1)
 
-Revision 2, 2026-11-17, after an adversarial review of revision 1 (§14 lists what
-changed). This spec builds on the research
+Revision 3, 2026-11-17. Revision 2 followed an adversarial review of revision 1.
+Revision 3 followed the plan's review and amends the spec in **§14, which wins where it
+differs**. §15 lists what changed in each revision. This spec builds on the research
 `docs/superpowers/research/2026-11-17-api-keys-and-api-reference.md` ("R"). It takes the
 defaults R §7 recommends for the owner's questions, and §13 says what overturning each
 one would change. Decisions are numbered K*n*. Code references are against `a9f140c82`,
@@ -782,7 +783,91 @@ Each question takes R §7's default. An overturn changes the following:
    because K4 leaves them out of the Users page counts. If they should be, the owner
    counts (`owner_users.sql:42-43`) gain a third column.
 
-## 14. Revision log
+## 14. Amendments (revision 3, from the plan’s review)
+
+- **K33 (amends K5): the inner check is `APIRead`.** For a key principal,
+  `HasPermissions` re-runs `Check` with `API: APIRead`, because the outer `wrap` has
+  already judged the operation's mark and its read-only rule. With `APIAllowed`, a
+  read-only key would fail every handler-side check, even on a `GET`.
+- **K34 (amends K19, K23): the refusal errors wrap the sentinels.**
+  - `ErrAPINotAvailable` and `ErrAPIKeyReadOnly` are `fmt.Errorf("%w: …",
+    ErrForbidden)`, and `ErrAPIKeyExpired` wraps `ErrUnauthenticated`. This is how
+    `ErrStationScope` is defined (`srv/contracts/access.go:218`).
+  - `APIKeyRefusal` unwraps to them.
+  - `wrap`, `compose.go` and the live handler send anything else to `httpx.WriteError`
+    as a 500, so wrapping keeps them answering 401 or 403.
+  - `Reject` branches on each to write its code.
+- **K35 (amends K23): the recorder is found by type assertion.** `module.Options` does
+  not exist, and `RouterOptions` is built in 23 modules. `contracts.APIRequestRecorder`
+  is instead implemented by identity's `Access` beside `Access`, as `StationAccess` is
+  (`srv/contracts/access.go:220-225`). `wrap` finds it with
+  `r.opts.Access.(contracts.APIRequestRecorder)`. The buffered writer is started and
+  closed where `identity.NewAccess` is built (`apps/server/cmd/vantigo/main.go:315`).
+- **K36 (amends K28): the key's scope is a contract.** `srv/module/compose.go`, which
+  serves `/api/openapi.json`, cannot import identity. `contracts.APIKeyScope`, with
+  `Scope(ctx, Principal) (permissions []string, readOnly bool, err error)`, is
+  implemented by identity's `Access` and found by type assertion. It answers the
+  effective permissions minus `APINever`, intersected with the narrowing.
+- **K37 (amends K31): the integrator's document is built from the composed catalog.**
+  - `srv/openapi` may not import business modules (depguard), and `Delegable` lives in
+    each module's Go code.
+  - The builder, `srv/openapi.Integrator(contract, catalog, filter)`, therefore takes
+    the catalog as a parameter.
+  - It is called by `compose.go`, and by a new `vantigo openapi integrator` subcommand
+    in `apps/server/cmd/vantigo`, which composes every module. CI runs that subcommand.
+  - The CI check:
+    - runs on pull requests only;
+    - fetches the base commit explicitly;
+    - installs `oasdiff` through the mise action's `install_args`;
+    - is skipped when the base has no `integrator` subcommand.
+- **K38 (amends K31): release notes.** Real releases use `gh release create
+  --generate-notes`; `.goreleaser.yaml` is a dry run. A *Breaking API changes* category
+  is therefore added in `.github/release.yml`, keyed on a `breaking-api` label that the
+  CI check applies to the PR. goreleaser's groups are left alone.
+- **K39 (amends K23): the DEFAULT partition is drained before a day is created.** For
+  each day that is missing, one transaction:
+  1. moves that day's rows out of DEFAULT into a temporary table;
+  2. creates the partition;
+  3. inserts the rows back.
+
+  Postgres refuses to create a partition while DEFAULT holds rows for it.
+  `api_requests` has no FK to `api_keys`, because a key's row is deleted 90 days after
+  expiry and its log rows age out on their own. When the worker is switched off
+  (`IDENTITY_API_KEYS_ENABLED=false`), no partitions are made and everything lands in
+  DEFAULT. `admin/configuration.md` says so.
+- **K40 (amends K27, §11): no new browser suite.** The repository has no Playwright.
+  The page's checks are split three ways:
+  - **Go tests:** the CSP header, the assets, `Accept` handling and the public host.
+  - **vitest with jsdom:** the page script sends the key in the header and writes
+    nothing to storage.
+  - **The manual browser check:** "try it" and "no request leaves the origin".
+- **K41 (amends K27): packaging.**
+  - The page's package is `apps/apiref/frontend`, so it is a bun workspace, it is
+    linted, and Dependabot covers it.
+  - `scripts/spa-embed-overlay.sh` and `scripts/restore-embed-overlay.sh` gain
+    `srv/apiref/dist`.
+  - Scalar's MIT notice joins the third-party notices.
+  - `srv/apiref` joins depguard's platform list.
+- **K42 (amends K32): the introduction is `reference/api-introduction.md`.**
+  `reference/api/` stays generated-only, as AGENTS.md and
+  `contributing/documentation.md` say.
+- **K43 (amends K4): the avatar badge is the shell's.** `user-avatar.tsx` is
+  `packages/frontend-shell/src/ui/user-avatar.tsx`.
+- **K44 (amends K4): station operator sessions.** `station_operator_sessions.user_id`
+  gets K2's trigger.
+- **K45 (amends K4): a key's queued work.** A job a key queues and that later runs
+  `AsUser(created_by)` would fail, because `UserMayAct` is false for an integration.
+  Delivery 0 lists the `AsUser` callers. Each one either keeps working for an
+  integration, by acting as the job's own subject, or refuses the key's request up
+  front with `api_not_available` through the operation's mark.
+- **K46 (amends K28): the cache is bounded.** The filtered documents are kept in an LRU
+  of 64 entries.
+- **K47 (amends K3): which writes are guarded.** K3's trigger guards insert and update
+  of `user_roles` and of every `access_group_memberships` row naming an integration.
+  Deletes are not guarded: removing a role only narrows. Integrations are not given
+  access-group memberships in this phase, so their scope is their direct roles.
+
+## 15. Revision log
 
 - **Revision 1, 2026-11-17.** First version, from R.
 - **Revision 2, 2026-11-17.** After an adversarial review checked against the code.
@@ -821,3 +906,18 @@ Each question takes R §7's default. An overturn changes the following:
     - Wrong cross-references and false claims about the repository are corrected:
       there is no Renovate, no identity worker, no `reference/identity.md` and no
       `admin/overview.md`; `cmd/contract` exists; a partition precedent exists.
+- **Revision 3, 2026-11-17.** After the plan's review, §14 (K33 to K47) corrects:
+  - the read-only key in handler-side checks;
+  - the error wrapping;
+  - the recorder and scope seams;
+  - where the integrator's document is built, and the CI check;
+  - the release notes;
+  - the DEFAULT partition's order;
+  - the browser tests;
+  - the packaging;
+  - the introduction page's path;
+  - the avatar's package;
+  - station operator sessions;
+  - queued work;
+  - the cache bound;
+  - which role writes are guarded.

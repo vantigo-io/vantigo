@@ -123,6 +123,29 @@ key; modules declare their AI tasks (`Module.AITasks`); identity keeps an Owner'
 under **Workspace admin** › **Integrations** › **AI models**. Communications' AI draft and
 customer suggestion are the first two tasks and behave as before. A fallback model per task and an Owner's own key stay out of scope; a second provider, Anthropic, came with the Assistant (below).
 
+### API access (designed)
+
+Researched in
+[`docs/superpowers/research/2026-11-17-api-keys-and-api-reference.md`](docs/superpowers/research/2026-11-17-api-keys-and-api-reference.md),
+designed in
+[`docs/superpowers/specs/2026-11-17-api-access-design.md`](docs/superpowers/specs/2026-11-17-api-access-design.md),
+planned in
+[`docs/superpowers/plans/2026-11-17-api-access-plan.md`](docs/superpowers/plans/2026-11-17-api-access-plan.md).
+An Owner makes an **integration**: an account of its own kind that holds roles and never
+signs in. The integration's **API keys** (`vtg_…`, shown once, always expiring) let an
+external application call the API as it. A key can be narrowed, made read-only or held
+to networks.
+
+- **Delivery 0 (planned):** the kind, its guards, and the `x-vantigo-api` mark with its
+  sweep.
+- **Delivery A (planned):** integrations, keys and *Workspace admin › API access*.
+- **Delivery B (planned):** the request log, the per-integration rate limit and expiry
+  notices.
+- **Delivery C (planned):** the interactive reference (Scalar) at `/api` and the
+  compatibility promise with its breaking-change check.
+
+**Later:** outgoing webhooks, an MCP server, OAuth apps, personal access tokens.
+
 ### The Assistant (done)
 
 Decided in
