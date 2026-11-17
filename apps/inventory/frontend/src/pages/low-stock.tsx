@@ -5,7 +5,7 @@ import { IconAlertCircle, IconDownload, IconSearch, IconTrendingDown, IconTruckD
 import { useInfiniteQuery, useMutation, useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { ContentSkeleton, EmptyState, PageHeader, PageSection } from "@vantigo/frontend-shell";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { downloadBlob } from "../api/labels";
 import { inventoryMetaQueryOptions } from "../api/meta";
 import { exportLowStock, type InventoryLowStockRow, lowStockInfiniteQueryOptions } from "../api/placements";
@@ -32,9 +32,14 @@ const today = () => {
  * {site} from [site]* drafts a transfer of their suggested quantities —
  * asking first when a draft is already open for one of them — and opens it;
  * it needs `inventory:transfers-manage` (I63). *Export CSV* downloads the list
- * as filtered. The list needs both views.
+ * as filtered. The list needs both views. The host may compose an action at
+ * each row's end — Purchasing's **Order…** (purchasing design P35).
  */
-export const LowStockPage = () => {
+export const LowStockPage = ({
+  renderRowAction,
+}: {
+  renderRowAction?: (row: InventoryLowStockRow) => ReactNode;
+} = {}) => {
   const { t } = useInventoryFormat();
   const search = useSearch({ strict: false }) as LowStockSearch;
   const navigate = useNavigate() as (options: unknown) => Promise<void>;
@@ -190,6 +195,7 @@ export const LowStockPage = () => {
                 <LowStockList
                   rows={rows}
                   showSite={search.siteId === undefined}
+                  renderRowAction={renderRowAction}
                   {...(transferring
                     ? {
                         selected: new Set(chosen.map(lowStockKey)),
