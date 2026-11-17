@@ -88,6 +88,14 @@ const matchColor: Record<string, string> = {
   unmatched: "red",
 };
 
+const supplierMatchColor: Record<string, string> = {
+  new: "gray",
+  matched: "green",
+  matched_by_name: "green",
+  linked: "green",
+  ambiguous: "orange",
+};
+
 const Preview = ({ id }: { id: number }) => {
   const { t, money, day, locale } = useAccountingFormat();
   const queryClient = useQueryClient();
@@ -98,6 +106,9 @@ const Preview = ({ id }: { id: number }) => {
   const [month, setMonth] = useState<string | null>(null);
   const [otherCompany, setOtherCompany] = useState(false);
   const [answer, setAnswer] = useState<AccountingSaftImport | null>(null);
+  // The suppliers picked over the match, by the file's supplier id: the
+  // register's supplier's id, or 0 for a new one (purchasing design A2).
+  const [picks, setPicks] = useState<Record<string, number>>({});
   const attention = useQuery(saftImportAttentionQueryOptions(id));
   const refresh = async () => {
     setAnswer(null);
@@ -116,6 +127,7 @@ const Preview = ({ id }: { id: number }) => {
         language: language === "nb" ? "nb" : "en",
         fiscalYearStartMonth: Number(month ?? preview.data?.fiscalYearStartMonth ?? 1),
         ...(otherCompany ? { confirmOtherCompany: true } : {}),
+        ...(Object.keys(picks).length > 0 ? { suppliers: picks } : {}),
       }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: [ACCOUNTING_QUERY_KEY] });
@@ -221,14 +233,55 @@ const Preview = ({ id }: { id: number }) => {
         ))}
       </List>
       <Title order={5}>{t("saftImportSuppliers", { count: p.suppliers.length })}</Title>
-      <List size="sm">
-        {p.suppliers.map((s) => (
-          <List.Item key={s.fileSupplierId}>
-            {s.name} {s.organisationNumber ?? ""} — {money(s.closingBalance)}
-            {s.notes.length > 0 ? ` (${s.notes.join(" ")})` : ""}
-          </List.Item>
-        ))}
-      </List>
+      <Text size="sm" c="dimmed">
+        {t("saftSupplierPickHint")}
+      </Text>
+      <Table striped data-testid="saft-suppliers">
+        <Table.Tbody>
+          {p.suppliers.map((s) => {
+            const options = [
+              ...(s.supplierId !== null && s.match !== "ambiguous"
+                ? [{ value: String(s.supplierId), label: `${s.supplierNumber} ${s.supplierName ?? ""}` }]
+                : []),
+              ...s.candidates.map((c) => ({ value: String(c.id), label: `${c.number} ${c.name}` })),
+              { value: "0", label: t("saftSupplierPickNew") },
+            ];
+            const picked = picks[s.fileSupplierId];
+            const value = picked !== undefined ? String(picked) : String(s.supplierId ?? 0);
+            return (
+              <Table.Tr key={s.fileSupplierId}>
+                <Table.Td>
+                  {s.name} {s.organisationNumber ?? ""}
+                  {s.notes.length > 0 && (
+                    <Text size="xs" c="dimmed">
+                      {s.notes.join(" ")}
+                    </Text>
+                  )}
+                </Table.Td>
+                <Table.Td>{money(s.closingBalance)}</Table.Td>
+                <Table.Td>
+                  <Badge color={supplierMatchColor[s.match]}>
+                    {t(`saftSupplierMatch_${picked !== undefined ? "linked" : s.match}`)}
+                  </Badge>
+                </Table.Td>
+                <Table.Td>
+                  {options.length > 1 && (
+                    <Select
+                      aria-label={t("saftSupplierPick", { name: s.name })}
+                      data={options}
+                      value={value}
+                      onChange={(v) => v !== null && setPicks((all) => ({ ...all, [s.fileSupplierId]: Number(v) }))}
+                      allowDeselect={false}
+                      size="xs"
+                      w={260}
+                    />
+                  )}
+                </Table.Td>
+              </Table.Tr>
+            );
+          })}
+        </Table.Tbody>
+      </Table>
       <Title order={5}>{t("saftImportCustomers")}</Title>
       <Table striped>
         <Table.Tbody>

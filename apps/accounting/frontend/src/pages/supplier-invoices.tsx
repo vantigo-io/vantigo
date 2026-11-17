@@ -48,7 +48,13 @@ import { BooksGate } from "../components/books-gate";
 import { AccountSelect, ProjectSelect, TaxCodeSelect } from "../components/pickers";
 import { refusalMessage, useAccountingFormat } from "../lib/format";
 import { fromOre, type LineCode, lineTotals, rateOf, reverseChargeVAT, toNOK, toOre } from "../lib/purchase";
-import { NEW_SUPPLIER_INVOICE_ROUTE_PATH, supplierInvoicePath, supplierPath, voucherPath } from "../lib/routes";
+import {
+  NEW_SUPPLIER_INVOICE_ROUTE_PATH,
+  purchaseOrderPath,
+  supplierInvoicePath,
+  supplierPath,
+  voucherPath,
+} from "../lib/routes";
 import { SupplierFormModal } from "./suppliers";
 
 const states: AccountingSupplierInvoiceState[] = ["draft", "posted", "paid", "reversed"];
@@ -158,7 +164,10 @@ const InvoiceList = ({ canPost }: { canPost: boolean }) => {
                 <Table.Td ta="right">{money(inv.totalNok)}</Table.Td>
                 <Table.Td ta="right">{money(inv.balance)}</Table.Td>
                 <Table.Td>
-                  <StateBadge invoice={inv} />
+                  <Group gap={4}>
+                    <StateBadge invoice={inv} />
+                    <PurchaseMatchBadge invoice={inv} />
+                  </Group>
                 </Table.Td>
               </Table.Tr>
             ))}
@@ -180,6 +189,37 @@ const StateBadge = ({ invoice }: { invoice: AccountingSupplierInvoice }) => {
       {invoice.overdue && (
         <Badge variant="light" color="orange">
           {t("overdue")}
+        </Badge>
+      )}
+    </Group>
+  );
+};
+
+/**
+ * The purchase orders Purchasing has matched the invoice to (purchasing
+ * design P6), each a badge linking to the order, and the match's differences;
+ * nothing when Purchasing is off or the invoice is matched to none.
+ */
+const PurchaseMatchBadge = ({ invoice }: { invoice: AccountingSupplierInvoice }) => {
+  const { t } = useAccountingFormat();
+  const match = invoice.purchaseMatch;
+  if (!match || match.orders.length === 0) return null;
+  return (
+    <Group gap={4} data-testid="purchase-match">
+      {match.orders.map((o) => (
+        <Badge
+          key={o.id}
+          variant="outline"
+          color="teal"
+          style={{ cursor: "pointer" }}
+          renderRoot={(props) => <Link to={purchaseOrderPath(o.id) as never} {...props} />}
+        >
+          {t("purchaseOrderMatched", { number: o.number })}
+        </Badge>
+      ))}
+      {match.differences > 0 && (
+        <Badge variant="light" color="orange">
+          {t("purchaseMatchDifferences", { count: match.differences })}
         </Badge>
       )}
     </Group>
@@ -713,6 +753,7 @@ const PostedInvoice = ({ meta, invoice }: { meta: AccountingMeta; invoice: Accou
       />
       <Group>
         <StateBadge invoice={invoice} />
+        <PurchaseMatchBadge invoice={invoice} />
         <Anchor component={Link} to={supplierPath(invoice.supplierId)}>
           {invoice.supplierName}
         </Anchor>

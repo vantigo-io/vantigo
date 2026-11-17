@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { sent } from "../test/helpers";
@@ -52,6 +52,26 @@ describe("Coming from another system", () => {
       vatTerm: "bimonthly",
       language: "en",
       fiscalYearStartMonth: 1,
+    });
+  });
+
+  it("takes a supplier of the register picked where several have the file's name", async () => {
+    const fetchMock = stubAccountingApi({ meta: meta({ setUp: false, settings: null }) });
+    renderRoute("/accounting/setup");
+    await screen.findByText("Coming from another system?");
+    const input = document.querySelector<HTMLInputElement>('input[type="file"]');
+    if (!input) throw new Error("no file input");
+    await userEvent.upload(input, new File(["<AuditFile/>"], "gammel.xml", { type: "application/xml" }));
+    await userEvent.click(screen.getByRole("button", { name: "Read the file" }));
+    const table = await screen.findByTestId("saft-suppliers");
+    expect(within(table).getByText("Several in the register")).toBeInTheDocument();
+    await userEvent.click(within(table).getByRole("combobox", { name: "Take Verksted AS as" }));
+    await userEvent.click(await screen.findByRole("option", { name: "2 Verksted AS" }));
+    expect(within(table).getByText("Picked")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Set up the books from the file" }));
+    await waitFor(() => expect(sent(fetchMock, "POST", /\/saft-imports\/8001\/apply$/)).toHaveLength(1));
+    expect(sent(fetchMock, "POST", /\/saft-imports\/8001\/apply$/)[0].body).toMatchObject({
+      suppliers: { "20001": 3002 },
     });
   });
 });
