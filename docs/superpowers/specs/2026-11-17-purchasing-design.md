@@ -1,0 +1,615 @@
+# Purchasing — supplier items, purchase orders, receipts, proposals and the invoice match (phase 1)
+
+Revision 2, 2026-11-17, after a critic review against the code. **§15 amends earlier
+decisions and wins where they differ**; §16 lists what changed. This spec builds on the research
+`docs/superpowers/research/2026-11-17-purchasing-module.md` ("R"). It does not reopen
+R §8, and it takes the defaults R §9 took for the readings; §14 says what an overturn of
+each would change. Decisions are numbered P*n*. The implementation plan is
+`docs/superpowers/plans/2026-11-17-purchasing-plan.md`. Abbreviations:
+
+- `srv/` is `apps/server/internal/`;
+- `mig/` is `srv/db/migrations/`;
+- `fe/` is `apps/purchasing/frontend/src/`.
+
+## 1. Purpose
+
+Purchasing is a new module: **Purchasing** (`purchasing`; Norwegian **Innkjøp**; package
+`@vantigo/purchasing-ui`). It is the buy side of the chain Orders is the sell side of:
+
+- **Order:** what is bought from whom, at what price, expected when.
+- **Receive:** what arrived, into which location, through Inventory's ledger.
+- **Match:** which order a supplier invoice bills, and what differs.
+
+A purchase order moves neither stock nor the ledger. Stock moves when goods are received,
+through Inventory; the books move when the supplier invoice is posted, in Accounting.
+
+Purchasing **requires Accounting, Inventory and Products** (P1, P3). Manufacturing and
+Communications are optional.
+
+| Delivery | What it brings | Depends on |
+| --- | --- | --- |
+| **0** | The seams: the supplier directory, `StockLedger.Receive`, the open-purchases slot, Accounting's supplier-invoice events and its match slot | — |
+| **A** | The module, its settings, supplier items, purchase orders with their PDF and mail | 0 |
+| **B** | Receipts against an order, the remainder, a receipt taken back, *incoming* | A |
+| **C** | Proposals from low stock and from Manufacturing's buy suggestions | B |
+| **D** | The supplier invoice matched to the order, the differences, received not invoiced | B |
+
+C and D do not depend on each other.
+
+**Not in this phase** (R §7; §13 says what each waits for): inbound EHF, payment files,
+supplier returns, subcontracting, drop shipment, an approval limit, freight spread,
+purchase units other than packagings, requests for quotation, requisitions, blanket
+orders, EHF Ordering, quantity-break prices, valuation and accruals.
+
+## 2. Decisions — delivery 0, the seams
+
+- **P1 — The supplier directory.** `contracts.SupplierDirectory`, a single-provider slot
+  Accounting fills (rule 5):
+  - `Supplier(ctx, id)`, `Suppliers(ctx, ids)` and `SearchSuppliers(ctx, query, limit)`
+    answer `SupplierEntry`: id, number, name, organisation number, country, address,
+    email, currency, payment terms, `Active`, `IsPerson`, `Anonymised`.
+  - The bank account, the default account and the default tax code are **not** on the
+    entry: they are the books', and Purchasing has no use for them.
+  - It reads with no permission of its own, as every directory does; Purchasing's
+    endpoints decide who sees a supplier's name.
+- **P2 — The register comes out from behind the setup gate.** The supplier endpoints and
+  the directory answer before *Set up the books* is done. A supplier's default account
+  and tax code stay empty until then, and are refused with `books_not_set_up` if sent.
+  Everything else in Accounting stays gated. The plan confirms that no supplier column
+  needs a seeded row.
+- **P3 — `StockLedger.Receive`.** The ledger gains a receive on the caller's transaction,
+  as `Produce` is (rule 24, whose text is widened):
+  - it takes the site, the lines — variant, location, quantity in the variant's unit, the
+    lot or serials of a tracked variant — the source (`StockSource`, with a line id), the
+    supplier's name and reference, and an idempotency key;
+  - it posts one movement of the existing kind `receipt`, with the same refusals as the
+    receipt endpoint (`variant_not_stockable`, the tracking rules, the site's locations);
+  - it sets `source_module`, `source_kind`, `source_id` and `source_line_id`, which the
+    movements table has carried unused since `mig/00108`;
+  - a second call, `ReverseReceipt`, takes a receipt movement's lines back out of the
+    locations they went into, refused when the stock is no longer there
+    (`insufficient_stock`) or a lot is on hold.
+  - The movement page links a movement with a source to its document, as a production's
+    does.
+- **P4 — Open purchases.** `contracts.PurchaseSupply`, a single-provider slot Purchasing
+  fills, optional for its readers:
+  - `OpenByVariants(ctx, siteID, variantIDs)` answers, per variant, the quantity ordered
+    and not yet received on sent orders, in the variant's unit, and the earliest expected
+    day.
+  - Inventory's `IncomingOfVariants` adds it to the transfers in transit, on the
+    low-stock list, its CSV and the product's stock card, each showing the two parts.
+  - Manufacturing's replenishment adds it to *incoming* in its projection.
+  - With no provider composed, both behave as today.
+- **P5 — Accounting's events.** Accounting publishes its first domain events, on the
+  posting's own transaction: `accounting.supplier_invoice.posted.v1` and
+  `accounting.supplier_invoice.reversed.v1`, each with the invoice id, the supplier id,
+  the kind, the number, the dates, the currency, the total and the reference.
+- **P6 — The match slot on a supplier invoice.** Accounting cannot hold a quantity or a
+  variant on its lines, and must not learn what an order is. So:
+  - `contracts.SupplierInvoices`, filled by Accounting, answers a supplier invoice's
+    header and lines to another module (`Invoice(ctx, id)`), and creates a **draft**
+    (`CreateDraft`) from a supplier, a reference, and lines of text and amount — the
+    account and tax code left for the person, the supplier's defaults filled as on any
+    draft. This is a write in Accounting's own schema behind its own contract, not the
+    cross-module write rule 8 forbids.
+  - `contracts.SupplierInvoiceMatches`, an optional single-provider slot Purchasing
+    fills: `Summary(ctx, invoiceIDs)` answers, per invoice, the orders it is matched to
+    and the count of differences. Accounting's supplier-invoice list and page show it as
+    a badge and a link. No provider, no badge.
+- **P7 — Erasure.** Accounting's anonymisation of a person supplier calls a new
+  many-provider slot, `contracts.SupplierPersonalData`, before it marks the supplier:
+  Purchasing blanks the name and address it snapshotted on that supplier's orders and
+  deletes their stored PDFs. The plan reads how Accounting schedules its anonymisation
+  and follows Customers' ledger pattern if a deletion can fail.
+
+## 3. Decisions — delivery A, the module, supplier items and purchase orders
+
+### 3.1 The module
+
+- **P8 — Registration.** `srv/purchasing` with `Module()`, schema `purchasing`, required
+  modules `accounting`, `inventory`, `products` in `internal/config`, and every registry
+  of *Adding a module* and AGENTS.md's list (§10).
+- **P9 — Settings**, one row, behind `purchasing:settings`: the order series' start, the
+  default receiving site, the mail channel orders are sent from (judged through
+  Communications before the transaction, as Orders' is), the text printed under an order,
+  the delivery address per site when it differs from the site's, and the price
+  tolerance of P38 (default 2 %).
+- **P10 — A variant holder.** Purchasing registers with `VariantReferences` (rule 20): a
+  variant on a supplier item or an order line cannot be deleted. A supplier with an order
+  cannot be deleted in Accounting either, through a `SupplierReferences` holder slot
+  added with P1; it can be deactivated.
+
+### 3.2 Supplier items
+
+- **P11 — The record.** `purchasing.supplier_items`, one per (supplier, variant):
+  - the supplier's item number (60 characters) and its name for the item, both optional;
+  - a price per the purchase packaging, in the supplier's currency, four decimals, with
+    the day it was last set and by what — a person, or an invoice (P39);
+  - the purchase packaging: none (the variant's unit) or one of the variant's packagings
+    by id;
+  - a lead time in days, a minimum quantity and a multiple, each optional, in purchase
+    packagings;
+  - `preferred`: at most one per variant, kept by a partial unique index; the first
+    supplier item of a variant is preferred whatever the request said.
+- **P12 — Only goods and services of the catalog.** A supplier item names a variant. A
+  purchase with no variant is a text line on the order (P16).
+- **P13 — Where it is edited.** On Purchasing's **Suppliers** page, per supplier, and on
+  the product page as a host-composed **Suppliers** card. Purchasing's supplier page
+  shows the register's entry read-only, with a link to Accounting's page for whoever may
+  open it, and *New supplier* through Accounting's endpoint for a holder of
+  `accounting:post`.
+- **P14 — Import.** Supplier items from a file through `internal/fileimport`, matched on
+  SKU or barcode, dry run first, every row or nothing. A supplier's price list is the
+  commonest file a buyer holds.
+
+### 3.3 Purchase orders
+
+- **P15 — The header.** A supplier; a receiving site; the currency, the supplier's by
+  default and fixed once a line has a price; the order day and an expected day; our
+  reference (a user) and the supplier's contact as text; a note printed on the order and
+  an internal note; the language of the document, `nb` or `en`, defaulted from the
+  supplier's country. On sending, the supplier's name and address and the delivery
+  address are snapshotted.
+- **P16 — Lines.** At most 500, ordered. A line is one of:
+  - a **variant line**: the variant, the quantity entered in the purchase packaging and
+    kept in the variant's unit too, the unit price, a discount in percent, an expected
+    day of its own. Picking a variant fills the supplier's item number, price, packaging
+    and expected day (today plus the lead time) from the supplier item; a quantity under
+    the minimum or off the multiple is a warning, never a refusal;
+  - a **text line**: a description, a quantity, a unit, a unit price — freight, a
+    service, something outside the catalog. It is never received into stock; it is
+    marked delivered by hand.
+  - A goods variant that is Discontinued is refused on a new line
+    (`variant_discontinued`). A service variant is ordered and marked delivered like a
+    text line.
+- **P17 — Amounts.** Net of VAT throughout, in the order's currency, two decimals per
+  line, summed. No tax code, no VAT amount and no conversion to NOK on an order (R §9.5).
+  The PDF says *Amounts exclude VAT*.
+- **P18 — States.** `draft` → `sent` → `partially_received` → `received`; `closed` and
+  `cancelled` beside them.
+  - `draft`: everything may change; it has no number; it may be deleted.
+  - **Send** allocates the number from the series, stores the PDF and queues the mail.
+    *Mark as sent* does the same without a mail, for an order placed by phone or in a
+    supplier's web shop. Both need `purchasing:orders-send`.
+  - `sent` and `partially_received`: lines may be added; a line's quantity may change
+    down to what is received; price and expected day may change. Every change after
+    sending is written to `order_changes` with who and when. **Send again** stores a new
+    PDF, marked *Revised*, and mails it.
+  - `received` is reached when every goods line is received in full or closed, and every
+    other line marked delivered; it is derived on each receipt, not set.
+  - **Close** ends an order with a remainder: the open quantities stop counting as
+    incoming. **Reopen** undoes it. `closed` and `received` differ only in whether
+    anything was left.
+  - **Cancel** is for a sent order with nothing received; a draft is deleted instead.
+- **P19 — The supplier's confirmation.** On a sent order a person records the supplier's
+  order reference and the confirmed day, per order and optionally per line. It is a fact
+  on the order and no state. An order sent more than three business days ago with no
+  confirmation is an attention item for our reference.
+- **P20 — Numbers.** One gap-free series, from `purchasing.counters`, allocated on
+  sending as Orders' is. The number is what the supplier is asked to quote on the
+  invoice, and the PDF says so in a line of its own: it is the match's key (P36).
+- **P21 — The PDF and the mail.** As Orders' documents: rendered once, stored under the
+  `purchasing` scope keyed by hash, sent from the settings' channel through
+  `contracts.OutboundMail` by a leased queue with `queued`, `sent`, `failed`. The mail
+  goes to the supplier's address in the register, or one typed for this order. With no
+  channel chosen, *Send* is not offered and *Mark as sent* is.
+- **P22 — Copy.** *Copy* makes a draft from any order with today's prices from the
+  supplier items; a recurring purchase is a copy.
+- **P23 — The screens.** **Purchase orders** (the list with state, supplier, expected
+  day, received and invoiced as fractions, filters *Late* and *Mine*), the order page,
+  **Suppliers**, **Settings**. The dashboard card counts orders late and orders
+  unconfirmed. The spotlight finds an order by number and by the supplier's reference.
+
+## 4. Decisions — delivery B, receipts
+
+- **P24 — Receiving.** *Receive* on a sent order lists the open goods lines with the
+  remainder prefilled. Per line: the quantity, in the purchase packaging or the unit; the
+  location, defaulted from the variant's placement in the site; the lot — number, dates,
+  supplier lot — or serials of a tracked variant. A line can be split over locations and
+  lots. One submission is one receipt and one Inventory movement.
+- **P25 — One transaction.** The receipt row, the lines' received quantities and
+  `StockLedger.Receive` commit together on Purchasing's transaction (P3). Contract reads
+  go before it; `LockVariants` is the one call inside it (rule 21). The order row is
+  locked first, so two receipts of one order queue.
+- **P26 — More than ordered.** A quantity over the remainder is refused with
+  `over_receipt` unless the request says `acceptOver: true`, which the screen sets after
+  asking. The line's received quantity then exceeds its ordered one, and the order is
+  `received`.
+- **P27 — Less than ordered.** The order stays `partially_received` with its remainder
+  (R §9.8). No back-order document is made.
+- **P28 — What a receipt keeps.** Its number in a series of its own, the day, who, the
+  supplier's delivery note number as text, a note, and per line the order line's price
+  then (R §9.4): the figure a later valuation would start from, used by nothing in this
+  phase.
+- **P29 — Taking a receipt back.** *Undo* on a receipt calls `ReverseReceipt` and lowers
+  the lines' received quantities, in one transaction; refused when Inventory refuses, and
+  when a line of it is matched to an invoice (`receipt_invoiced`). The receipt is kept,
+  marked undone. Goods sent back to a supplier for credit are a return, which is phase 2.
+- **P30 — Permissions and scanning.** Receiving needs `purchasing:receive` alone:
+  Purchasing writes stock through the ledger as Orders' deliveries do, and the locations
+  it offers are read through `contracts.Stock`. The receive screen takes a scanned code
+  through `ProductCatalog.LookupCode` — a variant's or a packaging's barcode selects the
+  line and adds one of that packaging.
+
+P4's readers come alive with this delivery: *incoming* on the low-stock list, the stock
+card and Manufacturing's replenishment.
+
+## 5. Decisions — delivery C, proposals
+
+- **P31 — Demand through a slot.** `contracts.PurchaseDemand`, a many-provider slot:
+  `Demand(ctx, siteID)` answers rows of variant, site, quantity in the variant's unit,
+  the day needed and a source label. Inventory provides its low-stock suggestions;
+  Manufacturing its *buy* suggestions. Both already subtract incoming, which after P4
+  includes open purchase orders, so a proposal never orders twice.
+- **P32 — One row per variant and site.** The two providers project the same stock, so
+  their rows are not summed: the larger quantity wins and the row names both sources.
+- **P33 — From a row to an order.** The **Proposals** page lists the rows with the
+  preferred supplier, its price, the quantity rounded up to the minimum and the multiple,
+  and the day to order by (the day needed less the lead time). A person ticks rows,
+  changes a supplier or a quantity, and **Create orders** makes one draft per supplier
+  and site — or adds lines to an existing draft of that supplier and site. A row with no
+  supplier item is listed under *No supplier* and cannot be ticked.
+- **P34 — Nothing is ordered by itself.** A proposal is made into a draft by a person
+  and sent by a person. Automatic ordering is not planned.
+- **P35 — Links in.** Inventory's low-stock page and Manufacturing's replenishment page
+  show **Order…** on a row, a host-composed link to the proposal filtered to that
+  variant, when Purchasing is enabled and the person holds `purchasing:orders-manage`.
+  Manufacturing's refusal of a *buy* row (`replenishment.go:664`) stays: it is bought
+  here.
+
+## 6. Decisions — delivery D, the invoice match
+
+- **P36 — The key.** A supplier invoice is suggested for an order when its `reference`
+  contains an order number of that supplier, read as whole digit runs. Accounting's
+  `reference` is typed by a person today; an inbound EHF's order reference will land in
+  the same field (§13), and the match needs no change then.
+- **P37 — The match.** `purchasing.invoice_matches`: the supplier invoice's id, an order
+  line, a quantity and a net amount in the order's currency. One invoice may bill several
+  orders of its supplier, and one order several invoices. A match is made:
+  - **from the order**: *Register invoice* creates Accounting's draft through
+    `SupplierInvoices.CreateDraft` (P6), with one line per order line of what is received
+    and not yet invoiced, the order number as its reference, and the match rows with it.
+    It needs `accounting:post` as well as `purchasing:invoices-match`;
+  - **from the invoice**: on Accounting's supplier-invoice page, a host-composed
+    **Purchase order** panel suggests orders by P36 and lets a person pick one and
+    allocate quantities; *Match all received* fills what is received and not invoiced.
+  - A draft's match is provisional. It is fixed when Purchasing handles
+    `accounting.supplier_invoice.posted.v1`, and released by `…reversed.v1` (P5). A
+    credit note matched to an order lowers its invoiced quantities.
+- **P38 — Differences are warnings.** Per matched line, on the order and on the panel:
+  - *invoiced more than received*;
+  - *invoiced more than ordered*;
+  - *price differs*: the invoice's unit price against the order's by more than the
+    settings' tolerance;
+  - *currency differs* between invoice and order.
+  Posting is never held (R §9.6): Accounting posts what the person posts.
+- **P39 — The last price.** When a matched invoice is posted, each matched variant line's
+  unit price becomes the supplier item's price, marked as set by that invoice — unless a
+  person set the price after the invoice's date.
+- **P40 — Ordered, received, invoiced.** The order page shows the three per line and for
+  the order; the list shows them as fractions. An order `received` and invoiced in full
+  drops from the default list view.
+- **P41 — Received, not invoiced.** A list and a CSV, per supplier and order, of received
+  quantities with no posted invoice, at the order's prices, as of a chosen day. It is
+  the accountant's basis for a manual accrual at a period's end; nothing is posted from
+  it.
+
+## 7. Events
+
+Published by Purchasing through the outbox, each on the transaction of its change:
+`purchasing.order.sent.v1`, `purchasing.order.closed.v1`,
+`purchasing.receipt.posted.v1`, `purchasing.receipt.undone.v1`. None has a consumer in
+this phase; they are the seam for a supplier timeline, and for Manufacturing's
+subcontracting.
+
+## 8. Permissions
+
+| Key | Lets a person | Sensitive |
+| --- | --- | --- |
+| `purchasing:access` | open the app; read orders, receipts and supplier items | no |
+| `purchasing:orders-manage` | write drafts, change sent orders, record confirmations, close and reopen, make orders from proposals | no |
+| `purchasing:orders-send` | send, mark as sent, send again, cancel | no |
+| `purchasing:receive` | receive, undo a receipt, mark a text line delivered | no |
+| `purchasing:supplier-items-manage` | write and import supplier items | no |
+| `purchasing:invoices-match` | match and unmatch supplier invoices, read received not invoiced | no |
+| `purchasing:settings` | the settings | no |
+
+Prices are shown to every holder of `purchasing:access`; a warehouse worker who should
+receive without seeing prices is §14's question 5.
+
+## 9. Data model (schema `purchasing`)
+
+`settings` · `counters` · `supplier_items` · `orders` · `order_lines` · `order_changes` ·
+`documents` · `mailings` · `receipts` · `receipt_lines` · `invoice_matches` ·
+`import_jobs`.
+
+- Suppliers, variants, sites, locations, users and supplier invoices are referenced by id
+  with no foreign key across schemas (rule 4).
+- `order_lines` keeps `quantity`, `received` and `invoiced` in the variant's unit, with
+  `CHECK (received >= 0 AND invoiced >= 0)`; `received` and `invoiced` are written only
+  by a receipt, its undo, and the match's handlers.
+- One baseline migration with delivery A, numbered from `main` on the day it is opened,
+  and checked again right before merging: two stacks have collided on a number before.
+
+## 10. Platform, registries and documentation
+
+- **Registries**, with delivery A: `businessModules`, `openapi.Modules`, the codegen
+  config, the depguard sets (the hyphenated ones too), `moduleSchemas`, the config's
+  known set and dependency check, `modulesEnv` in `modtest` (Purchasing requires three
+  modules), `everyModule()` in the Assistant's integration test, `APP_ROUTE_PREFIXES` and
+  `appRoutes` with `promptVersion` bumped, the host's `moduleKeys`, `apps.ts`, layout
+  route, `i18n.ts`, admin permission labels, dashboard, spotlight and `sessionClients`,
+  the deployment lists and `GRANT` lines.
+- **Module boundaries**: rule 24 widened to *receives*; the new slots named under rule 5;
+  Accounting's first events under rule 23.
+- **Documentation**, in the same commit series as the code:
+  - `user/purchasing.md` in `en/` and `nb/`, growing with each delivery, listed in the
+    user guide's overview;
+  - `reference/purchasing.md`;
+  - `user/inventory.md` (en, nb) and `reference/inventory.md`: receipts with a source,
+    *incoming* in two parts, **Order…** on the low-stock list;
+  - `user/accounting.md` (en, nb) and `reference/accounting.md`: the register before the
+    books are set up, the **Purchase order** panel, the events, the contracts;
+  - `user/manufacturing.md` (en, nb) and `reference/manufacturing.md`: *incoming* and
+    **Order…** on a buy suggestion;
+  - `user/products.md` (en, nb): the **Suppliers** card;
+  - `contributing/module-boundaries.md` and `contributing/platform-packages.md`;
+  - `go generate` in `apps/server` after each documentation change, for the Assistant's
+    embedded copy.
+- **The Assistant**: every operation carries a `summary` and its mode — reads `auto`,
+  writes `confirm`, *Send* and *Cancel* `confirm`. Tour targets for *New purchase order*
+  and *Receive*.
+- **The public site**: `vantigo.io/apps/purchasing` in `vantigo-landing`, written from
+  the two user guide pages once delivery B has landed, its pull request linked to that
+  delivery's; the Inventory and Manufacturing pages there gain a line each.
+- **ROADMAP.md**: the Purchasing section; Products phase 5, Inventory's and
+  Manufacturing's *Later*, and the bank feed's line amended (R §9.2, §9.3).
+
+## 11. Edge cases
+
+- **A supplier is deactivated** with orders open: the orders stay and can be received;
+  a new order for it is refused (`supplier_inactive`).
+- **A supplier changes currency** in the register: sent orders keep theirs; supplier
+  items keep their price and are flagged *currency differs* until a person sets it.
+- **A variant's packaging is deleted** while a supplier item names it: Products refuses
+  through the holder, or — the plan decides which the holder supports — the supplier item
+  falls back to the unit and is flagged.
+- **A variant changes tracking mode**: possible only at zero stock (Inventory's rule);
+  an open order line is unaffected, and the receipt asks for what the variant needs then.
+- **The receiving site is archived**: receiving is refused by Inventory; the order's site
+  may be changed while nothing is received.
+- **An invoice is matched, then its supplier changed on the draft**: the match is
+  released when the supplier no longer owns the order.
+- **Two people receive one order at once**: the second waits on the order's lock and then
+  sees the first's quantities; a remainder gone is `over_receipt`.
+- **The mail fails**: the order is `sent` with a failed mailing and an attention item;
+  *Send again* retries.
+- **Purchasing is switched off** in an installation: Inventory and Manufacturing lose the
+  provider of P4 and behave as before; Accounting's badge disappears.
+
+## 12. Testing
+
+- **Delivery 0:** the directory against the register; the register before and after the
+  setup; `Receive` and `ReverseReceipt` against the receipt endpoint's own cases, with
+  lots and serials, on a pool of one; `OpenByVariants` with no provider.
+- **A:** the order's states as a table; the series under concurrent sends; the PDF in
+  both languages; the mail queue with Communications' fake; the import's dry run; the
+  holder.
+- **B:** partial, exact and over receipts; two concurrent receipts; an undo refused by
+  stock and by a match; *incoming* on the low-stock list and in replenishment.
+- **C:** the two providers' rows merged; rounding to minimum and multiple; one draft per
+  supplier and site; a proposal after an order is sent no longer lists the row.
+- **D:** the suggestion by reference; a match over two orders; posted and reversed
+  through the dispatcher; each warning; the last price and its guard; the
+  received-not-invoiced list as of a day.
+- **Integration:** low stock → proposal → order sent → received → invoice registered and
+  posted, and the stock, the open items and the order agree.
+- **Frontend:** the order editor, the receive screen with a scanned code, the proposals
+  page and the match panel.
+
+## 13. Later, and what each waits for
+
+| What | Waits for |
+| --- | --- |
+| Inbound EHF, landing as a draft with the order reference in `reference` | Accounting phase 2, and receiving on the access-point port |
+| Payment files (pain.001 with KID), Folio payment drafts | Accounting phase 2 |
+| A second person's approval of a supplier invoice | Accounting phase 2, with inbound EHF |
+| Supplier returns and the credit note | phase 2 |
+| Subcontracted operations | phase 2, with Manufacturing |
+| Drop shipment from a sales order, and an order line bought for a named sales order | phase 2, with Orders |
+| An approval limit on sending | phase 2 |
+| Freight spread over a receipt's lines | valuation |
+| Purchase units that are not packagings | Products phase 5 |
+| Prices per quantity break and per period | demand |
+| Requests for quotation, requisitions, blanket orders | demand |
+| EHF Ordering and Despatch Advice | demand from a customer who sells to the public sector |
+| Valuation, the received-not-invoiced accrual, price variance | a decision on stock in the ledger |
+| A supplier's timeline, customer-is-also-supplier | the register as its own module |
+
+## 14. Open questions
+
+Each is answered by default; the plan is written from the defaults unless overturned.
+
+**Answered 2026-11-17, the owner:** the first customer keeps its books in Vantigo, so
+question 1's default stands and delivery D matches against Accounting's supplier
+invoices alone. Questions 2 to 7 stand at their defaults until the owner says otherwise.
+
+1. **Purchasing requires Accounting** (P1, P2) — the riskiest default. Accounting
+   requires Invoices, and delivery D works only once the books are set up. A business
+   that keeps its books in Tripletex, Fiken or PowerOffice gets A to C and no match.
+   **Who is the first customer?** If it keeps its books elsewhere, D gains an *invoice
+   received* record of Purchasing's own — number, date, amount, file — that the match
+   runs against when the books are not set up. A register of Purchasing's own, or the
+   register as a new module, would change delivery 0 and P13, and nothing after.
+2. **Supplier items live in Purchasing, not Products** (P11). Overturned, they move to
+   Products with a read of the supplier directory, and Purchasing reads them through the
+   catalog contract.
+3. **Inbound EHF and payment files are Accounting's phase 2**, next after this phase.
+   Overturned, inbound EHF becomes a delivery E here and needs the access-point port
+   moved out of Invoices first.
+4. **No valuation** (P28, P41). Overturned, delivery B gains a cost per receipt line in
+   NOK and a write contract for the variant's cost, and Accounting a stock posting.
+5. **Prices are visible to everyone with access.** A `purchasing:prices-view` key would
+   let a warehouse worker receive without seeing what was paid.
+6. **The Norwegian name is Innkjøp.**
+7. **A buyer may add a supplier** through a new, narrower Accounting key,
+   `accounting:suppliers-manage` (A12). Overturned, only a holder of `accounting:post`
+   adds suppliers, and a buyer asks the bookkeeper.
+
+## 15. Amendments (revision 2)
+
+From the critic review. Each amendment names the decisions it changes and wins over
+them. Code references are against `main` at `64829c4e2`.
+
+### Critical
+
+- **A1 — `CreateDraft` sends what a draft must have** (P6, P37). A supplier-invoice line
+  needs an account (`mig/00185:146`), a draft needs the supplier's invoice number, unique
+  per supplier, and an invoice date, and a draft in another currency needs its rate or
+  its NOK total (`srv/accounting/supplier_invoices.go:118, 173, 204`). So:
+  - *Register invoice* opens a dialog that asks for the supplier's invoice number, the
+    invoice date, the due date and, for another currency, the rate or the NOK total. The
+    file may follow on the draft; posting still refuses a draft without one.
+  - Each line is sent `entry: net` with the supplier's default account. A supplier with
+    none is refused (`supplier_account_missing`), with a link to set it.
+  - A draft holds 200 lines (`maxSupplierInvoiceLines`). An order with more open lines
+    than that is invoiced in parts; the dialog says so and takes the first 200.
+  - The action is offered only when the books are set up.
+- **A2 — The register before the books, without breaking the SAF-T setup** (P2).
+  `ApplyAccountingSaftImport` inserts every supplier of the file as new
+  (`saft_import.go:1416`), so a supplier a buyer made first would fail the import on its
+  organisation number, or be duplicated without one. Delivery 0 therefore:
+  - matches the file's suppliers to existing ones by organisation number, then by exact
+    name, shown in the import's preview and picked by the person where it is unsure, as
+    the import links customers today;
+  - makes the supplier reads work with no settings row: `supplier()` and the list read
+    the retention date from settings (`suppliers.go:224, 258`) and would answer 500
+    before the setup. With no settings, a supplier is simply not yet anonymisable.
+
+### Major
+
+- **A3 — *Incoming* has four readers, and the low-stock filter is SQL** (P4). The list
+  filters `on_hand − reserved + incoming ≤ reorder_point` in one statement
+  (`srv/inventory/queries/placements.sql:109`), its dashboard count in another (`:127`);
+  `IncomingOfVariants` feeds only the stock card; Manufacturing reads
+  `Stock.Placements`. So:
+  - `PurchaseSupply` gains `OpenAll(ctx)`: every (variant, site) with an open quantity
+    and its earliest expected day. `OpenByVariants` takes an optional site.
+  - Inventory reads `OpenAll` before the low-stock statement and its count, and hands the
+    rows in as arrays the statement joins, so the filter, the keyset paging, the CSV and
+    the dashboard count agree. The list and the stock card show *in transit* and *on
+    order* as two figures.
+  - `Stock.Placements` stays transfers only. Manufacturing adds open purchases itself,
+    from `PurchaseSupply`; otherwise it would count them twice.
+- **A4 — One source of proposals, not the larger of two** (P31 to P33). The two
+  projections differ: Manufacturing nets production and unreserved sales demand
+  (`srv/manufacturing/replenishment.go:8`), stores its suggestions from a nightly or
+  requested run (`:396`), answers *make* for a variant with a default BoM (`:163`), and
+  does not round to packagings as Inventory does (`low_rule.go:72`). So:
+  - where Manufacturing is composed, **its *buy* rows are the proposals** and Inventory's
+    provider is not asked. A manufactured item is never proposed for purchase;
+  - where it is not, Inventory's low-stock rows are;
+  - each provider answers the need **before** its own rounding and the time it was
+    computed. Purchasing rounds once, to the supplier item's packaging, minimum and
+    multiple;
+  - Purchasing subtracts what is on its own **drafts**, and what was sent after the
+    provider's computed time, so a stored suggestion never orders twice;
+  - Manufacturing handles `purchasing.order.sent.v1` and
+    `purchasing.receipt.posted.v1` by requesting a replenishment run for the site.
+- **A5 — Taking a receipt back is its own movement kind** (P3, P29). A receipt of an
+  inspected variant puts a quarantine hold on its lots (`srv/inventory/posting.go:626`),
+  and a failed inspection is the commonest reason to undo. `ReverseReceipt` posts a new
+  kind, `receipt_reversal`, on the unbuild's precedent (`ledger.go:56, 1030`): it takes
+  the receipt's own lots whatever their holds, releases the holds that receipt set, and
+  is idempotent by its source. It is refused only when the stock is no longer in the
+  location it was received into.
+- **A6 — A Discontinued variant is received** (P3, P16). The receipt endpoint refuses one
+  (`posting.go:311`); `Receive` does not, as `Produce` does not: discontinuing a product
+  and receiving its last open order is the normal sequence. A new line is still refused.
+  The ledger's refusal is `variant_not_stocked`, and the receive's codes join
+  `StockRefusal`.
+- **A7 — The lock order of rules 21 and 24** (P25). Products' rows first, then the
+  caller's, then Inventory's. A receipt reads the order's variants on the pool, calls
+  `LockVariants`, then locks the order row and checks that its lines are as read. The
+  engine's deadlock retry is not available on a caller's transaction
+  (`posting.go:1035`), so Purchasing retries the whole transaction, three times, as
+  Manufacturing does (`replenishment.go:686`).
+- **A8 — Three new directions get rules of their own** (P6, P7, P10), numbered from the
+  next free in module boundaries (26 today):
+  - **Purchasing drafts a supplier invoice through Accounting's contract.** Rule 8 says
+    another write direction needs a design of its own; this is it, bounded to a draft a
+    person must still complete and post.
+  - **A supplier's personal data.** `SupplierPersonalData` has an *export* half, for the
+    access request Accounting answers (`ExportAccountingSupplier`), and an *erase* half
+    inside Accounting's transaction that blanks Purchasing's snapshots and writes the
+    stored PDFs to a deletion ledger a worker finishes — an object is never deleted
+    inside that transaction. Accounting's anonymisation is a person's click gated on
+    retention, not a schedule (`suppliers.go:363`); a supplier with an open order is
+    refused through the holder (`supplier_has_open_orders`).
+  - **Locking a supplier.** `DeleteAccountingSupplier` does not lock the row
+    (`suppliers.go:426`), so an order made at the same moment would survive the delete.
+    `SupplierDirectory.LockSuppliers(tx, ids)` takes them `FOR SHARE` when an order is
+    created or sent, and Accounting's delete and anonymisation take the row `FOR UPDATE`
+    before asking the holders.
+- **A9 — A match names the invoice's line** (P37 to P39). A match row is (supplier
+  invoice line, order line, quantity). `SupplierInvoices.Invoice` answers each line's
+  net amount as Accounting computes it. *Price differs* and the last price use the
+  **posted line's net over the matched quantity** — never an amount typed in Purchasing,
+  which for a draft made by *Register invoice* would only be the order's own price
+  written back. The last price is set only when the invoice's currency is the supplier
+  item's.
+- **A10 — `receipt_invoiced`** (P29). An undo is refused when it would take a line's
+  received quantity below what is invoiced on it, posted or provisional.
+- **A11 — Idempotency** (P24, P33, P37). *Receive*, *Register invoice*, *Create orders*
+  and *Send* each take a `clientRequestId` with a request hash, as Inventory's receipt
+  does: a replay answers the first result, another body under the same id is `409`.
+  Provisional matches count as invoiced when a draft is prefilled.
+- **A12 — Adding a supplier without the right to post** (P13). Creating a supplier needs
+  `accounting:post` today (`openapi/accounting.yaml:8895`). Delivery 0 adds
+  `accounting:suppliers-manage`: create and edit a supplier's name, addresses, contact
+  and terms — not its bank account, default account or tax code, which stay with
+  `accounting:post`. §14's question 7.
+
+### Minor
+
+- **A13 — P3's wording.** The source columns are set by `Issue` and `Produce` today
+  (`posting.go:463`); a receipt is what leaves them empty. `source_line_id` is on the
+  movement's header. `Receive` is idempotent by its source, not by a separate key.
+- **A14 — Credit notes** (P37). A credit matched for more than a line's invoiced
+  quantity is refused when matched (`credit_exceeds_invoiced`); the handler never fails
+  on the `CHECK`.
+- **A15 — Reverse and copy** (P37). Accounting's usual correction reverses an invoice and
+  copies it (`supplier_invoices.go:993`). The copy takes the reversed invoice's matches,
+  provisional, by `copied_from_id`.
+- **A16 — P18's gaps.**
+  - **Close line** ends one line's remainder, for `purchasing:orders-manage`; the order's
+    *Close* closes every open line.
+  - **Cancel** of an order that was mailed sends the supplier a cancellation — the PDF
+    marked *Cancelled* — unless the person unticks it.
+  - An undo on a `received` order makes it `partially_received`; on a `closed` order it
+    stays closed, and *Reopen* is the way to receive again.
+  - A price may be changed after an invoice is matched; it is written to `order_changes`
+    and the warnings are judged again.
+- **A17 — The holder's purposes** (P10). A variant on any supplier item or order line is
+  not deleted; a product with an open goods line does not become a service; a tracking
+  change is not held.
+- **A18 — Registries left out of §10.** The contracts entry in `docs/astro.config.mjs`,
+  the `api-schema.d.ts` entry in `gen-client.ts`, and `modulesEnv` cascading purchasing
+  → accounting → invoices.
+- **A19 — The PDF and the send** (P21). The PDF names our company from
+  `SellerProfile`, as Orders' does (`srv/orders/pdfdocs.go:190`), and is stored after
+  the commit. A person's *Send* mails synchronously outside the transaction, as Orders'
+  does; the leased queue is for a retry of a failed mailing.
+- **A20 — Reading an invoice's lines.** The match panel and the order's invoice figures
+  show an invoice's lines only to a holder of `accounting:read`; others see the matched
+  quantities alone.
+- **A21 — The receive screen** (P30) shows no prices, and reads a GS1 code's lot and
+  expiry as Inventory's receipt does. The plan finds where that parsing lives
+  (`srv/inventory/gs1.go`) and moves it to where Purchasing may use it.
+
+## 16. Revision log
+
+- **Revision 2, 2026-11-17** — the critic review: A1 to A21 (§15); §14's question 1
+  sharpened and question 7 added; §13's drop-shipment row widened.
+- **2026-11-17, the owner** — question 1 answered: the books are kept in Vantigo.
+- **Revision 1, 2026-11-17** — the first draft.

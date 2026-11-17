@@ -930,6 +930,56 @@ in the low-stock CSV — for the same phase with Orders.
 printers** (ZPL) for demand, **valuation** for a ledger, and the store flag *sells at
 the till* for Point of sale.
 
+## Purchasing
+
+A new module for the buy side of the chain Orders is the sell side of — Purchasing, in
+Norwegian **Innkjøp**: what is bought from whom, what arrived, and which order a supplier
+invoice bills. Researched in
+[`docs/superpowers/research/2026-11-17-purchasing-module.md`](docs/superpowers/research/2026-11-17-purchasing-module.md)
+and designed in
+[`docs/superpowers/specs/2026-11-17-purchasing-design.md`](docs/superpowers/specs/2026-11-17-purchasing-design.md).
+A purchase order moves neither stock nor the ledger: stock moves on a receipt, through
+[Inventory](#inventory)'s ledger, and the books when the supplier invoice is posted, in
+[Accounting](#accounting). It requires Accounting, whose supplier register it reads,
+Inventory and Products.
+
+### Phase 1 — Supplier items, purchase orders, receipts, proposals and the invoice match (designed)
+
+The design was revised after a critic review, and the owner answered its first question
+on 2026-11-17: the books are kept in Vantigo. It is planned in
+[`docs/superpowers/plans/2026-11-17-purchasing-plan.md`](docs/superpowers/plans/2026-11-17-purchasing-plan.md)
+as one stack of pull requests, one delivery each; building has not started.
+
+- **0 — The seams.** The supplier directory (`contracts.SupplierDirectory`) and the
+  register usable before the books are set up; `StockLedger.Receive`, a receipt with its
+  source; open purchases as *incoming* for Inventory and Manufacturing
+  (`contracts.PurchaseSupply`); Accounting's first events, for a supplier invoice posted
+  and reversed.
+- **A — Supplier items and purchase orders.** What a supplier sells of a variant — its
+  item number, price, packaging, lead time, minimum and multiple; an order in the
+  supplier's currency with a number, a PDF and a mail, the supplier's confirmation, and
+  every change after sending kept.
+- **B — Receipts.** Goods received against an order, partial or whole, into locations
+  with lots and serials; the remainder closed; a receipt taken back; *incoming* on the
+  low-stock list.
+- **C — Proposals.** Low stock and Manufacturing's buy suggestions made into draft
+  orders per preferred supplier, by a person.
+- **D — The invoice match.** A supplier invoice matched to its order by the order number
+  in its reference; ordered, received and invoiced per line; differences as warnings;
+  received not invoiced as a list.
+
+If the design's defaults stand, three lines elsewhere in this file change with delivery
+A: supplier records per variant leave [Products](#products) phase 5 for this module,
+which keeps the unit conversions; and inbound EHF and supplier invoices paid with KID
+are Accounting's phase 2, not this module's.
+
+### Later
+
+Supplier returns · subcontracted operations with [Manufacturing](#manufacturing) · drop
+shipment from a sales order · an approval limit · freight spread over a receipt ·
+requests for quotation, requisitions and blanket orders · EHF Ordering · valuation and
+the received-not-invoiced accrual.
+
 ## Manufacturing
 
 A new module for turning stock into other stock — Manufacturing, in Norwegian
