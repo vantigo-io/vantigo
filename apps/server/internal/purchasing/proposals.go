@@ -21,12 +21,13 @@ package purchasing
 // Every contract is read before the transaction; inside it the variants are
 // locked, then the suppliers, then — this module's own rows — the advisory
 // lock that serialises Create orders, the drafts. A row is judged again
-// there: one no longer proposed (on a draft or sent since, or no longer in
-// the demand) refuses the request with proposal_gone, so a second click
-// orders nothing twice. The request is idempotent by its clientRequestId
-// (A11), kept on the change-log row it writes on each draft — no table of its
-// own: a replay with the same body answers the first result, another body
-// is client_request_reused.
+// there: one whose remaining is no longer the one the screen showed (on a
+// draft or sent since, no longer in the demand, or the demand changed)
+// refuses the request with proposal_gone, so a second click — or a stale
+// screen — orders nothing twice (A58). The request is idempotent by its
+// clientRequestId (A11, A58), kept with its result in proposal_requests in
+// the same transaction: a replay with the same body answers that result as it
+// was, another body is client_request_reused.
 
 import (
 	"cmp"
@@ -40,6 +41,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
@@ -58,6 +60,12 @@ const (
 	actionFromProposals = "from_proposals"
 	// proposalOrdersKey ("PURCPROP") serialises Create orders.
 	proposalOrdersKey int64 = 0x5055524350524F50
+	// sentSinceMargin is taken off a need's computed time before what was
+	// sent since is read (A58): a database replica's clock a few seconds
+	// ahead of the provider's cannot then hide an order sent just after a
+	// run read the supply. An order sent in the margin before is subtracted
+	// twice at worst — less is proposed, never more.
+	sentSinceMargin = 5 * time.Second
 
 	invalidProposalsTitle = "The orders were not created"
 )
@@ -125,7 +133,7 @@ func nettingOf(ctx context.Context, q *store.Queries, needs map[pairKey]contract
 	var params store.SentSinceParams
 	for k, n := range needs {
 		variants = append(variants, k.variant)
-		params.VariantIds, params.SiteIds, params.Since = append(params.VariantIds, k.variant), append(params.SiteIds, k.site), append(params.Since, n.ComputedAt)
+		params.VariantIds, params.SiteIds, params.Since = append(params.VariantIds, k.variant), append(params.SiteIds, k.site), append(params.Since, n.ComputedAt.Add(-sentSinceMargin))
 	}
 	get := func(k pairKey) netted {
 		v, ok := out[k]
@@ -270,7 +278,7 @@ func (s *server) ListPurchasingProposals(ctx context.Context, req gen.ListPurcha
 	}
 	d, err := s.daysOf(ctx)
 	if err != nil {
-		return nil, err
+		return answer(err, resp)
 	}
 	q := s.store()
 	items, err := q.SupplierItemsOfVariants(ctx, distinctSorted(variantIDs))
@@ -316,7 +324,13 @@ func (s *server) ListPurchasingProposals(ctx context.Context, req gen.ListPurcha
 			row.NeededOn = &openapi_types.Date{Time: *n.NeededOn}
 			neededOn = *n.NeededOn
 		}
-		for _, it := range byVariant[v.ID] {
+		// A discontinued goods variant is not ordered any more (P16): its
+		// row has no option, and the screen says why.
+		options := byVariant[v.ID]
+		if v.ProductType == typeGoods && v.ProductStatus == productDiscontinued {
+			options = nil
+		}
+		for _, it := range options {
 			e := suppliers[it.SupplierID]
 			r := roundToItem(v, it, remaining)
 			opt := gen.PurchasingProposalOption{
@@ -351,34 +365,60 @@ func proposalRequestHash(rows []gen.PurchasingProposalOrdersRow) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// proposalReplay answers an earlier Create orders by its clientRequestId:
-// found false when there is none, client_request_reused when it had another
-// body.
-func proposalReplay(ctx context.Context, q *store.Queries, requestID, hash string) (gen.PurchasingProposalOrdersResult, bool, error) {
-	out := gen.PurchasingProposalOrdersResult{Orders: []gen.PurchasingProposalOrder{}}
-	rows, err := q.ProposalRequestChanges(ctx, requestID)
+// storedProposalOrder is one draft of a Create orders result as
+// proposal_requests keeps it (A58): ids and counts, no name.
+type storedProposalOrder struct {
+	OrderID      int64   `json:"orderId"`
+	SupplierID   int64   `json:"supplierId"`
+	SiteID       int64   `json:"siteId"`
+	Created      bool    `json:"created"`
+	LinesAdded   int32   `json:"linesAdded"`
+	UnpricedRows []int32 `json:"unpricedRows"`
+}
+
+// proposalReplay is the stored result of an earlier Create orders by its
+// clientRequestId: found false when there is none, client_request_reused
+// when it had another body.
+func proposalReplay(ctx context.Context, q *store.Queries, requestID uuid.UUID, hash string) ([]storedProposalOrder, bool, error) {
+	r, err := q.ProposalRequest(ctx, requestID)
+	if noRows(err) {
+		return nil, false, nil
+	}
 	if err != nil {
-		return out, false, fmt.Errorf("purchasing: read the request %s: %w", requestID, err)
+		return nil, false, fmt.Errorf("purchasing: read the request %s: %w", requestID, err)
 	}
-	for _, r := range rows {
-		var actions []change
-		if err := json.Unmarshal(r.Actions, &actions); err != nil {
-			return out, false, fmt.Errorf("purchasing: read a change of order %d: %w", r.OrderID, err)
-		}
-		for _, a := range actions {
-			if a.Action != actionFromProposals || deref(a.RequestID) != requestID {
-				continue
-			}
-			if deref(a.RequestHash) != hash {
-				return out, false, clientRequestReused()
-			}
-			var added int32
-			_, _ = fmt.Sscan(deref(a.To), &added)
-			out.Orders = append(out.Orders, gen.PurchasingProposalOrder{OrderId: r.OrderID, SupplierId: r.SupplierID,
-				SupplierName: r.SupplierName, SiteId: r.SiteID, Created: a.Created != nil && *a.Created, LinesAdded: added})
-		}
+	if r.RequestHash != hash {
+		return nil, false, clientRequestReused()
 	}
-	return out, len(out.Orders) > 0, nil
+	out := []storedProposalOrder{}
+	if err := json.Unmarshal(r.Orders, &out); err != nil {
+		return nil, false, fmt.Errorf("purchasing: read the result of request %s: %w", requestID, err)
+	}
+	return out, true, nil
+}
+
+// replayResult is a stored result as answered, each draft's supplier named
+// as the register names it now; outside any transaction.
+func (s *server) replayResult(ctx context.Context, stored []storedProposalOrder) (gen.PurchasingProposalOrdersResult, error) {
+	out := gen.PurchasingProposalOrdersResult{Orders: []gen.PurchasingProposalOrder{}}
+	var ids []int64
+	for _, o := range stored {
+		ids = append(ids, o.SupplierID)
+	}
+	names, err := s.suppliers(ctx, ids)
+	if err != nil {
+		return out, err
+	}
+	for _, o := range stored {
+		unpriced := o.UnpricedRows
+		if unpriced == nil {
+			unpriced = []int32{}
+		}
+		out.Orders = append(out.Orders, gen.PurchasingProposalOrder{OrderId: o.OrderID, SupplierId: o.SupplierID,
+			SupplierName: names[o.SupplierID].Name, SiteId: o.SiteID, Created: o.Created, LinesAdded: o.LinesAdded,
+			UnpricedRows: unpriced})
+	}
+	return out, nil
 }
 
 // proposalGroup is the rows of one supplier and site, by their index in the
@@ -404,13 +444,20 @@ func (s *server) CreatePurchasingProposalOrders(ctx context.Context, req gen.Cre
 		},
 	}
 	b := *req.Body
-	requestID, hash := b.ClientRequestId.String(), proposalRequestHash(b.Rows)
+	requestID, hash := b.ClientRequestId, proposalRequestHash(b.Rows)
 	q := s.store()
-	if prior, found, err := proposalReplay(ctx, q, requestID, hash); err != nil || found {
+	replay := func(stored []storedProposalOrder) (gen.CreatePurchasingProposalOrdersResponseObject, error) {
+		prior, err := s.replayResult(ctx, stored)
 		if err != nil {
 			return answer(err, resp)
 		}
 		return gen.CreatePurchasingProposalOrders200JSONResponse(prior), nil
+	}
+	if stored, found, err := proposalReplay(ctx, q, requestID, hash); err != nil || found {
+		if err != nil {
+			return answer(err, resp)
+		}
+		return replay(stored)
 	}
 	if len(b.Rows) == 0 || len(b.Rows) > maxLines {
 		var f fieldErrors
@@ -466,6 +513,10 @@ func (s *server) CreatePurchasingProposalOrders(ctx context.Context, req gen.Cre
 			fail(codeQuantityInvalid, "A quantity is more than 0, with at most three decimals")
 			continue
 		}
+		if _, ok := readQuantity(r.Remaining); !ok {
+			fail(codeQuantityInvalid, "The remaining the screen showed is more than 0, with at most three decimals")
+			continue
+		}
 		seen[pairKey{r.VariantId, r.SiteId}] = true
 		key := [2]int64{it.SupplierID, r.SiteId}
 		g, ok := groupOf[key]
@@ -493,7 +544,7 @@ func (s *server) CreatePurchasingProposalOrders(ctx context.Context, req gen.Cre
 	}
 	d, err := s.daysOf(ctx)
 	if err != nil {
-		return nil, err
+		return answer(err, resp)
 	}
 	by, err := s.actorFor(ctx)
 	if err != nil {
@@ -501,8 +552,9 @@ func (s *server) CreatePurchasingProposalOrders(ctx context.Context, req gen.Cre
 	}
 
 	out := gen.PurchasingProposalOrdersResult{Orders: []gen.PurchasingProposalOrder{}}
+	var replayed []storedProposalOrder
 	err = s.withLockedTx(ctx, func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error {
-		out.Orders = out.Orders[:0]
+		out.Orders, replayed = out.Orders[:0], nil
 		variants, err := s.lockVariants(ctx, tx, variantIDs)
 		if err != nil {
 			return err
@@ -514,10 +566,8 @@ func (s *server) CreatePurchasingProposalOrders(ctx context.Context, req gen.Cre
 		if err := txq.LockProposalOrders(ctx, proposalOrdersKey); err != nil {
 			return fmt.Errorf("purchasing: serialise Create orders: %w", err)
 		}
-		if prior, found, err := proposalReplay(ctx, txq, requestID, hash); err != nil || found {
-			if err == nil {
-				out = prior
-			}
+		if stored, found, err := proposalReplay(ctx, txq, requestID, hash); err != nil || found {
+			replayed = stored
 			return err
 		}
 		// Each row judged again, on the drafts as they stand now.
@@ -539,14 +589,19 @@ func (s *server) CreatePurchasingProposalOrders(ctx context.Context, req gen.Cre
 				gone = append(gone, lineFailure{index: i, code: codeProposalGone, detail: "The row is no longer proposed"})
 				continue
 			}
-			if _, _, _, remaining := remainingOf(n, net[k]); remaining == nil {
+			shown, _ := readQuantity(r.Remaining)
+			switch _, _, _, remaining := remainingOf(n, net[k]); {
+			case remaining == nil:
 				gone = append(gone, lineFailure{index: i, code: codeProposalGone, detail: "The row is on a draft or ordered since"})
+			case remaining.Cmp(shown) != 0:
+				gone = append(gone, lineFailure{index: i, code: codeProposalGone,
+					detail: fmt.Sprintf("%s remains of the row now, not %s", trimmed(remaining, quantityPlaces), r.Remaining)})
 			}
 		}
 		if len(gone) > 0 {
 			p := linesProblem(invalidProposalsTitle, gone)
 			p.Status, p.Code = ptr(int32(http.StatusConflict)), ptr(codeProposalGone)
-			p.Detail = ptr("Some rows are no longer proposed: they are on a draft or ordered since. Load the proposals again.")
+			p.Detail = ptr("Some rows are no longer proposed as shown: they are on a draft, ordered or changed since. Load the proposals again.")
 			return refuse(p)
 		}
 		now := s.deps.Clock()
@@ -563,7 +618,7 @@ func (s *server) CreatePurchasingProposalOrders(ctx context.Context, req gen.Cre
 			if err != nil {
 				return err
 			}
-			added, err := s.addProposalLines(ctx, txq, o, g, b.Rows, variants, now)
+			added, unpriced, err := s.addProposalLines(ctx, txq, o, g, b.Rows, variants, now)
 			if err != nil {
 				return err
 			}
@@ -571,18 +626,33 @@ func (s *server) CreatePurchasingProposalOrders(ctx context.Context, req gen.Cre
 			if created {
 				actions = append(actions, change{Action: "created"})
 			}
-			actions = append(actions, change{Action: actionFromProposals, To: ptr(fmt.Sprint(added)), RequestID: &requestID,
-				RequestHash: &hash, Created: &created})
+			actions = append(actions, change{Action: actionFromProposals, To: ptr(fmt.Sprint(added))})
 			if err := logChange(ctx, txq, o.ID, by, now, actions...); err != nil {
 				return err
 			}
 			out.Orders = append(out.Orders, gen.PurchasingProposalOrder{OrderId: o.ID, SupplierId: g.supplierID,
-				SupplierName: o.SupplierName, SiteId: g.siteID, Created: created, LinesAdded: int32(added)})
+				SupplierName: o.SupplierName, SiteId: g.siteID, Created: created, LinesAdded: int32(added), UnpricedRows: unpriced})
+		}
+		stored := make([]storedProposalOrder, 0, len(out.Orders))
+		for _, o := range out.Orders {
+			stored = append(stored, storedProposalOrder{OrderID: o.OrderId, SupplierID: o.SupplierId, SiteID: o.SiteId,
+				Created: o.Created, LinesAdded: o.LinesAdded, UnpricedRows: o.UnpricedRows})
+		}
+		body, err := json.Marshal(stored)
+		if err != nil {
+			return fmt.Errorf("purchasing: encode the result of request %s: %w", requestID, err)
+		}
+		if err := txq.InsertProposalRequest(ctx, store.InsertProposalRequestParams{ClientRequestID: requestID, RequestHash: hash,
+			Orders: body, ActorUserID: by.id, CreatedAt: now}); err != nil {
+			return fmt.Errorf("purchasing: keep the request %s: %w", requestID, err)
 		}
 		return nil
 	})
 	if err != nil {
 		return answer(err, resp)
+	}
+	if replayed != nil {
+		return replay(replayed)
 	}
 	return gen.CreatePurchasingProposalOrders200JSONResponse(out), nil
 }
@@ -615,13 +685,15 @@ func (s *server) draftFor(ctx context.Context, txq *store.Queries, e contracts.S
 
 // addProposalLines writes a group's rows onto the draft o — a new line each,
 // or the quantity added to a line of the variant the draft has in the item's
-// packaging — and sums its total; it answers how many lines it touched. A
-// failing row is refused by its index in the request.
+// packaging — and sums its total; it answers how many lines it touched, and
+// the indexes of the rows whose new line got no price because the item's
+// price is not in the draft's currency (A32, A58). A failing row is refused
+// by its index in the request.
 func (s *server) addProposalLines(ctx context.Context, txq *store.Queries, o store.PurchasingOrder, g *proposalGroup,
-	rows []gen.PurchasingProposalOrdersRow, variants map[int32]contracts.VariantEntry, now time.Time) (int, error) {
+	rows []gen.PurchasingProposalOrdersRow, variants map[int32]contracts.VariantEntry, now time.Time) (int, []int32, error) {
 	saved, err := txq.OrderLines(ctx, o.ID)
 	if err != nil {
-		return 0, fmt.Errorf("purchasing: read order %d's lines: %w", o.ID, err)
+		return 0, nil, fmt.Errorf("purchasing: read order %d's lines: %w", o.ID, err)
 	}
 	var ids []int32
 	for _, i := range g.rows {
@@ -629,9 +701,10 @@ func (s *server) addProposalLines(ctx context.Context, txq *store.Queries, o sto
 	}
 	items, err := itemsOf(ctx, txq, g.supplierID, ids)
 	if err != nil {
-		return 0, err
+		return 0, nil, err
 	}
 	existing := map[int64]store.PurchasingOrderLine{}
+	unpriced := []int32{}
 	var in []lineInput
 	var gone []lineFailure
 	for _, i := range g.rows {
@@ -648,29 +721,34 @@ func (s *server) addProposalLines(ctx context.Context, txq *store.Queries, o sto
 			continue
 		}
 		rounded := roundToItem(v, item, big.NewRat(1, 1))
+		merged := false
 		for _, l := range saved {
 			if l.Kind == kindVariant && l.VariantID != nil && *l.VariantID == r.VariantId && samePackaging(l.PackagingID, rounded.packagingID) {
 				sum := new(big.Rat).Add(ratOrZero(l.OrderQuantity), mustRat(r.OrderQuantity))
 				existing[l.ID] = l
 				in[len(in)-1] = lineInput{PurchasingLineInput: gen.PurchasingLineInput{Id: &l.ID, Kind: gen.PurchasingLineInputKind(l.Kind),
 					OrderQuantity: trimmed(sum, quantityPlaces)}, keys: map[string]bool{}}
+				merged = true
 				break
 			}
 		}
+		if !merged && item.Currency != o.Currency && rounded.price != nil {
+			unpriced = append(unpriced, int32(i))
+		}
 	}
 	if len(gone) > 0 {
-		return 0, refuseLines(invalidProposalsTitle, gone)
+		return 0, nil, refuseLines(invalidProposalsTitle, gone)
 	}
 	planned, failures, err := planLines(lineContext{currency: o.Currency, orderDate: o.OrderDate.Time, variants: variants,
 		items: items, existing: existing}, in)
 	if err != nil {
-		return 0, err
+		return 0, nil, err
 	}
 	for j := range failures {
 		failures[j].index = g.rows[failures[j].index]
 	}
 	if len(failures) > 0 {
-		return 0, refuseLines(invalidProposalsTitle, failures)
+		return 0, nil, refuseLines(invalidProposalsTitle, failures)
 	}
 	added := 0
 	for _, p := range planned {
@@ -679,7 +757,7 @@ func (s *server) addProposalLines(ctx context.Context, txq *store.Queries, o sto
 		}
 	}
 	if len(saved)+added > maxLines {
-		return 0, refuseLines(invalidProposalsTitle, []lineFailure{{index: g.rows[0], code: codeTooManyLines,
+		return 0, nil, refuseLines(invalidProposalsTitle, []lineFailure{{index: g.rows[0], code: codeTooManyLines,
 			detail: fmt.Sprintf("The draft would have more than %d lines", maxLines)}})
 	}
 	position := int32(0)
@@ -689,17 +767,17 @@ func (s *server) addProposalLines(ctx context.Context, txq *store.Queries, o sto
 	for _, p := range planned {
 		if p.existing != nil {
 			if _, err := txq.UpdateLine(ctx, p.updateParams(p.existing.Position)); err != nil {
-				return 0, fmt.Errorf("purchasing: add to line %d: %w", p.existing.ID, err)
+				return 0, nil, fmt.Errorf("purchasing: add to line %d: %w", p.existing.ID, err)
 			}
 			continue
 		}
 		position++
 		if _, err := txq.InsertLine(ctx, p.insertParams(o.ID, position)); err != nil {
-			return 0, fmt.Errorf("purchasing: add a line to order %d: %w", o.ID, err)
+			return 0, nil, fmt.Errorf("purchasing: add a line to order %d: %w", o.ID, err)
 		}
 	}
 	if err := txq.RefreshOrderTotal(ctx, store.RefreshOrderTotalParams{ID: o.ID, Now: now}); err != nil {
-		return 0, fmt.Errorf("purchasing: sum order %d: %w", o.ID, err)
+		return 0, nil, fmt.Errorf("purchasing: sum order %d: %w", o.ID, err)
 	}
-	return len(planned), nil
+	return len(planned), unpriced, nil
 }

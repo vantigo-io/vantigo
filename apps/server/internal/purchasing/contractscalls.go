@@ -302,7 +302,9 @@ func (s *server) businessZone(ctx context.Context) (*time.Location, error) {
 	}
 	zone, err := s.deps.Calendar.Zone(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("purchasing: read the business time zone: %w", err)
+		// The calendar failing is a module this one reads not answering: a
+		// handler that answers it says 503, not 500.
+		return nil, fmt.Errorf("purchasing: read the business time zone: %w: %w", errDependencyUnavailable, err)
 	}
 	return zone, nil
 }

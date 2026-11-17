@@ -2,9 +2,11 @@ package purchasing_test
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -84,8 +86,10 @@ func createFromProposals(c *modtest.Client, id uuid.UUID, rows ...gen.Purchasing
 	return c.Do(http.MethodPost, proposalOrdersPath, gen.PurchasingProposalOrdersInput{ClientRequestId: id, Rows: rows})
 }
 
-func proposalRow(variant int32, site, item int64, quantity string) gen.PurchasingProposalOrdersRow {
-	return gen.PurchasingProposalOrdersRow{VariantId: variant, SiteId: site, SupplierItemId: item, OrderQuantity: quantity}
+// proposalRow is a ticked row: the item, the quantity in its packaging and
+// the remaining the screen showed.
+func proposalRow(variant int32, site, item int64, quantity, remaining string) gen.PurchasingProposalOrdersRow {
+	return gen.PurchasingProposalOrdersRow{VariantId: variant, SiteId: site, SupplierItemId: item, OrderQuantity: quantity, Remaining: remaining}
 }
 
 // proposalSetup is two suppliers' items of the bolt and the demand of P31.
@@ -100,8 +104,15 @@ type proposalSetup struct {
 
 func newProposalSetup(t *testing.T) proposalSetup {
 	t.Helper()
+	return newProposalSetupWith(t, nil)
+}
+
+// newProposalSetupWith is newProposalSetup with the module mounted on
+// calendar, identity's when nil.
+func newProposalSetupWith(t *testing.T, calendar contracts.BusinessCalendar) proposalSetup {
+	t.Helper()
 	demand := &fakeDemand{}
-	h := newHarness(t, harnessOptions{demand: demand})
+	h := newHarness(t, harnessOptions{demand: demand, calendar: calendar})
 	c := h.SignIn(t, buyer...)
 	s := proposalSetup{h: h, c: c, demand: demand}
 	s.norsk = newItem(t, c, gen.PurchasingSupplierItemInput{SupplierId: supNorsk, VariantId: varBolt, SupplierItemNumber: str("NS-88"),
@@ -258,9 +269,9 @@ func TestProposals_CreateOrders(t *testing.T) {
 	}
 	id := uuid.New()
 	rows := []gen.PurchasingProposalOrdersRow{
-		proposalRow(varBolt, siteMain, s.norsk.Id, "4"),
-		proposalRow(varBolt, siteSecond, s.norsk.Id, "4"),
-		proposalRow(varNut, siteMain, s.germanN.Id, "7"),
+		proposalRow(varBolt, siteMain, s.norsk.Id, "4", "23"),
+		proposalRow(varBolt, siteSecond, s.norsk.Id, "4", "5"),
+		proposalRow(varNut, siteMain, s.germanN.Id, "7", "7"),
 	}
 	res := createFromProposals(c, id, rows...)
 	mustStatus(t, res, http.StatusOK, "create orders")
@@ -276,6 +287,11 @@ func TestProposals_CreateOrders(t *testing.T) {
 	mainDraft, second, german := byKey[[2]int64{supNorsk, siteMain}], byKey[[2]int64{supNorsk, siteSecond}], byKey[[2]int64{supGerman, siteMain}]
 	if mainDraft.OrderId != existing.Id || mainDraft.Created || mainDraft.LinesAdded != 1 || !second.Created || !german.Created {
 		t.Errorf("orders = %+v", out.Orders)
+	}
+	// The nut's EUR price is not the new NOK draft's: the result names its
+	// row as unpriced; the Norwegian rows are priced.
+	if !slices.Equal(german.UnpricedRows, []int32{2}) || len(mainDraft.UnpricedRows) != 0 || len(second.UnpricedRows) != 0 {
+		t.Errorf("unpriced rows = %v %v %v, want the nut's row 2 alone", german.UnpricedRows, mainDraft.UnpricedRows, second.UnpricedRows)
 	}
 	o := getOrder(t, c, existing.Id)
 	if len(o.Lines) != 1 || o.Lines[0].OrderQuantity != "5" || o.Lines[0].Quantity != "50" || o.NetTotal != "62.50" {
@@ -306,8 +322,12 @@ func TestProposals_CreateOrders(t *testing.T) {
 	var replay gen.PurchasingProposalOrdersResult
 	res.JSON(&replay)
 	if len(replay.Orders) != 3 || h.Count(t, `SELECT count(*) FROM purchasing.order_lines`) != lines ||
-		getOrder(t, c, existing.Id).Lines[0].OrderQuantity != "5" {
-		t.Errorf("replay = %+v", replay.Orders)
+		getOrder(t, c, existing.Id).Lines[0].OrderQuantity != "5" || !slices.EqualFunc(replay.Orders, out.Orders,
+		func(a, b gen.PurchasingProposalOrder) bool {
+			return a.OrderId == b.OrderId && a.SupplierName == b.SupplierName && a.Created == b.Created &&
+				a.LinesAdded == b.LinesAdded && slices.Equal(a.UnpricedRows, b.UnpricedRows)
+		}) {
+		t.Errorf("replay = %+v, want %+v", replay.Orders, out.Orders)
 	}
 	// Another body under the same id.
 	expectRefusal(t, createFromProposals(c, id, rows[0]), http.StatusConflict, "client_request_reused", "reused id")
@@ -332,12 +352,13 @@ func TestProposals_CreateRefusals(t *testing.T) {
 		row  gen.PurchasingProposalOrdersRow
 		code string
 	}{
-		{proposalRow(varNut, siteMain, s.norsk.Id, "1"), "supplier_item_not_found"},
-		{proposalRow(varBolt, siteMain, 99999, "1"), "supplier_item_not_found"},
-		{proposalRow(varBolt, siteArchived, s.norsk.Id, "1"), "site_archived"},
-		{proposalRow(varBolt, 77, s.norsk.Id, "1"), "site_not_found"},
-		{proposalRow(varBolt, siteMain, s.norsk.Id, "0"), "quantity_invalid"},
-		{proposalRow(varBolt, siteMain, s.norsk.Id, "1.2345"), "quantity_invalid"},
+		{proposalRow(varNut, siteMain, s.norsk.Id, "1", "3"), "supplier_item_not_found"},
+		{proposalRow(varBolt, siteMain, 99999, "1", "10"), "supplier_item_not_found"},
+		{proposalRow(varBolt, siteArchived, s.norsk.Id, "1", "10"), "site_archived"},
+		{proposalRow(varBolt, 77, s.norsk.Id, "1", "10"), "site_not_found"},
+		{proposalRow(varBolt, siteMain, s.norsk.Id, "0", "10"), "quantity_invalid"},
+		{proposalRow(varBolt, siteMain, s.norsk.Id, "1.2345", "10"), "quantity_invalid"},
+		{proposalRow(varBolt, siteMain, s.norsk.Id, "1", ""), "quantity_invalid"}, // no remaining shown
 	}
 	for _, tc := range cases {
 		p := expectRefusal(t, createFromProposals(c, uuid.New(), tc.row), http.StatusBadRequest, tc.code, tc.code)
@@ -345,16 +366,16 @@ func TestProposals_CreateRefusals(t *testing.T) {
 			t.Errorf("%s: lines = %+v", tc.code, p.Lines)
 		}
 	}
-	p := expectRefusal(t, createFromProposals(c, uuid.New(), proposalRow(varBolt, siteMain, s.norsk.Id, "1"),
-		proposalRow(varBolt, siteMain, s.german.Id, "1")), http.StatusBadRequest, "line_invalid", "the variant twice at a site")
+	p := expectRefusal(t, createFromProposals(c, uuid.New(), proposalRow(varBolt, siteMain, s.norsk.Id, "1", "10"),
+		proposalRow(varBolt, siteMain, s.german.Id, "1", "10")), http.StatusBadRequest, "line_invalid", "the variant twice at a site")
 	if (*p.Lines)[0].Index != 1 {
 		t.Errorf("twice: lines = %+v", p.Lines)
 	}
 	// A row the demand does not propose.
-	expectRefusal(t, createFromProposals(c, uuid.New(), proposalRow(varBolt, siteSecond, s.norsk.Id, "1")), http.StatusConflict, "proposal_gone", "not proposed")
+	expectRefusal(t, createFromProposals(c, uuid.New(), proposalRow(varBolt, siteSecond, s.norsk.Id, "1", "1")), http.StatusConflict, "proposal_gone", "not proposed")
 	// An inactive supplier.
 	h.dir.update(supGerman, func(e *contracts.SupplierEntry) { e.Active = false })
-	expectRefusal(t, createFromProposals(c, uuid.New(), proposalRow(varNut, siteMain, s.germanN.Id, "3")), http.StatusConflict, "supplier_inactive", "inactive")
+	expectRefusal(t, createFromProposals(c, uuid.New(), proposalRow(varNut, siteMain, s.germanN.Id, "3", "3")), http.StatusConflict, "supplier_inactive", "inactive")
 	if n := h.Count(t, `SELECT count(*) FROM purchasing.orders`); n != 0 {
 		t.Errorf("orders after refusals = %d", n)
 	}
@@ -366,7 +387,7 @@ func TestProposals_CreateRefusals(t *testing.T) {
 		t.Errorf("proposals with no demand = %+v", list)
 	}
 	item := newItem(t, bc, gen.PurchasingSupplierItemInput{SupplierId: supNorsk, VariantId: varBolt})
-	expectRefusal(t, createFromProposals(bc, uuid.New(), proposalRow(varBolt, siteMain, item.Id, "1")), http.StatusServiceUnavailable,
+	expectRefusal(t, createFromProposals(bc, uuid.New(), proposalRow(varBolt, siteMain, item.Id, "1", "1")), http.StatusServiceUnavailable,
 		"dependency_unavailable", "no demand")
 }
 
@@ -385,13 +406,13 @@ func TestProposals_Permissions(t *testing.T) {
 		if (res.Status == http.StatusOK) != (key == "purchasing:access") || (res.Status != http.StatusOK && res.Status != http.StatusForbidden) {
 			t.Errorf("GET proposals with %s alone = %d", key, res.Status)
 		}
-		res = createFromProposals(c, uuid.New(), proposalRow(varNut, siteMain, s.norsk.Id, "1"))
+		res = createFromProposals(c, uuid.New(), proposalRow(varNut, siteMain, s.norsk.Id, "1", "1"))
 		if (res.Status == http.StatusForbidden) == (key == "purchasing:orders-manage") {
 			t.Errorf("Create orders with %s alone = %d", key, res.Status)
 		}
 	}
 	m := h.SignIn(t, "purchasing:orders-manage")
-	mustStatus(t, createFromProposals(m, uuid.New(), proposalRow(varBolt, siteMain, s.norsk.Id, "4")), http.StatusOK, "orders-manage alone creates")
+	mustStatus(t, createFromProposals(m, uuid.New(), proposalRow(varBolt, siteMain, s.norsk.Id, "4", "10")), http.StatusOK, "orders-manage alone creates")
 }
 
 // TestProposals_LockOrder is rules 21 and 28 for Create orders: every
@@ -413,7 +434,7 @@ func TestProposals_LockOrder(t *testing.T) {
 		lockedContractCalls.note(ctx, method)
 	})
 	t.Cleanup(func() { purchasing.SetContractCallHook(lockedContractCalls.note) })
-	mustStatus(t, createFromProposals(c, uuid.New(), proposalRow(varBolt, siteMain, s.norsk.Id, "2")), http.StatusOK, "create orders")
+	mustStatus(t, createFromProposals(c, uuid.New(), proposalRow(varBolt, siteMain, s.norsk.Id, "2", "10")), http.StatusOK, "create orders")
 	purchasing.SetContractCallHook(lockedContractCalls.note)
 	variants := slices.Index(calls, purchasing.LockVariantsCall)
 	suppliers := slices.Index(calls, purchasing.LockSuppliersCall)
@@ -421,4 +442,242 @@ func TestProposals_LockOrder(t *testing.T) {
 	if variants < 0 || suppliers < variants || demand < 0 || demand > variants || slices.Index(calls[variants:], "Stock.Sites") >= 0 {
 		t.Errorf("calls = %v: want the demand and the sites read before LockVariants, then LockSuppliers", calls)
 	}
+}
+
+// TestProposals_StaleScreen is A58: each row carries the remaining the
+// screen showed, and Create orders orders a row only when that is what
+// remains of it under the lock. A orders 5 of 10; B, on a screen still
+// showing 10, is refused proposal_gone and orders nothing; a screen loaded
+// again orders the 5 left.
+func TestProposals_StaleScreen(t *testing.T) {
+	t.Parallel()
+	s := newProposalSetup(t)
+	h, c := s.h, s.c
+	s.demand.set(lowStock(h, varBolt, siteMain, "10"))
+	mustStatus(t, createFromProposals(c, uuid.New(), proposalRow(varBolt, siteMain, s.german.Id, "5", "10")), http.StatusOK, "A orders 5")
+	lines := h.Count(t, `SELECT count(*) FROM purchasing.order_lines`)
+	p := expectRefusal(t, createFromProposals(c, uuid.New(), proposalRow(varBolt, siteMain, s.german.Id, "10", "10")),
+		http.StatusConflict, "proposal_gone", "B on a stale screen")
+	if p.Lines == nil || len(*p.Lines) != 1 || (*p.Lines)[0].Index != 0 || (*p.Lines)[0].Code != "proposal_gone" {
+		t.Errorf("lines = %+v", p.Lines)
+	}
+	if got := h.Count(t, `SELECT count(*) FROM purchasing.order_lines`); got != lines {
+		t.Errorf("lines after the stale request = %d, want %d", got, lines)
+	}
+	if b := proposalAt(proposals(t, c, ""), varBolt, siteMain); b == nil || b.Remaining != "5" {
+		t.Fatalf("the bolt after A = %+v, want 5 remaining", b)
+	}
+	mustStatus(t, createFromProposals(c, uuid.New(), proposalRow(varBolt, siteMain, s.german.Id, "5", "5")), http.StatusOK, "B reloaded")
+}
+
+// TestProposals_ConcurrentSameRow is A53 and A58 under a race: two requests
+// with different ids on the same row, at once — the advisory lock lets one
+// order it and refuses the other proposal_gone.
+func TestProposals_ConcurrentSameRow(t *testing.T) {
+	t.Parallel()
+	s := newProposalSetup(t)
+	h, c := s.h, s.c
+	s.demand.set(lowStock(h, varBolt, siteMain, "10"))
+	row := proposalRow(varBolt, siteMain, s.german.Id, "10", "10")
+	var wg sync.WaitGroup
+	statuses := make([]int, 2)
+	codes := make([]string, 2)
+	start := make(chan struct{})
+	for i := range 2 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			res := createFromProposals(c, uuid.New(), row)
+			statuses[i] = res.Status
+			if res.Status != http.StatusOK {
+				var p gen.PurchasingProblem
+				res.JSON(&p)
+				codes[i] = deref(p.Code)
+			}
+		}()
+	}
+	close(start)
+	wg.Wait()
+	slices.Sort(statuses)
+	if statuses[0] != http.StatusOK || statuses[1] != http.StatusConflict || !slices.Contains(codes, "proposal_gone") {
+		t.Errorf("statuses = %v, codes = %v: want one 200 and one 409 proposal_gone", statuses, codes)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM purchasing.order_lines`); n != 1 {
+		t.Errorf("lines = %d, want the one line", n)
+	}
+}
+
+// TestProposals_ReplayStored is A58: a replay answers the stored result as
+// it was answered — after one of its two drafts is deleted, and after both
+// are — and orders nothing again; the same id with another body is refused.
+func TestProposals_ReplayStored(t *testing.T) {
+	t.Parallel()
+	s := newProposalSetup(t)
+	h, c := s.h, s.c
+	s.demand.set(lowStock(h, varBolt, siteMain, "10"), lowStock(h, varNut, siteMain, "3"))
+	id := uuid.New()
+	rows := []gen.PurchasingProposalOrdersRow{
+		proposalRow(varBolt, siteMain, s.norsk.Id, "4", "10"),
+		proposalRow(varNut, siteMain, s.germanN.Id, "3", "3"),
+	}
+	res := createFromProposals(c, id, rows...)
+	mustStatus(t, res, http.StatusOK, "create orders")
+	var first gen.PurchasingProposalOrdersResult
+	res.JSON(&first)
+	if len(first.Orders) != 2 {
+		t.Fatalf("orders = %+v, want two drafts", first.Orders)
+	}
+	same := func(what string) {
+		t.Helper()
+		res := createFromProposals(c, id, rows...)
+		mustStatus(t, res, http.StatusOK, what)
+		var again gen.PurchasingProposalOrdersResult
+		res.JSON(&again)
+		if !slices.EqualFunc(again.Orders, first.Orders, func(a, b gen.PurchasingProposalOrder) bool {
+			return a.OrderId == b.OrderId && a.SupplierId == b.SupplierId && a.SupplierName == b.SupplierName && a.SiteId == b.SiteId &&
+				a.Created == b.Created && a.LinesAdded == b.LinesAdded
+		}) {
+			t.Errorf("%s = %+v, want %+v", what, again.Orders, first.Orders)
+		}
+	}
+	del := func(orderID int64) {
+		t.Helper()
+		o := getOrder(t, c, orderID)
+		mustStatus(t, c.Do(http.MethodDelete, withUpdatedAt(orderPath(o.Id), o.UpdatedAt), nil), http.StatusNoContent, "delete a draft")
+	}
+	del(first.Orders[1].OrderId)
+	same("replay after one draft was deleted")
+	if n := h.Count(t, `SELECT count(*) FROM purchasing.orders`); n != 1 {
+		t.Errorf("orders after the replay = %d, want the one left: a replay creates nothing", n)
+	}
+	del(first.Orders[0].OrderId)
+	same("replay after both drafts were deleted")
+	if n := h.Count(t, `SELECT count(*) FROM purchasing.orders`); n != 0 {
+		t.Errorf("orders after the replay = %d, want none", n)
+	}
+	expectRefusal(t, createFromProposals(c, id, rows[0]), http.StatusConflict, "client_request_reused", "reuse with another body")
+	if n := h.Count(t, `SELECT count(*) FROM purchasing.proposal_requests`); n != 1 {
+		t.Errorf("requests kept = %d, want 1", n)
+	}
+}
+
+// TestProposals_SentSinceGoodsAndMargin is A4 and A58: what was sent since
+// counts goods lines only, as the open purchases do, and from a need's
+// computed time less sentSinceMargin — an order sent two seconds before
+// counts, one sent ten seconds before does not.
+func TestProposals_SentSinceGoodsAndMargin(t *testing.T) {
+	t.Parallel()
+	s := newProposalSetup(t)
+	h, c := s.h, s.c
+	markSent(t, c, createOrder(t, c, supNorsk, variantLine(varBolt, "1"))) // 10 pcs, ten seconds before
+	h.Advance(10 * time.Second)
+	markSent(t, c, createOrder(t, c, supNorsk, variantLine(varBolt, "2"))) // 20 pcs, two seconds before
+	h.Advance(2 * time.Second)
+	computed := h.Now()
+	h.Advance(time.Minute)
+	markSent(t, c, createOrder(t, c, supNorsk, variantLine(varService, "2"))) // a service, after
+	s.demand.set(
+		contracts.PurchaseNeed{VariantID: varBolt, SiteID: siteMain, Quantity: "50", Source: "replenishment", ComputedAt: computed},
+		contracts.PurchaseNeed{VariantID: varService, SiteID: siteMain, Quantity: "5", Source: "replenishment", ComputedAt: computed},
+	)
+	list := proposals(t, c, "")
+	if b := proposalAt(list, varBolt, siteMain); b == nil || b.SentSince != "20" || b.Remaining != "30" {
+		t.Errorf("the bolt = %+v, want the order two seconds before counted and the one ten before not", b)
+	}
+	if svc := proposalAt(list, varService, siteMain); svc == nil || svc.SentSince != "0" || svc.Remaining != "5" {
+		t.Errorf("the service = %+v, want a service line not counted as sent", svc)
+	}
+}
+
+// failingCalendar is a business calendar on UTC that fails while fail is set.
+type failingCalendar struct{ fail atomic.Bool }
+
+var errCalendarDown = errors.New("the calendar is down")
+
+func (f *failingCalendar) Zone(context.Context) (*time.Location, error) {
+	if f.fail.Load() {
+		return nil, errCalendarDown
+	}
+	return time.UTC, nil
+}
+
+func (f *failingCalendar) Today(_ context.Context, now time.Time) (time.Time, error) {
+	if f.fail.Load() {
+		return time.Time{}, errCalendarDown
+	}
+	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC), nil
+}
+
+func (f *failingCalendar) Day(ctx context.Context, at time.Time) (time.Time, error) {
+	return f.Today(ctx, at.UTC())
+}
+
+// TestProposals_CalendarFailure is rule 17: the business calendar failing
+// is a module not answering — the proposals and Create orders say 503
+// dependency_unavailable, not 500.
+func TestProposals_CalendarFailure(t *testing.T) {
+	t.Parallel()
+	cal := &failingCalendar{}
+	s := newProposalSetupWith(t, cal)
+	h, c := s.h, s.c
+	s.demand.set(lowStock(h, varBolt, siteMain, "10"))
+	cal.fail.Store(true)
+	expectRefusal(t, c.Do(http.MethodGet, proposalsPath, nil), http.StatusServiceUnavailable, "dependency_unavailable", "list")
+	expectRefusal(t, createFromProposals(c, uuid.New(), proposalRow(varBolt, siteMain, s.german.Id, "10", "10")),
+		http.StatusServiceUnavailable, "dependency_unavailable", "create orders")
+	cal.fail.Store(false)
+	if b := proposalAt(proposals(t, c, ""), varBolt, siteMain); b == nil {
+		t.Error("the bolt is not proposed once the calendar answers")
+	}
+}
+
+// TestProposals_Discontinued is P16 on the proposals: a row whose goods
+// variant is discontinued has no option, even with a supplier item, so it is
+// never ticked to be refused.
+func TestProposals_Discontinued(t *testing.T) {
+	t.Parallel()
+	s := newProposalSetup(t)
+	h, c := s.h, s.c
+	newItem(t, c, gen.PurchasingSupplierItemInput{SupplierId: supNorsk, VariantId: varOld, Price: str("2")})
+	s.demand.set(lowStock(h, varOld, siteMain, "6"))
+	if old := proposalAt(proposals(t, c, ""), varOld, siteMain); old == nil || old.ProductStatus != "Discontinued" || len(old.Options) != 0 {
+		t.Errorf("the discontinued screw = %+v, want it with no option", old)
+	}
+}
+
+// TestProposals_MergeLimits is P16 and P18 when Create orders adds to an
+// existing draft: past 500 lines the row is refused too_many_lines and
+// nothing is written; and an editor holding the draft as read before the
+// merge is refused version_conflict on save.
+func TestProposals_MergeLimits(t *testing.T) {
+	t.Parallel()
+	s := newProposalSetup(t)
+	h, c := s.h, s.c
+	s.demand.set(lowStock(h, varBolt, siteMain, "10"), lowStock(h, varNut, siteMain, "3"))
+	full := make([]gen.PurchasingLineInput, 500)
+	for i := range full {
+		full[i] = textLine("Frakt", "1", "1")
+	}
+	createOrder(t, c, supGerman, full...)
+	lines := h.Count(t, `SELECT count(*) FROM purchasing.order_lines`)
+	p := expectRefusal(t, createFromProposals(c, uuid.New(), proposalRow(varBolt, siteMain, s.german.Id, "10", "10")),
+		http.StatusBadRequest, "too_many_lines", "a 501st line on the existing draft")
+	if p.Lines == nil || (*p.Lines)[0].Index != 0 {
+		t.Errorf("lines = %+v", p.Lines)
+	}
+	if got := h.Count(t, `SELECT count(*) FROM purchasing.order_lines`); got != lines {
+		t.Errorf("lines = %d after the refusal, want %d", got, lines)
+	}
+
+	// The editor reads the Norwegian draft; Create orders adds to it; the
+	// editor's save of what it read is stale.
+	editing := createOrder(t, c, supNorsk, variantLine(varBolt, "1"))
+	norskNut := newItem(t, c, gen.PurchasingSupplierItemInput{SupplierId: supNorsk, VariantId: varNut, Price: str("0.4")})
+	h.Advance(time.Second)
+	mustStatus(t, createFromProposals(c, uuid.New(), proposalRow(varNut, siteMain, norskNut.Id, "3", "3")), http.StatusOK, "merge into the draft")
+	if o := getOrder(t, c, editing.Id); len(o.Lines) != 2 {
+		t.Fatalf("the Norwegian draft = %+v, want the nut added", o.Lines)
+	}
+	expectRefusal(t, c.Do(http.MethodPut, orderPath(editing.Id), updateOf(editing)), http.StatusConflict, "version_conflict", "the editor's stale save")
 }

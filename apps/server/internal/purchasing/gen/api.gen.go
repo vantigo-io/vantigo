@@ -999,7 +999,7 @@ type PurchasingPerson struct {
 	Id          *openapi_types.UUID `json:"id,omitempty"`
 }
 
-// PurchasingProblem An RFC 9457 problem with this module's refusal code (purchasing design §3). code names the rule that refused and is what a client keys off, never the words. 400: field errors (errors), supplier_not_found, site_not_found, site_archived, currency_invalid, series_start_too_low, send_channel_unknown, recipient_missing, order_empty, import_invalid, amount_out_of_range (an order's total above 999 999 999 999.99), and an order's line refusals in lines, the first of which is also code: too_many_lines, line_invalid, line_not_found, variant_not_found, variant_discontinued, packaging_not_found, quantity_invalid, price_invalid, discount_invalid, quantity_below_received, amount_out_of_range (a line's amount above 999 999 999 999.99). 404: not_found. 409: version_conflict (a stale revision or expectedUpdatedAt), order_not_draft, order_not_sent (the order is not sent or partially received), order_not_closed, order_has_receipts (a cancel of an order with something received), line_closed, line_kind_changed, currency_fixed (a currency change once a line has a price), supplier_inactive, supplier_changed (a sent order's supplier), supplier_item_exists, client_request_reused, proposal_gone (Create orders: a row no longer proposed — on a draft or sent since; lines name the rows). Create orders' rows are refused in lines as an order's are, with supplier_item_not_found (the item is not the row variant's, or not known). 503: dependency_unavailable (a module Purchasing reads is not composed), sending_disabled (Communications is off, or no channel that can send is chosen) and mail_failed (the e-mail did not go out now; the change is made, and its mailing, written in the same transaction, stays queued for the purchasing.mail worker). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither. Receipts (delivery B): 400 line_not_receivable (a line that is not an open goods line of the order) and quantity_invalid (also a line whose received quantity would pass 999 999 999.999, acceptOver or not) in lines; 409 over_receipt (more than a line's remainder without acceptOver, the lines named), receipt_undone (an undo of a receipt undone already), receipt_invoiced (an undo that would leave a line with less received than invoiced) and line_not_deliverable (a delivered mark on a goods line). Inventory's refusals of a receipt or its undo keep Inventory's own codes, each line named by its index.
+// PurchasingProblem An RFC 9457 problem with this module's refusal code (purchasing design §3). code names the rule that refused and is what a client keys off, never the words. 400: field errors (errors), supplier_not_found, site_not_found, site_archived, currency_invalid, series_start_too_low, send_channel_unknown, recipient_missing, order_empty, import_invalid, amount_out_of_range (an order's total above 999 999 999 999.99), and an order's line refusals in lines, the first of which is also code: too_many_lines, line_invalid, line_not_found, variant_not_found, variant_discontinued, packaging_not_found, quantity_invalid, price_invalid, discount_invalid, quantity_below_received, amount_out_of_range (a line's amount above 999 999 999 999.99). 404: not_found. 409: version_conflict (a stale revision or expectedUpdatedAt), order_not_draft, order_not_sent (the order is not sent or partially received), order_not_closed, order_has_receipts (a cancel of an order with something received), line_closed, line_kind_changed, currency_fixed (a currency change once a line has a price), supplier_inactive, supplier_changed (a sent order's supplier), supplier_item_exists, client_request_reused, proposal_gone (Create orders: a row no longer proposed as the screen showed it — on a draft or sent since, or its remaining changed; lines name the rows). Create orders' rows are refused in lines as an order's are, with supplier_item_not_found (the item is not the row variant's, or not known). 503: dependency_unavailable (a module Purchasing reads is not composed), sending_disabled (Communications is off, or no channel that can send is chosen) and mail_failed (the e-mail did not go out now; the change is made, and its mailing, written in the same transaction, stays queued for the purchasing.mail worker). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither. Receipts (delivery B): 400 line_not_receivable (a line that is not an open goods line of the order) and quantity_invalid (also a line whose received quantity would pass 999 999 999.999, acceptOver or not) in lines; 409 over_receipt (more than a line's remainder without acceptOver, the lines named), receipt_undone (an undo of a receipt undone already), receipt_invoiced (an undo that would leave a line with less received than invoiced) and line_not_deliverable (a delivered mark on a goods line). Inventory's refusals of a receipt or its undo keep Inventory's own codes, each line named by its index.
 type PurchasingProblem struct {
 	Code     *string              `json:"code,omitempty"`
 	Detail   *string              `json:"detail,omitempty"`
@@ -1085,7 +1085,7 @@ type PurchasingProposalOption struct {
 	// Currency The currency the item's price is in.
 	Currency string `json:"currency"`
 
-	// CurrencyDiffers The supplier's currency in the register is no longer the price's: an order line takes no price from it (A32).
+	// CurrencyDiffers The supplier's currency in the register is not the price's. A line takes the price only when it lands in a draft in the price's currency (A32): a new draft is in the supplier's currency, so it gets none; an existing draft keeps its own (unpricedRows says which rows got none).
 	CurrencyDiffers bool   `json:"currencyDiffers"`
 	LeadTimeDays    *int32 `json:"leadTimeDays,omitempty"`
 
@@ -1127,11 +1127,14 @@ type PurchasingProposalOrder struct {
 	SiteId       int64  `json:"siteId"`
 	SupplierId   int64  `json:"supplierId"`
 	SupplierName string `json:"supplierName"`
+
+	// UnpricedRows The indexes, in the request's rows, of the rows whose line got no price because the supplier item's price is in another currency than the draft's: a line takes its price from the draft it lands in (A32), and an existing draft keeps its own currency.
+	UnpricedRows []int32 `json:"unpricedRows"`
 }
 
 // PurchasingProposalOrdersInput Create orders (P33, A11): the ticked proposals, each with the supplier item to order it from and the quantity in that item's purchase packaging.
 type PurchasingProposalOrdersInput struct {
-	// ClientRequestId The client's id of this request (A11): a replay with the same body answers the first result; another body under the same id is 409 client_request_reused.
+	// ClientRequestId The client's id of this request (A11, A58): a replay with the same body answers the first result as it was answered, whatever happened to its drafts since, and orders nothing; another body under the same id is 409 client_request_reused.
 	ClientRequestId openapi_types.UUID            `json:"clientRequestId"`
 	Rows            []PurchasingProposalOrdersRow `json:"rows"`
 }
@@ -1144,7 +1147,10 @@ type PurchasingProposalOrdersResult struct {
 // PurchasingProposalOrdersRow One ticked proposal.
 type PurchasingProposalOrdersRow struct {
 	// OrderQuantity In the supplier item's purchase packaging, more than 0, at most three decimals.
-	OrderQuantity  string `json:"orderQuantity"`
+	OrderQuantity string `json:"orderQuantity"`
+
+	// Remaining The row's remaining as the screen showed it (A58): when it is not what remains now, under the lock, the request is refused with 409 proposal_gone and nothing is ordered.
+	Remaining      string `json:"remaining"`
 	SiteId         int64  `json:"siteId"`
 	SupplierItemId int64  `json:"supplierItemId"`
 	VariantId      int32  `json:"variantId"`
@@ -1383,7 +1389,7 @@ type PurchasingSendChannel struct {
 type PurchasingSendInput struct {
 	Cc *[]openapi_types.Email `json:"cc,omitempty"`
 
-	// ClientRequestId The client's id of this request (A11): a replay with the same body answers the first result; another body under the same id is 409 client_request_reused.
+	// ClientRequestId The client's id of this request (A11, A58): a replay with the same body answers the first result as it was answered, whatever happened to its drafts since, and orders nothing; another body under the same id is 409 client_request_reused.
 	ClientRequestId openapi_types.UUID `json:"clientRequestId"`
 
 	// ExpectedUpdatedAt The updatedAt of the order as the client read it: the write is refused with version_conflict when the order was written since (every write moves it).
