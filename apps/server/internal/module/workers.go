@@ -583,8 +583,9 @@ func withStock(deps Deps, given, enabled []Module) (Deps, error) {
 // withSuppliers resolves the supplier slots (purchasing design P1, P4, P6,
 // P7, P10): contracts.SupplierDirectory, contracts.SupplierInvoices,
 // contracts.SupplierInvoiceMatches and contracts.PurchaseSupply from the
-// enabled modules — at most one may declare each — keeping a preset value
-// when none does; and the supplier holders and personal data from every
+// enabled modules — at most one may declare each — and then
+// contracts.PurchaseDemand by its precedence (demandProvider), keeping a
+// preset value when none does; and the supplier holders and personal data from every
 // module given, enabled or not, appended onto a copy of what the caller
 // preset, in module order. No provider reads another while it is built.
 // withStock calls it last, for Compose and Workers both: Manufacturing's
@@ -618,6 +619,13 @@ func withSuppliers(deps Deps, given, enabled []Module) (Deps, error) {
 	if supply != nil {
 		deps.PurchaseSupply = supply.PurchaseSupply(deps)
 	}
+	demand, err := demandProvider(enabled)
+	if err != nil {
+		return deps, err
+	}
+	if demand != nil {
+		deps.PurchaseDemand = demand.PurchaseDemand(deps)
+	}
 	var holders []contracts.SupplierReferenceHolder
 	var data []contracts.SupplierPersonalDataHolder
 	for _, mod := range given {
@@ -639,6 +647,28 @@ func withSuppliers(deps Deps, given, enabled []Module) (Deps, error) {
 		deps.SupplierPersonalData = append(slices.Clone(deps.SupplierPersonalData), data...)
 	}
 	return deps, nil
+}
+
+// demandProvider is the one enabled module whose contracts.PurchaseDemand
+// Purchasing's proposals read (purchasing design A4): of the enabled modules
+// declaring Module.PurchaseDemand, those no other of them supersedes; nil when
+// none declares it, an error when two remain.
+func demandProvider(enabled []Module) (*Module, error) {
+	superseded := map[string]bool{}
+	for _, m := range enabled {
+		if m.PurchaseDemand != nil {
+			for _, name := range m.PurchaseDemandSupersedes {
+				superseded[name] = true
+			}
+		}
+	}
+	var remaining []Module
+	for _, m := range enabled {
+		if m.PurchaseDemand != nil && !superseded[m.Name] {
+			remaining = append(remaining, m)
+		}
+	}
+	return soleProvider(remaining, "a purchase demand", func(Module) bool { return true })
 }
 
 // withProduction resolves contracts.SalesOrderLines, contracts.Production,

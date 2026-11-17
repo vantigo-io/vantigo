@@ -2,6 +2,7 @@ package module
 
 import (
 	"context"
+	"net/http"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
@@ -74,4 +75,60 @@ func TestWorkers_TwoPurchaseSuppliesPanic(t *testing.T) {
 		}
 	}()
 	Workers(Deps{Config: &config.Config{Modules: []string{"a", "b"}}}, supply("a"), supply("b"))
+}
+
+type fakePurchaseDemand struct{ source string }
+
+func (fakePurchaseDemand) Demand(context.Context, *int64) ([]contracts.PurchaseNeed, error) {
+	return nil, nil
+}
+
+// The purchase demand (purchasing design A4) as Compose builds it: one
+// source, Manufacturing's buy suggestions where Manufacturing is enabled and
+// Inventory's low stock where it is not, and none with neither — seen by the
+// module that reads it, Purchasing, on its own Deps.
+func TestCompose_PurchaseDemandByPrecedence(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		enabled []string
+		want    string
+	}{
+		{[]string{"inventory", "manufacturing", "purchasing"}, "manufacturing"},
+		{[]string{"manufacturing", "purchasing"}, "manufacturing"},
+		{[]string{"inventory", "purchasing"}, "inventory"},
+		{[]string{"purchasing"}, ""},
+	} {
+		var seen Deps
+		mods := []Module{
+			{Name: "identity", Mount: func(Deps) (http.Handler, error) { return http.NotFoundHandler(), nil }},
+			{Name: "inventory", Mount: func(Deps) (http.Handler, error) { return http.NotFoundHandler(), nil },
+				PurchaseDemand: func(Deps) contracts.PurchaseDemand { return fakePurchaseDemand{"inventory"} }},
+			{Name: "manufacturing", Mount: func(Deps) (http.Handler, error) { return http.NotFoundHandler(), nil },
+				PurchaseDemand:           func(Deps) contracts.PurchaseDemand { return fakePurchaseDemand{"manufacturing"} },
+				PurchaseDemandSupersedes: []string{"inventory"}},
+			{Name: "purchasing", Mount: func(d Deps) (http.Handler, error) { seen = d; return http.NotFoundHandler(), nil }},
+		}
+		if _, err := Compose(Deps{Access: &fakeAccess{}, Config: &config.Config{Modules: tc.enabled}}, mods...); err != nil {
+			t.Fatalf("%v: Compose: %v", tc.enabled, err)
+		}
+		got := ""
+		if f, ok := seen.PurchaseDemand.(fakePurchaseDemand); ok {
+			got = f.source
+		}
+		if got != tc.want {
+			t.Errorf("%v enabled: the demand is %q's, want %q's", tc.enabled, got, tc.want)
+		}
+	}
+}
+
+// Two enabled providers of a purchase demand that neither supersedes are a
+// failure, as for every single-provider slot.
+func TestCompose_TwoPurchaseDemandsFail(t *testing.T) {
+	t.Parallel()
+	demand := func(name string) Module {
+		return Module{Name: name, PurchaseDemand: func(Deps) contracts.PurchaseDemand { return fakePurchaseDemand{name} }}
+	}
+	if _, err := demandProvider([]Module{demand("a"), demand("b")}); err == nil {
+		t.Fatal("two purchase demands resolved")
+	}
 }
