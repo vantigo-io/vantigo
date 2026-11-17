@@ -1,6 +1,6 @@
 ---
 title: Regnskap
-description: Regnskap-appen — å sette opp regnskapet, kontoplanen med grupperingskoder og systemkontoer, mva-kodene og satsene deres, å bokføre en postering netto eller brutto med mva-linjene, å kopiere et bilag, å legge ved filer, å tilbakeføre et bilag, å sperre en periode og flytte sperren tilbake, inngående balanse og de åpne fakturaene fra Fakturaer, hvordan fakturaer, innbetalinger, purrekostnader og avskrivninger bokføres av seg selv, leverandører og oppslaget i Brønnøysundregisteret, å føre, bokføre og betale en leverandørfaktura, annen valuta, omvendt avgiftsplikt og innførsel av varer, kreditnotaer, Tilbakefør og kopier, hvordan utgifter kommer inn fra Utgifter, posteringsreglene for salg og utgiftskategorier, Trenger oppmerksomhet med Prøv igjen, beløpet i NOK og Lag leverandørfaktura, åpne poster og å registrere en innbetaling, utbetaling eller tilbakebetaling, mva-terminen — å kontrollere tallene, lukke den, laste ned mva-meldingen, levere den hos Skatteetaten og merke den som levert, åpne den igjen, rette etter levering og betale mvaen — banken med bankkontoer, å importere en kontoutskrift i camt.053 eller CSV med oppsettet, bankintegrasjonen som kilde, å avstemme med hvert forslag, utbetalinger fra Vipps, å betale mvaen fra banken, bankregler, hvorfor innbetalinger fra kunder registreres i Fakturaer og å sperre en måned med linjer som ikke er avstemt — rapportene og CSV-filene deres, SAF-T-filen en kontroll ber om og grupperingskodene den trenger, å komme fra et annet system med SAF-T-filen derfra, og å invitere en regnskapsfører.
+description: Regnskap-appen — å sette opp regnskapet, kontoplanen med grupperingskoder og systemkontoer, mva-kodene og satsene deres, å bokføre en postering netto eller brutto med mva-linjene, å kopiere et bilag, å legge ved filer, å tilbakeføre et bilag, å sperre en periode og flytte sperren tilbake, inngående balanse og de åpne fakturaene fra Fakturaer, hvordan fakturaer, innbetalinger, purrekostnader og avskrivninger bokføres av seg selv, leverandører og oppslaget i Brønnøysundregisteret, å føre, bokføre og betale en leverandørfaktura, panelet Innkjøpsordre og et utkast laget fra en innkjøpsordre, annen valuta, omvendt avgiftsplikt og innførsel av varer, kreditnotaer, Tilbakefør og kopier, hvordan utgifter kommer inn fra Utgifter, posteringsreglene for salg og utgiftskategorier, Trenger oppmerksomhet med Prøv igjen, beløpet i NOK og Lag leverandørfaktura, åpne poster og å registrere en innbetaling, utbetaling eller tilbakebetaling, mva-terminen — å kontrollere tallene, lukke den, laste ned mva-meldingen, levere den hos Skatteetaten og merke den som levert, åpne den igjen, rette etter levering og betale mvaen — banken med bankkontoer, å importere en kontoutskrift i camt.053 eller CSV med oppsettet, bankintegrasjonen som kilde, å avstemme med hvert forslag, utbetalinger fra Vipps, å betale mvaen fra banken, bankregler, hvorfor innbetalinger fra kunder registreres i Fakturaer og å sperre en måned med linjer som ikke er avstemt — rapportene og CSV-filene deres, SAF-T-filen en kontroll ber om og grupperingskodene den trenger, å komme fra et annet system med SAF-T-filen derfra, og å invitere en regnskapsfører.
 sidebar:
   order: 67
 sources:
@@ -409,6 +409,29 @@ den bokføres, deretter **Bokført** mens noe skyldes, **Betalt** når ingenting
 innkjøpsordre i Innkjøp, viser **Innkjøpsordre** og nummeret, i listen og på siden — klikk
 for å åpne ordren — og hvor mange avvik avstemmingen har; uten Innkjøp er det ingen.
 
+### Panelet Innkjøpsordre
+
+Når Innkjøp er i bruk og du har **Bruke Innkjøp**, viser siden for en leverandørfaktura
+panelet **Innkjøpsordre**: innkjøpsordrene fra fakturaens leverandør som fakturaens
+referanse nevner nummeret til, fakturaens linjer med ordrelinjene de er avstemt mot, og
+avvikene — *Fakturert mer enn mottatt*, *Fakturert mer enn bestilt*, *Prisen avviker*,
+*Valutaen avviker*. Med **Avstemme leverandørfakturaer** avstemmer du fakturaen der:
+**Avstem alt mottatt**, **Fordel …** linje for linje, eller **Opphev avstemming**. En
+avstemming er **Foreløpig** mens fakturaen er et utkast, og **Bokført** når du bokfører den;
+avvikene stopper aldri bokføringen. Hvordan avstemmingen virker, står i
+[Innkjøp](/nb/user/purchasing/#leverandørfakturaer).
+
+### Et utkast laget fra en innkjøpsordre
+
+**Registrer faktura** på en innkjøpsordre i Innkjøp lager et utkast her: leverandørens
+fakturanummer og datoer slik de ble skrevet der, ordrenummeret som **Referanse**, og én
+linje per ordrelinje som er mottatt og ikke fakturert, til ordrens priser, ført netto på
+leverandørens **Standardkonto** og **Standard mva-kode** — en leverandør uten standardkonto
+avvises, så sett den først. Kontroller utkastet mot fakturaen, rett **Total** til
+fakturaens når den ble stående på linjenes nettobeløp, legg ved filen og bokfør den som
+enhver annen. Det krever **Bokføre bilag** i tillegg til **Avstemme leverandørfakturaer** i
+Innkjøp, og at regnskapet er satt opp.
+
 ### Å føre og bokføre en leverandørfaktura
 
 1. Klikk **Ny leverandørfaktura**. Velg **Leverandør** (**+** ved siden av legger til en ny),
@@ -548,6 +571,8 @@ nytt utkast med samme leverandør, nummer, linjer og filer, som du retter og bok
 faktura med en betaling stående tilbakeføres ikke: fjern betalingen først. Det gjør heller
 ikke en med en kreditnota, eller en betaling gjort gjennom en kreditnota, stående på seg:
 tilbakefør kreditnotaen først (Tilbakefør og kopier på kreditnotaen), deretter fakturaen.
+En tilbakeført fakturas avstemming mot en innkjøpsordre flyttes til kopien, foreløpig til
+kopien er bokført.
 
 Å føre, bokføre og betale leverandørfakturaer krever **Bokføre bilag**.
 

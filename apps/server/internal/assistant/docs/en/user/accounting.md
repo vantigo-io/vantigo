@@ -1,6 +1,6 @@
 ---
 title: Accounting
-description: The Accounting app — setting up the books, the chart of accounts with its grouping codes and system accounts, the tax codes and their rates, posting a journal entry net or gross with its VAT lines, copying a voucher, attaching files, reversing a voucher, locking a period and moving the lock back, the opening balances and Invoices' open invoices, how invoices, payments, charges and write-offs post themselves, suppliers and the Brønnøysund lookup, entering, posting and paying a supplier invoice, another currency, reverse charge and import of goods, credit notes, Reverse and copy, how expenses arrive from Expenses, the posting rules for sales and expense categories, Needs attention with Retry, the amount in NOK and Make a supplier invoice, open items and registering a receipt, payment or refund, the VAT term — checking its figures, closing it, downloading the return, filing it at Skatteetaten and marking it as filed, reopening it, correcting after filing and paying the VAT — the bank — bank accounts, importing a camt.053 or CSV statement and its mapping, the bank feed as a source, reconciling with each suggestion, Vipps payouts, paying the VAT from the bank, bank rules, why customer payments are registered in Invoices and locking a month with lines not matched — the reports and their CSV, the SAF-T file an audit asks for and the grouping codes it needs, coming from another system with its SAF-T file, and inviting an accountant.
+description: The Accounting app — setting up the books, the chart of accounts with its grouping codes and system accounts, the tax codes and their rates, posting a journal entry net or gross with its VAT lines, copying a voucher, attaching files, reversing a voucher, locking a period and moving the lock back, the opening balances and Invoices' open invoices, how invoices, payments, charges and write-offs post themselves, suppliers and the Brønnøysund lookup, entering, posting and paying a supplier invoice, the Purchase order panel and a draft made from a purchase order, another currency, reverse charge and import of goods, credit notes, Reverse and copy, how expenses arrive from Expenses, the posting rules for sales and expense categories, Needs attention with Retry, the amount in NOK and Make a supplier invoice, open items and registering a receipt, payment or refund, the VAT term — checking its figures, closing it, downloading the return, filing it at Skatteetaten and marking it as filed, reopening it, correcting after filing and paying the VAT — the bank — bank accounts, importing a camt.053 or CSV statement and its mapping, the bank feed as a source, reconciling with each suggestion, Vipps payouts, paying the VAT from the bank, bank rules, why customer payments are registered in Invoices and locking a month with lines not matched — the reports and their CSV, the SAF-T file an audit asks for and the grouping codes it needs, coming from another system with its SAF-T file, and inviting an accountant.
 sidebar:
   order: 67
 sources:
@@ -405,6 +405,29 @@ once corrected by Reverse and copy. An invoice matched to a purchase order in Pu
 shows **Purchase order** and its number, in the list and on its page — click it to open the
 order — and how many differences the match has; without Purchasing there is none.
 
+### The Purchase order panel
+
+When Purchasing is in use and you have **Use Purchasing**, a supplier invoice's page shows
+the **Purchase order** panel: the purchase orders of the invoice's supplier whose number the
+invoice's reference names, the invoice's lines with the order lines they are matched to,
+and the differences — *Invoiced more than received*, *Invoiced more than ordered*, *Price
+differs*, *Currency differs*. With **Match supplier invoices** you match the invoice there:
+**Match all received**, **Allocate…** line by line, or **Unmatch**. A match is
+**Provisional** while the invoice is a draft and **Posted** once you post it; the
+differences never stop the posting. How the match works is in
+[Purchasing](/en/user/purchasing/#supplier-invoices).
+
+### A draft made from a purchase order
+
+**Register invoice** on a purchase order in Purchasing makes a draft here: the supplier's
+invoice number and dates as typed there, the order number as its **Reference**, and one
+line per order line received and not invoiced, at the order's prices, entered net on the
+supplier's **Default account** and **Default tax code** — a supplier without a default
+account is refused, so set it first. Check the draft against the invoice, correct the
+**Total** to the invoice's when it was left at the lines' net, attach the file and post it
+as any other. It needs **Post vouchers** as well as Purchasing's **Match supplier
+invoices**, and the books set up.
+
 ### Entering and posting a supplier invoice
 
 1. Click **New supplier invoice**. Choose the **Supplier** (the **+** beside it adds a new
@@ -545,7 +568,8 @@ the invoice's voucher reversed, line for line, marks the invoice **Reversed**, a
 new draft with the same supplier, number, lines and files for you to correct and post. An
 invoice with a payment standing is not reversed: remove the payment first. Nor is one with a
 credit note, or a payment made through a credit note, standing on it: reverse the credit note
-first (Reverse and copy on the credit note), then the invoice.
+first (Reverse and copy on the credit note), then the invoice. A reversed invoice's match
+to a purchase order moves to the copy, provisional until the copy is posted.
 
 Entering, posting and paying supplier invoices needs **Post vouchers**.
 
