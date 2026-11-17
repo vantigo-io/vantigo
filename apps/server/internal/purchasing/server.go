@@ -1,19 +1,131 @@
 package purchasing
 
 import (
+	"context"
+	"fmt"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+
+	"github.com/vantigo-io/vantigo/server/internal/config"
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/module"
 	"github.com/vantigo-io/vantigo/server/internal/purchasing/gen"
+	"github.com/vantigo-io/vantigo/server/internal/purchasing/store"
+	"github.com/vantigo-io/vantigo/server/internal/storage"
 )
 
 // server implements gen.StrictServerInterface, the module's contract
-// operations. Each area implements its operations in its own file.
+// operations. Each area implements its operations in its own file:
+// settings.go, supplier_items.go and import.go, suppliers.go, orders.go and
+// lines.go, lifecycle.go, confirmation.go, copy.go, ordersend.go and
+// summary.go. The transaction helpers below are Orders' (internal/orders/
+// server.go), copied because no module imports another.
 type server struct {
 	deps module.Deps
+	// objects is where the stored PDFs live (pdfdocs.go), scoped to
+	// storageScope. No call on it is ever made inside a transaction.
+	objects storage.ObjectStore
 }
 
 var _ gen.StrictServerInterface = (*server)(nil)
 
-// newServer builds the module's operations over d.
+// moduleName is the module's name, the outbox's publisher.
+const moduleName = "purchasing"
+
+// storageScope is this module's namespace in the object store (P21).
+const storageScope = "purchasing"
+
+// newServer builds the module's operations over d. It fails only when the
+// configured object store cannot be built: an unset provider is not an
+// error, and storing a PDF then fails at the operation, never at startup.
 func newServer(d module.Deps) (*server, error) {
-	return &server{deps: d}, nil
+	objects, err := objectStoreOf(d)
+	if err != nil {
+		return nil, err
+	}
+	return &server{deps: d, objects: objects}, nil
+}
+
+// objectStoreOf is the module's scoped object store: the harness's when one
+// is set, otherwise the one the configuration names.
+func objectStoreOf(d module.Deps) (storage.ObjectStore, error) {
+	base := d.ObjectStore
+	if base == nil {
+		cfg := d.Config
+		if cfg == nil {
+			cfg = &config.Config{}
+		}
+		var err error
+		if base, err = storage.New(cfg); err != nil {
+			return nil, fmt.Errorf("purchasing: build the object store: %w", err)
+		}
+	}
+	scoped, err := storage.NewScope(base, storageScope)
+	if err != nil {
+		return nil, fmt.Errorf("purchasing: scope the object store: %w", err)
+	}
+	return scoped, nil
+}
+
+// has reports whether the caller holds one global permission key, evaluated
+// the way the router evaluates an operation's rule. It fails closed.
+func (s *server) has(ctx context.Context, key string) bool {
+	return contracts.HasPermission(ctx, s.deps.Access, key)
+}
+
+// callerID is the signed-in caller of one request; the router has already
+// authenticated every operation, so a handler always has one.
+func callerID(ctx context.Context) uuid.UUID {
+	p, _ := contracts.PrincipalFrom(ctx)
+	return p.UserID
+}
+
+// The transaction marks: lockedTxKey marks a transaction that may hold row
+// locks (withLockedTx), openTxKey a read-only snapshot (withReadTx). Only the
+// accessors of contractscalls.go branch on them, refusing to call out of the
+// module from inside one — all but lockVariants and lockSuppliers, the two
+// calls made on the transaction itself (MB rules 21 and 28).
+type (
+	lockedTxKey struct{}
+	openTxKey   struct{}
+)
+
+// inLockedTx reports whether ctx is a locked transaction's.
+func inLockedTx(ctx context.Context) bool {
+	locked, _ := ctx.Value(lockedTxKey{}).(bool)
+	return locked
+}
+
+// inOpenTx reports whether ctx is inside any of this module's transactions.
+func inOpenTx(ctx context.Context) bool {
+	open, _ := ctx.Value(openTxKey{}).(bool)
+	return open || inLockedTx(ctx)
+}
+
+// withLockedTx runs fn in one READ COMMITTED transaction on the module's
+// pool; every write goes through it. fn gets a context marked as locked, the
+// transaction itself — for LockVariants, LockSuppliers and events.Publish,
+// which run on it — and the queries bound to it.
+//
+// No call that takes its own connection or leaves the process is made while
+// the transaction holds locks: the supplier, the sites, the seller and the
+// actor are read before it. The lock order is the catalog's variants first,
+// then the supplier, then this module's own rows (MB rules 21 and 28).
+func (s *server) withLockedTx(ctx context.Context, fn func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error) error {
+	locked := context.WithValue(ctx, lockedTxKey{}, true)
+	return db.WithTx(locked, s.deps.Pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
+		return fn(locked, tx, store.New(tx))
+	})
+}
+
+// withReadTx runs fn in one REPEATABLE READ, read-only transaction: one
+// snapshot, no lock, for a read that must see several tables at one instant.
+// No call out of the module is made inside fn.
+func (s *server) withReadTx(ctx context.Context, fn func(ctx context.Context, q *store.Queries) error) error {
+	open := context.WithValue(ctx, openTxKey{}, true)
+	return db.WithTx(open, s.deps.Pool, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly}, func(tx pgx.Tx) error {
+		return fn(open, store.New(tx))
+	})
 }

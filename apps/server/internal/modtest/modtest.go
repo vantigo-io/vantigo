@@ -182,6 +182,7 @@ type setup struct {
 	deliveryTrace     contracts.DeliveryTrace
 	kitStructure      contracts.KitStructure
 	purchaseSupply    contracts.PurchaseSupply
+	supplierDirectory contracts.SupplierDirectory
 	invoiceMatches    contracts.SupplierInvoiceMatches
 	supplierHolders   []contracts.SupplierReferenceHolder
 	supplierData      []contracts.SupplierPersonalDataHolder
@@ -296,6 +297,15 @@ func WithKitStructure(k contracts.KitStructure) Option {
 // module declares Module.PurchaseSupply.
 func WithPurchaseSupply(p contracts.PurchaseSupply) Option {
 	return func(s *setup) { s.purchaseSupply = p }
+}
+
+// WithSupplierDirectory sets Deps.SupplierDirectory directly, for a module
+// under test that reads Accounting's register of suppliers (purchasing)
+// without composing accounting beside it, for the reason WithProducts gives.
+// Compose only overwrites it when a composed module declares
+// Module.SupplierDirectory.
+func WithSupplierDirectory(d contracts.SupplierDirectory) Option {
+	return func(s *setup) { s.supplierDirectory = d }
 }
 
 // WithSupplierInvoiceMatches sets Deps.SupplierInvoiceMatches directly, for
@@ -1007,6 +1017,7 @@ func New(t *testing.T, opts ...Option) *Harness {
 		DeliveryTrace:            s.deliveryTrace,
 		KitStructure:             s.kitStructure,
 		PurchaseSupply:           s.purchaseSupply,
+		SupplierDirectory:        s.supplierDirectory,
 		SupplierInvoiceMatches:   s.invoiceMatches,
 		SupplierReferenceHolders: s.supplierHolders,
 		SupplierPersonalData:     s.supplierData,
