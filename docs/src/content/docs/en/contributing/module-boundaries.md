@@ -10,6 +10,7 @@ sources:
   - apps/server/generate.go
   - apps/server/internal/openapi/openapi.go
   - apps/server/internal/openapi/lint.go
+  - apps/server/internal/openapi/testdata/api-marks.txt
   - apps/server/internal/openapi/gen
   - apps/calendar/frontend/eslint.config.js
   - apps/communications/frontend/eslint.config.js
@@ -1570,14 +1571,18 @@ lag, never what must refuse — go through the platform's domain-events outbox,
       person's `SessionID`, and an operation whose queued work later runs as its creator
       (`AsUser`, `UserHolds`), which an integration never is.
     - **`Rule.API`** is how the router tells `Access.Check` what the operation allows:
-      `APIRead` for a `GET`, `HEAD` or a `read` operation, `APIAllowed` for another, and
-      `APIRefused` (the zero value, and every caller's but the router's) for `never`.
+      `APIRead` for a `GET`, `HEAD` or a `read` operation behind a permission or `anonymous`
+      rule, `APIAllowed` for another such operation, and `APIRefused` for `never` and for
+      every other rule. `APIRefused` is the zero value, which a `Rule` built by hand carries.
       `contracts.HasPermissions` asks an API key's handler-side question with `APIRead`,
       because the router has already judged the mark.
     - **`contracts.APINever(catalog)`** is the permissions no key holds, whatever its roles
       grant: every `identity:` and `agents:` key and every permission that is not
       Delegable. A new Owner-tier permission is therefore never a key's without anyone
-      listing it.
+      listing it, and an operation that names one must be marked `never`
+      (`TestAPINever_NoKeyableOperationNamesOne` in `internal/integration`). Mark `never`
+      too what moves money or reveals personal data in bulk although its permission can
+      be delegated: the seller's bank account, a person's national identity number.
     - **The refusals** are `contracts.ErrAPINotAvailable` and `ErrAPIKeyReadOnly`, which
       wrap `ErrForbidden`, and `ErrAPIKeyExpired`, which wraps `ErrUnauthenticated`, so
       every caller that tests the sentinels answers them as `403` or `401`.

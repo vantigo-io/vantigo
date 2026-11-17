@@ -2746,3 +2746,10 @@ every order write may answer 503 `dependency_unavailable`.
 
 The full contract, with every schema, is `openapi/manufacturing.yaml`, published in the
 generated API reference (`/en/reference/api/manufacturing/`).
+
+## API keys
+
+`manufacturing:costs-view` cannot be delegated, so no API key holds it, and
+`getManufacturingProductionCostReport` is `x-vantigo-api: never`. See [integration
+users](/en/admin/authentication/#integration-users), and the marks' rules in [module
+boundaries](/en/contributing/module-boundaries/#the-rules).

@@ -5994,9 +5994,14 @@ and in the API reference generated from it.
 
 ## API keys
 
-`putStaffPeopleByIdAccount` and `postStaffPeopleByIdAccountPass` (which create a person's
-account and show its initial password), and `postStaffPeopleByIdBankAccountReveal` and
-`postStaffPeopleByIdNationalIdReveal`, are `x-vantigo-api: never`.
-`postStaffPeopleSimilarErased` writes nothing and is marked `x-vantigo-api: read`. See
-[integration users](/en/admin/authentication/#integration-users), and the marks' rules in
-[module boundaries](/en/contributing/module-boundaries/#the-rules).
+These operations are `x-vantigo-api: never`, whatever a key's roles grant: the person's
+account and its pass, run and disable (`putStaffPeopleByIdAccount`,
+`postStaffPeopleByIdAccountPass`, `postStaffPeopleByIdAccountRun`,
+`postStaffPeopleByIdAccountDisable`, `postStaffAccountsRun`), which invite people and change
+their sign-in; the personal data in clear and its reveals (`getStaffPeopleByIdPersonalData`,
+`postStaffPeopleByIdBankAccountReveal`, `postStaffPeopleByIdNationalIdReveal`) and their
+writes (`putStaffPeopleByIdBankAccount`, `putStaffPeopleByIdNationalId`); and the payroll
+export (`getStaffPayrollExport`). `postStaffPeopleSimilarErased` writes nothing and is
+marked `x-vantigo-api: read`. See [integration
+users](/en/admin/authentication/#integration-users), and the marks' rules in [module
+boundaries](/en/contributing/module-boundaries/#the-rules).
