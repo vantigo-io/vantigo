@@ -20,6 +20,8 @@ const lowRow = (
   reserved: 0,
   available: 0,
   incoming: 0,
+  inTransit: 0,
+  onOrder: 0,
   reorderPoint: 5,
   maximum: null,
   needed: 6,
@@ -44,6 +46,7 @@ const rows = () => [
   lowRow({
     variant: tsM,
     incoming: 2,
+    inTransit: 2,
     reorderPoint: 20,
     maximum: 60,
     needed: 58,
@@ -56,6 +59,20 @@ const rows = () => [
 const rowOf = (sku: string) => (screen.getByRole("link", { name: sku }).closest("tr") as HTMLElement) ?? undefined;
 
 describe("the low-stock list (I58–I60)", () => {
+  it("shows what is in transit and what is on order apart (purchasing design P4)", async () => {
+    stubInventoryApi({
+      lowStock: [
+        lowRow({ variant: tsM, incoming: 5, inTransit: 2, onOrder: 3, reorderPoint: 20, needed: 16, suggested: 16 }),
+      ],
+    });
+    renderRoute("/inventory/low-stock");
+    const row = rowOf((await screen.findByRole("link", { name: "TS-M" })).textContent ?? "");
+    expect(screen.getByRole("columnheader", { name: "In transit" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "On order" })).toBeInTheDocument();
+    expect(within(row).getByText("2")).toBeInTheDocument();
+    expect(within(row).getByText("3")).toBeInTheDocument();
+  });
+
   it("lists each low item with its levels, the rounding sentence and what other sites have", async () => {
     stubInventoryApi({ lowStock: rows() });
     renderRoute("/inventory/low-stock");

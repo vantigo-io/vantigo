@@ -177,9 +177,14 @@ export const VariantStockPage = () => {
                     </Stack>
                     <Stack gap={0} align="flex-end">
                       <Text size="sm">{quantity(site.onHand, stock.data.variant.unit)}</Text>
-                      {site.incoming > 0 && (
+                      {site.inTransit > 0 && (
                         <Text size="xs" c="blue">
-                          {t("incomingQuantity", { quantity: quantity(site.incoming, stock.data.variant.unit) })}
+                          {t("inTransitIncoming", { quantity: quantity(site.inTransit, stock.data.variant.unit) })}
+                        </Text>
+                      )}
+                      {site.onOrder > 0 && (
+                        <Text size="xs" c="blue">
+                          {t("onOrderIncoming", { quantity: quantity(site.onOrder, stock.data.variant.unit) })}
                         </Text>
                       )}
                       <ReservedAvailable

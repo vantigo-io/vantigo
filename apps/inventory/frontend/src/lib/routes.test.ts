@@ -9,6 +9,13 @@ describe("sourceHref", () => {
     expect(sourceHref(production, undefined)).toBe("/manufacturing/orders/5");
   });
 
+  it("links a receipt and its reversal to the purchase order, kept as the source line id (purchasing design P3)", () => {
+    const receipt = { module: "purchasing", kind: "receipt", id: "9", lineId: "5" };
+    expect(sourceHref(receipt, ["inventory", "purchasing"])).toBe("/purchasing/orders/5");
+    expect(sourceHref(receipt, ["inventory"])).toBeUndefined();
+    expect(sourceHref({ ...receipt, lineId: undefined }, undefined)).toBeUndefined();
+  });
+
   it("links an unbuild to its page in Manufacturing (manufacturing phase 2 M123)", () => {
     const unbuild = { module: "manufacturing", kind: "unbuild", id: "4", lineId: "4" };
     expect(sourceHref(unbuild, ["inventory", "manufacturing"])).toBe("/manufacturing/unbuilds/4");

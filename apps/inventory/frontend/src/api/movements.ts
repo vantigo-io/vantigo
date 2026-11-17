@@ -25,6 +25,7 @@ export const movementKinds: readonly InventoryMovementKind[] = [
   "transfer_in",
   "production",
   "unbuild",
+  "receipt_reversal",
 ];
 /** An adjustment's reasons (I8). */
 export const adjustmentReasons: readonly InventoryAdjustmentReason[] = [
