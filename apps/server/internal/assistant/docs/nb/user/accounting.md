@@ -418,7 +418,8 @@ avvikene — *Fakturert mer enn mottatt*, *Fakturert mer enn bestilt*, *Prisen a
 *Valutaen avviker*. Med **Avstemme leverandørfakturaer** avstemmer du fakturaen der:
 **Avstem alt mottatt**, **Fordel …** linje for linje, eller **Opphev avstemming**. En
 avstemming er **Foreløpig** mens fakturaen er et utkast, og **Bokført** når du bokfører den;
-avvikene stopper aldri bokføringen. Hvordan avstemmingen virker, står i
+avvikene stopper aldri bokføringen. Sletter du et avstemt utkast, fjernes avstemmingen fra
+ordren, så det det gjaldt, skal faktureres igjen. Hvordan avstemmingen virker, står i
 [Innkjøp](/nb/user/purchasing/#leverandørfakturaer).
 
 ### Et utkast laget fra en innkjøpsordre
@@ -446,6 +447,7 @@ Innkjøp, og at regnskapet er satt opp.
    og under linjene summerer skjemaet linjene og mva-en. Så lenge linjene ikke går opp i
    summen, sier det hvor mye som gjenstår.
 4. **Lagre utkast**. Et utkast kan endres og slettes fritt; ingenting er i regnskapet ennå.
+   Et utkast som er avstemt mot en innkjøpsordre, mister avstemmingen når det slettes.
 5. Under **Filer** legger du ved fakturaen slik du mottok den — en PDF eller en skanning. Et
    utkast må ha en for å bokføres.
 6. **Bokfør**. Bilaget debiterer kontoen på hver linje med netto og mva-koden, debiterer

@@ -1,6 +1,6 @@
 ---
 title: Innkjøp
-description: Innkjøp-appen — listen over innkjøpsordrer og filtrene; lag en innkjøpsordre til en leverandør og et lagersted, med produktlinjer fylt ut fra leverandørvarene og tekstlinjer; send den på e-post, marker den som sendt eller send den på nytt; registrer leverandørens bekreftelse; endre en sendt ordre og les historikken; avslutt en linje eller hele ordren, gjenåpne den, kanseller den eller kopier den; PDF-en; leverandørene og hva hver selger — leverandørvarer, foretrukket leverandør og import av prisliste med CSV-kolonnene; innkjøpsforslagene fra lav beholdning eller innkjøpsforslagene i Produksjon, og Lag ordrer med Bestill… fra de skjermbildene; innstillingene; dashbordkortet og produktsidens Leverandører-kort; varemottak — mottaksskjermen og skanning, mer eller mindre enn bestilt, ordrens varemottak, å angre et varemottak og å markere en tekst- eller tjenestelinje som levert; leverandørfakturaene — ordrens fakturaer, Registrer faktura, å avstemme en faktura fra panelet Innkjøpsordre i Regnskap, avvikene, hva bokføring og tilbakeføring av fakturaen gjør, den siste prisen, og Mottatt, ikke fakturert med CSV-filen; og det som kommer senere — innkommende EHF, betalingsfiler og returer til leverandør.
+description: Innkjøp-appen — listen over innkjøpsordrer og filtrene; lag en innkjøpsordre til en leverandør og et lagersted, med produktlinjer fylt ut fra leverandørvarene og tekstlinjer; send den på e-post, marker den som sendt eller send den på nytt; registrer leverandørens bekreftelse; endre en sendt ordre og les historikken; avslutt en linje eller hele ordren, gjenåpne den, kanseller den eller kopier den; PDF-en; leverandørene og hva hver selger — leverandørvarer, foretrukket leverandør og import av prisliste med CSV-kolonnene; innkjøpsforslagene fra lav beholdning eller innkjøpsforslagene i Produksjon, og Lag ordrer med Bestill… fra de skjermbildene; innstillingene; dashbordkortet og produktsidens Leverandører-kort; varemottak — mottaksskjermen og skanning, mer eller mindre enn bestilt, ordrens varemottak, å angre et varemottak og å markere en tekst- eller tjenestelinje som levert; leverandørfakturaene — ordrens fakturaer, Registrer faktura, å avstemme en faktura fra panelet Innkjøpsordre i Regnskap, avvikene, hva bokføring, tilbakeføring og sletting av fakturaen gjør, den siste prisen, og Mottatt, ikke fakturert med CSV-filen; og det som kommer senere — innkommende EHF, betalingsfiler og returer til leverandør.
 sidebar:
   order: 68
 sources:
@@ -298,6 +298,8 @@ utført, tjenesten gjort — velger du **Marker som levert** på linjen på en s
 delvis mottatt ordre; linjen sier da *Levert …*. **Ikke levert** tar merket av igjen, også
 på en mottatt ordre, som da blir delvis mottatt — eller sendt, når ingenting annet på den
 har kommet. En varelinje tas imot i stedet, og en avsluttet linje markeres ikke.
+**Ikke levert** avvises mens en leverandørfaktura gjelder linjen: opphev avstemmingen
+først.
 
 Å ta imot, angre og markere en linje som levert krever **Ta imot varer**.
 
@@ -364,13 +366,15 @@ fakturere), og fakturaens avstemminger med avvikene.
   på nytt får det nye antallet.
 - **Opphev avstemming** tar tilbake avstemmingen av én linje, eller av en hel ordre.
 
-Mer enn det som er mottatt og ikke fakturert på en linje spør først — *Avstem likevel*
+Antall og beløp tar desimalkomma eller punktum. Mer enn det som er mottatt og ikke fakturert på en linje spør først — *Avstem likevel*
 avstemmer den, og linjen viser da *Fakturert mer enn mottatt*. En kreditnota senker det som
 er fakturert og avstemmes aldri for mer enn det som er fakturert på en linje. En faktura fra
 en annen leverandør enn ordrens, i en annen valuta enn ordrens, eller tilbakeført, avstemmes
-ikke; en fakturalinje avstemt mot en annen ordrelinje må oppheves først. De uten **Bruke
-Regnskap** ser panelet med fakturaens linjenumre og de avstemte antallene, ikke linjenes
-tekster og beløp.
+ikke; en fakturalinje avstemt mot en annen ordrelinje må oppheves først. En tilbakeført
+faktura avstemmes ikke, men en avstemming en kreditnota holdt på den, blir stående, og
+**Opphev avstemming** tar den tilbake. De uten **Bruke Regnskap** ser panelet bare for en
+faktura som er avstemt mot en ordre, med bare de avstemte antallene — ingen fakturalinjer,
+beløp eller foreslåtte ordrer.
 
 ### Avvikene
 
@@ -382,7 +386,8 @@ En avstemming viser avvikene som advarsler; de stopper aldri en bokføring:
   med mer enn **Pristoleranse** i [innstillingene](#innstillinger).
 - **Valutaen avviker** — fakturaen er i en annen valuta enn ordren.
 
-Panelet og merket i Regnskap teller dem.
+Panelet og merket i Regnskap teller dem, en linjes egne — fakturert mer enn mottatt eller
+bestilt — én gang uansett hvor mange fakturalinjer som gjelder den.
 
 ### Når fakturaen bokføres eller tilbakeføres
 
@@ -390,12 +395,23 @@ Avstemmingen av et utkast er **Foreløpig**; den blir **Bokført** når fakturae
 Regnskap, og prisene vurderes på nytt fra de bokførte linjene. Hver avstemte produktlinjes
 pris per enhet på den bokførte fakturaen blir da leverandørvarens pris, merket som satt av
 fakturaen på datoen dens — med mindre fakturaen er i en annen valuta enn leverandørvaren,
-eller prisen ble satt etter fakturaens dato. En bokført faktura der leverandøren ble endret
-på utkastet, gjelder ikke lenger ordren, og avstemmingen fjernes.
+eller prisen ble satt etter fakturaens dato, eller satt av en person eller en import på den
+datoen. En bokført faktura der leverandøren ble endret på utkastet, gjelder ikke lenger
+ordren, og avstemmingen fjernes. En faktura som ble bokført før den ble avstemt, avstemmes
+som bokført.
 
 **Tilbakefør og kopier** i Regnskap tar avstemmingen av den tilbakeførte fakturaen og gir
 den til kopien, foreløpig igjen, så det som er fakturert, står som før. Et varemottak kan
 ikke angres mens det det tok imot, er fakturert: opphev avstemmingen først.
+
+### Når utkastet slettes
+
+Sletter du et utkast til leverandørfaktura i Regnskap — et du skrev inn, et **Registrer
+faktura** laget, eller kopien **Tilbakefør og kopier** laget —, fjernes avstemmingene fra
+ordren, så det de talte, skal faktureres igjen, og **Registrer faktura** tar det på nytt. En
+avstemming en kreditnota holder, blir stående til kreditnotaen er opphevet; da tar
+**Opphev avstemming** på ordrens faktura den tilbake, selv om Regnskap ikke lenger har
+fakturaen.
 
 ### Mottatt, ikke fakturert
 
