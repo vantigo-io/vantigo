@@ -14,8 +14,10 @@ export interface PurchasingAccess {
   canManageSupplierItems: boolean;
   /** `purchasing:settings`: the settings. */
   canManageSettings: boolean;
-  /** `purchasing:receive`: receive goods, undo a receipt, mark a text or service line delivered (P24–P30). */
+  /** `purchasing:receive` — alone, without purchasing:access (P30, A47): receive goods, undo a receipt, mark a text or service line delivered. */
   canReceive: boolean;
+  /** `purchasing:access`: read orders, their prices and receipts. A receiver without it lands on the receiving list. */
+  canRead?: boolean;
   /** Inventory is enabled and the caller holds inventory:stock-view: a receipt links its movement. */
   canOpenInventoryMovements?: boolean;
   /** The signed-in user, our reference on a new order. */

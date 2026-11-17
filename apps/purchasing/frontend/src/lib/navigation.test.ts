@@ -10,6 +10,13 @@ describe("the Purchasing sidebar", () => {
       "settings",
     ]);
     expect(visiblePurchasingNavItems(["purchasing:settings"])).toEqual([]);
+    // Receiving is purchasing:receive's alone (P30, A47).
+    expect(visiblePurchasingNavItems(["purchasing:receive"]).map((item) => item.key)).toEqual(["receive"]);
+    expect(visiblePurchasingNavItems(["purchasing:access", "purchasing:receive"]).map((item) => item.key)).toEqual([
+      "orders",
+      "receive",
+      "suppliers",
+    ]);
     expect(visiblePurchasingNavItems(undefined)).toEqual([]);
   });
 });

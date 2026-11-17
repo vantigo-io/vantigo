@@ -16,7 +16,7 @@ import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconScan, IconTrash } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { ContentSkeleton, PageHeader, PageSection } from "@vantigo/frontend-shell";
+import { ContentSkeleton, PageHeader, PageSection, useI18n } from "@vantigo/frontend-shell";
 import { useRef, useState } from "react";
 import {
   lookupReceiveCode,
@@ -33,15 +33,22 @@ import { noPurchasingAccess, type PurchasingAccess } from "../lib/access";
 import { lineRefusalWords, refusalMessage } from "../lib/errors";
 import { newRequestId, usePurchasingFormat } from "../lib/format";
 import { readGs1 } from "../lib/gs1";
-import { purchaseOrderLinkOptions } from "../lib/routes";
+import { decimal } from "../lib/lines";
+import { purchaseOrderLinkOptions, RECEIVING_ROUTE_PATH } from "../lib/routes";
 
 /** One row of the screen: an order line's quantity on one location and, for a tracked variant, one lot. */
 interface Row {
   key: string;
   orderLineId: number;
-  /** As typed: in the purchase packaging when `inPackaging`, else in the variant's unit. */
+  /**
+   * The quantity as typed, in the unit it was typed in: the purchase packaging
+   * when `inPackaging`, else the variant's unit. It is what is sent; switching
+   * the unit shown only shows it converted, so switching back loses nothing.
+   */
   quantity: string;
   inPackaging: boolean;
+  /** The unit the field shows: the purchase packaging, or the variant's unit. */
+  showInPackaging: boolean;
   locationId: string | null;
   lotNumber: string;
   supplierLot: string;
@@ -61,8 +68,17 @@ interface Rows {
 let nextKey = 0;
 const rowKey = () => `row-${++nextKey}`;
 
-/** A quantity at most three decimals, as the contract takes it. */
-const round = (value: number) => String(Math.round(value * 1000) / 1000);
+/** A typed quantity as a number, a comma read as the point; 0 when it is no number. */
+const typedNumber = (text: string): number => {
+  const n = Number(decimal(text) || 0);
+  return Number.isFinite(n) ? n : 0;
+};
+
+/** A quantity at most three decimals, as a person types it in their language: no grouping, nb's decimal comma. */
+const plain = (value: number, locale: string) => {
+  const text = String(Math.round(value * 1000) / 1000);
+  return locale.startsWith("nb") ? text.replace(".", ",") : text;
+};
 
 const serialList = (text: string) =>
   text
@@ -75,6 +91,7 @@ const blankRow = (line: PurchasingReceiveLine, form: PurchasingReceiveForm): Row
   orderLineId: line.orderLineId,
   quantity: "0",
   inPackaging: false,
+  showInPackaging: false,
   locationId: String(line.defaultLocationId ?? form.locations.find((l) => l.root)?.id ?? form.locations[0]?.id ?? ""),
   lotNumber: "",
   supplierLot: "",
@@ -91,8 +108,15 @@ const initialRows = (form: PurchasingReceiveForm): Row[] =>
 /** A row's quantity in the variant's unit. */
 const unitQuantity = (row: Row, line: PurchasingReceiveLine): number => {
   if (line.tracking === "serial") return serialList(row.serials).length;
-  const typed = Number(row.quantity || 0);
+  const typed = typedNumber(row.quantity);
   return row.inPackaging ? typed * Number(line.packagingQuantity ?? 1) : typed;
+};
+
+/** What a row's field shows: the quantity as typed in the unit shown, else converted to it. */
+const shownQuantity = (row: Row, line: PurchasingReceiveLine, locale: string): string => {
+  if (row.showInPackaging === row.inPackaging) return row.quantity;
+  const units = unitQuantity(row, line);
+  return plain(row.showInPackaging ? units / Number(line.packagingQuantity ?? 1) : units, locale);
 };
 
 /**
@@ -132,6 +156,7 @@ export const ReceivePurchaseOrderPage = ({
 
 const ReceiveForm = ({ form, access }: { form: PurchasingReceiveForm; access: PurchasingAccess }) => {
   const { t, quantity } = usePurchasingFormat();
+  const { locale } = useI18n("purchasing");
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [state, setState] = useState<Rows>(() => ({ rows: initialRows(form), counting: false }));
@@ -178,16 +203,26 @@ const ReceiveForm = ({ form, access }: { form: PurchasingReceiveForm; access: Pu
         setScanError(t("scanNotOnOrder"));
         return;
       }
+      // A serial line counts serials: a code without one changes nothing.
+      if (line.tracking === "serial" && !gs1?.serial) {
+        setScanError(t("scanSerial"));
+        return;
+      }
+      if (line.tracking === "lot" && gs1?.lotUnread) setScanError(t("scanLotUnread"));
       setState((s) => {
         const rows = s.counting
           ? s.rows
           : s.rows.map((row) => (lineOf.get(row.orderLineId)?.tracking === "serial" ? row : { ...row, quantity: "0" }));
         const ofLine = rows.filter((row) => row.orderLineId === line.orderLineId);
         const lot = line.tracking === "lot" ? gs1?.lot : undefined;
+        // A lot the code names finds its row; a lot it holds but could not
+        // be read goes on a row without a lot, which then asks for it.
         let target = lot
           ? (ofLine.find((row) => row.lotNumber === lot) ??
-            ofLine.find((row) => row.lotNumber === "" && Number(row.quantity || 0) === 0))
-          : ofLine[0];
+            ofLine.find((row) => row.lotNumber === "" && typedNumber(row.quantity) === 0))
+          : line.tracking === "lot" && gs1?.lotUnread
+            ? ofLine.find((row) => row.lotNumber === "")
+            : ofLine[0];
         let next = rows;
         if (!target) {
           target = { ...blankRow(line, form), locationId: ofLine[0]?.locationId ?? blankRow(line, form).locationId };
@@ -208,7 +243,8 @@ const ReceiveForm = ({ form, access }: { form: PurchasingReceiveForm; access: Pu
         } else {
           // A scan counts in the variant's unit: a row typed in packagings is turned into units first.
           change.inPackaging = false;
-          change.quantity = round(unitQuantity(target, line) + Number(match.quantity));
+          change.showInPackaging = false;
+          change.quantity = plain(unitQuantity(target, line) + typedNumber(match.quantity), locale);
         }
         const key = target.key;
         return { counting: true, rows: next.map((row) => (row.key === key ? { ...row, ...change } : row)) };
@@ -228,7 +264,7 @@ const ReceiveForm = ({ form, access }: { form: PurchasingReceiveForm; access: Pu
       if (!line || unitQuantity(row, line) <= 0) return [];
       const input: PurchasingReceiptLineInput = {
         orderLineId: row.orderLineId,
-        quantity: line.tracking === "serial" ? String(serialList(row.serials).length) : row.quantity.trim(),
+        quantity: line.tracking === "serial" ? String(serialList(row.serials).length) : decimal(row.quantity),
         locationId: Number(row.locationId),
       };
       if (row.inPackaging && line.tracking !== "serial") input.inPackaging = true;
@@ -241,7 +277,9 @@ const ReceiveForm = ({ form, access }: { form: PurchasingReceiveForm; access: Pu
           bestBefore: row.bestBefore,
           expiry: row.expiry,
         };
-        input.lot = Object.fromEntries(Object.entries(lot).filter(([, value]) => value !== ""));
+        const given = Object.fromEntries(Object.entries(lot).filter(([, value]) => value !== ""));
+        // A lot left blank is sent as none, which a lot-tracked line refuses as lot_required.
+        if (Object.keys(given).length > 0) input.lot = given;
       }
       return [{ key: row.key, input }];
     });
@@ -259,7 +297,8 @@ const ReceiveForm = ({ form, access }: { form: PurchasingReceiveForm; access: Pu
     onSuccess: async ({ receipt }) => {
       await queryClient.invalidateQueries({ queryKey: [PURCHASING_QUERY_KEY] });
       notifications.show({ color: "green", message: t("receiptPosted", { number: receipt.number }) });
-      await navigate(purchaseOrderLinkOptions(form.orderId));
+      // A receiver who cannot read orders goes back to the orders to receive (A47).
+      await navigate(access.canRead ? purchaseOrderLinkOptions(form.orderId) : { to: RECEIVING_ROUTE_PATH });
     },
     onError: (failure) => {
       const lines = refusedLines(failure);
@@ -369,28 +408,21 @@ const ReceiveForm = ({ form, access }: { form: PurchasingReceiveForm; access: Pu
                                 w={110}
                                 inputMode="decimal"
                                 aria-label={t("quantityOf", { name })}
-                                value={row.quantity}
-                                onChange={(e) => update(row.key, { quantity: e.currentTarget.value })}
+                                value={shownQuantity(row, line, locale)}
+                                onChange={(e) =>
+                                  update(row.key, { quantity: e.currentTarget.value, inPackaging: row.showInPackaging })
+                                }
                               />
                               {line.packagingId && line.packagingName && line.packagingQuantity ? (
                                 <SegmentedControl
                                   size="xs"
                                   aria-label={t("receiveIn", { name })}
-                                  value={row.inPackaging ? "packaging" : "unit"}
+                                  value={row.showInPackaging ? "packaging" : "unit"}
                                   data={[
                                     { value: "unit", label: line.unit },
                                     { value: "packaging", label: line.packagingName },
                                   ]}
-                                  onChange={(value) => {
-                                    const inPackaging = value === "packaging";
-                                    if (inPackaging === row.inPackaging) return;
-                                    const per = Number(line.packagingQuantity);
-                                    const typed = Number(row.quantity || 0);
-                                    update(row.key, {
-                                      inPackaging,
-                                      quantity: round(inPackaging ? typed / per : typed * per),
-                                    });
-                                  }}
+                                  onChange={(value) => update(row.key, { showInPackaging: value === "packaging" })}
                                 />
                               ) : (
                                 <Text size="sm">{line.unit}</Text>
@@ -508,7 +540,13 @@ const ReceiveForm = ({ form, access }: { form: PurchasingReceiveForm; access: Pu
       <Group justify="flex-end">
         <Button
           variant="default"
-          renderRoot={(props) => <Link {...purchaseOrderLinkOptions(form.orderId)} {...props} />}
+          renderRoot={(props) =>
+            access.canRead ? (
+              <Link {...purchaseOrderLinkOptions(form.orderId)} {...props} />
+            ) : (
+              <Link to={RECEIVING_ROUTE_PATH} {...props} />
+            )
+          }
         >
           {t("cancel")}
         </Button>

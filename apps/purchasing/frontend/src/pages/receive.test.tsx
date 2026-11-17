@@ -1,6 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { setLanguagePreference } from "@vantigo/frontend-shell";
+import { afterEach, describe, expect, it } from "vitest";
 import type { PurchasingReceiveCode, PurchasingReceiveForm } from "../api/purchasing";
 import { type Call, fakeServer, jsonResponse, refusal } from "../test/api";
 import { commonAnswers, order, receipt, receiveForm, receiveLine } from "../test/fixtures";
@@ -68,7 +69,7 @@ const twoLines = () =>
 describe("the receive screen", () => {
   it("prefills each open goods line's remainder on its default location, shows no price, and posts one receipt", async () => {
     const server = serve(twoLines());
-    const { router } = renderRoute("/purchasing/orders/501/receive");
+    const { router } = renderRoute("/purchasing/receive/501");
     const [first, second] = await rows();
     expect(screen.getByRole("heading", { name: "Receive order 3001" })).toBeInTheDocument();
     expect(quantityOf(first)).toHaveValue("800");
@@ -95,7 +96,7 @@ describe("the receive screen", () => {
 
   it("splits a line over two locations, sends a packaging's count, and leaves rows at 0 out", async () => {
     const server = serve(twoLines());
-    renderRoute("/purchasing/orders/501/receive");
+    renderRoute("/purchasing/receive/501");
     const [first, second] = await rows();
     await userEvent.click(within(first).getByRole("button", { name: "Split" }));
     const [, split] = screen.getAllByTestId("receive-row");
@@ -119,7 +120,7 @@ describe("the receive screen", () => {
 
   it("sends a lot line's number, supplier lot and dates", async () => {
     const server = serve(receiveForm({ lines: [receiveLine({ tracking: "lot", packagingId: null })] }));
-    renderRoute("/purchasing/orders/501/receive");
+    renderRoute("/purchasing/receive/501");
     const [row] = await rows();
     await userEvent.type(within(row).getByRole("textbox", { name: "Lot number" }), "L-2026-11");
     await userEvent.type(within(row).getByRole("textbox", { name: "Supplier's lot" }), "S-9");
@@ -139,7 +140,7 @@ describe("the receive screen", () => {
 
   it("counts a serial line by its serials", async () => {
     const server = serve(receiveForm({ lines: [receiveLine({ tracking: "serial", open: "3", packagingId: null })] }));
-    renderRoute("/purchasing/orders/501/receive");
+    renderRoute("/purchasing/receive/501");
     const [row] = await rows();
     expect(screen.getByRole("button", { name: "Receive" })).toBeDisabled();
     await userEvent.type(within(row).getByRole("textbox", { name: /^Serial numbers/ }), "SN-1{Enter}SN-2");
@@ -160,7 +161,7 @@ describe("the receive screen", () => {
         return refusal(409, "over_receipt", { lines: [{ index: 1, code: "over_receipt", detail: "Over." }] });
       },
     });
-    const { router } = renderRoute("/purchasing/orders/501/receive");
+    const { router } = renderRoute("/purchasing/receive/501");
     const [, second] = await rows();
     await userEvent.clear(quantityOf(second));
     await userEvent.type(quantityOf(second), "60");
@@ -181,7 +182,7 @@ describe("the receive screen", () => {
       write: () =>
         refusal(400, "location_unknown", { lines: [{ index: 1, code: "location_unknown", detail: "No such." }] }),
     });
-    renderRoute("/purchasing/orders/501/receive");
+    renderRoute("/purchasing/receive/501");
     const [first, second] = await rows();
     await submit();
     expect(await within(second).findByTestId("row-error")).toHaveTextContent("The location is not one of the site's.");
@@ -191,7 +192,7 @@ describe("the receive screen", () => {
 
   it("counts from 0 on the first scan: a SKU adds one, and the other lines are cleared", async () => {
     const server = serve(twoLines(), { codes: { "SKR-10": [{ orderLineId: 11, quantity: "1", packagingId: null }] } });
-    renderRoute("/purchasing/orders/501/receive");
+    renderRoute("/purchasing/receive/501");
     const [first, second] = await rows();
     await scan("SKR-10");
     await waitFor(() => expect(quantityOf(first)).toHaveValue("1"));
@@ -207,7 +208,7 @@ describe("the receive screen", () => {
     serve(twoLines(), {
       codes: { "7070000000200": [{ orderLineId: 11, quantity: "100", packagingId: 5, packagingName: "Eske" }] },
     });
-    renderRoute("/purchasing/orders/501/receive");
+    renderRoute("/purchasing/receive/501");
     const [first] = await rows();
     await scan("7070000000200");
     await waitFor(() => expect(quantityOf(first)).toHaveValue("100"));
@@ -219,7 +220,7 @@ describe("the receive screen", () => {
     const server = serve(receiveForm({ lines: [receiveLine({ tracking: "lot", packagingId: null })] }), {
       codes: { "07070000000101": [{ orderLineId: 11, quantity: "1", packagingId: null }] },
     });
-    renderRoute("/purchasing/orders/501/receive");
+    renderRoute("/purchasing/receive/501");
     await rows();
     await scan("(01)07070000000101(17)270531(10)LOT-42");
     await waitFor(() => expect(screen.getByRole("textbox", { name: "Lot number" })).toHaveValue("LOT-42"));
@@ -238,11 +239,131 @@ describe("the receive screen", () => {
 
   it("says a code that names no open line is not on this order", async () => {
     serve(twoLines());
-    renderRoute("/purchasing/orders/501/receive");
+    renderRoute("/purchasing/receive/501");
     const [first] = await rows();
     await scan("NOPE");
     expect(await screen.findByText("Not on this order")).toBeInTheDocument();
     expect(quantityOf(first)).toHaveValue("800");
     expect(await scanField()).toHaveValue("NOPE");
   });
+
+  it("after a receipt, a receiver who cannot read orders goes back to the orders to receive", async () => {
+    serve(twoLines());
+    const { router } = renderRoute("/purchasing/receive/501", { canRead: false });
+    await rows();
+    expect(screen.getByRole("link", { name: "Cancel" })).toHaveAttribute("href", "/purchasing/receive");
+    await submit();
+    await waitFor(() => expect(router.state.location.pathname).toBe("/purchasing/receive"));
+  });
+
+  it("switching the unit shown keeps what was typed, and a typed packaging count is sent as typed", async () => {
+    const server = serve(twoLines());
+    renderRoute("/purchasing/receive/501");
+    const [first] = await rows();
+    await userEvent.clear(quantityOf(first));
+    await userEvent.type(quantityOf(first), "150");
+    await userEvent.click(within(first).getByRole("radio", { name: "Eske" }));
+    expect(quantityOf(first)).toHaveValue("1.5");
+    await userEvent.click(within(first).getByRole("radio", { name: "stk" }));
+    expect(quantityOf(first)).toHaveValue("150");
+    await userEvent.clear(quantityOf(first));
+    await userEvent.type(quantityOf(first), "7");
+    await userEvent.click(within(first).getByRole("radio", { name: "Eske" }));
+    await userEvent.click(within(first).getByRole("radio", { name: "stk" }));
+    expect(quantityOf(first)).toHaveValue("7");
+    await submit();
+    await waitFor(() => expect(server.count("POST", RECEIPTS)).toBe(1));
+    expect(lastReceipt(server).lines[0]).toEqual({ orderLineId: 11, quantity: "7", locationId: 91 });
+  });
+
+  it("a scan on a serial line without a serial asks for the serial and clears nothing", async () => {
+    serve(
+      receiveForm({
+        lines: [
+          receiveLine({ tracking: "serial", open: "3", packagingId: null }),
+          receiveLine({
+            orderLineId: 12,
+            position: 2,
+            sku: "BOLT-8",
+            name: "Bolt 8 mm",
+            open: "50",
+            packagingId: null,
+          }),
+        ],
+      }),
+      { codes: { "SKR-10": [{ orderLineId: 11, quantity: "1", packagingId: null }] } },
+    );
+    renderRoute("/purchasing/receive/501");
+    const [, second] = await rows();
+    await scan("SKR-10");
+    expect(await screen.findByText("Scan the serial number: this code names no serial.")).toBeInTheDocument();
+    expect(quantityOf(second)).toHaveValue("50");
+  });
+
+  it("a GS1 code whose lot could not be read counts the item and asks for the lot", async () => {
+    serve(receiveForm({ lines: [receiveLine({ tracking: "lot", packagingId: null })] }), {
+      codes: { "07070000000101": [{ orderLineId: 11, quantity: "1", packagingId: null }] },
+    });
+    renderRoute("/purchasing/receive/501");
+    const [row] = await rows();
+    await scan("010707000000010110LOT4217270531");
+    expect(
+      await screen.findByText("The lot could not be read from the code: type the lot number."),
+    ).toBeInTheDocument();
+    await waitFor(() => expect(quantityOf(row)).toHaveValue("1"));
+    expect(within(row).getByRole("textbox", { name: "Lot number" })).toHaveValue("");
+  });
 });
+
+describe("the receive screen in Norwegian", () => {
+  afterEach(() => {
+    setLanguagePreference("auto");
+  });
+
+  it("takes a decimal comma, shows one, and sends the point", async () => {
+    setLanguagePreference("nb");
+    const server = serve(twoLines(), { codes: { "BOLT-8": [{ orderLineId: 12, quantity: "1", packagingId: null }] } });
+    renderRoute("/purchasing/receive/501");
+    await screen.findByTestId("receive-rows");
+    const quantity = (name: string) => screen.getByRole("textbox", { name: `Antall av ${name}` });
+    await userEvent.clear(quantity("SKR-10 · Skrue 10 mm"));
+    await userEvent.type(quantity("SKR-10 · Skrue 10 mm"), "250");
+    const [first] = screen.getAllByTestId("receive-row");
+    await userEvent.click(within(first).getByRole("radio", { name: "Eske" }));
+    expect(quantity("SKR-10 · Skrue 10 mm")).toHaveValue("2,5");
+    await userEvent.clear(quantity("SKR-10 · Skrue 10 mm"));
+    await userEvent.type(quantity("SKR-10 · Skrue 10 mm"), "1,5");
+    await userEvent.clear(quantity("BOLT-8 · Bolt 8 mm"));
+    await userEvent.type(quantity("BOLT-8 · Bolt 8 mm"), "12,25");
+    await userEvent.click(screen.getByRole("button", { name: "Motta" }));
+    await waitFor(() => expect(server.count("POST", RECEIPTS)).toBe(1));
+    expect(lastReceipt(server).lines).toEqual([
+      { orderLineId: 11, quantity: "1.5", locationId: 91, inPackaging: true },
+      { orderLineId: 12, quantity: "12.25", locationId: 90 },
+    ]);
+  });
+
+  it("a scan after a word typed where the quantity goes writes no NaN, and counts on from a decimal comma", async () => {
+    setLanguagePreference("nb");
+    serve(twoLines(), { codes: { "BOLT-8": [{ orderLineId: 12, quantity: "1", packagingId: null }] } });
+    renderRoute("/purchasing/receive/501");
+    await screen.findByTestId("receive-rows");
+    const quantity = (name: string) => screen.getByRole("textbox", { name: `Antall av ${name}` });
+    await scanIn("Skann en vare", "BOLT-8");
+    await waitFor(() => expect(quantity("BOLT-8 · Bolt 8 mm")).toHaveValue("1"));
+    await userEvent.clear(quantity("BOLT-8 · Bolt 8 mm"));
+    await userEvent.type(quantity("BOLT-8 · Bolt 8 mm"), "tolv");
+    await scanIn("Skann en vare", "BOLT-8");
+    await waitFor(() => expect(quantity("BOLT-8 · Bolt 8 mm")).toHaveValue("1"));
+    await userEvent.clear(quantity("BOLT-8 · Bolt 8 mm"));
+    await userEvent.type(quantity("BOLT-8 · Bolt 8 mm"), "0,5");
+    await scanIn("Skann en vare", "BOLT-8");
+    await waitFor(() => expect(quantity("BOLT-8 · Bolt 8 mm")).toHaveValue("1,5"));
+  });
+});
+
+const scanIn = async (label: string, code: string) => {
+  const field = await screen.findByRole("textbox", { name: label });
+  await userEvent.clear(field);
+  await userEvent.type(field, `${code}{Enter}`);
+};

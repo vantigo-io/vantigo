@@ -36,7 +36,7 @@ describe("receiving on the purchase order page", () => {
     const { router } = renderRoute("/purchasing/orders/501");
     const receive = await screen.findByRole("link", { name: "Receive" });
     await userEvent.click(receive);
-    await waitFor(() => expect(router.state.location.pathname).toBe("/purchasing/orders/501/receive"));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/purchasing/receive/501"));
   });
 
   it("offers no Receive without the permission, or when no goods line is open", async () => {
