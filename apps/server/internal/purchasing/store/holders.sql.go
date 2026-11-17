@@ -12,6 +12,28 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const eraseSupplierChanges = `-- name: EraseSupplierChanges :execrows
+UPDATE purchasing.order_changes c SET actions = (
+    SELECT coalesce(jsonb_agg(CASE WHEN e.a->>'field' IN ('supplierContact', 'note', 'internalNote') THEN e.a - 'from' - 'to' ELSE e.a END
+        ORDER BY e.n), '[]'::jsonb)
+    FROM jsonb_array_elements(c.actions) WITH ORDINALITY AS e(a, n))
+FROM purchasing.orders o
+WHERE o.id = c.order_id AND o.supplier_id = $1
+  AND EXISTS (SELECT 1 FROM jsonb_array_elements(c.actions) x
+      WHERE x->>'field' IN ('supplierContact', 'note', 'internalNote') AND (x ? 'from' OR x ? 'to'))
+`
+
+// EraseSupplierChanges strips the from and to values of the supplier's
+// orders' changes to the fields that may name a person at the supplier —
+// the contact and the two notes — keeping that the field changed.
+func (q *Queries) EraseSupplierChanges(ctx context.Context, supplierID int64) (int64, error) {
+	result, err := q.db.Exec(ctx, eraseSupplierChanges, supplierID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const eraseSupplierDocuments = `-- name: EraseSupplierDocuments :many
 UPDATE purchasing.documents d SET erased_at = $1
 FROM purchasing.orders o
@@ -47,13 +69,15 @@ func (q *Queries) EraseSupplierDocuments(ctx context.Context, arg EraseSupplierD
 }
 
 const eraseSupplierMailings = `-- name: EraseSupplierMailings :execrows
-UPDATE purchasing.mailings m SET recipient = '', cc = '', message = ''
+UPDATE purchasing.mailings m SET recipient = '', cc = '', message = '', last_error = NULL
 FROM purchasing.orders o
-WHERE o.id = m.order_id AND o.supplier_id = $1 AND (m.recipient <> '' OR m.cc <> '' OR m.message <> '')
+WHERE o.id = m.order_id AND o.supplier_id = $1
+  AND (m.recipient <> '' OR m.cc <> '' OR m.message <> '' OR m.last_error IS NOT NULL)
 `
 
 // EraseSupplierMailings blanks the addresses the supplier's orders were
-// mailed to.
+// mailed to, the message and the provider's last refusal, which may quote
+// them.
 func (q *Queries) EraseSupplierMailings(ctx context.Context, supplierID int64) (int64, error) {
 	result, err := q.db.Exec(ctx, eraseSupplierMailings, supplierID)
 	if err != nil {
@@ -141,6 +165,40 @@ func (q *Queries) OpenPurchases(ctx context.Context, arg OpenPurchasesParams) ([
 			&i.SiteID,
 			&i.Quantity,
 			&i.ExpectedOn,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const supplierChanges = `-- name: SupplierChanges :many
+SELECT c.id, c.order_id, c.actor_user_id, c.actor_display, c.at, c.actions FROM purchasing.order_changes c JOIN purchasing.orders o ON o.id = c.order_id
+WHERE o.supplier_id = $1 ORDER BY c.order_id, c.id
+`
+
+// SupplierChanges is the change log of every order naming the supplier, for
+// its export (P7).
+func (q *Queries) SupplierChanges(ctx context.Context, supplierID int64) ([]PurchasingOrderChange, error) {
+	rows, err := q.db.Query(ctx, supplierChanges, supplierID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []PurchasingOrderChange
+	for rows.Next() {
+		var i PurchasingOrderChange
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrderID,
+			&i.ActorUserID,
+			&i.ActorDisplay,
+			&i.At,
+			&i.Actions,
 		); err != nil {
 			return nil, err
 		}

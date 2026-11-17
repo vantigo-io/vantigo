@@ -164,6 +164,14 @@ func (s *server) ensureDocument(ctx context.Context, orderID int64, kind string)
 		OrderID: orderID, Kind: kind, Version: r.order.Version, StorageKey: stored.key, Sha256: stored.sha256,
 		SizeBytes: stored.size, CreatedAt: s.deps.Clock(),
 	})
+	if noRows(err) {
+		// The supplier was erased since the PDF was put: the object is
+		// written to the deletion ledger, so none survives the erase (A8).
+		if lerr := q.LedgerObject(ctx, store.LedgerObjectParams{StorageKey: stored.key, RequestedAt: s.deps.Clock()}); lerr != nil {
+			return doc, nil, fmt.Errorf("purchasing: write %s to the deletion ledger: %w", stored.key, lerr)
+		}
+		return doc, nil, notFound("stored PDF")
+	}
 	if db.IsUniqueViolation(err, "ux_documents_order_version") {
 		if doc, err = q.DocumentOf(ctx, store.DocumentOfParams{OrderID: orderID, Kind: kind, Version: r.order.Version}); err != nil {
 			return doc, nil, fmt.Errorf("purchasing: read order %d's PDF: %w", orderID, err)
