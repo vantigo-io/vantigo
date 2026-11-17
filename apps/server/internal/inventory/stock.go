@@ -31,9 +31,13 @@ type balance struct {
 // variants per site (orders design O45) and what is on its way to each site
 // on open transfers (phase 2 design I46).
 type stockSnapshot struct {
-	balances  []balance
-	reserved  map[siteKey]*big.Rat
+	balances []balance
+	reserved map[siteKey]*big.Rat
+	// incoming is in transit to a site on open transfers (I46), and onOrder
+	// ordered for it on Purchasing's sent orders and not yet received
+	// (purchasing design P4), read on the pool before the snapshot.
 	incoming  map[siteKey]*big.Rat
+	onOrder   map[siteKey]*big.Rat
 	locations map[int64]store.InventoryLocation
 	sites     map[int64]store.InventorySite
 	// placements are the variants' placements per site (I54), for a
@@ -119,6 +123,9 @@ func (sn *stockSnapshot) readPlaces(ctx context.Context, q *store.Queries) error
 	for k := range sn.incoming {
 		siteIDs = append(siteIDs, k.siteID)
 	}
+	for k := range sn.onOrder {
+		siteIDs = append(siteIDs, k.siteID)
+	}
 	for k := range sn.placements {
 		siteIDs = append(siteIDs, k.siteID)
 	}
@@ -178,6 +185,11 @@ func (sn *stockSnapshot) variantStock(ref gen.InventoryVariantRef) gen.Inventory
 			bySite[k.siteID] = new(big.Rat)
 		}
 	}
+	for k := range sn.onOrder {
+		if _, known := sn.sites[k.siteID]; known && k.variantID == ref.Id && bySite[k.siteID] == nil {
+			bySite[k.siteID] = new(big.Rat)
+		}
+	}
 	for k := range sn.placements {
 		if k.variantID == ref.Id && bySite[k.siteID] == nil && sn.sites[k.siteID].Status == string(gen.Active) {
 			bySite[k.siteID] = new(big.Rat)
@@ -204,12 +216,14 @@ func (sn *stockSnapshot) variantStock(ref gen.InventoryVariantRef) gen.Inventory
 		slices.SortFunc(r, func(a, b gen.InventoryBalanceRow) int {
 			return cmp.Or(-cmpBool(*a.Primary, *b.Primary), strings.Compare(a.Location.FullCode, b.Location.FullCode))
 		})
-		reserved, incoming, held := orZero(sn.reserved[k]), orZero(sn.incoming[k]), sn.held(k)
+		reserved, held := orZero(sn.reserved[k]), sn.held(k)
+		inTransit, onOrder := orZero(sn.incoming[k]), orZero(sn.onOrder[k])
+		incoming := new(big.Rat).Add(inTransit, onOrder)
 		usable := new(big.Rat).Sub(onHand, held)
 		row := gen.InventorySiteStock{
 			Site: siteRefOf(sn.sites[siteID]), OnHand: wireQuantity(onHand), Reserved: wireQuantity(reserved),
 			Available: wireQuantity(new(big.Rat).Sub(usable, reserved)), Held: wireQuantity(held), Rows: r,
-			Incoming: wireQuantity(incoming),
+			Incoming: wireQuantity(incoming), InTransit: wireQuantity(inTransit), OnOrder: wireQuantity(onOrder),
 		}
 		if placed {
 			row.Placement = ptr(placementOf(placement, sn.sites[siteID], usable, reserved, incoming))
@@ -218,6 +232,14 @@ func (sn *stockSnapshot) variantStock(ref gen.InventoryVariantRef) gen.Inventory
 	}
 	slices.SortFunc(out.Sites, func(a, b gen.InventorySiteStock) int { return strings.Compare(a.Site.Code, b.Site.Code) })
 	return out
+}
+
+// sumAt adds q to m[k].
+func sumAt(m map[siteKey]*big.Rat, k siteKey, q *big.Rat) {
+	if m[k] == nil {
+		m[k] = new(big.Rat)
+	}
+	m[k].Add(m[k], q)
 }
 
 // orZero is q, or 0 for none.
@@ -238,6 +260,20 @@ func (s *server) balancesOf(ctx context.Context, ids []int32, then func(ctx cont
 		return sn, err
 	}
 	sn.today = today
+	// What is on order through Purchasing, on its pool before the snapshot
+	// (rule 21); nothing when Purchasing is off.
+	open, err := s.openPurchases(ctx, nil, ids)
+	if err != nil {
+		return sn, err
+	}
+	sn.onOrder = make(map[siteKey]*big.Rat, len(open))
+	for _, o := range open {
+		q, ok := new(big.Rat).SetString(o.Quantity)
+		if !ok {
+			return sn, fmt.Errorf("inventory: an open purchase of variant %d has the quantity %q", o.VariantID, o.Quantity)
+		}
+		sumAt(sn.onOrder, siteKey{o.VariantID, o.SiteID}, q)
+	}
 	err = s.withReadTx(ctx, func(ctx context.Context, q *store.Queries) error {
 		rows, err := q.BalancesOfVariants(ctx, ids)
 		if err != nil {

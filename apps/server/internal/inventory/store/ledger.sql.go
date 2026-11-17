@@ -229,6 +229,44 @@ func (q *Queries) MovementByClientRequest(ctx context.Context, clientRequestID u
 	return i, err
 }
 
+const receiptBySource = `-- name: ReceiptBySource :one
+SELECT id, site_id, supplier_name, supplier_reference, source_line_id
+FROM inventory.movements
+WHERE kind = 'receipt' AND source_module = $1 AND source_kind = $2 AND source_id = $3
+ORDER BY id
+LIMIT 1
+`
+
+type ReceiptBySourceParams struct {
+	SourceModule *string
+	SourceKind   *string
+	SourceID     *string
+}
+
+type ReceiptBySourceRow struct {
+	ID                int64
+	SiteID            int64
+	SupplierName      *string
+	SupplierReference *string
+	SourceLineID      *string
+}
+
+// ReceiptBySource is the receipt another module's ledger call posted for a
+// document (purchasing design A5): the movement of kind receipt that names it
+// as its source, the first when several would.
+func (q *Queries) ReceiptBySource(ctx context.Context, arg ReceiptBySourceParams) (ReceiptBySourceRow, error) {
+	row := q.db.QueryRow(ctx, receiptBySource, arg.SourceModule, arg.SourceKind, arg.SourceID)
+	var i ReceiptBySourceRow
+	err := row.Scan(
+		&i.ID,
+		&i.SiteID,
+		&i.SupplierName,
+		&i.SupplierReference,
+		&i.SourceLineID,
+	)
+	return i, err
+}
+
 const setBalances = `-- name: SetBalances :exec
 UPDATE inventory.balances b
 SET on_hand = u.on_hand, updated_at = $1::timestamptz

@@ -149,8 +149,8 @@ func TestLowStock_CSV(t *testing.T) {
 		t.Errorf("headers = %q, %q", res.Header("Content-Disposition"), res.Header("Content-Type"))
 	}
 	lines := strings.Split(strings.TrimPrefix(string(res.Body), "\ufeff"), "\r\n")
-	if len(lines) != 3 || lines[0] != "site;sku;name;barcode;available;incoming;reorder_point;maximum;needed;suggested;packaging;packaging_count" ||
-		lines[1] != "OSL;NUT-M8;Nut M8;;10;0;12,5;30;20;20;;" {
+	if len(lines) != 3 || lines[0] != "site;sku;name;barcode;available;incoming;in_transit;on_order;reorder_point;maximum;needed;suggested;packaging;packaging_count" ||
+		lines[1] != "OSL;NUT-M8;Nut M8;;10;0;0;0;12,5;30;20;20;;" {
 		t.Errorf("csv = %q", lines)
 	}
 }

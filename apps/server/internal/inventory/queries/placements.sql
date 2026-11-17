@@ -85,16 +85,25 @@ RETURNING p.variant_id, p.site_id, prev.primary_location_id::bigint AS primary_l
 -- LowStock is the low-stock list (I56, I58): every placement with a reorder
 -- point at an active site whose available (usable on hand over the site's
 -- locations — no lot held or expired on today, manufacturing phase 2 M63 —
--- less reserved at the site) plus incoming (in transit to the
--- site) is at or below it — optionally one site, q a part of the SKU or
--- name snapshot, ignoring case — by site code, SKU snapshot and variant id,
--- after the cursor's. Quantities as text, for the rule's arithmetic in
--- decimals.
+-- less reserved at the site) plus incoming (in transit to the site, and on
+-- order: Purchasing's open purchases, read before the statement and handed in
+-- as three arrays read side by side, purchasing design A3) is at or below it
+-- — optionally one site, q a part of the SKU or name snapshot, ignoring case
+-- — by site code, SKU snapshot and variant id, after the cursor's.
+-- Quantities as text, for the rule's arithmetic in decimals.
+WITH po AS (
+    SELECT o.variant_id, o.site_id, sum(o.quantity) AS on_order
+    FROM (SELECT unnest(@open_variant_ids::int[]) AS variant_id, unnest(@open_site_ids::bigint[]) AS site_id,
+                 unnest(@open_quantities::text[])::numeric AS quantity) o
+    GROUP BY o.variant_id, o.site_id
+)
 SELECT p.variant_id, p.site_id, s.code AS site_code, p.sku, p.product_name,
        p.reorder_point::text AS reorder_point, p.maximum, p.multiple,
-       oh.on_hand::text AS on_hand, rs.reserved::text AS reserved, it.incoming::text AS incoming
+       oh.on_hand::text AS on_hand, rs.reserved::text AS reserved, it.incoming::text AS incoming,
+       coalesce(po.on_order, 0)::text AS on_order
 FROM inventory.placements p
 JOIN inventory.sites s ON s.id = p.site_id
+LEFT JOIN po ON po.variant_id = p.variant_id AND po.site_id = p.site_id
 CROSS JOIN LATERAL (
     SELECT coalesce(sum(b.on_hand), 0)::numeric AS on_hand
     FROM inventory.balances b
@@ -118,7 +127,7 @@ WHERE p.reorder_point IS NOT NULL
   AND (sqlc.narg(q)::text IS NULL
        OR strpos(lower(p.sku), lower(sqlc.narg(q)::text)) > 0
        OR strpos(lower(p.product_name), lower(sqlc.narg(q)::text)) > 0)
-  AND oh.on_hand - rs.reserved + it.incoming <= p.reorder_point
+  AND oh.on_hand - rs.reserved + it.incoming + coalesce(po.on_order, 0) <= p.reorder_point
   AND (sqlc.narg(cursor_site_code)::text IS NULL
        OR (s.code, p.sku, p.variant_id) > (sqlc.narg(cursor_site_code)::text, sqlc.narg(cursor_sku)::text, sqlc.narg(cursor_variant_id)::int))
 ORDER BY s.code, p.sku, p.variant_id
@@ -126,10 +135,18 @@ LIMIT @row_limit::int;
 
 -- name: LowStockCounts :many
 -- LowStockCounts is LowStock's rule counted per active site, for the
--- dashboard's lowStock items (I62): only sites with at least one.
+-- dashboard's lowStock items (I62): only sites with at least one. The open
+-- purchases come in as LowStock's do.
+WITH po AS (
+    SELECT o.variant_id, o.site_id, sum(o.quantity) AS on_order
+    FROM (SELECT unnest(@open_variant_ids::int[]) AS variant_id, unnest(@open_site_ids::bigint[]) AS site_id,
+                 unnest(@open_quantities::text[])::numeric AS quantity) o
+    GROUP BY o.variant_id, o.site_id
+)
 SELECT p.site_id, s.code AS site_code, s.name AS site_name, count(*)::int AS low
 FROM inventory.placements p
 JOIN inventory.sites s ON s.id = p.site_id
+LEFT JOIN po ON po.variant_id = p.variant_id AND po.site_id = p.site_id
 CROSS JOIN LATERAL (
     SELECT coalesce(sum(b.on_hand), 0)::numeric AS on_hand
     FROM inventory.balances b
@@ -149,7 +166,7 @@ CROSS JOIN LATERAL (
       AND tl.sent > tl.received + tl.missing + tl.returned) it
 WHERE p.reorder_point IS NOT NULL
   AND s.status = 'active'
-  AND oh.on_hand - rs.reserved + it.incoming <= p.reorder_point
+  AND oh.on_hand - rs.reserved + it.incoming + coalesce(po.on_order, 0) <= p.reorder_point
 GROUP BY p.site_id, s.code, s.name
 ORDER BY s.code;
 

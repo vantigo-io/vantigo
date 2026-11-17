@@ -176,7 +176,7 @@ func TestLowStock_CSVGuard(t *testing.T) {
 	if !strings.Contains(body, "\r\nOSL;'=SUM;Formula;;0;") {
 		t.Errorf("the formula SKU is not guarded:\n%s", body)
 	}
-	if !strings.Contains(body, "\r\nOSL;NUT-M8;Nut M8;;-5;0;1;;7;7;;") {
+	if !strings.Contains(body, "\r\nOSL;NUT-M8;Nut M8;;-5;0;0;0;1;;7;7;;") {
 		t.Errorf("a negative available is not written as a number:\n%s", body)
 	}
 }
