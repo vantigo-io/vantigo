@@ -1,8 +1,14 @@
-import { PURCHASE_ORDERS_ROUTE_PATH, RECEIVING_ROUTE_PATH, SETTINGS_ROUTE_PATH, SUPPLIERS_ROUTE_PATH } from "./routes";
+import {
+  PROPOSALS_ROUTE_PATH,
+  PURCHASE_ORDERS_ROUTE_PATH,
+  RECEIVING_ROUTE_PATH,
+  SETTINGS_ROUTE_PATH,
+  SUPPLIERS_ROUTE_PATH,
+} from "./routes";
 
 /** One sidebar destination of the app (purchasing design P23); the host owns its label and icon. */
 export interface PurchasingNavItem {
-  key: "orders" | "receive" | "suppliers" | "settings";
+  key: "orders" | "proposals" | "receive" | "suppliers" | "settings";
   /** The key of the destination's label in the package catalog. */
   label: string;
   to: string;
@@ -16,6 +22,7 @@ const access = ["purchasing:access"] as const;
 
 export const purchasingNavItems: readonly PurchasingNavItem[] = [
   { key: "orders", label: "navOrders", to: PURCHASE_ORDERS_ROUTE_PATH, requiredPermissions: access },
+  { key: "proposals", label: "navProposals", to: PROPOSALS_ROUTE_PATH, requiredPermissions: access },
   // Receiving asks for purchasing:receive alone (P30, A47): its list, its
   // screen and its writes answer no price.
   { key: "receive", label: "navReceive", to: RECEIVING_ROUTE_PATH, requiredPermissions: ["purchasing:receive"] },

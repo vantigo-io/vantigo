@@ -10,6 +10,7 @@ export const RECEIVE_PURCHASE_ORDER_ROUTE_PATH = "/purchasing/receive/$orderId";
 export const SUPPLIERS_ROUTE_PATH = "/purchasing/suppliers";
 export const SUPPLIER_ROUTE_PATH = "/purchasing/suppliers/$supplierId";
 export const SETTINGS_ROUTE_PATH = "/purchasing/settings";
+export const PROPOSALS_ROUTE_PATH = "/purchasing/proposals";
 
 export const purchaseOrderLinkOptions = (orderId: number) => ({
   to: PURCHASE_ORDER_ROUTE_PATH,
@@ -64,4 +65,25 @@ const INVENTORY_MOVEMENT_ROUTE_PATH = "/inventory/movements/$movementId";
 export const inventoryMovementLinkOptions = (movementId: number) => ({
   to: INVENTORY_MOVEMENT_ROUTE_PATH,
   params: { movementId: String(movementId) },
+});
+
+/** The proposals' search (P35): one variant, one site, each when a positive whole number. */
+export interface ProposalsSearch {
+  variantId?: number;
+  siteId?: number;
+}
+
+export const validateProposalsSearch = (search: Record<string, unknown>): ProposalsSearch => {
+  const out: ProposalsSearch = {};
+  for (const key of ["variantId", "siteId"] as const) {
+    const id = Number(search[key]);
+    if (Number.isSafeInteger(id) && id > 0) out[key] = id;
+  }
+  return out;
+};
+
+/** The proposals, filtered to a variant (and its site) when a link in names one. */
+export const proposalsLinkOptions = (search: ProposalsSearch = {}) => ({
+  to: PROPOSALS_ROUTE_PATH,
+  search,
 });
