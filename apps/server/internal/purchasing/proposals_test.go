@@ -590,6 +590,62 @@ func TestProposals_SentSinceGoodsAndMargin(t *testing.T) {
 	}
 }
 
+// TestProposals_NetsReceipts is A54 and A58 over delivery B's receipts: an
+// order sent before the need was computed is the source's own figure, its
+// remainder lowered by what is received (PurchaseSupply); one sent after
+// counts in sentSince, partially received, received in full or more, closed
+// with a remainder, or its receipt undone — what came in after the source
+// read the stock being as much not in its figure as what is still to come.
+func TestProposals_NetsReceipts(t *testing.T) {
+	t.Parallel()
+	s := newProposalSetup(t)
+	h, c := s.h, s.c
+	rc := h.SignIn(t, receiver...)
+	before := markSent(t, c, createOrder(t, c, supNorsk, variantLine(varNut, "10")))
+	h.Advance(time.Minute)
+	computed := h.Now()
+	h.Advance(time.Minute)
+	receive(t, rc, before.Id, receiptInput(rline(before.Lines[0].Id, "4", locShelfA)))
+
+	partial := markSent(t, c, createOrder(t, c, supNorsk, variantLine(varNut, "10")))
+	if r := receive(t, rc, partial.Id, receiptInput(rline(partial.Lines[0].Id, "4", locShelfA))); r.Order.Status != gen.PurchasingOrderStatusPartiallyReceived {
+		t.Fatalf("the partly received order = %s", r.Order.Status)
+	}
+	over := markSent(t, c, createOrder(t, c, supNorsk, variantLine(varNut, "6")))
+	in := receiptInput(rline(over.Lines[0].Id, "8", locShelfA))
+	in.AcceptOver = ptrTo(true)
+	if r := receive(t, rc, over.Id, in); r.Order.Status != gen.PurchasingOrderStatusReceived {
+		t.Fatalf("the order received with more = %s", r.Order.Status)
+	}
+	closed := markSent(t, c, createOrder(t, c, supNorsk, variantLine(varNut, "5")))
+	r := receive(t, rc, closed.Id, receiptInput(rline(closed.Lines[0].Id, "2", locShelfA)))
+	res := c.Do(http.MethodPost, orderPath(closed.Id, "close"), version(*r.Order))
+	mustStatus(t, res, http.StatusOK, "close the partly received order")
+	if o := orderOf(t, res); o.Status != gen.PurchasingOrderStatusClosed {
+		t.Fatalf("the closed order = %s", o.Status)
+	}
+	undone := markSent(t, c, createOrder(t, c, supNorsk, variantLine(varNut, "7")))
+	u := receive(t, rc, undone.Id, receiptInput(rline(undone.Lines[0].Id, "7", locShelfA)))
+	mustStatus(t, rc.Do(http.MethodPost, receiptPath(u.Receipt.Id, "undo"), gen.PurchasingUndoInput{}), http.StatusOK, "undo")
+
+	// On order: 6 of the order before, 6 of the partial one and the 7 undone.
+	if got := openOf(t, h, varNut); got != "19" {
+		t.Errorf("nuts on order = %s, want 19", got)
+	}
+	s.demand.set(contracts.PurchaseNeed{VariantID: varNut, SiteID: siteMain, Quantity: "100", Source: "replenishment", ComputedAt: computed})
+	nut := proposalAt(proposals(t, c, ""), varNut, siteMain)
+	// Sent since: 10 ordered of the partial one, 8 received of 6, 2 received
+	// before the close, and the 7 undone; the order sent before counts nothing.
+	if nut == nil || nut.SentSince != "27" || nut.OnDrafts != "0" || nut.Remaining != "73" {
+		t.Fatalf("the nut = %+v, want 100 less 27 sent since", nut)
+	}
+	res = createFromProposals(c, uuid.New(), proposalRow(varNut, siteMain, s.germanN.Id, "73", "73"))
+	mustStatus(t, res, http.StatusOK, "create orders from the netted proposal")
+	if b := proposalAt(proposals(t, c, ""), varNut, siteMain); b != nil {
+		t.Errorf("the nut ordered on a draft is still proposed: %+v", b)
+	}
+}
+
 // failingCalendar is a business calendar on UTC that fails while fail is set.
 type failingCalendar struct{ fail atomic.Bool }
 
