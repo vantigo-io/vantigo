@@ -30,11 +30,12 @@ import {
 } from "../api/purchasing";
 import { PURCHASING_QUERY_KEY, refusedLines } from "../api/request";
 import type { PurchasingAccess } from "../lib/access";
+import { markStaleOnConflict } from "../lib/conflict";
 import { lineRefusalWords } from "../lib/errors";
 import { today, usePurchasingFormat } from "../lib/format";
 import { type EditorLine, fromSavedLine, fromVariant, lineInput, lineWarnings, newTextLine } from "../lib/lines";
 import { purchaseOrderLinkOptions } from "../lib/routes";
-import { markStaleOnConflict, SaveError, SupplierPicker, VariantPicker } from "./common";
+import { SaveError, SupplierPicker, VariantPicker } from "./common";
 
 /** A date picked in the calendar as the contract writes one. */
 const dayOf = (value: string | Date | null): string | null => {

@@ -25,7 +25,8 @@ import {
   savePurchasingSettings,
 } from "../api/purchasing";
 import { PURCHASING_QUERY_KEY } from "../api/request";
-import { markStaleOnConflict, SaveError } from "../components/common";
+import { SaveError } from "../components/common";
+import { markStaleOnConflict } from "../lib/conflict";
 import "../i18n";
 import { noPurchasingAccess, type PurchasingAccess } from "../lib/access";
 import { refusalMessage } from "../lib/errors";
