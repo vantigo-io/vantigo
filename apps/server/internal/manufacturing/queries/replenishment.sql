@@ -218,3 +218,15 @@ SELECT 'manual', @site_id::bigint, @now::timestamptz, 'Purchasing'
 WHERE NOT EXISTS (
     SELECT 1 FROM manufacturing.replenishment_runs
     WHERE status = 'pending' AND (site_id IS NULL OR site_id = @site_id::bigint));
+
+-- name: OpenBuySuggestions :many
+-- OpenBuySuggestions is the open buy suggestions, of one site or every one,
+-- each with the time its run started — before it read anything — for the
+-- purchase demand (purchasing design A4).
+SELECT s.variant_id, s.site_id, s.quantity::text AS quantity, s.need_by,
+       coalesce(r.started_at, s.created_at)::timestamptz AS computed_at
+FROM manufacturing.suggestions s
+JOIN manufacturing.replenishment_runs r ON r.id = s.run_id
+WHERE s.status = 'open' AND s.kind = 'buy'
+  AND (sqlc.narg(site_id)::bigint IS NULL OR s.site_id = sqlc.narg(site_id)::bigint)
+ORDER BY s.site_id, s.variant_id;
