@@ -30,7 +30,7 @@ import {
 } from "../api/purchasing";
 import { PURCHASING_QUERY_KEY, refusedLines } from "../api/request";
 import type { PurchasingAccess } from "../lib/access";
-import { lineRefusalWords, refusalMessage } from "../lib/errors";
+import { lineRefusalWords } from "../lib/errors";
 import { today, usePurchasingFormat } from "../lib/format";
 import { type EditorLine, fromSavedLine, fromVariant, lineInput, lineWarnings, newTextLine } from "../lib/lines";
 import { purchaseOrderLinkOptions } from "../lib/routes";
@@ -90,7 +90,7 @@ export const OrderEditor = ({
   access: PurchasingAccess;
   onDone?: () => void;
 }) => {
-  const { t, money } = usePurchasingFormat();
+  const { t } = usePurchasingFormat();
   if (!access.canManageOrders)
     return (
       <Alert color="yellow" variant="light">
