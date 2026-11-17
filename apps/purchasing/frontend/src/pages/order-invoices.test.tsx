@@ -107,6 +107,23 @@ describe("the supplier invoices on the purchase order page", () => {
     expect(second.clientRequestId).toBe(firstBody.clientRequestId);
   });
 
+  it("reads a decimal comma in the invoice's total", async () => {
+    const billable = order({ status: "received", lines: [line({ received: "1000", open: "0" })] });
+    const server = serve(billable, { linesVisible: true, matches: [] }, () =>
+      jsonResponse(201, { supplierInvoiceId: 7002, lines: 1, linesLeft: 0, total: "455.00", currency: "NOK" }),
+    );
+    renderRoute("/purchasing/orders/501");
+    await userEvent.click(await screen.findByRole("button", { name: "Register invoice" }));
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.type(within(dialog).getByRole("textbox", { name: "Supplier's invoice number" }), "F-3");
+    await userEvent.type(within(dialog).getByRole("textbox", { name: "Invoice total (NOK)" }), "568,75");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Register invoice" }));
+    await within(dialog).findByTestId("invoice-registered");
+    expect(server.sent("POST", "/api/v1/purchasing/orders/501/register-invoice")?.body).toMatchObject({
+      total: "568.75",
+    });
+  });
+
   it("words Accounting's refusals by their codes", async () => {
     const billable = order({ status: "received", lines: [line({ received: "1000", open: "0" })] });
     serve(billable, { linesVisible: true, matches: [] }, () => refusal(403, "accounting_post_required"));

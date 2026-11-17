@@ -17,6 +17,7 @@ import { ApiValidationError, PURCHASING_QUERY_KEY, refusalCode } from "../api/re
 import "../i18n";
 import { refusalMessage } from "../lib/errors";
 import { newRequestId, today, usePurchasingFormat } from "../lib/format";
+import { decimal } from "../lib/lines";
 import { accountingSupplierLinkOptions } from "../lib/routes";
 
 /** A match's warnings, in the reader's words (P38). */
@@ -164,9 +165,9 @@ export const RegisterInvoiceDialog = ({ order, onClose }: { order: PurchaseOrder
         invoiceNumber: invoiceNumber.trim(),
         invoiceDate: invoiceDate ?? "",
         dueDate: dueDate || null,
-        exchangeRate: foreign && exchangeRate.trim() ? exchangeRate.trim() : null,
-        totalNok: foreign && totalNok.trim() ? totalNok.trim() : null,
-        total: total.trim() ? total.trim() : null,
+        exchangeRate: foreign && exchangeRate.trim() ? decimal(exchangeRate) : null,
+        totalNok: foreign && totalNok.trim() ? decimal(totalNok) : null,
+        total: total.trim() ? decimal(total) : null,
       }),
     onSuccess: async (made) => {
       setResult(made);
