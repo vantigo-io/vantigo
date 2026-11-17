@@ -101,6 +101,9 @@ func Module() module.Module {
 		VariantReferences: newVariantHolder,
 		Stock:             newStock,
 		StockLedger:       newLedger,
+		// The purchase demand (purchasing design A4): the low stock, asked
+		// only where Manufacturing is not enabled.
+		PurchaseDemand: newPurchaseDemand,
 		// LiveTopics is the lots list's and a lot's page (manufacturing phase
 		// 2 §17, live.go); Workers the deletion ledger of the lots' files
 		// (M54, lot_attachments.go).

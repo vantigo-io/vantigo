@@ -39,6 +39,10 @@ type lowVerdict struct {
 	available, projected *big.Rat
 	low                  bool
 	needed, suggested    *big.Rat
+	// beforePackaging is needed rounded to the placement's multiple only:
+	// what the purchase demand answers, for Purchasing to round once to its
+	// supplier item (purchasing design A4).
+	beforePackaging *big.Rat
 	// packaging is the smallest packaging the suggestion was rounded to, and
 	// count how many of it; nil when the variant has none.
 	packaging *contracts.PackagingEntry
@@ -68,6 +72,7 @@ func judgeLow(l lowLevels) lowVerdict {
 	if l.multiple != nil && l.multiple.Sign() > 0 {
 		v.suggested = new(big.Rat).Mul(l.multiple, new(big.Rat).SetInt64(ceilQuotient(v.needed, l.multiple)))
 	}
+	v.beforePackaging = v.suggested
 	if p := smallestPackaging(l.packagings); p != nil {
 		size := ratFromText(p.Quantity)
 		v.packaging = p
