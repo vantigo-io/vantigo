@@ -1,6 +1,7 @@
 import {
   PROPOSALS_ROUTE_PATH,
   PURCHASE_ORDERS_ROUTE_PATH,
+  RECEIVED_NOT_INVOICED_ROUTE_PATH,
   RECEIVING_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
   SUPPLIERS_ROUTE_PATH,
@@ -8,7 +9,7 @@ import {
 
 /** One sidebar destination of the app (purchasing design P23); the host owns its label and icon. */
 export interface PurchasingNavItem {
-  key: "orders" | "proposals" | "receive" | "suppliers" | "settings";
+  key: "orders" | "proposals" | "receive" | "suppliers" | "uninvoiced" | "settings";
   /** The key of the destination's label in the package catalog. */
   label: string;
   to: string;
@@ -27,6 +28,13 @@ export const purchasingNavItems: readonly PurchasingNavItem[] = [
   // screen and its writes answer no price.
   { key: "receive", label: "navReceive", to: RECEIVING_ROUTE_PATH, requiredPermissions: ["purchasing:receive"] },
   { key: "suppliers", label: "navSuppliers", to: SUPPLIERS_ROUTE_PATH, requiredPermissions: access },
+  {
+    key: "uninvoiced",
+    label: "navUninvoiced",
+    to: RECEIVED_NOT_INVOICED_ROUTE_PATH,
+    requiredPermissions: ["purchasing:invoices-match"],
+    requiredAllPermissions: access,
+  },
   {
     key: "settings",
     label: "navSettings",

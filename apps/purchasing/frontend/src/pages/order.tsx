@@ -49,6 +49,7 @@ import {
 import { PURCHASING_QUERY_KEY, refusalCode } from "../api/request";
 import { ConfirmDialog, OrderStatusBadges, PdfButton } from "../components/common";
 import { OrderEditor } from "../components/order-editor";
+import { OrderInvoicesCard } from "../components/order-invoices";
 import "../i18n";
 import { noPurchasingAccess, type PurchasingAccess } from "../lib/access";
 import { hasWords, refusalMessage } from "../lib/errors";
@@ -372,6 +373,7 @@ const OrderView = ({
                     <Table.Th ta="right">{t("discount")}</Table.Th>
                     <Table.Th>{t("expectedOn")}</Table.Th>
                     <Table.Th ta="right">{t("received")}</Table.Th>
+                    <Table.Th ta="right">{t("invoiced")}</Table.Th>
                     <Table.Th ta="right">{t("lineNet")}</Table.Th>
                     <Table.Th />
                   </Table.Tr>
@@ -420,6 +422,9 @@ const OrderView = ({
           canOpenMovements={access.canOpenInventoryMovements === true}
           onUndo={setUndoing}
         />
+      )}
+      {!draft && order.status !== "cancelled" && (
+        <OrderInvoicesCard order={order} canRegister={access.canRegisterInvoices === true} />
       )}
       {!draft && <HistoryCard order={order} />}
 
@@ -634,6 +639,9 @@ const LineRow = ({
         ) : (
           ""
         )}
+      </Table.Td>
+      <Table.Td ta="right" data-testid="line-invoiced">
+        {Number(line.invoiced) > 0 ? `${quantity(line.invoiced)} / ${quantity(line.quantity)}` : ""}
       </Table.Td>
       <Table.Td ta="right">{money(line.lineNet, currency)}</Table.Td>
       <Table.Td>

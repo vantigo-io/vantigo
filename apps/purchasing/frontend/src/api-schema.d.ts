@@ -214,6 +214,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/purchasing/orders/{orderId}/invoices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the supplier invoices matched to a purchase order
+         * @description The supplier invoices matched to the order (P37, P38, P40, A20): every match, provisional or posted, with its quantity, the order's net per unit and the warnings. The invoice line's net and the invoice's unit price are answered only to a holder of accounting:read (linesVisible); others see the matched quantities alone.
+         */
+        get: operations["listPurchasingOrderInvoices"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/purchasing/orders/{orderId}/lines/{lineId}/close": {
         parameters: {
             query?: never;
@@ -358,6 +378,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/purchasing/orders/{orderId}/register-invoice": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Register a supplier invoice from a purchase order
+         * @description Register invoice (P37, A1, A11): makes Accounting's supplier-invoice draft through contracts.SupplierInvoices.CreateDraft — the supplier's invoice number, the invoice date, the due date and, in another currency than NOK, the rate or the NOK total; one line per order line of what is received (a text or service line: marked delivered) and not yet invoiced, at the order's net, entered net with the supplier's default account; the order number as its reference — and the provisional matches with it. At most 200 lines at a time: linesLeft says how many are left for another draft. Needs accounting:post as well as purchasing:invoices-match (403 accounting_post_required). A replay of the clientRequestId with the same body answers the first draft; another body is 409 client_request_reused.
+         */
+        post: operations["registerPurchasingInvoice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/purchasing/orders/{orderId}/reopen": {
         parameters: {
             query?: never;
@@ -495,6 +535,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/purchasing/received-not-invoiced": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List what is received and not invoiced
+         * @description Received, not invoiced (P41): per supplier and order line, what receipts brought in on or before asOf and not taken back by its end — a text or service line marked delivered by then — less what posted invoices dated on or before it bill, at the order's net per unit. The accountant's basis for a manual accrual; nothing is posted from it.
+         */
+        get: operations["listPurchasingReceivedNotInvoiced"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/purchasing/received-not-invoiced/csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download what is received and not invoiced as CSV
+         * @description Received, not invoiced (P41) as CSV: semicolons, a byte order mark, CRLF and the decimal comma.
+         */
+        get: operations["exportPurchasingReceivedNotInvoiced"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/purchasing/receiving": {
         parameters: {
             query?: never;
@@ -573,6 +653,86 @@ export interface paths {
         get: operations["getPurchasingSummary"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/purchasing/supplier-invoices/{invoiceId}/match": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a supplier invoice's match
+         * @description The Purchase order panel of a supplier invoice (P36–P38, A20): its matches, the orders of its supplier its reference names as whole digit runs, and the differences. The invoice's lines with their text and net, and its reference, are answered only to a holder of accounting:read (linesVisible); others see the lines' positions and the matched quantities alone.
+         */
+        get: operations["getPurchasingInvoiceMatch"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/purchasing/supplier-invoices/{invoiceId}/match-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Match all that is received to a supplier invoice
+         * @description Match all received (P37): pairs the invoice's unmatched lines, in order, with the order's lines that have something received and not invoiced, in order, each for what is left. A credit note is not matched this way.
+         */
+        post: operations["matchAllPurchasingInvoice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/purchasing/supplier-invoices/{invoiceId}/matches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Match a supplier invoice to a purchase order
+         * @description Allocates invoice lines to an order's lines (P37, A9, A14): each line of the invoice, by its position, bills one order line for a quantity in the line's unit; a line matched to the same order line again takes the new quantity. Refused for another supplier's order or another currency than the order's, beyond what is received unless acceptOver (over_invoiced), and for a credit note beyond what is invoiced (credit_exceeds_invoiced). A draft's match is provisional until the invoice is posted.
+         */
+        post: operations["matchPurchasingInvoice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/purchasing/supplier-invoices/{invoiceId}/unmatch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Unmatch a supplier invoice
+         * @description Unmatches a supplier invoice (P37): every match of the invoice, or of one order, or of one line by its position. The order lines' invoiced quantities go down with them.
+         */
+        post: operations["unmatchPurchasingInvoice"];
         delete?: never;
         options?: never;
         head?: never;
@@ -840,6 +1000,205 @@ export interface components {
             /** Format: int32 */
             variantId?: number | null;
         };
+        /** @description A line of a supplier invoice as the panel shows it (A20). text and net are answered only to a holder of accounting:read. */
+        PurchasingInvoiceLine: {
+            /** @description The line's net as Accounting computes it, in the invoice's currency. */
+            net?: string | null;
+            /** Format: int32 */
+            position: number;
+            text?: string | null;
+        };
+        /** @description One line of a supplier invoice billing one order line (P37, A9): the quantity in the order line's unit, provisional while the invoice is a draft, posted once it is posted. invoiceUnitNet is the invoice line's net over the quantity; it and lineNet are answered only to a holder of accounting:read (A20). */
+        PurchasingInvoiceMatch: {
+            /** @description The invoice's currency. */
+            currency: string;
+            /** Format: int64 */
+            id: number;
+            /** Format: date */
+            invoiceDate: string;
+            /** @description The supplier's invoice number. */
+            invoiceNumber: string;
+            invoiceUnitNet?: string | null;
+            /** @description invoice or credit_note. */
+            kind: string;
+            lineNet?: string | null;
+            /**
+             * Format: int32
+             * @description The invoice line's position.
+             */
+            linePosition: number;
+            /** @description The order line's name or description. */
+            name: string;
+            /** Format: int64 */
+            orderId: number;
+            /** Format: int64 */
+            orderLineId: number;
+            /** Format: int32 */
+            orderLinePosition: number;
+            /** Format: int64 */
+            orderNumber?: number | null;
+            /** @description The order line's net per unit, four places, in the order's currency. */
+            orderUnitNet: string;
+            quantity: string;
+            /** @description provisional while the invoice is a draft, posted once it is posted. */
+            state: string;
+            /** Format: int64 */
+            supplierInvoiceId: number;
+            unit: string;
+            warnings: components["schemas"]["PurchasingInvoiceWarning"][];
+        };
+        /** @description Match all received (P37) of one order. */
+        PurchasingInvoiceMatchAllInput: {
+            /** Format: int64 */
+            orderId: number;
+        };
+        /** @description Invoice lines allocated to one order's lines (P37). */
+        PurchasingInvoiceMatchInput: {
+            /** @description Match more than a line's received and not invoiced; without it that is refused with over_invoiced, which the panel asks about first. */
+            acceptOver?: boolean;
+            lines: components["schemas"]["PurchasingInvoiceMatchLineInput"][];
+            /** Format: int64 */
+            orderId: number;
+        };
+        /** @description One invoice line, by its position, billing one order line for a quantity in the order line's unit. */
+        PurchasingInvoiceMatchLineInput: {
+            /** Format: int32 */
+            linePosition: number;
+            /** Format: int64 */
+            orderLineId: number;
+            quantity: string;
+        };
+        /** @description The supplier invoices matched to an order (P37, P40, A20). */
+        PurchasingInvoiceOrderMatches: {
+            /** @description Whether the caller holds accounting:read and so sees the invoice lines' amounts. */
+            linesVisible: boolean;
+            matches: components["schemas"]["PurchasingInvoiceMatch"][];
+        };
+        /** @description The Purchase order panel of a supplier invoice (P36–P38, A20). differences counts the matches' warnings. */
+        PurchasingInvoicePanel: {
+            currency: string;
+            /** Format: int32 */
+            differences: number;
+            /** Format: date */
+            invoiceDate: string;
+            /** Format: int64 */
+            invoiceId: number;
+            /** @description invoice or credit_note. */
+            kind: string;
+            lines: components["schemas"]["PurchasingInvoiceLine"][];
+            linesVisible: boolean;
+            matches: components["schemas"]["PurchasingInvoiceMatch"][];
+            /** @description The supplier's invoice number. */
+            number: string;
+            /** @description The invoice's reference; answered only to a holder of accounting:read. */
+            reference?: string | null;
+            /** @description The invoice's state in Accounting, draft, posted or reversed. */
+            state: string;
+            suggestions: components["schemas"]["PurchasingInvoiceSuggestion"][];
+            /** Format: int64 */
+            supplierId: number;
+            supplierName: string;
+        };
+        /** @description Register invoice (P37, A1, A11): what Accounting's draft must have that the order does not. */
+        PurchasingInvoiceRegisterInput: {
+            /**
+             * Format: uuid
+             * @description Makes the registration idempotent (A11).
+             */
+            clientRequestId: string;
+            /**
+             * Format: date
+             * @description The invoice date plus the supplier's terms when left out.
+             */
+            dueDate?: string | null;
+            /** @description NOK per unit of the order's currency; this or totalNok in another currency than NOK. */
+            exchangeRate?: string | null;
+            /** Format: date */
+            invoiceDate: string;
+            /** @description The supplier's invoice number. */
+            invoiceNumber: string;
+            totalNok?: string | null;
+        };
+        /** @description The draft Register invoice made (P37, A1). */
+        PurchasingInvoiceRegistration: {
+            currency: string;
+            /**
+             * Format: int32
+             * @description The lines on the draft.
+             */
+            lines: number;
+            /**
+             * Format: int32
+             * @description Order lines left with something received and not invoiced beyond the draft's 200, for another draft.
+             */
+            linesLeft: number;
+            /** Format: int64 */
+            supplierInvoiceId: number;
+            /** @description The draft's net total, two places. */
+            total: string;
+        };
+        /** @description An order of the invoice's supplier whose number the invoice's reference names (P36). */
+        PurchasingInvoiceSuggestion: {
+            currency: string;
+            netTotal: string;
+            /** Format: int64 */
+            number: number;
+            /** Format: int64 */
+            orderId: number;
+            status: string;
+            /**
+             * Format: int32
+             * @description The order's lines with something received and not invoiced.
+             */
+            toInvoice: number;
+        };
+        /** @description Received, not invoiced, as of a day (P41). */
+        PurchasingInvoiceUninvoiced: {
+            /** Format: date */
+            asOf: string;
+            rows: components["schemas"]["PurchasingInvoiceUninvoicedRow"][];
+            totals: components["schemas"]["PurchasingInvoiceUninvoicedTotal"][];
+        };
+        /** @description One order line with something received and not invoiced (P41), at the order's net per unit. */
+        PurchasingInvoiceUninvoicedRow: {
+            amount: string;
+            currency: string;
+            invoiced: string;
+            name: string;
+            /** Format: int64 */
+            orderId: number;
+            /** Format: int64 */
+            orderLineId: number;
+            /** Format: int64 */
+            orderNumber?: number | null;
+            /** Format: int32 */
+            position: number;
+            /** @description Received and not invoiced, in the line's unit. */
+            quantity: string;
+            received: string;
+            /** Format: int64 */
+            supplierId: number;
+            supplierName: string;
+            unit: string;
+            unitNet: string;
+        };
+        /** @description The list's sum in one currency. */
+        PurchasingInvoiceUninvoicedTotal: {
+            amount: string;
+            currency: string;
+        };
+        /** @description What to unmatch (P37) — every match of the invoice, of one order, or of one line by its position. */
+        PurchasingInvoiceUnmatchInput: {
+            /** Format: int32 */
+            linePosition?: number | null;
+            /** Format: int64 */
+            orderId?: number | null;
+        };
+        /**
+         * @description A match's differences (P38), warnings that never hold the posting: invoiced_over_received, the order line is invoiced beyond what is received; invoiced_over_ordered, beyond what is ordered; price_differs, the invoice's unit price differs from the order's by more than the settings' tolerance; currency_differs, the invoice is in another currency than the order.
+         * @enum {string}
+         */
+        PurchasingInvoiceWarning: "invoiced_over_received" | "invoiced_over_ordered" | "price_differs" | "currency_differs";
         /** @description A line as written (P16). id names an existing line of the order; a line without one is new. A variant line names variantId and takes its supplier item's number, price, packaging and expected day when they are left out; a text line names description, unit and unitPrice. */
         PurchasingLineInput: {
             description?: string;
@@ -1194,7 +1553,7 @@ export interface components {
             /** Format: uuid */
             id?: string | null;
         };
-        /** @description An RFC 9457 problem with this module's refusal code (purchasing design §3). code names the rule that refused and is what a client keys off, never the words. 400: field errors (errors), supplier_not_found, site_not_found, site_archived, currency_invalid, series_start_too_low, send_channel_unknown, recipient_missing, order_empty, import_invalid, amount_out_of_range (an order's total above 999 999 999 999.99), and an order's line refusals in lines, the first of which is also code: too_many_lines, line_invalid, line_not_found, variant_not_found, variant_discontinued, packaging_not_found, quantity_invalid, price_invalid, discount_invalid, quantity_below_received, amount_out_of_range (a line's amount above 999 999 999 999.99). 404: not_found. 409: version_conflict (a stale revision or expectedUpdatedAt), order_not_draft, order_not_sent (the order is not sent or partially received), order_not_closed, order_has_receipts (a cancel of an order with something received), line_closed, line_kind_changed, currency_fixed (a currency change once a line has a price), supplier_inactive, supplier_changed (a sent order's supplier), supplier_item_exists, client_request_reused, proposal_gone (Create orders: a row no longer proposed as the screen showed it — on a draft or sent since, or its remaining changed; lines name the rows). Create orders' rows are refused in lines as an order's are, with supplier_item_not_found (the item is not the row variant's, or not known). 503: dependency_unavailable (a module Purchasing reads is not composed), sending_disabled (Communications is off, or no channel that can send is chosen) and mail_failed (the e-mail did not go out now; the change is made, and its mailing, written in the same transaction, stays queued for the purchasing.mail worker). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither. Receipts (delivery B): 400 line_not_receivable (a line that is not an open goods line of the order) and quantity_invalid (also a line whose received quantity would pass 999 999 999.999, acceptOver or not) in lines; 409 over_receipt (more than a line's remainder without acceptOver, the lines named), receipt_undone (an undo of a receipt undone already), receipt_invoiced (an undo that would leave a line with less received than invoiced) and line_not_deliverable (a delivered mark on a goods line). Inventory's refusals of a receipt or its undo keep Inventory's own codes, each line named by its index. */
+        /** @description An RFC 9457 problem with this module's refusal code (purchasing design §3). code names the rule that refused and is what a client keys off, never the words. 400: field errors (errors), supplier_not_found, site_not_found, site_archived, currency_invalid, series_start_too_low, send_channel_unknown, recipient_missing, order_empty, import_invalid, amount_out_of_range (an order's total above 999 999 999 999.99), and an order's line refusals in lines, the first of which is also code: too_many_lines, line_invalid, line_not_found, variant_not_found, variant_discontinued, packaging_not_found, quantity_invalid, price_invalid, discount_invalid, quantity_below_received, amount_out_of_range (a line's amount above 999 999 999 999.99). 404: not_found. 409: version_conflict (a stale revision or expectedUpdatedAt), order_not_draft, order_not_sent (the order is not sent or partially received), order_not_closed, order_has_receipts (a cancel of an order with something received), line_closed, line_kind_changed, currency_fixed (a currency change once a line has a price), supplier_inactive, supplier_changed (a sent order's supplier), supplier_item_exists, client_request_reused, proposal_gone (Create orders: a row no longer proposed as the screen showed it — on a draft or sent since, or its remaining changed; lines name the rows). Create orders' rows are refused in lines as an order's are, with supplier_item_not_found (the item is not the row variant's, or not known). 503: dependency_unavailable (a module Purchasing reads is not composed), sending_disabled (Communications is off, or no channel that can send is chosen) and mail_failed (the e-mail did not go out now; the change is made, and its mailing, written in the same transaction, stays queued for the purchasing.mail worker). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither. Receipts (delivery B): 400 line_not_receivable (a line that is not an open goods line of the order) and quantity_invalid (also a line whose received quantity would pass 999 999 999.999, acceptOver or not) in lines; 409 over_receipt (more than a line's remainder without acceptOver, the lines named), receipt_undone (an undo of a receipt undone already), receipt_invoiced (an undo that would leave a line with less received than invoiced) and line_not_deliverable (a delivered mark on a goods line). Inventory's refusals of a receipt or its undo keep Inventory's own codes, each line named by its index. The invoice match (delivery D): 400 invoice_line_unknown (no line of the invoice at the position) in lines, supplier_invoice_invalid (Accounting refused a field of Register invoice, named as the request's); 403 accounting_post_required (Register invoice without accounting:post); 409 invoice_reversed (a reversed invoice is not matched), invoice_supplier_differs (the order is another supplier's), invoice_currency_differs (the invoice is in another currency than the order), invoice_line_matched (the invoice line is matched to another order line; unmatch it first), over_invoiced (more than a line's received and not invoiced without acceptOver, the lines named), credit_exceeds_invoiced (a credit note matched for more than a line's invoiced, the lines named), nothing_to_match, nothing_to_invoice, and Accounting's refusals of the draft: books_not_set_up, supplier_account_missing (the supplier has no default account) and duplicate_supplier_invoice. */
         PurchasingProblem: {
             code?: string | null;
             detail?: string | null;
@@ -2697,6 +3056,55 @@ export interface operations {
             };
         };
     };
+    listPurchasingOrderInvoices: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orderId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchasingInvoiceOrderMatches"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["PurchasingProblem"];
+                };
+            };
+        };
+    };
     closePurchasingOrderLine: {
         parameters: {
             query?: never;
@@ -3244,6 +3652,87 @@ export interface operations {
             };
         };
     };
+    registerPurchasingInvoice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orderId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PurchasingInvoiceRegisterInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchasingInvoiceRegistration"];
+                };
+            };
+            /** @description Bad Request — field errors, supplier_invoice_invalid with Accounting's fields named as this request's. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["PurchasingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden — accounting_post_required, Register invoice without accounting:post (A1). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                    "application/problem+json": components["schemas"]["PurchasingProblem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["PurchasingProblem"];
+                };
+            };
+            /** @description Conflict — order_not_sent, nothing_to_invoice, books_not_set_up, supplier_account_missing (the supplier has no default account), duplicate_supplier_invoice, client_request_reused. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["PurchasingProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable (Accounting's supplier invoices are not composed). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["PurchasingProblem"];
+                };
+            };
+        };
+    };
     reopenPurchasingOrder: {
         parameters: {
             query?: never;
@@ -3723,6 +4212,90 @@ export interface operations {
             };
         };
     };
+    listPurchasingReceivedNotInvoiced: {
+        parameters: {
+            query?: {
+                /** @description The day the list is made as of; today in the business zone when left out. */
+                asOf?: string;
+                supplierId?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchasingInvoiceUninvoiced"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    exportPurchasingReceivedNotInvoiced: {
+        parameters: {
+            query?: {
+                /** @description The day the list is made as of; today in the business zone when left out. */
+                asOf?: string;
+                supplierId?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
     listPurchasingOrdersToReceive: {
         parameters: {
             query?: never;
@@ -3949,6 +4522,304 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getPurchasingInvoiceMatch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoiceId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchasingInvoicePanel"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["PurchasingProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable (Accounting's supplier invoices are not composed). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["PurchasingProblem"];
+                };
+            };
+        };
+    };
+    matchAllPurchasingInvoice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoiceId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PurchasingInvoiceMatchAllInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchasingInvoicePanel"];
+                };
+            };
+            /** @description Bad Request — field errors. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["PurchasingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["PurchasingProblem"];
+                };
+            };
+            /** @description Conflict — invoice_reversed, invoice_supplier_differs, invoice_currency_differs, order_not_sent, invoice_line_matched, over_invoiced (more than received without acceptOver, the lines named), credit_exceeds_invoiced (the lines named), nothing_to_match. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["PurchasingProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable (Accounting's supplier invoices are not composed). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["PurchasingProblem"];
+                };
+            };
+        };
+    };
+    matchPurchasingInvoice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoiceId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PurchasingInvoiceMatchInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchasingInvoicePanel"];
+                };
+            };
+            /** @description Bad Request — field errors; in lines, invoice_line_unknown (no line at the position), line_not_found (not a line of the order), quantity_invalid. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["PurchasingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["PurchasingProblem"];
+                };
+            };
+            /** @description Conflict — invoice_reversed, invoice_supplier_differs, invoice_currency_differs, order_not_sent, invoice_line_matched, over_invoiced (more than received without acceptOver, the lines named), credit_exceeds_invoiced (the lines named), nothing_to_match. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["PurchasingProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable (Accounting's supplier invoices are not composed). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["PurchasingProblem"];
+                };
+            };
+        };
+    };
+    unmatchPurchasingInvoice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoiceId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PurchasingInvoiceUnmatchInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchasingInvoicePanel"];
+                };
+            };
+            /** @description Bad Request — field errors. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["PurchasingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["PurchasingProblem"];
+                };
+            };
+            /** @description Conflict — nothing_to_match (nothing of what was named is matched). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["PurchasingProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable (Accounting's supplier invoices are not composed). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["PurchasingProblem"];
                 };
             };
         };

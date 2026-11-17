@@ -273,6 +273,7 @@ export const commonAnswers = (call: Call, metaOverrides: Partial<PurchasingMeta>
       items: [{ id: "00000000-0000-4000-8000-000000000001", displayName: "Kari Innkjøper" }],
     });
   if (/\/history$/.test(call.url)) return jsonResponse(200, { changes: [], documents: [], mailings: [] });
+  if (/\/orders\/\d+\/invoices$/.test(call.url)) return jsonResponse(200, { linesVisible: true, matches: [] });
   if (call.url.startsWith("/api/v1/purchasing/suppliers?"))
     return jsonResponse(200, { items: [supplier(), supplier({ id: 41, number: 2002, name: "Bolter AS" })] });
   return undefined;

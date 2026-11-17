@@ -13,6 +13,7 @@ import { render } from "@testing-library/react";
 import type { ReactNode } from "react";
 import "../i18n";
 import { ProductSuppliersCard } from "../components/product-suppliers-card";
+import { PurchaseOrderPanel } from "../components/purchase-order-panel";
 import type { PurchasingAccess } from "../lib/access";
 import {
   NEW_PURCHASE_ORDER_ROUTE_PATH,
@@ -20,6 +21,7 @@ import {
   PURCHASE_ORDER_ROUTE_PATH,
   PURCHASE_ORDERS_ROUTE_PATH,
   RECEIVE_PURCHASE_ORDER_ROUTE_PATH,
+  RECEIVED_NOT_INVOICED_ROUTE_PATH,
   RECEIVING_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
   SUPPLIER_ROUTE_PATH,
@@ -34,6 +36,7 @@ import { ReceivePurchaseOrderPage } from "../pages/receive";
 import { ReceivingPage } from "../pages/receiving";
 import { PurchasingSettingsPage } from "../pages/settings";
 import { type RenderSupplierForm, SupplierPage, SuppliersPage } from "../pages/suppliers";
+import { ReceivedNotInvoicedPage } from "../pages/uninvoiced";
 
 /** Everything allowed, as an owner's session answers: the default of the page tests. */
 export const fullAccess: PurchasingAccess = {
@@ -43,6 +46,8 @@ export const fullAccess: PurchasingAccess = {
   canManageSettings: true,
   canReceive: true,
   canRead: true,
+  canMatchInvoices: true,
+  canRegisterInvoices: true,
   canOpenInventoryMovements: true,
   userId: "00000000-0000-4000-8000-000000000001",
 };
@@ -109,6 +114,7 @@ const routeTree = (access: PurchasingAccess, renderSupplierForm?: RenderSupplier
     route(SUPPLIERS_ROUTE_PATH, () => <SuppliersPage renderSupplierForm={renderSupplierForm} />),
     supplierRoute,
     route(SETTINGS_ROUTE_PATH, () => <PurchasingSettingsPage access={access} />),
+    route(RECEIVED_NOT_INVOICED_ROUTE_PATH, () => <ReceivedNotInvoicedPage />),
     route("/here", () => extra),
     // Other apps' routes the pages link to.
     route("/accounting/suppliers/$supplierId", () => <p>Accounting's supplier</p>),
@@ -144,3 +150,7 @@ export const renderRoute = (
 /** Mounts the product page's card at `/here`, as the host composes it. */
 export const renderProductSuppliers = (variantIds: number[]) =>
   mount("/here", fullAccess, undefined, <ProductSuppliersCard variantIds={variantIds} />);
+
+/** Mounts the Purchase order panel at `/here`, as the host composes it on Accounting's supplier-invoice page. */
+export const renderInvoicePanel = (invoiceId: number, canMatch = true) =>
+  mount("/here", fullAccess, undefined, <PurchaseOrderPanel invoiceId={invoiceId} canMatch={canMatch} />);

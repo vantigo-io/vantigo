@@ -11,6 +11,8 @@ export const SUPPLIERS_ROUTE_PATH = "/purchasing/suppliers";
 export const SUPPLIER_ROUTE_PATH = "/purchasing/suppliers/$supplierId";
 export const SETTINGS_ROUTE_PATH = "/purchasing/settings";
 export const PROPOSALS_ROUTE_PATH = "/purchasing/proposals";
+/** Received, not invoiced, as of a day (P41). */
+export const RECEIVED_NOT_INVOICED_ROUTE_PATH = "/purchasing/received-not-invoiced";
 
 export const purchaseOrderLinkOptions = (orderId: number) => ({
   to: PURCHASE_ORDER_ROUTE_PATH,
