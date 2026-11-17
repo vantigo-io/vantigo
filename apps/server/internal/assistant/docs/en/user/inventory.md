@@ -855,6 +855,14 @@ says so under the quantity:
 - *25 needed, rounded up to 2 cases of 15 = 30, 5 above the maximum of 40* — when the
   rounding passes the maximum, by how much.
 
+### Order from the list
+
+When Purchasing is on and you may manage purchase orders, each row ends with **Order…**:
+it opens Purchasing's [purchase proposals](/en/user/purchasing/#purchase-proposals) for the
+item at that site, where you choose the supplier and the quantity in its packaging and
+make a draft purchase order. Where Manufacturing is on, the proposals come from its buy
+suggestions rather than from this list, so a manufactured item may have none.
+
 ### Create a transfer from the list
 
 With **Transfer stock**, each row has a checkbox. Tick the rows of **one** site — the

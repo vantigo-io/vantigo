@@ -1,6 +1,6 @@
 ---
 title: Purchasing
-description: The Purchasing app — the purchase order list and its filters; make a purchase order for a supplier and a receiving site, with product lines filled from the supplier's items and text lines; send it by e-mail, mark it as sent or send it again; record the supplier's confirmation; change a sent order and read its history; close a line or the whole order, reopen it, cancel it or copy it; the PDF; the suppliers and what each sells — supplier items, the preferred supplier and the price-list import with its CSV columns; the settings; the dashboard card and the product page's Suppliers card; receiving the goods — the receive screen and scanning, more or less than ordered, the order's receipts, undoing a receipt and marking a text or service line delivered; and what comes later — proposals and the invoice match.
+description: The Purchasing app — the purchase order list and its filters; make a purchase order for a supplier and a receiving site, with product lines filled from the supplier's items and text lines; send it by e-mail, mark it as sent or send it again; record the supplier's confirmation; change a sent order and read its history; close a line or the whole order, reopen it, cancel it or copy it; the PDF; the suppliers and what each sells — supplier items, the preferred supplier and the price-list import with its CSV columns; the settings; the purchase proposals from low stock or Manufacturing's buy suggestions, and Create orders with Order… from those screens; the dashboard card and the product page's Suppliers card; receiving the goods — the receive screen and scanning, more or less than ordered, the order's receipts, undoing a receipt and marking a text or service line delivered; and what comes later — the invoice match.
 sidebar:
   order: 68
 sources:
@@ -17,10 +17,10 @@ Norwegian the app is **Innkjøp**. A **purchase order** says what you buy from w
 what price and when you expect it; a **supplier item** says what a supplier sells of one
 of your products, at what price, in which packaging and with which lead time.
 
-A purchase order moves neither stock nor the books. You order and follow up, and when the
-goods arrive you [receive them](#receive-the-goods), which puts them in stock in
-Inventory; proposals from low stock and matching the supplier's invoice to the order come
-later ([What comes later](#what-comes-later)). Purchasing buys
+A purchase order moves neither stock nor the books. You order and follow up, make draft
+orders from [purchase proposals](#purchase-proposals), and when the goods arrive you
+[receive them](#receive-the-goods), which puts them in stock in Inventory; matching the
+supplier's invoice to the order comes later ([What comes later](#what-comes-later)). Purchasing buys
 from the suppliers in [Accounting](/en/user/accounting/#suppliers)'s register and orders
 the products of [Products](/en/user/products/) for a site of
 [Inventory](/en/user/inventory/), so an installation has all three when it has
@@ -28,7 +28,7 @@ Purchasing.
 
 ## The app and its sidebar
 
-The sidebar has **Purchase orders** and **Suppliers** for everyone with **Use Purchasing**,
+The sidebar has **Purchase orders**, **Proposals** and **Suppliers** for everyone with **Use Purchasing**,
 **Receive** for everyone with **Receive goods**, and **Purchasing settings** for those who
 manage the Purchasing settings. What you can do depends on
 your permissions: writing orders, sending them and keeping the supplier items are
@@ -339,6 +339,66 @@ nothing. On a sent order, **Download PDF** gives the PDF stored when it was sent
 sent again; a revised one is marked **Revised**, a
 cancellation **Cancelled**.
 
+## Purchase proposals
+
+**Proposals** in the sidebar lists what should be bought now, one row per product and
+site. Where [Manufacturing](/en/user/manufacturing/#replenishment-suggestions) is on, the
+rows are its buy suggestions from the last replenishment run, which count what is being
+made and what sales orders need; where it is not, they are Inventory's
+[low-stock list](/en/user/inventory/#the-low-stock-list). A product Manufacturing makes is
+never proposed for purchase. The line under the list says which of the two it is:
+*From Manufacturing's buy suggestions.* or *From Inventory's low stock.*
+
+Each row shows:
+
+- **Product** and **Site**.
+- **Needed** — what is still to buy, in the product's unit: the need less what is already
+  on draft purchase orders for the product and the site, and less what was ordered for the
+  site since the suggestions were computed. When something was taken off, the row says so:
+  *33 needed, 10 on drafts, 0 ordered since*. A product covered so is no row.
+- **Supplier** — every active supplier with a supplier item of the product, the preferred
+  first, with the supplier's item number. Choosing another changes the quantity and the
+  price.
+- **Quantity** — in the supplier's purchase packaging, rounded up once: to whole
+  packagings, then to the supplier item's minimum, then to its multiple. Under it, the same
+  in the product's unit. You may type another quantity, more than 0 with at most three
+  decimals.
+- **Price** — the supplier item's price per purchase packaging, or *No price*. A price
+  that is not in the supplier's currency is shown in orange: the order line gets no price
+  from it.
+- **Order by** — the day it is needed, or today, less the supplier's lead time, marked
+  **Late** when it has passed.
+
+A product with no supplier item is listed apart under **No supplier**: it cannot be
+ordered here. Add a supplier item on its supplier's page ([Supplier
+items](#supplier-items)) and it gets a supplier on the list.
+
+### Create orders from proposals
+
+1. Tick the rows to order, and change the supplier or the quantity where you need.
+2. Click **Create orders**. It says how many rows are ticked: *Create orders (3 rows)*.
+
+One draft purchase order is made per supplier and site — or, when you already have a draft
+for that supplier and site, the lines are added to the oldest one, where a line of the
+same product in the same packaging gets the quantity added. Each line takes the supplier's
+item number, packaging, price and expected day, as a new line in the editor does
+([Lines](#lines)). The page then links each draft, *Draft for Norsk Stål AS*: open it,
+check it and send it ([Send the order](#send-the-order)). Nothing is sent from the
+proposals, and nothing is ordered by itself. The draft's history shows **Lines from
+proposals**.
+
+What is on a draft is taken off the proposals at once, so clicking twice orders nothing
+twice: when a ticked row is no longer proposed — it is on a draft, or was ordered, since
+the list was loaded — nothing is made, the page says so on the row and above the list, and
+loads the list again.
+
+**Order…** on a row of Inventory's low-stock list and on a buy suggestion in Manufacturing
+opens the proposals for that product and site; **Show all** goes back to every row. It is
+there when Purchasing is on and you may manage purchase orders.
+
+Seeing the proposals needs **Use Purchasing**; creating orders from them needs **Manage
+purchase orders** as well.
+
 ## Suppliers and their items
 
 **Suppliers** lists the suppliers in Accounting's register, with how many supplier items
@@ -460,8 +520,8 @@ deleted.
 
 | Permission | Lets you |
 | --- | --- |
-| **Use Purchasing** (`purchasing:access`) | Open the app and read every order, supplier and supplier item, prices included, and download the PDFs. |
-| **Manage purchase orders** (`purchasing:orders-manage`) | Write and delete drafts, change sent orders, record the confirmation, close a line or an order, reopen and copy. |
+| **Use Purchasing** (`purchasing:access`) | Open the app and read every order, supplier and supplier item, prices included, and the proposals, and download the PDFs. |
+| **Manage purchase orders** (`purchasing:orders-manage`) | Write and delete drafts, create orders from proposals, change sent orders, record the confirmation, close a line or an order, reopen and copy. |
 | **Send purchase orders** (`purchasing:orders-send`) | Send, mark as sent, send again and cancel. |
 | **Receive goods** (`purchasing:receive`) | See **Receive** — the orders to receive —, receive goods against purchase orders, undo a receipt, and mark a text or service line delivered. Alone, without **Use Purchasing**, it shows no prices. |
 | **Manage supplier items** (`purchasing:supplier-items-manage`) | Add, change, delete and import supplier items. |
@@ -472,8 +532,6 @@ a role; it does nothing yet, and is used once the invoice match arrives.
 
 ## What comes later
 
-- **Proposals** — draft orders made from low stock and from Manufacturing's buy
-  suggestions, per preferred supplier.
 - **The invoice match** — the supplier's invoice in Accounting matched to its order, and
   what differs.
 

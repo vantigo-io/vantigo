@@ -1347,9 +1347,12 @@ earlier suggestion still a draft or open at the site, which is then listed with 
 from an earlier suggestion is open*. Creating orders needs **Manage manufacturing orders**.
 
 **Dismiss** hides a suggestion until the next run, which suggests it again if it is still
-needed. Buy rows cannot be made into purchase orders yet — Purchasing takes them as proposals in
-a later delivery — but
-**Export buy suggestions** downloads them as a CSV file to order from.
+needed. A buy row is bought, not made: when Purchasing is on and you may manage purchase
+orders, it has **Order…**, which opens Purchasing's
+[purchase proposals](/en/user/purchasing/#purchase-proposals) for the product at the site —
+the buy suggestions are those proposals, less what is on draft purchase orders and what
+was ordered since the run. **Export buy suggestions** downloads them as a CSV file to order
+from.
 
 ### Automatic creation
 
