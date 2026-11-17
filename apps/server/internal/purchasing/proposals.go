@@ -633,8 +633,13 @@ func (s *server) addProposalLines(ctx context.Context, txq *store.Queries, o sto
 	}
 	existing := map[int64]store.PurchasingOrderLine{}
 	var in []lineInput
+	var gone []lineFailure
 	for _, i := range g.rows {
 		r := rows[i]
+		if it, ok := items[r.VariantId]; !ok || it.ID != r.SupplierItemId {
+			gone = append(gone, lineFailure{index: i, code: codeSupplierItemNotFound,
+				detail: fmt.Sprintf("Variant %d has no supplier item %d any more", r.VariantId, r.SupplierItemId)})
+		}
 		in = append(in, lineInput{PurchasingLineInput: gen.PurchasingLineInput{Kind: gen.PurchasingLineInputKindVariant,
 			VariantId: &r.VariantId, OrderQuantity: r.OrderQuantity}, keys: map[string]bool{}})
 		v, ok := variants[r.VariantId]
@@ -652,6 +657,9 @@ func (s *server) addProposalLines(ctx context.Context, txq *store.Queries, o sto
 				break
 			}
 		}
+	}
+	if len(gone) > 0 {
+		return 0, refuseLines(invalidProposalsTitle, gone)
 	}
 	planned, failures, err := planLines(lineContext{currency: o.Currency, orderDate: o.OrderDate.Time, variants: variants,
 		items: items, existing: existing}, in)
