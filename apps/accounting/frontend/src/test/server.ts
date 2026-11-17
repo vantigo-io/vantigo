@@ -750,6 +750,11 @@ export const stubAccountingApi = (change: Partial<ApiState> = {}): StubbedFetch 
       const found = state.suppliers.find((x) => x.id === Number(supplierId[1]));
       return found ? jsonResponse(200, found) : new Response(null, { status: 404 });
     }
+    if (supplierId && method === "PUT") {
+      const found =
+        state.suppliers.find((x) => x.id === Number(supplierId[1])) ?? supplier({ id: Number(supplierId[1]) });
+      return jsonResponse(200, { ...found, ...JSON.parse(String(init?.body)), revision: found.revision + 1 });
+    }
     const anonymise = /^\/suppliers\/(\d+)\/anonymise$/.exec(path);
     if (anonymise && method === "POST") {
       const found = state.suppliers.find((x) => x.id === Number(anonymise[1])) ?? supplier();
