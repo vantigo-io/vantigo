@@ -14,7 +14,7 @@ import (
 )
 
 const addInvoiced = `-- name: AddInvoiced :exec
-UPDATE purchasing.order_lines SET invoiced = GREATEST(invoiced + $1::numeric, 0) WHERE id = $2
+UPDATE purchasing.order_lines SET invoiced = invoiced + $1::numeric WHERE id = $2
 `
 
 type AddInvoicedParams struct {
@@ -23,9 +23,9 @@ type AddInvoicedParams struct {
 }
 
 // AddInvoiced moves an order line's invoiced quantity by delta (a credit
-// note's and a release's negative), never below 0: the match is judged
-// under the order's row lock, so the floor only keeps a handler from ever
-// failing on the CHECK (A14).
+// note's and a release's negative). Every caller judges, under the order's
+// row lock, that it stays at 0 or more (A14), so it always equals the sum of
+// the line's matches.
 func (q *Queries) AddInvoiced(ctx context.Context, arg AddInvoicedParams) error {
 	_, err := q.db.Exec(ctx, addInvoiced, arg.Delta, arg.ID)
 	return err
@@ -755,9 +755,8 @@ func (q *Queries) ReceivedAsOf(ctx context.Context, arg ReceivedAsOfParams) ([]R
 
 const refreshMatchFacts = `-- name: RefreshMatchFacts :exec
 UPDATE purchasing.invoice_matches SET line_net = $1, invoice_number = $2,
-    invoice_date = $3, invoice_currency = $4, kind = $5,
-    updated_at = $6
-WHERE id = $7
+    invoice_date = $3, invoice_currency = $4, updated_at = $5
+WHERE id = $6
 `
 
 type RefreshMatchFactsParams struct {
@@ -765,7 +764,6 @@ type RefreshMatchFactsParams struct {
 	InvoiceNumber string
 	InvoiceDate   pgtype.Date
 	Currency      string
-	Kind          string
 	Now           time.Time
 	ID            int64
 }
@@ -778,7 +776,6 @@ func (q *Queries) RefreshMatchFacts(ctx context.Context, arg RefreshMatchFactsPa
 		arg.InvoiceNumber,
 		arg.InvoiceDate,
 		arg.Currency,
-		arg.Kind,
 		arg.Now,
 		arg.ID,
 	)

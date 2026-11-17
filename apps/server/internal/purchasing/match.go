@@ -467,7 +467,7 @@ func (s *server) allocate(ctx context.Context, inv *contracts.SupplierInvoice, o
 			l := lines[a.orderLineID]
 			after := new(big.Rat).Add(ratOrZero(l.Invoiced), delta[a.orderLineID])
 			switch {
-			case inv.Kind == creditNoteKind && after.Sign() < 0:
+			case after.Sign() < 0:
 				credit = append(credit, lineFailure{index: a.index, code: codeCreditExceedsInvoiced, detail: fmt.Sprintf(
 					"%s: %s %s is invoiced; the credit note would take it below nothing.", l.Name, trimmed(ratOrZero(l.Invoiced), quantityPlaces), l.Unit)})
 			case inv.Kind != creditNoteKind && !acceptOver && delta[a.orderLineID].Sign() > 0 && after.Cmp(billable(l)) > 0:
@@ -477,7 +477,7 @@ func (s *server) allocate(ctx context.Context, inv *contracts.SupplierInvoice, o
 		}
 		if len(credit) > 0 {
 			return conflictLines("The credit note is more than is invoiced", codeCreditExceedsInvoiced,
-				"A credit note lowers what is invoiced on a line, never below nothing.", credit)
+				"A credit note lowers what is invoiced on a line, never below nothing: unmatch the credit note first.", credit)
 		}
 		if len(over) > 0 {
 			return conflictLines("More than is received", codeOverInvoiced,
@@ -644,8 +644,24 @@ func (s *server) MatchAllPurchasingInvoice(ctx context.Context, req gen.MatchAll
 }
 
 // releaseMatches deletes matches and takes them off their lines' invoiced
-// quantities, the orders already locked.
+// quantities, the orders already locked. A release that would leave a line
+// invoiced below nothing — an invoice's match a credit note offsets — is
+// refused with credit_exceeds_invoiced; the caller judges it first
+// (releasable) where it cannot refuse.
 func releaseMatches(ctx context.Context, txq *store.Queries, matches []store.PurchasingInvoiceMatch) error {
+	if len(matches) == 0 {
+		return nil
+	}
+	left, err := invoicedAfter(ctx, txq, matches)
+	if err != nil {
+		return err
+	}
+	for id, v := range left {
+		if v.Sign() < 0 {
+			return conflict(codeCreditExceedsInvoiced, "A credit note stands on the line",
+				fmt.Sprintf("Order line %d would be left invoiced below nothing: unmatch the credit note first.", id))
+		}
+	}
 	for _, m := range matches {
 		if err := txq.DeleteMatch(ctx, m.ID); err != nil {
 			return fmt.Errorf("purchasing: release match %d: %w", m.ID, err)
@@ -656,6 +672,60 @@ func releaseMatches(ctx context.Context, txq *store.Queries, matches []store.Pur
 		}
 	}
 	return nil
+}
+
+// invoicedAfter is each line's invoiced quantity once the matches are
+// released, read under the orders' locks.
+func invoicedAfter(ctx context.Context, txq *store.Queries, matches []store.PurchasingInvoiceMatch) (map[int64]*big.Rat, error) {
+	lines, err := txq.OrderLinesOf(ctx, distinctOrders(matches))
+	if err != nil {
+		return nil, fmt.Errorf("purchasing: read the matched lines: %w", err)
+	}
+	out := map[int64]*big.Rat{}
+	for _, l := range lines {
+		out[l.ID] = ratOrZero(l.Invoiced)
+	}
+	after := map[int64]*big.Rat{}
+	for _, m := range matches {
+		if _, ok := after[m.OrderLineID]; !ok {
+			after[m.OrderLineID] = new(big.Rat).Set(out[m.OrderLineID])
+		}
+		after[m.OrderLineID].Sub(after[m.OrderLineID], signed(m.Kind, ratOrZero(m.Quantity)))
+	}
+	return after, nil
+}
+
+// releasable is the matches a handler or the worker may release: those whose
+// release leaves every line invoiced at nothing or more. A match it keeps —
+// an invoice's a credit note offsets — stays, with its warnings, for a
+// person to unmatch; a handler never fails on the CHECK (A14).
+func releasable(ctx context.Context, txq *store.Queries, matches []store.PurchasingInvoiceMatch) ([]store.PurchasingInvoiceMatch, error) {
+	if len(matches) == 0 {
+		return nil, nil
+	}
+	lines, err := txq.OrderLinesOf(ctx, distinctOrders(matches))
+	if err != nil {
+		return nil, fmt.Errorf("purchasing: read the matched lines: %w", err)
+	}
+	now := map[int64]*big.Rat{}
+	for _, l := range lines {
+		now[l.ID] = ratOrZero(l.Invoiced)
+	}
+	var out []store.PurchasingInvoiceMatch
+	// Credit notes' first: releasing one raises what is invoiced.
+	ordered := append([]store.PurchasingInvoiceMatch{}, matches...)
+	slices.SortStableFunc(ordered, func(a, b store.PurchasingInvoiceMatch) int {
+		return signed(a.Kind, big.NewRat(1, 1)).Cmp(signed(b.Kind, big.NewRat(1, 1)))
+	})
+	for _, m := range ordered {
+		after := new(big.Rat).Sub(now[m.OrderLineID], signed(m.Kind, ratOrZero(m.Quantity)))
+		if after.Sign() < 0 {
+			continue
+		}
+		now[m.OrderLineID] = after
+		out = append(out, m)
+	}
+	return out, nil
 }
 
 // lockOrdersOf locks the orders of the matches, in id order.
