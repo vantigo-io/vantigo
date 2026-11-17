@@ -7,6 +7,7 @@ sources:
   - apps/server/internal/openapi/specs/purchasing.yaml
   - apps/server/internal/db/migrations/00189_purchasing_baseline.sql
   - apps/server/internal/db/migrations/00190_purchasing_receipts.sql
+  - apps/server/internal/db/migrations/00191_purchasing_proposal_requests.sql
   - apps/server/internal/contracts/events_purchasing.go
 ---
 The Purchasing module keeps what the business buys: what each supplier sells of the
