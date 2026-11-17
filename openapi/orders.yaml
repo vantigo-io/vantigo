@@ -8419,6 +8419,7 @@ paths:
             tags:
                 - Orders
             x-vantigo-access: "permission:orders:access"
+            x-vantigo-api: read
     /api/v1/orders/shipping/site-defaults:
         get:
             description: The default carrier account per site (O51).

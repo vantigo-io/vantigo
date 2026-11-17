@@ -5963,6 +5963,7 @@ paths:
             tags:
                 - Accounting
             x-vantigo-access: permission:accounting:post+accounting:read
+            x-vantigo-api: read
             x-vantigo-assistant: never
     /api/v1/accounting/bank/accounts/{id}/reconciliation:
         get:
@@ -10477,6 +10478,7 @@ paths:
             tags:
                 - Accounting
             x-vantigo-access: permission:accounting:post+accounting:read
+            x-vantigo-api: read
             x-vantigo-assistant: auto
     /api/v1/accounting/vouchers/{id}:
         get:

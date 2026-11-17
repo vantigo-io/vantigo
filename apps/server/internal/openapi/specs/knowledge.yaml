@@ -2127,6 +2127,7 @@ paths:
             tags:
                 - Knowledge
             x-vantigo-access: permission:knowledge:articles
+            x-vantigo-api: read
             x-vantigo-assistant: never
     /api/v1/knowledge/search:
         get:
