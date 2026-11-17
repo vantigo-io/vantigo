@@ -458,3 +458,41 @@ WHERE p.voucher_id = sqlc.arg(voucher_id) AND a.system_role = sqlc.arg(role)::va
 -- that is not reversed.
 SELECT EXISTS (SELECT 1 FROM accounting.supplier_invoices
     WHERE source_expense_entry_id = sqlc.arg(entry_id)::bigint AND state <> 'reversed')::boolean AS invoiced;
+
+-- name: LockSupplierForUpdate :one
+-- LockSupplierForUpdate takes a supplier FOR UPDATE before its delete or its
+-- anonymisation asks the holders (purchasing design A8, rule 28): a writer
+-- that holds it FOR SHARE (LockSuppliers) has committed, or waits.
+SELECT id FROM accounting.suppliers WHERE id = sqlc.arg(id) FOR UPDATE;
+
+-- name: DirectorySuppliers :many
+-- DirectorySuppliers is the suppliers named, for the supplier directory.
+SELECT id, number, name, organisation_number, country, address_line, postal_code, city, email, currency,
+    payment_terms_days, active, is_person, anonymised_at
+FROM accounting.suppliers WHERE id = ANY(sqlc.arg(ids)::bigint[]);
+
+-- name: LockDirectorySuppliers :many
+-- LockDirectorySuppliers takes FOR SHARE on the suppliers named, in id
+-- order, on the caller's transaction (SupplierDirectory.LockSuppliers).
+SELECT id, number, name, organisation_number, country, address_line, postal_code, city, email, currency,
+    payment_terms_days, active, is_person, anonymised_at
+FROM accounting.suppliers WHERE id = ANY(sqlc.arg(ids)::bigint[])
+ORDER BY id FOR SHARE;
+
+-- name: SearchDirectorySuppliers :many
+-- SearchDirectorySuppliers is the suppliers whose name holds the query,
+-- ignoring case, or whose number or organisation number is it, by number.
+SELECT id, number, name, organisation_number, country, address_line, postal_code, city, email, currency,
+    payment_terms_days, active, is_person, anonymised_at
+FROM accounting.suppliers s
+WHERE s.name ILIKE '%' || replace(replace(replace(sqlc.arg(q)::text, '\', '\\'), '%', '\%'), '_', '\_') || '%'
+   OR s.number::text = sqlc.arg(q)::text OR s.organisation_number = sqlc.arg(q)::text
+ORDER BY s.number
+LIMIT sqlc.arg(row_limit);
+
+-- name: SaftMatchSuppliers :many
+-- SaftMatchSuppliers is every supplier of the register, for a SAF-T
+-- import's matching of the file's suppliers (purchasing design A2).
+SELECT id, number, name, organisation_number, country
+FROM accounting.suppliers
+ORDER BY number;

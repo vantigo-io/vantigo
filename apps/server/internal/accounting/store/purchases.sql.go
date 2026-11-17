@@ -110,6 +110,65 @@ func (q *Queries) DeleteSupplierInvoiceLines(ctx context.Context, id int64) erro
 	return err
 }
 
+const directorySuppliers = `-- name: DirectorySuppliers :many
+SELECT id, number, name, organisation_number, country, address_line, postal_code, city, email, currency,
+    payment_terms_days, active, is_person, anonymised_at
+FROM accounting.suppliers WHERE id = ANY($1::bigint[])
+`
+
+type DirectorySuppliersRow struct {
+	ID                 int64
+	Number             int32
+	Name               string
+	OrganisationNumber *string
+	Country            string
+	AddressLine        *string
+	PostalCode         *string
+	City               *string
+	Email              *string
+	Currency           string
+	PaymentTermsDays   int16
+	Active             bool
+	IsPerson           bool
+	AnonymisedAt       *time.Time
+}
+
+// DirectorySuppliers is the suppliers named, for the supplier directory.
+func (q *Queries) DirectorySuppliers(ctx context.Context, ids []int64) ([]DirectorySuppliersRow, error) {
+	rows, err := q.db.Query(ctx, directorySuppliers, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []DirectorySuppliersRow
+	for rows.Next() {
+		var i DirectorySuppliersRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Number,
+			&i.Name,
+			&i.OrganisationNumber,
+			&i.Country,
+			&i.AddressLine,
+			&i.PostalCode,
+			&i.City,
+			&i.Email,
+			&i.Currency,
+			&i.PaymentTermsDays,
+			&i.Active,
+			&i.IsPerson,
+			&i.AnonymisedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const expenseInvoiced = `-- name: ExpenseInvoiced :one
 SELECT EXISTS (SELECT 1 FROM accounting.supplier_invoices
     WHERE source_expense_entry_id = $1::bigint AND state <> 'reversed')::boolean AS invoiced
@@ -910,6 +969,81 @@ func (q *Queries) ListSuppliers(ctx context.Context, arg ListSuppliersParams) ([
 	return items, nil
 }
 
+const lockDirectorySuppliers = `-- name: LockDirectorySuppliers :many
+SELECT id, number, name, organisation_number, country, address_line, postal_code, city, email, currency,
+    payment_terms_days, active, is_person, anonymised_at
+FROM accounting.suppliers WHERE id = ANY($1::bigint[])
+ORDER BY id FOR SHARE
+`
+
+type LockDirectorySuppliersRow struct {
+	ID                 int64
+	Number             int32
+	Name               string
+	OrganisationNumber *string
+	Country            string
+	AddressLine        *string
+	PostalCode         *string
+	City               *string
+	Email              *string
+	Currency           string
+	PaymentTermsDays   int16
+	Active             bool
+	IsPerson           bool
+	AnonymisedAt       *time.Time
+}
+
+// LockDirectorySuppliers takes FOR SHARE on the suppliers named, in id
+// order, on the caller's transaction (SupplierDirectory.LockSuppliers).
+func (q *Queries) LockDirectorySuppliers(ctx context.Context, ids []int64) ([]LockDirectorySuppliersRow, error) {
+	rows, err := q.db.Query(ctx, lockDirectorySuppliers, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []LockDirectorySuppliersRow
+	for rows.Next() {
+		var i LockDirectorySuppliersRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Number,
+			&i.Name,
+			&i.OrganisationNumber,
+			&i.Country,
+			&i.AddressLine,
+			&i.PostalCode,
+			&i.City,
+			&i.Email,
+			&i.Currency,
+			&i.PaymentTermsDays,
+			&i.Active,
+			&i.IsPerson,
+			&i.AnonymisedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const lockSupplierForUpdate = `-- name: LockSupplierForUpdate :one
+SELECT id FROM accounting.suppliers WHERE id = $1 FOR UPDATE
+`
+
+// LockSupplierForUpdate takes a supplier FOR UPDATE before its delete or its
+// anonymisation asks the holders (purchasing design A8, rule 28): a writer
+// that holds it FOR SHARE (LockSuppliers) has committed, or waits.
+func (q *Queries) LockSupplierForUpdate(ctx context.Context, id int64) (int64, error) {
+	row := q.db.QueryRow(ctx, lockSupplierForUpdate, id)
+	var id_2 int64
+	err := row.Scan(&id_2)
+	return id_2, err
+}
+
 const lockSupplierInvoice = `-- name: LockSupplierInvoice :one
 SELECT id, supplier_id, kind, supplier_number, invoice_date, due_date, currency, coalesce(exchange_rate::text, '')::text AS exchange_rate,
     total::text AS total, coalesce(total_nok::text, '')::text AS total_nok, kid, reference, description, state, credits_invoice_id,
@@ -1323,6 +1457,117 @@ func (q *Queries) ResolveUnpostedBySource(ctx context.Context, arg ResolveUnpost
 		arg.SourcePart,
 	)
 	return err
+}
+
+const saftMatchSuppliers = `-- name: SaftMatchSuppliers :many
+SELECT id, number, name, organisation_number, country
+FROM accounting.suppliers
+ORDER BY number
+`
+
+type SaftMatchSuppliersRow struct {
+	ID                 int64
+	Number             int32
+	Name               string
+	OrganisationNumber *string
+	Country            string
+}
+
+// SaftMatchSuppliers is every supplier of the register, for a SAF-T
+// import's matching of the file's suppliers (purchasing design A2).
+func (q *Queries) SaftMatchSuppliers(ctx context.Context) ([]SaftMatchSuppliersRow, error) {
+	rows, err := q.db.Query(ctx, saftMatchSuppliers)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SaftMatchSuppliersRow
+	for rows.Next() {
+		var i SaftMatchSuppliersRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Number,
+			&i.Name,
+			&i.OrganisationNumber,
+			&i.Country,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const searchDirectorySuppliers = `-- name: SearchDirectorySuppliers :many
+SELECT id, number, name, organisation_number, country, address_line, postal_code, city, email, currency,
+    payment_terms_days, active, is_person, anonymised_at
+FROM accounting.suppliers s
+WHERE s.name ILIKE '%' || replace(replace(replace($1::text, '\', '\\'), '%', '\%'), '_', '\_') || '%'
+   OR s.number::text = $1::text OR s.organisation_number = $1::text
+ORDER BY s.number
+LIMIT $2
+`
+
+type SearchDirectorySuppliersParams struct {
+	Q        string
+	RowLimit int32
+}
+
+type SearchDirectorySuppliersRow struct {
+	ID                 int64
+	Number             int32
+	Name               string
+	OrganisationNumber *string
+	Country            string
+	AddressLine        *string
+	PostalCode         *string
+	City               *string
+	Email              *string
+	Currency           string
+	PaymentTermsDays   int16
+	Active             bool
+	IsPerson           bool
+	AnonymisedAt       *time.Time
+}
+
+// SearchDirectorySuppliers is the suppliers whose name holds the query,
+// ignoring case, or whose number or organisation number is it, by number.
+func (q *Queries) SearchDirectorySuppliers(ctx context.Context, arg SearchDirectorySuppliersParams) ([]SearchDirectorySuppliersRow, error) {
+	rows, err := q.db.Query(ctx, searchDirectorySuppliers, arg.Q, arg.RowLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SearchDirectorySuppliersRow
+	for rows.Next() {
+		var i SearchDirectorySuppliersRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Number,
+			&i.Name,
+			&i.OrganisationNumber,
+			&i.Country,
+			&i.AddressLine,
+			&i.PostalCode,
+			&i.City,
+			&i.Email,
+			&i.Currency,
+			&i.PaymentTermsDays,
+			&i.Active,
+			&i.IsPerson,
+			&i.AnonymisedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const setUnpostedNokAmounts = `-- name: SetUnpostedNokAmounts :exec

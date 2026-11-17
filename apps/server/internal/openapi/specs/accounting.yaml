@@ -8981,6 +8981,9 @@ paths:
                         application/json:
                             schema:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
                     description: Forbidden — suppliers_manage_required; supplier_fields_need_post, a field of the books' without accounting:post.
                 "409":
                     content:
@@ -9034,6 +9037,9 @@ paths:
                         application/json:
                             schema:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
                     description: Forbidden — suppliers_manage_required, neither accounting:suppliers-manage nor accounting:post.
                 "409":
                     content:
@@ -9172,6 +9178,9 @@ paths:
                         application/json:
                             schema:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/AccountingProblem'
                     description: Forbidden — suppliers_manage_required; supplier_fields_need_post.
                 "404":
                     description: Not Found

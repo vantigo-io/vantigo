@@ -301,6 +301,12 @@ type importParty struct {
 	// supplier: what is kept, and what was dropped.
 	fields supplierFields
 	notes  []string
+	// supplier: the register's supplier Apply takes it as (purchasing design
+	// A2), nil for a new one; how it was found, and the candidates of an
+	// ambiguous name.
+	supplierMatch string
+	supplier      *store.SaftMatchSuppliersRow
+	candidates    []store.SaftMatchSuppliersRow
 }
 
 // importPlan is everything Apply writes, and what stands in its way.
@@ -750,6 +756,9 @@ func (s *server) plan(ctx context.Context, row store.AccountingSaftImport, body 
 		}
 		sp.fields = f
 	}
+	if err := s.matchSuppliers(ctx, p, body); err != nil {
+		return nil, err
+	}
 
 	// The customers, as matched at the upload or linked by a person since.
 	for _, c := range p.customers {
@@ -858,6 +867,82 @@ func (s *server) plan(ctx context.Context, row store.AccountingSaftImport, body 
 		addLine(p.roles["opening"], p.result, word("The result for the period before the books", "Resultat før bøkene starter"), nil, 0, Line{})
 	}
 	return p, nil
+}
+
+// matchSuppliers takes each of the file's suppliers as one already in the
+// register where it can (purchasing design A2), so a supplier a buyer made
+// before the books were set up neither fails the import on its organisation
+// number nor is made twice: by organisation number first, then by exact name
+// — case and spaces aside — among those whose organisation number does not
+// say they are another company. A name several have is ambiguous, and a new
+// supplier is made unless the apply's suppliers pick one; a pick overrides
+// any match, 0 for a new supplier.
+func (s *server) matchSuppliers(ctx context.Context, p *importPlan, body *gen.AccountingSaftImportApply) error {
+	if len(p.suppliers) == 0 {
+		return nil
+	}
+	rows, err := store.New(s.deps.Pool).SaftMatchSuppliers(ctx)
+	if err != nil {
+		return err
+	}
+	type orgKey struct{ country, org string }
+	byID := map[int64]store.SaftMatchSuppliersRow{}
+	byOrg := map[orgKey]store.SaftMatchSuppliersRow{}
+	byName := map[string][]store.SaftMatchSuppliersRow{}
+	for _, r := range rows {
+		byID[r.ID] = r
+		if r.OrganisationNumber != nil {
+			byOrg[orgKey{r.Country, *r.OrganisationNumber}] = r
+		}
+		name := strings.ToLower(strings.Join(strings.Fields(r.Name), " "))
+		byName[name] = append(byName[name], r)
+	}
+	var picks map[string]int64
+	if body != nil && body.Suppliers != nil {
+		picks = *body.Suppliers
+	}
+	for fileID, id := range picks {
+		if _, ok := byID[id]; id != 0 && !ok {
+			return invalidField("The books cannot be set up from the file", "suppliers."+fileID, codeSaftSupplierUnknown,
+				fmt.Sprintf("The register holds no supplier with the id %d.", id))
+		}
+	}
+	for i := range p.suppliers {
+		sp := &p.suppliers[i]
+		org := deref(sp.fields.organisationNumber)
+		sp.supplierMatch = "new"
+		if id, picked := picks[sp.file.ID]; picked {
+			if id != 0 {
+				r := byID[id]
+				sp.supplierMatch, sp.supplier = "linked", &r
+				continue
+			}
+		} else if r, ok := byOrg[orgKey{sp.fields.country, org}]; org != "" && ok {
+			sp.supplierMatch, sp.supplier = "matched", &r
+			continue
+		} else {
+			var same []store.SaftMatchSuppliersRow
+			for _, r := range byName[strings.ToLower(strings.Join(strings.Fields(sp.fields.name), " "))] {
+				if org == "" || r.OrganisationNumber == nil || *r.OrganisationNumber == org {
+					same = append(same, r)
+				}
+			}
+			switch {
+			case len(same) == 1:
+				sp.supplierMatch, sp.supplier = "matched_by_name", &same[0]
+				continue
+			case len(same) > 1:
+				sp.supplierMatch, sp.candidates = "ambiguous", same
+				sp.notes = append(sp.notes, fmt.Sprintf("%d suppliers of the register have this name: a new one is made unless one of them is picked.", len(same)))
+			}
+		}
+		// A new supplier keeps no organisation number the register has.
+		if _, taken := byOrg[orgKey{sp.fields.country, org}]; org != "" && taken {
+			sp.fields.organisationNumber = nil
+			sp.notes = append(sp.notes, "Its organisation number is a supplier's of the register; the new supplier is made without it.")
+		}
+	}
+	return nil
 }
 
 // isBalanceKind reports whether kind is a balance-sheet account's.
@@ -1067,9 +1152,22 @@ func importSupplierView(sp importParty) gen.AccountingSaftImportSupplier {
 	if notes == nil {
 		notes = []string{}
 	}
-	return gen.AccountingSaftImportSupplier{Position: sp.position, FileSupplierId: sp.file.ID, Name: sp.fields.name,
+	match := sp.supplierMatch
+	if match == "" {
+		match = "new"
+	}
+	out := gen.AccountingSaftImportSupplier{Position: sp.position, FileSupplierId: sp.file.ID, Name: sp.fields.name,
 		OrganisationNumber: sp.fields.organisationNumber, City: sp.fields.city, BankAccount: sp.fields.bankAccount,
-		Iban: sp.fields.iban, ClosingBalance: money(sp.closing), Notes: notes}
+		Iban: sp.fields.iban, ClosingBalance: money(sp.closing), Notes: notes,
+		Match: gen.AccountingSaftImportSupplierMatch(match), Candidates: []gen.AccountingSaftImportSupplierCandidate{}}
+	if r := sp.supplier; r != nil {
+		out.SupplierId, out.SupplierName, out.SupplierNumber = &r.ID, &r.Name, &r.Number
+	}
+	for _, c := range sp.candidates {
+		out.Candidates = append(out.Candidates, gen.AccountingSaftImportSupplierCandidate{Id: c.ID, Name: c.Name, Number: c.Number,
+			OrganisationNumber: c.OrganisationNumber})
+	}
+	return out
 }
 
 func (p *importPlan) view() gen.AccountingSaftImport {
@@ -1413,8 +1511,14 @@ func (s *server) ApplyAccountingSaftImport(ctx context.Context, req gen.ApplyAcc
 		if err := seedDefaultRules(ctx, q, string(b.Language), now); err != nil {
 			return err
 		}
+		// The file's suppliers: the register's where matched (purchasing
+		// design A2), a new one otherwise.
 		supplierIDs := make([]int64, len(p.suppliers))
 		for i, sp := range p.suppliers {
+			if sp.supplier != nil {
+				supplierIDs[i] = sp.supplier.ID
+				continue
+			}
 			if supplierIDs[i], err = insertSupplier(ctx, q, sp.fields, now); err != nil {
 				return err
 			}

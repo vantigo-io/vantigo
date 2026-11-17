@@ -94,6 +94,13 @@ const (
 	codeSupplierInvItemInUse     = "supplier_invoice_item_in_use"
 	codeSupplierRetained         = "supplier_retained"
 	codeSupplierAnonymised       = "supplier_anonymised"
+	// The supplier register before the books and for a buyer, and its
+	// holders (purchasing design P2, A2, A8, A12).
+	codeSupplierHasDocuments     = "supplier_has_documents"
+	codeSupplierHasOpenDocuments = "supplier_has_open_documents"
+	codeSuppliersManageRequired  = "suppliers_manage_required"
+	codeSupplierFieldsNeedPost   = "supplier_fields_need_post"
+	codeSaftSupplierUnknown      = "saft_import_supplier_unknown"
 	codeExpenseAlreadyInvoiced   = "expense_already_invoiced"
 	// Delivery D, VAT.
 	codeVatNotRegistered    = "vat_not_registered"
@@ -183,7 +190,8 @@ var refusalCodes = []string{
 	codePaymentExceedsBalance, codePaymentRemoved, codeSettlementSupplierInv, codeUnpostedWrongReason,
 	codeBrregUnavailable, codeSupplierInvHasPayments, codeTaxCodeNotForSupplierInv, codeExchangeRateMismatch,
 	codeCreditNoteNotPosted, codeCreditNoteCurrency, codeCreditNoteExceeds, codeSupplierInvItemInUse,
-	codeSupplierRetained, codeSupplierAnonymised, codeExpenseAlreadyInvoiced, codeVatNotRegistered, codeVatTermClosed,
+	codeSupplierRetained, codeSupplierAnonymised, codeSupplierHasDocuments, codeSupplierHasOpenDocuments,
+	codeSuppliersManageRequired, codeSupplierFieldsNeedPost, codeSaftSupplierUnknown, codeExpenseAlreadyInvoiced, codeVatNotRegistered, codeVatTermClosed,
 	codeVatTermNotEnded, codeVatTermOutOfOrder, codeVatTermAttention, codeVatTermLockAfterEnd, codeVatTermUnreconciled,
 	codeVatTermNotClosed, codeVatTermFiled, codeVatTermNotLatest, codeVatTermNotFiled, codeLockBehindFiled,
 	codeLockBehindClosed, codeVatTermStale, codeOpeningVatAccount, codeTaxCodeInUse, codeVatTermInconsistent,
