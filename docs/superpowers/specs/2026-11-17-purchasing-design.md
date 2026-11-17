@@ -1,8 +1,8 @@
 # Purchasing — supplier items, purchase orders, receipts, proposals and the invoice match (phase 1)
 
-Revision 7, 2026-11-17, after delivery C was built. **§15 amends earlier
+Revision 8, 2026-11-17, after delivery C was built and reviewed. **§15 amends earlier
 decisions and wins where they differ** (A22 to A28 record what delivery 0 built, A29 to
-A36 what delivery A built, A37 to A46 what delivery B built and A47 to A49 its review, and A50 to A57 what delivery C built); §16 lists what changed. This spec builds on the research
+A36 what delivery A built, A37 to A46 what delivery B built and A47 to A49 its review, and A50 to A59 what delivery C built and its review); §16 lists what changed. This spec builds on the research
 `docs/superpowers/research/2026-11-17-purchasing-module.md` ("R"). It does not reopen
 R §8, and it takes the defaults R §9 took for the readings; §14 says what an overturn of
 each would change. Decisions are numbered P*n*. The implementation plan is
@@ -307,7 +307,7 @@ subcontracting.
 
 | Key | Lets a person | Sensitive |
 | --- | --- | --- |
-| `purchasing:access` | open the app; read orders, receipts and supplier items | no |
+| `purchasing:access` | open the app; read orders, receipts, supplier items and the proposals | no |
 | `purchasing:orders-manage` | write drafts, change sent orders, record confirmations, close and reopen, make orders from proposals | no |
 | `purchasing:orders-send` | send, mark as sent, send again, cancel | no |
 | `purchasing:receive` | receive, undo a receipt, mark a text line delivered | no |
@@ -484,6 +484,13 @@ invoices alone. Questions 2 to 8 stand at their defaults until the owner says ot
     manufacturing orders more often than the nightly run would. **Default: keep.**
     Overturned, the handler only marks the site's projection stale, and the nightly run —
     or a person — makes the orders.
+13. **The proposals show Inventory's need and purchase prices to anyone with
+    `purchasing:access`** (P33, A58). A holder of `purchasing:access` with no Inventory
+    permission sees each product's need per site — Inventory's low stock, or
+    Manufacturing's buy suggestions — and the supplier items' purchase prices on the
+    proposals. **Default: keep** — a buyer needs both to order. Overturned, the proposals
+    ask for an Inventory read permission as well, or leave the need out for a caller
+    without one.
 
 ## 15. Amendments (revision 2)
 
@@ -844,7 +851,8 @@ names. Numbered from A50, so delivery B's amendments, written beside it, cannot 
   — before the run read the open purchases — not the suggestion's insert time, so an order
   sent while a run reads is subtracted twice at worst, never missed; Inventory's is the
   clock read before its open purchases.
-- **A52 — Create orders' idempotency on the change log** (A11). No migration: the
+- **A52 — Create orders' idempotency on the change log** (A11). *Superseded by A58:* the
+  request table below replaces what follows. No migration: the
   `clientRequestId` and the request's hash are kept on the `from_proposals` action of the
   change-log row each draft it touched is given, never answered in the history. A replay is
   found by a JSON containment read of `order_changes`, before the transaction and again
@@ -859,6 +867,7 @@ names. Numbered from A50, so delivery B's amendments, written beside it, cannot 
   drafts as they stand; a row no longer proposed refuses the whole request with 409
   `proposal_gone`, its rows in `lines`, and the screen loads the list again. A person's
   quantity is theirs: a row still proposed may be ordered for more or less than proposed.
+  *Amended by A58:* "still proposed" is now "remaining exactly what the screen showed".
 - **A54 — Adding to a draft** (P33). The lines go to the oldest draft of the supplier and
   site; a variant line of the draft in the item's packaging takes the added quantity, and
   any other row is a new line planned as the editor's (`planLines`), so its price follows
@@ -876,8 +885,40 @@ names. Numbered from A50, so delivery B's amendments, written beside it, cannot 
   materials get a reorder point above what is held and on order, and a replenishment run
   for every site runs after the purchase orders are sent, so the proposals have rows from
   the first seed. No `assistTargets` entry is added: the plan names none for C.
+- **A58 — The review's fixes to Create orders** (A11, A32, A53). *Stale screens:* each row
+  carries the `remaining` the screen showed (required); under the advisory lock a row
+  whose remaining, from the demand read for the request and the drafts and sent orders as
+  they stand, is not exactly that is refused 409 `proposal_gone`, the rows in `lines`, and
+  the screen loads again — so a screen loaded before another person's order, or before the
+  demand moved, orders nothing more than it showed. *Replays:* migration
+  `00191_purchasing_proposal_requests` adds `purchasing.proposal_requests` — the
+  `clientRequestId` as key, the body's hash, the result (per draft its order, supplier and
+  site ids, `created`, `linesAdded`, `unpricedRows`; no names), the caller's user id and
+  the time — written in the Create orders transaction. A replay answers the stored result
+  as it was, whatever happened to the drafts since, and creates nothing, whole or partial;
+  the same id with another body stays 409 `client_request_reused`. The hidden
+  `requestId`, `requestHash` and `created` fields of the change log's `from_proposals`
+  action are gone. The table holds nothing personal of a supplier's, so the supplier's
+  erase and export do not read it; its rows are kept. *Prices:* a line takes the item's
+  price only in a draft of the item's currency — a new draft is in the supplier's, an
+  existing one keeps its own — and the result's `unpricedRows` names, per draft, the rows
+  whose new line so got none. *Sent since:* counts goods lines only, as `OpenPurchases`
+  does, and from the computed time less `sentSinceMargin` (five seconds), so a replica's
+  clock skew cannot hide an order sent just after a run read the supply. *Also:* a
+  Discontinued goods variant's row has no option; the business calendar failing answers
+  503; the list is unpaged and Create orders reads the demand again (known limits).
+- **A59 — Manufacturing's run on send arrives with delivery B** (A4, A45, A51). The
+  `manufacturing.purchasing-replenish` handler — which queues a site's replenishment run on
+  `purchasing.order.sent.v1` and on a receipt posted or undone, so the stored buy
+  suggestions follow a purchase rather than wait for the next run — is delivery B's, on
+  which delivery C is built. Until the run it queues has finished, an order sent after the
+  last run is netted by `sentSince` (A54, A58) alone.
 
 ## 16. Revision log
+
+- **Revision 8, 2026-11-17** — delivery C reviewed: A58 and A59 added; A52 superseded and
+  A53 amended by A58; §8's `purchasing:access` row names the proposals; §14's question 13
+  added.
 
 - **Revision 7, 2026-11-17** — delivery C built: A50 to A57 (§15, *Delivery C, as built*); numbered apart from delivery B's, which was built beside it.
 
