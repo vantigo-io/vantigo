@@ -392,7 +392,8 @@ account was made inactive since. **Delete** and **Anonymise** need **Post vouche
 **Suppliers** here is a screen of Accounting, behind **Use Accounting**: a holder of **Keep
 the suppliers** alone does not see it. The buyer's own screen for the register comes with
 the Purchasing app: **New supplier** on its **Suppliers** list, and **Edit supplier** on a
-supplier's page there for those who also hold **Use Accounting**
+supplier's page there, which opens on the register's entry as Purchasing reads it, so
+**Keep the suppliers** alone is enough
 ([Purchasing](/en/user/purchasing/#suppliers-and-their-items)).
 
 ## Supplier invoices
@@ -1078,7 +1079,7 @@ the permissions they need:
 | **Use Accounting** (`accounting:read`) | Every screen and report. |
 | **Post vouchers** (`accounting:post`) | Journal entries, reversals, attachments, settlements, suppliers, supplier invoices and their payments, the actions under Needs attention, and marking a VAT term as filed. |
 | **Manage the books** (`accounting:close`) | Setting up the books (from a SAF-T file too), the chart, the tax codes, the posting rules, the opening balances, the lock, and closing and reopening VAT terms and removing a filing mark. Only an Owner can give it. |
-| **Keep the suppliers** (`accounting:suppliers-manage`) | Adding and changing suppliers — but their bank account, IBAN, BIC, default account, tax code, person flag and active flag — also before the books are set up: a buyer's. It needs no **Use Accounting**, but seeing **Suppliers** in Accounting does; the buyer's screen comes with Purchasing. |
+| **Keep the suppliers** (`accounting:suppliers-manage`) | Adding and changing suppliers — but their bank account, IBAN, BIC, default account and tax code, and on a change their person flag and active flag — also before the books are set up: a buyer's. It needs no **Use Accounting**, but seeing **Suppliers** in Accounting does; the buyer adds and edits suppliers from Purchasing's **Suppliers**. |
 | **Export the books** (`accounting:export`) | The reports as CSV, a supplier's data, and the SAF-T file. |
 
 When the engagement ends, remove the role or disable the user: everything they posted

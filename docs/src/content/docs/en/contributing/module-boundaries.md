@@ -210,7 +210,8 @@ lag, never what must refuse — go through the platform's domain-events outbox,
    Four come with the purchasing design's delivery 0
    (`docs/superpowers/specs/2026-11-17-purchasing-design.md`): `SupplierDirectory`
    (`contracts.SupplierDirectory`, accounting — the supplier register another module reads
-   with no permission of its own, before the books are set up too, and its one locking
+   with no permission of its own, before the books are set up too, with each row's
+   revision for a buyer's change through Accounting's API, and its one locking
    read, rule 28), `SupplierInvoices` (`contracts.SupplierInvoices`, accounting — a supplier
    invoice's header and lines with each line's net, and the draft another module makes,
    rule 26), `SupplierInvoiceMatches` (`contracts.SupplierInvoiceMatches`, purchasing — the

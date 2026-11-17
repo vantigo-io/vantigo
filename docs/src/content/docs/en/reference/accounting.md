@@ -1829,7 +1829,10 @@ P1, P6, P7, A1, A8, A9; [module boundaries](/en/contributing/module-boundaries/)
   `SearchSuppliers` (the name's part ignoring case, the number or the organisation number,
   by number, inactive ones too) answer `contracts.SupplierEntry` — id, number, name,
   organisation number, country, address, e-mail, currency, terms, `Active`, `IsPerson`,
-  `Anonymised` — and never the bank account, the default account or the tax code. They read
+  `Anonymised` and the row's `Revision` — and never the bank account, the default account
+  or the tax code. The revision is what a change through `PUT /accounting/suppliers/{id}`
+  carries, so a buyer holding `accounting:suppliers-manage` alone, who may not read the
+  supplier here, writes it from what Purchasing's supplier read answers (purchasing A26). They read
   on the pool with no permission of their own, before the books are set up too.
   `LockSuppliers(tx, ids)` takes the suppliers `FOR SHARE` in id order on the caller's
   transaction: the delete and the anonymisation take the row `FOR UPDATE` before asking the

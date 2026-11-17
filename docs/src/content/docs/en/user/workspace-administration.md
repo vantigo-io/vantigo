@@ -539,8 +539,9 @@ on the lot's page ([Inventory](/en/user/inventory/#lots-and-serial-numbers)). In
 **Keep the suppliers** is a buyer's: it adds and changes suppliers — but their bank account,
 IBAN, BIC, default account, tax code, person flag and active flag, which stay with **Post
 vouchers** — also before the books are set up, and needs no **Use Accounting**. Seeing the
-register under **Suppliers** in Accounting does need **Use Accounting**; the buyer's own
-screen comes with Purchasing ([Accounting](/en/user/accounting/#suppliers)).
+register under **Suppliers** in Accounting does need **Use Accounting**; the buyer adds and
+edits suppliers from Purchasing's own screen, which needs no more
+([Accounting](/en/user/accounting/#suppliers)).
 
 ### Assignments
 
