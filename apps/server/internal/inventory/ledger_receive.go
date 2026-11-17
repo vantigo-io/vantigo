@@ -5,14 +5,18 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"slices"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/inventory/gen"
 	"github.com/vantigo-io/vantigo/server/internal/inventory/store"
 )
 
@@ -78,9 +82,11 @@ func (l ledger) Receive(ctx context.Context, tx pgx.Tx, src contracts.StockSourc
 	if r.Today.IsZero() {
 		return contracts.StockPosted{}, errors.New("contracts: a stock call without today")
 	}
+	// One receipt record per receipt: the document the movement is idempotent
+	// by, never the receiving document itself, which receives many times.
 	doc := r.Document
 	if doc.IsZero() {
-		doc = src
+		return contracts.StockPosted{}, errors.New("contracts: a receipt without its document")
 	}
 	if err := doc.Validate(); err != nil {
 		return contracts.StockPosted{}, err
@@ -96,16 +102,8 @@ func (l ledger) Receive(ctx context.Context, tx pgx.Tx, src contracts.StockSourc
 	lines := make([]engineLine, 0, len(r.Lines))
 	for i, line := range r.Lines {
 		if line.LineID <= 0 {
-			return contracts.StockPosted{}, fmt.Errorf("inventory: a receipt names line id %d", line.LineID)
-		}
-		named := 0
-		for _, set := range []bool{line.LotID != 0, line.Lot != nil && len(line.Serials) == 0, len(line.Serials) > 0} {
-			if set {
-				named++
-			}
-		}
-		if named > 1 {
-			return contracts.StockPosted{}, fmt.Errorf("inventory: receipt line %d names its lot more than one way", line.LineID)
+			refuseLine(i, contracts.StockLineInvalid, fmt.Sprintf("The line id %d is not 1 or more.", line.LineID))
+			continue
 		}
 		q, err := ledgerQuantity(line.Quantity)
 		if err != nil {
@@ -113,63 +111,50 @@ func (l ledger) Receive(ctx context.Context, tx pgx.Tx, src contracts.StockSourc
 			continue
 		}
 		to := line.ToLocationID
-		base := engineLine{index: i, variantID: line.VariantID, to: &to, quantity: q, lotID: line.LotID}
-		var lot *lotRequest
-		if line.Lot != nil {
-			lot = &lotRequest{compareProduction: true, number: strings.TrimSpace(line.Lot.Number),
-				supplierLot: clipMovementText(line.Lot.SupplierLot, 40), production: line.Lot.ProductionDate,
-				bestBefore: line.Lot.BestBefore, expiry: line.Lot.Expiry}
-			if lot.number != "" && !lotNumberPattern.MatchString(lot.number) {
-				refuseLine(i, contracts.StockLotNumberInvalid, fmt.Sprintf("%q is not a lot number: 1–20 characters A–Z, a–z, 0–9 and . _ / -.", lot.number))
-				continue
-			}
-			var f fieldErrors
-			if checkLotDates(&f, "", lot.production, lot.bestBefore, lot.expiry); f.failed() {
-				refuseLine(i, contracts.StockLotDatesInvalid, "The lot's dates are out of order: an expiry before the production date, or a best-before date after the expiry.")
-				continue
+		base := engineLine{index: i, variantID: line.VariantID, to: &to, lotID: line.LotID}
+		var lot *gen.InventoryNewLot
+		if l := line.Lot; l != nil {
+			lot = &gen.InventoryNewLot{Number: &l.Number, SupplierLot: &l.SupplierLot, Note: &l.Note}
+			for _, d := range []struct {
+				to   **openapi_types.Date
+				from *time.Time
+			}{{&lot.ProductionDate, l.ProductionDate}, {&lot.BestBefore, l.BestBefore}, {&lot.Expiry, l.Expiry}} {
+				if d.from != nil {
+					*d.to = &openapi_types.Date{Time: *d.from}
+				}
 			}
 		}
-		if len(line.Serials) == 0 {
-			base.newLot = lot
-			lines = append(lines, base)
-			continue
+		var serials *gen.InventorySerials
+		var given *big.Rat
+		if len(line.Serials) > 0 {
+			serials, given = &gen.InventorySerials{Numbers: &line.Serials}, q
+		} else {
+			base.quantity = q
 		}
-		// Serials (M57): one line of 1 per serial, each a lot by number with
-		// the line's lot's dates; the line's quantity is their number.
-		if lot == nil {
-			lot = &lotRequest{compareProduction: true}
-		}
-		if lot.number != "" {
-			return contracts.StockPosted{}, fmt.Errorf("inventory: receipt line %d names serials and a lot number", line.LineID)
-		}
-		if len(line.Serials) > maxSerials || q.Cmp(big.NewRat(int64(len(line.Serials)), 1)) != 0 {
-			refuseLine(i, contracts.StockSerialQuantity, fmt.Sprintf("The line's quantity is %s; its serials number %d, at most %d.", line.Quantity, len(line.Serials), maxSerials))
-			continue
-		}
-		seen := map[string]bool{}
-		var failed bool
-		for _, n := range line.Serials {
-			n = strings.TrimSpace(n)
+		// The receipt endpoint's own reading of the lot and the serials; what
+		// it refuses is this line's refusal.
+		var f fieldErrors
+		got := receiptLines(&f, "", base, lot, serials, given, false)
+		if f.failed() {
+			code := contracts.StockLineInvalid
 			switch {
-			case !lotNumberPattern.MatchString(n):
-				refuseLine(i, contracts.StockLotNumberInvalid, fmt.Sprintf("%q is not a serial number: 1–20 characters A–Z, a–z, 0–9 and . _ / -.", n))
-			case seen[strings.ToLower(n)]:
-				refuseLine(i, contracts.StockSerialQuantity, fmt.Sprintf("The serial %s is named twice.", n))
-			default:
-				seen[strings.ToLower(n)] = true
-				serial := base
-				one := *lot
-				one.number = n
-				serial.newLot, serial.quantity = &one, big.NewRat(1, 1)
-				lines = append(lines, serial)
-				continue
+			case f.code == codeLotDatesInvalid:
+				code = contracts.StockLotDatesInvalid
+			case len(f.errs[".lot.number"]) > 0 && serials == nil:
+				code = contracts.StockLotNumberInvalid
 			}
-			failed = true
-			break
-		}
-		if failed {
+			refuseLine(i, code, f.text())
 			continue
 		}
+		if len(got) == 1 && got[0].failCode != "" {
+			code := contracts.StockSerialQuantity
+			if slices.ContainsFunc(line.Serials, func(n string) bool { return !lotNumberPattern.MatchString(strings.TrimSpace(n)) }) {
+				code = contracts.StockLotNumberInvalid
+			}
+			refuseLine(i, code, got[0].failText)
+			continue
+		}
+		lines = append(lines, got...)
 	}
 	if len(bad) > 0 {
 		return contracts.StockPosted{}, refusalOf(bad)
@@ -213,7 +198,7 @@ func (l ledger) Receive(ctx context.Context, tx pgx.Tx, src contracts.StockSourc
 	if len(failures) > 0 {
 		return contracts.StockPosted{}, refusalOf(failures)
 	}
-	res, err := l.s.post(ctx, tx, txq, header, lines, postOptions{receipt: true, receivesDiscontinued: true, today: r.Today})
+	res, err := l.s.post(ctx, tx, txq, header, lines, postOptions{maxLines: maxAPILines, receipt: true, receivesDiscontinued: true, today: r.Today})
 	if err != nil {
 		return contracts.StockPosted{}, issueError(err, lineOf, len(r.Lines))
 	}
@@ -221,10 +206,10 @@ func (l ledger) Receive(ctx context.Context, tx pgx.Tx, src contracts.StockSourc
 }
 
 // reversalBody is what a reversal's request hash is taken over: the
-// receipt's document and the note.
+// receipt's document alone, so a retry with an edited note answers the first
+// reversal — there is one reversal per receipt, whatever it says.
 type reversalBody struct {
 	Receipt contracts.StockSource
-	Note    string
 }
 
 // ReverseReceipt takes the receipt Receive posted for the document receipt
@@ -260,7 +245,7 @@ func (l ledger) ReverseReceipt(ctx context.Context, tx pgx.Tx, receipt contracts
 		lines = append(lines, engineLine{index: i, variantID: p.VariantID, from: &from, quantity: ratFromNumeric(p.Quantity), lotID: lot})
 	}
 	lineOf := func(i int) (int32, int64) { return posted[i].VariantID, 0 }
-	hash, err := requestHash(movementKindReceiptReversal, reversalBody{Receipt: receipt, Note: r.Note})
+	hash, err := requestHash(movementKindReceiptReversal, reversalBody{Receipt: receipt})
 	if err != nil {
 		return contracts.StockPosted{}, err
 	}

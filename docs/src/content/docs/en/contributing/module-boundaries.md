@@ -1426,8 +1426,8 @@ lag, never what must refuse — go through the platform's domain-events outbox,
       `nothing_to_post`, and the lot rules' `lot_required`, `lot_not_allowed`,
       `lot_unknown`, `serial_quantity`, `lot_expired`, `lot_blocked`,
       `lot_dates_differ` and `EnsureLots`' `lot_exists` (a `NewLot` that `MustCreate`
-      names a number taken), and a receipt's `lot_number_invalid`, `lot_dates_invalid` and
-      `ReverseReceipt`'s `receipt_unknown`. Each line carries its `Index` in the call's lines and the
+      names a number taken), and a receipt's `lot_number_invalid`, `lot_dates_invalid`,
+      `line_invalid` and `ReverseReceipt`'s `receipt_unknown`. Each line carries its `Index` in the call's lines and the
       `LotID` and `LocationID` it failed at, so the caller maps it to its own row. `Reserve`, `ReserveForProduction` and `Release` write nothing
       when they refuse; after a refusal from `Issue` or `Produce` the caller must roll
       back its transaction, or a savepoint it took before the call, because the posting

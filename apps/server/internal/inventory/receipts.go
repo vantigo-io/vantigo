@@ -43,17 +43,15 @@ func (s *server) PostInventoryReceipt(ctx context.Context, req gen.PostInventory
 		}
 		field := fmt.Sprintf("lines[%d]", i)
 		line := engineLine{index: i, variantID: l.VariantId, to: &to, lotID: lotIDOf(&f, field+".lotId", l.LotId)}
-		line.newLot = readNewLot(&f, field+".lot", l.Lot)
-		namesLots = namesLots || line.newLot != nil || l.Serials != nil
-		if line.lotID != 0 && (line.newLot != nil || l.Serials != nil) {
-			f.add(field, "A line names a lotId, a lot or serials, one of them")
-		}
+		namesLots = namesLots || l.Lot != nil || l.Serials != nil
 		if l.Serials == nil {
 			line.quantity, line.entry, line.failCode, line.failText = readEntered(l.Quantity, l.Entered, positiveQuantity)
-			lines = append(lines, line)
-			continue
 		}
-		lines = append(lines, serialLines(&f, field, line, l)...)
+		var given *big.Rat
+		if l.Quantity != nil {
+			given = ratFromFloat(*l.Quantity)
+		}
+		lines = append(lines, receiptLines(&f, field, line, l.Lot, l.Serials, given, l.Entered != nil)...)
 	}
 	if f.failed() {
 		return gen.PostInventoryReceipt400ApplicationProblemPlusJSONResponse(invalid(invalidPostingTitle, f)), nil
@@ -102,11 +100,25 @@ func (s *server) PostInventoryReceipt(ctx context.Context, req gen.PostInventory
 	return gen.PostInventoryReceipt201JSONResponse(mv), nil
 }
 
-// serialLines expands a receipt line's serials into one line of 1 per serial
-// (M57), each naming its serial as a lot by number with the line's lot's
-// dates and supplier lot. The line's quantity, when given, must equal their
-// number; an entry in packagings is refused. A failure is the line's.
-func serialLines(f *fieldErrors, field string, line engineLine, l gen.InventoryReceiptLine) []engineLine {
+// receiptLines reads a receipt line's lot and serials, as the receipt
+// endpoint and the ledger's Receive both do (purchasing delivery 0): the lot
+// by number with its shape and its dates in order, the lot named one way —
+// a lot id, a lot, or serials — and the serials expanded into one line of 1
+// per serial (M57), each naming its serial as a lot by number with the
+// line's lot's dates, supplier lot and note. line carries the line's index,
+// variant, location and lot id, and its quantity when it names no serials;
+// given is the quantity the line states, nil for none, which with serials
+// must equal their number, and entered says it was entered in packagings,
+// which serials refuse. A field's failure goes on f under field; a serial
+// failure is the line's (failCode), the line answered alone.
+func receiptLines(f *fieldErrors, field string, line engineLine, lot *gen.InventoryNewLot, serials *gen.InventorySerials, given *big.Rat, entered bool) []engineLine {
+	line.newLot = readNewLot(f, field+".lot", lot)
+	if line.lotID != 0 && (line.newLot != nil || serials != nil) {
+		f.add(field, "A line names a lotId, a lot or serials, one of them")
+	}
+	if serials == nil {
+		return []engineLine{line}
+	}
 	base := line.newLot
 	if base == nil {
 		base = &lotRequest{compareProduction: true}
@@ -114,12 +126,12 @@ func serialLines(f *fieldErrors, field string, line engineLine, l gen.InventoryR
 	if base.number != "" {
 		f.add(field+".lot.number", "With serials, each serial is the lot's number; the lot names none")
 	}
-	numbers, code, detail := serialNumbers(l.Serials)
+	numbers, code, detail := serialNumbers(serials)
 	switch {
-	case l.Entered != nil:
+	case entered:
 		code, detail = codeEnteredInvalid, "Serials are counted one by one; a line with serials is not entered in packagings."
-	case code == "" && l.Quantity != nil && ratFromFloat(*l.Quantity).Cmp(big.NewRat(int64(len(numbers)), 1)) != 0:
-		code, detail = codeSerialQuantity, fmt.Sprintf("The line's quantity is %v; its serials number %d.", *l.Quantity, len(numbers))
+	case code == "" && given != nil && given.Cmp(big.NewRat(int64(len(numbers)), 1)) != 0:
+		code, detail = codeSerialQuantity, fmt.Sprintf("The line's quantity is %s; its serials number %d.", decimalText(given), len(numbers))
 	}
 	if code != "" {
 		line.failCode, line.failText, line.newLot = code, detail, nil

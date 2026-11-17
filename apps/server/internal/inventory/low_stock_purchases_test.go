@@ -67,3 +67,41 @@ func TestLowStock_OnOrder(t *testing.T) {
 		t.Errorf("the bolt at BGO on the stock card = %+v", bgo)
 	}
 }
+
+// TestLowStock_OnOrderBesideInTransit (purchasing delivery 0): one row with
+// both a transfer in transit and something on order shows each part; two of
+// the provider's rows for one (variant, site) are summed; a row whose
+// quantity is not a decimal is left out, not a failure; and the site filter
+// keeps the others' purchases out.
+func TestLowStock_OnOrderBesideInTransit(t *testing.T) {
+	t.Parallel()
+	supply := modtest.NewFakePurchaseSupply()
+	h := newHarness(t, modtest.WithPurchaseSupply(supply))
+	c, _ := signIn(t, h, placer...)
+	s := newTransferSites(t, h, c) // OSL: 20 bolts on 1, 10 nuts on 2
+	setPlacement(t, c, varBolt, s.bgo.Id, reorderAt(10))
+	setPlacement(t, c, varNut, s.osl.Id, reorderAt(12))
+	mustSend(t, c, createTransfer(t, c, s, line(varBolt, 2)), s.shelf1.Id)
+	supply.Set(
+		contracts.OpenPurchase{VariantID: varBolt, SiteID: s.bgo.Id, Quantity: "1"},
+		contracts.OpenPurchase{VariantID: varBolt, SiteID: s.bgo.Id, Quantity: "2.5"},
+		contracts.OpenPurchase{VariantID: varNut, SiteID: s.osl.Id, Quantity: "1/3"},
+	)
+	page := lowStock(t, c, "")
+	if got := lowSKUs(page); !slices.Equal(got, []string{"BGO:BOLT-M8", "OSL:NUT-M8"}) {
+		t.Fatalf("low stock = %v", got)
+	}
+	if r := page.Rows[0]; r.InTransit != 2 || r.OnOrder != 3.5 || r.Incoming != 5.5 || r.Needed != 5.5 {
+		t.Errorf("the bolt at BGO = %+v, want 2 in transit, 3.5 on order, 5.5 needed", r)
+	}
+	if r := page.Rows[1]; r.OnOrder != 0 || r.Incoming != 0 {
+		t.Errorf("the nut at OSL = %+v, want its fraction left out", r)
+	}
+	if !strings.Contains(h.Logs(), "an open purchase's quantity is not a decimal") {
+		t.Errorf("the fraction was not logged: %s", h.Logs())
+	}
+	bgo := lowStock(t, c, "?siteId="+strconv.FormatInt(s.bgo.Id, 10))
+	if got := lowSKUs(bgo); !slices.Equal(got, []string{"BGO:BOLT-M8"}) || bgo.Rows[0].OnOrder != 3.5 {
+		t.Errorf("low stock at BGO = %v %+v", got, bgo.Rows)
+	}
+}

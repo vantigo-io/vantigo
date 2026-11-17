@@ -2531,7 +2531,7 @@ components:
             type: object
         InventoryTraceMovement:
             additionalProperties: false
-            description: The movement that ends a path — a receipt, an adjustment or a count on the origin side; an issue, an adjustment or count down, a transfer out or a production that made no lot on the usage side; an unbuild on either.
+            description: The movement that ends a path — a receipt, an adjustment or a count on the origin side; an issue, an adjustment or count down, a transfer out, a receipt's reversal or a production that made no lot on the usage side; an unbuild on either.
             properties:
                 id:
                     format: int64
@@ -2585,6 +2585,7 @@ components:
                         - transfer_out
                         - production
                         - unbuild
+                        - receipt_reversal
                     type: string
                     x-enum-varnames:
                         - TraceLot
@@ -2596,6 +2597,7 @@ components:
                         - TraceTransferOut
                         - TraceProduction
                         - TraceUnbuild
+                        - TraceReceiptReversal
                 lot:
                     $ref: '#/components/schemas/InventoryTraceLot'
                 movement:

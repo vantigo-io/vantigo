@@ -196,6 +196,36 @@ describe("the trace (M87–M91)", () => {
     expect(screen.getByRole("link", { name: "Unbuild" })).toHaveAttribute("href", "/manufacturing/unbuilds/1001");
   });
 
+  it("ends a path at a receipt taken back, with its supplier (purchasing delivery 0)", async () => {
+    stubInventoryApi({
+      variants: [...variants(), flour],
+      trace: () => ({
+        ...usage,
+        nodes: [
+          usage.nodes[0],
+          {
+            key: "0.0",
+            parentKey: "0",
+            depth: 1,
+            kind: "receipt_reversal",
+            variant: flour,
+            depthLimit: false,
+            quantity: 3,
+            movement: {
+              id: 6004,
+              kind: "receipt_reversal",
+              postedAt: "2026-09-12T09:00:00Z",
+              supplierName: "Mølle AS",
+            },
+          },
+        ],
+      }),
+    });
+    renderRoute("/inventory/trace?lotId=1001");
+    expect(await screen.findByText("Receipt reversal")).toBeInTheDocument();
+    expect(screen.getByText(/Mølle AS/)).toBeInTheDocument();
+  });
+
   it("asks the other direction and the components, says when deliveries are hidden, and exports", async () => {
     const createObjectURL = vi.fn<(blob: Blob) => string>(() => "blob:file");
     vi.stubGlobal("URL", Object.assign(URL, { createObjectURL, revokeObjectURL: vi.fn() }));

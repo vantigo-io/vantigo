@@ -262,17 +262,13 @@ func (s *server) balancesOf(ctx context.Context, ids []int32, then func(ctx cont
 	sn.today = today
 	// What is on order through Purchasing, on its pool before the snapshot
 	// (rule 21); nothing when Purchasing is off.
-	open, err := s.openPurchases(ctx, nil, ids)
+	open, err := s.openPurchasesOf(ctx, nil, ids)
 	if err != nil {
 		return sn, err
 	}
 	sn.onOrder = make(map[siteKey]*big.Rat, len(open))
 	for _, o := range open {
-		q, ok := new(big.Rat).SetString(o.Quantity)
-		if !ok {
-			return sn, fmt.Errorf("inventory: an open purchase of variant %d has the quantity %q", o.VariantID, o.Quantity)
-		}
-		sumAt(sn.onOrder, siteKey{o.VariantID, o.SiteID}, q)
+		sumAt(sn.onOrder, siteKey{o.variantID, o.siteID}, o.quantity)
 	}
 	err = s.withReadTx(ctx, func(ctx context.Context, q *store.Queries) error {
 		rows, err := q.BalancesOfVariants(ctx, ids)

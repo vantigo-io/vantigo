@@ -2441,7 +2441,7 @@ export interface components {
             status: components["schemas"]["InventoryLotStatus"];
             supplierLot?: string;
         };
-        /** @description The movement that ends a path — a receipt, an adjustment or a count on the origin side; an issue, an adjustment or count down, a transfer out or a production that made no lot on the usage side; an unbuild on either. */
+        /** @description The movement that ends a path — a receipt, an adjustment or a count on the origin side; an issue, an adjustment or count down, a transfer out, a receipt's reversal or a production that made no lot on the usage side; an unbuild on either. */
         InventoryTraceMovement: {
             /** Format: int64 */
             id: number;
@@ -2466,7 +2466,7 @@ export interface components {
             /** @description The node's path from the root, its indexes joined by dots ("0", "0.2", "0.2.1"). */
             key: string;
             /** @enum {string} */
-            kind: "lot" | "component" | "receipt" | "issue" | "adjustment" | "count" | "transfer_out" | "production" | "unbuild";
+            kind: "lot" | "component" | "receipt" | "issue" | "adjustment" | "count" | "transfer_out" | "production" | "unbuild" | "receipt_reversal";
             lot?: components["schemas"]["InventoryTraceLot"];
             movement?: components["schemas"]["InventoryTraceMovement"];
             parentKey?: string;

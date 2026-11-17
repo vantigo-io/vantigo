@@ -485,7 +485,8 @@ partiet: produksjonene det gikk gjennom og hvor de fører, som et tre.
 - **Hvor det gikk** følger partiet framover: partiene laget av det, og partiene laget av
   dem, hver med hva den brukte av partiet og hva den laget; og hvor hver vei ender — en
   **leveranse**, med leveranse- og ordrenummer og kunden, en justering eller telling ned,
-  en overføring til et annet lagersted — *Sendt til* og lagerstedet —, eller en produksjon
+  en overføring til et annet lagersted — *Sendt til* og lagerstedet —, et **Reversert
+  varemottak** som tok de mottatte varene tilbake, med leverandøren, eller en produksjon
   som ikke laget noe parti. Et parti sendt til et annet lagersted og levert derfra viser
   både overføringen og leveransen.
 - **Hvor det kom fra** følger det bakover: partiene det ble laget av, ned til
@@ -1214,7 +1215,8 @@ Bare lagersteder som **leverer ordrer**, tar imot reservasjoner
 en av visningsrettighetene; trykk det for å åpne Lager. Med begge har tallraden et
 Lager-kort: **Lagerlinjer**, antallet par av vare og lokasjon som har beholdning — en
 vare som ligger i flere partier på én lokasjon, telles én gang — med
-ukens varemottak ved siden av (*3 varemottak denne uken*), der uken begynner på mandag.
+ukens varemottak ved siden av (*3 varemottak denne uken*), der uken begynner på mandag;
+et varemottak som er reversert, telles ikke.
 
 Med **Telle varer** og begge visningsrettighetene viser **Trenger oppfølging** **En
 varetelling har vært åpen lenge** for hver varetelling som fortsatt telles en uke etter
