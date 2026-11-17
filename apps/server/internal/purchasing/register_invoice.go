@@ -67,23 +67,41 @@ func draftText(l store.PurchasingOrderLine, quantity *big.Rat) string {
 	return strings.TrimSpace(text)
 }
 
-// registrationResult answers a registration as it was recorded.
+// registrationResult answers a registration as it was recorded: the first
+// answer's figures, whatever was matched or unmatched since (A82).
 func (s *server) registrationResult(ctx context.Context, r store.PurchasingInvoiceRegistration) (gen.PurchasingInvoiceRegistration, error) {
-	q := s.store()
-	o, err := q.GetOrder(ctx, r.OrderID)
+	o, err := s.store().GetOrder(ctx, r.OrderID)
 	if err != nil {
 		return gen.PurchasingInvoiceRegistration{}, fmt.Errorf("purchasing: read order %d: %w", r.OrderID, err)
 	}
-	matches, err := q.InvoiceMatches(ctx, r.SupplierInvoiceID)
-	if err != nil {
-		return gen.PurchasingInvoiceRegistration{}, fmt.Errorf("purchasing: read invoice %d's matches: %w", r.SupplierInvoiceID, err)
-	}
-	total := new(big.Rat)
-	for _, m := range matches {
-		total.Add(total, ratOrZero(m.LineNet))
-	}
 	return gen.PurchasingInvoiceRegistration{SupplierInvoiceId: r.SupplierInvoiceID, Lines: r.Lines, LinesLeft: r.LinesLeft,
-		Total: amountText(total), Currency: o.Currency}, nil
+		Total: amountText(ratOrZero(r.Total)), Currency: o.Currency}, nil
+}
+
+// The wait for a racing replay's record (A82): its draft is committed in
+// Accounting, and its own transaction records it a moment later.
+const (
+	replayWait  = 5 * time.Second
+	replayCheck = 50 * time.Millisecond
+)
+
+// awaitRegistration answers the registration a racing replay of the same
+// request records, waiting for it up to replayWait; nil when none comes —
+// a replay that died between Accounting's commit and its own (§14,
+// question 12).
+func (s *server) awaitRegistration(ctx context.Context, id [16]byte, orderID int64, hash string) (*store.PurchasingInvoiceRegistration, error) {
+	deadline := time.Now().Add(replayWait)
+	for {
+		prior, err := s.registeredBefore(ctx, id, orderID, hash)
+		if err != nil || prior != nil || time.Now().After(deadline) {
+			return prior, err
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(replayCheck):
+		}
+	}
 }
 
 // registeredBefore answers the registration a clientRequestId made: the
@@ -253,10 +271,12 @@ func (s *server) RegisterPurchasingInvoice(ctx context.Context, req gen.Register
 	invoiceID, err := s.createSupplierInvoiceDraft(ctx, draft)
 	if err != nil {
 		// Two replays of one request race to the same invoice number: the
-		// loser answers the winner's draft once it is recorded.
+		// loser waits for the winner's record and answers its draft (A82).
 		var r *contracts.SupplierInvoiceRefusal
 		if errors.As(err, &r) && r.Code == contracts.SupplierInvoiceDuplicate {
-			if prior, perr := s.registeredBefore(ctx, b.ClientRequestId, req.OrderId, hash); perr == nil && prior != nil {
+			if prior, perr := s.awaitRegistration(ctx, b.ClientRequestId, req.OrderId, hash); perr != nil {
+				return answer(perr, resp)
+			} else if prior != nil {
 				out, err := s.registrationResult(ctx, *prior)
 				if err != nil {
 					return nil, err
@@ -283,8 +303,16 @@ func (s *server) RegisterPurchasingInvoice(ctx context.Context, req gen.Register
 			return fmt.Errorf("purchasing: lock order %d: %w", o.ID, err)
 		}
 		if err := txq.InsertRegistration(ctx, store.InsertRegistrationParams{ClientRequestID: b.ClientRequestId, RequestHash: hash,
-			OrderID: o.ID, SupplierInvoiceID: invoiceID, Lines: int32(len(planned)), LinesLeft: left, Now: now}); err != nil {
+			OrderID: o.ID, SupplierInvoiceID: invoiceID, Lines: int32(len(planned)), LinesLeft: left,
+			Total: numeric(total, amountPlaces), Now: now}); err != nil {
 			return err
+		}
+		// The order is judged again on its locked row, and the draft on what
+		// Purchasing has learnt of it: an order cancelled, or a draft deleted,
+		// since the read on the pool gets no match — the draft is the
+		// person's to match or delete (A82).
+		if locked.Status == statusDraft || locked.Status == statusCancelled || st.State != invoiceStateOpen {
+			return nil
 		}
 		// What was planned on the pool is judged again under the lock: a
 		// match, a receipt's undo or another registration since takes its

@@ -24,6 +24,9 @@ type fakeInvoices struct {
 	invoices map[int64]*contracts.SupplierInvoice
 	drafts   []contracts.SupplierInvoiceDraft
 	refuse   error
+	// afterCreate runs once a draft is made, outside the lock, before
+	// CreateDraft answers: a test holds a registration there.
+	afterCreate func()
 }
 
 func newFakeInvoices() *fakeInvoices {
@@ -65,6 +68,11 @@ func (f *fakeInvoices) CreateDraft(ctx context.Context, d contracts.SupplierInvo
 		currency = "NOK"
 	}
 	inv := f.add(d.SupplierID, "invoice", d.Number, d.InvoiceDate, currency, d.Reference, lines...)
+	if hook := f.afterCreate; hook != nil {
+		f.mu.Unlock()
+		hook()
+		f.mu.Lock()
+	}
 	return inv.ID, nil
 }
 
@@ -142,6 +150,18 @@ func (f *fakeInvoices) reverse(t *testing.T, h *harness, id int64) int64 {
 	f.mu.Unlock()
 	publishEvents(t, h, ev)
 	return cp.ID
+}
+
+// remove deletes a draft and publishes accounting.supplier_invoice.deleted.
+func (f *fakeInvoices) remove(t *testing.T, h *harness, id int64) {
+	t.Helper()
+	f.mu.Lock()
+	inv := f.invoices[id]
+	delete(f.invoices, id)
+	ev := contracts.SupplierInvoiceDeleted{InvoiceID: id, SupplierID: inv.SupplierID, Kind: inv.Kind, Number: inv.Number,
+		InvoiceDate: inv.InvoiceDate.Format(time.DateOnly), Currency: inv.Currency, Total: inv.Total, DeletedAt: h.Now()}
+	f.mu.Unlock()
+	publishEvents(t, h, ev)
 }
 
 // publishEvents writes Accounting's events into the outbox and runs this

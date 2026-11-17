@@ -13,7 +13,9 @@ package purchasing
 //   - purchasing.invoice-reversed, on accounting.supplier_invoice.reversed,
 //     releases the invoice's matches and gives the copy Reverse and copy made
 //     the same matches, provisional — posted when the copy's own posting was
-//     taken first.
+//     taken first, following the copy's own copy when it was reversed first;
+//   - purchasing.invoice-deleted, on accounting.supplier_invoice.deleted,
+//     releases a deleted draft's matches (A79).
 //
 // What Purchasing knows of the invoice is its row in invoice_states, taken
 // FOR UPDATE first: a reversal wins over a posted event delivered after it.
@@ -37,6 +39,7 @@ import (
 const (
 	invoicePostedHandler   = "purchasing.invoice-posted"
 	invoiceReversedHandler = "purchasing.invoice-reversed"
+	invoiceDeletedHandler  = "purchasing.invoice-deleted"
 )
 
 // eventHandlers are the module's handlers (module.Module.EventHandlers).
@@ -60,6 +63,13 @@ func eventHandlers(d module.Deps) []events.Handler {
 			Events: []events.EventRef{{Name: contracts.SupplierInvoiceReversed{}.EventName(), Version: 1}},
 			Handle: func(ctx context.Context, tx pgx.Tx, ev events.Delivered) error {
 				return handleInvoiceReversed(ctx, tx, ev, clock())
+			},
+		},
+		{
+			Name:   invoiceDeletedHandler,
+			Events: []events.EventRef{{Name: contracts.SupplierInvoiceDeleted{}.EventName(), Version: 1}},
+			Handle: func(ctx context.Context, tx pgx.Tx, ev events.Delivered) error {
+				return handleInvoiceDeleted(ctx, tx, ev, clock())
 			},
 		},
 	}
@@ -89,14 +99,36 @@ func handleInvoicePosted(ctx context.Context, tx pgx.Tx, ev events.Delivered, no
 	if err != nil {
 		return err
 	}
-	if st.State != "open" {
-		// Posted already, or reversed: a reversal delivered first wins.
+	if st.State != invoiceStateOpen {
+		// Posted already — by a match that read it posted (A80) —, or
+		// reversed: a reversal delivered first wins.
 		return nil
 	}
-	if err := q.SetInvoiceState(ctx, store.SetInvoiceStateParams{ID: e.InvoiceID, State: invoiceStatePost, Now: now}); err != nil {
-		return fmt.Errorf("purchasing: mark invoice %d posted: %w", e.InvoiceID, err)
+	date, err := time.Parse(time.DateOnly, e.InvoiceDate)
+	if err != nil {
+		return fmt.Errorf("purchasing: read event %d's invoice date: %w", ev.ID, err)
 	}
-	matches, err := q.InvoiceMatches(ctx, e.InvoiceID)
+	return markPosted(ctx, q, postedFacts{id: e.InvoiceID, supplierID: e.SupplierID, kind: e.Kind, number: e.Number,
+		date: date, currency: e.Currency}, now)
+}
+
+// postedFacts are what a posting tells of an invoice: its event's, or
+// Accounting's read of an invoice posted before its event was taken (A80).
+type postedFacts struct {
+	id, supplierID         int64
+	kind, number, currency string
+	date                   time.Time
+}
+
+// markPosted moves an open invoice, already locked, to posted: it fixes the
+// provisional matches, releases those whose order is no longer the
+// invoice's supplier's (§11) or that were made while the draft was of the
+// other kind, and queues the invoice for the worker.
+func markPosted(ctx context.Context, q *store.Queries, f postedFacts, now time.Time) error {
+	if err := q.SetInvoiceState(ctx, store.SetInvoiceStateParams{ID: f.id, State: invoiceStatePost, Now: now}); err != nil {
+		return fmt.Errorf("purchasing: mark invoice %d posted: %w", f.id, err)
+	}
+	matches, err := q.InvoiceMatches(ctx, f.id)
 	if err != nil || len(matches) == 0 {
 		return err
 	}
@@ -104,12 +136,9 @@ func handleInvoicePosted(ctx context.Context, tx pgx.Tx, ev events.Delivered, no
 	if err != nil {
 		return err
 	}
-	// A match whose order is no longer the invoice's supplier's (§11), or
-	// made while the draft was of the other kind, no longer bills what it
-	// counted: it is released.
 	var gone []store.PurchasingInvoiceMatch
 	for _, m := range matches {
-		if orders[m.OrderID].SupplierID != e.SupplierID || m.Kind != e.Kind {
+		if orders[m.OrderID].SupplierID != f.supplierID || m.Kind != f.kind {
 			gone = append(gone, m)
 		}
 	}
@@ -119,16 +148,50 @@ func handleInvoicePosted(ctx context.Context, tx pgx.Tx, ev events.Delivered, no
 	if err := releaseMatches(ctx, q, gone); err != nil {
 		return err
 	}
-	date, err := time.Parse(time.DateOnly, e.InvoiceDate)
-	if err != nil {
-		return fmt.Errorf("purchasing: read event %d's invoice date: %w", ev.ID, err)
+	if err := q.PostInvoiceMatches(ctx, store.PostInvoiceMatchesParams{ID: f.id, Now: &now, Currency: f.currency,
+		InvoiceDate: dayCol(f.date), InvoiceNumber: f.number}); err != nil {
+		return fmt.Errorf("purchasing: fix invoice %d's matches: %w", f.id, err)
 	}
-	if err := q.PostInvoiceMatches(ctx, store.PostInvoiceMatchesParams{ID: e.InvoiceID, Now: &now, Currency: e.Currency,
-		InvoiceDate: dayCol(date), InvoiceNumber: e.Number}); err != nil {
-		return fmt.Errorf("purchasing: fix invoice %d's matches: %w", e.InvoiceID, err)
-	}
-	return q.QueueFollowup(ctx, store.QueueFollowupParams{ID: e.InvoiceID, Now: now})
+	return q.QueueFollowup(ctx, store.QueueFollowupParams{ID: f.id, Now: now})
 }
+
+// handleInvoiceDeleted releases a deleted draft's matches (A79): what they
+// counted as invoiced is to invoice again. A match a credit note offsets
+// stays, with its warnings, for a person to unmatch from the order.
+func handleInvoiceDeleted(ctx context.Context, tx pgx.Tx, ev events.Delivered, now time.Time) error {
+	var e contracts.SupplierInvoiceDeleted
+	if err := json.Unmarshal(ev.Payload, &e); err != nil {
+		return fmt.Errorf("purchasing: decode event %d: %w", ev.ID, err)
+	}
+	q := store.New(tx)
+	if first, err := firstDelivery(ctx, q, ev, e.InvoiceID, now); err != nil || !first {
+		return err
+	}
+	st, err := lockInvoice(ctx, q, e.InvoiceID, now)
+	if err != nil || st.State == invoiceStateDeleted {
+		return err
+	}
+	if err := q.SetInvoiceState(ctx, store.SetInvoiceStateParams{ID: e.InvoiceID, State: invoiceStateDeleted, Now: now}); err != nil {
+		return fmt.Errorf("purchasing: mark invoice %d deleted: %w", e.InvoiceID, err)
+	}
+	matches, err := q.InvoiceMatches(ctx, e.InvoiceID)
+	if err != nil || len(matches) == 0 {
+		return err
+	}
+	if _, err := lockOrdersOf(ctx, q, matches); err != nil {
+		return err
+	}
+	kept, err := releasable(ctx, q, matches)
+	if err != nil {
+		return err
+	}
+	return releaseMatches(ctx, q, kept)
+}
+
+// maxCopyHops bounds the copies a reversal follows: a copy reversed in its
+// turn before its original's reversal is taken hands the matches on to its
+// own copy.
+const maxCopyHops = 50
 
 // handleInvoiceReversed releases the invoice's matches and gives them to the
 // copy (A15).
@@ -159,11 +222,22 @@ func handleInvoiceReversed(ctx context.Context, tx pgx.Tx, ev events.Delivered, 
 	if err != nil || len(matches) == 0 {
 		return err
 	}
+	// The copy that takes the matches: the one the reversal made, or — when
+	// that copy was reversed in its turn first, events of different
+	// invoices being taken in any order — the copy made of it, and so on
+	// (A81). A deleted copy, or a chain that ends reversed, takes none.
 	var copySt store.PurchasingInvoiceState
-	if copyID != nil {
-		if copySt, err = lockInvoice(ctx, q, e.CopyID, now); err != nil {
+	for hops := 0; copyID != nil; hops++ {
+		if copySt, err = lockInvoice(ctx, q, *copyID, now); err != nil {
 			return err
 		}
+		if copySt.State != invoiceStateRev || copySt.CopyID == nil || hops == maxCopyHops {
+			break
+		}
+		copyID = copySt.CopyID
+	}
+	if copyID != nil && (copySt.State == invoiceStateRev || copySt.State == invoiceStateDeleted) {
+		copyID = nil
 	}
 	if _, err := lockOrdersOf(ctx, q, matches); err != nil {
 		return err
@@ -171,16 +245,14 @@ func handleInvoiceReversed(ctx context.Context, tx pgx.Tx, ev events.Delivered, 
 	// The matches the copy takes move to it as they are, so what is
 	// invoiced stays; the rest are released.
 	at := map[int32]bool{}
-	if copyID != nil && copySt.State != invoiceStateRev {
-		taken, err := q.InvoiceMatches(ctx, e.CopyID)
+	if copyID != nil {
+		taken, err := q.InvoiceMatches(ctx, *copyID)
 		if err != nil {
-			return fmt.Errorf("purchasing: read invoice %d's matches: %w", e.CopyID, err)
+			return fmt.Errorf("purchasing: read invoice %d's matches: %w", *copyID, err)
 		}
 		for _, m := range taken {
 			at[m.LinePosition] = true
 		}
-	} else {
-		copyID = nil
 	}
 	var moved, released []store.PurchasingInvoiceMatch
 	for _, m := range matches {
@@ -202,7 +274,7 @@ func handleInvoiceReversed(ctx context.Context, tx pgx.Tx, ev events.Delivered, 
 		if err := q.DeleteMatch(ctx, m.ID); err != nil {
 			return fmt.Errorf("purchasing: move match %d to the copy: %w", m.ID, err)
 		}
-		p := store.InsertMatchParams{SupplierInvoiceID: e.CopyID, LinePosition: m.LinePosition, OrderID: m.OrderID,
+		p := store.InsertMatchParams{SupplierInvoiceID: *copyID, LinePosition: m.LinePosition, OrderID: m.OrderID,
 			OrderLineID: m.OrderLineID, Kind: m.Kind, Quantity: m.Quantity, LineNet: m.LineNet, InvoiceNumber: m.InvoiceNumber,
 			InvoiceDate: m.InvoiceDate, InvoiceCurrency: m.InvoiceCurrency, State: matchProvisional,
 			MatchedByUserID: m.MatchedByUserID, MatchedByDisplay: m.MatchedByDisplay, Now: now}
@@ -214,7 +286,7 @@ func handleInvoiceReversed(ctx context.Context, tx pgx.Tx, ev events.Delivered, 
 		}
 	}
 	if posted && len(moved) > 0 {
-		return q.QueueFollowup(ctx, store.QueueFollowupParams{ID: e.CopyID, Now: now})
+		return q.QueueFollowup(ctx, store.QueueFollowupParams{ID: *copyID, Now: now})
 	}
 	return nil
 }
@@ -257,7 +329,14 @@ func (w *followupWorker) cycle(ctx context.Context) int {
 			return n
 		}
 		if err := s.followup(ctx, row.SupplierInvoiceID); err != nil {
-			s.deps.Logger.WarnContext(ctx, "purchasing: a posted invoice could not be finished", "supplier_invoice_id", row.SupplierInvoiceID, "error", err.Error())
+			if row.Attempts >= followupMaxAttempts {
+				// The last attempt: the worker gives up on the invoice, so its
+				// matches keep the draft's nets and no last price is set.
+				s.deps.Logger.ErrorContext(ctx, "purchasing: a posted invoice could not be finished and is given up", "supplier_invoice_id",
+					row.SupplierInvoiceID, "attempts", row.Attempts, "error", err.Error())
+			} else {
+				s.deps.Logger.WarnContext(ctx, "purchasing: a posted invoice could not be finished", "supplier_invoice_id", row.SupplierInvoiceID, "error", err.Error())
+			}
 			if ferr := q.FailFollowup(context.WithoutCancel(ctx), store.FailFollowupParams{ID: row.SupplierInvoiceID,
 				LastError: ptr(truncate(err.Error(), 500)), NextAttemptAt: now.Add(mailBackoff(row.Attempts))}); ferr != nil {
 				s.deps.Logger.ErrorContext(ctx, "purchasing: a posted invoice's failure could not be recorded", "error", ferr.Error())
@@ -396,7 +475,12 @@ func setLastPrices(ctx context.Context, txq *store.Queries, inv *contracts.Suppl
 		if it.Currency != inv.Currency {
 			continue
 		}
-		if it.PriceSetOn.Valid && it.PriceSetOn.Time.After(invoiceDay) {
+		// A later price stands; so does one a person or an import set on the
+		// invoice's own day, which a run of the worker — or a second run —
+		// would otherwise take back (A85). An invoice's of the same day is
+		// replaced: the later posting wins.
+		if it.PriceSetOn.Valid && (it.PriceSetOn.Time.After(invoiceDay) ||
+			(it.PriceSetOn.Time.Format(time.DateOnly) == invoiceDay.Format(time.DateOnly) && (it.PriceSetBy == nil || *it.PriceSetBy != "invoice"))) {
 			continue
 		}
 		factor := big.NewRat(1, 1)

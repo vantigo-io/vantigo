@@ -13,6 +13,7 @@ import (
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/module"
+	"github.com/vantigo-io/vantigo/server/internal/purchasing/gen"
 	"github.com/vantigo-io/vantigo/server/internal/purchasing/store"
 )
 
@@ -48,6 +49,7 @@ func (p invoiceMatches) Summary(ctx context.Context, invoiceIDs []int64) ([]cont
 	}
 	var out []contracts.SupplierInvoiceMatch
 	at := map[int64]int{}
+	warned := map[int64][]gen.PurchasingInvoiceMatch{}
 	for _, m := range matches {
 		i, ok := at[m.SupplierInvoiceID]
 		if !ok {
@@ -63,7 +65,11 @@ func (p invoiceMatches) Summary(ctx context.Context, invoiceIDs []int64) ([]cont
 		if !seen {
 			out[i].Orders = append(out[i].Orders, contracts.MatchedOrder{ID: o.ID, Number: strconv.FormatInt(deref64(o.Number), 10)})
 		}
-		out[i].Differences += len(matchWarnings(m, o, mc.lines[m.OrderLineID], mc.tolerance))
+		warned[m.SupplierInvoiceID] = append(warned[m.SupplierInvoiceID], gen.PurchasingInvoiceMatch{OrderLineId: m.OrderLineID,
+			Warnings: matchWarnings(m, o, mc.lines[m.OrderLineID], mc.tolerance)})
+	}
+	for i := range out {
+		out[i].Differences = int(differences(warned[out[i].InvoiceID]))
 	}
 	return out, nil
 }

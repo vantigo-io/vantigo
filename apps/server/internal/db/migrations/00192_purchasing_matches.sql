@@ -45,7 +45,8 @@ CREATE INDEX ix_invoice_matches_order ON purchasing.invoice_matches (order_id);
 CREATE INDEX ix_invoice_matches_order_line ON purchasing.invoice_matches (order_line_id);
 
 -- What Purchasing has learnt of a supplier invoice from Accounting's events
--- (P5, A15): posted or reversed, and the copy a reversal made. Its row is
+-- (P5, A15, A79): posted, reversed or — a draft's — deleted, and the copy a
+-- reversal made. Its row is
 -- also the invoice's lock: every write of an invoice's matches — a match,
 -- the event handlers, the posted invoice's worker — takes it FOR UPDATE
 -- first, then the orders, so a match made while the invoice is being posted
@@ -56,7 +57,7 @@ CREATE TABLE purchasing.invoice_states (
     state               varchar(10) NOT NULL DEFAULT 'open',
     copy_id             bigint,
     updated_at          timestamptz NOT NULL,
-    CONSTRAINT ck_invoice_states_state CHECK (state IN ('open', 'posted', 'reversed'))
+    CONSTRAINT ck_invoice_states_state CHECK (state IN ('open', 'posted', 'reversed', 'deleted'))
 );
 
 -- The events the handlers took (A15): each by its id, so a replay changes
@@ -84,7 +85,9 @@ CREATE TABLE purchasing.invoice_followups (
 CREATE INDEX ix_invoice_followups_due ON purchasing.invoice_followups (next_attempt_at) WHERE completed_at IS NULL;
 
 -- Register invoice (P37, A1, A11): the draft a clientRequestId made through
--- contracts.SupplierInvoices.CreateDraft, and the hash a replay is judged by.
+-- contracts.SupplierInvoices.CreateDraft, the hash a replay is judged by, and
+-- the draft's lines' net the first answer gave, which a replay answers again
+-- (A82).
 CREATE TABLE purchasing.invoice_registrations (
     client_request_id   uuid        PRIMARY KEY,
     request_hash        char(64)    NOT NULL,
@@ -92,6 +95,7 @@ CREATE TABLE purchasing.invoice_registrations (
     supplier_invoice_id bigint      NOT NULL,
     lines               integer     NOT NULL,
     lines_left          integer     NOT NULL,
+    total               numeric(14,2) NOT NULL,
     created_at          timestamptz NOT NULL
 );
 
