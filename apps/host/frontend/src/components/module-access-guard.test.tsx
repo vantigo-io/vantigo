@@ -310,4 +310,19 @@ describe("ModuleAccessGuard", () => {
       expect(screen.queryByRole("heading", { name: "Access denied" })).not.toBeInTheDocument();
     },
   );
+
+  // Receiving is purchasing:receive's alone (purchasing design P30, A47): the
+  // receiving list and the receive screen sit under its own prefix, so a
+  // receiver who may not read orders reaches both, and the orders stay shut.
+  it.each(["/purchasing/receive", "/purchasing/receive/501"])("lets purchasing:receive alone open %s", (pathname) => {
+    renderGuardFor(pathname, ["purchasing:receive"]);
+
+    expect(screen.getByText("Allowed content")).toBeInTheDocument();
+  });
+
+  it("still refuses the orders to a caller holding purchasing:receive alone", () => {
+    renderGuardFor("/purchasing/orders/501", ["purchasing:receive"]);
+
+    expect(screen.getByRole("heading", { name: "Access denied" })).toBeInTheDocument();
+  });
 });

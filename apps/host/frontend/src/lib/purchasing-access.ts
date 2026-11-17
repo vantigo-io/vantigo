@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import type { PurchasingAccess } from "@vantigo/purchasing-ui";
+import { PURCHASE_ORDERS_ROUTE_PATH, type PurchasingAccess, RECEIVING_ROUTE_PATH } from "@vantigo/purchasing-ui";
 import { fetchSession, sessionQueryKey } from "../api/auth";
 import { getAuthorizationMe } from "../api/authorization";
 import { hasAllPermissions } from "../navigation";
@@ -7,9 +7,13 @@ import { enabledModuleKeys } from "./enabled-modules";
 
 /**
  * What the Purchasing pages may offer (purchasing design §8), judged from the
- * caller's permissions. Every Purchasing call asks for purchasing:access as
- * well as its own key, so each capability needs both. Whether the caller may
- * write a supplier in the register is Purchasing's meta's (A12), not this.
+ * caller's permissions. Every Purchasing call but receiving's asks for
+ * purchasing:access as well as its own key, so each of those capabilities
+ * needs both. Receiving — the receiving list, the receive screen, a receipt,
+ * its undo and the delivered mark — asks for purchasing:receive alone and
+ * answers no price (P30, A47), so canReceive is that key alone. Whether the
+ * caller may write a supplier in the register is Purchasing's meta's (A12),
+ * not this.
  */
 export const purchasingAccessOf = (permissions: string[] | undefined, user?: { id?: string }): PurchasingAccess => {
   const purchasing = (key: string) => hasAllPermissions(permissions, ["purchasing:access", key]);
@@ -18,12 +22,20 @@ export const purchasingAccessOf = (permissions: string[] | undefined, user?: { i
     canSendOrders: purchasing("purchasing:orders-send"),
     canManageSupplierItems: purchasing("purchasing:supplier-items-manage"),
     canManageSettings: purchasing("purchasing:settings"),
-    canReceive: purchasing("purchasing:receive"),
+    canReceive: hasAllPermissions(permissions, ["purchasing:receive"]),
+    canRead: hasAllPermissions(permissions, ["purchasing:access"]),
     canOpenInventoryMovements:
       enabledModuleKeys().includes("inventory") && hasAllPermissions(permissions, ["inventory:stock-view"]),
     userId: user?.id,
   };
 };
+
+/**
+ * Where the app's prefix sends a caller: the purchase orders, its home (P23),
+ * or the orders to receive for a receiver who may not read orders (A47).
+ */
+export const purchasingHomeFor = (access: PurchasingAccess): string =>
+  !access.canRead && access.canReceive ? RECEIVING_ROUTE_PATH : PURCHASE_ORDERS_ROUTE_PATH;
 
 /**
  * Whether the register's supplier form opened from Purchasing keeps the
