@@ -9,6 +9,7 @@ package purchasing
 import (
 	"context"
 	"math/big"
+	"strings"
 
 	"github.com/vantigo-io/vantigo/server/internal/purchasing/gen"
 )
@@ -50,7 +51,7 @@ func (s *server) CopyPurchasingOrder(ctx context.Context, req gen.CopyPurchasing
 	if err != nil {
 		return nil, err
 	}
-	currency := e.Currency
+	currency := strings.ToUpper(strings.TrimSpace(e.Currency))
 	if currency == "" {
 		currency = baseCurrency
 	}
@@ -90,12 +91,19 @@ func (s *server) CopyPurchasingOrder(ctx context.Context, req gen.CopyPurchasing
 		}
 		in.Kind, in.VariantId = gen.PurchasingLineInputKindVariant, l.VariantID
 		// The packaging the line was in, while the variant still has it; the
-		// supplier item's price when it has one in the currency, else the
-		// line's own when the currency is the same.
+		// supplier item's price when it has one in the currency that converts
+		// to that packaging (itemPriceFor), else the line's own when the
+		// currency is the same.
+		item, hasItem := items[v.ID]
+		packaging := l.PackagingID
 		if l.PackagingID == nil || packagingOf(v, *l.PackagingID) != nil {
 			in.PackagingId, in.keys["packagingId"] = l.PackagingID, true
+		} else if hasItem && item.PackagingID != nil && packagingOf(v, *item.PackagingID) != nil {
+			packaging = item.PackagingID
+		} else {
+			packaging = nil
 		}
-		if item, ok := items[v.ID]; !ok || item.Currency != currency || ratOf(item.Price) == nil {
+		if !hasItem || item.Currency != currency || itemPriceFor(v, ratOf(item.Price), item.PackagingID, packaging) == nil {
 			price := new(big.Rat)
 			if o.Currency == currency {
 				price = ratOrZero(l.UnitPrice)
