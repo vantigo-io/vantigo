@@ -573,6 +573,14 @@ func (f *fakeStock) ReleaseLotHolds(context.Context, pgx.Tx, contracts.StockSour
 	return errors.New("fake stock: orders holds no lots")
 }
 
+func (f *fakeStock) Receive(context.Context, pgx.Tx, contracts.StockSource, contracts.StockReceipt) (contracts.StockPosted, error) {
+	return contracts.StockPosted{}, errors.New("fake stock: orders receives nothing")
+}
+
+func (f *fakeStock) ReverseReceipt(context.Context, pgx.Tx, contracts.StockSource, contracts.StockReversal) (contracts.StockPosted, error) {
+	return contracts.StockPosted{}, errors.New("fake stock: orders receives nothing")
+}
+
 // variantHeld is the variant the document's line holds reserved, 0 when it
 // holds none.
 func (f *fakeStock) variantHeld(src contracts.StockSource, line int64) int32 {

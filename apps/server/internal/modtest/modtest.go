@@ -181,6 +181,10 @@ type setup struct {
 	production        contracts.Production
 	deliveryTrace     contracts.DeliveryTrace
 	kitStructure      contracts.KitStructure
+	purchaseSupply    contracts.PurchaseSupply
+	invoiceMatches    contracts.SupplierInvoiceMatches
+	supplierHolders   []contracts.SupplierReferenceHolder
+	supplierData      []contracts.SupplierPersonalDataHolder
 	smtpVerify        func(ctx context.Context, cfg config.MailConfig) error
 	smtpSend          func(ctx context.Context, cfg config.MailConfig, msg mail.Outbound) error
 	objectStore       storage.ObjectStore
@@ -283,6 +287,38 @@ func WithProduction(p contracts.Production) Option {
 // declares Module.KitStructure.
 func WithKitStructure(k contracts.KitStructure) Option {
 	return func(s *setup) { s.kitStructure = k }
+}
+
+// WithPurchaseSupply sets Deps.PurchaseSupply directly, for a module under
+// test that reads Purchasing's open purchases (Inventory's low stock and stock
+// card, Manufacturing's replenishment) without composing purchasing beside it;
+// FakePurchaseSupply is the fake. Compose only overwrites it when a composed
+// module declares Module.PurchaseSupply.
+func WithPurchaseSupply(p contracts.PurchaseSupply) Option {
+	return func(s *setup) { s.purchaseSupply = p }
+}
+
+// WithSupplierInvoiceMatches sets Deps.SupplierInvoiceMatches directly, for
+// Accounting's badge to be tested without composing purchasing beside it.
+// Compose only overwrites it when a composed module declares
+// Module.SupplierInvoiceMatches.
+func WithSupplierInvoiceMatches(m contracts.SupplierInvoiceMatches) Option {
+	return func(s *setup) { s.invoiceMatches = m }
+}
+
+// WithSupplierReferenceHolders adds holders to Deps.SupplierReferenceHolders,
+// and WithSupplierPersonalData to Deps.SupplierPersonalData, for Accounting's
+// supplier delete, anonymisation and export to be tested against fakes
+// without composing purchasing beside it. module.Compose and module.Workers
+// append the given modules' own after these; given more than once, they
+// accumulate in order.
+func WithSupplierReferenceHolders(holders ...contracts.SupplierReferenceHolder) Option {
+	return func(s *setup) { s.supplierHolders = append(s.supplierHolders, holders...) }
+}
+
+// WithSupplierPersonalData: see WithSupplierReferenceHolders.
+func WithSupplierPersonalData(holders ...contracts.SupplierPersonalDataHolder) Option {
+	return func(s *setup) { s.supplierData = append(s.supplierData, holders...) }
 }
 
 // WithDeliveryTrace sets Deps.DeliveryTrace directly, for a module under
@@ -957,6 +993,10 @@ func New(t *testing.T, opts ...Option) *Harness {
 		Production:               s.production,
 		DeliveryTrace:            s.deliveryTrace,
 		KitStructure:             s.kitStructure,
+		PurchaseSupply:           s.purchaseSupply,
+		SupplierInvoiceMatches:   s.invoiceMatches,
+		SupplierReferenceHolders: s.supplierHolders,
+		SupplierPersonalData:     s.supplierData,
 		SMTPVerify:               s.smtpVerify,
 		SMTPSend:                 s.smtpSend,
 		ObjectStore:              s.objectStore,

@@ -505,7 +505,7 @@ export interface paths {
         };
         /**
          * Export low stock as CSV
-         * @description The low-stock list as CSV (I60), with the list's filter: site, sku, name, barcode, available, incoming, reorder_point, maximum, needed, suggested, packaging, packaging_count — every row, unpaged.
+         * @description The low-stock list as CSV (I60), with the list's filter: site, sku, name, barcode, available, incoming, in_transit, on_order, reorder_point, maximum, needed, suggested, packaging, packaging_count — every row, unpaged; incoming is in_transit plus on_order.
          */
         get: operations["exportInventoryLowStock"];
         put?: never;
@@ -1738,7 +1738,7 @@ export interface components {
             next?: string;
             rows: components["schemas"]["InventoryLowStockRow"][];
         };
-        /** @description One low placement (I56–I58): the variant at an active site whose available plus incoming is at or below its reorder point, what it needs to reach its target — the maximum, or one above the reorder point — and the suggestion rounded up to whole packagings. */
+        /** @description One low placement (I56–I58): the variant at an active site whose available plus incoming — in transit and on order — is at or below its reorder point, what it needs to reach its target — the maximum, or one above the reorder point — and the suggestion rounded up to whole packagings. */
         InventoryLowStockRow: {
             /**
              * Format: double
@@ -1751,7 +1751,17 @@ export interface components {
              * Format: double
              * @description In transit to the site on open transfers.
              */
+            inTransit: number;
+            /**
+             * Format: double
+             * @description In transit plus on order (purchasing design P4).
+             */
             incoming: number;
+            /**
+             * Format: double
+             * @description Ordered on sent purchase orders for the site and not yet received (purchasing design P4); 0 when Purchasing is off.
+             */
+            onOrder: number;
             /** Format: double */
             maximum: number | null;
             /**
@@ -1866,10 +1876,10 @@ export interface components {
             transfer?: components["schemas"]["InventoryTransferRef"];
         };
         /**
-         * @description An open set (design §12): issue is stock taken out for another module's document, such as an order's delivery (orders design O45); transfer_out leaves the from site of a transfer and transfer_in arrives at its to site, or back at the from site when it is cancelled (I39–I44); production is a producing document's consumption of components, lines with only a from, and its output, lines with only a to, within one site (manufacturing design M1); unbuild reverses a production, its consume lines the finished item and its produce lines the components restored (manufacturing phase 2 M123).
+         * @description An open set (design §12): issue is stock taken out for another module's document, such as an order's delivery (orders design O45); transfer_out leaves the from site of a transfer and transfer_in arrives at its to site, or back at the from site when it is cancelled (I39–I44); production is a producing document's consumption of components, lines with only a from, and its output, lines with only a to, within one site (manufacturing design M1); unbuild reverses a production, its consume lines the finished item and its produce lines the components restored (manufacturing phase 2 M123); receipt_reversal takes a receipt another module posted (purchasing design P3) back out of the locations and lots it went into, lines with only a from (A5).
          * @enum {string}
          */
-        InventoryMovementKind: "adjustment" | "move" | "receipt" | "count" | "issue" | "transfer_out" | "transfer_in" | "production" | "unbuild";
+        InventoryMovementKind: "adjustment" | "move" | "receipt" | "count" | "issue" | "transfer_out" | "transfer_in" | "production" | "unbuild" | "receipt_reversal";
         /** @description A quantity of a variant from a location, to one, or both (I9). */
         InventoryMovementLine: {
             entered?: components["schemas"]["InventoryEnteredSnapshot"];
@@ -2195,7 +2205,17 @@ export interface components {
              * Format: double
              * @description In transit to the site on open transfers (I46).
              */
+            inTransit: number;
+            /**
+             * Format: double
+             * @description In transit plus on order (purchasing design P4).
+             */
             incoming: number;
+            /**
+             * Format: double
+             * @description Ordered on sent purchase orders for the site and not yet received (purchasing design P4); 0 when Purchasing is off.
+             */
+            onOrder: number;
             /** Format: double */
             onHand: number;
             placement?: components["schemas"]["InventoryPlacement"];
@@ -2287,7 +2307,17 @@ export interface components {
              * Format: double
              * @description In transit to the site on open transfers (I46).
              */
+            inTransit: number;
+            /**
+             * Format: double
+             * @description In transit plus on order (purchasing design P4).
+             */
             incoming: number;
+            /**
+             * Format: double
+             * @description Ordered on sent purchase orders for the site and not yet received (purchasing design P4); 0 when Purchasing is off.
+             */
+            onOrder: number;
             /** @description The locations holding it, most first. */
             locations: components["schemas"]["InventoryStockAtSiteLocation"][];
             /** Format: double */

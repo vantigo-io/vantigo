@@ -1097,11 +1097,14 @@ export interface paths {
         };
         /**
          * List the suppliers
-         * @description By number.
+         * @description By number. Answers before the books are set up (purchasing design P2).
          */
         get: operations["listAccountingSuppliers"];
         put?: never;
-        /** Create a supplier */
+        /**
+         * Create a supplier
+         * @description For a holder of accounting:suppliers-manage or accounting:post (purchasing design A12), before the books are set up too (P2). The bank account, IBAN, BIC, default account and default tax code need accounting:post; a default account or tax code before the books are set up is books_not_set_up.
+         */
         post: operations["createAccountingSupplier"];
         delete?: never;
         options?: never;
@@ -1118,7 +1121,7 @@ export interface paths {
         };
         /**
          * Look a supplier up in Brønnøysundregisteret
-         * @description Read-only, rate-limited. By organisation number it reads the entity, with its business address; by name it searches, at most ten.
+         * @description Read-only, rate-limited, for a holder of accounting:suppliers-manage or accounting:post. By organisation number it reads the entity, with its business address; by name it searches, at most ten.
          */
         get: operations["lookupAccountingSupplierBrreg"];
         put?: never;
@@ -1138,12 +1141,15 @@ export interface paths {
         };
         /** Read a supplier */
         get: operations["getAccountingSupplier"];
-        /** Change a supplier */
+        /**
+         * Change a supplier
+         * @description For a holder of accounting:suppliers-manage or accounting:post (purchasing design A12). The bank account, IBAN, BIC, default account and default tax code are written only by a holder of accounting:post: for any other caller a field left out keeps its value, and a field sent with another value is supplier_fields_need_post.
+         */
         put: operations["updateAccountingSupplier"];
         post?: never;
         /**
          * Delete a supplier with no postings
-         * @description Only a supplier with no postings and no invoices; any other is made inactive instead.
+         * @description Only a supplier with no postings and no invoices, and no document of another module naming it (contracts.SupplierReferenceHolder); any other is made inactive instead.
          */
         delete: operations["deleteAccountingSupplier"];
         options?: never;
@@ -1162,7 +1168,7 @@ export interface paths {
         put?: never;
         /**
          * Anonymise a person supplier after its retention date
-         * @description For a supplier that is a person, once the bookkeeping's retention has run out (five years after the end of the year of the last voucher, A17): the name becomes Anonymised supplier N, every contact and bank field is cleared and the supplier is made inactive. The vouchers and their postings are untouched.
+         * @description For a supplier that is a person, once the bookkeeping's retention has run out (five years after the end of the year of the last voucher, A17): the name becomes Anonymised supplier N, every contact and bank field is cleared and the supplier is made inactive. The vouchers and their postings are untouched. Every other module holding something of the person blanks it in the same transaction (contracts.SupplierPersonalData); one with an open document naming the supplier refuses it.
          */
         post: operations["anonymiseAccountingSupplier"];
         delete?: never;
@@ -2779,7 +2785,7 @@ export interface components {
             taxCodeId: number | null;
             taxRole: components["schemas"]["AccountingTaxRole"] | null;
         };
-        /** @description An RFC 9457 problem with this module's refusal code (accounting design §2, §13). code names the rule that refused and is what a client keys off, never the words: books_not_set_up (409: every operation but the meta and the setup, until Set up the books has run, R12), books_already_set_up (409: a second setup), revision_conflict (409: the revision has moved on), account_number_taken (409), account_has_postings (409: a delete of an account with postings, or a change of its number or kind), account_has_role (409: a delete of an account holding a system role; move the role first), account_inactive (400: a line on an inactive account), account_unknown (400), tax_code_unknown (400: an unknown or inactive tax code), tax_code_no_rate (400: no rate period covers the voucher's date), rate_period_invalid (400: a new rate period that does not start after the current one's start), party_required (400: a line on receivables or payables without a customer or supplier), party_not_allowed (400: a party on a line of another account, or both a customer and a supplier), open_item_unknown (400: an open item of another party or kind), voucher_unbalanced (400: the lines and their computed tax do not sum to zero; the detail names the difference), voucher_empty (400: no line, or every line zero), amount_invalid (400: not an exact decimal with at most two places, or zero), date_before_books_start (400), period_locked (409: a voucher a person posts dated on or before the lock, A8), voucher_owned_by_source (409: a reversal of a voucher the system posted, which only its source reverses, A7), voucher_already_reversed (409), opening_exists (409: an opening voucher stands and is not reversed), opening_locked (409: an opening entered or reversed after the first lock, A9), lock_not_month_end (400), lock_reason_required (400: a lock moved back without a reason), lock_before_books_start (400), settlement_source_document (409: an item that stands for a document in Invoices is paid there, R5), settlement_exceeds_balance (409: more than the item's balance), settlement_settled (409: an item with nothing left), bank_account_invalid (400: not an active asset account), attachment_too_large (400: over 20 MB), storage_not_configured (503: no object store for attachments), report_account_required (400: the account report without accountId), period_invalid (400: from after to, or a period over 366 days for the journal), open_item_source_document (400: a person's voucher naming an open item that stands for a document in Invoices, which moves with Invoices' own facts), report_too_large (400: the journal or an account's specification over 50 000 postings; choose a shorter period), lock_in_future (400: a lock after the end of the current month), books_start_too_early (400: books that start before 2022-01-01, the first day the seeded rates are known to hold), account_kind_mismatch (400: an account whose kind is not its number's class's — 1 asset, 20 equity, 21–29 liability, 3 income, 4–7 expense, 8 income or expense — or a number outside the classes 1 to 8; a system role moved to an account of another kind than the role's), reverse_charge_gross (400: a gross journal with a reverse-charge code, which is entered net), posting_rule_name_taken (409), posting_rule_match_taken (409: a rule with the same scope and match exists), posting_rule_default (409: a default rule is never deleted, only pointed at another account), unposted_already_posted (409: a retry of a fact that has posted), supplier_organisation_number_taken (409: another supplier has that organisation number), supplier_bank_account_invalid (400: not eleven digits passing mod 11), supplier_has_postings (409: a delete of a supplier with postings or invoices; make it inactive), supplier_inactive (400: a new invoice for an inactive supplier), duplicate_supplier_invoice (409: the same supplier's number of the same kind on another invoice that is not reversed), supplier_invoice_not_draft (409: a change, a delete, a post or a file removed on an invoice that is not a draft), supplier_invoice_not_posted (409: a payment or Reverse and copy on an invoice that is not posted), supplier_invoice_file_required (409: Post without an attached file), supplier_invoice_total_mismatch (400: the lines' gross does not sum to the total), tax_code_not_purchase (400: an output code on a purchase line), exchange_rate_required (400: another currency without the rate or the NOK total), supplier_invoice_settled (409: a payment on an invoice with nothing left), payment_exceeds_balance (409: a payment of more than is left), payment_removed (409: a payment removed already), settlement_supplier_invoice (409: an item that stands for a supplier invoice is paid on the invoice), unposted_wrong_reason (409: an action for another reason than the row's), brreg_unavailable (502: Brønnøysundregisteret could not be reached), supplier_invoice_has_payments (409: Reverse and copy of an invoice with a payment standing; remove the payment first), tax_code_not_for_supplier_invoice (400: an import code — 14, 15, 20, 21, 22, 81 to 85 — on a supplier invoice line; import VAT is a manual journal), exchange_rate_mismatch (400: both the rate and the NOK total, and they disagree), credit_note_invoice_not_posted (409: Post of a credit note whose invoice is no longer posted), credit_note_currency_mismatch (409: a credit note in another currency than the invoice it credits), credit_note_exceeds_balance (409: a credit note of more than is left on the credited invoice), supplier_invoice_item_in_use (409: Reverse and copy of an invoice whose open item another voucher standing posts on — a credit note, a payment, a settlement; reverse that first), supplier_retained (409: anonymising a person supplier before its retention date), supplier_anonymised (409: a change or an anonymisation of a supplier anonymised already), expense_already_invoiced (409: an expense made into a supplier invoice already), vat_not_registered (409: a VAT term of books whose vatTerm is none), vat_term_closed (409: a close of a closed term), vat_term_not_ended (409: a close before the term's last day has passed), vat_term_out_of_order (409: a close while an earlier term is open), vat_term_attention (409: a close while Needs attention holds facts that wait dated in the term; the detail counts them), vat_term_lock_after_end (409: a close while the lock is on or after the term's last day; move the lock back first), vat_term_unreconciled (409: a close while the VAT accounts' movement differs from the return's VAT; the detail names the vouchers), vat_term_not_closed (409: a reopening, a filing or the XML of an open term), vat_term_filed (409: a reopening or a second filing of a filed term), vat_term_not_latest (409: a reopening while a later term is closed), vat_term_not_filed (409: an unfiling of a term not filed), lock_behind_filed_term (409: the lock moved back behind a term filed at Skatteetaten, R10), lock_behind_closed_term (409: the lock moved back behind a closed VAT term; reopen the term instead), vat_term_stale (409: a close while a closed term's figures, computed again, differ from the return it was closed with), opening_vat_account (400: an opening line on a tax code's VAT or counter account; VAT owed from before the books start belongs on the VAT settlement account), tax_code_in_use (409: a change of a tax code's VAT or counter account once a posting carries the code), vat_term_inconsistent (409: a close whose counted VAT is not the return's exact total, or whose rounding difference is a krone a line or more), vat_term_partial (409: a close of a term that starts before the books without confirmPartial), vat_term_rate_missing (409: a close while a reported code has no rate on a posting's date), saft_seller_missing (409: a SAF-T export with no company in Invoices that has an organisation number), saft_file_invalid (400: an upload that is not a readable SAF-T Financial file, or one with a DOCTYPE, an entity or an external reference), saft_version_unsupported (400: a SAF-T file of version 1.20 or older; export it again as 1.30 or 1.40), saft_file_too_large (400: an upload over ACCOUNTING_SAFT_IMPORT_MAX_BYTES), saft_import_ledger_has_vouchers (409: an import while the ledger has vouchers), saft_import_applied (409: an import applied already), saft_import_unresolved (409: Apply while an account needs a number or a problem stands; the detail names them), saft_import_unmatched_customers (409: Apply while a customer with a balance is matched to no customer in Customers, or to several; create or link them there), saft_import_parties_mismatch (409: Apply of a file whose customers' or suppliers' balances differ from the control account's; the detail shows the difference), saft_import_books_start_mismatch (400: a booksStart that is not the day after the file's selection ends), saft_import_link_unknown (400: a link to a customer Customers does not hold), saft_import_other_company (409: Apply of a file of another company than the seller in Invoices, not confirmed with confirmOtherCompany), saft_export_file_removed (409: the download of a SAF-T file deleted after its retention), bank_account_number_invalid (400: an account number that is not eleven digits passing mod 11, nor a Norwegian IBAN), bank_account_currency (400: a bank account not in NOK, the only currency in this phase), bank_account_number_taken (409: another bank account has that number), bank_account_ledger_taken (409: another bank account has that ledger account), bank_account_has_statements (409: a delete of a bank account with statements; make it inactive), bank_feed_off (409: the bank feed is not composed — Invoices off or INVOICES_BANK_FEED_ENABLED off), bank_feed_not_connected (409: no bank is connected in Invoices' Bank integration), bank_feed_refused (409: the bank refused Invoices' key; store it again there), bank_feed_account_not_offered (409: the bank feed does not read that account number), bank_feed_unreachable (503: the bank could not be reached, or limited the request), bank_statement_invalid (400: not a readable camt.053 or CSV file, a DOCTYPE or an entity, a currency other than NOK), bank_statement_too_large (400: over 20 MB, or more lines than a statement holds), bank_statement_account_unknown (400: none of the file's accounts is a bank account here; the detail names them), bank_statement_account_required (400: a CSV file without bankAccountId), bank_csv_mapping_required (409: a CSV file for a bank account with no mapping saved), bank_csv_mapping_invalid (400: a mapping with no amount, or both an amount and debit and credit columns, or a column twice), bank_line_matched (409: a match stands on the line already, made by another request), bank_line_not_matched (409: an undo of a line with no match), bank_suggestion_stale (409: the suggestion accepted no longer holds; read the line again), bank_posting_matched (409: a posting the suggestion names is matched to another line meanwhile), bank_line_customer_payment (409: a customer payment — money in with a KID, a batch, or a credit to a sales income account — coded here; register it in Invoices, R11), bank_rule_in_use (409: a delete of a bank rule a match was made with; make it inactive), bank_unreconciled (409: the lock moved forward over bank lines not matched or a statement balance that differs from the ledger's, without confirmUnreconciled; the detail names the accounts), bank_account_in_use (409: a change of the number or the ledger account of a bank account with statement lines or postings chosen through it), bank_feed_start_too_early (400: a feed start day on or before a day already imported from a file), bank_rule_customer_payment (400: a bank rule that could code money in to an income or receivables account; customer payments are registered in Invoices), bank_amount_currency_required (400: a foreign-currency supplier payment whose amount in the invoice's currency cannot be derived; give amountCurrency), bank_fee_too_large (400: a Vipps fee over 5 % of the line, or negative), bank_open_item_required (400: a bank line coded to receivables or payables without the open item it settles), bank_line_possible_duplicate (409: the line is flagged as a possible duplicate; confirm or dismiss it first), bank_line_not_duplicate (409: the line is not flagged as a possible duplicate, or is matched). errors carries the field errors of a 400, keyed by the camelCase path (lines[2].accountId). */
+        /** @description An RFC 9457 problem with this module's refusal code (accounting design §2, §13). code names the rule that refused and is what a client keys off, never the words: books_not_set_up (409: every operation but the meta, the setup and the suppliers, until Set up the books has run, R12, purchasing design P2), books_already_set_up (409: a second setup), revision_conflict (409: the revision has moved on), account_number_taken (409), account_has_postings (409: a delete of an account with postings, or a change of its number or kind), account_has_role (409: a delete of an account holding a system role; move the role first), account_inactive (400: a line on an inactive account), account_unknown (400), tax_code_unknown (400: an unknown or inactive tax code), tax_code_no_rate (400: no rate period covers the voucher's date), rate_period_invalid (400: a new rate period that does not start after the current one's start), party_required (400: a line on receivables or payables without a customer or supplier), party_not_allowed (400: a party on a line of another account, or both a customer and a supplier), open_item_unknown (400: an open item of another party or kind), voucher_unbalanced (400: the lines and their computed tax do not sum to zero; the detail names the difference), voucher_empty (400: no line, or every line zero), amount_invalid (400: not an exact decimal with at most two places, or zero), date_before_books_start (400), period_locked (409: a voucher a person posts dated on or before the lock, A8), voucher_owned_by_source (409: a reversal of a voucher the system posted, which only its source reverses, A7), voucher_already_reversed (409), opening_exists (409: an opening voucher stands and is not reversed), opening_locked (409: an opening entered or reversed after the first lock, A9), lock_not_month_end (400), lock_reason_required (400: a lock moved back without a reason), lock_before_books_start (400), settlement_source_document (409: an item that stands for a document in Invoices is paid there, R5), settlement_exceeds_balance (409: more than the item's balance), settlement_settled (409: an item with nothing left), bank_account_invalid (400: not an active asset account), attachment_too_large (400: over 20 MB), storage_not_configured (503: no object store for attachments), report_account_required (400: the account report without accountId), period_invalid (400: from after to, or a period over 366 days for the journal), open_item_source_document (400: a person's voucher naming an open item that stands for a document in Invoices, which moves with Invoices' own facts), report_too_large (400: the journal or an account's specification over 50 000 postings; choose a shorter period), lock_in_future (400: a lock after the end of the current month), books_start_too_early (400: books that start before 2022-01-01, the first day the seeded rates are known to hold), account_kind_mismatch (400: an account whose kind is not its number's class's — 1 asset, 20 equity, 21–29 liability, 3 income, 4–7 expense, 8 income or expense — or a number outside the classes 1 to 8; a system role moved to an account of another kind than the role's), reverse_charge_gross (400: a gross journal with a reverse-charge code, which is entered net), posting_rule_name_taken (409), posting_rule_match_taken (409: a rule with the same scope and match exists), posting_rule_default (409: a default rule is never deleted, only pointed at another account), unposted_already_posted (409: a retry of a fact that has posted), supplier_organisation_number_taken (409: another supplier has that organisation number), supplier_bank_account_invalid (400: not eleven digits passing mod 11), supplier_has_postings (409: a delete of a supplier with postings or invoices; make it inactive), supplier_has_documents (409: a delete of a supplier another module's documents name, purchasing design A8), supplier_has_open_documents (409: an anonymisation of a supplier another module's open documents name), suppliers_manage_required (403: a supplier written by a caller holding neither accounting:suppliers-manage nor accounting:post, A12), supplier_fields_need_post (403: a supplier's bank account, IBAN, BIC, default account or default tax code written without accounting:post), saft_import_supplier_unknown (400: an apply's suppliers naming a supplier the register does not hold), supplier_inactive (400: a new invoice for an inactive supplier), duplicate_supplier_invoice (409: the same supplier's number of the same kind on another invoice that is not reversed), supplier_invoice_not_draft (409: a change, a delete, a post or a file removed on an invoice that is not a draft), supplier_invoice_not_posted (409: a payment or Reverse and copy on an invoice that is not posted), supplier_invoice_file_required (409: Post without an attached file), supplier_invoice_total_mismatch (400: the lines' gross does not sum to the total), tax_code_not_purchase (400: an output code on a purchase line), exchange_rate_required (400: another currency without the rate or the NOK total), supplier_invoice_settled (409: a payment on an invoice with nothing left), payment_exceeds_balance (409: a payment of more than is left), payment_removed (409: a payment removed already), settlement_supplier_invoice (409: an item that stands for a supplier invoice is paid on the invoice), unposted_wrong_reason (409: an action for another reason than the row's), brreg_unavailable (502: Brønnøysundregisteret could not be reached), supplier_invoice_has_payments (409: Reverse and copy of an invoice with a payment standing; remove the payment first), tax_code_not_for_supplier_invoice (400: an import code — 14, 15, 20, 21, 22, 81 to 85 — on a supplier invoice line; import VAT is a manual journal), exchange_rate_mismatch (400: both the rate and the NOK total, and they disagree), credit_note_invoice_not_posted (409: Post of a credit note whose invoice is no longer posted), credit_note_currency_mismatch (409: a credit note in another currency than the invoice it credits), credit_note_exceeds_balance (409: a credit note of more than is left on the credited invoice), supplier_invoice_item_in_use (409: Reverse and copy of an invoice whose open item another voucher standing posts on — a credit note, a payment, a settlement; reverse that first), supplier_retained (409: anonymising a person supplier before its retention date), supplier_anonymised (409: a change or an anonymisation of a supplier anonymised already), expense_already_invoiced (409: an expense made into a supplier invoice already), vat_not_registered (409: a VAT term of books whose vatTerm is none), vat_term_closed (409: a close of a closed term), vat_term_not_ended (409: a close before the term's last day has passed), vat_term_out_of_order (409: a close while an earlier term is open), vat_term_attention (409: a close while Needs attention holds facts that wait dated in the term; the detail counts them), vat_term_lock_after_end (409: a close while the lock is on or after the term's last day; move the lock back first), vat_term_unreconciled (409: a close while the VAT accounts' movement differs from the return's VAT; the detail names the vouchers), vat_term_not_closed (409: a reopening, a filing or the XML of an open term), vat_term_filed (409: a reopening or a second filing of a filed term), vat_term_not_latest (409: a reopening while a later term is closed), vat_term_not_filed (409: an unfiling of a term not filed), lock_behind_filed_term (409: the lock moved back behind a term filed at Skatteetaten, R10), lock_behind_closed_term (409: the lock moved back behind a closed VAT term; reopen the term instead), vat_term_stale (409: a close while a closed term's figures, computed again, differ from the return it was closed with), opening_vat_account (400: an opening line on a tax code's VAT or counter account; VAT owed from before the books start belongs on the VAT settlement account), tax_code_in_use (409: a change of a tax code's VAT or counter account once a posting carries the code), vat_term_inconsistent (409: a close whose counted VAT is not the return's exact total, or whose rounding difference is a krone a line or more), vat_term_partial (409: a close of a term that starts before the books without confirmPartial), vat_term_rate_missing (409: a close while a reported code has no rate on a posting's date), saft_seller_missing (409: a SAF-T export with no company in Invoices that has an organisation number), saft_file_invalid (400: an upload that is not a readable SAF-T Financial file, or one with a DOCTYPE, an entity or an external reference), saft_version_unsupported (400: a SAF-T file of version 1.20 or older; export it again as 1.30 or 1.40), saft_file_too_large (400: an upload over ACCOUNTING_SAFT_IMPORT_MAX_BYTES), saft_import_ledger_has_vouchers (409: an import while the ledger has vouchers), saft_import_applied (409: an import applied already), saft_import_unresolved (409: Apply while an account needs a number or a problem stands; the detail names them), saft_import_unmatched_customers (409: Apply while a customer with a balance is matched to no customer in Customers, or to several; create or link them there), saft_import_parties_mismatch (409: Apply of a file whose customers' or suppliers' balances differ from the control account's; the detail shows the difference), saft_import_books_start_mismatch (400: a booksStart that is not the day after the file's selection ends), saft_import_link_unknown (400: a link to a customer Customers does not hold), saft_import_other_company (409: Apply of a file of another company than the seller in Invoices, not confirmed with confirmOtherCompany), saft_export_file_removed (409: the download of a SAF-T file deleted after its retention), bank_account_number_invalid (400: an account number that is not eleven digits passing mod 11, nor a Norwegian IBAN), bank_account_currency (400: a bank account not in NOK, the only currency in this phase), bank_account_number_taken (409: another bank account has that number), bank_account_ledger_taken (409: another bank account has that ledger account), bank_account_has_statements (409: a delete of a bank account with statements; make it inactive), bank_feed_off (409: the bank feed is not composed — Invoices off or INVOICES_BANK_FEED_ENABLED off), bank_feed_not_connected (409: no bank is connected in Invoices' Bank integration), bank_feed_refused (409: the bank refused Invoices' key; store it again there), bank_feed_account_not_offered (409: the bank feed does not read that account number), bank_feed_unreachable (503: the bank could not be reached, or limited the request), bank_statement_invalid (400: not a readable camt.053 or CSV file, a DOCTYPE or an entity, a currency other than NOK), bank_statement_too_large (400: over 20 MB, or more lines than a statement holds), bank_statement_account_unknown (400: none of the file's accounts is a bank account here; the detail names them), bank_statement_account_required (400: a CSV file without bankAccountId), bank_csv_mapping_required (409: a CSV file for a bank account with no mapping saved), bank_csv_mapping_invalid (400: a mapping with no amount, or both an amount and debit and credit columns, or a column twice), bank_line_matched (409: a match stands on the line already, made by another request), bank_line_not_matched (409: an undo of a line with no match), bank_suggestion_stale (409: the suggestion accepted no longer holds; read the line again), bank_posting_matched (409: a posting the suggestion names is matched to another line meanwhile), bank_line_customer_payment (409: a customer payment — money in with a KID, a batch, or a credit to a sales income account — coded here; register it in Invoices, R11), bank_rule_in_use (409: a delete of a bank rule a match was made with; make it inactive), bank_unreconciled (409: the lock moved forward over bank lines not matched or a statement balance that differs from the ledger's, without confirmUnreconciled; the detail names the accounts), bank_account_in_use (409: a change of the number or the ledger account of a bank account with statement lines or postings chosen through it), bank_feed_start_too_early (400: a feed start day on or before a day already imported from a file), bank_rule_customer_payment (400: a bank rule that could code money in to an income or receivables account; customer payments are registered in Invoices), bank_amount_currency_required (400: a foreign-currency supplier payment whose amount in the invoice's currency cannot be derived; give amountCurrency), bank_fee_too_large (400: a Vipps fee over 5 % of the line, or negative), bank_open_item_required (400: a bank line coded to receivables or payables without the open item it settles), bank_line_possible_duplicate (409: the line is flagged as a possible duplicate; confirm or dismiss it first), bank_line_not_duplicate (409: the line is not flagged as a possible duplicate, or is matched). errors carries the field errors of a 400, keyed by the camelCase path (lines[2].accountId). */
         AccountingProblem: {
             code?: string | null;
             detail?: string | null;
@@ -3122,6 +3128,10 @@ export interface components {
             roles?: {
                 [key: string]: string;
             };
+            /** @description Per file supplier id, the register's supplier to take it as, or 0 for a new one; overrides the match (purchasing design A2). A supplier that does not exist is saft_import_supplier_unknown. */
+            suppliers?: {
+                [key: string]: number;
+            };
             vatTerm: components["schemas"]["AccountingVatTerm"];
         };
         AccountingSaftImportCustomer: {
@@ -3210,17 +3220,41 @@ export interface components {
             /** Format: date-time */
             uploadedAt: string;
         };
+        /** @description A supplier of the file and the supplier Apply takes it as (purchasing design A2): one already in the register — by organisation number, else by exact name — or a new one. */
         AccountingSaftImportSupplier: {
             bankAccount: string | null;
+            /** @description The suppliers of the register with the file supplier's exact name, when several have it (match ambiguous); one of them may be picked in the apply's suppliers. */
+            candidates: components["schemas"]["AccountingSaftImportSupplierCandidate"][];
             city: string | null;
             closingBalance: string;
             fileSupplierId: string;
             iban: string | null;
+            /**
+             * @description matched: the register's supplier with the organisation number; matched_by_name: the one supplier of the register with the exact name; ambiguous: several have the name, and a new supplier is made unless one is picked; linked: the one the apply's suppliers picked; new: a new supplier is made.
+             * @enum {string}
+             */
+            match: "new" | "matched" | "matched_by_name" | "ambiguous" | "linked";
             name: string;
             notes: string[];
             organisationNumber: string | null;
             /** Format: int32 */
             position: number;
+            /**
+             * Format: int64
+             * @description The register's supplier Apply takes it as; null for a new one.
+             */
+            supplierId: number | null;
+            supplierName: string | null;
+            /** Format: int32 */
+            supplierNumber: number | null;
+        };
+        AccountingSaftImportSupplierCandidate: {
+            /** Format: int64 */
+            id: number;
+            name: string;
+            /** Format: int32 */
+            number: number;
+            organisationNumber: string | null;
         };
         AccountingSaftImportSupplierList: {
             items: components["schemas"]["AccountingSaftImportSupplier"][];
@@ -3367,6 +3401,10 @@ export interface components {
         AccountingSupplierExport: {
             invoices: components["schemas"]["AccountingSupplierInvoice"][];
             postings: components["schemas"]["AccountingSupplierExportPosting"][];
+            /** @description Each other module's section of what it holds about the supplier as a person (contracts.SupplierPersonalData), under the module's name. A module holding nothing for the supplier has no key. */
+            modules: {
+                [key: string]: unknown;
+            };
             /** Format: date-time */
             producedAt: string;
             supplier: components["schemas"]["AccountingSupplier"];
@@ -3451,6 +3489,7 @@ export interface components {
             payments: components["schemas"]["AccountingSupplierPayment"][];
             /** Format: date-time */
             postedAt: string | null;
+            purchaseMatch?: components["schemas"]["AccountingSupplierInvoiceMatch"];
             reference: string | null;
             reversalVoucher: components["schemas"]["AccountingVoucherRef"] | null;
             /** Format: int32 */
@@ -3475,6 +3514,17 @@ export interface components {
             /** @description The VAT the lines carry, in the invoice's currency. */
             vat: string;
             voucher: components["schemas"]["AccountingVoucherRef"] | null;
+        };
+        /** @description The purchase orders the invoice is matched to, and how many differences the match has (purchasing design P6): answered by Purchasing when it is on, and absent when it is off or the invoice is matched to none. */
+        AccountingSupplierInvoiceMatch: {
+            /** Format: int32 */
+            differences: number;
+            orders: components["schemas"]["AccountingMatchedOrder"][];
+        };
+        AccountingMatchedOrder: {
+            /** Format: int64 */
+            id: number;
+            number: string;
         };
         AccountingSupplierInvoiceInput: {
             /**
@@ -8539,7 +8589,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
-            /** @description Conflict — books_not_set_up. */
+            /** @description Conflict. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -8590,7 +8640,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
-            /** @description Forbidden */
+            /** @description Forbidden — suppliers_manage_required; supplier_fields_need_post, a field of the books' without accounting:post. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -8599,7 +8649,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
-            /** @description Conflict — books_not_set_up; supplier_organisation_number_taken. */
+            /** @description Conflict — books_not_set_up, a default account or tax code before the books are set up; supplier_organisation_number_taken. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -8651,7 +8701,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
-            /** @description Forbidden */
+            /** @description Forbidden — suppliers_manage_required, neither accounting:suppliers-manage nor accounting:post. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -8660,7 +8710,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
-            /** @description Conflict — books_not_set_up. */
+            /** @description Conflict. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -8732,7 +8782,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — books_not_set_up. */
+            /** @description Conflict. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -8785,7 +8835,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
-            /** @description Forbidden */
+            /** @description Forbidden — suppliers_manage_required; supplier_fields_need_post. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -8801,7 +8851,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — books_not_set_up; revision_conflict, supplier_organisation_number_taken, supplier_anonymised. */
+            /** @description Conflict — books_not_set_up, a default account or tax code before the books are set up; revision_conflict, supplier_organisation_number_taken, supplier_anonymised. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -8855,7 +8905,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — books_not_set_up; supplier_has_postings. */
+            /** @description Conflict — supplier_has_postings; supplier_has_documents, another module's documents name it. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -8920,7 +8970,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — books_not_set_up; supplier_retained, supplier_anonymised. */
+            /** @description Conflict — supplier_retained, supplier_anonymised; supplier_has_open_documents, another module's open documents name it. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -8976,7 +9026,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — books_not_set_up. */
+            /** @description Conflict. */
             409: {
                 headers: {
                     [name: string]: unknown;
