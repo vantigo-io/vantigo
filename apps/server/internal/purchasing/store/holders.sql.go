@@ -108,6 +108,23 @@ func (q *Queries) EraseSupplierOrders(ctx context.Context, arg EraseSupplierOrde
 	return result.RowsAffected(), nil
 }
 
+const eraseSupplierReceipts = `-- name: EraseSupplierReceipts :execrows
+UPDATE purchasing.receipts r SET delivery_note = '', note = '', undo_note = NULL
+FROM purchasing.orders o
+WHERE o.id = r.order_id AND o.supplier_id = $1
+  AND (r.delivery_note <> '' OR r.note <> '' OR r.undo_note IS NOT NULL)
+`
+
+// EraseSupplierReceipts blanks the delivery note, the note and the undo's
+// note of the receipts of the supplier's orders.
+func (q *Queries) EraseSupplierReceipts(ctx context.Context, supplierID int64) (int64, error) {
+	result, err := q.db.Exec(ctx, eraseSupplierReceipts, supplierID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const insertDeletion = `-- name: InsertDeletion :exec
 INSERT INTO purchasing.deletions (storage_key, requested_at) VALUES ($1, $2)
 ON CONFLICT (storage_key) DO NOTHING
@@ -347,6 +364,55 @@ func (q *Queries) SupplierOrders(ctx context.Context, supplierID int64) ([]Purch
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.AnonymisedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const supplierReceipts = `-- name: SupplierReceipts :many
+SELECT r.id, r.number, r.order_id, r.received_on, r.delivery_note, r.note, r.undo_note, r.undone_at
+FROM purchasing.receipts r JOIN purchasing.orders o ON o.id = r.order_id
+WHERE o.supplier_id = $1 ORDER BY r.order_id, r.id
+`
+
+type SupplierReceiptsRow struct {
+	ID           int64
+	Number       int64
+	OrderID      int64
+	ReceivedOn   pgtype.Date
+	DeliveryNote string
+	Note         string
+	UndoNote     *string
+	UndoneAt     *time.Time
+}
+
+// SupplierReceipts is the receipts of every order naming the supplier, for
+// its export (P7): the delivery note, the note and the undo's note may name
+// a person at the supplier.
+func (q *Queries) SupplierReceipts(ctx context.Context, supplierID int64) ([]SupplierReceiptsRow, error) {
+	rows, err := q.db.Query(ctx, supplierReceipts, supplierID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SupplierReceiptsRow
+	for rows.Next() {
+		var i SupplierReceiptsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Number,
+			&i.OrderID,
+			&i.ReceivedOn,
+			&i.DeliveryNote,
+			&i.Note,
+			&i.UndoNote,
+			&i.UndoneAt,
 		); err != nil {
 			return nil, err
 		}

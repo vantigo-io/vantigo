@@ -296,6 +296,36 @@ func (e PurchasingOrderLineProductType) Valid() bool {
 	}
 }
 
+// Defines values for PurchasingOrderProgressStatus.
+const (
+	PurchasingOrderProgressStatusCancelled         PurchasingOrderProgressStatus = "cancelled"
+	PurchasingOrderProgressStatusClosed            PurchasingOrderProgressStatus = "closed"
+	PurchasingOrderProgressStatusDraft             PurchasingOrderProgressStatus = "draft"
+	PurchasingOrderProgressStatusPartiallyReceived PurchasingOrderProgressStatus = "partially_received"
+	PurchasingOrderProgressStatusReceived          PurchasingOrderProgressStatus = "received"
+	PurchasingOrderProgressStatusSent              PurchasingOrderProgressStatus = "sent"
+)
+
+// Valid indicates whether the value is a known member of the PurchasingOrderProgressStatus enum.
+func (e PurchasingOrderProgressStatus) Valid() bool {
+	switch e {
+	case PurchasingOrderProgressStatusCancelled:
+		return true
+	case PurchasingOrderProgressStatusClosed:
+		return true
+	case PurchasingOrderProgressStatusDraft:
+		return true
+	case PurchasingOrderProgressStatusPartiallyReceived:
+		return true
+	case PurchasingOrderProgressStatusReceived:
+		return true
+	case PurchasingOrderProgressStatusSent:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PurchasingOrderSummaryLastMailingStatus.
 const (
 	PurchasingOrderSummaryLastMailingStatusFailed PurchasingOrderSummaryLastMailingStatus = "failed"
@@ -365,6 +395,24 @@ func (e PurchasingOrderUpdateLanguage) Valid() bool {
 	}
 }
 
+// Defines values for PurchasingProgressLineKind.
+const (
+	PurchasingProgressLineKindText    PurchasingProgressLineKind = "text"
+	PurchasingProgressLineKindVariant PurchasingProgressLineKind = "variant"
+)
+
+// Valid indicates whether the value is a known member of the PurchasingProgressLineKind enum.
+func (e PurchasingProgressLineKind) Valid() bool {
+	switch e {
+	case PurchasingProgressLineKindText:
+		return true
+	case PurchasingProgressLineKindVariant:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PurchasingReceiptStatus.
 const (
 	Posted PurchasingReceiptStatus = "posted"
@@ -398,6 +446,24 @@ func (e PurchasingReceiveLineTracking) Valid() bool {
 	case None:
 		return true
 	case Serial:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PurchasingReceivingOrderStatus.
+const (
+	PurchasingReceivingOrderStatusPartiallyReceived PurchasingReceivingOrderStatus = "partially_received"
+	PurchasingReceivingOrderStatusSent              PurchasingReceivingOrderStatus = "sent"
+)
+
+// Valid indicates whether the value is a known member of the PurchasingReceivingOrderStatus enum.
+func (e PurchasingReceivingOrderStatus) Valid() bool {
+	switch e {
+	case PurchasingReceivingOrderStatusPartiallyReceived:
+		return true
+	case PurchasingReceivingOrderStatusSent:
 		return true
 	default:
 		return false
@@ -541,6 +607,15 @@ type PurchasingDeliveredInput struct {
 
 	// ExpectedUpdatedAt The updatedAt of the order as the client read it: the write is refused with version_conflict when the order was written since (every write moves it).
 	ExpectedUpdatedAt time.Time `json:"expectedUpdatedAt"`
+}
+
+// PurchasingDeliveredResult The order after a delivered mark (A47): progress without prices for every caller; order, with its prices, only for a holder of purchasing:access.
+type PurchasingDeliveredResult struct {
+	// Order A purchase order (P15–P20).
+	Order *PurchasingOrder `json:"order,omitempty"`
+
+	// Progress An order as receiving sees it (A47): its state, its updatedAt and each line's quantities — no prices.
+	Progress PurchasingOrderProgress `json:"progress"`
 }
 
 // PurchasingDocument A stored PDF of an order (P21).
@@ -834,6 +909,18 @@ type PurchasingOrderPage struct {
 	Total    int32                    `json:"total"`
 }
 
+// PurchasingOrderProgress An order as receiving sees it (A47): its state, its updatedAt and each line's quantities — no prices.
+type PurchasingOrderProgress struct {
+	Id        int64                         `json:"id"`
+	Lines     []PurchasingProgressLine      `json:"lines"`
+	Number    *int64                        `json:"number,omitempty"`
+	Status    PurchasingOrderProgressStatus `json:"status"`
+	UpdatedAt time.Time                     `json:"updatedAt"`
+}
+
+// PurchasingOrderProgressStatus defines model for PurchasingOrderProgress.Status.
+type PurchasingOrderProgressStatus string
+
 // PurchasingOrderSummary A purchase order as the list shows it (P23).
 type PurchasingOrderSummary struct {
 	Buyer       *PurchasingPerson   `json:"buyer,omitempty"`
@@ -912,7 +999,7 @@ type PurchasingPerson struct {
 	Id          *openapi_types.UUID `json:"id,omitempty"`
 }
 
-// PurchasingProblem An RFC 9457 problem with this module's refusal code (purchasing design §3). code names the rule that refused and is what a client keys off, never the words. 400: field errors (errors), supplier_not_found, site_not_found, site_archived, currency_invalid, series_start_too_low, send_channel_unknown, recipient_missing, order_empty, import_invalid, amount_out_of_range (an order's total above 999 999 999 999.99), and an order's line refusals in lines, the first of which is also code: too_many_lines, line_invalid, line_not_found, variant_not_found, variant_discontinued, packaging_not_found, quantity_invalid, price_invalid, discount_invalid, quantity_below_received, amount_out_of_range (a line's amount above 999 999 999 999.99). 404: not_found. 409: version_conflict (a stale revision or expectedUpdatedAt), order_not_draft, order_not_sent (the order is not sent or partially received), order_not_closed, order_has_receipts (a cancel of an order with something received), line_closed, line_kind_changed, currency_fixed (a currency change once a line has a price), supplier_inactive, supplier_changed (a sent order's supplier), supplier_item_exists, client_request_reused. 503: dependency_unavailable (a module Purchasing reads is not composed), sending_disabled (Communications is off, or no channel that can send is chosen) and mail_failed (the e-mail did not go out now; the change is made, and its mailing, written in the same transaction, stays queued for the purchasing.mail worker). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither. Receipts (delivery B): 400 line_not_receivable (a line that is not an open goods line of the order) in lines; 409 over_receipt (more than a line's remainder without acceptOver, the lines named), receipt_undone (an undo of a receipt undone already), receipt_invoiced (an undo that would leave a line with less received than invoiced) and line_not_deliverable (a delivered mark on a goods line). Inventory's refusals of a receipt or its undo keep Inventory's own codes, each line named by its index.
+// PurchasingProblem An RFC 9457 problem with this module's refusal code (purchasing design §3). code names the rule that refused and is what a client keys off, never the words. 400: field errors (errors), supplier_not_found, site_not_found, site_archived, currency_invalid, series_start_too_low, send_channel_unknown, recipient_missing, order_empty, import_invalid, amount_out_of_range (an order's total above 999 999 999 999.99), and an order's line refusals in lines, the first of which is also code: too_many_lines, line_invalid, line_not_found, variant_not_found, variant_discontinued, packaging_not_found, quantity_invalid, price_invalid, discount_invalid, quantity_below_received, amount_out_of_range (a line's amount above 999 999 999 999.99). 404: not_found. 409: version_conflict (a stale revision or expectedUpdatedAt), order_not_draft, order_not_sent (the order is not sent or partially received), order_not_closed, order_has_receipts (a cancel of an order with something received), line_closed, line_kind_changed, currency_fixed (a currency change once a line has a price), supplier_inactive, supplier_changed (a sent order's supplier), supplier_item_exists, client_request_reused. 503: dependency_unavailable (a module Purchasing reads is not composed), sending_disabled (Communications is off, or no channel that can send is chosen) and mail_failed (the e-mail did not go out now; the change is made, and its mailing, written in the same transaction, stays queued for the purchasing.mail worker). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither. Receipts (delivery B): 400 line_not_receivable (a line that is not an open goods line of the order) and quantity_invalid (also a line whose received quantity would pass 999 999 999.999, acceptOver or not) in lines; 409 over_receipt (more than a line's remainder without acceptOver, the lines named), receipt_undone (an undo of a receipt undone already), receipt_invoiced (an undo that would leave a line with less received than invoiced) and line_not_deliverable (a delivered mark on a goods line). Inventory's refusals of a receipt or its undo keep Inventory's own codes, each line named by its index.
 type PurchasingProblem struct {
 	Code     *string              `json:"code,omitempty"`
 	Detail   *string              `json:"detail,omitempty"`
@@ -935,6 +1022,25 @@ type PurchasingProblemLine struct {
 	// Index The line's index in the request, from 0.
 	Index int32 `json:"index"`
 }
+
+// PurchasingProgressLine A line of an order as receiving sees it — its quantities in the variant's unit, no price.
+type PurchasingProgressLine struct {
+	ClosedAt    *time.Time                 `json:"closedAt,omitempty"`
+	DeliveredAt *time.Time                 `json:"deliveredAt,omitempty"`
+	Id          int64                      `json:"id"`
+	Kind        PurchasingProgressLineKind `json:"kind"`
+	Name        string                     `json:"name"`
+
+	// Open Ordered and not received, 0 when the line is closed or marked delivered.
+	Open     string `json:"open"`
+	Position int32  `json:"position"`
+	Quantity string `json:"quantity"`
+	Received string `json:"received"`
+	Unit     string `json:"unit"`
+}
+
+// PurchasingProgressLineKind defines model for PurchasingProgressLine.Kind.
+type PurchasingProgressLineKind string
 
 // PurchasingReceipt A receipt against a purchase order (P28): its number in a series of its own, the day, who, the supplier's delivery note and a note, and its lines. It carries no price (A21); the order line's price then is kept for a later valuation and answered by nothing in this phase.
 type PurchasingReceipt struct {
@@ -1039,10 +1145,13 @@ type PurchasingReceiptLotInput struct {
 	SupplierLot    *string             `json:"supplierLot,omitempty"`
 }
 
-// PurchasingReceiptResult A receipt and its order as they now stand.
+// PurchasingReceiptResult A receipt and its order as they now stand (A47). progress is the order without prices, answered to every caller; order, with its prices, only to a holder of purchasing:access.
 type PurchasingReceiptResult struct {
 	// Order A purchase order (P15–P20).
-	Order PurchasingOrder `json:"order"`
+	Order *PurchasingOrder `json:"order,omitempty"`
+
+	// Progress An order as receiving sees it (A47): its state, its updatedAt and each line's quantities — no prices.
+	Progress PurchasingOrderProgress `json:"progress"`
 
 	// Receipt A receipt against a purchase order (P28): its number in a series of its own, the day, who, the supplier's delivery note and a note, and its lines. It carries no price (A21); the order line's price then is kept for a later valuation and answered by nothing in this phase.
 	Receipt PurchasingReceipt `json:"receipt"`
@@ -1108,6 +1217,35 @@ type PurchasingReceiveLine struct {
 
 // PurchasingReceiveLineTracking defines model for PurchasingReceiveLine.Tracking.
 type PurchasingReceiveLineTracking string
+
+// PurchasingReceivingList The orders to receive (A47), the earliest expected first.
+type PurchasingReceivingList struct {
+	Items []PurchasingReceivingOrder `json:"items"`
+}
+
+// PurchasingReceivingOrder A sent or partially received order with goods still to come, as the receiving list shows it (A47) — no prices.
+type PurchasingReceivingOrder struct {
+	// ExpectedOn The earliest expected day of the lines still to come — the line's, else the order's.
+	ExpectedOn *openapi_types.Date `json:"expectedOn,omitempty"`
+
+	// GoodsLines The order's goods lines.
+	GoodsLines int32 `json:"goodsLines"`
+	Id         int64 `json:"id"`
+
+	// Late A line still to come was expected before today.
+	Late   bool   `json:"late"`
+	Number *int64 `json:"number,omitempty"`
+
+	// OpenLines Goods lines with something still to come: not closed, and less received than ordered.
+	OpenLines    int32                          `json:"openLines"`
+	SiteId       int64                          `json:"siteId"`
+	SiteName     string                         `json:"siteName"`
+	Status       PurchasingReceivingOrderStatus `json:"status"`
+	SupplierName string                         `json:"supplierName"`
+}
+
+// PurchasingReceivingOrderStatus defines model for PurchasingReceivingOrder.Status.
+type PurchasingReceivingOrderStatus string
 
 // PurchasingSendAgainInput Send again (P18): store a new PDF, marked Revised, and mail it; with mail false, store it only.
 type PurchasingSendAgainInput struct {
@@ -1580,6 +1718,9 @@ type ServerInterface interface {
 	// UndoPurchasingReceipt Undo a receipt
 	// (POST /api/v1/purchasing/receipts/{receiptId}/undo)
 	UndoPurchasingReceipt(w http.ResponseWriter, r *http.Request, receiptId int64)
+	// ListPurchasingOrdersToReceive List the orders to receive
+	// (GET /api/v1/purchasing/receiving)
+	ListPurchasingOrdersToReceive(w http.ResponseWriter, r *http.Request)
 	// GetPurchasingSettings Get the Purchasing settings
 	// (GET /api/v1/purchasing/settings)
 	GetPurchasingSettings(w http.ResponseWriter, r *http.Request)
@@ -2472,6 +2613,20 @@ func (siw *ServerInterfaceWrapper) UndoPurchasingReceipt(w http.ResponseWriter, 
 	handler.ServeHTTP(w, r)
 }
 
+// ListPurchasingOrdersToReceive operation middleware
+func (siw *ServerInterfaceWrapper) ListPurchasingOrdersToReceive(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListPurchasingOrdersToReceive(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetPurchasingSettings operation middleware
 func (siw *ServerInterfaceWrapper) GetPurchasingSettings(w http.ResponseWriter, r *http.Request) {
 
@@ -3041,6 +3196,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/purchasing/orders/{orderId}/send-again", wrapper.ResendPurchasingOrder)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/purchasing/receipts/{receiptId}", wrapper.GetPurchasingReceipt)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/purchasing/receipts/{receiptId}/undo", wrapper.UndoPurchasingReceipt)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/purchasing/receiving", wrapper.ListPurchasingOrdersToReceive)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/purchasing/settings", wrapper.GetPurchasingSettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/purchasing/settings", wrapper.PutPurchasingSettings)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/purchasing/sites", wrapper.ListPurchasingSites)
@@ -4209,7 +4365,7 @@ type MarkPurchasingOrderLineDeliveredResponseObject interface {
 	VisitMarkPurchasingOrderLineDeliveredResponse(w http.ResponseWriter) error
 }
 
-type MarkPurchasingOrderLineDelivered200JSONResponse PurchasingOrder
+type MarkPurchasingOrderLineDelivered200JSONResponse PurchasingDeliveredResult
 
 func (response MarkPurchasingOrderLineDelivered200JSONResponse) VisitMarkPurchasingOrderLineDeliveredResponse(w http.ResponseWriter) error {
 
@@ -5318,6 +5474,69 @@ func (response UndoPurchasingReceipt503ApplicationProblemPlusJSONResponse) Visit
 	return err
 }
 
+type ListPurchasingOrdersToReceiveRequestObject struct {
+}
+
+type ListPurchasingOrdersToReceiveResponseObject interface {
+	VisitListPurchasingOrdersToReceiveResponse(w http.ResponseWriter) error
+}
+
+type ListPurchasingOrdersToReceive200JSONResponse PurchasingReceivingList
+
+func (response ListPurchasingOrdersToReceive200JSONResponse) VisitListPurchasingOrdersToReceiveResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPurchasingOrdersToReceive401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListPurchasingOrdersToReceive401JSONResponse) VisitListPurchasingOrdersToReceiveResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPurchasingOrdersToReceive403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListPurchasingOrdersToReceive403JSONResponse) VisitListPurchasingOrdersToReceiveResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPurchasingOrdersToReceive503ApplicationProblemPlusJSONResponse PurchasingProblem
+
+func (response ListPurchasingOrdersToReceive503ApplicationProblemPlusJSONResponse) VisitListPurchasingOrdersToReceiveResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetPurchasingSettingsRequestObject struct {
 }
 
@@ -6321,6 +6540,9 @@ type StrictServerInterface interface {
 	// UndoPurchasingReceipt Undo a receipt
 	// (POST /api/v1/purchasing/receipts/{receiptId}/undo)
 	UndoPurchasingReceipt(ctx context.Context, request UndoPurchasingReceiptRequestObject) (UndoPurchasingReceiptResponseObject, error)
+	// ListPurchasingOrdersToReceive List the orders to receive
+	// (GET /api/v1/purchasing/receiving)
+	ListPurchasingOrdersToReceive(ctx context.Context, request ListPurchasingOrdersToReceiveRequestObject) (ListPurchasingOrdersToReceiveResponseObject, error)
 	// GetPurchasingSettings Get the Purchasing settings
 	// (GET /api/v1/purchasing/settings)
 	GetPurchasingSettings(ctx context.Context, request GetPurchasingSettingsRequestObject) (GetPurchasingSettingsResponseObject, error)
@@ -7162,6 +7384,30 @@ func (sh *strictHandler) UndoPurchasingReceipt(w http.ResponseWriter, r *http.Re
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(UndoPurchasingReceiptResponseObject); ok {
 		if err := validResponse.VisitUndoPurchasingReceiptResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListPurchasingOrdersToReceive operation middleware
+func (sh *strictHandler) ListPurchasingOrdersToReceive(w http.ResponseWriter, r *http.Request) {
+	var request ListPurchasingOrdersToReceiveRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListPurchasingOrdersToReceive(ctx, request.(ListPurchasingOrdersToReceiveRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListPurchasingOrdersToReceive")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListPurchasingOrdersToReceiveResponseObject); ok {
+		if err := validResponse.VisitListPurchasingOrdersToReceiveResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

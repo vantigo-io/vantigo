@@ -181,10 +181,10 @@ func (s *server) undoOnce(ctx context.Context, receiptID int64, note string) err
 				return fmt.Errorf("purchasing: take line %d's receipt back: %w", id, err)
 			}
 		}
-		if _, err := setDerivedStatus(ctx, txq, o, now); err != nil {
+		if err := logChange(ctx, txq, o.ID, by, now, change{Action: "receipt_undone", To: ptr(fmt.Sprint(rec.Number))}); err != nil {
 			return err
 		}
-		if err := logChange(ctx, txq, o.ID, by, now, change{Action: "receipt_undone", To: ptr(fmt.Sprint(rec.Number))}); err != nil {
+		if _, err := settleOrder(ctx, tx, txq, o, by, now); err != nil {
 			return err
 		}
 		ev := contracts.PurchaseReceiptUndone{

@@ -245,7 +245,7 @@ export interface paths {
         put?: never;
         /**
          * Mark an order line delivered
-         * @description Marks a text line or a service line delivered, or not delivered again (P16, §8): such a line is never received into stock. When nothing stays open the order is received; taking the mark back off a received order makes it partially received, or sent when nothing else has come. A goods line is received instead (line_not_deliverable).
+         * @description Marks a text line or a service line delivered, or not delivered again (P16, §8): such a line is never received into stock. When nothing stays open the order ends (A48): received when every line came in full, closed when a closed line kept a remainder. Taking the mark back off a received order makes it partially received, or sent when nothing else has come. A goods line is received instead (line_not_deliverable). It answers no price unless the caller holds purchasing:access.
          */
         post: operations["markPurchasingOrderLineDelivered"];
         delete?: never;
@@ -309,7 +309,7 @@ export interface paths {
         put?: never;
         /**
          * Receive goods on a purchase order
-         * @description Receives goods against a sent order (P24–P28, A6, A7, A11): one receipt and one Inventory movement of kind receipt, posted through StockLedger.Receive on the same transaction as the receipt and the lines' received quantities. A line may be split over locations and lots. A quantity over a line's remainder is refused with over_receipt unless acceptOver is true. Idempotent by clientRequestId: a replay answers the first receipt, another body under the same id is client_request_reused. Inventory's refusals answer with their own codes, each line named by its index in lines. It never touches the general ledger.
+         * @description Receives goods against a sent order (P24–P28, A6, A7, A11): one receipt and one Inventory movement of kind receipt, posted through StockLedger.Receive on the same transaction as the receipt and the lines' received quantities. A line may be split over locations and lots. A quantity over a line's remainder is refused with over_receipt unless acceptOver is true. Idempotent by clientRequestId: a replay answers the first receipt, another body under the same id is client_request_reused. Inventory's refusals answer with their own codes, each line named by its index in lines. When nothing stays open the order ends (A48): received, or closed when a closed line kept a remainder. It answers no price unless the caller holds purchasing:access (A47). It never touches the general ledger.
          */
         post: operations["receivePurchasingOrder"];
         delete?: never;
@@ -446,9 +446,29 @@ export interface paths {
         put?: never;
         /**
          * Undo a receipt
-         * @description Takes a receipt back (P29, A5, A10, A16): StockLedger.ReverseReceipt posts a movement of kind receipt_reversal and the lines' received quantities are lowered, in one transaction. The receipt is kept, marked undone. Refused when Inventory refuses (insufficient_stock: the stock is no longer where it was received; location_unknown), when a line would be left with less received than invoiced (receipt_invoiced), and for a receipt already undone (receipt_undone). A received order becomes partially received, or sent when nothing else was received; a closed one stays closed.
+         * @description Takes a receipt back (P29, A5, A10, A16): StockLedger.ReverseReceipt posts a movement of kind receipt_reversal and the lines' received quantities are lowered, in one transaction. The receipt is kept, marked undone. Refused when Inventory refuses (insufficient_stock: the stock is no longer where it was received; location_unknown), when a line would be left with less received than invoiced (receipt_invoiced), and for a receipt already undone (receipt_undone). A received order becomes partially received, or sent when nothing else was received; a closed one stays closed. It answers no price unless the caller holds purchasing:access (A47).
          */
         post: operations["undoPurchasingReceipt"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/purchasing/receiving": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the orders to receive
+         * @description The orders to receive (P30, A47): every sent or partially received order with a goods line still to come, the earliest expected first, with its supplier, site and how many lines are left — no prices. Purchasing:receive alone reads it.
+         */
+        get: operations["listPurchasingOrdersToReceive"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -728,6 +748,11 @@ export interface components {
              * @description The updatedAt of the order as the client read it: the write is refused with version_conflict when the order was written since (every write moves it).
              */
             expectedUpdatedAt: string;
+        };
+        /** @description The order after a delivered mark (A47): progress without prices for every caller; order, with its prices, only for a holder of purchasing:access. */
+        PurchasingDeliveredResult: {
+            order?: components["schemas"]["PurchasingOrder"];
+            progress: components["schemas"]["PurchasingOrderProgress"];
         };
         /** @description A stored PDF of an order (P21). */
         PurchasingDocument: {
@@ -1023,6 +1048,18 @@ export interface components {
             /** Format: int32 */
             total: number;
         };
+        /** @description An order as receiving sees it (A47): its state, its updatedAt and each line's quantities — no prices. */
+        PurchasingOrderProgress: {
+            /** Format: int64 */
+            id: number;
+            lines: components["schemas"]["PurchasingProgressLine"][];
+            /** Format: int64 */
+            number?: number | null;
+            /** @enum {string} */
+            status: "draft" | "sent" | "partially_received" | "received" | "closed" | "cancelled";
+            /** Format: date-time */
+            updatedAt: string;
+        };
         /** @description A purchase order as the list shows it (P23). */
         PurchasingOrderSummary: {
             buyer?: components["schemas"]["PurchasingPerson"] | null;
@@ -1117,7 +1154,7 @@ export interface components {
             /** Format: uuid */
             id?: string | null;
         };
-        /** @description An RFC 9457 problem with this module's refusal code (purchasing design §3). code names the rule that refused and is what a client keys off, never the words. 400: field errors (errors), supplier_not_found, site_not_found, site_archived, currency_invalid, series_start_too_low, send_channel_unknown, recipient_missing, order_empty, import_invalid, amount_out_of_range (an order's total above 999 999 999 999.99), and an order's line refusals in lines, the first of which is also code: too_many_lines, line_invalid, line_not_found, variant_not_found, variant_discontinued, packaging_not_found, quantity_invalid, price_invalid, discount_invalid, quantity_below_received, amount_out_of_range (a line's amount above 999 999 999 999.99). 404: not_found. 409: version_conflict (a stale revision or expectedUpdatedAt), order_not_draft, order_not_sent (the order is not sent or partially received), order_not_closed, order_has_receipts (a cancel of an order with something received), line_closed, line_kind_changed, currency_fixed (a currency change once a line has a price), supplier_inactive, supplier_changed (a sent order's supplier), supplier_item_exists, client_request_reused. 503: dependency_unavailable (a module Purchasing reads is not composed), sending_disabled (Communications is off, or no channel that can send is chosen) and mail_failed (the e-mail did not go out now; the change is made, and its mailing, written in the same transaction, stays queued for the purchasing.mail worker). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither. Receipts (delivery B): 400 line_not_receivable (a line that is not an open goods line of the order) in lines; 409 over_receipt (more than a line's remainder without acceptOver, the lines named), receipt_undone (an undo of a receipt undone already), receipt_invoiced (an undo that would leave a line with less received than invoiced) and line_not_deliverable (a delivered mark on a goods line). Inventory's refusals of a receipt or its undo keep Inventory's own codes, each line named by its index. */
+        /** @description An RFC 9457 problem with this module's refusal code (purchasing design §3). code names the rule that refused and is what a client keys off, never the words. 400: field errors (errors), supplier_not_found, site_not_found, site_archived, currency_invalid, series_start_too_low, send_channel_unknown, recipient_missing, order_empty, import_invalid, amount_out_of_range (an order's total above 999 999 999 999.99), and an order's line refusals in lines, the first of which is also code: too_many_lines, line_invalid, line_not_found, variant_not_found, variant_discontinued, packaging_not_found, quantity_invalid, price_invalid, discount_invalid, quantity_below_received, amount_out_of_range (a line's amount above 999 999 999 999.99). 404: not_found. 409: version_conflict (a stale revision or expectedUpdatedAt), order_not_draft, order_not_sent (the order is not sent or partially received), order_not_closed, order_has_receipts (a cancel of an order with something received), line_closed, line_kind_changed, currency_fixed (a currency change once a line has a price), supplier_inactive, supplier_changed (a sent order's supplier), supplier_item_exists, client_request_reused. 503: dependency_unavailable (a module Purchasing reads is not composed), sending_disabled (Communications is off, or no channel that can send is chosen) and mail_failed (the e-mail did not go out now; the change is made, and its mailing, written in the same transaction, stays queued for the purchasing.mail worker). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither. Receipts (delivery B): 400 line_not_receivable (a line that is not an open goods line of the order) and quantity_invalid (also a line whose received quantity would pass 999 999 999.999, acceptOver or not) in lines; 409 over_receipt (more than a line's remainder without acceptOver, the lines named), receipt_undone (an undo of a receipt undone already), receipt_invoiced (an undo that would leave a line with less received than invoiced) and line_not_deliverable (a delivered mark on a goods line). Inventory's refusals of a receipt or its undo keep Inventory's own codes, each line named by its index. */
         PurchasingProblem: {
             code?: string | null;
             detail?: string | null;
@@ -1142,6 +1179,25 @@ export interface components {
              * @description The line's index in the request, from 0.
              */
             index: number;
+        };
+        /** @description A line of an order as receiving sees it — its quantities in the variant's unit, no price. */
+        PurchasingProgressLine: {
+            /** Format: date-time */
+            closedAt?: string | null;
+            /** Format: date-time */
+            deliveredAt?: string | null;
+            /** Format: int64 */
+            id: number;
+            /** @enum {string} */
+            kind: "variant" | "text";
+            name: string;
+            /** @description Ordered and not received, 0 when the line is closed or marked delivered. */
+            open: string;
+            /** Format: int32 */
+            position: number;
+            quantity: string;
+            received: string;
+            unit: string;
         };
         /** @description A receipt against a purchase order (P28): its number in a series of its own, the day, who, the supplier's delivery note and a note, and its lines. It carries no price (A21); the order line's price then is kept for a later valuation and answered by nothing in this phase. */
         PurchasingReceipt: {
@@ -1261,9 +1317,10 @@ export interface components {
             productionDate?: string;
             supplierLot?: string;
         };
-        /** @description A receipt and its order as they now stand. */
+        /** @description A receipt and its order as they now stand (A47). progress is the order without prices, answered to every caller; order, with its prices, only to a holder of purchasing:access. */
         PurchasingReceiptResult: {
-            order: components["schemas"]["PurchasingOrder"];
+            order?: components["schemas"]["PurchasingOrder"];
+            progress: components["schemas"]["PurchasingOrderProgress"];
             receipt: components["schemas"]["PurchasingReceipt"];
         };
         /** @description An open goods line of the order a scanned code names, and what one scan adds. */
@@ -1331,6 +1388,40 @@ export interface components {
             unit: string;
             /** Format: int32 */
             variantId: number;
+        };
+        /** @description The orders to receive (A47), the earliest expected first. */
+        PurchasingReceivingList: {
+            items: components["schemas"]["PurchasingReceivingOrder"][];
+        };
+        /** @description A sent or partially received order with goods still to come, as the receiving list shows it (A47) — no prices. */
+        PurchasingReceivingOrder: {
+            /**
+             * Format: date
+             * @description The earliest expected day of the lines still to come — the line's, else the order's.
+             */
+            expectedOn?: string | null;
+            /**
+             * Format: int32
+             * @description The order's goods lines.
+             */
+            goodsLines: number;
+            /** Format: int64 */
+            id: number;
+            /** @description A line still to come was expected before today. */
+            late: boolean;
+            /** Format: int64 */
+            number?: number | null;
+            /**
+             * Format: int32
+             * @description Goods lines with something still to come: not closed, and less received than ordered.
+             */
+            openLines: number;
+            /** Format: int64 */
+            siteId: number;
+            siteName: string;
+            /** @enum {string} */
+            status: "sent" | "partially_received";
+            supplierName: string;
         };
         /** @description Send again (P18): store a new PDF, marked Revised, and mail it; with mail false, store it only. */
         PurchasingSendAgainInput: {
@@ -2538,13 +2629,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK */
+            /** @description OK — the order's progress, and the order itself for a holder of purchasing:access. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PurchasingOrder"];
+                    "application/json": components["schemas"]["PurchasingDeliveredResult"];
                 };
             };
             /** @description Bad Request — field errors. */
@@ -2796,7 +2887,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Created — the receipt, or the first one for a replayed clientRequestId. */
+            /** @description Created — the receipt, or the first one for a replayed clientRequestId, whatever the order's state since. */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -3344,6 +3435,53 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["PurchasingProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["PurchasingProblem"];
+                };
+            };
+        };
+    };
+    listPurchasingOrdersToReceive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchasingReceivingList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
             /** @description Service Unavailable — dependency_unavailable. */

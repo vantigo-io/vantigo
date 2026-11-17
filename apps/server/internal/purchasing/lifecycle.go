@@ -2,8 +2,8 @@ package purchasing
 
 // An order's ends (P18, A16): Close ends a sent order with its remainder —
 // every open line closed, purchasing.order.closed.v1 published —, Reopen
-// undoes it, Close line ends one line's remainder and closes the order (or
-// makes it received) when nothing is left open, and Cancel ends a sent order
+// undoes it, Close line ends one line's remainder and ends the order by the
+// state its lines make (A48) when nothing is left open, and Cancel ends a sent order
 // with nothing received, mailing the supplier its cancellation when the
 // order was mailed.
 
@@ -92,7 +92,7 @@ func (s *server) ReopenPurchasingOrder(ctx context.Context, req gen.ReopenPurcha
 	if err != nil {
 		return nil, err
 	}
-	err = s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
+	err = s.withLockedTx(ctx, func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error {
 		o, err := lockedOrder(ctx, txq, req.OrderId, req.Body.ExpectedUpdatedAt)
 		if err != nil {
 			return err
@@ -107,18 +107,15 @@ func (s *server) ReopenPurchasingOrder(ctx context.Context, req gen.ReopenPurcha
 		if err != nil {
 			return fmt.Errorf("purchasing: read order %d's lines: %w", o.ID, err)
 		}
-		status := statusSent
-		for _, l := range lines {
-			if ratOrZero(l.Received).Sign() > 0 {
-				status = statusPartial
-				break
-			}
-		}
+		// The state is the lines' (A48), delivered marks counted; should
+		// nothing the close ended be left open, the order ends again by the
+		// same rule.
+		status, closedAt := derivedState(lines)
 		now := s.deps.Clock()
-		if _, err := txq.SetOrderState(ctx, store.SetOrderStateParams{ID: o.ID, Status: status, Now: now}); err != nil {
-			return fmt.Errorf("purchasing: reopen order %d: %w", o.ID, err)
+		if err := logChange(ctx, txq, o.ID, by, now, change{Action: "reopened"}); err != nil {
+			return err
 		}
-		return logChange(ctx, txq, o.ID, by, now, change{Action: "reopened"})
+		return setOrderState(ctx, tx, txq, o, status, closedAt, by, now)
 	})
 	if err != nil {
 		return answer(err, resp)
@@ -133,8 +130,9 @@ func (s *server) ReopenPurchasingOrder(ctx context.Context, req gen.ReopenPurcha
 // ClosePurchasingOrderLine Close an order line
 // (POST /api/v1/purchasing/orders/{orderId}/lines/{lineId}/close)
 //
-// When no line stays open the order ends: received when every line was
-// received in full or marked delivered, else closed with what was left.
+// When no line stays open the order ends by the rule every completing action
+// shares (A48): received when every line was received in full or marked
+// delivered, else closed with what was left.
 func (s *server) ClosePurchasingOrderLine(ctx context.Context, req gen.ClosePurchasingOrderLineRequestObject) (gen.ClosePurchasingOrderLineResponseObject, error) {
 	resp := answers[gen.ClosePurchasingOrderLineResponseObject]{
 		notFound: func(p gen.PurchasingProblem) gen.ClosePurchasingOrderLineResponseObject {
@@ -176,39 +174,11 @@ func (s *server) ClosePurchasingOrderLine(ctx context.Context, req gen.ClosePurc
 		if err := txq.CloseLine(ctx, store.CloseLineParams{ID: target.ID, ClosedAt: &now}); err != nil {
 			return fmt.Errorf("purchasing: close line %d: %w", target.ID, err)
 		}
-		target.ClosedAt = &now
 		if err := logChange(ctx, txq, o.ID, by, now, change{Action: "line_closed", LineID: &target.ID}); err != nil {
 			return err
 		}
-		open, leftOver := false, false
-		for _, l := range lines {
-			remainder := ratOrZero(l.Quantity).Cmp(ratOrZero(l.Received)) > 0 && l.DeliveredAt == nil
-			if l.ClosedAt == nil && remainder {
-				open = true
-			}
-			if l.ClosedAt != nil && remainder {
-				leftOver = true
-			}
-		}
-		if open {
-			return txq.TouchOrder(ctx, store.TouchOrderParams{ID: o.ID, Now: now})
-		}
-		if !leftOver {
-			// Received, not closed: nothing was left, so Close's event —
-			// a remainder that stopped counting as on order — is not
-			// published; the change log records the end.
-			if _, err := txq.SetOrderState(ctx, store.SetOrderStateParams{ID: o.ID, Status: statusReceived, Now: now}); err != nil {
-				return fmt.Errorf("purchasing: mark order %d received: %w", o.ID, err)
-			}
-			return logChange(ctx, txq, o.ID, by, now, change{Action: "received"})
-		}
-		if _, err := txq.SetOrderState(ctx, store.SetOrderStateParams{ID: o.ID, Status: statusClosed, ClosedAt: &now, Now: now}); err != nil {
-			return fmt.Errorf("purchasing: close order %d: %w", o.ID, err)
-		}
-		if err := logChange(ctx, txq, o.ID, by, now, change{Action: "closed"}); err != nil {
-			return err
-		}
-		return publishClosed(ctx, tx, o, now)
+		_, err = settleOrder(ctx, tx, txq, o, by, now)
+		return err
 	})
 	if err != nil {
 		return answer(err, resp)

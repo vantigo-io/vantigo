@@ -2,10 +2,10 @@ package purchasing
 
 // Receipts (purchasing design §4, delivery B): what the receive, the undo and
 // the delivered mark share — the stock sources a receipt names, an order's
-// state derived from its lines, a receipt as the API answers it, and the
-// reads of an order's receipts. No view of a receipt carries a price (A21):
-// the order line's price a receipt line keeps (P28) is for a later
-// valuation, and no endpoint answers it.
+// state derived from its lines (A48), a receipt as the API answers it, the
+// order as a receiver sees it (A47), and the reads of an order's receipts.
+// No view of a receipt carries a price (A21): the price a receipt line keeps
+// (P28, A49) is for a later valuation, and no endpoint answers it.
 
 import (
 	"context"
@@ -13,6 +13,7 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
@@ -58,48 +59,82 @@ func lineDone(l store.PurchasingOrderLine) bool {
 	return false
 }
 
-// derivedStatus is an open or received order's state from its lines (P18,
-// P27, A16): received when every line is done; partially received when
-// anything was received or delivered; sent otherwise. A closed order stays
-// closed: Reopen is the way to receive again.
-func derivedStatus(status string, lines []store.PurchasingOrderLine) string {
-	if status == statusClosed || status == statusCancelled || status == statusDraft {
-		return status
-	}
-	done, progress := true, false
+// keptRemainder reports whether a line, were it closed, ended with something
+// that never came: less received than ordered and no delivered mark.
+func keptRemainder(l store.PurchasingOrderLine) bool {
+	return l.DeliveredAt == nil && ratOrZero(l.Quantity).Cmp(ratOrZero(l.Received)) > 0
+}
+
+// derivedState is the state an order's lines make, whatever ended them
+// (P18, P27, A40, A48): when nothing stays open, received if every line came
+// in full or was marked delivered, closed if a closed line kept a remainder
+// — at the latest such line's closed_at, which is what Reopen opens again —;
+// else partially received when anything was received or delivered, and
+// sent otherwise.
+func derivedState(lines []store.PurchasingOrderLine) (string, *time.Time) {
+	open, progress := false, false
+	var closedAt *time.Time
 	for _, l := range lines {
 		if !lineDone(l) {
-			done = false
+			open = true
 		}
 		if ratOrZero(l.Received).Sign() > 0 || l.DeliveredAt != nil {
 			progress = true
 		}
+		if l.ClosedAt != nil && keptRemainder(l) && (closedAt == nil || l.ClosedAt.After(*closedAt)) {
+			closedAt = l.ClosedAt
+		}
 	}
 	switch {
-	case done && len(lines) > 0:
-		return statusReceived
+	case !open && len(lines) > 0 && closedAt != nil:
+		return statusClosed, closedAt
+	case !open && len(lines) > 0:
+		return statusReceived, nil
 	case progress:
-		return statusPartial
+		return statusPartial, nil
 	}
-	return statusSent
+	return statusSent, nil
 }
 
-// setDerivedStatus moves the order to the state its lines make, or only
-// touches it when the state stands.
-func setDerivedStatus(ctx context.Context, txq *store.Queries, o store.PurchasingOrder, now time.Time) (string, error) {
+// settleOrder moves an open or received order to the state its lines make
+// (A48), or only touches it when the state stands; a closed, cancelled or
+// draft order is only touched — Reopen is the way back from a close. An end
+// is recorded as setOrderEnd does.
+func settleOrder(ctx context.Context, tx pgx.Tx, txq *store.Queries, o store.PurchasingOrder, by actor, now time.Time) (string, error) {
+	if !isOpen(o.Status) && o.Status != statusReceived {
+		return o.Status, txq.TouchOrder(ctx, store.TouchOrderParams{ID: o.ID, Now: now})
+	}
 	lines, err := txq.OrderLines(ctx, o.ID)
 	if err != nil {
 		return "", fmt.Errorf("purchasing: read order %d's lines: %w", o.ID, err)
 	}
-	status := derivedStatus(o.Status, lines)
+	status, closedAt := derivedState(lines)
 	if status == o.Status {
 		return status, txq.TouchOrder(ctx, store.TouchOrderParams{ID: o.ID, Now: now})
 	}
-	if _, err := txq.SetOrderState(ctx, store.SetOrderStateParams{ID: o.ID, Status: status, ClosedAt: o.ClosedAt,
+	return status, setOrderState(ctx, tx, txq, o, status, closedAt, by, now)
+}
+
+// setOrderState sets the state derivedState made and records an end the
+// same way whichever action completed the order (A48): a change-log row of
+// its own, received or closed, and for a close purchasing.order.closed.v1 —
+// a remainder stopped counting as on order. A received order publishes no
+// closed event: nothing was left.
+func setOrderState(ctx context.Context, tx pgx.Tx, txq *store.Queries, o store.PurchasingOrder, status string, closedAt *time.Time, by actor, now time.Time) error {
+	if _, err := txq.SetOrderState(ctx, store.SetOrderStateParams{ID: o.ID, Status: status, ClosedAt: closedAt,
 		CancelledAt: o.CancelledAt, Now: now}); err != nil {
-		return "", fmt.Errorf("purchasing: set order %d's state: %w", o.ID, err)
+		return fmt.Errorf("purchasing: set order %d's state: %w", o.ID, err)
 	}
-	return status, nil
+	switch status {
+	case statusReceived:
+		return logChange(ctx, txq, o.ID, by, now, change{Action: "received"})
+	case statusClosed:
+		if err := logChange(ctx, txq, o.ID, by, now, change{Action: "closed"}); err != nil {
+			return err
+		}
+		return publishClosed(ctx, tx, o, now)
+	}
+	return nil
 }
 
 // receiptEventLines is a receipt's lines as its events carry them.
@@ -231,17 +266,63 @@ func deref64(p *int64) int64 {
 	return *p
 }
 
-// receiptResult is a receipt and its order as they now stand.
+// receiptResult is a receipt and its order as they now stand (A47): the
+// order's progress, which has no price, for every caller, and the order's
+// full view only for a holder of purchasing:access.
 func (s *server) receiptResult(ctx context.Context, receiptID int64) (gen.PurchasingReceiptResult, error) {
 	r, err := s.getReceiptView(ctx, receiptID)
 	if err != nil {
 		return gen.PurchasingReceiptResult{}, err
 	}
-	o, err := s.getOrderView(ctx, r.OrderId)
+	progress, order, err := s.orderAfterReceiving(ctx, r.OrderId)
 	if err != nil {
 		return gen.PurchasingReceiptResult{}, err
 	}
-	return gen.PurchasingReceiptResult{Receipt: r, Order: o}, nil
+	return gen.PurchasingReceiptResult{Receipt: r, Progress: progress, Order: order}, nil
+}
+
+// orderAfterReceiving is an order after a receipt, an undo or a delivered
+// mark (A47): its progress, and its full view — prices and all — only when
+// the caller holds purchasing:access, which purchasing:receive alone does
+// not give.
+func (s *server) orderAfterReceiving(ctx context.Context, orderID int64) (gen.PurchasingOrderProgress, *gen.PurchasingOrder, error) {
+	var o store.PurchasingOrder
+	var lines []store.PurchasingOrderLine
+	err := s.withReadTx(ctx, func(ctx context.Context, q *store.Queries) error {
+		var err error
+		if o, err = q.GetOrder(ctx, orderID); err != nil {
+			return fmt.Errorf("purchasing: read order %d: %w", orderID, err)
+		}
+		lines, err = q.OrderLines(ctx, orderID)
+		return err
+	})
+	if err != nil {
+		return gen.PurchasingOrderProgress{}, nil, err
+	}
+	progress := progressOf(o, lines)
+	if !s.has(ctx, permAccess) {
+		return progress, nil, nil
+	}
+	view, err := s.getOrderView(ctx, orderID)
+	if err != nil {
+		return gen.PurchasingOrderProgress{}, nil, err
+	}
+	return progress, &view, nil
+}
+
+// progressOf is an order as receiving sees it: its state and each line's
+// quantities, no price.
+func progressOf(o store.PurchasingOrder, lines []store.PurchasingOrderLine) gen.PurchasingOrderProgress {
+	out := gen.PurchasingOrderProgress{Id: o.ID, Number: o.Number, Status: gen.PurchasingOrderProgressStatus(o.Status),
+		UpdatedAt: o.UpdatedAt, Lines: make([]gen.PurchasingProgressLine, 0, len(lines))}
+	for _, l := range lines {
+		out.Lines = append(out.Lines, gen.PurchasingProgressLine{
+			Id: l.ID, Position: l.Position, Kind: gen.PurchasingProgressLineKind(l.Kind), Name: l.Name, Unit: l.Unit,
+			Quantity: trimmed(ratOrZero(l.Quantity), quantityPlaces), Received: trimmed(ratOrZero(l.Received), quantityPlaces),
+			Open: trimmed(lineOpen(l), quantityPlaces), DeliveredAt: l.DeliveredAt, ClosedAt: l.ClosedAt,
+		})
+	}
+	return out
 }
 
 // ListPurchasingOrderReceipts List a purchase order's receipts

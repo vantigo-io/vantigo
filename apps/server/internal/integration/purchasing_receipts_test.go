@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -265,8 +266,8 @@ func TestPurchasingReceipts_PartialThenFullAgainstTheRealLedger(t *testing.T) {
 	}
 
 	r := p.receive(t, o.Id, p.receiptLine(line, "10"))
-	if r.Order.Status != purgen.PurchasingOrderStatusPartiallyReceived || purReceived(t, r.Order, line) != "10" {
-		t.Fatalf("order after the partial receipt = %s, received %s", r.Order.Status, purReceived(t, r.Order, line))
+	if r.Order.Status != purgen.PurchasingOrderStatusPartiallyReceived || purReceived(t, *r.Order, line) != "10" {
+		t.Fatalf("order after the partial receipt = %s, received %s", r.Order.Status, purReceived(t, *r.Order, line))
 	}
 	if s := p.stockAt(t, bolt.variant); s.OnHand != 10 || s.OnOrder != 20 {
 		t.Errorf("Inventory after the partial receipt: on hand %v, on order %v; want 10 and 20", s.OnHand, s.OnOrder)
@@ -288,8 +289,8 @@ func TestPurchasingReceipts_PartialThenFullAgainstTheRealLedger(t *testing.T) {
 	}
 
 	r2 := p.receive(t, o.Id, p.receiptLine(line, "20"))
-	if r2.Order.Status != purgen.PurchasingOrderStatusReceived || purReceived(t, r2.Order, line) != "30" {
-		t.Fatalf("order after the full receipt = %s, received %s", r2.Order.Status, purReceived(t, r2.Order, line))
+	if r2.Order.Status != purgen.PurchasingOrderStatusReceived || purReceived(t, *r2.Order, line) != "30" {
+		t.Fatalf("order after the full receipt = %s, received %s", r2.Order.Status, purReceived(t, *r2.Order, line))
 	}
 	if s := p.stockAt(t, bolt.variant); s.OnHand != 30 || s.OnOrder != 0 {
 		t.Errorf("Inventory after the full receipt: on hand %v, on order %v; want 30 and 0", s.OnHand, s.OnOrder)
@@ -492,8 +493,8 @@ func TestPurchasingReceipts_UndoRefusedWhenTheStockIsGone(t *testing.T) {
 	}
 	var u purgen.PurchasingReceiptResult
 	res.JSON(&u)
-	if u.Order.Status != purgen.PurchasingOrderStatusSent || purReceived(t, u.Order, line) != "0" {
-		t.Errorf("order after the undo = %s, received %s", u.Order.Status, purReceived(t, u.Order, line))
+	if u.Order.Status != purgen.PurchasingOrderStatusSent || purReceived(t, *u.Order, line) != "0" {
+		t.Errorf("order after the undo = %s, received %s", u.Order.Status, purReceived(t, *u.Order, line))
 	}
 	if s := p.stockAt(t, nut.variant); s.OnHand != 0 || s.OnOrder != 5 {
 		t.Errorf("Inventory after the undo: on hand %v, on order %v; want 0 and 5", s.OnHand, s.OnOrder)
@@ -548,5 +549,53 @@ func TestPurchasingReceipts_LowStockOnOrder(t *testing.T) {
 	row = low()
 	if row == nil || row.OnOrder != 0 || row.OnHand != 8 {
 		t.Fatalf("low stock after the full receipt = %+v, want on order 0 and on hand 8", row)
+	}
+}
+
+// An undo refused by the real Inventory names the receipt's own line though
+// the reversal expanded a serial line into one movement line per serial
+// (A44): of an untracked line, a line of two serials and a third line whose
+// stock was then taken off the shelf, the refusal is the third line's.
+func TestPurchasingReceipts_UndoRefusalNamesTheReceiptsLine(t *testing.T) {
+	t.Parallel()
+	p := newPurchasingInstallation(t)
+	plain := p.product(t, "Skive", "SKV-2", nil)
+	pump := p.product(t, "Pumpe", "PMP-2", map[string]any{"tracking": "serial"})
+	washer := p.product(t, "Pakning", "PAK-2", nil)
+	o := p.sentOrder(t, purLine(plain.variant, "5"), purLine(pump.variant, "2"), purLine(washer.variant, "3"))
+	serials := p.receiptLine(o.Lines[1].Id, "2")
+	serials.Serials = &[]string{"SN-71", "SN-72"}
+	r := p.receive(t, o.Id, p.receiptLine(o.Lines[0].Id, "5"), serials, p.receiptLine(o.Lines[2].Id, "3"))
+
+	p.setOnHand(t, washer.variant, nil, 0)
+	lines := purRefused(t, p.undo(r.Receipt.Id), http.StatusConflict, "insufficient_stock", "undo with the third line's stock gone")
+	if len(lines) != 1 || lines[0].Index != 2 || lines[0].Code != "insufficient_stock" {
+		t.Errorf("the refusal's lines = %+v, want the receipt's third line (index 2)", lines)
+	}
+	if got := purReceived(t, p.order(t, o.Id), o.Lines[2].Id); got != "3" {
+		t.Errorf("a refused undo changed the third line: received %s", got)
+	}
+}
+
+// A lot-tracked line whose lot is left blank — the screen's empty lot, lot:
+// {} — is Inventory's lot_required naming the line, not a lot numbered by
+// Inventory, and nothing is received.
+func TestPurchasingReceipts_BlankLotIsLotRequired(t *testing.T) {
+	t.Parallel()
+	p := newPurchasingInstallation(t)
+	flour := p.product(t, "Mel", "MEL-2", map[string]any{"tracking": "lot"})
+	o := p.sentOrder(t, purLine(flour.variant, "10"))
+	blank := p.receiptLine(o.Lines[0].Id, "10")
+	blank.Lot = &purgen.PurchasingReceiptLotInput{}
+	res := p.receiveRes(o.Id, blank)
+	lines := purRefused(t, res, http.StatusBadRequest, "lot_required", "a blank lot")
+	if len(lines) != 1 || lines[0].Index != 0 || lines[0].Detail == nil || !strings.Contains(strings.ToLower(*lines[0].Detail), "lot") {
+		t.Errorf("lot_required lines = %+v, want the first line, worded", lines)
+	}
+	if ls := p.lots(t, flour.variant); len(ls) != 0 {
+		t.Errorf("a blank lot made lots %+v", ls)
+	}
+	if got := purReceived(t, p.order(t, o.Id), o.Lines[0].Id); got != "0" {
+		t.Errorf("received %s after the refusal", got)
 	}
 }

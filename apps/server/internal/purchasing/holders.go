@@ -12,9 +12,10 @@ package purchasing
 //     naming a supplier holds its delete (documents); a draft, sent or
 //     partially received order its anonymisation (open_documents).
 //   - the supplier's personal data: the export answers the orders' snapshots
-//     naming the supplier; the erase blanks them, the mailings' addresses
-//     and messages, marks the stored PDFs erased and writes their keys to
-//     the deletion ledger the purchasing.deletions worker finishes.
+//     naming the supplier and their receipts' notes; the erase blanks them,
+//     the mailings' addresses and messages, the receipts' delivery notes and
+//     notes, marks the stored PDFs erased and writes their keys to the
+//     deletion ledger the purchasing.deletions worker finishes.
 
 import (
 	"context"
@@ -129,6 +130,19 @@ type exportedOrder struct {
 	Contact            string            `json:"contact,omitempty"`
 	Mailings           []exportedMailing `json:"mailings,omitempty"`
 	Changes            []exportedChange  `json:"changes,omitempty"`
+	Receipts           []exportedReceipt `json:"receipts,omitempty"`
+}
+
+// exportedReceipt is one receipt of an order with what it keeps that may
+// name a person at the supplier: the delivery note, the note and the undo's
+// note.
+type exportedReceipt struct {
+	Number       int64      `json:"number"`
+	ReceivedOn   string     `json:"receivedOn"`
+	DeliveryNote string     `json:"deliveryNote,omitempty"`
+	Note         string     `json:"note,omitempty"`
+	UndoneAt     *time.Time `json:"undoneAt,omitempty"`
+	UndoNote     string     `json:"undoNote,omitempty"`
 }
 
 // exportedChange is one row of an order's change log.
@@ -182,6 +196,16 @@ func (p supplierPersonalData) ExportSupplierData(ctx context.Context, supplierID
 		}
 		changesOf[c.OrderID] = append(changesOf[c.OrderID], exportedChange{At: c.At, Actor: deref(c.ActorDisplay), Actions: actions})
 	}
+	receipts, err := q.SupplierReceipts(ctx, supplierID)
+	if err != nil {
+		return nil, fmt.Errorf("purchasing: read supplier %d's receipts: %w", supplierID, err)
+	}
+	receiptsOf := map[int64][]exportedReceipt{}
+	for _, r := range receipts {
+		receiptsOf[r.OrderID] = append(receiptsOf[r.OrderID], exportedReceipt{Number: r.Number,
+			ReceivedOn: r.ReceivedOn.Time.Format(time.DateOnly), DeliveryNote: r.DeliveryNote, Note: r.Note,
+			UndoneAt: r.UndoneAt, UndoNote: deref(r.UndoNote)})
+	}
 	out := exportedOrders{Orders: make([]exportedOrder, 0, len(orders))}
 	for _, o := range orders {
 		out.Orders = append(out.Orders, exportedOrder{
@@ -189,6 +213,7 @@ func (p supplierPersonalData) ExportSupplierData(ctx context.Context, supplierID
 			SupplierName: o.SupplierName, OrganisationNumber: deref(o.SupplierOrganisationNumber), Address: deref(o.SupplierAddressLine),
 			PostalCode: deref(o.SupplierPostalCode), City: deref(o.SupplierCity), Country: deref(o.SupplierCountry),
 			Email: deref(o.SupplierEmail), Contact: o.SupplierContact, Mailings: byOrder[o.ID], Changes: changesOf[o.ID],
+			Receipts: receiptsOf[o.ID],
 		})
 	}
 	return out, nil
@@ -199,11 +224,13 @@ const (
 	erasedOrders    = "purchasing.orders"
 	erasedMailings  = "purchasing.mailings"
 	erasedDocuments = "purchasing.documents"
+	erasedReceipts  = "purchasing.receipts"
 )
 
 // EraseSupplierData blanks what the orders keep of the supplier — the
 // snapshots, the mailings' addresses, message and last refusal, the change
-// log's values of the contact and the notes — inside
+// log's values of the contact and the notes, the receipts' delivery notes
+// and notes — inside
 // Accounting's anonymisation transaction, and writes the stored PDFs to the
 // deletion ledger (A8): the objects go after the commit, by the
 // purchasing.deletions worker, never inside tx.
@@ -221,6 +248,10 @@ func (p supplierPersonalData) EraseSupplierData(ctx context.Context, tx pgx.Tx, 
 	if _, err := q.EraseSupplierChanges(ctx, supplierID); err != nil {
 		return nil, fmt.Errorf("purchasing: erase supplier %d's order changes: %w", supplierID, err)
 	}
+	receipts, err := q.EraseSupplierReceipts(ctx, supplierID)
+	if err != nil {
+		return nil, fmt.Errorf("purchasing: erase supplier %d's receipts: %w", supplierID, err)
+	}
 	keys, err := q.EraseSupplierDocuments(ctx, store.EraseSupplierDocumentsParams{SupplierID: supplierID, Now: &now})
 	if err != nil {
 		return nil, fmt.Errorf("purchasing: erase supplier %d's PDFs: %w", supplierID, err)
@@ -237,5 +268,6 @@ func (p supplierPersonalData) EraseSupplierData(ctx context.Context, tx pgx.Tx, 
 		{Kind: erasedOrders, Count: orders},
 		{Kind: erasedMailings, Count: mailings},
 		{Kind: erasedDocuments, Count: int64(len(keys))},
+		{Kind: erasedReceipts, Count: receipts},
 	}, nil
 }
