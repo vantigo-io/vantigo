@@ -37,12 +37,12 @@ const (
 var permissions = []contracts.Permission{
 	{
 		Key: permAccess, Display: "Use Purchasing",
-		Description: "See the Purchasing app and read purchase orders, their receipts and supplier items.",
+		Description: "See the Purchasing app and read purchase orders, their receipts, supplier items and purchase proposals.",
 		Category:    "Purchasing", Sensitive: false, Delegable: true,
 	},
 	{
 		Key: permOrdersManage, Display: "Manage purchase orders",
-		Description: "Write draft purchase orders, change sent ones, record the supplier's confirmation, and close and reopen them.",
+		Description: "Write draft purchase orders, make them from purchase proposals, change sent ones, record the supplier's confirmation, and close and reopen them.",
 		Category:    "Purchasing", Sensitive: false, Delegable: true,
 	},
 	{

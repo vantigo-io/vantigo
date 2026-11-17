@@ -577,7 +577,7 @@ type PurchasingChange struct {
 
 // PurchasingChangeAction One action of a change.
 type PurchasingChangeAction struct {
-	// Action What was done: created, updated, line_added, line_changed, line_removed, sent, marked_sent, sent_again, confirmed, confirmation_cleared, line_closed, closed, received (the last open line closed with everything received, or a receipt that left nothing open), reopened, cancelled; receipt_posted and receipt_undone (to: the receipt's number), line_delivered and line_undelivered (delivery B).
+	// Action What was done: created, updated, line_added, line_changed, line_removed, sent, marked_sent, sent_again, confirmed, confirmation_cleared, line_closed, closed, received (the last open line closed with everything received, or a receipt that left nothing open), reopened, cancelled; receipt_posted and receipt_undone (to: the receipt's number), line_delivered and line_undelivered (delivery B), from_proposals (Create orders made the draft or added lines to it; to is the number of lines added).
 	Action string  `json:"action"`
 	Field  *string `json:"field,omitempty"`
 	From   *string `json:"from,omitempty"`
@@ -999,7 +999,7 @@ type PurchasingPerson struct {
 	Id          *openapi_types.UUID `json:"id,omitempty"`
 }
 
-// PurchasingProblem An RFC 9457 problem with this module's refusal code (purchasing design §3). code names the rule that refused and is what a client keys off, never the words. 400: field errors (errors), supplier_not_found, site_not_found, site_archived, currency_invalid, series_start_too_low, send_channel_unknown, recipient_missing, order_empty, import_invalid, amount_out_of_range (an order's total above 999 999 999 999.99), and an order's line refusals in lines, the first of which is also code: too_many_lines, line_invalid, line_not_found, variant_not_found, variant_discontinued, packaging_not_found, quantity_invalid, price_invalid, discount_invalid, quantity_below_received, amount_out_of_range (a line's amount above 999 999 999 999.99). 404: not_found. 409: version_conflict (a stale revision or expectedUpdatedAt), order_not_draft, order_not_sent (the order is not sent or partially received), order_not_closed, order_has_receipts (a cancel of an order with something received), line_closed, line_kind_changed, currency_fixed (a currency change once a line has a price), supplier_inactive, supplier_changed (a sent order's supplier), supplier_item_exists, client_request_reused. 503: dependency_unavailable (a module Purchasing reads is not composed), sending_disabled (Communications is off, or no channel that can send is chosen) and mail_failed (the e-mail did not go out now; the change is made, and its mailing, written in the same transaction, stays queued for the purchasing.mail worker). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither. Receipts (delivery B): 400 line_not_receivable (a line that is not an open goods line of the order) and quantity_invalid (also a line whose received quantity would pass 999 999 999.999, acceptOver or not) in lines; 409 over_receipt (more than a line's remainder without acceptOver, the lines named), receipt_undone (an undo of a receipt undone already), receipt_invoiced (an undo that would leave a line with less received than invoiced) and line_not_deliverable (a delivered mark on a goods line). Inventory's refusals of a receipt or its undo keep Inventory's own codes, each line named by its index.
+// PurchasingProblem An RFC 9457 problem with this module's refusal code (purchasing design §3). code names the rule that refused and is what a client keys off, never the words. 400: field errors (errors), supplier_not_found, site_not_found, site_archived, currency_invalid, series_start_too_low, send_channel_unknown, recipient_missing, order_empty, import_invalid, amount_out_of_range (an order's total above 999 999 999 999.99), and an order's line refusals in lines, the first of which is also code: too_many_lines, line_invalid, line_not_found, variant_not_found, variant_discontinued, packaging_not_found, quantity_invalid, price_invalid, discount_invalid, quantity_below_received, amount_out_of_range (a line's amount above 999 999 999 999.99). 404: not_found. 409: version_conflict (a stale revision or expectedUpdatedAt), order_not_draft, order_not_sent (the order is not sent or partially received), order_not_closed, order_has_receipts (a cancel of an order with something received), line_closed, line_kind_changed, currency_fixed (a currency change once a line has a price), supplier_inactive, supplier_changed (a sent order's supplier), supplier_item_exists, client_request_reused, proposal_gone (Create orders: a row no longer proposed — on a draft or sent since; lines name the rows). Create orders' rows are refused in lines as an order's are, with supplier_item_not_found (the item is not the row variant's, or not known). 503: dependency_unavailable (a module Purchasing reads is not composed), sending_disabled (Communications is off, or no channel that can send is chosen) and mail_failed (the e-mail did not go out now; the change is made, and its mailing, written in the same transaction, stays queued for the purchasing.mail worker). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither. Receipts (delivery B): 400 line_not_receivable (a line that is not an open goods line of the order) and quantity_invalid (also a line whose received quantity would pass 999 999 999.999, acceptOver or not) in lines; 409 over_receipt (more than a line's remainder without acceptOver, the lines named), receipt_undone (an undo of a receipt undone already), receipt_invoiced (an undo that would leave a line with less received than invoiced) and line_not_deliverable (a delivered mark on a goods line). Inventory's refusals of a receipt or its undo keep Inventory's own codes, each line named by its index.
 type PurchasingProblem struct {
 	Code     *string              `json:"code,omitempty"`
 	Detail   *string              `json:"detail,omitempty"`
@@ -1041,6 +1041,114 @@ type PurchasingProgressLine struct {
 
 // PurchasingProgressLineKind defines model for PurchasingProgressLine.Kind.
 type PurchasingProgressLineKind string
+
+// PurchasingProposal One proposal (P31–P33, A4): a variant's need at a site from the demand's one source, less what is on Purchasing's drafts for it and what was sent to the site after the source computed it, with every active supplier's item to order it from, the preferred one first. A row with no option is listed under No supplier and cannot be ordered here.
+type PurchasingProposal struct {
+	// ComputedAt When the source computed the need; what was sent after it is subtracted (sentSince).
+	ComputedAt time.Time `json:"computedAt"`
+
+	// Need The source's need in the variant's unit, before Purchasing's rounding.
+	Need string `json:"need"`
+
+	// NeededOn The day it is needed; null when now.
+	NeededOn *openapi_types.Date `json:"neededOn,omitempty"`
+
+	// OnDrafts On Purchasing's draft orders for the variant and the site, in the variant's unit.
+	OnDrafts      string                     `json:"onDrafts"`
+	Options       []PurchasingProposalOption `json:"options"`
+	ProductName   string                     `json:"productName"`
+	ProductStatus string                     `json:"productStatus"`
+
+	// Remaining The need less onDrafts and sentSince, more than 0, in the variant's unit.
+	Remaining string `json:"remaining"`
+
+	// SentSince Sent to the site after computedAt, which the source does not count yet, in the variant's unit.
+	SentSince string `json:"sentSince"`
+	SiteId    int64  `json:"siteId"`
+	SiteName  string `json:"siteName"`
+	Sku       string `json:"sku"`
+
+	// Source The rule the need comes from: low_stock (Inventory's low stock) or replenishment (Manufacturing's buy suggestions).
+	Source    string `json:"source"`
+	Unit      string `json:"unit"`
+	VariantId int32  `json:"variantId"`
+}
+
+// PurchasingProposalList The proposals (P33), by site and SKU. source is the demand's, null when no module provides one.
+type PurchasingProposalList struct {
+	Rows   []PurchasingProposal `json:"rows"`
+	Source *string              `json:"source,omitempty"`
+}
+
+// PurchasingProposalOption A supplier item a proposal can be ordered from, with the remaining need rounded once to it (A4): up to whole purchase packagings, then to the minimum, then to the multiple.
+type PurchasingProposalOption struct {
+	// Currency The currency the item's price is in.
+	Currency string `json:"currency"`
+
+	// CurrencyDiffers The supplier's currency in the register is no longer the price's: an order line takes no price from it (A32).
+	CurrencyDiffers bool   `json:"currencyDiffers"`
+	LeadTimeDays    *int32 `json:"leadTimeDays,omitempty"`
+
+	// MinimumQuantity In purchase packagings.
+	MinimumQuantity *string `json:"minimumQuantity,omitempty"`
+
+	// Multiple In purchase packagings.
+	Multiple *string `json:"multiple,omitempty"`
+
+	// OrderBy The day to order by — the day needed, or today, less the lead time.
+	OrderBy openapi_types.Date `json:"orderBy"`
+
+	// OrderQuantity The remaining need rounded to the item, in purchase packagings.
+	OrderQuantity string  `json:"orderQuantity"`
+	PackagingId   *int32  `json:"packagingId,omitempty"`
+	PackagingName *string `json:"packagingName,omitempty"`
+
+	// PackagingQuantity The purchase packaging's quantity in the variant's unit, 1 for the unit itself.
+	PackagingQuantity string `json:"packagingQuantity"`
+	Preferred         bool   `json:"preferred"`
+
+	// Price Per the purchase packaging, in currency.
+	Price *string `json:"price,omitempty"`
+
+	// Quantity orderQuantity in the variant's unit.
+	Quantity           string  `json:"quantity"`
+	SupplierId         int64   `json:"supplierId"`
+	SupplierItemId     int64   `json:"supplierItemId"`
+	SupplierItemNumber *string `json:"supplierItemNumber,omitempty"`
+	SupplierName       string  `json:"supplierName"`
+}
+
+// PurchasingProposalOrder A draft Create orders wrote to.
+type PurchasingProposalOrder struct {
+	// Created The draft was made by this request; false when its lines were added to an existing draft of the supplier and site.
+	Created      bool   `json:"created"`
+	LinesAdded   int32  `json:"linesAdded"`
+	OrderId      int64  `json:"orderId"`
+	SiteId       int64  `json:"siteId"`
+	SupplierId   int64  `json:"supplierId"`
+	SupplierName string `json:"supplierName"`
+}
+
+// PurchasingProposalOrdersInput Create orders (P33, A11): the ticked proposals, each with the supplier item to order it from and the quantity in that item's purchase packaging.
+type PurchasingProposalOrdersInput struct {
+	// ClientRequestId The client's id of this request (A11): a replay with the same body answers the first result; another body under the same id is 409 client_request_reused.
+	ClientRequestId openapi_types.UUID            `json:"clientRequestId"`
+	Rows            []PurchasingProposalOrdersRow `json:"rows"`
+}
+
+// PurchasingProposalOrdersResult The drafts Create orders wrote to, one per supplier and site.
+type PurchasingProposalOrdersResult struct {
+	Orders []PurchasingProposalOrder `json:"orders"`
+}
+
+// PurchasingProposalOrdersRow One ticked proposal.
+type PurchasingProposalOrdersRow struct {
+	// OrderQuantity In the supplier item's purchase packaging, more than 0, at most three decimals.
+	OrderQuantity  string `json:"orderQuantity"`
+	SiteId         int64  `json:"siteId"`
+	SupplierItemId int64  `json:"supplierItemId"`
+	VariantId      int32  `json:"variantId"`
+}
 
 // PurchasingReceipt A receipt against a purchase order (P28): its number in a series of its own, the day, who, the supplier's delivery note and a note, and its lines. It carries no price (A21); the order line's price then is kept for a later valuation and answered by nothing in this phase.
 type PurchasingReceipt struct {
@@ -1558,6 +1666,12 @@ type LookupPurchasingReceiveCodeParams struct {
 	Code string `form:"code" json:"code"`
 }
 
+// ListPurchasingProposalsParams defines parameters for ListPurchasingProposals.
+type ListPurchasingProposalsParams struct {
+	SiteId    *int64 `form:"siteId,omitempty" json:"siteId,omitempty"`
+	VariantId *int32 `form:"variantId,omitempty" json:"variantId,omitempty"`
+}
+
 // ListPurchasingSupplierItemsParams defines parameters for ListPurchasingSupplierItems.
 type ListPurchasingSupplierItemsParams struct {
 	SupplierId *int64 `form:"supplierId,omitempty" json:"supplierId,omitempty"`
@@ -1625,6 +1739,9 @@ type SendPurchasingOrderJSONRequestBody = PurchasingSendInput
 
 // ResendPurchasingOrderJSONRequestBody defines body for ResendPurchasingOrder for application/json ContentType.
 type ResendPurchasingOrderJSONRequestBody = PurchasingSendAgainInput
+
+// CreatePurchasingProposalOrdersJSONRequestBody defines body for CreatePurchasingProposalOrders for application/json ContentType.
+type CreatePurchasingProposalOrdersJSONRequestBody = PurchasingProposalOrdersInput
 
 // UndoPurchasingReceiptJSONRequestBody defines body for UndoPurchasingReceipt for application/json ContentType.
 type UndoPurchasingReceiptJSONRequestBody = PurchasingUndoInput
@@ -1712,6 +1829,12 @@ type ServerInterface interface {
 	// ResendPurchasingOrder Send a purchase order again
 	// (POST /api/v1/purchasing/orders/{orderId}/send-again)
 	ResendPurchasingOrder(w http.ResponseWriter, r *http.Request, orderId int64)
+	// ListPurchasingProposals List the purchase proposals
+	// (GET /api/v1/purchasing/proposals)
+	ListPurchasingProposals(w http.ResponseWriter, r *http.Request, params ListPurchasingProposalsParams)
+	// CreatePurchasingProposalOrders Create purchase orders from proposals
+	// (POST /api/v1/purchasing/proposals/orders)
+	CreatePurchasingProposalOrders(w http.ResponseWriter, r *http.Request)
 	// GetPurchasingReceipt Get a receipt
 	// (GET /api/v1/purchasing/receipts/{receiptId})
 	GetPurchasingReceipt(w http.ResponseWriter, r *http.Request, receiptId int64)
@@ -2561,6 +2684,66 @@ func (siw *ServerInterfaceWrapper) ResendPurchasingOrder(w http.ResponseWriter, 
 	handler.ServeHTTP(w, r)
 }
 
+// ListPurchasingProposals operation middleware
+func (siw *ServerInterfaceWrapper) ListPurchasingProposals(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListPurchasingProposalsParams
+
+	// ------------- Optional query parameter "siteId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "siteId", r.URL.Query(), &params.SiteId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "siteId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "siteId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "variantId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "variantId", r.URL.Query(), &params.VariantId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "variantId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "variantId", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListPurchasingProposals(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreatePurchasingProposalOrders operation middleware
+func (siw *ServerInterfaceWrapper) CreatePurchasingProposalOrders(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreatePurchasingProposalOrders(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetPurchasingReceipt operation middleware
 func (siw *ServerInterfaceWrapper) GetPurchasingReceipt(w http.ResponseWriter, r *http.Request) {
 
@@ -3194,6 +3377,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/purchasing/orders/{orderId}/reopen", wrapper.ReopenPurchasingOrder)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/purchasing/orders/{orderId}/send", wrapper.SendPurchasingOrder)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/purchasing/orders/{orderId}/send-again", wrapper.ResendPurchasingOrder)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/purchasing/proposals", wrapper.ListPurchasingProposals)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/purchasing/proposals/orders", wrapper.CreatePurchasingProposalOrders)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/purchasing/receipts/{receiptId}", wrapper.GetPurchasingReceipt)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/purchasing/receipts/{receiptId}/undo", wrapper.UndoPurchasingReceipt)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/purchasing/receiving", wrapper.ListPurchasingOrdersToReceive)
@@ -5303,6 +5488,162 @@ func (response ResendPurchasingOrder503ApplicationProblemPlusJSONResponse) Visit
 	return err
 }
 
+type ListPurchasingProposalsRequestObject struct {
+	Params ListPurchasingProposalsParams
+}
+
+type ListPurchasingProposalsResponseObject interface {
+	VisitListPurchasingProposalsResponse(w http.ResponseWriter) error
+}
+
+type ListPurchasingProposals200JSONResponse PurchasingProposalList
+
+func (response ListPurchasingProposals200JSONResponse) VisitListPurchasingProposalsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPurchasingProposals401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListPurchasingProposals401JSONResponse) VisitListPurchasingProposalsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPurchasingProposals403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListPurchasingProposals403JSONResponse) VisitListPurchasingProposalsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPurchasingProposals503ApplicationProblemPlusJSONResponse PurchasingProblem
+
+func (response ListPurchasingProposals503ApplicationProblemPlusJSONResponse) VisitListPurchasingProposalsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreatePurchasingProposalOrdersRequestObject struct {
+	Body *CreatePurchasingProposalOrdersJSONRequestBody
+}
+
+type CreatePurchasingProposalOrdersResponseObject interface {
+	VisitCreatePurchasingProposalOrdersResponse(w http.ResponseWriter) error
+}
+
+type CreatePurchasingProposalOrders200JSONResponse PurchasingProposalOrdersResult
+
+func (response CreatePurchasingProposalOrders200JSONResponse) VisitCreatePurchasingProposalOrdersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreatePurchasingProposalOrders400ApplicationProblemPlusJSONResponse PurchasingProblem
+
+func (response CreatePurchasingProposalOrders400ApplicationProblemPlusJSONResponse) VisitCreatePurchasingProposalOrdersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreatePurchasingProposalOrders401JSONResponse externalRef0.AuthErrorResponse
+
+func (response CreatePurchasingProposalOrders401JSONResponse) VisitCreatePurchasingProposalOrdersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreatePurchasingProposalOrders403JSONResponse externalRef0.AuthErrorResponse
+
+func (response CreatePurchasingProposalOrders403JSONResponse) VisitCreatePurchasingProposalOrdersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreatePurchasingProposalOrders409ApplicationProblemPlusJSONResponse PurchasingProblem
+
+func (response CreatePurchasingProposalOrders409ApplicationProblemPlusJSONResponse) VisitCreatePurchasingProposalOrdersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreatePurchasingProposalOrders503ApplicationProblemPlusJSONResponse PurchasingProblem
+
+func (response CreatePurchasingProposalOrders503ApplicationProblemPlusJSONResponse) VisitCreatePurchasingProposalOrdersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetPurchasingReceiptRequestObject struct {
 	ReceiptId int64 `json:"receiptId"`
 }
@@ -6534,6 +6875,12 @@ type StrictServerInterface interface {
 	// ResendPurchasingOrder Send a purchase order again
 	// (POST /api/v1/purchasing/orders/{orderId}/send-again)
 	ResendPurchasingOrder(ctx context.Context, request ResendPurchasingOrderRequestObject) (ResendPurchasingOrderResponseObject, error)
+	// ListPurchasingProposals List the purchase proposals
+	// (GET /api/v1/purchasing/proposals)
+	ListPurchasingProposals(ctx context.Context, request ListPurchasingProposalsRequestObject) (ListPurchasingProposalsResponseObject, error)
+	// CreatePurchasingProposalOrders Create purchase orders from proposals
+	// (POST /api/v1/purchasing/proposals/orders)
+	CreatePurchasingProposalOrders(ctx context.Context, request CreatePurchasingProposalOrdersRequestObject) (CreatePurchasingProposalOrdersResponseObject, error)
 	// GetPurchasingReceipt Get a receipt
 	// (GET /api/v1/purchasing/receipts/{receiptId})
 	GetPurchasingReceipt(ctx context.Context, request GetPurchasingReceiptRequestObject) (GetPurchasingReceiptResponseObject, error)
@@ -7325,6 +7672,63 @@ func (sh *strictHandler) ResendPurchasingOrder(w http.ResponseWriter, r *http.Re
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ResendPurchasingOrderResponseObject); ok {
 		if err := validResponse.VisitResendPurchasingOrderResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListPurchasingProposals operation middleware
+func (sh *strictHandler) ListPurchasingProposals(w http.ResponseWriter, r *http.Request, params ListPurchasingProposalsParams) {
+	var request ListPurchasingProposalsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListPurchasingProposals(ctx, request.(ListPurchasingProposalsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListPurchasingProposals")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListPurchasingProposalsResponseObject); ok {
+		if err := validResponse.VisitListPurchasingProposalsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreatePurchasingProposalOrders operation middleware
+func (sh *strictHandler) CreatePurchasingProposalOrders(w http.ResponseWriter, r *http.Request) {
+	var request CreatePurchasingProposalOrdersRequestObject
+
+	var body CreatePurchasingProposalOrdersJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreatePurchasingProposalOrders(ctx, request.(CreatePurchasingProposalOrdersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreatePurchasingProposalOrders")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreatePurchasingProposalOrdersResponseObject); ok {
+		if err := validResponse.VisitCreatePurchasingProposalOrdersResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

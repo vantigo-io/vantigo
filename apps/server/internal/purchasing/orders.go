@@ -606,6 +606,11 @@ type change struct {
 	From   *string `json:"from,omitempty"`
 	To     *string `json:"to,omitempty"`
 	LineID *int64  `json:"lineId,omitempty"`
+	// RequestID, RequestHash and Created are Create orders' idempotency key
+	// on its from_proposals action (A11): kept, never answered.
+	RequestID   *string `json:"requestId,omitempty"`
+	RequestHash *string `json:"requestHash,omitempty"`
+	Created     *bool   `json:"created,omitempty"`
 }
 
 // logChange writes one change row of the order with its actions, by a at at.
