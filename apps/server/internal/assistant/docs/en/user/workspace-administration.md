@@ -535,7 +535,10 @@ take a lot past its expiry date on a delivery or a production, when they choose 
 themselves; it does nothing until lot tracking is switched on
 ([Inventory](/en/reference/inventory/#expiry-and-today)). **Manage lots** lets a person change a
 lot's dates, supplier lot and note, add and remove its files, and put and release its holds
-on the lot's page ([Inventory](/en/user/inventory/#lots-and-serial-numbers)).
+on the lot's page ([Inventory](/en/user/inventory/#lots-and-serial-numbers)). In Accounting,
+**Keep the suppliers** is a buyer's: it adds and changes suppliers — but their bank account,
+default account and tax code, which stay with **Post vouchers** — also before the books are
+set up, and needs no **Use Accounting** ([Accounting](/en/user/accounting/#suppliers)).
 
 ### Assignments
 
