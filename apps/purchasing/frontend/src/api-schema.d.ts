@@ -234,6 +234,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/purchasing/orders/{orderId}/lines/{lineId}/delivered": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark an order line delivered
+         * @description Marks a text line or a service line delivered, or not delivered again (P16, §8): such a line is never received into stock. When nothing stays open the order is received; taking the mark back off a received order makes it partially received, or sent when nothing else has come. A goods line is received instead (line_not_deliverable).
+         */
+        post: operations["markPurchasingOrderLineDelivered"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/purchasing/orders/{orderId}/mark-sent": {
         parameters: {
             query?: never;
@@ -266,6 +286,70 @@ export interface paths {
          * @description The PDF of the order's current version as stored when it was sent; a draft's is printed now, marked Draft, and never stored.
          */
         get: operations["getPurchasingOrderPdf"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/purchasing/orders/{orderId}/receipts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a purchase order's receipts
+         * @description The order's receipts, newest first, each with its lines — no prices (A21).
+         */
+        get: operations["listPurchasingOrderReceipts"];
+        put?: never;
+        /**
+         * Receive goods on a purchase order
+         * @description Receives goods against a sent order (P24–P28, A6, A7, A11): one receipt and one Inventory movement of kind receipt, posted through StockLedger.Receive on the same transaction as the receipt and the lines' received quantities. A line may be split over locations and lots. A quantity over a line's remainder is refused with over_receipt unless acceptOver is true. Idempotent by clientRequestId: a replay answers the first receipt, another body under the same id is client_request_reused. Inventory's refusals answer with their own codes, each line named by its index in lines. It never touches the general ledger.
+         */
+        post: operations["receivePurchasingOrder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/purchasing/orders/{orderId}/receive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the receive screen of a purchase order
+         * @description What the receive screen needs (P24, P30, A21): the order's open goods lines with their remainders, each variant's tracking and default location, and the site's active locations. It carries no prices.
+         */
+        get: operations["getPurchasingReceiveForm"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/purchasing/orders/{orderId}/receive/code": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Look a scanned code up on the receive screen
+         * @description A scanned code on the receive screen (P30): through the catalog's code lookup, the order's open goods lines the variant's or a packaging's barcode, or the SKU, names, with what one scan adds in the variant's unit. A GTIN-14 is also tried without its leading zeros. None when the code names nothing on the order.
+         */
+        get: operations["lookupPurchasingReceiveCode"];
         put?: never;
         post?: never;
         delete?: never;
@@ -328,6 +412,43 @@ export interface paths {
          * @description Stores a new PDF of a sent or partially received order, marked Revised, at the next version, and mails it (P18); with mail false, stores it only. A failed mail is queued for a retry (§11).
          */
         post: operations["resendPurchasingOrder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/purchasing/receipts/{receiptId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a receipt */
+        get: operations["getPurchasingReceipt"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/purchasing/receipts/{receiptId}/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Undo a receipt
+         * @description Takes a receipt back (P29, A5, A10, A16): StockLedger.ReverseReceipt posts a movement of kind receipt_reversal and the lines' received quantities are lowered, in one transaction. The receipt is kept, marked undone. Refused when Inventory refuses (insufficient_stock: the stock is no longer where it was received; location_unknown), when a line would be left with less received than invoiced (receipt_invoiced), and for a receipt already undone (receipt_undone). A received order becomes partially received, or sent when nothing else was received; a closed one stays closed.
+         */
+        post: operations["undoPurchasingReceipt"];
         delete?: never;
         options?: never;
         head?: never;
@@ -572,7 +693,7 @@ export interface components {
         };
         /** @description One action of a change. */
         PurchasingChangeAction: {
-            /** @description What was done: created, updated, line_added, line_changed, line_removed, sent, marked_sent, sent_again, confirmed, confirmation_cleared, line_closed, closed, received (the last open line closed with everything received), reopened, cancelled. */
+            /** @description What was done: created, updated, line_added, line_changed, line_removed, sent, marked_sent, sent_again, confirmed, confirmation_cleared, line_closed, closed, received (the last open line closed with everything received, or a receipt that left nothing open), reopened, cancelled; receipt_posted and receipt_undone (to: the receipt's number), line_delivered and line_undelivered (delivery B). */
             action: string;
             field?: string | null;
             from?: string | null;
@@ -598,6 +719,15 @@ export interface components {
             confirmedOn?: string | null;
             /** Format: int64 */
             lineId: number;
+        };
+        /** @description Marks a text or service line delivered, or takes the mark off. */
+        PurchasingDeliveredInput: {
+            delivered: boolean;
+            /**
+             * Format: date-time
+             * @description The updatedAt of the order as the client read it: the write is refused with version_conflict when the order was written since (every write moves it).
+             */
+            expectedUpdatedAt: string;
         };
         /** @description A stored PDF of an order (P21). */
         PurchasingDocument: {
@@ -675,6 +805,14 @@ export interface components {
          * @enum {string}
          */
         PurchasingLineWarning: "below_minimum" | "off_multiple";
+        /** @description An active location of the order's site, as Inventory answers it. */
+        PurchasingLocation: {
+            fullCode: string;
+            /** Format: int64 */
+            id: number;
+            /** @description The site's own node, where stock lies when it has no place. */
+            root: boolean;
+        };
         /** @description One mailing of an order's PDF (P21). */
         PurchasingMailing: {
             /** Format: int32 */
@@ -831,6 +969,11 @@ export interface components {
             closedAt?: string | null;
             /** Format: date */
             confirmedOn?: string | null;
+            /**
+             * Format: date-time
+             * @description When a text or service line was marked delivered (P16).
+             */
+            deliveredAt?: string | null;
             description: string;
             discountPercent: string;
             /** Format: date */
@@ -974,7 +1117,7 @@ export interface components {
             /** Format: uuid */
             id?: string | null;
         };
-        /** @description An RFC 9457 problem with this module's refusal code (purchasing design §3). code names the rule that refused and is what a client keys off, never the words. 400: field errors (errors), supplier_not_found, site_not_found, site_archived, currency_invalid, series_start_too_low, send_channel_unknown, recipient_missing, order_empty, import_invalid, amount_out_of_range (an order's total above 999 999 999 999.99), and an order's line refusals in lines, the first of which is also code: too_many_lines, line_invalid, line_not_found, variant_not_found, variant_discontinued, packaging_not_found, quantity_invalid, price_invalid, discount_invalid, quantity_below_received, amount_out_of_range (a line's amount above 999 999 999 999.99). 404: not_found. 409: version_conflict (a stale revision or expectedUpdatedAt), order_not_draft, order_not_sent (the order is not sent or partially received), order_not_closed, order_has_receipts (a cancel of an order with something received), line_closed, line_kind_changed, currency_fixed (a currency change once a line has a price), supplier_inactive, supplier_changed (a sent order's supplier), supplier_item_exists, client_request_reused. 503: dependency_unavailable (a module Purchasing reads is not composed), sending_disabled (Communications is off, or no channel that can send is chosen) and mail_failed (the e-mail did not go out now; the change is made, and its mailing, written in the same transaction, stays queued for the purchasing.mail worker). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither. */
+        /** @description An RFC 9457 problem with this module's refusal code (purchasing design §3). code names the rule that refused and is what a client keys off, never the words. 400: field errors (errors), supplier_not_found, site_not_found, site_archived, currency_invalid, series_start_too_low, send_channel_unknown, recipient_missing, order_empty, import_invalid, amount_out_of_range (an order's total above 999 999 999 999.99), and an order's line refusals in lines, the first of which is also code: too_many_lines, line_invalid, line_not_found, variant_not_found, variant_discontinued, packaging_not_found, quantity_invalid, price_invalid, discount_invalid, quantity_below_received, amount_out_of_range (a line's amount above 999 999 999 999.99). 404: not_found. 409: version_conflict (a stale revision or expectedUpdatedAt), order_not_draft, order_not_sent (the order is not sent or partially received), order_not_closed, order_has_receipts (a cancel of an order with something received), line_closed, line_kind_changed, currency_fixed (a currency change once a line has a price), supplier_inactive, supplier_changed (a sent order's supplier), supplier_item_exists, client_request_reused. 503: dependency_unavailable (a module Purchasing reads is not composed), sending_disabled (Communications is off, or no channel that can send is chosen) and mail_failed (the e-mail did not go out now; the change is made, and its mailing, written in the same transaction, stays queued for the purchasing.mail worker). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither. Receipts (delivery B): 400 line_not_receivable (a line that is not an open goods line of the order) in lines; 409 over_receipt (more than a line's remainder without acceptOver, the lines named), receipt_undone (an undo of a receipt undone already), receipt_invoiced (an undo that would leave a line with less received than invoiced) and line_not_deliverable (a delivered mark on a goods line). Inventory's refusals of a receipt or its undo keep Inventory's own codes, each line named by its index. */
         PurchasingProblem: {
             code?: string | null;
             detail?: string | null;
@@ -999,6 +1142,195 @@ export interface components {
              * @description The line's index in the request, from 0.
              */
             index: number;
+        };
+        /** @description A receipt against a purchase order (P28): its number in a series of its own, the day, who, the supplier's delivery note and a note, and its lines. It carries no price (A21); the order line's price then is kept for a later valuation and answered by nothing in this phase. */
+        PurchasingReceipt: {
+            /** Format: date-time */
+            createdAt: string;
+            /** @description The supplier's delivery note number, as text. */
+            deliveryNote: string;
+            /** Format: int64 */
+            id: number;
+            lines: components["schemas"]["PurchasingReceiptLine"][];
+            /**
+             * Format: int64
+             * @description Inventory's movement of kind receipt.
+             */
+            movementId: number;
+            note: string;
+            /** Format: int64 */
+            number: number;
+            /** Format: int64 */
+            orderId: number;
+            /** Format: int64 */
+            orderNumber: number;
+            receivedBy?: components["schemas"]["PurchasingPerson"] | null;
+            /** Format: date */
+            receivedOn: string;
+            /**
+             * Format: int64
+             * @description Inventory's movement of kind receipt_reversal, once undone.
+             */
+            reversalMovementId?: number | null;
+            /** Format: int64 */
+            siteId: number;
+            /** @enum {string} */
+            status: "posted" | "undone";
+            undoNote?: string | null;
+            /** Format: date-time */
+            undoneAt?: string | null;
+            undoneBy?: components["schemas"]["PurchasingPerson"] | null;
+        };
+        /** @description One receipt (P24–P26, A11). Every line names an open goods line of the order; one order line may be split over several lines, by location and lot. */
+        PurchasingReceiptInput: {
+            /** @description Receive more than a line's remainder; without it that is refused with over_receipt, which the screen asks about first (P26). */
+            acceptOver?: boolean;
+            /**
+             * Format: uuid
+             * @description Makes the receipt idempotent (A11).
+             */
+            clientRequestId: string;
+            deliveryNote?: string;
+            lines: components["schemas"]["PurchasingReceiptLineInput"][];
+            note?: string;
+        };
+        /** @description One line of a receipt, as it was put on its location. */
+        PurchasingReceiptLine: {
+            /** Format: date */
+            bestBefore?: string | null;
+            /** @description As entered, in the purchase packaging when inPackaging, else in the variant's unit. */
+            enteredQuantity: string;
+            /** Format: date */
+            expiry?: string | null;
+            /** Format: int64 */
+            id: number;
+            inPackaging: boolean;
+            /** @description The location's full code as Inventory answers it now, "" when it no longer does. */
+            locationCode: string;
+            /** Format: int64 */
+            locationId: number;
+            /**
+             * Format: int64
+             * @description The lot named by id, when it was.
+             */
+            lotId?: number | null;
+            /** @description The lot's number as given; null when Inventory numbered it. */
+            lotNumber?: string | null;
+            name: string;
+            /** Format: int64 */
+            orderLineId: number;
+            packagingName?: string | null;
+            /** Format: int32 */
+            position: number;
+            /** Format: date */
+            productionDate?: string | null;
+            /** @description In the variant's unit. */
+            quantity: string;
+            serials: string[];
+            sku?: string | null;
+            supplierLot?: string | null;
+            unit: string;
+            /** Format: int32 */
+            variantId: number;
+        };
+        /** @description One line of a receipt (P24): the order line, the quantity — in the line's purchase packaging when inPackaging, else in the variant's unit, at most three decimals —, the location, and for a tracked variant its lot one way: lotId (an existing lot), lot (found by number or made; an empty number lets Inventory number it), or serials for a serial variant. */
+        PurchasingReceiptLineInput: {
+            inPackaging?: boolean;
+            /** Format: int64 */
+            locationId: number;
+            lot?: components["schemas"]["PurchasingReceiptLotInput"];
+            /** Format: int64 */
+            lotId?: number;
+            /** Format: int64 */
+            orderLineId: number;
+            quantity: string;
+            serials?: string[];
+        };
+        /** @description An order's receipts, newest first. */
+        PurchasingReceiptList: {
+            items: components["schemas"]["PurchasingReceipt"][];
+        };
+        /** @description A lot a receipt line finds by number or makes, with its dates; a date left out defaults from the variant's days after the production date. */
+        PurchasingReceiptLotInput: {
+            /** Format: date */
+            bestBefore?: string;
+            /** Format: date */
+            expiry?: string;
+            number?: string;
+            /** Format: date */
+            productionDate?: string;
+            supplierLot?: string;
+        };
+        /** @description A receipt and its order as they now stand. */
+        PurchasingReceiptResult: {
+            order: components["schemas"]["PurchasingOrder"];
+            receipt: components["schemas"]["PurchasingReceipt"];
+        };
+        /** @description An open goods line of the order a scanned code names, and what one scan adds. */
+        PurchasingReceiveCode: {
+            /** Format: int64 */
+            orderLineId: number;
+            /**
+             * Format: int32
+             * @description The packaging whose barcode matched; null for the variant's own code.
+             */
+            packagingId?: number | null;
+            packagingName?: string | null;
+            /** @description What one scan adds, in the variant's unit — the packaging's quantity, or 1. */
+            quantity: string;
+        };
+        /** @description The order's open goods lines a scanned code names, by position. */
+        PurchasingReceiveCodeList: {
+            items: components["schemas"]["PurchasingReceiveCode"][];
+        };
+        /** @description The receive screen's order (P24, A21) — no prices. */
+        PurchasingReceiveForm: {
+            lines: components["schemas"]["PurchasingReceiveLine"][];
+            locations: components["schemas"]["PurchasingLocation"][];
+            /** Format: int64 */
+            number?: number | null;
+            /** Format: int64 */
+            orderId: number;
+            /** Format: int64 */
+            siteId: number;
+            siteName: string;
+            status: string;
+            supplierName: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        /** @description An open goods line on the receive screen, its remainder prefilled (P24). */
+        PurchasingReceiveLine: {
+            /** Format: int32 */
+            bestBeforeDays?: number | null;
+            /**
+             * Format: int64
+             * @description The variant's primary location at the site when it holds stock there, else where most of it lies, else the site's own node.
+             */
+            defaultLocationId?: number | null;
+            /** Format: int32 */
+            expiryDays?: number | null;
+            name: string;
+            /** @description The remainder, in the variant's unit. */
+            open: string;
+            /** Format: int64 */
+            orderLineId: number;
+            /** Format: int32 */
+            packagingId?: number | null;
+            packagingName?: string | null;
+            /** @description The purchase packaging's quantity in the variant's unit, as the line took it. */
+            packagingQuantity?: string | null;
+            /** Format: int32 */
+            position: number;
+            /** @description Ordered, in the variant's unit. */
+            quantity: string;
+            received: string;
+            sku?: string | null;
+            /** @enum {string} */
+            tracking: "none" | "lot" | "serial";
+            unit: string;
+            /** Format: int32 */
+            variantId: number;
         };
         /** @description Send again (P18): store a new PDF, marked Revised, and mail it; with mail false, store it only. */
         PurchasingSendAgainInput: {
@@ -1262,6 +1594,10 @@ export interface components {
         /** @description Suppliers of the register. */
         PurchasingSupplierList: {
             items: components["schemas"]["PurchasingSupplier"][];
+        };
+        /** @description Undo a receipt, with an optional note the reversal carries. */
+        PurchasingUndoInput: {
+            note?: string;
         };
         /** @description Variants for a line. */
         PurchasingVariantList: {
@@ -2186,6 +2522,78 @@ export interface operations {
             };
         };
     };
+    markPurchasingOrderLineDelivered: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orderId: number;
+                lineId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PurchasingDeliveredInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchasingOrder"];
+                };
+            };
+            /** @description Bad Request — field errors. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["PurchasingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["PurchasingProblem"];
+                };
+            };
+            /** @description Conflict — version_conflict, order_not_sent, line_closed, line_not_deliverable. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["PurchasingProblem"];
+                };
+            };
+        };
+    };
     markPurchasingOrderSent: {
         parameters: {
             query?: never;
@@ -2284,6 +2692,271 @@ export interface operations {
                 };
                 content: {
                     "application/pdf": string;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["PurchasingProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["PurchasingProblem"];
+                };
+            };
+        };
+    };
+    listPurchasingOrderReceipts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orderId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchasingReceiptList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["PurchasingProblem"];
+                };
+            };
+        };
+    };
+    receivePurchasingOrder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orderId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PurchasingReceiptInput"];
+            };
+        };
+        responses: {
+            /** @description Created — the receipt, or the first one for a replayed clientRequestId. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchasingReceiptResult"];
+                };
+            };
+            /** @description Bad Request — field errors, line_not_receivable, quantity_invalid, packaging_not_found, and Inventory's line refusals (lot_required, lot_not_allowed, lot_unknown, lot_number_invalid, lot_dates_invalid, serial_quantity, line_invalid, location_unknown) in lines. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["PurchasingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["PurchasingProblem"];
+                };
+            };
+            /** @description Conflict — order_not_sent, over_receipt, client_request_reused, version_conflict (the order kept changing while it was received), and Inventory's refusals (variant_not_stocked, lot_blocked, site_archived, site_unknown, document_reused). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["PurchasingProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["PurchasingProblem"];
+                };
+            };
+        };
+    };
+    getPurchasingReceiveForm: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orderId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchasingReceiveForm"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["PurchasingProblem"];
+                };
+            };
+            /** @description Conflict — order_not_sent. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["PurchasingProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["PurchasingProblem"];
+                };
+            };
+        };
+    };
+    lookupPurchasingReceiveCode: {
+        parameters: {
+            query: {
+                code: string;
+            };
+            header?: never;
+            path: {
+                orderId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchasingReceiveCodeList"];
+                };
+            };
+            /** @description Bad Request — field errors. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["PurchasingProblem"];
                 };
             };
             /** @description Unauthorized */
@@ -2545,6 +3218,135 @@ export interface operations {
                 };
             };
             /** @description Service Unavailable — sending_disabled, mail_failed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["PurchasingProblem"];
+                };
+            };
+        };
+    };
+    getPurchasingReceipt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                receiptId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchasingReceipt"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["PurchasingProblem"];
+                };
+            };
+        };
+    };
+    undoPurchasingReceipt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                receiptId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PurchasingUndoInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchasingReceiptResult"];
+                };
+            };
+            /** @description Bad Request — field errors. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["PurchasingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["PurchasingProblem"];
+                };
+            };
+            /** @description Conflict — receipt_undone, receipt_invoiced, and Inventory's refusals (insufficient_stock, location_unknown) in lines, each by its index in the receipt's lines. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["PurchasingProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable. */
             503: {
                 headers: {
                     [name: string]: unknown;

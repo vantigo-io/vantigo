@@ -58,5 +58,41 @@
       "en": "Opens the dialog that gives the draft its number and mails its PDF to the supplier.",
       "nb": "Åpner dialogen som gir utkastet nummer og sender PDF-en til leverandøren på e-post."
     }
+  },
+  {
+    "key": "purchasing.order.receive",
+    "route": "/purchasing/orders/{orderId}",
+    "label": {
+      "en": "Receive",
+      "nb": "Motta"
+    },
+    "description": {
+      "en": "Opens the receive screen of a sent order: its open goods lines with the remainder prefilled, to put on the site's locations.",
+      "nb": "Åpner mottaksskjermen for en sendt ordre: de åpne varelinjene med restantallet utfylt, til å legges på lagerstedets lokasjoner."
+    }
+  },
+  {
+    "key": "purchasing.receive.scan",
+    "route": "/purchasing/orders/{orderId}/receive",
+    "label": {
+      "en": "Scan an item",
+      "nb": "Skann en vare"
+    },
+    "description": {
+      "en": "The scan field of the receive screen: a SKU, a barcode or a GS1 code selects the line and counts one more; the first scan starts counting from 0.",
+      "nb": "Skannefeltet på mottaksskjermen: et varenummer, en strekkode eller en GS1-kode velger linjen og teller én til; første skanning begynner tellingen fra 0."
+    }
+  },
+  {
+    "key": "purchasing.receive.submit",
+    "route": "/purchasing/orders/{orderId}/receive",
+    "label": {
+      "en": "Receive",
+      "nb": "Motta"
+    },
+    "description": {
+      "en": "Posts the receipt: the rows above 0 go into stock on their locations as one Inventory movement.",
+      "nb": "Bokfører varemottaket: radene over 0 legges på lager på sine lokasjoner som én lagerbevegelse."
+    }
   }
 ]

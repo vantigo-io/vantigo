@@ -18,6 +18,7 @@ import {
   NEW_PURCHASE_ORDER_ROUTE_PATH,
   PURCHASE_ORDER_ROUTE_PATH,
   PURCHASE_ORDERS_ROUTE_PATH,
+  RECEIVE_PURCHASE_ORDER_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
   SUPPLIER_ROUTE_PATH,
   SUPPLIERS_ROUTE_PATH,
@@ -25,6 +26,7 @@ import {
 } from "../lib/routes";
 import { NewPurchaseOrderPage, PurchaseOrderPage } from "../pages/order";
 import { PurchaseOrdersPage } from "../pages/orders";
+import { ReceivePurchaseOrderPage } from "../pages/receive";
 import { PurchasingSettingsPage } from "../pages/settings";
 import { type RenderSupplierForm, SupplierPage, SuppliersPage } from "../pages/suppliers";
 
@@ -34,6 +36,8 @@ export const fullAccess: PurchasingAccess = {
   canSendOrders: true,
   canManageSupplierItems: true,
   canManageSettings: true,
+  canReceive: true,
+  canOpenInventoryMovements: true,
   userId: "00000000-0000-4000-8000-000000000001",
 };
 
@@ -61,6 +65,11 @@ const routeTree = (access: PurchasingAccess, renderSupplierForm?: RenderSupplier
     path: PURCHASE_ORDER_ROUTE_PATH,
     component: () => <PurchaseOrderPage orderId={Number(orderRoute.useParams().orderId)} access={access} />,
   });
+  const receiveRoute = createRoute({
+    getParentRoute: () => root,
+    path: RECEIVE_PURCHASE_ORDER_ROUTE_PATH,
+    component: () => <ReceivePurchaseOrderPage orderId={Number(receiveRoute.useParams().orderId)} access={access} />,
+  });
   const newOrder = createRoute({
     getParentRoute: () => root,
     path: NEW_PURCHASE_ORDER_ROUTE_PATH,
@@ -82,6 +91,7 @@ const routeTree = (access: PurchasingAccess, renderSupplierForm?: RenderSupplier
     route(PURCHASE_ORDERS_ROUTE_PATH, () => <PurchaseOrdersPage access={access} />),
     newOrder,
     orderRoute,
+    receiveRoute,
     route(SUPPLIERS_ROUTE_PATH, () => <SuppliersPage renderSupplierForm={renderSupplierForm} />),
     supplierRoute,
     route(SETTINGS_ROUTE_PATH, () => <PurchasingSettingsPage access={access} />),
@@ -89,6 +99,7 @@ const routeTree = (access: PurchasingAccess, renderSupplierForm?: RenderSupplier
     // Other apps' routes the pages link to.
     route("/accounting/suppliers/$supplierId", () => <p>Accounting's supplier</p>),
     route("/products/$productId", () => <p>A product</p>),
+    route("/inventory/movements/$movementId", () => <p>Inventory's movement</p>),
   ]);
 };
 

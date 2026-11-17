@@ -40,6 +40,16 @@ export type PurchasingSite = Schemas["PurchasingSite"];
 export type PurchasingSettings = Schemas["PurchasingSettings"];
 export type PurchasingSettingsInput = Schemas["PurchasingSettingsInput"];
 export type PurchasingSiteAddress = Schemas["PurchasingSiteAddress"];
+export type PurchasingReceiveForm = Schemas["PurchasingReceiveForm"];
+export type PurchasingReceiveLine = Schemas["PurchasingReceiveLine"];
+export type PurchasingLocation = Schemas["PurchasingLocation"];
+export type PurchasingReceiveCode = Schemas["PurchasingReceiveCode"];
+export type PurchasingReceipt = Schemas["PurchasingReceipt"];
+export type PurchasingReceiptLine = Schemas["PurchasingReceiptLine"];
+export type PurchasingReceiptInput = Schemas["PurchasingReceiptInput"];
+export type PurchasingReceiptLineInput = Schemas["PurchasingReceiptLineInput"];
+export type PurchasingReceiptLotInput = Schemas["PurchasingReceiptLotInput"];
+export type PurchasingReceiptResult = Schemas["PurchasingReceiptResult"];
 
 const BASE = "/api/v1/purchasing";
 
@@ -139,6 +149,52 @@ export const closePurchaseOrderLine = (id: number, lineId: number, expectedUpdat
 export const confirmPurchaseOrder = (id: number, input: PurchasingConfirmationInput) =>
   send<PurchaseOrder>(`${BASE}/orders/${id}/confirmation`, json("PUT", input));
 export const copyPurchaseOrder = (id: number) => send<PurchaseOrder>(`${BASE}/orders/${id}/copy`, { method: "POST" });
+
+/** What the receive screen needs (P24, A21): the open goods lines, their remainders and the site's locations — no prices. */
+export const receiveFormQueryOptions = (orderId: number) =>
+  queryOptions({
+    queryKey: [PURCHASING_QUERY_KEY, "orders", "receive", orderId],
+    queryFn: ({ signal }) => request<PurchasingReceiveForm>(`${BASE}/orders/${orderId}/receive`, { signal }),
+  });
+
+/** The order's open goods lines a scanned code names (P30), each with what one scan adds. */
+export const lookupReceiveCode = (orderId: number, code: string, signal?: AbortSignal) =>
+  request<{ items: PurchasingReceiveCode[] }>(`${BASE}/orders/${orderId}/receive/code${queryString({ code })}`, {
+    signal,
+  });
+
+/** One receipt, idempotent by its clientRequestId (A11); 409 `over_receipt` unless acceptOver. */
+export const receivePurchaseOrder = (orderId: number, input: PurchasingReceiptInput) =>
+  send<PurchasingReceiptResult>(`${BASE}/orders/${orderId}/receipts`, json("POST", input));
+
+/** The order's receipts, newest first (P28). */
+export const purchaseOrderReceiptsQueryOptions = (orderId: number) =>
+  queryOptions({
+    queryKey: [PURCHASING_QUERY_KEY, "orders", "receipts", orderId],
+    queryFn: ({ signal }) => request<{ items: PurchasingReceipt[] }>(`${BASE}/orders/${orderId}/receipts`, { signal }),
+  });
+
+export const purchasingReceiptQueryOptions = (receiptId: number) =>
+  queryOptions({
+    queryKey: [PURCHASING_QUERY_KEY, "receipts", "detail", receiptId],
+    queryFn: ({ signal }) => request<PurchasingReceipt>(`${BASE}/receipts/${receiptId}`, { signal }),
+  });
+
+/** Takes a receipt back (P29), with an optional note the reversal carries. */
+export const undoPurchasingReceipt = (receiptId: number, note?: string) =>
+  send<PurchasingReceiptResult>(`${BASE}/receipts/${receiptId}/undo`, json("POST", note ? { note } : {}));
+
+/** Marks a text or service line delivered, or takes the mark off (P16), on the order as read. */
+export const markPurchaseOrderLineDelivered = (
+  orderId: number,
+  lineId: number,
+  delivered: boolean,
+  expectedUpdatedAt: string,
+) =>
+  send<PurchaseOrder>(
+    `${BASE}/orders/${orderId}/lines/${lineId}/delivered`,
+    json("POST", { delivered, expectedUpdatedAt }),
+  );
 
 /** The order's PDF printed now (a draft's preview), and a stored one as it was sent. */
 export const purchaseOrderPdfUrl = (id: number) => `${BASE}/orders/${id}/pdf`;

@@ -3,12 +3,19 @@ export const PURCHASING_HOME_ROUTE_PATH = "/purchasing";
 export const PURCHASE_ORDERS_ROUTE_PATH = "/purchasing/orders";
 export const NEW_PURCHASE_ORDER_ROUTE_PATH = "/purchasing/orders/new";
 export const PURCHASE_ORDER_ROUTE_PATH = "/purchasing/orders/$orderId";
+/** The receive screen of a sent order (P24). */
+export const RECEIVE_PURCHASE_ORDER_ROUTE_PATH = "/purchasing/orders/$orderId/receive";
 export const SUPPLIERS_ROUTE_PATH = "/purchasing/suppliers";
 export const SUPPLIER_ROUTE_PATH = "/purchasing/suppliers/$supplierId";
 export const SETTINGS_ROUTE_PATH = "/purchasing/settings";
 
 export const purchaseOrderLinkOptions = (orderId: number) => ({
   to: PURCHASE_ORDER_ROUTE_PATH,
+  params: { orderId: String(orderId) },
+});
+
+export const receivePurchaseOrderLinkOptions = (orderId: number) => ({
+  to: RECEIVE_PURCHASE_ORDER_ROUTE_PATH,
   params: { orderId: String(orderId) },
 });
 
@@ -47,4 +54,12 @@ const PRODUCT_ROUTE_PATH = "/products/$productId";
 export const productLinkOptions = (productId: number) => ({
   to: PRODUCT_ROUTE_PATH,
   params: { productId: String(productId) },
+});
+
+/** Inventory's movement page (owned by the Inventory app), where a receipt and its undo link. */
+const INVENTORY_MOVEMENT_ROUTE_PATH = "/inventory/movements/$movementId";
+
+export const inventoryMovementLinkOptions = (movementId: number) => ({
+  to: INVENTORY_MOVEMENT_ROUTE_PATH,
+  params: { movementId: String(movementId) },
 });

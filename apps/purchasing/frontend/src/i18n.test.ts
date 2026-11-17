@@ -68,6 +68,10 @@ describe("the purchasing catalog", () => {
         "closed",
         "reopened",
         "cancelled",
+        "receipt_posted",
+        "receipt_undone",
+        "line_delivered",
+        "line_undelivered",
       ],
       importOutcome: [
         "created",
@@ -117,7 +121,13 @@ describe("the purchasing catalog", () => {
         "dependency_unavailable",
         "sending_disabled",
         "mail_failed",
+        "line_not_receivable",
+        "over_receipt",
+        "receipt_undone",
+        "receipt_invoiced",
+        "line_not_deliverable",
       ],
+      receiptStatus: ["posted", "undone"],
     };
     for (const [family, values] of Object.entries(families))
       for (const value of values)
