@@ -63,7 +63,7 @@ Running `mise run server:seed` populates a rich, idempotent showcase dataset (`V
 - **30 invoices** across paid, partially paid, open, overdue, written-off (as a loss with the VAT corrected, a third recovered) and draft states
 - **Accounting's books** when `accounting` is enabled: set up from 1 January (last year's while it is January) with the Norwegian chart, bimonthly VAT, a consulting revenue account and an expense rule per expense category; an opening balance (bank, office machines, share capital, a bank loan, equity); the demo's invoices, payments, write-off and expenses posted by the catch-up; **7 suppliers** with **15 supplier invoices** across the year (one foreign in EUR with reverse charge, paid with a currency difference, a credit note, two owed — one overdue — and one draft), each with a small PDF; every VAT term that has ended closed, all but the latest marked filed, and the lock at the latest's end; the seller's bank account with last month's camt.053 statement, about half its lines reconciled and the rest — a bank fee with its bank rule, a card purchase no one has entered — left to try; and the euro expense waiting under *Needs attention* for its NOK amount. The supplier invoices and the statement keep files, so they need an object store: run the seed with `STORAGE_PROVIDER=fs STORAGE_FS_ROOT=<an absolute path>` to get them; without one they are left out and the seed logs it
 - **10 energy metering points** (`NO1`–`NO5`) and **10 customer support conversations**
-- **A small furniture and metal workshop** for Inventory, Manufacturing and Orders (below)
+- **A small furniture and metal workshop** for Inventory, Manufacturing and Orders (below), and **Purchasing** buying for it (below)
 
 #### The demo workshop
 
@@ -95,6 +95,19 @@ it. An installation seeded before the workshop existed gets it on its next seed.
   and `MO-6` made by the make-to-order worker for the first sales order.
 - **Orders:** three sales orders — one confirmed for two shelf units (made to order),
   one confirmed for the starter kit with its child lines reserved, and a draft.
+- **Purchasing** (when `purchasing` is enabled), made after the workshop and before the
+  books through Purchasing's and Accounting's own operations: the suppliers *Norsk Stål
+  AS*, *Jotun Powder Coatings AS* and *Verktøygrossisten AS* in Accounting's register;
+  six supplier items (the steel tube, screws and plywood, the paint, the tool board and
+  the vise) with prices, lead times and two minimums; the settings with `VERK` as the
+  default site and the order series from 4501; and purchase orders in each state —
+  a draft for tool boards, a sent order for 180 m of steel tube and screws (the tube
+  the low-stock list shows as on order), a sent order for paint with the supplier's
+  confirmation, a sent order for plywood and screws with the screws' line closed, a
+  closed order for vises and a cancelled one for paint. The sent orders store their
+  PDF, so they need an object store as the supplier invoices do; without one only the
+  suppliers, the items and the draft are made, and the seed logs it. It runs once: an
+  installation with a purchase order skips it.
 
 Two personas run it beside their usual role: **Magnus Bakken** is the *Production
 Planner* and **Kasper Myhre** and **Oliver Aas** are *Shop Floor Operators*. PINs,
