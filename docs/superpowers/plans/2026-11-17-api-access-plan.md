@@ -35,14 +35,14 @@ owner says so: this plan starts nothing by itself.
 | # | Branch | Delivery | Migration (main at `a9f140c82`, latest `00192`) |
 | --- | --- | --- | --- |
 | 1 | `claude/vantigo-api-keys-docs-8b70ec` | Research, spec, plan, roadmap (docs only) | — |
-| 2 | `claude/api-access-0-seams` | 0: the kind, its guards and sweep, `x-vantigo-api`, `APINever` | `00193_identity_integration_kind` |
-| 3 | `claude/api-access-a-keys` | A: integrations, keys, `Check`, the screen, the worker | `00194_identity_api_keys` |
-| 4 | `claude/api-access-b-log` | B: the request log, the limit, the notices | `00195_identity_api_requests` |
+| 2 | `claude/api-access-0-seams` | 0: the kind, its guards and sweep, `x-vantigo-api`, `APINever` | `00194_identity_integration_kind` |
+| 3 | `claude/api-access-a-keys` | A: integrations, keys, `Check`, the screen, the worker | `00195_identity_api_keys` |
+| 4 | `claude/api-access-b-log` | B: the request log, the limit, the notices | `00196_identity_api_requests` |
 | 5 | `claude/api-access-c-reference` | C: `/api`, the integrator's document, the policy, `oasdiff` | — |
 
 - **C does not depend on B.** It is stacked after B only because a stack is a line, and
   it can be moved under B.
-- **Migration numbers.** If `main` takes a number first, the owning layer renumbers its
+- **Migration numbers.** `00193` is claimed by Invoices phase 6 (PR #368, `00193_invoices_branding`), so this stack starts at `00194`. If `main` takes a number first, the owning layer renumbers its
   migration in its own history before the stack is rebased (memory:
   migration-number-collisions). Check `git ls-tree origin/main` on `mig/` right before
   each merge.
@@ -134,7 +134,7 @@ The findings are recorded in the PR body. They are the authority for K4, K6 and 
   whether its enqueuing operation becomes `never` (K45).
 - **POST searches** that only read. These become `read`.
 
-### Step 0.2 — the migration `00193_identity_integration_kind`
+### Step 0.2 — the migration `00194_identity_integration_kind`
 
 - **The kind:**
   - `users.kind`'s CHECK gains `'integration'` (K1);
@@ -276,7 +276,7 @@ Run the coverage map first. Expect at least these pages.
 
 ### Step A.1 — the seam
 
-- **Migration `00194_identity_api_keys`:**
+- **Migration `00195_identity_api_keys`:**
   - `identity.integrations` (K8):
     - a partial unique index on `lower(name)` where `archived_at IS NULL`;
     - `CHECK (rate_limit_per_minute BETWEEN 60 AND 6000)`;
@@ -469,7 +469,7 @@ concurrent clients, through `ratelimit` keyed by the integration.
 
 ### Step B.1 — the seam
 
-- **Migration `00195_identity_api_requests`:**
+- **Migration `00196_identity_api_requests`:**
   - `identity.api_requests`, partitioned by range on `at`, following
     `mig/00005_energy_baseline.sql:122-160`. It has no FK to `api_keys` (K39);
   - `identity.ensure_api_requests_partition(day date)`, which does K39's
