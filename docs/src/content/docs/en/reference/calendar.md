@@ -2762,3 +2762,14 @@ Every operation requires `calendar:access` but the three `anonymous` ones, which
 alone admits. The request and response shapes are in the
 contract, [`openapi/calendar.yaml`](https://github.com/vantigo-io/vantigo/blob/main/openapi/calendar.yaml),
 and in the API reference generated from it.
+
+## API keys
+
+These operations are `x-vantigo-api: never`: the anonymous feed, RSVP and RSVP read
+operations; the personal feed address (`getCalendarFeed`, `postCalendarFeedByVariant`,
+`deleteCalendarFeedByVariant`); mailbox sync (`putCalendarMailboxSync`,
+`postCalendarMailboxSyncRun`); and subscriptions (`postCalendarSubscriptions`,
+`putCalendarSubscriptionsById`, `postCalendarSubscriptionsByIdRefresh`). Their workers act
+as the person who set them up, which an integration never is. See [integration
+users](/en/admin/authentication/#integration-users), and the marks' rules in [module
+boundaries](/en/contributing/module-boundaries/#the-rules).

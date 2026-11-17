@@ -1383,3 +1383,11 @@ threading back, a refused connection failing at once and the retry — beside a 
 Entra provider. The fake's Gmail serves a person's own token, its subject the Directory
 id, as the user's mailbox. The sweep's tests run on a pool of one connection. It comes in through `Deps.HTTPTransport`, so the
 host guard runs in every test.
+
+## API keys
+
+Every Google Workspace operation is `x-vantigo-api: never`: the connection is an Owner's,
+`google:manage` cannot be delegated, and the personal connect and callback are browser
+flows. Connecting existing users to the directory never proposes an integration. See
+[integration users](/en/admin/authentication/#integration-users), and the marks' rules in
+[module boundaries](/en/contributing/module-boundaries/#the-rules).
