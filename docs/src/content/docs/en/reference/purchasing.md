@@ -13,7 +13,7 @@ catalog's variants (supplier items), and purchase orders with their lines, their
 their mail, the supplier's confirmation and every change made after sending. In
 Norwegian the app is **Innkjøp**. The design is
 [`2026-11-17-purchasing-design.md`](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-11-17-purchasing-design.md)
-(decisions P1–P41, amendments A1–A28); this page describes delivery A, the module,
+(decisions P1–P41, amendments A1–A36); this page describes delivery A, the module,
 supplier items and purchase orders (P8–P23, A11, A16–A19). Receipts (delivery B),
 proposals (C) and the supplier-invoice match (D) come later: nothing in delivery A
 receives, so `partially_received` and `received` are not reached yet.
@@ -63,9 +63,9 @@ write does not also ask for `purchasing:access`.
 | `purchasing:access` | Use Purchasing | Read everything: orders, their lines and prices, the PDFs, the history, supplier items, the suppliers, the sites, the buyers, the meta and the figures. |
 | `purchasing:orders-manage` | Manage purchase orders | Create, save and delete drafts; save sent orders; record the confirmation; Close, Close line, Reopen; Copy. |
 | `purchasing:orders-send` | Send purchase orders | Send, Mark as sent, Send again, Cancel. |
-| `purchasing:receive` | Receive goods | Declared for delivery B; no operation asks for it yet. |
+| `purchasing:receive` | Receive goods (coming) | Declared for delivery B; no operation asks for it yet, and its description says so. |
 | `purchasing:supplier-items-manage` | Manage supplier items | Create, save, delete and import supplier items. |
-| `purchasing:invoices-match` | Match supplier invoices | Declared for delivery D; no operation asks for it yet. |
+| `purchasing:invoices-match` | Match supplier invoices (coming) | Declared for delivery D; no operation asks for it yet, and its description says so. |
 | `purchasing:settings` | Manage Purchasing settings | Read and save the settings. Not delegable. |
 
 Every holder of `purchasing:access` sees the prices (design §14, question 5).
@@ -87,7 +87,7 @@ One row, created by the first save; before it the defaults answer at revision 0.
 | `defaultSiteId` | An Inventory site, active (400 `site_not_found`, `site_archived`). | none |
 | `sendChannelId` | A Communications channel to send from, judged before the transaction (400 `send_channel_unknown`). | none |
 | `orderFooter` | The text under every order, at most 4000 characters. | empty |
-| `deliveryAddresses` | Per site, at most 200, one per site (`site_not_found` for an unknown one): name, two lines, postal code, city, country. | none |
+| `deliveryAddresses` | Per site, at most 200, one per site (`site_not_found` for an unknown one): name and two lines (255 characters each), postal code (20), city (100), and country, a two-letter code — what the order's delivery snapshot holds (400 with the field). | none |
 | `priceTolerancePercent` | 0–100, two decimals; for the match of delivery D. | 2 |
 
 A save sends the `revision` it read; another is 409 `version_conflict`.
@@ -125,8 +125,10 @@ not touch the order lines that took from it.
 
 `POST /supplier-items/import?supplierId=…&dryRun=…` reads a CSV of one supplier's items
 through `internal/fileimport` — UTF-8 or Windows-1252, the separator `;`, `,` or tab
-detected — synchronously, with no job table. At most 5000 rows. The header names, in any
-order and case:
+detected — synchronously, with no job table. At most 5000 rows. A price takes a decimal
+point, or a decimal comma with the Norwegian groupings `1 234,50` (a space, a
+non-breaking or a narrow one) and `1.234,50`; `1.234` stays a decimal point. The header
+names, in any order and case:
 
 | Column | |
 | --- | --- |
@@ -183,15 +185,23 @@ own `code` is the first line's.
   item of (supplier, variant): the supplier's item number, the price — only when the
   item's currency is the order's —, the packaging while it is still one of the
   variant's (400 `packaging_not_found` for one that is not), and the expected day, the
-  order date plus the lead time.
-- **A text line**: description, unit, quantity, price.
+  order date plus the lead time. The item's price is per its own packaging: a line in
+  another packaging takes `round4(price × the line's packaging quantity / the item's)`
+  (the unit counting 1), and a price of 0 when either quantity is not known or the result
+  is above `numeric(18,4)`. A line's `supplierItemNumber` is at most 60 characters (400
+  `line_invalid`).
+- **A text line**: description, unit (at most 20 characters, on a new line and a saved
+  one alike, else 400 `line_invalid`), quantity, price.
 
 `orderQuantity` is entered in the purchase packaging; `quantity`, in the variant's unit,
 is `orderQuantity × packaging quantity`, to three places. `lineNet` is
 `round2(orderQuantity × unitPrice × (1 − discount / 100))`; the order's net total is the
 sum. Quantities > 0 (400 `quantity_invalid`), prices ≥ 0 (`price_invalid`), discounts
-0–100 (`discount_invalid`); a malformed line is `line_invalid`. Every amount is net of VAT
-in the order's currency: no tax code, no VAT and no conversion to NOK (P17).
+0–100 (`discount_invalid`); a malformed line is `line_invalid`. A line's net and the
+order's total are `numeric(14,2)`: a line above 999 999 999 999.99 is the line refusal
+`amount_out_of_range`, and a total above it the order's 400 `amount_out_of_range`. Every
+amount is net of VAT in the order's currency: no tax code, no VAT and no conversion to NOK
+(P17).
 
 A line answers the warnings `below_minimum` (under the supplier item's minimum) and
 `off_multiple` (not a whole number of its multiple) — never a refusal.
@@ -206,10 +216,10 @@ A line answers the warnings `below_minimum` (under the supplier item's minimum) 
 | — | Create | `draft` | 400 `supplier_not_found`, `site_not_found`, `site_archived`, `currency_invalid`, a line's code; 409 `supplier_inactive` |
 | `draft` | Save (`PUT`) | `draft` | as Create; 409 `currency_fixed` |
 | `draft` | Delete | — | 409 `order_not_draft` for any other state |
-| `draft` | Send | `sent` | 400 `order_empty`, `recipient_missing`; 503 `sending_disabled`, `mail_failed` (the order is sent) |
+| `draft` | Send | `sent` | 400 `order_empty`, `recipient_missing`; 503 `sending_disabled`, `mail_failed` (the order is sent, its mailing queued) |
 | `draft` | Mark as sent | `sent` | 400 `order_empty` |
 | `sent`, `partially_received` | Save | same | 409 `supplier_changed`, `currency_fixed`, `line_closed`, `line_kind_changed`, `order_has_receipts` (the site, once something is received); 400 `line_not_found`, `quantity_below_received` |
-| open | Send again | same | 503 `sending_disabled`, `mail_failed` (the PDF is stored) |
+| open | Send again | same | 503 `sending_disabled`, `mail_failed` (the version is counted, its mailing queued) |
 | open | Record confirmation | same | — |
 | open | Close | `closed` | — |
 | open | Close line | same, `closed` or `received` | 404 for a line not on the order; 409 `line_closed` |
@@ -244,9 +254,10 @@ settings carry a `revision` instead.
 `order_changes` keeps one row per change of a sent order and per send, mark as sent, send
 again, confirmation, close line, close, reopen and cancel — the actor snapshotted, the
 time, and a list of actions: `created`, `updated`, `line_added`, `line_changed`,
-`line_removed`, `sent`, `marked_sent`, `sent_again`, `confirmed`, `line_closed`,
-`closed`, `reopened`, `cancelled`, each with its field, line, from and to where it has
-them. `GET /orders/{id}/history` answers it with the stored PDFs and the mailings.
+`line_removed`, `sent`, `marked_sent`, `sent_again`, `confirmed`,
+`confirmation_cleared` (a confirmation saved with no reference and no day),
+`line_closed`, `closed`, `received` (the last open line closed with everything received),
+`reopened`, `cancelled`, each with its field, line, from and to where it has them. `GET /orders/{id}/history` answers it with the stored PDFs and the mailings.
 
 ### Late and Unconfirmed
 
@@ -264,7 +275,7 @@ Both are judged in the business time zone, on the order list, the order and the 
 `GET /orders` answers newest first, paged, filtered by `status` (any of them), `supplierId`,
 `siteId`, `late`, `unconfirmed`, `mine` (the caller is the buyer), `open` (draft, sent,
 partially received) and `q`, which matches the number, the supplier's name and the
-supplier's reference.
+supplier's reference — `%` and `_` as the characters they are.
 
 ## Numbers
 
@@ -280,24 +291,34 @@ send — Communications composed and the settings' channel able to (503 `sending
 — and a recipient: the request's, else the supplier's e-mail in the register (400
 `recipient_missing`). In one transaction: `LockVariants`, `LockSuppliers`, the order row,
 the number, status `sent`, version 1, the supplier's and the delivery address's
-snapshots, `send_method` `mail`, the change log and `purchasing.order.sent.v1`. After the
-commit the PDF is rendered from the committed rows, stored and recorded in `documents`,
-then mailed synchronously through `contracts.OutboundMail` from the settings' channel,
-outside any transaction, as Orders does (A19). A mail the provider refuses leaves the
-order sent and its mailing `queued` for the [`purchasing.mail`](#workers) worker, and
-answers 503 `mail_failed`.
+snapshots, `send_method` `mail`, the change log, `purchasing.order.sent.v1` — and the
+mailing, written `queued` with no document yet: a transactional outbox, so a send is
+never acknowledged without its mail (A19). The row is held by the request for the
+two-minute lease (`next_attempt_at`). After the commit the request claims it under that
+hold and delivers it as the [`purchasing.mail`](#workers) worker does, outside any
+transaction: the PDF rendered from the committed rows, stored and recorded in
+`documents`, the mailing pointed at it, then the mail sent through
+`contracts.OutboundMail` from the row's channel. A mail that does not go out — the
+provider refuses it, or the store fails — leaves the order sent and its mailing `queued`
+with a backoff, and answers 503 `mail_failed`; a request that dies after its commit
+leaves the row for the worker once the hold runs out.
 
 **Mark as sent** does the same with no mail: `send_method` `manual`, the number, the
 snapshots, the stored PDF and the event.
 
 **Idempotency** (A11): both take a `clientRequestId` and hash the operation, the order's
 `expectedUpdatedAt` and the dialog's fields. A replay with the same id and body answers
-the first result (200); another body under the same id is 409 `client_request_reused`.
+the first result (200) with the mailing as it now stands — `sent`, or still `queued` for
+the worker —, never sending again; another body under the same id is 409
+`client_request_reused`.
 
 **Send again** on an open order stores a new PDF at version + 1, titled *Revised purchase
-order* / *Revidert innkjøpsordre*, and mails it unless `mail: false`. It answers 503
-`sending_disabled` when it is to mail and nothing can send, and 503 `mail_failed` when
-the provider refuses, with the PDF stored and the mailing queued.
+order* / *Revidert innkjøpsordre*, and mails it unless `mail: false`, its mailing queued
+in the version's transaction as Send's is. The same transaction fails, for good, the
+order's still-queued mailings of earlier versions — `failed`, last error *Superseded* —,
+so a superseded version is never mailed. It answers 503 `sending_disabled` when it is to
+mail and nothing can send, and 503 `mail_failed` when the mail does not go out, with the
+version counted and the mailing queued.
 
 Every send takes an optional recipient, copies, a subject and a message. The cover mail
 is plain text in the order's language: *Purchase order 4501 from …* / *Innkjøpsordre
@@ -307,8 +328,9 @@ replaces the subject and its message goes before the closing. The mail names our
 beside the channel's address and replies to its e-mail.
 
 `mailings` keeps every send: kind (`order` or `cancellation`), version, recipient,
-copies, subject, status `queued`, `sent` or `failed`, attempts, the last error (the
-recipient's address taken out) and who sent it.
+copies, subject, status `queued`, `sent` or `failed`, attempts (counted when a row is
+claimed), the last error (the recipient's and the copies' addresses taken out) and who
+sent it.
 
 ## PDFs
 
@@ -326,7 +348,9 @@ nothing (503 `dependency_unavailable` when a module it reads is missing).
 `GET /orders/{id}/documents/{documentId}` answers a stored one. A revised order is titled
 *Revised purchase order*; a cancellation *Cancelled purchase order* / *Kansellert
 innkjøpsordre*, marked *CANCELLED* / *KANSELLERT*. A document whose supplier was erased
-answers 404.
+answers 404. Recording a PDF holds its order `FOR SHARE` and writes nothing for an
+anonymised order: a PDF put while the supplier's erase ran is written to `deletions`
+instead, answers 404, and is deleted by the worker.
 
 ## Close, Close line, Reopen and Cancel
 
@@ -334,8 +358,9 @@ answers 404.
   status `closed`, and publishes `purchasing.order.closed.v1`. What was left stops counting
   in [PurchaseSupply](#purchasesupply).
 - **Close line** (`orders-manage`) ends one line. When no line stays open the order ends:
-  `received` when every line was received in full or marked delivered, else `closed` with
-  what was left, and the close event.
+  `received` when every line was received in full or marked delivered, with the change
+  log's `received` and no event — nothing was left to stop counting —, else `closed` with
+  what was left, the change log's `closed` and the close event, as Close.
 - **Reopen** (`orders-manage`) of a closed order opens again the lines that close ended —
   those with the order's `closed_at` — and sets `sent`, or `partially_received` when any
   line has something received.
@@ -343,22 +368,24 @@ answers 404.
   `order_has_receipts`; a draft is deleted, 409 `order_not_sent`): status `cancelled`. An
   order that was mailed (`send_method` `mail`) mails the supplier its cancellation — the
   PDF marked *CANCELLED* — unless `notifySupplier` is false; one marked as sent is
-  cancelled without a mail. A refused mail answers 503 `mail_failed` with the order
-  cancelled and the mailing queued.
+  cancelled without a mail. The cancellation's mailing is queued in the cancel's
+  transaction, as Send's is; a mail that does not go out answers 503 `mail_failed` with
+  the order cancelled and the mailing queued.
 
 ## The confirmation
 
 `PUT /orders/{id}/confirmation` (`orders-manage`) on an open order records the supplier's
 order reference and the confirmed day, for the order and optionally per line. It is a
 fact, no state; it ends Unconfirmed; empty values clear it. It is written to the change
-log.
+log, as `confirmed`, or `confirmation_cleared` when it clears it.
 
 ## Copy
 
 `POST /orders/{id}/copy` (`orders-manage`) makes a new draft from an order in any state,
 for the same supplier and site, in the supplier's currency now. A line keeps its packaging
-while the variant still has it and takes the supplier item's price in the currency, else
-its own when the currency is the same. A goods line whose variant is gone or Discontinued
+while the variant still has it and takes the supplier item's price in the currency —
+converted to the line's packaging as a new line's is, when it can be —, else its own
+when the currency is the same. The supplier's currency is read upper-cased. A goods line whose variant is gone or Discontinued
 is left out; text lines are copied as they are. An inactive supplier is 409
 `supplier_inactive`.
 
@@ -386,11 +413,13 @@ UPDATE` first:
 **`SupplierPersonalData`** (A8):
 
 - *Export* answers, for Accounting's export of a supplier, the orders naming the supplier
-  with what each snapshotted of it, and where each was mailed.
+  with what each snapshotted of it, where each was mailed, and each order's change log.
 - *Erase*, inside Accounting's anonymisation transaction, blanks the name, address,
-  e-mail and contact snapshotted on the supplier's orders and the mailings' addresses and
-  messages, marks the orders `anonymised_at`, sets `documents.erased_at` and writes each
-  stored PDF's key to `deletions`. The objects are deleted after the commit by the
+  e-mail and contact snapshotted on the supplier's orders, the mailings' addresses,
+  messages and last errors, and the from and to values of the change log's actions on
+  `supplierContact`, `note` and `internalNote` (keeping that the field changed); marks the
+  orders `anonymised_at`, sets `documents.erased_at` and writes each stored PDF's key to
+  `deletions`. The objects are deleted after the commit by the
   [`purchasing.deletions`](#workers) worker, never inside the transaction.
 
 ## Events
@@ -427,11 +456,12 @@ see nothing on order.
 
 | Worker | Every | What it does |
 | --- | --- | --- |
-| `purchasing.mail` | 30 s | Retries the mailings a send left `queued`: claims one row at a time under a two-minute lease (a `SKIP LOCKED` pick), reads the stored PDF, sends it through `OutboundMail` on the row's channel — else the settings' — and marks it `sent`. A failure counts the attempt and waits a minute, doubled per attempt, at most an hour; the eighth failed attempt, or a row that can never be sent (no channel, no recipient, an order's mailing whose order is cancelled, an erased PDF), is `failed`. Up to 10 rows a cycle. |
-| `purchasing.deletions` | 1 min | Deletes from the object store the stored PDFs an erase wrote to `deletions`, oldest first, up to 50 a cycle; an object already gone counts as deleted, and a row that failed 8 times is left. |
+| `purchasing.mail` | 30 s | Sends the mailings a request queued and did not get out — refused, or the request died after its commit: claims one due row at a time under a two-minute lease (a `SKIP LOCKED` pick), counting the attempt; stores the order's PDF and points the row at it when it names none yet; reads it; sends it through `OutboundMail` on the row's channel — else the settings' — and marks it `sent`. A failure waits a minute, doubled per attempt, at most an hour; the eighth attempt, or a row that can never be sent (no channel, no recipient, an order's mailing whose order is cancelled, a version below the order's — superseded —, an erased PDF), is `failed`. Up to 10 rows a cycle. |
+| `purchasing.deletions` | 1 min | Deletes from the object store the stored PDFs an erase wrote to `deletions`, oldest first, up to 50 a cycle; an object already gone counts as deleted, and a row that failed 8 times is left, logged as an error. |
 
 Every statement runs on its own pooled connection, and no call out of the module is made
-while one is held: both are safe on a pool of one.
+while one is held: both are safe on a pool of one, which a test runs them on, built as
+`module.Workers` builds them.
 
 ## The dashboard figures
 
@@ -447,7 +477,7 @@ refusals in `lines`. A request the server could not decode is a bare 400.
 
 | Status | Codes |
 | --- | --- |
-| 400 | `supplier_not_found`, `site_not_found`, `site_archived`, `currency_invalid`, `series_start_too_low`, `send_channel_unknown`, `recipient_missing`, `order_empty`, `import_invalid`; a line's `too_many_lines`, `line_invalid`, `line_not_found`, `variant_not_found`, `variant_discontinued`, `packaging_not_found`, `quantity_invalid`, `price_invalid`, `discount_invalid`, `quantity_below_received` |
+| 400 | `supplier_not_found`, `site_not_found`, `site_archived`, `currency_invalid`, `series_start_too_low`, `send_channel_unknown`, `recipient_missing`, `order_empty`, `import_invalid`, `amount_out_of_range` (the total); a line's `too_many_lines`, `line_invalid`, `line_not_found`, `variant_not_found`, `variant_discontinued`, `packaging_not_found`, `quantity_invalid`, `price_invalid`, `discount_invalid`, `quantity_below_received`, `amount_out_of_range` |
 | 404 | `not_found` |
 | 409 | `version_conflict`, `order_not_draft`, `order_not_sent`, `order_not_closed`, `order_has_receipts`, `line_closed`, `line_kind_changed`, `currency_fixed`, `supplier_inactive`, `supplier_changed`, `supplier_item_exists`, `client_request_reused` |
 | 503 | `dependency_unavailable`, `sending_disabled`, `mail_failed` |
@@ -464,7 +494,7 @@ answers 409 `version_conflict` for a stale `expectedUpdatedAt`.
 | `GET /buyers` | access | 200 |
 | `GET /sites` | access | 200; 503 |
 | `GET /suppliers` | access | 200 — the register's suppliers with their supplier items and open orders counted; 503 |
-| `GET /suppliers/{supplierId}` | access | 200 — the entry, read-only; 404; 503 |
+| `GET /suppliers/{supplierId}` | access | 200 — the entry, read-only, with the register row's `revision`, which a buyer's change through Accounting's `PUT /accounting/suppliers/{id}` carries (A26); 404; 503 |
 | `GET /variants` | access | 200 — a catalog search for a line, `onlySupplierItems` for the supplier's; 503 |
 | `GET /orders` | access | 200; 400 |
 | `POST /orders` | orders-manage | 201; 400; 404; 409; 503 |

@@ -1,7 +1,8 @@
 # Purchasing — supplier items, purchase orders, receipts, proposals and the invoice match (phase 1)
 
-Revision 3, 2026-11-17, after delivery 0 was built and reviewed. **§15 amends earlier
-decisions and wins where they differ** (A22 to A28 record what delivery 0 built); §16 lists what changed. This spec builds on the research
+Revision 4, 2026-11-17, after delivery A was built and reviewed. **§15 amends earlier
+decisions and wins where they differ** (A22 to A28 record what delivery 0 built, A29 to
+A36 what delivery A built); §16 lists what changed. This spec builds on the research
 `docs/superpowers/research/2026-11-17-purchasing-module.md` ("R"). It does not reopen
 R §8, and it takes the defaults R §9 took for the readings; §14 says what an overturn of
 each would change. Decisions are numbered P*n*. The implementation plan is
@@ -463,6 +464,19 @@ invoices alone. Questions 2 to 8 stand at their defaults until the owner says ot
    workspace with Purchasing on keeps its books in Vantigo (question 1). Overturned,
    anonymisation before the books takes the supplier out at once when no voucher can
    name it, which is every supplier then.
+9. **A variant's only supplier item and `preferred: false`** (P11, A33). Delivery A keeps
+   the variant's only item preferred whatever the request says, and answers it so.
+   **Default: accept and ignore it.** Overturned, `preferred: false` on a variant's only
+   item is refused (400), so a client learns the flag did not take.
+10. **Send and Discontinued variants** (P16, A16). A Discontinued goods variant is refused
+    on a new line only; a draft written before the product was discontinued still sends.
+    **Default: Send does not judge it again.** Overturned, Send refuses a draft with a
+    line of a Discontinued goods variant (400 `variant_discontinued` naming the line),
+    and the buyer removes or replaces it.
+11. **The agents' role template for purchasing work** (A25). Delivery A gives virtual
+    employees no template for Purchasing: no agent writes orders or supplier items yet.
+    **Default: none until the owner asks.** A template would name the operations an agent
+    may call — the order and supplier-item writes, never Send — and the review threshold.
 
 ## 15. Amendments (revision 2)
 
@@ -671,7 +685,53 @@ Each wins over what it names.
   contract type and composes nothing; delivery C adds the slot to `module.Deps` with its
   providers.
 
+### Delivery A, as built (revision 4)
+
+What delivery A built where it differs from the decisions above, after its code review.
+Each wins over what it names.
+
+- **A29 — No import job table** (P14, §9). The price-list import runs synchronously, at
+  most 5000 rows, dry run first and every row or none; `import_jobs` is not created. A
+  price takes a decimal point, or a decimal comma with the Norwegian groupings
+  `1 234,50` and `1.234,50` where they read one way only.
+- **A30 — The deletion ledger is `purchasing.deletions`** (A8). The erase writes each
+  stored PDF's key there inside Accounting's transaction and the `purchasing.deletions`
+  worker deletes the objects; a PDF recorded while an erase runs is refused for an
+  anonymised order (the insert holds the order `FOR SHARE`) and its object written to the
+  ledger instead. The erase also blanks the mailings' last errors and the change log's
+  values of the contact and the notes; the export carries the change log.
+- **A31 — The delivery address** (P9, P15). A site's delivery address is the settings'
+  for the site when set, else the company's address from `SalesTax.Seller` under the
+  site's name — Inventory's sites keep no address. A draft computes it live; Send
+  snapshots it. A settings address is bounded by the snapshot's columns, its country a
+  two-letter code.
+- **A32 — A supplier item's price only in its packaging and currency** (P11, P16, P22).
+  A line takes the item's price only when the item's currency is the order's, and in the
+  item's packaging as it is; a line in another packaging takes it converted
+  (`round4(price × line factor / item factor)`), 0 when a factor is not known. Copy
+  judges it the same way.
+- **A33 — A sent order's lines are not removed** (P18). A save of an open order names
+  every saved line (`line_not_found` for one left out); a line ends by Close line.
+  Closing the last open line of an order received in full makes it `received`, with its
+  change-log row and no closed event.
+- **A34 — The send is an outbox** (P21, A11, A19). Send, Send again and Cancel's notice
+  write their mailing `queued` inside their own transaction, held by the request for the
+  lease; after the commit the request claims it and delivers it as the worker does, the
+  PDF stored first. A send is never acknowledged without its mail; a replay answers the
+  mailing as it stands. Send again fails the earlier versions' still-queued mailings as
+  superseded, and the worker refuses a version below the order's. Attempts are counted at
+  the claim.
+- **A35 — The buyer edits through the directory's revision** (A12, A26).
+  `contracts.SupplierEntry` carries the register row's revision, Purchasing's supplier
+  read answers it, and the buyer's form takes its values and revision from that read, so
+  `accounting:suppliers-manage` alone edits a supplier from Purchasing.
+- **A36 — The agents' role template is deferred** (A25). Delivery A adds no template for
+  purchasing work (§14, question 11).
+
 ## 16. Revision log
+
+- **Revision 4, 2026-11-17** — delivery A built and reviewed: A29 to A36 (§15, *Delivery
+  A, as built*); §14's questions 9 to 11 added.
 
 - **Revision 3, 2026-11-17** — delivery 0 built and reviewed: A22 to A28 (§15, *Delivery 0,
   as built*); §14's question 8 added.

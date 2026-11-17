@@ -551,7 +551,8 @@ Regnskap er **Vedlikeholde leverandører** en innkjøpers: den legger inn og end
 leverandører — unntatt kontonummer, IBAN, BIC, standardkonto, mva-kode, personmerket og
 aktivmerket, som blir hos **Bokføre bilag** — også før regnskapet er satt opp, og krever ikke
 **Bruke Regnskap**. Å se registeret under **Leverandører** i Regnskap krever **Bruke
-Regnskap**; innkjøperens eget skjermbilde kommer med Innkjøp ([Regnskap](/nb/user/accounting/#leverandører)).
+Regnskap**; innkjøperen legger inn og redigerer leverandører fra skjermbildet i Innkjøp,
+som ikke krever mer ([Regnskap](/nb/user/accounting/#leverandører)).
 
 ### Tildelinger
 
