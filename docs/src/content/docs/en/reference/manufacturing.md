@@ -1960,7 +1960,8 @@ site) (M105, X).
 For each variant with a reorder point at an active site (M107):
 
 ```
-projected = usable onHand − reserved + incoming        (contracts.Stock.Placements)
+projected = usable onHand − reserved + incoming        (contracts.Stock.Placements: transfers in transit)
+          + Σ open purchases                            (contracts.PurchaseSupply, none without Purchasing)
           + Σ supply orders' (quantity − produced), ≥ 0
           − Σ open orders' (required − consumed − scrapped − reserved), ≥ 0, per component line
           − Σ reorder drafts' BoM lines, scaled to the draft's quantity with the scrap
@@ -1968,6 +1969,12 @@ projected = usable onHand − reserved + incoming        (contracts.Stock.Placem
               less, per line, what live MTO orders still make for it, ≥ 0
 ```
 
+- **Open purchases** are what Purchasing has on sent purchase orders for the site and has
+  not received (purchasing design P4, A3), read through `PurchaseSupply.OpenByVariants`
+  for the placements' variants at the site. They join *incoming*, so the suggestion's
+  `incoming` is in transit plus on order. `Stock.Placements` answers transfers alone and is
+  left as it is, so nothing is counted twice; with Purchasing off the slot is nil and the
+  projection is as before.
 - **Supply orders** are the site's `confirmed` and `in_progress` orders of the variant,
   and its **drafts of origin `reorder`** — a suggestion made into a draft is not suggested
   again the next night. Other drafts count for nothing.
@@ -2030,7 +2037,8 @@ The lease worker **`manufacturing.replenishment`** (every 30 seconds, built thro
   held between steps.
 - **First**, the open suggestions of every site no longer active are `superseded`.
 - **Per active site** (or the one asked for): `Stock.Placements`, then
-  `SalesOrderLines.Unreserved` for the placements' variants, then the module's own orders
+  `SalesOrderLines.Unreserved` for the placements' variants, then
+  `PurchaseSupply.OpenByVariants` for them, then the module's own orders
   and default BoMs, every one on the pool and none inside a transaction; then **one
   transaction** takes the site's advisory lock, marks its open suggestions `superseded`
   and inserts the new ones. A suggestion acted on — `done` or `dismissed` — is kept. So a

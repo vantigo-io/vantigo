@@ -846,12 +846,15 @@ lagersted kommer aldri på listen over lav beholdning.
 lagersted, og hva som fyller dem opp.* — lister hver vare som har blitt lav på et aktivt
 lagersted. En vare er **lav** på et lagersted når det som er **disponibelt** der —
 beholdningen som kan brukes over alle lagerstedets lokasjoner, minus det ordrer har
-[reservert](#reservert-og-disponibelt) — pluss det som er **innkommende** på overføringer
-til lagerstedet, er på eller under bestillingspunktet. Varer som allerede er på vei,
-teller med: så snart en overføring som bringer nok er sendt, forsvinner varen fra listen.
+[reservert](#reservert-og-disponibelt) — pluss det som er **innkommende**, er på eller
+under bestillingspunktet: det som er **under transport** på overføringer til lagerstedet,
+og, når Innkjøp er i bruk, det som er **i bestilling** — bestilt på sendte innkjøpsordrer
+til lagerstedet og ennå ikke mottatt. Varer som allerede er på vei, teller med: så snart en
+overføring som bringer nok er sendt, eller en innkjøpsordre er det, forsvinner varen fra
+listen.
 
 Hver rad viser **Vare**, **Lagersted** (når listen ikke er filtrert på ett),
-**Disponibelt** (rødt når det er negativt), **Innkommende**, **Bestillingspunkt**,
+**Disponibelt** (rødt når det er negativt), **Under transport**, **I bestilling**, **Bestillingspunkt**,
 **Maksbeholdning**, **Foreslått** antall og **Andre steder** — det hvert annet
 aktivt lagersted der varen ligger eller er reservert har disponibelt, *Bergen butikk 12 ·
 Trondheim butikk 0*. Et utkast til overføring til lagerstedet som allerede har varen,
@@ -893,8 +896,9 @@ nytt utkast** lager et til.
 
 **Eksporter CSV** laster ned listen slik den er filtrert — lagerstedet og søket — med
 alle radene, som `low-stock-2026-11-09.csv`, med kolonnene `site` (koden), `sku`, `name`,
-`barcode`, `available`, `incoming`, `reorder_point`, `maximum`, `needed`, `suggested`,
-`packaging` (pakningens navn) og `packaging_count`. Kolonnene er skilt med semikolon og
+`barcode`, `available`, `incoming` (under transport og i bestilling til sammen),
+`in_transit`, `on_order`, `reorder_point`, `maximum`, `needed`, `suggested`, `packaging`
+(pakningens navn) og `packaging_count`. Kolonnene er skilt med semikolon og
 antallene har desimalkomma, så Excel åpner den som den er. Det er ingen
 leverandørkolonne: en leverandør er fritekst på et varemottak.
 
@@ -1098,8 +1102,9 @@ en bevegelse — viser varenummeret og produktet, samlet beholdning, hvert lager
 lokasjonene der varen ligger, det ordrene har [reservert](#reservert-og-disponibelt) der
 og det som er disponibelt, og varens bevegelser, nyeste først. Under et lagersted som
 en [overføring](#overfør-varer-mellom-lagersteder) er på vei til med mer, sier
-*+… innkommende* hvor mye som er på vei dit; et lagersted med varer på vei og ingenting
-på lager ennå har også en rad. Varens
+*+… under transport* hvor mye som er på vei dit, og under et Innkjøp har bestilt mer til,
+sier *+… i bestilling* hvor mye som er bestilt og ennå ikke mottatt; et lagersted med varer
+på vei eller i bestilling og ingenting på lager ennå har også en rad. Varens
 [hovedlokasjon](#angi-hovedlokasjon-og-bestillingspunkt-for-en-vare) på et lagersted står
 først blant lokasjonene, merket *hovedlokasjon*, og hvert lagersted viser
 **Bestillingspunkt** og **Maksbeholdning**, **Lav** mens varen er lav der og, med
@@ -1127,9 +1132,14 @@ lagersted; den bokføres fra Produksjon, aldri her. En
 **Overføring ut** er sendingen av en overføring, tatt fra fra-lagerstedets lokasjoner; en
 **Overføring inn** er mottaket av en overføring på til-lagerstedet, eller avbrytelsen
 som legger varene tilbake på fra-lagerstedet. Begge lenker til overføringen og bokføres
-fra den, aldri her. Filtrer på **Lagersted**, **Lokasjon** (som tar med alt under den),
+fra den, aldri her. Et **Varemottak** Innkjøp bokførte for en innkjøpsordre, viser
+mottaket som kilde, og et **Reversert varemottak** er et slikt mottak tatt tilbake —
+varene tatt fra lokasjonene og partiene de kom inn på, uansett sperringer, og mottakets
+karantene for kontroll frigitt; begge lenker til innkjøpsordren når Innkjøp er i bruk, og
+bokføres der, aldri her. Filtrer på **Lagersted**, **Lokasjon** (som tar med alt under den),
 **Vare**, **Type** (**Justering**, **Flytting**, **Varemottak**, **Varetelling**,
-**Uttak**, **Overføring ut**, **Overføring inn**, **Produksjon**) og **Bokført mellom**, to dager i
+**Uttak**, **Overføring ut**, **Overføring inn**, **Produksjon**, **Demontering**,
+**Reversert varemottak**) og **Bokført mellom**, to dager i
 organisasjonens tidssone. **Last flere** henter neste side. **Varemottak** i sidemenyen
 er den samme listen med bare varemottak.
 
@@ -1137,7 +1147,8 @@ Siden for en bevegelse viser typen, lagerstedet, når og av hvem den ble bokfør
 årsaken eller leverandøren og leverandørens referanse, notatet, varetellingen den
 bokførte eller overføringen den hører til (**Overføring**), kilden (**Kilde**) en annen
 modul bokførte den for — en produksjons kilde lenker til produksjonsordren når
-Produksjon er i bruk — og linjene: **Varenummer**, **Produkt**, **Fra**, **Til**, **Parti** for en vare som holdes i
+Produksjon er i bruk, et varemottaks eller et reversert varemottaks til innkjøpsordren når
+Innkjøp er i bruk — og linjene: **Varenummer**, **Produkt**, **Fra**, **Til**, **Parti** for en vare som holdes i
 partier — med lenke til partiet, og *Utløpt* der et utløpt parti ble tatt med vilje — og
 **Antall**, med **Registrert som** for en linje registrert i pakninger. En bevegelse redigeres eller
 slettes aldri.

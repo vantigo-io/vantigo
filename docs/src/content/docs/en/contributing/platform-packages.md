@@ -557,8 +557,10 @@ module's settings, passed in by the caller; nothing in the package reads a setti
 
 [`apps/server/internal/brreg`](https://github.com/vantigo-io/vantigo/tree/main/apps/server/internal/brreg)
 is the client of Brønnøysundregisteret's open Enhetsregisteret API. It was Customers'
-own; it moved here unchanged so the coming Accounting module can look suppliers up too (a
-module may not import another): the same requests, retry policy, caps and errors.
+own; it moved here unchanged so Accounting can look suppliers up too (a module may not
+import another): the same requests, retry policy, caps and errors. Accounting's lookup is a
+buyer's as well as a bookkeeper's (`accounting:suppliers-manage` or `accounting:post`,
+purchasing design A12), so a purchase order's supplier is found the same way.
 It knows no module and stores nothing; it answers plain Go types, and the caller maps
 them onto its own. Customers keeps everything that is a customer's — the lookup
 endpoint, the registry records, the refresh and the feed worker
@@ -652,7 +654,10 @@ holds that aggregate's row lock**, so event ids follow commit order per aggregat
 identity ids alone do not. **A payload carries ids, numbers, amounts and states, never
 personal data** — no names, addresses, e-mails or phones — so a person's erasure needs no
 sweep of the outbox; a handler that needs them reads its own copy, or a contract, after
-its transaction.
+its transaction. Accounting's supplier-invoice events (`contracts/events_accounting.go`,
+purchasing design P5) carry the invoice's `reference` beside its ids, number, dates,
+currency and total: the order number a supplier is asked to quote, which Purchasing's
+match reads, a business reference and not a person's data.
 
 **Handling.** A module declares `Module.EventHandlers`, a many-provider slot of
 `events.Handler{Name, Events, Handle}`: `Name` unique across the composition,

@@ -101,7 +101,10 @@ lag, never what must refuse — go through the platform's domain-events outbox,
    future extracted service can implement or consume them.
    The one non-DTO type is `pgx.Tx`, in `contracts.CustomerReferenceHolder`,
    `contracts.CustomerPersonalData` and `contracts.InvoicedWorkHolder` — a platform
-   type, never a store type, and the reason is rules 8, 9 and 10's.
+   type, never a store type, and the reason is rules 8, 9 and 10's — and in the calls
+   later rules made on a caller's transaction the same way: `LockVariants` (21), the stock
+   ledger (24), `contracts.SupplierPersonalData`'s erase (27), and
+   `contracts.SupplierDirectory.LockSuppliers` and `contracts.SupplierReferenceHolder` (28).
 4. **One schema per module.** Each module maps tables only into its own PostgreSQL
    schema (`identity`, `customers`, `products`, `energy`, `communications`,
    `projects`, `time`, `expenses`, `invoices`, `staff`, `calendar`, `entra`, `google`, `meta`, `planning`, `inventory`, `orders`, `manufacturing`, `accounting`, `knowledge`, `assistant`), and no module's migrations or queries reference
@@ -111,7 +114,7 @@ lag, never what must refuse — go through the platform's domain-events outbox,
 5. **One module, one mount.** A module exposes one `Module()` returning a
    `module.Module`: its name, its `Mount`, the permissions it contributes, the
    background workers it contributes, and the cross-module contracts it *provides*.
-   There are twenty-two single-provider slots, each filled by at most one enabled module:
+   There are twenty-six single-provider slots, each filled by at most one enabled module:
    `Directory` (`contracts.CustomerDirectory`, customers), `Users`
    (`contracts.UserDirectory`, identity), `Calendar` (`contracts.BusinessCalendar`,
    identity — the workspace's business time zone and the day an instant falls on in
@@ -204,6 +207,26 @@ lag, never what must refuse — go through the platform's domain-events outbox,
    unlike `AssistantGrants.Issue` it needs no session, and refuses a user that is not an
    active agent; its grants live ten minutes; the `agents` module is its only caller);
    `Compose` resolves both beside `AssistantGrants`, and `module.Workers` resolves neither.
+   Four come with the purchasing design's delivery 0
+   (`docs/superpowers/specs/2026-11-17-purchasing-design.md`): `SupplierDirectory`
+   (`contracts.SupplierDirectory`, accounting — the supplier register another module reads
+   with no permission of its own, before the books are set up too, and its one locking
+   read, rule 28), `SupplierInvoices` (`contracts.SupplierInvoices`, accounting — a supplier
+   invoice's header and lines with each line's net, and the draft another module makes,
+   rule 26), `SupplierInvoiceMatches` (`contracts.SupplierInvoiceMatches`, purchasing — the
+   orders a supplier invoice is matched to, which Accounting's list and page show as a
+   badge; provider-gated, rule 12; optional, nil when Purchasing is off, which reads as "no
+   badge") and `PurchaseSupply` (`contracts.PurchaseSupply`, purchasing — what is on order
+   and not yet received per variant and receiving site, `OpenByVariants` with an optional
+   site and `OpenAll`, which Inventory's low-stock statements join in and Manufacturing's
+   replenishment adds to *incoming*; optional, nil when Purchasing is off, which reads as
+   "nothing on order"); `contracts.PurchaseDemand`, the proposals' many-provider read, is
+   declared beside them and has no slot until delivery C. Compose and `module.Workers`
+   resolve the four, and the two supplier slots below, by one helper, `withSuppliers`, which
+   `withStock` calls last — the replenishment worker reads the open purchases in worker
+   mode; `modtest.WithPurchaseSupply` (with `modtest.FakePurchaseSupply`),
+   `WithSupplierInvoiceMatches`, `WithSupplierReferenceHolders` and
+   `WithSupplierPersonalData` preset them.
    **A provider's read may carry commands.** A single-provider read contract may hold
    methods that write — **provider commands** — when each writes only the provider's
    own schema, on the provider's own transaction, and is named a command for it; the
@@ -257,7 +280,7 @@ lag, never what must refuse — go through the platform's domain-events outbox,
    Workers. `module.WorkerDeps` is that resolution on its own — the `Deps` `module.Workers`
    hands every worker — for a program that drives a module's entry points without composing:
    the demo seed builds Accounting's `Deps` with it.
-   Twelve slots are *many-provider* instead — any number of modules may fill them,
+   Fourteen slots are *many-provider* instead — any number of modules may fill them,
    and Compose collects them in module order: `Workers` (background work, from
    the enabled modules), `CalendarSources` (`contracts.CalendarSource`, rule 12,
    from the enabled modules too), `IdentityProvisioners`
@@ -281,8 +304,10 @@ lag, never what must refuse — go through the platform's domain-events outbox,
    `contracts.ContactDataEraser`, which Customers calls in the same transaction with the contacts the
    anonymisation deleted), `InvoicedWork`
    (`contracts.InvoicedWorkHolder`, rule 10), `VariantReferences`
-   (`contracts.VariantReferenceHolder`, rule 20) and `EventHandlers` (`events.Handler`,
-   the domain-events outbox's handlers, rule 23), the last five from every module
+   (`contracts.VariantReferenceHolder`, rule 20), `SupplierReferences`
+   (`contracts.SupplierReferenceHolder`, rule 28), `SupplierPersonalData`
+   (`contracts.SupplierPersonalData`, under each module's name, rule 27) and `EventHandlers` (`events.Handler`,
+   the domain-events outbox's handlers, rule 23), the last seven from every module
    Compose is given, enabled or not — see [Turning a module off](#turning-a-module-off).
    `EventHandlers` is collected by `module.EventHandlers`, in module order, each
    module's own in the order it returns them; a handler with no name, no events or no
@@ -434,8 +459,9 @@ lag, never what must refuse — go through the platform's domain-events outbox,
    energy, communications and invoices ([Merging duplicates](/en/reference/customers/#merging-duplicates)).
    Another write direction needs a design of its own, not a second holder-shaped
    interface — rule 9 is that design for the second, rule 10 for the third,
-   rule 11 for the fourth, rule 13 for the fifth, rule 14 for the sixth and rule 15 for
-   the seventh.
+   rule 11 for the fourth, rule 13 for the fifth, rule 14 for the sixth, rule 15 for
+   the seventh, rule 26 for Purchasing's draft of a supplier invoice and rule 27 for a
+   supplier's personal data.
 9. **A person's data, handed over and taken out.** The second sanctioned
    cross-module direction, made for the GDPR of private-person customers:
    `contracts.CustomerPersonalData`. A module that holds anything about a
@@ -1257,7 +1283,7 @@ lag, never what must refuse — go through the platform's domain-events outbox,
       the BoM graph's advisory lock and its own rows (manufacturing design M10a); its
       harness exempts the same one call
       ([Manufacturing](/en/reference/manufacturing/#locks)). A second locking read needs a design of its
-      own and a rule here.
+      own and a rule here: `contracts.SupplierDirectory.LockSuppliers` is the second, rule 28.
 
 22. **Identity searches a provider's directory.** The eleventh sanctioned cross-module
     direction, identity → a provider module, made for an Owner connecting existing users
@@ -1328,10 +1354,14 @@ lag, never what must refuse — go through the platform's domain-events outbox,
     — which calls the bank — with no transaction open, and writes the lines in its own
     schema. Expenses publishes its
     events from the deferred trigger that writes the fact, so every write path does, under
-    the row lock the change took.
-24. **Inventory reserves and issues on the caller's transaction.** The thirteenth
+    the row lock the change took. Accounting publishes its first two (purchasing design P5):
+    `accounting.supplier_invoice.posted` from Post and `accounting.supplier_invoice.reversed`
+    from Reverse and copy, each on the posting's transaction under the invoice's row lock;
+    Purchasing's handlers will fix and release a match with them.
+24. **Inventory reserves, issues and receives on the caller's transaction.** The thirteenth
     sanctioned cross-module direction, a module → Inventory, made for an order that
-    must refuse to promise stock it cannot have (orders design O45):
+    must refuse to promise stock it cannot have (orders design O45), and widened to
+    receiving for a purchase order (purchasing design P3):
     `contracts.StockLedger` in `Module.StockLedger`, which Inventory fills. A caller
     names its document by a `contracts.StockSource{Module, Kind, ID}` — the source
     reference Inventory's movements already hold — and calls, on **its own
@@ -1351,7 +1381,13 @@ lag, never what must refuse — go through the platform's domain-events outbox,
     own locks, the picks answered in `StockPosted.Picks`); `Issue` and `Produce` answer
     a `StockPosted`; and three calls join — `EnsureLots` (find or make lots by number
     before a `Produce`), `HoldLots` and `ReleaseLotHolds` (a document's own holds on
-    lots). Its rules:
+    lots). Purchasing calls two more (purchasing design P3, A5, A6, A13): `Receive` (one
+    movement of kind `receipt` for a receiving document, with the receipt endpoint's
+    rules — lots by id or number, serials, inspection on receipt — a Discontinued variant
+    received, the receipt as its source and the order as its source line, idempotent by the
+    receipt) and `ReverseReceipt` (that receipt taken back out, line for line, as a movement
+    of kind `receipt_reversal`, whatever the lots' holds, releasing the holds the receipt
+    set, idempotent by the receipt). Its rules:
     - **The lock order is Products, then the caller, then Inventory.** The caller calls
       `ProductCatalog.LockVariants` (rule 21) first, then locks its own rows, then calls
       the ledger, which locks Inventory's rows in Inventory's order: the lot counter,
@@ -1382,12 +1418,13 @@ lag, never what must refuse — go through the platform's domain-events outbox,
       `nothing_to_post`, and the lot rules' `lot_required`, `lot_not_allowed`,
       `lot_unknown`, `serial_quantity`, `lot_expired`, `lot_blocked`,
       `lot_dates_differ` and `EnsureLots`' `lot_exists` (a `NewLot` that `MustCreate`
-      names a number taken). Each line carries its `Index` in the call's lines and the
+      names a number taken), and a receipt's `lot_number_invalid`, `lot_dates_invalid` and
+      `ReverseReceipt`'s `receipt_unknown`. Each line carries its `Index` in the call's lines and the
       `LotID` and `LocationID` it failed at, so the caller maps it to its own row. `Reserve`, `ReserveForProduction` and `Release` write nothing
       when they refuse; after a refusal from `Issue` or `Produce` the caller must roll
       back its transaction, or a savepoint it took before the call, because the posting
-      may already have claimed its movement and created balances. Anything else is a
-      failure.
+      may already have claimed its movement and created balances — and so after one from
+      `Receive` or `ReverseReceipt`. Anything else is a failure.
     - **It is composed whatever `MODULES` says**, as rule 8's holders are: a
       reservation made while Inventory was on is still released by a cancel, an edit or
       a manual marking after it is turned off. Whether to reserve and issue at all the
@@ -1438,6 +1475,58 @@ lag, never what must refuse — go through the platform's domain-events outbox,
     - **The live socket has its own station path**, through `contracts.StationAccess`
       (`CheckStation`, `StationLive`), which identity's `Access` implements beside
       `contracts.Access` ([Live updates](/en/contributing/platform-packages/#stations)).
+
+26. **Purchasing drafts a supplier invoice through Accounting's contract.** The fourteenth
+    sanctioned cross-module direction, purchasing → Accounting (purchasing design P6, A1),
+    which rule 8 asks a design of its own for: `contracts.SupplierInvoices.CreateDraft`, in
+    the single-provider slot `SupplierInvoices` Accounting fills. It is bounded to **a
+    draft a person must still complete and post**:
+    - It writes only Accounting's schema, on Accounting's own transaction, through the
+      draft's own write path — `checkDraft` and `insertDraft` — so the books' rules judge
+      it exactly as they judge a person's draft: the supplier, the supplier's number unique
+      among the invoices not reversed, the dates, the currency with its rate or NOK total,
+      every line's account and tax code. Each line is entered net; with no account or tax
+      code the supplier's defaults are taken, and a line left with no account is refused.
+    - The caller makes it **on the pool, before it opens a transaction of its own** (rule
+      21), and owns what it made: the draft is the person's to complete, post or delete.
+      Nothing is posted by it, and nothing of the caller's is written by it.
+    - It refuses only through `*contracts.SupplierInvoiceRefusal` — `books_not_set_up`,
+      `supplier_account_missing`, `duplicate_supplier_invoice`, or a field rule's code with
+      the fields named as Accounting's contract names them; anything else is a failure.
+    - `Invoice` beside it is a plain read on the pool, checking no permission: the caller
+      decides who sees an invoice's lines.
+27. **A supplier's personal data.** The fifteenth sanctioned cross-module direction,
+    Accounting → a module (purchasing design P7, A8): `contracts.SupplierPersonalData`, a
+    many-provider slot collected from every module given, enabled or not, each under its
+    module's name — the supplier's counterpart of rule 9, since a supplier is Accounting's
+    party and not a customer of Customers. Its two halves:
+    - **The export.** Accounting's answer to a person's access request,
+      `GET /accounting/suppliers/{id}/export`, reads every module's `ExportSupplierData`
+      outside any transaction and carries each section under the module's name.
+    - **The erase.** Accounting's anonymisation — a person's click gated on the bookkeeping's
+      retention, not a schedule — takes the supplier `FOR UPDATE`, asks the holders (rule
+      28), and calls every module's `EraseSupplierData` **inside its transaction** before
+      it marks the supplier. The erase keeps rule 9's discipline: it blanks or removes what
+      its module holds on its own schema, never begins or ends the transaction, reads no
+      directory or contract, reports kind by kind, and finds nothing the second time. It
+      **never leaves the process**: an object in a store — a stored PDF — is written to a
+      deletion ledger of its module's own that a worker of that module finishes after the
+      commit, never deleted inside the transaction.
+28. **Locking a supplier.** The second locking read of rule 21, made so a document naming a
+    supplier and the supplier's delete or anonymisation cannot pass each other (purchasing
+    design A8): `contracts.SupplierDirectory.LockSuppliers(ctx, tx, ids)` takes the
+    suppliers `FOR SHARE`, in id order, **on the caller's transaction**, and answers their
+    entries, an unknown id absent. A caller takes it when it creates or sends a document
+    naming a supplier, after `LockVariants` (rule 21) and before its own rows: Products,
+    then Accounting's supplier, then the caller. It never begins, commits or rolls back the
+    transaction and reads no contract. On Accounting's side the delete and the
+    anonymisation take the supplier `FOR UPDATE` first and only then ask every
+    `contracts.SupplierReferenceHolder` — a many-provider slot collected from every module
+    given, enabled or not — `SupplierHeld(ctx, tx, id, purpose)` with the purpose `delete`
+    (any document naming the supplier holds it: 409 `supplier_has_documents`) or
+    `anonymise` (an open one does: 409 `supplier_has_open_documents`). The holder keeps rule
+    8's discipline and locks nothing of its own: a writer of its rows holds the supplier
+    `FOR SHARE`, so it has committed, or waits, before the answer is read.
 
 ## The AI platform
 

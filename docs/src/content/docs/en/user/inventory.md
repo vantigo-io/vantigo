@@ -822,11 +822,11 @@ low-stock list.
 what would fill them up.* — lists every item that has run low at an active site. An item
 is **low** at a site when what is **available** there — the on hand over all the site's
 locations that may be used, less what orders have
-[reserved](#reserved-and-available) — plus what is **incoming** on transfers to the site is at or below its reorder point. Stock already on
-its way counts: once a transfer bringing enough is sent, the item leaves the list.
+[reserved](#reserved-and-available) — plus what is **incoming** is at or below its reorder point: what is **in transit** on transfers to the site, and, when Purchasing is on, what is **on order** — ordered on sent purchase orders for the site and not yet received. Stock already on
+its way counts: once a transfer bringing enough is sent, or a purchase order is, the item leaves the list.
 
 Each row shows the **Item**, the **Site** (when the list is not filtered to one),
-**Available** (red when negative), **Incoming**, the **Reorder point**, the **Maximum**,
+**Available** (red when negative), **In transit**, **On order**, the **Reorder point**, the **Maximum**,
 the **Suggested** quantity and **Elsewhere** — what each other active site where the item
 lies or is reserved has available, *Bergen store 12 · Trondheim store 0*. A draft
 transfer to the site that already carries the item is shown under it as *Draft 1043
@@ -868,8 +868,9 @@ one.
 
 **Export CSV** downloads the list as filtered — the site and the search — every row,
 as `low-stock-2026-11-09.csv`, with the columns `site` (its code), `sku`, `name`,
-`barcode`, `available`, `incoming`, `reorder_point`, `maximum`, `needed`, `suggested`,
-`packaging` (the packaging's name) and `packaging_count`. The columns are separated by
+`barcode`, `available`, `incoming` (in transit and on order together), `in_transit`,
+`on_order`, `reorder_point`, `maximum`, `needed`, `suggested`, `packaging` (the packaging's
+name) and `packaging_count`. The columns are separated by
 semicolons and the quantities have a decimal comma, so Excel opens it as it is. There is
 no supplier column: a supplier is a free text on a receipt.
 
@@ -1061,9 +1062,10 @@ An item's stock page — from the lookup, the product page's Stock card or a mov
 shows the SKU and the product, the total on hand, each site with the locations where the
 item lies, what orders have [reserved](#reserved-and-available) there and what is
 available, and the item's movements, newest first. Under a site that a
-[transfer](#transfer-stock-between-sites) is bringing more of, *+… incoming* says how
-much is on its way there; a site with stock on its way and nothing on hand yet has a row
-too. The item's [primary location](#set-an-items-primary-location-and-reorder-point) at
+[transfer](#transfer-stock-between-sites) is bringing more of, *+… in transit* says how
+much is on its way there, and under one Purchasing has ordered more for, *+… on order* says
+how much is ordered and not yet received; a site with stock on its way or on order and
+nothing on hand yet has a row too. The item's [primary location](#set-an-items-primary-location-and-reorder-point) at
 a site comes first among its locations, marked *primary*, and each site shows its
 **Reorder point** and **Maximum**, **Low** while it is low there and, with **Adjust
 stock**, **Edit placement**. For an item kept in lots, each location lists its
@@ -1088,17 +1090,23 @@ their locations — and produced — the item put on its location — in one mov
 site; it is posted from Manufacturing, never here. A
 **Transfer out** is a transfer's send, taken off the from site's locations; a **Transfer
 in** is a transfer's receipt at the to site, or its cancel putting the stock back at the
-from site. Both link to their transfer and are posted from the transfer, never here.
+from site. Both link to their transfer and are posted from the transfer, never here. A
+**Receipt** Purchasing posted for a purchase order shows the receipt as its source, and a
+**Receipt reversal** is such a receipt taken back — the goods taken off the locations and
+lots they went into, whatever their holds, and the receipt's inspection quarantine
+released; both link to the purchase order while Purchasing is on, and are posted there,
+never here.
 Filter by **Site**, **Location** (which includes everything below it), **Item**, **Kind**
 (**Adjustment**, **Move**, **Receipt**, **Count**, **Issue**, **Transfer out**, **Transfer
-in**, **Production**) and **Posted between**, two days in your
+in**, **Production**, **Unbuild**, **Receipt reversal**) and **Posted between**, two days in your
 organisation's time zone. **Load more** fetches the next page. **Receipts** in the
 sidebar is the same list showing receipts only.
 
 A movement's page shows its kind, its site, when and by whom it was posted, the reason
 or the supplier and the supplier's reference, the note, the count it posted or the
 **Transfer** it belongs to, the **Source** another module posted it for — a
-production's links to its manufacturing order when Manufacturing is on — and its
+production's links to its manufacturing order when Manufacturing is on, a receipt's or a
+receipt reversal's to its purchase order when Purchasing is on — and its
 lines: **SKU**, **Product**, **From**, **To**, the **Lot** for an item kept in lots — linked to
 its page, with *Expired* where an expired lot was taken on purpose — and **Quantity**, with
 **Entered as** for a line entered in packagings. A movement is never edited or deleted.

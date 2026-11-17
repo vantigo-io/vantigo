@@ -98,8 +98,15 @@ opp på, og det krever **Forvalte regnskapet**.
      videre. Kundenes og leverandørenes konto i filen avgjør de to første.
    - **Mva-koder** — filens koder og standardkoden hver tilsvarer. Regnskapet her bruker
      Skatteetatens standardkoder.
-   - **Leverandører** — opprettes fra filen med organisasjonsnummer, adresse og
-     bankkonto. Et nummer som ikke er gyldig, utelates, og det står hvorfor.
+   - **Leverandører** — hver med hvordan den tas. En leverandør som allerede er i
+     **Leverandører** — en en innkjøper la inn før regnskapet ble satt opp, for eksempel —
+     brukes for filens når den har samme organisasjonsnummer (*I registeret, etter
+     organisasjonsnummer*) eller, uten det, samme navn (*I registeret, etter navn*):
+     inngående saldo føres på den, og opplysningene om den står som de er. Når flere har
+     navnet (*Flere i registeret*), opprettes en ny leverandør om du ikke velger én;
+     velgeren ved hver lar deg velge en annen eller *En ny leverandør*. De andre opprettes
+     fra filen med organisasjonsnummer, adresse og bankkonto. Et nummer som ikke er gyldig,
+     utelates, og det står hvorfor.
    - **Kunder** — funnet blant kundene i **Kunder** på organisasjonsnummer når filen leses.
      Regnskap oppretter ikke kunder: en kunde med saldo som Kunder ikke har, eller har to
      ganger, må opprettes eller finnes der først; søk den så opp i feltet under listen, på
@@ -366,14 +373,26 @@ nummeret. Det kan ikke angres, og en anonymisert leverandør endres ikke mer. F�
 avvises det: bokføringen trenger fortsatt opplysningene. Et selskap anonymiseres ikke —
 opplysningene om det er ikke personopplysninger.
 
-Å føre leverandørene krever **Bokføre bilag**.
+Leverandørene kan føres før regnskapet er satt opp — en innkjøper kan legge inn selskapene
+dere kjøper fra først; standardkontoen og mva-koden gis når regnskapet finnes.
+
+Når en annen app har dokumenter som nevner en leverandør — innkjøpsordrene, når Innkjøp er
+på — slettes ikke leverandøren mens noen gjør det, og en person anonymiseres ikke mens et
+åpent gjør det: avvisningen sier hvor mange. **Eksporter leverandørens opplysninger** tar
+med det de appene har om personen, og **Anonymiser** tar personen ut av dem også.
+
+Å føre leverandørene krever **Bokføre bilag**, eller **Holde leverandørene** for alle felt
+unntatt kontonummer, IBAN, BIC, standardkonto og mva-kode, som blir hos **Bokføre bilag**.
+**Slett** og **Anonymiser** krever **Bokføre bilag**.
 
 ## Leverandørfakturaer
 
 **Leverandørfakturaer** viser det leverandørene har fakturert, nyeste først, filtrert på
 status, leverandør og forfallsdato, eller **Bare forfalte**. En faktura er et **Utkast** til
 den bokføres, deretter **Bokført** mens noe skyldes, **Betalt** når ingenting gjenstår, og
-**Tilbakeført** når den er rettet med Tilbakefør og kopier.
+**Tilbakeført** når den er rettet med Tilbakefør og kopier. En faktura som er avstemt mot en
+innkjøpsordre i Innkjøp, viser **Innkjøpsordre** og nummeret, i listen og på siden — klikk
+for å åpne ordren — og hvor mange avvik avstemmingen har; uten Innkjøp er det ingen.
 
 ### Å føre og bokføre en leverandørfaktura
 
@@ -1049,6 +1068,7 @@ tillatelsene som trengs:
 | **Bruke Regnskap** (`accounting:read`) | Alle skjermbilder og rapporter. |
 | **Bokføre bilag** (`accounting:post`) | Posteringer, tilbakeføringer, vedlegg, oppgjør, leverandører, leverandørfakturaer og betalingene av dem, handlingene under Trenger oppmerksomhet, og å merke en mva-termin som levert. |
 | **Forvalte regnskapet** (`accounting:close`) | Å sette opp regnskapet (også fra en SAF-T-fil), kontoplanen, mva-kodene, posteringsreglene, inngående balanse, sperren, og å lukke og åpne igjen mva-terminer og fjerne et leveringsmerke. Bare en eier kan gi den. |
+| **Holde leverandørene** (`accounting:suppliers-manage`) | Å legge inn og endre leverandører — unntatt kontonummer, standardkonto og mva-kode — også før regnskapet er satt opp: en innkjøpers. Den krever ikke **Bruke Regnskap**. |
 | **Eksportere regnskapet** (`accounting:export`) | Rapportene som CSV, en leverandørs opplysninger, og SAF-T-filen. |
 
 Når oppdraget er over, fjerner du rollen eller deaktiverer brukeren: alt vedkommende har

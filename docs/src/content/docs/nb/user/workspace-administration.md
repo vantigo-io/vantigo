@@ -546,7 +546,10 @@ ta ut et parti etter utløpsdatoen på en leveranse eller en produksjon, når de
 partiet; den gjør ingenting før partisporing er slått på
 ([Lager](/en/reference/inventory/#expiry-and-today)). **Administrere partier** lar en person endre
 et partis datoer, leverandørparti og merknad, legge til og fjerne filene, og sette og frigi
-sperringer på siden for partiet ([Lager](/nb/user/inventory/#partier-og-serienumre)).
+sperringer på siden for partiet ([Lager](/nb/user/inventory/#partier-og-serienumre)). I
+Regnskap er **Holde leverandørene** en innkjøpers: den legger inn og endrer leverandører —
+unntatt kontonummer, standardkonto og mva-kode, som blir hos **Bokføre bilag** — også før
+regnskapet er satt opp, og krever ikke **Bruke Regnskap** ([Regnskap](/nb/user/accounting/#leverandører)).
 
 ### Tildelinger
 
