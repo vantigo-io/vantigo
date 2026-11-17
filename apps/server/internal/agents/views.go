@@ -64,7 +64,7 @@ func (s *server) handOffWarnings(ctx context.Context, roles []store.AgentsRole) 
 		switch {
 		case !ok || !u.Active:
 			out[id] = "disabled"
-		case u.Kind == contracts.UserKindAgent:
+		case u.Kind != contracts.UserKindPerson:
 			out[id] = "not_a_person"
 		case !holds[id]:
 			out[id] = "no_permission"

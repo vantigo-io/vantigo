@@ -152,6 +152,13 @@ func (s *server) resolveMentions(ctx context.Context, raw *[]uuid.UUID, author u
 			errs["mentions"] = []string{"Every mentioned user must be named in the note as @Name."}
 			return nil, nil
 		}
+		// An integration is an external application's account, not a
+		// colleague (API access design K4): it reads no note and is never
+		// mentioned.
+		if u.Kind == contracts.UserKindIntegration {
+			errs["mentions"] = []string{"Every mentioned user must be a known, active user."}
+			return nil, nil
+		}
 		if u.Kind == contracts.UserKindAgent && !contracts.HasPermission(ctx, s.deps.Access, "agents:view") {
 			errs["mentions"] = []string{"Mentioning a virtual employee needs the permission to see them (agents:view)."}
 			return nil, nil
@@ -189,7 +196,7 @@ func (s *server) notifyMentioned(ctx context.Context, author, conversationID uui
 		"nb": {Subject: by + " nevnte deg i et notat", Body: by + " nevnte deg i et internt notat i en samtale." + open("Åpne den i Vantigo:") + "\n"},
 	}}
 	for _, u := range mentioned {
-		if u.Kind == contracts.UserKindAgent {
+		if u.Kind != contracts.UserKindPerson {
 			continue
 		}
 		// A person who cannot read conversations is not pointed at one.

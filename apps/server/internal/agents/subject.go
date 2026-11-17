@@ -233,7 +233,7 @@ func (rs *runState) notifyTool() agentloop.Tool {
 			if err != nil {
 				return agentloop.Result{Content: agentloop.Wrap(map[string]string{"error": "call_failed"}), Status: "error", Mode: "tool", Operation: "tool:" + toolNotify}, nil
 			}
-			if u == nil || !u.Active || u.Kind == contracts.UserKindAgent {
+			if u == nil || !u.Active || u.Kind != contracts.UserKindPerson {
 				return agentloop.Refused("recipient_unavailable", "that colleague cannot be notified; hand off instead"), nil
 			}
 			if rs.tpl.Recipient && !rs.s.recipientMay(ctx, rs.tpl, to, rs.calledOperations(ctx)) {
