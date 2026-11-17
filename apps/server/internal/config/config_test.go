@@ -955,7 +955,7 @@ func TestLoad_TrustedProxyHopsRequireCIDRsOutsideDevelopment(t *testing.T) {
 }
 
 func TestLoad_Modules(t *testing.T) {
-	if cfg := mustLoad(t, validEnv()); !slices.Equal(cfg.Modules, []string{"customers", "products", "energy", "communications", "projects", "time", "expenses", "invoices", "staff", "planning", "inventory", "orders", "manufacturing", "accounting", "knowledge", "calendar", "entra", "google", "meta", "assistant", "agents"}) {
+	if cfg := mustLoad(t, validEnv()); !slices.Equal(cfg.Modules, []string{"customers", "products", "energy", "communications", "projects", "time", "expenses", "invoices", "staff", "planning", "inventory", "orders", "manufacturing", "accounting", "purchasing", "knowledge", "calendar", "entra", "google", "meta", "assistant", "agents"}) {
 		t.Errorf("Modules = %v, want the default customers,products,energy,communications,projects,time,expenses,invoices,staff,planning,calendar,entra,google,assistant when MODULES is unset", cfg.Modules)
 	}
 
@@ -964,7 +964,7 @@ func TestLoad_Modules(t *testing.T) {
 		t.Errorf("Modules = %v, want trimmed, lower-cased entries with empties dropped", cfg.Modules)
 	}
 
-	if msg := loadError(t, with(validEnv(), "MODULES", "customers,widgets")); !strings.Contains(msg, `"widgets" is not a known module`) || !strings.Contains(msg, "customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, orders, manufacturing, accounting, knowledge, calendar, entra, google, meta, assistant, agents") {
+	if msg := loadError(t, with(validEnv(), "MODULES", "customers,widgets")); !strings.Contains(msg, `"widgets" is not a known module`) || !strings.Contains(msg, "customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, orders, manufacturing, accounting, purchasing, knowledge, calendar, entra, google, meta, assistant, agents") {
 		t.Errorf("error = %q, want it to name the bad value and the known set", msg)
 	}
 
@@ -1120,6 +1120,25 @@ func TestLoad_Modules(t *testing.T) {
 	cfg = mustLoad(t, with(validEnv(), "MODULES", "customers,invoices,accounting"))
 	if !slices.Equal(cfg.Modules, []string{"customers", "invoices", "accounting"}) {
 		t.Errorf("Modules = %v, want exactly customers,invoices,accounting", cfg.Modules)
+	}
+
+	// purchasing buys from Accounting's suppliers, orders the catalog's
+	// variants and receives through Inventory's ledger (purchasing design P8):
+	// without any of the three it is refused.
+	for _, missing := range []string{"accounting", "inventory", "products"} {
+		mods := []string{"customers", "invoices", "accounting", "products", "inventory", "purchasing"}
+		mods = slices.DeleteFunc(mods, func(m string) bool { return m == missing })
+		if missing == "products" {
+			mods = slices.DeleteFunc(mods, func(m string) bool { return m == "inventory" })
+		}
+		msg := loadError(t, with(validEnv(), "MODULES", strings.Join(mods, ",")))
+		if !strings.Contains(msg, "MODULES: purchasing requires "+missing) {
+			t.Errorf("MODULES=%s: error = %q, want purchasing without %s named", strings.Join(mods, ","), msg, missing)
+		}
+	}
+	cfg = mustLoad(t, with(validEnv(), "MODULES", "customers,invoices,accounting,products,inventory,purchasing"))
+	if !slices.Equal(cfg.Modules, []string{"customers", "invoices", "accounting", "products", "inventory", "purchasing"}) {
+		t.Errorf("Modules = %v, want exactly customers,invoices,accounting,products,inventory,purchasing", cfg.Modules)
 	}
 }
 

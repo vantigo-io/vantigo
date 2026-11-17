@@ -27,6 +27,7 @@ const contracts = [
   "orders",
   "manufacturing",
   "accounting",
+  "purchasing",
   "knowledge",
   "calendar",
   "entra",

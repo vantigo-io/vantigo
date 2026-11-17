@@ -828,6 +828,12 @@ func WithEnv(key, value string) Option {
 // accounting's own tests stand in a fake sales journal (WithSalesJournal)
 // rather than compose it.
 //
+// "accounting", "inventory" and "products" are likewise included whenever
+// "purchasing" is among mods: config.go rejects "purchasing" without any of
+// them (purchasing design P8), and accounting then brings "invoices" (A18);
+// purchasing's own tests stand in fakes of the supplier directory, the
+// catalog and the stock rather than compose them.
+//
 // "staff" is likewise included whenever "entra" or "google" is among mods:
 // config.go rejects either without "staff" (Staff's accounts worker is the
 // provider's only caller), and their own tests drive the provider and its
@@ -868,6 +874,13 @@ func modulesEnv(mods []module.Module, stubbed ...string) string {
 	if moduleSet["manufacturing"] {
 		moduleSet["products"] = true
 		moduleSet["inventory"] = true
+	}
+	// purchasing → accounting → invoices (purchasing design A18): listed in
+	// that order so the cascade reaches invoices.
+	if moduleSet["purchasing"] {
+		moduleSet["accounting"] = true
+		moduleSet["inventory"] = true
+		moduleSet["products"] = true
 	}
 	if moduleSet["accounting"] {
 		moduleSet["invoices"] = true

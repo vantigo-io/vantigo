@@ -1,0 +1,3285 @@
+components:
+    schemas:
+        PurchasingAddress:
+            additionalProperties: false
+            description: A postal address; every field optional.
+            properties:
+                city:
+                    maxLength: 100
+                    nullable: true
+                    type: string
+                country:
+                    description: ISO 3166-1 alpha-2.
+                    maxLength: 2
+                    nullable: true
+                    type: string
+                line1:
+                    maxLength: 255
+                    nullable: true
+                    type: string
+                line2:
+                    maxLength: 255
+                    nullable: true
+                    type: string
+                name:
+                    maxLength: 255
+                    nullable: true
+                    type: string
+                postalCode:
+                    maxLength: 20
+                    nullable: true
+                    type: string
+            type: object
+        PurchasingBuyerList:
+            additionalProperties: false
+            description: 'The buyers: the active holders of purchasing:orders-manage.'
+            properties:
+                items:
+                    items:
+                        $ref: '#/components/schemas/PurchasingPerson'
+                    type: array
+            required:
+                - items
+            type: object
+        PurchasingCancelInput:
+            additionalProperties: false
+            description: Cancel a sent order with nothing received (P18, A16). An order that was mailed sends the supplier its cancellation — the PDF marked Cancelled — unless notifySupplier is false.
+            properties:
+                expectedUpdatedAt:
+                    description: 'The updatedAt of the order as the client read it: the write is refused with version_conflict when the order was written since (every write moves it).'
+                    format: date-time
+                    type: string
+                message:
+                    maxLength: 4000
+                    type: string
+                notifySupplier:
+                    description: Default true for an order that was mailed; ignored for one marked as sent.
+                    type: boolean
+                recipient:
+                    format: email
+                    maxLength: 254
+                    type: string
+            required:
+                - expectedUpdatedAt
+            type: object
+        PurchasingChange:
+            additionalProperties: false
+            description: One entry of an order's change log (P18).
+            properties:
+                actions:
+                    items:
+                        $ref: '#/components/schemas/PurchasingChangeAction'
+                    type: array
+                actor:
+                    allOf:
+                        - $ref: '#/components/schemas/PurchasingPerson'
+                    nullable: true
+                at:
+                    format: date-time
+                    type: string
+                id:
+                    format: int64
+                    type: integer
+            required:
+                - id
+                - at
+                - actions
+            type: object
+        PurchasingChangeAction:
+            additionalProperties: false
+            description: One action of a change.
+            properties:
+                action:
+                    description: 'What was done: created, updated, line_added, line_changed, line_removed, sent, marked_sent, sent_again, confirmed, line_closed, closed, reopened, cancelled.'
+                    type: string
+                field:
+                    nullable: true
+                    type: string
+                from:
+                    nullable: true
+                    type: string
+                lineId:
+                    format: int64
+                    nullable: true
+                    type: integer
+                to:
+                    nullable: true
+                    type: string
+            required:
+                - action
+            type: object
+        PurchasingConfirmationInput:
+            additionalProperties: false
+            description: 'The supplier''s confirmation (P19): its order reference and the confirmed day, per order and optionally per line. A fact on the order, not a state; empty values clear it.'
+            properties:
+                confirmedOn:
+                    format: date
+                    nullable: true
+                    type: string
+                expectedUpdatedAt:
+                    description: 'The updatedAt of the order as the client read it: the write is refused with version_conflict when the order was written since (every write moves it).'
+                    format: date-time
+                    type: string
+                lines:
+                    items:
+                        $ref: '#/components/schemas/PurchasingConfirmationLine'
+                    maxItems: 500
+                    type: array
+                supplierReference:
+                    maxLength: 100
+                    nullable: true
+                    type: string
+            required:
+                - expectedUpdatedAt
+            type: object
+        PurchasingConfirmationLine:
+            additionalProperties: false
+            description: A line's confirmed day.
+            properties:
+                confirmedOn:
+                    format: date
+                    nullable: true
+                    type: string
+                lineId:
+                    format: int64
+                    type: integer
+            required:
+                - lineId
+            type: object
+        PurchasingDocument:
+            additionalProperties: false
+            description: A stored PDF of an order (P21).
+            properties:
+                createdAt:
+                    format: date-time
+                    type: string
+                erased:
+                    description: The supplier's erase took the PDF out (A8).
+                    type: boolean
+                id:
+                    format: int64
+                    type: integer
+                kind:
+                    enum:
+                        - order
+                        - cancellation
+                    type: string
+                sizeBytes:
+                    format: int64
+                    type: integer
+                version:
+                    format: int32
+                    type: integer
+            required:
+                - id
+                - kind
+                - version
+                - sizeBytes
+                - createdAt
+                - erased
+            type: object
+        PurchasingImportOutcome:
+            description: 'A row''s outcome: created or updated (a dry run says what a commit would do), or why it fails.'
+            enum:
+                - created
+                - updated
+                - variant_not_found
+                - variant_ambiguous
+                - packaging_not_found
+                - price_invalid
+                - quantity_invalid
+                - lead_time_invalid
+                - duplicate_row
+                - line_invalid
+            type: string
+        PurchasingImportResult:
+            additionalProperties: false
+            description: 'The import''s answer: every row''s outcome; on a commit with every row ok, what was written.'
+            properties:
+                committed:
+                    description: 'The rows were written: a commit with every row ok.'
+                    type: boolean
+                created:
+                    format: int32
+                    type: integer
+                ok:
+                    description: Every row is ok.
+                    type: boolean
+                rows:
+                    items:
+                        $ref: '#/components/schemas/PurchasingImportRow'
+                    type: array
+                updated:
+                    format: int32
+                    type: integer
+            required:
+                - ok
+                - committed
+                - created
+                - updated
+                - rows
+            type: object
+        PurchasingImportRow:
+            additionalProperties: false
+            description: One row of a supplier's price list and its outcome (P14).
+            properties:
+                code:
+                    description: The SKU or barcode as written.
+                    type: string
+                detail:
+                    type: string
+                outcome:
+                    $ref: '#/components/schemas/PurchasingImportOutcome'
+                row:
+                    description: The row in the file, the header being row 1.
+                    format: int32
+                    type: integer
+                variantId:
+                    format: int32
+                    nullable: true
+                    type: integer
+            required:
+                - row
+                - code
+                - outcome
+            type: object
+        PurchasingLineInput:
+            additionalProperties: false
+            description: A line as written (P16). id names an existing line of the order; a line without one is new. A variant line names variantId and takes its supplier item's number, price, packaging and expected day when they are left out; a text line names description, unit and unitPrice.
+            properties:
+                description:
+                    maxLength: 2000
+                    type: string
+                discountPercent:
+                    nullable: true
+                    type: string
+                expectedOn:
+                    format: date
+                    nullable: true
+                    type: string
+                id:
+                    format: int64
+                    nullable: true
+                    type: integer
+                kind:
+                    enum:
+                        - variant
+                        - text
+                    type: string
+                orderQuantity:
+                    description: In the purchase packaging, more than 0, three places at most.
+                    type: string
+                packagingId:
+                    description: The purchase packaging; absent takes the supplier item's, null the unit.
+                    format: int32
+                    nullable: true
+                    type: integer
+                supplierItemNumber:
+                    maxLength: 60
+                    nullable: true
+                    type: string
+                unit:
+                    description: A text line's unit.
+                    maxLength: 20
+                    nullable: true
+                    type: string
+                unitPrice:
+                    description: Per the purchase packaging; absent takes the supplier item's price, else 0.
+                    nullable: true
+                    type: string
+                variantId:
+                    format: int32
+                    nullable: true
+                    type: integer
+            required:
+                - kind
+                - orderQuantity
+            type: object
+        PurchasingLineWarning:
+            description: 'below_minimum: the quantity is under the supplier item''s minimum; off_multiple: it is not a multiple of the item''s multiple (P16). A warning, never a refusal.'
+            enum:
+                - below_minimum
+                - off_multiple
+            type: string
+        PurchasingMailing:
+            additionalProperties: false
+            description: One mailing of an order's PDF (P21).
+            properties:
+                attempts:
+                    format: int32
+                    type: integer
+                cc:
+                    items:
+                        type: string
+                    type: array
+                createdAt:
+                    format: date-time
+                    type: string
+                id:
+                    format: int64
+                    type: integer
+                kind:
+                    enum:
+                        - order
+                        - cancellation
+                    type: string
+                lastError:
+                    nullable: true
+                    type: string
+                recipient:
+                    type: string
+                sentAt:
+                    format: date-time
+                    nullable: true
+                    type: string
+                sentBy:
+                    allOf:
+                        - $ref: '#/components/schemas/PurchasingPerson'
+                    nullable: true
+                status:
+                    enum:
+                        - queued
+                        - sent
+                        - failed
+                    type: string
+                subject:
+                    type: string
+                version:
+                    format: int32
+                    type: integer
+            required:
+                - id
+                - kind
+                - version
+                - recipient
+                - cc
+                - subject
+                - status
+                - attempts
+                - createdAt
+            type: object
+        PurchasingMarkSentInput:
+            additionalProperties: false
+            description: 'Mark as sent (P18): as Send, without a mail — for an order placed by phone or in a supplier''s web shop.'
+            properties:
+                clientRequestId:
+                    description: 'The client''s id of this request (A11): a replay with the same body answers the first result; another body under the same id is 409 client_request_reused.'
+                    format: uuid
+                    type: string
+                expectedUpdatedAt:
+                    description: 'The updatedAt of the order as the client read it: the write is refused with version_conflict when the order was written since (every write moves it).'
+                    format: date-time
+                    type: string
+            required:
+                - expectedUpdatedAt
+                - clientRequestId
+            type: object
+        PurchasingMeta:
+            additionalProperties: false
+            description: What the Purchasing screens need without purchasing:settings.
+            properties:
+                baseCurrency:
+                    type: string
+                canManageSuppliers:
+                    description: 'The caller may create and edit a supplier in the register through Accounting''s endpoints: accounting:suppliers-manage, or accounting:post with accounting:read (A12, A25).'
+                    type: boolean
+                canOpenAccountingSuppliers:
+                    description: The caller may open Accounting's supplier pages (accounting:read).
+                    type: boolean
+                defaultSiteId:
+                    format: int64
+                    nullable: true
+                    type: integer
+                priceTolerancePercent:
+                    type: string
+                sendingAvailable:
+                    description: 'Send by e-mail is offered: Communications is on and the settings'' channel can send (P21). When false, Mark as sent is offered instead.'
+                    type: boolean
+            required:
+                - sendingAvailable
+                - baseCurrency
+                - priceTolerancePercent
+                - canManageSuppliers
+                - canOpenAccountingSuppliers
+            type: object
+        PurchasingOrder:
+            additionalProperties: false
+            description: A purchase order (P15–P20).
+            properties:
+                buyer:
+                    allOf:
+                        - $ref: '#/components/schemas/PurchasingPerson'
+                    nullable: true
+                cancelledAt:
+                    format: date-time
+                    nullable: true
+                    type: string
+                closedAt:
+                    format: date-time
+                    nullable: true
+                    type: string
+                confirmedAt:
+                    format: date-time
+                    nullable: true
+                    type: string
+                confirmedBy:
+                    allOf:
+                        - $ref: '#/components/schemas/PurchasingPerson'
+                    nullable: true
+                confirmedOn:
+                    format: date
+                    nullable: true
+                    type: string
+                copiedFromId:
+                    format: int64
+                    nullable: true
+                    type: integer
+                createdAt:
+                    format: date-time
+                    type: string
+                createdBy:
+                    allOf:
+                        - $ref: '#/components/schemas/PurchasingPerson'
+                    nullable: true
+                currency:
+                    type: string
+                deliveryAddress:
+                    $ref: '#/components/schemas/PurchasingAddress'
+                expectedOn:
+                    format: date
+                    nullable: true
+                    type: string
+                id:
+                    format: int64
+                    type: integer
+                internalNote:
+                    type: string
+                language:
+                    enum:
+                        - nb
+                        - en
+                    type: string
+                lastMailingStatus:
+                    enum:
+                        - queued
+                        - sent
+                        - failed
+                    nullable: true
+                    type: string
+                late:
+                    description: Sent, not received, closed or cancelled, and an open line's expected day is past.
+                    type: boolean
+                lines:
+                    items:
+                        $ref: '#/components/schemas/PurchasingOrderLine'
+                    type: array
+                netTotal:
+                    description: An amount as decimal text with two places.
+                    type: string
+                note:
+                    type: string
+                number:
+                    description: Allocated when the order is sent; null for a draft (P20).
+                    format: int64
+                    nullable: true
+                    type: integer
+                orderDate:
+                    format: date
+                    type: string
+                sendMethod:
+                    enum:
+                        - mail
+                        - manual
+                    nullable: true
+                    type: string
+                sentAt:
+                    format: date-time
+                    nullable: true
+                    type: string
+                sentBy:
+                    allOf:
+                        - $ref: '#/components/schemas/PurchasingPerson'
+                    nullable: true
+                siteId:
+                    format: int64
+                    type: integer
+                siteName:
+                    type: string
+                status:
+                    description: draft → sent → partially_received → received; closed and cancelled beside them (P18). partially_received and received are reached by receipts (delivery B).
+                    enum:
+                        - draft
+                        - sent
+                        - partially_received
+                        - received
+                        - closed
+                        - cancelled
+                    type: string
+                supplierActive:
+                    description: The supplier is active in the register now.
+                    type: boolean
+                supplierAddress:
+                    $ref: '#/components/schemas/PurchasingAddress'
+                supplierContact:
+                    type: string
+                supplierEmail:
+                    nullable: true
+                    type: string
+                supplierId:
+                    format: int64
+                    type: integer
+                supplierName:
+                    type: string
+                supplierNumber:
+                    format: int32
+                    nullable: true
+                    type: integer
+                supplierReference:
+                    nullable: true
+                    type: string
+                unconfirmed:
+                    description: Sent more than three business days ago with no confirmation (P19).
+                    type: boolean
+                updatedAt:
+                    format: date-time
+                    type: string
+                version:
+                    description: 'The PDFs sent: 1 at the first send, one more per Send again; 0 for a draft.'
+                    format: int32
+                    type: integer
+            required:
+                - id
+                - status
+                - version
+                - supplierId
+                - supplierName
+                - supplierAddress
+                - supplierContact
+                - supplierActive
+                - siteId
+                - siteName
+                - deliveryAddress
+                - currency
+                - language
+                - orderDate
+                - note
+                - internalNote
+                - netTotal
+                - late
+                - unconfirmed
+                - createdAt
+                - updatedAt
+                - lines
+            type: object
+        PurchasingOrderHistory:
+            additionalProperties: false
+            description: An order's change log, stored PDFs and mailings, newest first.
+            properties:
+                changes:
+                    items:
+                        $ref: '#/components/schemas/PurchasingChange'
+                    type: array
+                documents:
+                    items:
+                        $ref: '#/components/schemas/PurchasingDocument'
+                    type: array
+                mailings:
+                    items:
+                        $ref: '#/components/schemas/PurchasingMailing'
+                    type: array
+            required:
+                - changes
+                - documents
+                - mailings
+            type: object
+        PurchasingOrderInput:
+            additionalProperties: false
+            description: A new draft purchase order (P15). currency defaults to the supplier's, language from the supplier's country, siteId to the settings' default site, orderDate to today.
+            properties:
+                buyerId:
+                    format: uuid
+                    nullable: true
+                    type: string
+                currency:
+                    description: ISO 4217.
+                    maxLength: 3
+                    nullable: true
+                    type: string
+                expectedOn:
+                    format: date
+                    nullable: true
+                    type: string
+                internalNote:
+                    maxLength: 4000
+                    type: string
+                language:
+                    enum:
+                        - nb
+                        - en
+                    nullable: true
+                    type: string
+                lines:
+                    items:
+                        $ref: '#/components/schemas/PurchasingLineInput'
+                    maxItems: 500
+                    type: array
+                note:
+                    maxLength: 4000
+                    type: string
+                orderDate:
+                    format: date
+                    nullable: true
+                    type: string
+                siteId:
+                    format: int64
+                    nullable: true
+                    type: integer
+                supplierContact:
+                    maxLength: 200
+                    type: string
+                supplierId:
+                    format: int64
+                    type: integer
+            required:
+                - supplierId
+            type: object
+        PurchasingOrderLine:
+            additionalProperties: false
+            description: A line of a purchase order (P16).
+            properties:
+                closedAt:
+                    format: date-time
+                    nullable: true
+                    type: string
+                confirmedOn:
+                    format: date
+                    nullable: true
+                    type: string
+                description:
+                    type: string
+                discountPercent:
+                    type: string
+                expectedOn:
+                    format: date
+                    nullable: true
+                    type: string
+                id:
+                    format: int64
+                    type: integer
+                invoiced:
+                    description: Invoiced so far, in the variant's unit (delivery D).
+                    type: string
+                kind:
+                    enum:
+                        - variant
+                        - text
+                    type: string
+                lineNet:
+                    description: Net of VAT, two places (P17).
+                    type: string
+                name:
+                    type: string
+                open:
+                    description: 'Ordered and not received, 0 when the line is closed: what counts as on order.'
+                    type: string
+                orderQuantity:
+                    description: As entered, in the purchase packaging (the variant's unit when none).
+                    type: string
+                packagingId:
+                    format: int32
+                    nullable: true
+                    type: integer
+                packagingName:
+                    nullable: true
+                    type: string
+                packagingQuantity:
+                    description: The packaging's quantity in the variant's unit, as the line took it.
+                    nullable: true
+                    type: string
+                position:
+                    format: int32
+                    type: integer
+                productType:
+                    enum:
+                        - Goods
+                        - Service
+                    nullable: true
+                    type: string
+                quantity:
+                    description: In the variant's unit.
+                    type: string
+                received:
+                    description: Received so far, in the variant's unit (delivery B).
+                    type: string
+                sku:
+                    nullable: true
+                    type: string
+                supplierItemNumber:
+                    nullable: true
+                    type: string
+                unit:
+                    type: string
+                unitPrice:
+                    description: Per the purchase packaging, in the order's currency.
+                    type: string
+                variantId:
+                    format: int32
+                    nullable: true
+                    type: integer
+                warnings:
+                    items:
+                        $ref: '#/components/schemas/PurchasingLineWarning'
+                    type: array
+            required:
+                - id
+                - position
+                - kind
+                - name
+                - description
+                - unit
+                - orderQuantity
+                - quantity
+                - unitPrice
+                - discountPercent
+                - lineNet
+                - received
+                - invoiced
+                - open
+                - warnings
+            type: object
+        PurchasingOrderPage:
+            additionalProperties: false
+            description: A page of purchase orders.
+            properties:
+                items:
+                    items:
+                        $ref: '#/components/schemas/PurchasingOrderSummary'
+                    type: array
+                page:
+                    format: int32
+                    type: integer
+                pageSize:
+                    format: int32
+                    type: integer
+                total:
+                    format: int32
+                    type: integer
+            required:
+                - items
+                - total
+                - page
+                - pageSize
+            type: object
+        PurchasingOrderSummary:
+            additionalProperties: false
+            description: A purchase order as the list shows it (P23).
+            properties:
+                buyer:
+                    allOf:
+                        - $ref: '#/components/schemas/PurchasingPerson'
+                    nullable: true
+                confirmedOn:
+                    format: date
+                    nullable: true
+                    type: string
+                currency:
+                    type: string
+                expectedOn:
+                    format: date
+                    nullable: true
+                    type: string
+                goodsLines:
+                    description: 'Lines to receive: goods variant lines.'
+                    format: int32
+                    type: integer
+                id:
+                    format: int64
+                    type: integer
+                invoicedLines:
+                    description: Lines invoiced in full (delivery D).
+                    format: int32
+                    type: integer
+                lastMailingStatus:
+                    enum:
+                        - queued
+                        - sent
+                        - failed
+                    nullable: true
+                    type: string
+                late:
+                    type: boolean
+                lineCount:
+                    format: int32
+                    type: integer
+                netTotal:
+                    description: An amount as decimal text with two places.
+                    type: string
+                number:
+                    format: int64
+                    nullable: true
+                    type: integer
+                orderDate:
+                    format: date
+                    type: string
+                receivedLines:
+                    description: Goods lines received in full or closed.
+                    format: int32
+                    type: integer
+                sentAt:
+                    format: date-time
+                    nullable: true
+                    type: string
+                siteId:
+                    format: int64
+                    type: integer
+                status:
+                    description: draft → sent → partially_received → received; closed and cancelled beside them (P18). partially_received and received are reached by receipts (delivery B).
+                    enum:
+                        - draft
+                        - sent
+                        - partially_received
+                        - received
+                        - closed
+                        - cancelled
+                    type: string
+                supplierId:
+                    format: int64
+                    type: integer
+                supplierName:
+                    type: string
+                supplierReference:
+                    nullable: true
+                    type: string
+                unconfirmed:
+                    type: boolean
+                updatedAt:
+                    format: date-time
+                    type: string
+            required:
+                - id
+                - status
+                - supplierId
+                - supplierName
+                - siteId
+                - currency
+                - netTotal
+                - orderDate
+                - late
+                - unconfirmed
+                - goodsLines
+                - receivedLines
+                - invoicedLines
+                - lineCount
+                - updatedAt
+            type: object
+        PurchasingOrderUpdate:
+            additionalProperties: false
+            description: An order's header and lines, whole (P15, P16, P18). A draft changes freely; a sent order takes new lines, a line's quantity down to what is received, its price, discount and expected day, and the header's dates, contact, notes and buyer — each change written to the change log. A line left out of lines is deleted on a draft and refused on a sent order (line_not_found names it).
+            properties:
+                buyerId:
+                    format: uuid
+                    nullable: true
+                    type: string
+                currency:
+                    maxLength: 3
+                    type: string
+                expectedOn:
+                    format: date
+                    nullable: true
+                    type: string
+                expectedUpdatedAt:
+                    description: 'The updatedAt of the order as the client read it: the write is refused with version_conflict when the order was written since (every write moves it).'
+                    format: date-time
+                    type: string
+                internalNote:
+                    maxLength: 4000
+                    type: string
+                language:
+                    enum:
+                        - nb
+                        - en
+                    type: string
+                lines:
+                    items:
+                        $ref: '#/components/schemas/PurchasingLineInput'
+                    maxItems: 500
+                    type: array
+                note:
+                    maxLength: 4000
+                    type: string
+                orderDate:
+                    format: date
+                    type: string
+                siteId:
+                    format: int64
+                    type: integer
+                supplierContact:
+                    maxLength: 200
+                    type: string
+                supplierId:
+                    description: A draft's supplier; a sent order's must stay (supplier_changed).
+                    format: int64
+                    type: integer
+            required:
+                - expectedUpdatedAt
+                - supplierId
+                - siteId
+                - currency
+                - language
+                - orderDate
+                - supplierContact
+                - note
+                - internalNote
+                - lines
+            type: object
+        PurchasingPackaging:
+            additionalProperties: false
+            description: A packaging of a variant.
+            properties:
+                id:
+                    format: int32
+                    type: integer
+                name:
+                    type: string
+                quantity:
+                    type: string
+            required:
+                - id
+                - name
+                - quantity
+            type: object
+        PurchasingPerson:
+            additionalProperties: false
+            description: A user as snapshotted on a record.
+            properties:
+                displayName:
+                    type: string
+                id:
+                    format: uuid
+                    nullable: true
+                    type: string
+            required:
+                - displayName
+            type: object
+        PurchasingProblem:
+            additionalProperties: false
+            description: 'An RFC 9457 problem with this module''s refusal code (purchasing design §3). code names the rule that refused and is what a client keys off, never the words. 400: field errors (errors), supplier_not_found, site_not_found, site_archived, currency_invalid, series_start_too_low, send_channel_unknown, recipient_missing, order_empty, import_invalid, and an order''s line refusals in lines, the first of which is also code: too_many_lines, line_invalid, line_not_found, variant_not_found, variant_discontinued, packaging_not_found, quantity_invalid, price_invalid, discount_invalid, quantity_below_received. 404: not_found. 409: version_conflict (a stale revision or expectedUpdatedAt), order_not_draft, order_not_sent (the order is not sent or partially received), order_not_closed, order_has_receipts (a cancel of an order with something received), line_closed, line_kind_changed, currency_fixed (a currency change once a line has a price), supplier_inactive, supplier_changed (a sent order''s supplier), supplier_item_exists, client_request_reused. 503: dependency_unavailable (a module Purchasing reads is not composed), sending_disabled (Communications is off, or no channel that can send is chosen) and mail_failed (the mail provider did not take the e-mail; the order is sent and the failed mailing is queued for a retry). errors carries the field errors of a 400, keyed by the request''s camelCase field. A request the server could not decode answers a bare 400 with neither.'
+            properties:
+                code:
+                    nullable: true
+                    type: string
+                detail:
+                    nullable: true
+                    type: string
+                errors:
+                    additionalProperties:
+                        items:
+                            type: string
+                        type: array
+                    type: object
+                instance:
+                    nullable: true
+                    type: string
+                lines:
+                    description: Every failing line, in the request's order.
+                    items:
+                        $ref: '#/components/schemas/PurchasingProblemLine'
+                    type: array
+                status:
+                    format: int32
+                    nullable: true
+                    type: integer
+                title:
+                    nullable: true
+                    type: string
+                type:
+                    nullable: true
+                    type: string
+            type: object
+        PurchasingProblemLine:
+            additionalProperties: false
+            description: One failing line of an order.
+            properties:
+                code:
+                    description: The line's refusal code.
+                    type: string
+                detail:
+                    type: string
+                index:
+                    description: The line's index in the request, from 0.
+                    format: int32
+                    type: integer
+            required:
+                - code
+                - index
+            type: object
+        PurchasingSendAgainInput:
+            additionalProperties: false
+            description: 'Send again (P18): store a new PDF, marked Revised, and mail it; with mail false, store it only.'
+            properties:
+                cc:
+                    items:
+                        format: email
+                        maxLength: 254
+                        type: string
+                    maxItems: 10
+                    type: array
+                expectedUpdatedAt:
+                    description: 'The updatedAt of the order as the client read it: the write is refused with version_conflict when the order was written since (every write moves it).'
+                    format: date-time
+                    type: string
+                mail:
+                    description: Mail the revised PDF; default true. False stores it without a mail.
+                    type: boolean
+                message:
+                    maxLength: 4000
+                    type: string
+                recipient:
+                    format: email
+                    maxLength: 254
+                    type: string
+                subject:
+                    maxLength: 300
+                    type: string
+            required:
+                - expectedUpdatedAt
+            type: object
+        PurchasingSendChannel:
+            additionalProperties: false
+            description: A mail channel the settings may name, as Communications answers it.
+            properties:
+                address:
+                    type: string
+                available:
+                    description: The channel can send now.
+                    type: boolean
+                displayName:
+                    type: string
+                id:
+                    format: uuid
+                    type: string
+            required:
+                - id
+                - address
+                - displayName
+                - available
+            type: object
+        PurchasingSendInput:
+            additionalProperties: false
+            description: 'Send (P18, P21, A11): allocate the number, store the PDF and mail it to the supplier. The recipient defaults to the supplier''s e-mail in the register.'
+            properties:
+                cc:
+                    items:
+                        format: email
+                        maxLength: 254
+                        type: string
+                    maxItems: 10
+                    type: array
+                clientRequestId:
+                    description: 'The client''s id of this request (A11): a replay with the same body answers the first result; another body under the same id is 409 client_request_reused.'
+                    format: uuid
+                    type: string
+                expectedUpdatedAt:
+                    description: 'The updatedAt of the order as the client read it: the write is refused with version_conflict when the order was written since (every write moves it).'
+                    format: date-time
+                    type: string
+                message:
+                    maxLength: 4000
+                    type: string
+                recipient:
+                    format: email
+                    maxLength: 254
+                    type: string
+                subject:
+                    maxLength: 300
+                    type: string
+            required:
+                - expectedUpdatedAt
+                - clientRequestId
+            type: object
+        PurchasingSendResult:
+            additionalProperties: false
+            description: The order after a send, and the mailing it made (absent for Mark as sent).
+            properties:
+                mailing:
+                    allOf:
+                        - $ref: '#/components/schemas/PurchasingMailing'
+                    nullable: true
+                order:
+                    $ref: '#/components/schemas/PurchasingOrder'
+            required:
+                - order
+            type: object
+        PurchasingSettings:
+            additionalProperties: false
+            description: The settings (P9).
+            properties:
+                channels:
+                    description: The channels sendChannelId may name; empty when Communications is off.
+                    items:
+                        $ref: '#/components/schemas/PurchasingSendChannel'
+                    type: array
+                defaultSiteId:
+                    format: int64
+                    nullable: true
+                    type: integer
+                deliveryAddresses:
+                    items:
+                        $ref: '#/components/schemas/PurchasingSiteAddress'
+                    type: array
+                nextOrderNumber:
+                    description: The number the next order sent gets.
+                    format: int64
+                    type: integer
+                orderFooter:
+                    type: string
+                orderSeriesStart:
+                    format: int64
+                    type: integer
+                priceTolerancePercent:
+                    description: The price tolerance of P38, in percent.
+                    type: string
+                revision:
+                    format: int32
+                    type: integer
+                sendChannelId:
+                    format: uuid
+                    nullable: true
+                    type: string
+                sendingAvailable:
+                    type: boolean
+                updatedAt:
+                    format: date-time
+                    nullable: true
+                    type: string
+            required:
+                - orderSeriesStart
+                - nextOrderNumber
+                - channels
+                - sendingAvailable
+                - orderFooter
+                - deliveryAddresses
+                - priceTolerancePercent
+                - revision
+            type: object
+        PurchasingSettingsInput:
+            additionalProperties: false
+            description: The settings to save (P9), whole.
+            properties:
+                defaultSiteId:
+                    format: int64
+                    nullable: true
+                    type: integer
+                deliveryAddresses:
+                    items:
+                        $ref: '#/components/schemas/PurchasingSiteAddress'
+                    maxItems: 200
+                    type: array
+                orderFooter:
+                    maxLength: 4000
+                    type: string
+                orderSeriesStart:
+                    description: Only above the highest number used (series_start_too_low).
+                    format: int64
+                    minimum: 1
+                    type: integer
+                priceTolerancePercent:
+                    type: string
+                revision:
+                    description: 'The revision as read: a stale one is version_conflict.'
+                    format: int32
+                    type: integer
+                sendChannelId:
+                    format: uuid
+                    nullable: true
+                    type: string
+            required:
+                - revision
+                - orderSeriesStart
+                - orderFooter
+                - deliveryAddresses
+                - priceTolerancePercent
+            type: object
+        PurchasingSite:
+            additionalProperties: false
+            description: A receiving site, as Inventory answers it.
+            properties:
+                active:
+                    type: boolean
+                code:
+                    type: string
+                id:
+                    format: int64
+                    type: integer
+                name:
+                    type: string
+            required:
+                - id
+                - code
+                - name
+                - active
+            type: object
+        PurchasingSiteAddress:
+            additionalProperties: false
+            description: A site's delivery address when it differs from the company's (P9).
+            properties:
+                address:
+                    $ref: '#/components/schemas/PurchasingAddress'
+                siteId:
+                    format: int64
+                    type: integer
+            required:
+                - siteId
+                - address
+            type: object
+        PurchasingSiteList:
+            additionalProperties: false
+            description: The sites.
+            properties:
+                items:
+                    items:
+                        $ref: '#/components/schemas/PurchasingSite'
+                    type: array
+            required:
+                - items
+            type: object
+        PurchasingSummary:
+            additionalProperties: false
+            description: The dashboard's figures (P23).
+            properties:
+                drafts:
+                    format: int32
+                    type: integer
+                failedMailings:
+                    description: Open orders whose last mailing failed (§11).
+                    format: int32
+                    type: integer
+                late:
+                    format: int32
+                    type: integer
+                mineUnconfirmed:
+                    description: 'Unconfirmed orders whose buyer is the caller: the attention item of P19.'
+                    format: int32
+                    type: integer
+                open:
+                    description: Sent or partially received.
+                    format: int32
+                    type: integer
+                unconfirmed:
+                    format: int32
+                    type: integer
+            required:
+                - drafts
+                - open
+                - late
+                - unconfirmed
+                - mineUnconfirmed
+                - failedMailings
+            type: object
+        PurchasingSupplier:
+            additionalProperties: false
+            description: A supplier of Accounting's register as Purchasing shows it (P1, P13), with what Purchasing keeps of it.
+            properties:
+                active:
+                    type: boolean
+                addressLine:
+                    type: string
+                anonymised:
+                    type: boolean
+                city:
+                    type: string
+                country:
+                    type: string
+                currency:
+                    type: string
+                email:
+                    type: string
+                id:
+                    format: int64
+                    type: integer
+                isPerson:
+                    type: boolean
+                name:
+                    type: string
+                number:
+                    format: int32
+                    type: integer
+                openOrderCount:
+                    description: Orders sent and not received, closed or cancelled.
+                    format: int32
+                    type: integer
+                organisationNumber:
+                    type: string
+                paymentTermsDays:
+                    format: int32
+                    type: integer
+                postalCode:
+                    type: string
+                supplierItemCount:
+                    format: int32
+                    type: integer
+            required:
+                - id
+                - number
+                - name
+                - organisationNumber
+                - country
+                - addressLine
+                - postalCode
+                - city
+                - email
+                - currency
+                - paymentTermsDays
+                - active
+                - isPerson
+                - anonymised
+                - supplierItemCount
+                - openOrderCount
+            type: object
+        PurchasingSupplierItem:
+            additionalProperties: false
+            description: 'A supplier item (P11): what one supplier sells of one variant.'
+            properties:
+                currency:
+                    description: 'The currency the price is in: the supplier''s when it was set.'
+                    type: string
+                currencyDiffers:
+                    description: The supplier's currency in the register is no longer the price's (§11).
+                    type: boolean
+                id:
+                    format: int64
+                    type: integer
+                leadTimeDays:
+                    format: int32
+                    nullable: true
+                    type: integer
+                minimumQuantity:
+                    description: In purchase packagings.
+                    nullable: true
+                    type: string
+                multiple:
+                    description: In purchase packagings.
+                    nullable: true
+                    type: string
+                packagingId:
+                    format: int32
+                    nullable: true
+                    type: integer
+                packagingMissing:
+                    description: 'The packaging the item names is no longer the variant''s: the item falls back to the unit (§11).'
+                    type: boolean
+                packagingName:
+                    nullable: true
+                    type: string
+                packagingQuantity:
+                    description: The packaging's quantity in the variant's unit.
+                    nullable: true
+                    type: string
+                preferred:
+                    type: boolean
+                price:
+                    description: Per the purchase packaging, in currency, four places at most.
+                    nullable: true
+                    type: string
+                priceSetBy:
+                    enum:
+                        - person
+                        - invoice
+                        - import
+                    nullable: true
+                    type: string
+                priceSetOn:
+                    format: date
+                    nullable: true
+                    type: string
+                productId:
+                    format: int32
+                    type: integer
+                productName:
+                    type: string
+                productStatus:
+                    type: string
+                revision:
+                    format: int32
+                    type: integer
+                sku:
+                    type: string
+                supplierId:
+                    format: int64
+                    type: integer
+                supplierItemName:
+                    nullable: true
+                    type: string
+                supplierItemNumber:
+                    nullable: true
+                    type: string
+                supplierName:
+                    type: string
+                unit:
+                    type: string
+                updatedAt:
+                    format: date-time
+                    type: string
+                variantId:
+                    format: int32
+                    type: integer
+            required:
+                - id
+                - supplierId
+                - supplierName
+                - variantId
+                - productId
+                - sku
+                - productName
+                - unit
+                - productStatus
+                - currency
+                - currencyDiffers
+                - packagingMissing
+                - preferred
+                - revision
+                - updatedAt
+            type: object
+        PurchasingSupplierItemInput:
+            additionalProperties: false
+            description: A new supplier item (P11). The first item of a variant is preferred whatever preferred says; preferred true on another makes it the preferred one.
+            properties:
+                leadTimeDays:
+                    format: int32
+                    maximum: 3650
+                    minimum: 0
+                    nullable: true
+                    type: integer
+                minimumQuantity:
+                    nullable: true
+                    type: string
+                multiple:
+                    nullable: true
+                    type: string
+                packagingId:
+                    description: One of the variant's packagings; absent or null for the variant's unit.
+                    format: int32
+                    nullable: true
+                    type: integer
+                preferred:
+                    type: boolean
+                price:
+                    description: A price as decimal text with at most four places.
+                    nullable: true
+                    type: string
+                supplierId:
+                    format: int64
+                    type: integer
+                supplierItemName:
+                    maxLength: 255
+                    nullable: true
+                    type: string
+                supplierItemNumber:
+                    maxLength: 60
+                    nullable: true
+                    type: string
+                variantId:
+                    format: int32
+                    type: integer
+            required:
+                - supplierId
+                - variantId
+            type: object
+        PurchasingSupplierItemPage:
+            additionalProperties: false
+            description: A page of supplier items.
+            properties:
+                items:
+                    items:
+                        $ref: '#/components/schemas/PurchasingSupplierItem'
+                    type: array
+                page:
+                    format: int32
+                    type: integer
+                pageSize:
+                    format: int32
+                    type: integer
+                total:
+                    format: int32
+                    type: integer
+            required:
+                - items
+                - total
+                - page
+                - pageSize
+            type: object
+        PurchasingSupplierItemUpdate:
+            additionalProperties: false
+            description: A supplier item's fields, whole; supplier and variant do not change.
+            properties:
+                leadTimeDays:
+                    format: int32
+                    maximum: 3650
+                    minimum: 0
+                    nullable: true
+                    type: integer
+                minimumQuantity:
+                    nullable: true
+                    type: string
+                multiple:
+                    nullable: true
+                    type: string
+                packagingId:
+                    format: int32
+                    nullable: true
+                    type: integer
+                preferred:
+                    type: boolean
+                price:
+                    description: A price as decimal text with at most four places.
+                    nullable: true
+                    type: string
+                revision:
+                    format: int32
+                    type: integer
+                supplierItemName:
+                    maxLength: 255
+                    nullable: true
+                    type: string
+                supplierItemNumber:
+                    maxLength: 60
+                    nullable: true
+                    type: string
+            required:
+                - revision
+                - preferred
+            type: object
+        PurchasingSupplierList:
+            additionalProperties: false
+            description: Suppliers of the register.
+            properties:
+                items:
+                    items:
+                        $ref: '#/components/schemas/PurchasingSupplier'
+                    type: array
+            required:
+                - items
+            type: object
+        PurchasingVariantList:
+            additionalProperties: false
+            description: Variants for a line.
+            properties:
+                items:
+                    items:
+                        $ref: '#/components/schemas/PurchasingVariantOption'
+                    type: array
+            required:
+                - items
+            type: object
+        PurchasingVariantOption:
+            additionalProperties: false
+            description: A variant a line may name, with the supplier's item when the supplier sells it (P16).
+            properties:
+                name:
+                    type: string
+                packagings:
+                    items:
+                        $ref: '#/components/schemas/PurchasingPackaging'
+                    type: array
+                productId:
+                    format: int32
+                    type: integer
+                productStatus:
+                    type: string
+                productType:
+                    enum:
+                        - Goods
+                        - Service
+                    type: string
+                sku:
+                    type: string
+                supplierItem:
+                    allOf:
+                        - $ref: '#/components/schemas/PurchasingSupplierItem'
+                    nullable: true
+                unit:
+                    type: string
+                variantId:
+                    format: int32
+                    type: integer
+            required:
+                - variantId
+                - productId
+                - sku
+                - name
+                - unit
+                - productType
+                - productStatus
+                - packagings
+            type: object
+        PurchasingVersionInput:
+            additionalProperties: false
+            description: A write that carries only the version read.
+            properties:
+                expectedUpdatedAt:
+                    description: 'The updatedAt of the order as the client read it: the write is refused with version_conflict when the order was written since (every write moves it).'
+                    format: date-time
+                    type: string
+            required:
+                - expectedUpdatedAt
+            type: object
+info:
+    title: Vantigo Purchasing API
+    version: "1"
+openapi: 3.0.3
+paths:
+    /api/v1/purchasing/buyers:
+        get:
+            description: The active holders of purchasing:orders-manage, as an order's reference picks one, by display name.
+            operationId: listPurchasingBuyers
+            parameters:
+                - description: Matches the display name.
+                  in: query
+                  name: q
+                  schema:
+                    maxLength: 100
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingBuyerList'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: List the buyers
+            tags:
+                - Purchasing
+            x-vantigo-access: permission:purchasing:access
+    /api/v1/purchasing/meta:
+        get:
+            description: Whether an order can be sent by e-mail now (Communications on and the settings' channel able to send, P21), the base currency, the default site and the price tolerance, and whether the caller may write suppliers in the register.
+            operationId: getPurchasingMeta
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingMeta'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: Get what the Purchasing screens need
+            tags:
+                - Purchasing
+            x-vantigo-access: permission:purchasing:access
+    /api/v1/purchasing/orders:
+        get:
+            description: Purchase orders, newest first (P23), filtered by status, supplier, site, Late (sent, open and past an expected day), Mine (the caller is the buyer) and a search of the number, the supplier's name and the supplier's reference.
+            operationId: listPurchasingOrders
+            parameters:
+                - description: Any of the statuses; none means all.
+                  explode: true
+                  in: query
+                  name: status
+                  schema:
+                    items:
+                        enum:
+                            - draft
+                            - sent
+                            - partially_received
+                            - received
+                            - closed
+                            - cancelled
+                        type: string
+                    type: array
+                  style: form
+                - in: query
+                  name: supplierId
+                  schema:
+                    format: int64
+                    type: integer
+                - in: query
+                  name: siteId
+                  schema:
+                    format: int64
+                    type: integer
+                - description: Only late orders.
+                  in: query
+                  name: late
+                  schema:
+                    type: boolean
+                - description: Only orders whose buyer is the caller.
+                  in: query
+                  name: mine
+                  schema:
+                    type: boolean
+                - description: Only orders sent more than three business days ago with no confirmation.
+                  in: query
+                  name: unconfirmed
+                  schema:
+                    type: boolean
+                - description: Only orders that are drafts, sent or partially received.
+                  in: query
+                  name: open
+                  schema:
+                    type: boolean
+                - description: Matches the number, the supplier's name and the supplier's reference.
+                  in: query
+                  name: q
+                  schema:
+                    maxLength: 100
+                    type: string
+                - in: query
+                  name: page
+                  schema:
+                    format: int32
+                    minimum: 1
+                    type: integer
+                - in: query
+                  name: pageSize
+                  schema:
+                    format: int32
+                    maximum: 200
+                    minimum: 1
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingOrderPage'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Bad Request — paging out of range.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: List purchase orders
+            tags:
+                - Purchasing
+            x-vantigo-access: permission:purchasing:access
+        post:
+            description: 'Creates a draft purchase order (P15): no number until it is sent. The supplier is read through the directory and held FOR SHARE (A8); an inactive one is refused (supplier_inactive). Lines as P16.'
+            operationId: createPurchasingOrder
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/PurchasingOrderInput'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingOrder'
+                    description: Created
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Bad Request — field errors, supplier_not_found, site_not_found, site_archived, currency_invalid, and the line refusals in lines.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Conflict — supplier_inactive.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Service Unavailable — dependency_unavailable.
+            summary: Create a purchase order
+            tags:
+                - Purchasing
+            x-vantigo-access: permission:purchasing:orders-manage
+    /api/v1/purchasing/orders/{orderId}:
+        delete:
+            description: Deletes a draft (P18); a sent order is cancelled instead (order_not_draft).
+            operationId: deletePurchasingOrder
+            parameters:
+                - in: path
+                  name: orderId
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+                - description: The updatedAt as read.
+                  in: query
+                  name: expectedUpdatedAt
+                  required: true
+                  schema:
+                    format: date-time
+                    type: string
+            responses:
+                "204":
+                    description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Conflict — order_not_draft, version_conflict.
+            summary: Delete a draft purchase order
+            tags:
+                - Purchasing
+            x-vantigo-access: permission:purchasing:orders-manage
+        get:
+            description: One purchase order with its lines.
+            operationId: getPurchasingOrder
+            parameters:
+                - in: path
+                  name: orderId
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingOrder'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Not Found
+            summary: Get a purchase order
+            tags:
+                - Purchasing
+            x-vantigo-access: permission:purchasing:access
+        put:
+            description: 'Saves an order''s header and lines whole (P15, P16, P18): a draft freely; a sent or partially received order within P18''s limits, every change written to the change log. A closed, received or cancelled order is refused (order_not_sent).'
+            operationId: updatePurchasingOrder
+            parameters:
+                - in: path
+                  name: orderId
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/PurchasingOrderUpdate'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingOrder'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Bad Request — field errors, supplier_not_found, site_not_found, site_archived, currency_invalid, and the line refusals in lines (quantity_below_received among them).
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Conflict — version_conflict, order_not_sent, supplier_changed, supplier_inactive, currency_fixed, line_closed, line_kind_changed.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Service Unavailable — dependency_unavailable.
+            summary: Update a purchase order
+            tags:
+                - Purchasing
+            x-vantigo-access: permission:purchasing:orders-manage
+    /api/v1/purchasing/orders/{orderId}/cancel:
+        post:
+            description: Cancels a sent order with nothing received (P18, A16); a draft is deleted instead. An order that was mailed sends the supplier its cancellation, unless notifySupplier is false.
+            operationId: cancelPurchasingOrder
+            parameters:
+                - in: path
+                  name: orderId
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/PurchasingCancelInput'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingSendResult'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Bad Request — field errors.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Conflict — version_conflict, order_not_sent, order_has_receipts.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Service Unavailable — sending_disabled, mail_failed.
+            summary: Cancel a purchase order
+            tags:
+                - Purchasing
+            x-vantigo-access: permission:purchasing:orders-send
+    /api/v1/purchasing/orders/{orderId}/close:
+        post:
+            description: 'Ends a sent or partially received order with its remainder (P18, A16): every open line is closed and its open quantity stops counting as on order.'
+            operationId: closePurchasingOrder
+            parameters:
+                - in: path
+                  name: orderId
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/PurchasingVersionInput'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingOrder'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Bad Request — field errors.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Conflict — version_conflict, order_not_sent.
+            summary: Close a purchase order
+            tags:
+                - Purchasing
+            x-vantigo-access: permission:purchasing:orders-manage
+    /api/v1/purchasing/orders/{orderId}/confirmation:
+        put:
+            description: Records the supplier's order reference and confirmed day on a sent order, per order and optionally per line (P19). A fact on the order, no state; it ends the order's unconfirmed attention item.
+            operationId: confirmPurchasingOrder
+            parameters:
+                - in: path
+                  name: orderId
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/PurchasingConfirmationInput'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingOrder'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Bad Request — field errors, line_not_found.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Conflict — version_conflict, order_not_sent.
+            summary: Record the supplier's confirmation
+            tags:
+                - Purchasing
+            x-vantigo-access: permission:purchasing:orders-manage
+    /api/v1/purchasing/orders/{orderId}/copy:
+        post:
+            description: Makes a draft from any order (P22) for the same supplier and site, with today's prices from the supplier items; a line whose variant is no longer orderable is left out. A recurring purchase is a copy.
+            operationId: copyPurchasingOrder
+            parameters:
+                - in: path
+                  name: orderId
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingOrder'
+                    description: Created — the new draft.
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Bad Request — field errors.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Conflict — supplier_inactive.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Service Unavailable — dependency_unavailable.
+            summary: Copy a purchase order
+            tags:
+                - Purchasing
+            x-vantigo-access: permission:purchasing:orders-manage
+    /api/v1/purchasing/orders/{orderId}/documents/{documentId}:
+        get:
+            description: One stored PDF of the order, as it was sent (P21). An erased one is 404.
+            operationId: getPurchasingOrderDocument
+            parameters:
+                - in: path
+                  name: orderId
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+                - in: path
+                  name: documentId
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/pdf:
+                            schema:
+                                format: binary
+                                type: string
+                    description: OK — the PDF.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Not Found
+            summary: Download a stored PDF of a purchase order
+            tags:
+                - Purchasing
+            x-vantigo-access: permission:purchasing:access
+            x-vantigo-assistant: never
+    /api/v1/purchasing/orders/{orderId}/history:
+        get:
+            description: The order's change log, its stored PDFs and its mailings, newest first.
+            operationId: getPurchasingOrderHistory
+            parameters:
+                - in: path
+                  name: orderId
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingOrderHistory'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Not Found
+            summary: Get a purchase order's history
+            tags:
+                - Purchasing
+            x-vantigo-access: permission:purchasing:access
+    /api/v1/purchasing/orders/{orderId}/lines/{lineId}/close:
+        post:
+            description: 'Ends one line''s remainder (A16): its open quantity stops counting as on order. The order is received when nothing else is open.'
+            operationId: closePurchasingOrderLine
+            parameters:
+                - in: path
+                  name: orderId
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+                - in: path
+                  name: lineId
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/PurchasingVersionInput'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingOrder'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Bad Request — field errors.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Conflict — version_conflict, order_not_sent, line_closed.
+            summary: Close an order line
+            tags:
+                - Purchasing
+            x-vantigo-access: permission:purchasing:orders-manage
+    /api/v1/purchasing/orders/{orderId}/mark-sent:
+        post:
+            description: 'As Send without a mail (P18), for an order placed by phone or in a supplier''s web shop: the number, the snapshot and the stored PDF.'
+            operationId: markPurchasingOrderSent
+            parameters:
+                - in: path
+                  name: orderId
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/PurchasingMarkSentInput'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingSendResult'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Bad Request — field errors, order_empty.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Conflict — version_conflict, order_not_draft, supplier_inactive, client_request_reused.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Service Unavailable — dependency_unavailable.
+            summary: Mark a purchase order as sent
+            tags:
+                - Purchasing
+            x-vantigo-access: permission:purchasing:orders-send
+    /api/v1/purchasing/orders/{orderId}/pdf:
+        get:
+            description: The PDF of the order's current version as stored when it was sent; a draft's is printed now, marked Draft, and never stored.
+            operationId: getPurchasingOrderPdf
+            parameters:
+                - in: path
+                  name: orderId
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/pdf:
+                            schema:
+                                format: binary
+                                type: string
+                    description: OK — the PDF.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Not Found
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Service Unavailable — dependency_unavailable.
+            summary: Download a purchase order's PDF
+            tags:
+                - Purchasing
+            x-vantigo-access: permission:purchasing:access
+            x-vantigo-assistant: never
+    /api/v1/purchasing/orders/{orderId}/reopen:
+        post:
+            description: 'Undoes Close (P18): the lines the close ended are open again, and the order is sent or partially received as its receipts say.'
+            operationId: reopenPurchasingOrder
+            parameters:
+                - in: path
+                  name: orderId
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/PurchasingVersionInput'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingOrder'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Bad Request — field errors.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Conflict — version_conflict, order_not_closed.
+            summary: Reopen a purchase order
+            tags:
+                - Purchasing
+            x-vantigo-access: permission:purchasing:orders-manage
+    /api/v1/purchasing/orders/{orderId}/send:
+        post:
+            description: 'Sends a draft (P18, P20, P21, A11, A19): in one transaction it holds the supplier FOR SHARE (A8), snapshots the supplier and the delivery address, allocates the number from the series and logs the send; after the commit the PDF is stored and mailed from the settings'' channel, synchronously. A mail the provider refuses leaves the order sent, its mailing queued for a retry (503 mail_failed). A replay of the same clientRequestId answers the first send.'
+            operationId: sendPurchasingOrder
+            parameters:
+                - in: path
+                  name: orderId
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/PurchasingSendInput'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingSendResult'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Bad Request — field errors, recipient_missing, order_empty.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Conflict — version_conflict, order_not_draft, supplier_inactive, client_request_reused.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Service Unavailable — sending_disabled, mail_failed, dependency_unavailable.
+            summary: Send a purchase order
+            tags:
+                - Purchasing
+            x-vantigo-access: permission:purchasing:orders-send
+    /api/v1/purchasing/orders/{orderId}/send-again:
+        post:
+            description: Stores a new PDF of a sent or partially received order, marked Revised, at the next version, and mails it (P18); with mail false, stores it only. A failed mail is queued for a retry (§11).
+            operationId: resendPurchasingOrder
+            parameters:
+                - in: path
+                  name: orderId
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/PurchasingSendAgainInput'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingSendResult'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Bad Request — field errors, recipient_missing.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Conflict — version_conflict, order_not_sent.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Service Unavailable — sending_disabled, mail_failed.
+            summary: Send a purchase order again
+            tags:
+                - Purchasing
+            x-vantigo-access: permission:purchasing:orders-send
+    /api/v1/purchasing/settings:
+        get:
+            description: The settings (P9), with the mail channels the send channel may name.
+            operationId: getPurchasingSettings
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingSettings'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: Get the Purchasing settings
+            tags:
+                - Purchasing
+            x-vantigo-access: permission:purchasing:settings
+        put:
+            description: Saves the settings whole (P9). The series start only rises above the highest number used (series_start_too_low); the send channel is judged through Communications before the transaction (send_channel_unknown); a delivery address names a site of Inventory's.
+            operationId: putPurchasingSettings
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/PurchasingSettingsInput'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingSettings'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Bad Request — field errors, series_start_too_low, send_channel_unknown, site_not_found.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Conflict — version_conflict.
+            summary: Save the Purchasing settings
+            tags:
+                - Purchasing
+            x-vantigo-access: permission:purchasing:settings
+    /api/v1/purchasing/sites:
+        get:
+            description: Inventory's sites, as an order's receiving site picks one.
+            operationId: listPurchasingSites
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingSiteList'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Service Unavailable — dependency_unavailable.
+            summary: List the receiving sites
+            tags:
+                - Purchasing
+            x-vantigo-access: permission:purchasing:access
+    /api/v1/purchasing/summary:
+        get:
+            description: 'The dashboard''s figures (P23): drafts, open, late and unconfirmed orders, the caller''s unconfirmed ones and the failed mailings.'
+            operationId: getPurchasingSummary
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingSummary'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: Get the Purchasing figures
+            tags:
+                - Purchasing
+            x-vantigo-access: permission:purchasing:access
+    /api/v1/purchasing/supplier-items:
+        get:
+            description: Supplier items (P11), by supplier name then SKU, filtered by supplier, by variants — the product page's Suppliers card names its variants — and a search of the SKU, the name and the supplier's item number.
+            operationId: listPurchasingSupplierItems
+            parameters:
+                - in: query
+                  name: supplierId
+                  schema:
+                    format: int64
+                    type: integer
+                - description: Any of the variants; at most 200.
+                  explode: true
+                  in: query
+                  name: variantId
+                  schema:
+                    items:
+                        format: int32
+                        type: integer
+                    type: array
+                  style: form
+                - in: query
+                  name: q
+                  schema:
+                    maxLength: 100
+                    type: string
+                - in: query
+                  name: page
+                  schema:
+                    format: int32
+                    minimum: 1
+                    type: integer
+                - in: query
+                  name: pageSize
+                  schema:
+                    format: int32
+                    maximum: 200
+                    minimum: 1
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingSupplierItemPage'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Bad Request — paging out of range.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: List supplier items
+            tags:
+                - Purchasing
+            x-vantigo-access: permission:purchasing:access
+        post:
+            description: 'Creates a supplier item (P11): one per supplier and variant (supplier_item_exists). The variant''s first item is preferred; preferred true on a later one takes it over. The price is in the supplier''s currency.'
+            operationId: createPurchasingSupplierItem
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/PurchasingSupplierItemInput'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingSupplierItem'
+                    description: Created
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Bad Request — field errors, supplier_not_found, variant_not_found, packaging_not_found, price_invalid, quantity_invalid.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Conflict — supplier_item_exists.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Service Unavailable — dependency_unavailable.
+            summary: Create a supplier item
+            tags:
+                - Purchasing
+            x-vantigo-access: permission:purchasing:supplier-items-manage
+    /api/v1/purchasing/supplier-items/{itemId}:
+        delete:
+            description: Deletes a supplier item. When it was the variant's preferred one, the variant's oldest other item becomes preferred. Orders keep what they took from it.
+            operationId: deletePurchasingSupplierItem
+            parameters:
+                - in: path
+                  name: itemId
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "204":
+                    description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Not Found
+            summary: Delete a supplier item
+            tags:
+                - Purchasing
+            x-vantigo-access: permission:purchasing:supplier-items-manage
+        get:
+            description: One supplier item.
+            operationId: getPurchasingSupplierItem
+            parameters:
+                - in: path
+                  name: itemId
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingSupplierItem'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Not Found
+            summary: Get a supplier item
+            tags:
+                - Purchasing
+            x-vantigo-access: permission:purchasing:access
+        put:
+            description: Saves a supplier item's fields whole (P11). A price written is set today by the caller, in the supplier's currency now. Preferred true takes the variant's preference from its other item; false is refused on the variant's only item, which stays preferred.
+            operationId: updatePurchasingSupplierItem
+            parameters:
+                - in: path
+                  name: itemId
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/PurchasingSupplierItemUpdate'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingSupplierItem'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Bad Request — field errors, packaging_not_found, price_invalid, quantity_invalid.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Conflict — version_conflict.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Service Unavailable — dependency_unavailable.
+            summary: Update a supplier item
+            tags:
+                - Purchasing
+            x-vantigo-access: permission:purchasing:supplier-items-manage
+    /api/v1/purchasing/supplier-items/import:
+        post:
+            description: 'Reads a CSV of one supplier''s items (P14), at most 5000 rows: a column sku or barcode naming the variant — a SKU, or a variant''s or a packaging''s barcode, which also sets the packaging — and the optional columns supplier_item_number, supplier_item_name, price, packaging (a packaging''s name), lead_time_days, minimum_quantity and multiple. A row creates the supplier''s item for the variant or updates it, an empty cell keeping the item''s value. A dry run — the default — answers each row''s outcome; a commit writes every row, or none when any row fails.'
+            operationId: importPurchasingSupplierItems
+            parameters:
+                - in: query
+                  name: supplierId
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+                - in: query
+                  name: dryRun
+                  schema:
+                    default: true
+                    type: boolean
+            requestBody:
+                content:
+                    text/csv:
+                        schema:
+                            type: string
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingImportResult'
+                    description: OK — a dry run, a commit refused for its rows (ok false, nothing written), or a commit.
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: 'Bad Request — import_invalid: a file that does not read, a header with neither sku nor barcode, more than 5000 rows; supplier_not_found.'
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Service Unavailable — dependency_unavailable.
+            summary: Import a supplier's price list
+            tags:
+                - Purchasing
+            x-vantigo-access: permission:purchasing:supplier-items-manage
+            x-vantigo-assistant: never
+    /api/v1/purchasing/suppliers:
+        get:
+            description: Suppliers of Accounting's register (P1, P13) matching q — name, number or organisation number — by number, inactive ones too, each with its supplier items and open orders counted.
+            operationId: listPurchasingSuppliers
+            parameters:
+                - in: query
+                  name: q
+                  schema:
+                    maxLength: 100
+                    type: string
+                - in: query
+                  name: limit
+                  schema:
+                    format: int32
+                    maximum: 200
+                    minimum: 1
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingSupplierList'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: 'Service Unavailable — dependency_unavailable: Accounting is not composed.'
+            summary: List suppliers
+            tags:
+                - Purchasing
+            x-vantigo-access: permission:purchasing:access
+    /api/v1/purchasing/suppliers/{supplierId}:
+        get:
+            description: 'One supplier of the register, read-only here (P13): its entry, with its supplier items and open orders counted.'
+            operationId: getPurchasingSupplier
+            parameters:
+                - in: path
+                  name: supplierId
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingSupplier'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Not Found
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Service Unavailable — dependency_unavailable.
+            summary: Get a supplier
+            tags:
+                - Purchasing
+            x-vantigo-access: permission:purchasing:access
+    /api/v1/purchasing/variants:
+        get:
+            description: Goods and services of the catalog for a line (P12, P16), with the supplier's item when supplierId is given and the supplier sells the variant. With onlySupplierItems, only the variants the supplier sells.
+            operationId: searchPurchasingVariants
+            parameters:
+                - description: Matches the SKU, the name and a barcode.
+                  in: query
+                  name: q
+                  schema:
+                    maxLength: 100
+                    type: string
+                - in: query
+                  name: supplierId
+                  schema:
+                    format: int64
+                    type: integer
+                - in: query
+                  name: onlySupplierItems
+                  schema:
+                    type: boolean
+                - in: query
+                  name: limit
+                  schema:
+                    format: int32
+                    maximum: 50
+                    minimum: 1
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingVariantList'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Service Unavailable — dependency_unavailable.
+            summary: Search the catalog for an order line
+            tags:
+                - Purchasing
+            x-vantigo-access: permission:purchasing:access
+servers:
+    - url: /
