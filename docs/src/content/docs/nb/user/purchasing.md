@@ -368,15 +368,20 @@ Hver rad viser:
   foretrukne først, med leverandørens varenummer. Velger du en annen, endres antall og pris.
 - **Antall** — i leverandørens innkjøpsenhet, rundet opp én gang: til hele innkjøpsenheter,
   så til leverandørvarens minste antall, så til antall per bestilling (multippelen). Under står det samme i produktets
-  enhet. Du kan skrive et annet antall, mer enn 0 med høyst tre desimaler.
-- **Pris** — leverandørvarens pris per innkjøpsenhet, eller *Ingen pris*. En pris som ikke
-  er i leverandørens valuta, vises i oransje: ordrelinjen får ingen pris fra den.
+  enhet. Du kan skrive et annet antall, mer enn 0 med høyst tre desimaler, med punktum
+  eller komma (*2,5*).
+- **Pris** — leverandørvarens pris per innkjøpsenhet, eller *Ingen pris*. En linje får
+  prisen bare når den havner på et utkast i prisens valuta. En pris som ikke er i
+  leverandørens valuta, vises i oransje: et nytt utkast er i leverandørens valuta, så der
+  får linjen ingen pris.
 - **Bestill innen** — dagen det trengs, eller i dag, minus leverandørens leveringstid,
   merket **Forsinket** når den er passert.
 
 Et produkt uten leverandørvare står for seg under **Uten leverandør**: det kan ikke
 bestilles her. Legg til en leverandørvare på leverandørens side
-([Leverandørvarer](#leverandørvarer)), så får det en leverandør i listen.
+([Leverandørvarer](#leverandørvarer)), så får det en leverandør i listen. Et utgått produkt
+står der også, merket **Utgått**, uansett hvilke leverandørvarer det har: det bestilles
+ikke lenger.
 
 ### Lag ordrer fra forslag
 
@@ -388,15 +393,25 @@ Det lages ett utkast til innkjøpsordre per leverandør og lagersted — eller, 
 har et utkast til den leverandøren og det lagerstedet, legges linjene til det eldste, der
 en linje med samme produkt i samme innkjøpsenhet får antallet lagt til. Hver linje får
 leverandørens varenummer, innkjøpsenhet, pris og forventet dag, slik en ny linje i
-redigeringen gjør ([Linjer](#linjer)). Siden lenker så til hvert utkast, *Utkast til Norsk
-Stål AS*: åpne det, sjekk det og send det ([Send ordren](#send-ordren)). Ingenting sendes
-fra forslagene, og ingenting bestilles av seg selv. Utkastets historikk viser **Linjer fra
-forslag**.
+redigeringen gjør ([Linjer](#linjer)). En linje som legges til et utkast du allerede hadde,
+får prisen bare når utkastet er i prisens valuta; når det ikke er det, sier siden ved
+utkastet hvor mange linjer som ikke fikk pris, så du kan sette den der. Siden lenker så til
+hvert utkast, *Utkast til Norsk Stål AS*: åpne det, sjekk det og send det ([Send
+ordren](#send-ordren)). Ingenting sendes fra forslagene, og ingenting bestilles av seg
+selv. Utkastets historikk viser **Linjer fra forslag**.
 
-Det som står på et utkast, trekkes fra forslagene med en gang, så to klikk bestiller ikke
-noe to ganger: når en avkrysset rad ikke lenger er foreslått — den står på et utkast eller
-er bestilt siden listen ble lastet — lages ingenting, siden sier det på raden og over
-listen, og laster listen på nytt.
+Det som står på et utkast, trekkes fra forslagene med en gang. Hver avkrysset rad sendes
+med behovet siden viste, og en rad bestilles bare når nøyaktig det behovet fortsatt
+gjenstår når ordrene lages. Når det ikke gjør det — raden har kommet på et utkast, er
+bestilt eller behovet er endret siden listen ble lastet, enten ved ditt eget tidligere klikk
+eller en kollegas — lages ingenting i det hele tatt, siden sier det på raden og over
+listen, og laster listen på nytt; sjekk radene og velg på nytt. En rad der den valgte
+leverandøren ikke lenger tilbys etter at listen er lastet på nytt, mister avkrysningen, og
+antallet går tilbake til forslaget.
+
+Å velge **Lag ordrer** igjen med de samme radene etter et svar som aldri kom, bestiller
+ikke to ganger: det andre klikket får det første svaret, selv om et av utkastene er slettet
+siden.
 
 **Bestill…** på en rad i listen over lav beholdning i Lager og på et innkjøpsforslag i
 Produksjon åpner forslagene for det produktet og lagerstedet; **Vis alle** går tilbake til

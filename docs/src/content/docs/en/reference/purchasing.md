@@ -53,8 +53,10 @@ PDFs are kept in the object store, under the scope `purchasing`, keyed by their 
 The schema holds `settings` (one row), `counters` (one per number series),
 `supplier_items`, `orders`, `order_lines`, `order_changes` (the change log), `documents`
 (the stored PDFs), `mailings` (every send), `deletions` (the stored PDFs an erase
-wrote off, for the [deletions worker](#workers)), and `receipts` and `receipt_lines`
-(migration `00190_purchasing_receipts.sql`, [below](#the-receipt-tables)). Suppliers, variants, packagings, sites
+wrote off, for the [deletions worker](#workers)), `receipts` and `receipt_lines`
+(migration `00190_purchasing_receipts.sql`, [below](#the-receipt-tables)), and
+`proposal_requests` (Create orders' requests and their results, [Create
+orders](#create-orders)). Suppliers, variants, packagings, sites
 and users are referenced by id, with no foreign key across schemas.
 
 ## Permissions
@@ -634,10 +636,14 @@ at an active site whose variant the catalog knows, by site code, SKU and variant
 - `need`, the source's quantity, and `computedAt`, `neededOn` and `source`
   (`replenishment` or `low_stock`);
 - `onDrafts`, the quantity of the variant on Purchasing's drafts for the site, and
-  `sentSince`, what orders sent to the site after `computedAt` hold of it — a closed line
-  what it received, an open one the larger of ordered and received, a cancelled order
-  nothing; an order sent before is already in the source's own figure, through
-  `PurchaseSupply`;
+  `sentSince`, what orders sent to the site after `computedAt` hold of it in goods lines,
+  as `PurchaseSupply` counts them — a closed line what it received, an open one the larger
+  of ordered and received, a cancelled order nothing; an order sent before is already in
+  the source's own figure, through `PurchaseSupply`. `computedAt` is taken back by
+  `sentSinceMargin`, five seconds, before the read (A58), so a replica's clock a little
+  ahead of the provider's cannot hide an order sent just after a run read the supply: an
+  order sent in those seconds before is subtracted twice at worst, and less is proposed,
+  never more;
 - `remaining`, `need − onDrafts − sentSince`; a row with nothing remaining is left out;
 - `options`, every supplier item of the variant whose supplier is active in the register,
   the preferred first, then by id. Each rounds `remaining` **once**: to whole purchase
@@ -646,23 +652,31 @@ at an active site whose variant the catalog knows, by site code, SKU and variant
   `orderQuantity` in packagings and `quantity` in the unit. `price` is the item's in that
   packaging (`itemPriceFor`, A32), `currencyDiffers` when the item's currency is not the
   supplier's, and `orderBy` the day needed — or today in the business zone — less the
-  lead time.
+  lead time. A Discontinued goods variant has no option, whatever items it has (P16).
 
-A row with no option is shown under *No supplier* and cannot be ordered.
+A row with no option is shown under *No supplier* and cannot be ordered. The list is not
+paged: it answers every row of the demand at once, which is a known limit of this phase.
+The business calendar failing is 503 `dependency_unavailable`.
 
 ### Create orders
 
 `POST /proposals/orders` takes a `clientRequestId` and 1 to 500 rows of `variantId`,
-`siteId`, `supplierItemId` and `orderQuantity` (in the item's packaging). Before the
-transaction it reads the items, the sites, the demand, today and the caller; a row is
-refused in `lines` by its index with `supplier_item_not_found` (not the variant's item),
-`site_not_found`, `site_archived`, `quantity_invalid`, or `line_invalid` (a variant twice
-at a site). Inside one transaction it locks the variants (`LockVariants`), then the
-suppliers (`LockSuppliers`, FOR SHARE), then takes an advisory lock that serialises every
-Create orders, and then reads its own rows: each row is judged again on the drafts as they
-stand, and one no longer proposed — not in the demand, or nothing remaining — refuses the
-whole request with 409 `proposal_gone`, its rows in `lines`, so a second click orders
-nothing twice. An inactive supplier is 409 `supplier_inactive`.
+`siteId`, `supplierItemId`, `orderQuantity` (in the item's packaging) and `remaining`, the
+row's remaining as the screen showed it. Before the transaction it reads the items, the
+sites, the demand again — the whole demand, or one site's when every row names the same
+site, which is a known cost of this phase —, today and the caller; a row is refused in
+`lines` by its index with `supplier_item_not_found` (not the variant's item),
+`site_not_found`, `site_archived`, `quantity_invalid` (the quantity, or the `remaining`
+sent), or `line_invalid` (a variant twice at a site). Inside one transaction it locks the
+variants (`LockVariants`), then the suppliers (`LockSuppliers`, FOR SHARE), then takes an
+advisory lock that serialises every Create orders, and then reads its own rows: each row's
+remaining is computed again from the demand just read and the drafts and sent orders as
+they stand, and a row whose remaining is not exactly the `remaining` sent — not in the
+demand, nothing remaining, or another figure (A58) — refuses the whole request with 409
+`proposal_gone`, its rows in `lines`. So a second click, a colleague's click, or a screen
+loaded before the demand changed orders nothing twice and nothing more than was shown. A
+person's quantity is still theirs: `orderQuantity` may be more or less than proposed. An
+inactive supplier is 409 `supplier_inactive`.
 
 The rows are grouped by supplier and site. Each group's lines go to the oldest draft of
 that supplier and site, locked, or to a new draft in the supplier's currency and language,
@@ -670,16 +684,25 @@ dated today, with the caller as buyer and the delivery address computed as a dra
 A line of the variant already on the draft in the item's packaging takes the added
 quantity; any other row is a new line, planned as the editor plans one — the item's
 number, packaging, price in the order's currency only, and expected day — so a row's
-refusal is a line's (`variant_discontinued`, `too_many_lines` past 500 lines). The total
-is summed again. Each draft is given a change-log row: `created` for a new one, and
-`from_proposals` with the number of lines it touched.
+refusal is a line's (`variant_discontinued`, `too_many_lines` past 500 lines, the draft's
+lines counted). A new line takes the item's price only when the item's currency is the
+draft's (A32): a new draft is in the supplier's currency, an existing one keeps its own,
+and a row whose new line so got no price is named in its draft's `unpricedRows`. The
+total is summed again, and the draft's `updatedAt` moves, so an editor holding the draft
+as read before is refused `version_conflict` on save. Each draft is given a change-log
+row: `created` for a new one, and `from_proposals` with the number of lines it touched.
 
-It is idempotent by its `clientRequestId` (A11) with no table of its own (A52): the id and
-the request's hash are kept on the `from_proposals` action, never answered in the
-history. A replay with the same rows answers the first result — every draft it wrote, as
-it stands; the same id with other rows is 409 `client_request_reused`. A replay is
-checked before the transaction and again under its advisory lock. The answer, 200, is
-`orders` — per draft its id, supplier, site, `created` and `linesAdded`.
+It is idempotent by its `clientRequestId` (A11, A58). In the same transaction it writes a
+row of `purchasing.proposal_requests`: the id (its key), the request's hash, the result
+— per draft its order, supplier and site ids, `created`, `linesAdded` and
+`unpricedRows`, no names —, the caller's user id and the time. A replay with the same
+rows answers that stored result as it was answered, whatever happened to the drafts
+since — one deleted or sent is still named, and nothing is created again, whole or in
+part —, each supplier named as the register names it now; the same id with other rows is
+409 `client_request_reused`. A replay is checked before the transaction and again under
+its advisory lock. The table holds nothing personal about a supplier, so the supplier's
+erase and export do not read it. The answer, 200, is `orders` — per draft its id,
+supplier, site, `created`, `linesAdded` and `unpricedRows`.
 
 ## The holders
 

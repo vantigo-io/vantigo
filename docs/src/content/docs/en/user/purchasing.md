@@ -362,16 +362,19 @@ Each row shows:
 - **Quantity** — in the supplier's purchase packaging, rounded up once: to whole
   packagings, then to the supplier item's minimum, then to its multiple. Under it, the same
   in the product's unit. You may type another quantity, more than 0 with at most three
-  decimals.
-- **Price** — the supplier item's price per purchase packaging, or *No price*. A price
-  that is not in the supplier's currency is shown in orange: the order line gets no price
-  from it.
+  decimals, with a point or a comma (*2,5*).
+- **Price** — the supplier item's price per purchase packaging, or *No price*. A line
+  takes the price only when it lands on a draft in the price's currency. A price that is
+  not in the supplier's currency is shown in orange: a new draft is in the supplier's
+  currency, so there the line gets no price.
 - **Order by** — the day it is needed, or today, less the supplier's lead time, marked
   **Late** when it has passed.
 
 A product with no supplier item is listed apart under **No supplier**: it cannot be
 ordered here. Add a supplier item on its supplier's page ([Supplier
-items](#supplier-items)) and it gets a supplier on the list.
+items](#supplier-items)) and it gets a supplier on the list. A discontinued product is
+listed there too, marked **Discontinued**, whatever supplier items it has: it is not
+ordered any more.
 
 ### Create orders from proposals
 
@@ -382,15 +385,24 @@ One draft purchase order is made per supplier and site — or, when you already 
 for that supplier and site, the lines are added to the oldest one, where a line of the
 same product in the same packaging gets the quantity added. Each line takes the supplier's
 item number, packaging, price and expected day, as a new line in the editor does
-([Lines](#lines)). The page then links each draft, *Draft for Norsk Stål AS*: open it,
-check it and send it ([Send the order](#send-the-order)). Nothing is sent from the
-proposals, and nothing is ordered by itself. The draft's history shows **Lines from
-proposals**.
+([Lines](#lines)). A line added to a draft you already had takes its price only when that
+draft is in the price's currency; when it is not, the page says beside the draft how many
+lines got no price, so you can set it there. The page then links each draft, *Draft for
+Norsk Stål AS*: open it, check it and send it ([Send the order](#send-the-order)).
+Nothing is sent from the proposals, and nothing is ordered by itself. The draft's history
+shows **Lines from proposals**.
 
-What is on a draft is taken off the proposals at once, so clicking twice orders nothing
-twice: when a ticked row is no longer proposed — it is on a draft, or was ordered, since
-the list was loaded — nothing is made, the page says so on the row and above the list, and
-loads the list again.
+What is on a draft is taken off the proposals at once. Each ticked row is sent with the
+need the page showed, and a row is ordered only when exactly that need still remains when
+the orders are made. When it does not — the row went on a draft, was ordered, or its need
+changed, since the list was loaded, whether by your own earlier click or by a colleague's
+— nothing at all is made, the page says so on the row and above the list, and loads the
+list again; check the rows and click again. A row whose supplier is no longer offered
+after the list is loaded again is unticked, and its quantity goes back to the proposal.
+
+Clicking **Create orders** again with the same rows after an answer that never came does
+not order twice: the second click gets the first answer, even if one of its drafts was
+deleted since.
 
 **Order…** on a row of Inventory's low-stock list and on a buy suggestion in Manufacturing
 opens the proposals for that product and site; **Show all** goes back to every row. It is
