@@ -27,11 +27,13 @@ og bestiller produktene i [Produkter](/nb/user/products/) til et lagersted i
 
 ## Appen og sidemenyen
 
-Sidemenyen har **Innkjøpsordrer** og **Leverandører** for alle med **Bruke Innkjøp**, og
-**Innkjøpsinnstillinger** for dem som forvalter innstillingene for Innkjøp. Hva du kan gjøre,
+Sidemenyen har **Innkjøpsordrer** og **Leverandører** for alle med **Bruke Innkjøp**,
+**Motta** for alle med **Ta imot varer**, og **Innkjøpsinnstillinger** for dem som
+forvalter innstillingene for Innkjøp. Hva du kan gjøre,
 avhenger av rettighetene dine: å skrive ordrer, å sende dem og å vedlikeholde
 leverandørvarene er egne rettigheter, så en kollega kan se knapper du ikke ser
-([Rettigheter](#rettigheter)). Alle med **Bruke Innkjøp** ser prisene.
+([Rettigheter](#rettigheter)). Alle med **Bruke Innkjøp** ser prisene; den som bare har
+**Ta imot varer**, ser **Motta** og ingen priser.
 
 ## Ordrelisten
 
@@ -183,19 +185,27 @@ Tøm feltene for å fjerne den.
 
 ## Ta imot varene
 
-Når varene kommer, velger du **Motta** på en sendt eller delvis mottatt ordre. Det krever
-bare **Ta imot varer**, så den som står i varemottaket kan ta imot uten å forvalte
-ordrer. Skjermbildet, **Motta ordre 4501**, viser ingen priser. Det har en rad for hver
+Når varene kommer, velger du **Motta** på en sendt eller delvis mottatt ordre — eller, i
+varemottaket, **Motta** i sidemenyen: den lister hver sendt ordre med varer som ennå skal
+komme, den som er forventet først, øverst, med leverandøren, lagerstedet, forventet dato,
+**Forsinket** når den er over tiden, og hvor mange av varelinjene som er igjen — *2 av 3*
+—; velg ordrenummeret eller **Motta** på raden. Å ta imot krever bare **Ta imot varer**,
+så den som står i varemottaket kan ta imot uten å forvalte ordrer eller se hva varene
+koster. Skjermbildet, **Motta ordre 4501**, viser ingen priser. Det har en rad for hver
 åpen varelinje — *Åpent 60 av 180 m, 120 mottatt* — med:
 
-- **Antall**, fylt ut med det som fortsatt er åpent på linjen, i produktets enhet;
-  **Motta … i** bytter til linjens innkjøpsenhet når linjen har en;
+- **Antall**, fylt ut med det som fortsatt er åpent på linjen, i produktets enhet, med
+  desimalkomma eller -punktum slik du skriver det; **Motta … i** viser det i linjens
+  innkjøpsenhet når linjen har en — det du skrev, blir stående slik du skrev det, så du
+  mister ingenting ved å bytte tilbake, og et antall skrevet i innkjøpsenheten tas imot
+  som så mange pakninger;
 - **Lokasjon** på lagerstedet som varene legges på: varens
   [hovedlokasjon](/nb/user/inventory/#angi-hovedlokasjon-og-bestillingspunkt-for-en-vare)
   på lagerstedet når varen ligger på lager der, ellers lokasjonen der det meste av den
   ligger, ellers selve lagerstedet;
-- for en vare som holdes i partier, **Partinummer** — står det tomt, nummererer Lager
-  partiet —, **Leverandørens parti**, **Produksjonsdato**, **Best før** og
+- for en vare som holdes i partier, **Partinummer** — står det tomt mens leverandørens
+  parti eller en dato er fylt ut, nummererer Lager partiet; er ingenting fylt ut, ber
+  varemottaket om partiet —, **Leverandørens parti**, **Produksjonsdato**, **Best før** og
   **Utløpsdato**; en dato som står tom, følger av produktets dager, som på
   [varemottaket i Lager](/nb/user/inventory/#partier-på-varemottak-flytting-og-justering);
 - for en vare som holdes i serienumre, **Serienumre**, ett per linje, ett for hver
@@ -209,15 +219,21 @@ leverandørens følgeseddel — og en merknad gjelder hele varemottaket.
 Velg **Motta**. Varemottaket får neste nummer i en egen serie — *Varemottak 12 er
 registrert.* — og varene legges på lokasjonene sine i én lagerbevegelse av typen
 **Varemottak** i Lager, som lenker tilbake til ordren. Et varemottak bokfører ingenting i
-regnskapet. En vare som skal [kontrolleres ved mottak](/nb/user/inventory/#kontroller-ved-mottak),
+regnskapet. Har du **Ta imot varer** uten **Bruke Innkjøp**, kommer du tilbake til
+**Motta** etter varemottaket; ellers til ordren. En vare som skal [kontrolleres ved mottak](/nb/user/inventory/#kontroller-ved-mottak),
 får partiene sine satt i karantene, som på varemottaket i Lager, og et produkt som er
 utgått siden det ble bestilt, tas likevel imot. Det som er mottatt, teller ikke lenger
 som *i bestilling* i Lager, med en gang.
 
 Å velge **Motta** to ganger, eller å prøve igjen etter et brudd i forbindelsen, tar ikke
 imot varene to ganger: skjermbildet sender det samme varemottaket igjen, og Innkjøp
-svarer med det første. Tar to personer imot samme ordre i samme øyeblikk, venter den ene
-på den andre, og den andre regner med det den første tok imot.
+svarer med det første — også når det første varemottaket siden har fullført ordren eller
+er angret. Tar to personer imot samme ordre i samme øyeblikk, venter den ene på den
+andre, og den andre regner med det den første tok imot.
+
+Når leverandøren er en person, nevner lagerbevegelsen verken personen eller
+følgeseddelen: Lager beholder bevegelsene sine når en leverandørs personopplysninger
+slettes.
 
 ### Skann varene
 
@@ -227,8 +243,13 @@ setter skjermbildet i telling: hvert utfylt antall tømmes, og hver skanning leg
 deretter til på sin linje — én pakning for en paknings strekkode, én av enheten for
 varens egen. En GS1-128-kode, som på en palleetikett, fyller også ut partinummeret og
 produksjons-, best før- og utløpsdatoen; et annet parti av samme linje åpner en egen
-oppdelt rad, og et serienummer legges til radens serienumre. En kode som ikke nevner noen
-åpen linje på ordren, sier **Ikke på denne ordren**.
+oppdelt rad, og et serienummer legges til radens serienumre. Felt på etiketten som
+skjermbildet ikke bruker — en nettovekt, pallens SSCC, et antall — hoppes over. Når
+partiet ikke kan leses sikkert — leseren utelot skilletegnet etter det, så det som følger,
+kan være en del av det — telles varen på en rad uten parti, og skjermbildet ber deg skrive
+partiet. En kode uten serienummer på en vare som holdes i serienumre, sier **Skann
+serienummeret** og teller ingenting. En kode som ikke nevner noen åpen linje på ordren,
+sier **Ikke på denne ordren**.
 
 ### Mer eller mindre enn bestilt
 
@@ -238,9 +259,12 @@ enn bestilt.
 
 Mindre går fint. Ordren er **Delvis mottatt**, resten står åpent på linjene til et senere
 varemottak, og ingen restordre lages; når resten ikke kommer, avslutter **Avslutt
-linje** eller **Avslutt** den. Når hver varelinje er mottatt i sin helhet eller avsluttet
-og hver tekst- og tjenestelinje er markert som levert, er ordren **Mottatt**. En
-avsluttet ordre tas ikke imot: **Gjenåpne** den først.
+linje** eller **Avslutt** den. Når ingenting er åpent lenger, avsluttes ordren, uansett
+hvilket steg som fullførte den: den er **Mottatt** når hver varelinje kom i sin helhet og
+hver tekst- og tjenestelinje er markert som levert, og **Avsluttet** når en linje ble
+avsluttet med noe som fortsatt manglet — også når det siste varemottaket eller
+levert-merket kommer etter at linjen ble avsluttet. En avsluttet ordre tas ikke imot:
+**Gjenåpne** den først.
 
 ### Ordrens varemottak
 
@@ -279,12 +303,13 @@ har kommet. En varelinje tas imot i stedet, og en avsluttet linje markeres ikke.
 
 - **Avslutt linje** avslutter én linje: det som er igjen på den, kommer ikke. Når ingen
   linje er åpen lenger, avsluttes ordren — eller blir **Mottatt**, når alt på den ble
-  mottatt.
+  mottatt eller levert.
 - **Avslutt** avslutter en sendt ordre med det som er igjen på den: hver åpen linje
   avsluttes, og ordren blir **Avsluttet**. Det som var igjen, teller ikke lenger som *i
   bestilling* i Lager.
 - **Gjenåpne** åpner en avsluttet ordre igjen, med linjene avslutningen avsluttet; en linje
-  du avsluttet for seg før, blir avsluttet.
+  du avsluttet for seg før, blir avsluttet. Ordren blir da delvis mottatt når noe på den
+  er mottatt eller markert som levert, ellers sendt.
 
 Å avslutte krever **Forvalte innkjøpsordrer**.
 
@@ -438,8 +463,8 @@ Regnskap; den kan gjøres inaktiv, og de åpne ordrene blir stående. En leveran
 person, anonymiseres ikke mens et utkast, en sendt eller en delvis mottatt ordre nevner
 personen. Når en personleverandør anonymiseres, fjernes navnet, adressen, e-posten og
 kontakten fra ordrene, adressene, meldingene og avvisningene fra ordrenes e-poster, og
-kontakten og merknadene fra ordrenes historikk — som beholder at de ble endret —, og
-ordrenes lagrede PDF-er slettes.
+kontakten og merknadene fra ordrenes historikk — som beholder at de ble endret —,
+følgesedlene og merknadene fra ordrenes varemottak, og ordrenes lagrede PDF-er slettes.
 
 ## Rettigheter
 
@@ -448,7 +473,7 @@ ordrenes lagrede PDF-er slettes.
 | **Bruke Innkjøp** (`purchasing:access`) | Åpne appen og lese hver ordre, leverandør og leverandørvare, prisene medregnet, og laste ned PDF-ene. |
 | **Forvalte innkjøpsordrer** (`purchasing:orders-manage`) | Skrive og slette utkast, endre sendte ordrer, registrere bekreftelsen, avslutte en linje eller en ordre, gjenåpne og kopiere. |
 | **Sende innkjøpsordrer** (`purchasing:orders-send`) | Sende, markere som sendt, sende på nytt og kansellere. |
-| **Ta imot varer** (`purchasing:receive`) | Ta imot varer på innkjøpsordrer, angre et varemottak, og markere en tekst- eller tjenestelinje som levert. |
+| **Ta imot varer** (`purchasing:receive`) | Se **Motta** — ordrene som skal tas imot —, ta imot varer på innkjøpsordrer, angre et varemottak, og markere en tekst- eller tjenestelinje som levert. Alene, uten **Bruke Innkjøp**, viser den ingen priser. |
 | **Forvalte leverandørvarer** (`purchasing:supplier-items-manage`) | Legge til, endre, slette og importere leverandørvarer. |
 | **Forvalte innstillinger for Innkjøp** (`purchasing:settings`) | Innstillingene. |
 

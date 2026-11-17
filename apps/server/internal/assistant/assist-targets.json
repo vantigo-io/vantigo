@@ -1116,12 +1116,12 @@
   },
   {
     "key": "purchasing.receive.scan",
-    "route": "/purchasing/orders/{orderId}/receive",
+    "route": "/purchasing/receive/{orderId}",
     "description": "The scan field of the receive screen: a SKU, a barcode or a GS1 code selects the line and counts one more; the first scan starts counting from 0."
   },
   {
     "key": "purchasing.receive.submit",
-    "route": "/purchasing/orders/{orderId}/receive",
+    "route": "/purchasing/receive/{orderId}",
     "description": "Posts the receipt: the rows above 0 go into stock on their locations as one Inventory movement."
   },
   {
