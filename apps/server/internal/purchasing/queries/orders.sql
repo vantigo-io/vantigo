@@ -145,7 +145,8 @@ WHERE (cardinality(sqlc.arg(statuses)::text[]) = 0 OR o.status = ANY(sqlc.arg(st
   AND (NOT sqlc.arg(unconfirmed_only)::boolean OR (o.status IN ('sent', 'partially_received')
         AND o.supplier_reference IS NULL AND o.confirmed_on IS NULL AND o.sent_at < sqlc.arg(unconfirmed_before)::timestamptz))
   AND (sqlc.arg(q)::text = '' OR o.number::text = sqlc.arg(q)::text
-        OR o.supplier_name ILIKE '%' || sqlc.arg(q)::text || '%' OR o.supplier_reference ILIKE '%' || sqlc.arg(q)::text || '%')
+        OR o.supplier_name ILIKE '%' || replace(replace(replace(sqlc.arg(q)::text, '\', '\\'), '%', '\%'), '_', '\_') || '%'
+        OR o.supplier_reference ILIKE '%' || replace(replace(replace(sqlc.arg(q)::text, '\', '\\'), '%', '\%'), '_', '\_') || '%')
 ORDER BY o.created_at DESC, o.id DESC
 LIMIT sqlc.arg(page_size) OFFSET sqlc.arg(page_offset);
 

@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -343,7 +344,7 @@ func (r *importRow) read(rec fileimport.Record, cell func(fileimport.Record, str
 		return fail(gen.LineInvalid, "The supplier's name for the item is at most 255 characters")
 	}
 	if p := cell(rec, "price"); p != "" {
-		price, ok := parseDecimal(strings.Replace(p, ",", ".", 1), pricePlaces, maxPrice)
+		price, ok := parseDecimal(importDecimal(p), pricePlaces, maxPrice)
 		if !ok {
 			return fail(gen.PriceInvalid, fmt.Sprintf("The price %q is not a number such as 12.50 with at most four decimals", p))
 		}
@@ -380,4 +381,29 @@ func (r *importRow) read(rec fileimport.Record, cell func(fileimport.Record, str
 		}
 	}
 	return ""
+}
+
+// Norwegian number forms an import's price may take: digits grouped by
+// three with a space (a non-breaking or a narrow one too), or with a point,
+// and a decimal comma.
+var (
+	groupedBySpace = regexp.MustCompile("^[0-9]{1,3}([ \u00a0\u202f][0-9]{3})+([.,][0-9]+)?$")
+	groupedByPoint = regexp.MustCompile(`^[0-9]{1,3}(\.[0-9]{3})+,[0-9]+$`)
+)
+
+// importDecimal is a price cell as parseDecimal reads it: "1 234,50" and
+// "1.234,50" are 1234.50, a lone decimal comma a point. A form that could be
+// read two ways — "1.234" — is left as it is, a decimal point.
+func importDecimal(cell string) string {
+	t := strings.TrimSpace(cell)
+	switch {
+	case groupedBySpace.MatchString(t):
+		t = strings.NewReplacer(" ", "", "\u00a0", "", "\u202f", "").Replace(t)
+	case groupedByPoint.MatchString(t):
+		t = strings.ReplaceAll(t, ".", "")
+	}
+	if strings.Count(t, ",") == 1 && !strings.Contains(t, ".") {
+		t = strings.Replace(t, ",", ".", 1)
+	}
+	return t
 }

@@ -472,7 +472,7 @@ type PurchasingChange struct {
 
 // PurchasingChangeAction One action of a change.
 type PurchasingChangeAction struct {
-	// Action What was done: created, updated, line_added, line_changed, line_removed, sent, marked_sent, sent_again, confirmed, line_closed, closed, reopened, cancelled.
+	// Action What was done: created, updated, line_added, line_changed, line_removed, sent, marked_sent, sent_again, confirmed, confirmation_cleared, line_closed, closed, received (the last open line closed with everything received), reopened, cancelled.
 	Action string  `json:"action"`
 	Field  *string `json:"field,omitempty"`
 	From   *string `json:"from,omitempty"`

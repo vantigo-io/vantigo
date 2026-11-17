@@ -194,8 +194,13 @@ func (s *server) ClosePurchasingOrderLine(ctx context.Context, req gen.ClosePurc
 			return txq.TouchOrder(ctx, store.TouchOrderParams{ID: o.ID, Now: now})
 		}
 		if !leftOver {
-			_, err := txq.SetOrderState(ctx, store.SetOrderStateParams{ID: o.ID, Status: statusReceived, Now: now})
-			return err
+			// Received, not closed: nothing was left, so Close's event —
+			// a remainder that stopped counting as on order — is not
+			// published; the change log records the end.
+			if _, err := txq.SetOrderState(ctx, store.SetOrderStateParams{ID: o.ID, Status: statusReceived, Now: now}); err != nil {
+				return fmt.Errorf("purchasing: mark order %d received: %w", o.ID, err)
+			}
+			return logChange(ctx, txq, o.ID, by, now, change{Action: "received"})
 		}
 		if _, err := txq.SetOrderState(ctx, store.SetOrderStateParams{ID: o.ID, Status: statusClosed, ClosedAt: &now, Now: now}); err != nil {
 			return fmt.Errorf("purchasing: close order %d: %w", o.ID, err)

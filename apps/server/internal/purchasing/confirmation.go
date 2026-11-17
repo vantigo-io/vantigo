@@ -78,6 +78,9 @@ func (s *server) ConfirmPurchasingOrder(ctx context.Context, req gen.ConfirmPurc
 			return fmt.Errorf("purchasing: record order %d's confirmation: %w", o.ID, err)
 		}
 		actions := []change{{Action: "confirmed"}}
+		if reference == nil && confirmedOn == nil {
+			actions = []change{{Action: "confirmation_cleared"}}
+		}
 		if from, to := deref(o.SupplierReference), deref(reference); from != to {
 			actions = append(actions, fieldChange("supplierReference", from, to))
 		}
