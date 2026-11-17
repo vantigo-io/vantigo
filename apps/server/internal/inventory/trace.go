@@ -20,7 +20,9 @@ import (
 // parent of every lot on a produce line (only a to). No genealogy table is
 // kept: the movement lines with a lot are the record. An unbuild (kind
 // unbuild, M123) is a reverse edge: it is shown on both lots as an end and
-// never expanded, by the walk nor by the block's cascade (M92).
+// never expanded, by the walk nor by the block's cascade (M92). A receipt's
+// reversal (kind receipt_reversal, purchasing design A5) ends a usage path:
+// the lot left the books the way it came in.
 //
 // The walk reads level by level — one read of the lots' lines
 // (ix_movement_lines_lot) and one of the productions they cross
@@ -442,7 +444,7 @@ func (b *traceBuilder) movement(id int64, key string, depth int, m *lotMovement)
 			}
 			return nil
 		case movementKindIssue, movementKindUnbuild, string(gen.Adjustment), string(gen.Count),
-			string(gen.TransferOut):
+			string(gen.TransferOut), movementKindReceiptReversal:
 			return b.end(id, key, depth, m, m.out)
 		}
 		return nil

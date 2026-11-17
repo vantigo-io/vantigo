@@ -569,15 +569,16 @@ func (e InventoryTraceDirection) Valid() bool {
 
 // Defines values for InventoryTraceNodeKind.
 const (
-	TraceAdjustment  InventoryTraceNodeKind = "adjustment"
-	TraceComponent   InventoryTraceNodeKind = "component"
-	TraceCount       InventoryTraceNodeKind = "count"
-	TraceIssue       InventoryTraceNodeKind = "issue"
-	TraceLot         InventoryTraceNodeKind = "lot"
-	TraceProduction  InventoryTraceNodeKind = "production"
-	TraceReceipt     InventoryTraceNodeKind = "receipt"
-	TraceTransferOut InventoryTraceNodeKind = "transfer_out"
-	TraceUnbuild     InventoryTraceNodeKind = "unbuild"
+	TraceAdjustment      InventoryTraceNodeKind = "adjustment"
+	TraceComponent       InventoryTraceNodeKind = "component"
+	TraceCount           InventoryTraceNodeKind = "count"
+	TraceIssue           InventoryTraceNodeKind = "issue"
+	TraceLot             InventoryTraceNodeKind = "lot"
+	TraceProduction      InventoryTraceNodeKind = "production"
+	TraceReceipt         InventoryTraceNodeKind = "receipt"
+	TraceReceiptReversal InventoryTraceNodeKind = "receipt_reversal"
+	TraceTransferOut     InventoryTraceNodeKind = "transfer_out"
+	TraceUnbuild         InventoryTraceNodeKind = "unbuild"
 )
 
 // Valid indicates whether the value is a known member of the InventoryTraceNodeKind enum.
@@ -596,6 +597,8 @@ func (e InventoryTraceNodeKind) Valid() bool {
 	case TraceProduction:
 		return true
 	case TraceReceipt:
+		return true
+	case TraceReceiptReversal:
 		return true
 	case TraceTransferOut:
 		return true
@@ -2148,7 +2151,7 @@ type InventoryTraceLot struct {
 	SupplierLot *string            `json:"supplierLot,omitempty"`
 }
 
-// InventoryTraceMovement The movement that ends a path — a receipt, an adjustment or a count on the origin side; an issue, an adjustment or count down, a transfer out or a production that made no lot on the usage side; an unbuild on either.
+// InventoryTraceMovement The movement that ends a path — a receipt, an adjustment or a count on the origin side; an issue, an adjustment or count down, a transfer out, a receipt's reversal or a production that made no lot on the usage side; an unbuild on either.
 type InventoryTraceMovement struct {
 	Id int64 `json:"id"`
 
@@ -2185,7 +2188,7 @@ type InventoryTraceNode struct {
 	// Lot A lot on the trace, with what was received or produced under it and what it holds now.
 	Lot *InventoryTraceLot `json:"lot,omitempty"`
 
-	// Movement The movement that ends a path — a receipt, an adjustment or a count on the origin side; an issue, an adjustment or count down, a transfer out or a production that made no lot on the usage side; an unbuild on either.
+	// Movement The movement that ends a path — a receipt, an adjustment or a count on the origin side; an issue, an adjustment or count down, a transfer out, a receipt's reversal or a production that made no lot on the usage side; an unbuild on either.
 	Movement  *InventoryTraceMovement `json:"movement,omitempty"`
 	ParentKey *string                 `json:"parentKey,omitempty"`
 

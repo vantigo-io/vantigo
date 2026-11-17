@@ -307,7 +307,7 @@ func productionText(src *movementSource, movementID int64) string {
 // endText is an end's document and party as the exports print them: the
 // delivery and its customer — by name only under customers:view, else by
 // id — the receipt and its supplier, or the transfer out and the site it
-// was sent to.
+// was sent to, or the reversal of a receipt and its supplier.
 func (r traceRead) endText(m *traceMovement) (document, party string) {
 	switch m.kind {
 	case movementKindIssue:
@@ -324,6 +324,12 @@ func (r traceRead) endText(m *traceMovement) (document, party string) {
 		return fmt.Sprintf("Issue, movement %d", m.id), ""
 	case string(gen.Receipt):
 		document = fmt.Sprintf("Receipt, movement %d", m.id)
+		if m.supplierRef != nil {
+			document += ", ref " + *m.supplierRef
+		}
+		return document, deref(m.supplier)
+	case movementKindReceiptReversal:
+		document = fmt.Sprintf("Receipt reversal, movement %d", m.id)
 		if m.supplierRef != nil {
 			document += ", ref " + *m.supplierRef
 		}
@@ -422,6 +428,7 @@ var traceKindText = map[string]string{
 	traceLot: "Parti / Lot", traceComponent: "Komponent / Component", string(gen.Receipt): "Mottak / Receipt",
 	movementKindIssue: "Utlevering / Delivery", string(gen.Adjustment): "Justering / Adjustment", string(gen.Count): "Telling / Count",
 	string(gen.TransferOut): "Overføring / Transfer", movementKindProduction: "Produksjon / Production", movementKindUnbuild: "Demontering / Unbuild",
+	movementKindReceiptReversal: "Reversert varemottak / Receipt reversal",
 }
 
 // renderTracePDF is the trace as a PDF in the house style — the labels'

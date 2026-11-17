@@ -194,7 +194,7 @@ const TraceRow = ({
             </Text>
           )}
         </Group>
-        {node.kind === "receipt" && movement?.supplierName && (
+        {(node.kind === "receipt" || node.kind === "receipt_reversal") && movement?.supplierName && (
           <Text size="xs" c="dimmed">
             {t("traceSupplier", { name: movement.supplierName })}
             {movement.supplierReference ? ` · ${movement.supplierReference}` : ""}

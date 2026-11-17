@@ -200,25 +200,12 @@ func (s *server) directoryCustomers(ctx context.Context, ids []int32) ([]contrac
 	return s.deps.Directory.Customers(ctx, ids)
 }
 
-// openPurchases is Purchasing's open purchases (purchasing design P4, A3),
-// before any transaction: of the variants given at siteID (every site when
-// nil), or every (variant, site) with variantIDs nil. Nothing is on order
-// when Purchasing is off.
-func (s *server) openPurchases(ctx context.Context, siteID *int64, variantIDs []int32) ([]contracts.OpenPurchase, error) {
-	if s.deps.PurchaseSupply == nil {
-		return nil, nil
-	}
-	if variantIDs == nil {
-		if err := noteContractCall(ctx, "PurchaseSupply.OpenAll"); err != nil {
-			return nil, err
-		}
-		out, err := s.deps.PurchaseSupply.OpenAll(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("inventory: read the open purchases: %w", err)
-		}
-		return out, nil
-	}
-	if len(variantIDs) == 0 {
+// openPurchasesOf is Purchasing's open purchases (purchasing design P4, A3)
+// of the variants given, at siteID (every site when nil), before any
+// transaction; none for no variant. Nothing is on order when Purchasing is
+// off.
+func (s *server) openPurchasesOf(ctx context.Context, siteID *int64, variantIDs []int32) ([]openPurchase, error) {
+	if s.deps.PurchaseSupply == nil || len(variantIDs) == 0 {
 		return nil, nil
 	}
 	if err := noteContractCall(ctx, "PurchaseSupply.OpenByVariants"); err != nil {
@@ -228,22 +215,61 @@ func (s *server) openPurchases(ctx context.Context, siteID *int64, variantIDs []
 	if err != nil {
 		return nil, fmt.Errorf("inventory: read the open purchases: %w", err)
 	}
-	return out, nil
+	return s.readOpenPurchases(ctx, out), nil
+}
+
+// openPurchasesAll is every (variant, site) Purchasing has open, before any
+// transaction: what a statement over every placement joins in. Nothing is on
+// order when Purchasing is off.
+func (s *server) openPurchasesAll(ctx context.Context) ([]openPurchase, error) {
+	if s.deps.PurchaseSupply == nil {
+		return nil, nil
+	}
+	if err := noteContractCall(ctx, "PurchaseSupply.OpenAll"); err != nil {
+		return nil, err
+	}
+	out, err := s.deps.PurchaseSupply.OpenAll(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("inventory: read the open purchases: %w", err)
+	}
+	return s.readOpenPurchases(ctx, out), nil
+}
+
+// openPurchase is an open purchase with its quantity read.
+type openPurchase struct {
+	variantID int32
+	siteID    int64
+	quantity  *big.Rat
+}
+
+// readOpenPurchases reads each open purchase's quantity as the ledger reads a
+// quantity — a plain decimal, more than 0, at most three decimals — and
+// leaves out, with a warning, a row the provider answered with another: a
+// fraction such as 1/3 must not reach a statement's numeric cast.
+func (s *server) readOpenPurchases(ctx context.Context, rows []contracts.OpenPurchase) []openPurchase {
+	out := make([]openPurchase, 0, len(rows))
+	for _, r := range rows {
+		q, err := ledgerQuantity(r.Quantity)
+		if err != nil {
+			s.logger().WarnContext(ctx, "inventory: an open purchase's quantity is not a decimal; it is left out",
+				"variant", r.VariantID, "site", r.SiteID, "quantity", r.Quantity)
+			continue
+		}
+		out = append(out, openPurchase{variantID: r.VariantID, siteID: r.SiteID, quantity: q})
+	}
+	return out
 }
 
 // openPurchaseColumns is every open purchase as the three arrays the
 // low-stock statements read side by side.
 func (s *server) openPurchaseColumns(ctx context.Context) ([]int32, []int64, []string, error) {
-	rows, err := s.openPurchases(ctx, nil, nil)
+	rows, err := s.openPurchasesAll(ctx)
 	if err != nil {
 		return nil, nil, nil, err
 	}
 	variants, sites, quantities := make([]int32, 0, len(rows)), make([]int64, 0, len(rows)), make([]string, 0, len(rows))
 	for _, r := range rows {
-		if _, ok := new(big.Rat).SetString(r.Quantity); !ok {
-			return nil, nil, nil, fmt.Errorf("inventory: an open purchase of variant %d has the quantity %q", r.VariantID, r.Quantity)
-		}
-		variants, sites, quantities = append(variants, r.VariantID), append(sites, r.SiteID), append(quantities, r.Quantity)
+		variants, sites, quantities = append(variants, r.variantID), append(sites, r.siteID), append(quantities, decimalText(r.quantity))
 	}
 	return variants, sites, quantities, nil
 }

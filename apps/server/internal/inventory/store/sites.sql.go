@@ -243,7 +243,10 @@ SELECT s.id,
        r.posted_at AS last_receipt_at
 FROM inventory.sites s
 LEFT JOIN inventory.movements r ON r.id = (
-    SELECT m.id FROM inventory.movements m WHERE m.site_id = s.id AND m.kind = 'receipt' ORDER BY m.posted_at DESC, m.id DESC LIMIT 1)
+    SELECT m.id FROM inventory.movements m WHERE m.site_id = s.id AND m.kind = 'receipt'
+        AND NOT EXISTS (SELECT 1 FROM inventory.movements x WHERE x.kind = 'receipt_reversal'
+            AND x.source_module = m.source_module AND x.source_kind = m.source_kind AND x.source_id = m.source_id)
+    ORDER BY m.posted_at DESC, m.id DESC LIMIT 1)
 WHERE s.id = ANY($1::bigint[])
 `
 
@@ -256,7 +259,7 @@ type SiteFiguresRow struct {
 
 // SiteFigures is, per site, its active locations below the root, its stock
 // lines — a variant on a location, its lots counted once — and its latest
-// receipt (the movement's own time), in one statement
+// receipt not taken back (the movement's own time), in one statement
 // for the whole list.
 func (q *Queries) SiteFigures(ctx context.Context, ids []int64) ([]SiteFiguresRow, error) {
 	rows, err := q.db.Query(ctx, siteFigures, ids)

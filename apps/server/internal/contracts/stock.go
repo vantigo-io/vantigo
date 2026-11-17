@@ -398,38 +398,56 @@ type StockLedger interface {
 	// Receive posts one movement of kind "receipt" at the site for a
 	// receiving document (purchasing design P3, A6, A13): each line puts its
 	// quantity, in the variant's own unit, on its to-location, as the receipt
-	// endpoint's lines do and with its rules — a goods variant only
-	// (StockVariantNotStocked), the tracking rules (a tracked variant's line
-	// names an existing lot, a lot by number found or made, or serials; an
-	// untracked one none), an active location of the site
-	// (StockLocationUnknown), a lot that is not blocked (StockLotBlocked); a
-	// variant inspected on receipt gets its lots quarantined, as there. A
-	// Discontinued variant is received: the last open order of a product
-	// discontinued is the normal sequence. The site need only exist and be
-	// active (StockSiteUnknown, StockSiteArchived). The movement's source is
-	// r.Document (src when zero) with src's id as its source line id, and
-	// posting it is idempotent by that source: a second Receive for one
-	// document with the same body answers the first movement; one with
-	// another body is refused (StockDocumentReused). After a refusal the
+	// endpoint's lines do and with its rules, read by the endpoint's own code
+	// — a goods variant only (StockVariantNotStocked), the tracking rules (a
+	// tracked variant's line names an existing lot, a lot by number found or
+	// made, or serials; an untracked one none), a lot's number and dates
+	// (StockLotNumberInvalid, StockLotDatesInvalid), the serials' number and
+	// shape (StockSerialQuantity), a line Receive cannot read
+	// (StockLineInvalid), an active location of the site
+	// (StockLocationUnknown), a lot that is not blocked (StockLotBlocked), at
+	// most 500 lines after the serials are expanded; a variant inspected on
+	// receipt gets its lots quarantined, as there. A Discontinued variant is
+	// received: the last open order of a product discontinued is the normal
+	// sequence. The site need only exist and be active (StockSiteUnknown,
+	// StockSiteArchived). The movement's source is r.Document — one Document
+	// per receipt, required — with src's id as its source line id, and posting
+	// it is idempotent by that source: a second Receive for one document with
+	// the same site, lines and texts answers the first movement whatever its
+	// Today or poster; one with another body is refused (StockDocumentReused).
+	// A refusal's Index is its line's place in r.Lines.
+	//
+	// Locks: the engine locks the variants' Products rows first (as
+	// LockVariants does), then Inventory's own rows — the balances, the lots,
+	// the reservations. A caller that locks rows of its own first calls
+	// Products' LockVariants for the variants, then its rows, then Receive,
+	// so every writer takes the locks in one order. After a refusal the
 	// caller rolls back, as after Produce.
 	Receive(ctx context.Context, tx pgx.Tx, src StockSource, r StockReceipt) (StockPosted, error)
 	// ReverseReceipt takes the receipt Receive posted for the document
 	// receipt back out, line for line, from the locations and lots it went
 	// into, in one movement of kind "receipt_reversal" (purchasing design
 	// A5): whatever the lots' holds, and releasing the holds that receipt
-	// set. It is refused when no receipt was posted for the document
-	// (StockReceiptUnknown) and when a location no longer holds what the
-	// receipt put there (StockInsufficientStock, the line's Index its place
-	// in the receipt's movement lines). It is idempotent by the document: a
-	// second call answers the first reversal. After a refusal the caller rolls
-	// back, as after Produce.
+	// set. It checks on hand only and ignores reservations, as Inventory's own
+	// corrections do, so the site's available may go below zero. It is
+	// refused when no receipt was posted for the document
+	// (StockReceiptUnknown), when a location the receipt went into is
+	// archived since (StockLocationUnknown), and when a location no longer
+	// holds what the receipt put there (StockInsufficientStock). A refusal's
+	// Index is its line's place in the receipt's movement lines: the receipt
+	// lines in their order, each serial line expanded into one line per
+	// serial in the order the serials were given. It is idempotent by the
+	// document alone: a second call answers the first reversal, whatever its
+	// note or poster. It locks as Receive does. After a refusal the caller
+	// rolls back, as after Produce.
 	ReverseReceipt(ctx context.Context, tx pgx.Tx, receipt StockSource, r StockReversal) (StockPosted, error)
 }
 
 // StockReceipt is a movement of stock into a site for a receiving document
-// (purchasing design P3): the receipt record the movement records (the
-// receiving document when zero), the site, the lines, the supplier's name and
-// reference as the movement keeps them, a note, and who posted it.
+// (purchasing design P3): the receipt record the movement records — one per
+// receipt, required, the source the movement is idempotent by — the site, the
+// lines, the supplier's name and reference as the movement keeps them, a
+// note, and who posted it.
 type StockReceipt struct {
 	Document          StockSource
 	SiteID            int64
@@ -463,9 +481,12 @@ type ReceiveLine struct {
 // ReceiveLot is a lot a receipt line finds by number or makes. Its dates are
 // calendar dates at midnight UTC; nil is unstated, and a lot made takes the
 // variant's day offsets from its production date (today when unstated).
+// SupplierLot is at most 40 characters and Note at most 2000, as the receipt
+// endpoint's lot; longer is StockLineInvalid.
 type ReceiveLot struct {
 	Number         string
 	SupplierLot    string
+	Note           string
 	ProductionDate *time.Time
 	BestBefore     *time.Time
 	Expiry         *time.Time
@@ -718,6 +739,11 @@ const (
 	// StockReceiptUnknown: ReverseReceipt names a document no receipt was
 	// posted for (purchasing design A5).
 	StockReceiptUnknown = "receipt_unknown"
+	// StockLineInvalid: a receipt line is not one Receive can read — a line
+	// id below 1, a lot named more than one way, serials beside a lot
+	// number, or a lot's supplier lot or note longer than it keeps
+	// (purchasing delivery 0).
+	StockLineInvalid = "line_invalid"
 )
 
 // StockRefusal is the one error a StockLedger write answers for what it will

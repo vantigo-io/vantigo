@@ -474,8 +474,9 @@ productions it went through and where they lead, as a tree.
 - **Where it went** follows the lot forward: the lots made from it, and the lots made from
   those, each with what of the lot it used and what it made; and where each path ends — a
   **delivery**, with its delivery and order numbers and the customer, an adjustment or a
-  count down, a transfer to another site — *Sent to* and the site —, or a production that
-  made no lot. A lot sent to another site and delivered there shows both the transfer
+  count down, a transfer to another site — *Sent to* and the site —, a **Receipt reversal**
+  that took the received goods back, with the supplier, or a production that made no lot.
+  A lot sent to another site and delivered there shows both the transfer
   and the delivery.
 - **Where it came from** follows it back: the lots it was made from, down to their
   **receipts**, with the supplier and the supplier's reference. **Show the components
@@ -1166,7 +1167,7 @@ Only sites that **fulfil orders** take reservations ([set up a site](#set-up-a-s
 either view; press it to open Inventory. With both views the row of figures has an
 Inventory card: **Stock lines**, the number of item-and-location pairs holding stock —
 an item lying in several lots on one location counts once — with this week's receipts beside it (*3 receipts this week*), the week starting on
-Monday.
+Monday; a receipt taken back is not counted.
 
 With **Count stock** and both views, **Needs attention** shows **A count has been open
 for a long time** for each count still counting a week after it was opened; press it to

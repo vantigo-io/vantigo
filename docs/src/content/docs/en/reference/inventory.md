@@ -557,7 +557,8 @@ answers — and `GET` and `PUT /sites/{id}` — carries its **figures**, read in
 query per request: `locationCount`, the active locations below the root, to everyone;
 and to a caller holding `stock-view`, `stockLines` (the stock lines in the site: a
 variant on a location, its lots counted once) and
-`lastReceiptAt` (the last receipt posted there, absent when there was none), and
+`lastReceiptAt` (the last receipt posted there and not taken back by a
+`receipt_reversal`, absent when there was none), and
 `incomingTransfers` and `outgoingTransfers`, the number of transfers sent or partly
 received to and from it. The app's home draws its site cards from them with no request
 per card.
@@ -1199,7 +1200,9 @@ tree, read on the pool in **one snapshot** (`REPEATABLE READ`, read-only).
   its manufacturing order), **`consumed`** (the parent's quantity used in it) and
   **`produced`** (the made lot's quantity in it). An **end** carries its **`movement`** —
   id, kind, when, reason, supplier, source, and for a `transfer_out` **`toSiteName`**,
-  the site its transfer was sent to — and **`quantity`**, the lot's on it. A lot sent to
+  the site its transfer was sent to — and **`quantity`**, the lot's on it. On the usage
+  side a receipt taken back (`receipt_reversal`) is an end too, with the receipt's
+  supplier: the lot left the way it came in. A lot sent to
   another site and delivered there shows both: the `transfer_out` and, beside it, the
   issue at the other site, for a lot's lines are read at every site.
 
@@ -1679,16 +1682,21 @@ The receiving document is the order — `purchasing/order/12` — and the receip
 document, `purchasing/receipt/30`. No migration came with it.
 
 - **`Receive`** posts one movement of kind `receipt` at the site through the [posting
-  engine](#locks), with the receipt endpoint's rules: each line puts its quantity, in the
+  engine](#locks), with the receipt endpoint's rules, read by the endpoint's own code
+  (`receiptLines`, `readNewLot`, `serialNumbers`): each line puts its quantity, in the
   variant's unit, on its to-location — an active location of the site
   (`location_unknown`). A tracked variant's line names its lot one way — `LotID`, an
   existing lot of the variant; `Lot`, a lot by number found or made with its dates and
   supplier lot (an empty number generates `L<n>`); or, for a serial variant, `Serials`,
-  one lot of 1 per serial with `Lot`'s dates, the line's quantity their number — and an
-  untracked variant's none (`lot_required`, `lot_not_allowed`, `lot_unknown`,
-  `serial_quantity`, `lot_dates_differ`; `lot_number_invalid` for a number that is not
-  1–20 characters A–Z, a–z, 0–9 and . _ / -; `lot_dates_invalid` for dates out of order); a
-  blocked lot is `lot_blocked`. A variant unknown or a service is `variant_not_stocked`; a
+  one lot of 1 per serial with `Lot`'s dates, supplier lot and note, the line's quantity
+  their number — and an untracked variant's none (`lot_required`, `lot_not_allowed`,
+  `lot_unknown`, `serial_quantity` — for a serial named twice too —, `lot_dates_differ`;
+  `lot_number_invalid` for a lot number or serial that is not 1–20 characters A–Z, a–z,
+  0–9 and . _ / -; `lot_dates_invalid` for dates out of order; `line_invalid` for a line
+  id below 1, a lot named more than one way, serials beside a lot number, or a supplier lot
+  over 40 characters or a lot note over 2 000); a blocked lot is `lot_blocked`. Each is
+  the line's refusal, its `Index` its place in the call's lines; at most 500 lines after
+  the serials are expanded (`too_many_lines`, a failure). A variant unknown or a service is `variant_not_stocked`; a
   **Discontinued** variant is received — the last open order of a product discontinued is
   the normal sequence — where the receipt endpoint refuses one. The site need only exist
   and be active (`site_unknown`, `site_archived`); a receipt of no lines is
@@ -1696,11 +1704,12 @@ document, `purchasing/receipt/30`. No migration came with it.
   its lots quarantined, as on the endpoint ([inspection on
   receipt](#inspection-on-receipt)). The movement keeps the supplier's name (cut to 200),
   reference (100) and a note (1 000), and its source is the receipt
-  (`StockReceipt.Document`, the receiving document when zero) with **the receiving
-  document's id as its source line id** — the order, which the movement page links to
+  (`StockReceipt.Document`, one per receipt and required — a zero one is an error) with
+  **the receiving document's id as its source line id** — the order, which the movement page links to
   while Purchasing is mounted. **A receipt is idempotent by its document**: its key is a
   UUID derived from the document in a space of its own, so a second `Receive` with the same
-  body answers the first movement, and one with another body is `document_reused`.
+  body — the site, the lines and the texts; not `Today` or the poster — answers the first
+  movement, and one with another body is `document_reused`.
 - **`ReverseReceipt(receipt)`** takes the receipt `Receive` posted for the document back
   out, in one movement of kind **`receipt_reversal`**: each of the receipt's movement lines
   from the location and lot it went into, the reversal naming the same source and source
@@ -1708,13 +1717,22 @@ document, `purchasing/receipt/30`. No migration came with it.
   the commonest reason — and then releases the holds that receipt set (its inspection's
   quarantine, source `inventory/receipt/<movement>`); another document's holds stay. It
   takes those lots `FOR NO KEY UPDATE` at the engine's lot lock, as the release takes them,
-  so two reversals of one receipt wait rather than deadlock. It is refused when no receipt
-  was posted for the document (`receipt_unknown`) and when a location no longer holds what
-  the receipt put there (`insufficient_stock`, the line's `Index` its place in the
-  receipt's lines). It is idempotent by the receipt's document: one reversal a receipt.
+  so two reversals of one receipt wait rather than deadlock. It checks **on hand only and
+  ignores reservations**, as Inventory's own corrections do: the site's available may go
+  below zero. It is refused when no receipt was posted for the document
+  (`receipt_unknown`), when a location the receipt went into is archived since
+  (`location_unknown`), and when a location no longer holds what the receipt put there
+  (`insufficient_stock`, the line's `Index` its place in the receipt's movement lines: the
+  receipt lines in their order, each serial line one line per serial in the order given).
+  It is idempotent by the receipt's document alone — its note is not in the hash — so a
+  retry with an edited note answers the first reversal: one reversal a receipt.
 
 Both make no contract call but `LockVariants` and need no connection of their own: the
-tests run each on a pool of one, the caller's transaction holding its connection. After a
+tests run each on a pool of one, the caller's transaction holding its connection. **The
+lock order** is Products' rows, then Inventory's: each takes the variants through
+`LockVariants` before Inventory's balances and lots, so a caller that locks rows of its
+own calls `LockVariants` for its variants first, then its own rows, then `Receive` or
+`ReverseReceipt`. After a
 refusal the caller rolls back, as after `Produce`.
 
 ## Transfers
@@ -2380,7 +2398,7 @@ text, or one longer than the limit, is a 400 on `q`.
 `GET /stats` answers the dashboard card's figures: the active sites, the active
 locations below the roots, the **stock lines** (one per variant and location holding
 stock, its lots counted once, the *Stock lines*), and **`receiptsThisWeek`**, the receipts posted since
-**Monday 00:00** of the business week in the workspace's zone, and **`openCounts`**,
+**Monday 00:00** — one taken back since by a `receipt_reversal` not counted — of the business week in the workspace's zone, and **`openCounts`**,
 the counts still counting; to a caller with `stock-view`, **`lotsAwaitingInspection`**, the
 lots with an active inspection hold ([inspection on receipt](#inspection-on-receipt)).
 
