@@ -741,7 +741,8 @@ invoice lines.
 
 `order_lines.invoiced` is the sum of the line's matches, an invoice's adding and a credit
 note's taking away, provisional and posted alike (A10, A11), written only under the order's
-row lock by the match, its handlers and its worker, and never below 0. Every write of an
+row lock by the match, its handlers and its worker; each judges first that no line is left
+below 0, so it always equals the sum of the line's matches. Every write of an
 invoice's matches locks the invoice's `invoice_states` row first, then the orders in id
 order, then their lines.
 
@@ -773,8 +774,9 @@ under its lock:
   draft or a cancelled order), `invoice_supplier_differs`, `invoice_currency_differs`;
 - 409 `invoice_line_matched`, the lines named, for a position matched to another order line
   — the same order line again takes the new quantity;
-- 409 `credit_exceeds_invoiced`, the lines named, for a credit note that would take a
-  line's `invoiced` below 0, whatever `acceptOver` says (A14);
+- 409 `credit_exceeds_invoiced`, the lines named, for a credit note — or an invoice's
+  lower quantity — that would take a line's `invoiced` below 0, whatever `acceptOver` says
+  (A14, A78);
 - 409 `over_invoiced`, the lines named, for an invoice that would take a line's `invoiced`
   above its billable quantity, unless `acceptOver`.
 
@@ -788,7 +790,9 @@ invoice, in position order, each for all of it, and allocates them as above with
 
 `POST /supplier-invoices/{invoiceId}/unmatch` (`invoices-match`) with `orderId` and
 `linePosition`, each optional, deletes the matches they name — all of the invoice's when
-neither is given — and takes them off `invoiced`; none named is 409 `nothing_to_match`. A
+neither is given — and takes them off `invoiced`; none named is 409 `nothing_to_match`, and
+an invoice's match a credit note offsets is 409 `credit_exceeds_invoiced` until the credit
+note is unmatched. A
 posted invoice's match may be unmatched too; a last price it set stays.
 
 ### The panel and the order's invoices
@@ -842,7 +846,9 @@ total as printed (more than 0, two decimals). 400 names a field.
    `duplicate_supplier_invoice`, and a field rule 400 `supplier_invoice_invalid` with
    Accounting's fields — the same names as the request's.
 4. One transaction: the draft's `invoice_states` row and the order locked, the request
-   recorded, and one provisional match per draft line at its position.
+   recorded, the lines read again, and one provisional match per draft line at its position
+   for what is still to invoice — less when a match, an undo or another registration took
+   part of it since, none when it took all.
 
 It answers **201** with the draft's id, its line count, `linesLeft` — the lines with
 something to invoice beyond the 200 —, its net total and the currency. Two replays racing
@@ -857,15 +863,20 @@ and does nothing for an id seen before.
 
 - **`purchasing.invoice-posted`** on `accounting.supplier_invoice.posted.v1`: when the
   invoice's `invoice_states` row is `open`, marks it `posted`; releases the matches whose
-  order's supplier is no longer the event's (§11); fixes the rest — `posted`, with the
+  order's supplier is no longer the event's (§11), or made while the draft was of the other
+  kind; fixes the rest — `posted`, with the
   event's number, date and currency —; and queues the invoice for the worker. A row already
   `posted` or `reversed` changes nothing, so a posting delivered after its reversal is
   ignored.
 - **`purchasing.invoice-reversed`** on `accounting.supplier_invoice.reversed.v1`: marks the
-  invoice `reversed` with its copy, releases its matches, and gives the copy (`copyId`) a
-  match per released one at the same position, `provisional` — `posted`, and queued, when
-  the copy's own posting was handled first (A15). A position the copy has matched already
-  is left as it is.
+  invoice `reversed` with its copy and moves its matches to the copy (`copyId`) at the same
+  positions, `provisional` — `posted`, and queued, when the copy's own posting was handled
+  first (A15) —, leaving `invoiced` as it was; a match at a position the copy has matched
+  already, or with no copy, is released.
+
+A handler or the worker never refuses: a release that would leave a line invoiced below
+0 — an invoice's match a credit note offsets — is not made, and the match stays for a
+person to unmatch (A78).
 
 ### The last price
 

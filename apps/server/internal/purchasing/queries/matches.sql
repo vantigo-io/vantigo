@@ -50,16 +50,15 @@ WHERE supplier_invoice_id = sqlc.arg(id) AND state = 'provisional';
 -- RefreshMatchFacts writes what Accounting answers of an invoice and of the
 -- match's line now.
 UPDATE purchasing.invoice_matches SET line_net = sqlc.arg(line_net), invoice_number = sqlc.arg(invoice_number),
-    invoice_date = sqlc.arg(invoice_date), invoice_currency = sqlc.arg(currency), kind = sqlc.arg(kind),
-    updated_at = sqlc.arg(now)
+    invoice_date = sqlc.arg(invoice_date), invoice_currency = sqlc.arg(currency), updated_at = sqlc.arg(now)
 WHERE id = sqlc.arg(id);
 
 -- name: AddInvoiced :exec
 -- AddInvoiced moves an order line's invoiced quantity by delta (a credit
--- note's and a release's negative), never below 0: the match is judged
--- under the order's row lock, so the floor only keeps a handler from ever
--- failing on the CHECK (A14).
-UPDATE purchasing.order_lines SET invoiced = GREATEST(invoiced + sqlc.arg(delta)::numeric, 0) WHERE id = sqlc.arg(id);
+-- note's and a release's negative). Every caller judges, under the order's
+-- row lock, that it stays at 0 or more (A14), so it always equals the sum of
+-- the line's matches.
+UPDATE purchasing.order_lines SET invoiced = invoiced + sqlc.arg(delta)::numeric WHERE id = sqlc.arg(id);
 
 -- name: LockOrdersByID :many
 SELECT * FROM purchasing.orders WHERE id = ANY(sqlc.arg(ids)::bigint[]) ORDER BY id FOR UPDATE;

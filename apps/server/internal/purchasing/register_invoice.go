@@ -286,7 +286,28 @@ func (s *server) RegisterPurchasingInvoice(ctx context.Context, req gen.Register
 			OrderID: o.ID, SupplierInvoiceID: invoiceID, Lines: int32(len(planned)), LinesLeft: left, Now: now}); err != nil {
 			return err
 		}
+		// What was planned on the pool is judged again under the lock: a
+		// match, a receipt's undo or another registration since takes its
+		// part first, and the draft's line is matched for what is left — or
+		// left unmatched, for the person to match or remove.
+		current, err := txq.OrderLines(ctx, o.ID)
+		if err != nil {
+			return fmt.Errorf("purchasing: read order %d's lines: %w", o.ID, err)
+		}
+		now2 := map[int64]store.PurchasingOrderLine{}
+		for _, l := range current {
+			now2[l.ID] = l
+		}
 		for i, p := range planned {
+			l := now2[p.line.ID]
+			if left := toInvoice(l); left.Cmp(p.quantity) < 0 {
+				if left.Sign() <= 0 {
+					continue
+				}
+				p.quantity = left
+			}
+			l.Invoiced = numeric(new(big.Rat).Add(ratOrZero(l.Invoiced), p.quantity), quantityPlaces)
+			now2[p.line.ID] = l
 			if _, err := txq.InsertMatch(ctx, matchInsert(inv, int32(i+1), locked, p.line.ID, p.quantity, p.net, st, by, now)); err != nil {
 				return fmt.Errorf("purchasing: match the draft's line %d: %w", i+1, err)
 			}

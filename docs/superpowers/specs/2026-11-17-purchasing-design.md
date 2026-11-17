@@ -492,6 +492,13 @@ invoices alone. Questions 2 to 8 stand at their defaults until the owner says ot
     ask for an Inventory read permission as well, or leave the need out for a caller
     without one.
 
+12. **A draft Register invoice orphaned by a crash** (A73, A78). Accounting commits the
+    draft before Purchasing records the request and the matches; a process that dies in
+    between leaves a draft with no match, and a replay is refused as
+    `duplicate_supplier_invoice`. **Default: the person matches that draft from its
+    Purchase order panel.** Overturned, Register invoice reserves its request before the
+    draft and adopts a duplicate of its own number.
+
 ## 15. Amendments (revision 2)
 
 From the critic review. Each amendment names the decisions it changes and wins over
@@ -980,6 +987,15 @@ Each wins over what it names.
   day bill, credit notes taken off. A reversal deletes the reversed invoice's matches, so a
   list as of a day before a later reversal reads as the matches stand. The CSV's columns
   are named in English, as Inventory's.
+- **A78 — `invoiced` is never floored** (A10, A14, A15; from the code review). Every write
+  judges, under the order's lock, that no line is left invoiced below nothing: lowering or
+  unmatching an invoice's match a credit note offsets is `credit_exceeds_invoiced`; Reverse
+  and copy moves the matches to the copy without moving `invoiced`; a draft whose kind
+  changed after its match is released at its posting; and a handler or the worker that
+  cannot refuse leaves a match it cannot release. Register invoice judges its plan again
+  under the lock and matches each draft line for what is still to invoice. Not done: a
+  draft orphaned by a crash between Accounting's commit and Purchasing's has no matches,
+  and a replay of its request is refused as `duplicate_supplier_invoice` (§14, question 12).
 - **A77 — The demo's match comes after the books** (plan, *The demo seed*). A supplier
   invoice is Accounting's and the books take none before their setup, so delivery D's part
   of the seed runs after Accounting's, not before it.

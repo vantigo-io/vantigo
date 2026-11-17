@@ -5005,7 +5005,7 @@ paths:
                         application/problem+json:
                             schema:
                                 $ref: '#/components/schemas/PurchasingProblem'
-                    description: Conflict — nothing_to_match (nothing of what was named is matched).
+                    description: Conflict — nothing_to_match (nothing of what was named is matched), credit_exceeds_invoiced (a credit note matched to the line would be left beyond what is invoiced; unmatch it first).
                 "503":
                     content:
                         application/problem+json:

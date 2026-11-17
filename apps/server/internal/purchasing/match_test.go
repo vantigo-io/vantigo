@@ -164,6 +164,7 @@ func TestMatch_AllocateMatchAllUnmatch(t *testing.T) {
 		t.Fatalf("after unmatching the order = %+v", p.Matches)
 	}
 	expectRefusal(t, c.Do(http.MethodPost, invoicePath(inv, "unmatch"), gen.PurchasingInvoiceUnmatchInput{}), http.StatusConflict, "nothing_to_match", "unmatch nothing")
+	invoicedAgrees(t, h)
 }
 
 // The refusals: beyond what is received (unless accepted, then warned),
@@ -424,6 +425,7 @@ func TestMatch_PostedAndReversed(t *testing.T) {
 	var list gen.PurchasingReceiptList
 	receipts.JSON(&list)
 	expectRefusal(t, c.Do(http.MethodPost, receiptPath(list.Items[0].Id, "undo"), gen.PurchasingUndoInput{}), http.StatusConflict, "receipt_invoiced", "undo an invoiced receipt")
+	invoicedAgrees(t, h)
 }
 
 // Out of order: a reversal taken before the original's posting leaves the
@@ -683,4 +685,52 @@ func TestMatch_SupplierExportAndErase(t *testing.T) {
 	if n := h.Count(t, `SELECT count(*) FROM purchasing.invoice_matches WHERE supplier_invoice_id = $1`, inv); n != 1 {
 		t.Fatalf("matches after the erase = %d", n)
 	}
+}
+
+// invoicedAgrees fails unless every order line's invoiced is the signed sum
+// of its matches.
+func invoicedAgrees(t *testing.T, h *harness) {
+	t.Helper()
+	if n := h.Count(t, `SELECT count(*) FROM purchasing.order_lines l WHERE l.invoiced <> coalesce((SELECT sum(CASE WHEN m.kind = 'credit_note'
+		THEN -m.quantity ELSE m.quantity END) FROM purchasing.invoice_matches m WHERE m.order_line_id = l.id), 0)`); n != 0 {
+		t.Fatalf("%d lines' invoiced differ from their matches", n)
+	}
+}
+
+// A credit note standing on a line holds the invoice it offsets: the
+// invoice is not unmatched or lowered below it, its reversal moves the match
+// to the copy without moving what is invoiced, and a draft whose kind was
+// changed after its match is released at its posting.
+func TestMatch_CreditOffsetAndKindChange(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, harnessOptions{})
+	c := h.SignIn(t, everyKey...)
+	o := receivedOrder(t, c)
+	bolt := o.Lines[0].Id
+	inv := h.books.enter(supNorsk, "invoice", "O-1", "NOK", "", fakeLine{"Bolter", "50.00"})
+	panelOf(t, c.Do(http.MethodPost, invoicePath(inv, "matches"), matchIn(o.Id, mline(1, bolt, "10"))), "the invoice")
+	credit := h.books.enter(supNorsk, "credit_note", "OK-1", "NOK", "", fakeLine{"Retur", "50.00"})
+	panelOf(t, c.Do(http.MethodPost, invoicePath(credit, "matches"), matchIn(o.Id, mline(1, bolt, "10"))), "the credit note")
+	expectRefusal(t, c.Do(http.MethodPost, invoicePath(inv, "unmatch"), gen.PurchasingInvoiceUnmatchInput{}),
+		http.StatusConflict, "credit_exceeds_invoiced", "unmatch the offset invoice")
+	expectRefusal(t, c.Do(http.MethodPost, invoicePath(inv, "matches"), matchIn(o.Id, mline(1, bolt, "5"))),
+		http.StatusConflict, "credit_exceeds_invoiced", "lower the offset invoice")
+	h.books.post(t, h, inv)
+	cp := h.books.reverse(t, h, inv)
+	if n := h.Count(t, `SELECT count(*) FROM purchasing.invoice_matches WHERE supplier_invoice_id = $1`, cp); n != 1 {
+		t.Fatalf("the copy's matches = %d", n)
+	}
+	invoicedAgrees(t, h)
+	if got := lineInvoiced(t, c, o.Id, bolt); got != "0" {
+		t.Fatalf("invoiced after the reversal = %s, want 0", got)
+	}
+
+	flipped := h.books.enter(supNorsk, "invoice", "O-2", "NOK", "", fakeLine{"Mutre", "10.00"})
+	panelOf(t, c.Do(http.MethodPost, invoicePath(flipped, "matches"), matchIn(o.Id, mline(1, o.Lines[1].Id, "5"))), "the nuts")
+	h.books.edit(flipped, func(i *contracts.SupplierInvoice) { i.Kind = "credit_note" })
+	h.books.post(t, h, flipped)
+	if n := h.Count(t, `SELECT count(*) FROM purchasing.invoice_matches WHERE supplier_invoice_id = $1`, flipped); n != 0 {
+		t.Fatalf("a match of the other kind kept = %d", n)
+	}
+	invoicedAgrees(t, h)
 }

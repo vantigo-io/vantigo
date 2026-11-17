@@ -104,11 +104,17 @@ func handleInvoicePosted(ctx context.Context, tx pgx.Tx, ev events.Delivered, no
 	if err != nil {
 		return err
 	}
+	// A match whose order is no longer the invoice's supplier's (§11), or
+	// made while the draft was of the other kind, no longer bills what it
+	// counted: it is released.
 	var gone []store.PurchasingInvoiceMatch
 	for _, m := range matches {
-		if orders[m.OrderID].SupplierID != e.SupplierID {
+		if orders[m.OrderID].SupplierID != e.SupplierID || m.Kind != e.Kind {
 			gone = append(gone, m)
 		}
+	}
+	if gone, err = releasable(ctx, q, gone); err != nil {
+		return err
 	}
 	if err := releaseMatches(ctx, q, gone); err != nil {
 		return err
@@ -162,24 +168,39 @@ func handleInvoiceReversed(ctx context.Context, tx pgx.Tx, ev events.Delivered, 
 	if _, err := lockOrdersOf(ctx, q, matches); err != nil {
 		return err
 	}
-	if err := releaseMatches(ctx, q, matches); err != nil {
+	// The matches the copy takes move to it as they are, so what is
+	// invoiced stays; the rest are released.
+	at := map[int32]bool{}
+	if copyID != nil && copySt.State != invoiceStateRev {
+		taken, err := q.InvoiceMatches(ctx, e.CopyID)
+		if err != nil {
+			return fmt.Errorf("purchasing: read invoice %d's matches: %w", e.CopyID, err)
+		}
+		for _, m := range taken {
+			at[m.LinePosition] = true
+		}
+	} else {
+		copyID = nil
+	}
+	var moved, released []store.PurchasingInvoiceMatch
+	for _, m := range matches {
+		if copyID != nil && !at[m.LinePosition] {
+			moved = append(moved, m)
+		} else {
+			released = append(released, m)
+		}
+	}
+	kept, err := releasable(ctx, q, released)
+	if err != nil {
 		return err
 	}
-	if copyID == nil || copySt.State == invoiceStateRev {
-		return nil
-	}
-	taken, err := q.InvoiceMatches(ctx, e.CopyID)
-	if err != nil {
-		return fmt.Errorf("purchasing: read invoice %d's matches: %w", e.CopyID, err)
-	}
-	at := map[int32]bool{}
-	for _, m := range taken {
-		at[m.LinePosition] = true
+	if err := releaseMatches(ctx, q, kept); err != nil {
+		return err
 	}
 	posted := copySt.State == invoiceStatePost
-	for _, m := range matches {
-		if at[m.LinePosition] {
-			continue
+	for _, m := range moved {
+		if err := q.DeleteMatch(ctx, m.ID); err != nil {
+			return fmt.Errorf("purchasing: move match %d to the copy: %w", m.ID, err)
 		}
 		p := store.InsertMatchParams{SupplierInvoiceID: e.CopyID, LinePosition: m.LinePosition, OrderID: m.OrderID,
 			OrderLineID: m.OrderLineID, Kind: m.Kind, Quantity: m.Quantity, LineNet: m.LineNet, InvoiceNumber: m.InvoiceNumber,
@@ -191,12 +212,8 @@ func handleInvoiceReversed(ctx context.Context, tx pgx.Tx, ev events.Delivered, 
 		if _, err := q.InsertMatch(ctx, p); err != nil {
 			return fmt.Errorf("purchasing: give invoice %d's match to its copy: %w", e.InvoiceID, err)
 		}
-		if err := q.AddInvoiced(ctx, store.AddInvoicedParams{ID: m.OrderLineID,
-			Delta: numeric(signed(m.Kind, ratOrZero(m.Quantity)), quantityPlaces)}); err != nil {
-			return fmt.Errorf("purchasing: move line %d's invoiced: %w", m.OrderLineID, err)
-		}
 	}
-	if posted {
+	if posted && len(moved) > 0 {
 		return q.QueueFollowup(ctx, store.QueueFollowupParams{ID: e.CopyID, Now: now})
 	}
 	return nil
@@ -317,11 +334,14 @@ func (s *server) followup(ctx context.Context, invoiceID int64) error {
 				continue
 			}
 			if err := txq.RefreshMatchFacts(ctx, store.RefreshMatchFactsParams{ID: m.ID, LineNet: numeric(net, amountPlaces),
-				InvoiceNumber: inv.Number, InvoiceDate: dayCol(inv.InvoiceDate), Currency: inv.Currency, Kind: inv.Kind, Now: now}); err != nil {
+				InvoiceNumber: inv.Number, InvoiceDate: dayCol(inv.InvoiceDate), Currency: inv.Currency, Now: now}); err != nil {
 				return fmt.Errorf("purchasing: refresh match %d: %w", m.ID, err)
 			}
 			m.LineNet = numeric(net, amountPlaces)
 			kept = append(kept, m)
+		}
+		if gone, err = releasable(ctx, txq, gone); err != nil {
+			return err
 		}
 		if err := releaseMatches(ctx, txq, gone); err != nil {
 			return err
