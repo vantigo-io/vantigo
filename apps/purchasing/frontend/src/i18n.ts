@@ -514,6 +514,9 @@ export const purchasingCatalog = {
     exchangeRate: "Exchange rate (NOK per {{currency}})",
     exchangeRateHint: "Give the rate or the total in NOK.",
     totalNok: "Total in NOK",
+    invoiceTotal: "Invoice total ({{currency}})",
+    invoiceTotalHint:
+      "As printed on the invoice, VAT included. Left empty, the draft takes the lines' net and you correct it in Accounting.",
     invoiceRegistered: "The supplier invoice is registered as a draft in Accounting.",
     invoiceRegisteredBody: "A draft with {{lines}} lines and {{total}} net is made in Accounting.",
     invoicedInParts_one: "Invoiced in parts: {{count}} line is left for another invoice.",
@@ -1066,6 +1069,9 @@ export const purchasingCatalog = {
     exchangeRate: "Valutakurs (NOK per {{currency}})",
     exchangeRateHint: "Oppgi kursen eller totalen i NOK.",
     totalNok: "Total i NOK",
+    invoiceTotal: "Fakturabeløp ({{currency}})",
+    invoiceTotalHint:
+      "Som på fakturaen, med mva. Står det tomt, får utkastet linjenes nettobeløp, og du retter det i Regnskap.",
     invoiceRegistered: "Leverandørfakturaen er registrert som utkast i Regnskap.",
     invoiceRegisteredBody: "Et utkast med {{lines}} linjer og {{total}} netto er laget i Regnskap.",
     invoicedInParts_one: "Fakturert i deler: {{count}} linje gjenstår til en ny faktura.",

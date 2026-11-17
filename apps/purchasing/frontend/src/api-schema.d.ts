@@ -1117,6 +1117,8 @@ export interface components {
             invoiceDate: string;
             /** @description The supplier's invoice number. */
             invoiceNumber: string;
+            /** @description The invoice's total as the supplier printed it, VAT included; the draft's lines' net when left out. Accounting posts the draft only once its lines come to its total (A73). */
+            total?: string | null;
             totalNok?: string | null;
         };
         /** @description The draft Register invoice made (P37, A1). */

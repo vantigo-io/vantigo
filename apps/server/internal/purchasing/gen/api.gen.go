@@ -796,8 +796,11 @@ type PurchasingInvoiceRegisterInput struct {
 	InvoiceDate  openapi_types.Date `json:"invoiceDate"`
 
 	// InvoiceNumber The supplier's invoice number.
-	InvoiceNumber string  `json:"invoiceNumber"`
-	TotalNok      *string `json:"totalNok,omitempty"`
+	InvoiceNumber string `json:"invoiceNumber"`
+
+	// Total The invoice's total as the supplier printed it, VAT included; the draft's lines' net when left out. Accounting posts the draft only once its lines come to its total (A73).
+	Total    *string `json:"total,omitempty"`
+	TotalNok *string `json:"totalNok,omitempty"`
 }
 
 // PurchasingInvoiceRegistration The draft Register invoice made (P37, A1).

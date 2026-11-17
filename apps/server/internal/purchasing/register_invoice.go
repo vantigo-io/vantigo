@@ -168,7 +168,14 @@ func (s *server) RegisterPurchasingInvoice(ctx context.Context, req gen.Register
 	if b.DueDate != nil && b.DueDate.Before(b.InvoiceDate.Time) {
 		f.add("dueDate", "The due date is on or after the invoice date")
 	}
-	var rate, totalNOK string
+	var rate, totalNOK, printed string
+	if b.Total != nil && strings.TrimSpace(*b.Total) != "" {
+		if v, ok := parseDecimal(strings.TrimSpace(*b.Total), amountPlaces, maxAmount); !ok || v.Sign() <= 0 {
+			f.add("total", "A total is more than 0, with at most two decimals")
+		} else {
+			printed = amountText(v)
+		}
+	}
 	if b.ExchangeRate != nil && strings.TrimSpace(*b.ExchangeRate) != "" {
 		if v, ok := parseDecimal(strings.TrimSpace(*b.ExchangeRate), 6, maxPrice); !ok || v.Sign() <= 0 {
 			f.add("exchangeRate", "A rate is more than 0, with at most six decimals")
@@ -237,7 +244,12 @@ func (s *server) RegisterPurchasingInvoice(ctx context.Context, req gen.Register
 		total.Add(total, p.net)
 		draft.Lines = append(draft.Lines, contracts.SupplierInvoiceDraftLine{Text: draftText(p.line, p.quantity), Amount: amountText(p.net)})
 	}
+	// The total is the supplier's, VAT included, when the person gave it;
+	// the lines' net otherwise, for the person to correct before posting.
 	draft.Total = amountText(total)
+	if printed != "" {
+		draft.Total = printed
+	}
 	invoiceID, err := s.createSupplierInvoiceDraft(ctx, draft)
 	if err != nil {
 		// Two replays of one request race to the same invoice number: the
