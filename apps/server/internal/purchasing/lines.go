@@ -579,7 +579,7 @@ func lineView(l store.PurchasingOrderLine, item *store.PurchasingSupplierItem) g
 		UnitPrice: priceText(ratOrZero(l.UnitPrice)), DiscountPercent: trimmed(ratOrZero(l.DiscountPercent), discountPlaces),
 		LineNet: amountText(ratOrZero(l.LineNet)), ExpectedOn: dateOut(l.ExpectedOn), ConfirmedOn: dateOut(l.ConfirmedOn),
 		Received: trimmed(ratOrZero(l.Received), quantityPlaces), Invoiced: trimmed(ratOrZero(l.Invoiced), quantityPlaces),
-		Open: trimmed(lineOpen(l), quantityPlaces), ClosedAt: l.ClosedAt, Warnings: lineWarnings(l, item),
+		Open: trimmed(lineOpen(l), quantityPlaces), ClosedAt: l.ClosedAt, DeliveredAt: l.DeliveredAt, Warnings: lineWarnings(l, item),
 	}
 	if l.ProductType != nil {
 		out.ProductType = ptr(gen.PurchasingOrderLineProductType(*l.ProductType))

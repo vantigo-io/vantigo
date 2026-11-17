@@ -90,7 +90,7 @@ components:
             description: One action of a change.
             properties:
                 action:
-                    description: 'What was done: created, updated, line_added, line_changed, line_removed, sent, marked_sent, sent_again, confirmed, confirmation_cleared, line_closed, closed, received (the last open line closed with everything received), reopened, cancelled.'
+                    description: 'What was done: created, updated, line_added, line_changed, line_removed, sent, marked_sent, sent_again, confirmed, confirmation_cleared, line_closed, closed, received (the last open line closed with everything received, or a receipt that left nothing open), reopened, cancelled; receipt_posted and receipt_undone (to: the receipt''s number), line_delivered and line_undelivered (delivery B).'
                     type: string
                 field:
                     nullable: true
@@ -145,6 +145,20 @@ components:
                     type: integer
             required:
                 - lineId
+            type: object
+        PurchasingDeliveredInput:
+            additionalProperties: false
+            description: Marks a text or service line delivered, or takes the mark off.
+            properties:
+                delivered:
+                    type: boolean
+                expectedUpdatedAt:
+                    description: 'The updatedAt of the order as the client read it: the write is refused with version_conflict when the order was written since (every write moves it).'
+                    format: date-time
+                    type: string
+            required:
+                - expectedUpdatedAt
+                - delivered
             type: object
         PurchasingDocument:
             additionalProperties: false
@@ -301,6 +315,23 @@ components:
                 - below_minimum
                 - off_multiple
             type: string
+        PurchasingLocation:
+            additionalProperties: false
+            description: An active location of the order's site, as Inventory answers it.
+            properties:
+                fullCode:
+                    type: string
+                id:
+                    format: int64
+                    type: integer
+                root:
+                    description: The site's own node, where stock lies when it has no place.
+                    type: boolean
+            required:
+                - id
+                - fullCode
+                - root
+            type: object
         PurchasingMailing:
             additionalProperties: false
             description: One mailing of an order's PDF (P21).
@@ -655,6 +686,11 @@ components:
                     format: date
                     nullable: true
                     type: string
+                deliveredAt:
+                    description: When a text or service line was marked delivered (P16).
+                    format: date-time
+                    nullable: true
+                    type: string
                 description:
                     type: string
                 discountPercent:
@@ -963,7 +999,7 @@ components:
             type: object
         PurchasingProblem:
             additionalProperties: false
-            description: 'An RFC 9457 problem with this module''s refusal code (purchasing design §3). code names the rule that refused and is what a client keys off, never the words. 400: field errors (errors), supplier_not_found, site_not_found, site_archived, currency_invalid, series_start_too_low, send_channel_unknown, recipient_missing, order_empty, import_invalid, amount_out_of_range (an order''s total above 999 999 999 999.99), and an order''s line refusals in lines, the first of which is also code: too_many_lines, line_invalid, line_not_found, variant_not_found, variant_discontinued, packaging_not_found, quantity_invalid, price_invalid, discount_invalid, quantity_below_received, amount_out_of_range (a line''s amount above 999 999 999 999.99). 404: not_found. 409: version_conflict (a stale revision or expectedUpdatedAt), order_not_draft, order_not_sent (the order is not sent or partially received), order_not_closed, order_has_receipts (a cancel of an order with something received), line_closed, line_kind_changed, currency_fixed (a currency change once a line has a price), supplier_inactive, supplier_changed (a sent order''s supplier), supplier_item_exists, client_request_reused. 503: dependency_unavailable (a module Purchasing reads is not composed), sending_disabled (Communications is off, or no channel that can send is chosen) and mail_failed (the e-mail did not go out now; the change is made, and its mailing, written in the same transaction, stays queued for the purchasing.mail worker). errors carries the field errors of a 400, keyed by the request''s camelCase field. A request the server could not decode answers a bare 400 with neither.'
+            description: 'An RFC 9457 problem with this module''s refusal code (purchasing design §3). code names the rule that refused and is what a client keys off, never the words. 400: field errors (errors), supplier_not_found, site_not_found, site_archived, currency_invalid, series_start_too_low, send_channel_unknown, recipient_missing, order_empty, import_invalid, amount_out_of_range (an order''s total above 999 999 999 999.99), and an order''s line refusals in lines, the first of which is also code: too_many_lines, line_invalid, line_not_found, variant_not_found, variant_discontinued, packaging_not_found, quantity_invalid, price_invalid, discount_invalid, quantity_below_received, amount_out_of_range (a line''s amount above 999 999 999 999.99). 404: not_found. 409: version_conflict (a stale revision or expectedUpdatedAt), order_not_draft, order_not_sent (the order is not sent or partially received), order_not_closed, order_has_receipts (a cancel of an order with something received), line_closed, line_kind_changed, currency_fixed (a currency change once a line has a price), supplier_inactive, supplier_changed (a sent order''s supplier), supplier_item_exists, client_request_reused. 503: dependency_unavailable (a module Purchasing reads is not composed), sending_disabled (Communications is off, or no channel that can send is chosen) and mail_failed (the e-mail did not go out now; the change is made, and its mailing, written in the same transaction, stays queued for the purchasing.mail worker). errors carries the field errors of a 400, keyed by the request''s camelCase field. A request the server could not decode answers a bare 400 with neither. Receipts (delivery B): 400 line_not_receivable (a line that is not an open goods line of the order) in lines; 409 over_receipt (more than a line''s remainder without acceptOver, the lines named), receipt_undone (an undo of a receipt undone already), receipt_invoiced (an undo that would leave a line with less received than invoiced) and line_not_deliverable (a delivered mark on a goods line). Inventory''s refusals of a receipt or its undo keep Inventory''s own codes, each line named by its index.'
             properties:
                 code:
                     nullable: true
@@ -1012,6 +1048,408 @@ components:
             required:
                 - code
                 - index
+            type: object
+        PurchasingReceipt:
+            additionalProperties: false
+            description: 'A receipt against a purchase order (P28): its number in a series of its own, the day, who, the supplier''s delivery note and a note, and its lines. It carries no price (A21); the order line''s price then is kept for a later valuation and answered by nothing in this phase.'
+            properties:
+                createdAt:
+                    format: date-time
+                    type: string
+                deliveryNote:
+                    description: The supplier's delivery note number, as text.
+                    type: string
+                id:
+                    format: int64
+                    type: integer
+                lines:
+                    items:
+                        $ref: '#/components/schemas/PurchasingReceiptLine'
+                    type: array
+                movementId:
+                    description: Inventory's movement of kind receipt.
+                    format: int64
+                    type: integer
+                note:
+                    type: string
+                number:
+                    format: int64
+                    type: integer
+                orderId:
+                    format: int64
+                    type: integer
+                orderNumber:
+                    format: int64
+                    type: integer
+                receivedBy:
+                    allOf:
+                        - $ref: '#/components/schemas/PurchasingPerson'
+                    nullable: true
+                receivedOn:
+                    format: date
+                    type: string
+                reversalMovementId:
+                    description: Inventory's movement of kind receipt_reversal, once undone.
+                    format: int64
+                    nullable: true
+                    type: integer
+                siteId:
+                    format: int64
+                    type: integer
+                status:
+                    enum:
+                        - posted
+                        - undone
+                    type: string
+                undoNote:
+                    nullable: true
+                    type: string
+                undoneAt:
+                    format: date-time
+                    nullable: true
+                    type: string
+                undoneBy:
+                    allOf:
+                        - $ref: '#/components/schemas/PurchasingPerson'
+                    nullable: true
+            required:
+                - id
+                - number
+                - orderId
+                - orderNumber
+                - siteId
+                - status
+                - receivedOn
+                - deliveryNote
+                - note
+                - movementId
+                - createdAt
+                - lines
+            type: object
+        PurchasingReceiptInput:
+            additionalProperties: false
+            description: One receipt (P24–P26, A11). Every line names an open goods line of the order; one order line may be split over several lines, by location and lot.
+            properties:
+                acceptOver:
+                    description: Receive more than a line's remainder; without it that is refused with over_receipt, which the screen asks about first (P26).
+                    type: boolean
+                clientRequestId:
+                    description: Makes the receipt idempotent (A11).
+                    format: uuid
+                    type: string
+                deliveryNote:
+                    maxLength: 100
+                    type: string
+                lines:
+                    items:
+                        $ref: '#/components/schemas/PurchasingReceiptLineInput'
+                    maxItems: 500
+                    minItems: 1
+                    type: array
+                note:
+                    maxLength: 1000
+                    type: string
+            required:
+                - clientRequestId
+                - lines
+            type: object
+        PurchasingReceiptLine:
+            additionalProperties: false
+            description: One line of a receipt, as it was put on its location.
+            properties:
+                bestBefore:
+                    format: date
+                    nullable: true
+                    type: string
+                enteredQuantity:
+                    description: As entered, in the purchase packaging when inPackaging, else in the variant's unit.
+                    type: string
+                expiry:
+                    format: date
+                    nullable: true
+                    type: string
+                id:
+                    format: int64
+                    type: integer
+                inPackaging:
+                    type: boolean
+                locationCode:
+                    description: The location's full code as Inventory answers it now, "" when it no longer does.
+                    type: string
+                locationId:
+                    format: int64
+                    type: integer
+                lotId:
+                    description: The lot named by id, when it was.
+                    format: int64
+                    nullable: true
+                    type: integer
+                lotNumber:
+                    description: The lot's number as given; null when Inventory numbered it.
+                    nullable: true
+                    type: string
+                name:
+                    type: string
+                orderLineId:
+                    format: int64
+                    type: integer
+                packagingName:
+                    nullable: true
+                    type: string
+                position:
+                    format: int32
+                    type: integer
+                productionDate:
+                    format: date
+                    nullable: true
+                    type: string
+                quantity:
+                    description: In the variant's unit.
+                    type: string
+                serials:
+                    items:
+                        type: string
+                    type: array
+                sku:
+                    nullable: true
+                    type: string
+                supplierLot:
+                    nullable: true
+                    type: string
+                unit:
+                    type: string
+                variantId:
+                    format: int32
+                    type: integer
+            required:
+                - id
+                - position
+                - orderLineId
+                - variantId
+                - name
+                - unit
+                - quantity
+                - enteredQuantity
+                - inPackaging
+                - locationId
+                - locationCode
+                - serials
+            type: object
+        PurchasingReceiptLineInput:
+            additionalProperties: false
+            description: 'One line of a receipt (P24): the order line, the quantity — in the line''s purchase packaging when inPackaging, else in the variant''s unit, at most three decimals —, the location, and for a tracked variant its lot one way: lotId (an existing lot), lot (found by number or made; an empty number lets Inventory number it), or serials for a serial variant.'
+            properties:
+                inPackaging:
+                    type: boolean
+                locationId:
+                    format: int64
+                    type: integer
+                lot:
+                    $ref: '#/components/schemas/PurchasingReceiptLotInput'
+                lotId:
+                    format: int64
+                    type: integer
+                orderLineId:
+                    format: int64
+                    type: integer
+                quantity:
+                    type: string
+                serials:
+                    items:
+                        maxLength: 20
+                        type: string
+                    maxItems: 500
+                    type: array
+            required:
+                - orderLineId
+                - quantity
+                - locationId
+            type: object
+        PurchasingReceiptList:
+            additionalProperties: false
+            description: An order's receipts, newest first.
+            properties:
+                items:
+                    items:
+                        $ref: '#/components/schemas/PurchasingReceipt'
+                    type: array
+            required:
+                - items
+            type: object
+        PurchasingReceiptLotInput:
+            additionalProperties: false
+            description: A lot a receipt line finds by number or makes, with its dates; a date left out defaults from the variant's days after the production date.
+            properties:
+                bestBefore:
+                    format: date
+                    type: string
+                expiry:
+                    format: date
+                    type: string
+                number:
+                    maxLength: 20
+                    type: string
+                productionDate:
+                    format: date
+                    type: string
+                supplierLot:
+                    maxLength: 40
+                    type: string
+            type: object
+        PurchasingReceiptResult:
+            additionalProperties: false
+            description: A receipt and its order as they now stand.
+            properties:
+                order:
+                    $ref: '#/components/schemas/PurchasingOrder'
+                receipt:
+                    $ref: '#/components/schemas/PurchasingReceipt'
+            required:
+                - receipt
+                - order
+            type: object
+        PurchasingReceiveCode:
+            additionalProperties: false
+            description: An open goods line of the order a scanned code names, and what one scan adds.
+            properties:
+                orderLineId:
+                    format: int64
+                    type: integer
+                packagingId:
+                    description: The packaging whose barcode matched; null for the variant's own code.
+                    format: int32
+                    nullable: true
+                    type: integer
+                packagingName:
+                    nullable: true
+                    type: string
+                quantity:
+                    description: What one scan adds, in the variant's unit — the packaging's quantity, or 1.
+                    type: string
+            required:
+                - orderLineId
+                - quantity
+            type: object
+        PurchasingReceiveCodeList:
+            additionalProperties: false
+            description: The order's open goods lines a scanned code names, by position.
+            properties:
+                items:
+                    items:
+                        $ref: '#/components/schemas/PurchasingReceiveCode'
+                    type: array
+            required:
+                - items
+            type: object
+        PurchasingReceiveForm:
+            additionalProperties: false
+            description: The receive screen's order (P24, A21) — no prices.
+            properties:
+                lines:
+                    items:
+                        $ref: '#/components/schemas/PurchasingReceiveLine'
+                    type: array
+                locations:
+                    items:
+                        $ref: '#/components/schemas/PurchasingLocation'
+                    type: array
+                number:
+                    format: int64
+                    nullable: true
+                    type: integer
+                orderId:
+                    format: int64
+                    type: integer
+                siteId:
+                    format: int64
+                    type: integer
+                siteName:
+                    type: string
+                status:
+                    type: string
+                supplierName:
+                    type: string
+                updatedAt:
+                    format: date-time
+                    type: string
+            required:
+                - orderId
+                - status
+                - supplierName
+                - siteId
+                - siteName
+                - updatedAt
+                - lines
+                - locations
+            type: object
+        PurchasingReceiveLine:
+            additionalProperties: false
+            description: An open goods line on the receive screen, its remainder prefilled (P24).
+            properties:
+                bestBeforeDays:
+                    format: int32
+                    nullable: true
+                    type: integer
+                defaultLocationId:
+                    description: The variant's primary location at the site when it holds stock there, else where most of it lies, else the site's own node.
+                    format: int64
+                    nullable: true
+                    type: integer
+                expiryDays:
+                    format: int32
+                    nullable: true
+                    type: integer
+                name:
+                    type: string
+                open:
+                    description: The remainder, in the variant's unit.
+                    type: string
+                orderLineId:
+                    format: int64
+                    type: integer
+                packagingId:
+                    format: int32
+                    nullable: true
+                    type: integer
+                packagingName:
+                    nullable: true
+                    type: string
+                packagingQuantity:
+                    description: The purchase packaging's quantity in the variant's unit, as the line took it.
+                    nullable: true
+                    type: string
+                position:
+                    format: int32
+                    type: integer
+                quantity:
+                    description: Ordered, in the variant's unit.
+                    type: string
+                received:
+                    type: string
+                sku:
+                    nullable: true
+                    type: string
+                tracking:
+                    enum:
+                        - none
+                        - lot
+                        - serial
+                    type: string
+                unit:
+                    type: string
+                variantId:
+                    format: int32
+                    type: integer
+            required:
+                - orderLineId
+                - position
+                - variantId
+                - name
+                - unit
+                - quantity
+                - received
+                - open
+                - tracking
             type: object
         PurchasingSendAgainInput:
             additionalProperties: false
@@ -1564,6 +2002,14 @@ components:
                     type: array
             required:
                 - items
+            type: object
+        PurchasingUndoInput:
+            additionalProperties: false
+            description: Undo a receipt, with an optional note the reversal carries.
+            properties:
+                note:
+                    maxLength: 1000
+                    type: string
             type: object
         PurchasingVariantList:
             additionalProperties: false
@@ -2390,6 +2836,70 @@ paths:
             tags:
                 - Purchasing
             x-vantigo-access: permission:purchasing:orders-manage
+    /api/v1/purchasing/orders/{orderId}/lines/{lineId}/delivered:
+        post:
+            description: 'Marks a text line or a service line delivered, or not delivered again (P16, §8): such a line is never received into stock. When nothing stays open the order is received; taking the mark back off a received order makes it partially received, or sent when nothing else has come. A goods line is received instead (line_not_deliverable).'
+            operationId: markPurchasingOrderLineDelivered
+            parameters:
+                - in: path
+                  name: orderId
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+                - in: path
+                  name: lineId
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/PurchasingDeliveredInput'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingOrder'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Bad Request — field errors.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Conflict — version_conflict, order_not_sent, line_closed, line_not_deliverable.
+            summary: Mark an order line delivered
+            tags:
+                - Purchasing
+            x-vantigo-access: permission:purchasing:receive
     /api/v1/purchasing/orders/{orderId}/mark-sent:
         post:
             description: 'As Send without a mail (P18), for an order placed by phone or in a supplier''s web shop: the number, the snapshot and the stored PDF.'
@@ -2502,6 +3012,220 @@ paths:
                 - Purchasing
             x-vantigo-access: permission:purchasing:access
             x-vantigo-assistant: never
+    /api/v1/purchasing/orders/{orderId}/receipts:
+        get:
+            description: The order's receipts, newest first, each with its lines — no prices (A21).
+            operationId: listPurchasingOrderReceipts
+            parameters:
+                - in: path
+                  name: orderId
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingReceiptList'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Not Found
+            summary: List a purchase order's receipts
+            tags:
+                - Purchasing
+            x-vantigo-access: permission:purchasing:access
+        post:
+            description: 'Receives goods against a sent order (P24–P28, A6, A7, A11): one receipt and one Inventory movement of kind receipt, posted through StockLedger.Receive on the same transaction as the receipt and the lines'' received quantities. A line may be split over locations and lots. A quantity over a line''s remainder is refused with over_receipt unless acceptOver is true. Idempotent by clientRequestId: a replay answers the first receipt, another body under the same id is client_request_reused. Inventory''s refusals answer with their own codes, each line named by its index in lines. It never touches the general ledger.'
+            operationId: receivePurchasingOrder
+            parameters:
+                - in: path
+                  name: orderId
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/PurchasingReceiptInput'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingReceiptResult'
+                    description: Created — the receipt, or the first one for a replayed clientRequestId.
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Bad Request — field errors, line_not_receivable, quantity_invalid, packaging_not_found, and Inventory's line refusals (lot_required, lot_not_allowed, lot_unknown, lot_number_invalid, lot_dates_invalid, serial_quantity, line_invalid, location_unknown) in lines.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Conflict — order_not_sent, over_receipt, client_request_reused, version_conflict (the order kept changing while it was received), and Inventory's refusals (variant_not_stocked, lot_blocked, site_archived, site_unknown, document_reused).
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Service Unavailable — dependency_unavailable.
+            summary: Receive goods on a purchase order
+            tags:
+                - Purchasing
+            x-vantigo-access: permission:purchasing:receive
+    /api/v1/purchasing/orders/{orderId}/receive:
+        get:
+            description: 'What the receive screen needs (P24, P30, A21): the order''s open goods lines with their remainders, each variant''s tracking and default location, and the site''s active locations. It carries no prices.'
+            operationId: getPurchasingReceiveForm
+            parameters:
+                - in: path
+                  name: orderId
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingReceiveForm'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Conflict — order_not_sent.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Service Unavailable — dependency_unavailable.
+            summary: Get the receive screen of a purchase order
+            tags:
+                - Purchasing
+            x-vantigo-access: permission:purchasing:receive
+    /api/v1/purchasing/orders/{orderId}/receive/code:
+        get:
+            description: 'A scanned code on the receive screen (P30): through the catalog''s code lookup, the order''s open goods lines the variant''s or a packaging''s barcode, or the SKU, names, with what one scan adds in the variant''s unit. A GTIN-14 is also tried without its leading zeros. None when the code names nothing on the order.'
+            operationId: lookupPurchasingReceiveCode
+            parameters:
+                - in: path
+                  name: orderId
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+                - in: query
+                  name: code
+                  required: true
+                  schema:
+                    maxLength: 100
+                    minLength: 1
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingReceiveCodeList'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Bad Request — field errors.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Not Found
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Service Unavailable — dependency_unavailable.
+            summary: Look a scanned code up on the receive screen
+            tags:
+                - Purchasing
+            x-vantigo-access: permission:purchasing:receive
     /api/v1/purchasing/orders/{orderId}/reopen:
         post:
             description: 'Undoes Close (P18): the lines the close ended are open again, and the order is sent or partially received as its receipts say.'
@@ -2688,6 +3412,109 @@ paths:
             tags:
                 - Purchasing
             x-vantigo-access: permission:purchasing:orders-send
+    /api/v1/purchasing/receipts/{receiptId}:
+        get:
+            operationId: getPurchasingReceipt
+            parameters:
+                - in: path
+                  name: receiptId
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingReceipt'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Not Found
+            summary: Get a receipt
+            tags:
+                - Purchasing
+            x-vantigo-access: permission:purchasing:access
+    /api/v1/purchasing/receipts/{receiptId}/undo:
+        post:
+            description: 'Takes a receipt back (P29, A5, A10, A16): StockLedger.ReverseReceipt posts a movement of kind receipt_reversal and the lines'' received quantities are lowered, in one transaction. The receipt is kept, marked undone. Refused when Inventory refuses (insufficient_stock: the stock is no longer where it was received; location_unknown), when a line would be left with less received than invoiced (receipt_invoiced), and for a receipt already undone (receipt_undone). A received order becomes partially received, or sent when nothing else was received; a closed one stays closed.'
+            operationId: undoPurchasingReceipt
+            parameters:
+                - in: path
+                  name: receiptId
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/PurchasingUndoInput'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingReceiptResult'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Bad Request — field errors.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Conflict — receipt_undone, receipt_invoiced, and Inventory's refusals (insufficient_stock, location_unknown) in lines, each by its index in the receipt's lines.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Service Unavailable — dependency_unavailable.
+            summary: Undo a receipt
+            tags:
+                - Purchasing
+            x-vantigo-access: permission:purchasing:receive
     /api/v1/purchasing/settings:
         get:
             description: The settings (P9), with the mail channels the send channel may name.

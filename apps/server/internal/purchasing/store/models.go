@@ -148,6 +148,49 @@ type PurchasingOrderLine struct {
 	DeliveredAt        *time.Time
 }
 
+type PurchasingReceipt struct {
+	ID                 int64
+	Number             int64
+	OrderID            int64
+	SiteID             int64
+	ReceivedOn         pgtype.Date
+	DeliveryNote       string
+	Note               string
+	MovementID         *int64
+	ReceivedByUserID   *uuid.UUID
+	ReceivedByDisplay  *string
+	ClientRequestID    uuid.UUID
+	RequestHash        string
+	CreatedAt          time.Time
+	UndoneAt           *time.Time
+	UndoneByUserID     *uuid.UUID
+	UndoneByDisplay    *string
+	UndoNote           *string
+	ReversalMovementID *int64
+}
+
+type PurchasingReceiptLine struct {
+	ID              int64
+	ReceiptID       int64
+	Position        int32
+	OrderLineID     int64
+	VariantID       int32
+	LocationID      int64
+	Quantity        pgtype.Numeric
+	EnteredQuantity pgtype.Numeric
+	InPackaging     bool
+	PackagingName   *string
+	LotID           *int64
+	LotNumber       *string
+	SupplierLot     *string
+	ProductionDate  pgtype.Date
+	BestBefore      pgtype.Date
+	Expiry          pgtype.Date
+	Serials         []string
+	UnitPrice       pgtype.Numeric
+	Currency        string
+}
+
 type PurchasingSetting struct {
 	ID                    int16
 	OrderSeriesStart      int64

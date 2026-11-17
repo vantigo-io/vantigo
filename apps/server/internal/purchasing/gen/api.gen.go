@@ -365,6 +365,45 @@ func (e PurchasingOrderUpdateLanguage) Valid() bool {
 	}
 }
 
+// Defines values for PurchasingReceiptStatus.
+const (
+	Posted PurchasingReceiptStatus = "posted"
+	Undone PurchasingReceiptStatus = "undone"
+)
+
+// Valid indicates whether the value is a known member of the PurchasingReceiptStatus enum.
+func (e PurchasingReceiptStatus) Valid() bool {
+	switch e {
+	case Posted:
+		return true
+	case Undone:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PurchasingReceiveLineTracking.
+const (
+	Lot    PurchasingReceiveLineTracking = "lot"
+	None   PurchasingReceiveLineTracking = "none"
+	Serial PurchasingReceiveLineTracking = "serial"
+)
+
+// Valid indicates whether the value is a known member of the PurchasingReceiveLineTracking enum.
+func (e PurchasingReceiveLineTracking) Valid() bool {
+	switch e {
+	case Lot:
+		return true
+	case None:
+		return true
+	case Serial:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PurchasingSupplierItemPriceSetBy.
 const (
 	Import  PurchasingSupplierItemPriceSetBy = "import"
@@ -472,7 +511,7 @@ type PurchasingChange struct {
 
 // PurchasingChangeAction One action of a change.
 type PurchasingChangeAction struct {
-	// Action What was done: created, updated, line_added, line_changed, line_removed, sent, marked_sent, sent_again, confirmed, confirmation_cleared, line_closed, closed, received (the last open line closed with everything received), reopened, cancelled.
+	// Action What was done: created, updated, line_added, line_changed, line_removed, sent, marked_sent, sent_again, confirmed, confirmation_cleared, line_closed, closed, received (the last open line closed with everything received, or a receipt that left nothing open), reopened, cancelled; receipt_posted and receipt_undone (to: the receipt's number), line_delivered and line_undelivered (delivery B).
 	Action string  `json:"action"`
 	Field  *string `json:"field,omitempty"`
 	From   *string `json:"from,omitempty"`
@@ -494,6 +533,14 @@ type PurchasingConfirmationInput struct {
 type PurchasingConfirmationLine struct {
 	ConfirmedOn *openapi_types.Date `json:"confirmedOn,omitempty"`
 	LineId      int64               `json:"lineId"`
+}
+
+// PurchasingDeliveredInput Marks a text or service line delivered, or takes the mark off.
+type PurchasingDeliveredInput struct {
+	Delivered bool `json:"delivered"`
+
+	// ExpectedUpdatedAt The updatedAt of the order as the client read it: the write is refused with version_conflict when the order was written since (every write moves it).
+	ExpectedUpdatedAt time.Time `json:"expectedUpdatedAt"`
 }
 
 // PurchasingDocument A stored PDF of an order (P21).
@@ -568,6 +615,15 @@ type PurchasingLineInputKind string
 
 // PurchasingLineWarning below_minimum: the quantity is under the supplier item's minimum; off_multiple: it is not a multiple of the item's multiple (P16). A warning, never a refusal.
 type PurchasingLineWarning string
+
+// PurchasingLocation An active location of the order's site, as Inventory answers it.
+type PurchasingLocation struct {
+	FullCode string `json:"fullCode"`
+	Id       int64  `json:"id"`
+
+	// Root The site's own node, where stock lies when it has no place.
+	Root bool `json:"root"`
+}
 
 // PurchasingMailing One mailing of an order's PDF (P21).
 type PurchasingMailing struct {
@@ -718,8 +774,11 @@ type PurchasingOrderInputLanguage string
 
 // PurchasingOrderLine A line of a purchase order (P16).
 type PurchasingOrderLine struct {
-	ClosedAt        *time.Time          `json:"closedAt,omitempty"`
-	ConfirmedOn     *openapi_types.Date `json:"confirmedOn,omitempty"`
+	ClosedAt    *time.Time          `json:"closedAt,omitempty"`
+	ConfirmedOn *openapi_types.Date `json:"confirmedOn,omitempty"`
+
+	// DeliveredAt When a text or service line was marked delivered (P16).
+	DeliveredAt     *time.Time          `json:"deliveredAt,omitempty"`
 	Description     string              `json:"description"`
 	DiscountPercent string              `json:"discountPercent"`
 	ExpectedOn      *openapi_types.Date `json:"expectedOn,omitempty"`
@@ -853,7 +912,7 @@ type PurchasingPerson struct {
 	Id          *openapi_types.UUID `json:"id,omitempty"`
 }
 
-// PurchasingProblem An RFC 9457 problem with this module's refusal code (purchasing design §3). code names the rule that refused and is what a client keys off, never the words. 400: field errors (errors), supplier_not_found, site_not_found, site_archived, currency_invalid, series_start_too_low, send_channel_unknown, recipient_missing, order_empty, import_invalid, amount_out_of_range (an order's total above 999 999 999 999.99), and an order's line refusals in lines, the first of which is also code: too_many_lines, line_invalid, line_not_found, variant_not_found, variant_discontinued, packaging_not_found, quantity_invalid, price_invalid, discount_invalid, quantity_below_received, amount_out_of_range (a line's amount above 999 999 999 999.99). 404: not_found. 409: version_conflict (a stale revision or expectedUpdatedAt), order_not_draft, order_not_sent (the order is not sent or partially received), order_not_closed, order_has_receipts (a cancel of an order with something received), line_closed, line_kind_changed, currency_fixed (a currency change once a line has a price), supplier_inactive, supplier_changed (a sent order's supplier), supplier_item_exists, client_request_reused. 503: dependency_unavailable (a module Purchasing reads is not composed), sending_disabled (Communications is off, or no channel that can send is chosen) and mail_failed (the e-mail did not go out now; the change is made, and its mailing, written in the same transaction, stays queued for the purchasing.mail worker). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither.
+// PurchasingProblem An RFC 9457 problem with this module's refusal code (purchasing design §3). code names the rule that refused and is what a client keys off, never the words. 400: field errors (errors), supplier_not_found, site_not_found, site_archived, currency_invalid, series_start_too_low, send_channel_unknown, recipient_missing, order_empty, import_invalid, amount_out_of_range (an order's total above 999 999 999 999.99), and an order's line refusals in lines, the first of which is also code: too_many_lines, line_invalid, line_not_found, variant_not_found, variant_discontinued, packaging_not_found, quantity_invalid, price_invalid, discount_invalid, quantity_below_received, amount_out_of_range (a line's amount above 999 999 999 999.99). 404: not_found. 409: version_conflict (a stale revision or expectedUpdatedAt), order_not_draft, order_not_sent (the order is not sent or partially received), order_not_closed, order_has_receipts (a cancel of an order with something received), line_closed, line_kind_changed, currency_fixed (a currency change once a line has a price), supplier_inactive, supplier_changed (a sent order's supplier), supplier_item_exists, client_request_reused. 503: dependency_unavailable (a module Purchasing reads is not composed), sending_disabled (Communications is off, or no channel that can send is chosen) and mail_failed (the e-mail did not go out now; the change is made, and its mailing, written in the same transaction, stays queued for the purchasing.mail worker). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither. Receipts (delivery B): 400 line_not_receivable (a line that is not an open goods line of the order) in lines; 409 over_receipt (more than a line's remainder without acceptOver, the lines named), receipt_undone (an undo of a receipt undone already), receipt_invoiced (an undo that would leave a line with less received than invoiced) and line_not_deliverable (a delivered mark on a goods line). Inventory's refusals of a receipt or its undo keep Inventory's own codes, each line named by its index.
 type PurchasingProblem struct {
 	Code     *string              `json:"code,omitempty"`
 	Detail   *string              `json:"detail,omitempty"`
@@ -876,6 +935,179 @@ type PurchasingProblemLine struct {
 	// Index The line's index in the request, from 0.
 	Index int32 `json:"index"`
 }
+
+// PurchasingReceipt A receipt against a purchase order (P28): its number in a series of its own, the day, who, the supplier's delivery note and a note, and its lines. It carries no price (A21); the order line's price then is kept for a later valuation and answered by nothing in this phase.
+type PurchasingReceipt struct {
+	CreatedAt time.Time `json:"createdAt"`
+
+	// DeliveryNote The supplier's delivery note number, as text.
+	DeliveryNote string                  `json:"deliveryNote"`
+	Id           int64                   `json:"id"`
+	Lines        []PurchasingReceiptLine `json:"lines"`
+
+	// MovementId Inventory's movement of kind receipt.
+	MovementId  int64              `json:"movementId"`
+	Note        string             `json:"note"`
+	Number      int64              `json:"number"`
+	OrderId     int64              `json:"orderId"`
+	OrderNumber int64              `json:"orderNumber"`
+	ReceivedBy  *PurchasingPerson  `json:"receivedBy,omitempty"`
+	ReceivedOn  openapi_types.Date `json:"receivedOn"`
+
+	// ReversalMovementId Inventory's movement of kind receipt_reversal, once undone.
+	ReversalMovementId *int64                  `json:"reversalMovementId,omitempty"`
+	SiteId             int64                   `json:"siteId"`
+	Status             PurchasingReceiptStatus `json:"status"`
+	UndoNote           *string                 `json:"undoNote,omitempty"`
+	UndoneAt           *time.Time              `json:"undoneAt,omitempty"`
+	UndoneBy           *PurchasingPerson       `json:"undoneBy,omitempty"`
+}
+
+// PurchasingReceiptStatus defines model for PurchasingReceipt.Status.
+type PurchasingReceiptStatus string
+
+// PurchasingReceiptInput One receipt (P24–P26, A11). Every line names an open goods line of the order; one order line may be split over several lines, by location and lot.
+type PurchasingReceiptInput struct {
+	// AcceptOver Receive more than a line's remainder; without it that is refused with over_receipt, which the screen asks about first (P26).
+	AcceptOver *bool `json:"acceptOver,omitempty"`
+
+	// ClientRequestId Makes the receipt idempotent (A11).
+	ClientRequestId openapi_types.UUID           `json:"clientRequestId"`
+	DeliveryNote    *string                      `json:"deliveryNote,omitempty"`
+	Lines           []PurchasingReceiptLineInput `json:"lines"`
+	Note            *string                      `json:"note,omitempty"`
+}
+
+// PurchasingReceiptLine One line of a receipt, as it was put on its location.
+type PurchasingReceiptLine struct {
+	BestBefore *openapi_types.Date `json:"bestBefore,omitempty"`
+
+	// EnteredQuantity As entered, in the purchase packaging when inPackaging, else in the variant's unit.
+	EnteredQuantity string              `json:"enteredQuantity"`
+	Expiry          *openapi_types.Date `json:"expiry,omitempty"`
+	Id              int64               `json:"id"`
+	InPackaging     bool                `json:"inPackaging"`
+
+	// LocationCode The location's full code as Inventory answers it now, "" when it no longer does.
+	LocationCode string `json:"locationCode"`
+	LocationId   int64  `json:"locationId"`
+
+	// LotId The lot named by id, when it was.
+	LotId *int64 `json:"lotId,omitempty"`
+
+	// LotNumber The lot's number as given; null when Inventory numbered it.
+	LotNumber      *string             `json:"lotNumber,omitempty"`
+	Name           string              `json:"name"`
+	OrderLineId    int64               `json:"orderLineId"`
+	PackagingName  *string             `json:"packagingName,omitempty"`
+	Position       int32               `json:"position"`
+	ProductionDate *openapi_types.Date `json:"productionDate,omitempty"`
+
+	// Quantity In the variant's unit.
+	Quantity    string   `json:"quantity"`
+	Serials     []string `json:"serials"`
+	Sku         *string  `json:"sku,omitempty"`
+	SupplierLot *string  `json:"supplierLot,omitempty"`
+	Unit        string   `json:"unit"`
+	VariantId   int32    `json:"variantId"`
+}
+
+// PurchasingReceiptLineInput One line of a receipt (P24): the order line, the quantity — in the line's purchase packaging when inPackaging, else in the variant's unit, at most three decimals —, the location, and for a tracked variant its lot one way: lotId (an existing lot), lot (found by number or made; an empty number lets Inventory number it), or serials for a serial variant.
+type PurchasingReceiptLineInput struct {
+	InPackaging *bool `json:"inPackaging,omitempty"`
+	LocationId  int64 `json:"locationId"`
+
+	// Lot A lot a receipt line finds by number or makes, with its dates; a date left out defaults from the variant's days after the production date.
+	Lot         *PurchasingReceiptLotInput `json:"lot,omitempty"`
+	LotId       *int64                     `json:"lotId,omitempty"`
+	OrderLineId int64                      `json:"orderLineId"`
+	Quantity    string                     `json:"quantity"`
+	Serials     *[]string                  `json:"serials,omitempty"`
+}
+
+// PurchasingReceiptList An order's receipts, newest first.
+type PurchasingReceiptList struct {
+	Items []PurchasingReceipt `json:"items"`
+}
+
+// PurchasingReceiptLotInput A lot a receipt line finds by number or makes, with its dates; a date left out defaults from the variant's days after the production date.
+type PurchasingReceiptLotInput struct {
+	BestBefore     *openapi_types.Date `json:"bestBefore,omitempty"`
+	Expiry         *openapi_types.Date `json:"expiry,omitempty"`
+	Number         *string             `json:"number,omitempty"`
+	ProductionDate *openapi_types.Date `json:"productionDate,omitempty"`
+	SupplierLot    *string             `json:"supplierLot,omitempty"`
+}
+
+// PurchasingReceiptResult A receipt and its order as they now stand.
+type PurchasingReceiptResult struct {
+	// Order A purchase order (P15–P20).
+	Order PurchasingOrder `json:"order"`
+
+	// Receipt A receipt against a purchase order (P28): its number in a series of its own, the day, who, the supplier's delivery note and a note, and its lines. It carries no price (A21); the order line's price then is kept for a later valuation and answered by nothing in this phase.
+	Receipt PurchasingReceipt `json:"receipt"`
+}
+
+// PurchasingReceiveCode An open goods line of the order a scanned code names, and what one scan adds.
+type PurchasingReceiveCode struct {
+	OrderLineId int64 `json:"orderLineId"`
+
+	// PackagingId The packaging whose barcode matched; null for the variant's own code.
+	PackagingId   *int32  `json:"packagingId,omitempty"`
+	PackagingName *string `json:"packagingName,omitempty"`
+
+	// Quantity What one scan adds, in the variant's unit — the packaging's quantity, or 1.
+	Quantity string `json:"quantity"`
+}
+
+// PurchasingReceiveCodeList The order's open goods lines a scanned code names, by position.
+type PurchasingReceiveCodeList struct {
+	Items []PurchasingReceiveCode `json:"items"`
+}
+
+// PurchasingReceiveForm The receive screen's order (P24, A21) — no prices.
+type PurchasingReceiveForm struct {
+	Lines        []PurchasingReceiveLine `json:"lines"`
+	Locations    []PurchasingLocation    `json:"locations"`
+	Number       *int64                  `json:"number,omitempty"`
+	OrderId      int64                   `json:"orderId"`
+	SiteId       int64                   `json:"siteId"`
+	SiteName     string                  `json:"siteName"`
+	Status       string                  `json:"status"`
+	SupplierName string                  `json:"supplierName"`
+	UpdatedAt    time.Time               `json:"updatedAt"`
+}
+
+// PurchasingReceiveLine An open goods line on the receive screen, its remainder prefilled (P24).
+type PurchasingReceiveLine struct {
+	BestBeforeDays *int32 `json:"bestBeforeDays,omitempty"`
+
+	// DefaultLocationId The variant's primary location at the site when it holds stock there, else where most of it lies, else the site's own node.
+	DefaultLocationId *int64 `json:"defaultLocationId,omitempty"`
+	ExpiryDays        *int32 `json:"expiryDays,omitempty"`
+	Name              string `json:"name"`
+
+	// Open The remainder, in the variant's unit.
+	Open          string  `json:"open"`
+	OrderLineId   int64   `json:"orderLineId"`
+	PackagingId   *int32  `json:"packagingId,omitempty"`
+	PackagingName *string `json:"packagingName,omitempty"`
+
+	// PackagingQuantity The purchase packaging's quantity in the variant's unit, as the line took it.
+	PackagingQuantity *string `json:"packagingQuantity,omitempty"`
+	Position          int32   `json:"position"`
+
+	// Quantity Ordered, in the variant's unit.
+	Quantity  string                        `json:"quantity"`
+	Received  string                        `json:"received"`
+	Sku       *string                       `json:"sku,omitempty"`
+	Tracking  PurchasingReceiveLineTracking `json:"tracking"`
+	Unit      string                        `json:"unit"`
+	VariantId int32                         `json:"variantId"`
+}
+
+// PurchasingReceiveLineTracking defines model for PurchasingReceiveLine.Tracking.
+type PurchasingReceiveLineTracking string
 
 // PurchasingSendAgainInput Send again (P18): store a new PDF, marked Revised, and mail it; with mail false, store it only.
 type PurchasingSendAgainInput struct {
@@ -1111,6 +1343,11 @@ type PurchasingSupplierList struct {
 	Items []PurchasingSupplier `json:"items"`
 }
 
+// PurchasingUndoInput Undo a receipt, with an optional note the reversal carries.
+type PurchasingUndoInput struct {
+	Note *string `json:"note,omitempty"`
+}
+
 // PurchasingVariantList Variants for a line.
 type PurchasingVariantList struct {
 	Items []PurchasingVariantOption `json:"items"`
@@ -1178,6 +1415,11 @@ type DeletePurchasingOrderParams struct {
 	ExpectedUpdatedAt time.Time `form:"expectedUpdatedAt" json:"expectedUpdatedAt"`
 }
 
+// LookupPurchasingReceiveCodeParams defines parameters for LookupPurchasingReceiveCode.
+type LookupPurchasingReceiveCodeParams struct {
+	Code string `form:"code" json:"code"`
+}
+
 // ListPurchasingSupplierItemsParams defines parameters for ListPurchasingSupplierItems.
 type ListPurchasingSupplierItemsParams struct {
 	SupplierId *int64 `form:"supplierId,omitempty" json:"supplierId,omitempty"`
@@ -1228,8 +1470,14 @@ type ConfirmPurchasingOrderJSONRequestBody = PurchasingConfirmationInput
 // ClosePurchasingOrderLineJSONRequestBody defines body for ClosePurchasingOrderLine for application/json ContentType.
 type ClosePurchasingOrderLineJSONRequestBody = PurchasingVersionInput
 
+// MarkPurchasingOrderLineDeliveredJSONRequestBody defines body for MarkPurchasingOrderLineDelivered for application/json ContentType.
+type MarkPurchasingOrderLineDeliveredJSONRequestBody = PurchasingDeliveredInput
+
 // MarkPurchasingOrderSentJSONRequestBody defines body for MarkPurchasingOrderSent for application/json ContentType.
 type MarkPurchasingOrderSentJSONRequestBody = PurchasingMarkSentInput
+
+// ReceivePurchasingOrderJSONRequestBody defines body for ReceivePurchasingOrder for application/json ContentType.
+type ReceivePurchasingOrderJSONRequestBody = PurchasingReceiptInput
 
 // ReopenPurchasingOrderJSONRequestBody defines body for ReopenPurchasingOrder for application/json ContentType.
 type ReopenPurchasingOrderJSONRequestBody = PurchasingVersionInput
@@ -1239,6 +1487,9 @@ type SendPurchasingOrderJSONRequestBody = PurchasingSendInput
 
 // ResendPurchasingOrderJSONRequestBody defines body for ResendPurchasingOrder for application/json ContentType.
 type ResendPurchasingOrderJSONRequestBody = PurchasingSendAgainInput
+
+// UndoPurchasingReceiptJSONRequestBody defines body for UndoPurchasingReceipt for application/json ContentType.
+type UndoPurchasingReceiptJSONRequestBody = PurchasingUndoInput
 
 // PutPurchasingSettingsJSONRequestBody defines body for PutPurchasingSettings for application/json ContentType.
 type PutPurchasingSettingsJSONRequestBody = PurchasingSettingsInput
@@ -1293,12 +1544,27 @@ type ServerInterface interface {
 	// ClosePurchasingOrderLine Close an order line
 	// (POST /api/v1/purchasing/orders/{orderId}/lines/{lineId}/close)
 	ClosePurchasingOrderLine(w http.ResponseWriter, r *http.Request, orderId int64, lineId int64)
+	// MarkPurchasingOrderLineDelivered Mark an order line delivered
+	// (POST /api/v1/purchasing/orders/{orderId}/lines/{lineId}/delivered)
+	MarkPurchasingOrderLineDelivered(w http.ResponseWriter, r *http.Request, orderId int64, lineId int64)
 	// MarkPurchasingOrderSent Mark a purchase order as sent
 	// (POST /api/v1/purchasing/orders/{orderId}/mark-sent)
 	MarkPurchasingOrderSent(w http.ResponseWriter, r *http.Request, orderId int64)
 	// GetPurchasingOrderPdf Download a purchase order's PDF
 	// (GET /api/v1/purchasing/orders/{orderId}/pdf)
 	GetPurchasingOrderPdf(w http.ResponseWriter, r *http.Request, orderId int64)
+	// ListPurchasingOrderReceipts List a purchase order's receipts
+	// (GET /api/v1/purchasing/orders/{orderId}/receipts)
+	ListPurchasingOrderReceipts(w http.ResponseWriter, r *http.Request, orderId int64)
+	// ReceivePurchasingOrder Receive goods on a purchase order
+	// (POST /api/v1/purchasing/orders/{orderId}/receipts)
+	ReceivePurchasingOrder(w http.ResponseWriter, r *http.Request, orderId int64)
+	// GetPurchasingReceiveForm Get the receive screen of a purchase order
+	// (GET /api/v1/purchasing/orders/{orderId}/receive)
+	GetPurchasingReceiveForm(w http.ResponseWriter, r *http.Request, orderId int64)
+	// LookupPurchasingReceiveCode Look a scanned code up on the receive screen
+	// (GET /api/v1/purchasing/orders/{orderId}/receive/code)
+	LookupPurchasingReceiveCode(w http.ResponseWriter, r *http.Request, orderId int64, params LookupPurchasingReceiveCodeParams)
 	// ReopenPurchasingOrder Reopen a purchase order
 	// (POST /api/v1/purchasing/orders/{orderId}/reopen)
 	ReopenPurchasingOrder(w http.ResponseWriter, r *http.Request, orderId int64)
@@ -1308,6 +1574,12 @@ type ServerInterface interface {
 	// ResendPurchasingOrder Send a purchase order again
 	// (POST /api/v1/purchasing/orders/{orderId}/send-again)
 	ResendPurchasingOrder(w http.ResponseWriter, r *http.Request, orderId int64)
+	// GetPurchasingReceipt Get a receipt
+	// (GET /api/v1/purchasing/receipts/{receiptId})
+	GetPurchasingReceipt(w http.ResponseWriter, r *http.Request, receiptId int64)
+	// UndoPurchasingReceipt Undo a receipt
+	// (POST /api/v1/purchasing/receipts/{receiptId}/undo)
+	UndoPurchasingReceipt(w http.ResponseWriter, r *http.Request, receiptId int64)
 	// GetPurchasingSettings Get the Purchasing settings
 	// (GET /api/v1/purchasing/settings)
 	GetPurchasingSettings(w http.ResponseWriter, r *http.Request)
@@ -1863,6 +2135,41 @@ func (siw *ServerInterfaceWrapper) ClosePurchasingOrderLine(w http.ResponseWrite
 	handler.ServeHTTP(w, r)
 }
 
+// MarkPurchasingOrderLineDelivered operation middleware
+func (siw *ServerInterfaceWrapper) MarkPurchasingOrderLineDelivered(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "orderId" -------------
+	var orderId int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orderId", r.PathValue("orderId"), &orderId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orderId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "lineId" -------------
+	var lineId int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "lineId", r.PathValue("lineId"), &lineId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "lineId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.MarkPurchasingOrderLineDelivered(w, r, orderId, lineId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // MarkPurchasingOrderSent operation middleware
 func (siw *ServerInterfaceWrapper) MarkPurchasingOrderSent(w http.ResponseWriter, r *http.Request) {
 
@@ -1906,6 +2213,126 @@ func (siw *ServerInterfaceWrapper) GetPurchasingOrderPdf(w http.ResponseWriter, 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetPurchasingOrderPdf(w, r, orderId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListPurchasingOrderReceipts operation middleware
+func (siw *ServerInterfaceWrapper) ListPurchasingOrderReceipts(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "orderId" -------------
+	var orderId int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orderId", r.PathValue("orderId"), &orderId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orderId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListPurchasingOrderReceipts(w, r, orderId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ReceivePurchasingOrder operation middleware
+func (siw *ServerInterfaceWrapper) ReceivePurchasingOrder(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "orderId" -------------
+	var orderId int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orderId", r.PathValue("orderId"), &orderId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orderId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ReceivePurchasingOrder(w, r, orderId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetPurchasingReceiveForm operation middleware
+func (siw *ServerInterfaceWrapper) GetPurchasingReceiveForm(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "orderId" -------------
+	var orderId int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orderId", r.PathValue("orderId"), &orderId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orderId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPurchasingReceiveForm(w, r, orderId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// LookupPurchasingReceiveCode operation middleware
+func (siw *ServerInterfaceWrapper) LookupPurchasingReceiveCode(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "orderId" -------------
+	var orderId int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orderId", r.PathValue("orderId"), &orderId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orderId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params LookupPurchasingReceiveCodeParams
+
+	// ------------- Required query parameter "code" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "code", r.URL.Query(), &params.Code, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "code"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "code", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.LookupPurchasingReceiveCode(w, r, orderId, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1984,6 +2411,58 @@ func (siw *ServerInterfaceWrapper) ResendPurchasingOrder(w http.ResponseWriter, 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ResendPurchasingOrder(w, r, orderId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetPurchasingReceipt operation middleware
+func (siw *ServerInterfaceWrapper) GetPurchasingReceipt(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "receiptId" -------------
+	var receiptId int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "receiptId", r.PathValue("receiptId"), &receiptId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "receiptId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPurchasingReceipt(w, r, receiptId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UndoPurchasingReceipt operation middleware
+func (siw *ServerInterfaceWrapper) UndoPurchasingReceipt(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "receiptId" -------------
+	var receiptId int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "receiptId", r.PathValue("receiptId"), &receiptId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "receiptId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UndoPurchasingReceipt(w, r, receiptId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2550,11 +3029,18 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/purchasing/orders/{orderId}/documents/{documentId}", wrapper.GetPurchasingOrderDocument)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/purchasing/orders/{orderId}/history", wrapper.GetPurchasingOrderHistory)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/purchasing/orders/{orderId}/lines/{lineId}/close", wrapper.ClosePurchasingOrderLine)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/purchasing/orders/{orderId}/lines/{lineId}/delivered", wrapper.MarkPurchasingOrderLineDelivered)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/purchasing/orders/{orderId}/mark-sent", wrapper.MarkPurchasingOrderSent)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/purchasing/orders/{orderId}/pdf", wrapper.GetPurchasingOrderPdf)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/purchasing/orders/{orderId}/receipts", wrapper.ListPurchasingOrderReceipts)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/purchasing/orders/{orderId}/receipts", wrapper.ReceivePurchasingOrder)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/purchasing/orders/{orderId}/receive", wrapper.GetPurchasingReceiveForm)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/purchasing/orders/{orderId}/receive/code", wrapper.LookupPurchasingReceiveCode)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/purchasing/orders/{orderId}/reopen", wrapper.ReopenPurchasingOrder)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/purchasing/orders/{orderId}/send", wrapper.SendPurchasingOrder)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/purchasing/orders/{orderId}/send-again", wrapper.ResendPurchasingOrder)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/purchasing/receipts/{receiptId}", wrapper.GetPurchasingReceipt)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/purchasing/receipts/{receiptId}/undo", wrapper.UndoPurchasingReceipt)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/purchasing/settings", wrapper.GetPurchasingSettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/purchasing/settings", wrapper.PutPurchasingSettings)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/purchasing/sites", wrapper.ListPurchasingSites)
@@ -3713,6 +4199,100 @@ func (response ClosePurchasingOrderLine409ApplicationProblemPlusJSONResponse) Vi
 	return err
 }
 
+type MarkPurchasingOrderLineDeliveredRequestObject struct {
+	OrderId int64 `json:"orderId"`
+	LineId  int64 `json:"lineId"`
+	Body    *MarkPurchasingOrderLineDeliveredJSONRequestBody
+}
+
+type MarkPurchasingOrderLineDeliveredResponseObject interface {
+	VisitMarkPurchasingOrderLineDeliveredResponse(w http.ResponseWriter) error
+}
+
+type MarkPurchasingOrderLineDelivered200JSONResponse PurchasingOrder
+
+func (response MarkPurchasingOrderLineDelivered200JSONResponse) VisitMarkPurchasingOrderLineDeliveredResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MarkPurchasingOrderLineDelivered400ApplicationProblemPlusJSONResponse PurchasingProblem
+
+func (response MarkPurchasingOrderLineDelivered400ApplicationProblemPlusJSONResponse) VisitMarkPurchasingOrderLineDeliveredResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MarkPurchasingOrderLineDelivered401JSONResponse externalRef0.AuthErrorResponse
+
+func (response MarkPurchasingOrderLineDelivered401JSONResponse) VisitMarkPurchasingOrderLineDeliveredResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MarkPurchasingOrderLineDelivered403JSONResponse externalRef0.AuthErrorResponse
+
+func (response MarkPurchasingOrderLineDelivered403JSONResponse) VisitMarkPurchasingOrderLineDeliveredResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MarkPurchasingOrderLineDelivered404ApplicationProblemPlusJSONResponse PurchasingProblem
+
+func (response MarkPurchasingOrderLineDelivered404ApplicationProblemPlusJSONResponse) VisitMarkPurchasingOrderLineDeliveredResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MarkPurchasingOrderLineDelivered409ApplicationProblemPlusJSONResponse PurchasingProblem
+
+func (response MarkPurchasingOrderLineDelivered409ApplicationProblemPlusJSONResponse) VisitMarkPurchasingOrderLineDeliveredResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type MarkPurchasingOrderSentRequestObject struct {
 	OrderId int64 `json:"orderId"`
 	Body    *MarkPurchasingOrderSentJSONRequestBody
@@ -3893,6 +4473,362 @@ func (response GetPurchasingOrderPdf404ApplicationProblemPlusJSONResponse) Visit
 type GetPurchasingOrderPdf503ApplicationProblemPlusJSONResponse PurchasingProblem
 
 func (response GetPurchasingOrderPdf503ApplicationProblemPlusJSONResponse) VisitGetPurchasingOrderPdfResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPurchasingOrderReceiptsRequestObject struct {
+	OrderId int64 `json:"orderId"`
+}
+
+type ListPurchasingOrderReceiptsResponseObject interface {
+	VisitListPurchasingOrderReceiptsResponse(w http.ResponseWriter) error
+}
+
+type ListPurchasingOrderReceipts200JSONResponse PurchasingReceiptList
+
+func (response ListPurchasingOrderReceipts200JSONResponse) VisitListPurchasingOrderReceiptsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPurchasingOrderReceipts401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListPurchasingOrderReceipts401JSONResponse) VisitListPurchasingOrderReceiptsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPurchasingOrderReceipts403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListPurchasingOrderReceipts403JSONResponse) VisitListPurchasingOrderReceiptsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPurchasingOrderReceipts404ApplicationProblemPlusJSONResponse PurchasingProblem
+
+func (response ListPurchasingOrderReceipts404ApplicationProblemPlusJSONResponse) VisitListPurchasingOrderReceiptsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReceivePurchasingOrderRequestObject struct {
+	OrderId int64 `json:"orderId"`
+	Body    *ReceivePurchasingOrderJSONRequestBody
+}
+
+type ReceivePurchasingOrderResponseObject interface {
+	VisitReceivePurchasingOrderResponse(w http.ResponseWriter) error
+}
+
+type ReceivePurchasingOrder201JSONResponse PurchasingReceiptResult
+
+func (response ReceivePurchasingOrder201JSONResponse) VisitReceivePurchasingOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReceivePurchasingOrder400ApplicationProblemPlusJSONResponse PurchasingProblem
+
+func (response ReceivePurchasingOrder400ApplicationProblemPlusJSONResponse) VisitReceivePurchasingOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReceivePurchasingOrder401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ReceivePurchasingOrder401JSONResponse) VisitReceivePurchasingOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReceivePurchasingOrder403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ReceivePurchasingOrder403JSONResponse) VisitReceivePurchasingOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReceivePurchasingOrder404ApplicationProblemPlusJSONResponse PurchasingProblem
+
+func (response ReceivePurchasingOrder404ApplicationProblemPlusJSONResponse) VisitReceivePurchasingOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReceivePurchasingOrder409ApplicationProblemPlusJSONResponse PurchasingProblem
+
+func (response ReceivePurchasingOrder409ApplicationProblemPlusJSONResponse) VisitReceivePurchasingOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReceivePurchasingOrder503ApplicationProblemPlusJSONResponse PurchasingProblem
+
+func (response ReceivePurchasingOrder503ApplicationProblemPlusJSONResponse) VisitReceivePurchasingOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPurchasingReceiveFormRequestObject struct {
+	OrderId int64 `json:"orderId"`
+}
+
+type GetPurchasingReceiveFormResponseObject interface {
+	VisitGetPurchasingReceiveFormResponse(w http.ResponseWriter) error
+}
+
+type GetPurchasingReceiveForm200JSONResponse PurchasingReceiveForm
+
+func (response GetPurchasingReceiveForm200JSONResponse) VisitGetPurchasingReceiveFormResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPurchasingReceiveForm401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetPurchasingReceiveForm401JSONResponse) VisitGetPurchasingReceiveFormResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPurchasingReceiveForm403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetPurchasingReceiveForm403JSONResponse) VisitGetPurchasingReceiveFormResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPurchasingReceiveForm404ApplicationProblemPlusJSONResponse PurchasingProblem
+
+func (response GetPurchasingReceiveForm404ApplicationProblemPlusJSONResponse) VisitGetPurchasingReceiveFormResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPurchasingReceiveForm409ApplicationProblemPlusJSONResponse PurchasingProblem
+
+func (response GetPurchasingReceiveForm409ApplicationProblemPlusJSONResponse) VisitGetPurchasingReceiveFormResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPurchasingReceiveForm503ApplicationProblemPlusJSONResponse PurchasingProblem
+
+func (response GetPurchasingReceiveForm503ApplicationProblemPlusJSONResponse) VisitGetPurchasingReceiveFormResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LookupPurchasingReceiveCodeRequestObject struct {
+	OrderId int64 `json:"orderId"`
+	Params  LookupPurchasingReceiveCodeParams
+}
+
+type LookupPurchasingReceiveCodeResponseObject interface {
+	VisitLookupPurchasingReceiveCodeResponse(w http.ResponseWriter) error
+}
+
+type LookupPurchasingReceiveCode200JSONResponse PurchasingReceiveCodeList
+
+func (response LookupPurchasingReceiveCode200JSONResponse) VisitLookupPurchasingReceiveCodeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LookupPurchasingReceiveCode400ApplicationProblemPlusJSONResponse PurchasingProblem
+
+func (response LookupPurchasingReceiveCode400ApplicationProblemPlusJSONResponse) VisitLookupPurchasingReceiveCodeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LookupPurchasingReceiveCode401JSONResponse externalRef0.AuthErrorResponse
+
+func (response LookupPurchasingReceiveCode401JSONResponse) VisitLookupPurchasingReceiveCodeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LookupPurchasingReceiveCode403JSONResponse externalRef0.AuthErrorResponse
+
+func (response LookupPurchasingReceiveCode403JSONResponse) VisitLookupPurchasingReceiveCodeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LookupPurchasingReceiveCode404ApplicationProblemPlusJSONResponse PurchasingProblem
+
+func (response LookupPurchasingReceiveCode404ApplicationProblemPlusJSONResponse) VisitLookupPurchasingReceiveCodeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LookupPurchasingReceiveCode503ApplicationProblemPlusJSONResponse PurchasingProblem
+
+func (response LookupPurchasingReceiveCode503ApplicationProblemPlusJSONResponse) VisitLookupPurchasingReceiveCodeResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -4200,6 +5136,177 @@ func (response ResendPurchasingOrder409ApplicationProblemPlusJSONResponse) Visit
 type ResendPurchasingOrder503ApplicationProblemPlusJSONResponse PurchasingProblem
 
 func (response ResendPurchasingOrder503ApplicationProblemPlusJSONResponse) VisitResendPurchasingOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPurchasingReceiptRequestObject struct {
+	ReceiptId int64 `json:"receiptId"`
+}
+
+type GetPurchasingReceiptResponseObject interface {
+	VisitGetPurchasingReceiptResponse(w http.ResponseWriter) error
+}
+
+type GetPurchasingReceipt200JSONResponse PurchasingReceipt
+
+func (response GetPurchasingReceipt200JSONResponse) VisitGetPurchasingReceiptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPurchasingReceipt401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetPurchasingReceipt401JSONResponse) VisitGetPurchasingReceiptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPurchasingReceipt403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetPurchasingReceipt403JSONResponse) VisitGetPurchasingReceiptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPurchasingReceipt404ApplicationProblemPlusJSONResponse PurchasingProblem
+
+func (response GetPurchasingReceipt404ApplicationProblemPlusJSONResponse) VisitGetPurchasingReceiptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UndoPurchasingReceiptRequestObject struct {
+	ReceiptId int64 `json:"receiptId"`
+	Body      *UndoPurchasingReceiptJSONRequestBody
+}
+
+type UndoPurchasingReceiptResponseObject interface {
+	VisitUndoPurchasingReceiptResponse(w http.ResponseWriter) error
+}
+
+type UndoPurchasingReceipt200JSONResponse PurchasingReceiptResult
+
+func (response UndoPurchasingReceipt200JSONResponse) VisitUndoPurchasingReceiptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UndoPurchasingReceipt400ApplicationProblemPlusJSONResponse PurchasingProblem
+
+func (response UndoPurchasingReceipt400ApplicationProblemPlusJSONResponse) VisitUndoPurchasingReceiptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UndoPurchasingReceipt401JSONResponse externalRef0.AuthErrorResponse
+
+func (response UndoPurchasingReceipt401JSONResponse) VisitUndoPurchasingReceiptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UndoPurchasingReceipt403JSONResponse externalRef0.AuthErrorResponse
+
+func (response UndoPurchasingReceipt403JSONResponse) VisitUndoPurchasingReceiptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UndoPurchasingReceipt404ApplicationProblemPlusJSONResponse PurchasingProblem
+
+func (response UndoPurchasingReceipt404ApplicationProblemPlusJSONResponse) VisitUndoPurchasingReceiptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UndoPurchasingReceipt409ApplicationProblemPlusJSONResponse PurchasingProblem
+
+func (response UndoPurchasingReceipt409ApplicationProblemPlusJSONResponse) VisitUndoPurchasingReceiptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UndoPurchasingReceipt503ApplicationProblemPlusJSONResponse PurchasingProblem
+
+func (response UndoPurchasingReceipt503ApplicationProblemPlusJSONResponse) VisitUndoPurchasingReceiptResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -5178,12 +6285,27 @@ type StrictServerInterface interface {
 	// ClosePurchasingOrderLine Close an order line
 	// (POST /api/v1/purchasing/orders/{orderId}/lines/{lineId}/close)
 	ClosePurchasingOrderLine(ctx context.Context, request ClosePurchasingOrderLineRequestObject) (ClosePurchasingOrderLineResponseObject, error)
+	// MarkPurchasingOrderLineDelivered Mark an order line delivered
+	// (POST /api/v1/purchasing/orders/{orderId}/lines/{lineId}/delivered)
+	MarkPurchasingOrderLineDelivered(ctx context.Context, request MarkPurchasingOrderLineDeliveredRequestObject) (MarkPurchasingOrderLineDeliveredResponseObject, error)
 	// MarkPurchasingOrderSent Mark a purchase order as sent
 	// (POST /api/v1/purchasing/orders/{orderId}/mark-sent)
 	MarkPurchasingOrderSent(ctx context.Context, request MarkPurchasingOrderSentRequestObject) (MarkPurchasingOrderSentResponseObject, error)
 	// GetPurchasingOrderPdf Download a purchase order's PDF
 	// (GET /api/v1/purchasing/orders/{orderId}/pdf)
 	GetPurchasingOrderPdf(ctx context.Context, request GetPurchasingOrderPdfRequestObject) (GetPurchasingOrderPdfResponseObject, error)
+	// ListPurchasingOrderReceipts List a purchase order's receipts
+	// (GET /api/v1/purchasing/orders/{orderId}/receipts)
+	ListPurchasingOrderReceipts(ctx context.Context, request ListPurchasingOrderReceiptsRequestObject) (ListPurchasingOrderReceiptsResponseObject, error)
+	// ReceivePurchasingOrder Receive goods on a purchase order
+	// (POST /api/v1/purchasing/orders/{orderId}/receipts)
+	ReceivePurchasingOrder(ctx context.Context, request ReceivePurchasingOrderRequestObject) (ReceivePurchasingOrderResponseObject, error)
+	// GetPurchasingReceiveForm Get the receive screen of a purchase order
+	// (GET /api/v1/purchasing/orders/{orderId}/receive)
+	GetPurchasingReceiveForm(ctx context.Context, request GetPurchasingReceiveFormRequestObject) (GetPurchasingReceiveFormResponseObject, error)
+	// LookupPurchasingReceiveCode Look a scanned code up on the receive screen
+	// (GET /api/v1/purchasing/orders/{orderId}/receive/code)
+	LookupPurchasingReceiveCode(ctx context.Context, request LookupPurchasingReceiveCodeRequestObject) (LookupPurchasingReceiveCodeResponseObject, error)
 	// ReopenPurchasingOrder Reopen a purchase order
 	// (POST /api/v1/purchasing/orders/{orderId}/reopen)
 	ReopenPurchasingOrder(ctx context.Context, request ReopenPurchasingOrderRequestObject) (ReopenPurchasingOrderResponseObject, error)
@@ -5193,6 +6315,12 @@ type StrictServerInterface interface {
 	// ResendPurchasingOrder Send a purchase order again
 	// (POST /api/v1/purchasing/orders/{orderId}/send-again)
 	ResendPurchasingOrder(ctx context.Context, request ResendPurchasingOrderRequestObject) (ResendPurchasingOrderResponseObject, error)
+	// GetPurchasingReceipt Get a receipt
+	// (GET /api/v1/purchasing/receipts/{receiptId})
+	GetPurchasingReceipt(ctx context.Context, request GetPurchasingReceiptRequestObject) (GetPurchasingReceiptResponseObject, error)
+	// UndoPurchasingReceipt Undo a receipt
+	// (POST /api/v1/purchasing/receipts/{receiptId}/undo)
+	UndoPurchasingReceipt(ctx context.Context, request UndoPurchasingReceiptRequestObject) (UndoPurchasingReceiptResponseObject, error)
 	// GetPurchasingSettings Get the Purchasing settings
 	// (GET /api/v1/purchasing/settings)
 	GetPurchasingSettings(ctx context.Context, request GetPurchasingSettingsRequestObject) (GetPurchasingSettingsResponseObject, error)
@@ -5678,6 +6806,40 @@ func (sh *strictHandler) ClosePurchasingOrderLine(w http.ResponseWriter, r *http
 	}
 }
 
+// MarkPurchasingOrderLineDelivered operation middleware
+func (sh *strictHandler) MarkPurchasingOrderLineDelivered(w http.ResponseWriter, r *http.Request, orderId int64, lineId int64) {
+	var request MarkPurchasingOrderLineDeliveredRequestObject
+
+	request.OrderId = orderId
+	request.LineId = lineId
+
+	var body MarkPurchasingOrderLineDeliveredJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.MarkPurchasingOrderLineDelivered(ctx, request.(MarkPurchasingOrderLineDeliveredRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "MarkPurchasingOrderLineDelivered")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(MarkPurchasingOrderLineDeliveredResponseObject); ok {
+		if err := validResponse.VisitMarkPurchasingOrderLineDeliveredResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // MarkPurchasingOrderSent operation middleware
 func (sh *strictHandler) MarkPurchasingOrderSent(w http.ResponseWriter, r *http.Request, orderId int64) {
 	var request MarkPurchasingOrderSentRequestObject
@@ -5730,6 +6892,118 @@ func (sh *strictHandler) GetPurchasingOrderPdf(w http.ResponseWriter, r *http.Re
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetPurchasingOrderPdfResponseObject); ok {
 		if err := validResponse.VisitGetPurchasingOrderPdfResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListPurchasingOrderReceipts operation middleware
+func (sh *strictHandler) ListPurchasingOrderReceipts(w http.ResponseWriter, r *http.Request, orderId int64) {
+	var request ListPurchasingOrderReceiptsRequestObject
+
+	request.OrderId = orderId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListPurchasingOrderReceipts(ctx, request.(ListPurchasingOrderReceiptsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListPurchasingOrderReceipts")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListPurchasingOrderReceiptsResponseObject); ok {
+		if err := validResponse.VisitListPurchasingOrderReceiptsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ReceivePurchasingOrder operation middleware
+func (sh *strictHandler) ReceivePurchasingOrder(w http.ResponseWriter, r *http.Request, orderId int64) {
+	var request ReceivePurchasingOrderRequestObject
+
+	request.OrderId = orderId
+
+	var body ReceivePurchasingOrderJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ReceivePurchasingOrder(ctx, request.(ReceivePurchasingOrderRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ReceivePurchasingOrder")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ReceivePurchasingOrderResponseObject); ok {
+		if err := validResponse.VisitReceivePurchasingOrderResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetPurchasingReceiveForm operation middleware
+func (sh *strictHandler) GetPurchasingReceiveForm(w http.ResponseWriter, r *http.Request, orderId int64) {
+	var request GetPurchasingReceiveFormRequestObject
+
+	request.OrderId = orderId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetPurchasingReceiveForm(ctx, request.(GetPurchasingReceiveFormRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetPurchasingReceiveForm")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetPurchasingReceiveFormResponseObject); ok {
+		if err := validResponse.VisitGetPurchasingReceiveFormResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// LookupPurchasingReceiveCode operation middleware
+func (sh *strictHandler) LookupPurchasingReceiveCode(w http.ResponseWriter, r *http.Request, orderId int64, params LookupPurchasingReceiveCodeParams) {
+	var request LookupPurchasingReceiveCodeRequestObject
+
+	request.OrderId = orderId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.LookupPurchasingReceiveCode(ctx, request.(LookupPurchasingReceiveCodeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "LookupPurchasingReceiveCode")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(LookupPurchasingReceiveCodeResponseObject); ok {
+		if err := validResponse.VisitLookupPurchasingReceiveCodeResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -5829,6 +7103,65 @@ func (sh *strictHandler) ResendPurchasingOrder(w http.ResponseWriter, r *http.Re
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ResendPurchasingOrderResponseObject); ok {
 		if err := validResponse.VisitResendPurchasingOrderResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetPurchasingReceipt operation middleware
+func (sh *strictHandler) GetPurchasingReceipt(w http.ResponseWriter, r *http.Request, receiptId int64) {
+	var request GetPurchasingReceiptRequestObject
+
+	request.ReceiptId = receiptId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetPurchasingReceipt(ctx, request.(GetPurchasingReceiptRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetPurchasingReceipt")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetPurchasingReceiptResponseObject); ok {
+		if err := validResponse.VisitGetPurchasingReceiptResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UndoPurchasingReceipt operation middleware
+func (sh *strictHandler) UndoPurchasingReceipt(w http.ResponseWriter, r *http.Request, receiptId int64) {
+	var request UndoPurchasingReceiptRequestObject
+
+	request.ReceiptId = receiptId
+
+	var body UndoPurchasingReceiptJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UndoPurchasingReceipt(ctx, request.(UndoPurchasingReceiptRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UndoPurchasingReceipt")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UndoPurchasingReceiptResponseObject); ok {
+		if err := validResponse.VisitUndoPurchasingReceiptResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
