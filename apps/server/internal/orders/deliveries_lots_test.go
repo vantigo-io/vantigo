@@ -125,10 +125,11 @@ func TestDeliveryLots_ProposalSplitsAcrossLotsFEFO(t *testing.T) {
 		t.Errorf("read delivery %+v", got.Lines[0])
 	}
 
-	mustStatus(t, c.Do(http.MethodGet, deliveryPath(d.Id, "pick-list"), nil), http.StatusOK, "pick list")
+	served := c.Do(http.MethodGet, deliveryPath(d.Id, "pick-list"), nil)
+	mustStatus(t, served, http.StatusOK, "pick list")
 	subtitle := fmt.Sprintf("Leveranse %d – Ordre %d", d.Number, o.Number)
 	expiry := func(days int) string { return day(h, days).Format("02.01.2006") }
-	pick, ok := pdfModels.find("Plukkliste", subtitle, func(m orders.PDFModel) bool { return len(m.Rows) == 2 && strings.HasPrefix(m.Rows[0][1], "MILK-1") })
+	pick, ok := pdfModels.find(served.Body, "Plukkliste", subtitle, func(m orders.PDFModel) bool { return len(m.Rows) == 2 && strings.HasPrefix(m.Rows[0][1], "MILK-1") })
 	if !ok || pick.Header[2] != "Parti" ||
 		!slices.Equal(pick.Rows[0][:4], []string{"OSL-A-01", "MILK-1 MILK-1", "A1 (utløper " + expiry(40) + ")", "3"}) ||
 		!slices.Equal(pick.Rows[1][:4], []string{"OSL-A-02", "MILK-1 MILK-1", "B2 (utløper " + expiry(10) + ")", "3"}) {
@@ -153,8 +154,9 @@ func TestDeliveryLots_ProposalSplitsAcrossLotsFEFO(t *testing.T) {
 		t.Errorf("posted line %+v, want its lots kept and no choices", posted.Lines[0])
 	}
 
-	mustStatus(t, c.Do(http.MethodGet, deliveryPath(d.Id, "packing-slip"), nil), http.StatusOK, "packing slip")
-	slip, ok := pdfModels.find("Pakkseddel", subtitle, func(m orders.PDFModel) bool { return len(m.Rows) == 2 && strings.HasPrefix(m.Rows[0][0], "MILK-1") })
+	served = c.Do(http.MethodGet, deliveryPath(d.Id, "packing-slip"), nil)
+	mustStatus(t, served, http.StatusOK, "packing slip")
+	slip, ok := pdfModels.find(served.Body, "Pakkseddel", subtitle, func(m orders.PDFModel) bool { return len(m.Rows) == 2 && strings.HasPrefix(m.Rows[0][0], "MILK-1") })
 	want := "Partier: B2 (utløper " + expiry(10) + ") – 3, A1 (utløper " + expiry(40) + ") – 3"
 	if !ok || slip.Rows[0][2] != "6" || len(slip.Rows[1]) != 1 || slip.Rows[1][0] != want {
 		t.Errorf("packing slip %+v, %v; want the lots under the line: %q", slip.Rows, ok, want)
@@ -374,14 +376,16 @@ func TestDeliveryLots_Serials(t *testing.T) {
 	if h.stock.lotAt(11, locA1) != "0" || h.stock.lotAt(13, locA1) != "1" {
 		t.Errorf("serials after the post: %s %s", h.stock.lotAt(11, locA1), h.stock.lotAt(13, locA1))
 	}
-	mustStatus(t, c.Do(http.MethodGet, deliveryPath(d.Id, "packing-slip"), nil), http.StatusOK, "packing slip")
+	served := c.Do(http.MethodGet, deliveryPath(d.Id, "packing-slip"), nil)
+	mustStatus(t, served, http.StatusOK, "packing slip")
 	subtitle := fmt.Sprintf("Leveranse %d – Ordre %d", d.Number, o.Number)
-	slip, ok := pdfModels.find("Pakkseddel", subtitle, func(m orders.PDFModel) bool { return len(m.Rows) == 2 && strings.HasPrefix(m.Rows[0][0], "PUMP-1") })
+	slip, ok := pdfModels.find(served.Body, "Pakkseddel", subtitle, func(m orders.PDFModel) bool { return len(m.Rows) == 2 && strings.HasPrefix(m.Rows[0][0], "PUMP-1") })
 	if !ok || slip.Rows[1][0] != "Partier: SN-1, SN-2" {
 		t.Errorf("packing slip %+v, %v; want the serial numbers listed", slip.Rows, ok)
 	}
-	mustStatus(t, c.Do(http.MethodGet, deliveryPath(d.Id, "pick-list"), nil), http.StatusOK, "pick list")
-	pick, ok := pdfModels.find("Plukkliste", subtitle, func(m orders.PDFModel) bool { return len(m.Rows) == 2 && strings.HasPrefix(m.Rows[0][1], "PUMP-1") })
+	served = c.Do(http.MethodGet, deliveryPath(d.Id, "pick-list"), nil)
+	mustStatus(t, served, http.StatusOK, "pick list")
+	pick, ok := pdfModels.find(served.Body, "Plukkliste", subtitle, func(m orders.PDFModel) bool { return len(m.Rows) == 2 && strings.HasPrefix(m.Rows[0][1], "PUMP-1") })
 	if !ok || pick.Rows[0][2] != "SN-1" || pick.Rows[1][2] != "SN-2" {
 		t.Errorf("pick list %+v, %v; want a row per serial", pick.Rows, ok)
 	}
@@ -492,9 +496,10 @@ func TestDeliveryLots_PackingSlipSumsALotAndCancelledListsNone(t *testing.T) {
 	mustStatus(t, res, http.StatusCreated, "a second delivery")
 	d = deliveryOf(t, res)
 	mustStatus(t, postDelivery(c, d), http.StatusOK, "post")
-	mustStatus(t, c.Do(http.MethodGet, deliveryPath(d.Id, "packing-slip"), nil), http.StatusOK, "packing slip")
+	served := c.Do(http.MethodGet, deliveryPath(d.Id, "packing-slip"), nil)
+	mustStatus(t, served, http.StatusOK, "packing slip")
 	subtitle := fmt.Sprintf("Leveranse %d – Ordre %d", d.Number, o.Number)
-	slip, ok := pdfModels.find("Pakkseddel", subtitle, func(m orders.PDFModel) bool { return len(m.Rows) == 2 && strings.HasPrefix(m.Rows[0][0], "MILK-1") })
+	slip, ok := pdfModels.find(served.Body, "Pakkseddel", subtitle, func(m orders.PDFModel) bool { return len(m.Rows) == 2 && strings.HasPrefix(m.Rows[0][0], "MILK-1") })
 	expiry := func(days int) string { return day(h, days).Format("02.01.2006") }
 	want := "Partier: L1 (utløper " + expiry(10) + ") – 2, L2 (utløper " + expiry(20) + ") – 1"
 	if !ok || slip.Rows[1][0] != want {

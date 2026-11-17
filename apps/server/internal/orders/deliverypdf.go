@@ -296,9 +296,6 @@ func buildDeliveryModel(p deliveryPrintable) pdfModel {
 		}
 	}
 	m.footer = sp.FooterText
-	if pdfModelBuilt != nil {
-		pdfModelBuilt(m)
-	}
 	return m
 }
 
@@ -401,5 +398,9 @@ func renderListPDF(m pdfModel, packingSlip bool) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("orders: render the PDF: %w", err)
 	}
-	return out.GetBytes(), nil
+	b := out.GetBytes()
+	if pdfRendered != nil {
+		pdfRendered(m, b)
+	}
+	return b, nil
 }

@@ -1,6 +1,7 @@
 package orders_test
 
 import (
+	"crypto/sha256"
 	"os"
 	"sync"
 	"testing"
@@ -18,41 +19,40 @@ var recorder = contracttest.NewForModule("orders")
 // none.
 var pending []string
 
-// pdfModels is every PDF model built, for the tests that read what a PDF
-// says (the bytes are embedded-subset and cannot be read back).
-var pdfModels = &models{}
+// pdfModels is every PDF model rendered, by the bytes it rendered to, for the
+// tests that read what a PDF says (the bytes are embedded-subset and cannot be
+// read back).
+var pdfModels = &models{byPDF: map[[sha256.Size]byte]orders.PDFModel{}}
 
 type models struct {
-	mu  sync.Mutex
-	all []orders.PDFModel
+	mu    sync.Mutex
+	byPDF map[[sha256.Size]byte]orders.PDFModel
 }
 
-func (m *models) add(p orders.PDFModel) {
+func (m *models) add(p orders.PDFModel, pdf []byte) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.all = append(m.all, p)
+	m.byPDF[sha256.Sum256(pdf)] = p
 }
 
-// find is the last model whose title is title, whose subtitle is subtitle and
-// which every want accepts. Tests run in parallel, each on its own database, so
-// two tests print "Tilbud 1" alike: a test that reads what its PDF says passes
-// a want that tells its own model apart, or it may read another test's.
-func (m *models) find(title, subtitle string, want ...func(orders.PDFModel) bool) (orders.PDFModel, bool) {
+// find is the model rendered to pdf — the body a test was served — when its
+// title is title, its subtitle is subtitle and every want accepts it. Tests
+// run in parallel, each on its own database, so two tests print "Leveranse 1 –
+// Ordre 1" alike: keyed by the bytes, a test reads its own PDF's model and
+// never another test's. Two PDFs alike to the byte are the same words.
+func (m *models) find(pdf []byte, title, subtitle string, want ...func(orders.PDFModel) bool) (orders.PDFModel, bool) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-next:
-	for i := len(m.all) - 1; i >= 0; i-- {
-		if m.all[i].Title != title || m.all[i].Subtitle != subtitle {
-			continue
-		}
-		for _, ok := range want {
-			if !ok(m.all[i]) {
-				continue next
-			}
-		}
-		return m.all[i], true
+	p, ok := m.byPDF[sha256.Sum256(pdf)]
+	m.mu.Unlock()
+	if !ok || p.Title != title || p.Subtitle != subtitle {
+		return orders.PDFModel{}, false
 	}
-	return orders.PDFModel{}, false
+	for _, accept := range want {
+		if !accept(p) {
+			return orders.PDFModel{}, false
+		}
+	}
+	return p, true
 }
 
 func TestMain(m *testing.M) {
