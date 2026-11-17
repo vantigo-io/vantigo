@@ -1,11 +1,12 @@
 ---
 title: "Purchasing module"
-description: "The buy side: the module and the three modules it requires, the seven permissions, the settings, supplier items — one per supplier and variant, the preferred item, the currency flag and the price-list import —, purchase orders — the header and its defaults, lines and their arithmetic, the states and every transition with its refusal, the concurrency token, the change log, Late and Unconfirmed —, the number series, Send, Mark as sent and Send again with their idempotency, the PDFs and the mail, Close, Close line, Reopen, Cancel, the confirmation and Copy; the variant and supplier holders and the supplier's personal data; the events; contracts.PurchaseSupply; the two workers; the contracts read; the dashboard figures; the refusal codes and every endpoint with its permission and status codes."
+description: "The buy side: the module and the three modules it requires, the seven permissions, the settings, supplier items — one per supplier and variant, the preferred item, the currency flag and the price-list import —, purchase orders — the header and its defaults, lines and their arithmetic, the states and every transition with its refusal, the concurrency token, the change log, Late and Unconfirmed —, the number series, Send, Mark as sent and Send again with their idempotency, the PDFs and the mail, Close, Close line, Reopen, Cancel, the confirmation and Copy; the variant and supplier holders and the supplier's personal data; the events; contracts.PurchaseSupply; the two workers; the contracts read; the dashboard figures; receipts — the receive screen and the scanned code, Receive on one transaction with StockLedger.Receive, its lock order, retry and idempotency, more and less than ordered, the order's status, the receipts read, Undo through StockLedger.ReverseReceipt, and the delivered mark on a text or service line —, the receipt events and Manufacturing's handler of them; the refusal codes and every endpoint with its permission and status codes."
 sources:
   - apps/server/internal/purchasing
   - openapi/purchasing.yaml
   - apps/server/internal/openapi/specs/purchasing.yaml
   - apps/server/internal/db/migrations/00189_purchasing_baseline.sql
+  - apps/server/internal/db/migrations/00190_purchasing_receipts.sql
   - apps/server/internal/contracts/events_purchasing.go
 ---
 The Purchasing module keeps what the business buys: what each supplier sells of the
@@ -14,9 +15,9 @@ their mail, the supplier's confirmation and every change made after sending. In
 Norwegian the app is **Innkjøp**. The design is
 [`2026-11-17-purchasing-design.md`](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-11-17-purchasing-design.md)
 (decisions P1–P41, amendments A1–A36); this page describes delivery A, the module,
-supplier items and purchase orders (P8–P23, A11, A16–A19). Receipts (delivery B),
-proposals (C) and the supplier-invoice match (D) come later: nothing in delivery A
-receives, so `partially_received` and `received` are not reached yet.
+supplier items and purchase orders (P8–P23, A11, A16–A19), and delivery B,
+[receipts](#receipts) (P24–P30, A4–A7, A10, A11, A21, A27). Proposals (C) and the
+supplier-invoice match (D) come later.
 
 A purchase order moves neither stock nor the ledger. Stock moves when goods are received,
 through Inventory's `StockLedger.Receive`; the books when the supplier invoice is posted,
@@ -30,7 +31,9 @@ The module is `purchasing`, its schema `purchasing` (migration
 
 - the suppliers through `contracts.SupplierDirectory` (Accounting's register),
 - the catalog through `contracts.ProductCatalog` (Products),
-- the sites through `contracts.Stock` (Inventory),
+- the sites, their locations and where a variant lies through `contracts.Stock`
+  (Inventory), and the stock ledger — `Receive` and `ReverseReceipt` — through
+  `contracts.StockLedger`, on Purchasing's own transaction (rule 24),
 - the company — the seller's name, address and profile for the PDF and the default
   delivery address — through `contracts.SalesTax`,
 - the business time zone through the calendar contract, falling back to UTC when it is
@@ -48,8 +51,9 @@ PDFs are kept in the object store, under the scope `purchasing`, keyed by their 
 
 The schema holds `settings` (one row), `counters` (one per number series),
 `supplier_items`, `orders`, `order_lines`, `order_changes` (the change log), `documents`
-(the stored PDFs), `mailings` (every send) and `deletions` (the stored PDFs an erase
-wrote off, for the [deletions worker](#workers)). Suppliers, variants, packagings, sites
+(the stored PDFs), `mailings` (every send), `deletions` (the stored PDFs an erase
+wrote off, for the [deletions worker](#workers)), and `receipts` and `receipt_lines`
+(migration `00190_purchasing_receipts.sql`, [below](#the-receipt-tables)). Suppliers, variants, packagings, sites
 and users are referenced by id, with no foreign key across schemas.
 
 ## Permissions
@@ -63,7 +67,7 @@ write does not also ask for `purchasing:access`.
 | `purchasing:access` | Use Purchasing | Read everything: orders, their lines and prices, the PDFs, the history, supplier items, the suppliers, the sites, the buyers, the meta and the figures. |
 | `purchasing:orders-manage` | Manage purchase orders | Create, save and delete drafts; save sent orders; record the confirmation; Close, Close line, Reopen; Copy. |
 | `purchasing:orders-send` | Send purchase orders | Send, Mark as sent, Send again, Cancel. |
-| `purchasing:receive` | Receive goods (coming) | Declared for delivery B; no operation asks for it yet, and its description says so. |
+| `purchasing:receive` | Receive goods | Receive goods against purchase orders, undo a receipt, and mark a text or service line delivered: the receive screen, the code lookup, Receive, Undo and the delivered mark. It needs nothing else — no `orders-manage`, and no Inventory permission. |
 | `purchasing:supplier-items-manage` | Manage supplier items | Create, save, delete and import supplier items. |
 | `purchasing:invoices-match` | Match supplier invoices (coming) | Declared for delivery D; no operation asks for it yet, and its description says so. |
 | `purchasing:settings` | Manage Purchasing settings | Read and save the settings. Not delegable. |
@@ -225,10 +229,15 @@ A line answers the warnings `below_minimum` (under the supplier item's minimum) 
 | open | Close line | same, `closed` or `received` | 404 for a line not on the order; 409 `line_closed` |
 | `closed` | Reopen | `sent` or `partially_received` | 409 `order_not_closed` from any other state |
 | `sent` | Cancel | `cancelled` | 409 `order_has_receipts` when anything is received or delivered; 503 `sending_disabled` when the supplier is to be notified and nothing can send |
+| open | Receive | `partially_received` or `received` | 400 `line_not_receivable`, `quantity_invalid`, `packaging_not_found`, Inventory's line codes; 409 `over_receipt`, `client_request_reused`, `version_conflict`, Inventory's codes ([Receive](#receive)) |
+| `partially_received`, `received`, `closed` | Undo a receipt | `sent` or `partially_received`; `closed` stays | 409 `receipt_undone`, `receipt_invoiced`, `insufficient_stock`, `location_unknown` |
+| open | Mark delivered | same or `received` | 409 `line_not_deliverable`, `line_closed` |
+| open, `received` | Not delivered | `sent` or `partially_received` | 409 `line_not_deliverable`, `line_closed` |
 
 An operation that needs an open order answers 409 `order_not_sent` from any other state:
-Send again, the confirmation, Close, Close line and Cancel (a draft is deleted, not
-cancelled). Send and Mark as sent of an order that is not a draft is 409
+Send again, the confirmation, Close, Close line, Cancel (a draft is deleted, not
+cancelled), the receive screen, Receive and the delivered mark (`received` too for taking
+it off). Send and Mark as sent of an order that is not a draft is 409
 `order_not_draft`. A save of a `closed`, `received` or `cancelled` order is 409
 `order_not_sent`.
 
@@ -389,6 +398,172 @@ when the currency is the same. The supplier's currency is read upper-cased. A go
 is left out; text lines are copied as they are. An inactive supplier is 409
 `supplier_inactive`.
 
+## Receipts
+
+Delivery B (P24–P30): goods received against a sent order, into Inventory through
+`contracts.StockLedger` on Purchasing's own transaction. One receipt is one Inventory
+movement of kind `receipt`; an undo is one of kind `receipt_reversal`. Purchasing never
+touches the general ledger: the books move when the supplier invoice is posted, in
+Accounting.
+
+### The receipt tables
+
+`receipts` — one per receipt (P28):
+
+| Column | |
+| --- | --- |
+| `number` | In a series of its own, `receipt` in `counters`, gap-free from 1, unique (`ux_receipts_number`). The first receipt makes the counter's row. |
+| `order_id`, `site_id` | The order and its receiving site. |
+| `received_on` | The day received. |
+| `delivery_note` (100), `note` (1 000) | The supplier's delivery note number, as text, and a note. |
+| `movement_id` | Inventory's movement of kind `receipt`. |
+| `received_by_user_id`, `received_by_display` | Who received, the name snapshotted. |
+| `client_request_id`, `request_hash` | The idempotency key, unique (`ux_receipts_client_request`), and the hash of the body (A11). |
+| `undone_at`, `undone_by_user_id`, `undone_by_display`, `undo_note` (1 000), `reversal_movement_id` | Set by Undo; `undone_at` and `reversal_movement_id` are set together (`ck_receipts_undone`). |
+
+`receipt_lines` — one per line of the request, by `position`:
+
+| Column | |
+| --- | --- |
+| `order_line_id`, `variant_id` | The order line and its variant. |
+| `location_id` | Where it was put. |
+| `quantity`, `entered_quantity`, `in_packaging`, `packaging_name` | The quantity in the variant's unit, and as entered — in the line's purchase packaging when `in_packaging`, with the packaging's name then. Both > 0, three places. |
+| `lot_id`, `lot_number`, `supplier_lot`, `production_date`, `best_before`, `expiry` | The lot as the request named it: by id, or by number with its dates and supplier lot; `lot_number` null when Inventory numbered it. |
+| `serials` | A serial variant's serials. |
+| `unit_price`, `currency` | The order line's price at the time and its currency (P28): the figure a later valuation starts from. Nothing reads it in this phase and no endpoint answers it (A21). |
+
+Sites, locations, variants, lots and movements are Inventory's and Products' ids, with no
+foreign key across schemas; a receipt references its order and a line its order line,
+`ON DELETE RESTRICT`.
+
+### The receive screen
+
+`GET /orders/{orderId}/receive` (`receive`) answers what the screen needs, with no prices
+(A21): the order's number, status, supplier's name, site and `updatedAt`; the site's
+active locations; and each open goods line — not closed, of a Goods variant — with its
+SKU, name, unit, ordered, received and `open` (the remainder, in the variant's unit),
+its purchase packaging and the packaging's quantity, the variant's tracking, its lot
+days (`bestBeforeDays`, `expiryDays`) and `defaultLocationId`: the variant's primary
+location at the site when it holds stock there, else the location holding most of it,
+else the site's own node. An order that is not open is 409 `order_not_sent`.
+
+`GET /orders/{orderId}/receive/code?code=` (`receive`, 1–100 characters) reads a scanned
+code through `ProductCatalog.LookupCode` (P30): a variant's or a packaging's barcode, or
+the SKU; a GTIN-14 is tried again without its leading zeros. It answers the order's open
+goods lines of the variant the code names, by position, each with the packaging matched
+(none for the variant's own code) and `quantity`, what one scan adds in the variant's
+unit — the packaging's quantity, or 1. A code that names nothing on the order answers an
+empty list, which the screen shows as *Not on this order*. The screen reads a GS1-128
+string itself (`apps/purchasing/frontend/src/lib/gs1.ts`) as Inventory's receipt does:
+its GTIN is looked up this way, and its lot, serial and dates fill the row.
+
+### Receive
+
+`POST /orders/{orderId}/receipts` (`receive`) with `clientRequestId`, `lines` (1–500),
+`deliveryNote`, `note` and `acceptOver`. Each line names `orderLineId`, `quantity` — at
+most three places, in the line's purchase packaging when `inPackaging`, else in the
+variant's unit —, `locationId`, and for a tracked variant its lot one way: `lotId`, an
+existing lot; `lot`, a lot by number found or made, with its supplier lot, production
+date, best-before and expiry (an empty number lets Inventory number it, `L<n>`; a date
+left out defaults from the product's days); or `serials` (at most 500, 20 characters
+each) for a serial variant. An order line may appear on several lines — a split by
+location or lot.
+
+Purchasing's own refusals, each line by its index in `lines`: 400 `line_not_receivable`
+(not an open goods line of the order — a text or service line, a closed line, another
+order's), `quantity_invalid` (not above 0, more than three places), `packaging_not_found`
+(`inPackaging` on a line with no purchase packaging); 409 `order_not_sent` for an order
+that is not open.
+
+**The rule of more** (P26): a line whose quantities add up to more than its remainder,
+`quantity − received`, is refused 409 `over_receipt`, the lines named, unless
+`acceptOver` is true. With it the line's `received` may exceed its `quantity`.
+
+**The rule of less** (P27): the order stays `partially_received` with its remainder; no
+back-order document is made.
+
+**The order's status** after a receipt: `received` when every goods line is received in
+full — `received ≥ quantity` — or closed, and every text and service line delivered or
+closed; else `partially_received`.
+
+**One transaction** (P25, A7). Before it, on the pool, the order's lines and variants and
+the screen's contract reads. Inside it, in the lock order of rules 21 and 24: Products'
+`LockVariants` on the order's variants; the order row `FOR UPDATE`, its lines checked
+against what was read; the receipt counter's row; the receipt and its lines written, the
+order lines' `received` raised, the order's status set; then Inventory —
+`StockLedger.Receive`, one movement of kind `receipt` at the order's site whose document
+is the receipt (`purchasing/receipt/<id>`) and whose source line is the order, which
+Inventory's movement page links to; the movement's id written to the receipt; and the
+[event](#events). Two receipts of one order queue on the order's row lock, and the second
+sees the first's quantities. The engine's deadlock retry is not available on a caller's
+transaction, so Purchasing retries the whole transaction on a deadlock, up to three
+times, as Manufacturing's replenishment does; one that still fails is 409
+`version_conflict` — the order kept changing while it was received.
+
+What Inventory does with it is [Inventory's](/en/reference/inventory/#receiving-for-another-module):
+a variant inspected on receipt has its lots quarantined, as on Inventory's own receipt
+(A5); a **Discontinued** variant's open order is still received (A6). Inventory's
+refusals keep Inventory's codes, each line by its index in the request's `lines`: 400
+`lot_required`, `lot_not_allowed`, `lot_unknown`, `lot_number_invalid`,
+`lot_dates_invalid`, `serial_quantity`, `line_invalid`, `location_unknown`,
+`quantity_invalid`; 409 `variant_not_stocked`, `lot_blocked`, `site_archived`,
+`site_unknown`, `document_reused`.
+
+**Idempotency** (A11): `clientRequestId` with the hash of the body. A replay with the
+same id and body answers the first receipt — 201, with the receipt and its order as they
+now stand — and posts nothing; another body under the same id is 409
+`client_request_reused`. A refused request records nothing, so the screen, asked about
+`over_receipt`, sends the same receipt again under the same id with `acceptOver`.
+
+A receipt answers **201** with the receipt and the order (`PurchasingReceiptResult`).
+It lowers [PurchaseSupply](#purchasesupply) at once.
+
+### The receipts read
+
+`GET /orders/{orderId}/receipts` (`access`) answers the order's receipts newest first,
+each with its lines; `GET /receipts/{receiptId}` (`access`) one. A receipt carries its
+number, the order and its number, the site, `status` (`posted` or `undone`), the day,
+who, the delivery note, the note, `movementId`, and once undone `undoneAt`, `undoneBy`,
+`undoNote` and `reversalMovementId`; a line its order line, variant, SKU, name and unit,
+the quantity and as entered, the location with its full code as Inventory answers it now
+(empty when it no longer does), the lot and its dates, and the serials. No prices. The
+order page links the movements to Inventory for a caller with `inventory:stock-view`
+while Inventory is on.
+
+### Undo
+
+`POST /receipts/{receiptId}/undo` (`receive`) with an optional `note` (1 000) takes a
+posted receipt back (P29, A5, A10, A16), in one transaction in Receive's lock order —
+`LockVariants`, the order row, then Inventory — with the receipt's row locked:
+`StockLedger.ReverseReceipt`
+posts one movement of kind `receipt_reversal`, taking each of the receipt's lines out of
+the location and lot it went into whatever the lots' holds, and releasing the holds that
+receipt set (its inspection's quarantine); the lines' `received` go down by what the
+receipt put on them; the receipt is kept, `undone_at`, who, the note and
+`reversal_movement_id` written; and the event is published. The order becomes
+`partially_received` when anything else on it is received or delivered, else `sent`; a
+`closed` order stays `closed` (Reopen to receive again). It answers **200** with the
+receipt and the order.
+
+Refused: 409 `receipt_undone` for a receipt undone already; `receipt_invoiced` when a
+line would be left with less received than is invoiced on it, posted or provisional
+(A10) — nothing is invoiced before the invoice match, delivery D, but the rule is in
+place —; and Inventory's `insufficient_stock` (the stock is no longer where it was
+received) and `location_unknown` (a location archived since), each by its index in the
+receipt's lines. `ReverseReceipt` is idempotent by the receipt's document, so there is
+one reversal a receipt.
+
+### Delivered
+
+A text line, or a line of a Service variant, is never received into stock (P16).
+`POST /orders/{orderId}/lines/{lineId}/delivered` (`receive`) with `delivered` and the
+order's `expectedUpdatedAt` sets or clears the line's delivered mark (`delivered_at`).
+Marking needs an open order; taking the mark off, an open or `received` one (409
+`order_not_sent`). When nothing stays open the order is `received`; taking the mark off a
+received order makes it `partially_received`, or `sent` when nothing else has come.
+Refused 409 `line_not_deliverable` on a goods line — it is received instead —,
+`line_closed` on a closed line, and `version_conflict` for a stale `expectedUpdatedAt`.
+
 ## The holders
 
 Purchasing answers inside other modules' transactions, on the caller's `tx`, with its own
@@ -425,14 +600,26 @@ UPDATE` first:
 ## Events
 
 Published through the outbox on the change's own transaction, while it holds the order's
-row lock (`contracts/events_purchasing.go`). A payload carries ids, numbers, dates, the
-currency and the net total — no name, address or note (rule 23). None has a consumer in
-this phase.
+row lock (`contracts/events_purchasing.go`), and aggregated by the order's id. A payload
+carries ids, numbers, dates, quantities, the currency and the net total — no name,
+address, delivery note or note (rule 23). Manufacturing handles three of them
+([below](#manufacturings-handler)).
 
 | Event | When | Payload |
 | --- | --- | --- |
 | `purchasing.order.sent.v1` | Send, Mark as sent | `orderId`, `number`, `supplierId`, `siteId`, `currency`, `netTotal`, `orderDate`, `expectedOn` (optional), `sendMethod` (`mail` or `manual`), `sentAt` |
 | `purchasing.order.closed.v1` | Close, and a last Close line that leaves the order closed | `orderId`, `number`, `supplierId`, `siteId`, `closedAt` |
+| `purchasing.receipt.posted.v1` | Receive | the receipt's id and number, the order's id and number, the supplier, the site, the movement, the received day, and per line the order line, the variant and the quantity in the variant's unit |
+| `purchasing.receipt.undone.v1` | Undo | the same, with the reversal's movement |
+
+### Manufacturing's handler
+
+Manufacturing's handler **`manufacturing.purchasing-replenish`** receives
+`purchasing.order.sent.v1`, `purchasing.receipt.posted.v1` and
+`purchasing.receipt.undone.v1` and queues a [replenishment
+run](/en/reference/manufacturing/#replenishment) for the order's site when none is pending
+for it, so the projection's open purchases follow the order. It writes only
+Manufacturing's own schema (rule 23); with Manufacturing off nothing handles them.
 
 ## PurchaseSupply
 
@@ -448,7 +635,8 @@ count nothing.
   given; more than `contracts.MaxStockVariants` is a failure.
 - `OpenAll(ctx)`: every (variant, site) with anything open.
 
-Quantities are exact decimal text in the variant's unit. It reads on the module's pool,
+A receipt lowers it at once, in its own transaction — `received` rises —; an undo raises
+it again; Close and Close line end what was left. Quantities are exact decimal text in the variant's unit. It reads on the module's pool,
 outside any transaction, and checks no user permission. With Purchasing off the readers
 see nothing on order.
 
@@ -477,9 +665,9 @@ refusals in `lines`. A request the server could not decode is a bare 400.
 
 | Status | Codes |
 | --- | --- |
-| 400 | `supplier_not_found`, `site_not_found`, `site_archived`, `currency_invalid`, `series_start_too_low`, `send_channel_unknown`, `recipient_missing`, `order_empty`, `import_invalid`, `amount_out_of_range` (the total); a line's `too_many_lines`, `line_invalid`, `line_not_found`, `variant_not_found`, `variant_discontinued`, `packaging_not_found`, `quantity_invalid`, `price_invalid`, `discount_invalid`, `quantity_below_received`, `amount_out_of_range` |
+| 400 | `supplier_not_found`, `site_not_found`, `site_archived`, `currency_invalid`, `series_start_too_low`, `send_channel_unknown`, `recipient_missing`, `order_empty`, `import_invalid`, `amount_out_of_range` (the total); a line's `too_many_lines`, `line_invalid`, `line_not_found`, `variant_not_found`, `variant_discontinued`, `packaging_not_found`, `quantity_invalid`, `price_invalid`, `discount_invalid`, `quantity_below_received`, `amount_out_of_range`; a receipt line's `line_not_receivable`, and Inventory's `lot_required`, `lot_not_allowed`, `lot_unknown`, `lot_number_invalid`, `lot_dates_invalid`, `serial_quantity`, `line_invalid`, `location_unknown`, `quantity_invalid` |
 | 404 | `not_found` |
-| 409 | `version_conflict`, `order_not_draft`, `order_not_sent`, `order_not_closed`, `order_has_receipts`, `line_closed`, `line_kind_changed`, `currency_fixed`, `supplier_inactive`, `supplier_changed`, `supplier_item_exists`, `client_request_reused` |
+| 409 | `version_conflict`, `order_not_draft`, `order_not_sent`, `order_not_closed`, `order_has_receipts`, `line_closed`, `line_kind_changed`, `currency_fixed`, `supplier_inactive`, `supplier_changed`, `supplier_item_exists`, `client_request_reused`, `over_receipt`, `receipt_undone`, `receipt_invoiced`, `line_not_deliverable`; Inventory's `variant_not_stocked`, `lot_blocked`, `site_archived`, `site_unknown`, `document_reused` on a receipt and `insufficient_stock`, `location_unknown` on an undo, each line by its index |
 | 503 | `dependency_unavailable`, `sending_disabled`, `mail_failed` |
 
 ## Endpoints
@@ -510,6 +698,13 @@ answers 409 `version_conflict` for a stale `expectedUpdatedAt`.
 | `POST /orders/{orderId}/reopen` | orders-manage | 200; 400; 404; 409 |
 | `PUT /orders/{orderId}/confirmation` | orders-manage | 200; 400; 404; 409 |
 | `POST /orders/{orderId}/copy` | orders-manage | 201; 400; 404; 409; 503 |
+| `POST /orders/{orderId}/lines/{lineId}/delivered` | receive | 200; 400; 404; 409 |
+| `GET /orders/{orderId}/receive` | receive | 200; 404; 409; 503 |
+| `GET /orders/{orderId}/receive/code` | receive | 200; 400; 404; 503 |
+| `GET /orders/{orderId}/receipts` | access | 200; 404 |
+| `POST /orders/{orderId}/receipts` | receive | 201; 400; 404; 409; 503 |
+| `GET /receipts/{receiptId}` | access | 200; 404 |
+| `POST /receipts/{receiptId}/undo` | receive | 200; 400; 404; 409; 503 |
 | `GET /orders/{orderId}/history` | access | 200; 404 |
 | `GET /orders/{orderId}/pdf` | access | 200; 404; 503 |
 | `GET /orders/{orderId}/documents/{documentId}` | access | 200; 404 |

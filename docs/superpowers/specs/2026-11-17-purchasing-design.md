@@ -728,7 +728,63 @@ Each wins over what it names.
 - **A36 — The agents' role template is deferred** (A25). Delivery A adds no template for
   purchasing work (§14, question 11).
 
+### Delivery B, as built (revision 5)
+
+What delivery B built where it differs from the decisions above or where they were silent,
+chosen closest to Inventory's own receipt screen. Each wins over what it names.
+
+- **A37 — The GS1 reader is Purchasing's** (A21). Inventory reads no GS1 code:
+  `srv/inventory/gs1.go` only prints GS1-128 labels, and its receipt screen scans item codes
+  through the catalog. Nothing is moved: the receive screen reads the element string itself
+  (`fe/lib/gs1.ts` — AIs 01, 10, 21, 11, 15, 17, raw with FNC1 or human-readable), the GTIN
+  is looked up as the code, and the lookup tries a GTIN-14 without its leading zeros. The
+  reader moves to the shell when a second screen reads one.
+- **A38 — Scanning counts from zero** (P24, P30). The lines start prefilled with their
+  remainders; the first scan clears every quantity and counts from there, as Inventory's
+  line editor counts. A packaging's barcode adds that packaging's quantity, a GS1 code fills
+  the lot and its dates, a different lot opening a split row.
+- **A39 — The default location** (P24). `Stock.Locations` names a primary location only
+  where the variant lies, so the default is the primary location holding it, else the
+  location holding most of it, else the site's own node.
+- **A40 — The order's state from its lines** (P18, P27, A16). An open order is received
+  when every line is closed, marked delivered, or — a goods line — received in full, a
+  closed line's remainder included; partially received when anything is received or
+  delivered; sent otherwise. So an undo that leaves nothing received makes a received order
+  sent, not partially received. A closed order stays closed.
+- **A41 — The delivered mark is built with receipts** (P16, §8). *Mark delivered* and *Not
+  delivered* on a text or service line, behind `purchasing:receive`, with the order's
+  `expectedUpdatedAt`; a goods line is refused `line_not_deliverable`. The change log gains
+  `receipt_posted`, `receipt_undone`, `line_delivered` and `line_undelivered`.
+- **A42 — A receipt's idempotency and its retry** (A7, A11). The request hash is the order
+  and the body without its id; a refused receipt records nothing, so the screen resends an
+  `over_receipt` with the same id and `acceptOver`. A replay answers 201 with the first
+  receipt. The whole receipt — the pool read, the lock and the ledger — is tried three times
+  on a deadlock, a serialization failure, or a line's variant changed since it was read, then
+  answers 409 `version_conflict`. No `expectedUpdatedAt`: two receipts queue on the order's
+  row lock (§11). The undo retries the same way.
+- **A43 — The receipt's facts** (P28). The number is a series of its own from 1, in
+  `purchasing.counters` (`receipt`); the day is today in the business zone, never set by
+  hand; the ledger's supplier reference is the delivery note. A receipt line keeps the order
+  line's price and the order's currency; no endpoint answers them.
+- **A44 — Inventory's refusals** (P29, A27). They keep Inventory's codes, each line by its
+  index in the request — 400 for a line's input (`lot_required`, `lot_not_allowed`,
+  `lot_unknown`, `lot_number_invalid`, `lot_dates_invalid`, `serial_quantity`,
+  `line_invalid`, `location_unknown`, `quantity_invalid`, `lot_dates_differ`), 409 for the
+  stock. An undo's are mapped from the reversal's movement lines, each serial expanded, back
+  to the receipt's lines.
+- **A45 — The events and Manufacturing's handler** (§7, A4). Both receipt events carry the
+  order id as their aggregate, published under the order's lock, with the order line,
+  variant and quantity per line and no text. `manufacturing.purchasing-replenish` handles
+  `purchasing.order.sent.v1`, `purchasing.receipt.posted.v1` and — beyond A4 —
+  `purchasing.receipt.undone.v1`, which changes incoming as much: under the run requests'
+  advisory lock it inserts a `manual` run for the site, requested by *Purchasing*, unless a
+  pending run covers the site. No migration of Manufacturing's.
+- **A46 — The receive screen's reads** (P30). The screen's read and the code lookup are
+  `purchasing:receive`; the receipts' reads are `purchasing:access`. None answers a price.
+
 ## 16. Revision log
+
+- **Revision 5, 2026-11-17** — delivery B built: A37 to A46 (§15, *Delivery B, as built*).
 
 - **Revision 4, 2026-11-17** — delivery A built and reviewed: A29 to A36 (§15, *Delivery
   A, as built*); §14's questions 9 to 11 added.

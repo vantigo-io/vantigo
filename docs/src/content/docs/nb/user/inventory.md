@@ -217,6 +217,11 @@ en annen. Trykk **Bokfør varemottak**.
 
 En tjeneste kan ikke mottas, og heller ikke en vare der produktet er utgått.
 
+Varer som er bestilt på en innkjøpsordre, tas imot i Innkjøp i stedet, med **Motta** på
+ordren: det bokfører varemottaket her, på ordrens lagersted, og bevegelsen lenker tilbake
+til ordren — se [Ta imot varene](/nb/user/purchasing/#ta-imot-varene). Der tas et produkt
+som er utgått siden det ble bestilt, likevel imot.
+
 ## Juster beholdning
 
 Trykk **Ny justering** i **Oversikt**, **Juster** på en lokasjon eller **Juster** på en
@@ -1163,7 +1168,8 @@ et produkt med flere varianter, det samme for hvert varenummer, med **Beholdning
 bevegelser for …** til beholdningssiden. Varer på vei mellom lagersteder i en overføring
 vises som *Under transport …* ved siden av totalen, og *+… innkommende* under
 lagerstedet de skal til; de er ikke med i samlet beholdning, som er det som ligger i
-hyllene. Under et lagersted der varen har et
+hyllene. Når Innkjøp er i bruk, regner *+… innkommende* også med det som er i bestilling
+til lagerstedet på sendte innkjøpsordrer og ennå ikke mottatt. Under et lagersted der varen har et
 [bestillingspunkt](#angi-hovedlokasjon-og-bestillingspunkt-for-en-vare), sier *bestill
 ved ≤ 10 stk* hva det er, i rødt mens varen er lav der. For en vare som holdes i partier,
 lister hver lokasjon partiene sine — nummer, utløpsdato og status — med lenke til
@@ -1215,8 +1221,8 @@ Bare lagersteder som **leverer ordrer**, tar imot reservasjoner
 en av visningsrettighetene; trykk det for å åpne Lager. Med begge har tallraden et
 Lager-kort: **Lagerlinjer**, antallet par av vare og lokasjon som har beholdning — en
 vare som ligger i flere partier på én lokasjon, telles én gang — med
-ukens varemottak ved siden av (*3 varemottak denne uken*), der uken begynner på mandag;
-et varemottak som er reversert, telles ikke.
+ukens varemottak ved siden av (*3 varemottak denne uken*), der uken begynner på mandag,
+varemottakene fra Innkjøp medregnet; et varemottak som er reversert, telles ikke.
 
 Med **Telle varer** og begge visningsrettighetene viser **Trenger oppfølging** **En
 varetelling har vært åpen lenge** for hver varetelling som fortsatt telles en uke etter
