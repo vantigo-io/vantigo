@@ -4143,7 +4143,6 @@ paths:
             tags:
                 - Purchasing
             x-vantigo-access: permission:purchasing:invoices-match
-            x-vantigo-assistant: confirm
     /api/v1/purchasing/orders/{orderId}/reopen:
         post:
             description: 'Undoes Close (P18): the lines the close ended are open again, and the order is sent or partially received as its receipts say.'
@@ -4886,7 +4885,6 @@ paths:
             tags:
                 - Purchasing
             x-vantigo-access: permission:purchasing:invoices-match
-            x-vantigo-assistant: confirm
     /api/v1/purchasing/supplier-invoices/{invoiceId}/matches:
         post:
             description: 'Allocates invoice lines to an order''s lines (P37, A9, A14): each line of the invoice, by its position, bills one order line for a quantity in the line''s unit; a line matched to the same order line again takes the new quantity. Refused for another supplier''s order or another currency than the order''s, beyond what is received unless acceptOver (over_invoiced), and for a credit note beyond what is invoiced (credit_exceeds_invoiced). A draft''s match is provisional until the invoice is posted.'
@@ -4951,7 +4949,6 @@ paths:
             tags:
                 - Purchasing
             x-vantigo-access: permission:purchasing:invoices-match
-            x-vantigo-assistant: confirm
     /api/v1/purchasing/supplier-invoices/{invoiceId}/unmatch:
         post:
             description: 'Unmatches a supplier invoice (P37): every match of the invoice, or of one order, or of one line by its position. The order lines'' invoiced quantities go down with them.'
@@ -5016,7 +5013,6 @@ paths:
             tags:
                 - Purchasing
             x-vantigo-access: permission:purchasing:invoices-match
-            x-vantigo-assistant: confirm
     /api/v1/purchasing/supplier-items:
         get:
             description: Supplier items (P11), by supplier name then SKU, filtered by supplier, by variants — the product page's Suppliers card names its variants — and a search of the SKU, the name and the supplier's item number.

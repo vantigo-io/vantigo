@@ -248,6 +248,9 @@ var markedByHand = map[string]string{
 	"getPurchasingOrderPdf":         "never",
 	"getPurchasingOrderDocument":    "never",
 	"importPurchasingSupplierItems": "never",
+	// Received not invoiced as CSV is a file for an accountant's spreadsheet
+	// (purchasing design P41).
+	"exportPurchasingReceivedNotInvoiced": "never",
 	// A supplier invoice's file is the invoice as received, a person's to
 	// upload, fetch and remove (A18); a supplier's export answers a person's
 	// access request and carries their data (A17).
