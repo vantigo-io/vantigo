@@ -50,3 +50,23 @@ type SupplierInvoiceReversed struct {
 func (SupplierInvoiceReversed) EventName() string     { return "accounting.supplier_invoice.reversed" }
 func (SupplierInvoiceReversed) EventVersion() int     { return 1 }
 func (e SupplierInvoiceReversed) AggregateID() string { return strconv.FormatInt(e.InvoiceID, 10) }
+
+// SupplierInvoiceDeleted is accounting.supplier_invoice.deleted v1: a draft
+// supplier invoice or credit note was deleted — one a person entered,
+// Register invoice made or Reverse and copy made — and its id names nothing
+// any more.
+type SupplierInvoiceDeleted struct {
+	InvoiceID   int64     `json:"invoiceId"`
+	SupplierID  int64     `json:"supplierId"`
+	Kind        string    `json:"kind"`
+	Number      string    `json:"number"`
+	InvoiceDate string    `json:"invoiceDate"`
+	DueDate     string    `json:"dueDate,omitempty"`
+	Currency    string    `json:"currency"`
+	Total       string    `json:"total"`
+	DeletedAt   time.Time `json:"deletedAt"`
+}
+
+func (SupplierInvoiceDeleted) EventName() string     { return "accounting.supplier_invoice.deleted" }
+func (SupplierInvoiceDeleted) EventVersion() int     { return 1 }
+func (e SupplierInvoiceDeleted) AggregateID() string { return strconv.FormatInt(e.InvoiceID, 10) }

@@ -480,7 +480,19 @@ func TestSupplierInvoices_ContractEventsAndBadge(t *testing.T) {
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Errorf("events =\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
-	_ = other.Id
+	// Deleting a draft publishes accounting.supplier_invoice.deleted (A79),
+	// with no free text.
+	if res := c.Do(http.MethodDelete, fmt.Sprintf("%s/supplier-invoices/%d", base, other.Id), nil); res.Status != http.StatusNoContent {
+		t.Fatalf("delete the draft = %d %s", res.Status, res.Body)
+	}
+	var deleted string
+	if err := h.Pool().QueryRow(t.Context(), `SELECT name || '|' || aggregate_id || '|' || (payload->>'number') || '|' || (payload->>'total') || '|' ||
+		(payload ? 'reference')::text FROM platform.events WHERE module = 'accounting' ORDER BY id DESC LIMIT 1`).Scan(&deleted); err != nil {
+		t.Fatal(err)
+	}
+	if want := fmt.Sprintf("accounting.supplier_invoice.deleted|%d|X-1|100.00|false", other.Id); deleted != want {
+		t.Errorf("the deletion's event = %s, want %s", deleted, want)
+	}
 
 	// Without the match slot there is no badge.
 	plainH := newBooks(t)

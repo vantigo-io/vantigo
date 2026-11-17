@@ -4,8 +4,9 @@ package accounting
 // edited and deleted freely; Post books it through the engine with its
 // source key and makes its open item on payables; its files become the
 // voucher's attachments. A mistake after posting is corrected by Reverse and
-// copy. Post and the reversal publish accounting.supplier_invoice.posted and
-// .reversed on their own transactions (purchasing design P5), and the list
+// copy. Post, the reversal and a draft's deletion publish
+// accounting.supplier_invoice.posted, .reversed and .deleted on their own
+// transactions (purchasing design P5, A79), and the list
 // and the page carry Purchasing's match as a badge when it is on (P6). The same supplier's number twice is refused among the invoices that
 // are not reversed.
 
@@ -659,7 +660,7 @@ func (s *server) UpdateAccountingSupplierInvoice(ctx context.Context, req gen.Up
 // a file's object is deleted from the store once nothing names it.
 func (s *server) DeleteAccountingSupplierInvoice(ctx context.Context, req gen.DeleteAccountingSupplierInvoiceRequestObject) (gen.DeleteAccountingSupplierInvoiceResponseObject, error) {
 	var keys []string
-	err := s.withTx(ctx, func(_ pgx.Tx, q *store.Queries) error {
+	err := s.withTx(ctx, func(tx pgx.Tx, q *store.Queries) error {
 		inv, err := lockDraft(ctx, q, req.Id)
 		if err != nil {
 			return err
@@ -676,10 +677,18 @@ func (s *server) DeleteAccountingSupplierInvoice(ctx context.Context, req gen.De
 		// A draft made from an expense — or a copy of one — gives the
 		// expense back to Needs attention: its approval's row, matched by the
 		// entry, whichever draft the row last named (M2).
-		if inv.SourceExpenseEntryID == nil {
-			return nil
+		if inv.SourceExpenseEntryID != nil {
+			if err := q.ReopenUnpostedOfEntry(ctx, *inv.SourceExpenseEntryID); err != nil {
+				return err
+			}
 		}
-		return q.ReopenUnpostedOfEntry(ctx, *inv.SourceExpenseEntryID)
+		// The deletion's event, on its own transaction and under the draft's
+		// row lock, so a module that matched the draft lets it go
+		// (purchasing design A79, rule 23).
+		return events.Publish(ctx, tx, moduleName, contracts.SupplierInvoiceDeleted{InvoiceID: inv.ID, SupplierID: inv.SupplierID,
+			Kind: inv.Kind, Number: inv.SupplierNumber, InvoiceDate: inv.InvoiceDate.Format(time.DateOnly),
+			DueDate: dateText(inv.DueDate), Currency: inv.Currency, Total: money(mustRat(inv.Total)),
+			DeletedAt: s.now()}, s.now())
 	})
 	if err != nil {
 		return nil, err
