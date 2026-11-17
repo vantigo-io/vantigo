@@ -1,6 +1,6 @@
 ---
 title: Purchasing
-description: The Purchasing app — the purchase order list and its filters; make a purchase order for a supplier and a receiving site, with product lines filled from the supplier's items and text lines; send it by e-mail, mark it as sent or send it again; record the supplier's confirmation; change a sent order and read its history; close a line or the whole order, reopen it, cancel it or copy it; the PDF; the suppliers and what each sells — supplier items, the preferred supplier and the price-list import with its CSV columns; the settings; the purchase proposals from low stock or Manufacturing's buy suggestions, and Create orders with Order… from those screens; the dashboard card and the product page's Suppliers card; receiving the goods — the receive screen and scanning, more or less than ordered, the order's receipts, undoing a receipt and marking a text or service line delivered; and what comes later — the invoice match.
+description: The Purchasing app — the purchase order list and its filters; make a purchase order for a supplier and a receiving site, with product lines filled from the supplier's items and text lines; send it by e-mail, mark it as sent or send it again; record the supplier's confirmation; change a sent order and read its history; close a line or the whole order, reopen it, cancel it or copy it; the PDF; the suppliers and what each sells — supplier items, the preferred supplier and the price-list import with its CSV columns; the settings; the purchase proposals from low stock or Manufacturing's buy suggestions, and Create orders with Order… from those screens; the dashboard card and the product page's Suppliers card; receiving the goods — the receive screen and scanning, more or less than ordered, the order's receipts, undoing a receipt and marking a text or service line delivered; the supplier invoices — the order's invoices, Register invoice, matching an invoice from Accounting's Purchase order panel, the differences, what posting and reversing the invoice do, the last price, and Received, not invoiced with its CSV; and what comes later — inbound EHF, payment files and supplier returns.
 sidebar:
   order: 68
 sources:
@@ -10,6 +10,7 @@ sources:
   - apps/host/frontend/src/lib/dashboard-helpers.ts
   - apps/host/frontend/src/components/app-spotlight.tsx
   - apps/host/frontend/src/routes/products/$productId.tsx
+  - apps/host/frontend/src/routes/accounting/supplier-invoices.$supplierInvoiceId.tsx
 ---
 
 The Purchasing app is where you order goods and services from your suppliers. In
@@ -19,8 +20,8 @@ of your products, at what price, in which packaging and with which lead time.
 
 A purchase order moves neither stock nor the books. You order and follow up, make draft
 orders from [purchase proposals](#purchase-proposals), and when the goods arrive you
-[receive them](#receive-the-goods), which puts them in stock in Inventory; matching the
-supplier's invoice to the order comes later ([What comes later](#what-comes-later)). Purchasing buys
+[receive them](#receive-the-goods), which puts them in stock in Inventory; when the
+supplier's invoice comes, you [match it to the order](#supplier-invoices). Purchasing buys
 from the suppliers in [Accounting](/en/user/accounting/#suppliers)'s register and orders
 the products of [Products](/en/user/products/) for a site of
 [Inventory](/en/user/inventory/), so an installation has all three when it has
@@ -29,8 +30,9 @@ Purchasing.
 ## The app and its sidebar
 
 The sidebar has **Purchase orders**, **Proposals** and **Suppliers** for everyone with **Use Purchasing**,
-**Receive** for everyone with **Receive goods**, and **Purchasing settings** for those who
-manage the Purchasing settings. What you can do depends on
+**Receive** for everyone with **Receive goods**, **Received, not invoiced** for those who
+match supplier invoices, and **Purchasing settings** for those who manage the Purchasing
+settings. What you can do depends on
 your permissions: writing orders, sending them and keeping the supplier items are
 separate permissions, so a colleague may see buttons you do not
 ([Permissions](#permissions)). Everyone with **Use Purchasing** sees the prices; someone
@@ -42,9 +44,8 @@ with **Receive goods** alone sees **Receive** and no prices.
 the supplier's reference under the name once it is recorded —, **Status**, **Order date**,
 **Expected day**, **Received**, **Invoiced** and the **Net total**, excluding VAT. A draft has no
 number yet. **Received** counts the order's goods lines received in full or closed, out of
-all its goods lines, and **Invoiced** its lines invoiced in full, out of all its lines;
-the invoice match comes with a later version of Purchasing, so until then **Invoiced**
-reads 0 of the lines. An order can be:
+all its goods lines, and **Invoiced** its lines invoiced in full, out of all its lines, by
+the [supplier invoices matched to it](#supplier-invoices). An order can be:
 
 - **Draft** — being written; it has no number and can be deleted.
 - **Sent** — sent to the supplier, by e-mail or marked as sent; it has its number.
@@ -294,6 +295,111 @@ else on it has come. A goods line is received instead, and a closed line is not 
 
 Receiving, undoing and marking a line delivered need **Receive goods**.
 
+## Supplier invoices
+
+When the supplier's invoice comes, it is a supplier invoice in
+[Accounting](/en/user/accounting/#supplier-invoices), and Purchasing **matches** it to the
+order: which order lines it bills, and how much of each. The match is what **Invoiced**
+counts, and it shows where the invoice and the order differ. An invoice can bill several
+orders of its supplier and an order several invoices, but each line of an invoice bills one
+order line. Everything here needs **Match supplier invoices**; reading the matches needs
+only **Use Purchasing**.
+
+### The order's supplier invoices
+
+The order page's **Supplier invoices** lists the invoices matched to the order — **Invoice
+55120** or **Credit note …**, its date, **Provisional** while the invoice is a draft in
+Accounting and **Posted** once it is posted — with, per invoice line, the order line, the
+quantity **Matched**, the **Order price per unit** and the differences. Those who may use
+Accounting (**Use Accounting**) also see the **Invoice line** and the **Invoice price per
+unit**; others see the quantities alone. With none it says *No supplier invoice is matched
+to this order.* Each order line shows what is ordered, received and invoiced.
+
+### Register invoice
+
+**Register invoice** on a sent, received or closed order makes the supplier invoice in
+Accounting for you, matched to the order already:
+
+1. Type the **Supplier's invoice number** and the **Invoice date**, and if you like the
+   **Due date** (left empty, the supplier's payment terms after the invoice date) and the
+   **Invoice total** as printed, VAT included.
+2. For an order in another currency than NOK, give the **Exchange rate** or the **Total in
+   NOK**.
+3. **Register invoice**. Accounting gets a draft with one line per order line that is
+   received — a text or service line: marked delivered — and not invoiced yet, at the
+   order's prices, entered net on the supplier's default account and tax code, and the
+   order number as its reference.
+
+Then open the draft in Accounting, check it against the invoice, attach the invoice's file
+and post it. Left without a total, the draft's total is the lines' net: correct it to the
+invoice's before posting, as Accounting posts an invoice only when its lines make its total.
+A draft holds 200 lines; an order with more is invoiced in parts — the dialog says how many
+lines are left, and the next **Register invoice** takes them. What one draft took counts as
+invoiced, so a second registration takes only the rest, and an order with nothing left to
+invoice says *Nothing on the order is received and not invoiced.*
+
+**Register invoice** needs **Post vouchers** in Accounting as well as **Match supplier
+invoices**. It is refused while the books are not set up, when the supplier has no default
+account — *Open the supplier in Accounting* takes you there to set it —, and when the
+supplier's invoice number is entered already.
+
+### Match an invoice from Accounting
+
+An invoice a bookkeeper typed in Accounting is matched from its page there: the **Purchase
+order** panel shows the orders of the invoice's supplier whose number its reference names
+(**Orders the reference names**, each with how many lines are left to invoice), and the
+invoice's matches with their differences.
+
+- **Match all received** pairs the invoice's unmatched lines, in order, with the order's
+  lines that have something received and not invoiced, in order, each for what is left.
+- **Allocate…** matches line by line: choose the order — one the reference names, or
+  **Another order of the supplier** by its number —, then for each invoice line the
+  **Order line** and the quantity, and **Match**. An invoice line matched to the same order
+  line again takes the new quantity.
+- **Unmatch** takes one line's match back, or a whole order's.
+
+More than is received and not invoiced on a line asks first — *Match anyway* matches it,
+and the line then shows *Invoiced more than received*. A credit note lowers what is invoiced
+and is never matched for more than is invoiced on a line. An invoice of another supplier
+than the order's, in another currency than the order's, or reversed, is not matched; an
+invoice line matched to another order line is unmatched first. Those without **Use
+Accounting** see the panel with the invoice's line numbers and the matched quantities, not
+the lines' texts and amounts.
+
+### The differences
+
+A match shows its differences as warnings; they never stop a posting:
+
+- **Invoiced more than received** — the order line is invoiced beyond what is received.
+- **Invoiced more than ordered** — beyond what is ordered.
+- **Price differs** — the invoice line's net differs from what the order makes of the same
+  quantity by more than the **Price tolerance** in the [settings](#settings).
+- **Currency differs** — the invoice is in another currency than the order.
+
+The panel and Accounting's badge count them.
+
+### When the invoice is posted or reversed
+
+A draft's match is **Provisional**; it is **Posted** when the invoice is posted in
+Accounting, and the prices are judged again from the posted lines. Each matched product
+line's price per unit on the posted invoice then becomes the supplier item's price, marked
+as set by the invoice on its date — unless the invoice is in another currency than the
+supplier item, or the price was set after the invoice's date. A posted invoice whose
+supplier was changed on the draft no longer bills the order, and its match is removed.
+
+**Reverse and copy** in Accounting takes the match off the reversed invoice and gives it to
+the copy, provisional again, so what is invoiced stays as it was. An undo of a receipt is
+refused while what it brought in is invoiced: unmatch the invoice first.
+
+### Received, not invoiced
+
+**Received, not invoiced** in the sidebar, for those who match supplier invoices, lists per
+supplier and order line what was received **As of** a day — and not taken back by then —
+less what posted invoices dated by that day bill, at the order's net price per unit, with a
+total per currency. A text or service line counts once marked delivered by then. It is the
+basis for an accrual at a period's end; nothing is posted from it. **Download CSV** gives
+the same list as a file with semicolons and the decimal comma.
+
 ## Close a line or an order
 
 - **Close line** ends one line: what is left on it will not come. When no line is left
@@ -495,8 +601,9 @@ set by the import.
 - **Delivery addresses** — per site, tick **Own delivery address** to give the address the
   supplier delivers to; without one, the company's address with the site's name is used.
   The country is a two-letter code, such as `NO`.
-- **Price tolerance (%)** — a percentage, 2 % unless changed, for the invoice match that
-  comes later; it changes nothing yet.
+- **Price tolerance (%)** — how far, in percent, an invoice's price may differ from the
+  order's before the match shows *Price differs* ([The differences](#the-differences)); 2 %
+  unless changed.
 
 If somebody saved the settings while you changed them, **Save** says so and offers **Load
 again**.
@@ -537,14 +644,13 @@ deleted.
 | **Send purchase orders** (`purchasing:orders-send`) | Send, mark as sent, send again and cancel. |
 | **Receive goods** (`purchasing:receive`) | See **Receive** — the orders to receive —, receive goods against purchase orders, undo a receipt, and mark a text or service line delivered. Alone, without **Use Purchasing**, it shows no prices. |
 | **Manage supplier items** (`purchasing:supplier-items-manage`) | Add, change, delete and import supplier items. |
+| **Match supplier invoices** (`purchasing:invoices-match`) | Match and unmatch supplier invoices to orders, register an invoice from an order — with **Post vouchers** in Accounting too —, and read **Received, not invoiced**. |
 | **Manage Purchasing settings** (`purchasing:settings`) | The settings. |
-
-**Match supplier invoices (coming)** (`purchasing:invoices-match`) can already be given in
-a role; it does nothing yet, and is used once the invoice match arrives.
 
 ## What comes later
 
-- **The invoice match** — the supplier's invoice in Accounting matched to its order, and
-  what differs.
+- **Inbound EHF and payment files** — a supplier's invoice arriving as EHF with the order
+  reference, and paying it from a payment file; both wait for Accounting's next phase.
+- **Supplier returns** — goods sent back to the supplier.
 
 The rules behind every screen are in the [Purchasing reference](/en/reference/purchasing/).

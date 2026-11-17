@@ -1,8 +1,8 @@
 # Purchasing — supplier items, purchase orders, receipts, proposals and the invoice match (phase 1)
 
-Revision 8, 2026-11-17, after delivery C was built and reviewed. **§15 amends earlier
+Revision 9, 2026-11-17, after delivery D was built. **§15 amends earlier
 decisions and wins where they differ** (A22 to A28 record what delivery 0 built, A29 to
-A36 what delivery A built, A37 to A46 what delivery B built and A47 to A49 its review, and A50 to A59 what delivery C built and its review); §16 lists what changed. This spec builds on the research
+A36 what delivery A built, A37 to A46 what delivery B built and A47 to A49 its review, A50 to A59 what delivery C built and its review, and A70 to A77 what delivery D built); §16 lists what changed. This spec builds on the research
 `docs/superpowers/research/2026-11-17-purchasing-module.md` ("R"). It does not reopen
 R §8, and it takes the defaults R §9 took for the readings; §14 says what an overturn of
 each would change. Decisions are numbered P*n*. The implementation plan is
@@ -914,7 +914,79 @@ names. Numbered from A50, so delivery B's amendments, written beside it, cannot 
   which delivery C is built. Until the run it queues has finished, an order sent after the
   last run is netted by `sentSince` (A54, A58) alone.
 
+### Delivery D, as built (revision 9)
+
+What delivery D built where it differs from the decisions above or where they were silent,
+chosen so Accounting stays the owner of the invoice and Purchasing the owner of the match.
+Each wins over what it names.
+
+- **A70 — A match is keyed by the invoice line's position** (P37, A9). Accounting writes a
+  draft's lines anew on every save (`writeDraftLines`) and Reverse and copy copies them in
+  order, so a line's id does not last and its position does: `invoice_matches` is unique on
+  (supplier invoice, line position). An invoice line bills one order line; an invoice
+  whose one line bills several order lines is entered with a line per order line, as
+  *Register invoice* makes it. A match whose position the posted invoice no longer has is
+  released by the worker of A72.
+- **A71 — The allocation's refusals** (P37, P38, A14). More than a line's billable quantity
+  — a goods line's received, a text or service line's quantity once marked delivered — less
+  what is invoiced is refused with `over_invoiced` unless the request says `acceptOver`,
+  as a receipt's `over_receipt` (P26); the match then warns *invoiced more than received*.
+  An invoice line matched to another order line is `invoice_line_matched` (the same order
+  line again takes the new quantity); another supplier's order is
+  `invoice_supplier_differs`; another currency than the order's is
+  `invoice_currency_differs` — so *currency differs* (P38) shows only when a draft's
+  currency changes after its match; a reversed invoice is `invoice_reversed`; a draft or
+  cancelled order `order_not_sent`. *Match all received* pairs the invoice's unmatched lines
+  in order with the order's lines to invoice in order; a credit note is matched line by
+  line.
+- **A72 — The handlers read no contract; a worker reads the posted lines** (P5, P37, P39,
+  A9, A15, A22; rule 23). `purchasing.invoice-posted` fixes the matches from the event
+  alone — its supplier, number, date and currency —, releases those whose order is no
+  longer the invoice's supplier's (§11), and queues the invoice in `invoice_followups`;
+  the worker `purchasing.invoice-posted` reads the posted invoice through `Invoice` on the
+  pool, writes each match's posted net, releases a match whose line is gone, and sets the
+  last prices. `purchasing.invoice-reversed` releases the matches and gives the copy the
+  same ones, provisional — posted when the copy's posting was handled first. Each handler
+  takes an event once by its id (`invoice_events`), and an invoice's row in
+  `invoice_states` is its lock and its known state, so a posting delivered after its
+  reversal changes nothing and a match made while the invoice is posted cannot be left
+  provisional.
+- **A73 — Register invoice's total and the books' setup** (A1). Accounting posts a draft
+  only when its lines' gross makes its total, and the supplier's default tax code adds VAT
+  Purchasing does not know: the dialog takes the invoice's total as printed, and without it
+  the draft's total is the lines' net, for the person to correct. The action is offered
+  whatever the books' state — Purchasing reads no setup flag — and refused with
+  `books_not_set_up`. A replay answers 201 with the first draft; two replays racing to one
+  supplier number are told apart by Accounting's `duplicate_supplier_invoice`, the loser
+  answering the winner's draft. The draft's description is *Innkjøpsordre N* or *Purchase
+  order N* by the order's language; each line's text is the order line's name with the
+  quantity and unit.
+- **A74 — The differences are judged from what Purchasing keeps** (P38, A9, A20). A match
+  keeps the invoice line's net and the invoice's number, date and currency as last read —
+  at the match, then the posted line's — so the badge's `Summary`, the panel and the
+  order's invoices judge without calling Accounting back. *Price differs* compares the
+  invoice line's net with what the order makes of the same quantity, so a unit price's
+  rounding is no difference. The panel and the order's invoices are read under
+  `purchasing:access`, and `Summary` answers no matches to a caller without it. A posted
+  invoice's match may be unmatched.
+- **A75 — The last price's guards** (P39, A9). The price is the posted line's net over the
+  matched quantity in the supplier item's packaging, read from the catalog. It is not set
+  when the invoice is in another currency than the item, or when the item's price was set
+  after the invoice's date — by a person, an import or a later invoice —, nor by a credit
+  note; an item that does not exist is not created.
+- **A76 — Received, not invoiced** (P41). Received as of a day is what receipts dated on or
+  before it brought in less what was undone before it ended; a text or service line counts
+  when marked delivered by then; invoiced is what posted matches of invoices dated by the
+  day bill, credit notes taken off. A reversal deletes the reversed invoice's matches, so a
+  list as of a day before a later reversal reads as the matches stand. The CSV's columns
+  are named in English, as Inventory's.
+- **A77 — The demo's match comes after the books** (plan, *The demo seed*). A supplier
+  invoice is Accounting's and the books take none before their setup, so delivery D's part
+  of the seed runs after Accounting's, not before it.
+
 ## 16. Revision log
+
+- **Revision 9, 2026-11-17** — delivery D built: A70 to A77 (§15, *Delivery D, as built*).
 
 - **Revision 8, 2026-11-17** — delivery C reviewed: A58 and A59 added; A52 superseded and
   A53 amended by A58; §8's `purchasing:access` row names the proposals; §14's question 13
