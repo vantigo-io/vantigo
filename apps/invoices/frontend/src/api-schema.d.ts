@@ -156,13 +156,13 @@ export interface paths {
         get: operations["getInvoicesSettingsLogo"];
         /**
          * Set the seller's logo
-         * @description Sets the seller's logo (invoices phase 6 design I1, I3): a PNG or JPEG in the multipart field file, its own bytes deciding its type, at most 512 KiB, at most 2,000 pixels on its longer side and at least 16 on its shorter. Its metadata is stripped before it is stored, the pixels untouched — a JPEG's APP1 (Exif, XMP) and APP13 (IPTC) segments, a PNG's eXIf, tEXt, zTXt and iTXt chunks. The stripped bytes are stored outside any transaction under branding/logo-<sha256>.<png|jpg>, a key named by their content, and then named on the settings under the settings lock, moving the revision on. Documents issued from now on print it, top left of the PDF and of their reminder letters, and their e-mails carry it inline; documents issued before keep the logo they were issued with. A draft's preview shows it at once. The answer is the settings.
+         * @description Sets the seller's logo (invoices phase 6 design I1, I3): a PNG or JPEG in the multipart field file, its own bytes deciding its type, at most 512 KiB, at most 2,000 pixels on its longer side and at least 16 on its shorter. The normalised bytes are put outside any transaction under branding/logo-<sha256>.<png|jpg>, a key named by their content, and then named on the settings under the settings lock. The settings' revision does not move: the logo is not part of the seller form, so an edit in progress there is not made stale. The PNG or JPEG is normalised before it is stored — decoded whole and encoded again, a PNG as 8-bit non-interlaced, a JPEG as baseline at quality 90, which drops every piece of metadata — and must then load in the PDF renderer, else logo_invalid. Documents issued from now on print it, top left of the PDF and of their reminder letters, and their e-mails carry it inline; documents issued before keep the logo they were issued with. A draft's preview shows it at once. The answer is the settings.
          */
         put: operations["putInvoicesSettingsLogo"];
         post?: never;
         /**
          * Remove the seller's logo
-         * @description Removes the seller's logo (invoices phase 6 design I1) under the settings lock, moving the revision on. The stored object is never deleted, since an issued document's snapshot may name it; documents issued from now on carry no logo, and those issued before keep theirs.
+         * @description Removes the seller's logo (invoices phase 6 design I1) under the settings lock; the settings' revision does not move. The stored object is never deleted, since an issued document's snapshot may name it; documents issued from now on carry no logo, and those issued before keep theirs.
          */
         delete: operations["deleteInvoicesSettingsLogo"];
         options?: never;
@@ -2363,6 +2363,8 @@ export interface components {
         InvoicesSettingsLogo: {
             /** @enum {string} */
             contentType: "image/png" | "image/jpeg";
+            /** @description True when the settings name a logo whose object the store no longer holds; upload the logo again (the same file restores it, its key being its content). Documents issued meanwhile carry no logo. Absent otherwise. */
+            missing?: boolean;
             sha256: string;
         };
         /** @description The seller record and the series start (D2). A text field that is not set is the empty string. seriesLocked is true once anything is issued; from then on seriesStart cannot change, and every other field still can — issued documents keep their own seller snapshot. peppolId is the seller's address on the Peppol network, read when a document is sent, never part of the snapshot; kidLength and kidAlgorithm are the KID agreement, which an issued invoice's kid was computed under. phone and logo are the seller's (invoices phase 6 design I1, I4), snapshotted at issue like the rest of the seller record. */
@@ -4240,7 +4242,7 @@ export interface components {
             recipient?: string;
             warnings: string[];
         };
-        /** @description POST /invoices/{id}/send's body (D4). recipient overrides the customer's current invoice e-mail: a bare address that parses to itself, at most 254 characters once trimmed (so "Name <a@b>" is refused). Absent, the invoice e-mail is used. message is an optional personal message (invoices phase 6 design I6): plain text, trimmed, at most 2,000 characters (else a 400 on message), placed above the standard text in both the text and the HTML body — escaped in the HTML, its line breaks kept — and stored on the delivery. Absent or blank sends none. */
+        /** @description POST /invoices/{id}/send's body (D4). recipient overrides the customer's current invoice e-mail: a bare address that parses to itself, at most 254 characters once trimmed (so "Name <a@b>" is refused). Absent, the invoice e-mail is used. message is an optional personal message (invoices phase 6 design I6): plain text, trimmed, its line breaks as \n, at most 2,000 characters and no control character but a line break or a tab (else a 400 on message), placed above the standard text in both the text and the HTML body — escaped in the HTML, its line breaks kept — and stored on the delivery. Absent or blank sends none. */
         InvoicesSendRequest: {
             message?: string;
             recipient?: string;
@@ -5644,7 +5646,10 @@ export interface operations {
     getInvoicesSettingsLogo: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description The ETag a client holds, the logo's SHA-256 quoted; when it is the current logo's the answer is a bare 304. */
+                "If-None-Match"?: string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -5659,6 +5664,13 @@ export interface operations {
                     "image/jpeg": string;
                     "image/png": string;
                 };
+            };
+            /** @description Not Modified — If-None-Match names the current logo. */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Unauthorized */
             401: {
@@ -5721,7 +5733,7 @@ export interface operations {
                     "application/json": components["schemas"]["InvoicesSettingsResponse"];
                 };
             };
-            /** @description Bad Request — logo_unsupported_type (not a PNG or JPEG by its bytes, or one that cannot be read), logo_too_large (past 512 KiB), logo_too_wide (a side past 2,000 pixels), logo_too_small (a side under 16 pixels) or logo_invalid (no part named file, two of them, an empty one, or a body that cannot be read as a multipart form). Nothing is stored. */
+            /** @description Bad Request — logo_unsupported_type (not a PNG or JPEG by its bytes, or one that cannot be read), logo_too_large (past 512 KiB), logo_too_wide (a side past 2,000 pixels), logo_too_small (a side under 16 pixels) or logo_invalid (no part named file, two of them, an empty one, a body that cannot be read as a multipart form, or a picture the PDF renderer cannot load). Nothing is stored. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -6606,6 +6618,15 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Service Unavailable — storage_unavailable, the seller's logo could not be read from the object store; retry. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
             };
         };
     };
@@ -8148,6 +8169,15 @@ export interface operations {
             };
             /** @description Conflict — invoice_issued; an issued document is downloaded, not previewed. */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+            /** @description Service Unavailable — storage_unavailable, the seller's logo could not be read from the object store; retry. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -9901,7 +9931,7 @@ export interface operations {
                     "application/json": components["schemas"]["InvoicesInvoiceResponse"];
                 };
             };
-            /** @description Bad Request — recipient is not a bare e-mail address, or message is longer than 2,000 characters. */
+            /** @description Bad Request — recipient is not a bare e-mail address, or message is longer than 2,000 characters or carries a control character other than a line break or a tab. */
             400: {
                 headers: {
                     [name: string]: unknown;

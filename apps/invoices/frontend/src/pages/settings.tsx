@@ -507,9 +507,11 @@ const maxLogoBytes = 512 * 1024;
 /**
  * The seller's logo (invoices phase 6 design I1, I3): the current one, read
  * with its SHA-256 as the cache key, Upload logo — a PNG or a JPEG of at most
- * 512 KB — and Remove logo. Each is a write of its own, never the form's: it
- * answers the settings, which replace the cached ones, and a refusal is worded
- * by its code. The logo shown is the settings' as last read, so an edit in
+ * 512 KB — and Remove logo. Each is a write of its own, never the form's, and
+ * leaves the settings' revision as it is, so an edit in progress stays
+ * saveable: it answers the settings, which replace the cached ones, and a
+ * refusal is worded by its code. A logo whose file the store no longer holds
+ * is said to be missing, with the call to upload it again. The logo shown is the settings' as last read, so an edit in
  * progress does not hide a logo set meanwhile.
  */
 const LogoBlock = () => {
@@ -557,9 +559,15 @@ const LogoBlock = () => {
       <Text size="xs" c="dimmed">
         {t("logo.hint")}
       </Text>
-      {logo ? (
+      {logo?.missing && (
+        <Alert color="orange" icon={<IconAlertCircle size={16} />} data-testid="logo-missing">
+          {t("logo.missing")}
+        </Alert>
+      )}
+      {logo && !logo.missing && (
         <Image src={invoiceLogoUrl(logo.sha256)} alt={t("logo.current")} h={60} w="auto" maw={220} fit="contain" />
-      ) : (
+      )}
+      {!logo && (
         <Text size="sm" c="dimmed">
           {t("logo.none")}
         </Text>
