@@ -8,9 +8,10 @@ import (
 // The events the accounting module publishes onto the platform outbox
 // (purchasing design P5), on the transaction of the change, while it holds
 // the supplier invoice's row lock. A payload carries ids, numbers, dates,
-// amounts and states (rule 23); Total is the exact decimal text of the
-// invoice's total in its currency, and the dates are calendar dates
-// (YYYY-MM-DD).
+// amounts and states (rule 23) — never the invoice's free-text reference or
+// description, which a consumer reads through SupplierInvoices.Invoice; Total
+// is the exact decimal text of the invoice's total in its currency, and the
+// dates are calendar dates (YYYY-MM-DD).
 
 // SupplierInvoicePosted is accounting.supplier_invoice.posted v1: a supplier
 // invoice or credit note was posted.
@@ -23,7 +24,6 @@ type SupplierInvoicePosted struct {
 	DueDate     string    `json:"dueDate,omitempty"`
 	Currency    string    `json:"currency"`
 	Total       string    `json:"total"`
-	Reference   string    `json:"reference,omitempty"`
 	PostedAt    time.Time `json:"postedAt"`
 }
 
@@ -43,7 +43,6 @@ type SupplierInvoiceReversed struct {
 	DueDate     string    `json:"dueDate,omitempty"`
 	Currency    string    `json:"currency"`
 	Total       string    `json:"total"`
-	Reference   string    `json:"reference,omitempty"`
 	CopyID      int64     `json:"copyId,omitempty"`
 	ReversedAt  time.Time `json:"reversedAt"`
 }

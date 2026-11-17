@@ -87,6 +87,11 @@ type Rule struct {
 	// station credentials as unauthenticated, so a handler's own Check, a
 	// platform endpoint or the docs handler never admits a station.
 	Station StationMode
+	// Agent says whether an agent grant may meet a session rule (purchasing
+	// delivery 0): the operation is marked x-vantigo-agent: allowed, and its
+	// handler checks the permissions itself. Only the router's wrap sets it;
+	// the zero value refuses an agent every session rule.
+	Agent bool
 }
 
 // StationMode is Rule.Station.
@@ -108,6 +113,15 @@ const (
 const (
 	StationExtension        = "x-vantigo-station"
 	StationExtensionAllowed = "allowed"
+)
+
+// AgentExtension is the operation extension that opens an operation whose
+// rule is session to an agent grant, because its handler checks the
+// permissions an agent's roles must hold; its one value is
+// AgentExtensionAllowed.
+const (
+	AgentExtension        = "x-vantigo-agent"
+	AgentExtensionAllowed = "allowed"
 )
 
 // ParseRule parses s. It accepts exactly what internal/openapi.AccessRule

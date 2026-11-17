@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"math/big"
 	"mime/multipart"
 	"net/http"
@@ -874,11 +875,19 @@ func (s *server) plan(ctx context.Context, row store.AccountingSaftImport, body 
 // before the books were set up neither fails the import on its organisation
 // number nor is made twice: by organisation number first, then by exact name
 // — case and spaces aside — among those whose organisation number does not
-// say they are another company. A name several have is ambiguous, and a new
-// supplier is made unless the apply's suppliers pick one; a pick overrides
-// any match, 0 for a new supplier.
+// say they are another company. An inactive supplier of the register is a
+// match as an active one is. A name several have, or a supplier of the
+// register two of the file's would both be taken as, is ambiguous, and Apply
+// is refused until the apply's suppliers pick one for it, 0 for a new
+// supplier; a pick overrides any match. A pick names a supplier of the file
+// and a supplier of the register, and no supplier of the register twice.
 func (s *server) matchSuppliers(ctx context.Context, p *importPlan, body *gen.AccountingSaftImportApply) error {
-	if len(p.suppliers) == 0 {
+	const title = "The books cannot be set up from the file"
+	var picks map[string]int64
+	if body != nil && body.Suppliers != nil {
+		picks = *body.Suppliers
+	}
+	if len(p.suppliers) == 0 && len(picks) == 0 {
 		return nil
 	}
 	rows, err := store.New(s.deps.Pool).SaftMatchSuppliers(ctx)
@@ -897,14 +906,27 @@ func (s *server) matchSuppliers(ctx context.Context, p *importPlan, body *gen.Ac
 		name := strings.ToLower(strings.Join(strings.Fields(r.Name), " "))
 		byName[name] = append(byName[name], r)
 	}
-	var picks map[string]int64
-	if body != nil && body.Suppliers != nil {
-		picks = *body.Suppliers
+	inFile := map[string]bool{}
+	for _, sp := range p.suppliers {
+		inFile[sp.file.ID] = true
 	}
-	for fileID, id := range picks {
-		if _, ok := byID[id]; id != 0 && !ok {
-			return invalidField("The books cannot be set up from the file", "suppliers."+fileID, codeSaftSupplierUnknown,
+	fileIDs := slices.Sorted(maps.Keys(picks))
+	pickedBy := map[int64]string{}
+	for _, fileID := range fileIDs {
+		id := picks[fileID]
+		switch _, ok := byID[id]; {
+		case !inFile[fileID]:
+			return invalidField(title, "suppliers."+fileID, codeSaftFileSupplierUnknown,
+				fmt.Sprintf("The file has no supplier with the id %s.", fileID))
+		case id != 0 && !ok:
+			return invalidField(title, "suppliers."+fileID, codeSaftSupplierUnknown,
 				fmt.Sprintf("The register holds no supplier with the id %d.", id))
+		case id != 0 && pickedBy[id] != "":
+			return invalidField(title, "suppliers."+fileID, codeSaftSupplierPickedTwice,
+				fmt.Sprintf("Supplier %d of the register is picked for the file's %s already; each is taken for one of the file's.", byID[id].Number, pickedBy[id]))
+		}
+		if id != 0 {
+			pickedBy[id] = fileID
 		}
 	}
 	for i := range p.suppliers {
@@ -933,13 +955,34 @@ func (s *server) matchSuppliers(ctx context.Context, p *importPlan, body *gen.Ac
 				continue
 			case len(same) > 1:
 				sp.supplierMatch, sp.candidates = "ambiguous", same
-				sp.notes = append(sp.notes, fmt.Sprintf("%d suppliers of the register have this name: a new one is made unless one of them is picked.", len(same)))
+				sp.notes = append(sp.notes, fmt.Sprintf("%d suppliers of the register have this name: pick one of them, or a new supplier.", len(same)))
+				continue
 			}
 		}
 		// A new supplier keeps no organisation number the register has.
 		if _, taken := byOrg[orgKey{sp.fields.country, org}]; org != "" && taken {
 			sp.fields.organisationNumber = nil
 			sp.notes = append(sp.notes, "Its organisation number is a supplier's of the register; the new supplier is made without it.")
+		}
+	}
+	// A supplier of the register is taken for one of the file's at most: two
+	// matched to the same one are both ambiguous, unless a pick took it.
+	uses := map[int64]int{}
+	for _, sp := range p.suppliers {
+		if sp.supplier != nil {
+			uses[sp.supplier.ID]++
+		}
+	}
+	for i := range p.suppliers {
+		sp := &p.suppliers[i]
+		if r := sp.supplier; r != nil && sp.supplierMatch != "linked" && uses[r.ID] > 1 {
+			sp.supplierMatch, sp.supplier, sp.candidates = "ambiguous", nil, []store.SaftMatchSuppliersRow{*r}
+			sp.notes = append(sp.notes, fmt.Sprintf("Another of the file's suppliers is taken as supplier %d %s too: pick it for one of them, and another or a new supplier for the other.", r.Number, r.Name))
+		}
+	}
+	for _, sp := range p.suppliers {
+		if sp.supplierMatch == "ambiguous" {
+			p.block(codeSaftAmbiguousSuppliers, fmt.Sprintf("Supplier %s %s could be several of the register's: pick which it is, or a new supplier.", sp.file.ID, sp.fields.name))
 		}
 	}
 	return nil
@@ -1512,11 +1555,33 @@ func (s *server) ApplyAccountingSaftImport(ctx context.Context, req gen.ApplyAcc
 			return err
 		}
 		// The file's suppliers: the register's where matched (purchasing
-		// design A2), a new one otherwise.
+		// design A2), a new one otherwise. The register's are held FOR SHARE
+		// so none is deleted under the opening, and each gets the file's bank
+		// account, IBAN and BIC where its own is empty — never over one.
+		var matched []int64
+		for _, sp := range p.suppliers {
+			if sp.supplier != nil {
+				matched = append(matched, sp.supplier.ID)
+			}
+		}
+		if len(matched) > 0 {
+			held, err := q.LockDirectorySuppliers(ctx, matched)
+			if err != nil {
+				return err
+			}
+			if len(held) != len(matched) {
+				return conflict(codeSaftSupplierGone, "A supplier of the register is gone",
+					"A supplier the file's is taken as was deleted since the preview; read the preview again.")
+			}
+		}
 		supplierIDs := make([]int64, len(p.suppliers))
 		for i, sp := range p.suppliers {
 			if sp.supplier != nil {
 				supplierIDs[i] = sp.supplier.ID
+				if err := q.SaftFillSupplierBank(ctx, store.SaftFillSupplierBankParams{ID: sp.supplier.ID,
+					BankAccount: sp.fields.bankAccount, Iban: sp.fields.iban, Bic: sp.fields.bic, Now: now}); err != nil {
+					return err
+				}
 				continue
 			}
 			if supplierIDs[i], err = insertSupplier(ctx, q, sp.fields, now); err != nil {

@@ -1459,6 +1459,40 @@ func (q *Queries) ResolveUnpostedBySource(ctx context.Context, arg ResolveUnpost
 	return err
 }
 
+const saftFillSupplierBank = `-- name: SaftFillSupplierBank :exec
+UPDATE accounting.suppliers
+SET bank_account = coalesce(nullif(bank_account, ''), $1),
+    iban = coalesce(nullif(iban, ''), $2),
+    bic = coalesce(nullif(bic, ''), $3),
+    revision = revision + 1, updated_at = $4
+WHERE id = $5 AND anonymised_at IS NULL
+  AND ((nullif(bank_account, '') IS NULL AND $1::text IS NOT NULL)
+    OR (nullif(iban, '') IS NULL AND $2::text IS NOT NULL)
+    OR (nullif(bic, '') IS NULL AND $3::text IS NOT NULL))
+`
+
+type SaftFillSupplierBankParams struct {
+	BankAccount *string
+	Iban        *string
+	Bic         *string
+	Now         time.Time
+	ID          int64
+}
+
+// SaftFillSupplierBank fills a register supplier's bank account, IBAN and BIC
+// from a SAF-T file where the register's is empty, never over one it has
+// (purchasing delivery 0); the revision moves only when something is filled.
+func (q *Queries) SaftFillSupplierBank(ctx context.Context, arg SaftFillSupplierBankParams) error {
+	_, err := q.db.Exec(ctx, saftFillSupplierBank,
+		arg.BankAccount,
+		arg.Iban,
+		arg.Bic,
+		arg.Now,
+		arg.ID,
+	)
+	return err
+}
+
 const saftMatchSuppliers = `-- name: SaftMatchSuppliers :many
 SELECT id, number, name, organisation_number, country
 FROM accounting.suppliers

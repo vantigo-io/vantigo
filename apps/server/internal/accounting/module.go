@@ -59,7 +59,7 @@ var permissions = []contracts.Permission{
 	},
 	{
 		Key: permSuppliersManage, Display: "Keep the suppliers",
-		Description: "Create and change suppliers — the name, the addresses, the contact and the terms — and look them up in Brønnøysundregisteret, also before the books are set up. A supplier's bank account, default account and default tax code need Post vouchers.",
+		Description: "Create and change suppliers — the name, the addresses, the contact and the terms — and look them up in Brønnøysundregisteret, also before the books are set up. A supplier's bank account, IBAN, BIC, default account, default tax code, person flag and active flag need Post vouchers; seeing Suppliers in Accounting needs Use Accounting.",
 		Category:    "Accounting", Sensitive: false, Delegable: true,
 	},
 	{

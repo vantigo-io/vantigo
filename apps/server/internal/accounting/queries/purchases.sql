@@ -490,6 +490,20 @@ WHERE s.name ILIKE '%' || replace(replace(replace(sqlc.arg(q)::text, '\', '\\'),
 ORDER BY s.number
 LIMIT sqlc.arg(row_limit);
 
+-- name: SaftFillSupplierBank :exec
+-- SaftFillSupplierBank fills a register supplier's bank account, IBAN and BIC
+-- from a SAF-T file where the register's is empty, never over one it has
+-- (purchasing delivery 0); the revision moves only when something is filled.
+UPDATE accounting.suppliers
+SET bank_account = coalesce(nullif(bank_account, ''), sqlc.narg(bank_account)),
+    iban = coalesce(nullif(iban, ''), sqlc.narg(iban)),
+    bic = coalesce(nullif(bic, ''), sqlc.narg(bic)),
+    revision = revision + 1, updated_at = sqlc.arg(now)
+WHERE id = sqlc.arg(id) AND anonymised_at IS NULL
+  AND ((nullif(bank_account, '') IS NULL AND sqlc.narg(bank_account)::text IS NOT NULL)
+    OR (nullif(iban, '') IS NULL AND sqlc.narg(iban)::text IS NOT NULL)
+    OR (nullif(bic, '') IS NULL AND sqlc.narg(bic)::text IS NOT NULL));
+
 -- name: SaftMatchSuppliers :many
 -- SaftMatchSuppliers is every supplier of the register, for a SAF-T
 -- import's matching of the file's suppliers (purchasing design A2).

@@ -118,9 +118,23 @@ type supplierFields struct {
 // passing mod 11 for a Norwegian entity, a bank account of eleven passing
 // mod 11, an e-mail with an @, terms of 0 to 365 days, and a default account
 // and tax code that exist and are active — the tax code a purchase's.
-func checkSupplier(ctx context.Context, q *store.Queries, b gen.AccountingSupplierInput) (supplierFields, error) {
+func checkSupplier(ctx context.Context, q *store.Queries, b gen.AccountingSupplierInput, cur *store.GetSupplierRow) (supplierFields, error) {
 	const title = "The supplier cannot be saved"
-	if b.DefaultAccountId != nil || b.DefaultTaxCodeId != nil {
+	// A books field is checked only when it changes: a value kept as it
+	// stands is not refused because the account behind it was made inactive
+	// since, or because the file it was imported from wrote it unchecked
+	// (purchasing delivery 0). cur is nil for a new supplier.
+	var have struct {
+		bank, iban, bic *string
+		account, code   *int32
+	}
+	if cur != nil {
+		have.bank, have.iban, have.bic, have.account, have.code = cur.BankAccount, cur.Iban, cur.Bic, cur.DefaultAccountID, cur.DefaultTaxCodeID
+	}
+	changedID := func(in, stored *int32) bool { return in != nil && (stored == nil || *in != *stored) }
+	changedText := func(in, stored *string, upper bool) bool { return textField(in, upper) != textField(stored, upper) }
+	accountChanged, codeChanged := changedID(b.DefaultAccountId, have.account), changedID(b.DefaultTaxCodeId, have.code)
+	if accountChanged || codeChanged {
 		if _, err := q.GetSettings(ctx); noRows(err) {
 			return supplierFields{}, conflict(codeBooksNotSetUp, "The books are not set up",
 				"A supplier's default account and tax code are set once the books are set up; save the supplier without them.")
@@ -163,21 +177,21 @@ func checkSupplier(ctx context.Context, q *store.Queries, b gen.AccountingSuppli
 	}
 	if b.BankAccount != nil && compact(*b.BankAccount) != "" {
 		v := compact(*b.BankAccount)
-		if !validBankAccount(v) {
+		if changedText(b.BankAccount, have.bank, false) && !validBankAccount(v) {
 			f.addCoded("bankAccount", codeSupplierBankAccount, "A Norwegian account number is eleven digits passing mod 11.")
 		}
 		out.bankAccount = &v
 	}
 	if b.Iban != nil && compact(*b.Iban) != "" {
 		v := strings.ToUpper(compact(*b.Iban))
-		if len(v) < 15 || len(v) > 34 {
+		if changedText(b.Iban, have.iban, true) && (len(v) < 15 || len(v) > 34) {
 			f.add("iban", "An IBAN of 15 to 34 characters.")
 		}
 		out.iban = &v
 	}
 	if b.Bic != nil && compact(*b.Bic) != "" {
 		v := strings.ToUpper(compact(*b.Bic))
-		if len(v) != 8 && len(v) != 11 {
+		if changedText(b.Bic, have.bic, true) && len(v) != 8 && len(v) != 11 {
 			f.add("bic", "A BIC of 8 or 11 characters.")
 		}
 		out.bic = &v
@@ -188,7 +202,7 @@ func checkSupplier(ctx context.Context, q *store.Queries, b gen.AccountingSuppli
 		}
 		out.paymentTermsDays = int16(min(max(*b.PaymentTermsDays, 0), 365))
 	}
-	if b.DefaultAccountId != nil {
+	if accountChanged {
 		accounts, err := q.AccountsForPosting(ctx, []int32{*b.DefaultAccountId})
 		if err != nil {
 			return out, err
@@ -198,9 +212,9 @@ func checkSupplier(ctx context.Context, q *store.Queries, b gen.AccountingSuppli
 		} else if !accounts[0].Active {
 			f.addCoded("defaultAccountId", codeAccountInactive, "Account "+accounts[0].Number+" is inactive.")
 		}
-		out.defaultAccountID = b.DefaultAccountId
 	}
-	if b.DefaultTaxCodeId != nil {
+	out.defaultAccountID = b.DefaultAccountId
+	if codeChanged {
 		codes, err := q.TaxCodesForPosting(ctx, store.TaxCodesForPostingParams{Ids: []int32{*b.DefaultTaxCodeId}, Day: time.Now()})
 		if err != nil {
 			return out, err
@@ -211,8 +225,8 @@ func checkSupplier(ctx context.Context, q *store.Queries, b gen.AccountingSuppli
 		case codes[0].Direction == "output":
 			f.addCoded("defaultTaxCodeId", codeTaxCodeNotPurchase, "An output code is a sale's, not a purchase's.")
 		}
-		out.defaultTaxCodeID = b.DefaultTaxCodeId
 	}
+	out.defaultTaxCodeID = b.DefaultTaxCodeId
 	return out, f.refusal(title)
 }
 
@@ -276,7 +290,9 @@ func fiscalStartMonth(ctx context.Context, q *store.Queries) (int32, error) {
 // a session, and the handler checks the either-or. It answers whether the
 // caller holds accounting:post, which the books' own fields need.
 func (s *server) requireSupplierWriter(ctx context.Context) (bool, error) {
-	post := s.has(ctx, permPost)
+	// A poster is a poster of the books, so as everywhere else post goes with
+	// read; post without read is no more than a buyer.
+	post := contracts.HasPermissions(ctx, s.deps.Access, permPost, permRead)
 	if post || s.has(ctx, permSuppliersManage) {
 		return post, nil
 	}
@@ -288,7 +304,7 @@ func (s *server) requireSupplierWriter(ctx context.Context) (bool, error) {
 // written without accounting:post.
 func needsPost(field string) error {
 	return refuse(http.StatusForbidden, codeSupplierFieldsNeedPost, "The supplier's "+field+" is the books'",
-		"A supplier's bank account, IBAN, BIC, default account and default tax code are written by a holder of accounting:post.")
+		"A supplier's bank account, IBAN, BIC, default account, default tax code, person flag and active flag are written by a holder of accounting:post.")
 }
 
 // textField is an optional text as a supplier's write compares it: compacted,
@@ -307,7 +323,10 @@ func textField(p *string, upper bool) string {
 // keepBooksFields holds a write by a caller without accounting:post to the
 // books' fields as they stand (purchasing design A12): a field left out keeps
 // its value in cur (nil for a new supplier), and one sent with another value
-// is refused.
+// is refused. On a change the person flag and the active flag are the books'
+// too — whether a person's record is kept and whether the supplier is posted
+// to — while a new supplier may be made a person's; the currency is a term,
+// the buyer's to set.
 func keepBooksFields(b *gen.AccountingSupplierInput, cur *store.GetSupplierRow) error {
 	var bank, iban, bic *string
 	var account, code *int32
@@ -338,6 +357,22 @@ func keepBooksFields(b *gen.AccountingSupplierInput, cur *store.GetSupplierRow) 
 		case *t.in == nil:
 			*t.in = t.have
 		case t.have == nil || **t.in != *t.have:
+			return needsPost(t.field)
+		}
+	}
+	if cur == nil {
+		return nil
+	}
+	flags := []struct {
+		field string
+		in    **bool
+		have  bool
+	}{{"person flag", &b.IsPerson, cur.IsPerson}, {"active flag", &b.Active, cur.Active}}
+	for _, t := range flags {
+		switch {
+		case *t.in == nil:
+			*t.in = ptr(t.have)
+		case **t.in != t.have:
 			return needsPost(t.field)
 		}
 	}
@@ -416,7 +451,7 @@ func (s *server) CreateAccountingSupplier(ctx context.Context, req gen.CreateAcc
 	}
 	var id int64
 	err = s.withTx(ctx, func(_ pgx.Tx, q *store.Queries) error {
-		f, err := checkSupplier(ctx, q, body)
+		f, err := checkSupplier(ctx, q, body, nil)
 		if err != nil {
 			return err
 		}
@@ -479,7 +514,7 @@ func (s *server) UpdateAccountingSupplier(ctx context.Context, req gen.UpdateAcc
 				return err
 			}
 		}
-		f, err := checkSupplier(ctx, q, body)
+		f, err := checkSupplier(ctx, q, body, &cur)
 		if err != nil {
 			return err
 		}

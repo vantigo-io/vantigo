@@ -44,7 +44,9 @@ import { SUPPLIERS_ROUTE_PATH, supplierInvoicePath, supplierPath } from "../lib/
 /**
  * Suppliers (A17): the module's own parties, numbered as they are made,
  * looked up in Brønnøysundregisteret, never deleted once the books name them.
- * Keeping them needs accounting:post.
+ * The page is behind the books gate and accounting:read; a poster keeps every
+ * field, and the server lets a buyer (accounting:suppliers-manage) keep all
+ * but the books' own — this page offers the writes to a poster only.
  */
 export const SuppliersPage = () => {
   const { t } = useAccountingFormat();

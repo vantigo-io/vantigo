@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
@@ -90,6 +91,9 @@ func (c supplierInvoicesContract) Invoice(ctx context.Context, id int64) (*contr
 // the line names none.
 func (c supplierInvoicesContract) CreateDraft(ctx context.Context, d contracts.SupplierInvoiceDraft) (int64, error) {
 	const title = "The supplier invoice cannot be saved"
+	if d.By == uuid.Nil {
+		return 0, errors.New("accounting: a supplier invoice draft names no person it is made for")
+	}
 	s := c.s
 	q := store.New(s.deps.Pool)
 	if _, err := q.GetSettings(ctx); noRows(err) {
@@ -99,10 +103,14 @@ func (c supplierInvoicesContract) CreateDraft(ctx context.Context, d contracts.S
 		return 0, err
 	}
 	var defaultAccount, defaultCode *int32
-	if sup, err := q.GetSupplier(ctx, d.SupplierID); err == nil {
-		defaultAccount, defaultCode = sup.DefaultAccountID, sup.DefaultTaxCodeID
-	} else if !noRows(err) {
+	if sup, err := q.GetSupplier(ctx, d.SupplierID); noRows(err) {
+		// Not the lines' missing account: the supplier itself is unknown.
+		return 0, &contracts.SupplierInvoiceRefusal{Code: contracts.SupplierInvoiceInvalid, Detail: "No such supplier.",
+			Fields: []contracts.SupplierInvoiceField{{Field: "supplierId", Message: "No such supplier."}}}
+	} else if err != nil {
 		return 0, err
+	} else {
+		defaultAccount, defaultCode = sup.DefaultAccountID, sup.DefaultTaxCodeID
 	}
 	in := gen.AccountingSupplierInvoiceInput{SupplierId: d.SupplierID, Kind: gen.AccountingSupplierInvoiceKind(d.Kind),
 		InvoiceNumber: d.Number, InvoiceDate: openapi_types.Date{Time: d.InvoiceDate}, Total: d.Total,

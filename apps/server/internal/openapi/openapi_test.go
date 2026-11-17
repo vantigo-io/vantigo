@@ -771,6 +771,81 @@ func walkContract(t *testing.T, visit func(file, path string, node map[string]an
 
 // The station extension (manufacturing phase 2 M135): "allowed" only, and only
 // behind a permission rule of Manufacturing's alone.
+func TestLintChecksTheAgentExtension(t *testing.T) {
+	doc, err := openapi3.NewLoader().LoadFromData([]byte(`
+openapi: 3.0.3
+info: {title: t, version: "1"}
+paths:
+  /a:
+    post:
+      operationId: allowedOnSession
+      summary: S
+      x-vantigo-access: session
+      x-vantigo-agent: allowed
+      responses: {"204": {description: ok}}
+    put:
+      operationId: otherValue
+      summary: S
+      x-vantigo-access: session
+      x-vantigo-agent: yes
+      responses: {"204": {description: ok}}
+    get:
+      operationId: onPermission
+      summary: S
+      x-vantigo-access: permission:accounting:read
+      x-vantigo-agent: allowed
+      responses: {"204": {description: ok}}
+    delete:
+      operationId: onPolicy
+      summary: S
+      x-vantigo-access: policy:ActiveAccount
+      x-vantigo-agent: allowed
+      responses: {"204": {description: ok}}
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, p := range Lint(doc) {
+		got[p.OperationID] = p.Message
+	}
+	if msg, bad := got["allowedOnSession"]; bad {
+		t.Errorf("allowedOnSession flagged: %v", msg)
+	}
+	if msg := got["otherValue"]; !strings.Contains(msg, "must be allowed") {
+		t.Errorf("otherValue: %q, want must be allowed", msg)
+	}
+	for _, id := range []string{"onPermission", "onPolicy"} {
+		if msg := got[id]; !strings.Contains(msg, "only for an operation behind session") {
+			t.Errorf("%s: %q, want the session-only problem", id, msg)
+		}
+	}
+}
+
+// TestAgentExtensionMarksTheSupplierWritesAlone holds x-vantigo-agent to the
+// three supplier register operations whose handler checks the either-or of
+// accounting:suppliers-manage and accounting:post (purchasing delivery 0):
+// every other session operation stays closed to an agent.
+func TestAgentExtensionMarksTheSupplierWritesAlone(t *testing.T) {
+	var got []string
+	for _, name := range Modules {
+		doc, err := Load(t.Context(), name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, op := range operations(doc) {
+			if _, ok := op.Op.Extensions[AgentExtension]; ok {
+				got = append(got, op.OperationID)
+			}
+		}
+	}
+	slices.Sort(got)
+	want := []string{"createAccountingSupplier", "lookupAccountingSupplierBrreg", "updateAccountingSupplier"}
+	if !slices.Equal(got, want) {
+		t.Errorf("operations marked %s = %v, want %v", AgentExtension, got, want)
+	}
+}
+
 func TestLintChecksTheStationExtension(t *testing.T) {
 	doc, err := openapi3.NewLoader().LoadFromData([]byte(`
 openapi: 3.0.3

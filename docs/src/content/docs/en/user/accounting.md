@@ -102,10 +102,13 @@ needs **Manage the books**.
    - **Suppliers** — each with how it is taken. A supplier already in **Suppliers** — one a
      buyer added before the books were set up, say — is taken as the file's when it has the
      same organisation number (*In the register, by organisation number*) or, without one,
-     the same name (*In the register, by name*): the opening balance is put on it and its
-     record is left as it is. When several have the name (*Several in the register*), a new
-     supplier is made unless you pick one; the picker beside each lets you pick another or
-     *A new supplier*. The others are made from the file with their organisation number,
+     the same name (*In the register, by name*), active or not: the opening balance is put
+     on it, and its record is left as it is but for an empty bank account, IBAN or BIC,
+     which is filled from the file — one it has is never overwritten. When several have the
+     name, or two of the file's suppliers would both be taken as the same one (*Several in
+     the register*), **Set up the books** is refused until you pick which it is, or *A new
+     supplier*, in the picker beside it; the picker also lets you change any other match.
+     A supplier of the register is picked for one of the file's at most. The others are made from the file with their organisation number,
      address and bank account. A number that is not valid is left out and said so.
    - **Customers** — matched to the customers in **Customers** by organisation number when
      the file is read. Accounting does not make customers: one with a balance that
@@ -380,8 +383,15 @@ open one does: the refusal says how many. **Export the supplier's data** include
 those apps hold about the person, and **Anonymise** takes the person out of them too.
 
 Keeping the suppliers needs **Post vouchers**, or **Keep the suppliers** for every field but
-the bank account, IBAN, BIC, default account and tax code, which stay with **Post vouchers**.
-**Delete** and **Anonymise** need **Post vouchers**.
+the bank account, IBAN, BIC, default account, tax code, **The supplier is a person** and
+**Active**, which stay with **Post vouchers** — a new supplier may be marked a person's by
+either. What **Keep the suppliers** leaves out of a change stays as it is. A default account
+or tax code kept as it stands is not checked again, so a change is not refused because the
+account was made inactive since. **Delete** and **Anonymise** need **Post vouchers**.
+
+**Suppliers** here is a screen of Accounting, behind **Use Accounting**: a holder of **Keep
+the suppliers** alone does not see it. The buyer's own screen for the register comes with
+the Purchasing app; until then they keep suppliers through the Assistant or the API.
 
 ## Supplier invoices
 
@@ -1066,7 +1076,7 @@ the permissions they need:
 | **Use Accounting** (`accounting:read`) | Every screen and report. |
 | **Post vouchers** (`accounting:post`) | Journal entries, reversals, attachments, settlements, suppliers, supplier invoices and their payments, the actions under Needs attention, and marking a VAT term as filed. |
 | **Manage the books** (`accounting:close`) | Setting up the books (from a SAF-T file too), the chart, the tax codes, the posting rules, the opening balances, the lock, and closing and reopening VAT terms and removing a filing mark. Only an Owner can give it. |
-| **Keep the suppliers** (`accounting:suppliers-manage`) | Adding and changing suppliers — but their bank account, default account and tax code — also before the books are set up: a buyer's. It needs no **Use Accounting**. |
+| **Keep the suppliers** (`accounting:suppliers-manage`) | Adding and changing suppliers — but their bank account, IBAN, BIC, default account, tax code, person flag and active flag — also before the books are set up: a buyer's. It needs no **Use Accounting**, but seeing **Suppliers** in Accounting does; the buyer's screen comes with Purchasing. |
 | **Export the books** (`accounting:export`) | The reports as CSV, a supplier's data, and the SAF-T file. |
 
 When the engagement ends, remove the role or disable the user: everything they posted

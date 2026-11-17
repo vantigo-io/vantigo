@@ -259,6 +259,13 @@ func (r *Router) HandleFunc(pattern string, h func(http.ResponseWriter, *http.Re
 		}
 		rule.Station = contracts.StationAllowed
 	}
+	if v, present := op.Extensions[contracts.AgentExtension]; present {
+		if v != contracts.AgentExtensionAllowed || rule.Kind != contracts.RuleSession {
+			r.problems = append(r.problems, fmt.Sprintf("module: %s (%s): %s %v must be %q, beside a session rule", pattern, op.OperationID, contracts.AgentExtension, v, contracts.AgentExtensionAllowed))
+			return
+		}
+		rule.Agent = true
+	}
 	if rule.Kind == contracts.RulePermission {
 		for _, key := range rule.Names {
 			if _, ok := r.opts.Catalog[key]; !ok {

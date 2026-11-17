@@ -101,10 +101,14 @@ opp på, og det krever **Forvalte regnskapet**.
    - **Leverandører** — hver med hvordan den tas. En leverandør som allerede er i
      **Leverandører** — en en innkjøper la inn før regnskapet ble satt opp, for eksempel —
      brukes for filens når den har samme organisasjonsnummer (*I registeret, etter
-     organisasjonsnummer*) eller, uten det, samme navn (*I registeret, etter navn*):
-     inngående saldo føres på den, og opplysningene om den står som de er. Når flere har
-     navnet (*Flere i registeret*), opprettes en ny leverandør om du ikke velger én;
-     velgeren ved hver lar deg velge en annen eller *En ny leverandør*. De andre opprettes
+     organisasjonsnummer*) eller, uten det, samme navn (*I registeret, etter navn*), aktiv
+     eller ikke: inngående saldo føres på den, og opplysningene om den står som de er,
+     bortsett fra et tomt kontonummer, IBAN eller BIC, som fylles fra filen — et den har,
+     overskrives aldri. Når flere har navnet, eller to av filens leverandører begge ville
+     brukt den samme (*Flere i registeret*), avvises **Sett opp regnskapet** til du velger
+     hvilken det er, eller *En ny leverandør*, i velgeren ved siden av; velgeren lar deg
+     også endre et annet treff. En leverandør i registeret velges for høyst én av filens.
+     De andre opprettes
      fra filen med organisasjonsnummer, adresse og bankkonto. Et nummer som ikke er gyldig,
      utelates, og det står hvorfor.
    - **Kunder** — funnet blant kundene i **Kunder** på organisasjonsnummer når filen leses.
@@ -381,9 +385,17 @@ på — slettes ikke leverandøren mens noen gjør det, og en person anonymisere
 åpent gjør det: avvisningen sier hvor mange. **Eksporter leverandørens opplysninger** tar
 med det de appene har om personen, og **Anonymiser** tar personen ut av dem også.
 
-Å føre leverandørene krever **Bokføre bilag**, eller **Holde leverandørene** for alle felt
-unntatt kontonummer, IBAN, BIC, standardkonto og mva-kode, som blir hos **Bokføre bilag**.
-**Slett** og **Anonymiser** krever **Bokføre bilag**.
+Å føre leverandørene krever **Bokføre bilag**, eller **Vedlikeholde leverandører** for alle
+felt unntatt kontonummer, IBAN, BIC, standardkonto, mva-kode, **Leverandøren er en person**
+og **Aktiv**, som blir hos **Bokføre bilag** — en ny leverandør kan merkes som en person av
+begge. Det **Vedlikeholde leverandører** utelater i en endring, står som det er. En
+standardkonto eller mva-kode som beholdes som den er, kontrolleres ikke på nytt, så en
+endring avvises ikke fordi kontoen er gjort inaktiv siden. **Slett** og **Anonymiser** krever
+**Bokføre bilag**.
+
+**Leverandører** her er et skjermbilde i Regnskap, bak **Bruke Regnskap**: den som bare har
+**Vedlikeholde leverandører**, ser det ikke. Innkjøperens eget skjermbilde for registeret
+kommer med Innkjøp-appen; til da fører de leverandører gjennom Assistenten eller API-et.
 
 ## Leverandørfakturaer
 
@@ -1068,7 +1080,7 @@ tillatelsene som trengs:
 | **Bruke Regnskap** (`accounting:read`) | Alle skjermbilder og rapporter. |
 | **Bokføre bilag** (`accounting:post`) | Posteringer, tilbakeføringer, vedlegg, oppgjør, leverandører, leverandørfakturaer og betalingene av dem, handlingene under Trenger oppmerksomhet, og å merke en mva-termin som levert. |
 | **Forvalte regnskapet** (`accounting:close`) | Å sette opp regnskapet (også fra en SAF-T-fil), kontoplanen, mva-kodene, posteringsreglene, inngående balanse, sperren, og å lukke og åpne igjen mva-terminer og fjerne et leveringsmerke. Bare en eier kan gi den. |
-| **Holde leverandørene** (`accounting:suppliers-manage`) | Å legge inn og endre leverandører — unntatt kontonummer, standardkonto og mva-kode — også før regnskapet er satt opp: en innkjøpers. Den krever ikke **Bruke Regnskap**. |
+| **Vedlikeholde leverandører** (`accounting:suppliers-manage`) | Å legge inn og endre leverandører — unntatt kontonummer, IBAN, BIC, standardkonto, mva-kode, personmerket og aktivmerket — også før regnskapet er satt opp: en innkjøpers. Den krever ikke **Bruke Regnskap**, men å se **Leverandører** i Regnskap gjør det; innkjøperens skjermbilde kommer med Innkjøp. |
 | **Eksportere regnskapet** (`accounting:export`) | Rapportene som CSV, en leverandørs opplysninger, og SAF-T-filen. |
 
 Når oppdraget er over, fjerner du rollen eller deaktiverer brukeren: alt vedkommende har
