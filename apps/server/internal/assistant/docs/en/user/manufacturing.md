@@ -1342,7 +1342,8 @@ earlier suggestion still a draft or open at the site, which is then listed with 
 from an earlier suggestion is open*. Creating orders needs **Manage manufacturing orders**.
 
 **Dismiss** hides a suggestion until the next run, which suggests it again if it is still
-needed. Buy rows cannot be made into orders — there is no purchasing in Vantigo yet — but
+needed. Buy rows cannot be made into purchase orders yet — Purchasing takes them as proposals in
+a later delivery — but
 **Export buy suggestions** downloads them as a CSV file to order from.
 
 ### Automatic creation
