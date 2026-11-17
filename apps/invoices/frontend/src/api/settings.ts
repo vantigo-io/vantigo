@@ -1,4 +1,5 @@
 import { queryOptions } from "@tanstack/react-query";
+import { appUrl } from "@vantigo/frontend-shell";
 import type { components } from "../api-schema";
 import { INVOICES_QUERY_KEY, json, request } from "./request";
 
@@ -25,3 +26,26 @@ export const invoiceSettingsQueryOptions = () =>
  */
 export const updateInvoiceSettings = (input: InvoiceSettingsInput): Promise<InvoiceSettings> =>
   request<InvoiceSettings>("/api/v1/invoices/settings", json("PUT", input));
+
+/**
+ * Where the seller's logo is read, with its SHA-256 as the cache key: the
+ * server ignores `v`, and a new logo is a new address (invoices phase 6
+ * design I1).
+ */
+export const invoiceLogoUrl = (sha256: string): string =>
+  appUrl(`/api/v1/invoices/settings/logo?v=${encodeURIComponent(sha256)}`);
+
+/**
+ * Sets the seller's logo: one part named `file`, the `Content-Type` left to
+ * the browser. A refusal is a 400 carrying its code — `logo_unsupported_type`,
+ * `logo_too_large`, `logo_too_wide`, `logo_too_small` or `logo_invalid`.
+ * Answers the settings.
+ */
+export const uploadInvoiceLogo = (file: File): Promise<InvoiceSettings> => {
+  const form = new FormData();
+  form.append("file", file, file.name);
+  return request<InvoiceSettings>("/api/v1/invoices/settings/logo", { method: "PUT", body: form });
+};
+
+/** Removes the seller's logo; documents issued with it keep it. */
+export const removeInvoiceLogo = () => request<void>("/api/v1/invoices/settings/logo", { method: "DELETE" });

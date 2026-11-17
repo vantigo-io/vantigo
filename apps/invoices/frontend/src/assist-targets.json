@@ -70,5 +70,29 @@
       "en": "The button that issues a saved draft invoice and gives it its number.",
       "nb": "Knappen som utsteder et lagret fakturautkast og gir det nummer."
     }
+  },
+  {
+    "key": "invoices.settings.logo",
+    "route": "/invoices/settings",
+    "label": {
+      "en": "Upload logo",
+      "nb": "Last opp logo"
+    },
+    "description": {
+      "en": "The button in the seller record of Invoice settings that uploads the logo printed at the top of invoices, credit notes and reminder letters, and shown in their e-mails.",
+      "nb": "Knappen i selgeropplysningene i fakturainnstillingene som laster opp logoen som skrives øverst på fakturaer, kreditnotaer og purrebrev, og som vises i e-postene deres."
+    }
+  },
+  {
+    "key": "invoices.send.message",
+    "route": "/invoices/{invoiceId}",
+    "label": {
+      "en": "Message",
+      "nb": "Melding"
+    },
+    "description": {
+      "en": "The optional personal message in the Send dialog, shown above the standard text in the e-mail.",
+      "nb": "Den valgfrie personlige meldingen i sendedialogen, som vises over standardteksten i e-posten."
+    }
   }
 ]

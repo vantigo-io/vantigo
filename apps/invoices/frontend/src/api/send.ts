@@ -11,7 +11,8 @@ export type InvoiceDelivery = Schemas["InvoicesDelivery"];
 
 /**
  * Sends an issued document by e-mail, to `recipient` when one overrides the
- * customer's invoice e-mail. Through the shared client like every other
+ * customer's invoice e-mail, with `message` above the standard text when the
+ * sender wrote one (invoices phase 6 design I6). Through the shared client like every other
  * write: a 400 naming `recipient` is an `ApiValidationError`; a 409, 502 or
  * 503 problem and the limiter's 429 (`{"error": {"code": "rate_limited"}}`)
  * carry their code on the error, so the dialog words them in the reader's
@@ -19,5 +20,8 @@ export type InvoiceDelivery = Schemas["InvoicesDelivery"];
  * answer carries the send defaults and the new delivery row, but the caller
  * invalidates the document anyway, as after every write (design D4).
  */
-export const sendInvoice = (id: number, recipient?: string): Promise<InvoiceDocument> =>
-  request<InvoiceDocument>(`/api/v1/invoices/${id}/send`, json("POST", recipient ? { recipient } : {}));
+export const sendInvoice = (id: number, recipient?: string, message?: string): Promise<InvoiceDocument> =>
+  request<InvoiceDocument>(
+    `/api/v1/invoices/${id}/send`,
+    json("POST", { ...(recipient ? { recipient } : {}), ...(message ? { message } : {}) }),
+  );

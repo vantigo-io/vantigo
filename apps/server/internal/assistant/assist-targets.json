@@ -410,6 +410,16 @@
     "description": "The button above the invoice list that starts a new invoice."
   },
   {
+    "key": "invoices.send.message",
+    "route": "/invoices/{invoiceId}",
+    "description": "The optional personal message in the Send dialog, shown above the standard text in the e-mail."
+  },
+  {
+    "key": "invoices.settings.logo",
+    "route": "/invoices/settings",
+    "description": "The button in the seller record of Invoice settings that uploads the logo printed at the top of invoices, credit notes and reminder letters, and shown in their e-mails."
+  },
+  {
     "key": "manufacturing.bom-overview.cost",
     "route": "/manufacturing/boms/{bomId}/overview",
     "description": "The components at standard cost, the operations' cost and their total, for someone who may see costs."

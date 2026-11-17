@@ -851,6 +851,7 @@ export const settings = (overrides: Partial<InvoiceSettings> = {}): InvoiceSetti
   iban: "",
   bic: "",
   email: "faktura@kraft-verket.no",
+  phone: "",
   defaultPaymentTermsDays: 14,
   defaultCurrency: "NOK",
   footerText: "",
