@@ -17,6 +17,7 @@ import (
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
+	"github.com/vantigo-io/vantigo/server/internal/module"
 	"github.com/vantigo-io/vantigo/server/internal/openapi/contracttest"
 	"github.com/vantigo-io/vantigo/server/internal/purchasing"
 	"github.com/vantigo-io/vantigo/server/internal/purchasing/gen"
@@ -108,6 +109,9 @@ type harnessOptions struct {
 	communications bool
 	// demand is the purchase demand the proposals read (delivery C).
 	demand contracts.PurchaseDemand
+	// calendar, when set, is the business calendar the module is mounted
+	// with in place of identity's.
+	calendar contracts.BusinessCalendar
 }
 
 func newHarness(t *testing.T, o harnessOptions) *harness {
@@ -118,11 +122,19 @@ func newHarness(t *testing.T, o harnessOptions) *harness {
 			{ID: siteArchived, Code: "GML", Name: "Gammelt lager", Active: false},
 			{ID: siteSecond, Code: "VEST", Name: "Vestlager", Active: true},
 		}}}
+	mod := purchasing.Module()
+	if o.calendar != nil {
+		mountWith := mod.Mount
+		mod.Mount = func(d module.Deps) (http.Handler, error) {
+			d.Calendar = o.calendar
+			return mountWith(d)
+		}
+	}
 	tax := &fakeSalesTax{seller: contracts.SellerProfile{LegalName: "Vantigo Demo AS", OrganisationNumber: "923609016", VATRegistered: true,
 		AddressLine1: "Storgata 1", PostalCode: "0155", City: "Oslo", Country: "no", Email: "post@demo.example"}}
 	opts := []modtest.Option{
 		modtest.WithRecorder(recorder),
-		modtest.WithModule(purchasing.Module()),
+		modtest.WithModule(mod),
 		modtest.WithProducts(h.catalog),
 		modtest.WithSupplierDirectory(h.dir),
 		modtest.WithStock(h.stock, h.ledger),

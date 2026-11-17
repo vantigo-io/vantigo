@@ -5,10 +5,12 @@ import (
 	"time"
 )
 
-// PurchaseDemand is what should be bought (purchasing design P31, A4): a
-// many-provider slot, filled by Inventory's low-stock rule and by
-// Manufacturing's buy suggestions, that Purchasing's proposals read. It is
-// declared ahead of its providers and its slot, which come with delivery C.
+// PurchaseDemand is what should be bought (purchasing design P31, A4, A51):
+// a slot with one source, Deps.PurchaseDemand, that Purchasing's proposals
+// read. Inventory's low-stock rule and Manufacturing's buy suggestions both
+// provide one; Manufacturing's supersedes Inventory's
+// (Module.PurchaseDemandSupersedes), so where Manufacturing is enabled its
+// buy suggestions are the demand, and Inventory's low stock where it is not.
 type PurchaseDemand interface {
 	// Demand is the need at the site, every site when siteID is nil.
 	Demand(ctx context.Context, siteID *int64) ([]PurchaseNeed, error)

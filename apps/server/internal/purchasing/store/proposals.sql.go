@@ -8,6 +8,8 @@ package store
 import (
 	"context"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 const draftQuantities = `-- name: DraftQuantities :many
@@ -45,6 +47,32 @@ func (q *Queries) DraftQuantities(ctx context.Context, variantIds []int32) ([]Dr
 		return nil, err
 	}
 	return items, nil
+}
+
+const insertProposalRequest = `-- name: InsertProposalRequest :exec
+INSERT INTO purchasing.proposal_requests (client_request_id, request_hash, orders, actor_user_id, created_at)
+VALUES ($1, $2, $3, $4, $5)
+`
+
+type InsertProposalRequestParams struct {
+	ClientRequestID uuid.UUID
+	RequestHash     string
+	Orders          []byte
+	ActorUserID     *uuid.UUID
+	CreatedAt       time.Time
+}
+
+// InsertProposalRequest keeps a Create orders request's result, in the
+// transaction that wrote its drafts.
+func (q *Queries) InsertProposalRequest(ctx context.Context, arg InsertProposalRequestParams) error {
+	_, err := q.db.Exec(ctx, insertProposalRequest,
+		arg.ClientRequestID,
+		arg.RequestHash,
+		arg.Orders,
+		arg.ActorUserID,
+		arg.CreatedAt,
+	)
+	return err
 }
 
 const lockOldestDraft = `-- name: LockOldestDraft :one
@@ -131,48 +159,22 @@ func (q *Queries) LockProposalOrders(ctx context.Context, key int64) error {
 	return err
 }
 
-const proposalRequestChanges = `-- name: ProposalRequestChanges :many
-SELECT c.order_id, c.actions, o.supplier_id, o.supplier_name, o.site_id
-FROM purchasing.order_changes c
-JOIN purchasing.orders o ON o.id = c.order_id
-WHERE c.actions @> jsonb_build_array(jsonb_build_object('requestId', $1::text))
-ORDER BY c.order_id
+const proposalRequest = `-- name: ProposalRequest :one
+SELECT request_hash, orders FROM purchasing.proposal_requests WHERE client_request_id = $1
 `
 
-type ProposalRequestChangesRow struct {
-	OrderID      int64
-	Actions      []byte
-	SupplierID   int64
-	SupplierName string
-	SiteID       int64
+type ProposalRequestRow struct {
+	RequestHash string
+	Orders      []byte
 }
 
-// ProposalRequestChanges is the change rows a Create orders request wrote,
-// by its clientRequestId, with their orders as they stand.
-func (q *Queries) ProposalRequestChanges(ctx context.Context, requestID string) ([]ProposalRequestChangesRow, error) {
-	rows, err := q.db.Query(ctx, proposalRequestChanges, requestID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []ProposalRequestChangesRow
-	for rows.Next() {
-		var i ProposalRequestChangesRow
-		if err := rows.Scan(
-			&i.OrderID,
-			&i.Actions,
-			&i.SupplierID,
-			&i.SupplierName,
-			&i.SiteID,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+// ProposalRequest is a Create orders request by its clientRequestId: its
+// body's hash and the result it answered (A58).
+func (q *Queries) ProposalRequest(ctx context.Context, clientRequestID uuid.UUID) (ProposalRequestRow, error) {
+	row := q.db.QueryRow(ctx, proposalRequest, clientRequestID)
+	var i ProposalRequestRow
+	err := row.Scan(&i.RequestHash, &i.Orders)
+	return i, err
 }
 
 const refreshOrderTotal = `-- name: RefreshOrderTotal :exec
@@ -203,7 +205,7 @@ SELECT d.variant_id::int AS variant_id, d.site_id::bigint AS site_id,
        sum(CASE WHEN l.closed_at IS NOT NULL THEN l.received ELSE greatest(l.quantity, l.received) END)::text AS quantity
 FROM d
 JOIN purchasing.orders o ON o.site_id = d.site_id AND o.sent_at > d.since AND o.status NOT IN ('draft', 'cancelled')
-JOIN purchasing.order_lines l ON l.order_id = o.id AND l.kind = 'variant' AND l.variant_id = d.variant_id
+JOIN purchasing.order_lines l ON l.order_id = o.id AND l.kind = 'variant' AND l.product_type = 'Goods' AND l.variant_id = d.variant_id
 GROUP BY d.variant_id, d.site_id
 `
 
@@ -221,9 +223,10 @@ type SentSinceRow struct {
 
 // SentSince is, per (variant, site, since) given side by side, what orders
 // sent to the site after since hold of the variant — what a stored demand
-// computed at since does not count yet (A4): a closed line what it received,
-// an open one what it orders or more when more was received. A cancelled
-// order holds nothing.
+// computed at since does not count yet (A4): a goods line's, as OpenPurchases
+// counts them — a closed line what it received, an open one what it orders
+// or more when more was received. A cancelled order holds nothing. The caller
+// passes since less a safety margin (sentSinceMargin).
 func (q *Queries) SentSince(ctx context.Context, arg SentSinceParams) ([]SentSinceRow, error) {
 	rows, err := q.db.Query(ctx, sentSince, arg.VariantIds, arg.SiteIds, arg.Since)
 	if err != nil {

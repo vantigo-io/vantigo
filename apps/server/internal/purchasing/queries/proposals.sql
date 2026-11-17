@@ -11,9 +11,10 @@ GROUP BY l.variant_id, o.site_id;
 -- name: SentSince :many
 -- SentSince is, per (variant, site, since) given side by side, what orders
 -- sent to the site after since hold of the variant — what a stored demand
--- computed at since does not count yet (A4): a closed line what it received,
--- an open one what it orders or more when more was received. A cancelled
--- order holds nothing.
+-- computed at since does not count yet (A4): a goods line's, as OpenPurchases
+-- counts them — a closed line what it received, an open one what it orders
+-- or more when more was received. A cancelled order holds nothing. The caller
+-- passes since less a safety margin (sentSinceMargin).
 WITH d AS (
     SELECT unnest(sqlc.arg(variant_ids)::int[]) AS variant_id, unnest(sqlc.arg(site_ids)::bigint[]) AS site_id,
            unnest(sqlc.arg(since)::timestamptz[]) AS since
@@ -22,7 +23,7 @@ SELECT d.variant_id::int AS variant_id, d.site_id::bigint AS site_id,
        sum(CASE WHEN l.closed_at IS NOT NULL THEN l.received ELSE greatest(l.quantity, l.received) END)::text AS quantity
 FROM d
 JOIN purchasing.orders o ON o.site_id = d.site_id AND o.sent_at > d.since AND o.status NOT IN ('draft', 'cancelled')
-JOIN purchasing.order_lines l ON l.order_id = o.id AND l.kind = 'variant' AND l.variant_id = d.variant_id
+JOIN purchasing.order_lines l ON l.order_id = o.id AND l.kind = 'variant' AND l.product_type = 'Goods' AND l.variant_id = d.variant_id
 GROUP BY d.variant_id, d.site_id;
 
 -- name: SupplierItemsOfVariants :many
@@ -50,14 +51,16 @@ FOR UPDATE;
 -- rows.
 SELECT pg_advisory_xact_lock(sqlc.arg(key)::bigint);
 
--- name: ProposalRequestChanges :many
--- ProposalRequestChanges is the change rows a Create orders request wrote,
--- by its clientRequestId, with their orders as they stand.
-SELECT c.order_id, c.actions, o.supplier_id, o.supplier_name, o.site_id
-FROM purchasing.order_changes c
-JOIN purchasing.orders o ON o.id = c.order_id
-WHERE c.actions @> jsonb_build_array(jsonb_build_object('requestId', sqlc.arg(request_id)::text))
-ORDER BY c.order_id;
+-- name: ProposalRequest :one
+-- ProposalRequest is a Create orders request by its clientRequestId: its
+-- body's hash and the result it answered (A58).
+SELECT request_hash, orders FROM purchasing.proposal_requests WHERE client_request_id = sqlc.arg(client_request_id);
+
+-- name: InsertProposalRequest :exec
+-- InsertProposalRequest keeps a Create orders request's result, in the
+-- transaction that wrote its drafts.
+INSERT INTO purchasing.proposal_requests (client_request_id, request_hash, orders, actor_user_id, created_at)
+VALUES (sqlc.arg(client_request_id), sqlc.arg(request_hash), sqlc.arg(orders), sqlc.narg(actor_user_id), sqlc.arg(created_at));
 
 -- name: RefreshOrderTotal :exec
 -- RefreshOrderTotal sums an order's lines into its total and moves its

@@ -148,6 +148,14 @@ type PurchasingOrderLine struct {
 	DeliveredAt        *time.Time
 }
 
+type PurchasingProposalRequest struct {
+	ClientRequestID uuid.UUID
+	RequestHash     string
+	Orders          []byte
+	ActorUserID     *uuid.UUID
+	CreatedAt       time.Time
+}
+
 type PurchasingReceipt struct {
 	ID                 int64
 	Number             int64
