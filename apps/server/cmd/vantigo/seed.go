@@ -285,6 +285,12 @@ func seed(ctx context.Context, logger *slog.Logger, cfg *config.Config) int {
 		logger.Error("development accounting seed failed", "error", err)
 		return 1
 	}
+	// Purchasing's invoice match once the books exist (delivery D): a
+	// supplier invoice is Accounting's, and the books take none before.
+	if err := seedDemoPurchasingMatches(ctx, pool, logger, cfg, seedClock().UTC().Truncate(time.Second)); err != nil {
+		logger.Error("development purchasing match seed failed", "error", err)
+		return 1
+	}
 	return 0
 }
 

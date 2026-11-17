@@ -85,12 +85,13 @@ func TestRun_SeedBooksTheDemo(t *testing.T) {
 		         JOIN accounting.accounts a ON a.id = p.account_id WHERE a.system_role = 'payables')
 		      - (SELECT coalesce(sum(p.amount), 0) FROM accounting.postings p
 		         JOIN accounting.open_items oi ON oi.id = p.open_item_id WHERE oi.kind = 'supplier'))::text`, "0.00")
+	// The books' own and the match demo's paint invoice, owed.
 	expect("supplier invoices left owed", `
 		SELECT count(*)::text FROM accounting.open_items oi WHERE oi.kind = 'supplier'
-		AND (SELECT sum(amount) FROM accounting.postings WHERE open_item_id = oi.id) <> 0`, "2")
+		AND (SELECT sum(amount) FROM accounting.postings WHERE open_item_id = oi.id) <> 0`, "3")
 	expect("supplier invoices by state", `
 		SELECT string_agg(state || '=' || n, ',' ORDER BY state) FROM (
-			SELECT state, count(*) AS n FROM accounting.supplier_invoices GROUP BY state) s`, "draft=1,posted=14")
+			SELECT state, count(*) AS n FROM accounting.supplier_invoices GROUP BY state) s`, "draft=2,posted=15")
 	expect("a currency difference", `
 		SELECT count(*)::text FROM accounting.postings p JOIN accounting.accounts a ON a.id = p.account_id
 		WHERE a.system_role IN ('currency_gain', 'currency_loss')`, "2")
@@ -173,12 +174,26 @@ func TestRun_SeedBooksTheDemo(t *testing.T) {
 	expect("the receipts' movements", `SELECT count(*)::text FROM inventory.movements WHERE source_module = 'purchasing' AND kind IN ('receipt', 'receipt_reversal')`, "4")
 	expect("the paint's lot", `SELECT l.number || '/' || (l.expiry IS NOT NULL)::text FROM inventory.lots l
 		JOIN purchasing.receipt_lines rl ON rl.lot_number = l.number`, "LAKK-7016-2611/true")
+	// The invoice match (delivery D): the paint invoice registered from its
+	// order and posted, the steel invoice typed in Accounting and matched
+	// at a dearer metre, a draft.
+	if !strings.Contains(stdout, "purchasing match demo seeded") {
+		t.Errorf("expected the match demo's log line, got: %s", stdout)
+	}
+	expect("the matched invoices", `SELECT string_agg(si.supplier_number || '=' || si.state || '/' || m.state, ',' ORDER BY si.supplier_number)
+		FROM purchasing.invoice_matches m JOIN accounting.supplier_invoices si ON si.id = m.supplier_invoice_id`,
+		"JPC-F-88412=posted/posted,NS-F-30502=draft/provisional")
+	expect("the paint's reference", `SELECT (si.reference = o.number::text)::text FROM accounting.supplier_invoices si
+		JOIN purchasing.invoice_registrations r ON r.supplier_invoice_id = si.id JOIN purchasing.orders o ON o.id = r.order_id`, "true")
+	expect("the invoiced quantities", `SELECT string_agg(l.sku || '=' || l.invoiced, ',' ORDER BY l.sku) FROM purchasing.order_lines l WHERE l.invoiced > 0`,
+		"VRK-LAKK-7016=40.000,VRK-ROR-40=120.000")
 
 	counts := func() string {
 		return value(`SELECT (SELECT count(*) FROM accounting.vouchers) || '/' || (SELECT count(*) FROM accounting.postings)
 			|| '/' || (SELECT count(*) FROM accounting.statement_lines) || '/' || (SELECT count(*) FROM accounting.suppliers)
 			|| '/' || (SELECT count(*) FROM purchasing.orders) || '/' || (SELECT count(*) FROM purchasing.supplier_items)
-			|| '/' || (SELECT count(*) FROM purchasing.receipts)`)
+			|| '/' || (SELECT count(*) FROM purchasing.receipts) || '/' || (SELECT count(*) FROM purchasing.invoice_matches)
+			|| '/' || (SELECT count(*) FROM accounting.supplier_invoices)`)
 	}
 	before := counts()
 	code2, stdout2, stderr2 := runCapture("seed")
