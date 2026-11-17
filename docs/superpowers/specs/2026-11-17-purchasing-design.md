@@ -1,8 +1,8 @@
 # Purchasing — supplier items, purchase orders, receipts, proposals and the invoice match (phase 1)
 
-Revision 4, 2026-11-17, after delivery A was built and reviewed. **§15 amends earlier
+Revision 6, 2026-11-17, after delivery B was built and reviewed. **§15 amends earlier
 decisions and wins where they differ** (A22 to A28 record what delivery 0 built, A29 to
-A36 what delivery A built); §16 lists what changed. This spec builds on the research
+A36 what delivery A built, A37 to A46 what delivery B built and A47 to A49 its review); §16 lists what changed. This spec builds on the research
 `docs/superpowers/research/2026-11-17-purchasing-module.md` ("R"). It does not reopen
 R §8, and it takes the defaults R §9 took for the readings; §14 says what an overturn of
 each would change. Decisions are numbered P*n*. The implementation plan is
@@ -315,8 +315,9 @@ subcontracting.
 | `purchasing:invoices-match` | match and unmatch supplier invoices, read received not invoiced | no |
 | `purchasing:settings` | the settings | no |
 
-Prices are shown to every holder of `purchasing:access`; a warehouse worker who should
-receive without seeing prices is §14's question 5.
+Prices are shown to every holder of `purchasing:access`; a holder of `purchasing:receive`
+alone receives without seeing them (A47). A price-view key beside access is §14's
+question 5.
 
 ## 9. Data model (schema `purchasing`)
 
@@ -477,6 +478,12 @@ invoices alone. Questions 2 to 8 stand at their defaults until the owner says ot
     employees no template for Purchasing: no agent writes orders or supplier items yet.
     **Default: none until the owner asks.** A template would name the operations an agent
     may call — the order and supplier-item writes, never Send — and the review threshold.
+12. **A replenishment run on every sent order and receipt** (A45). Manufacturing's
+    handler queues a `manual` replenishment run for the site on every sent order, receipt
+    and undo, unless one is pending. With auto-create rules on, such runs may create
+    manufacturing orders more often than the nightly run would. **Default: keep.**
+    Overturned, the handler only marks the site's projection stale, and the nightly run —
+    or a person — makes the orders.
 
 ## 15. Amendments (revision 2)
 
@@ -782,7 +789,44 @@ chosen closest to Inventory's own receipt screen. Each wins over what it names.
 - **A46 — The receive screen's reads** (P30). The screen's read and the code lookup are
   `purchasing:receive`; the receipts' reads are `purchasing:access`. None answers a price.
 
+### Delivery B, reviewed (revision 6)
+
+From the review of delivery B. Each wins over what it names.
+
+- **A47 — Receiving under `purchasing:receive` alone** (P30, §8, A46). Receiving needs no
+  other key, and nothing it answers carries a price to a caller without
+  `purchasing:access`: Receive and Undo answer `PurchasingReceiptResult` with the receipt,
+  the order's `progress` (`PurchasingOrderProgress`: id, number, status, `updatedAt`, each
+  line's quantity, received, open and delivered and closed marks) and `order` — the full
+  view with its prices — only for a holder of `purchasing:access`; the delivered mark
+  answers `PurchasingDeliveredResult` (`progress`, and `order` likewise). A read of its own,
+  `GET /receiving` (`listPurchasingOrdersToReceive`), lists the orders to receive: sent and
+  partially received orders with a goods line still to come, with the supplier's name, the
+  site, the earliest expected day of what is to come, `late` and the lines left — no
+  prices. The app gets a sidebar entry **Receive** (nb *Motta*) for that key alone; the
+  receiving list is `/purchasing/receive` and the receive screen moves under it,
+  `/purchasing/receive/{orderId}`, so the route guard's rule is the key's; the app's tile
+  is offered to either key, and its prefix sends a receiver who cannot read orders to the
+  list, where the receive screen also returns after a receipt.
+- **A48 — One rule ends an order** (P18, A16, A40). Whichever action leaves nothing open —
+  a receipt, a delivered mark, Close line, a Reopen that opened nothing — the order is
+  `received` when every line came in full or was marked delivered, and `closed` when a
+  closed line kept a remainder (less received than ordered, no delivered mark), with the
+  change log's `closed` and `purchasing.order.closed.v1`, as Close. Its `closed_at` is the
+  latest such line's, so Reopen opens that line again. Otherwise it is
+  `partially_received` when anything is received or delivered, else `sent`; Reopen derives
+  its state the same way, delivered marks counted. The end — `received` or `closed` — is a
+  change-log row of its own after the action's, in every path. A40's received order with a
+  closed line's remainder is closed instead.
+- **A49 — The receipt line's price** (P28, A43). `receipt_lines.unit_price` is per the
+  variant's unit — the unit its `quantity` is in —: the order line's price per its purchase
+  packaging divided by the packaging's quantity, net of the line's discount, at four places,
+  in the order's currency. Delivery D's invoice match and a later valuation start from it.
+
 ## 16. Revision log
+
+- **Revision 6, 2026-11-17** — delivery B reviewed: A47 to A49 (§15, *Delivery B,
+  reviewed*); §14's question 12 added.
 
 - **Revision 5, 2026-11-17** — delivery B built: A37 to A46 (§15, *Delivery B, as built*).
 
