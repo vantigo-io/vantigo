@@ -267,8 +267,8 @@ func planNewLine(lc lineContext, l lineInput) (plannedLine, string, string) {
 				return p, codePriceInvalid, "A price is 0 or more, with at most four decimals"
 			}
 			p.unitPrice = price
-		case hasItem && item.Currency == lc.currency && ratOf(item.Price) != nil:
-			p.unitPrice = ratOf(item.Price)
+		case hasItem && item.Currency == lc.currency && itemPriceFor(v, ratOf(item.Price), item.PackagingID, p.packagingID) != nil:
+			p.unitPrice = itemPriceFor(v, ratOf(item.Price), item.PackagingID, p.packagingID)
 		default:
 			p.unitPrice = new(big.Rat)
 		}
@@ -280,6 +280,51 @@ func planNewLine(lc lineContext, l lineInput) (plannedLine, string, string) {
 	}
 	p.net = lineNet(p.orderQuantity, p.unitPrice, p.discount)
 	return p, "", ""
+}
+
+// packagingFactor is how many of the variant's unit packaging id holds: 1
+// for none, false when the variant has no such packaging or it holds no
+// quantity.
+func packagingFactor(v contracts.VariantEntry, id *int32) (*big.Rat, bool) {
+	if id == nil {
+		return big.NewRat(1, 1), true
+	}
+	pk := packagingOf(v, *id)
+	if pk == nil {
+		return nil, false
+	}
+	f, ok := new(big.Rat).SetString(pk.Quantity)
+	if !ok || f.Sign() <= 0 {
+		return nil, false
+	}
+	return f, true
+}
+
+// itemPriceFor is a supplier item's price for a line in linePackaging: the
+// item's price is per its own packaging, so a line in another one takes it
+// converted — price × the line's factor / the item's, at four decimals. nil
+// when there is no price, when either factor is unknown, or when the
+// converted price is out of range: the line is then left at 0.
+func itemPriceFor(v contracts.VariantEntry, price *big.Rat, itemPackaging, linePackaging *int32) *big.Rat {
+	if price == nil {
+		return nil
+	}
+	if samePackaging(itemPackaging, linePackaging) {
+		return price
+	}
+	itemFactor, ok := packagingFactor(v, itemPackaging)
+	if !ok {
+		return nil
+	}
+	lineFactor, ok := packagingFactor(v, linePackaging)
+	if !ok {
+		return nil
+	}
+	converted := roundTo(new(big.Rat).Quo(new(big.Rat).Mul(price, lineFactor), itemFactor), pricePlaces)
+	if converted.Cmp(maxPrice) > 0 {
+		return nil
+	}
+	return converted
 }
 
 // setPackaging sets the line's packaging and its quantity in the variant's
