@@ -1237,9 +1237,9 @@ const en = {
   "admin.permission.purchasingOrdersSend": "Send purchase orders",
   "admin.permission.purchasingOrdersSendDescription":
     "Send purchase orders, mark them as sent, send them again and cancel them.",
-  "admin.permission.purchasingReceive": "Receive goods (coming)",
+  "admin.permission.purchasingReceive": "Receive goods",
   "admin.permission.purchasingReceiveDescription":
-    "Not in use yet: receiving goods against purchase orders comes in a later version of Purchasing.",
+    "Receive goods against purchase orders, undo a receipt, and mark a text or service line delivered.",
   "admin.permission.purchasingSupplierItemsManage": "Manage supplier items",
   "admin.permission.purchasingSupplierItemsManageDescription":
     "Write and import supplier items: what each supplier sells, at what price.",
@@ -2047,9 +2047,9 @@ const nb: { [Key in keyof typeof en]: string } = {
   "admin.permission.purchasingOrdersSend": "Sende innkjøpsordrer",
   "admin.permission.purchasingOrdersSendDescription":
     "Sende innkjøpsordrer, markere dem som sendt, sende dem på nytt og kansellere dem.",
-  "admin.permission.purchasingReceive": "Ta imot varer (kommer)",
+  "admin.permission.purchasingReceive": "Ta imot varer",
   "admin.permission.purchasingReceiveDescription":
-    "Ikke i bruk ennå: varemottak på innkjøpsordrer kommer i en senere versjon av Innkjøp.",
+    "Ta imot varer på innkjøpsordrer, angre et varemottak, og markere en tekst- eller tjenestelinje som levert.",
   "admin.permission.purchasingSupplierItemsManage": "Forvalte leverandørvarer",
   "admin.permission.purchasingSupplierItemsManageDescription":
     "Skrive og importere leverandørvarer: hva hver leverandør selger, og til hvilken pris.",

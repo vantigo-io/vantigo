@@ -3,6 +3,7 @@ import type { PurchasingAccess } from "@vantigo/purchasing-ui";
 import { fetchSession, sessionQueryKey } from "../api/auth";
 import { getAuthorizationMe } from "../api/authorization";
 import { hasAllPermissions } from "../navigation";
+import { enabledModuleKeys } from "./enabled-modules";
 
 /**
  * What the Purchasing pages may offer (purchasing design §8), judged from the
@@ -17,6 +18,9 @@ export const purchasingAccessOf = (permissions: string[] | undefined, user?: { i
     canSendOrders: purchasing("purchasing:orders-send"),
     canManageSupplierItems: purchasing("purchasing:supplier-items-manage"),
     canManageSettings: purchasing("purchasing:settings"),
+    canReceive: purchasing("purchasing:receive"),
+    canOpenInventoryMovements:
+      enabledModuleKeys().includes("inventory") && hasAllPermissions(permissions, ["inventory:stock-view"]),
     userId: user?.id,
   };
 };

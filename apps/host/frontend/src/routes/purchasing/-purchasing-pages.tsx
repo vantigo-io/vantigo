@@ -14,6 +14,7 @@ import { purchasingSupplierQueryOptions } from "@vantigo/purchasing-ui/api/purch
 import { usePurchasingFormat } from "@vantigo/purchasing-ui/lib/format";
 import { NewPurchaseOrderPage, PurchaseOrderPage } from "@vantigo/purchasing-ui/pages/order";
 import { PurchaseOrdersPage } from "@vantigo/purchasing-ui/pages/orders";
+import { ReceivePurchaseOrderPage } from "@vantigo/purchasing-ui/pages/receive";
 import { PurchasingSettingsPage } from "@vantigo/purchasing-ui/pages/settings";
 import { SupplierPage, SuppliersPage } from "@vantigo/purchasing-ui/pages/suppliers";
 import type { ReactNode } from "react";
@@ -89,6 +90,10 @@ const PurchaseOrder = ({ access }: { access: PurchasingAccess }) => {
   const { orderId } = useParams({ from: "/purchasing/orders/$orderId" });
   return <PurchaseOrderPage orderId={Number(orderId)} access={access} />;
 };
+const ReceivePurchaseOrder = ({ access }: { access: PurchasingAccess }) => {
+  const { orderId } = useParams({ from: "/purchasing/orders/$orderId_/receive" });
+  return <ReceivePurchaseOrderPage orderId={Number(orderId)} access={access} />;
+};
 const NewPurchaseOrder = ({ access }: { access: PurchasingAccess }) => {
   const { supplierId } = useSearch({ from: "/purchasing/orders/new" });
   return <NewPurchaseOrderPage supplierId={supplierId} access={access} />;
@@ -105,6 +110,7 @@ const Supplier = ({
 };
 
 export const PurchaseOrderRoutePage = withAccess((access) => <PurchaseOrder access={access} />);
+export const ReceivePurchaseOrderRoutePage = withAccess((access) => <ReceivePurchaseOrder access={access} />);
 export const NewPurchaseOrderRoutePage = withAccess((access) => <NewPurchaseOrder access={access} />);
 export const SupplierRoutePage = withAccess((access, renderSupplierForm) => (
   <Supplier access={access} renderSupplierForm={renderSupplierForm} />
