@@ -1,3 +1,4 @@
+import { Alert, Modal } from "@mantine/core";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useSearch } from "@tanstack/react-router";
 import { supplierQueryOptions } from "@vantigo/accounting-ui/api/accounting";
@@ -9,6 +10,8 @@ import {
   type RenderSupplierForm,
   type SupplierFormSlotProps,
 } from "@vantigo/purchasing-ui";
+import { purchasingSupplierQueryOptions } from "@vantigo/purchasing-ui/api/purchasing";
+import { usePurchasingFormat } from "@vantigo/purchasing-ui/lib/format";
 import { NewPurchaseOrderPage, PurchaseOrderPage } from "@vantigo/purchasing-ui/pages/order";
 import { PurchaseOrdersPage } from "@vantigo/purchasing-ui/pages/orders";
 import { PurchasingSettingsPage } from "@vantigo/purchasing-ui/pages/settings";
@@ -42,13 +45,28 @@ const withAccess = (render: (access: PurchasingAccess, renderSupplierForm: Rende
 /**
  * The register's supplier form, Accounting's own, composed here because a
  * module package imports no other (P13). Purchasing offers it only when its
- * meta says the caller may write the register; a change reads the supplier
- * through Accounting first, for its revision.
+ * meta says the caller may write the register. A change reads the supplier
+ * first, for its values and revision: a poster of the books through
+ * Accounting, whose read has the books' fields; a buyer — who may hold
+ * accounting:suppliers-manage alone, without accounting:read — through
+ * Purchasing's own supplier read, which answers the register's revision (A26).
+ * A read that fails says so, rather than opening nothing.
  */
 const RegisterSupplierForm = ({ supplierId, onClose, onSaved, books }: SupplierFormSlotProps & { books: boolean }) => {
+  const { t } = usePurchasingFormat();
   const queryClient = useQueryClient();
-  const current = useQuery({ ...supplierQueryOptions(supplierId ?? 0), enabled: supplierId !== undefined });
-  if (supplierId !== undefined && !current.data) return null;
+  const editing = supplierId !== undefined;
+  const fromBooks = useQuery({ ...supplierQueryOptions(supplierId ?? 0), enabled: editing && books });
+  const fromPurchasing = useQuery({ ...purchasingSupplierQueryOptions(supplierId ?? 0), enabled: editing && !books });
+  const current = books ? fromBooks : fromPurchasing;
+  if (editing && current.isError) {
+    return (
+      <Modal opened onClose={onClose} title={t("editSupplier")}>
+        <Alert color="red">{t("supplierReadFailed")}</Alert>
+      </Modal>
+    );
+  }
+  if (editing && !current.data) return null;
   return (
     <SupplierFormModal
       supplier={current.data}

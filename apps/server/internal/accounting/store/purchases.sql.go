@@ -112,7 +112,7 @@ func (q *Queries) DeleteSupplierInvoiceLines(ctx context.Context, id int64) erro
 
 const directorySuppliers = `-- name: DirectorySuppliers :many
 SELECT id, number, name, organisation_number, country, address_line, postal_code, city, email, currency,
-    payment_terms_days, active, is_person, anonymised_at
+    payment_terms_days, active, is_person, anonymised_at, revision
 FROM accounting.suppliers WHERE id = ANY($1::bigint[])
 `
 
@@ -131,6 +131,7 @@ type DirectorySuppliersRow struct {
 	Active             bool
 	IsPerson           bool
 	AnonymisedAt       *time.Time
+	Revision           int32
 }
 
 // DirectorySuppliers is the suppliers named, for the supplier directory.
@@ -158,6 +159,7 @@ func (q *Queries) DirectorySuppliers(ctx context.Context, ids []int64) ([]Direct
 			&i.Active,
 			&i.IsPerson,
 			&i.AnonymisedAt,
+			&i.Revision,
 		); err != nil {
 			return nil, err
 		}
@@ -971,7 +973,7 @@ func (q *Queries) ListSuppliers(ctx context.Context, arg ListSuppliersParams) ([
 
 const lockDirectorySuppliers = `-- name: LockDirectorySuppliers :many
 SELECT id, number, name, organisation_number, country, address_line, postal_code, city, email, currency,
-    payment_terms_days, active, is_person, anonymised_at
+    payment_terms_days, active, is_person, anonymised_at, revision
 FROM accounting.suppliers WHERE id = ANY($1::bigint[])
 ORDER BY id FOR SHARE
 `
@@ -991,6 +993,7 @@ type LockDirectorySuppliersRow struct {
 	Active             bool
 	IsPerson           bool
 	AnonymisedAt       *time.Time
+	Revision           int32
 }
 
 // LockDirectorySuppliers takes FOR SHARE on the suppliers named, in id
@@ -1019,6 +1022,7 @@ func (q *Queries) LockDirectorySuppliers(ctx context.Context, ids []int64) ([]Lo
 			&i.Active,
 			&i.IsPerson,
 			&i.AnonymisedAt,
+			&i.Revision,
 		); err != nil {
 			return nil, err
 		}
@@ -1537,7 +1541,7 @@ func (q *Queries) SaftMatchSuppliers(ctx context.Context) ([]SaftMatchSuppliersR
 
 const searchDirectorySuppliers = `-- name: SearchDirectorySuppliers :many
 SELECT id, number, name, organisation_number, country, address_line, postal_code, city, email, currency,
-    payment_terms_days, active, is_person, anonymised_at
+    payment_terms_days, active, is_person, anonymised_at, revision
 FROM accounting.suppliers s
 WHERE s.name ILIKE '%' || replace(replace(replace($1::text, '\', '\\'), '%', '\%'), '_', '\_') || '%'
    OR s.number::text = $1::text OR s.organisation_number = $1::text
@@ -1565,6 +1569,7 @@ type SearchDirectorySuppliersRow struct {
 	Active             bool
 	IsPerson           bool
 	AnonymisedAt       *time.Time
+	Revision           int32
 }
 
 // SearchDirectorySuppliers is the suppliers whose name holds the query,
@@ -1593,6 +1598,7 @@ func (q *Queries) SearchDirectorySuppliers(ctx context.Context, arg SearchDirect
 			&i.Active,
 			&i.IsPerson,
 			&i.AnonymisedAt,
+			&i.Revision,
 		); err != nil {
 			return nil, err
 		}

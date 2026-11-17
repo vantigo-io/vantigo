@@ -1158,6 +1158,11 @@ export interface components {
             /** Format: int32 */
             paymentTermsDays: number;
             postalCode: string;
+            /**
+             * Format: int32
+             * @description The register row's revision (A26), which a change of the supplier through Accounting's API carries — so a buyer without accounting:read can write it.
+             */
+            revision: number;
             /** Format: int32 */
             supplierItemCount: number;
         };
