@@ -6,6 +6,10 @@ sidebar:
 sources:
   - apps/purchasing/frontend
   - apps/host/frontend/src/routes/purchasing
+  - apps/host/frontend/src/lib/purchasing-access.ts
+  - apps/host/frontend/src/lib/dashboard-helpers.ts
+  - apps/host/frontend/src/components/app-spotlight.tsx
+  - apps/host/frontend/src/routes/products/$productId.tsx
 ---
 
 I Innkjøp-appen bestiller du varer og tjenester fra leverandørene dine. En
@@ -23,16 +27,21 @@ og bestiller produktene i [Produkter](/nb/user/products/) til et lagersted i
 ## Appen og sidemenyen
 
 Sidemenyen har **Innkjøpsordrer** og **Leverandører** for alle med **Bruke Innkjøp**, og
-**Innstillinger** for dem som administrerer innstillingene for Innkjøp. Hva du kan gjøre,
+**Innkjøpsinnstillinger** for dem som forvalter innstillingene for Innkjøp. Hva du kan gjøre,
 avhenger av rettighetene dine: å skrive ordrer, å sende dem og å vedlikeholde
 leverandørvarene er egne rettigheter, så en kollega kan se knapper du ikke ser
 ([Rettigheter](#rettigheter)). Alle med **Bruke Innkjøp** ser prisene.
 
 ## Ordrelisten
 
-**Innkjøpsordrer** lister ordrene med de nyeste først, med nummer, leverandør, status,
-lagersted, forventet dato og sum uten mva. Et utkast har ikke nummer ennå. En ordre kan
-være:
+**Innkjøpsordrer** lister ordrene med de nyeste først, med **Nummer**, **Leverandør** —
+leverandørens referanse under navnet når den er registrert —, **Status**, **Ordredato**,
+**Forventet dato**, **Mottatt**, **Fakturert** og **Sum eks. mva.** Et utkast har ikke
+nummer ennå. **Mottatt** teller ordrens varelinjer som er mottatt i sin helhet eller
+avsluttet, av alle varelinjene, og **Fakturert** linjene som er fakturert i sin helhet, av
+alle linjene; varemottak og fakturaavstemming kommer i senere versjoner av Innkjøp, så
+inntil da teller **Mottatt** bare avsluttede linjer, og **Fakturert** viser 0 av linjene.
+En ordre kan være:
 
 - **Utkast** — under arbeid; den har ikke nummer og kan slettes.
 - **Sendt** — sendt til leverandøren, på e-post eller markert som sendt; den har fått
@@ -66,7 +75,7 @@ referanse), statusbrikkene — **Utkast**, **Sendt**, **Delvis mottatt**, **Mott
 
 Fra leverandøren tar ordren **Valuta** og **Språk på ordren** — norsk når leverandørens
 land er Norge eller ikke oppgitt, ellers engelsk. Du er **Vår referanse** (innkjøperen)
-med mindre du velger en kollega som kan administrere innkjøpsordrer.
+med mindre du velger en kollega som kan forvalte innkjøpsordrer.
 
 ### Hodet
 
@@ -87,10 +96,13 @@ En ordre har opptil 500 linjer, av to slag:
   har leverandørvarer for. Linjen tar fra leverandørvaren det du lar stå tomt:
   **leverandørens varenummer**, prisen — når leverandørvarens pris er i ordrens valuta —,
   **innkjøpsenheten** så lenge produktet fortsatt har den, og **Forventet dato**,
-  ordredatoen pluss leverandørvarens leveringstid. Du fører antallet i innkjøpsenheten, og
-  linjen viser det i produktets enhet også: 3 esker à 15 er 45 stykk. **Rabatt %** er en
-  prosent av prisen. Linjens beløp er antall × pris, minus rabatten, avrundet til to
-  desimaler.
+  ordredatoen pluss leverandørvarens leveringstid. Leverandørvarens pris gjelder dens egen
+  innkjøpsenhet: en linje i en annen innkjøpsenhet får den omregnet — prisen for en eske
+  à 10 er ti ganger enhetens —, og blir stående på 0 når størrelsen på enheten ikke er
+  kjent. Du fører antallet i innkjøpsenheten; valget av innkjøpsenhet sier hvor mange av
+  produktets enhet den rommer — **Eske (15 stk)** —, så 3 av dem er 45 stykk i bestilling.
+  **Rabatt %** er en prosent av prisen. Linjens beløp er antall × pris, minus rabatten,
+  avrundet til to desimaler.
 - **Tekstlinje** (**Legg til tekstlinje**) — noe utenfor katalogen, som frakt eller en tjeneste: en beskrivelse, et
   antall, en enhet og en pris.
 
@@ -99,7 +111,12 @@ dens **Antall per bestilling (multippel)**, vises som en advarsel; ordren kan li
 lagres og sendes. Et produkt som er **Utgått**, kan ikke settes på en ny linje; et
 tjenesteprodukt kan bestilles.
 
-Alle beløp er uten mva., i ordrens valuta, og PDF-en sier det.
+Alle beløp er uten mva., i ordrens valuta, og PDF-en sier det. En linjes beløp og ordrens
+sum er høyst 999 999 999 999,99; et større avvises.
+
+Å skrive ordrer krever **Forvalte innkjøpsordrer**: uten den sier **Ny innkjøpsordre** og
+**Rediger** det i stedet for å vise et skjema. Endrer noen ordren mens du redigerer den,
+sier **Lagre** det og tilbyr **Last inn på nytt**, som åpner ordren slik den er nå.
 
 ## Send ordren
 
@@ -114,17 +131,20 @@ e-postkanal i [innstillingene](#innstillinger) for Innkjøp og Kommunikasjon i b
    leverandøren med en kort følge-e-post på ordrens språk som ber dem oppgi ordrenummeret
    på fakturaen.
 
-Tar ikke e-postleverandøren imot e-posten, er ordren likevel sendt og har fått nummeret
-sitt: appen sier at e-posten ikke kunne sendes, og e-posten prøves på nytt av seg selv en
-stund. Ordresiden sier at den siste e-posten feilet og sendes på nytt; **Send på nytt**
-sender en ny kopi.
+E-posten er en del av sendingen: den settes i kø sammen med ordren, så en sendt ordre har
+alltid e-posten sin. Går den ikke med en gang — e-postleverandøren tar ikke imot den,
+eller PDF-en kunne ikke lagres —, er ordren likevel sendt og har fått nummeret sitt:
+dialogen lukkes, appen varsler at ordren er sendt og e-posten står i kø, og e-posten
+sendes av seg selv så snart den kan, med nye forsøk en stund. Ordresiden sier at den
+siste e-posten feilet og sendes på nytt; **Send på nytt** sender en ny kopi.
 
 **Marker som sendt** gjør det samme uten e-post — for en ordre lagt inn på telefon eller i
 leverandørens nettbutikk: ordren får nummeret sitt, og PDF-en lagres. Når e-post ikke er
 satt opp, er det **Marker som sendt** ordresiden tilbyr.
 
 Å velge **Send** to ganger, eller et brudd i forbindelsen fulgt av et nytt forsøk, sender
-ikke ordren to ganger.
+ikke ordren to ganger: dialogen sender den samme forespørselen igjen, og Innkjøp svarer
+med den første.
 
 ## Etter at ordren er sendt
 
@@ -146,7 +166,10 @@ På en sendt ordre åpner **Rediger** ordren for disse endringene; **Lagre** skr
 versjonsnummer, og sender den til leverandøren; fjern haken for e-post for bare å lagre
 den. Ordrens **Historikk** har tre deler: **Endringer**, **PDF-er** — hver lagret PDF med
 versjonen sin — og **E-poster**, hver med mottakeren og om den er **Sendt**, **I kø** for
-et nytt forsøk eller **Feilet**.
+et nytt forsøk eller **Feilet**. En e-post som ikke gikk, sier hvorfor med dine ord, med
+e-postleverandørens egen melding ved siden av. En e-post i kø for en tidligere versjon
+sendes ikke når ordren er sendt på nytt: den blir **Feilet**, fordi en nyere versjon ble
+sendt først.
 
 ## Registrer leverandørens bekreftelse
 
@@ -159,14 +182,15 @@ Tøm feltene for å fjerne den.
 ## Avslutt en linje eller en ordre
 
 - **Avslutt linje** avslutter én linje: det som er igjen på den, kommer ikke. Når ingen
-  linje er åpen lenger, avsluttes ordren.
+  linje er åpen lenger, avsluttes ordren — eller blir **Mottatt**, når alt på den ble
+  mottatt.
 - **Avslutt** avslutter en sendt ordre med det som er igjen på den: hver åpen linje
   avsluttes, og ordren blir **Avsluttet**. Det som var igjen, teller ikke lenger som *i
   bestilling* i Lager.
 - **Gjenåpne** åpner en avsluttet ordre igjen, med linjene avslutningen avsluttet; en linje
   du avsluttet for seg før, blir avsluttet.
 
-Å avslutte krever **Administrere innkjøpsordrer**.
+Å avslutte krever **Forvalte innkjøpsordrer**.
 
 ## Kanseller en ordre
 
@@ -179,7 +203,7 @@ markert som sendt, kanselleres uten e-post. Å kansellere krever **Sende innkjø
 
 **Slett utkast** fjerner et utkast; det har ikke fått nummer, så ingenting blir igjen av
 det. En sendt ordre kanselleres eller avsluttes i stedet. Å slette krever
-**Administrere innkjøpsordrer**.
+**Forvalte innkjøpsordrer**.
 
 ## Kopier en ordre
 
@@ -208,13 +232,16 @@ leverandørvarer og åpne ordrer hver har. Siden for en leverandør viser oppfø
 nummer, navn, organisasjonsnummer, adresse, e-post, valuta og betalingsbetingelser — uten
 at den kan endres der, og leverandørvarene. **Åpne i
 Regnskap** fører til siden for leverandøren i Regnskap, for dem med **Bruke Regnskap**.
+Listen viser de første 50 leverandørene som passer; søk for å finne de andre.
 
 Kan du vedlikeholde leverandørene — **Vedlikeholde leverandører**, eller **Bokføre bilag**
 med **Bruke Regnskap** — legger **Ny leverandør** i listen til en leverandør i registeret
-fra Innkjøp. **Rediger leverandør** på siden for en leverandør endrer den, og krever
-**Bruke Regnskap** i tillegg. Uten **Bokføre bilag** har skjemaet ikke kontonummer, IBAN,
-BIC, standardkonto eller mva-kode; se [Leverandører](/nb/user/accounting/#leverandører)
-for hva hver rettighet lar deg endre.
+fra Innkjøp, og **Rediger leverandør** på siden for en leverandør endrer den.
+**Vedlikeholde leverandører** alene holder til begge: skjemaet åpnes med oppføringen i
+registeret slik Innkjøp leser den. Uten **Bokføre bilag** og **Bruke Regnskap** har
+skjemaet ikke kontonummer, IBAN, BIC, standardkonto eller mva-kode; se
+[Leverandører](/nb/user/accounting/#leverandører) for hva hver rettighet lar deg endre.
+Kan ikke leverandøren leses, sier **Rediger leverandør** det.
 
 ### Leverandørvarer
 
@@ -238,8 +265,10 @@ valutaen avviker til noen setter prisen på nytt. Når pakningen en leverandørv
 slettes fra produktet, faller leverandørvaren tilbake til enheten og sier det.
 
 **Legg til leverandørvare** på siden for en leverandør legger til en; hver kan redigeres
-og slettes. Å legge til, endre og slette leverandørvarer krever **Administrere leverandørvarer**. Å
-slette en endrer ikke ordrene som tok fra den.
+og slettes. Siden viser opptil 200 leverandørvarer og sier hvor mange det er når
+leverandøren har flere; søk for å finne de andre. Å legge til, endre og slette
+leverandørvarer krever **Forvalte leverandørvarer**. Å slette en endrer ikke ordrene som
+tok fra den.
 
 ### Importer en prisliste
 
@@ -266,12 +295,13 @@ store eller små bokstaver:
 2. Når hver rad går gjennom, velger du **Importer**. Hver rad skrives, eller — feiler noen —
    ingen.
 
-En tom celle beholder det leverandørvaren har. Priser fra importen merkes som satt av
-importen.
+En tom celle beholder det leverandørvaren har. En pris kan skrives `1234.50`, eller på
+norsk vis, `1234,50`, `1 234,50` eller `1.234,50`. Priser fra importen merkes som satt
+av importen.
 
 ## Innstillinger
 
-**Innstillinger** krever **Administrere innstillinger for Innkjøp**:
+**Innkjøpsinnstillinger** krever **Forvalte innstillinger for Innkjøp**:
 
 - **Første ordrenummer** — der ordreserien begynner. Når numre er brukt, kan det bare
   heves over det siste.
@@ -281,19 +311,25 @@ importen.
 - **Tekst nederst på ordren** — skrives ut nederst på hver innkjøpsordre, opptil 4000 tegn.
 - **Leveringsadresser** — per lagersted krysser du av for **Egen leveringsadresse** for å
   gi adressen leverandøren leverer til; uten en brukes selskapets adresse med lagerstedets
-  navn.
+  navn. Landet er en kode på to bokstaver, som `NO`.
 - **Pristoleranse (%)** — en prosent, 2 % om den ikke endres, for fakturaavstemmingen som
-  kommer senere.
+  kommer senere; den endrer ingenting ennå.
+
+Har noen lagret innstillingene mens du endret dem, sier **Lagre** det og tilbyr **Last inn
+på nytt**.
 
 ## Dashbordet og produktsiden
 
 Kortet for Innkjøp på dashbordet, for dem med **Bruke Innkjøp**, teller ordrene som er
-forsinket, og de ubekreftede.
+forsinket, og de ubekreftede. Når ordrer der du er **Vår referanse** er ubekreftet, sier
+dashbordets liste over det som trenger oppmerksomhet det — *2 av innkjøpsordrene dine er
+ikke bekreftet av leverandøren* — og åpner ordrelisten. Sidene i Innkjøp finnes også fra
+søket i toppfeltet.
 
 På siden for et produkt i Produkter lister kortet **Leverandører** leverandørvarene for
 produktets varianter — hvilken leverandør som selger den, til hvilken pris og hvilken som
 er foretrukket — når Innkjøp er i bruk og du har **Bruke
-Innkjøp**.
+Innkjøp**. Det viser opptil 200 og sier hvor mange det er når det er flere.
 
 Når en leverandørvare eller en linje på en innkjøpsordre nevner en produktvariant, sletter
 ikke Produkter den, og et produkt med en åpen varelinje på et utkast eller en sendt ordre
@@ -305,21 +341,23 @@ En leverandør som en innkjøpsordre eller en leverandørvare nevner, kan ikke s
 Regnskap; den kan gjøres inaktiv, og de åpne ordrene blir stående. En leverandør som er en
 person, anonymiseres ikke mens et utkast, en sendt eller en delvis mottatt ordre nevner
 personen. Når en personleverandør anonymiseres, fjernes navnet, adressen, e-posten og
-kontakten fra ordrene, og ordrenes lagrede PDF-er slettes.
+kontakten fra ordrene, adressene, meldingene og avvisningene fra ordrenes e-poster, og
+kontakten og merknadene fra ordrenes historikk — som beholder at de ble endret —, og
+ordrenes lagrede PDF-er slettes.
 
 ## Rettigheter
 
 | Rettighet | Lar deg |
 | --- | --- |
 | **Bruke Innkjøp** (`purchasing:access`) | Åpne appen og lese hver ordre, leverandør og leverandørvare, prisene medregnet, og laste ned PDF-ene. |
-| **Administrere innkjøpsordrer** (`purchasing:orders-manage`) | Skrive og slette utkast, endre sendte ordrer, registrere bekreftelsen, avslutte en linje eller en ordre, gjenåpne og kopiere. |
+| **Forvalte innkjøpsordrer** (`purchasing:orders-manage`) | Skrive og slette utkast, endre sendte ordrer, registrere bekreftelsen, avslutte en linje eller en ordre, gjenåpne og kopiere. |
 | **Sende innkjøpsordrer** (`purchasing:orders-send`) | Sende, markere som sendt, sende på nytt og kansellere. |
-| **Administrere leverandørvarer** (`purchasing:supplier-items-manage`) | Legge til, endre, slette og importere leverandørvarer. |
-| **Administrere innstillinger for Innkjøp** (`purchasing:settings`) | Innstillingene. |
+| **Forvalte leverandørvarer** (`purchasing:supplier-items-manage`) | Legge til, endre, slette og importere leverandørvarer. |
+| **Forvalte innstillinger for Innkjøp** (`purchasing:settings`) | Innstillingene. |
 
-**Ta imot varer** (`purchasing:receive`) og **Avstemme leverandørfakturaer**
-(`purchasing:invoices-match`) kan allerede gis i en rolle; de tas i bruk når varemottaket
-og fakturaavstemmingen kommer.
+**Ta imot varer (kommer)** (`purchasing:receive`) og **Avstemme leverandørfakturaer
+(kommer)** (`purchasing:invoices-match`) kan allerede gis i en rolle; de gjør ingenting
+ennå, og tas i bruk når varemottaket og fakturaavstemmingen kommer.
 
 ## Det som kommer senere
 
