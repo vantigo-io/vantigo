@@ -418,6 +418,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/purchasing/proposals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the purchase proposals
+         * @description The proposals (P31–P33, A4): the demand's one source — Manufacturing's buy suggestions where Manufacturing is enabled, Inventory's low stock where it is not — less what is on Purchasing's drafts and what was sent after the source computed it, each rounded once to every active supplier's item. Optionally one site or one variant.
+         */
+        get: operations["listPurchasingProposals"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/purchasing/proposals/orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create purchase orders from proposals
+         * @description Create orders (P33, P34, A11): one draft per supplier and site from the ticked proposals — or their lines added to the oldest existing draft of that supplier and site. A row is refused when it is no longer proposed (proposal_gone), so a second click orders nothing twice; a replay of the clientRequestId answers the first result. The variants are locked, then the suppliers, then the drafts.
+         */
+        post: operations["createPurchasingProposalOrders"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/purchasing/receipts/{receiptId}": {
         parameters: {
             query?: never;
@@ -713,7 +753,7 @@ export interface components {
         };
         /** @description One action of a change. */
         PurchasingChangeAction: {
-            /** @description What was done: created, updated, line_added, line_changed, line_removed, sent, marked_sent, sent_again, confirmed, confirmation_cleared, line_closed, closed, received (the last open line closed with everything received, or a receipt that left nothing open), reopened, cancelled; receipt_posted and receipt_undone (to: the receipt's number), line_delivered and line_undelivered (delivery B). */
+            /** @description What was done: created, updated, line_added, line_changed, line_removed, sent, marked_sent, sent_again, confirmed, confirmation_cleared, line_closed, closed, received (the last open line closed with everything received, or a receipt that left nothing open), reopened, cancelled; receipt_posted and receipt_undone (to: the receipt's number), line_delivered and line_undelivered (delivery B), from_proposals (Create orders made the draft or added lines to it; to is the number of lines added). */
             action: string;
             field?: string | null;
             from?: string | null;
@@ -1154,7 +1194,7 @@ export interface components {
             /** Format: uuid */
             id?: string | null;
         };
-        /** @description An RFC 9457 problem with this module's refusal code (purchasing design §3). code names the rule that refused and is what a client keys off, never the words. 400: field errors (errors), supplier_not_found, site_not_found, site_archived, currency_invalid, series_start_too_low, send_channel_unknown, recipient_missing, order_empty, import_invalid, amount_out_of_range (an order's total above 999 999 999 999.99), and an order's line refusals in lines, the first of which is also code: too_many_lines, line_invalid, line_not_found, variant_not_found, variant_discontinued, packaging_not_found, quantity_invalid, price_invalid, discount_invalid, quantity_below_received, amount_out_of_range (a line's amount above 999 999 999 999.99). 404: not_found. 409: version_conflict (a stale revision or expectedUpdatedAt), order_not_draft, order_not_sent (the order is not sent or partially received), order_not_closed, order_has_receipts (a cancel of an order with something received), line_closed, line_kind_changed, currency_fixed (a currency change once a line has a price), supplier_inactive, supplier_changed (a sent order's supplier), supplier_item_exists, client_request_reused. 503: dependency_unavailable (a module Purchasing reads is not composed), sending_disabled (Communications is off, or no channel that can send is chosen) and mail_failed (the e-mail did not go out now; the change is made, and its mailing, written in the same transaction, stays queued for the purchasing.mail worker). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither. Receipts (delivery B): 400 line_not_receivable (a line that is not an open goods line of the order) and quantity_invalid (also a line whose received quantity would pass 999 999 999.999, acceptOver or not) in lines; 409 over_receipt (more than a line's remainder without acceptOver, the lines named), receipt_undone (an undo of a receipt undone already), receipt_invoiced (an undo that would leave a line with less received than invoiced) and line_not_deliverable (a delivered mark on a goods line). Inventory's refusals of a receipt or its undo keep Inventory's own codes, each line named by its index. */
+        /** @description An RFC 9457 problem with this module's refusal code (purchasing design §3). code names the rule that refused and is what a client keys off, never the words. 400: field errors (errors), supplier_not_found, site_not_found, site_archived, currency_invalid, series_start_too_low, send_channel_unknown, recipient_missing, order_empty, import_invalid, amount_out_of_range (an order's total above 999 999 999 999.99), and an order's line refusals in lines, the first of which is also code: too_many_lines, line_invalid, line_not_found, variant_not_found, variant_discontinued, packaging_not_found, quantity_invalid, price_invalid, discount_invalid, quantity_below_received, amount_out_of_range (a line's amount above 999 999 999 999.99). 404: not_found. 409: version_conflict (a stale revision or expectedUpdatedAt), order_not_draft, order_not_sent (the order is not sent or partially received), order_not_closed, order_has_receipts (a cancel of an order with something received), line_closed, line_kind_changed, currency_fixed (a currency change once a line has a price), supplier_inactive, supplier_changed (a sent order's supplier), supplier_item_exists, client_request_reused, proposal_gone (Create orders: a row no longer proposed — on a draft or sent since; lines name the rows). Create orders' rows are refused in lines as an order's are, with supplier_item_not_found (the item is not the row variant's, or not known). 503: dependency_unavailable (a module Purchasing reads is not composed), sending_disabled (Communications is off, or no channel that can send is chosen) and mail_failed (the e-mail did not go out now; the change is made, and its mailing, written in the same transaction, stays queued for the purchasing.mail worker). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither. Receipts (delivery B): 400 line_not_receivable (a line that is not an open goods line of the order) and quantity_invalid (also a line whose received quantity would pass 999 999 999.999, acceptOver or not) in lines; 409 over_receipt (more than a line's remainder without acceptOver, the lines named), receipt_undone (an undo of a receipt undone already), receipt_invoiced (an undo that would leave a line with less received than invoiced) and line_not_deliverable (a delivered mark on a goods line). Inventory's refusals of a receipt or its undo keep Inventory's own codes, each line named by its index. */
         PurchasingProblem: {
             code?: string | null;
             detail?: string | null;
@@ -1198,6 +1238,118 @@ export interface components {
             quantity: string;
             received: string;
             unit: string;
+        };
+        /** @description One proposal (P31–P33, A4): a variant's need at a site from the demand's one source, less what is on Purchasing's drafts for it and what was sent to the site after the source computed it, with every active supplier's item to order it from, the preferred one first. A row with no option is listed under No supplier and cannot be ordered here. */
+        PurchasingProposal: {
+            /**
+             * Format: date-time
+             * @description When the source computed the need; what was sent after it is subtracted (sentSince).
+             */
+            computedAt: string;
+            /** @description The source's need in the variant's unit, before Purchasing's rounding. */
+            need: string;
+            /**
+             * Format: date
+             * @description The day it is needed; null when now.
+             */
+            neededOn?: string | null;
+            /** @description On Purchasing's draft orders for the variant and the site, in the variant's unit. */
+            onDrafts: string;
+            options: components["schemas"]["PurchasingProposalOption"][];
+            productName: string;
+            productStatus: string;
+            /** @description The need less onDrafts and sentSince, more than 0, in the variant's unit. */
+            remaining: string;
+            /** @description Sent to the site after computedAt, which the source does not count yet, in the variant's unit. */
+            sentSince: string;
+            /** Format: int64 */
+            siteId: number;
+            siteName: string;
+            sku: string;
+            /** @description The rule the need comes from: low_stock (Inventory's low stock) or replenishment (Manufacturing's buy suggestions). */
+            source: string;
+            unit: string;
+            /** Format: int32 */
+            variantId: number;
+        };
+        /** @description The proposals (P33), by site and SKU. source is the demand's, null when no module provides one. */
+        PurchasingProposalList: {
+            rows: components["schemas"]["PurchasingProposal"][];
+            source?: string | null;
+        };
+        /** @description A supplier item a proposal can be ordered from, with the remaining need rounded once to it (A4): up to whole purchase packagings, then to the minimum, then to the multiple. */
+        PurchasingProposalOption: {
+            /** @description The currency the item's price is in. */
+            currency: string;
+            /** @description The supplier's currency in the register is no longer the price's: an order line takes no price from it (A32). */
+            currencyDiffers: boolean;
+            /** Format: int32 */
+            leadTimeDays?: number | null;
+            /** @description In purchase packagings. */
+            minimumQuantity?: string | null;
+            /** @description In purchase packagings. */
+            multiple?: string | null;
+            /**
+             * Format: date
+             * @description The day to order by — the day needed, or today, less the lead time.
+             */
+            orderBy: string;
+            /** @description The remaining need rounded to the item, in purchase packagings. */
+            orderQuantity: string;
+            /** Format: int32 */
+            packagingId?: number | null;
+            packagingName?: string | null;
+            /** @description The purchase packaging's quantity in the variant's unit, 1 for the unit itself. */
+            packagingQuantity: string;
+            preferred: boolean;
+            /** @description Per the purchase packaging, in currency. */
+            price?: string | null;
+            /** @description orderQuantity in the variant's unit. */
+            quantity: string;
+            /** Format: int64 */
+            supplierId: number;
+            /** Format: int64 */
+            supplierItemId: number;
+            supplierItemNumber?: string | null;
+            supplierName: string;
+        };
+        /** @description A draft Create orders wrote to. */
+        PurchasingProposalOrder: {
+            /** @description The draft was made by this request; false when its lines were added to an existing draft of the supplier and site. */
+            created: boolean;
+            /** Format: int32 */
+            linesAdded: number;
+            /** Format: int64 */
+            orderId: number;
+            /** Format: int64 */
+            siteId: number;
+            /** Format: int64 */
+            supplierId: number;
+            supplierName: string;
+        };
+        /** @description Create orders (P33, A11): the ticked proposals, each with the supplier item to order it from and the quantity in that item's purchase packaging. */
+        PurchasingProposalOrdersInput: {
+            /**
+             * Format: uuid
+             * @description The client's id of this request (A11): a replay with the same body answers the first result; another body under the same id is 409 client_request_reused.
+             */
+            clientRequestId: string;
+            rows: components["schemas"]["PurchasingProposalOrdersRow"][];
+        };
+        /** @description The drafts Create orders wrote to, one per supplier and site. */
+        PurchasingProposalOrdersResult: {
+            orders: components["schemas"]["PurchasingProposalOrder"][];
+        };
+        /** @description One ticked proposal. */
+        PurchasingProposalOrdersRow: {
+            /** @description In the supplier item's purchase packaging, more than 0, at most three decimals. */
+            orderQuantity: string;
+            /** Format: int64 */
+            siteId: number;
+            /** Format: int64 */
+            supplierItemId: number;
+            /** Format: int32 */
+            variantId: number;
         };
         /** @description A receipt against a purchase order (P28): its number in a series of its own, the day, who, the supplier's delivery note and a note, and its lines. It carries no price (A21); the order line's price then is kept for a later valuation and answered by nothing in this phase. */
         PurchasingReceipt: {
@@ -3309,6 +3461,125 @@ export interface operations {
                 };
             };
             /** @description Service Unavailable — sending_disabled, mail_failed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["PurchasingProblem"];
+                };
+            };
+        };
+    };
+    listPurchasingProposals: {
+        parameters: {
+            query?: {
+                siteId?: number;
+                variantId?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchasingProposalList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["PurchasingProblem"];
+                };
+            };
+        };
+    };
+    createPurchasingProposalOrders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PurchasingProposalOrdersInput"];
+            };
+        };
+        responses: {
+            /** @description OK — the drafts written to, or the first result of a replay. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchasingProposalOrdersResult"];
+                };
+            };
+            /** @description Bad Request — field errors, and the rows' refusals in lines (supplier_item_not_found, site_not_found, site_archived, quantity_invalid, line_invalid, variant_not_found, variant_discontinued, too_many_lines). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["PurchasingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — proposal_gone (the rows in lines), supplier_inactive, client_request_reused. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["PurchasingProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable. */
             503: {
                 headers: {
                     [name: string]: unknown;

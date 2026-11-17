@@ -106,6 +106,8 @@ const (
 
 type harnessOptions struct {
 	communications bool
+	// demand is the purchase demand the proposals read (delivery C).
+	demand contracts.PurchaseDemand
 }
 
 func newHarness(t *testing.T, o harnessOptions) *harness {
@@ -132,6 +134,9 @@ func newHarness(t *testing.T, o harnessOptions) *harness {
 		h.channel = uuid.New()
 		h.mail.SetChannels(contracts.OutboundChannel{ID: h.channel, Address: "innkjop@demo.example", Provider: "smtp", Available: true})
 		opts = append(opts, modtest.WithOutboundMail(h.mail))
+	}
+	if o.demand != nil {
+		opts = append(opts, modtest.WithPurchaseDemand(o.demand))
 	}
 	before := lockedContractCalls.count()
 	h.Harness = modtest.New(t, opts...)

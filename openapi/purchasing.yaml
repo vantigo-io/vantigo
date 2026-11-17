@@ -90,7 +90,7 @@ components:
             description: One action of a change.
             properties:
                 action:
-                    description: 'What was done: created, updated, line_added, line_changed, line_removed, sent, marked_sent, sent_again, confirmed, confirmation_cleared, line_closed, closed, received (the last open line closed with everything received, or a receipt that left nothing open), reopened, cancelled; receipt_posted and receipt_undone (to: the receipt''s number), line_delivered and line_undelivered (delivery B).'
+                    description: 'What was done: created, updated, line_added, line_changed, line_removed, sent, marked_sent, sent_again, confirmed, confirmation_cleared, line_closed, closed, received (the last open line closed with everything received, or a receipt that left nothing open), reopened, cancelled; receipt_posted and receipt_undone (to: the receipt''s number), line_delivered and line_undelivered (delivery B), from_proposals (Create orders made the draft or added lines to it; to is the number of lines added).'
                     type: string
                 field:
                     nullable: true
@@ -1043,7 +1043,7 @@ components:
             type: object
         PurchasingProblem:
             additionalProperties: false
-            description: 'An RFC 9457 problem with this module''s refusal code (purchasing design §3). code names the rule that refused and is what a client keys off, never the words. 400: field errors (errors), supplier_not_found, site_not_found, site_archived, currency_invalid, series_start_too_low, send_channel_unknown, recipient_missing, order_empty, import_invalid, amount_out_of_range (an order''s total above 999 999 999 999.99), and an order''s line refusals in lines, the first of which is also code: too_many_lines, line_invalid, line_not_found, variant_not_found, variant_discontinued, packaging_not_found, quantity_invalid, price_invalid, discount_invalid, quantity_below_received, amount_out_of_range (a line''s amount above 999 999 999 999.99). 404: not_found. 409: version_conflict (a stale revision or expectedUpdatedAt), order_not_draft, order_not_sent (the order is not sent or partially received), order_not_closed, order_has_receipts (a cancel of an order with something received), line_closed, line_kind_changed, currency_fixed (a currency change once a line has a price), supplier_inactive, supplier_changed (a sent order''s supplier), supplier_item_exists, client_request_reused. 503: dependency_unavailable (a module Purchasing reads is not composed), sending_disabled (Communications is off, or no channel that can send is chosen) and mail_failed (the e-mail did not go out now; the change is made, and its mailing, written in the same transaction, stays queued for the purchasing.mail worker). errors carries the field errors of a 400, keyed by the request''s camelCase field. A request the server could not decode answers a bare 400 with neither. Receipts (delivery B): 400 line_not_receivable (a line that is not an open goods line of the order) and quantity_invalid (also a line whose received quantity would pass 999 999 999.999, acceptOver or not) in lines; 409 over_receipt (more than a line''s remainder without acceptOver, the lines named), receipt_undone (an undo of a receipt undone already), receipt_invoiced (an undo that would leave a line with less received than invoiced) and line_not_deliverable (a delivered mark on a goods line). Inventory''s refusals of a receipt or its undo keep Inventory''s own codes, each line named by its index.'
+            description: 'An RFC 9457 problem with this module''s refusal code (purchasing design §3). code names the rule that refused and is what a client keys off, never the words. 400: field errors (errors), supplier_not_found, site_not_found, site_archived, currency_invalid, series_start_too_low, send_channel_unknown, recipient_missing, order_empty, import_invalid, amount_out_of_range (an order''s total above 999 999 999 999.99), and an order''s line refusals in lines, the first of which is also code: too_many_lines, line_invalid, line_not_found, variant_not_found, variant_discontinued, packaging_not_found, quantity_invalid, price_invalid, discount_invalid, quantity_below_received, amount_out_of_range (a line''s amount above 999 999 999 999.99). 404: not_found. 409: version_conflict (a stale revision or expectedUpdatedAt), order_not_draft, order_not_sent (the order is not sent or partially received), order_not_closed, order_has_receipts (a cancel of an order with something received), line_closed, line_kind_changed, currency_fixed (a currency change once a line has a price), supplier_inactive, supplier_changed (a sent order''s supplier), supplier_item_exists, client_request_reused, proposal_gone (Create orders: a row no longer proposed — on a draft or sent since; lines name the rows). Create orders'' rows are refused in lines as an order''s are, with supplier_item_not_found (the item is not the row variant''s, or not known). 503: dependency_unavailable (a module Purchasing reads is not composed), sending_disabled (Communications is off, or no channel that can send is chosen) and mail_failed (the e-mail did not go out now; the change is made, and its mailing, written in the same transaction, stays queued for the purchasing.mail worker). errors carries the field errors of a 400, keyed by the request''s camelCase field. A request the server could not decode answers a bare 400 with neither. Receipts (delivery B): 400 line_not_receivable (a line that is not an open goods line of the order) and quantity_invalid (also a line whose received quantity would pass 999 999 999.999, acceptOver or not) in lines; 409 over_receipt (more than a line''s remainder without acceptOver, the lines named), receipt_undone (an undo of a receipt undone already), receipt_invoiced (an undo that would leave a line with less received than invoiced) and line_not_deliverable (a delivered mark on a goods line). Inventory''s refusals of a receipt or its undo keep Inventory''s own codes, each line named by its index.'
             properties:
                 code:
                     nullable: true
@@ -1136,6 +1136,235 @@ components:
                 - quantity
                 - received
                 - open
+            type: object
+        PurchasingProposal:
+            additionalProperties: false
+            description: 'One proposal (P31–P33, A4): a variant''s need at a site from the demand''s one source, less what is on Purchasing''s drafts for it and what was sent to the site after the source computed it, with every active supplier''s item to order it from, the preferred one first. A row with no option is listed under No supplier and cannot be ordered here.'
+            properties:
+                computedAt:
+                    description: When the source computed the need; what was sent after it is subtracted (sentSince).
+                    format: date-time
+                    type: string
+                need:
+                    description: The source's need in the variant's unit, before Purchasing's rounding.
+                    type: string
+                neededOn:
+                    description: The day it is needed; null when now.
+                    format: date
+                    nullable: true
+                    type: string
+                onDrafts:
+                    description: On Purchasing's draft orders for the variant and the site, in the variant's unit.
+                    type: string
+                options:
+                    items:
+                        $ref: '#/components/schemas/PurchasingProposalOption'
+                    type: array
+                productName:
+                    type: string
+                productStatus:
+                    type: string
+                remaining:
+                    description: The need less onDrafts and sentSince, more than 0, in the variant's unit.
+                    type: string
+                sentSince:
+                    description: Sent to the site after computedAt, which the source does not count yet, in the variant's unit.
+                    type: string
+                siteId:
+                    format: int64
+                    type: integer
+                siteName:
+                    type: string
+                sku:
+                    type: string
+                source:
+                    description: 'The rule the need comes from: low_stock (Inventory''s low stock) or replenishment (Manufacturing''s buy suggestions).'
+                    type: string
+                unit:
+                    type: string
+                variantId:
+                    format: int32
+                    type: integer
+            required:
+                - variantId
+                - sku
+                - productName
+                - unit
+                - productStatus
+                - siteId
+                - siteName
+                - source
+                - computedAt
+                - need
+                - onDrafts
+                - sentSince
+                - remaining
+                - options
+            type: object
+        PurchasingProposalList:
+            additionalProperties: false
+            description: 'The proposals (P33), by site and SKU. source is the demand''s, null when no module provides one.'
+            properties:
+                rows:
+                    items:
+                        $ref: '#/components/schemas/PurchasingProposal'
+                    type: array
+                source:
+                    nullable: true
+                    type: string
+            required:
+                - rows
+            type: object
+        PurchasingProposalOption:
+            additionalProperties: false
+            description: 'A supplier item a proposal can be ordered from, with the remaining need rounded once to it (A4): up to whole purchase packagings, then to the minimum, then to the multiple.'
+            properties:
+                currency:
+                    description: The currency the item's price is in.
+                    type: string
+                currencyDiffers:
+                    description: 'The supplier''s currency in the register is no longer the price''s: an order line takes no price from it (A32).'
+                    type: boolean
+                leadTimeDays:
+                    format: int32
+                    nullable: true
+                    type: integer
+                minimumQuantity:
+                    description: In purchase packagings.
+                    nullable: true
+                    type: string
+                multiple:
+                    description: In purchase packagings.
+                    nullable: true
+                    type: string
+                orderBy:
+                    description: The day to order by — the day needed, or today, less the lead time.
+                    format: date
+                    type: string
+                orderQuantity:
+                    description: The remaining need rounded to the item, in purchase packagings.
+                    type: string
+                packagingId:
+                    format: int32
+                    nullable: true
+                    type: integer
+                packagingName:
+                    nullable: true
+                    type: string
+                packagingQuantity:
+                    description: The purchase packaging's quantity in the variant's unit, 1 for the unit itself.
+                    type: string
+                preferred:
+                    type: boolean
+                price:
+                    description: Per the purchase packaging, in currency.
+                    nullable: true
+                    type: string
+                quantity:
+                    description: orderQuantity in the variant's unit.
+                    type: string
+                supplierId:
+                    format: int64
+                    type: integer
+                supplierItemId:
+                    format: int64
+                    type: integer
+                supplierItemNumber:
+                    nullable: true
+                    type: string
+                supplierName:
+                    type: string
+            required:
+                - supplierItemId
+                - supplierId
+                - supplierName
+                - preferred
+                - currency
+                - currencyDiffers
+                - packagingQuantity
+                - orderQuantity
+                - quantity
+                - orderBy
+            type: object
+        PurchasingProposalOrder:
+            additionalProperties: false
+            description: A draft Create orders wrote to.
+            properties:
+                created:
+                    description: The draft was made by this request; false when its lines were added to an existing draft of the supplier and site.
+                    type: boolean
+                linesAdded:
+                    format: int32
+                    type: integer
+                orderId:
+                    format: int64
+                    type: integer
+                siteId:
+                    format: int64
+                    type: integer
+                supplierId:
+                    format: int64
+                    type: integer
+                supplierName:
+                    type: string
+            required:
+                - orderId
+                - supplierId
+                - supplierName
+                - siteId
+                - created
+                - linesAdded
+            type: object
+        PurchasingProposalOrdersInput:
+            additionalProperties: false
+            description: 'Create orders (P33, A11): the ticked proposals, each with the supplier item to order it from and the quantity in that item''s purchase packaging.'
+            properties:
+                clientRequestId:
+                    description: 'The client''s id of this request (A11): a replay with the same body answers the first result; another body under the same id is 409 client_request_reused.'
+                    format: uuid
+                    type: string
+                rows:
+                    items:
+                        $ref: '#/components/schemas/PurchasingProposalOrdersRow'
+                    maxItems: 500
+                    minItems: 1
+                    type: array
+            required:
+                - clientRequestId
+                - rows
+            type: object
+        PurchasingProposalOrdersResult:
+            additionalProperties: false
+            description: The drafts Create orders wrote to, one per supplier and site.
+            properties:
+                orders:
+                    items:
+                        $ref: '#/components/schemas/PurchasingProposalOrder'
+                    type: array
+            required:
+                - orders
+            type: object
+        PurchasingProposalOrdersRow:
+            additionalProperties: false
+            description: One ticked proposal.
+            properties:
+                orderQuantity:
+                    description: In the supplier item's purchase packaging, more than 0, at most three decimals.
+                    type: string
+                siteId:
+                    format: int64
+                    type: integer
+                supplierItemId:
+                    format: int64
+                    type: integer
+                variantId:
+                    format: int32
+                    type: integer
+            required:
+                - variantId
+                - siteId
+                - supplierItemId
+                - orderQuantity
             type: object
         PurchasingReceipt:
             additionalProperties: false
@@ -3562,6 +3791,101 @@ paths:
             tags:
                 - Purchasing
             x-vantigo-access: permission:purchasing:orders-send
+    /api/v1/purchasing/proposals:
+        get:
+            description: 'The proposals (P31–P33, A4): the demand''s one source — Manufacturing''s buy suggestions where Manufacturing is enabled, Inventory''s low stock where it is not — less what is on Purchasing''s drafts and what was sent after the source computed it, each rounded once to every active supplier''s item. Optionally one site or one variant.'
+            operationId: listPurchasingProposals
+            parameters:
+                - in: query
+                  name: siteId
+                  schema:
+                    format: int64
+                    type: integer
+                - in: query
+                  name: variantId
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProposalList'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Service Unavailable — dependency_unavailable.
+            summary: List the purchase proposals
+            tags:
+                - Purchasing
+            x-vantigo-access: permission:purchasing:access
+    /api/v1/purchasing/proposals/orders:
+        post:
+            description: 'Create orders (P33, P34, A11): one draft per supplier and site from the ticked proposals — or their lines added to the oldest existing draft of that supplier and site. A row is refused when it is no longer proposed (proposal_gone), so a second click orders nothing twice; a replay of the clientRequestId answers the first result. The variants are locked, then the suppliers, then the drafts.'
+            operationId: createPurchasingProposalOrders
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/PurchasingProposalOrdersInput'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProposalOrdersResult'
+                    description: OK — the drafts written to, or the first result of a replay.
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Bad Request — field errors, and the rows' refusals in lines (supplier_item_not_found, site_not_found, site_archived, quantity_invalid, line_invalid, variant_not_found, variant_discontinued, too_many_lines).
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Conflict — proposal_gone (the rows in lines), supplier_inactive, client_request_reused.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/PurchasingProblem'
+                    description: Service Unavailable — dependency_unavailable.
+            summary: Create purchase orders from proposals
+            tags:
+                - Purchasing
+            x-vantigo-access: permission:purchasing:orders-manage
     /api/v1/purchasing/receipts/{receiptId}:
         get:
             operationId: getPurchasingReceipt
