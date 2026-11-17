@@ -1,13 +1,18 @@
 package purchasing_test
 
 import (
+	"context"
 	"net/http"
+	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/modtest"
+	"github.com/vantigo-io/vantigo/server/internal/openapi"
 	"github.com/vantigo-io/vantigo/server/internal/purchasing/gen"
 )
 
@@ -330,6 +335,48 @@ func TestPermissions_PerOperation(t *testing.T) {
 	mustStatus(t, h.SignIn(t).Do(http.MethodGet, ordersPath, nil), http.StatusForbidden, "no key")
 	a := h.SignIn(t, admin...)
 	mustStatus(t, a.Do(http.MethodGet, "/api/v1/purchasing/settings", nil), http.StatusOK, "the admin reads the settings")
+
+	// Every operation of the contract, under each key alone: refused
+	// unless the operation asks that very key — so orders-manage is refused
+	// Send, Send again, Cancel and Mark as sent, and access every write.
+	doc, err := openapi.Load(context.Background(), "purchasing")
+	if err != nil {
+		t.Fatal(err)
+	}
+	keys := []string{"purchasing:access", "purchasing:orders-manage", "purchasing:orders-send", "purchasing:supplier-items-manage", "purchasing:settings"}
+	clients := map[string]*modtest.Client{}
+	for _, k := range keys {
+		clients[k] = h.SignIn(t, k)
+	}
+	param := regexp.MustCompile(`\{[^}]+\}`)
+	operations := 0
+	for path, item := range doc.Paths.Map() {
+		for method, op := range item.Operations() {
+			rule, _ := op.Extensions["x-vantigo-access"].(string)
+			asked, ok := strings.CutPrefix(rule, "permission:")
+			if !ok {
+				t.Errorf("%s %s asks no permission", method, path)
+				continue
+			}
+			operations++
+			target := param.ReplaceAllString(path, itoa(o.Id))
+			var body any
+			if op.RequestBody != nil {
+				body = map[string]any{}
+			}
+			for _, k := range keys {
+				if k == asked {
+					continue
+				}
+				if res := clients[k].Do(method, target, body); res.Status != http.StatusForbidden {
+					t.Errorf("%s %s (%s) with only %s = %d, want 403", method, path, op.OperationID, k, res.Status)
+				}
+			}
+		}
+	}
+	if operations < 32 {
+		t.Errorf("covered %d operations, want every one of the contract's 32", operations)
+	}
 }
 
 // The reads around an order: sites, suppliers, buyers, meta and the catalog
