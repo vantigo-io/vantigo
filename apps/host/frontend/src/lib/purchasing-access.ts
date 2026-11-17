@@ -79,7 +79,4 @@ export const canOrderFromProposals = (permissions: string[] | undefined, enabled
   enabled.includes("purchasing") && purchasingAccessOf(permissions).canManageOrders;
 
 /** {@link canOrderFromProposals} for the signed-in caller, false until the authorization has answered. */
-export const useCanOrderFromProposals = (): boolean => {
-  const { access } = usePurchasingAccess();
-  return enabledModuleKeys().includes("purchasing") && access.canManageOrders;
-};
+export const useCanOrderFromProposals = (): boolean => canOrderFromProposals(usePurchasingAccess().permissions);
