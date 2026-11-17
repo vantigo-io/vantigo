@@ -121,7 +121,7 @@ sine, mva-terminene som er over lukket og levert, og forrige måneds kontoutskri
 avstemt, og, når `purchasing` er aktivert, tre leverandører til verkstedet med seks
 leverandørvarer og en innkjøpsordre i hver status — ordren på stålrør delvis mottatt (120
 av 180 m), den bekreftede ordren på maling mottatt i sin helhet i et parti med nummer og
-utløpsdato, og ordren på kryssfiner mottatt og varemottaket deretter angret.
+utløpsdato, og ordren på kryssfiner delvis mottatt og varemottaket deretter angret.
 Leverandørfakturaene, kontoutskriften og
 de sendte innkjøpsordrene lagrer filer og utelates, som seeden
 logger, når ingen objektlagring (`STORAGE_PROVIDER`) er satt opp. Ingen kommando, eller en ukjent en, skriver

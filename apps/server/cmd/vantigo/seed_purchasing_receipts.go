@@ -4,7 +4,7 @@ package main
 // delivery A's seed sent, the steel tube order partly received (120 of
 // 180 m, the screws still to come), the confirmed paint order received in
 // full into a lot with its number and expiry, and the plywood order
-// received and then undone — a miscount taken back. Every write goes through
+// partly received and then undone — a miscount taken back. Every write goes through
 // purchasing.Operations as the owner, so each receipt posts its Inventory
 // movement through the real ledger. It runs right after the purchase orders
 // and reruns cleanly part by part: an order that has a receipt is left as
@@ -170,8 +170,10 @@ func (r *demoReceipts) paintLot(o gen.PurchasingOrder) error {
 	return err
 }
 
-// plywoodUndone receives the plywood and takes it back: the sheets counted
-// belonged to another delivery.
+// plywoodUndone receives part of the plywood and takes it back: the sheets
+// counted belonged to another delivery. Part, not all: the screws' line is
+// closed, so the plywood in full would end the order closed (A48), and an
+// undo leaves a closed order closed.
 func (r *demoReceipts) plywoodUndone(o gen.PurchasingOrder) error {
 	f, err := r.form(o)
 	if err != nil {
@@ -181,7 +183,7 @@ func (r *demoReceipts) plywoodUndone(o gen.PurchasingOrder) error {
 	if !ok {
 		return nil
 	}
-	got, err := r.receive(o, "NS-FS-30455", gen.PurchasingReceiptLineInput{OrderLineId: ply.OrderLineId, Quantity: ply.Open, LocationId: *ply.DefaultLocationId})
+	got, err := r.receive(o, "NS-FS-30455", gen.PurchasingReceiptLineInput{OrderLineId: ply.OrderLineId, Quantity: "4", LocationId: *ply.DefaultLocationId})
 	if err != nil {
 		return err
 	}

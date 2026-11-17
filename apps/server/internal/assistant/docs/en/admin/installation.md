@@ -121,7 +121,7 @@ terms that have ended closed and filed, and last month's bank statement half rec
 and, when `purchasing` is enabled, three suppliers for the workshop with six supplier
 items and a purchase order in each state — the steel tube order partly received (120 of
 180 m), the confirmed paint order received in full into a lot with its number and expiry
-date, and the plywood order received and the receipt then undone.
+date, and the plywood order partly received and the receipt then undone.
 The supplier invoices, the bank statement and the sent purchase orders keep files and are left out, as the seed logs,
 when no object store (`STORAGE_PROVIDER`) is configured. No command, or an unknown one, prints usage on
 stderr and exits 2, so a typo in a job definition fails loudly rather than quietly
