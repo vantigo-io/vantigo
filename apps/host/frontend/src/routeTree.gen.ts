@@ -33,6 +33,7 @@ import { Route as PayRouteImport } from './routes/pay'
 import { Route as PlanningRouteImport } from './routes/planning'
 import { Route as ProductsRouteImport } from './routes/products'
 import { Route as ProjectsRouteImport } from './routes/projects'
+import { Route as PurchasingRouteImport } from './routes/purchasing'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as RsvpRouteImport } from './routes/rsvp'
 import { Route as SessionExpiredRouteImport } from './routes/session-expired'
@@ -116,6 +117,8 @@ import { Route as ProjectsProjectIdRouteImport } from './routes/projects/$projec
 import { Route as ProjectsEconomyRouteImport } from './routes/projects/economy'
 import { Route as ProjectsMyTasksRouteImport } from './routes/projects/my-tasks'
 import { Route as ProjectsTemplatesRouteImport } from './routes/projects/templates'
+import { Route as PurchasingIndexRouteImport } from './routes/purchasing/index'
+import { Route as PurchasingSettingsRouteImport } from './routes/purchasing/settings'
 import { Route as SettingsIndexRouteImport } from './routes/settings/index'
 import { Route as SettingsConnectionsRouteImport } from './routes/settings/connections'
 import { Route as SettingsProfileRouteImport } from './routes/settings/profile'
@@ -226,6 +229,11 @@ import { Route as ProjectsProjectIdPeopleRouteImport } from './routes/projects/$
 import { Route as ProjectsProjectIdPlanningRouteImport } from './routes/projects/$projectId.planning'
 import { Route as ProjectsProjectIdTasksRouteImport } from './routes/projects/$projectId.tasks'
 import { Route as ProjectsProjectIdTimeRouteImport } from './routes/projects/$projectId.time'
+import { Route as PurchasingOrdersIndexRouteImport } from './routes/purchasing/orders.index'
+import { Route as PurchasingOrdersOrderIdRouteImport } from './routes/purchasing/orders.$orderId'
+import { Route as PurchasingOrdersNewRouteImport } from './routes/purchasing/orders.new'
+import { Route as PurchasingSuppliersIndexRouteImport } from './routes/purchasing/suppliers.index'
+import { Route as PurchasingSuppliersSupplierIdRouteImport } from './routes/purchasing/suppliers.$supplierId'
 import { Route as StaffGroupsIndexRouteImport } from './routes/staff/groups.index'
 import { Route as StaffGroupsIdRouteImport } from './routes/staff/groups.$id'
 import { Route as StaffPeopleIndexRouteImport } from './routes/staff/people.index'
@@ -373,6 +381,11 @@ const ProductsRoute = ProductsRouteImport.update({
 const ProjectsRoute = ProjectsRouteImport.update({
   id: '/projects',
   path: '/projects',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PurchasingRoute = PurchasingRouteImport.update({
+  id: '/purchasing',
+  path: '/purchasing',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
@@ -792,6 +805,16 @@ const ProjectsTemplatesRoute = ProjectsTemplatesRouteImport.update({
   id: '/templates',
   path: '/templates',
   getParentRoute: () => ProjectsRoute,
+} as any)
+const PurchasingIndexRoute = PurchasingIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => PurchasingRoute,
+} as any)
+const PurchasingSettingsRoute = PurchasingSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => PurchasingRoute,
 } as any)
 const SettingsIndexRoute = SettingsIndexRouteImport.update({
   id: '/',
@@ -1384,6 +1407,33 @@ const ProjectsProjectIdTimeRoute = ProjectsProjectIdTimeRouteImport.update({
   path: '/time',
   getParentRoute: () => ProjectsProjectIdRoute,
 } as any)
+const PurchasingOrdersIndexRoute = PurchasingOrdersIndexRouteImport.update({
+  id: '/orders/',
+  path: '/orders/',
+  getParentRoute: () => PurchasingRoute,
+} as any)
+const PurchasingOrdersOrderIdRoute = PurchasingOrdersOrderIdRouteImport.update({
+  id: '/orders/$orderId',
+  path: '/orders/$orderId',
+  getParentRoute: () => PurchasingRoute,
+} as any)
+const PurchasingOrdersNewRoute = PurchasingOrdersNewRouteImport.update({
+  id: '/orders/new',
+  path: '/orders/new',
+  getParentRoute: () => PurchasingRoute,
+} as any)
+const PurchasingSuppliersIndexRoute =
+  PurchasingSuppliersIndexRouteImport.update({
+    id: '/suppliers/',
+    path: '/suppliers/',
+    getParentRoute: () => PurchasingRoute,
+  } as any)
+const PurchasingSuppliersSupplierIdRoute =
+  PurchasingSuppliersSupplierIdRouteImport.update({
+    id: '/suppliers/$supplierId',
+    path: '/suppliers/$supplierId',
+    getParentRoute: () => PurchasingRoute,
+  } as any)
 const StaffGroupsIndexRoute = StaffGroupsIndexRouteImport.update({
   id: '/groups/',
   path: '/groups/',
@@ -1568,6 +1618,7 @@ export interface FileRoutesByFullPath {
   '/planning': typeof PlanningRouteWithChildren
   '/products': typeof ProductsRouteWithChildren
   '/projects': typeof ProjectsRouteWithChildren
+  '/purchasing': typeof PurchasingRouteWithChildren
   '/reset-password': typeof ResetPasswordRoute
   '/rsvp': typeof RsvpRoute
   '/session-expired': typeof SessionExpiredRoute
@@ -1633,6 +1684,7 @@ export interface FileRoutesByFullPath {
   '/projects/economy': typeof ProjectsEconomyRoute
   '/projects/my-tasks': typeof ProjectsMyTasksRoute
   '/projects/templates': typeof ProjectsTemplatesRoute
+  '/purchasing/settings': typeof PurchasingSettingsRoute
   '/settings/connections': typeof SettingsConnectionsRoute
   '/settings/profile': typeof SettingsProfileRoute
   '/settings/security': typeof SettingsSecurityRoute
@@ -1674,6 +1726,7 @@ export interface FileRoutesByFullPath {
   '/planning/': typeof PlanningIndexRoute
   '/products/': typeof ProductsIndexRoute
   '/projects/': typeof ProjectsIndexRoute
+  '/purchasing/': typeof PurchasingIndexRoute
   '/settings/': typeof SettingsIndexRoute
   '/staff/': typeof StaffIndexRoute
   '/time/': typeof TimeIndexRoute
@@ -1733,6 +1786,9 @@ export interface FileRoutesByFullPath {
   '/projects/$projectId/planning': typeof ProjectsProjectIdPlanningRoute
   '/projects/$projectId/tasks': typeof ProjectsProjectIdTasksRoute
   '/projects/$projectId/time': typeof ProjectsProjectIdTimeRoute
+  '/purchasing/orders/$orderId': typeof PurchasingOrdersOrderIdRoute
+  '/purchasing/orders/new': typeof PurchasingOrdersNewRoute
+  '/purchasing/suppliers/$supplierId': typeof PurchasingSuppliersSupplierIdRoute
   '/staff/groups/$id': typeof StaffGroupsIdRoute
   '/staff/people/$id': typeof StaffPeopleIdRoute
   '/workspace/entra/accounts': typeof WorkspaceEntraAccountsRoute
@@ -1769,6 +1825,8 @@ export interface FileRoutesByFullPath {
   '/orders/quotes/': typeof OrdersQuotesIndexRoute
   '/orders/subscriptions/': typeof OrdersSubscriptionsIndexRoute
   '/projects/$projectId/': typeof ProjectsProjectIdIndexRoute
+  '/purchasing/orders/': typeof PurchasingOrdersIndexRoute
+  '/purchasing/suppliers/': typeof PurchasingSuppliersIndexRoute
   '/staff/groups/': typeof StaffGroupsIndexRoute
   '/staff/people/': typeof StaffPeopleIndexRoute
   '/workspace/entra/': typeof WorkspaceEntraIndexRoute
@@ -1856,6 +1914,7 @@ export interface FileRoutesByTo {
   '/projects/economy': typeof ProjectsEconomyRoute
   '/projects/my-tasks': typeof ProjectsMyTasksRoute
   '/projects/templates': typeof ProjectsTemplatesRoute
+  '/purchasing/settings': typeof PurchasingSettingsRoute
   '/settings/connections': typeof SettingsConnectionsRoute
   '/settings/profile': typeof SettingsProfileRoute
   '/settings/security': typeof SettingsSecurityRoute
@@ -1895,6 +1954,7 @@ export interface FileRoutesByTo {
   '/planning': typeof PlanningIndexRoute
   '/products': typeof ProductsIndexRoute
   '/projects': typeof ProjectsIndexRoute
+  '/purchasing': typeof PurchasingIndexRoute
   '/settings': typeof SettingsIndexRoute
   '/staff': typeof StaffIndexRoute
   '/time': typeof TimeIndexRoute
@@ -1954,6 +2014,9 @@ export interface FileRoutesByTo {
   '/projects/$projectId/planning': typeof ProjectsProjectIdPlanningRoute
   '/projects/$projectId/tasks': typeof ProjectsProjectIdTasksRoute
   '/projects/$projectId/time': typeof ProjectsProjectIdTimeRoute
+  '/purchasing/orders/$orderId': typeof PurchasingOrdersOrderIdRoute
+  '/purchasing/orders/new': typeof PurchasingOrdersNewRoute
+  '/purchasing/suppliers/$supplierId': typeof PurchasingSuppliersSupplierIdRoute
   '/staff/groups/$id': typeof StaffGroupsIdRoute
   '/staff/people/$id': typeof StaffPeopleIdRoute
   '/workspace/entra/accounts': typeof WorkspaceEntraAccountsRoute
@@ -1990,6 +2053,8 @@ export interface FileRoutesByTo {
   '/orders/quotes': typeof OrdersQuotesIndexRoute
   '/orders/subscriptions': typeof OrdersSubscriptionsIndexRoute
   '/projects/$projectId': typeof ProjectsProjectIdIndexRoute
+  '/purchasing/orders': typeof PurchasingOrdersIndexRoute
+  '/purchasing/suppliers': typeof PurchasingSuppliersIndexRoute
   '/staff/groups': typeof StaffGroupsIndexRoute
   '/staff/people': typeof StaffPeopleIndexRoute
   '/workspace/entra': typeof WorkspaceEntraIndexRoute
@@ -2037,6 +2102,7 @@ export interface FileRoutesById {
   '/planning': typeof PlanningRouteWithChildren
   '/products': typeof ProductsRouteWithChildren
   '/projects': typeof ProjectsRouteWithChildren
+  '/purchasing': typeof PurchasingRouteWithChildren
   '/reset-password': typeof ResetPasswordRoute
   '/rsvp': typeof RsvpRoute
   '/session-expired': typeof SessionExpiredRoute
@@ -2102,6 +2168,7 @@ export interface FileRoutesById {
   '/projects/economy': typeof ProjectsEconomyRoute
   '/projects/my-tasks': typeof ProjectsMyTasksRoute
   '/projects/templates': typeof ProjectsTemplatesRoute
+  '/purchasing/settings': typeof PurchasingSettingsRoute
   '/settings/connections': typeof SettingsConnectionsRoute
   '/settings/profile': typeof SettingsProfileRoute
   '/settings/security': typeof SettingsSecurityRoute
@@ -2143,6 +2210,7 @@ export interface FileRoutesById {
   '/planning/': typeof PlanningIndexRoute
   '/products/': typeof ProductsIndexRoute
   '/projects/': typeof ProjectsIndexRoute
+  '/purchasing/': typeof PurchasingIndexRoute
   '/settings/': typeof SettingsIndexRoute
   '/staff/': typeof StaffIndexRoute
   '/time/': typeof TimeIndexRoute
@@ -2202,6 +2270,9 @@ export interface FileRoutesById {
   '/projects/$projectId/planning': typeof ProjectsProjectIdPlanningRoute
   '/projects/$projectId/tasks': typeof ProjectsProjectIdTasksRoute
   '/projects/$projectId/time': typeof ProjectsProjectIdTimeRoute
+  '/purchasing/orders/$orderId': typeof PurchasingOrdersOrderIdRoute
+  '/purchasing/orders/new': typeof PurchasingOrdersNewRoute
+  '/purchasing/suppliers/$supplierId': typeof PurchasingSuppliersSupplierIdRoute
   '/staff/groups/$id': typeof StaffGroupsIdRoute
   '/staff/people/$id': typeof StaffPeopleIdRoute
   '/workspace/entra/accounts': typeof WorkspaceEntraAccountsRoute
@@ -2238,6 +2309,8 @@ export interface FileRoutesById {
   '/orders/quotes/': typeof OrdersQuotesIndexRoute
   '/orders/subscriptions/': typeof OrdersSubscriptionsIndexRoute
   '/projects/$projectId/': typeof ProjectsProjectIdIndexRoute
+  '/purchasing/orders/': typeof PurchasingOrdersIndexRoute
+  '/purchasing/suppliers/': typeof PurchasingSuppliersIndexRoute
   '/staff/groups/': typeof StaffGroupsIndexRoute
   '/staff/people/': typeof StaffPeopleIndexRoute
   '/workspace/entra/': typeof WorkspaceEntraIndexRoute
@@ -2286,6 +2359,7 @@ export interface FileRouteTypes {
     | '/planning'
     | '/products'
     | '/projects'
+    | '/purchasing'
     | '/reset-password'
     | '/rsvp'
     | '/session-expired'
@@ -2351,6 +2425,7 @@ export interface FileRouteTypes {
     | '/projects/economy'
     | '/projects/my-tasks'
     | '/projects/templates'
+    | '/purchasing/settings'
     | '/settings/connections'
     | '/settings/profile'
     | '/settings/security'
@@ -2392,6 +2467,7 @@ export interface FileRouteTypes {
     | '/planning/'
     | '/products/'
     | '/projects/'
+    | '/purchasing/'
     | '/settings/'
     | '/staff/'
     | '/time/'
@@ -2451,6 +2527,9 @@ export interface FileRouteTypes {
     | '/projects/$projectId/planning'
     | '/projects/$projectId/tasks'
     | '/projects/$projectId/time'
+    | '/purchasing/orders/$orderId'
+    | '/purchasing/orders/new'
+    | '/purchasing/suppliers/$supplierId'
     | '/staff/groups/$id'
     | '/staff/people/$id'
     | '/workspace/entra/accounts'
@@ -2487,6 +2566,8 @@ export interface FileRouteTypes {
     | '/orders/quotes/'
     | '/orders/subscriptions/'
     | '/projects/$projectId/'
+    | '/purchasing/orders/'
+    | '/purchasing/suppliers/'
     | '/staff/groups/'
     | '/staff/people/'
     | '/workspace/entra/'
@@ -2574,6 +2655,7 @@ export interface FileRouteTypes {
     | '/projects/economy'
     | '/projects/my-tasks'
     | '/projects/templates'
+    | '/purchasing/settings'
     | '/settings/connections'
     | '/settings/profile'
     | '/settings/security'
@@ -2613,6 +2695,7 @@ export interface FileRouteTypes {
     | '/planning'
     | '/products'
     | '/projects'
+    | '/purchasing'
     | '/settings'
     | '/staff'
     | '/time'
@@ -2672,6 +2755,9 @@ export interface FileRouteTypes {
     | '/projects/$projectId/planning'
     | '/projects/$projectId/tasks'
     | '/projects/$projectId/time'
+    | '/purchasing/orders/$orderId'
+    | '/purchasing/orders/new'
+    | '/purchasing/suppliers/$supplierId'
     | '/staff/groups/$id'
     | '/staff/people/$id'
     | '/workspace/entra/accounts'
@@ -2708,6 +2794,8 @@ export interface FileRouteTypes {
     | '/orders/quotes'
     | '/orders/subscriptions'
     | '/projects/$projectId'
+    | '/purchasing/orders'
+    | '/purchasing/suppliers'
     | '/staff/groups'
     | '/staff/people'
     | '/workspace/entra'
@@ -2754,6 +2842,7 @@ export interface FileRouteTypes {
     | '/planning'
     | '/products'
     | '/projects'
+    | '/purchasing'
     | '/reset-password'
     | '/rsvp'
     | '/session-expired'
@@ -2819,6 +2908,7 @@ export interface FileRouteTypes {
     | '/projects/economy'
     | '/projects/my-tasks'
     | '/projects/templates'
+    | '/purchasing/settings'
     | '/settings/connections'
     | '/settings/profile'
     | '/settings/security'
@@ -2860,6 +2950,7 @@ export interface FileRouteTypes {
     | '/planning/'
     | '/products/'
     | '/projects/'
+    | '/purchasing/'
     | '/settings/'
     | '/staff/'
     | '/time/'
@@ -2919,6 +3010,9 @@ export interface FileRouteTypes {
     | '/projects/$projectId/planning'
     | '/projects/$projectId/tasks'
     | '/projects/$projectId/time'
+    | '/purchasing/orders/$orderId'
+    | '/purchasing/orders/new'
+    | '/purchasing/suppliers/$supplierId'
     | '/staff/groups/$id'
     | '/staff/people/$id'
     | '/workspace/entra/accounts'
@@ -2955,6 +3049,8 @@ export interface FileRouteTypes {
     | '/orders/quotes/'
     | '/orders/subscriptions/'
     | '/projects/$projectId/'
+    | '/purchasing/orders/'
+    | '/purchasing/suppliers/'
     | '/staff/groups/'
     | '/staff/people/'
     | '/workspace/entra/'
@@ -3002,6 +3098,7 @@ export interface RootRouteChildren {
   PlanningRoute: typeof PlanningRouteWithChildren
   ProductsRoute: typeof ProductsRouteWithChildren
   ProjectsRoute: typeof ProjectsRouteWithChildren
+  PurchasingRoute: typeof PurchasingRouteWithChildren
   ResetPasswordRoute: typeof ResetPasswordRoute
   RsvpRoute: typeof RsvpRoute
   SessionExpiredRoute: typeof SessionExpiredRoute
@@ -3183,6 +3280,13 @@ declare module '@tanstack/react-router' {
       path: '/projects'
       fullPath: '/projects'
       preLoaderRoute: typeof ProjectsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/purchasing': {
+      id: '/purchasing'
+      path: '/purchasing'
+      fullPath: '/purchasing'
+      preLoaderRoute: typeof PurchasingRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/reset-password': {
@@ -3765,6 +3869,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/projects/templates'
       preLoaderRoute: typeof ProjectsTemplatesRouteImport
       parentRoute: typeof ProjectsRoute
+    }
+    '/purchasing/': {
+      id: '/purchasing/'
+      path: '/'
+      fullPath: '/purchasing/'
+      preLoaderRoute: typeof PurchasingIndexRouteImport
+      parentRoute: typeof PurchasingRoute
+    }
+    '/purchasing/settings': {
+      id: '/purchasing/settings'
+      path: '/settings'
+      fullPath: '/purchasing/settings'
+      preLoaderRoute: typeof PurchasingSettingsRouteImport
+      parentRoute: typeof PurchasingRoute
     }
     '/settings/': {
       id: '/settings/'
@@ -4536,6 +4654,41 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProjectsProjectIdTimeRouteImport
       parentRoute: typeof ProjectsProjectIdRoute
     }
+    '/purchasing/orders/': {
+      id: '/purchasing/orders/'
+      path: '/orders'
+      fullPath: '/purchasing/orders/'
+      preLoaderRoute: typeof PurchasingOrdersIndexRouteImport
+      parentRoute: typeof PurchasingRoute
+    }
+    '/purchasing/orders/$orderId': {
+      id: '/purchasing/orders/$orderId'
+      path: '/orders/$orderId'
+      fullPath: '/purchasing/orders/$orderId'
+      preLoaderRoute: typeof PurchasingOrdersOrderIdRouteImport
+      parentRoute: typeof PurchasingRoute
+    }
+    '/purchasing/orders/new': {
+      id: '/purchasing/orders/new'
+      path: '/orders/new'
+      fullPath: '/purchasing/orders/new'
+      preLoaderRoute: typeof PurchasingOrdersNewRouteImport
+      parentRoute: typeof PurchasingRoute
+    }
+    '/purchasing/suppliers/': {
+      id: '/purchasing/suppliers/'
+      path: '/suppliers'
+      fullPath: '/purchasing/suppliers/'
+      preLoaderRoute: typeof PurchasingSuppliersIndexRouteImport
+      parentRoute: typeof PurchasingRoute
+    }
+    '/purchasing/suppliers/$supplierId': {
+      id: '/purchasing/suppliers/$supplierId'
+      path: '/suppliers/$supplierId'
+      fullPath: '/purchasing/suppliers/$supplierId'
+      preLoaderRoute: typeof PurchasingSuppliersSupplierIdRouteImport
+      parentRoute: typeof PurchasingRoute
+    }
     '/staff/groups/': {
       id: '/staff/groups/'
       path: '/groups'
@@ -5279,6 +5432,30 @@ const ProjectsRouteWithChildren = ProjectsRoute._addFileChildren(
   ProjectsRouteChildren,
 )
 
+interface PurchasingRouteChildren {
+  PurchasingSettingsRoute: typeof PurchasingSettingsRoute
+  PurchasingIndexRoute: typeof PurchasingIndexRoute
+  PurchasingOrdersOrderIdRoute: typeof PurchasingOrdersOrderIdRoute
+  PurchasingOrdersNewRoute: typeof PurchasingOrdersNewRoute
+  PurchasingSuppliersSupplierIdRoute: typeof PurchasingSuppliersSupplierIdRoute
+  PurchasingOrdersIndexRoute: typeof PurchasingOrdersIndexRoute
+  PurchasingSuppliersIndexRoute: typeof PurchasingSuppliersIndexRoute
+}
+
+const PurchasingRouteChildren: PurchasingRouteChildren = {
+  PurchasingSettingsRoute: PurchasingSettingsRoute,
+  PurchasingIndexRoute: PurchasingIndexRoute,
+  PurchasingOrdersOrderIdRoute: PurchasingOrdersOrderIdRoute,
+  PurchasingOrdersNewRoute: PurchasingOrdersNewRoute,
+  PurchasingSuppliersSupplierIdRoute: PurchasingSuppliersSupplierIdRoute,
+  PurchasingOrdersIndexRoute: PurchasingOrdersIndexRoute,
+  PurchasingSuppliersIndexRoute: PurchasingSuppliersIndexRoute,
+}
+
+const PurchasingRouteWithChildren = PurchasingRoute._addFileChildren(
+  PurchasingRouteChildren,
+)
+
 interface SettingsRouteChildren {
   SettingsConnectionsRoute: typeof SettingsConnectionsRoute
   SettingsProfileRoute: typeof SettingsProfileRoute
@@ -5438,6 +5615,7 @@ const rootRouteChildren: RootRouteChildren = {
   PlanningRoute: PlanningRouteWithChildren,
   ProductsRoute: ProductsRouteWithChildren,
   ProjectsRoute: ProjectsRouteWithChildren,
+  PurchasingRoute: PurchasingRouteWithChildren,
   ResetPasswordRoute: ResetPasswordRoute,
   RsvpRoute: RsvpRoute,
   SessionExpiredRoute: SessionExpiredRoute,

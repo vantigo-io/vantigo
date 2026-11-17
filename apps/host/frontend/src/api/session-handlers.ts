@@ -17,6 +17,7 @@ import * as orders from "@vantigo/orders-ui/api/request";
 import * as planning from "@vantigo/planning-ui/api/request";
 import * as products from "@vantigo/products-ui/api/request";
 import * as projects from "@vantigo/projects-ui/api/request";
+import * as purchasing from "@vantigo/purchasing-ui/api/request";
 import * as staff from "@vantigo/staff-ui/api/request";
 import * as time from "@vantigo/time-ui/api/request";
 import * as host from "./request";
@@ -56,6 +57,7 @@ export const sessionClients: Record<string, SessionClient> = {
   "@vantigo/planning-ui": planning,
   "@vantigo/products-ui": products,
   "@vantigo/projects-ui": projects,
+  "@vantigo/purchasing-ui": purchasing,
   "@vantigo/staff-ui": staff,
   "@vantigo/time-ui": time,
 };

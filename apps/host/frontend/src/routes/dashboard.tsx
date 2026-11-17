@@ -33,6 +33,7 @@ import { PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { KpiCard, WidgetCard } from "@vantigo/frontend-shell/ui";
 import { fetchInventoryStats } from "@vantigo/inventory-ui/api/stats";
 import { fetchManufacturingStats } from "@vantigo/manufacturing-ui/api/stats";
+import { getPurchasingSummary } from "@vantigo/purchasing-ui/api/purchasing";
 import { fetchSession, sessionQueryKey } from "../api/auth";
 import { getAuthorizationMe } from "../api/authorization";
 import {
@@ -76,6 +77,8 @@ import {
   moduleCards,
   planningKpi,
   projectsCardHint,
+  purchasingAttention,
+  purchasingKpi,
   relativeTime,
   sparkline,
   staffKpi,
@@ -202,6 +205,15 @@ const DashboardPage = () => {
     ...metaQueryOptions(),
     queryKey: ["dashboard", "accounting", "meta"],
     enabled: allowed("accounting"),
+    retry: false,
+  });
+
+  // Purchasing's figures are now: the open orders late and unconfirmed, and the
+  // caller's own unconfirmed ones, its attention item (purchasing design P19, P23).
+  const purchasingSummary = useQuery({
+    queryKey: ["dashboard", "purchasing", "summary"],
+    queryFn: ({ signal }) => getPurchasingSummary(signal),
+    enabled: allowed("purchasing"),
     retry: false,
   });
 
@@ -389,7 +401,8 @@ const DashboardPage = () => {
     (allowed("invoices") && invoicesAttention.isPending) ||
     (allowed("staff") && staffAttention.isPending) ||
     (allowed("planning") && planningAttention.isPending) ||
-    (allowed("inventory") && inventoryAttention.isPending);
+    (allowed("inventory") && inventoryAttention.isPending) ||
+    (allowed("purchasing") && purchasingSummary.isPending);
   const activityLoading =
     (allowed("customers") && customersTimeseries.isPending) ||
     (allowed("communications") && communicationsTimeseries.isPending) ||
@@ -411,6 +424,10 @@ const DashboardPage = () => {
     ...(staffAttention.data ?? []).map((item) => ({ ...item, module: "staff" as ModuleKey })),
     ...(planningAttention.data ?? []).map((item) => ({ ...item, module: "planning" as ModuleKey })),
     ...(inventoryAttention.data ?? []).map((item) => ({ ...item, module: "inventory" as ModuleKey })),
+    ...purchasingAttention(purchasingSummary.data, new Date()).map((item) => ({
+      ...item,
+      module: "purchasing" as ModuleKey,
+    })),
   ]
     .sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime())
     .slice(0, 8);
@@ -717,6 +734,17 @@ const DashboardPage = () => {
                   : {})}
                 href={href}
                 loading={accountingMeta.isPending}
+              />
+            );
+          }
+          if (module.module === "purchasing") {
+            return (
+              <KpiCard
+                key={module.module}
+                label={t("dashboard.purchasingLate")}
+                {...purchasingKpi(purchasingSummary.data, formatters.formatNumber, t)}
+                href={href}
+                loading={purchasingSummary.isPending}
               />
             );
           }

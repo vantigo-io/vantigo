@@ -35,6 +35,11 @@ vi.mock("@vantigo/products-ui", () => ({
 vi.mock("@vantigo/inventory-ui", () => ({
   ProductStock: ({ productId }: { productId: number }) => <p>Stock card for product {productId}</p>,
 }));
+vi.mock("@vantigo/purchasing-ui", () => ({
+  ProductSuppliersCard: ({ variantIds }: { variantIds: number[] }) => (
+    <p>Suppliers card for variants {variantIds.join(", ")}</p>
+  ),
+}));
 
 const json = (body: unknown) =>
   new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
@@ -49,6 +54,8 @@ const renderProductPage = async (modules: string[], permissions: string[], baseP
     (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === `${prefix}/api/v1/identity/session`) return Promise.resolve(json(TEST_SESSION));
+      if (url === `${prefix}/api/v1/products/1`)
+        return Promise.resolve(json({ id: 1, variants: [{ id: 7 }, { id: 8 }] }));
       if (url.startsWith(`${prefix}/api/v1/identity/access/me`))
         return Promise.resolve(json({ permissions, canManageAuthorization: false, administrationScope: "none" }));
       return Promise.resolve(new Response(null, { status: 404 }));
@@ -126,5 +133,32 @@ describe("the Stock card on Products' product page", () => {
     expect(screen.queryByText(/Stock card/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Stock link/)).not.toBeInTheDocument();
     expect(fetchMock.actualCalls.some(([url]) => String(url).startsWith("/api/v1/identity/access/me"))).toBe(false);
+  });
+});
+
+describe("Purchasing's Suppliers card on Products' product page", () => {
+  it("is drawn with the product's variants for purchasing:access while Purchasing is on", async () => {
+    await renderProductPage(["products", "purchasing"], ["purchasing:access"]);
+    expect(await screen.findByText("Suppliers card for variants 7, 8")).toBeInTheDocument();
+    expect(screen.queryByText(/Stock card/)).not.toBeInTheDocument();
+  });
+
+  it("is drawn beside the Stock card when both modules are on", async () => {
+    await renderProductPage(
+      ["products", "inventory", "purchasing"],
+      ["inventory:locations-view", "inventory:stock-view", "purchasing:access"],
+    );
+    expect(await screen.findByText("Suppliers card for variants 7, 8")).toBeInTheDocument();
+    expect(screen.getByText("Stock card for product 1")).toBeInTheDocument();
+  });
+
+  it("is not drawn without purchasing:access, or with Purchasing off", async () => {
+    const first = await renderProductPage(["products", "purchasing"], ["products:products-view"]);
+    await settled(first.queryClient);
+    expect(screen.queryByText(/Suppliers card/)).not.toBeInTheDocument();
+    cleanup();
+    const second = await renderProductPage(["products"], ["purchasing:access"]);
+    await settled(second.queryClient);
+    expect(screen.queryByText(/Suppliers card/)).not.toBeInTheDocument();
   });
 });

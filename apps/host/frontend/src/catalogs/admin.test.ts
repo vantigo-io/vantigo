@@ -63,7 +63,36 @@ const inventoryPermissionKeys = [
   "inventory:lots-manage",
 ] as const;
 
+// Hand-kept in step with `apps/server/internal/purchasing/module.go` (`var
+// permissions`), for the same reason.
+const purchasingPermissionKeys = [
+  "purchasing:access",
+  "purchasing:orders-manage",
+  "purchasing:orders-send",
+  "purchasing:receive",
+  "purchasing:supplier-items-manage",
+  "purchasing:invoices-match",
+  "purchasing:settings",
+] as const;
+
 describe("the admin permission catalog", () => {
+  it("has a display name and a description, in English and Norwegian, for the seven purchasing permissions", () => {
+    for (const key of purchasingPermissionKeys) {
+      const translation = hostPermissionTranslationKeys[key as keyof typeof hostPermissionTranslationKeys];
+      expect(translation, `no catalog entry for ${key}`).toBeDefined();
+      expect(translation.moduleKey).toBe("admin.permission.module.purchasing");
+      for (const lng of ["en", "nb"] as const) {
+        const catalog = adminCatalog[lng] as Record<string, string>;
+        expect(catalog[translation.displayNameKey], `${key} display name (${lng})`).toBeTruthy();
+        expect(catalog[translation.descriptionKey], `${key} description (${lng})`).toBeTruthy();
+      }
+    }
+    // The English words are the server's own (purchasing module.go).
+    expect((adminCatalog.en as Record<string, string>)["admin.permission.purchasingOrdersSend"]).toBe(
+      "Send purchase orders",
+    );
+  });
+
   it("has a display name and a description, in English and Norwegian, for these six projects permissions", () => {
     for (const key of projectsPermissionKeys) {
       const translation = hostPermissionTranslationKeys[key as keyof typeof hostPermissionTranslationKeys];

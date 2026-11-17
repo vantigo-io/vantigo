@@ -25,6 +25,7 @@ import { accountingNavItems } from "@vantigo/accounting-ui";
 import { inventoryNavItems } from "@vantigo/inventory-ui";
 import { manufacturingNavItems } from "@vantigo/manufacturing-ui";
 import { planningNavItems } from "@vantigo/planning-ui";
+import { purchasingNavItems } from "@vantigo/purchasing-ui";
 import { staffNavItems } from "@vantigo/staff-ui";
 import { describe, expect, it } from "vitest";
 import { accountMenuSections } from "./account-menu";
@@ -86,6 +87,7 @@ describe("the app registry", () => {
       "products",
       "inventory",
       "manufacturing",
+      "purchasing",
       "accounting",
       "energy",
     ]);
@@ -179,6 +181,9 @@ describe("the app registry", () => {
       "/manufacturing/deviations",
       "/manufacturing/boms",
       "/manufacturing/work-centers",
+      "/purchasing/orders",
+      "/purchasing/suppliers",
+      "/purchasing/settings",
       "/accounting",
       "/accounting/journal",
       "/accounting/vouchers",
@@ -814,6 +819,26 @@ describe("the app registry", () => {
     expect(paths(["inventory:locations-view", "inventory:counts-manage"])).toEqual(["navigation.inventoryOverview"]);
   });
 
+  // Purchasing's destinations are the package's (`purchasingNavItems`, P23):
+  // the orders and the suppliers are purchasing:access's, the settings
+  // purchasing:settings's with it.
+  it("registers Purchasing with the package's three destinations", () => {
+    const purchasing = appForKey("purchasing");
+    expect(purchasing).toMatchObject({ module: "purchasing", label: "navigation.purchasing", home: "/purchasing" });
+    const items = purchasing.navSections.flatMap((section) => section.items);
+    expect(items.map((item) => item.to)).toEqual(purchasingNavItems.map((item) => item.to));
+    const settings = items.find((item) => item.to === "/purchasing/settings");
+    expect(settings?.requiredPermissions).toEqual(["purchasing:settings"]);
+    expect(settings?.requiredAllPermissions).toEqual(["purchasing:access"]);
+    expect(navigationCatalog.nb["navigation.purchasing"]).toBe("Innkjøp");
+    expect(navigationCatalog.nb["navigation.purchasingOrders"]).toBe("Innkjøpsordrer");
+    const keys = (permissions: string[], enabled: readonly ModuleKey[]) =>
+      switcherTiles(permissions, enabled, undefined).map((tile) => [tile.app.key, tile.enabled]);
+    expect(keys(["purchasing:access"], ["purchasing"])).toContainEqual(["purchasing", true]);
+    expect(keys(["purchasing:access"], ["customers"])).toContainEqual(["purchasing", false]);
+    expect(keys(["purchasing:settings"], ["purchasing"]).some(([key]) => key === "purchasing")).toBe(false);
+  });
+
   // Accounting's destinations are the package's (`accountingNavItems`, A1):
   // every one is accounting:read's but a new journal entry, which posts.
   it("registers Accounting with the package's fifteen destinations", () => {
@@ -921,6 +946,7 @@ describe("the administration areas", () => {
       "products",
       "inventory",
       "manufacturing",
+      "purchasing",
       "accounting",
       "energy",
     ]);
@@ -1259,6 +1285,7 @@ describe("switcherTiles", () => {
       ["products", false],
       ["inventory", false],
       ["manufacturing", false],
+      ["purchasing", false],
       ["accounting", false],
       ["energy", false],
     ]);

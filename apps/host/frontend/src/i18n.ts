@@ -20,6 +20,7 @@ import "@vantigo/orders-ui/i18n";
 import "@vantigo/planning-ui/i18n";
 import "@vantigo/products-ui/i18n";
 import "@vantigo/projects-ui/i18n";
+import "@vantigo/purchasing-ui/i18n";
 import "@vantigo/staff-ui/i18n";
 import "@vantigo/time-ui/i18n";
 import { adminCatalog } from "./catalogs/admin";
