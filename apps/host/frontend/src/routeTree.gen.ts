@@ -119,6 +119,7 @@ import { Route as ProjectsMyTasksRouteImport } from './routes/projects/my-tasks'
 import { Route as ProjectsTemplatesRouteImport } from './routes/projects/templates'
 import { Route as PurchasingIndexRouteImport } from './routes/purchasing/index'
 import { Route as PurchasingProposalsRouteImport } from './routes/purchasing/proposals'
+import { Route as PurchasingReceivedNotInvoicedRouteImport } from './routes/purchasing/received-not-invoiced'
 import { Route as PurchasingSettingsRouteImport } from './routes/purchasing/settings'
 import { Route as SettingsIndexRouteImport } from './routes/settings/index'
 import { Route as SettingsConnectionsRouteImport } from './routes/settings/connections'
@@ -819,6 +820,12 @@ const PurchasingProposalsRoute = PurchasingProposalsRouteImport.update({
   path: '/proposals',
   getParentRoute: () => PurchasingRoute,
 } as any)
+const PurchasingReceivedNotInvoicedRoute =
+  PurchasingReceivedNotInvoicedRouteImport.update({
+    id: '/received-not-invoiced',
+    path: '/received-not-invoiced',
+    getParentRoute: () => PurchasingRoute,
+  } as any)
 const PurchasingSettingsRoute = PurchasingSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -1704,6 +1711,7 @@ export interface FileRoutesByFullPath {
   '/projects/my-tasks': typeof ProjectsMyTasksRoute
   '/projects/templates': typeof ProjectsTemplatesRoute
   '/purchasing/proposals': typeof PurchasingProposalsRoute
+  '/purchasing/received-not-invoiced': typeof PurchasingReceivedNotInvoicedRoute
   '/purchasing/settings': typeof PurchasingSettingsRoute
   '/settings/connections': typeof SettingsConnectionsRoute
   '/settings/profile': typeof SettingsProfileRoute
@@ -1937,6 +1945,7 @@ export interface FileRoutesByTo {
   '/projects/my-tasks': typeof ProjectsMyTasksRoute
   '/projects/templates': typeof ProjectsTemplatesRoute
   '/purchasing/proposals': typeof PurchasingProposalsRoute
+  '/purchasing/received-not-invoiced': typeof PurchasingReceivedNotInvoicedRoute
   '/purchasing/settings': typeof PurchasingSettingsRoute
   '/settings/connections': typeof SettingsConnectionsRoute
   '/settings/profile': typeof SettingsProfileRoute
@@ -2194,6 +2203,7 @@ export interface FileRoutesById {
   '/projects/my-tasks': typeof ProjectsMyTasksRoute
   '/projects/templates': typeof ProjectsTemplatesRoute
   '/purchasing/proposals': typeof PurchasingProposalsRoute
+  '/purchasing/received-not-invoiced': typeof PurchasingReceivedNotInvoicedRoute
   '/purchasing/settings': typeof PurchasingSettingsRoute
   '/settings/connections': typeof SettingsConnectionsRoute
   '/settings/profile': typeof SettingsProfileRoute
@@ -2454,6 +2464,7 @@ export interface FileRouteTypes {
     | '/projects/my-tasks'
     | '/projects/templates'
     | '/purchasing/proposals'
+    | '/purchasing/received-not-invoiced'
     | '/purchasing/settings'
     | '/settings/connections'
     | '/settings/profile'
@@ -2687,6 +2698,7 @@ export interface FileRouteTypes {
     | '/projects/my-tasks'
     | '/projects/templates'
     | '/purchasing/proposals'
+    | '/purchasing/received-not-invoiced'
     | '/purchasing/settings'
     | '/settings/connections'
     | '/settings/profile'
@@ -2943,6 +2955,7 @@ export interface FileRouteTypes {
     | '/projects/my-tasks'
     | '/projects/templates'
     | '/purchasing/proposals'
+    | '/purchasing/received-not-invoiced'
     | '/purchasing/settings'
     | '/settings/connections'
     | '/settings/profile'
@@ -3919,6 +3932,13 @@ declare module '@tanstack/react-router' {
       path: '/proposals'
       fullPath: '/purchasing/proposals'
       preLoaderRoute: typeof PurchasingProposalsRouteImport
+      parentRoute: typeof PurchasingRoute
+    }
+    '/purchasing/received-not-invoiced': {
+      id: '/purchasing/received-not-invoiced'
+      path: '/received-not-invoiced'
+      fullPath: '/purchasing/received-not-invoiced'
+      preLoaderRoute: typeof PurchasingReceivedNotInvoicedRouteImport
       parentRoute: typeof PurchasingRoute
     }
     '/purchasing/settings': {
@@ -5492,6 +5512,7 @@ const ProjectsRouteWithChildren = ProjectsRoute._addFileChildren(
 
 interface PurchasingRouteChildren {
   PurchasingProposalsRoute: typeof PurchasingProposalsRoute
+  PurchasingReceivedNotInvoicedRoute: typeof PurchasingReceivedNotInvoicedRoute
   PurchasingSettingsRoute: typeof PurchasingSettingsRoute
   PurchasingIndexRoute: typeof PurchasingIndexRoute
   PurchasingOrdersOrderIdRoute: typeof PurchasingOrdersOrderIdRoute
@@ -5505,6 +5526,7 @@ interface PurchasingRouteChildren {
 
 const PurchasingRouteChildren: PurchasingRouteChildren = {
   PurchasingProposalsRoute: PurchasingProposalsRoute,
+  PurchasingReceivedNotInvoicedRoute: PurchasingReceivedNotInvoicedRoute,
   PurchasingSettingsRoute: PurchasingSettingsRoute,
   PurchasingIndexRoute: PurchasingIndexRoute,
   PurchasingOrdersOrderIdRoute: PurchasingOrdersOrderIdRoute,

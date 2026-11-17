@@ -303,6 +303,7 @@ const purchasingNavPresentation: Record<PurchasingNavItem["key"], Pick<NavItem, 
   proposals: { label: "navigation.purchasingProposals", icon: IconBulb },
   receive: { label: "navigation.purchasingReceive", icon: IconPackageImport },
   suppliers: { label: "navigation.purchasingSuppliers", icon: IconTruckDelivery },
+  uninvoiced: { label: "navigation.purchasingUninvoiced", icon: IconFileInvoice },
   settings: { label: "navigation.purchasingSettings", icon: IconSettings },
 };
 

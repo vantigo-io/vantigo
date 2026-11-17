@@ -91,11 +91,14 @@ describe("the admin permission catalog", () => {
     expect((adminCatalog.en as Record<string, string>)["admin.permission.purchasingOrdersSend"]).toBe(
       "Send purchase orders",
     );
-    // Receiving is in use since delivery B; matching invoices is still to come.
+    // Receiving is in use since delivery B, matching invoices since delivery D.
     expect((adminCatalog.en as Record<string, string>)["admin.permission.purchasingReceive"]).toBe("Receive goods");
     expect((adminCatalog.nb as Record<string, string>)["admin.permission.purchasingReceive"]).toBe("Ta imot varer");
-    expect((adminCatalog.en as Record<string, string>)["admin.permission.purchasingInvoicesMatch"]).toContain(
-      "(coming)",
+    expect((adminCatalog.en as Record<string, string>)["admin.permission.purchasingInvoicesMatch"]).toBe(
+      "Match supplier invoices",
+    );
+    expect((adminCatalog.nb as Record<string, string>)["admin.permission.purchasingInvoicesMatch"]).toBe(
+      "Avstemme leverandørfakturaer",
     );
   });
 
