@@ -615,6 +615,12 @@ export const hostPermissionTranslationKeys = {
     displayNameKey: "admin.permission.accountingClose",
     descriptionKey: "admin.permission.accountingCloseDescription",
   },
+  "accounting:suppliers-manage": {
+    moduleKey: "admin.permission.module.accounting",
+    categoryKey: "admin.permission.category.accounting",
+    displayNameKey: "admin.permission.accountingSuppliersManage",
+    descriptionKey: "admin.permission.accountingSuppliersManageDescription",
+  },
   "accounting:export": {
     moduleKey: "admin.permission.module.accounting",
     categoryKey: "admin.permission.category.accounting",
@@ -1188,6 +1194,9 @@ const en = {
   "admin.permission.accountingClose": "Manage the books",
   "admin.permission.accountingCloseDescription":
     "Set up the books, change the chart of accounts, the tax codes and the system roles, enter the opening balances and move the lock date.",
+  "admin.permission.accountingSuppliersManage": "Keep the suppliers",
+  "admin.permission.accountingSuppliersManageDescription":
+    "Create and change suppliers — the name, the addresses, the contact and the terms — also before the books are set up. A supplier's bank account, default account and tax code need Post vouchers.",
   "admin.permission.accountingExport": "Export the books",
   "admin.permission.accountingExportDescription":
     "Download the specifications as files, which carry customers' and suppliers' names.",
@@ -1973,6 +1982,9 @@ const nb: { [Key in keyof typeof en]: string } = {
   "admin.permission.accountingClose": "Forvalte regnskapet",
   "admin.permission.accountingCloseDescription":
     "Sette opp regnskapet, endre kontoplanen, mva-kodene og systemrollene, registrere inngående balanse og flytte sperredatoen.",
+  "admin.permission.accountingSuppliersManage": "Holde leverandørene",
+  "admin.permission.accountingSuppliersManageDescription":
+    "Opprette og endre leverandører — navnet, adressene, kontaktinformasjonen og betalingsbetingelsene — også før regnskapet er satt opp. En leverandørs bankkonto, standardkonto og mva-kode krever Bokføre bilag.",
   "admin.permission.accountingExport": "Eksportere regnskapet",
   "admin.permission.accountingExportDescription":
     "Laste ned spesifikasjonene som filer, med kunders og leverandørers navn.",

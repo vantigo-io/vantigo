@@ -33,6 +33,9 @@ export const bankAccountPath = (id: number) => `/accounting/bank/${id}`;
 /** A bank account's settings: its record, its source and its CSV mapping. */
 export const bankAccountSettingsPath = (id: number) => `/accounting/bank/${id}/settings`;
 
+/** A purchase order's page in Purchasing, which a matched supplier invoice links to (purchasing design P6). */
+export const purchaseOrderPath = (id: number) => `/purchasing/orders/${id}`;
+
 /** Invoices' bank page, where a customer payment is registered from its bank line (R11). */
 export const INVOICES_BANK_PATH = "/invoices/payments";
 

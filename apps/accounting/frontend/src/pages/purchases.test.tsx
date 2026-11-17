@@ -338,3 +338,27 @@ describe("expense rules and Needs attention", () => {
     await waitFor(() => expect(sent(fetchMock, "POST", /\/unposted\/7004\/retry$/)).toHaveLength(1));
   });
 });
+
+describe("a supplier invoice matched in Purchasing", () => {
+  it("shows the order as a badge linking to it, in the list and on the page, and nothing without a match", async () => {
+    stubAccountingApi({
+      supplierInvoices: [
+        supplierInvoice({
+          id: 4002,
+          state: "posted",
+          invoiceNumber: "F-7",
+          purchaseMatch: { orders: [{ id: 77, number: "1001" }], differences: 2 },
+        }),
+        supplierInvoice({ id: 4003, state: "posted", invoiceNumber: "F-8" }),
+      ],
+    });
+    renderRoute("/accounting/supplier-invoices");
+    const badges = await screen.findAllByTestId("purchase-match");
+    expect(badges).toHaveLength(1);
+    expect(within(badges[0]).getByText("Purchase order 1001").closest("a")).toHaveAttribute(
+      "href",
+      "/purchasing/orders/77",
+    );
+    expect(within(badges[0]).getByText("2 differences")).toBeInTheDocument();
+  });
+});

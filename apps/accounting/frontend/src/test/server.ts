@@ -1099,7 +1099,7 @@ export const saftImport = (change: Partial<AccountingSaftImport> = {}): Accounti
   blockersTotal: 1,
   companyMismatch: false,
   customersTotal: 1,
-  suppliersTotal: 0,
+  suppliersTotal: 1,
   matchedAt: STAMP,
   midYear: false,
   needsFiscalYearStartMonth: true,
@@ -1133,7 +1133,27 @@ export const saftImport = (change: Partial<AccountingSaftImport> = {}): Accounti
   addedAccounts: [{ number: "2060", name: "Åpningsbalanse, motkonto", kind: "equity", reason: "rollen opening" }],
   roles: [{ role: "receivables", accountNumber: "1500", added: false }],
   taxCodes: [{ fileTaxCode: "30", description: "Utgående", percentage: "25", standardTaxCode: "3", code: "3" }],
-  suppliers: [],
+  suppliers: [
+    {
+      position: 1,
+      fileSupplierId: "20001",
+      name: "Verksted AS",
+      organisationNumber: null,
+      city: null,
+      bankAccount: null,
+      iban: null,
+      closingBalance: "0.00",
+      notes: [],
+      match: "ambiguous",
+      supplierId: null,
+      supplierName: null,
+      supplierNumber: null,
+      candidates: [
+        { id: 3001, number: 1, name: "Verksted AS", organisationNumber: null },
+        { id: 3002, number: 2, name: "Verksted AS", organisationNumber: null },
+      ],
+    },
+  ],
   customers: [
     {
       fileCustomerId: "15000",
