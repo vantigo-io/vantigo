@@ -102,7 +102,9 @@ func TestRun_SeedPopulatesDemoDatasetAndIsIdempotent(t *testing.T) {
 		{"manufacturing.orders draft", "SELECT count(*) FROM manufacturing.orders WHERE status = 'draft'", 1},
 		{"manufacturing.orders made to order", "SELECT count(*) FROM manufacturing.orders WHERE origin_kind = 'sales_order' AND status = 'confirmed'", 1},
 		{"manufacturing.time_logs open", "SELECT count(*) FROM manufacturing.time_logs WHERE ended_at IS NULL", 1},
-		{"manufacturing.suggestions open", "SELECT count(*) FROM manufacturing.suggestions WHERE status = 'open'", 2},
+		// The tube and the frame, and the screws, the plywood and the paint the
+		// purchase proposals' demo places (purchasing delivery C).
+		{"manufacturing.suggestions open", "SELECT count(*) FROM manufacturing.suggestions WHERE status = 'open'", 5},
 		{"orders.orders", "SELECT count(*) FROM orders.orders", 3},
 		{"orders.lines kit children", "SELECT count(*) FROM orders.lines WHERE parent_line_id IS NOT NULL", 3},
 		{"identity.sessions", "SELECT count(*) FROM identity.sessions", 0},
@@ -117,6 +119,7 @@ func TestRun_SeedPopulatesDemoDatasetAndIsIdempotent(t *testing.T) {
 	}
 
 	assertDemoWorkshopReads(t, ctx, conn, databaseURL)
+	assertDemoProposals(t, ctx, databaseURL)
 
 	// Second run must be a no-op and preserve exact counts.
 	code2, stdout2, stderr2 := runCapture("seed")
@@ -128,6 +131,9 @@ func TestRun_SeedPopulatesDemoDatasetAndIsIdempotent(t *testing.T) {
 	}
 	if !strings.Contains(stdout2, "demo workshop already seeded; skipping") {
 		t.Errorf("expected the workshop's skip message in stdout, got: %s", stdout2)
+	}
+	if !strings.Contains(stdout2, "purchase proposals demo: already seeded; skipping") {
+		t.Errorf("expected the proposals' skip message in stdout, got: %s", stdout2)
 	}
 }
 

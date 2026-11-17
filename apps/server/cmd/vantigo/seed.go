@@ -273,6 +273,12 @@ func seed(ctx context.Context, logger *slog.Logger, cfg *config.Config) int {
 		logger.Error("development purchasing receipts seed failed", "error", err)
 		return 1
 	}
+	// The proposals' source after the purchase orders, so what they order is
+	// counted (purchasing delivery C).
+	if err := seedDemoPurchaseProposals(ctx, pool, logger, cfg); err != nil {
+		logger.Error("development purchase proposals seed failed", "error", err)
+		return 1
+	}
 	// The books last: the catch-up posts whatever the seeds before made in
 	// Invoices and Expenses, the workshop's among them.
 	if err := seedDemoAccounting(ctx, pool, logger, cfg, seedClock().UTC().Truncate(time.Second)); err != nil {
