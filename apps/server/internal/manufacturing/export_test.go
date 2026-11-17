@@ -3,6 +3,7 @@ package manufacturing
 import (
 	"context"
 
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/module"
 )
 
@@ -36,3 +37,7 @@ func MtoCycle(ctx context.Context, d module.Deps) (int, error) {
 func ReplenishmentCycle(ctx context.Context, d module.Deps) (int, error) {
 	return (&replenishmentWorker{s: newServer(d)}).RunCycle(ctx)
 }
+
+// PurchaseDemandOf is the module's contracts.PurchaseDemand built from d, as
+// module.Compose builds it (purchasing design A4).
+func PurchaseDemandOf(d module.Deps) contracts.PurchaseDemand { return newPurchaseDemand(d) }

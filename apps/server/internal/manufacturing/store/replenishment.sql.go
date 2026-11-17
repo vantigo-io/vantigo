@@ -617,6 +617,53 @@ func (q *Queries) MtoRemainingByLine(ctx context.Context) ([]MtoRemainingByLineR
 	return items, nil
 }
 
+const openBuySuggestions = `-- name: OpenBuySuggestions :many
+SELECT s.variant_id, s.site_id, s.quantity::text AS quantity, s.need_by,
+       coalesce(r.started_at, s.created_at)::timestamptz AS computed_at
+FROM manufacturing.suggestions s
+JOIN manufacturing.replenishment_runs r ON r.id = s.run_id
+WHERE s.status = 'open' AND s.kind = 'buy'
+  AND ($1::bigint IS NULL OR s.site_id = $1::bigint)
+ORDER BY s.site_id, s.variant_id
+`
+
+type OpenBuySuggestionsRow struct {
+	VariantID  int32
+	SiteID     int64
+	Quantity   string
+	NeedBy     pgtype.Date
+	ComputedAt time.Time
+}
+
+// OpenBuySuggestions is the open buy suggestions, of one site or every one,
+// each with the time its run started — before it read anything — for the
+// purchase demand (purchasing design A4).
+func (q *Queries) OpenBuySuggestions(ctx context.Context, siteID *int64) ([]OpenBuySuggestionsRow, error) {
+	rows, err := q.db.Query(ctx, openBuySuggestions, siteID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OpenBuySuggestionsRow
+	for rows.Next() {
+		var i OpenBuySuggestionsRow
+		if err := rows.Scan(
+			&i.VariantID,
+			&i.SiteID,
+			&i.Quantity,
+			&i.NeedBy,
+			&i.ComputedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const openReorderVariantsAt = `-- name: OpenReorderVariantsAt :many
 SELECT DISTINCT variant_id
 FROM manufacturing.orders

@@ -100,6 +100,11 @@ func Module() module.Module {
 		// Orders' ungated read of the kits' components (manufacturing phase
 		// 2 M145), resolved from the enabled modules only.
 		KitStructure: newKitStructure,
+		// The purchase demand (purchasing design A4): the stored buy
+		// suggestions, which replace Inventory's low stock as the proposals'
+		// source wherever Manufacturing is enabled.
+		PurchaseDemand:           newPurchaseDemand,
+		PurchaseDemandSupersedes: []string{"inventory"},
 	}
 }
 
