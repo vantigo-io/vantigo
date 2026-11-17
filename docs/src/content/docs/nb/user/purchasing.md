@@ -1,6 +1,6 @@
 ---
 title: Innkjøp
-description: Innkjøp-appen — listen over innkjøpsordrer og filtrene; lag en innkjøpsordre til en leverandør og et lagersted, med produktlinjer fylt ut fra leverandørvarene og tekstlinjer; send den på e-post, marker den som sendt eller send den på nytt; registrer leverandørens bekreftelse; endre en sendt ordre og les historikken; avslutt en linje eller hele ordren, gjenåpne den, kanseller den eller kopier den; PDF-en; leverandørene og hva hver selger — leverandørvarer, foretrukket leverandør og import av prisliste med CSV-kolonnene; innstillingene; dashbordkortet og produktsidens Leverandører-kort; varemottak — mottaksskjermen og skanning, mer eller mindre enn bestilt, ordrens varemottak, å angre et varemottak og å markere en tekst- eller tjenestelinje som levert; og det som kommer senere — forslag og fakturaavstemming.
+description: Innkjøp-appen — listen over innkjøpsordrer og filtrene; lag en innkjøpsordre til en leverandør og et lagersted, med produktlinjer fylt ut fra leverandørvarene og tekstlinjer; send den på e-post, marker den som sendt eller send den på nytt; registrer leverandørens bekreftelse; endre en sendt ordre og les historikken; avslutt en linje eller hele ordren, gjenåpne den, kanseller den eller kopier den; PDF-en; leverandørene og hva hver selger — leverandørvarer, foretrukket leverandør og import av prisliste med CSV-kolonnene; innkjøpsforslagene fra lav beholdning eller innkjøpsforslagene i Produksjon, og Lag ordrer med Bestill… fra de skjermbildene; innstillingene; dashbordkortet og produktsidens Leverandører-kort; varemottak — mottaksskjermen og skanning, mer eller mindre enn bestilt, ordrens varemottak, å angre et varemottak og å markere en tekst- eller tjenestelinje som levert; og det som kommer senere — fakturaavstemming.
 sidebar:
   order: 68
 sources:
@@ -17,17 +17,17 @@ I Innkjøp-appen bestiller du varer og tjenester fra leverandørene dine. En
 **leverandørvare** sier hva en leverandør selger av et av produktene dine, til hvilken
 pris, i hvilken innkjøpsenhet og med hvilken leveringstid.
 
-En innkjøpsordre flytter verken beholdning eller regnskap. Du bestiller og følger opp, og
-når varene kommer, [tar du dem imot](#ta-imot-varene), noe som legger dem på lager i Lager;
-forslag fra lav beholdning og å avstemme leverandørens faktura mot ordren kommer senere
-([Det som kommer senere](#det-som-kommer-senere)).
+En innkjøpsordre flytter verken beholdning eller regnskap. Du bestiller og følger opp,
+lager utkast til ordrer fra [innkjøpsforslag](#innkjøpsforslag), og når varene kommer,
+[tar du dem imot](#ta-imot-varene), noe som legger dem på lager i Lager; å avstemme
+leverandørens faktura mot ordren kommer senere ([Det som kommer senere](#det-som-kommer-senere)).
 Innkjøp kjøper fra leverandørene i registeret i [Regnskap](/nb/user/accounting/#leverandører)
 og bestiller produktene i [Produkter](/nb/user/products/) til et lagersted i
 [Lager](/nb/user/inventory/), så en installasjon med Innkjøp har alle tre.
 
 ## Appen og sidemenyen
 
-Sidemenyen har **Innkjøpsordrer** og **Leverandører** for alle med **Bruke Innkjøp**,
+Sidemenyen har **Innkjøpsordrer**, **Innkjøpsforslag** og **Leverandører** for alle med **Bruke Innkjøp**,
 **Motta** for alle med **Ta imot varer**, og **Innkjøpsinnstillinger** for dem som
 forvalter innstillingene for Innkjøp. Hva du kan gjøre,
 avhenger av rettighetene dine: å skrive ordrer, å sende dem og å vedlikeholde
@@ -346,6 +346,65 @@ lagrer ingenting. På en sendt ordre gir **Last ned PDF** PDF-en som ble lagret 
 sendt, eller sist sendt på nytt; en revidert er merket **Revidert**, en
 kansellering **Kansellert**.
 
+## Innkjøpsforslag
+
+**Innkjøpsforslag** i sidemenyen viser det som bør kjøpes inn nå, én rad per produkt og
+lagersted. Der [Produksjon](/nb/user/manufacturing/#påfyllingsforslag) er slått på, er
+radene innkjøpsforslagene fra siste påfyllingskjøring, som regner med det som produseres
+og det salgsordrene trenger; der den ikke er det, er de
+[listen over lav beholdning](/nb/user/inventory/#listen-over-lav-beholdning) i Lager. Et
+produkt Produksjon lager, foreslås aldri kjøpt inn. Linjen under listen sier hvilken av de
+to det er: *Fra innkjøpsforslagene i Produksjon.* eller *Fra lav beholdning i Lager.*
+
+Hver rad viser:
+
+- **Produkt** og **Lagersted**.
+- **Behov** — det som fortsatt skal kjøpes, i produktets enhet: behovet minus det som
+  allerede står på utkast til innkjøpsordrer for produktet og lagerstedet, og minus det som
+  er bestilt til lagerstedet siden forslagene ble beregnet. Når noe er trukket fra, sier
+  raden det: *33 trengs, 10 på utkast, 0 bestilt siden*. Et produkt som er dekket slik, er
+  ingen rad.
+- **Leverandør** — hver aktive leverandør med en leverandørvare for produktet, den
+  foretrukne først, med leverandørens varenummer. Velger du en annen, endres antall og pris.
+- **Antall** — i leverandørens innkjøpsenhet, rundet opp én gang: til hele innkjøpsenheter,
+  så til leverandørvarens minste antall, så til antall per bestilling (multippelen). Under står det samme i produktets
+  enhet. Du kan skrive et annet antall, mer enn 0 med høyst tre desimaler.
+- **Pris** — leverandørvarens pris per innkjøpsenhet, eller *Ingen pris*. En pris som ikke
+  er i leverandørens valuta, vises i oransje: ordrelinjen får ingen pris fra den.
+- **Bestill innen** — dagen det trengs, eller i dag, minus leverandørens leveringstid,
+  merket **Forsinket** når den er passert.
+
+Et produkt uten leverandørvare står for seg under **Uten leverandør**: det kan ikke
+bestilles her. Legg til en leverandørvare på leverandørens side
+([Leverandørvarer](#leverandørvarer)), så får det en leverandør i listen.
+
+### Lag ordrer fra forslag
+
+1. Kryss av radene som skal bestilles, og endre leverandør eller antall der du trenger det.
+2. Velg **Lag ordrer**. Knappen sier hvor mange rader som er krysset av: *Lag ordrer (3
+   rader)*.
+
+Det lages ett utkast til innkjøpsordre per leverandør og lagersted — eller, når du allerede
+har et utkast til den leverandøren og det lagerstedet, legges linjene til det eldste, der
+en linje med samme produkt i samme innkjøpsenhet får antallet lagt til. Hver linje får
+leverandørens varenummer, innkjøpsenhet, pris og forventet dag, slik en ny linje i
+redigeringen gjør ([Linjer](#linjer)). Siden lenker så til hvert utkast, *Utkast til Norsk
+Stål AS*: åpne det, sjekk det og send det ([Send ordren](#send-ordren)). Ingenting sendes
+fra forslagene, og ingenting bestilles av seg selv. Utkastets historikk viser **Linjer fra
+forslag**.
+
+Det som står på et utkast, trekkes fra forslagene med en gang, så to klikk bestiller ikke
+noe to ganger: når en avkrysset rad ikke lenger er foreslått — den står på et utkast eller
+er bestilt siden listen ble lastet — lages ingenting, siden sier det på raden og over
+listen, og laster listen på nytt.
+
+**Bestill…** på en rad i listen over lav beholdning i Lager og på et innkjøpsforslag i
+Produksjon åpner forslagene for det produktet og lagerstedet; **Vis alle** går tilbake til
+alle radene. Den vises når Innkjøp er slått på og du kan forvalte innkjøpsordrer.
+
+Å se forslagene krever **Bruke Innkjøp**; å lage ordrer fra dem krever i tillegg
+**Forvalte innkjøpsordrer**.
+
 ## Leverandører og leverandørvarene deres
 
 **Leverandører** lister leverandørene i registeret i Regnskap, med hvor mange
@@ -470,8 +529,8 @@ følgesedlene og merknadene fra ordrenes varemottak, og ordrenes lagrede PDF-er 
 
 | Rettighet | Lar deg |
 | --- | --- |
-| **Bruke Innkjøp** (`purchasing:access`) | Åpne appen og lese hver ordre, leverandør og leverandørvare, prisene medregnet, og laste ned PDF-ene. |
-| **Forvalte innkjøpsordrer** (`purchasing:orders-manage`) | Skrive og slette utkast, endre sendte ordrer, registrere bekreftelsen, avslutte en linje eller en ordre, gjenåpne og kopiere. |
+| **Bruke Innkjøp** (`purchasing:access`) | Åpne appen og lese hver ordre, leverandør og leverandørvare, prisene medregnet, og forslagene, og laste ned PDF-ene. |
+| **Forvalte innkjøpsordrer** (`purchasing:orders-manage`) | Skrive og slette utkast, lage ordrer fra forslag, endre sendte ordrer, registrere bekreftelsen, avslutte en linje eller en ordre, gjenåpne og kopiere. |
 | **Sende innkjøpsordrer** (`purchasing:orders-send`) | Sende, markere som sendt, sende på nytt og kansellere. |
 | **Ta imot varer** (`purchasing:receive`) | Se **Motta** — ordrene som skal tas imot —, ta imot varer på innkjøpsordrer, angre et varemottak, og markere en tekst- eller tjenestelinje som levert. Alene, uten **Bruke Innkjøp**, viser den ingen priser. |
 | **Forvalte leverandørvarer** (`purchasing:supplier-items-manage`) | Legge til, endre, slette og importere leverandørvarer. |
@@ -482,8 +541,6 @@ i en rolle; den gjør ingenting ennå, og tas i bruk når fakturaavstemmingen ko
 
 ## Det som kommer senere
 
-- **Forslag** — utkast til ordrer laget fra lav beholdning og fra innkjøpsforslagene i
-  Produksjon, per foretrukket leverandør.
 - **Fakturaavstemming** — leverandørens faktura i Regnskap avstemt mot ordren, og det som
   avviker.
 

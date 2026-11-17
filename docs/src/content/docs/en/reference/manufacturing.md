@@ -2103,6 +2103,19 @@ adds no second one. The skip is read on the pool; one made since — by a person
 at once — is caught under `LockVariants` by the create above (`reorder_open`). A refusal
 is logged and leaves the suggestion open.
 
+### The purchase demand
+
+Manufacturing provides `contracts.PurchaseDemand` (`Module.PurchaseDemand`, purchasing
+design P31, A4) and supersedes Inventory's (`Module.PurchaseDemandSupersedes`): where it
+is enabled, its open **buy** suggestions are the one source of Purchasing's
+[proposals](/en/reference/purchasing/#proposals), and a make suggestion is never proposed
+for purchase. `Demand(ctx, siteID)` answers each open buy suggestion, of one site or every
+one, with its stored quantity — rounded to the placement's multiple, never to a packaging —
+its need-by day, the source `replenishment` and the time its run **started**, before it
+read anything: Purchasing subtracts what was sent after that. It reads on the pool and
+checks no permission. A buy row still refuses an order here (`bom_required`): it is
+bought in Purchasing, through **Order…** on the row.
+
 ### Live
 
 The topic **`manufacturing.suggestions:<siteId>`** (`manufacturing:access`), event

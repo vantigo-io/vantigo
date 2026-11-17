@@ -1376,9 +1376,12 @@ da med *En produksjonsordre fra et tidligere forslag er åpen*. Å opprette ordr
 produksjonsordrer**.
 
 **Avvis** skjuler et forslag til neste kjøring, som foreslår det igjen hvis det fortsatt
-trengs. Kjøpe-rader kan ikke gjøres om til innkjøpsordrer ennå — Innkjøp tar dem som forslag i en
-senere leveranse — men
-**Eksporter innkjøpsforslag** laster dem ned som en CSV-fil å bestille fra.
+trengs. En kjøpe-rad kjøpes inn, den lages ikke: når Innkjøp er slått på og du kan
+forvalte innkjøpsordrer, har den **Bestill…**, som åpner
+[innkjøpsforslagene](/nb/user/purchasing/#innkjøpsforslag) i Innkjøp for produktet på
+lagerstedet — kjøpe-radene er de forslagene, minus det som står på utkast til
+innkjøpsordrer og det som er bestilt siden kjøringen. **Eksporter innkjøpsforslag** laster
+dem ned som en CSV-fil å bestille fra.
 
 ### Automatisk oppretting
 

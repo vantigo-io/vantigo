@@ -882,6 +882,15 @@ til et helt antall av den **minste** pakningen, og raden sier det under antallet
 - *25 trengs, rundet opp til 2 kartonger à 15 = 30, 5 over maksbeholdningen på 40* — når
   avrundingen går forbi maksbeholdningen, med hvor mye.
 
+### Bestill fra listen
+
+Når Innkjøp er slått på og du kan forvalte innkjøpsordrer, slutter hver rad med
+**Bestill…**: den åpner [innkjøpsforslagene](/nb/user/purchasing/#innkjøpsforslag) i
+Innkjøp for varen på det lagerstedet, der du velger leverandør og antall i
+innkjøpsenheten og lager et utkast til innkjøpsordre. Der Produksjon er slått på, kommer
+forslagene fra innkjøpsforslagene der og ikke fra denne listen, så en vare som produseres,
+kan mangle et forslag.
+
 ### Opprett en overføring fra listen
 
 Med **Overføre varer** har hver rad en avkrysningsboks. Kryss av radene for **ett**

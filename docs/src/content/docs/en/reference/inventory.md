@@ -138,6 +138,17 @@ Manufacturing's D1 M43a).
 
 ### Contracts provided
 
+**`contracts.PurchaseDemand`** (`Module.PurchaseDemand`, purchasing design P31, A4) is
+the low-stock list as what should be bought, the source of Purchasing's
+[proposals](/en/reference/purchasing/#proposals) where Manufacturing is not enabled —
+Manufacturing supersedes it (`Module.PurchaseDemandSupersedes`). `Demand(ctx, siteID)`
+runs the [low-stock list](#the-low-stock-list)'s statement and rule, the open purchases
+joined in, a page of 1,000 at a time, and answers per low placement at an active site its
+**needed** quantity rounded up to the placement's multiple and **not** to a packaging —
+Purchasing rounds once, to its supplier item — with no day needed (now), the source
+`low_stock` and the time it was computed, taken before the open purchases are read. It
+reads on the pool, checks no permission and refreshes no snapshot.
+
 The module fills one many-provider slot, **`Module.VariantReferences`** with a
 **`contracts.VariantReferenceHolder`** (I23, rule 20 of the
 [module boundaries](/en/contributing/module-boundaries/)). Products asks every holder
