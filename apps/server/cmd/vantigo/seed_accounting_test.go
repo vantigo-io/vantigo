@@ -155,7 +155,7 @@ func TestRun_SeedBooksTheDemo(t *testing.T) {
 		t.Errorf("expected the purchasing demo's log line, got: %s", stdout)
 	}
 	expect("the purchase orders' states", `SELECT string_agg(status, ',' ORDER BY status) FROM purchasing.orders`,
-		"cancelled,closed,draft,sent,sent,sent")
+		"cancelled,closed,draft,partially_received,received,sent")
 	expect("the supplier items", `SELECT count(*)::text FROM purchasing.supplier_items`, "6")
 	expect("the confirmed orders", `SELECT count(*)::text FROM purchasing.orders WHERE supplier_reference IS NOT NULL`, "1")
 	expect("the closed lines", `SELECT count(*)::text FROM purchasing.order_lines WHERE closed_at IS NOT NULL`, "2")
@@ -163,12 +163,22 @@ func TestRun_SeedBooksTheDemo(t *testing.T) {
 	expect("the tube on order at the workshop", `
 		SELECT sum(l.quantity - l.received)::text FROM purchasing.order_lines l JOIN purchasing.orders o ON o.id = l.order_id
 		JOIN products.product_variants v ON v.id = l.variant_id JOIN inventory.sites s ON s.id = o.site_id
-		WHERE v.sku = 'VRK-ROR-40' AND s.code = 'VERK' AND o.status IN ('sent', 'partially_received') AND l.closed_at IS NULL`, "180.000")
+		WHERE v.sku = 'VRK-ROR-40' AND s.code = 'VERK' AND o.status IN ('sent', 'partially_received') AND l.closed_at IS NULL`, "60.000")
+	// Receipts (delivery B): the tube in part, the paint into a lot, the
+	// plywood received and undone — each posted through Inventory's ledger.
+	if !strings.Contains(stdout, "purchasing receipts demo seeded") {
+		t.Errorf("expected the receipts demo's log line, got: %s", stdout)
+	}
+	expect("the receipts", `SELECT count(*) || '/' || count(undone_at) FROM purchasing.receipts`, "3/1")
+	expect("the receipts' movements", `SELECT count(*)::text FROM inventory.movements WHERE source_module = 'purchasing' AND kind IN ('receipt', 'receipt_reversal')`, "4")
+	expect("the paint's lot", `SELECT l.number || '/' || (l.expiry IS NOT NULL)::text FROM inventory.lots l
+		JOIN purchasing.receipt_lines rl ON rl.lot_number = l.number`, "LAKK-7016-2611/true")
 
 	counts := func() string {
 		return value(`SELECT (SELECT count(*) FROM accounting.vouchers) || '/' || (SELECT count(*) FROM accounting.postings)
 			|| '/' || (SELECT count(*) FROM accounting.statement_lines) || '/' || (SELECT count(*) FROM accounting.suppliers)
-			|| '/' || (SELECT count(*) FROM purchasing.orders) || '/' || (SELECT count(*) FROM purchasing.supplier_items)`)
+			|| '/' || (SELECT count(*) FROM purchasing.orders) || '/' || (SELECT count(*) FROM purchasing.supplier_items)
+			|| '/' || (SELECT count(*) FROM purchasing.receipts)`)
 	}
 	before := counts()
 	code2, stdout2, stderr2 := runCapture("seed")
@@ -221,7 +231,7 @@ func TestRun_SeedPurchasingAddsTheSentOrdersOnALaterRun(t *testing.T) {
 	if code, stdout, stderr := runCapture("seed"); code != 0 {
 		t.Fatalf("seed with a store failed with exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}
-	if got := value(states); got != "cancelled,closed,draft,sent,sent,sent" {
+	if got := value(states); got != "cancelled,closed,draft,partially_received,received,sent" {
 		t.Errorf("with a store the orders are %q", got)
 	}
 	if got := value(parts); got != "3/6" {
