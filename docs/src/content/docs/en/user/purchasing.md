@@ -29,10 +29,12 @@ Purchasing.
 ## The app and its sidebar
 
 The sidebar has **Purchase orders** and **Suppliers** for everyone with **Use Purchasing**,
-and **Purchasing settings** for those who manage the Purchasing settings. What you can do depends on
+**Receive** for everyone with **Receive goods**, and **Purchasing settings** for those who
+manage the Purchasing settings. What you can do depends on
 your permissions: writing orders, sending them and keeping the supplier items are
 separate permissions, so a colleague may see buttons you do not
-([Permissions](#permissions)). Everyone with **Use Purchasing** sees the prices.
+([Permissions](#permissions)). Everyone with **Use Purchasing** sees the prices; someone
+with **Receive goods** alone sees **Receive** and no prices.
 
 ## The order list
 
@@ -180,18 +182,26 @@ confirmation is a note on the order; it does not change its status. It ends the 
 
 ## Receive the goods
 
-When the goods arrive, choose **Receive** on a sent or partially received order. It needs
+When the goods arrive, choose **Receive** on a sent or partially received order — or, at
+the goods reception, **Receive** in the sidebar: it lists every sent order with goods
+still to come, the earliest expected first, with the supplier, the receiving site, the
+expected day, **Late** when it is overdue, and how many of its goods lines are left —
+*2 of 3* —; choose the order's number or **Receive** on its row. Receiving needs
 **Receive goods** alone, so someone at the goods reception can receive without managing
-orders. The screen, **Receive order 4501**, shows no prices. It has a row for each open
+orders or seeing what they cost. The screen, **Receive order 4501**, shows no prices. It has a row for each open
 goods line — *Open 60 of 180 m, 120 received* — with:
 
-- the **Quantity**, filled in with what is still open on the line, in the product's unit;
-  **Receive … in** switches it to the line's purchase packaging when the line has one;
+- the **Quantity**, filled in with what is still open on the line, in the product's unit,
+  with a decimal point or comma as you type it; **Receive … in** shows it in the line's
+  purchase packaging when the line has one — what you typed stays as you typed it, so
+  switching back loses nothing, and a quantity typed in the packaging is received as that
+  many packagings;
 - the **Location** on the receiving site the goods are put on: the item's
   [primary location](/en/user/inventory/#set-an-items-primary-location-and-reorder-point)
   at the site when the item lies in stock there, else the location where most of it lies,
   else the site itself;
-- for an item kept in lots, the **Lot number** — left empty, Inventory numbers the lot —,
+- for an item kept in lots, the **Lot number** — left empty with a supplier's lot or a
+  date given, Inventory numbers the lot; with nothing given the receipt asks for the lot —,
   the **Supplier's lot**, the **Production date**, **Best before** and **Expiry**; a date
   left empty follows from the product's days, as on
   [Inventory's receipt](/en/user/inventory/#lots-on-a-receipt-a-move-and-an-adjustment);
@@ -206,15 +216,20 @@ delivery note — and a note belong to the whole receipt.
 Choose **Receive**. The receipt gets the next number in a series of its own — *Receipt 12
 is posted.* — and the goods are put on their locations in one stock movement of kind
 **Receipt** in Inventory, which links back to the order. Receiving posts nothing to the
-books. An item [inspected on receipt](/en/user/inventory/#inspect-on-receipt) has its lots
+books. When you hold **Receive goods** without **Use Purchasing**, you are taken back to
+**Receive** after the receipt; otherwise to the order. An item [inspected on receipt](/en/user/inventory/#inspect-on-receipt) has its lots
 put in quarantine, as on Inventory's own receipt, and a product discontinued since it was
 ordered is still received. What is received stops counting as *on order* in Inventory at
 once.
 
 Choosing **Receive** twice, or trying again after a lost connection, does not receive the
 goods twice: the screen sends the same receipt again, and Purchasing answers with the
-first. When two people receive the same order at the same moment, one waits for the
-other, and the second counts what the first received.
+first — even when that first receipt has since finished the order or been undone. When
+two people receive the same order at the same moment, one waits for the other, and the
+second counts what the first received.
+
+When the supplier is a person, the stock movement names neither them nor their delivery
+note: Inventory keeps its movements when a supplier's personal data is erased.
 
 ### Scan the goods
 
@@ -224,8 +239,13 @@ screen to counting: every filled-in quantity is cleared, and each scan then adds
 line — one packaging for a packaging's barcode, one of the unit for the item's own. A
 GS1-128 code, such as a pallet label's, also fills in the lot number and the production,
 best-before and expiry dates; a second lot of the same line opens a split row of its own,
-and a serial number is added to the row's serial numbers. A code that names no open line
-of the order says **Not on this order**.
+and a serial number is added to the row's serial numbers. Fields of the label the screen
+does not use — a net weight, a pallet's SSCC, a count — are skipped. When the lot cannot be
+read for sure — the scanner left out the separator after it, so what follows might be part
+of it — the item is counted on a row without a lot and the screen asks you to type the
+lot. A code without a serial number on an item kept in serial numbers says **Scan the
+serial number** and counts nothing. A code that names no open line of the order says
+**Not on this order**.
 
 ### More or less than ordered
 
@@ -235,9 +255,11 @@ ordered.
 
 Less is fine. The order is **Partially received**, the rest stays open on the lines for a
 later receipt, and no back order is made; when the rest will not come, **Close line** or
-**Close** ends it. When every goods line is received in full or closed and every text and
-service line is marked delivered, the order is **Received**. A closed order is not
-received: **Reopen** it first.
+**Close** ends it. When nothing is left open the order ends, whichever step finished it: it
+is **Received** when every goods line came in full and every text and service line is
+marked delivered, and **Closed** when a line was closed with something still missing —
+also when the last receipt or delivered mark comes after that line was closed. A closed
+order is not received: **Reopen** it first.
 
 ### The order's receipts
 
@@ -275,11 +297,13 @@ Receiving, undoing and marking a line delivered need **Receive goods**.
 ## Close a line or an order
 
 - **Close line** ends one line: what is left on it will not come. When no line is left
-  open, the order is closed — or **Received**, when everything on it was received.
+  open, the order is closed — or **Received**, when everything on it was received or
+  delivered.
 - **Close** ends a sent order with what is left on it: every open line is closed and the
   order is **Closed**. What was left stops counting as *on order* in Inventory.
 - **Reopen** opens a closed order again, with the lines its closing ended; a line you
-  closed by itself before stays closed.
+  closed by itself before stays closed. The order is then partially received when
+  anything on it is received or marked delivered, else sent.
 
 Closing needs **Manage purchase orders**.
 
@@ -428,8 +452,9 @@ Accounting; it can be made inactive, and its open orders stay. A supplier who is
 is not anonymised while a draft, sent or partially received order names them. When a
 person supplier is anonymised, their name, address, e-mail and contact are removed from
 the orders, the addresses, messages and refusals from the orders' mailings, and the
-contact and notes from the orders' history — which keeps that they changed —, and the
-orders' stored PDFs are deleted.
+contact and notes from the orders' history — which keeps that they changed —, the
+delivery notes and notes from the orders' receipts, and the orders' stored PDFs are
+deleted.
 
 ## Permissions
 
@@ -438,7 +463,7 @@ orders' stored PDFs are deleted.
 | **Use Purchasing** (`purchasing:access`) | Open the app and read every order, supplier and supplier item, prices included, and download the PDFs. |
 | **Manage purchase orders** (`purchasing:orders-manage`) | Write and delete drafts, change sent orders, record the confirmation, close a line or an order, reopen and copy. |
 | **Send purchase orders** (`purchasing:orders-send`) | Send, mark as sent, send again and cancel. |
-| **Receive goods** (`purchasing:receive`) | Receive goods against purchase orders, undo a receipt, and mark a text or service line delivered. |
+| **Receive goods** (`purchasing:receive`) | See **Receive** — the orders to receive —, receive goods against purchase orders, undo a receipt, and mark a text or service line delivered. Alone, without **Use Purchasing**, it shows no prices. |
 | **Manage supplier items** (`purchasing:supplier-items-manage`) | Add, change, delete and import supplier items. |
 | **Manage Purchasing settings** (`purchasing:settings`) | The settings. |
 
