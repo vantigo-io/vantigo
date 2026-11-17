@@ -88,7 +88,7 @@ const (
 // awaitRegistration answers the registration a racing replay of the same
 // request records, waiting for it up to replayWait; nil when none comes —
 // a replay that died between Accounting's commit and its own (§14,
-// question 12).
+// question 14).
 func (s *server) awaitRegistration(ctx context.Context, id [16]byte, orderID int64, hash string) (*store.PurchasingInvoiceRegistration, error) {
 	deadline := time.Now().Add(replayWait)
 	for {
