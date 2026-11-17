@@ -21,7 +21,7 @@ import { IconAlertCircle, IconPaperclip, IconPlus, IconTrash } from "@tabler/ico
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { ContentSkeleton, EmptyState, PageHeader } from "@vantigo/frontend-shell";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import {
   type AccountingMeta,
   type AccountingSupplierInvoice,
@@ -230,7 +230,12 @@ const PurchaseMatchBadge = ({ invoice }: { invoice: AccountingSupplierInvoice })
 export const NewSupplierInvoicePage = () => <BooksGate>{(meta) => <InvoiceForm meta={meta} />}</BooksGate>;
 
 /** A supplier invoice's page: a draft's form, or what is posted, with its payments. */
-export const SupplierInvoicePage = () => {
+/**
+ * One supplier invoice. `extraPanels` is the host's slot for what other
+ * modules show beside the invoice — Purchasing's match, for one — given the
+ * invoice's id once it has loaded; Accounting never names them.
+ */
+export const SupplierInvoicePage = ({ extraPanels }: { extraPanels?: (invoiceId: number) => ReactNode } = {}) => {
   const { supplierInvoiceId } = useParams({ strict: false }) as { supplierInvoiceId: string };
   const id = Number(supplierInvoiceId);
   const { t } = useAccountingFormat();
@@ -244,10 +249,15 @@ export const SupplierInvoicePage = () => {
           </Alert>
         ) : invoice.isPending ? (
           <ContentSkeleton rows={6} />
-        ) : invoice.data.state === "draft" && meta.canPost ? (
-          <InvoiceForm meta={meta} invoice={invoice.data} key={invoice.data.revision} />
         ) : (
-          <PostedInvoice meta={meta} invoice={invoice.data} />
+          <Stack gap="lg">
+            {invoice.data.state === "draft" && meta.canPost ? (
+              <InvoiceForm meta={meta} invoice={invoice.data} key={invoice.data.revision} />
+            ) : (
+              <PostedInvoice meta={meta} invoice={invoice.data} />
+            )}
+            {extraPanels?.(invoice.data.id)}
+          </Stack>
         )
       }
     </BooksGate>
