@@ -797,8 +797,8 @@ The server parses Markdown on import with [goldmark](https://github.com/yuin/gol
 ## API keys
 
 `resolveKnowledgeLinks` writes nothing and is marked `x-vantigo-api: read`: a read-only API
-key may call it. `knowledge:manage` cannot be delegated, so no key holds it. A key's request
-carries a `Via`, so search leaves hidden articles out for it and their text answers `404`,
-as for the Assistant and an agent. See [integration
-users](/en/admin/authentication/#integration-users), and the marks' rules in [module
-boundaries](/en/contributing/module-boundaries/#the-rules).
+key may call it. `knowledge:manage` cannot be delegated, so no key holds it, and
+`emptyKnowledgeTrash` is `x-vantigo-api: never`. A key's request carries a `Via`, so search
+leaves hidden articles out for it and their text answers `404`, as for the Assistant and an
+agent. See [integration users](/en/admin/authentication/#integration-users), and the marks'
+rules in [module boundaries](/en/contributing/module-boundaries/#the-rules).

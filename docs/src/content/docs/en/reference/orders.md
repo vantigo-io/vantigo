@@ -1999,5 +1999,7 @@ The full contract, with every schema, is `openapi/orders.yaml`, published in the
 
 `estimateShipping` writes nothing and is marked `x-vantigo-api: read`: a read-only API key
 may call it. `orders:settings` and `orders:carriers-manage` cannot be delegated, so no key
-holds them. See [integration users](/en/admin/authentication/#integration-users), and the
+holds them, and every operation that needs one is `x-vantigo-api: never`: the settings,
+quote templates, customer and product warnings, carrier accounts and the sites' carrier
+defaults. See [integration users](/en/admin/authentication/#integration-users), and the
 marks' rules in [module boundaries](/en/contributing/module-boundaries/#the-rules).

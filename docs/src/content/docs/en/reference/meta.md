@@ -416,7 +416,8 @@ The design is `docs/superpowers/specs/2026-11-05-communications-messenger-design
 
 ## API keys
 
-Both webhook operations (`getMetaWebhook`, `postMetaWebhook`) are `x-vantigo-api: never`:
-Meta calls them with its own signature. See [integration
+Every Meta operation is `x-vantigo-api: never`: the webhook (`getMetaWebhook`,
+`postMetaWebhook`), which Meta calls with its own signature, and the connection's settings,
+pages and subscriptions, which are an Owner's. See [integration
 users](/en/admin/authentication/#integration-users), and the marks' rules in [module
 boundaries](/en/contributing/module-boundaries/#the-rules).
