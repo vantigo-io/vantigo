@@ -887,6 +887,28 @@ Each question takes R §7's default. An overturn changes the following:
   anonymous surface is calendar, communications' public media, Entra, Google, identity,
   the invoices pay page and Meta, every one marked `never`.
 
+- **K53 (amends K6, K7), from delivery 0's reviews: what moves money or reveals personal
+  data in bulk is `never` though its permission can be delegated.** Staff's personal data
+  in clear and its writes, the payroll export and every account operation; Invoices'
+  seller settings (its bank account), Vipps, the access point and the bank feed. Every
+  operation naming an `APINever` permission is marked `never` too, which a test in
+  `internal/integration` holds to the composed catalog (51 operations at the time). The
+  owner may open any of these later, operation by operation.
+- **K54 (amends K5): the router refuses a key behind a rule it never meets.** `Rule.API`
+  is `APIRefused` for `session`, `policy` and `scim` operations whatever their mark, as
+  the lint refuses `allowed` or `read` there.
+- **K55 (amends K3): the role licence names one integration.** `vantigo.integration_roles`
+  is set to the integration's id, and an access-group membership is refused for an
+  integration even under it. More tables that name a user get 00141's guard: PINs,
+  badges, assistant grants, expected links and the accounts they replace, password reset
+  tokens and recovery codes.
+- **K56 (for delivery A): a role an integration holds is not a steward's to widen.**
+  A delegate who stewards a role could add permissions to it, which widens every key of
+  an integration holding it. Delivery A decides between refusing a stewarded role to an
+  integration and refusing a steward's edit of a role an integration holds. It also
+  sweeps the record-level assignments (an owner, a member, an assignee) that a lookup by
+  id would let an integration take.
+
 ## 15. Revision log
 
 - **Revision 1, 2026-11-17.** First version, from R.
@@ -942,4 +964,4 @@ Each question takes R §7's default. An overturn changes the following:
   - the cache bound;
   - which role writes are guarded.
 
-  Delivery 0 adds K48 to K52, what it built differently.
+  Delivery 0 adds K48 to K56: what it built differently, and its reviews.
