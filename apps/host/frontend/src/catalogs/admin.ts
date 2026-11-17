@@ -597,6 +597,48 @@ export const hostPermissionTranslationKeys = {
     displayNameKey: "admin.permission.knowledgeManage",
     descriptionKey: "admin.permission.knowledgeManageDescription",
   },
+  "purchasing:access": {
+    moduleKey: "admin.permission.module.purchasing",
+    categoryKey: "admin.permission.category.purchasing",
+    displayNameKey: "admin.permission.purchasingAccess",
+    descriptionKey: "admin.permission.purchasingAccessDescription",
+  },
+  "purchasing:orders-manage": {
+    moduleKey: "admin.permission.module.purchasing",
+    categoryKey: "admin.permission.category.purchasing",
+    displayNameKey: "admin.permission.purchasingOrdersManage",
+    descriptionKey: "admin.permission.purchasingOrdersManageDescription",
+  },
+  "purchasing:orders-send": {
+    moduleKey: "admin.permission.module.purchasing",
+    categoryKey: "admin.permission.category.purchasing",
+    displayNameKey: "admin.permission.purchasingOrdersSend",
+    descriptionKey: "admin.permission.purchasingOrdersSendDescription",
+  },
+  "purchasing:receive": {
+    moduleKey: "admin.permission.module.purchasing",
+    categoryKey: "admin.permission.category.purchasing",
+    displayNameKey: "admin.permission.purchasingReceive",
+    descriptionKey: "admin.permission.purchasingReceiveDescription",
+  },
+  "purchasing:supplier-items-manage": {
+    moduleKey: "admin.permission.module.purchasing",
+    categoryKey: "admin.permission.category.purchasing",
+    displayNameKey: "admin.permission.purchasingSupplierItemsManage",
+    descriptionKey: "admin.permission.purchasingSupplierItemsManageDescription",
+  },
+  "purchasing:invoices-match": {
+    moduleKey: "admin.permission.module.purchasing",
+    categoryKey: "admin.permission.category.purchasing",
+    displayNameKey: "admin.permission.purchasingInvoicesMatch",
+    descriptionKey: "admin.permission.purchasingInvoicesMatchDescription",
+  },
+  "purchasing:settings": {
+    moduleKey: "admin.permission.module.purchasing",
+    categoryKey: "admin.permission.category.purchasing",
+    displayNameKey: "admin.permission.purchasingSettings",
+    descriptionKey: "admin.permission.purchasingSettingsDescription",
+  },
   "accounting:read": {
     moduleKey: "admin.permission.module.accounting",
     categoryKey: "admin.permission.category.accounting",
@@ -915,6 +957,7 @@ const en = {
   "admin.permission.module.inventory": "Inventory",
   "admin.permission.module.orders": "Orders",
   "admin.permission.module.knowledge": "Knowledge",
+  "admin.permission.module.purchasing": "Purchasing",
   "admin.permission.module.accounting": "Accounting",
   "admin.permission.module.manufacturing": "Manufacturing",
   "admin.permission.category.administration": "Administration",
@@ -942,6 +985,7 @@ const en = {
   "admin.permission.category.inventory": "Inventory",
   "admin.permission.category.orders": "Orders",
   "admin.permission.category.knowledge": "Knowledge",
+  "admin.permission.category.purchasing": "Purchasing",
   "admin.permission.category.accounting": "Accounting",
   "admin.permission.category.manufacturing": "Manufacturing",
   "admin.permission.identityManage": "Manage identity",
@@ -1185,6 +1229,27 @@ const en = {
   "admin.permission.knowledgeManage": "Administer Knowledge",
   "admin.permission.knowledgeManageDescription":
     "See and change the access of every article that is not private, restore anyone's trashed article and empty the trash. Private articles stay private.",
+  "admin.permission.purchasingAccess": "Use Purchasing",
+  "admin.permission.purchasingAccessDescription":
+    "See the Purchasing app and read purchase orders, receipts and supplier items.",
+  "admin.permission.purchasingOrdersManage": "Manage purchase orders",
+  "admin.permission.purchasingOrdersManageDescription":
+    "Write draft purchase orders, change sent ones, record the supplier's confirmation, close and reopen them, and make orders from proposals.",
+  "admin.permission.purchasingOrdersSend": "Send purchase orders",
+  "admin.permission.purchasingOrdersSendDescription":
+    "Send purchase orders, mark them as sent, send them again and cancel them.",
+  "admin.permission.purchasingReceive": "Receive goods",
+  "admin.permission.purchasingReceiveDescription":
+    "Receive goods against purchase orders, undo a receipt and mark a text line delivered.",
+  "admin.permission.purchasingSupplierItemsManage": "Manage supplier items",
+  "admin.permission.purchasingSupplierItemsManageDescription":
+    "Write and import supplier items: what each supplier sells, at what price.",
+  "admin.permission.purchasingInvoicesMatch": "Match supplier invoices",
+  "admin.permission.purchasingInvoicesMatchDescription":
+    "Match and unmatch supplier invoices to purchase orders, and read what is received and not invoiced.",
+  "admin.permission.purchasingSettings": "Manage Purchasing settings",
+  "admin.permission.purchasingSettingsDescription":
+    "Change the settings: the order series, the default site, the mail channel, the order text and the delivery addresses.",
   "admin.permission.accountingRead": "Use Accounting",
   "admin.permission.accountingReadDescription":
     "See the Accounting app: the chart, the tax codes, every voucher, the open items and every report.",
@@ -1696,6 +1761,7 @@ const nb: { [Key in keyof typeof en]: string } = {
   "admin.permission.module.inventory": "Lager",
   "admin.permission.module.orders": "Ordre",
   "admin.permission.module.knowledge": "Kunnskap",
+  "admin.permission.module.purchasing": "Innkjøp",
   "admin.permission.module.accounting": "Regnskap",
   "admin.permission.module.manufacturing": "Produksjon",
   "admin.permission.category.administration": "Administrasjon",
@@ -1723,6 +1789,7 @@ const nb: { [Key in keyof typeof en]: string } = {
   "admin.permission.category.inventory": "Lager",
   "admin.permission.category.orders": "Ordre",
   "admin.permission.category.knowledge": "Kunnskap",
+  "admin.permission.category.purchasing": "Innkjøp",
   "admin.permission.category.accounting": "Regnskap",
   "admin.permission.category.manufacturing": "Produksjon",
   "admin.permission.identityManage": "Administrer identitet",
@@ -1973,6 +2040,27 @@ const nb: { [Key in keyof typeof en]: string } = {
   "admin.permission.knowledgeManage": "Administrere Kunnskap",
   "admin.permission.knowledgeManageDescription":
     "Se og endre tilgangen til alle artikler som ikke er private, gjenopprette andres artikler fra papirkurven og tømme papirkurven. Private artikler forblir private.",
+  "admin.permission.purchasingAccess": "Bruke Innkjøp",
+  "admin.permission.purchasingAccessDescription":
+    "Se Innkjøp-appen og lese innkjøpsordrer, varemottak og leverandørvarer.",
+  "admin.permission.purchasingOrdersManage": "Forvalte innkjøpsordrer",
+  "admin.permission.purchasingOrdersManageDescription":
+    "Skrive utkast til innkjøpsordrer, endre sendte, registrere leverandørens bekreftelse, avslutte og gjenåpne dem, og lage ordrer fra forslag.",
+  "admin.permission.purchasingOrdersSend": "Sende innkjøpsordrer",
+  "admin.permission.purchasingOrdersSendDescription":
+    "Sende innkjøpsordrer, markere dem som sendt, sende dem på nytt og kansellere dem.",
+  "admin.permission.purchasingReceive": "Ta imot varer",
+  "admin.permission.purchasingReceiveDescription":
+    "Ta imot varer på innkjøpsordrer, angre et varemottak og markere en tekstlinje som levert.",
+  "admin.permission.purchasingSupplierItemsManage": "Forvalte leverandørvarer",
+  "admin.permission.purchasingSupplierItemsManageDescription":
+    "Skrive og importere leverandørvarer: hva hver leverandør selger, og til hvilken pris.",
+  "admin.permission.purchasingInvoicesMatch": "Avstemme leverandørfakturaer",
+  "admin.permission.purchasingInvoicesMatchDescription":
+    "Koble leverandørfakturaer til innkjøpsordrer og fjerne koblingen, og lese hva som er mottatt og ikke fakturert.",
+  "admin.permission.purchasingSettings": "Forvalte innstillinger for Innkjøp",
+  "admin.permission.purchasingSettingsDescription":
+    "Endre innstillingene: ordreserien, standard lagersted, e-postkanalen, teksten på ordren og leveringsadressene.",
   "admin.permission.accountingRead": "Bruke Regnskap",
   "admin.permission.accountingReadDescription":
     "Se Regnskap-appen: kontoplanen, mva-kodene, alle bilag, de åpne postene og alle rapporter.",

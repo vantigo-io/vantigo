@@ -20,6 +20,7 @@ const allModules: ModuleKey[] = [
   "planning",
   "products",
   "projects",
+  "purchasing",
   "staff",
   "time",
 ];
@@ -762,6 +763,68 @@ describe("AppSpotlight navigation authorization", () => {
     expect(navigateMock).toHaveBeenCalledWith(
       expect.objectContaining({ to: "/knowledge/articles/$articleId", params: { articleId: hit.id } }),
     );
+  });
+
+  // Purchase orders (purchasing design P23) are found by number and by the
+  // supplier's reference, for a holder of purchasing:access while the module is on.
+  it("finds purchase orders by number or the supplier's reference for purchasing:access", async () => {
+    const order = { id: 501, number: 3001, supplierName: "Skruer AS", supplierReference: "SO-9" };
+    const fetchMock = vi.fn((input: RequestInfo | URL) =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify(
+            String(input).includes("/api/v1/purchasing/orders") ? { items: [order], total: 1 } : paginated([]),
+          ),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const onNavigate = vi.fn();
+    renderSpotlight(["purchasing:access"], false, false, onNavigate, ["purchasing"]);
+
+    await enterSearch("SO-9");
+
+    await waitFor(() => expect(screen.getByText("3001 — Skruer AS", { exact: true })).toBeInTheDocument());
+    expect(screen.getByText("Purchase order · the supplier's reference SO-9", { exact: true })).toBeInTheDocument();
+    expect(fetchMock.mock.calls.map(([input]) => String(input))).toContain(
+      "/api/v1/purchasing/orders?q=SO-9&pageSize=5",
+    );
+    fireEvent.click(screen.getByText("3001 — Skruer AS", { exact: true }));
+    expect(onNavigate).toHaveBeenCalledTimes(1);
+    expect(navigateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ to: "/purchasing/orders/$orderId", params: { orderId: "501" } }),
+    );
+  });
+
+  it("does not search purchase orders without purchasing:access or with the module off", async () => {
+    for (const [permissions, modules] of [
+      [["customers:view"], ["purchasing", "customers"]],
+      [["purchasing:access", "customers:view"], ["customers"]],
+    ] as [string[], ModuleKey[]][]) {
+      const fetchMock = vi.fn<(input: RequestInfo | URL) => Promise<Response>>(() =>
+        Promise.resolve(
+          new Response(JSON.stringify(paginated([])), { status: 200, headers: { "Content-Type": "application/json" } }),
+        ),
+      );
+      vi.stubGlobal("fetch", fetchMock);
+      renderSpotlight(permissions, false, false, undefined, modules);
+      await enterSearch("SO-9");
+      await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+      expect(fetchMock.mock.calls.map(([input]) => String(input)).some((url) => url.includes("/purchasing/"))).toBe(
+        false,
+      );
+      cleanup();
+      spotlight.close();
+    }
+  });
+
+  it("opens the editor from New purchase order for purchasing:orders-manage with the app", async () => {
+    const onNavigate = vi.fn();
+    renderSpotlight(["purchasing:access", "purchasing:orders-manage"], false, false, onNavigate, ["purchasing"]);
+    fireEvent.click(await waitFor(() => screen.getByText("New purchase order", { exact: true })));
+    expect(onNavigate).toHaveBeenCalledTimes(1);
+    expect(navigateMock).toHaveBeenCalledWith(expect.objectContaining({ to: "/purchasing/orders/new" }));
   });
 
   it("does not search projects when the projects module is disabled", async () => {

@@ -1,6 +1,7 @@
 import { i18n } from "@vantigo/frontend-shell";
 import { describe, expect, it } from "vitest";
 import { dashboardCatalog } from "../catalogs/dashboard";
+import type { ModuleKey } from "../navigation";
 import {
   accountingAttentionHint,
   accountingKpi,
@@ -21,6 +22,8 @@ import {
   metrics,
   planningKpi,
   projectsCardHint,
+  purchasingAttention,
+  purchasingKpi,
   readyMilestonesHint,
   staffKpi,
   visibleModuleCards,
@@ -1653,5 +1656,58 @@ describe("the dashboard's manufacturing card", () => {
     ).toBe('dashboard.manufacturingWorkCentersHint:{"count":1} · dashboard.manufacturingSuggestionsHint:{"count":3}');
     for (const lng of ["en", "nb"])
       expect(i18n.t("dashboard.manufacturingWorkCentersHint", { ns: "host", lng, count: 3 })).toContain("3");
+  });
+});
+
+/**
+ * Purchasing's cards (purchasing design P19, P23): the module card with
+ * purchasing:access, a KPI card of the orders late with the unconfirmed as
+ * the hint, and one attention item for the caller's own unconfirmed orders.
+ */
+describe("the dashboard's purchasing card", () => {
+  const summary = { drafts: 2, open: 9, late: 3, unconfirmed: 4, mineUnconfirmed: 2, failedMailings: 0 };
+
+  it("shows the card with the module and purchasing:access, and not otherwise", () => {
+    const card = (modules: ModuleKey[], permissions: string[]) =>
+      visibleModuleCards(modules, permissions).find((one) => one.module === "purchasing");
+    expect(card(["purchasing"], ["purchasing:access"])).toMatchObject({
+      path: "/purchasing",
+      requiredPermissions: ["purchasing:access"],
+    });
+    expect(card(["purchasing"], ["purchasing:orders-manage"])).toBeUndefined();
+    expect(card(["customers"], ["purchasing:access"])).toBeUndefined();
+    expect(
+      kpiCards(visibleModuleCards(["purchasing"], ["purchasing:access"]), ["purchasing:access"]).map(
+        (one) => one.module,
+      ),
+    ).toEqual(["purchasing"]);
+    expect(dashboardCatalog.nb["dashboard.purchasing"]).toBe("Innkjøp");
+  });
+
+  it("counts the orders late, with the unconfirmed as the hint", () => {
+    const t = (key: string, values?: Record<string, unknown>) => `${key}:${values?.count ?? ""}`;
+    const formatNumber = (value: number) => String(value);
+    expect(purchasingKpi(undefined, formatNumber, t)).toEqual({ value: "—", hint: undefined });
+    expect(purchasingKpi(summary, formatNumber, t)).toEqual({
+      value: "3",
+      hint: "dashboard.purchasingUnconfirmedHint:4",
+    });
+  });
+
+  it("raises the caller's unconfirmed orders as one attention item, linking to the list", () => {
+    const now = new Date("2026-11-17T08:00:00Z");
+    expect(purchasingAttention(undefined, now)).toEqual([]);
+    expect(purchasingAttention({ ...summary, mineUnconfirmed: 0 }, now)).toEqual([]);
+    const [item] = purchasingAttention(summary, now);
+    expect(item).toMatchObject({ type: "ordersUnconfirmed", count: 2, occurredAt: "2026-11-17T08:00:00.000Z" });
+    const tagged = { ...item, module: "purchasing" as ModuleKey };
+    expect(attentionHref(tagged)).toBe("/purchasing/orders");
+    expect(attentionTitleKey(tagged)).toBe("dashboard.purchasingMineUnconfirmed");
+    const words = attentionTitle(
+      tagged,
+      (key, values) => i18n.t(key, { ...values, ns: "host", lng: "en" }),
+      () => "",
+    );
+    expect(words).toBe("2 of your purchase orders are not confirmed by the supplier");
   });
 });

@@ -13,6 +13,7 @@ import {
   IconPackage,
   IconReceipt2,
   IconRobot,
+  IconShoppingBag,
   IconShoppingCart,
   IconUsers,
   IconUsersGroup,
@@ -29,6 +30,7 @@ import {
   transferLinkOptions,
 } from "@vantigo/inventory-ui/lib/routes";
 import type { ManufacturingStats } from "@vantigo/manufacturing-ui/api/stats";
+import type { PurchasingSummary } from "@vantigo/purchasing-ui/api/purchasing";
 import type { DailyPoint, InvoicesSummary, PlanningStats, StaffStats } from "../api/dashboard";
 import { hasAllPermissions, hasPermissions, type ModuleKey } from "../navigation";
 
@@ -135,6 +137,15 @@ export const moduleCards = [
     module: "inventory" as ModuleKey,
     // The app's home needs either (inventory design §5).
     requiredPermissions: ["inventory:locations-view", "inventory:stock-view"],
+  },
+  {
+    title: "dashboard.purchasing",
+    description: "dashboard.managePurchasing",
+    path: "/purchasing",
+    icon: IconShoppingBag,
+    module: "purchasing" as ModuleKey,
+    // Every Purchasing read asks for the app's own key (purchasing design §8).
+    requiredPermissions: ["purchasing:access"],
   },
   {
     title: "dashboard.manufacturing",
@@ -476,6 +487,8 @@ export const attentionHref = (item: { module: ModuleKey; type: string; entityId:
   // an overdue transfer the transfer's, low stock the site's (phase 2 design
   // I62); an id that is not one lands on the counts, the transfers or the
   // whole low-stock list.
+  // Purchasing's one item, the caller's unconfirmed orders (P19), opens the list.
+  if (item.module === "purchasing") return "/purchasing/orders";
   if (item.module === "inventory") {
     const id = Number(item.entityId);
     const valid = /^\d+$/.test(item.entityId) && Number.isSafeInteger(id) && id > 0;
@@ -718,6 +731,8 @@ export const attentionTitleKey = (item: {
   }
   if (item.module === "planning") return planningAttentionTitleKeys[item.type];
   if (item.module === "inventory") return inventoryAttentionTitleKeys[item.type];
+  if (item.module === "purchasing" && item.type === purchasingUnconfirmedType)
+    return "dashboard.purchasingMineUnconfirmed";
   return undefined;
 };
 
@@ -784,7 +799,7 @@ export const attentionTitle = (
     });
   }
   // Inventory's sentence names nothing: its entityId is a count's id, not a week; the lots' name their count.
-  if (item.module === "inventory") return t(key, { count: item.count ?? 1 });
+  if (item.module === "inventory" || item.module === "purchasing") return t(key, { count: item.count ?? 1 });
   return t(key, { date: formatDate(attentionWeek(item.entityId), { dateStyle: "medium", timeZone: "UTC" }) });
 };
 
@@ -951,6 +966,44 @@ export const planningKpi = (
  * asks for manufacturing:access alone, and the open suggestions to make
  * (manufacturing phase 2 M111) beside them when there are any.
  */
+/**
+ * Purchasing's KPI (purchasing design P23): the orders late, with the orders
+ * unconfirmed as the hint when there are any.
+ */
+export const purchasingKpi = (
+  summary: PurchasingSummary | undefined,
+  formatNumber: (value: number) => string,
+  t: (key: string, values?: Record<string, unknown>) => string,
+) =>
+  summary
+    ? {
+        value: formatNumber(summary.late),
+        hint: t("dashboard.purchasingUnconfirmedHint", { count: summary.unconfirmed }),
+      }
+    : { value: "—", hint: undefined };
+
+/** The type of Purchasing's attention item: the caller's own orders unconfirmed (P19). */
+export const purchasingUnconfirmedType = "ordersUnconfirmed";
+
+/**
+ * Purchasing's attention item (P19): one line for the orders whose buyer is
+ * the caller and which the supplier has not confirmed three business days
+ * after they were sent, from the summary's count; none when there are none.
+ */
+export const purchasingAttention = (summary: PurchasingSummary | undefined, now: Date) =>
+  summary && summary.mineUnconfirmed > 0
+    ? [
+        {
+          id: "purchasing-unconfirmed",
+          type: purchasingUnconfirmedType,
+          title: "",
+          occurredAt: now.toISOString(),
+          entityId: "",
+          count: summary.mineUnconfirmed,
+        },
+      ]
+    : [];
+
 export const manufacturingKpi = (
   stats: ManufacturingStats | undefined,
   formatNumber: (value: number) => string,

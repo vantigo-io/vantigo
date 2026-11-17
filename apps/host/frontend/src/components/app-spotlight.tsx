@@ -27,6 +27,7 @@ import {
   IconReportAnalytics,
   IconRoute,
   IconSearch,
+  IconShoppingBag,
   IconUser,
   IconUserPlus,
   IconUserSearch,
@@ -56,6 +57,8 @@ import {
 import { NEW_QUOTE_ROUTE_PATH } from "@vantigo/orders-ui/lib/routes";
 import { BOARD_ROUTE_PATH, REQUESTS_ROUTE_PATH } from "@vantigo/planning-ui/lib/routes";
 import { projectSearchQueryOptions } from "@vantigo/projects-ui/api/projects";
+import { listPurchasingOrders } from "@vantigo/purchasing-ui/api/purchasing";
+import { NEW_PURCHASE_ORDER_ROUTE_PATH, PURCHASE_ORDER_ROUTE_PATH } from "@vantigo/purchasing-ui/lib/routes";
 import { MY_PAGE_ROUTE_PATH, PEOPLE_ROUTE_PATH } from "@vantigo/staff-ui/lib/routes";
 import { useState } from "react";
 import "../i18n";
@@ -129,6 +132,8 @@ export const AppSpotlight = ({
     enabledModules?.includes("energy") === true && hasPermissions(permissions, ["energy:metering-points-view"]);
   const canSearchProjects =
     enabledModules?.includes("projects") === true && hasPermissions(permissions, ["projects:access"]);
+  const canSearchPurchaseOrders =
+    enabledModules?.includes("purchasing") === true && hasPermissions(permissions, ["purchasing:access"]);
   const canSearchKnowledge =
     enabledModules?.includes("knowledge") === true && hasPermissions(permissions, ["knowledge:articles"]);
   const handleNavigate = (action: () => void) => {
@@ -296,6 +301,20 @@ export const AppSpotlight = ({
           },
         ]
       : []),
+    // New purchase order opens the editor empty (purchasing design P15):
+    // writing one needs the app and purchasing:orders-manage, each any-of on its own.
+    ...(enabledModules?.includes("purchasing") &&
+    hasPermissions(permissions, ["purchasing:access"]) &&
+    hasPermissions(permissions, ["purchasing:orders-manage"])
+      ? [
+          {
+            label: t("dashboard.newPurchaseOrder"),
+            icon: IconShoppingBag,
+            path: NEW_PURCHASE_ORDER_ROUTE_PATH,
+            search: undefined,
+          },
+        ]
+      : []),
     // Open the shop floor goes to the work center picker (manufacturing
     // design M31): it is for whoever may work there, the app with
     // manufacturing:shop-floor or manufacturing:orders-manage (M33).
@@ -353,6 +372,13 @@ export const AppSpotlight = ({
     enabled: searchEnabled && canSearchProjects,
   });
 
+  // Purchase orders by number, by supplier and by the supplier's reference (purchasing design P23).
+  const purchaseOrders = useQuery({
+    queryKey: ["spotlight", "purchasing", "orders", search],
+    queryFn: ({ signal }) => listPurchasingOrders({ q: search, pageSize: MAX_RESULTS }, signal),
+    enabled: searchEnabled && canSearchPurchaseOrders,
+  });
+
   // Knowledge's articles (knowledge design K12): the server finds only what the caller may read.
   const articles = useQuery({
     ...knowledgeSearchQueryOptions(search, MAX_RESULTS),
@@ -367,6 +393,8 @@ export const AppSpotlight = ({
   const meteringPointResults = searchEnabled && canSearchMeteringPoints ? (meteringPoints.data?.data ?? []) : [];
   const projectResults = searchEnabled && canSearchProjects ? (projects.data ?? []) : [];
   const articleResults = searchEnabled && canSearchKnowledge ? (articles.data ?? []) : [];
+  const purchaseOrderResults =
+    searchEnabled && canSearchPurchaseOrders ? (purchaseOrders.data?.items ?? []).slice(0, MAX_RESULTS) : [];
 
   const isSearching =
     searchEnabled &&
@@ -374,14 +402,16 @@ export const AppSpotlight = ({
       contacts.isFetching ||
       meteringPoints.isFetching ||
       projects.isFetching ||
-      articles.isFetching);
+      articles.isFetching ||
+      purchaseOrders.isFetching);
   const isEmpty =
     matchingNavigation.length === 0 &&
     customerResults.length === 0 &&
     contactResults.length === 0 &&
     meteringPointResults.length === 0 &&
     projectResults.length === 0 &&
-    articleResults.length === 0;
+    articleResults.length === 0 &&
+    purchaseOrderResults.length === 0;
 
   const question = query.trim();
   const askable = assistantAvailable && onAskAssistant !== undefined && question.length >= MIN_SEARCH_LENGTH;
@@ -513,6 +543,28 @@ export const AppSpotlight = ({
                       to: "/projects/$projectId",
                       params: { projectId: project.id },
                     }),
+                  )
+                }
+              />
+            ))}
+          </Spotlight.ActionsGroup>
+        )}
+
+        {purchaseOrderResults.length > 0 && (
+          <Spotlight.ActionsGroup label={t("navigation.purchasingOrders")}>
+            {purchaseOrderResults.map((order) => (
+              <Spotlight.Action
+                key={order.id}
+                label={`${order.number ?? t("navigation.purchaseOrderDraft")} — ${order.supplierName}`}
+                description={
+                  order.supplierReference
+                    ? t("navigation.purchaseOrderReference", { reference: order.supplierReference })
+                    : t("navigation.purchaseOrder")
+                }
+                leftSection={<IconShoppingBag size={20} stroke={1.5} />}
+                onClick={() =>
+                  handleNavigate(() =>
+                    navigate({ to: PURCHASE_ORDER_ROUTE_PATH, params: { orderId: String(order.id) } }),
                   )
                 }
               />

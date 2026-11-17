@@ -8,6 +8,7 @@ import { assistTargets as knowledge } from "@vantigo/knowledge-ui/assist-targets
 import { assistTargets as manufacturing } from "@vantigo/manufacturing-ui/assist-targets";
 import { assistTargets as orders } from "@vantigo/orders-ui/assist-targets";
 import { assistTargets as projects } from "@vantigo/projects-ui/assist-targets";
+import { assistTargets as purchasing } from "@vantigo/purchasing-ui/assist-targets";
 import { assistTargets as time } from "@vantigo/time-ui/assist-targets";
 
 /**
@@ -27,5 +28,6 @@ export const assistTargets: readonly AssistTarget[] = [
   ...manufacturing,
   ...orders,
   ...projects,
+  ...purchasing,
   ...time,
 ];

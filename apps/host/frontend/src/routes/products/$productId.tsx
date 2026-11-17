@@ -6,6 +6,7 @@ import { variantStockHref } from "@vantigo/inventory-ui/lib/routes";
 import { ProductDetailsPage } from "@vantigo/products-ui";
 import { productQueryOptions } from "@vantigo/products-ui/api/products";
 import { NotFoundError } from "@vantigo/products-ui/api/request";
+import { ProductSuppliersCard } from "@vantigo/purchasing-ui";
 import { fetchSession, sessionQueryKey } from "../../api/auth";
 import { getAuthorizationMe } from "../../api/authorization";
 import { enabledModuleKeys } from "../../lib/enabled-modules";
@@ -19,27 +20,45 @@ import { hasAllPermissions } from "../../navigation";
  * notification, outside the router, so it is a complete href, the base path
  * included (`appUrl`). Both are given when the module is
  * on and the caller holds `inventory:stock-view` and `inventory:locations-view`
- * — every stock read asks for both (design §5).
+ * — every stock read asks for both (design §5). Purchasing's **Suppliers**
+ * card (purchasing design P13) goes through the same slot, when that module is
+ * on and the caller holds `purchasing:access`, with the product's variants.
  */
 const ProductPage = () => {
   const { productId } = Route.useParams();
   const inventoryOn = enabledModuleKeys().includes("inventory");
+  const purchasingOn = enabledModuleKeys().includes("purchasing");
   const { data: session } = useQuery({ queryKey: sessionQueryKey, queryFn: fetchSession, staleTime: 300_000 });
   const authorization = useQuery({
     queryKey: ["authorization", "me", "none"],
     queryFn: getAuthorizationMe,
-    enabled: inventoryOn && !!session,
+    enabled: (inventoryOn || purchasingOn) && !!session,
     retry: false,
     staleTime: 300_000,
   });
   const stock =
     inventoryOn &&
     hasAllPermissions(authorization.data?.permissions, ["inventory:locations-view", "inventory:stock-view"]);
+  const suppliers = purchasingOn && hasAllPermissions(authorization.data?.permissions, ["purchasing:access"]);
+  const panels =
+    stock || suppliers ? (
+      <>
+        {stock && <ProductStock productId={productId} />}
+        {suppliers && <ProductSuppliers productId={productId} />}
+      </>
+    ) : undefined;
   return stock ? (
-    <ProductDetailsPage extraPanels={<ProductStock productId={productId} />} stockHref={stockHref} />
+    <ProductDetailsPage extraPanels={panels} stockHref={stockHref} />
   ) : (
-    <ProductDetailsPage />
+    <ProductDetailsPage extraPanels={panels} />
   );
+};
+
+/** Purchasing's card for the product's variants, read from the product the route's loader holds. */
+const ProductSuppliers = ({ productId }: { productId: number }) => {
+  const product = useQuery(productQueryOptions(productId));
+  if (!product.data) return null;
+  return <ProductSuppliersCard variantIds={product.data.variants.map((v) => v.id)} />;
 };
 
 /** The variant's stock page as a complete href: Products draws it as a plain anchor, outside the router. */

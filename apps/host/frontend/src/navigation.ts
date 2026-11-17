@@ -23,6 +23,7 @@ export const moduleKeys = [
   "planning",
   "products",
   "projects",
+  "purchasing",
   "staff",
   "time",
 ] as const;

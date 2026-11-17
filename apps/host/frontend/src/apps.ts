@@ -66,6 +66,7 @@ import {
   IconSettings,
   IconShieldCheck,
   IconShieldLock,
+  IconShoppingBag,
   IconShoppingCart,
   IconSparkles,
   IconTelescope,
@@ -90,6 +91,7 @@ import { type KnowledgeNavItem, knowledgeNavItems } from "@vantigo/knowledge-ui"
 import { type ManufacturingNavItem, manufacturingNavItems } from "@vantigo/manufacturing-ui";
 import { type OrdersNavItem, ordersNavItems } from "@vantigo/orders-ui";
 import { type PlanningNavItem, planningNavItems } from "@vantigo/planning-ui";
+import { type PurchasingNavItem, purchasingNavItems } from "@vantigo/purchasing-ui";
 import { type StaffNavItem, staffNavItems } from "@vantigo/staff-ui";
 import { accountMenuSections } from "./account-menu";
 import {
@@ -289,6 +291,17 @@ const manufacturingNavPresentation: Record<ManufacturingNavItem["key"], Pick<Nav
   deviations: { label: "navigation.manufacturingDeviations", icon: IconZoomExclamation },
   boms: { label: "navigation.manufacturingBoms", icon: IconListDetails },
   workCenters: { label: "navigation.manufacturingWorkCenters", icon: IconTool },
+};
+
+/**
+ * The host's half of a Purchasing sidebar entry: where each destination is
+ * and which permissions offer it are the package's (`purchasingNavItems`,
+ * purchasing design P23); the label and the icon are the host's.
+ */
+const purchasingNavPresentation: Record<PurchasingNavItem["key"], Pick<NavItem, "label" | "icon">> = {
+  orders: { label: "navigation.purchasingOrders", icon: IconClipboardList },
+  suppliers: { label: "navigation.purchasingSuppliers", icon: IconTruckDelivery },
+  settings: { label: "navigation.purchasingSettings", icon: IconSettings },
 };
 
 /**
@@ -731,6 +744,23 @@ export const apps: readonly AppDefinition[] = [
       requiredPermissions,
     })),
   ),
+  // Every Purchasing call asks for purchasing:access (purchasing design §8), so
+  // the tile asks for it alone; Settings needs purchasing:settings as well.
+  {
+    ...moduleApp(
+      "purchasing",
+      "navigation.purchasing",
+      IconShoppingBag,
+      "/purchasing",
+      purchasingNavItems.map(({ key, to, requiredPermissions, requiredAllPermissions }) => ({
+        ...purchasingNavPresentation[key],
+        to,
+        requiredPermissions,
+        requiredAllPermissions,
+      })),
+    ),
+    requiredPermissions: ["purchasing:access"],
+  },
   // Every Accounting read asks for accounting:read (accounting design A1); a
   // new journal entry is offered to those who post.
   moduleApp(
