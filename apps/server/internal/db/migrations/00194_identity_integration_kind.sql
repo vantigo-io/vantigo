@@ -48,20 +48,42 @@ END;
 $function$;
 -- +goose StatementEnd
 
--- A shared station's operator is a person (manufacturing phase 2 M134).
+-- The rest of what only a person has, guarded where the data lives too, so a
+-- refactor that forgets the code's check cannot give one to an agent or an
+-- integration: a shared station's operator session, PIN and badge
+-- (manufacturing phase 2 M134), an assistant grant, an announced link to the
+-- workforce provider and the account it replaces, a password reset token and
+-- recovery codes.
 CREATE TRIGGER station_operator_sessions_refuse_agent BEFORE INSERT OR UPDATE OF user_id ON identity.station_operator_sessions
     FOR EACH ROW EXECUTE FUNCTION identity.refuse_agent_user('user_id');
+CREATE TRIGGER user_pins_refuse_agent BEFORE INSERT OR UPDATE OF user_id ON identity.user_pins
+    FOR EACH ROW EXECUTE FUNCTION identity.refuse_agent_user('user_id');
+CREATE TRIGGER user_badges_refuse_agent BEFORE INSERT OR UPDATE OF user_id ON identity.user_badges
+    FOR EACH ROW EXECUTE FUNCTION identity.refuse_agent_user('user_id');
+CREATE TRIGGER assistant_grants_refuse_agent BEFORE INSERT OR UPDATE OF user_id ON identity.assistant_grants
+    FOR EACH ROW EXECUTE FUNCTION identity.refuse_agent_user('user_id');
+CREATE TRIGGER expected_links_refuse_agent BEFORE INSERT OR UPDATE OF user_id ON identity.expected_links
+    FOR EACH ROW EXECUTE FUNCTION identity.refuse_agent_user('user_id');
+CREATE TRIGGER expected_accounts_refuse_agent BEFORE INSERT OR UPDATE OF replace_user_id ON identity.expected_accounts
+    FOR EACH ROW EXECUTE FUNCTION identity.refuse_agent_user('replace_user_id');
+CREATE TRIGGER password_reset_tokens_refuse_agent BEFORE INSERT OR UPDATE OF user_id ON identity.password_reset_tokens
+    FOR EACH ROW EXECUTE FUNCTION identity.refuse_agent_user('user_id');
+CREATE TRIGGER recovery_codes_refuse_agent BEFORE INSERT OR UPDATE OF user_id ON identity.recovery_codes
+    FOR EACH ROW EXECUTE FUNCTION identity.refuse_agent_user('user_id');
 
--- An integration's roles and access-group memberships have one writer,
--- identity's integrations service, which sets vantigo.integration_roles on
--- its own transaction (K3, K47). Without it a steward of a role could widen a
--- key they hold through Roles & access. Deletes are not guarded: taking a role
--- away only narrows what a key can do.
+-- An integration's roles have one writer, identity's integrations service,
+-- which sets vantigo.integration_roles to the integration's id on its own
+-- transaction (set_config(..., true), so it never outlives the transaction
+-- on a pooled connection) (K3, K47). Without it a steward of a role could
+-- widen a key they hold through Roles & access. An integration holds no
+-- access-group membership in this phase at all. Deletes are not guarded:
+-- taking a role away only narrows what a key can do.
 -- +goose StatementBegin
 CREATE FUNCTION identity.refuse_integration_role_write() RETURNS trigger LANGUAGE plpgsql AS $function$
 BEGIN
     IF EXISTS (SELECT 1 FROM identity.users WHERE id = NEW.user_id AND kind = 'integration')
-       AND coalesce(current_setting('vantigo.integration_roles', true), '') <> 'on' THEN
+       AND (TG_TABLE_NAME <> 'user_roles'
+            OR coalesce(current_setting('vantigo.integration_roles', true), '') <> NEW.user_id::text) THEN
         RAISE EXCEPTION 'identity.%: an integration''s roles are changed only through its own screen', TG_TABLE_NAME
             USING ERRCODE = 'check_violation';
     END IF;
@@ -89,6 +111,13 @@ $do$;
 DROP TRIGGER access_group_memberships_refuse_integration_write ON identity.access_group_memberships;
 DROP TRIGGER user_roles_refuse_integration_write ON identity.user_roles;
 DROP FUNCTION identity.refuse_integration_role_write();
+DROP TRIGGER recovery_codes_refuse_agent ON identity.recovery_codes;
+DROP TRIGGER password_reset_tokens_refuse_agent ON identity.password_reset_tokens;
+DROP TRIGGER expected_accounts_refuse_agent ON identity.expected_accounts;
+DROP TRIGGER expected_links_refuse_agent ON identity.expected_links;
+DROP TRIGGER assistant_grants_refuse_agent ON identity.assistant_grants;
+DROP TRIGGER user_badges_refuse_agent ON identity.user_badges;
+DROP TRIGGER user_pins_refuse_agent ON identity.user_pins;
 DROP TRIGGER station_operator_sessions_refuse_agent ON identity.station_operator_sessions;
 
 -- +goose StatementBegin

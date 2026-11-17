@@ -523,8 +523,12 @@ func (s *server) memberMutation(ctx context.Context, groupID, userID uuid.UUID, 
 	if err != nil {
 		return gen.AccessGroupResponse{}, err
 	}
-	if err := s.refuseIntegrationTarget(ctx, userID); err != nil {
-		return gen.AccessGroupResponse{}, err
+	// An integration is never added to a group (API access design K47); taking
+	// one out only narrows, so a removal is not refused.
+	if add {
+		if err := s.refuseIntegrationTarget(ctx, userID); err != nil {
+			return gen.AccessGroupResponse{}, err
+		}
 	}
 	action, rejected := "access_group.member_removed", "access_group.member_remove_rejected"
 	if add {

@@ -31,12 +31,13 @@ func insertIntegration(t *testing.T, h *harness, name string) uuid.UUID {
 }
 
 // grantIntegrationRole gives an integration a role on a transaction that sets
-// vantigo.integration_roles, the integrations service's licence to write it.
+// vantigo.integration_roles to its id, the integrations service's licence to
+// write that integration's roles and no other's.
 func grantIntegrationRole(t *testing.T, h *harness, id, role uuid.UUID) {
 	t.Helper()
 	ctx := context.Background()
 	err := pgx.BeginFunc(ctx, h.pool, func(tx pgx.Tx) error {
-		if _, err := tx.Exec(ctx, `SELECT set_config('vantigo.integration_roles', 'on', true)`); err != nil {
+		if _, err := tx.Exec(ctx, `SELECT set_config('vantigo.integration_roles', $1, true)`, id.String()); err != nil {
 			return err
 		}
 		_, err := tx.Exec(ctx, `INSERT INTO identity.user_roles (user_id, role_id) VALUES ($1, $2)`, id, role)
@@ -85,15 +86,43 @@ func TestIntegration_TheDatabaseRefusesWhatOnlyAPersonMayHave(t *testing.T) {
 	wantViolation(t, "a role written outside the integrations service", err)
 	_, err = h.pool.Exec(ctx, `INSERT INTO identity.access_group_memberships (group_id, user_id, source, membership_override) VALUES ($1, $2, 'local', 'force_member')`, uuid.New(), id)
 	wantViolation(t, "an access-group membership", err)
+	other := insertIntegration(t, h, "Other app")
+	err = pgx.BeginFunc(ctx, h.pool, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `SELECT set_config('vantigo.integration_roles', $1, true)`, other.String()); err != nil {
+			return err
+		}
+		_, err := tx.Exec(ctx, `INSERT INTO identity.user_roles (user_id, role_id) VALUES ($1, $2)`, id, custom)
+		return err
+	})
+	wantViolation(t, "a role written under another integration's licence", err)
 	grantIntegrationRole(t, h, id, custom)
 	err = pgx.BeginFunc(ctx, h.pool, func(tx pgx.Tx) error {
-		if _, err := tx.Exec(ctx, `SELECT set_config('vantigo.integration_roles', 'on', true)`); err != nil {
+		if _, err := tx.Exec(ctx, `SELECT set_config('vantigo.integration_roles', $1, true)`, id.String()); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO identity.access_group_memberships (group_id, user_id, source) VALUES ($1, $2, 'local')`, uuid.New(), id); err != nil {
+			return err
+		}
+		return nil
+	})
+	wantViolation(t, "an access-group membership even under the licence", err)
+	err = pgx.BeginFunc(ctx, h.pool, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `SELECT set_config('vantigo.integration_roles', $1, true)`, id.String()); err != nil {
 			return err
 		}
 		_, err := tx.Exec(ctx, `INSERT INTO identity.user_roles (user_id, role_id) VALUES ($1, $2)`, id, identity.RoleOwnerID)
 		return err
 	})
 	wantViolation(t, "the Owner role, through the service", err)
+	for name, stmt := range map[string]string{
+		"a PIN":                  `INSERT INTO identity.user_pins (user_id) VALUES ($1)`,
+		"an assistant grant":     `INSERT INTO identity.assistant_grants (user_id) VALUES ($1)`,
+		"a password reset token": `INSERT INTO identity.password_reset_tokens (user_id) VALUES ($1)`,
+		"recovery codes":         `INSERT INTO identity.recovery_codes (user_id) VALUES ($1)`,
+	} {
+		_, err := h.pool.Exec(ctx, stmt, id)
+		wantViolation(t, name, err)
+	}
 
 	// A person's roles are untouched by the integration guard.
 	if _, err := h.pool.Exec(ctx, `INSERT INTO identity.user_roles (user_id, role_id) VALUES ($1, $2)`, person, custom); err != nil {
@@ -131,6 +160,14 @@ func TestIntegration_NoOwnerOrAccessOperationReachesIt(t *testing.T) {
 		return u.ID == id
 	}) {
 		t.Errorf("access users = %d %s, want no integration", r.status, r.body)
+	}
+
+	// No access group takes it as a member.
+	g := createGroup(t, owner, "Apps")
+	for _, method := range []string{http.MethodPost, http.MethodPut} {
+		if got := owner.do(method, memberPath(g.ID, id), stamped(g.ConcurrencyStamp)); got.status != http.StatusNotFound {
+			t.Errorf("%s group member = %d %s, want 404", method, got.status, got.body)
+		}
 	}
 
 	// Each operation naming it answers the bare 404, as for an agent.
