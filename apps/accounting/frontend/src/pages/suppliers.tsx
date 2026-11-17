@@ -337,15 +337,23 @@ const fieldsOf = (s?: AccountingSupplier): SupplierFields => ({
 
 const blank = (v: string) => (v.trim() === "" ? null : v.trim());
 
-/** A supplier's form, new or changed, with the Brønnøysund lookup. */
+/**
+ * A supplier's form, new or changed, with the Brønnøysund lookup. Without
+ * `books` — a buyer's form, which Purchasing's supplier pages open through the
+ * host (purchasing design A12, A26) — the books' own fields are neither shown
+ * nor sent: the bank account, IBAN, BIC, default account and tax code, and on
+ * a change the person and active flags, which keep their values.
+ */
 export const SupplierFormModal = ({
   supplier,
   onClose,
   onSaved,
+  books = true,
 }: {
   supplier?: AccountingSupplier;
   onClose: () => void;
   onSaved?: (s: AccountingSupplier) => void;
+  books?: boolean;
 }) => {
   const { t } = useAccountingFormat();
   const queryClient = useQueryClient();
@@ -362,15 +370,19 @@ export const SupplierFormModal = ({
         postalCode: blank(f.postalCode),
         city: blank(f.city),
         email: blank(f.email),
-        bankAccount: blank(f.bankAccount),
-        iban: blank(f.iban),
-        bic: blank(f.bic),
         paymentTermsDays: Number(f.paymentTermsDays),
         currency: blank(f.currency),
-        defaultAccountId: f.defaultAccountId ? Number(f.defaultAccountId) : null,
-        defaultTaxCodeId: f.defaultTaxCodeId ? Number(f.defaultTaxCodeId) : null,
-        isPerson: f.isPerson,
-        ...(supplier ? { active: f.active, revision: supplier.revision } : {}),
+        ...(books
+          ? {
+              bankAccount: blank(f.bankAccount),
+              iban: blank(f.iban),
+              bic: blank(f.bic),
+              defaultAccountId: f.defaultAccountId ? Number(f.defaultAccountId) : null,
+              defaultTaxCodeId: f.defaultTaxCodeId ? Number(f.defaultTaxCodeId) : null,
+            }
+          : {}),
+        ...(books || !supplier ? { isPerson: f.isPerson } : {}),
+        ...(supplier ? { ...(books ? { active: f.active } : {}), revision: supplier.revision } : {}),
       };
       return supplier ? updateSupplier(supplier.id, body) : createSupplier(body);
     },
@@ -430,15 +442,17 @@ export const SupplierFormModal = ({
           <TextInput label={t("city")} value={f.city} onChange={(e) => set("city", e.currentTarget.value)} />
         </SimpleGrid>
         <TextInput label={t("email")} value={f.email} onChange={(e) => set("email", e.currentTarget.value)} />
-        <SimpleGrid cols={3}>
-          <TextInput
-            label={t("bankAccount")}
-            value={f.bankAccount}
-            onChange={(e) => set("bankAccount", e.currentTarget.value)}
-          />
-          <TextInput label={t("iban")} value={f.iban} onChange={(e) => set("iban", e.currentTarget.value)} />
-          <TextInput label={t("bic")} value={f.bic} onChange={(e) => set("bic", e.currentTarget.value)} />
-        </SimpleGrid>
+        {books && (
+          <SimpleGrid cols={3}>
+            <TextInput
+              label={t("bankAccount")}
+              value={f.bankAccount}
+              onChange={(e) => set("bankAccount", e.currentTarget.value)}
+            />
+            <TextInput label={t("iban")} value={f.iban} onChange={(e) => set("iban", e.currentTarget.value)} />
+            <TextInput label={t("bic")} value={f.bic} onChange={(e) => set("bic", e.currentTarget.value)} />
+          </SimpleGrid>
+        )}
         <SimpleGrid cols={2}>
           <NumberInput
             label={t("paymentTerms")}
@@ -455,26 +469,30 @@ export const SupplierFormModal = ({
             onChange={(e) => set("currency", e.currentTarget.value.toUpperCase())}
           />
         </SimpleGrid>
-        <SimpleGrid cols={2}>
-          <AccountSelect
-            label={t("defaultAccount")}
-            accountFilter={(a) => a.kind === "expense" || a.kind === "asset"}
-            value={f.defaultAccountId}
-            onChange={(v) => set("defaultAccountId", v)}
+        {books && (
+          <SimpleGrid cols={2}>
+            <AccountSelect
+              label={t("defaultAccount")}
+              accountFilter={(a) => a.kind === "expense" || a.kind === "asset"}
+              value={f.defaultAccountId}
+              onChange={(v) => set("defaultAccountId", v)}
+            />
+            <TaxCodeSelect
+              label={t("defaultTaxCode")}
+              value={f.defaultTaxCodeId}
+              onChange={(v) => set("defaultTaxCodeId", v)}
+            />
+          </SimpleGrid>
+        )}
+        {(books || !supplier) && (
+          <Checkbox
+            label={t("supplierIsPersonLabel")}
+            description={t("supplierRetainedHint")}
+            checked={f.isPerson}
+            onChange={(e) => set("isPerson", e.currentTarget.checked)}
           />
-          <TaxCodeSelect
-            label={t("defaultTaxCode")}
-            value={f.defaultTaxCodeId}
-            onChange={(v) => set("defaultTaxCodeId", v)}
-          />
-        </SimpleGrid>
-        <Checkbox
-          label={t("supplierIsPersonLabel")}
-          description={t("supplierRetainedHint")}
-          checked={f.isPerson}
-          onChange={(e) => set("isPerson", e.currentTarget.checked)}
-        />
-        {supplier && (
+        )}
+        {books && supplier && (
           <Checkbox label={t("active")} checked={f.active} onChange={(e) => set("active", e.currentTarget.checked)} />
         )}
         <Group justify="flex-end">
