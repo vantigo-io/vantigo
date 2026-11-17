@@ -1267,9 +1267,10 @@ permission, `403 email.sending.error.email.sending_disabled` the domain, `429
 email.sending.error.throttled` the account's daily quota. A recipient Cloudflare
 reports as permanently bounced fails the send too; one it queues succeeds.
 
-The driver carries what the system mailbox sends — the recipients, both bodies, an
-attachment, the threading headers — and refuses, before any request, a message with
-more than 50 recipients, an inline image or a calendar part. Cloudflare sets the
+The driver carries what the system mailbox sends — the recipients, both bodies,
+attachments, the threading headers — and an inline image an HTML body names by `cid:`
+(such as an invoice's logo), sent with disposition `inline` and its `content_id`. It
+refuses, before any request, a message with more than 50 recipients or a calendar part. Cloudflare sets the
 `Message-ID` itself. Redirects are not followed, and the connection goes through the
 same check against private destinations as SMTP. The token is redacted wherever the
 configuration is printed.

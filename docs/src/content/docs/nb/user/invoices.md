@@ -54,6 +54,8 @@ Fyll ut feltene og klikk **Lagre**:
 - **Juridisk navn**, **Organisasjonsnummer** (ni sifre med gyldig kontrollsiffer),
   **Adresse**, **Adresselinje 2**, **Postnummer**, **Poststed**, **Land** (en kode på to
   bokstaver, som NO) og **E-post** — adressen svar på sendte fakturaer går til.
+- **Telefon**, valgfritt: skrives i selgerblokken etter e-posten. Høyst 30 tegn —
+  sifre, mellomrom og + - ( ) . — med minst ett siffer.
 - **Kontonummer** (elleve sifre med gyldig kontrollsiffer), og **IBAN** og **BIC** for
   kjøpere i utlandet.
 - **Standard betalingsfrist (dager)**, 0 til 365: fristen et nytt utkast starter med
@@ -61,6 +63,7 @@ Fyll ut feltene og klikk **Lagre**:
 - **Registrert i Merverdiavgiftsregisteret (skriver MVA etter nummeret)** og
   **Registrert i Foretaksregisteret** — begge skrives på dokumentet slik forskriften
   krever.
+- **Logo**, valgfritt, beskrevet [nedenfor](#logoen).
 - **Bunntekst**, som skrives nederst på hvert dokument.
 - **Nummerserien starter på** — nummeret det første dokumentet får. Det låses i det noe
   utstedes, og feltet sier da *Låst: det er utstedt dokumenter fra denne serien*.
@@ -72,6 +75,27 @@ KID-avtalen samtidig; aksesspunktet har sin egen lagreknapp.
 Lagret en kollega innstillingene mens du redigerte, sier skjemaet **Innstillingene er
 endret** og tilbyr **Last inn på nytt**; de ulagrede endringene dine forkastes, de
 flettes aldri.
+
+#### Logoen
+
+Over **Bunntekst** viser blokken **Logo** logoen dokumentene skriver ut, eller *Ingen
+logo er lastet opp.* Klikk **Last opp logo** og velg en PNG- eller JPEG-fil på høyst
+512 kB, høyst 2 000 piksler på den lengste siden og minst 16 på den korteste. Den lagres
+med en gang, uten **Lagre**; *Logoen er lastet opp* bekrefter det. **Fjern logo** tar
+den bort igjen. Begge krever `invoices:manage`. En fil som bryter en regel, avvises med
+ord — *En logo er en PNG- eller JPEG-fil*, *En logo er på høyst 512 kB* og så videre —
+og ingenting lagres.
+
+Logoen skrives øverst til venstre på fakturaen, kreditnotaen og hvert purrebrev, tilpasset
+innenfor 45 × 20 mm med proporsjonene bevart, med tittelen ved siden av; e-posten et
+dokument sendes med, viser den øverst. Den tas med, som resten av selgeropplysningene, når
+et dokument utstedes: dokumenter som utstedes fra nå av, har logoen, og dokumenter som
+allerede er utstedt, beholder logoen de ble utstedt med — eller ingen, når de ble utstedt
+uten. Å fjerne eller bytte logoen endrer ingenting som er utstedt. Forhåndsvisningen av
+et utkast viser logoen slik den er nå. EHF-fakturaen har ingen logo.
+
+Å laste opp eller fjerne logoen er en lagring av innstillingene: har du ulagrede
+endringer i skjemaet samtidig, sier det da **Innstillingene er endret**.
 
 ### Sett opp e-faktura
 
@@ -1743,14 +1767,22 @@ eller papir. Ingen av dem stopper sendingen. På en faktura som er delvis betalt
 kreditert, sier en merknad at e-posten bare ber om det utestående beløpet; på en som er
 gjort opp, at den sier det ikke er noe å betale.
 
+Under mottakeren tar **Melding** imot en valgfri personlig melding på opptil 2 000 tegn
+— *Vises over standardteksten i e-posten.* Den kommer med slik du skriver den, etter
+hilsenen, med linjeskiftene bevart, og er aldri en mal: neste sending starter tom.
+
 Klikk **Send**. E-posten går med en gang, fra den valgte kanalens adresse under selgerens
-navn, med den lagrede PDF-en vedlagt og en kort, ren tekst — *Faktura 1001 fra <selger>* eller *Invoice 1001 from <selger>* på kjøperens
+navn, med den lagrede PDF-en vedlagt og en kort tekst — *Faktura 1001 fra <selger>* eller *Invoice 1001 from <selger>* på kjøperens
 språk — som ber om utestående beløp til selgerens konto, merket med fakturaens KID når den har
 en og med nummeret ellers; svar går til e-posten i
-innstillingene ([tekstene](/en/reference/invoices/#sending-a-document)). En melding
+innstillingene ([tekstene](/en/reference/invoices/#sending-a-document)). E-posten er både
+ren tekst og en enkel formatert utgave som sier det samme, med logoen dokumentet ble
+utstedt med øverst når det har en. En melding
 bekrefter *Sendt til …*, og kortet **Leveringer** på dokumentet får en rad med
-**Sendt**, **Til** og **Emne**. Kolonnen **Til** vises bare for den som har
-`invoices:issue`; andre ser når og under hvilket emne hver sending gikk.
+**Sendt**, **Til** og **Emne**, og den personlige meldingen under emnet — foldet sammen
+til første linje, **Vis meldingen** åpner den. Kolonnen **Til** og meldingen vises bare
+for den som har `invoices:issue`; andre ser når og under hvilket emne hver sending gikk.
+Når kunden anonymiseres, fjernes adressen og meldingen fra raden.
 
 En sending avvises når kunden er anonymisert (*Kunden er anonymisert, og det sendes ikke
 mer til den*), når det ikke finnes noen adresse, når dokumentlageret er utilgjengelig,

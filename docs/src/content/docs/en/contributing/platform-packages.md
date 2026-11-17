@@ -103,7 +103,9 @@ against private destinations. `mail.SendOutbound` takes the driver from the
 `config.MailConfig` it is given: Staff's notices follow the installation's driver, and a
 Communications channel's configuration is always `smtp`. `mail.Message` is identity's three-field application mail;
 `mail.Outbound` is a full message — recipients, both bodies, a display name,
-Reply-To (`ReplyTo` and `ReplyToName`), threading headers and attachments — which Communications sends through each
+Reply-To (`ReplyTo` and `ReplyToName`), threading headers and attachments, an inline one
+(`Inline` with a `ContentID`) embedded for the HTML body's `cid:` by both drivers — the
+Cloudflare driver sends it with disposition `inline` and its `content_id` — which Communications sends through each
 channel's own SMTP configuration — and, through `OutboundMail`, for Invoices' documents
 and Calendar's invitations, from the channel an Owner chose — and Staff through the
 installation's own, the system mailbox's, by the seam `Deps.SMTPSend` (or

@@ -15,6 +15,7 @@ sources:
   - apps/server/internal/db/migrations/00179_invoices_bank_feed_cursor.sql
   - apps/server/internal/db/migrations/00180_invoices_journal.sql
   - apps/server/internal/db/migrations/00182_invoices_write_offs.sql
+  - apps/server/internal/db/migrations/00193_invoices_branding.sql
   - apps/server/internal/docmath
 ---
 The Invoices module issues the sales document of Norwegian bookkeeping: a draft
@@ -135,12 +136,12 @@ registration in the day's CSV — it is told in the business time zone too.
 
 | Table | What it holds |
 | --- | --- |
-| `invoices.settings` | One row: the seller record (legal name, organisation number, VAT registration, Foretaksregisteret, address, bank account, IBAN/BIC, e-mail, footer), the default terms and currency, `series_start`, the seller's Peppol id `peppol_id`, the KID agreement `kid_length` and `kid_algorithm` (a pair or both NULL, `ck_settings_kid`), the VAT code each kind of work is invoiced at — `work_vat_code_hours`, `work_vat_code_expenses`, `work_vat_code_milestones`, each a code that exists, all 1 (`3`, 25 %) by default — the two codes an energy line takes by its hint, `energy_vat_code` (1) and `energy_vat_code_exempt` (10 where 5N was seeded, else 5), foreign keys `ON DELETE RESTRICT` ([VAT codes for energy](#vat-codes-for-energy)) — the timesheet's default `timesheet_default` (off) and person label `timesheet_person_label` (`initials`, the default, `number` or `name`) — and `send_channel` (`uuid`, NULL), the id of the Communications channel documents and reminder letters are [sent from](#the-sending-channel), NULL meaning Disabled, with **no foreign key** across schemas (rule 4). |
+| `invoices.settings` | One row: the seller record (legal name, organisation number, VAT registration, Foretaksregisteret, address, bank account, IBAN/BIC, e-mail, footer), the default terms and currency, `series_start`, the seller's Peppol id `peppol_id`, the KID agreement `kid_length` and `kid_algorithm` (a pair or both NULL, `ck_settings_kid`), the VAT code each kind of work is invoiced at — `work_vat_code_hours`, `work_vat_code_expenses`, `work_vat_code_milestones`, each a code that exists, all 1 (`3`, 25 %) by default — the two codes an energy line takes by its hint, `energy_vat_code` (1) and `energy_vat_code_exempt` (10 where 5N was seeded, else 5), foreign keys `ON DELETE RESTRICT` ([VAT codes for energy](#vat-codes-for-energy)) — the timesheet's default `timesheet_default` (off) and person label `timesheet_person_label` (`initials`, the default, `number` or `name`) — and `send_channel` (`uuid`, NULL), the id of the Communications channel documents and reminder letters are [sent from](#the-sending-channel), NULL meaning Disabled, with **no foreign key** across schemas (rule 4) — and the seller's `phone` (`''` for none) and logo, `logo_object_key`, `logo_sha256` and `logo_content_type` (`image/png` or `image/jpeg`), all three or none (`ck_settings_logo`; [The logo and the phone](#the-logo-and-the-phone)). |
 | `invoices.counters` | The one counter row, `documents`; it exists exactly when something has been issued. |
 | `invoices.vat_codes` | The tenant's codes: label, name, SAF-T code, UNCL5305 category, exemption reason, active. |
 | `invoices.vat_code_rates` | Each code's rates as dated periods that never overlap (an exclusion constraint). A rate change is a new period, not a new code. |
 | `invoices.tax_category_vat_codes` | One row per Products tax category that has a VAT code: `tax_category_id`, Products' id with **no foreign key** across schemas (rule 4), and `vat_code_id`, a code here (`ON DELETE RESTRICT`). A category with no row has no VAT code ([Tax categories and VAT codes](#tax-categories-and-vat-codes)). |
-| `invoices.invoices` | Drafts and issued documents: kind, status, number, customer, delivery, references, notes, the buyer snapshot and the seller snapshot (written at issue), the totals, the stored PDF's key and SHA-256, an invoice's `kid` with the `kid_algorithm` it was computed with (set at issue, both or neither, never on a credit note), the project its work belongs to — `project_id` and its code `project_reference`, both or neither (`ck_invoices_project`), derived by every save of an invoice draft and copied by a credit note ([The project](#the-project)) — and the `timesheet` flag (off by default). Every one of them is frozen at issue with the rest of the row. |
+| `invoices.invoices` | Drafts and issued documents: kind, status, number, customer, delivery, references, notes, the buyer snapshot and the seller snapshot (written at issue), the totals, the stored PDF's key and SHA-256, an invoice's `kid` with the `kid_algorithm` it was computed with (set at issue, both or neither, never on a credit note), the project its work belongs to — `project_id` and its code `project_reference`, both or neither (`ck_invoices_project`), derived by every save of an invoice draft and copied by a credit note ([The project](#the-project)) — and the `timesheet` flag (off by default). The seller snapshot includes `seller_phone` and the logo, `seller_logo_object_key` and `seller_logo_sha256`, both or neither (`ck_invoices_seller_logo`), NULL on a document issued without one or before phase 6. Every one of them is frozen at issue with the rest of the row. |
 | `invoices.lines` | Description, quantity (3 decimals), unit, unit price (8; a request gives at most 4 but on a line billing an energy settlement or a credit note's line), discount (2), VAT code, the computed gross, allowance and net, the credited line on a credit note, the invoice a deduction line deducts (`deducts_invoice_id` — an unconstrained reference, deliberately without a foreign key, whose `FOR KEY SHARE` on the deducted invoice would cycle with the newest-first lock of a customer's documents; the save and the issue accept only an issued invoice of the same customer, and an issued document is never deleted), and the VAT snapshot written at issue. The quantity is above 0, or below 0 on a deduction line or a correction line only (`ck_lines_quantity`); a deduction line carries no discount (`ck_lines_deduction_no_discount`), nor does a correction line (`correction`, set by the module from the line's sources; `ck_lines_correction`, which also keeps its `deducts_invoice_id` NULL). `(id, invoice_id)` is unique, so a child row names its line and its document together and the two never disagree. |
 | `invoices.line_sources` | The work a line bills: the source's kind (`time.entry`, `expenses.entry`, `projects.milestone` or `energy.settlement`; the CHECK is a shape, `^[a-z]+\.[a-z_]+$`) and id — opaque, the rows are other modules' — the revision it was taken at, an expense's kind (`source_subkind`, also set on a settlement), the project (NULL exactly for a settlement, `ck_line_sources_project`), the quantity, the source's exact amount (`numeric(22,8)`: an hour's amount carries up to eight decimals), the currency, the work's date, for a settlement its `line_count` and the snapshot `point_gsrn`, `point_address`, `price_area`, `contract_name`, `period_from`, `estimated` ([The lines of a settlement](#the-lines-of-a-settlement)), and the state: `held` from the draft, `invoiced` by the issue, `released` by the credit note that returns its line. Its line and document are one composite key, and the rows go with their line. A source is live — `held` or `invoiced` — on one row at most (`ux_line_sources_live`). A row is written `held`; under a draft its one change is to `invoiced`, under an issued document its one change is from `invoiced` to `released`, once, nothing else changed. A row is deleted only under a draft and only while `held`, so dropping a hold never frees an invoiced source. A trigger refuses the rest (`invoices: a line source is written held`, `invoices: a line source changes only its state`, `invoices: a line source is deleted only while held`, `invoices: issued document is immutable`). Every save of a draft deletes its lines and so its held rows, and inserts the rows it carries anew under the new lines, in one statement ordered by kind and id ([Invoicing work](#invoicing-work)). |
 | `invoices.line_releases` | A credit note's release of an original line's source: the credit note, its line and the source, a source released once. Frozen with the credit note at its issue. |
@@ -151,7 +152,7 @@ registration in the day's CSV — it is told in the business time zone too.
 | `invoices.bank_files` | One imported bank file: its format, the SHA-256 of its bytes and its own identity (each unique), the object key it is stored under, its size, the accounts it names, the first and last booking day of its lines, how many transactions it brought, how many of them were `duplicates` (set once by the import, from `NULL`), how many lines were `ignored` and `ignored_kinds` by kind, who uploaded it and when. Never deleted or changed but by that one write. |
 | `invoices.bank_transactions` | One line of a bank file as the bank wrote it — the line reference, the format, the receiving account, the direction, `negative`, the booking, value and ordering days, the amount (above 0, NOK), the KID, the remittance text, the debtor's name and account, the archive reference, the bank's code — its `fingerprint` and `ordinal`, `duplicate_of_id` when it repeats a live line, and its state: `status` (`pending`, `matched`, `exception`, `resolved` or `duplicate`), the `reason` it was queued for, the suggested invoice and the resolution. One live line per account and fingerprint (`ux_bank_transactions_fingerprint`). Never deleted; only the state columns change, never back to `pending`, and a reason once set stays. |
 | `invoices.bank_transaction_events` | What happened to a line, by whom and when — matched, queued, the queue's actions, and `reversed` on a line whose payment a reversal took back — with a reason and a note. Insert-only, but for its note blanked by an erase. |
-| `invoices.deliveries` | One row per e-mail that handed an issued document over: the recipient (`''` once the customer is anonymised), the subject, the Message-ID, the SHA-256 of the PDF attached, when and by whom. Never deleted; never changed but by that blanking. |
+| `invoices.deliveries` | One row per e-mail that handed an issued document over: the recipient and the personal `message` (`''` for none; both `''` once the customer is anonymised), the subject, the Message-ID, the SHA-256 of the PDF attached, when and by whom. Never deleted; never changed but by that blanking. |
 | `invoices.manual_deliveries` | A delivery recorded by hand ([The delivery fact](#the-delivery-fact)): the invoice, `kind` (`handed_over` or `posted`), `delivered_on`, a note (`''` once the customer is anonymised), who recorded it and when, and — once removed — when, by whom and why. Never deleted; never changed but by the removal, once, and that blanking. |
 | `invoices.charge_payments` | Money received against an invoice's charges, never its principal ([Charges](#charges)): the day, the amount and the currency (the invoice's), `source` (`manual`, `ocr` or `camt054`) and the bank line of one taken from a bank file (`ck_charge_payments_origin`: a line exactly when the source is not `manual`), the reference, a note (blanked as the payments' is), who registered it and when, and the removal. Never deleted; never changed but by the removal, once, and that blanking. |
 | `invoices.charge_waivers` | A charge a sent letter claimed, released ([Charges](#charges)): the invoice, the letter (`reminder_id`, the same invoice's by a composite foreign key), `kind` (`fee`, `compensation` or `interest`), the amount, `interest_through` (interest only: the letter's sent day), the reason (`objection_upheld`, `claimed_in_error`, `goodwill` or `deadline_met`), a note, who and when. One fee or compensation waiver per letter (`ux_charge_waivers_letter_kind`); interest waivers may follow one another. Insert-only; the erase blanks the note. |
@@ -254,7 +255,60 @@ products module on and `products:tax-categories-view`; without them the card say
 and lists the mapped categories by id, and a mapped category Products no longer
 answers stays listed, "(no longer in Products)", so its mapping can be removed.
 
-## The Peppol id and the KID agreement
+## The logo and the phone
+
+Phase 6 delivery A ([design](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-11-17-invoices-phase6-design.md),
+§2, I1–I7) gives the seller record a logo and a phone, printed on every document and
+letter issued after them.
+
+**The phone** is `phone` on `PUT /settings`, optional: absent keeps the stored phone,
+empty clears it. It is trimmed and held to Customers' rule, copied rather than imported
+(rule 1): at most 30 UTF-16 code units, only digits, spaces and `+ - ( ) .`, at least one
+digit — else a 400 on `phone` — and stored as typed. The issue snapshots it as
+`seller_phone`, NULL for none.
+
+**The logo** is not part of `PUT /settings`'s body; three operations of its own hold it:
+
+- `PUT /settings/logo` (`invoices:manage`) takes one multipart part named `file`: a PNG
+  or a JPEG by its own bytes — the name and the type it was sent under are no evidence —
+  that `image.DecodeConfig` reads as that same format (the header alone, so a
+  decompression bomb costs nothing), of at most **512 KiB**, at most **2,000 pixels** on
+  its longer side and at least **16** on its shorter. Its metadata is stripped before it
+  is stored, the pixels untouched (`imagemeta.Strip`: a JPEG's APP1 and APP13 segments, a
+  PNG's eXIf, tEXt, zTXt and iTXt chunks). The stripped bytes are put **outside any
+  transaction** under `branding/logo-<sha256>.<png|jpg>` in the `invoices` scope — the
+  key named by the content, so the same logo twice is one object — and only then named on
+  the settings, under the settings lock (`LockSettings`), the revision moved on. It
+  answers 200 with the settings. A refusal is a 400 in `InvoicesConflictProblem`'s shape
+  with its code: `logo_unsupported_type` (not a PNG or JPEG, or one that cannot be read
+  or stripped), `logo_too_large`, `logo_too_wide`, `logo_too_small` or `logo_invalid` (no
+  part named `file`, two, an empty one, or a body that is not a readable multipart form);
+  nothing is stored. A store that cannot write is 503 `storage_unavailable` with nothing
+  recorded. The request stays under the router's default 1 MiB body cap, so the
+  operation has no `BodyLimits` entry.
+- `DELETE /settings/logo` (`invoices:manage`) clears the three columns under the lock,
+  the revision moved on, and answers 204 — or 404 when no logo is set. **The object is
+  never deleted**: an issued document's snapshot may name it, and in this phase no
+  object of the module is ever deleted (I1).
+- `GET /settings/logo` (`invoices:access`) streams the logo the settings name with its
+  type, `ETag` its SHA-256, `Cache-Control: private, max-age=0, must-revalidate` and
+  `X-Content-Type-Options: nosniff`. No logo, or an object the store does not hold, is a
+  bare 404; a store that cannot be read, 503. The settings answer `logo`
+  (`{contentType, sha256}`, absent without one), whose hash the app uses as the image's
+  cache key.
+
+**The snapshot** (I2). The issue copies `logo_object_key` and `logo_sha256` to
+`seller_logo_object_key` and `seller_logo_sha256` with the rest of the seller, under the
+same `FOR SHARE` on the settings row, and `refuse_issued_document_change` freezes them
+with the row — it compares the whole row, so no trigger changed. A credit note takes them
+the same way. Every later render of the document — its PDF's first store, its reminder
+letters, the HTML of its mails — reads the object the snapshot names and **checks it
+against the snapshot's hash**; bytes that do not match fail the render rather than print
+another logo. A document issued before phase 6, or without a logo, has neither and
+renders as before. A draft's preview uses the settings' current logo.
+
+The settings change emits no event: the module has no settings event.
+
 
 Both live on `PUT /settings` (`invoices:manage`), beside the seller record, and are
 **required and nullable** on it: a body without `peppolId`, `kidLength` or
@@ -2502,6 +2556,17 @@ retrying does not mend it. Reproducible bytes are a nice-to-have: catalog sortin
 fixed modification date are set process-wide and the creation date is the issue instant,
 but the bytes may change with a maroto, gofpdf or font upgrade; stored PDFs never do.
 
+**The logo** (invoices phase 6 design I3) prints top left of the first page, fitted inside
+45 × 20 mm — the first three of the page's twelve columns, 20 mm high — with its
+proportions kept, and the title beside it; the parties and everything below are where
+they always were. It is the logo the document's snapshot names
+(`seller_logo_object_key`, `seller_logo_sha256`), read from the store when the PDF is
+first rendered and **checked against the snapshot's SHA-256**: bytes that do not hash to
+it fail the render — a 500, never the document printed with another logo — and a store
+that cannot be read is the 503 to retry. A document without a logo renders byte for byte
+as before phase 6. The EHF carries no logo. **The phone**, when the snapshot has one,
+prints in the seller block after the e-mail.
+
 **The payment block** of an invoice lists the account, its KID when it has one (the
 "KID" line, verified as above), the IBAN and BIC when set, and the due date; the note
 under it asks for the KID ("Vennligst bruk KID ved betaling" / "Please use the KID with
@@ -2534,7 +2599,8 @@ stored hash cover it like every other word, the EHF attaches it with the rest, a
 draft's preview renders it as it stands ([The timesheet](#the-timesheet)).
 
 `GET /invoices/{id}/preview.pdf` renders a draft on demand with the watermark
-"UTKAST — ikke et salgsdokument", no number, today's date, the current settings and,
+"UTKAST — ikke et salgsdokument", no number, today's date, the current settings — the
+logo and the phone among them — and,
 for an invoice draft, the customer's current profile at today's rates; a credit-note
 draft keeps its copied buyer and its original lines' rates. It is never stored. The app
 opens it in a new browser tab — opened with the click, before the PDF is fetched, so
@@ -2711,10 +2777,12 @@ point.
 `POST /invoices/{id}/send` e-mails an issued document's **stored PDF** — an invoice's or
 a credit note's — to the customer, now, and logs it. It is synchronous: no outbox and no
 worker, and a failure is the caller's to see. It needs `invoices:issue`
-([Permissions](#permissions)); the body is `{recipient?}`. In order:
+([Permissions](#permissions)); the body is `{recipient?, message?}`. In order:
 
 1. **503 `mail_unavailable`** when [sending is disabled or the chosen channel cannot
-   send](#the-sending-channel), judged before anything is read. The detail is *Sending is
+   send](#the-sending-channel), judged before anything is read. Then **the personal
+   message**: `message`, trimmed with its line breaks as `\n`, at most 2,000 characters,
+   else a 400 on `message`; absent or blank is none. The detail is *Sending is
    disabled in Invoice settings, or the chosen channel cannot send.* The channel read here
    is the one the send goes out on.
 2. 404; 409 `invoice_draft` on a draft.
@@ -2743,8 +2811,16 @@ worker, and a failure is the caller's to see. It needs `invoices:issue`
    platform's `mail.Outbound.ReplyTo`). To is the recipient, alone. The Message-ID is a
    fresh `{uuid}@vantigo.invalid`, bare. The PDF is attached as `application/pdf` under
    the download's own name — `faktura-1001.pdf`, `invoice-1001.pdf`,
-   `kreditnota-1002.pdf`, `credit-note-1002.pdf`. The body is plain text in the
-   document's language, below: no HTML, no logo, no template, no personal message.
+   `kreditnota-1002.pdf`, `credit-note-1002.pdf`. The body is the text below in the
+   document's language, with the message after the greeting, and **an HTML body that
+   says the same** (invoices phase 6 design I5): one small `html/template`, every value
+   escaped, the message's line breaks as `<br>`, the pay link as the one link, inline
+   styles only, no external image and no tracking. When the document's snapshot names a
+   logo, the HTML starts with `<img src="cid:logo" alt="{seller}">` and the logo goes
+   beside the PDF as an inline part, `Content-ID: <logo>` — read from the store and
+   checked against the snapshot's hash as the PDF's render does (503
+   `storage_unavailable` when the store cannot be read). The text body is what it was
+   before phase 6 but for the message.
 7. **The send**, through `OutboundMail.Send` on the chosen channel — an SMTP channel's own
    credentials or a Microsoft 365 mailbox, both through Communications; never the
    installation's `SMTP_*`. **A failure is 502 `mail_failed` and records nothing** — an
@@ -2753,7 +2829,7 @@ worker, and a failure is the caller's to see. It needs `invoices:issue`
    the mail may still have been delivered if the server timed out, so check before
    sending again. The error is logged at warn with the document id and never put on the
    wire.
-8. **The log**: one row in `invoices.deliveries`. The answer is the document, its
+8. **The log**: one row in `invoices.deliveries`, the message with it. The answer is the document, its
    `deliveries` holding the row and `sendDefaults.warnings` the send's warnings.
 
 **Three contexts.** The reads before the send run on the request's context and stop with
@@ -2900,15 +2976,17 @@ warn, never a 500 on a read of bookkeeping material. The document's own `warning
 true` instead, so the app offers no send; it is absent otherwise.
 
 **The delivery log.** `invoices.deliveries` holds one row per mail the server took: the
-recipient, the subject as sent, the bare Message-ID, the SHA-256 of the PDF attached, when,
-and the sender's user id. Every issued document answers `deliveries`, the first first.
-**The recipient is on the wire only for a caller with `invoices:issue`**; a reader sees
-when each send happened, by whom and its subject, not the address. Two triggers hold the
-log: `tr_deliveries_immutable` refuses a DELETE and every UPDATE but the recipient to
-`''` — the one write an anonymisation makes ("invoices: a delivery is immutable") — and
-`tr_deliveries_parent` reads the document's status and current customer `FOR SHARE` on
-INSERT, refuses a draft's ("invoices: a delivery needs an issued document"), and then
-blanks the recipient when the customer has been anonymised.
+recipient, the personal message (`''` for none), the subject as sent, the bare
+Message-ID, the SHA-256 of the PDF attached, when, and the sender's user id. Every issued
+document answers `deliveries`, the first first. **The recipient and the message are on
+the wire only for a caller with `invoices:issue`**; a reader sees when each send
+happened, by whom and its subject, not the address or the words. Two triggers hold the
+log: `tr_deliveries_immutable` refuses a DELETE and every UPDATE but the recipient and
+the message both to `''`, the rest of the row unchanged — the one write an anonymisation
+makes ("invoices: a delivery is immutable") — and `tr_deliveries_parent` reads the
+document's status and current customer `FOR SHARE` on INSERT, refuses a draft's
+("invoices: a delivery needs an issued document"), and then blanks the recipient and the
+message when the customer has been anonymised.
 
 **The anonymised customer.** A send reads its recipient before it sends and writes its
 row after; an anonymisation committing in between would otherwise blank the rows that
@@ -2921,7 +2999,8 @@ erase is blanked the same way; a row written before it is blanked by the erase. 
 is the trigger's because only a statement run after the lock wait sees an erase that
 committed during it — the inserting statement's own snapshot was taken before. The
 trigger reads the document's current customer, so a merge in between is covered too. A
-delivery whose recipient is `''` is one whose customer was anonymised.
+delivery whose recipient is `''` is one whose customer was anonymised; its message is
+blanked with it, as a payment's note is.
 
 ## Sending as EHF
 
@@ -4519,8 +4598,10 @@ invoice's snapshots, so a row renders the same bytes every time (its creation da
 `sent_on`). It holds, in order:
 
 - the seller block (the seller snapshot: name, address, organisation number with MVA,
-  Foretaksregisteret, e-mail) and the buyer block, the date `sent_on`, the heading
-  **"Purring"** or **"Inkassovarsel"** ("Payment reminder", "Debt collection notice");
+  Foretaksregisteret, e-mail, phone) and the buyer block, the date `sent_on`, the heading
+  **"Purring"** or **"Inkassovarsel"** ("Payment reminder", "Debt collection notice"),
+  beside the invoice's logo when its snapshot has one, placed and checked as on the
+  invoice ([The PDF](#the-pdf));
 - the invoice it concerns — number, issue date, due date — and the payment deadline, with
   an opening that says payment was not registered, or, when part of the invoice is paid,
   that the full amount was not received;
@@ -4547,6 +4628,10 @@ invoice's snapshots, so a row renders the same bytes every time (its creation da
 - every letter: "Har du betalt i mellomtiden, kan du se bort fra dette brevet", and the
   objection sentence "Har du innsigelser mot kravet, gi oss beskjed før fristen" (FinKN
   2025-240).
+
+A letter sent by e-mail carries its cover text and an HTML body that says the same,
+with the invoice's logo inline when it has one ([Sending a document](#sending-a-document)'s
+template); it takes no personal message.
 
 The English letter says the same in English. The words are pinned by text goldens of
 each level in both languages ([`testdata/reminders`](https://github.com/vantigo-io/vantigo/tree/main/apps/server/internal/invoices/testdata/reminders)).
@@ -5739,8 +5824,11 @@ Orders, which requires Invoices and so reads it as always present. Decided in
   ([Tax categories and VAT codes](#tax-categories-and-vat-codes)).
 - **`Seller(ctx)`** — the seller block this module prints, read from `invoices.settings`,
   the row the issue snapshots onto a document: legal name, organisation number, VAT
-  registration, Foretaksregisteret, address, e-mail, bank account, IBAN, BIC and footer
-  text. Invoices keeps no phone and no logo, so `Phone` and `LogoStorageKey` are `""`.
+  registration, Foretaksregisteret, address, e-mail, phone, bank account, IBAN, BIC and
+  footer text, and `LogoStorageKey`, the logo's key within this module's storage scope
+  (`branding/logo-<sha256>.<ext>`), `""` while no logo is set
+  ([The logo and the phone](#the-logo-and-the-phone)). Accounting reads `Phone` already;
+  nothing reads `LogoStorageKey` yet.
 
 Every method reads this module's own tables on the pool, holds no lock and opens no
 transaction, so a caller asks before it opens its own (rule 8's discipline); the
@@ -6012,7 +6100,10 @@ All under `/api/v1/invoices`, every one behind `invoices:access` but the pay pag
 | --- | --- | --- |
 | `GET /meta` | | |
 | `GET /settings` | | |
-| `PUT /settings` | `invoices:manage` | 400 on the field (both mod-11 checks, IBAN mod-97, BIC, "Only NOK in this phase", the Peppol id, the KID pair, a next number the KID length does not fit, any of the three required-nullable fields absent, `workVatCodes` absent, a work VAT code unknown, or changed to an inactive one, `timesheetDefault` or `timesheetPersonLabel` absent or null, a label other than `initials`, `number` or `name`, an `energyVatCodes` code unknown, or changed to an inactive one); 409 `series_locked`, or a stale revision (no code) |
+| `PUT /settings` | `invoices:manage` | 400 on the field (both mod-11 checks, IBAN mod-97, BIC, "Only NOK in this phase", the Peppol id, the KID pair, a next number the KID length does not fit, any of the three required-nullable fields absent, `workVatCodes` absent, a work VAT code unknown, or changed to an inactive one, `timesheetDefault` or `timesheetPersonLabel` absent or null, a label other than `initials`, `number` or `name`, an `energyVatCodes` code unknown, or changed to an inactive one, a `phone` that breaks Customers' rule); 409 `series_locked`, or a stale revision (no code) |
+| `PUT /settings/logo` | `invoices:manage` | 400 `logo_unsupported_type`, `logo_too_large`, `logo_too_wide`, `logo_too_small` or `logo_invalid`; 503 `storage_unavailable` |
+| `DELETE /settings/logo` | `invoices:manage` | 404, no logo set |
+| `GET /settings/logo` | | 404, no logo set or its object gone; 503 `storage_unavailable` |
 | `GET /settings/access-point` | `invoices:manage` | none: 200 with `hasCredentials: false` when nothing is stored |
 | `PUT /settings/access-point` | `invoices:manage` | 400 on `provider`, `legalEntityId` or `apiKey` (blank, too long, or omitted while none is stored); 409 `transmissions_active` on a provider switch; 503 `ehf_unavailable`, a kept key that cannot be opened |
 | `DELETE /settings/access-point` | `invoices:manage` | 409 `transmissions_active` |
@@ -6093,7 +6184,7 @@ All under `/api/v1/invoices`, every one behind `invoices:access` but the pay pag
 | `POST /{id}/hold/lift` | `invoices:payments` | 400 on `chargesAllowed` (absent or not a boolean) or `note`; 404; 409 `invoice_not_on_hold` |
 | `POST /{id}/collection` | `invoices:payments` | 400 on `handedOn` (missing or after today), `agency`, `agencyReference` or `note`; 404; 409 `credit_note_no_reminders`, `invoice_draft`; 400 on `handedOn` before the issue date; then under the lock 409 `invoice_settled`, `invoice_handed_off`, `invoice_not_delivered` (unless `acknowledgeNotDelivered`) |
 | `POST /{id}/collection/withdraw` | `invoices:payments` | 400 on `withdrawnOn` (missing or after today) or `reason`; 404; 409 `invoice_not_handed_off`; 400 on `withdrawnOn` before the hand-off's `handedOn` |
-| `POST /{id}/send` | `invoices:issue` | 429 `rate_limited`; 503 `mail_unavailable`; 404; 409 `invoice_draft`, `customer_anonymised`; 400 on `recipient`; 409 `no_invoice_email`; 503 `storage_unavailable`; 500 a directory that fails, a missing or altered stored object, a render that fails, or a sent mail whose row could not be written; 502 `mail_failed` |
+| `POST /{id}/send` | `invoices:issue` | 429 `rate_limited`; 503 `mail_unavailable`; 400 on `message` (past 2,000 characters); 404; 409 `invoice_draft`, `customer_anonymised`; 400 on `recipient`; 409 `no_invoice_email`; 503 `storage_unavailable` (the PDF or the logo); 500 a directory that fails, a missing or altered stored object or logo, a render that fails, or a sent mail whose row could not be written; 502 `mail_failed` |
 | `POST /{id}/send-ehf` | `invoices:issue` | 429 `rate_limited`; 503 `ehf_unavailable`; 404; 409 `invoice_draft`, `customer_anonymised`, `no_peppol_id`, `buyer_reference_missing`, `ehf_already_sent`; 503 `storage_unavailable`; 500 a missing or altered stored PDF, a render that fails or breaks an invariant; 409 `ehf_invalid` (with `rules`); 502 `peppol_lookup_failed`; 409 `peppol_not_receivable` (with `peppolRegistered`, `peppolCanReceive`); 500 a missing or altered reused UBL; 503 `storage_unavailable`; then under the lock 409 `customer_anonymised`, 503 `ehf_unavailable` when the credentials vanished, 409 `ehf_already_sent` |
 | `POST /{id}/transmissions/{transmissionId}/cancel` | `invoices:issue` | 404 the document, or a transmission not its own; 409 `transmission_not_cancellable` |
 | `POST /{id}/transmissions/{transmissionId}/resolve` | `invoices:issue` | 400 on `outcome` (not `delivered` or `failed`) or `note` (empty, over 500); 404 the document, or a transmission not its own; 409 `transmission_not_resolvable` |
@@ -6126,6 +6217,17 @@ All under `/api/v1/invoices`, every one behind `invoices:access` but the pay pag
 | `GET /stats/summary` | | 400 `from` after `to` |
 
 ## What comes next
+
+**Phase 6 is under way**
+([design](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-11-17-invoices-phase6-design.md),
+[plan](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/plans/2026-11-17-invoices-phase6-plan.md)).
+Delivery A, branding, is done: the seller's logo and phone on the PDF and the reminder
+letters, an HTML mail with the logo inline, and a personal message on a send
+([The logo and the phone](#the-logo-and-the-phone), [Sending a document](#sending-a-document)),
+on migration `00193_invoices_branding.sql`. Still to come: B, the customer's balance —
+credit kept and applied, refunds, one bank line for several invoices, small differences
+rounded off; C, foreign currency; D, eFaktura and AvtaleGiro; and E, sending in bulk, the
+2028 buyer rule and credit limits.
 
 **Phase 5 is complete.** Its delivery D
 ([plan](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/plans/2026-10-27-invoices-energy.md))
@@ -6275,3 +6377,5 @@ The Assistant can point at these controls in a guided tour ([the registry](/en/r
 | `invoices.invoice.add-line` | `/invoices/{invoiceId}` | Add a line |
 | `invoices.invoice.save` | `/invoices/{invoiceId}` | Save |
 | `invoices.invoice.issue` | `/invoices/{invoiceId}` | Issue |
+| `invoices.settings.logo` | `/invoices/settings` | Upload logo |
+| `invoices.send.message` | `/invoices/{invoiceId}` | Message (the Send dialog) |

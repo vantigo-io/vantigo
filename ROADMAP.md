@@ -1760,6 +1760,37 @@ the [design](docs/superpowers/specs/2026-11-13-bank-feed-folio-design.md) and th
 company cards and reimbursements paid from the bank in Expenses, and supplier invoices
 paid with KID — payment files with KID, in [Accounting](#accounting)'s phase 2.
 
+### Phase 6 — Branding, the customer's balance, foreign currency, eFaktura and AvtaleGiro, sending in bulk (in progress)
+
+Where Invoices is behind its competitors on what a buyer sees first, in five deliveries
+that stand alone ([design](docs/superpowers/specs/2026-11-17-invoices-phase6-design.md),
+[research](docs/superpowers/research/2026-11-17-invoices-competitive-gaps.md),
+[plan](docs/superpowers/plans/2026-11-17-invoices-phase6-plan.md)).
+
+**Delivery A: branding (done)** — on `claude/invoices-branding`, migration
+`00193_invoices_branding.sql`. The seller's logo — a PNG or JPEG of at most 512 KiB,
+stored content-addressed and never deleted — and phone on the settings, snapshotted at
+issue and printed on the PDF and every reminder letter, the logo top left in 45 × 20 mm
+and checked against its hash; every document and reminder mail as HTML beside its text,
+the logo inline, through both mail drivers (the Cloudflare driver now carries inline
+parts); and a personal message on **Send**, stored on the delivery and blanked on
+anonymisation. See
+[`docs/src/content/docs/en/reference/invoices.md`](docs/src/content/docs/en/reference/invoices.md#the-logo-and-the-phone).
+
+**Delivery B: the customer's balance** — an overpayment kept as credit, applied to
+invoices and refunded; one bank line matched to several invoices by its remittance text;
+small differences rounded off.
+
+**Delivery C: foreign currency** — Norges Bank's rates, the document in currency with
+VAT in NOK, payments with the exchange difference, Orders' currencies invoiced and
+Accounting posting in currency (after B).
+
+**Delivery D: eFaktura and AvtaleGiro** — through a consumer-delivery port and its first
+adapter.
+
+**Delivery E: sending in bulk** — send all, the 2028 buyer org-number rule and credit
+limits.
+
 ### Later
 
 Recurring invoices and retainers (a subscription may be invoiced up to a year ahead) ·
