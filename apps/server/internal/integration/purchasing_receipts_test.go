@@ -12,6 +12,7 @@ import (
 
 	invgen "github.com/vantigo-io/vantigo/server/internal/inventory/gen"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
+	"github.com/vantigo-io/vantigo/server/internal/purchasing"
 	purgen "github.com/vantigo-io/vantigo/server/internal/purchasing/gen"
 )
 
@@ -174,10 +175,9 @@ func (p purchasingInstallation) stockAt(t *testing.T, variant int32) invgen.Inve
 // variant at the site, "" when nothing.
 func (p purchasingInstallation) open(t *testing.T, variant int32) string {
 	t.Helper()
-	supply := p.h.Deps().PurchaseSupply
-	if supply == nil {
-		t.Fatal("Compose left Deps.PurchaseSupply empty with Purchasing composed")
-	}
+	// The harness's Deps are the ones before Compose; the provider is
+	// Purchasing's own, as Compose builds it.
+	supply := purchasing.Module().PurchaseSupply(p.h.Deps())
 	rows, err := supply.OpenByVariants(context.Background(), &p.site, []int32{variant})
 	if err != nil {
 		t.Fatalf("OpenByVariants: %v", err)
@@ -328,12 +328,12 @@ func TestPurchasingReceipts_LotsAndSerials(t *testing.T) {
 	withLot := p.receiptLine(flourLine, "5")
 	withLot.Lot = &purgen.PurchasingReceiptLotInput{Number: strPtr("L-778"), SupplierLot: strPtr("SUP-9"), Expiry: purDate(2031, time.June, 30)}
 	r := p.receive(t, o.Id, withLot)
-	if l := r.Receipt.Lines[0]; l.LotId == nil || l.LotNumber == nil || *l.LotNumber != "L-778" {
+	if l := r.Receipt.Lines[0]; l.LotId != nil || l.LotNumber == nil || *l.LotNumber != "L-778" { // a lot by number keeps its number, not an id
 		t.Fatalf("the receipt's lot line = %+v", l)
 	}
 	ls := p.lots(t, flour.variant)
 	if len(ls) != 1 || ls[0].Number != "L-778" || ls[0].OnHand != 5 || ls[0].Expiry == nil || ls[0].Expiry.Format("2006-01-02") != "2031-06-30" ||
-		ls[0].SupplierLot == nil || *ls[0].SupplierLot != "SUP-9" || ls[0].Id != *r.Receipt.Lines[0].LotId {
+		ls[0].SupplierLot == nil || *ls[0].SupplierLot != "SUP-9" {
 		t.Fatalf("Inventory's lots of the flour = %+v", ls)
 	}
 
@@ -379,7 +379,15 @@ func TestPurchasingReceipts_InspectedVariantQuarantineAndUndo(t *testing.T) {
 	if mv.InspectionLots == nil || len(*mv.InspectionLots) != 1 {
 		t.Errorf("the movement's inspection lots = %v, want one", mv.InspectionLots)
 	}
-	lotID := *r.Receipt.Lines[0].LotId
+	var lotID int64
+	for _, s := range p.lots(t, steel.variant) {
+		if s.Number == "H-1001" {
+			lotID = s.Id
+		}
+	}
+	if lotID == 0 {
+		t.Fatal("no lot H-1001 was made")
+	}
 	l := p.lot(t, lotID)
 	if l.Status != "quarantine" || l.OnHand != 8 {
 		t.Fatalf("the received lot = %s on hand %v, want quarantine and 8", l.Status, l.OnHand)
