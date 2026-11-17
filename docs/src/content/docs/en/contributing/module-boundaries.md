@@ -136,7 +136,8 @@ lag, never what must refuse — go through the platform's domain-events outbox,
    (`contracts.CustomerReceivables`, invoices — what a customer was invoiced and
    owes, every state judged on the provider's own business day), `SalesTax`
    (`contracts.SalesTax`, invoices — its VAT codes with the rate valid on a day, the VAT
-   code each of Products' tax categories maps to, and the seller block it prints; nil
+   code each of Products' tax categories maps to, and the seller block it prints — its
+   phone and its logo's storage key among them; nil
    when Invoices is off, and read as always present by Orders, which requires it), and the three line-level reads an
    invoice is built from — `BillableHours` (`contracts.BillableHours`, time),
    `BillableExpenses` (`contracts.BillableExpenses`, expenses) and

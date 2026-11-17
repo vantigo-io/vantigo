@@ -1311,9 +1311,11 @@ rettigheten, `403 email.sending.error.email.sending_disabled` domenet, `429
 email.sending.error.throttled` kontoens daglige kvote. En mottaker Cloudflare melder som
 permanent avvist (bounce), gjør også at sendingen feiler; en som settes i kø, lykkes.
 
-Driveren bærer det systempostboksen sender — mottakerne, begge tekstene, et vedlegg,
-trådhodene — og avviser, før noen forespørsel, en e-post med flere enn 50 mottakere, et
-innebygd bilde eller en kalenderdel. Cloudflare setter `Message-ID` selv.
+Driveren bærer det systempostboksen sender — mottakerne, begge tekstene, vedlegg,
+trådhodene — og et innebygd bilde som en HTML-tekst viser til med `cid:` (som en
+fakturas logo), sendt med disposition `inline` og sin `content_id`. Den avviser, før
+noen forespørsel, en e-post med flere enn 50 mottakere eller en kalenderdel. Cloudflare
+setter `Message-ID` selv.
 Omdirigeringer følges ikke, og tilkoblingen går gjennom den samme kontrollen mot private
 mål som SMTP. Tokenet sladdes overalt der konfigurasjonen skrives ut.
 

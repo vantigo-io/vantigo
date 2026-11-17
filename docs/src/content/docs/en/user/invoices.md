@@ -55,12 +55,15 @@ Fill in the fields and click **Save**:
 - **Legal name**, **Organisation number** (nine digits with a valid check digit),
   **Address**, **Address line 2**, **Postal code**, **City**, **Country** (a two-letter
   code such as NO) and **E-mail** — the address replies to sent invoices go to.
+- **Phone**, optional: printed in the seller block after the e-mail. At most 30
+  characters — digits, spaces and + - ( ) . — with at least one digit.
 - **Bank account** (eleven digits with a valid check digit), and **IBAN** and **BIC**
   for buyers abroad.
 - **Default payment terms (days)**, 0 to 365: the terms a new draft starts with when
   the customer's billing profile names none.
 - **Registered for VAT (prints MVA after the number)** and **Registered in
   Foretaksregisteret** — both print on the document as the regulation asks.
+- **Logo**, optional, described [below](#the-logo).
 - **Footer text**, printed at the bottom of every document.
 - **The number series starts at** — the number the first document gets. It locks the
   moment anything is issued, and the field then reads *Locked: documents are issued
@@ -72,6 +75,26 @@ the KID agreement together; the access point has a save button of its own.
 
 If a colleague saved the settings while you were editing, the form says **The settings
 changed** and offers **Reload**; your unsaved edits are dropped, never merged.
+
+#### The logo
+
+Above **Footer text**, the **Logo** block shows the logo the documents print, or *No
+logo is uploaded*. Click **Upload logo** and choose a PNG or JPEG file of at most 512 KB,
+at most 2,000 pixels on its longer side and at least 16 on its shorter. It is saved at
+once, without **Save**; *Logo uploaded* confirms it. **Remove logo** takes it away again.
+Both need `invoices:manage`. A file that breaks a rule is refused in words — *A logo is a
+PNG or a JPEG file*, *A logo is at most 512 KB*, and so on — and nothing is saved.
+
+The logo is printed top left on the invoice, the credit note and every reminder letter,
+fitted inside 45 × 20 mm with its proportions kept, with the title beside it; the e-mail
+a document is sent with shows it at the top. It is taken, like the rest of the seller
+record, when a document is issued: documents issued from now on carry the logo, and
+documents already issued keep the logo they were issued with — or none, when they were
+issued without. Removing or replacing the logo changes nothing issued. A draft's
+preview shows the logo as it is now. The EHF e-invoice carries no logo.
+
+Uploading or removing the logo is a save of the settings: if you have unsaved edits in
+the form at the same time, it then says **The settings changed**.
 
 ### Set up e-invoicing
 
@@ -1715,14 +1738,24 @@ None of them stops the send. On an invoice that is
 partly paid or credited a note says the e-mail asks only for the outstanding amount; on
 a settled one, that it says nothing is due.
 
+Below the recipient, **Message** takes an optional personal message of up to 2,000
+characters — *Shown above the standard text in the e-mail.* It goes in as you type it,
+after the greeting, line breaks kept, and is never a template: the next send starts
+empty.
+
 Click **Send**. The mail goes at once, from the chosen channel's address under the seller's
-name, with the stored PDF attached and a short plain text — *Faktura 1001 fra <seller>* or *Invoice 1001 from <seller>* in the buyer's
+name, with the stored PDF attached and a short text — *Faktura 1001 fra <seller>* or *Invoice 1001 from <seller>* in the buyer's
 language — asking for the open amount to the seller's account, marked with the invoice's KID when
 it has one and with its number otherwise; replies go to the e-mail
-in the settings ([the texts](/en/reference/invoices/#sending-a-document)). A message
+in the settings ([the texts](/en/reference/invoices/#sending-a-document)). The e-mail is
+both plain text and a simple formatted version that says the same, with the logo the
+document was issued with at the top when it has one. A message
 confirms *Sent to …*, and the **Deliveries** card on the document gains a row with
-**Sent**, **To** and **Subject**. The **To** column is shown only to people with
-`invoices:issue`; others see when and under which subject each send went.
+**Sent**, **To** and **Subject**, and the personal message under the subject — collapsed
+to its first line, **Show the message** opens it. The **To** column and the message are
+shown only to people with `invoices:issue`; others see when and under which subject each
+send went. When the customer is anonymised, the address and the message are removed from
+the row.
 
 A send is refused when the customer has been anonymised (*The customer has been
 anonymised and is not contacted again*), when there is no address, when the document
