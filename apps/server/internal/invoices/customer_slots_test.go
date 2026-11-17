@@ -296,7 +296,7 @@ func TestCustomerPersonalData_ExportCarriesPaymentsAndDeliveries(t *testing.T) {
 	if res := payer(t, h).Do(http.MethodPost, removalPath(doc.ID, mistake), map[string]any{"reason": "Feil beløp"}); res.Status != http.StatusOK {
 		t.Fatalf("the removal = %d %s, want 200", res.Status, res.Body)
 	}
-	subject, _ := json.Marshal(sent(t, h, doc.ID, nil).Deliveries[0].Subject)
+	subject, _ := json.Marshal(sent(t, h, doc.ID, map[string]any{"message": "Hilsen til Kari"}).Deliveries[0].Subject)
 
 	section, err := invoices.Module().CustomerPersonalData(disabledDeps(h)).ExportCustomerData(context.Background(), customerPerson)
 	if err != nil {
@@ -309,7 +309,7 @@ func TestCustomerPersonalData_ExportCarriesPaymentsAndDeliveries(t *testing.T) {
 			`{"paidOn":"2026-09-12","amount":"300.10","currency":"NOK","source":"manual","reference":"KID 0012345","note":"Delbetaling","registeredAt":"2026-09-12T12:00:00Z"},` +
 			`{"paidOn":"2026-09-12","amount":"0.50","currency":"NOK","source":"manual","registeredAt":"2026-09-12T13:00:00Z",` +
 			`"removedAt":"2026-09-12T14:00:00Z","removalReason":"Feil beløp"}]`,
-		`"deliveries":[{"recipient":"kari@example.org","sentAt":"2026-09-12T14:00:00Z","subject":` + string(subject) + `}]`,
+		`"deliveries":[{"recipient":"kari@example.org","sentAt":"2026-09-12T14:00:00Z","subject":` + string(subject) + `,"message":"Hilsen til Kari"}]`,
 	} {
 		if !strings.Contains(raw, want) {
 			t.Errorf("export %s has no %s", raw, want)

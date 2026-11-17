@@ -170,6 +170,9 @@ type issueWork struct {
 	holders  holders
 	projects map[int32]contracts.ProjectEntry
 	display  string
+	// goneLogo is the settings' logo key the issue must not snapshot
+	// (server.goneLogo), "" for none.
+	goneLogo string
 }
 
 // readIssueWork reads, on the pool, before the issue's transaction, what the

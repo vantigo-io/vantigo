@@ -500,6 +500,10 @@ func (s *server) GetInvoicesReminderPrintBatchesByIdPdf(ctx context.Context, req
 	// from the store after the snapshot, as a letter's own PDF reads it.
 	for i := range models {
 		if models[i].logo, models[i].logoType, err = s.documentLogo(ctx, modelInvoices[i]); err != nil {
+			if errors.Is(err, errObjectStore) {
+				return gen.GetInvoicesReminderPrintBatchesByIdPdf503ApplicationProblemPlusJSONResponse(storageUnavailable(
+					"A letter's logo could not be read from the store; try again.")), nil
+			}
 			return nil, err
 		}
 	}

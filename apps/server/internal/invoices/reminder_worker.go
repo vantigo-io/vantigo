@@ -274,6 +274,11 @@ func (c *reminderClaim) dispatch(ctx context.Context) error {
 	if err != nil {
 		c.w.logger().WarnContext(ctx, "invoices: a reminder letter's logo could not be read", "worker", reminderWorkerName,
 			"reminder_id", letter.ID, "error", err.Error())
+		// The store's failure — or a logo gone from it — is retried as a
+		// store failure; a logo that does not match its hash is the letter's.
+		if errors.Is(err, errObjectStore) {
+			return c.fail(ctx, reasonLetterNotStored)
+		}
 		return c.fail(ctx, reasonLetterNotRendered)
 	}
 	m, body, err := renderLetter(letter, inv, payLink, logo, logoType)
@@ -326,6 +331,8 @@ func (c *reminderClaim) dispatch(ctx context.Context) error {
 	cover.Logo = logo != nil
 	html, err := cover.render()
 	if err != nil {
+		c.w.logger().WarnContext(ctx, "invoices: a reminder letter's HTML could not be rendered", "worker", reminderWorkerName,
+			"reminder_id", letter.ID, "error", err.Error())
 		return c.fail(ctx, reasonLetterNotRendered)
 	}
 	out := mail.Outbound{

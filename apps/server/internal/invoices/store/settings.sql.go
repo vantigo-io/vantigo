@@ -17,15 +17,15 @@ UPDATE invoices.settings SET
     logo_object_key = NULL,
     logo_sha256 = NULL,
     logo_content_type = NULL,
-    updated_at = $1::timestamptz,
-    revision = revision + 1
+    updated_at = $1::timestamptz
 WHERE id = 1
 RETURNING id, legal_name, organisation_number, vat_registered, in_foretaksregisteret, address_line1, address_line2, postal_code, city, country, bank_account, iban, bic, email, default_payment_terms_days, default_currency, footer_text, series_start, updated_at, revision, peppol_id, kid_length, kid_algorithm, work_vat_code_hours, work_vat_code_expenses, work_vat_code_milestones, timesheet_default, timesheet_person_label, energy_vat_code, energy_vat_code_exempt, send_channel, logo_object_key, logo_sha256, logo_content_type, phone
 `
 
 // ClearSettingsLogo removes the seller's logo (I1): the three columns
 // cleared, the object never deleted, since an issued document's snapshot may
-// name it. The caller holds the row (LockSettings) and has seen a logo set.
+// name it. The revision does not move, as SetSettingsLogo's. The caller
+// holds the row (LockSettings) and has seen a logo set.
 func (q *Queries) ClearSettingsLogo(ctx context.Context, now time.Time) (InvoicesSetting, error) {
 	row := q.db.QueryRow(ctx, clearSettingsLogo, now)
 	var i InvoicesSetting
@@ -189,8 +189,7 @@ UPDATE invoices.settings SET
     logo_object_key = $1,
     logo_sha256 = $2,
     logo_content_type = $3,
-    updated_at = $4::timestamptz,
-    revision = revision + 1
+    updated_at = $4::timestamptz
 WHERE id = 1
 RETURNING id, legal_name, organisation_number, vat_registered, in_foretaksregisteret, address_line1, address_line2, postal_code, city, country, bank_account, iban, bic, email, default_payment_terms_days, default_currency, footer_text, series_start, updated_at, revision, peppol_id, kid_length, kid_algorithm, work_vat_code_hours, work_vat_code_expenses, work_vat_code_milestones, timesheet_default, timesheet_person_label, energy_vat_code, energy_vat_code_exempt, send_channel, logo_object_key, logo_sha256, logo_content_type, phone
 `
@@ -203,9 +202,10 @@ type SetSettingsLogoParams struct {
 }
 
 // SetSettingsLogo names the seller's logo (invoices phase 6 design I1): the
-// object's key, the hash of its bytes and its type, set together, and moves
-// the revision on. The caller holds the row (LockSettings) and has stored the
-// object.
+// object's key, the hash of its bytes and its type, set together. The
+// revision does not move: the logo is no field of the seller form, whose
+// unsaved edits it must not make stale. The caller holds the row
+// (LockSettings) and has stored the object.
 func (q *Queries) SetSettingsLogo(ctx context.Context, arg SetSettingsLogoParams) (InvoicesSetting, error) {
 	row := q.db.QueryRow(ctx, setSettingsLogo,
 		arg.LogoObjectKey,

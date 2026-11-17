@@ -342,6 +342,9 @@ func (s *server) issueDraft(ctx context.Context, id int64, issueDate *openapi_ty
 	if err != nil {
 		return issueOutcome{}, err
 	}
+	// The logo's object, asked of the store before the lock: one the store
+	// does not hold is not snapshotted (goneLogo).
+	work.goneLogo = s.goneLogo(ctx, q)
 	if issueBeforeLock != nil {
 		issueBeforeLock(ctx, draft.ID)
 	}
@@ -623,6 +626,9 @@ func (s *server) issueLocked(ctx context.Context, tx pgx.Tx, txq *store.Queries,
 		params.DueDate = pgDate(issueDate.AddDate(0, 0, int(*locked.PaymentTermsDays)))
 	}
 	sellerSnapshot(&params, settings)
+	if work.goneLogo != "" && params.SellerLogoObjectKey != nil && *params.SellerLogoObjectKey == work.goneLogo {
+		params.SellerLogoObjectKey, params.SellerLogoSha256 = nil, nil
+	}
 	params.Kid, params.KidAlgorithm = documentKid, kidAlgorithm
 	if params.NetTotal, params.VatTotal, params.GrossTotal, params.VatTotalNok, err = numerics(totals); err != nil {
 		return failed(err)

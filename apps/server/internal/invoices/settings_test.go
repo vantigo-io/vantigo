@@ -58,6 +58,7 @@ type settingsJSON struct {
 	Logo  *struct {
 		ContentType string `json:"contentType"`
 		Sha256      string `json:"sha256"`
+		Missing     *bool  `json:"missing"`
 	} `json:"logo"`
 }
 

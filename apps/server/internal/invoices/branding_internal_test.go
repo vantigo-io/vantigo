@@ -14,6 +14,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/phpdave11/gofpdf"
 )
 
 // This file tests the branding of invoices phase 6 delivery A in-process: the
@@ -202,5 +204,75 @@ func TestCoverMail_TheMessageAndTheHTML(t *testing.T) {
 	}
 	if strings.Contains(without.html, "cid:logo") || strings.Contains(without.html, "<a ") {
 		t.Errorf("without a logo or a pay link the HTML = %s", without.html)
+	}
+}
+
+// gofpdfTakes reports whether gofpdf — the renderer under maroto — registers
+// data as an image of pdfType ("PNG" or "JPG") without an error.
+func gofpdfTakes(data []byte, pdfType string) bool {
+	probe := gofpdf.New("P", "mm", "A4", "")
+	probe.RegisterImageOptionsReader("probe", gofpdf.ImageOptions{ImageType: pdfType}, bytes.NewReader(data))
+	return !probe.Err()
+}
+
+// A logo is normalised before it is stored (review of delivery A): an
+// interlaced PNG, a 16-bit PNG and a progressive JPEG — files gofpdf refuses
+// or mishandles, and maroto would print its error into every document — are
+// accepted, encoded again as an 8-bit non-interlaced PNG or a baseline JPEG,
+// and the result loads in gofpdf and renders as an image.
+func TestNormaliseLogo_WhatGofpdfRefusesIsEncodedAgain(t *testing.T) {
+	t.Parallel()
+	read := func(name string) []byte {
+		data, err := os.ReadFile(filepath.Join("testdata", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return data
+	}
+	deep := image.NewRGBA64(image.Rect(0, 0, 64, 32))
+	for i := range deep.Pix {
+		deep.Pix[i] = byte(i * 7)
+	}
+	var sixteen bytes.Buffer
+	if err := png.Encode(&sixteen, deep); err != nil {
+		t.Fatal(err)
+	}
+	interlaced := read("logo-interlaced.png")
+	if gofpdfTakes(interlaced, "PNG") {
+		t.Fatal("the interlaced fixture loads in gofpdf as it is; it no longer proves the normalisation")
+	}
+	for _, c := range []struct {
+		name, contentType, pdfType string
+		data                       []byte
+	}{
+		{"an interlaced PNG", contentTypePNG, "PNG", interlaced},
+		{"a 16-bit PNG", contentTypePNG, "PNG", sixteen.Bytes()},
+		{"a progressive JPEG", contentTypeJPEG, "JPG", read("logo-progressive.jpg")},
+	} {
+		contentType, refusal := judgeLogo(c.data)
+		if refusal != nil || contentType != c.contentType {
+			t.Errorf("%s: judged %q %+v", c.name, contentType, refusal)
+			continue
+		}
+		stored, refusal := normaliseLogo(c.data, contentType)
+		if refusal != nil {
+			t.Errorf("%s: refused %s", c.name, *refusal.Code)
+			continue
+		}
+		if !gofpdfTakes(stored, c.pdfType) {
+			t.Errorf("%s: the normalised file does not load in gofpdf", c.name)
+		}
+		if contentType == contentTypePNG {
+			// IHDR's bit depth (byte 24 of the file) and interlace method (28).
+			if _, err := png.DecodeConfig(bytes.NewReader(stored)); err != nil || stored[24] != 8 || stored[28] != 0 {
+				t.Errorf("%s: the stored PNG has bit depth %d and interlace %d (%v), want 8 and 0", c.name, stored[24], stored[28], err)
+			}
+		}
+		d := anInvoice()
+		d.logo, d.logoType = stored, contentType
+		out, err := renderPDF(buildPDFModel(d))
+		if err != nil || !bytes.Contains(out, []byte("/Subtype /Image")) {
+			t.Errorf("%s: render = %v, image object %v", c.name, err, bytes.Contains(out, []byte("/Subtype /Image")))
+		}
 	}
 }

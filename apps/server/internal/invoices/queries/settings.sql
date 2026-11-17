@@ -60,28 +60,28 @@ RETURNING *;
 
 -- name: SetSettingsLogo :one
 -- SetSettingsLogo names the seller's logo (invoices phase 6 design I1): the
--- object's key, the hash of its bytes and its type, set together, and moves
--- the revision on. The caller holds the row (LockSettings) and has stored the
--- object.
+-- object's key, the hash of its bytes and its type, set together. The
+-- revision does not move: the logo is no field of the seller form, whose
+-- unsaved edits it must not make stale. The caller holds the row
+-- (LockSettings) and has stored the object.
 UPDATE invoices.settings SET
     logo_object_key = @logo_object_key,
     logo_sha256 = @logo_sha256,
     logo_content_type = @logo_content_type,
-    updated_at = @now::timestamptz,
-    revision = revision + 1
+    updated_at = @now::timestamptz
 WHERE id = 1
 RETURNING *;
 
 -- name: ClearSettingsLogo :one
 -- ClearSettingsLogo removes the seller's logo (I1): the three columns
 -- cleared, the object never deleted, since an issued document's snapshot may
--- name it. The caller holds the row (LockSettings) and has seen a logo set.
+-- name it. The revision does not move, as SetSettingsLogo's. The caller
+-- holds the row (LockSettings) and has seen a logo set.
 UPDATE invoices.settings SET
     logo_object_key = NULL,
     logo_sha256 = NULL,
     logo_content_type = NULL,
-    updated_at = @now::timestamptz,
-    revision = revision + 1
+    updated_at = @now::timestamptz
 WHERE id = 1
 RETURNING *;
 
