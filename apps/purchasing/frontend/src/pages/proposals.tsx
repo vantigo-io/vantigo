@@ -17,13 +17,17 @@ import "../i18n";
 import { noPurchasingAccess, type PurchasingAccess } from "../lib/access";
 import { lineRefusalWords, refusalMessage } from "../lib/errors";
 import { newRequestId, today, usePurchasingFormat } from "../lib/format";
+import { decimal } from "../lib/lines";
 import { proposalsLinkOptions, purchaseOrderLinkOptions } from "../lib/routes";
 
 /** A row's key: one proposal per variant and site (P32). */
 const keyOf = (row: PurchasingProposal) => `${row.variantId}:${row.siteId}`;
 
-/** A quantity as the server reads one: more than 0, at most three decimals. */
-const validQuantity = (text: string) => /^\d+(\.\d{1,3})?$/.test(text.trim()) && Number(text) > 0;
+/** A quantity as the server reads one: more than 0, at most three decimals, a comma read as the point. */
+const validQuantity = (text: string) => /^\d+(\.\d{1,3})?$/.test(decimal(text)) && Number(decimal(text)) > 0;
+
+/** A goods variant no longer ordered: its row has no option (P16). */
+const discontinued = (row: PurchasingProposal) => row.productStatus === "Discontinued";
 
 /** What a person chose on a row: ticked, the supplier item, the quantity in its packaging. */
 interface Choice {
@@ -60,17 +64,25 @@ export const ProposalsPage = ({
   const rows = list.data?.rows ?? [];
   const orderable = rows.filter((row) => row.options.length > 0);
   const unsupplied = rows.filter((row) => row.options.length === 0);
+  // A choice whose supplier item is no longer among the row's options, after a reload, is dropped:
+  // its quantity was typed for that item's packaging, so the row is unticked and starts again.
+  const choiceOf = (row: PurchasingProposal, all: Record<string, Choice>): Choice | undefined => {
+    const choice = all[keyOf(row)];
+    if (choice?.itemId !== undefined && !row.options.some((o) => o.supplierItemId === choice.itemId))
+      return { ticked: false };
+    return choice;
+  };
   const optionOf = (row: PurchasingProposal): PurchasingProposalOption => {
-    const id = choices[keyOf(row)]?.itemId;
+    const id = choiceOf(row, choices)?.itemId;
     return row.options.find((o) => o.supplierItemId === id) ?? row.options[0];
   };
-  const quantityOf = (row: PurchasingProposal) => choices[keyOf(row)]?.quantity ?? optionOf(row).orderQuantity;
+  const quantityOf = (row: PurchasingProposal) => choiceOf(row, choices)?.quantity ?? optionOf(row).orderQuantity;
   const choose = (row: PurchasingProposal, next: Partial<Choice>) =>
-    setChoices((current) => ({
-      ...current,
-      [keyOf(row)]: { ...current[keyOf(row)], ticked: current[keyOf(row)]?.ticked ?? false, ...next },
-    }));
-  const ticked = orderable.filter((row) => choices[keyOf(row)]?.ticked);
+    setChoices((current) => {
+      const choice = choiceOf(row, current);
+      return { ...current, [keyOf(row)]: { ...choice, ticked: choice?.ticked ?? false, ...next } };
+    });
+  const ticked = orderable.filter((row) => choiceOf(row, choices)?.ticked);
   const allValid = ticked.every((row) => validQuantity(quantityOf(row)));
 
   // One request id per set of rows sent (A11): a click again with the same rows — after an answer
@@ -94,7 +106,8 @@ export const ProposalsPage = ({
       variantId: row.variantId,
       siteId: row.siteId,
       supplierItemId: optionOf(row).supplierItemId,
-      orderQuantity: quantityOf(row).trim(),
+      orderQuantity: decimal(quantityOf(row)),
+      remaining: row.remaining,
     }));
     const signature = JSON.stringify(rows);
     if (attempt.current?.signature !== signature) attempt.current = { signature, id: newRequestId() };
@@ -153,13 +166,16 @@ export const ProposalsPage = ({
         >
           <Stack gap={4}>
             {created.orders.map((o) => (
-              <Anchor
-                key={o.orderId}
-                size="sm"
-                renderRoot={(props) => <Link {...purchaseOrderLinkOptions(o.orderId)} {...props} />}
-              >
-                {t("ordersCreatedDraft", { supplier: o.supplierName })}
-              </Anchor>
+              <Group key={o.orderId} gap="xs">
+                <Anchor size="sm" renderRoot={(props) => <Link {...purchaseOrderLinkOptions(o.orderId)} {...props} />}>
+                  {t("ordersCreatedDraft", { supplier: o.supplierName })}
+                </Anchor>
+                {o.unpricedRows.length > 0 && (
+                  <Text size="sm" c="orange">
+                    {t("ordersCreatedUnpriced", { count: o.unpricedRows.length })}
+                  </Text>
+                )}
+              </Group>
             ))}
             <Text size="sm" c="dimmed">
               {t("ordersCreatedHint")}
@@ -212,7 +228,7 @@ export const ProposalsPage = ({
                           <Table.Td>
                             <Checkbox
                               aria-label={t("proposalSelect", names)}
-                              checked={choices[key]?.ticked === true}
+                              checked={choiceOf(row, choices)?.ticked === true}
                               onChange={(event) => choose(row, { ticked: event.currentTarget.checked })}
                             />
                           </Table.Td>
@@ -285,7 +301,7 @@ export const ProposalsPage = ({
                           )}
                           {option.packagingName && (
                             <Text size="xs" c="dimmed" title={t("proposalRounded")}>
-                              {`${quantity(Number(validQuantity(value) ? value : option.orderQuantity) * Number(option.packagingQuantity))} ${row.unit}`}
+                              {`${quantity(Number(validQuantity(value) ? decimal(value) : option.orderQuantity) * Number(option.packagingQuantity))} ${row.unit}`}
                             </Text>
                           )}
                         </Table.Td>
@@ -345,6 +361,11 @@ export const ProposalsPage = ({
                     <Text size="xs" c="dimmed">
                       {row.productName}
                     </Text>
+                    {discontinued(row) && (
+                      <Badge size="xs" color="gray" variant="light">
+                        {t("discontinued")}
+                      </Badge>
+                    )}
                   </Table.Td>
                   <Table.Td>{row.siteName}</Table.Td>
                   <Table.Td>{`${quantity(row.remaining)} ${row.unit}`}</Table.Td>

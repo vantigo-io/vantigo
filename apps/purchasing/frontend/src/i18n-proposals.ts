@@ -25,7 +25,8 @@ export const proposalWords = {
     proposalPrice: "Price",
     proposalOrderBy: "Order by",
     proposalPriceNone: "No price",
-    proposalCurrencyDiffers: "The price is in {{currency}}, not the supplier's currency: the order line gets no price.",
+    proposalCurrencyDiffers:
+      "The price is in {{currency}}, not the supplier's currency. A line takes it only on a draft in {{currency}}: a new draft is in the supplier's currency, so there the line gets no price.",
     proposalSelect: "Select {{sku}} at {{site}}",
     proposalQuantityOf: "Quantity of {{sku}} at {{site}}",
     proposalSupplierOf: "Supplier of {{sku}} at {{site}}",
@@ -33,7 +34,7 @@ export const proposalWords = {
     proposalLate: "Late",
     proposalsNoSupplier: "No supplier",
     proposalsNoSupplierDescription:
-      "These products have no supplier item, so they cannot be ordered here. Add one on the supplier's page.",
+      "These products have no supplier item, or are discontinued, so they cannot be ordered here. Add a supplier item on the supplier's page.",
     createOrders: "Create orders",
     createOrdersCount_one: "Create orders ({{count}} row)",
     createOrdersCount_other: "Create orders ({{count}} rows)",
@@ -41,10 +42,13 @@ export const proposalWords = {
     ordersCreated_other: "{{count}} draft orders made or added to",
     ordersCreatedDraft: "Draft for {{supplier}}",
     ordersCreatedHint: "Open each draft, check it and send it to the supplier.",
+    ordersCreatedUnpriced_one: "{{count}} line got no price: its supplier item's price is not in the draft's currency.",
+    ordersCreatedUnpriced_other:
+      "{{count}} lines got no price: their supplier items' prices are not in the draft's currency.",
     orderFromProposals: "Order…",
     "changeAction.from_proposals": "Lines from proposals",
     "refusal.proposal_gone":
-      "Some rows are no longer proposed: they are on a draft or were ordered since. The list is loaded again.",
+      "Some rows are no longer proposed as shown: they are on a draft, were ordered or changed since. The list is loaded again.",
     "refusal.supplier_item_not_found": "The supplier does not sell this product any more.",
   },
   nb: {
@@ -68,7 +72,8 @@ export const proposalWords = {
     proposalPrice: "Pris",
     proposalOrderBy: "Bestill innen",
     proposalPriceNone: "Ingen pris",
-    proposalCurrencyDiffers: "Prisen er i {{currency}}, ikke i leverandørens valuta: ordrelinjen får ingen pris.",
+    proposalCurrencyDiffers:
+      "Prisen er i {{currency}}, ikke i leverandørens valuta. En linje får den bare på et utkast i {{currency}}: et nytt utkast er i leverandørens valuta, så der får linjen ingen pris.",
     proposalSelect: "Velg {{sku}} på {{site}}",
     proposalQuantityOf: "Antall {{sku}} på {{site}}",
     proposalSupplierOf: "Leverandør for {{sku}} på {{site}}",
@@ -76,7 +81,7 @@ export const proposalWords = {
     proposalLate: "Forsinket",
     proposalsNoSupplier: "Uten leverandør",
     proposalsNoSupplierDescription:
-      "Disse produktene har ingen leverandørvare, så de kan ikke bestilles her. Legg til en på leverandørens side.",
+      "Disse produktene har ingen leverandørvare, eller er utgått, så de kan ikke bestilles her. Legg til en leverandørvare på leverandørens side.",
     createOrders: "Lag ordrer",
     createOrdersCount_one: "Lag ordrer ({{count}} rad)",
     createOrdersCount_other: "Lag ordrer ({{count}} rader)",
@@ -84,10 +89,13 @@ export const proposalWords = {
     ordersCreated_other: "{{count}} utkast laget eller utvidet",
     ordersCreatedDraft: "Utkast til {{supplier}}",
     ordersCreatedHint: "Åpne hvert utkast, sjekk det og send det til leverandøren.",
+    ordersCreatedUnpriced_one: "{{count}} linje fikk ingen pris: prisen på leverandørvaren er ikke i utkastets valuta.",
+    ordersCreatedUnpriced_other:
+      "{{count}} linjer fikk ingen pris: prisene på leverandørvarene er ikke i utkastets valuta.",
     orderFromProposals: "Bestill…",
     "changeAction.from_proposals": "Linjer fra forslag",
     "refusal.proposal_gone":
-      "Noen rader er ikke lenger foreslått: de står på et utkast eller er bestilt siden. Listen lastes på nytt.",
+      "Noen rader er ikke lenger foreslått slik de ble vist: de står på et utkast, er bestilt eller endret siden. Listen lastes på nytt.",
     "refusal.supplier_item_not_found": "Leverandøren selger ikke dette produktet lenger.",
   },
 } as const;
