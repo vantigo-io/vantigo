@@ -100,9 +100,6 @@ func managedTarget(ctx context.Context, q *store.Queries, id uuid.UUID) (store.I
 	return u, err
 }
 
-// isAgent reports whether u is a user of kind agent.
-func isAgent(u store.IdentityUser) bool { return u.Kind == contracts.UserKindAgent }
-
 // isPerson reports whether u is a person: neither an agent nor an
 // integration (API access design K4).
 func isPerson(u store.IdentityUser) bool { return u.Kind == contracts.UserKindPerson }
