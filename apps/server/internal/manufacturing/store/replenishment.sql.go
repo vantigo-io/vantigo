@@ -659,6 +659,31 @@ func (q *Queries) PruneRuns(ctx context.Context, before time.Time) error {
 	return err
 }
 
+const queueSiteRun = `-- name: QueueSiteRun :execrows
+INSERT INTO manufacturing.replenishment_runs (kind, site_id, requested_at, requested_by_display)
+SELECT 'manual', $1::bigint, $2::timestamptz, 'Purchasing'
+WHERE NOT EXISTS (
+    SELECT 1 FROM manufacturing.replenishment_runs
+    WHERE status = 'pending' AND (site_id IS NULL OR site_id = $1::bigint))
+`
+
+type QueueSiteRunParams struct {
+	SiteID int64
+	Now    time.Time
+}
+
+// QueueSiteRun asks for a run of one site on Purchasing's events (purchasing
+// design A4): a run requested by no one, kind manual for the site, unless a
+// run that would cover the site — of the site or of every site — is still
+// pending. The caller holds LockRunRequests, so two handlers queue one.
+func (q *Queries) QueueSiteRun(ctx context.Context, arg QueueSiteRunParams) (int64, error) {
+	result, err := q.db.Exec(ctx, queueSiteRun, arg.SiteID, arg.Now)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const recentManualRun = `-- name: RecentManualRun :one
 SELECT id, site_id, kind, nightly_for, status, requested_at, requested_by_user_id, requested_by_display, started_at, finished_at, lease_until, attempts, suggestions, orders_created, sales_counted, error FROM manufacturing.replenishment_runs
 WHERE kind = 'manual' AND requested_at >= $1::timestamptz AND site_id IS NOT DISTINCT FROM $2::bigint
