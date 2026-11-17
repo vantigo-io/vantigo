@@ -121,7 +121,10 @@ sine, mva-terminene som er over lukket og levert, og forrige måneds kontoutskri
 avstemt, og, når `purchasing` er aktivert, tre leverandører til verkstedet med seks
 leverandørvarer og en innkjøpsordre i hver status — ordren på stålrør delvis mottatt (120
 av 180 m), den bekreftede ordren på maling mottatt i sin helhet i et parti med nummer og
-utløpsdato, og ordren på kryssfiner delvis mottatt og varemottaket deretter angret — og
+utløpsdato, og ordren på kryssfiner delvis mottatt og varemottaket deretter angret — med,
+når regnskapet er satt opp, leverandørfakturaen for malingsordren registrert fra ordren og
+bokført, avstemt, og en faktura fra stålleverandøren skrevet inn i Regnskap for de 120 m
+stålrør til en dyrere meterpris, avstemt og latt stå som utkast med prisavviket — og
 bestillingspunkter på tre av verkstedets råvarer med en påfyllingskjøring etter ordrene og
 varemottakene, så innkjøpsforslagene har rader. Leverandørfakturaene, kontoutskriften og
 de sendte innkjøpsordrene lagrer filer og utelates, som seeden
