@@ -86,16 +86,22 @@ den bort igjen. Begge krever `invoices:manage`. En fil som bryter en regel, avvi
 ord — *En logo er en PNG- eller JPEG-fil*, *En logo er på høyst 512 kB* og så videre —
 og ingenting lagres.
 
-Logoen skrives øverst til venstre på fakturaen, kreditnotaen og hvert purrebrev, tilpasset
-innenfor 45 × 20 mm med proporsjonene bevart, med tittelen ved siden av; e-posten et
-dokument sendes med, viser den øverst. Den tas med, som resten av selgeropplysningene, når
-et dokument utstedes: dokumenter som utstedes fra nå av, har logoen, og dokumenter som
-allerede er utstedt, beholder logoen de ble utstedt med — eller ingen, når de ble utstedt
+Logoen skrives øverst til venstre på fakturaen og kreditnotaen, tilpasset innenfor
+45 × 20 mm med proporsjonene bevart, med tittelen ved siden av; e-posten et dokument
+sendes med, viser den øverst. Den tas med, som resten av selgeropplysningene, når et
+dokument utstedes: fakturaer og kreditnotaer som utstedes fra nå av, har logoen, og det
+har også purrebrevene for dem og e-postene deres. Dokumenter som allerede er utstedt, og
+purrebrevene deres, beholder logoen de ble utstedt med — eller ingen, når de ble utstedt
 uten. Å fjerne eller bytte logoen endrer ingenting som er utstedt. Forhåndsvisningen av
 et utkast viser logoen slik den er nå. EHF-fakturaen har ingen logo.
 
-Å laste opp eller fjerne logoen er en lagring av innstillingene: har du ulagrede
-endringer i skjemaet samtidig, sier det da **Innstillingene er endret**.
+Å laste opp eller fjerne logoen lar resten av skjemaet være i fred: endringer du ikke har
+lagret ennå, blir stående, og **Lagre** lagrer dem fortsatt.
+
+Har logofilen forsvunnet fra dokumentlageret, sier blokken det — *Logofilen finnes ikke
+lenger i dokumentlageret, så nye dokumenter utstedes uten den. Last opp logoen på nytt.*
+— og dokumenter utstedes uten logo til du gjør det. Å laste opp den samme filen igjen
+gjenoppretter den, også for dokumentene som ble utstedt med den.
 
 ### Sett opp e-faktura
 

@@ -273,29 +273,46 @@ digit — else a 400 on `phone` — and stored as typed. The issue snapshots it 
   or a JPEG by its own bytes — the name and the type it was sent under are no evidence —
   that `image.DecodeConfig` reads as that same format (the header alone, so a
   decompression bomb costs nothing), of at most **512 KiB**, at most **2,000 pixels** on
-  its longer side and at least **16** on its shorter. Its metadata is stripped before it
-  is stored, the pixels untouched (`imagemeta.Strip`: a JPEG's APP1 and APP13 segments, a
-  PNG's eXIf, tEXt, zTXt and iTXt chunks). The stripped bytes are put **outside any
+  its longer side and at least **16** on its shorter. It is then **normalised**: decoded
+  whole and encoded again — a PNG from an 8-bit NRGBA picture, never interlaced and never
+  16-bit, a JPEG as baseline at quality 90 — which drops every piece of metadata; and the
+  result must load in gofpdf, the renderer under maroto, which refuses some files (an
+  interlaced PNG) only at render time and would otherwise print its error into every
+  document issued with the logo. The normalised bytes are put **outside any
   transaction** under `branding/logo-<sha256>.<png|jpg>` in the `invoices` scope — the
-  key named by the content, so the same logo twice is one object — and only then named on
-  the settings, under the settings lock (`LockSettings`), the revision moved on. It
-  answers 200 with the settings. A refusal is a 400 in `InvoicesConflictProblem`'s shape
+  key named by the stored content, so the same file twice is one object — and only then
+  named on the settings, under the settings lock (`LockSettings`). **The settings'
+  revision does not move**: the logo is not a field of the seller form, so an edit in
+  progress there is not made stale. It answers 200 with the settings. A refusal is a 400 in `InvoicesConflictProblem`'s shape
   with its code: `logo_unsupported_type` (not a PNG or JPEG, or one that cannot be read
-  or stripped), `logo_too_large`, `logo_too_wide`, `logo_too_small` or `logo_invalid` (no
-  part named `file`, two, an empty one, or a body that is not a readable multipart form);
+  or encoded again), `logo_too_large`, `logo_too_wide`, `logo_too_small` or `logo_invalid`
+  (no part named `file`, two, an empty one, a body that is not a readable multipart form,
+  or a normalised file gofpdf will not load);
   nothing is stored. A store that cannot write is 503 `storage_unavailable` with nothing
   recorded. The request stays under the router's default 1 MiB body cap, so the
   operation has no `BodyLimits` entry.
 - `DELETE /settings/logo` (`invoices:manage`) clears the three columns under the lock,
-  the revision moved on, and answers 204 — or 404 when no logo is set. **The object is
+  the revision unmoved, and answers 204 — or 404 when no logo is set. **The object is
   never deleted**: an issued document's snapshot may name it, and in this phase no
   object of the module is ever deleted (I1).
 - `GET /settings/logo` (`invoices:access`) streams the logo the settings name with its
   type, `ETag` its SHA-256, `Cache-Control: private, max-age=0, must-revalidate` and
-  `X-Content-Type-Options: nosniff`. No logo, or an object the store does not hold, is a
-  bare 404; a store that cannot be read, 503. The settings answer `logo`
-  (`{contentType, sha256}`, absent without one), whose hash the app uses as the image's
-  cache key.
+  `X-Content-Type-Options: nosniff`; an `If-None-Match` naming the current hash is a bare
+  304. No logo, or an object the store does not hold, is a bare 404; a store that cannot
+  be read, 503. The settings answer `logo` (`{contentType, sha256, missing?}`, absent
+  without one), whose hash the app uses as the image's cache key; `missing` is true when
+  the store no longer holds the object, and the settings page then asks for the logo
+  again.
+
+**A logo gone from the store.** Before an issue's transaction — the issue's, the quick
+invoice's and a billing run's alike — the settings' logo object is asked for
+(`ObjectStore.Exists`). One the store does not hold, or a store that cannot say, is not
+snapshotted: the document is issued without a logo, never refused for it, and the issue
+logs an error naming the key. A document that was snapshotted with a logo whose object
+has since gone answers its first render — the download or send that stores its PDF, a
+reminder letter, a preview — as the store's failure, a **503 `storage_unavailable` to
+retry**, never a 500. Uploading the identical file again restores the object under the
+same key, and those documents render as issued.
 
 **The snapshot** (I2). The issue copies `logo_object_key` and `logo_sha256` to
 `seller_logo_object_key` and `seller_logo_sha256` with the rest of the seller, under the
@@ -2781,8 +2798,9 @@ worker, and a failure is the caller's to see. It needs `invoices:issue`
 
 1. **503 `mail_unavailable`** when [sending is disabled or the chosen channel cannot
    send](#the-sending-channel), judged before anything is read. Then **the personal
-   message**: `message`, trimmed with its line breaks as `\n`, at most 2,000 characters,
-   else a 400 on `message`; absent or blank is none. The detail is *Sending is
+   message**: `message`, its line breaks — `\r\n` and a lone `\r` — as `\n`, trimmed, at
+   most 2,000 characters and with no control character but a line break or a tab, else a
+   400 on `message`; absent or blank is none. The detail is *Sending is
    disabled in Invoice settings, or the chosen channel cannot send.* The channel read here
    is the one the send goes out on.
 2. 404; 409 `invoice_draft` on a draft.
@@ -4600,8 +4618,10 @@ invoice's snapshots, so a row renders the same bytes every time (its creation da
 - the seller block (the seller snapshot: name, address, organisation number with MVA,
   Foretaksregisteret, e-mail, phone) and the buyer block, the date `sent_on`, the heading
   **"Purring"** or **"Inkassovarsel"** ("Payment reminder", "Debt collection notice"),
-  beside the invoice's logo when its snapshot has one, placed and checked as on the
-  invoice ([The PDF](#the-pdf));
+  beside the logo of the invoice's own snapshot when it has one — so a letter for a
+  document issued before the logo was set has none — placed and checked as on the invoice
+  ([The PDF](#the-pdf)); a logo the store cannot give fails the attempt as the store's
+  failure, retried;
 - the invoice it concerns — number, issue date, due date — and the payment deadline, with
   an opening that says payment was not registered, or, when part of the invoice is paid,
   that the full amount was not received;
@@ -6103,7 +6123,7 @@ All under `/api/v1/invoices`, every one behind `invoices:access` but the pay pag
 | `PUT /settings` | `invoices:manage` | 400 on the field (both mod-11 checks, IBAN mod-97, BIC, "Only NOK in this phase", the Peppol id, the KID pair, a next number the KID length does not fit, any of the three required-nullable fields absent, `workVatCodes` absent, a work VAT code unknown, or changed to an inactive one, `timesheetDefault` or `timesheetPersonLabel` absent or null, a label other than `initials`, `number` or `name`, an `energyVatCodes` code unknown, or changed to an inactive one, a `phone` that breaks Customers' rule); 409 `series_locked`, or a stale revision (no code) |
 | `PUT /settings/logo` | `invoices:manage` | 400 `logo_unsupported_type`, `logo_too_large`, `logo_too_wide`, `logo_too_small` or `logo_invalid`; 503 `storage_unavailable` |
 | `DELETE /settings/logo` | `invoices:manage` | 404, no logo set |
-| `GET /settings/logo` | | 404, no logo set or its object gone; 503 `storage_unavailable` |
+| `GET /settings/logo` | | 304 with a matching `If-None-Match`; 404, no logo set or its object gone; 503 `storage_unavailable` |
 | `GET /settings/access-point` | `invoices:manage` | none: 200 with `hasCredentials: false` when nothing is stored |
 | `PUT /settings/access-point` | `invoices:manage` | 400 on `provider`, `legalEntityId` or `apiKey` (blank, too long, or omitted while none is stored); 409 `transmissions_active` on a provider switch; 503 `ehf_unavailable`, a kept key that cannot be opened |
 | `DELETE /settings/access-point` | `invoices:manage` | 409 `transmissions_active` |
@@ -6133,7 +6153,7 @@ All under `/api/v1/invoices`, every one behind `invoices:access` but the pay pag
 | `POST /reminders/{id}/retry` | `invoices:payments` | 404; then under the letter's lock 409 `reminder_not_failed` |
 | `GET /reminder-print-batches` | `invoices:payments` | 400 paging |
 | `POST /reminder-print-batches` | `invoices:payments` | 400 on `reminderIds` (none, over 200, one twice, an unknown id) or `postOn` (before today, more than 7 days on); 503 `storage_unavailable`; 409 `reminder_not_awaiting_print` (naming the letter) — all before anything is written |
-| `GET /reminder-print-batches/{id}/pdf` | `invoices:payments` | 404 no batch, or none of its letters printed or sent |
+| `GET /reminder-print-batches/{id}/pdf` | `invoices:payments` | 404 no batch, or none of its letters printed or sent; 503 `storage_unavailable`, a letter's logo could not be read |
 | `POST /reminder-print-batches/{id}/posted` | `invoices:payments` | 400 `postedOn` after today; 404; then under the batch's lock 409 `print_batch_closed`, `reminder_posted_early`, `reminder_posted_late` |
 | `POST /reminder-print-batches/{id}/reprint` | `invoices:payments` | 404; then under the batch's lock 409 `print_batch_closed` |
 | `PUT /customers/{customerId}/reminder-policy` | `invoices:payments` | 400 on `mode` or `note`; 404 the customer has no document here, or is anonymised |
@@ -6162,7 +6182,7 @@ All under `/api/v1/invoices`, every one behind `invoices:access` but the pay pag
 | `POST /{id}/issue` | `invoices:issue` | 400 a body that does not decode (none, or an `issueDate` that is no calendar day); 404; 409 every code under [Issuing](#issuing); 503 `storage_unavailable` |
 | `POST /{id}/credit` | `invoices:issue` | 404; 409 `invoice_draft`, `credit_note_not_creditable`, `invoice_fully_credited`, `invoice_written_off` (under the original's lock) |
 | `GET /{id}/pdf` | | 404; 409 `invoice_draft`; 500 a missing or altered stored object, or a render that fails; 503 `storage_unavailable` |
-| `GET /{id}/preview.pdf` | `invoices:create` | 404; 409 `invoice_issued` |
+| `GET /{id}/preview.pdf` | `invoices:create` | 404; 409 `invoice_issued`; 503 `storage_unavailable`, the settings' logo could not be read |
 | `GET /{id}/deductible` | `invoices:create` | 404; 409 `invoice_issued`, `credit_note_deducts_nothing` |
 | `POST /{id}/payments` | `invoices:payments` | 400 a body that does not decode; 404; 409 `credit_note_no_payments`, `invoice_draft`; 400 on the field; 409 `invoice_settled`, `payment_exceeds_open` (with `openAmount`) |
 | `POST /{id}/payments/{paymentId}/remove` | `invoices:payments` | 400 on `reason`; 404 the document, or a payment not its own; 409 `payment_removed` |
@@ -6184,7 +6204,7 @@ All under `/api/v1/invoices`, every one behind `invoices:access` but the pay pag
 | `POST /{id}/hold/lift` | `invoices:payments` | 400 on `chargesAllowed` (absent or not a boolean) or `note`; 404; 409 `invoice_not_on_hold` |
 | `POST /{id}/collection` | `invoices:payments` | 400 on `handedOn` (missing or after today), `agency`, `agencyReference` or `note`; 404; 409 `credit_note_no_reminders`, `invoice_draft`; 400 on `handedOn` before the issue date; then under the lock 409 `invoice_settled`, `invoice_handed_off`, `invoice_not_delivered` (unless `acknowledgeNotDelivered`) |
 | `POST /{id}/collection/withdraw` | `invoices:payments` | 400 on `withdrawnOn` (missing or after today) or `reason`; 404; 409 `invoice_not_handed_off`; 400 on `withdrawnOn` before the hand-off's `handedOn` |
-| `POST /{id}/send` | `invoices:issue` | 429 `rate_limited`; 503 `mail_unavailable`; 400 on `message` (past 2,000 characters); 404; 409 `invoice_draft`, `customer_anonymised`; 400 on `recipient`; 409 `no_invoice_email`; 503 `storage_unavailable` (the PDF or the logo); 500 a directory that fails, a missing or altered stored object or logo, a render that fails, or a sent mail whose row could not be written; 502 `mail_failed` |
+| `POST /{id}/send` | `invoices:issue` | 429 `rate_limited`; 503 `mail_unavailable`; 400 on `message` (past 2,000 characters, or a control character); 404; 409 `invoice_draft`, `customer_anonymised`; 400 on `recipient`; 409 `no_invoice_email`; 503 `storage_unavailable` (the PDF or the logo); 500 a directory that fails, a missing or altered stored object or logo, a render that fails, or a sent mail whose row could not be written; 502 `mail_failed` |
 | `POST /{id}/send-ehf` | `invoices:issue` | 429 `rate_limited`; 503 `ehf_unavailable`; 404; 409 `invoice_draft`, `customer_anonymised`, `no_peppol_id`, `buyer_reference_missing`, `ehf_already_sent`; 503 `storage_unavailable`; 500 a missing or altered stored PDF, a render that fails or breaks an invariant; 409 `ehf_invalid` (with `rules`); 502 `peppol_lookup_failed`; 409 `peppol_not_receivable` (with `peppolRegistered`, `peppolCanReceive`); 500 a missing or altered reused UBL; 503 `storage_unavailable`; then under the lock 409 `customer_anonymised`, 503 `ehf_unavailable` when the credentials vanished, 409 `ehf_already_sent` |
 | `POST /{id}/transmissions/{transmissionId}/cancel` | `invoices:issue` | 404 the document, or a transmission not its own; 409 `transmission_not_cancellable` |
 | `POST /{id}/transmissions/{transmissionId}/resolve` | `invoices:issue` | 400 on `outcome` (not `delivered` or `failed`) or `note` (empty, over 500); 404 the document, or a transmission not its own; 409 `transmission_not_resolvable` |
