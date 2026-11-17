@@ -2044,6 +2044,13 @@ The lease worker **`manufacturing.replenishment`** (every 30 seconds, built thro
   and inserts the new ones. A suggestion acted on — `done` or `dismissed` — is kept. So a
   pool of one finishes a run.
 - **Automatic creation** follows, one transaction per order (below).
+- **Purchasing's events**: the handler **`manufacturing.purchasing-replenish`** receives
+  `purchasing.order.sent.v1`, `purchasing.receipt.posted.v1` and
+  `purchasing.receipt.undone.v1` and queues a run for the order's site when none is
+  pending for it, so open purchases count when they change, not the next night. It writes
+  only Manufacturing's schema (rule 23) and reads nothing of Purchasing's beyond the
+  payload; with Manufacturing off nothing handles the events, and with Purchasing off
+  none is published ([Purchasing's events](/en/reference/purchasing/#events)).
 - **A site that fails** — a contract or a statement refusing — is logged and the run
   goes on to the next; the run is then `failed`, its `error` naming each failed site
   (`site MAIN: …; site BRANCH: …`), its tallies the other sites'.

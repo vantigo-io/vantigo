@@ -119,7 +119,10 @@ produksjonsordrer og salgsordrer) og, når `accounting` er aktivert, et regnskap
 opprettet fra 1. januar med demoens salg og utlegg bokført, leverandører med fakturaene
 sine, mva-terminene som er over lukket og levert, og forrige måneds kontoutskrift halvveis
 avstemt, og, når `purchasing` er aktivert, tre leverandører til verkstedet med seks
-leverandørvarer og en innkjøpsordre i hver status. Leverandørfakturaene, kontoutskriften og
+leverandørvarer og en innkjøpsordre i hver status — ordren på stålrør delvis mottatt (120
+av 180 m), den bekreftede ordren på maling mottatt i sin helhet i et parti med nummer og
+utløpsdato, og ordren på kryssfiner mottatt og varemottaket deretter angret.
+Leverandørfakturaene, kontoutskriften og
 de sendte innkjøpsordrene lagrer filer og utelates, som seeden
 logger, når ingen objektlagring (`STORAGE_PROVIDER`) er satt opp. Ingen kommando, eller en ukjent en, skriver
 bruksanvisning til stderr og avslutter med 2, så en skrivefeil i en jobbdefinisjon

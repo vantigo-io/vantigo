@@ -213,6 +213,12 @@ location: a scanned or chosen item's line goes there until you choose another. P
 
 A service cannot be received, and neither can an item whose product is discontinued.
 
+Goods ordered on a purchase order are received in Purchasing instead, with **Receive** on
+the order: it posts the receipt here, on the order's receiving site, and the movement
+links back to the order — see
+[Receive the goods](/en/user/purchasing/#receive-the-goods). There, a product discontinued
+since it was ordered is still received.
+
 ## Adjust stock
 
 Press **New adjustment** on **Overview**, **Adjust** on a location, or **Adjust** on an
@@ -1120,7 +1126,8 @@ opening to the locations where the item lies — by full code and name — and, 
 product with several variants, the same for each SKU, with **Stock and movements of …**
 to its stock page. Stock on its way between sites in a transfer shows as *In transit …*
 beside the total, and *+… incoming* under the site it is going to; it is not part of the
-total on hand, which is what lies on shelves. Under a site where the item has a
+total on hand, which is what lies on shelves. When Purchasing is on, *+… incoming* also
+counts what is on order for the site on sent purchase orders and not yet received. Under a site where the item has a
 [reorder point](#set-an-items-primary-location-and-reorder-point), *reorder ≤ 10 pcs*
 says what it is, in red while the item is low there. For an item kept in lots, each
 location lists its lots — number, expiry date and status — linked to the lot's page, and
@@ -1167,7 +1174,7 @@ Only sites that **fulfil orders** take reservations ([set up a site](#set-up-a-s
 either view; press it to open Inventory. With both views the row of figures has an
 Inventory card: **Stock lines**, the number of item-and-location pairs holding stock —
 an item lying in several lots on one location counts once — with this week's receipts beside it (*3 receipts this week*), the week starting on
-Monday; a receipt taken back is not counted.
+Monday, Purchasing's receipts among them; a receipt taken back is not counted.
 
 With **Count stock** and both views, **Needs attention** shows **A count has been open
 for a long time** for each count still counting a week after it was opened; press it to

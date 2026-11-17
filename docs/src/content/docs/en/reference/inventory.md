@@ -123,7 +123,10 @@ per variant and receiving site. `OpenAll` is read before the [low-stock
 list](#the-low-stock-list)'s statement, its CSV's and the dashboard's count, and handed in
 as three arrays the statement joins; `OpenByVariants(nil, ids)` before a
 [stock](#stock) read's snapshot. Both are on the pool with no transaction open. The slot is
-optional: nil — Purchasing off — is *nothing on order*, and every read is as before.
+optional: nil — Purchasing off — is *nothing on order*, and every read is as before. A
+Purchasing receipt lowers what is on order on the receipt's own transaction, an undo
+raises it again, and closing an order or a line ends what was left
+([PurchaseSupply](/en/reference/purchasing/#purchasesupply)).
 `Stock.Placements` answers transfers alone, so Manufacturing adds the open purchases
 itself.
 
@@ -1735,6 +1738,11 @@ own calls `LockVariants` for its variants first, then its own rows, then `Receiv
 `ReverseReceipt`. After a
 refusal the caller rolls back, as after `Produce`.
 
+Purchasing calls them from its delivery B: **Receive** on a purchase order calls `Receive`,
+one call per receipt, and **Undo** on a receipt calls `ReverseReceipt`, each after
+`LockVariants` and the order's row; Inventory's refusals reach the person under
+Inventory's own codes ([Purchasing's receipts](/en/reference/purchasing/#receipts)).
+
 ## Transfers
 
 A **transfer** moves stock from one site to another (phase 2, I35–I53; `transfers.go`,
@@ -2656,8 +2664,7 @@ opens it.
 
 **Later** (phase 1 §11 and phase 2 §11), each waiting for what it names:
 negative stock by a setting
-(point of sale); purchase orders from the low-stock list and incoming from them
-(Purchasing); a supplier column in the CSV (supplier records, Products phase 5);
+(point of sale); purchase orders from the low-stock list (Purchasing); a supplier column in the CSV (supplier records, Products phase 5);
 `inventory.transfer.*` and low-stock domain events (a consumer); transfer lines from a
 spreadsheet, a shelf-level minimum, a reorder point per location and a daily low-stock
 mail (demand); when an item went low, which a placement does not record; per-site

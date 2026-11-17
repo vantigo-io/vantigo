@@ -1,6 +1,6 @@
 ---
 title: Purchasing
-description: The Purchasing app — the purchase order list and its filters; make a purchase order for a supplier and a receiving site, with product lines filled from the supplier's items and text lines; send it by e-mail, mark it as sent or send it again; record the supplier's confirmation; change a sent order and read its history; close a line or the whole order, reopen it, cancel it or copy it; the PDF; the suppliers and what each sells — supplier items, the preferred supplier and the price-list import with its CSV columns; the settings; the dashboard card and the product page's Suppliers card; and what comes later — receiving, proposals and the invoice match.
+description: The Purchasing app — the purchase order list and its filters; make a purchase order for a supplier and a receiving site, with product lines filled from the supplier's items and text lines; send it by e-mail, mark it as sent or send it again; record the supplier's confirmation; change a sent order and read its history; close a line or the whole order, reopen it, cancel it or copy it; the PDF; the suppliers and what each sells — supplier items, the preferred supplier and the price-list import with its CSV columns; the settings; the dashboard card and the product page's Suppliers card; receiving the goods — the receive screen and scanning, more or less than ordered, the order's receipts, undoing a receipt and marking a text or service line delivered; and what comes later — proposals and the invoice match.
 sidebar:
   order: 68
 sources:
@@ -17,9 +17,10 @@ Norwegian the app is **Innkjøp**. A **purchase order** says what you buy from w
 what price and when you expect it; a **supplier item** says what a supplier sells of one
 of your products, at what price, in which packaging and with which lead time.
 
-A purchase order moves neither stock nor the books. In this version you order and follow
-up; receiving the goods into stock, proposals from low stock and matching the supplier's
-invoice to the order come later ([What comes later](#what-comes-later)). Purchasing buys
+A purchase order moves neither stock nor the books. You order and follow up, and when the
+goods arrive you [receive them](#receive-the-goods), which puts them in stock in
+Inventory; proposals from low stock and matching the supplier's invoice to the order come
+later ([What comes later](#what-comes-later)). Purchasing buys
 from the suppliers in [Accounting](/en/user/accounting/#suppliers)'s register and orders
 the products of [Products](/en/user/products/) for a site of
 [Inventory](/en/user/inventory/), so an installation has all three when it has
@@ -40,14 +41,15 @@ the supplier's reference under the name once it is recorded —, **Status**, **O
 **Expected day**, **Received**, **Invoiced** and the **Net total**, excluding VAT. A draft has no
 number yet. **Received** counts the order's goods lines received in full or closed, out of
 all its goods lines, and **Invoiced** its lines invoiced in full, out of all its lines;
-receiving and the invoice match come with later versions of Purchasing, so until then
-**Received** counts only closed lines and **Invoiced** reads 0 of the lines. An order
-can be:
+the invoice match comes with a later version of Purchasing, so until then **Invoiced**
+reads 0 of the lines. An order can be:
 
 - **Draft** — being written; it has no number and can be deleted.
 - **Sent** — sent to the supplier, by e-mail or marked as sent; it has its number.
-- **Partially received** and **Received** — reached once goods are received against the
-  order, which comes with receiving.
+- **Partially received** — some of the goods are [received](#receive-the-goods), and the
+  rest is still to come.
+- **Received** — every goods line is received in full or closed, and every text and
+  service line is marked delivered.
 - **Closed** — ended with something left that will not come.
 - **Cancelled** — called off before anything was received.
 
@@ -175,6 +177,100 @@ enter **the supplier's reference** (their order number) and the **Confirmed day*
 the whole order and, if the supplier confirms lines differently, per line. The
 confirmation is a note on the order; it does not change its status. It ends the order's
 **Unconfirmed** mark. Empty the fields to remove it.
+
+## Receive the goods
+
+When the goods arrive, choose **Receive** on a sent or partially received order. It needs
+**Receive goods** alone, so someone at the goods reception can receive without managing
+orders. The screen, **Receive order 4501**, shows no prices. It has a row for each open
+goods line — *Open 60 of 180 m, 120 received* — with:
+
+- the **Quantity**, filled in with what is still open on the line, in the product's unit;
+  **Receive … in** switches it to the line's purchase packaging when the line has one;
+- the **Location** on the receiving site the goods are put on: the item's
+  [primary location](/en/user/inventory/#set-an-items-primary-location-and-reorder-point)
+  at the site when the item lies in stock there, else the location where most of it lies,
+  else the site itself;
+- for an item kept in lots, the **Lot number** — left empty, Inventory numbers the lot —,
+  the **Supplier's lot**, the **Production date**, **Best before** and **Expiry**; a date
+  left empty follows from the product's days, as on
+  [Inventory's receipt](/en/user/inventory/#lots-on-a-receipt-a-move-and-an-adjustment);
+- for an item kept in serial numbers, the **Serial numbers**, one per line, one for each
+  unit.
+
+**Split** adds a row for the same line, to put part of it on another location or in
+another lot; **Remove the row** takes one away. A row at 0 is left out, so a line that has
+not come is simply left at 0. The **Delivery note** — the number on the supplier's
+delivery note — and a note belong to the whole receipt.
+
+Choose **Receive**. The receipt gets the next number in a series of its own — *Receipt 12
+is posted.* — and the goods are put on their locations in one stock movement of kind
+**Receipt** in Inventory, which links back to the order. Receiving posts nothing to the
+books. An item [inspected on receipt](/en/user/inventory/#inspect-on-receipt) has its lots
+put in quarantine, as on Inventory's own receipt, and a product discontinued since it was
+ordered is still received. What is received stops counting as *on order* in Inventory at
+once.
+
+Choosing **Receive** twice, or trying again after a lost connection, does not receive the
+goods twice: the screen sends the same receipt again, and Purchasing answers with the
+first. When two people receive the same order at the same moment, one waits for the
+other, and the second counts what the first received.
+
+### Scan the goods
+
+**Scan an item** takes what a barcode scanner types and the Enter it sends: the item's
+barcode, the barcode of one of its packagings, or the SKU. The first scan switches the
+screen to counting: every filled-in quantity is cleared, and each scan then adds to its
+line — one packaging for a packaging's barcode, one of the unit for the item's own. A
+GS1-128 code, such as a pallet label's, also fills in the lot number and the production,
+best-before and expiry dates; a second lot of the same line opens a split row of its own,
+and a serial number is added to the row's serial numbers. A code that names no open line
+of the order says **Not on this order**.
+
+### More or less than ordered
+
+More than is open on a line is asked about first: **More than ordered — receive anyway?**
+names the lines, and **Receive anyway** receives it, so the line has more received than
+ordered.
+
+Less is fine. The order is **Partially received**, the rest stays open on the lines for a
+later receipt, and no back order is made; when the rest will not come, **Close line** or
+**Close** ends it. When every goods line is received in full or closed and every text and
+service line is marked delivered, the order is **Received**. A closed order is not
+received: **Reopen** it first.
+
+### The order's receipts
+
+The order page's **Receipts** lists the order's receipts, newest first: **Receipt 12**,
+the day, who received it, the delivery note, **Posted** or **Undone** — *Undone … by …*
+—, and each line with its quantity, its location, and its lot or serial numbers with
+their dates. **Stock movement** and **Undo movement** open the movements in Inventory for
+those who may see them (**View stock**). A receipt shows no prices. With none it says
+*Nothing is received on this order yet.*
+
+### Undo a receipt
+
+**Undo** on a posted receipt takes it back — a wrong count, or goods that failed their
+inspection. Add a note if you like. The goods are taken off the locations and lots they
+were put on, whatever holds the lots have, the quarantine the receipt put on them is
+released, and the lines count them as not received again. Inventory shows it as a
+movement of kind **Receipt reversal**; the receipt stays on the order, marked **Undone**
+with who and when.
+
+An undo is refused when the goods no longer lie where they were received — moved or
+delivered since —, when a location they were put on has been archived, and when the
+receipt is undone already. A received order becomes partially received again, or sent
+when nothing else on it is received or delivered; a closed order stays closed.
+
+### Mark a text or service line delivered
+
+A text line or a service is never received into stock. When it is delivered — the freight
+carried, the service done — choose **Mark delivered** on the line of a sent or partially
+received order; the line then says *Delivered …*. **Not delivered** takes the mark off
+again, on a received order too, which is then partially received — or sent, when nothing
+else on it has come. A goods line is received instead, and a closed line is not marked.
+
+Receiving, undoing and marking a line delivered need **Receive goods**.
 
 ## Close a line or an order
 
@@ -342,17 +438,15 @@ orders' stored PDFs are deleted.
 | **Use Purchasing** (`purchasing:access`) | Open the app and read every order, supplier and supplier item, prices included, and download the PDFs. |
 | **Manage purchase orders** (`purchasing:orders-manage`) | Write and delete drafts, change sent orders, record the confirmation, close a line or an order, reopen and copy. |
 | **Send purchase orders** (`purchasing:orders-send`) | Send, mark as sent, send again and cancel. |
+| **Receive goods** (`purchasing:receive`) | Receive goods against purchase orders, undo a receipt, and mark a text or service line delivered. |
 | **Manage supplier items** (`purchasing:supplier-items-manage`) | Add, change, delete and import supplier items. |
 | **Manage Purchasing settings** (`purchasing:settings`) | The settings. |
 
-**Receive goods (coming)** (`purchasing:receive`) and **Match supplier invoices (coming)**
-(`purchasing:invoices-match`) can already be given in a role; they do nothing yet, and are
-used once receiving and the invoice match arrive.
+**Match supplier invoices (coming)** (`purchasing:invoices-match`) can already be given in
+a role; it does nothing yet, and is used once the invoice match arrives.
 
 ## What comes later
 
-- **Receiving** — taking the goods of a sent order into stock, in part or in full, with
-  their lots and serial numbers.
 - **Proposals** — draft orders made from low stock and from Manufacturing's buy
   suggestions, per preferred supplier.
 - **The invoice match** — the supplier's invoice in Accounting matched to its order, and
