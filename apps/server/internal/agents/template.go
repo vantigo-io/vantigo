@@ -291,7 +291,8 @@ var templateOrder = []string{templateFrontDesk, templateReminderReplies, templat
 // cannot be delegated (Delegable false), which is Owner-tier: Entra's and
 // Google's administration, Knowledge's, Orders' carriers and settings, and
 // Manufacturing's costs (manufacturing design §8), and Accounting's close —
-// the chart, the opening balances and the lock (accounting design A1). The
+// the chart, the opening balances and the lock (accounting design A1), and
+// Purchasing's settings (purchasing design §8). The
 // Assistant's API is not here: it names no permission, and the dispatcher refuses it by its path. A new
 // permission that matches one of these families must be added (the test in
 // internal/integration fails until it is), and a level for a listed key is
@@ -308,6 +309,7 @@ var agentNever = []string{
 	"knowledge:manage",
 	"manufacturing:costs-view",
 	"orders:carriers-manage", "orders:settings",
+	"purchasing:settings",
 	"staff:approve", "staff:manage", "staff:personal-data",
 	"time:approve",
 }

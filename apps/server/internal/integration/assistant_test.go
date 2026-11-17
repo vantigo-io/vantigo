@@ -33,6 +33,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/planning"
 	"github.com/vantigo-io/vantigo/server/internal/products"
 	"github.com/vantigo-io/vantigo/server/internal/projects"
+	"github.com/vantigo-io/vantigo/server/internal/purchasing"
 	"github.com/vantigo-io/vantigo/server/internal/staff"
 	timetracking "github.com/vantigo-io/vantigo/server/internal/time"
 )
@@ -49,7 +50,7 @@ func everyModule() []module.Module {
 	return []module.Module{
 		customers.Module(), products.Module(), energy.Module(), communications.Module(),
 		projects.Module(), timetracking.Module(), expenses.Module(), invoices.Module(),
-		staff.Module(), planning.Module(), inventory.Module(), orders.Module(), manufacturing.Module(), accounting.Module(), knowledge.Module(), calendar.Module(), entra.Module(), google.Module(), meta.Module(), assistant.Module(), agents.Module(),
+		staff.Module(), planning.Module(), inventory.Module(), orders.Module(), manufacturing.Module(), accounting.Module(), purchasing.Module(), knowledge.Module(), calendar.Module(), entra.Module(), google.Module(), meta.Module(), assistant.Module(), agents.Module(),
 	}
 }
 
@@ -242,6 +243,11 @@ var markedByHand = map[string]string{
 	// The preview only reads: it computes a journal's tax lines and writes
 	// nothing (A6).
 	"previewAccountingVoucher": "auto",
+	// A purchase order's PDF is a file for a person to open, and the price
+	// list's import a file a person uploads (purchasing design P14, P21).
+	"getPurchasingOrderPdf":         "never",
+	"getPurchasingOrderDocument":    "never",
+	"importPurchasingSupplierItems": "never",
 	// A supplier invoice's file is the invoice as received, a person's to
 	// upload, fetch and remove (A18); a supplier's export answers a person's
 	// access request and carries their data (A17).

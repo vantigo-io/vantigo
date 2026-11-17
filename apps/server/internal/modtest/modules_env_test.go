@@ -194,3 +194,16 @@ func TestModulesEnv_ListsInvoicesBesideAccounting(t *testing.T) {
 		t.Errorf("modulesEnv(accounting) = %q, want exactly %q", got, "accounting,customers,invoices")
 	}
 }
+
+// TestModulesEnv_ListsPurchasingsRequirements proves a harness composing
+// purchasing lists accounting, inventory and products as enabled, and
+// accounting's invoices with them (purchasing design A18): config.go refuses
+// "purchasing" without the three, and "accounting" without invoices.
+func TestModulesEnv_ListsPurchasingsRequirements(t *testing.T) {
+	t.Parallel()
+
+	const want = "accounting,customers,inventory,invoices,products,purchasing"
+	if got := modulesEnv([]module.Module{{Name: "purchasing"}}); got != want {
+		t.Errorf("modulesEnv(purchasing) = %q, want exactly %q", got, want)
+	}
+}

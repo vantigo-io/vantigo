@@ -2263,7 +2263,10 @@ var defaultModules = knownModules
 // contracts.StockLedger). accounting depends on invoices (accounting design
 // A1): its sales post from Invoices' journal and its company is Invoices'
 // seller (contracts.SalesJournal, contracts.SalesTax), and Customers comes
-// with Invoices. agents depends on communications (virtual employees
+// with Invoices. purchasing depends on accounting, inventory and products
+// (purchasing design P8): its suppliers are Accounting's register
+// (contracts.SupplierDirectory), its lines the catalog's variants and its
+// receipts go through Inventory's ledger. agents depends on communications (virtual employees
 // design, the module): its only role answers conversations. Identity is always
 // mounted and is never listed here.
 func modules(p *problems, env map[string]string) []string {
@@ -2333,6 +2336,11 @@ func modules(p *problems, env map[string]string) []string {
 	}
 	if slices.Contains(out, "accounting") && !slices.Contains(out, "invoices") {
 		p.add("MODULES", "accounting requires invoices")
+	}
+	for _, needed := range []string{"accounting", "inventory", "products"} {
+		if slices.Contains(out, "purchasing") && !slices.Contains(out, needed) {
+			p.add("MODULES", "purchasing requires %s", needed)
+		}
 	}
 
 	return out

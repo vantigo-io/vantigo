@@ -182,6 +182,7 @@ vantigo/
 │   │       ├── orders/              # Orders vertical slice (quotes and sales orders)
 │   │       ├── manufacturing/       # Manufacturing vertical slice (work centers and bills of materials)
 │   │       ├── accounting/          # Accounting vertical slice (the ledger, vouchers and the specifications)
+│   │       ├── purchasing/          # Purchasing vertical slice (supplier items and purchase orders)
 │   │       ├── knowledge/           # Knowledge vertical slice (articles in a tree)
 │   │       ├── agents/              # Agents vertical slice (virtual employees)
 │   │       ├── calendar/            # Calendar vertical slice
@@ -214,6 +215,7 @@ vantigo/
 │   ├── orders/frontend/             # @vantigo/orders-ui
 │   ├── manufacturing/frontend/      # @vantigo/manufacturing-ui
 │   ├── accounting/frontend/         # @vantigo/accounting-ui
+│   ├── purchasing/frontend/         # @vantigo/purchasing-ui
 │   ├── knowledge/frontend/          # @vantigo/knowledge-ui
 │   ├── agents/frontend/             # @vantigo/agents-ui
 │   ├── calendar/frontend/           # @vantigo/calendar-ui
@@ -280,7 +282,7 @@ own deployable without a rewrite.
 
 One PostgreSQL database, one schema per module: `identity`, `customers`, `products`,
 `energy`, `communications`, `projects`, `time`, `expenses`, `invoices`, `staff`,
-`planning`, `inventory`, `orders`, `manufacturing`, `accounting`, `knowledge`, `agents`, `calendar`, `entra`, `google` and `assistant`. Schemas are hard boundaries:
+`planning`, `inventory`, `orders`, `manufacturing`, `accounting`, `purchasing`, `knowledge`, `agents`, `calendar`, `entra`, `google` and `assistant`. Schemas are hard boundaries:
 
 - **No cross-schema foreign keys or joins.** Reference other modules' data by
   opaque ID only. This is what keeps a future "move this schema to its own
@@ -368,7 +370,7 @@ Navigation — *one pattern per level*, so every page reads the same way:
   `/api/v1/customers`, `/api/v1/products`, `/api/v1/energy`,
   `/api/v1/communications`, `/api/v1/projects`, `/api/v1/time`, `/api/v1/expenses`,
   `/api/v1/invoices`, `/api/v1/staff`, `/api/v1/planning`, `/api/v1/inventory`,
-  `/api/v1/orders`, `/api/v1/manufacturing`, `/api/v1/accounting`, `/api/v1/knowledge`, `/api/v1/calendar`, `/api/v1/entra`, `/api/v1/google` and
+  `/api/v1/orders`, `/api/v1/manufacturing`, `/api/v1/accounting`, `/api/v1/purchasing`, `/api/v1/knowledge`, `/api/v1/calendar`, `/api/v1/entra`, `/api/v1/google` and
   `/api/v1/assistant`.
 - **In-process contracts** — module collaboration uses `internal/contracts`, not
   service-to-service API keys.
@@ -385,7 +387,7 @@ enabled modules at `GET /api/openapi.json` (session required). Module prefixes a
 `/api/v1/identity`, `/api/v1/customers`, `/api/v1/products`, `/api/v1/energy`,
 `/api/v1/communications`, `/api/v1/projects`, `/api/v1/time`, `/api/v1/expenses`,
 `/api/v1/invoices`, `/api/v1/staff`, `/api/v1/planning`, `/api/v1/inventory`,
-`/api/v1/orders`, `/api/v1/manufacturing`, `/api/v1/accounting`, `/api/v1/knowledge`, `/api/v1/calendar`, `/api/v1/entra`, `/api/v1/google` and
+`/api/v1/orders`, `/api/v1/manufacturing`, `/api/v1/accounting`, `/api/v1/purchasing`, `/api/v1/knowledge`, `/api/v1/calendar`, `/api/v1/entra`, `/api/v1/google` and
 `/api/v1/assistant`. Every other
 `/api` path answers the catch-all 404 problem.
 
@@ -593,7 +595,7 @@ that does not match `identity.yaml` fails the test that produced it. `go test
 must have been exercised by at least one successful exchange, with no allow-list, so a newly
 added operation without a passing test fails the whole package.
 
-### Customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, orders, manufacturing, accounting, knowledge, agents, calendar, entra, google and assistant
+### Customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, orders, manufacturing, accounting, purchasing, knowledge, agents, calendar, entra, google and assistant
 
 Fifteen business modules mount on that platform, each serving its own contract and
 owning its own schema:
@@ -694,6 +696,16 @@ owning its own schema:
   when enabled, `contracts.ProjectDirectory`, so `accounting` **requires `invoices`**.
   See
   [`docs/src/content/docs/en/reference/accounting.md`](docs/src/content/docs/en/reference/accounting.md).
+- `internal/purchasing` → `/api/v1/purchasing/*` from `openapi/purchasing.yaml`: the buy
+  side — its settings, the supplier items (what each supplier sells of a variant, at
+  what price, with its import), and purchase orders with their lines, the supplier's
+  confirmation, the PDF stored when an order is sent and its mail. It reads the
+  suppliers through `contracts.SupplierDirectory` (accounting, **required**), the
+  catalog through `contracts.ProductCatalog` (products, **required**) and the sites
+  through `contracts.Stock` (inventory, **required**), fills `PurchaseSupply` with what
+  is on order, and holds the variants and the suppliers its documents name, so
+  `purchasing` **requires `accounting`, `inventory` and `products`**. See
+  [`docs/src/content/docs/en/reference/purchasing.md`](docs/src/content/docs/en/reference/purchasing.md).
 - `internal/knowledge` → `/api/v1/knowledge/*` from `openapi/knowledge.yaml`: the
   company's own articles — a tree of pages with inherited access, autosaved
   ProseMirror content and its history, the trash, favourites and full-text search, and
@@ -719,7 +731,7 @@ owning its own schema:
 
 `MODULES` chooses which of them a deployment serves: a comma-separated list,
 parsed once at startup, defaulting to
-`customers,products,energy,communications,projects,time,expenses,invoices,staff,planning,inventory,orders,manufacturing,accounting,knowledge,agents,calendar,entra,google,assistant` — every module
+`customers,products,energy,communications,projects,time,expenses,invoices,staff,planning,inventory,orders,manufacturing,accounting,purchasing,knowledge,agents,calendar,entra,google,assistant` — every module
 this binary can mount. Identity is always mounted and is never
 listed. A name the binary does not know fails
 startup, naming the name and the known set. `energy`, `communications` and
@@ -737,7 +749,10 @@ startup naming the one missing, `manufacturing` reads the catalog through
 `contracts.ProductCatalog` and the sites and stock through `contracts.Stock`, so
 `manufacturing` without `products` or `inventory` fails startup naming the one missing,
 `accounting` posts from Invoices' journal (`contracts.SalesJournal`), so `accounting`
-without `invoices` fails startup, and `entra` or `google` without `staff` fails the same way.
+without `invoices` fails startup, `purchasing` buys from Accounting's suppliers, orders the
+catalog's variants and receives through Inventory, so `purchasing` without `accounting`,
+`inventory` or `products` fails startup naming the one missing, and `entra` or `google`
+without `staff` fails the same way.
 `expenses`, `staff`, `calendar` and `assistant` have no such dependency check — each starts with or
 without any other module. A disabled module
 contributes no route, no permission and no contract path, and its paths answer
