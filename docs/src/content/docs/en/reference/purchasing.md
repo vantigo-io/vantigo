@@ -920,8 +920,9 @@ longer has, writes each other match's posted net, and — for an invoice, not a 
 net over the matched quantity, times the item's packaging factor, four places, with
 `priceSetBy` `invoice` and `priceSetOn` the invoice's date (P39, A9). An item in another
 currency than the invoice's, whose price was set after the invoice's date, or set by a
-person or an import on that date (A85), is left; an invoice's price of the same date is
-replaced. Of two lines of one variant the later on the invoice wins. A missing item is not created.
+person or an import on that date after the posting — the item's `updated_at` later than
+the matches' `posted_at` (A85) —, is left; a price of the same date set before the posting,
+or by an invoice, is replaced. Of two lines of one variant the later on the invoice wins. A missing item is not created.
 
 ### Received, not invoiced
 

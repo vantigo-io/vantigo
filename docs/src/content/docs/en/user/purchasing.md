@@ -389,7 +389,7 @@ Accounting, and the prices are judged again from the posted lines. Each matched 
 line's price per unit on the posted invoice then becomes the supplier item's price, marked
 as set by the invoice on its date — unless the invoice is in another currency than the
 supplier item, or the price was set after the invoice's date, or set by a person or an
-import on that date. A posted invoice whose supplier was changed on the draft no longer
+import on that date after the invoice was posted. A posted invoice whose supplier was changed on the draft no longer
 bills the order, and its match is removed. An invoice posted before it was matched is
 matched as posted.
 

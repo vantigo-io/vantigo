@@ -396,7 +396,7 @@ Regnskap, og prisene vurderes på nytt fra de bokførte linjene. Hver avstemte p
 pris per enhet på den bokførte fakturaen blir da leverandørvarens pris, merket som satt av
 fakturaen på datoen dens — med mindre fakturaen er i en annen valuta enn leverandørvaren,
 eller prisen ble satt etter fakturaens dato, eller satt av en person eller en import på den
-datoen. En bokført faktura der leverandøren ble endret på utkastet, gjelder ikke lenger
+datoen etter at fakturaen ble bokført. En bokført faktura der leverandøren ble endret på utkastet, gjelder ikke lenger
 ordren, og avstemmingen fjernes. En faktura som ble bokført før den ble avstemt, avstemmes
 som bokført.
 
