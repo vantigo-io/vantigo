@@ -3,6 +3,7 @@ package purchasing_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"slices"
 	"strings"
@@ -260,10 +261,19 @@ func (f *fakeSalesTax) Seller(ctx context.Context) (contracts.SellerProfile, err
 	return f.seller, nil
 }
 
-// fakeObjectStore is an in-memory storage.ObjectStore.
+// fakeObjectStore is an in-memory storage.ObjectStore; failPuts makes the
+// next puts fail.
 type fakeObjectStore struct {
-	mu      sync.Mutex
-	objects map[string][]byte
+	mu       sync.Mutex
+	objects  map[string][]byte
+	failPuts int
+}
+
+// failNextPuts makes the next n puts fail.
+func (s *fakeObjectStore) failNextPuts(n int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.failPuts = n
 }
 
 var _ storage.ObjectStore = (*fakeObjectStore)(nil)
@@ -278,6 +288,10 @@ func (s *fakeObjectStore) Put(ctx context.Context, key string, r io.Reader, _ st
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.failPuts > 0 {
+		s.failPuts--
+		return errors.New("fake store: put refused")
+	}
 	s.objects[key] = body
 	return nil
 }

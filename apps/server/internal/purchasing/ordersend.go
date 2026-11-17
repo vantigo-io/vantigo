@@ -143,13 +143,15 @@ func truncate(s string, n int) string {
 	return string([]rune(s)[:n])
 }
 
-// withoutAddress is msg with the recipient's address taken out: a provider's
-// refusal often quotes it.
-func withoutAddress(msg, address string) string {
-	if address == "" {
-		return msg
+// withoutAddress is msg with the mailing's addresses — the recipient's and
+// the copies' — taken out: a provider's refusal often quotes them.
+func withoutAddress(msg string, addresses ...string) string {
+	for _, a := range addresses {
+		if a = strings.TrimSpace(a); a != "" {
+			msg = strings.ReplaceAll(msg, a, "<recipient>")
+		}
 	}
-	return strings.ReplaceAll(msg, address, "<recipient>")
+	return msg
 }
 
 // envelope is one mailing's mail: the cover mail in the order's language,
@@ -173,40 +175,54 @@ func envelope(o store.PurchasingOrder, kind string, version int32, m mailRequest
 	}
 }
 
-// mailPDF mails a stored PDF of the order synchronously, outside any
-// transaction, and logs the mailing: sent, or — when the provider refused
-// it — queued for the purchasing.mail worker's retry (A19). failed reports
-// the refusal.
-func (s *server) mailPDF(ctx context.Context, o store.PurchasingOrder, doc store.PurchasingDocument, pdf []byte, m mailRequest, channel uuid.UUID, by actor) (store.PurchasingMailing, bool, error) {
-	seller, err := s.seller(ctx)
+// queueMailing writes the mailing a Send, a Send again or a Cancel asks for
+// inside that request's transaction (A19): the outbox row, queued, its
+// stored PDF not yet named, held by the request until now + mailLease — the
+// purchasing.mail worker takes it only after that, so a request that dies
+// between its commit and its mail leaves the worker to send it. o is the
+// order as the transaction wrote it.
+func queueMailing(ctx context.Context, txq *store.Queries, o store.PurchasingOrder, kind string, version int32, m mailRequest,
+	channel uuid.UUID, seller contracts.SellerProfile, by actor, now time.Time,
+) (store.PurchasingMailing, error) {
+	subject := envelope(o, kind, version, m, seller, nil, "").Subject
+	row, err := txq.InsertMailing(ctx, store.InsertMailingParams{
+		OrderID: o.ID, Kind: kind, Version: version, Recipient: m.recipient, Cc: strings.Join(m.cc, ", "),
+		Subject: truncate(subject, 300), Message: truncate(m.message, 4000), ChannelID: &channel, Status: mailingQueued,
+		NextAttemptAt: ptr(now.Add(mailLease)), SentByUserID: by.id, SentByDisplay: by.display, CreatedAt: now,
+	})
 	if err != nil {
-		return store.PurchasingMailing{}, false, err
+		return row, fmt.Errorf("purchasing: queue the mailing of order %d: %w", o.ID, err)
 	}
-	out := envelope(o, doc.Kind, doc.Version, m, seller, pdf, newMessageID())
+	return row, nil
+}
+
+// mailQueued is the request's own attempt, after its commit, at the mailing
+// its transaction queued: claimed under the hold the insert wrote, then
+// delivered as the worker delivers. It answers the mailing as it now stands
+// and whether it went out; a mailing that did not stays queued for the
+// worker (or failed, when it can never be sent).
+func (s *server) mailQueued(ctx context.Context, queued store.PurchasingMailing) (store.PurchasingMailing, bool, error) {
 	uncancelled := context.WithoutCancel(ctx)
-	sendCtx, cancel := context.WithTimeout(uncancelled, sendTimeout)
-	sendErr := s.outboundSend(sendCtx, channel, out)
-	cancel()
 	now := s.deps.Clock()
-	row := store.InsertMailingParams{
-		OrderID: o.ID, Kind: doc.Kind, Version: doc.Version, DocumentID: &doc.ID, Recipient: m.recipient,
-		Cc: strings.Join(m.cc, ", "), Subject: truncate(out.Subject, 300), Message: truncate(m.message, 4000), ChannelID: &channel,
-		Status: mailingSent, ProviderMessageID: &out.MessageID, Attempts: 1, SentAt: &now, SentByUserID: by.id,
-		SentByDisplay: by.display, CreatedAt: now,
+	stepCtx, cancel := context.WithTimeout(uncancelled, mailingRowTimeout)
+	row, err := store.New(s.deps.Pool).ClaimHeldMailing(stepCtx, store.ClaimHeldMailingParams{
+		ID: queued.ID, Held: *queued.NextAttemptAt, LeaseUntil: now.Add(mailLease), MessageID: newMessageID(),
+	})
+	cancel()
+	if noRows(err) {
+		return queued, false, nil
 	}
-	if sendErr != nil {
-		s.deps.Logger.WarnContext(ctx, "purchasing: a purchase order could not be mailed; it is queued for a retry", "order_id", o.ID, "error", sendErr.Error())
-		row.Status, row.SentAt = mailingQueued, nil
-		row.LastError = ptr(truncate(withoutAddress(sendErr.Error(), m.recipient), 500))
-		row.NextAttemptAt = ptr(now.Add(mailBackoff(1)))
-	}
-	rowCtx, cancelRow := context.WithTimeout(uncancelled, mailingRowTimeout)
-	defer cancelRow()
-	logged, err := store.New(s.deps.Pool).InsertMailing(rowCtx, row)
 	if err != nil {
-		return logged, false, fmt.Errorf("purchasing: log the mailing of order %d: %w", o.ID, err)
+		return queued, false, fmt.Errorf("purchasing: claim mailing %d: %w", queued.ID, err)
 	}
-	return logged, sendErr != nil, nil
+	sent := s.deliver(uncancelled, row)
+	stepCtx, cancel = context.WithTimeout(uncancelled, mailingRowTimeout)
+	defer cancel()
+	current, err := store.New(s.deps.Pool).GetMailing(stepCtx, row.ID)
+	if err != nil {
+		return row, sent, fmt.Errorf("purchasing: read mailing %d: %w", row.ID, err)
+	}
+	return current, sent, nil
 }
 
 // sendSpec is a Send or a Mark as sent.
@@ -289,6 +305,7 @@ func (s *server) send(ctx context.Context, orderID int64, spec sendSpec) (gen.Pu
 	if err != nil {
 		return gen.PurchasingSendResult{}, err
 	}
+	var queued store.PurchasingMailing
 	var variants []int32
 	for _, l := range r.lines {
 		if l.VariantID != nil {
@@ -363,6 +380,10 @@ func (s *server) send(ctx context.Context, orderID int64, spec sendSpec) (gen.Pu
 		if err := events.Publish(ctx, tx, moduleName, ev, now); err != nil {
 			return fmt.Errorf("purchasing: publish the send of order %d: %w", o.ID, err)
 		}
+		if spec.method == sendMail {
+			queued, err = queueMailing(ctx, txq, sent, docOrder, sent.Version, spec.mail, channel, seller, by, now)
+			return err
+		}
 		return nil
 	})
 	if errors.As(err, new(errReplay)) {
@@ -374,20 +395,15 @@ func (s *server) send(ctx context.Context, orderID int64, spec sendSpec) (gen.Pu
 	if err != nil {
 		return gen.PurchasingSendResult{}, err
 	}
-	doc, pdf, err := s.ensureDocument(ctx, o.ID, docOrder)
-	if err != nil {
-		return gen.PurchasingSendResult{}, err
-	}
 	if spec.method != sendMail {
+		if _, _, err := s.ensureDocument(ctx, o.ID, docOrder); err != nil {
+			return gen.PurchasingSendResult{}, err
+		}
 		return s.sendResult(ctx, o.ID, false)
 	}
-	sent, err := s.store().GetOrder(ctx, o.ID)
-	if err != nil {
-		return gen.PurchasingSendResult{}, fmt.Errorf("purchasing: read order %d: %w", o.ID, err)
-	}
-	if _, failed, err := s.mailPDF(ctx, sent, doc, pdf, spec.mail, channel, by); err != nil {
+	if _, sent, err := s.mailQueued(ctx, queued); err != nil {
 		return gen.PurchasingSendResult{}, err
-	} else if failed {
+	} else if !sent {
 		return gen.PurchasingSendResult{}, mailFailed()
 	}
 	return s.sendResult(ctx, o.ID, true)
@@ -553,6 +569,11 @@ func (s *server) ResendPurchasingOrder(ctx context.Context, req gen.ResendPurcha
 	if err != nil {
 		return nil, err
 	}
+	seller, err := s.seller(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var queued store.PurchasingMailing
 	err = s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		locked, err := txq.LockOrder(ctx, o.ID)
 		if err != nil {
@@ -565,28 +586,36 @@ func (s *server) ResendPurchasingOrder(ctx context.Context, req gen.ResendPurcha
 			return err
 		}
 		now := s.deps.Clock()
-		if _, err := txq.SetOrderVersion(ctx, store.SetOrderVersionParams{ID: o.ID, Version: locked.Version + 1, Now: now}); err != nil {
+		next := locked.Version + 1
+		resent, err := txq.SetOrderVersion(ctx, store.SetOrderVersionParams{ID: o.ID, Version: next, Now: now})
+		if err != nil {
 			return fmt.Errorf("purchasing: count order %d's version: %w", o.ID, err)
 		}
-		return logChange(ctx, txq, o.ID, by, now, change{Action: "sent_again", To: ptr(fmt.Sprint(locked.Version + 1))})
+		if _, err := txq.SupersedeMailings(ctx, store.SupersedeMailingsParams{
+			OrderID: o.ID, Version: next, LastError: fmt.Sprintf("Superseded: version %d was sent again before this one went out.", next),
+		}); err != nil {
+			return fmt.Errorf("purchasing: supersede order %d's queued mailings: %w", o.ID, err)
+		}
+		if err := logChange(ctx, txq, o.ID, by, now, change{Action: "sent_again", To: ptr(fmt.Sprint(next))}); err != nil {
+			return err
+		}
+		if mailIt {
+			queued, err = queueMailing(ctx, txq, resent, docOrder, next, m, channel, seller, by, now)
+			return err
+		}
+		return nil
 	})
 	if err != nil {
 		return answer(err, resp)
 	}
-	doc, pdf, err := s.ensureDocument(ctx, o.ID, docOrder)
-	if err != nil {
-		return nil, err
-	}
 	if mailIt {
-		sent, err := s.store().GetOrder(ctx, o.ID)
-		if err != nil {
-			return nil, fmt.Errorf("purchasing: read order %d: %w", o.ID, err)
-		}
-		if _, failed, err := s.mailPDF(ctx, sent, doc, pdf, m, channel, by); err != nil {
+		if _, sent, err := s.mailQueued(ctx, queued); err != nil {
 			return nil, err
-		} else if failed {
+		} else if !sent {
 			return answer(mailFailed(), resp)
 		}
+	} else if _, _, err := s.ensureDocument(ctx, o.ID, docOrder); err != nil {
+		return nil, err
 	}
 	out, err := s.sendResult(ctx, o.ID, mailIt)
 	if err != nil {

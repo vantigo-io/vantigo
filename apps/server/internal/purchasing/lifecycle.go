@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/purchasing/gen"
 	"github.com/vantigo-io/vantigo/server/internal/purchasing/store"
 )
@@ -266,6 +267,13 @@ func (s *server) CancelPurchasingOrder(ctx context.Context, req gen.CancelPurcha
 	if err != nil {
 		return nil, err
 	}
+	var seller contracts.SellerProfile
+	if notify {
+		if seller, err = s.seller(ctx); err != nil {
+			return nil, err
+		}
+	}
+	var queued store.PurchasingMailing
 	err = s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		locked, err := lockedOrder(ctx, txq, o.ID, b.ExpectedUpdatedAt)
 		if err != nil {
@@ -279,29 +287,29 @@ func (s *server) CancelPurchasingOrder(ctx context.Context, req gen.CancelPurcha
 			return err
 		}
 		now := s.deps.Clock()
-		if _, err := txq.SetOrderState(ctx, store.SetOrderStateParams{ID: o.ID, Status: statusCancelled, CancelledAt: &now, Now: now}); err != nil {
+		cancelled, err := txq.SetOrderState(ctx, store.SetOrderStateParams{ID: o.ID, Status: statusCancelled, CancelledAt: &now, Now: now})
+		if err != nil {
 			return fmt.Errorf("purchasing: cancel order %d: %w", o.ID, err)
 		}
-		return logChange(ctx, txq, o.ID, by, now, change{Action: "cancelled"})
+		if err := logChange(ctx, txq, o.ID, by, now, change{Action: "cancelled"}); err != nil {
+			return err
+		}
+		if notify {
+			queued, err = queueMailing(ctx, txq, cancelled, docCancellation, cancelled.Version, m, channel, seller, by, now)
+			return err
+		}
+		return nil
 	})
 	if err != nil {
 		return answer(err, resp)
 	}
 	var out gen.PurchasingSendResult
 	if notify {
-		doc, pdf, err := s.ensureDocument(ctx, o.ID, docCancellation)
+		mailing, sent, err := s.mailQueued(ctx, queued)
 		if err != nil {
 			return nil, err
 		}
-		cancelled, err := s.store().GetOrder(ctx, o.ID)
-		if err != nil {
-			return nil, fmt.Errorf("purchasing: read order %d: %w", o.ID, err)
-		}
-		mailing, failed, err := s.mailPDF(ctx, cancelled, doc, pdf, m, channel, by)
-		if err != nil {
-			return nil, err
-		}
-		if failed {
+		if !sent {
 			return answer(mailFailed(), resp)
 		}
 		out.Mailing = ptr(mailingOut(mailing))

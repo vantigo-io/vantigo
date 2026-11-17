@@ -254,7 +254,7 @@ func sendingDisabled() error {
 // order is sent, and its mailing is queued for the purchasing.mail worker.
 func mailFailed() error {
 	return refuse(problem(http.StatusServiceUnavailable, codeMailFailed, "The e-mail could not be sent",
-		"The mail provider did not take the e-mail. The order stays as it now is, and the mailing is queued to be tried again."))
+		"The e-mail did not go out now. The order stays as it now is, and its mailing is queued: it is tried again until it goes out."))
 }
 
 // answerOf is how a handler reads an error: a refusal's status and body,

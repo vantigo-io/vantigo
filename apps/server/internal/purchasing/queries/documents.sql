@@ -17,9 +17,10 @@ SELECT * FROM purchasing.documents WHERE id = sqlc.arg(id) AND order_id = sqlc.a
 SELECT * FROM purchasing.documents WHERE order_id = sqlc.arg(order_id) ORDER BY id DESC;
 
 -- name: InsertMailing :one
--- InsertMailing logs a mailing (P21, A19): a person's send after it was
--- made, sent; or one the provider refused, queued for the purchasing.mail
--- worker's retry at next_attempt_at.
+-- InsertMailing writes a mailing (P21, A19) as an outbox row: queued inside
+-- the Send, Send again or Cancel transaction that asks for it, its stored
+-- PDF named once it is stored, and held by the request until
+-- next_attempt_at, when the purchasing.mail worker may take it.
 INSERT INTO purchasing.mailings (
     order_id, kind, version, document_id, recipient, cc, subject, message, channel_id, status, provider_message_id,
     attempts, next_attempt_at, last_error, sent_at, sent_by_user_id, sent_by_display, created_at
@@ -44,7 +45,7 @@ SELECT * FROM purchasing.mailings WHERE order_id = sqlc.arg(order_id) AND kind =
 -- the lease, so a worker that dies mid-send leaves the row claimable again
 -- once the lease has run out. No row is pgx.ErrNoRows.
 UPDATE purchasing.mailings
-SET next_attempt_at = sqlc.arg(lease_until)::timestamptz,
+SET next_attempt_at = sqlc.arg(lease_until)::timestamptz, attempts = attempts + 1,
     provider_message_id = coalesce(provider_message_id, sqlc.arg(message_id)::text)
 WHERE status = 'queued' AND id = (
     SELECT m.id FROM purchasing.mailings m
@@ -55,19 +56,42 @@ WHERE status = 'queued' AND id = (
 )
 RETURNING *;
 
+-- name: ClaimHeldMailing :one
+-- ClaimHeldMailing is the request's own claim of the mailing its transaction
+-- queued, after the commit: only while it is still queued under the hold the
+-- insert wrote (@held), so the worker and the request never both take it.
+UPDATE purchasing.mailings
+SET next_attempt_at = sqlc.arg(lease_until)::timestamptz, attempts = attempts + 1,
+    provider_message_id = coalesce(provider_message_id, sqlc.arg(message_id)::text)
+WHERE id = sqlc.arg(id) AND status = 'queued' AND next_attempt_at = sqlc.arg(held)::timestamptz
+RETURNING *;
+
+-- name: SetMailingDocument :exec
+-- SetMailingDocument names the stored PDF a queued mailing sends.
+UPDATE purchasing.mailings SET document_id = sqlc.arg(document_id)
+WHERE id = sqlc.arg(id) AND document_id IS NULL;
+
+-- name: SupersedeMailings :execrows
+-- SupersedeMailings fails, for good, the still-queued mailings of an order's
+-- PDF at a version below @version: Send again made them stale (A19).
+UPDATE purchasing.mailings
+SET status = 'failed', next_attempt_at = NULL, last_error = sqlc.arg(last_error)::text
+WHERE order_id = sqlc.arg(order_id) AND kind = 'order' AND status = 'queued' AND version < sqlc.arg(version)::integer;
+
 -- name: MarkMailingSent :execrows
 -- MarkMailingSent records a claimed mailing as sent, only while it is still
 -- queued under the claim's lease.
 UPDATE purchasing.mailings
-SET status = 'sent', sent_at = sqlc.arg(now), attempts = attempts + 1, last_error = NULL, next_attempt_at = NULL,
+SET status = 'sent', sent_at = sqlc.arg(now), last_error = NULL, next_attempt_at = NULL,
     channel_id = coalesce(channel_id, sqlc.narg(channel_id))
 WHERE id = sqlc.arg(id) AND status = 'queued' AND next_attempt_at = sqlc.arg(lease_until)::timestamptz;
 
 -- name: RetryMailing :execrows
--- RetryMailing counts a failed attempt of a claimed mailing and puts it back
--- for @next_attempt_at, or fails it for good when @fail is set.
+-- RetryMailing records a failed attempt of a claimed mailing (counted when it
+-- was claimed) and puts it back for @next_attempt_at, or fails it for good
+-- when @fail is set.
 UPDATE purchasing.mailings
-SET attempts = attempts + 1, last_error = sqlc.arg(last_error)::text,
+SET last_error = sqlc.arg(last_error)::text,
     status = CASE WHEN sqlc.arg(fail)::boolean THEN 'failed' ELSE 'queued' END,
     next_attempt_at = CASE WHEN sqlc.arg(fail)::boolean THEN NULL ELSE sqlc.arg(next_attempt_at)::timestamptz END
 WHERE id = sqlc.arg(id) AND status = 'queued' AND next_attempt_at = sqlc.arg(lease_until)::timestamptz;
@@ -87,3 +111,6 @@ WHERE id = sqlc.arg(id) AND completed_at IS NULL;
 -- name: FailDeletion :exec
 UPDATE purchasing.deletions SET attempts = attempts + 1, last_error = sqlc.arg(last_error)
 WHERE id = sqlc.arg(id) AND completed_at IS NULL;
+
+-- name: GetMailing :one
+SELECT * FROM purchasing.mailings WHERE id = sqlc.arg(id);
