@@ -4,7 +4,7 @@ import { IconAlertCircle, IconBulb, IconDownload, IconPlayerPlay } from "@tabler
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ContentSkeleton, EmptyState, PageHeader, PageSection } from "@vantigo/frontend-shell";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { manufacturingMetaQueryOptions } from "../api/meta";
 import {
   buySuggestionsCsv,
@@ -43,9 +43,14 @@ const SiteLive = ({ siteId }: { siteId: number }) => {
  * the next run; buy rows are read-only, with Export CSV. Run now asks the
  * nightly job to run at once. Read again on every active site's live topic,
  * a site with no suggestions yet too, and every few seconds while the last
- * run is pending or running.
+ * run is pending or running. The host may compose an action on a buy row —
+ * Purchasing's **Order…** (purchasing design P35): it is bought there.
  */
-export const SuggestionsPage = () => {
+export const SuggestionsPage = ({
+  renderBuyAction,
+}: {
+  renderBuyAction?: (suggestion: ManufacturingSuggestion, siteId: number) => ReactNode;
+} = {}) => {
   const { t, decimal, day, stamp } = useManufacturingFormat();
   const invalidate = useInvalidateManufacturing();
   const meta = useQuery(manufacturingMetaQueryOptions());
@@ -303,17 +308,20 @@ export const SuggestionsPage = () => {
                               {s.orderNumber ?? t("order")}
                             </Anchor>
                           ) : (
-                            manage && (
-                              <Button
-                                size="xs"
-                                variant="subtle"
-                                color="gray"
-                                loading={dismissing.isPending && dismissing.variables === s.id}
-                                onClick={() => dismissing.mutate(s.id)}
-                              >
-                                {t("dismiss")}
-                              </Button>
-                            )
+                            <Group gap="xs" wrap="nowrap">
+                              {!make && renderBuyAction?.(s, group.site.id)}
+                              {manage && (
+                                <Button
+                                  size="xs"
+                                  variant="subtle"
+                                  color="gray"
+                                  loading={dismissing.isPending && dismissing.variables === s.id}
+                                  onClick={() => dismissing.mutate(s.id)}
+                                >
+                                  {t("dismiss")}
+                                </Button>
+                              )}
+                            </Group>
                           )}
                         </Table.Td>
                       </Table.Tr>
