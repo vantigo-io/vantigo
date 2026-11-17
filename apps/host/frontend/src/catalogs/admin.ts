@@ -1230,23 +1230,22 @@ const en = {
   "admin.permission.knowledgeManageDescription":
     "See and change the access of every article that is not private, restore anyone's trashed article and empty the trash. Private articles stay private.",
   "admin.permission.purchasingAccess": "Use Purchasing",
-  "admin.permission.purchasingAccessDescription":
-    "See the Purchasing app and read purchase orders, receipts and supplier items.",
+  "admin.permission.purchasingAccessDescription": "See the Purchasing app and read purchase orders and supplier items.",
   "admin.permission.purchasingOrdersManage": "Manage purchase orders",
   "admin.permission.purchasingOrdersManageDescription":
-    "Write draft purchase orders, change sent ones, record the supplier's confirmation, close and reopen them, and make orders from proposals.",
+    "Write draft purchase orders, change sent ones, record the supplier's confirmation, and close and reopen them.",
   "admin.permission.purchasingOrdersSend": "Send purchase orders",
   "admin.permission.purchasingOrdersSendDescription":
     "Send purchase orders, mark them as sent, send them again and cancel them.",
-  "admin.permission.purchasingReceive": "Receive goods",
+  "admin.permission.purchasingReceive": "Receive goods (coming)",
   "admin.permission.purchasingReceiveDescription":
-    "Receive goods against purchase orders, undo a receipt and mark a text line delivered.",
+    "Not in use yet: receiving goods against purchase orders comes in a later version of Purchasing.",
   "admin.permission.purchasingSupplierItemsManage": "Manage supplier items",
   "admin.permission.purchasingSupplierItemsManageDescription":
     "Write and import supplier items: what each supplier sells, at what price.",
-  "admin.permission.purchasingInvoicesMatch": "Match supplier invoices",
+  "admin.permission.purchasingInvoicesMatch": "Match supplier invoices (coming)",
   "admin.permission.purchasingInvoicesMatchDescription":
-    "Match and unmatch supplier invoices to purchase orders, and read what is received and not invoiced.",
+    "Not in use yet: matching supplier invoices to purchase orders comes in a later version of Purchasing.",
   "admin.permission.purchasingSettings": "Manage Purchasing settings",
   "admin.permission.purchasingSettingsDescription":
     "Change the settings: the order series, the default site, the mail channel, the order text and the delivery addresses.",
@@ -2041,23 +2040,22 @@ const nb: { [Key in keyof typeof en]: string } = {
   "admin.permission.knowledgeManageDescription":
     "Se og endre tilgangen til alle artikler som ikke er private, gjenopprette andres artikler fra papirkurven og tømme papirkurven. Private artikler forblir private.",
   "admin.permission.purchasingAccess": "Bruke Innkjøp",
-  "admin.permission.purchasingAccessDescription":
-    "Se Innkjøp-appen og lese innkjøpsordrer, varemottak og leverandørvarer.",
+  "admin.permission.purchasingAccessDescription": "Se Innkjøp-appen og lese innkjøpsordrer og leverandørvarer.",
   "admin.permission.purchasingOrdersManage": "Forvalte innkjøpsordrer",
   "admin.permission.purchasingOrdersManageDescription":
-    "Skrive utkast til innkjøpsordrer, endre sendte, registrere leverandørens bekreftelse, avslutte og gjenåpne dem, og lage ordrer fra forslag.",
+    "Skrive utkast til innkjøpsordrer, endre sendte, registrere leverandørens bekreftelse, og avslutte og gjenåpne dem.",
   "admin.permission.purchasingOrdersSend": "Sende innkjøpsordrer",
   "admin.permission.purchasingOrdersSendDescription":
     "Sende innkjøpsordrer, markere dem som sendt, sende dem på nytt og kansellere dem.",
-  "admin.permission.purchasingReceive": "Ta imot varer",
+  "admin.permission.purchasingReceive": "Ta imot varer (kommer)",
   "admin.permission.purchasingReceiveDescription":
-    "Ta imot varer på innkjøpsordrer, angre et varemottak og markere en tekstlinje som levert.",
+    "Ikke i bruk ennå: varemottak på innkjøpsordrer kommer i en senere versjon av Innkjøp.",
   "admin.permission.purchasingSupplierItemsManage": "Forvalte leverandørvarer",
   "admin.permission.purchasingSupplierItemsManageDescription":
     "Skrive og importere leverandørvarer: hva hver leverandør selger, og til hvilken pris.",
-  "admin.permission.purchasingInvoicesMatch": "Avstemme leverandørfakturaer",
+  "admin.permission.purchasingInvoicesMatch": "Avstemme leverandørfakturaer (kommer)",
   "admin.permission.purchasingInvoicesMatchDescription":
-    "Koble leverandørfakturaer til innkjøpsordrer og fjerne koblingen, og lese hva som er mottatt og ikke fakturert.",
+    "Ikke i bruk ennå: avstemming av leverandørfakturaer mot innkjøpsordrer kommer i en senere versjon av Innkjøp.",
   "admin.permission.purchasingSettings": "Forvalte innstillinger for Innkjøp",
   "admin.permission.purchasingSettingsDescription":
     "Endre innstillingene: ordreserien, standard lagersted, e-postkanalen, teksten på ordren og leveringsadressene.",

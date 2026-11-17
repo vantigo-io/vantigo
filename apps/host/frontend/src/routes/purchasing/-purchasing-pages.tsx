@@ -17,8 +17,7 @@ import { PurchaseOrdersPage } from "@vantigo/purchasing-ui/pages/orders";
 import { PurchasingSettingsPage } from "@vantigo/purchasing-ui/pages/settings";
 import { SupplierPage, SuppliersPage } from "@vantigo/purchasing-ui/pages/suppliers";
 import type { ReactNode } from "react";
-import { usePurchasingAccess } from "../../lib/purchasing-access";
-import { hasAllPermissions } from "../../navigation";
+import { supplierFormHasBooks, usePurchasingAccess } from "../../lib/purchasing-access";
 
 /**
  * The Purchasing app's pages, each told what the caller may do (purchasing
@@ -32,7 +31,7 @@ const withAccess = (render: (access: PurchasingAccess, renderSupplierForm: Rende
     if (!ready) return <ContentSkeleton rows={4} rowHeight={48} />;
     // A poster of the books keeps every field of the register's form; a buyer
     // (accounting:suppliers-manage) all but the books' own (A12, A26).
-    const books = hasAllPermissions(permissions, ["accounting:post", "accounting:read"]);
+    const books = supplierFormHasBooks(permissions);
     return (
       <>
         {render(access, (props) => (

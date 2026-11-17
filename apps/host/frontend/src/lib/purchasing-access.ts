@@ -22,6 +22,16 @@ export const purchasingAccessOf = (permissions: string[] | undefined, user?: { i
 };
 
 /**
+ * Whether the register's supplier form opened from Purchasing keeps the
+ * books' own fields (A12, A26): only for a poster of the books, who holds
+ * accounting:post and accounting:read. Anyone else — a buyer with
+ * accounting:suppliers-manage alone — gets the form without them, read
+ * through Purchasing.
+ */
+export const supplierFormHasBooks = (permissions: string[] | undefined): boolean =>
+  hasAllPermissions(permissions, ["accounting:post", "accounting:read"]);
+
+/**
  * The Purchasing pages' access from the root layout's session and
  * authorization, read from its cache (the same keys), the caller's
  * permissions with it, and whether it has answered yet.

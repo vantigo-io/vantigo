@@ -38,12 +38,12 @@ const (
 var permissions = []contracts.Permission{
 	{
 		Key: permAccess, Display: "Use Purchasing",
-		Description: "See the Purchasing app and read purchase orders, receipts and supplier items.",
+		Description: "See the Purchasing app and read purchase orders and supplier items.",
 		Category:    "Purchasing", Sensitive: false, Delegable: true,
 	},
 	{
 		Key: permOrdersManage, Display: "Manage purchase orders",
-		Description: "Write draft purchase orders, change sent ones, record the supplier's confirmation, close and reopen them, and make orders from proposals.",
+		Description: "Write draft purchase orders, change sent ones, record the supplier's confirmation, and close and reopen them.",
 		Category:    "Purchasing", Sensitive: false, Delegable: true,
 	},
 	{
@@ -52,8 +52,8 @@ var permissions = []contracts.Permission{
 		Category:    "Purchasing", Sensitive: false, Delegable: true,
 	},
 	{
-		Key: permReceive, Display: "Receive goods",
-		Description: "Receive goods against purchase orders, undo a receipt and mark a text line delivered.",
+		Key: permReceive, Display: "Receive goods (coming)",
+		Description: "Not in use yet: receiving goods against purchase orders comes in a later version of Purchasing.",
 		Category:    "Purchasing", Sensitive: false, Delegable: true,
 	},
 	{
@@ -62,8 +62,8 @@ var permissions = []contracts.Permission{
 		Category:    "Purchasing", Sensitive: false, Delegable: true,
 	},
 	{
-		Key: permInvoicesMatch, Display: "Match supplier invoices",
-		Description: "Match and unmatch supplier invoices to purchase orders, and read what is received and not invoiced.",
+		Key: permInvoicesMatch, Display: "Match supplier invoices (coming)",
+		Description: "Not in use yet: matching supplier invoices to purchase orders comes in a later version of Purchasing.",
 		Category:    "Purchasing", Sensitive: false, Delegable: true,
 	},
 	{

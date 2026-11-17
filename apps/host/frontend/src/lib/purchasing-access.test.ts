@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { purchasingAccessOf } from "./purchasing-access";
+import { purchasingAccessOf, supplierFormHasBooks } from "./purchasing-access";
 
 describe("what the Purchasing pages may offer", () => {
   it("asks purchasing:access beside each Purchasing key", () => {
@@ -19,5 +19,13 @@ describe("what the Purchasing pages may offer", () => {
     );
     expect(purchasingAccessOf(["purchasing:access", "purchasing:settings"]).canManageSettings).toBe(true);
     expect(purchasingAccessOf(undefined).canSendOrders).toBe(false);
+  });
+
+  it("keeps the books' fields in the supplier form only for a poster of the books", () => {
+    expect(supplierFormHasBooks(["accounting:post", "accounting:read", "accounting:suppliers-manage"])).toBe(true);
+    expect(supplierFormHasBooks(["accounting:suppliers-manage"])).toBe(false);
+    expect(supplierFormHasBooks(["accounting:read", "accounting:suppliers-manage"])).toBe(false);
+    expect(supplierFormHasBooks(["accounting:post"])).toBe(false);
+    expect(supplierFormHasBooks(undefined)).toBe(false);
   });
 });
