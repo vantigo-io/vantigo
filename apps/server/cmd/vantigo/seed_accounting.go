@@ -540,7 +540,9 @@ func (b *demoBooks) purchases() error {
 		if s.currency != "" {
 			in.Currency = ptrOf(s.currency)
 		}
-		res, err := b.ops.CreateAccountingSupplier(b.ctx, gen.CreateAccountingSupplierRequestObject{Body: &in})
+		// A supplier's write checks the caller's keys itself (purchasing design
+		// A12): the owner is asked as a user, as identity answers for them.
+		res, err := b.ops.CreateAccountingSupplier(contracts.AsUser(b.ctx, b.owner), gen.CreateAccountingSupplierRequestObject{Body: &in})
 		created, err := answer[gen.CreateAccountingSupplier201JSONResponse]("add the supplier "+s.name, res, err)
 		if err != nil {
 			return err
