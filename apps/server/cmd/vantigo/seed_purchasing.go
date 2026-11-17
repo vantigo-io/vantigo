@@ -8,10 +8,13 @@ package main
 // line closed, a closed one and a cancelled one. Every write goes through the
 // modules' own operations (purchasing.Operations, accounting.Operations) as
 // the owner, so the seed writes nothing their rules would refuse. It runs
-// after the workshop, whose site and goods it buys for, and before the books;
-// once — an installation with a purchase order skips it. The orders sent
-// store a PDF, so they need an object store (STORAGE_PROVIDER); without one
-// only the suppliers, the items and the draft are made.
+// after the workshop, whose site and goods it buys for, and before the books.
+// It reruns cleanly, judging each part on its own: a supplier is reused by
+// its organisation number, an item by its supplier and variant, the draft
+// when a draft exists and the other orders when a sent one does. The orders
+// sent store a PDF, so they need an object store (STORAGE_PROVIDER); without
+// one only the suppliers, the items and the draft are made, and a later run
+// with one adds the rest.
 
 import (
 	"context"
@@ -71,15 +74,21 @@ func seedDemoPurchasing(ctx context.Context, pool *pgxpool.Pool, logger *slog.Lo
 			return nil
 		}
 	}
+	storage := cfg.StorageProvider != ""
 	var siteID int64
-	var seeded bool
+	var hasDraft, hasSent bool
 	err := pool.QueryRow(ctx, `SELECT coalesce((SELECT id FROM inventory.sites WHERE code = $1), 0),
-		EXISTS (SELECT 1 FROM purchasing.orders)`, demoWorkshopSiteCode).Scan(&siteID, &seeded)
+		EXISTS (SELECT 1 FROM purchasing.orders WHERE status = 'draft'), EXISTS (SELECT 1 FROM purchasing.orders WHERE status <> 'draft')`,
+		demoWorkshopSiteCode).Scan(&siteID, &hasDraft, &hasSent)
 	if err != nil {
 		return fmt.Errorf("check the purchasing demo: %w", err)
 	}
-	if siteID == 0 || seeded {
-		logger.Info("purchasing demo: no workshop site, or purchase orders already exist; skipping")
+	if siteID == 0 {
+		logger.Info("purchasing demo: no workshop site; skipping")
+		return nil
+	}
+	if hasDraft && (hasSent || !storage) {
+		logger.Info("purchasing demo: already seeded; skipping")
 		return nil
 	}
 	var owner uuid.UUID
@@ -100,7 +109,8 @@ func seedDemoPurchasing(ctx context.Context, pool *pgxpool.Pool, logger *slog.Lo
 		return err
 	}
 	p := &demoPurchases{ctx: contracts.AsUser(contracts.WithPrincipal(ctx, contracts.Principal{UserID: owner}), owner),
-		ops: ops, acct: accounting.Operations(deps), siteID: siteID, now: now, suppliers: map[string]int64{}, variants: map[string]int32{}}
+		pool: pool, ops: ops, acct: accounting.Operations(deps), siteID: siteID, now: now, suppliers: map[string]int64{}, variants: map[string]int32{},
+		hasDraft: hasDraft, hasSent: hasSent}
 	for _, pr := range demoWorkshopProducts {
 		var id int32
 		if err := pool.QueryRow(ctx, `SELECT id FROM products.product_variants WHERE sku = $1`, pr.sku).Scan(&id); err != nil {
@@ -108,7 +118,6 @@ func seedDemoPurchasing(ctx context.Context, pool *pgxpool.Pool, logger *slog.Lo
 		}
 		p.variants[pr.key] = id
 	}
-	storage := cfg.StorageProvider != ""
 	steps := []struct {
 		name string
 		run  func() error
@@ -133,6 +142,9 @@ func seedDemoPurchasing(ctx context.Context, pool *pgxpool.Pool, logger *slog.Lo
 // demoPurchases is seedDemoPurchasing's state.
 type demoPurchases struct {
 	ctx        context.Context
+	pool       *pgxpool.Pool
+	hasDraft   bool
+	hasSent    bool
 	ops        gen.StrictServerInterface
 	acct       acctgen.StrictServerInterface
 	siteID     int64
@@ -168,9 +180,20 @@ func expect[T any](what string, res any, err error) (T, error) {
 func (p *demoPurchases) addSuppliers() error {
 	terms := int32(30)
 	for i, s := range demoPurchaseSuppliers {
+		orgNumber := norwegianOrgNumber(2000 + i)
+		var existing int64
+		err := p.pool.QueryRow(p.ctx, `SELECT coalesce((SELECT id FROM accounting.suppliers WHERE organisation_number = $1 ORDER BY id LIMIT 1), 0)`,
+			orgNumber).Scan(&existing)
+		if err != nil {
+			return fmt.Errorf("read the supplier %s: %w", s.name, err)
+		}
+		if existing != 0 {
+			p.suppliers[s.key] = existing
+			continue
+		}
 		res, err := p.acct.CreateAccountingSupplier(p.ctx, acctgen.CreateAccountingSupplierRequestObject{Body: &acctgen.AccountingSupplierInput{
 			Name: s.name, AddressLine: ptrOf(s.address), PostalCode: ptrOf(s.postal), City: ptrOf(s.city), Email: ptrOf(s.email),
-			OrganisationNumber: ptrOf(norwegianOrgNumber(2000 + i)), PaymentTermsDays: &terms,
+			OrganisationNumber: ptrOf(orgNumber), PaymentTermsDays: &terms,
 		}})
 		created, err := expect[acctgen.CreateAccountingSupplier201JSONResponse]("add the supplier "+s.name, res, err)
 		if err != nil {
@@ -197,6 +220,14 @@ func (p *demoPurchases) settings() error {
 
 func (p *demoPurchases) addItems() error {
 	for _, it := range demoSupplierItems {
+		var exists bool
+		if err := p.pool.QueryRow(p.ctx, `SELECT EXISTS (SELECT 1 FROM purchasing.supplier_items WHERE supplier_id = $1 AND variant_id = $2)`,
+			p.suppliers[it.supplier], p.variants[it.product]).Scan(&exists); err != nil {
+			return fmt.Errorf("read the item %s: %w", it.number, err)
+		}
+		if exists {
+			continue
+		}
 		in := gen.PurchasingSupplierItemInput{SupplierId: p.suppliers[it.supplier], VariantId: p.variants[it.product],
 			SupplierItemNumber: ptrOf(it.number), Price: ptrOf(it.price), LeadTimeDays: ptrOf(it.leadDays)}
 		if it.minimum != "" {
@@ -240,10 +271,12 @@ func (p *demoPurchases) sent(supplier, note string, lines ...[2]string) (gen.Pur
 }
 
 func (p *demoPurchases) orders(storage bool) error {
-	if _, err := p.draft("tools", "Påfyll av verktøytavler til butikken.", [2]string{"pegboard", "6"}); err != nil {
-		return err
+	if !p.hasDraft {
+		if _, err := p.draft("tools", "Påfyll av verktøytavler til butikken.", [2]string{"pegboard", "6"}); err != nil {
+			return err
+		}
 	}
-	if !storage {
+	if !storage || p.hasSent {
 		return nil
 	}
 	// The steel the workshop is low on, on order.

@@ -179,3 +179,55 @@ func TestRun_SeedBooksTheDemo(t *testing.T) {
 		t.Errorf("a second seed changed the books: %s, then %s", before, after)
 	}
 }
+
+// The purchasing demo judges each part on its own: a seed without an object
+// store makes the suppliers, the items and the draft, and a later seed with
+// one adds the sent, confirmed, closed and cancelled orders, reusing the
+// suppliers and the items.
+func TestRun_SeedPurchasingAddsTheSentOrdersOnALaterRun(t *testing.T) {
+	databaseURL := testdb.URL(t)
+	setEnv(t, "APP_ENV", "development", "DATABASE_URL", databaseURL, "APP_URL", "http://localhost:8080")
+	was := seedClock
+	seedClock = func() time.Time { return time.Date(2026, time.November, 14, 9, 30, 0, 0, time.UTC) }
+	t.Cleanup(func() { seedClock = was })
+	if code, stdout, stderr := runCapture("seed"); code != 0 {
+		t.Fatalf("seed without a store failed with exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
+	}
+	ctx := context.Background()
+	conn, err := pgx.Connect(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close(ctx) }()
+	value := func(query string) string {
+		t.Helper()
+		var out string
+		if err := conn.QueryRow(ctx, query).Scan(&out); err != nil {
+			t.Fatalf("%s: %v", query, err)
+		}
+		return out
+	}
+	states := `SELECT coalesce(string_agg(status, ',' ORDER BY status), '') FROM purchasing.orders`
+	parts := `SELECT (SELECT count(*) FROM accounting.suppliers WHERE name IN ('Norsk Stål AS', 'Jotun Powder Coatings AS', 'Verktøygrossisten AS'))
+		|| '/' || (SELECT count(*) FROM purchasing.supplier_items)`
+	if got := value(states); got != "draft" {
+		t.Fatalf("without a store the orders are %q, want the draft only", got)
+	}
+	if got := value(parts); got != "3/6" {
+		t.Fatalf("without a store suppliers/items = %s, want 3/6", got)
+	}
+	setEnv(t, "APP_ENV", "development", "DATABASE_URL", databaseURL, "APP_URL", "http://localhost:8080",
+		"STORAGE_PROVIDER", "fs", "STORAGE_FS_ROOT", t.TempDir())
+	if code, stdout, stderr := runCapture("seed"); code != 0 {
+		t.Fatalf("seed with a store failed with exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
+	}
+	if got := value(states); got != "cancelled,closed,draft,sent,sent,sent" {
+		t.Errorf("with a store the orders are %q", got)
+	}
+	if got := value(parts); got != "3/6" {
+		t.Errorf("a rerun made suppliers/items %s, want 3/6", got)
+	}
+	if got := value(`SELECT count(*)::text FROM purchasing.documents`); got != "5" {
+		t.Errorf("stored PDFs = %s, want 5", got)
+	}
+}
