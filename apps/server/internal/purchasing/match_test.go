@@ -23,10 +23,8 @@ import (
 // are the fake here; internal/integration matches against the real module.
 
 var (
-	matcher   = []string{"purchasing:access", "purchasing:invoices-match"}
-	bookkeep  = []string{"purchasing:access", "purchasing:invoices-match", "accounting:post", "accounting:read"}
-	everyKey  = append(append([]string{}, receiver...), "purchasing:invoices-match", "purchasing:supplier-items-manage", "accounting:post", "accounting:read")
-	bookLines = []string{"purchasing:access", "accounting:read"}
+	matcher  = []string{"purchasing:access", "purchasing:invoices-match"}
+	everyKey = append(append([]string{}, receiver...), "purchasing:invoices-match", "purchasing:supplier-items-manage", "accounting:post", "accounting:read")
 )
 
 func invoicePath(id int64, rest string) string {
