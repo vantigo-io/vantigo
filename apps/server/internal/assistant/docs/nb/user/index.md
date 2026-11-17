@@ -91,7 +91,7 @@ kortere enn din:
 | [Ordre](/nb/user/orders/) | Tilbud, Ordre, Leveranser, Abonnement, Tilbudsmaler, Salgsanalyse, Ordreinnstillinger |
 | [Produksjon](/nb/user/manufacturing/) | Oversikt, Produksjonsordrer, Forslag, Demonteringer, Verksted, Produksjonsplan, Avvik, Stykklister, Arbeidsstasjoner |
 | [Regnskap](/nb/user/accounting/) | Oversikt, Ny postering, Bilag, Trenger oppmerksomhet, Leverandørfakturaer, Leverandører, Åpne poster, Bank, Mva, Rapporter, SAF-T, Kontoplan, Mva-koder, Posteringsregler, Innstillinger |
-| [Innkjøp](/nb/user/purchasing/) | Innkjøpsordrer, Leverandører, Innkjøpsinnstillinger |
+| [Innkjøp](/nb/user/purchasing/) | Innkjøpsordrer, Innkjøpsforslag, Leverandører, Innkjøpsinnstillinger |
 | [Kunnskap](/nb/user/knowledge/) | Artikler, Papirkurv |
 | [Energi](/nb/user/energy/) | Målepunkter |
 | [Microsoft Entra ID](/nb/user/entra/) | Microsoft Entra ID (tilkoblingens status og de seks stegene i oppsettet), for `entra:manage` |
