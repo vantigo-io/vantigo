@@ -303,3 +303,65 @@ export const purchasingSettingsQueryOptions = () =>
 
 export const savePurchasingSettings = (input: PurchasingSettingsInput) =>
   send<PurchasingSettings>(`${BASE}/settings`, json("PUT", input));
+
+/** The invoice match (purchasing design P36–P41, A20): the contract's shapes. */
+export type PurchasingInvoicePanel = Schemas["PurchasingInvoicePanel"];
+export type PurchasingInvoiceMatch = Schemas["PurchasingInvoiceMatch"];
+export type PurchasingInvoiceLine = Schemas["PurchasingInvoiceLine"];
+export type PurchasingInvoiceSuggestion = Schemas["PurchasingInvoiceSuggestion"];
+export type PurchasingInvoiceWarning = Schemas["PurchasingInvoiceWarning"];
+export type PurchasingInvoiceMatchInput = Schemas["PurchasingInvoiceMatchInput"];
+export type PurchasingInvoiceMatchLineInput = Schemas["PurchasingInvoiceMatchLineInput"];
+export type PurchasingInvoiceUnmatchInput = Schemas["PurchasingInvoiceUnmatchInput"];
+export type PurchasingInvoiceOrderMatches = Schemas["PurchasingInvoiceOrderMatches"];
+export type PurchasingInvoiceRegisterInput = Schemas["PurchasingInvoiceRegisterInput"];
+export type PurchasingInvoiceRegistration = Schemas["PurchasingInvoiceRegistration"];
+export type PurchasingInvoiceUninvoiced = Schemas["PurchasingInvoiceUninvoiced"];
+export type PurchasingInvoiceUninvoicedRow = Schemas["PurchasingInvoiceUninvoicedRow"];
+
+/** The supplier invoices matched to an order, provisional and posted (P37, P40). */
+export const purchaseOrderInvoicesQueryOptions = (orderId: number) =>
+  queryOptions({
+    queryKey: [PURCHASING_QUERY_KEY, "orders", "invoices", orderId],
+    queryFn: ({ signal }) => request<PurchasingInvoiceOrderMatches>(`${BASE}/orders/${orderId}/invoices`, { signal }),
+  });
+
+/** Register invoice (P37, A1, A11): Accounting's draft from the order, idempotent by its clientRequestId. */
+export const registerPurchaseOrderInvoice = (orderId: number, input: PurchasingInvoiceRegisterInput) =>
+  send<PurchasingInvoiceRegistration>(`${BASE}/orders/${orderId}/register-invoice`, json("POST", input));
+
+/** The Purchase order panel of a supplier invoice (P36–P38, A20). */
+export const invoicePanelQueryOptions = (invoiceId: number) =>
+  queryOptions({
+    queryKey: [PURCHASING_QUERY_KEY, "supplier-invoices", "match", invoiceId],
+    queryFn: ({ signal }) =>
+      request<PurchasingInvoicePanel>(`${BASE}/supplier-invoices/${invoiceId}/match`, { signal }),
+  });
+
+/** Allocates invoice lines to an order's lines; 409 `over_invoiced` unless acceptOver. */
+export const matchPurchasingInvoice = (invoiceId: number, input: PurchasingInvoiceMatchInput) =>
+  send<PurchasingInvoicePanel>(`${BASE}/supplier-invoices/${invoiceId}/matches`, json("POST", input));
+/** Match all received of one order (P37). */
+export const matchAllPurchasingInvoice = (invoiceId: number, orderId: number) =>
+  send<PurchasingInvoicePanel>(`${BASE}/supplier-invoices/${invoiceId}/match-all`, json("POST", { orderId }));
+/** Unmatches the invoice: everything, one order's, or one line's. */
+export const unmatchPurchasingInvoice = (invoiceId: number, input: PurchasingInvoiceUnmatchInput) =>
+  send<PurchasingInvoicePanel>(`${BASE}/supplier-invoices/${invoiceId}/unmatch`, json("POST", input));
+
+/** Received, not invoiced (P41): as of a day, optionally one supplier's. */
+export interface UninvoicedFilters {
+  asOf?: string;
+  supplierId?: number;
+}
+
+export const uninvoicedQueryOptions = (filters: UninvoicedFilters) =>
+  queryOptions({
+    queryKey: [PURCHASING_QUERY_KEY, "received-not-invoiced", filters],
+    queryFn: ({ signal }) =>
+      request<PurchasingInvoiceUninvoiced>(`${BASE}/received-not-invoiced${queryString({ ...filters })}`, { signal }),
+    placeholderData: keepPreviousData,
+  });
+
+/** The list as CSV, with the same filters. */
+export const uninvoicedCsvUrl = (filters: UninvoicedFilters) =>
+  `${BASE}/received-not-invoiced/csv${queryString({ ...filters })}`;

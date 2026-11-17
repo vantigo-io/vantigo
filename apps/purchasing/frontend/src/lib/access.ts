@@ -18,6 +18,10 @@ export interface PurchasingAccess {
   canReceive: boolean;
   /** `purchasing:access`: read orders, their prices and receipts. A receiver without it lands on the receiving list. */
   canRead?: boolean;
+  /** `purchasing:invoices-match`: match and unmatch supplier invoices, read received not invoiced (P37, P41). */
+  canMatchInvoices?: boolean;
+  /** `purchasing:invoices-match` and `accounting:post`: Register invoice makes Accounting's draft (A1). */
+  canRegisterInvoices?: boolean;
   /** Inventory is enabled and the caller holds inventory:stock-view: a receipt links its movement. */
   canOpenInventoryMovements?: boolean;
   /** The signed-in user, our reference on a new order. */

@@ -14,6 +14,10 @@ describe("the Purchasing sidebar", () => {
       "suppliers",
       "settings",
     ]);
+    expect(
+      visiblePurchasingNavItems(["purchasing:access", "purchasing:invoices-match"]).map((item) => item.key),
+    ).toEqual(["orders", "suppliers", "uninvoiced"]);
+    expect(visiblePurchasingNavItems(["purchasing:invoices-match"])).toEqual([]);
     expect(visiblePurchasingNavItems(["purchasing:settings"])).toEqual([]);
     // Receiving is purchasing:receive's alone (P30, A47).
     expect(visiblePurchasingNavItems(["purchasing:receive"]).map((item) => item.key)).toEqual(["receive"]);
