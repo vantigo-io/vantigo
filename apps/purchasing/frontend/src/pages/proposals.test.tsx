@@ -111,7 +111,15 @@ describe("the purchase proposals", () => {
         sent = body as typeof sent;
         return jsonResponse(200, {
           orders: [
-            { orderId: 777, supplierId: 41, supplierName: "Bolter AS", siteId: 1, created: true, linesAdded: 1 },
+            {
+              orderId: 777,
+              supplierId: 41,
+              supplierName: "Bolter AS",
+              siteId: 1,
+              created: true,
+              linesAdded: 1,
+              unpricedRows: [],
+            },
           ],
         });
       },
@@ -131,7 +139,9 @@ describe("the purchase proposals", () => {
     await userEvent.click(screen.getByRole("button", { name: "Create orders (1 row)" }));
 
     await waitFor(() => expect(sent).toBeDefined());
-    expect(sent?.rows).toEqual([{ variantId: 101, siteId: 1, supplierItemId: 901, orderQuantity: "25" }]);
+    expect(sent?.rows).toEqual([
+      { variantId: 101, siteId: 1, supplierItemId: 901, orderQuantity: "25", remaining: "23" },
+    ]);
     expect(sent?.clientRequestId).toMatch(/^[0-9a-f-]{36}$/);
     expect(await screen.findByRole("link", { name: "Draft for Bolter AS" })).toHaveAttribute(
       "href",
@@ -158,7 +168,7 @@ describe("the purchase proposals", () => {
     // Said above the list, and on the row.
     expect(
       await screen.findAllByText(
-        "Some rows are no longer proposed: they are on a draft or were ordered since. The list is loaded again.",
+        "Some rows are no longer proposed as shown: they are on a draft, were ordered or changed since. The list is loaded again.",
       ),
     ).toHaveLength(2);
     await waitFor(() => expect(fake.count("GET", /\/api\/v1\/purchasing\/proposals/)).toBeGreaterThan(reads));
@@ -188,7 +198,15 @@ describe("the purchase proposals", () => {
         ? refusal(503, "dependency_unavailable")
         : jsonResponse(200, {
             orders: [
-              { orderId: 9, supplierId: 40, supplierName: "Skruer AS", siteId: 1, created: true, linesAdded: 1 },
+              {
+                orderId: 9,
+                supplierId: 40,
+                supplierName: "Skruer AS",
+                siteId: 1,
+                created: true,
+                linesAdded: 1,
+                unpricedRows: [],
+              },
             ],
           });
     });
@@ -201,5 +219,88 @@ describe("the purchase proposals", () => {
     await screen.findByRole("link", { name: "Draft for Skruer AS" });
     expect(ids).toHaveLength(2);
     expect(ids[1]).toBe(ids[0]);
+  });
+
+  it("reads a decimal comma as the point and sends it so", async () => {
+    let sent: { rows: { orderQuantity: string }[] } | undefined;
+    serve([proposal()], (body) => {
+      sent = body as typeof sent;
+      return jsonResponse(200, { orders: [] });
+    });
+    renderRoute("/purchasing/proposals");
+    await screen.findByTestId("proposals");
+    await userEvent.click(screen.getByRole("checkbox", { name: "Select BOLT-M8 at Hovedlager" }));
+    const quantity = screen.getByRole("textbox", { name: "Quantity of BOLT-M8 at Hovedlager" });
+    await userEvent.clear(quantity);
+    await userEvent.type(quantity, "2,5");
+    expect(screen.getByText("25 pcs")).toBeInTheDocument();
+    const create = screen.getByRole("button", { name: "Create orders (1 row)" });
+    expect(create).toBeEnabled();
+    await userEvent.click(create);
+    await waitFor(() => expect(sent).toBeDefined());
+    expect(sent?.rows[0].orderQuantity).toBe("2.5");
+  });
+
+  it("drops a chosen supplier no longer offered after a reload: the typed quantity goes and the row is unticked", async () => {
+    let rows = [proposal()];
+    fakeServer((call) => {
+      if (call.method === "GET" && call.url.startsWith("/api/v1/purchasing/proposals"))
+        return jsonResponse(200, { source: "low_stock", rows });
+      if (call.method === "POST" && call.url === "/api/v1/purchasing/proposals/orders") {
+        rows = [proposal({ options: [option()] })];
+        return refusal(409, "proposal_gone", { lines: [{ index: 0, code: "proposal_gone" }] });
+      }
+      return commonAnswers(call);
+    });
+    renderRoute("/purchasing/proposals");
+    await screen.findByTestId("proposals");
+    await userEvent.click(screen.getByRole("combobox", { name: "Supplier of BOLT-M8 at Hovedlager" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Bolter AS" }));
+    const quantity = screen.getByRole("textbox", { name: "Quantity of BOLT-M8 at Hovedlager" });
+    await userEvent.clear(quantity);
+    await userEvent.type(quantity, "25");
+    await userEvent.click(screen.getByRole("checkbox", { name: "Select BOLT-M8 at Hovedlager" }));
+    await userEvent.click(screen.getByRole("button", { name: "Create orders (1 row)" }));
+    // The list comes back with Skruer AS alone.
+    await waitFor(() =>
+      expect(screen.getByRole("textbox", { name: "Quantity of BOLT-M8 at Hovedlager" })).toHaveValue("4"),
+    );
+    expect(screen.getByRole("checkbox", { name: "Select BOLT-M8 at Hovedlager" })).not.toBeChecked();
+    expect(screen.getByRole("button", { name: "Create orders" })).toBeDisabled();
+  });
+
+  it("lists a discontinued product apart, marked so, with nothing to tick", async () => {
+    serve([proposal({ productStatus: "Discontinued", options: [] })]);
+    renderRoute("/purchasing/proposals");
+    const none = within(await screen.findByTestId("proposals-no-supplier")).getAllByRole("row");
+    expect(within(none[1]).getByText("BOLT-M8")).toBeInTheDocument();
+    expect(within(none[1]).getByText("Discontinued")).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+  });
+
+  it("says which drafts got lines with no price", async () => {
+    serve([proposal()], () =>
+      jsonResponse(200, {
+        orders: [
+          {
+            orderId: 9,
+            supplierId: 41,
+            supplierName: "Bolter AS",
+            siteId: 1,
+            created: false,
+            linesAdded: 1,
+            unpricedRows: [0],
+          },
+        ],
+      }),
+    );
+    renderRoute("/purchasing/proposals");
+    await screen.findByTestId("proposals");
+    await userEvent.click(screen.getByRole("checkbox", { name: "Select BOLT-M8 at Hovedlager" }));
+    await userEvent.click(screen.getByRole("button", { name: "Create orders (1 row)" }));
+    expect(
+      await screen.findByText("1 line got no price: its supplier item's price is not in the draft's currency."),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Draft for Bolter AS" })).toBeInTheDocument();
   });
 });
