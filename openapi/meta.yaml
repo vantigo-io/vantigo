@@ -235,6 +235,7 @@ paths:
             tags:
                 - Meta
             x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
     /api/v1/meta/pages/{pageId}:
         delete:
             description: 'Removes a Page (Messenger design N10): the app''s subscription is withdrawn from Meta as far as Meta answers, and the Page''s token, its queued events, their stored files and its cached profiles are deleted. A channel on the Page becomes unavailable. The Owner''s. Rate limited with every Owner operation of the module.'
@@ -281,6 +282,7 @@ paths:
             tags:
                 - Meta
             x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
     /api/v1/meta/pages/{pageId}/resubscribe:
         post:
             description: 'Subscribes the app to the Page''s webhook fields again, with the stored token (Messenger design N21): a Page connected before the field messaging_referrals was added gets it, which is what lets Communications link a person who taps a contact''s Messenger link. Meta replaces the Page''s list with the one sent, so it is safe to repeat. A rejected token is found and the Page marked, as a check does. The Owner''s. Rate limited with every Owner operation of the module.'
@@ -343,6 +345,7 @@ paths:
             tags:
                 - Meta
             x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
     /api/v1/meta/settings:
         get:
             description: The workspace's Meta settings with the Pages, the webhook's address and verify token and the status line (Messenger design N10). The secrets are never answered. The Owner's.
@@ -370,6 +373,7 @@ paths:
             tags:
                 - Meta
             x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
         put:
             description: 'Sets the app id, the app secret and the Human Agent switch (Messenger design N10); a field left out keeps its value. Refused 422 public_host_required while the instance has no public host, because the webhook lives there. The secret is sealed under meta/app-secret at once. Rate limited to 30 per client address a minute, shared with every Owner operation of the module.'
             operationId: putMetaSettings
@@ -424,6 +428,7 @@ paths:
             tags:
                 - Meta
             x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
     /api/v1/meta/settings/verify-token:
         post:
             description: 'Replaces the webhook''s verify token with a new random one (Messenger design N10); the Owner pastes it into Meta''s webhook settings again, and until then Meta''s handshake is refused. Rate limited with every Owner operation of the module.'
@@ -461,6 +466,7 @@ paths:
             tags:
                 - Meta
             x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
     /api/v1/meta/webhook:
         get:
             description: 'Meta''s webhook handshake (Messenger design N11), on the public host and the app''s host alike. Anonymous: Meta sends no session. With hub.mode subscribe and a hub.verify_token equal — compared in constant time — to the settings'' verify token, it answers hub.challenge as text/plain with 200; anything else is 403. Rate limited to 60 per client address a minute (meta-webhook-verify).'
@@ -501,6 +507,7 @@ paths:
             tags:
                 - Meta
             x-vantigo-access: anonymous
+            x-vantigo-api: never
         post:
             description: 'Meta''s webhook events (Messenger design N11), on the public host and the app''s host alike. Anonymous: Meta sends no session. A hand-written handler: the contract declares the body as raw bytes (application/octet-stream, binary), which the strict wrapper hands on undecoded, whatever content type Meta sends, and the handler reads the raw body itself, at most 1 MiB (413 above). It checks X-Hub-Signature-256, sha256=<hex>, an HMAC-SHA256 under the app secret over the bytes exactly as received, compared in constant time — a missing or wrong signature is 401 and is logged, and an app secret not yet set is 503 — then stores the body in meta.webhook_events and answers 200 with no body. A database that cannot be written is 503, so Meta retries. Nothing is parsed for routing before the answer: Meta wants one within five seconds. Rate limited to 1200 per client address a minute (meta-webhook).'
             operationId: postMetaWebhook
@@ -538,5 +545,6 @@ paths:
             tags:
                 - Meta
             x-vantigo-access: anonymous
+            x-vantigo-api: never
 servers:
     - url: /

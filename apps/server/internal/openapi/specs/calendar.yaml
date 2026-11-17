@@ -1543,6 +1543,7 @@ paths:
             tags:
                 - Calendar
             x-vantigo-access: permission:calendar:access
+            x-vantigo-api: never
             x-vantigo-assistant: never
     /api/v1/calendar/feed/{file}:
         delete:
@@ -1576,6 +1577,7 @@ paths:
             tags:
                 - Calendar
             x-vantigo-access: permission:calendar:access
+            x-vantigo-api: never
         get:
             description: 'A calendar address''s iCalendar feed (calendar feed design D2–D4), for a calendar program to subscribe to. It is the module''s one anonymous GET with its token in the path: Google, Apple, Outlook and Thunderbird take one address and ask it, with no header and no body of ours. It is held to its mitigations. The token is stored only as its SHA-256 and found by it, so a database read answers no address. It is per person and per variant, and a reset kills it at once. It is rate limited to 120 per client address per 10 minutes (calendar-feed). A token nobody holds is the bare 404, and so is a file without the .ics suffix, and so is a token whose person may no longer act — disabled, locked out, pending, deactivated by the directory under SCIM, or without calendar:access — with nothing recorded, so the answer tells nothing apart. The feed carries nothing the person''s own calendar does not, and the busy variant nothing but spans. The path is logged as every path is, so the operator keeps the proxy''s access log to the path on the public host, or to nothing. A signed-in caller is answered alike, by the token and not the session. The calendar is today −3 months to today +12 months in the business time zone, series as rules, with no METHOD, ORGANIZER or ATTENDEE; its ETag is the SHA-256 of the calendar without its DTSTAMP lines, so an unchanged calendar keeps its tag, and an If-None-Match naming it, or *, is 304 with no body. A 200 or a 304 records when the address was last read.'
             operationId: getCalendarFeedByFile
@@ -1645,6 +1647,7 @@ paths:
             tags:
                 - Calendar
             x-vantigo-access: anonymous
+            x-vantigo-api: never
         post:
             description: 'Creates the caller''s address of one variant (calendar feed design D1), or resets the one they have: a new token — 32 random bytes, stored only as its SHA-256 — and the whole address sealed, so the old address answers 404 from this moment and nothing has read the new one yet. Answers the address.'
             operationId: postCalendarFeedByVariant
@@ -1680,6 +1683,7 @@ paths:
             tags:
                 - Calendar
             x-vantigo-access: permission:calendar:access
+            x-vantigo-api: never
             x-vantigo-assistant: never
     /api/v1/calendar/invitation-settings:
         get:
@@ -1911,6 +1915,7 @@ paths:
             tags:
                 - Calendar
             x-vantigo-access: permission:calendar:access
+            x-vantigo-api: never
     /api/v1/calendar/mailbox-sync/run:
         post:
             description: 'Syncs the caller''s calendar now — the screen''s Sync now: the sync is made due at once and the worker takes it within a minute. It writes nothing of the setting, so the revision stays. 409 mailbox_sync_off while the sync is turned off, and 409 mailbox_sync_unavailable, with the availability as its detail, while it cannot run. Rate limited to 6 per client address a minute (calendar-mailbox-run).'
@@ -1954,6 +1959,7 @@ paths:
             tags:
                 - Calendar
             x-vantigo-access: permission:calendar:access
+            x-vantigo-api: never
     /api/v1/calendar/meta:
         get:
             description: The business time zone and today in it, whether the caller may see colleagues' calendars, whether invitations are mailed, and every kind the enabled modules' calendar sources declare — with calendar.subscription and calendar.mailbox as CalendarMeta.sources says.
@@ -2026,6 +2032,7 @@ paths:
             tags:
                 - Calendar
             x-vantigo-access: anonymous
+            x-vantigo-api: never
     /api/v1/calendar/rsvp/read:
         post:
             description: 'The RSVP page''s read (calendar invitations design D5; a POST, so the token travels in the body and never in an API URL). Anonymous: no session is needed, and a signed-in caller is answered alike. The token is hashed and looked up; 404 with no body when no attendee holds it, an erased one included. 200 with what the page shows — the title, when, where, the organiser''s name, the invitee''s name and current answer, whether it is cancelled and the language — and never the description, another attendee or an address. Rate limited to 60 per client address per 10 minutes (calendar-rsvp-read).'
@@ -2065,6 +2072,7 @@ paths:
             tags:
                 - Calendar
             x-vantigo-access: anonymous
+            x-vantigo-api: never
     /api/v1/calendar/subscriptions:
         get:
             description: The caller's subscriptions (calendar feed design D6), by name, each with the worker's record of its last fetch. calendar:access's, on the caller's own rows.
@@ -2148,6 +2156,7 @@ paths:
             tags:
                 - Calendar
             x-vantigo-access: permission:calendar:access
+            x-vantigo-api: never
     /api/v1/calendar/subscriptions/{id}:
         delete:
             description: Removes one of the caller's subscriptions (calendar feed design D6); its events are gone from the next read. Another person's is the 404 an unknown id gets.
@@ -2237,6 +2246,7 @@ paths:
             tags:
                 - Calendar
             x-vantigo-access: permission:calendar:access
+            x-vantigo-api: never
     /api/v1/calendar/subscriptions/{id}/refresh:
         post:
             description: 'Fetches one of the caller''s subscriptions now (calendar feed design D6) — the screen''s Refresh now — under the same budget and guard as POST /subscriptions, and answers the row as the fetch left it: fetchedAt on a calendar or a 304, error when it failed, which is not an error of this request. Another person''s is the 404 an unknown id gets. Rate limited, with POST /subscriptions and PUT /subscriptions/{id}, to 30 per client address per 10 minutes (calendar-subscription-fetch).'
@@ -2283,6 +2293,7 @@ paths:
             tags:
                 - Calendar
             x-vantigo-access: permission:calendar:access
+            x-vantigo-api: never
     /api/v1/calendar/users:
         get:
             description: Active users in the directory, ordered by display name, for the attendee picker and the colleague picker. Every calendar:access holder may search; what it answers — a colleague's id and display name — is what every appointment already shows its attendees.

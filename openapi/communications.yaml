@@ -2975,6 +2975,7 @@ paths:
             tags:
                 - ConversationEndpoints
             x-vantigo-access: anonymous
+            x-vantigo-api: never
         head:
             description: GET's answer without the body (Messenger design N18) - the same checks, the same bare 404 for every refusal, the image's content type and length and the same headers.
             operationId: headCommunicationsPublicMediaByToken
@@ -3012,6 +3013,7 @@ paths:
             tags:
                 - ConversationEndpoints
             x-vantigo-access: anonymous
+            x-vantigo-api: never
     /api/v1/communications/participants/{id}/contact:
         delete:
             description: Clears the contact a participant is linked to. Idempotent - a participant with no contact is 204 as well.

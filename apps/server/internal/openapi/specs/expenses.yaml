@@ -2374,6 +2374,7 @@ paths:
             tags:
                 - Expenses
             x-vantigo-access: permission:expenses:access
+            x-vantigo-api: read
             x-vantigo-assistant: auto
     /api/v1/expenses/entries:
         get:
