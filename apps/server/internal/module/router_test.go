@@ -941,16 +941,23 @@ paths:
       x-vantigo-api: never
       responses:
         "204": { description: ok }
+  /api/v1/x/me:
+    get:
+      operationId: getMe
+      x-vantigo-access: session
+      responses:
+        "204": { description: ok }
 `
 
 // wrap tells Check what an API key may do on each operation: the mark, with a
-// GET a read by itself, and a mark of any other value is a mounting problem.
+// GET a read by itself, nothing behind a rule a key never meets, and a mark of
+// any other value is a mounting problem.
 func TestRouter_APIMark(t *testing.T) {
 	access := &fakeAccess{check: func(*http.Request, contracts.Rule) (contracts.Principal, error) {
 		return contracts.Principal{UserID: uuid.New()}, nil
 	}}
 	r := NewRouter(RouterOptions{Doc: loadDoc(t, apiContract), Access: access, Catalog: map[string]contracts.Permission{"customers:view": {Key: "customers:view"}}})
-	for _, pattern := range []string{"GET /api/v1/x/things", "POST /api/v1/x/things", "POST /api/v1/x/things/search", "POST /api/v1/x/things/connect"} {
+	for _, pattern := range []string{"GET /api/v1/x/things", "POST /api/v1/x/things", "POST /api/v1/x/things/search", "POST /api/v1/x/things/connect", "GET /api/v1/x/me"} {
 		r.HandleFunc(pattern, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
 	}
 	if err := r.Err(); err != nil {
@@ -964,6 +971,7 @@ func TestRouter_APIMark(t *testing.T) {
 		{http.MethodPost, "/api/v1/x/things", contracts.APIAllowed},
 		{http.MethodPost, "/api/v1/x/things/search", contracts.APIRead},
 		{http.MethodPost, "/api/v1/x/things/connect", contracts.APIRefused},
+		{http.MethodGet, "/api/v1/x/me", contracts.APIRefused},
 	} {
 		r.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(call.method, call.path, nil))
 		if got := access.checked[i].API; got != call.want {
