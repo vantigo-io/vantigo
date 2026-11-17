@@ -300,6 +300,7 @@ const manufacturingNavPresentation: Record<ManufacturingNavItem["key"], Pick<Nav
  */
 const purchasingNavPresentation: Record<PurchasingNavItem["key"], Pick<NavItem, "label" | "icon">> = {
   orders: { label: "navigation.purchasingOrders", icon: IconClipboardList },
+  proposals: { label: "navigation.purchasingProposals", icon: IconBulb },
   receive: { label: "navigation.purchasingReceive", icon: IconPackageImport },
   suppliers: { label: "navigation.purchasingSuppliers", icon: IconTruckDelivery },
   settings: { label: "navigation.purchasingSettings", icon: IconSettings },

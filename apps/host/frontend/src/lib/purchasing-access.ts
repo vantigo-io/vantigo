@@ -68,3 +68,18 @@ export const usePurchasingAccess = (): { ready: boolean; access: PurchasingAcces
     permissions,
   };
 };
+
+/**
+ * Whether **Order…** is offered on Inventory's low-stock row and on
+ * Manufacturing's buy suggestion (purchasing design P35): Purchasing is
+ * enabled and the caller may make orders from proposals — purchasing:access
+ * with purchasing:orders-manage.
+ */
+export const canOrderFromProposals = (permissions: string[] | undefined, enabled = enabledModuleKeys()): boolean =>
+  enabled.includes("purchasing") && purchasingAccessOf(permissions).canManageOrders;
+
+/** {@link canOrderFromProposals} for the signed-in caller, false until the authorization has answered. */
+export const useCanOrderFromProposals = (): boolean => {
+  const { access } = usePurchasingAccess();
+  return enabledModuleKeys().includes("purchasing") && access.canManageOrders;
+};

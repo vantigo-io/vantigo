@@ -14,6 +14,7 @@ import { purchasingSupplierQueryOptions } from "@vantigo/purchasing-ui/api/purch
 import { usePurchasingFormat } from "@vantigo/purchasing-ui/lib/format";
 import { NewPurchaseOrderPage, PurchaseOrderPage } from "@vantigo/purchasing-ui/pages/order";
 import { PurchaseOrdersPage } from "@vantigo/purchasing-ui/pages/orders";
+import { ProposalsPage } from "@vantigo/purchasing-ui/pages/proposals";
 import { ReceivePurchaseOrderPage } from "@vantigo/purchasing-ui/pages/receive";
 import { ReceivingPage } from "@vantigo/purchasing-ui/pages/receiving";
 import { PurchasingSettingsPage } from "@vantigo/purchasing-ui/pages/settings";
@@ -123,3 +124,10 @@ export const NewPurchaseOrderRoutePage = withAccess((access) => <NewPurchaseOrde
 export const SupplierRoutePage = withAccess((access, renderSupplierForm) => (
   <Supplier access={access} renderSupplierForm={renderSupplierForm} />
 ));
+
+const Proposals = ({ access }: { access: PurchasingAccess }) => {
+  const { variantId, siteId } = useSearch({ from: "/purchasing/proposals" });
+  return <ProposalsPage access={access} variantId={variantId} siteId={siteId} />;
+};
+
+export const ProposalsRoutePage = withAccess((access) => <Proposals access={access} />);

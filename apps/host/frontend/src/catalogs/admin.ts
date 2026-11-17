@@ -1230,10 +1230,11 @@ const en = {
   "admin.permission.knowledgeManageDescription":
     "See and change the access of every article that is not private, restore anyone's trashed article and empty the trash. Private articles stay private.",
   "admin.permission.purchasingAccess": "Use Purchasing",
-  "admin.permission.purchasingAccessDescription": "See the Purchasing app and read purchase orders and supplier items.",
+  "admin.permission.purchasingAccessDescription":
+    "See the Purchasing app and read purchase orders, supplier items and purchase proposals.",
   "admin.permission.purchasingOrdersManage": "Manage purchase orders",
   "admin.permission.purchasingOrdersManageDescription":
-    "Write draft purchase orders, change sent ones, record the supplier's confirmation, and close and reopen them.",
+    "Write draft purchase orders, make them from purchase proposals, change sent ones, record the supplier's confirmation, and close and reopen them.",
   "admin.permission.purchasingOrdersSend": "Send purchase orders",
   "admin.permission.purchasingOrdersSendDescription":
     "Send purchase orders, mark them as sent, send them again and cancel them.",
@@ -2040,10 +2041,11 @@ const nb: { [Key in keyof typeof en]: string } = {
   "admin.permission.knowledgeManageDescription":
     "Se og endre tilgangen til alle artikler som ikke er private, gjenopprette andres artikler fra papirkurven og tømme papirkurven. Private artikler forblir private.",
   "admin.permission.purchasingAccess": "Bruke Innkjøp",
-  "admin.permission.purchasingAccessDescription": "Se Innkjøp-appen og lese innkjøpsordrer og leverandørvarer.",
+  "admin.permission.purchasingAccessDescription":
+    "Se Innkjøp-appen og lese innkjøpsordrer, leverandørvarer og innkjøpsforslag.",
   "admin.permission.purchasingOrdersManage": "Forvalte innkjøpsordrer",
   "admin.permission.purchasingOrdersManageDescription":
-    "Skrive utkast til innkjøpsordrer, endre sendte, registrere leverandørens bekreftelse, og avslutte og gjenåpne dem.",
+    "Skrive utkast til innkjøpsordrer, lage dem fra innkjøpsforslag, endre sendte, registrere leverandørens bekreftelse, og avslutte og gjenåpne dem.",
   "admin.permission.purchasingOrdersSend": "Sende innkjøpsordrer",
   "admin.permission.purchasingOrdersSendDescription":
     "Sende innkjøpsordrer, markere dem som sendt, sende dem på nytt og kansellere dem.",

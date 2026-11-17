@@ -182,6 +182,7 @@ describe("the app registry", () => {
       "/manufacturing/boms",
       "/manufacturing/work-centers",
       "/purchasing/orders",
+      "/purchasing/proposals",
       "/purchasing/receive",
       "/purchasing/suppliers",
       "/purchasing/settings",
@@ -821,10 +822,10 @@ describe("the app registry", () => {
   });
 
   // Purchasing's destinations are the package's (`purchasingNavItems`, P23):
-  // the orders and the suppliers are purchasing:access's, the settings
-  // purchasing:settings's with it, and receiving purchasing:receive's alone
-  // (P30, A47).
-  it("registers Purchasing with the package's four destinations", () => {
+  // the orders, the proposals and the suppliers are purchasing:access's, the
+  // settings purchasing:settings's with it, and receiving purchasing:receive's
+  // alone (P30, A47).
+  it("registers Purchasing with the package's five destinations", () => {
     const purchasing = appForKey("purchasing");
     expect(purchasing).toMatchObject({ module: "purchasing", label: "navigation.purchasing", home: "/purchasing" });
     const items = purchasing.navSections.flatMap((section) => section.items);

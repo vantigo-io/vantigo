@@ -118,6 +118,7 @@ import { Route as ProjectsEconomyRouteImport } from './routes/projects/economy'
 import { Route as ProjectsMyTasksRouteImport } from './routes/projects/my-tasks'
 import { Route as ProjectsTemplatesRouteImport } from './routes/projects/templates'
 import { Route as PurchasingIndexRouteImport } from './routes/purchasing/index'
+import { Route as PurchasingProposalsRouteImport } from './routes/purchasing/proposals'
 import { Route as PurchasingSettingsRouteImport } from './routes/purchasing/settings'
 import { Route as SettingsIndexRouteImport } from './routes/settings/index'
 import { Route as SettingsConnectionsRouteImport } from './routes/settings/connections'
@@ -811,6 +812,11 @@ const ProjectsTemplatesRoute = ProjectsTemplatesRouteImport.update({
 const PurchasingIndexRoute = PurchasingIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => PurchasingRoute,
+} as any)
+const PurchasingProposalsRoute = PurchasingProposalsRouteImport.update({
+  id: '/proposals',
+  path: '/proposals',
   getParentRoute: () => PurchasingRoute,
 } as any)
 const PurchasingSettingsRoute = PurchasingSettingsRouteImport.update({
@@ -1697,6 +1703,7 @@ export interface FileRoutesByFullPath {
   '/projects/economy': typeof ProjectsEconomyRoute
   '/projects/my-tasks': typeof ProjectsMyTasksRoute
   '/projects/templates': typeof ProjectsTemplatesRoute
+  '/purchasing/proposals': typeof PurchasingProposalsRoute
   '/purchasing/settings': typeof PurchasingSettingsRoute
   '/settings/connections': typeof SettingsConnectionsRoute
   '/settings/profile': typeof SettingsProfileRoute
@@ -1929,6 +1936,7 @@ export interface FileRoutesByTo {
   '/projects/economy': typeof ProjectsEconomyRoute
   '/projects/my-tasks': typeof ProjectsMyTasksRoute
   '/projects/templates': typeof ProjectsTemplatesRoute
+  '/purchasing/proposals': typeof PurchasingProposalsRoute
   '/purchasing/settings': typeof PurchasingSettingsRoute
   '/settings/connections': typeof SettingsConnectionsRoute
   '/settings/profile': typeof SettingsProfileRoute
@@ -2185,6 +2193,7 @@ export interface FileRoutesById {
   '/projects/economy': typeof ProjectsEconomyRoute
   '/projects/my-tasks': typeof ProjectsMyTasksRoute
   '/projects/templates': typeof ProjectsTemplatesRoute
+  '/purchasing/proposals': typeof PurchasingProposalsRoute
   '/purchasing/settings': typeof PurchasingSettingsRoute
   '/settings/connections': typeof SettingsConnectionsRoute
   '/settings/profile': typeof SettingsProfileRoute
@@ -2444,6 +2453,7 @@ export interface FileRouteTypes {
     | '/projects/economy'
     | '/projects/my-tasks'
     | '/projects/templates'
+    | '/purchasing/proposals'
     | '/purchasing/settings'
     | '/settings/connections'
     | '/settings/profile'
@@ -2676,6 +2686,7 @@ export interface FileRouteTypes {
     | '/projects/economy'
     | '/projects/my-tasks'
     | '/projects/templates'
+    | '/purchasing/proposals'
     | '/purchasing/settings'
     | '/settings/connections'
     | '/settings/profile'
@@ -2931,6 +2942,7 @@ export interface FileRouteTypes {
     | '/projects/economy'
     | '/projects/my-tasks'
     | '/projects/templates'
+    | '/purchasing/proposals'
     | '/purchasing/settings'
     | '/settings/connections'
     | '/settings/profile'
@@ -3900,6 +3912,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/purchasing/'
       preLoaderRoute: typeof PurchasingIndexRouteImport
+      parentRoute: typeof PurchasingRoute
+    }
+    '/purchasing/proposals': {
+      id: '/purchasing/proposals'
+      path: '/proposals'
+      fullPath: '/purchasing/proposals'
+      preLoaderRoute: typeof PurchasingProposalsRouteImport
       parentRoute: typeof PurchasingRoute
     }
     '/purchasing/settings': {
@@ -5472,6 +5491,7 @@ const ProjectsRouteWithChildren = ProjectsRoute._addFileChildren(
 )
 
 interface PurchasingRouteChildren {
+  PurchasingProposalsRoute: typeof PurchasingProposalsRoute
   PurchasingSettingsRoute: typeof PurchasingSettingsRoute
   PurchasingIndexRoute: typeof PurchasingIndexRoute
   PurchasingOrdersOrderIdRoute: typeof PurchasingOrdersOrderIdRoute
@@ -5484,6 +5504,7 @@ interface PurchasingRouteChildren {
 }
 
 const PurchasingRouteChildren: PurchasingRouteChildren = {
+  PurchasingProposalsRoute: PurchasingProposalsRoute,
   PurchasingSettingsRoute: PurchasingSettingsRoute,
   PurchasingIndexRoute: PurchasingIndexRoute,
   PurchasingOrdersOrderIdRoute: PurchasingOrdersOrderIdRoute,
