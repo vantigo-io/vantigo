@@ -1324,8 +1324,9 @@ lagersted i Lager — se
 
 For hvert slikt produkt og lagersted regner Produksjon ut den **fremskrevne**
 beholdningen: det som er brukbart på lager (partier på vent og utgåtte partier holdes
-utenfor), minus det som er reservert, pluss det som er på vei dit med en overføring, pluss
-det åpne produksjonsordrer — og utkastene laget fra tidligere forslag — fortsatt skal
+utenfor), minus det som er reservert, pluss det som er på vei dit med en overføring og,
+når Innkjøp er i bruk, det som er i bestilling dit på sendte innkjøpsordrer og ennå ikke
+mottatt, pluss det åpne produksjonsordrer — og utkastene laget fra tidligere forslag — fortsatt skal
 produsere av det, minus det åpne ordrer og disse utkastene fortsatt trenger av det som
 komponent og ikke har reservert, minus det åpne salgsordrer fortsatt trenger av det og
 ikke har reservert. En ordre produsert mot ordre for en salgsordre holdes utenfor, og
@@ -1352,6 +1353,11 @@ forslag erstatter de forrige. **Kjør nå** lager dem med en gang (høyst én ga
 minuttet for hvert lagersted); siden viser når de sist ble laget, leser dem på nytt til
 kjøringen er ferdig, og hver gang et lagersteds forslag endres. Når Ordre ikke er i bruk, sier
 **Salgsordrer er ikke regnet med** at etterspørselen fra salg holdes utenfor.
+
+Når Innkjøp er i bruk, lager en innkjøpsordre som sendes, og varer som tas imot på en eller
+et varemottak som angres, forslagene for ordrens lagersted på nytt, med mindre en kjøring
+for det lagerstedet allerede venter: det som er bestilt eller har kommet, regnes med en
+gang, ikke først neste natt.
 
 ### Lag ordrer fra forslag
 

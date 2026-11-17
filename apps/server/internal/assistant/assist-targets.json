@@ -1100,6 +1100,11 @@
     "description": "Opens the order's header and lines for changes; a sent order keeps every change in its history."
   },
   {
+    "key": "purchasing.order.receive",
+    "route": "/purchasing/orders/{orderId}",
+    "description": "Opens the receive screen of a sent order: its open goods lines with the remainder prefilled, to put on the site's locations."
+  },
+  {
     "key": "purchasing.order.send",
     "route": "/purchasing/orders/{orderId}",
     "description": "Opens the dialog that gives the draft its number and mails its PDF to the supplier."
@@ -1108,6 +1113,16 @@
     "key": "purchasing.orders.new",
     "route": "/purchasing/orders",
     "description": "The button above the purchase order list that starts a new draft order to a supplier."
+  },
+  {
+    "key": "purchasing.receive.scan",
+    "route": "/purchasing/orders/{orderId}/receive",
+    "description": "The scan field of the receive screen: a SKU, a barcode or a GS1 code selects the line and counts one more; the first scan starts counting from 0."
+  },
+  {
+    "key": "purchasing.receive.submit",
+    "route": "/purchasing/orders/{orderId}/receive",
+    "description": "Posts the receipt: the rows above 0 go into stock on their locations as one Inventory movement."
   },
   {
     "key": "time.day.add-entry",

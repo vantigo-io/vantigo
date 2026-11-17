@@ -1298,7 +1298,8 @@ are judged.
 
 For each such product and site, Manufacturing works out the **projected** stock: what is
 usable on hand (held and expired lots left out), less what is reserved, plus what is on
-its way there by transfer, plus what open manufacturing orders — and the drafts made from
+its way there by transfer and, when Purchasing is in use, what is on order there on sent
+purchase orders and not yet received, plus what open manufacturing orders — and the drafts made from
 earlier suggestions — will still make of it, less what open orders and those drafts
 still need of it as a component and have not reserved, less what open sales orders still
 need of it and have not reserved. An order made to order for a sales order is left out,
@@ -1325,6 +1326,10 @@ night's replace the last. **Run now** makes them at once (at most once a minute 
 each site); the page shows when they were last made, reads them again until the run has
 finished, and whenever a site's suggestions change. When Orders is not in use, **Sales orders not
 counted** says that sales demand is left out.
+
+When Purchasing is in use, a purchase order sent, and goods received on one or a receipt
+undone, make the suggestions for the order's site again, unless a run for that site is
+already waiting: what was ordered or has come counts at once, not only the next night.
 
 ### Make orders from suggestions
 
