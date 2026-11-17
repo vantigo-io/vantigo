@@ -849,7 +849,11 @@ names. Numbered from A50, so delivery B's amendments, written beside it, cannot 
   change-log row each draft it touched is given, never answered in the history. A replay is
   found by a JSON containment read of `order_changes`, before the transaction and again
   under the advisory lock that serialises Create orders. A draft deleted since takes its
-  rows with it, and a replay then creates again.
+  rows with it, and a replay then creates again. The read has no index of its own — one
+  (a GIN index on `order_changes.actions`, or a request table) needs a migration, which
+  delivery C was not to take; it is an owner's call once the change log grows. The screen
+  keeps one request id per set of rows sent, so a click again after a lost answer
+  replays rather than refusing.
 - **A53 — A second click is refused, not trimmed** (P33, A4). Inside the transaction —
   variants locked, then suppliers, then the advisory lock — every row is judged again on the
   drafts as they stand; a row no longer proposed refuses the whole request with 409

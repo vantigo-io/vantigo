@@ -3,11 +3,12 @@ import { IconShoppingCartPlus } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ContentSkeleton, EmptyState, PageHeader, PageSection } from "@vantigo/frontend-shell";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   createOrdersFromProposals,
   type PurchasingProposal,
   type PurchasingProposalOption,
+  type PurchasingProposalOrdersInput,
   type PurchasingProposalOrdersResult,
   proposalsQueryOptions,
 } from "../api/proposals";
@@ -72,18 +73,13 @@ export const ProposalsPage = ({
   const ticked = orderable.filter((row) => choices[keyOf(row)]?.ticked);
   const allValid = ticked.every((row) => validQuantity(quantityOf(row)));
 
+  // One request id per set of rows sent (A11): a click again with the same rows — after an answer
+  // that never came — replays the first request rather than refusing it as ordered.
+  const attempt = useRef<{ signature: string; id: string } | undefined>(undefined);
   const create = useMutation({
-    mutationFn: () =>
-      createOrdersFromProposals({
-        clientRequestId: newRequestId(),
-        rows: ticked.map((row) => ({
-          variantId: row.variantId,
-          siteId: row.siteId,
-          supplierItemId: optionOf(row).supplierItemId,
-          orderQuantity: quantityOf(row).trim(),
-        })),
-      }),
+    mutationFn: (input: PurchasingProposalOrdersInput) => createOrdersFromProposals(input),
     onSuccess: async (result) => {
+      attempt.current = undefined;
       setCreated(result);
       setChoices({});
       await queryClient.invalidateQueries({ queryKey: [PURCHASING_QUERY_KEY] });
@@ -93,10 +89,22 @@ export const ProposalsPage = ({
         await queryClient.invalidateQueries({ queryKey: [PURCHASING_QUERY_KEY, "proposals"] });
     },
   });
-  const sent = create.isPending ? [] : ticked;
+  const submit = () => {
+    const rows = ticked.map((row) => ({
+      variantId: row.variantId,
+      siteId: row.siteId,
+      supplierItemId: optionOf(row).supplierItemId,
+      orderQuantity: quantityOf(row).trim(),
+    }));
+    const signature = JSON.stringify(rows);
+    if (attempt.current?.signature !== signature) attempt.current = { signature, id: newRequestId() };
+    create.mutate({ clientRequestId: attempt.current.id, rows });
+  };
+  // A refused row is named by its index in the request as sent, whatever the list shows since.
+  const sentRows = create.variables?.rows ?? [];
   const problems = new Map(
     refusedLines(create.error).map((l) => [
-      sent[l.index] ? keyOf(sent[l.index]) : "",
+      sentRows[l.index] ? `${sentRows[l.index].variantId}:${sentRows[l.index].siteId}` : "",
       lineRefusalWords(l.code, l.detail, t),
     ]),
   );
@@ -119,7 +127,7 @@ export const ProposalsPage = ({
               leftSection={<IconShoppingCartPlus size={16} />}
               disabled={ticked.length === 0 || !allValid}
               loading={create.isPending}
-              onClick={() => create.mutate()}
+              onClick={submit}
             >
               {ticked.length > 0 ? t("createOrdersCount", { count: ticked.length }) : t("createOrders")}
             </Button>

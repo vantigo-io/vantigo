@@ -180,4 +180,26 @@ describe("the purchase proposals", () => {
     renderRoute("/purchasing/proposals");
     expect(await screen.findByText("Nothing to buy")).toBeInTheDocument();
   });
+  it("sends the same request id again when the same rows are sent after a failed answer", async () => {
+    const ids: string[] = [];
+    serve([proposal()], (body) => {
+      ids.push((body as { clientRequestId: string }).clientRequestId);
+      return ids.length === 1
+        ? refusal(503, "dependency_unavailable")
+        : jsonResponse(200, {
+            orders: [
+              { orderId: 9, supplierId: 40, supplierName: "Skruer AS", siteId: 1, created: true, linesAdded: 1 },
+            ],
+          });
+    });
+    renderRoute("/purchasing/proposals");
+    await screen.findByTestId("proposals");
+    await userEvent.click(screen.getByRole("checkbox", { name: "Select BOLT-M8 at Hovedlager" }));
+    await userEvent.click(screen.getByRole("button", { name: "Create orders (1 row)" }));
+    await screen.findByText("A module Purchasing reads is not available.");
+    await userEvent.click(screen.getByRole("button", { name: "Create orders (1 row)" }));
+    await screen.findByRole("link", { name: "Draft for Skruer AS" });
+    expect(ids).toHaveLength(2);
+    expect(ids[1]).toBe(ids[0]);
+  });
 });
