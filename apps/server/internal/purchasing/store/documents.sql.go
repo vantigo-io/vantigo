@@ -12,9 +12,59 @@ import (
 	"github.com/google/uuid"
 )
 
+const claimHeldMailing = `-- name: ClaimHeldMailing :one
+UPDATE purchasing.mailings
+SET next_attempt_at = $1::timestamptz, attempts = attempts + 1,
+    provider_message_id = coalesce(provider_message_id, $2::text)
+WHERE id = $3 AND status = 'queued' AND next_attempt_at = $4::timestamptz
+RETURNING id, order_id, kind, version, document_id, recipient, cc, subject, message, channel_id, status, provider_message_id, attempts, next_attempt_at, last_error, sent_at, sent_by_user_id, sent_by_display, created_at
+`
+
+type ClaimHeldMailingParams struct {
+	LeaseUntil time.Time
+	MessageID  string
+	ID         int64
+	Held       time.Time
+}
+
+// ClaimHeldMailing is the request's own claim of the mailing its transaction
+// queued, after the commit: only while it is still queued under the hold the
+// insert wrote (@held), so the worker and the request never both take it.
+func (q *Queries) ClaimHeldMailing(ctx context.Context, arg ClaimHeldMailingParams) (PurchasingMailing, error) {
+	row := q.db.QueryRow(ctx, claimHeldMailing,
+		arg.LeaseUntil,
+		arg.MessageID,
+		arg.ID,
+		arg.Held,
+	)
+	var i PurchasingMailing
+	err := row.Scan(
+		&i.ID,
+		&i.OrderID,
+		&i.Kind,
+		&i.Version,
+		&i.DocumentID,
+		&i.Recipient,
+		&i.Cc,
+		&i.Subject,
+		&i.Message,
+		&i.ChannelID,
+		&i.Status,
+		&i.ProviderMessageID,
+		&i.Attempts,
+		&i.NextAttemptAt,
+		&i.LastError,
+		&i.SentAt,
+		&i.SentByUserID,
+		&i.SentByDisplay,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const claimMailing = `-- name: ClaimMailing :one
 UPDATE purchasing.mailings
-SET next_attempt_at = $1::timestamptz,
+SET next_attempt_at = $1::timestamptz, attempts = attempts + 1,
     provider_message_id = coalesce(provider_message_id, $2::text)
 WHERE status = 'queued' AND id = (
     SELECT m.id FROM purchasing.mailings m
@@ -182,6 +232,37 @@ func (q *Queries) GetDocument(ctx context.Context, arg GetDocumentParams) (Purch
 	return i, err
 }
 
+const getMailing = `-- name: GetMailing :one
+SELECT id, order_id, kind, version, document_id, recipient, cc, subject, message, channel_id, status, provider_message_id, attempts, next_attempt_at, last_error, sent_at, sent_by_user_id, sent_by_display, created_at FROM purchasing.mailings WHERE id = $1
+`
+
+func (q *Queries) GetMailing(ctx context.Context, id int64) (PurchasingMailing, error) {
+	row := q.db.QueryRow(ctx, getMailing, id)
+	var i PurchasingMailing
+	err := row.Scan(
+		&i.ID,
+		&i.OrderID,
+		&i.Kind,
+		&i.Version,
+		&i.DocumentID,
+		&i.Recipient,
+		&i.Cc,
+		&i.Subject,
+		&i.Message,
+		&i.ChannelID,
+		&i.Status,
+		&i.ProviderMessageID,
+		&i.Attempts,
+		&i.NextAttemptAt,
+		&i.LastError,
+		&i.SentAt,
+		&i.SentByUserID,
+		&i.SentByDisplay,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const insertDocument = `-- name: InsertDocument :one
 INSERT INTO purchasing.documents (order_id, kind, version, storage_key, sha256, size_bytes, created_at)
 VALUES ($1, $2, $3, $4, $5,
@@ -260,9 +341,10 @@ type InsertMailingParams struct {
 	CreatedAt         time.Time
 }
 
-// InsertMailing logs a mailing (P21, A19): a person's send after it was
-// made, sent; or one the provider refused, queued for the purchasing.mail
-// worker's retry at next_attempt_at.
+// InsertMailing writes a mailing (P21, A19) as an outbox row: queued inside
+// the Send, Send again or Cancel transaction that asks for it, its stored
+// PDF named once it is stored, and held by the request until
+// next_attempt_at, when the purchasing.mail worker may take it.
 func (q *Queries) InsertMailing(ctx context.Context, arg InsertMailingParams) (PurchasingMailing, error) {
 	row := q.db.QueryRow(ctx, insertMailing,
 		arg.OrderID,
@@ -391,7 +473,7 @@ func (q *Queries) MailingsOf(ctx context.Context, orderID int64) ([]PurchasingMa
 
 const markMailingSent = `-- name: MarkMailingSent :execrows
 UPDATE purchasing.mailings
-SET status = 'sent', sent_at = $1, attempts = attempts + 1, last_error = NULL, next_attempt_at = NULL,
+SET status = 'sent', sent_at = $1, last_error = NULL, next_attempt_at = NULL,
     channel_id = coalesce(channel_id, $2)
 WHERE id = $3 AND status = 'queued' AND next_attempt_at = $4::timestamptz
 `
@@ -448,7 +530,7 @@ func (q *Queries) NextDeletion(ctx context.Context, arg NextDeletionParams) (Pur
 
 const retryMailing = `-- name: RetryMailing :execrows
 UPDATE purchasing.mailings
-SET attempts = attempts + 1, last_error = $1::text,
+SET last_error = $1::text,
     status = CASE WHEN $2::boolean THEN 'failed' ELSE 'queued' END,
     next_attempt_at = CASE WHEN $2::boolean THEN NULL ELSE $3::timestamptz END
 WHERE id = $4 AND status = 'queued' AND next_attempt_at = $5::timestamptz
@@ -462,8 +544,9 @@ type RetryMailingParams struct {
 	LeaseUntil    time.Time
 }
 
-// RetryMailing counts a failed attempt of a claimed mailing and puts it back
-// for @next_attempt_at, or fails it for good when @fail is set.
+// RetryMailing records a failed attempt of a claimed mailing (counted when it
+// was claimed) and puts it back for @next_attempt_at, or fails it for good
+// when @fail is set.
 func (q *Queries) RetryMailing(ctx context.Context, arg RetryMailingParams) (int64, error) {
 	result, err := q.db.Exec(ctx, retryMailing,
 		arg.LastError,
@@ -472,6 +555,44 @@ func (q *Queries) RetryMailing(ctx context.Context, arg RetryMailingParams) (int
 		arg.ID,
 		arg.LeaseUntil,
 	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const setMailingDocument = `-- name: SetMailingDocument :exec
+UPDATE purchasing.mailings SET document_id = $1
+WHERE id = $2 AND document_id IS NULL
+`
+
+type SetMailingDocumentParams struct {
+	DocumentID *int64
+	ID         int64
+}
+
+// SetMailingDocument names the stored PDF a queued mailing sends.
+func (q *Queries) SetMailingDocument(ctx context.Context, arg SetMailingDocumentParams) error {
+	_, err := q.db.Exec(ctx, setMailingDocument, arg.DocumentID, arg.ID)
+	return err
+}
+
+const supersedeMailings = `-- name: SupersedeMailings :execrows
+UPDATE purchasing.mailings
+SET status = 'failed', next_attempt_at = NULL, last_error = $1::text
+WHERE order_id = $2 AND kind = 'order' AND status = 'queued' AND version < $3::integer
+`
+
+type SupersedeMailingsParams struct {
+	LastError string
+	OrderID   int64
+	Version   int32
+}
+
+// SupersedeMailings fails, for good, the still-queued mailings of an order's
+// PDF at a version below @version: Send again made them stale (A19).
+func (q *Queries) SupersedeMailings(ctx context.Context, arg SupersedeMailingsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, supersedeMailings, arg.LastError, arg.OrderID, arg.Version)
 	if err != nil {
 		return 0, err
 	}

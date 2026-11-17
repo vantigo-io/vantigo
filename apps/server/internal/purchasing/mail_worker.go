@@ -15,13 +15,13 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/worker"
 )
 
-// This file is the module's two workers. purchasing.mail (P21, A19) retries
-// the mailings a person's send left queued because the provider refused
-// them: a cycle claims one queued row at a time under a lease (ClaimMailing:
+// This file is the module's two workers. purchasing.mail (P21, A19) sends
+// the mailings a person's send queued in its transaction and did not get out
+// — the provider refused it, or the request died after its commit: a cycle claims one queued row at a time under a lease (ClaimMailing:
 // a SKIP LOCKED pick that pushes next_attempt_at out by the lease, so two
 // workers never take one row and a worker that dies leaves it claimable
-// again), then — outside any transaction — reads the stored PDF the row
-// names, sends it through contracts.OutboundMail on the row's channel and
+// again; the claim counts the attempt), then — outside any transaction —
+// stores the order's PDF when the row names none yet, reads it, sends it through contracts.OutboundMail on the row's channel and
 // marks it sent; a failure counts the attempt and backs off, and a row that
 // failed mailMaxAttempts times, or can never be sent, is failed.
 // purchasing.deletions (A8) deletes from the object store the stored PDFs the
@@ -109,15 +109,16 @@ func (w *mailWorker) cycle(ctx context.Context) int {
 			s.deps.Logger.WarnContext(ctx, "purchasing: the mail worker could not claim a mailing", "error", err.Error())
 			return n
 		}
-		w.handle(ctx, row)
+		s.deliver(ctx, row)
 	}
 	return n
 }
 
-// handle sends one claimed row and records the outcome under its lease.
-func (w *mailWorker) handle(ctx context.Context, row store.PurchasingMailing) {
-	s := w.s
-	channel, reason, terminal := w.send(ctx, row)
+// deliver makes one attempt at a claimed mailing — the worker's or the
+// request's own — and records the outcome under its lease, answering
+// whether it went out. The attempt was counted when the row was claimed.
+func (s *server) deliver(ctx context.Context, row store.PurchasingMailing) bool {
+	channel, reason, terminal := s.attemptMailing(ctx, row)
 	stepCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), stepTimeout)
 	defer cancel()
 	q := store.New(s.deps.Pool)
@@ -125,23 +126,25 @@ func (w *mailWorker) handle(ctx context.Context, row store.PurchasingMailing) {
 		if _, err := q.MarkMailingSent(stepCtx, store.MarkMailingSentParams{ID: row.ID, Now: ptr(s.deps.Clock()), ChannelID: channel, LeaseUntil: *row.NextAttemptAt}); err != nil {
 			s.deps.Logger.ErrorContext(ctx, "purchasing: a mailing was sent but could not be marked", "mailing_id", row.ID, "error", err.Error())
 		}
-		return
+		return true
 	}
-	attempts := row.Attempts + 1
-	fail := terminal || attempts >= mailMaxAttempts
+	fail := terminal || row.Attempts >= mailMaxAttempts
 	if _, err := q.RetryMailing(stepCtx, store.RetryMailingParams{
-		ID: row.ID, LastError: reason, Fail: fail, NextAttemptAt: s.deps.Clock().Add(mailBackoff(attempts)), LeaseUntil: *row.NextAttemptAt,
+		ID: row.ID, LastError: reason, Fail: fail, NextAttemptAt: s.deps.Clock().Add(mailBackoff(row.Attempts)), LeaseUntil: *row.NextAttemptAt,
 	}); err != nil {
 		s.deps.Logger.ErrorContext(ctx, "purchasing: a mailing's failed attempt could not be recorded", "mailing_id", row.ID, "error", err.Error())
 	}
-	s.deps.Logger.WarnContext(ctx, "purchasing: a queued mailing was not sent", "mailing_id", row.ID, "attempts", attempts, "failed", fail, "reason", reason)
+	s.deps.Logger.WarnContext(ctx, "purchasing: a mailing was not sent", "mailing_id", row.ID, "attempts", row.Attempts, "failed", fail, "reason", reason)
+	return false
 }
 
-// send makes one attempt at a claimed row, outside any transaction: the
-// stored PDF it names, the cover mail from the order's row, the send. reason
-// is "" when it went out; terminal says the row can never be sent.
-func (w *mailWorker) send(ctx context.Context, row store.PurchasingMailing) (*uuid.UUID, string, bool) {
-	s := w.s
+// attemptMailing makes one attempt at a claimed row, outside any
+// transaction: the order's row, the stored PDF the row names — rendered,
+// stored and named first when the request that queued it did not get that
+// far —, the cover mail, the send. reason is "" when it went out; terminal
+// says the row can never be sent: an order cancelled since, or a version
+// Send again superseded.
+func (s *server) attemptMailing(ctx context.Context, row store.PurchasingMailing) (*uuid.UUID, string, bool) {
 	q := store.New(s.deps.Pool)
 	channel := row.ChannelID
 	if channel == nil {
@@ -164,25 +167,38 @@ func (w *mailWorker) send(ctx context.Context, row store.PurchasingMailing) (*uu
 	if row.Kind == docOrder && o.Status == statusCancelled {
 		return channel, "The order was cancelled; its PDF is not sent.", true
 	}
+	if row.Kind == docOrder && row.Version < o.Version {
+		return channel, fmt.Sprintf("Superseded: version %d was sent again before this one went out.", o.Version), true
+	}
+	var doc store.PurchasingDocument
+	var pdf []byte
 	if row.DocumentID == nil {
-		return channel, "The mailing names no stored PDF.", true
-	}
-	doc, err := q.GetDocument(ctx, store.GetDocumentParams{ID: *row.DocumentID, OrderID: o.ID})
-	if err != nil {
-		return channel, "The stored PDF could not be read.", noRows(err)
-	}
-	if doc.ErasedAt != nil {
-		return channel, "The stored PDF was erased.", true
-	}
-	pdf, err := s.loadDocument(ctx, doc)
-	if err != nil {
-		return channel, "The stored PDF could not be read.", false
+		if doc, pdf, err = s.ensureDocument(ctx, o.ID, row.Kind); err != nil {
+			s.deps.Logger.WarnContext(ctx, "purchasing: a queued mailing's PDF could not be stored", "mailing_id", row.ID, "error", err.Error())
+			return channel, "The PDF could not be stored.", false
+		}
+		if doc.Version != row.Version {
+			return channel, fmt.Sprintf("Superseded: version %d was sent again before this one went out.", doc.Version), true
+		}
+		if err := q.SetMailingDocument(ctx, store.SetMailingDocumentParams{ID: row.ID, DocumentID: &doc.ID}); err != nil {
+			return channel, "The stored PDF could not be named.", false
+		}
+	} else {
+		if doc, err = q.GetDocument(ctx, store.GetDocumentParams{ID: *row.DocumentID, OrderID: o.ID}); err != nil {
+			return channel, "The stored PDF could not be read.", noRows(err)
+		}
+		if doc.ErasedAt != nil {
+			return channel, "The stored PDF was erased.", true
+		}
+		if pdf, err = s.loadDocument(ctx, doc); err != nil {
+			return channel, "The stored PDF could not be read.", false
+		}
 	}
 	seller, err := s.seller(ctx)
 	if err != nil {
 		return channel, "The seller could not be read.", false
 	}
-	m := mailRequest{recipient: row.Recipient, subject: row.Subject, message: row.Message}
+	m := mailRequest{recipient: row.Recipient, message: row.Message}
 	for _, c := range strings.Split(row.Cc, ",") {
 		if c = strings.TrimSpace(c); c != "" {
 			m.cc = append(m.cc, c)
@@ -193,10 +209,13 @@ func (w *mailWorker) send(ctx context.Context, row store.PurchasingMailing) (*uu
 		messageID = *row.ProviderMessageID
 	}
 	out := envelope(o, doc.Kind, doc.Version, m, seller, pdf, messageID)
+	if row.Subject != "" {
+		out.Subject = row.Subject
+	}
 	sendCtx, cancel := context.WithTimeout(ctx, sendTimeout)
 	defer cancel()
 	if err := s.outboundSend(sendCtx, *channel, out); err != nil {
-		return channel, truncate(fmt.Sprintf("The mail provider did not take the e-mail. %s", withoutAddress(err.Error(), row.Recipient)), 500), false
+		return channel, truncate(fmt.Sprintf("The mail provider did not take the e-mail. %s", withoutAddress(err.Error(), append([]string{row.Recipient}, m.cc...)...)), 500), false
 	}
 	return channel, "", false
 }
