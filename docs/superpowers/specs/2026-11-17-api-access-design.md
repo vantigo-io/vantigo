@@ -867,6 +867,26 @@ Each question takes R §7's default. An overturn changes the following:
   Deletes are not guarded: removing a role only narrows. Integrations are not given
   access-group memberships in this phase, so their scope is their direct roles.
 
+- **K48 (amends K3), as built in delivery 0: a refused role write is 404.** Roles & access
+  and the access-group member operations answer `404` for an integration, as the Owner's
+  user operations do for an agent. A `409 not_a_person` would need a new response in
+  `identity.yaml` for a user the screens never list anyway.
+- **K49 (amends K4), as built: `UserMayAct` is person-only.** It already was, for agents as
+  well (`queries/sessions.sql:85-112`), so `UserHolds` and `AsUser` answer false for
+  every user who is not a person. `ListConnectCandidates`, which K4 did not name, also left
+  out no kind; it now leaves integrations out. It still offers agents; that is the agents'
+  question and is left as it was.
+- **K50 (amends K4), as built: Knowledge keeps treating any `Via` as AI.** `viaAI`
+  (`knowledge/server.go:42-51`) says on purpose that a kind of principal added later is
+  covered without a change. A key therefore sees no hidden article. Narrowing it would
+  open hidden articles to keys, and nobody has asked for that.
+- **K51 (amends delivery 0's scope): `permitted` refuses `APINever` in delivery A.** The
+  branch has no caller until a key principal exists, so it lands with the `Check` branch.
+  Delivery 0 ships `contracts.APINever` and its test.
+- **K52 (amends K6), as built: no Vipps or Storecove operation exists to mark.** The
+  anonymous surface is calendar, communications' public media, Entra, Google, identity,
+  the invoices pay page and Meta, every one marked `never`.
+
 ## 15. Revision log
 
 - **Revision 1, 2026-11-17.** First version, from R.
@@ -921,3 +941,5 @@ Each question takes R §7's default. An overturn changes the following:
   - queued work;
   - the cache bound;
   - which role writes are guarded.
+
+  Delivery 0 adds K48 to K52, what it built differently.
