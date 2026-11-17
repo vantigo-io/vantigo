@@ -7,7 +7,8 @@ package manufacturing
 //
 // The projection (M107), per variant with a reorder point at a site:
 //
-//	projected = usable onHand − reserved + incoming   (Stock.Placements)
+//	projected = usable onHand − reserved + incoming   (Stock.Placements: transfers in transit)
+//	          + Σ open purchases                       (PurchaseSupply, none without Purchasing)
 //	          + Σ supply orders' remaining             (open, and reorder drafts; MTO left out)
 //	          − Σ open orders' and reorder drafts' unreserved component demand
 //	          − Σ unreserved open sales demand          (SalesOrderLines.Unreserved, less what MTO still makes for the line)
@@ -441,6 +442,17 @@ func (s *server) replenishSite(ctx context.Context, runID, siteID int64, today t
 	for _, r := range supplyRows {
 		sumBy(supply, r.VariantID, textRat(r.Remaining))
 	}
+	// What is on order through Purchasing is incoming beside the transfers
+	// (purchasing design P4, A3): Stock.Placements answers transfers only,
+	// so it is added here and never counted twice.
+	purchases, err := s.openPurchases(ctx, siteID, variantIDs)
+	if err != nil {
+		return 0, 0, err
+	}
+	onOrder := map[int32]*big.Rat{}
+	for _, o := range purchases {
+		sumBy(onOrder, o.VariantID, textRat(o.Quantity))
+	}
 	demandRows, err := pool.ComponentDemandAtSite(ctx, siteID)
 	if err != nil {
 		return 0, 0, err
@@ -477,7 +489,8 @@ func (s *server) replenishSite(ctx context.Context, runID, siteID int64, today t
 			continue
 		}
 		proj := projection{
-			onHand: orZeroRat(textRat(p.OnHand)), reserved: orZeroRat(textRat(p.Reserved)), incoming: orZeroRat(textRat(p.Incoming)),
+			onHand: orZeroRat(textRat(p.OnHand)), reserved: orZeroRat(textRat(p.Reserved)),
+			incoming:     new(big.Rat).Add(orZeroRat(textRat(p.Incoming)), orZeroRat(onOrder[p.VariantID])),
 			inProduction: orZeroRat(supply[p.VariantID]), neededByProduction: orZeroRat(components[p.VariantID]),
 			neededBySales: orZeroRat(sales[p.VariantID]), reorderPoint: orZeroRat(textRat(p.ReorderPoint)),
 			maximum: textRat(p.Maximum), multiple: textRat(p.Multiple),
@@ -598,6 +611,22 @@ func (s *server) stockPlacements(ctx context.Context, siteID int64) ([]contracts
 	out, err := s.deps.Stock.Placements(ctx, siteID)
 	if err != nil {
 		return nil, fmt.Errorf("manufacturing: read the placements at site %d: %w", siteID, err)
+	}
+	return out, nil
+}
+
+// openPurchases is Purchasing's open purchases of the variants at the site,
+// before any transaction (purchasing design P4); none without Purchasing.
+func (s *server) openPurchases(ctx context.Context, siteID int64, variantIDs []int32) ([]contracts.OpenPurchase, error) {
+	if s.deps.PurchaseSupply == nil || len(variantIDs) == 0 {
+		return nil, nil
+	}
+	if err := noteContractCall(ctx, "PurchaseSupply.OpenByVariants"); err != nil {
+		return nil, err
+	}
+	out, err := s.deps.PurchaseSupply.OpenByVariants(ctx, &siteID, variantIDs)
+	if err != nil {
+		return nil, fmt.Errorf("manufacturing: read the open purchases at site %d: %w", siteID, err)
 	}
 	return out, nil
 }
