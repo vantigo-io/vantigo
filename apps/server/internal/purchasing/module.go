@@ -82,6 +82,14 @@ func Module() module.Module {
 		Name:        "purchasing",
 		Permissions: permissions,
 		Mount:       mount,
+		Workers:     workers,
+		// The slots below are composed whatever MODULES says, each from
+		// what a disabled module's Deps has too (rules 20, 27, 28).
+		VariantReferences:    newVariantReferenceHolder,
+		SupplierReferences:   newSupplierReferenceHolder,
+		SupplierPersonalData: newSupplierPersonalData,
+		// The open purchases (P4), resolved from the enabled modules only.
+		PurchaseSupply: newPurchaseSupply,
 	}
 }
 
@@ -113,6 +121,7 @@ func mount(d module.Deps) (http.Handler, error) {
 	handler := gen.HandlerWithOptions(strict, gen.StdHTTPServerOptions{
 		BaseRouter:       router,
 		ErrorHandlerFunc: module.DecodeError(apicommon.WriteDecodeError),
+		Middlewares:      []gen.MiddlewareFunc{keepRawBody},
 	})
 	if err := router.Err(); err != nil {
 		return nil, err

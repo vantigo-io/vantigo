@@ -7,7 +7,49 @@ package store
 
 import (
 	"context"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
+
+const allocateNumber = `-- name: AllocateNumber :one
+INSERT INTO purchasing.counters (counter_name, next_value)
+VALUES ($1, $2::bigint + 1)
+ON CONFLICT (counter_name) DO UPDATE
+    SET next_value = greatest(purchasing.counters.next_value, $2::bigint) + 1
+RETURNING (next_value - 1)::bigint AS allocated
+`
+
+type AllocateNumberParams struct {
+	CounterName string
+	SeriesStart int64
+}
+
+// AllocateNumber takes the next number of a series (P20): the first is the
+// series start, every later one one more, never below a start the settings
+// raised since. The row's lock is held until the sending transaction
+// commits, so it serialises two sends, and a rolled-back send rolls its
+// number back with it: the series has no gaps.
+func (q *Queries) AllocateNumber(ctx context.Context, arg AllocateNumberParams) (int64, error) {
+	row := q.db.QueryRow(ctx, allocateNumber, arg.CounterName, arg.SeriesStart)
+	var allocated int64
+	err := row.Scan(&allocated)
+	return allocated, err
+}
+
+const counterNextValue = `-- name: CounterNextValue :one
+SELECT next_value FROM purchasing.counters WHERE counter_name = $1
+`
+
+// CounterNextValue reads a series' next number without allocating (P20). No
+// row means the series has never handed one out (pgx.ErrNoRows).
+func (q *Queries) CounterNextValue(ctx context.Context, counterName string) (int64, error) {
+	row := q.db.QueryRow(ctx, counterNextValue, counterName)
+	var next_value int64
+	err := row.Scan(&next_value)
+	return next_value, err
+}
 
 const getSettings = `-- name: GetSettings :one
 SELECT id, order_series_start, default_site_id, send_channel, order_footer, delivery_addresses, price_tolerance_percent, revision, updated_at FROM purchasing.settings WHERE id = 1
@@ -15,6 +57,86 @@ SELECT id, order_series_start, default_site_id, send_channel, order_footer, deli
 
 func (q *Queries) GetSettings(ctx context.Context) (PurchasingSetting, error) {
 	row := q.db.QueryRow(ctx, getSettings)
+	var i PurchasingSetting
+	err := row.Scan(
+		&i.ID,
+		&i.OrderSeriesStart,
+		&i.DefaultSiteID,
+		&i.SendChannel,
+		&i.OrderFooter,
+		&i.DeliveryAddresses,
+		&i.PriceTolerancePercent,
+		&i.Revision,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const lockSettings = `-- name: LockSettings :one
+SELECT id, order_series_start, default_site_id, send_channel, order_footer, delivery_addresses, price_tolerance_percent, revision, updated_at FROM purchasing.settings WHERE id = 1 FOR UPDATE
+`
+
+// LockSettings takes the one settings row FOR UPDATE, so a save judges the
+// series start against the counter (P20) while no other save runs.
+func (q *Queries) LockSettings(ctx context.Context) (PurchasingSetting, error) {
+	row := q.db.QueryRow(ctx, lockSettings)
+	var i PurchasingSetting
+	err := row.Scan(
+		&i.ID,
+		&i.OrderSeriesStart,
+		&i.DefaultSiteID,
+		&i.SendChannel,
+		&i.OrderFooter,
+		&i.DeliveryAddresses,
+		&i.PriceTolerancePercent,
+		&i.Revision,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const upsertSettings = `-- name: UpsertSettings :one
+INSERT INTO purchasing.settings (
+    id, order_series_start, default_site_id, send_channel, order_footer, delivery_addresses,
+    price_tolerance_percent, revision, updated_at
+) VALUES (
+    1, $1, $2, $3, $4,
+    $5, $6, 1, $7
+)
+ON CONFLICT (id) DO UPDATE SET
+    order_series_start      = EXCLUDED.order_series_start,
+    default_site_id         = EXCLUDED.default_site_id,
+    send_channel            = EXCLUDED.send_channel,
+    order_footer            = EXCLUDED.order_footer,
+    delivery_addresses      = EXCLUDED.delivery_addresses,
+    price_tolerance_percent = EXCLUDED.price_tolerance_percent,
+    revision                = purchasing.settings.revision + 1,
+    updated_at              = EXCLUDED.updated_at
+RETURNING id, order_series_start, default_site_id, send_channel, order_footer, delivery_addresses, price_tolerance_percent, revision, updated_at
+`
+
+type UpsertSettingsParams struct {
+	OrderSeriesStart      int64
+	DefaultSiteID         *int64
+	SendChannel           *uuid.UUID
+	OrderFooter           string
+	DeliveryAddresses     []byte
+	PriceTolerancePercent pgtype.Numeric
+	UpdatedAt             time.Time
+}
+
+// UpsertSettings writes the one settings row, creating it on the first save,
+// and bumps its revision.
+func (q *Queries) UpsertSettings(ctx context.Context, arg UpsertSettingsParams) (PurchasingSetting, error) {
+	row := q.db.QueryRow(ctx, upsertSettings,
+		arg.OrderSeriesStart,
+		arg.DefaultSiteID,
+		arg.SendChannel,
+		arg.OrderFooter,
+		arg.DeliveryAddresses,
+		arg.PriceTolerancePercent,
+		arg.UpdatedAt,
+	)
 	var i PurchasingSetting
 	err := row.Scan(
 		&i.ID,
