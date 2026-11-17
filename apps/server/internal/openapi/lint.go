@@ -47,6 +47,23 @@ const StationExtension = "x-vantigo-station"
 // x-vantigo-access: session.
 const AgentExtension = "x-vantigo-agent"
 
+// APIExtension says whether an integration's API key may call the operation
+// (API access design K5): allowed, read (a POST a read-only key may call too;
+// every GET and HEAD is a read without the mark) or never. Every anonymous
+// operation must carry it, since that is where browser flows and provider
+// webhooks live, and so must every operation of the modules in
+// APIMarkedModules (TestAPIMarks).
+const APIExtension = "x-vantigo-api"
+
+// APIModes are the values of APIExtension.
+var APIModes = []string{"allowed", "read", "never"}
+
+// APIMarkedModules are the contracts every operation of which must carry
+// APIExtension explicitly: identity's sign-in and account flows, and Google's
+// and Entra's connect flows, are where a browser-only operation would most
+// easily be left open to a key.
+var APIMarkedModules = []string{"entra", "google", "identity"}
+
 // Problem is one structural rule an operation breaks.
 type Problem struct {
 	OperationID string
@@ -97,6 +114,9 @@ func Lint(doc *openapi3.T) []Problem {
 				problems = append(problems, Problem{op.OperationID, fmt.Sprintf("%s: %s is only for an operation behind session, not %q", where, AgentExtension, access)})
 			}
 		}
+		if msg := apiMarkProblem(op, access); msg != "" {
+			problems = append(problems, Problem{op.OperationID, fmt.Sprintf("%s: %s %s", where, APIExtension, msg)})
+		}
 		if value, present := op.Op.Extensions[CustomerScopeExtension]; present {
 			if msg := customerScopeProblem(op, value); msg != "" {
 				problems = append(problems, Problem{op.OperationID, fmt.Sprintf("%s: %s %s", where, CustomerScopeExtension, msg)})
@@ -107,6 +127,31 @@ func Lint(doc *openapi3.T) []Problem {
 		}
 	}
 	return problems
+}
+
+// apiMarkProblem is why op's x-vantigo-api is not valid beside access, "" when
+// it is: one of APIModes; read only on a POST (a GET or HEAD is a read without
+// it, and a PUT, PATCH or DELETE never is); allowed or read only behind a
+// permission or anonymous rule, the only rules a key can meet; and a mark on
+// every anonymous operation.
+func apiMarkProblem(op operation, access string) string {
+	value, present := op.Op.Extensions[APIExtension]
+	if !present {
+		if access == "anonymous" {
+			return "is required on an anonymous operation (allowed, read or never)"
+		}
+		return ""
+	}
+	mode, _ := value.(string)
+	switch {
+	case !slices.Contains(APIModes, mode):
+		return fmt.Sprintf("%v must be one of %s", value, strings.Join(APIModes, ", "))
+	case mode == "read" && !strings.EqualFold(op.Method, "post"):
+		return "read is only for a POST: a GET is a read without it, and no other method is"
+	case mode != "never" && access != "anonymous" && !strings.HasPrefix(access, "permission:"):
+		return fmt.Sprintf("%s is not possible behind x-vantigo-access %q: a key meets only permission and anonymous rules", mode, access)
+	}
+	return ""
 }
 
 // customerScopeProblem is why value is not a valid x-vantigo-customer-scope for
