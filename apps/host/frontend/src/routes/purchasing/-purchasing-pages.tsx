@@ -1,6 +1,6 @@
 import { Alert, Modal } from "@mantine/core";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useParams, useSearch } from "@tanstack/react-router";
+import { Navigate, useParams, useSearch } from "@tanstack/react-router";
 import { supplierQueryOptions } from "@vantigo/accounting-ui/api/accounting";
 import { SupplierFormModal } from "@vantigo/accounting-ui/pages/suppliers";
 import { ContentSkeleton } from "@vantigo/frontend-shell";
@@ -15,10 +15,11 @@ import { usePurchasingFormat } from "@vantigo/purchasing-ui/lib/format";
 import { NewPurchaseOrderPage, PurchaseOrderPage } from "@vantigo/purchasing-ui/pages/order";
 import { PurchaseOrdersPage } from "@vantigo/purchasing-ui/pages/orders";
 import { ReceivePurchaseOrderPage } from "@vantigo/purchasing-ui/pages/receive";
+import { ReceivingPage } from "@vantigo/purchasing-ui/pages/receiving";
 import { PurchasingSettingsPage } from "@vantigo/purchasing-ui/pages/settings";
 import { SupplierPage, SuppliersPage } from "@vantigo/purchasing-ui/pages/suppliers";
 import type { ReactNode } from "react";
-import { supplierFormHasBooks, usePurchasingAccess } from "../../lib/purchasing-access";
+import { purchasingHomeFor, supplierFormHasBooks, usePurchasingAccess } from "../../lib/purchasing-access";
 
 /**
  * The Purchasing app's pages, each told what the caller may do (purchasing
@@ -82,6 +83,13 @@ const RegisterSupplierForm = ({ supplierId, onClose, onSaved, books }: SupplierF
 
 export const PurchaseOrdersRoutePage = withAccess((access) => <PurchaseOrdersPage access={access} />);
 export const SettingsRoutePage = withAccess((access) => <PurchasingSettingsPage access={access} />);
+export const ReceivingRoutePage = withAccess(() => <ReceivingPage />);
+/**
+ * The app's home: the purchase orders, or — for a receiver who holds
+ * purchasing:receive without purchasing:access (P30, A47) — the orders to
+ * receive.
+ */
+export const PurchasingHomeRoutePage = withAccess((access) => <Navigate to={purchasingHomeFor(access)} replace />);
 export const SuppliersRoutePage = withAccess((_access, renderSupplierForm) => (
   <SuppliersPage renderSupplierForm={renderSupplierForm} />
 ));
@@ -91,7 +99,7 @@ const PurchaseOrder = ({ access }: { access: PurchasingAccess }) => {
   return <PurchaseOrderPage orderId={Number(orderId)} access={access} />;
 };
 const ReceivePurchaseOrder = ({ access }: { access: PurchasingAccess }) => {
-  const { orderId } = useParams({ from: "/purchasing/orders/$orderId_/receive" });
+  const { orderId } = useParams({ from: "/purchasing/receive/$orderId" });
   return <ReceivePurchaseOrderPage orderId={Number(orderId)} access={access} />;
 };
 const NewPurchaseOrder = ({ access }: { access: PurchasingAccess }) => {

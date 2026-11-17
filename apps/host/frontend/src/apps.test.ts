@@ -182,6 +182,7 @@ describe("the app registry", () => {
       "/manufacturing/boms",
       "/manufacturing/work-centers",
       "/purchasing/orders",
+      "/purchasing/receive",
       "/purchasing/suppliers",
       "/purchasing/settings",
       "/accounting",
@@ -821,8 +822,9 @@ describe("the app registry", () => {
 
   // Purchasing's destinations are the package's (`purchasingNavItems`, P23):
   // the orders and the suppliers are purchasing:access's, the settings
-  // purchasing:settings's with it.
-  it("registers Purchasing with the package's three destinations", () => {
+  // purchasing:settings's with it, and receiving purchasing:receive's alone
+  // (P30, A47).
+  it("registers Purchasing with the package's four destinations", () => {
     const purchasing = appForKey("purchasing");
     expect(purchasing).toMatchObject({ module: "purchasing", label: "navigation.purchasing", home: "/purchasing" });
     const items = purchasing.navSections.flatMap((section) => section.items);
@@ -837,6 +839,11 @@ describe("the app registry", () => {
     expect(keys(["purchasing:access"], ["purchasing"])).toContainEqual(["purchasing", true]);
     expect(keys(["purchasing:access"], ["customers"])).toContainEqual(["purchasing", false]);
     expect(keys(["purchasing:settings"], ["purchasing"]).some(([key]) => key === "purchasing")).toBe(false);
+    expect(keys(["purchasing:receive"], ["purchasing"])).toContainEqual(["purchasing", true]);
+    const receive = items.find((item) => item.to === "/purchasing/receive");
+    expect(receive?.requiredPermissions).toEqual(["purchasing:receive"]);
+    expect(receive?.requiredAllPermissions).toBeUndefined();
+    expect(navigationCatalog.nb["navigation.purchasingReceive"]).toBe("Motta");
   });
 
   // Accounting's destinations are the package's (`accountingNavItems`, A1):

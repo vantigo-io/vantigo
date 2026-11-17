@@ -300,6 +300,7 @@ const manufacturingNavPresentation: Record<ManufacturingNavItem["key"], Pick<Nav
  */
 const purchasingNavPresentation: Record<PurchasingNavItem["key"], Pick<NavItem, "label" | "icon">> = {
   orders: { label: "navigation.purchasingOrders", icon: IconClipboardList },
+  receive: { label: "navigation.purchasingReceive", icon: IconPackageImport },
   suppliers: { label: "navigation.purchasingSuppliers", icon: IconTruckDelivery },
   settings: { label: "navigation.purchasingSettings", icon: IconSettings },
 };
@@ -744,8 +745,9 @@ export const apps: readonly AppDefinition[] = [
       requiredPermissions,
     })),
   ),
-  // Every Purchasing call asks for purchasing:access (purchasing design §8), so
-  // the tile asks for it alone; Settings needs purchasing:settings as well.
+  // Every Purchasing call but receiving's asks for purchasing:access (purchasing
+  // design §8), and receiving asks for purchasing:receive alone (P30, A47), so
+  // the tile asks for either; Settings needs purchasing:settings as well.
   {
     ...moduleApp(
       "purchasing",
@@ -759,7 +761,7 @@ export const apps: readonly AppDefinition[] = [
         requiredAllPermissions,
       })),
     ),
-    requiredPermissions: ["purchasing:access"],
+    requiredPermissions: ["purchasing:access", "purchasing:receive"],
   },
   // Every Accounting read asks for accounting:read (accounting design A1); a
   // new journal entry is offered to those who post.
