@@ -668,7 +668,8 @@ func containsDate(dates []time.Time, d time.Time) bool {
 }
 
 // sellerSnapshot copies the settings row into the issue's seller snapshot
-// (D4). An optional field that is not set is stored as NULL.
+// (D4), the phone and the logo's key and hash with it (invoices phase 6
+// design I2, I4). An optional field that is not set is stored as NULL.
 func sellerSnapshot(p *store.IssueDocumentParams, s store.InvoicesSetting) {
 	optional := func(v string) *string {
 		if v == "" {
@@ -682,6 +683,8 @@ func sellerSnapshot(p *store.IssueDocumentParams, s store.InvoicesSetting) {
 	p.SellerPostalCode, p.SellerCity, p.SellerCountry = &s.PostalCode, &s.City, &s.Country
 	p.SellerBankAccount, p.SellerIban, p.SellerBic = &s.BankAccount, optional(s.Iban), optional(s.Bic)
 	p.SellerEmail, p.SellerFooterText = optional(s.Email), optional(s.FooterText)
+	p.SellerPhone = optional(s.Phone)
+	p.SellerLogoObjectKey, p.SellerLogoSha256 = s.LogoObjectKey, s.LogoSha256
 }
 
 // keepBuyer carries a document's own buyer snapshot through the issue.

@@ -132,7 +132,7 @@ func TestCoverMail_TheTexts(t *testing.T) {
 				"Kind regards\nKraft-Verket AS\n",
 		},
 	} {
-		got, err := coverMail(c.inv, c.original, c.open, "")
+		got, err := coverMail(c.inv, c.original, c.open, "", "", false)
 		if err != nil {
 			t.Errorf("%s: %v", c.name, err)
 			continue
@@ -155,7 +155,7 @@ func TestCoverMail_ACreditNoteWithoutItsOriginalIsAnError(t *testing.T) {
 	for name, original := range map[string]*store.InvoicesInvoice{
 		"no original": nil, "an original without a number": {},
 	} {
-		if got, err := coverMail(credit, original, nil, ""); err == nil {
+		if got, err := coverMail(credit, original, nil, "", "", false); err == nil {
 			t.Errorf("%s: cover mail = %q, want an error", name, got.body)
 		}
 	}
@@ -180,7 +180,7 @@ func TestCoverMail_TheKIDSentence(t *testing.T) {
 		{"en, in full", "en", "15045", "Please pay to IBAN NO9386011117947 (BIC DNBANOKKXXX), quoting KID 0010017.\n"},
 		{"en, partly", "en", "5045.5", "The outstanding amount is NOK 5,045.50; please pay it to IBAN NO9386011117947 (BIC DNBANOKKXXX), quoting KID 0010017.\n"},
 	} {
-		got, err := coverMail(withKid(c.language), nil, mustRat(c.open), "")
+		got, err := coverMail(withKid(c.language), nil, mustRat(c.open), "", "", false)
 		if err != nil {
 			t.Fatalf("%s: %v", c.name, err)
 		}
@@ -206,7 +206,7 @@ func TestCoverMail_PayLine(t *testing.T) {
 		{"en in part", "en", "5000", "\nYou can also pay with Vipps: " + url + "\n"},
 	} {
 		inv := mailDocument(t, kindInvoice, c.language, 1001, "15045", "", "")
-		got, err := coverMail(inv, nil, mustRat(c.open), url)
+		got, err := coverMail(inv, nil, mustRat(c.open), url, "", false)
 		if err != nil {
 			t.Fatalf("%s: %v", c.name, err)
 		}
@@ -218,7 +218,7 @@ func TestCoverMail_PayLine(t *testing.T) {
 		if at < 0 || payment < 0 || at < payment {
 			t.Errorf("%s: body =\n%s\nwant %q after the payment paragraph", c.name, got.body, c.want)
 		}
-		without, err := coverMail(inv, nil, mustRat(c.open), "")
+		without, err := coverMail(inv, nil, mustRat(c.open), "", "", false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -227,7 +227,7 @@ func TestCoverMail_PayLine(t *testing.T) {
 		}
 	}
 	for _, language := range []string{"nb", "en"} {
-		settled, err := coverMail(mailDocument(t, kindInvoice, language, 1001, "15045", "", ""), nil, mustRat("0"), url)
+		settled, err := coverMail(mailDocument(t, kindInvoice, language, 1001, "15045", "", ""), nil, mustRat("0"), url, "", false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -236,7 +236,7 @@ func TestCoverMail_PayLine(t *testing.T) {
 		}
 	}
 	original := mailDocument(t, kindInvoice, "nb", 1001, "3000", "", "")
-	credit, err := coverMail(mailDocument(t, kindCreditNote, "nb", 1002, "3000", "", ""), &original, nil, url)
+	credit, err := coverMail(mailDocument(t, kindCreditNote, "nb", 1002, "3000", "", ""), &original, nil, url, "", false)
 	if err != nil {
 		t.Fatal(err)
 	}

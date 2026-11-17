@@ -10,6 +10,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode"
+	"unicode/utf16"
 	"unicode/utf8"
 
 	"github.com/google/uuid"
@@ -144,6 +146,34 @@ func withoutSeparators(s string) string {
 	return strings.NewReplacer(" ", "", ".", "").Replace(s)
 }
 
+// phoneRefusal is the seller's phone held to the customers module's rule
+// (customers/values.go validatePhoneNumber; invoices phase 6 design I4),
+// copied here because no module imports another: at most 30 UTF-16 code
+// units, only digits, spaces and + - ( ) ., and at least one digit. The empty
+// string is "not set" and passes. The phone is stored as typed, trimmed.
+func phoneRefusal(phone string) string {
+	if phone == "" {
+		return ""
+	}
+	if len(utf16.Encode([]rune(phone))) > 30 {
+		return "A phone number holds at most 30 characters"
+	}
+	digit := false
+	for _, r := range phone {
+		switch {
+		case unicode.IsDigit(r):
+			digit = true
+		case strings.ContainsRune(" +-().", r):
+		default:
+			return "A phone number can only contain digits, spaces and the characters + - ( ) ."
+		}
+	}
+	if !digit {
+		return "A phone number has at least one digit"
+	}
+	return ""
+}
+
 // parsedSettings is one validated settings body, in the shape the update wants.
 type parsedSettings = store.UpdateSettingsParams
 
@@ -216,6 +246,10 @@ func parseSettings(body gen.InvoicesSettingsRequest) (parsedSettings, map[string
 		add("defaultCurrency", onlyNOK)
 	}
 	add("footerText", maxLength("The footer text", p.FooterText, 500))
+	if body.Phone != nil {
+		p.Phone = strings.TrimSpace(*body.Phone)
+		add("phone", phoneRefusal(p.Phone))
+	}
 	switch {
 	case p.SeriesStart < 1:
 		add("seriesStart", "The series starts at 1 or later")
@@ -480,10 +514,22 @@ func settingsResponse(row store.InvoicesSetting, locked bool, next int64) gen.In
 		PostalCode: row.PostalCode, City: row.City, Country: row.Country,
 		BankAccount: row.BankAccount, Iban: row.Iban, Bic: row.Bic, Email: row.Email,
 		DefaultPaymentTermsDays: row.DefaultPaymentTermsDays, DefaultCurrency: row.DefaultCurrency,
-		FooterText: row.FooterText, SeriesStart: row.SeriesStart, SeriesLocked: locked, NextNumber: next,
+		FooterText: row.FooterText, Phone: row.Phone, Logo: settingsLogo(row),
+		SeriesStart: row.SeriesStart, SeriesLocked: locked, NextNumber: next,
 		MissingSellerFields: sellerMissingFields(row),
 		Revision:            row.Revision, UpdatedAt: row.UpdatedAt,
 	}
+}
+
+// settingsAnswer is row as GET /settings answers it, read on the pool after
+// the write that made it has committed: the next number, whether the series
+// is locked, and the sending channels.
+func (s *server) settingsAnswer(ctx context.Context, row store.InvoicesSetting) (gen.InvoicesSettingsResponse, error) {
+	next, locked, err := nextNumber(ctx, store.New(s.deps.Pool), row.SeriesStart)
+	if err != nil {
+		return gen.InvoicesSettingsResponse{}, err
+	}
+	return s.withSending(ctx, settingsResponse(row, locked, next), row.SendChannel)
 }
 
 // GetInvoicesSettings Get the invoice settings
@@ -661,6 +707,11 @@ func (s *server) PutInvoicesSettings(ctx context.Context, req gen.PutInvoicesSet
 		parsed.EnergyVatCode, parsed.EnergyVatCodeExempt = current.EnergyVatCode, current.EnergyVatCodeExempt
 		if c := req.Body.EnergyVatCodes; c != nil {
 			parsed.EnergyVatCode, parsed.EnergyVatCodeExempt = c.Energy, c.EnergyExempt
+		}
+		// The phone a request leaves out is kept as stored (invoices phase
+		// 6 design I4), as the sending channel is.
+		if req.Body.Phone == nil {
+			parsed.Phone = current.Phone
 		}
 		// The sending channel a request leaves out is kept as stored
 		// (integrations design T6), as it is under the lock.

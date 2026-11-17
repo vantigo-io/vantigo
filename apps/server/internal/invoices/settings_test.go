@@ -53,6 +53,12 @@ type settingsJSON struct {
 	SendChannel      *string           `json:"sendChannel"`
 	SendChannelState string            `json:"sendChannelState"`
 	SendChannels     []sendChannelJSON `json:"sendChannels"`
+	// The seller's phone and logo (invoices phase 6 design I1, I4).
+	Phone string `json:"phone"`
+	Logo  *struct {
+		ContentType string `json:"contentType"`
+		Sha256      string `json:"sha256"`
+	} `json:"logo"`
 }
 
 // sendChannelJSON is one channel the Sending choice may name.

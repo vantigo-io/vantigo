@@ -166,6 +166,10 @@ UPDATE invoices.invoices SET
     seller_bic = @seller_bic,
     seller_email = @seller_email,
     seller_footer_text = @seller_footer_text,
+    -- The phone and the logo (invoices phase 6 design I2, I4), NULL for none.
+    seller_phone = @seller_phone,
+    seller_logo_object_key = @seller_logo_object_key,
+    seller_logo_sha256 = @seller_logo_sha256,
     net_total = @net_total,
     vat_total = @vat_total,
     gross_total = @gross_total,

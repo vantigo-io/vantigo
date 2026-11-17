@@ -613,11 +613,16 @@ func RenderLetterForTest(ctx context.Context, d module.Deps, reminderID int64) (
 	if err != nil {
 		return nil, err
 	}
-	payLink, err := (&server{deps: d}).letterPayLink(ctx, q, letter)
+	srv := &server{deps: d}
+	payLink, err := srv.letterPayLink(ctx, q, letter)
 	if err != nil {
 		return nil, err
 	}
-	_, body, err := renderLetter(letter, inv, payLink)
+	logo, logoType, err := srv.documentLogo(ctx, inv)
+	if err != nil {
+		return nil, err
+	}
+	_, body, err := renderLetter(letter, inv, payLink, logo, logoType)
 	return body, err
 }
 

@@ -55,13 +55,14 @@ VALUES (@customer_id, @erased_at::timestamptz)
 ON CONFLICT (customer_id) DO NOTHING;
 
 -- name: BlankCustomerDeliveries :execrows
--- BlankCustomerDeliveries removes the address from every delivery of a
--- customer's documents on anonymisation (D6) — the one write
--- tr_deliveries_immutable allows. The rows stay: they are the evidence of
--- when the claim was sent. A row blanked already is not counted again.
-UPDATE invoices.deliveries d SET recipient = ''
+-- BlankCustomerDeliveries removes the address and the personal message
+-- (invoices phase 6 design I6) from every delivery of a customer's documents
+-- on anonymisation (D6) — the one write tr_deliveries_immutable allows. The
+-- rows stay: they are the evidence of when the claim was sent. A row blanked
+-- already is not counted again.
+UPDATE invoices.deliveries d SET recipient = '', message = ''
 FROM invoices.invoices i
-WHERE d.invoice_id = i.id AND i.customer_id = @customer_id AND d.recipient <> '';
+WHERE d.invoice_id = i.id AND i.customer_id = @customer_id AND (d.recipient <> '' OR d.message <> '');
 
 -- name: BlankCustomerPaymentNotes :execrows
 -- BlankCustomerPaymentNotes removes the staff-written note from every payment

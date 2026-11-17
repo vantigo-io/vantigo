@@ -29,6 +29,9 @@ type deliveryJSON struct {
 	Subject      string  `json:"subject"`
 	SentAt       string  `json:"sentAt"`
 	SentByUserID string  `json:"sentByUserId"`
+	// Message is the personal message the send carried (invoices phase 6
+	// design I6), answered to the same callers as the recipient.
+	Message *string `json:"message"`
 }
 
 // addressOf is a delivery's recipient as an assertion reads it: "<absent>"
@@ -334,8 +337,14 @@ func TestSend_TheEnvelope(t *testing.T) {
 		"Vedlagt følger faktura 1 fra Kraft-Verket AS på NOK 2 500,00, med forfall 12.10.2026.\n" +
 		"Beløpet betales til kontonummer 86011117947. Merk betalingen med fakturanummer 1.\n\n" +
 		"Med vennlig hilsen\nKraft-Verket AS\n"
-	if out.TextBody != wantBody || out.HTMLBody != "" {
-		t.Errorf("body =\n%q (html %q)\nwant\n%q, no HTML", out.TextBody, out.HTMLBody, wantBody)
+	if out.TextBody != wantBody {
+		t.Errorf("body =\n%q\nwant\n%q", out.TextBody, wantBody)
+	}
+	// The HTML body says the same (invoices phase 6 design I5); without a
+	// logo it names no image.
+	if !strings.Contains(out.HTMLBody, "<p style=\"margin:0 0 16px\">Beløpet betales til kontonummer 86011117947. Merk betalingen med fakturanummer 1.</p>") ||
+		strings.Contains(out.HTMLBody, "<img") {
+		t.Errorf("HTML body = %q, want the same paragraphs and no image", out.HTMLBody)
 	}
 	if !regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}@vantigo\.invalid$`).MatchString(out.MessageID) {
 		t.Errorf("Message-ID = %q, want a bare <uuid>@vantigo.invalid", out.MessageID)

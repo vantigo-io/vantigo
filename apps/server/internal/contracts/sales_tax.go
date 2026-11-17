@@ -20,8 +20,8 @@ type VATCodeEntry struct {
 
 // SellerProfile is the seller block Invoices prints on its documents, read
 // from Invoices' settings as its issue snapshots it (orders design O8). A
-// field Invoices has no value for is "". LogoStorageKey is the logo's key in
-// storage, "" while Invoices keeps no logo.
+// field Invoices has no value for is "". LogoStorageKey is the logo's key
+// within Invoices' storage scope, "" while no logo is set.
 type SellerProfile struct {
 	LegalName            string
 	OrganisationNumber   string

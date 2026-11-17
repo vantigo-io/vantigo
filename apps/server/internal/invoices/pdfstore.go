@@ -123,7 +123,7 @@ func sellerParty(inv store.InvoicesInvoice) pdfParty {
 	return pdfParty{
 		name: deref(inv.SellerLegalName), line1: deref(inv.SellerAddressLine1), line2: deref(inv.SellerAddressLine2),
 		postalCode: deref(inv.SellerPostalCode), city: deref(inv.SellerCity), country: deref(inv.SellerCountry),
-		organisationNumber: deref(inv.SellerOrganisationNumber), email: deref(inv.SellerEmail),
+		organisationNumber: deref(inv.SellerOrganisationNumber), email: deref(inv.SellerEmail), phone: deref(inv.SellerPhone),
 		vatRegistered:      inv.SellerVatRegistered != nil && *inv.SellerVatRegistered,
 		foretaksregisteret: inv.SellerInForetaksregisteret != nil && *inv.SellerInForetaksregisteret,
 	}
@@ -179,8 +179,9 @@ func pdfLineOf(l store.InvoicesLine) (pdfLine, error) {
 }
 
 // renderIssued renders an issued document from its own rows, with payLink
-// its live pay link's URL, "" for none.
-func renderIssued(ctx context.Context, q *store.Queries, inv store.InvoicesInvoice, payLink string) ([]byte, error) {
+// its live pay link's URL, "" for none, and logo the bytes of the logo its
+// snapshot names, of type logoType (documentLogo), nil for none.
+func renderIssued(ctx context.Context, q *store.Queries, inv store.InvoicesInvoice, payLink string, logo []byte, logoType string) ([]byte, error) {
 	lines, err := q.Lines(ctx, inv.ID)
 	if err != nil {
 		return nil, fmt.Errorf("invoices: read document %d's lines: %w", inv.ID, err)
@@ -205,6 +206,7 @@ func renderIssued(ctx context.Context, q *store.Queries, inv store.InvoicesInvoi
 	if err != nil {
 		return nil, fmt.Errorf("invoices: render document %d: %w", inv.ID, err)
 	}
+	doc.logo, doc.logoType = logo, logoType
 	if doc.timesheet, err = timesheetOf(ctx, q, inv); err != nil {
 		return nil, err
 	}
@@ -358,13 +360,20 @@ var afterPDFRender func(ctx context.Context, body []byte) []byte
 //
 // An invoice's live pay link is read and opened now, outside any lock, and
 // printed (D15, plan reading 13): a link revoked before this first store is
-// not printed, and once stored the PDF never changes.
+// not printed, and once stored the PDF never changes. The logo is the one the
+// snapshot names, read from the store and checked against its hash
+// (invoices phase 6 design I2): a store that fails is the object store's
+// failure, a logo that does not hash to its snapshot a broken document.
 func (s *server) storeOnce(ctx context.Context, q *store.Queries, inv store.InvoicesInvoice) (storedPDF, error) {
 	payLink, err := s.printablePayLink(ctx, q, inv)
 	if err != nil {
 		return storedPDF{}, err
 	}
-	body, err := renderIssued(ctx, q, inv, payLink)
+	logo, logoType, err := s.documentLogo(ctx, inv)
+	if err != nil {
+		return storedPDF{}, err
+	}
+	body, err := renderIssued(ctx, q, inv, payLink, logo, logoType)
 	if err != nil {
 		return storedPDF{}, err
 	}
@@ -703,6 +712,10 @@ func (s *server) renderPreview(ctx context.Context, q *store.Queries, inv store.
 		}
 	}
 	doc.summaries, doc.totals, doc.preview = summaries, totals, true
+	// The settings' current logo, as an issue today would take it (I3).
+	if doc.logo, doc.logoType, err = s.logoOf(ctx, draft.SellerLogoObjectKey, draft.SellerLogoSha256); err != nil {
+		return nil, err
+	}
 	if doc.timesheet, err = timesheetOf(ctx, q, inv); err != nil {
 		return nil, err
 	}
@@ -740,4 +753,5 @@ func copyIssueParams(inv *store.InvoicesInvoice, p store.IssueDocumentParams) {
 	inv.SellerPostalCode, inv.SellerCity, inv.SellerCountry = p.SellerPostalCode, p.SellerCity, p.SellerCountry
 	inv.SellerBankAccount, inv.SellerIban, inv.SellerBic = p.SellerBankAccount, p.SellerIban, p.SellerBic
 	inv.SellerEmail, inv.SellerFooterText = p.SellerEmail, p.SellerFooterText
+	inv.SellerPhone, inv.SellerLogoObjectKey, inv.SellerLogoSha256 = p.SellerPhone, p.SellerLogoObjectKey, p.SellerLogoSha256
 }

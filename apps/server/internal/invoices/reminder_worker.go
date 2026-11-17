@@ -270,7 +270,13 @@ func (c *reminderClaim) dispatch(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	m, body, err := renderLetter(letter, inv, payLink)
+	logo, logoType, err := c.s.documentLogo(ctx, inv)
+	if err != nil {
+		c.w.logger().WarnContext(ctx, "invoices: a reminder letter's logo could not be read", "worker", reminderWorkerName,
+			"reminder_id", letter.ID, "error", err.Error())
+		return c.fail(ctx, reasonLetterNotRendered)
+	}
+	m, body, err := renderLetter(letter, inv, payLink, logo, logoType)
 	if err != nil {
 		if failErr := c.fail(ctx, reasonLetterNotRendered); failErr != nil {
 			return failErr
@@ -314,10 +320,21 @@ func (c *reminderClaim) dispatch(ctx context.Context) error {
 		// a day short of the 14 (inkassoloven § 9). Judged again at once.
 		return c.rescheduleNewDay(ctx)
 	}
+	// The HTML body says what the text does, with the letter's logo inline
+	// (invoices phase 6 design I5); a reminder takes no personal message.
+	cover := m.coverHTML
+	cover.Logo = logo != nil
+	html, err := cover.render()
+	if err != nil {
+		return c.fail(ctx, reasonLetterNotRendered)
+	}
 	out := mail.Outbound{
 		DisplayName: deref(inv.SellerLegalName), To: []string{letter.Recipient}, Subject: m.subject,
-		ReplyTo: settings.Email, TextBody: m.cover, MessageID: deref(letter.MessageID),
+		ReplyTo: settings.Email, TextBody: m.cover, HTMLBody: html, MessageID: deref(letter.MessageID),
 		Attachments: []mail.Attachment{{FileName: m.fileName, ContentType: "application/pdf", Content: body}},
+	}
+	if logo != nil {
+		out.Attachments = append(out.Attachments, logoAttachment(logo, logoType))
 	}
 	// A shutdown must not abort a transfer the mail server may already have
 	// accepted: the send's own timeout bounds it.
@@ -550,13 +567,15 @@ func letterFactsParams(id int64, f *reminderrules.LetterFacts, notes []string, c
 // credited and the pay link among them — and its invoice's snapshots alone:
 // nothing read live, so a row renders the same bytes every time, whatever
 // was credited, paid or revoked since its facts were written. payLink is the
-// URL of the link the facts name (letterPayLink), "" for none. Never under a
-// lock.
-func renderLetter(letter store.InvoicesReminder, inv store.InvoicesInvoice, payLink string) (reminderModel, []byte, error) {
+// URL of the link the facts name (letterPayLink), "" for none; logo is the
+// logo the invoice's snapshot names, of type logoType (documentLogo), nil for
+// none. Never under a lock.
+func renderLetter(letter store.InvoicesReminder, inv store.InvoicesInvoice, payLink string, logo []byte, logoType string) (reminderModel, []byte, error) {
 	m, err := reminderModelOf(letter, inv, payLink)
 	if err != nil {
 		return reminderModel{}, nil, err
 	}
+	m.logo, m.logoType = logo, logoType
 	body, err := renderReminderPDF(m)
 	if err != nil {
 		return reminderModel{}, nil, err

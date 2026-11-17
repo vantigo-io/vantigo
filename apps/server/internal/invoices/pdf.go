@@ -11,12 +11,14 @@ import (
 	"github.com/johnfercher/maroto/v2"
 	"github.com/johnfercher/maroto/v2/pkg/components/code"
 	"github.com/johnfercher/maroto/v2/pkg/components/col"
+	"github.com/johnfercher/maroto/v2/pkg/components/image"
 	"github.com/johnfercher/maroto/v2/pkg/components/line"
 	"github.com/johnfercher/maroto/v2/pkg/components/page"
 	"github.com/johnfercher/maroto/v2/pkg/components/row"
 	"github.com/johnfercher/maroto/v2/pkg/components/text"
 	"github.com/johnfercher/maroto/v2/pkg/config"
 	"github.com/johnfercher/maroto/v2/pkg/consts/align"
+	"github.com/johnfercher/maroto/v2/pkg/consts/extension"
 	"github.com/johnfercher/maroto/v2/pkg/consts/fontstyle"
 	"github.com/johnfercher/maroto/v2/pkg/core"
 	"github.com/johnfercher/maroto/v2/pkg/fontrepository"
@@ -130,7 +132,7 @@ var labels = map[string]pdfLabels{
 // pdfParty is a seller or a buyer as a document prints it.
 type pdfParty struct {
 	name, line1, line2, postalCode, city, country string
-	organisationNumber, foreignID, email          string
+	organisationNumber, foreignID, email, phone   string
 	vatRegistered, foretaksregisteret             bool
 }
 
@@ -185,8 +187,13 @@ type pdfDocument struct {
 	// buyerPerson is the buyer snapshot's type, a person: with points, the
 	// consumer's notice prints (energy consumption billing design D9).
 	buyerPerson bool
-	created     time.Time
-	preview     bool
+	// logo is the seller's logo as the snapshot names it — a preview's the
+	// settings' — and logoType its type, image/png or image/jpeg (invoices
+	// phase 6 design I2, I3); nil for none.
+	logo     []byte
+	logoType string
+	created  time.Time
+	preview  bool
 }
 
 // pdfPoint is one metering point as its block prints it (energy consumption
@@ -240,7 +247,12 @@ type pdfModel struct {
 	// timesheet is the timesheet block (invoices work design D5), on its own
 	// pages after everything else; nil without one.
 	timesheet *pdfTimesheet
-	created   time.Time
+	// logo is the image printed beside the title (invoices phase 6 design
+	// I3), of type logoType; nil for none, and then the title row is as it
+	// always was.
+	logo     []byte
+	logoType string
+	created  time.Time
 }
 
 // pdfPointBlock is a metering point's block as it prints: above the line at
@@ -343,7 +355,8 @@ func sameAddress(a, b pdfParty) bool {
 
 // sellerLines are the seller as a document prints it: name, address, the
 // organisation number followed by MVA when VAT-registered,
-// Foretaksregisteret when registered there (§ 5-1-2), and the e-mail. Only a
+// Foretaksregisteret when registered there (§ 5-1-2), the e-mail and the
+// phone (invoices phase 6 design I4). Only a
 // preview of an incomplete seller lacks the number, and then prints no bare
 // label. A reminder letter prints the same block.
 func sellerLines(p pdfParty, l pdfLabels) []string {
@@ -360,6 +373,9 @@ func sellerLines(p pdfParty, l pdfLabels) []string {
 	}
 	if p.email != "" {
 		out = append(out, p.email)
+	}
+	if p.phone != "" {
+		out = append(out, p.phone)
 	}
 	return out
 }
@@ -384,7 +400,7 @@ func buildPDFModel(d pdfDocument) pdfModel {
 		lang = "nb"
 	}
 	l := labels[lang]
-	m := pdfModel{title: l.invoice, created: d.created}
+	m := pdfModel{title: l.invoice, created: d.created, logo: d.logo, logoType: d.logoType}
 	if d.kind == kindCreditNote {
 		m.title = l.creditNote
 	}
@@ -625,7 +641,7 @@ func layoutPDF(m pdfModel) (core.Maroto, error) {
 		doc.AddRows(text.NewRow(10, m.watermark, props.Text{Style: fontstyle.Bold, Size: 14, Align: align.Center,
 			Color: &props.Color{Red: 200, Green: 30, Blue: 30}}))
 	}
-	doc.AddRows(text.NewRow(12, m.title, props.Text{Style: fontstyle.Bold, Size: 18}))
+	addTitleRow(doc, m.title, m.logo, m.logoType)
 
 	// The parties, side by side.
 	rows := max(len(m.seller), len(m.buyer))
@@ -724,6 +740,34 @@ func layoutPDF(m pdfModel) (core.Maroto, error) {
 		}
 	}
 	return doc, nil
+}
+
+// logoBox is the logo's place (invoices phase 6 design I3): the first three
+// of the page's twelve columns — 45 mm of the 180 between the margins — and
+// logoHeight high, the image fitted inside with its proportions kept.
+const (
+	logoColumns = 3
+	logoHeight  = 20
+)
+
+// addTitleRow lays out a document's or a letter's title row: the title alone,
+// as it always was, without a logo; with one, the logo fitted in its box at
+// the top left and the title beside it (I3).
+func addTitleRow(doc core.Maroto, title string, logo []byte, logoType string) {
+	style := props.Text{Style: fontstyle.Bold, Size: 18}
+	if logo == nil {
+		doc.AddRows(text.NewRow(12, title, style))
+		return
+	}
+	ext := extension.Png
+	if logoType == "image/jpeg" {
+		ext = extension.Jpg
+	}
+	style.Left, style.Top = 4, 1
+	doc.AddRow(logoHeight,
+		image.NewFromBytesCol(logoColumns, logo, ext, props.Rect{Percent: 100}),
+		text.NewCol(12-logoColumns, title, style))
+	doc.AddRows(row.New(3))
 }
 
 // renderPointBlock lays a metering point's block out above its lines: its

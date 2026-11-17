@@ -61,9 +61,16 @@ type reminderModel struct {
 	payBy     string
 	payment   [][2]string
 	sentences []string
-	created   time.Time
+	// logo is the seller's logo the invoice was issued with, of type
+	// logoType, beside the title (invoices phase 6 design I3); nil for none.
+	logo     []byte
+	logoType string
+	created  time.Time
 
 	subject, cover, fileName string
+	// coverHTML is the cover's words for its HTML body (invoices phase 6
+	// design I5), the logo left for the sender to say.
+	coverHTML mailHTML
 }
 
 // reminderModelBuilt, when a test sets it (export_test.go), is told every
@@ -235,12 +242,12 @@ func reminderModelOf(r store.InvoicesReminder, inv store.InvoicesInvoice, payLin
 
 	seller := deref(inv.SellerLegalName)
 	m.subject = fmt.Sprintf(words.subject, number)
-	m.cover = strings.Join([]string{
-		words.greeting,
-		fmt.Sprintf(words.coverIntro, number, seller) + " " + fmt.Sprintf(words.cover, total, day(deadline)),
-		words.coverMoot,
-		words.closing + "\n" + seller,
-	}, "\n\n") + "\n"
+	coverIntro := fmt.Sprintf(words.coverIntro, number, seller) + " " + fmt.Sprintf(words.cover, total, day(deadline))
+	m.cover = strings.Join([]string{words.greeting, coverIntro, words.coverMoot, words.closing + "\n" + seller}, "\n\n") + "\n"
+	m.coverHTML = mailHTML{
+		Lang: lang, Subject: m.subject, Greeting: words.greeting, Paragraphs: []string{coverIntro, words.coverMoot},
+		Closing: words.closing, Seller: seller,
+	}
 	m.fileName = letterFileName(r, inv)
 	if reminderModelBuilt != nil {
 		reminderModelBuilt(r.ID, m)
@@ -349,7 +356,7 @@ func layoutLetter(doc core.Maroto, m reminderModel) {
 	right := props.Text{Align: align.Right}
 	boldRight := props.Text{Style: fontstyle.Bold, Align: align.Right}
 
-	doc.AddRows(text.NewRow(12, m.title, props.Text{Style: fontstyle.Bold, Size: 18}))
+	addTitleRow(doc, m.title, m.logo, m.logoType)
 	for i := range max(len(m.seller), len(m.buyer)) {
 		cell := func(lines []string) string {
 			if i < len(lines) {
