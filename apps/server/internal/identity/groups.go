@@ -523,6 +523,9 @@ func (s *server) memberMutation(ctx context.Context, groupID, userID uuid.UUID, 
 	if err != nil {
 		return gen.AccessGroupResponse{}, err
 	}
+	if err := s.refuseIntegrationTarget(ctx, userID); err != nil {
+		return gen.AccessGroupResponse{}, err
+	}
 	action, rejected := "access_group.member_removed", "access_group.member_remove_rejected"
 	if add {
 		action, rejected = "access_group.member_added", "access_group.member_add_rejected"

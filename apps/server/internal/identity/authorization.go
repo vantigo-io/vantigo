@@ -832,6 +832,9 @@ func (s *server) PutIdentityAccessUsersByIdRoles(ctx context.Context, req gen.Pu
 	if p.UserID == req.Id {
 		return selfRoleChange, nil
 	}
+	if err := s.refuseIntegrationTarget(ctx, req.Id); err != nil {
+		return refusalOr[gen.PutIdentityAccessUsersByIdRolesResponseObject](err)
+	}
 	var body gen.RoleAssignmentRequest
 	if req.Body != nil {
 		body = *req.Body
@@ -1041,6 +1044,13 @@ func (s *server) GetIdentityAccessUsersById(ctx context.Context, req gen.GetIden
 	if err != nil {
 		return nil, fmt.Errorf("identity: inspect access: %w", err)
 	}
+	if visible {
+		if err := s.refuseIntegrationTarget(ctx, req.Id); errors.Is(err, notFound) {
+			visible = false
+		} else if err != nil {
+			return nil, fmt.Errorf("identity: inspect access: %w", err)
+		}
+	}
 	if !visible {
 		return gen.GetIdentityAccessUsersById404Response{}, nil
 	}
@@ -1177,4 +1187,24 @@ func (r refusal) VisitGetIdentityAccessMeResponse(w http.ResponseWriter) error {
 
 func (r refusal) VisitGetIdentityAccessUsersByIdResponse(w http.ResponseWriter) error {
 	return r.write(w)
+}
+
+// refuseIntegrationTarget is notFound for a user of kind integration, whose
+// roles and memberships have one writer, its own screen (API access design
+// K3): Roles & access and the access groups do not reach it, so a steward of
+// a role cannot widen a key they hold. A user who does not exist is left to
+// the caller's own lookup. The database refuses the write too
+// (00194_identity_integration_kind).
+func (s *server) refuseIntegrationTarget(ctx context.Context, id uuid.UUID) error {
+	u, err := s.q.GetUserByID(ctx, id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("identity: read target user: %w", err)
+	}
+	if u.Kind == contracts.UserKindIntegration {
+		return notFound
+	}
+	return nil
 }

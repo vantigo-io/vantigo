@@ -32,7 +32,8 @@ SELECT u.id, u.email, u.display_name, u.kind, u.is_disabled, u.lockout_end, u.to
        ))::boolean AS sso_enabled
 FROM identity.users u
 LEFT JOIN identity.expected_links el ON el.user_id = u.id
-WHERE sqlc.narg(id)::uuid IS NULL OR u.id = sqlc.narg(id)::uuid
+WHERE (sqlc.narg(id)::uuid IS NULL OR u.id = sqlc.narg(id)::uuid)
+  AND u.kind <> 'integration'
 ORDER BY (u.kind = 'agent'), is_owner DESC, u.display_name COLLATE "C", u.id;
 
 -- name: CountUsersByKind :one
