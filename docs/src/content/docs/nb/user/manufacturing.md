@@ -1370,7 +1370,8 @@ da med *En produksjonsordre fra et tidligere forslag er åpen*. Å opprette ordr
 produksjonsordrer**.
 
 **Avvis** skjuler et forslag til neste kjøring, som foreslår det igjen hvis det fortsatt
-trengs. Kjøpe-rader kan ikke gjøres om til ordrer — Vantigo har ikke innkjøp ennå — men
+trengs. Kjøpe-rader kan ikke gjøres om til innkjøpsordrer ennå — Innkjøp tar dem som forslag i en
+senere leveranse — men
 **Eksporter innkjøpsforslag** laster dem ned som en CSV-fil å bestille fra.
 
 ### Automatisk oppretting

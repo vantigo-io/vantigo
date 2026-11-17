@@ -15,7 +15,7 @@ rollene dine gir deg. En modul du ikke har rettighet til vises rett og slett ikk
 ## Apper og app-velgeren
 
 Hver modul er en **app** med sin egen sidemeny: Kunder, Prosjekter, Timer, Kalender,
-Utlegg, Ansatte, Bemanning, Fakturaer, Ordre, Kunnskap, Kommunikasjon, Produkter, Lager, Produksjon, Regnskap og Energi — og Microsoft Entra ID
+Utlegg, Ansatte, Bemanning, Fakturaer, Ordre, Kunnskap, Kommunikasjon, Produkter, Lager, Produksjon, Regnskap, Innkjøp og Energi — og Microsoft Entra ID
 og Google Workspace, der en administrator kobler til selskapets leietaker eller organisasjon. [Assistenten](/nb/user/assistant/) er også en
 app, og et panel som åpnes ved siden av hvilket som helst skjermbilde med knappen i toppfeltet eller Cmd/Ctrl+J, og den kan [vise deg hvor du skal klikke](/nb/user/assistant/#vis-meg-hvordan) i de viktigste opprettelsesflytene. App-velgeren i toppfeltet lister appene
 du kan åpne; **Hjem** er dashbordet, som åpner med agendaen **I dag og denne uken** fra
@@ -91,6 +91,7 @@ kortere enn din:
 | [Ordre](/nb/user/orders/) | Tilbud, Ordre, Leveranser, Abonnement, Tilbudsmaler, Salgsanalyse, Ordreinnstillinger |
 | [Produksjon](/nb/user/manufacturing/) | Oversikt, Produksjonsordrer, Forslag, Demonteringer, Verksted, Produksjonsplan, Avvik, Stykklister, Arbeidsstasjoner |
 | [Regnskap](/nb/user/accounting/) | Oversikt, Ny postering, Bilag, Trenger oppmerksomhet, Leverandørfakturaer, Leverandører, Åpne poster, Bank, Mva, Rapporter, SAF-T, Kontoplan, Mva-koder, Posteringsregler, Innstillinger |
+| [Innkjøp](/nb/user/purchasing/) | Innkjøpsordrer, Leverandører, Innstillinger |
 | [Kunnskap](/nb/user/knowledge/) | Artikler, Papirkurv |
 | [Energi](/nb/user/energy/) | Målepunkter |
 | [Microsoft Entra ID](/nb/user/entra/) | Microsoft Entra ID (tilkoblingens status og de seks stegene i oppsettet), for `entra:manage` |

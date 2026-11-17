@@ -106,6 +106,11 @@ their expiry date and status, each linked to the lot's page, and a site with sto
 or expired says *of which … on hold or expired*. A service has no Stock card. See
 [Inventory](/en/user/inventory/).
 
+When your organisation uses Purchasing and you hold `purchasing:access`, a **Suppliers**
+card lists the supplier items of the product's variants: which supplier sells each, at
+what price and which supplier is preferred. The items are kept in Purchasing, on the
+supplier's page. See [Purchasing](/en/user/purchasing/#supplier-items).
+
 ## Variants and units
 
 A variant is what is actually sold: it carries the **SKU**, the **Unit**, the **Unit
@@ -340,6 +345,10 @@ products to another tax category first.
   site, in their unit or in their [packagings](#packagings), adds the **Stock** card to
   the product page and the **On hand** column to the list. See
   [Inventory](/en/user/inventory/).
+- **Purchasing** — keeps what each supplier sells of a variant and orders the variants
+  from suppliers, adds the **Suppliers** card to the product page, and holds a variant a
+  supplier item or a purchase order line names from being deleted. See
+  [Purchasing](/en/user/purchasing/).
 - **Invoices** — invoice lines are written on the invoice itself (description,
   quantity, unit, unit price and VAT code) and do not read the catalog. See the
   [Invoices reference](/en/reference/invoices/).

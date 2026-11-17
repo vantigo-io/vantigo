@@ -377,8 +377,8 @@ A company is not anonymised — its record is not personal data.
 Suppliers can be kept before the books are set up — a buyer may add the companies they
 buy from first; the default account and tax code are given once the books exist.
 
-When another app keeps documents naming a supplier — the purchase orders, once Purchasing
-is on — the supplier is not deleted while any do, and a person is not anonymised while an
+When another app keeps documents naming a supplier — the purchase orders and supplier
+items, when Purchasing is on — the supplier is not deleted while any do, and a person is not anonymised while an
 open one does: the refusal says how many. **Export the supplier's data** includes what
 those apps hold about the person, and **Anonymise** takes the person out of them too.
 
@@ -391,7 +391,9 @@ account was made inactive since. **Delete** and **Anonymise** need **Post vouche
 
 **Suppliers** here is a screen of Accounting, behind **Use Accounting**: a holder of **Keep
 the suppliers** alone does not see it. The buyer's own screen for the register comes with
-the Purchasing app; until then they keep suppliers through the Assistant or the API.
+the Purchasing app: **New supplier** on its **Suppliers** list, and **Edit supplier** on a
+supplier's page there for those who also hold **Use Accounting**
+([Purchasing](/en/user/purchasing/#suppliers-and-their-items)).
 
 ## Supplier invoices
 
