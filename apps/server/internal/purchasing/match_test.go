@@ -241,7 +241,7 @@ func TestRegisterInvoice(t *testing.T) {
 	o := receivedOrder(t, c)
 	due := openapi_types.Date{Time: day(2026, 12, 10)}
 	in := gen.PurchasingInvoiceRegisterInput{ClientRequestId: uuid.New(), InvoiceNumber: " 55120 ",
-		InvoiceDate: openapi_types.Date{Time: day(2026, 11, 10)}, DueDate: &due}
+		InvoiceDate: openapi_types.Date{Time: day(2026, 11, 10)}, DueDate: &due, Total: str("200.00")}
 	res := c.Do(http.MethodPost, orderPath(o.Id, "register-invoice"), in)
 	mustStatus(t, res, http.StatusCreated, "register")
 	var reg gen.PurchasingInvoiceRegistration
@@ -251,7 +251,7 @@ func TestRegisterInvoice(t *testing.T) {
 	}
 	d := h.books.lastDraft()
 	if d.SupplierID != supNorsk || d.Number != "55120" || d.Kind != "invoice" || d.Reference != fmt.Sprint(*o.Number) ||
-		d.Currency != "NOK" || d.Total != "160.00" || d.DueDate == nil || !d.DueDate.Equal(due.Time) || len(d.Lines) != 2 ||
+		d.Currency != "NOK" || d.Total != "200.00" || d.DueDate == nil || !d.DueDate.Equal(due.Time) || len(d.Lines) != 2 ||
 		d.Lines[0].Amount != "150.00" || !strings.HasPrefix(d.Lines[0].Text, "Bolt M8") || d.Lines[0].AccountID != nil || d.By == uuid.Nil {
 		t.Fatalf("draft = %+v", d)
 	}

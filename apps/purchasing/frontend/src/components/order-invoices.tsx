@@ -154,6 +154,7 @@ export const RegisterInvoiceDialog = ({ order, onClose }: { order: PurchaseOrder
   const [dueDate, setDueDate] = useState<string | null>(null);
   const [exchangeRate, setExchangeRate] = useState("");
   const [totalNok, setTotalNok] = useState("");
+  const [total, setTotal] = useState("");
   const [result, setResult] = useState<PurchasingInvoiceRegistration | null>(null);
   const foreign = order.currency !== (meta.data?.baseCurrency ?? "NOK");
   const register = useMutation({
@@ -165,6 +166,7 @@ export const RegisterInvoiceDialog = ({ order, onClose }: { order: PurchaseOrder
         dueDate: dueDate || null,
         exchangeRate: foreign && exchangeRate.trim() ? exchangeRate.trim() : null,
         totalNok: foreign && totalNok.trim() ? totalNok.trim() : null,
+        total: total.trim() ? total.trim() : null,
       }),
     onSuccess: async (made) => {
       setResult(made);
@@ -218,6 +220,13 @@ export const RegisterInvoiceDialog = ({ order, onClose }: { order: PurchaseOrder
             value={dueDate}
             onChange={setDueDate}
             error={fieldError("dueDate")}
+          />
+          <TextInput
+            label={t("invoiceTotal", { currency: order.currency })}
+            description={t("invoiceTotalHint")}
+            value={total}
+            onChange={(e) => setTotal(e.currentTarget.value)}
+            error={fieldError("total")}
           />
           {foreign && (
             <>
