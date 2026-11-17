@@ -36,6 +36,8 @@ describe("the product's Stock card", () => {
                   available: 3,
                   held: 5,
                   incoming: 0,
+                  inTransit: 0,
+                  onOrder: 0,
                   rows: [
                     {
                       variant: milk,

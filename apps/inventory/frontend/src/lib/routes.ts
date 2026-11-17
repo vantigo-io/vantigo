@@ -112,15 +112,21 @@ export const expiringLinkOptions = (search: { days?: number; siteId?: number } =
 /**
  * Where a movement's source opens in another module, when it has a page
  * there: a production's manufacturing order, whose id the movement keeps as
- * its source line id (manufacturing design M5), and an unbuild's page, by
+ * its source line id (manufacturing design M5), an unbuild's page, by
  * the unbuild's id the movement keeps as its source id (manufacturing phase 2
- * M123). Undefined for any other source, and when the backend does not mount
- * Manufacturing — no injected list (the Vite dev server) means every module.
+ * M123), and a receipt's — or its reversal's — purchase order, whose id the
+ * movement keeps as its source line id (purchasing design P3). Undefined for
+ * any other source, and when the backend does not mount the module — no
+ * injected list (the Vite dev server) means every module.
  */
 export const sourceHref = (
   source: InventoryMovement["source"],
   enabled: readonly string[] | undefined = appConfig().modules,
 ): string | undefined => {
+  if (source?.module === "purchasing" && source.kind === "receipt")
+    return source.lineId && /^\d+$/.test(source.lineId) && (!enabled || enabled.includes("purchasing"))
+      ? `/purchasing/orders/${source.lineId}`
+      : undefined;
   if (source?.module === "manufacturing" && source.kind === "unbuild")
     return /^\d+$/.test(source.id) && (!enabled || enabled.includes("manufacturing"))
       ? `/manufacturing/unbuilds/${source.id}`

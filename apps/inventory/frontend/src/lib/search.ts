@@ -22,7 +22,8 @@ export interface MovementsSearch {
     | "transfer_out"
     | "transfer_in"
     | "production"
-    | "unbuild";
+    | "unbuild"
+    | "receipt_reversal";
   from?: string;
   to?: string;
 }
@@ -40,6 +41,7 @@ const kinds = [
   "transfer_in",
   "production",
   "unbuild",
+  "receipt_reversal",
 ] as const;
 export const validateMovementsSearch = (search: Record<string, unknown>): MovementsSearch => ({
   siteId: positive(search.siteId),

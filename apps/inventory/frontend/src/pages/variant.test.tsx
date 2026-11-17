@@ -33,7 +33,7 @@ describe("a variant's stock page and transfers", () => {
       ],
     });
     renderRoute("/inventory/variants/201");
-    expect(await screen.findByText("+5 pcs incoming")).toBeInTheDocument();
+    expect(await screen.findByText("+5 pcs in transit")).toBeInTheDocument();
     expect(screen.getByText("BGO · Bergen butikk")).toBeInTheDocument();
     // The movements name the kind and link the transfer.
     const row = (await screen.findByRole("link", { name: "Movement 77" })).closest("tr") as HTMLElement;

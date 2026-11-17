@@ -42,7 +42,8 @@ export const LowStockList = ({ rows, selected, onToggle, chosenSiteId, showSite 
             <Table.Th>{t("columnItem")}</Table.Th>
             {showSite && <Table.Th>{t("site")}</Table.Th>}
             <Table.Th ta="right">{t("available")}</Table.Th>
-            <Table.Th ta="right">{t("incoming")}</Table.Th>
+            <Table.Th ta="right">{t("inTransit")}</Table.Th>
+            <Table.Th ta="right">{t("onOrder")}</Table.Th>
             <Table.Th ta="right">{t("reorderPoint")}</Table.Th>
             <Table.Th ta="right">{t("maximumLevel")}</Table.Th>
             <Table.Th>{t("suggestedQuantity")}</Table.Th>
@@ -96,7 +97,8 @@ export const LowStockList = ({ rows, selected, onToggle, chosenSiteId, showSite 
                     {number(row.available)}
                   </Text>
                 </Table.Td>
-                <Table.Td ta="right">{row.incoming > 0 ? number(row.incoming) : dash}</Table.Td>
+                <Table.Td ta="right">{row.inTransit > 0 ? number(row.inTransit) : dash}</Table.Td>
+                <Table.Td ta="right">{row.onOrder > 0 ? number(row.onOrder) : dash}</Table.Td>
                 <Table.Td ta="right">{number(row.reorderPoint)}</Table.Td>
                 <Table.Td ta="right">{row.maximum === null ? dash : number(row.maximum)}</Table.Td>
                 <Table.Td miw={200}>

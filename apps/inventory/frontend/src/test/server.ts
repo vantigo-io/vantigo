@@ -438,6 +438,8 @@ export const stubInventoryApi = (server: InventoryServer = {}): InventoryStub =>
           available: onHand - reserved,
           held: 0,
           incoming,
+          inTransit: incoming,
+          onOrder: 0,
           rows: ordered,
           ...(placement ? { placement: placementAnswer(placement, onHand - reserved, incoming) } : {}),
         };
