@@ -18,6 +18,7 @@ package purchasing
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"time"
@@ -127,6 +128,14 @@ type exportedOrder struct {
 	Email              string            `json:"email,omitempty"`
 	Contact            string            `json:"contact,omitempty"`
 	Mailings           []exportedMailing `json:"mailings,omitempty"`
+	Changes            []exportedChange  `json:"changes,omitempty"`
+}
+
+// exportedChange is one row of an order's change log.
+type exportedChange struct {
+	At      time.Time `json:"at"`
+	Actor   string    `json:"actor,omitempty"`
+	Actions []change  `json:"actions"`
 }
 
 type exportedMailing struct {
@@ -161,13 +170,25 @@ func (p supplierPersonalData) ExportSupplierData(ctx context.Context, supplierID
 		byOrder[m.OrderID] = append(byOrder[m.OrderID], exportedMailing{Kind: m.Kind, Version: m.Version, Recipient: m.Recipient,
 			Cc: m.Cc, Status: m.Status, SentAt: m.SentAt})
 	}
+	changes, err := q.SupplierChanges(ctx, supplierID)
+	if err != nil {
+		return nil, fmt.Errorf("purchasing: read supplier %d's order changes: %w", supplierID, err)
+	}
+	changesOf := map[int64][]exportedChange{}
+	for _, c := range changes {
+		var actions []change
+		if err := json.Unmarshal(c.Actions, &actions); err != nil {
+			return nil, fmt.Errorf("purchasing: read change %d: %w", c.ID, err)
+		}
+		changesOf[c.OrderID] = append(changesOf[c.OrderID], exportedChange{At: c.At, Actor: deref(c.ActorDisplay), Actions: actions})
+	}
 	out := exportedOrders{Orders: make([]exportedOrder, 0, len(orders))}
 	for _, o := range orders {
 		out.Orders = append(out.Orders, exportedOrder{
 			ID: o.ID, Number: o.Number, Status: o.Status, OrderDate: o.OrderDate.Time.Format(time.DateOnly),
 			SupplierName: o.SupplierName, OrganisationNumber: deref(o.SupplierOrganisationNumber), Address: deref(o.SupplierAddressLine),
 			PostalCode: deref(o.SupplierPostalCode), City: deref(o.SupplierCity), Country: deref(o.SupplierCountry),
-			Email: deref(o.SupplierEmail), Contact: o.SupplierContact, Mailings: byOrder[o.ID],
+			Email: deref(o.SupplierEmail), Contact: o.SupplierContact, Mailings: byOrder[o.ID], Changes: changesOf[o.ID],
 		})
 	}
 	return out, nil
@@ -180,7 +201,9 @@ const (
 	erasedDocuments = "purchasing.documents"
 )
 
-// EraseSupplierData blanks what the orders keep of the supplier, inside
+// EraseSupplierData blanks what the orders keep of the supplier — the
+// snapshots, the mailings' addresses, message and last refusal, the change
+// log's values of the contact and the notes — inside
 // Accounting's anonymisation transaction, and writes the stored PDFs to the
 // deletion ledger (A8): the objects go after the commit, by the
 // purchasing.deletions worker, never inside tx.
@@ -194,6 +217,9 @@ func (p supplierPersonalData) EraseSupplierData(ctx context.Context, tx pgx.Tx, 
 	mailings, err := q.EraseSupplierMailings(ctx, supplierID)
 	if err != nil {
 		return nil, fmt.Errorf("purchasing: erase supplier %d's mailings: %w", supplierID, err)
+	}
+	if _, err := q.EraseSupplierChanges(ctx, supplierID); err != nil {
+		return nil, fmt.Errorf("purchasing: erase supplier %d's order changes: %w", supplierID, err)
 	}
 	keys, err := q.EraseSupplierDocuments(ctx, store.EraseSupplierDocumentsParams{SupplierID: supplierID, Now: &now})
 	if err != nil {

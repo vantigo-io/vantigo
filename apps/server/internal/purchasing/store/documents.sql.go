@@ -264,33 +264,40 @@ func (q *Queries) GetMailing(ctx context.Context, id int64) (PurchasingMailing, 
 }
 
 const insertDocument = `-- name: InsertDocument :one
+WITH live AS (
+    SELECT po.id AS live_id FROM purchasing.orders po WHERE po.id = $7 AND po.anonymised_at IS NULL FOR SHARE
+)
 INSERT INTO purchasing.documents (order_id, kind, version, storage_key, sha256, size_bytes, created_at)
-VALUES ($1, $2, $3, $4, $5,
-    $6, $7)
+SELECT live.live_id, $1, $2, $3, $4, $5, $6
+FROM live
 RETURNING id, order_id, kind, version, storage_key, sha256, size_bytes, created_at, erased_at
 `
 
 type InsertDocumentParams struct {
-	OrderID    int64
 	Kind       string
 	Version    int32
 	StorageKey string
 	Sha256     string
 	SizeBytes  int64
 	CreatedAt  time.Time
+	OrderID    int64
 }
 
 // InsertDocument records a stored PDF (P21), after it was put in the store:
-// once per order, kind and version.
+// once per order, kind and version, and only while the order is not
+// anonymised. It holds the order FOR SHARE, so a supplier's erase either
+// waits for it — and then finds the row to mark erased — or has anonymised
+// the order first, when no row is written (pgx.ErrNoRows) and the caller
+// writes the object to the deletion ledger instead.
 func (q *Queries) InsertDocument(ctx context.Context, arg InsertDocumentParams) (PurchasingDocument, error) {
 	row := q.db.QueryRow(ctx, insertDocument,
-		arg.OrderID,
 		arg.Kind,
 		arg.Version,
 		arg.StorageKey,
 		arg.Sha256,
 		arg.SizeBytes,
 		arg.CreatedAt,
+		arg.OrderID,
 	)
 	var i PurchasingDocument
 	err := row.Scan(
@@ -425,6 +432,23 @@ func (q *Queries) LatestMailing(ctx context.Context, arg LatestMailingParams) (P
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const ledgerObject = `-- name: LedgerObject :exec
+INSERT INTO purchasing.deletions (storage_key, requested_at) VALUES ($1, $2)
+ON CONFLICT (storage_key) DO UPDATE SET completed_at = NULL, attempts = 0, last_error = NULL, requested_at = excluded.requested_at
+`
+
+type LedgerObjectParams struct {
+	StorageKey  string
+	RequestedAt time.Time
+}
+
+// LedgerObject writes a stored object of an anonymised order to the
+// deletion ledger, open again when it was deleted once before.
+func (q *Queries) LedgerObject(ctx context.Context, arg LedgerObjectParams) error {
+	_, err := q.db.Exec(ctx, ledgerObject, arg.StorageKey, arg.RequestedAt)
+	return err
 }
 
 const mailingsOf = `-- name: MailingsOf :many

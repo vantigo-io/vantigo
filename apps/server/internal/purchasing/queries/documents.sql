@@ -1,10 +1,23 @@
 -- name: InsertDocument :one
 -- InsertDocument records a stored PDF (P21), after it was put in the store:
--- once per order, kind and version.
+-- once per order, kind and version, and only while the order is not
+-- anonymised. It holds the order FOR SHARE, so a supplier's erase either
+-- waits for it — and then finds the row to mark erased — or has anonymised
+-- the order first, when no row is written (pgx.ErrNoRows) and the caller
+-- writes the object to the deletion ledger instead.
+WITH live AS (
+    SELECT po.id AS live_id FROM purchasing.orders po WHERE po.id = sqlc.arg(order_id) AND po.anonymised_at IS NULL FOR SHARE
+)
 INSERT INTO purchasing.documents (order_id, kind, version, storage_key, sha256, size_bytes, created_at)
-VALUES (sqlc.arg(order_id), sqlc.arg(kind), sqlc.arg(version), sqlc.arg(storage_key), sqlc.arg(sha256),
-    sqlc.arg(size_bytes), sqlc.arg(created_at))
+SELECT live.live_id, sqlc.arg(kind), sqlc.arg(version), sqlc.arg(storage_key), sqlc.arg(sha256), sqlc.arg(size_bytes), sqlc.arg(created_at)
+FROM live
 RETURNING *;
+
+-- name: LedgerObject :exec
+-- LedgerObject writes a stored object of an anonymised order to the
+-- deletion ledger, open again when it was deleted once before.
+INSERT INTO purchasing.deletions (storage_key, requested_at) VALUES (sqlc.arg(storage_key), sqlc.arg(requested_at))
+ON CONFLICT (storage_key) DO UPDATE SET completed_at = NULL, attempts = 0, last_error = NULL, requested_at = excluded.requested_at;
 
 -- name: DocumentOf :one
 SELECT * FROM purchasing.documents

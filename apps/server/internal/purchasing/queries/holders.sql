@@ -43,10 +43,31 @@ WHERE supplier_id = sqlc.arg(supplier_id) AND anonymised_at IS NULL;
 
 -- name: EraseSupplierMailings :execrows
 -- EraseSupplierMailings blanks the addresses the supplier's orders were
--- mailed to.
-UPDATE purchasing.mailings m SET recipient = '', cc = '', message = ''
+-- mailed to, the message and the provider's last refusal, which may quote
+-- them.
+UPDATE purchasing.mailings m SET recipient = '', cc = '', message = '', last_error = NULL
 FROM purchasing.orders o
-WHERE o.id = m.order_id AND o.supplier_id = sqlc.arg(supplier_id) AND (m.recipient <> '' OR m.cc <> '' OR m.message <> '');
+WHERE o.id = m.order_id AND o.supplier_id = sqlc.arg(supplier_id)
+  AND (m.recipient <> '' OR m.cc <> '' OR m.message <> '' OR m.last_error IS NOT NULL);
+
+-- name: SupplierChanges :many
+-- SupplierChanges is the change log of every order naming the supplier, for
+-- its export (P7).
+SELECT c.* FROM purchasing.order_changes c JOIN purchasing.orders o ON o.id = c.order_id
+WHERE o.supplier_id = sqlc.arg(supplier_id) ORDER BY c.order_id, c.id;
+
+-- name: EraseSupplierChanges :execrows
+-- EraseSupplierChanges strips the from and to values of the supplier's
+-- orders' changes to the fields that may name a person at the supplier —
+-- the contact and the two notes — keeping that the field changed.
+UPDATE purchasing.order_changes c SET actions = (
+    SELECT coalesce(jsonb_agg(CASE WHEN e.a->>'field' IN ('supplierContact', 'note', 'internalNote') THEN e.a - 'from' - 'to' ELSE e.a END
+        ORDER BY e.n), '[]'::jsonb)
+    FROM jsonb_array_elements(c.actions) WITH ORDINALITY AS e(a, n))
+FROM purchasing.orders o
+WHERE o.id = c.order_id AND o.supplier_id = sqlc.arg(supplier_id)
+  AND EXISTS (SELECT 1 FROM jsonb_array_elements(c.actions) x
+      WHERE x->>'field' IN ('supplierContact', 'note', 'internalNote') AND (x ? 'from' OR x ? 'to'));
 
 -- name: EraseSupplierDocuments :many
 -- EraseSupplierDocuments marks the stored PDFs of the supplier's orders

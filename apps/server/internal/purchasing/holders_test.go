@@ -122,12 +122,19 @@ func TestHolders_SupplierAndPersonalData(t *testing.T) {
 		t.Errorf("the delete = %+v", hd)
 	}
 
+	// What the change log and a refused mailing may keep of a person.
+	h.Exec(t, `INSERT INTO purchasing.order_changes (order_id, actor_display, at, actions) VALUES ($1, 'Kari', $2,
+'[{"action":"updated","field":"supplierContact","from":"Ola","to":"Ola Snekker"},{"action":"updated","field":"note","to":"Ring Ola"},{"action":"updated","field":"siteId","from":"11","to":"13"}]')`,
+		o.Id, h.Now())
+	h.Exec(t, `UPDATE purchasing.mailings SET last_error = 'refused ola@snekker.example' WHERE order_id = $1`, o.Id)
+
 	exported, err := data.ExportSupplierData(context.Background(), supPerson)
 	if err != nil {
 		t.Fatal(err)
 	}
 	body, _ := json.Marshal(exported)
-	if want := `"supplierName":"Ola Snekker"`; !strings.Contains(string(body), want) || !strings.Contains(string(body), "ola@snekker.example") {
+	if want := `"supplierName":"Ola Snekker"`; !strings.Contains(string(body), want) || !strings.Contains(string(body), "ola@snekker.example") ||
+		!strings.Contains(string(body), `"changes"`) || !strings.Contains(string(body), "Ring Ola") {
 		t.Errorf("export = %s", body)
 	}
 	if none, _ := data.ExportSupplierData(context.Background(), supNorsk); none != nil {
@@ -171,6 +178,31 @@ func TestHolders_SupplierAndPersonalData(t *testing.T) {
 		t.Errorf("after the erase = %q %v", got.SupplierName, got.SupplierEmail)
 	}
 	expectRefusal(t, c.Do(http.MethodGet, orderPath(o.Id, "pdf"), nil), http.StatusNotFound, "not_found", "an erased PDF")
+	if n := h.Count(t, `SELECT count(*) FROM purchasing.order_changes WHERE order_id = $1 AND actions::text ~ '"(from|to)": "(Ola|Ola Snekker|Ring Ola)"'`, o.Id); n != 0 {
+		t.Errorf("changes still naming the contact or the note = %d", n)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM purchasing.order_changes WHERE order_id = $1 AND actions::text LIKE '%"from": "11"%'`, o.Id); n != 1 {
+		t.Errorf("the site's change lost its values: %d", n)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM purchasing.mailings WHERE order_id = $1 AND last_error IS NOT NULL`, o.Id); n != 0 {
+		t.Errorf("mailings keeping the provider's refusal = %d", n)
+	}
+
+	// A PDF put after the erase — a render racing it — is never recorded:
+	// its object goes to the deletion ledger and the worker deletes it.
+	h.Exec(t, `UPDATE purchasing.mailings SET document_id = NULL WHERE order_id = $1`, o.Id)
+	h.Exec(t, `DELETE FROM purchasing.documents WHERE order_id = $1`, o.Id)
+	before := h.objects.count()
+	expectRefusal(t, c.Do(http.MethodGet, orderPath(o.Id, "pdf"), nil), http.StatusNotFound, "not_found", "a PDF of an anonymised order")
+	if h.objects.count() != before+1 || h.Count(t, `SELECT count(*) FROM purchasing.documents WHERE order_id = $1`, o.Id) != 0 {
+		t.Fatalf("after a late render: %d objects, documents recorded", h.objects.count())
+	}
+	if n := workerNamed(t, h, "purchasing.deletions")(); n != 1 {
+		t.Errorf("deleted %d of the late PDF, want 1", n)
+	}
+	if h.objects.count() != before {
+		t.Error("the late PDF survived the erase")
+	}
 }
 
 // PurchaseSupply answers what is ordered and not received on sent orders'
