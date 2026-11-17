@@ -99,8 +99,14 @@ needs **Manage the books**.
      and so on. The customers' and suppliers' account in the file decides the first two.
    - **Tax codes** — the file's codes and the standard code each maps to. The books here
      use Skatteetaten's standard codes.
-   - **Suppliers** — made from the file with their organisation number, address and bank
-     account. A number that is not valid is left out and said so.
+   - **Suppliers** — each with how it is taken. A supplier already in **Suppliers** — one a
+     buyer added before the books were set up, say — is taken as the file's when it has the
+     same organisation number (*In the register, by organisation number*) or, without one,
+     the same name (*In the register, by name*): the opening balance is put on it and its
+     record is left as it is. When several have the name (*Several in the register*), a new
+     supplier is made unless you pick one; the picker beside each lets you pick another or
+     *A new supplier*. The others are made from the file with their organisation number,
+     address and bank account. A number that is not valid is left out and said so.
    - **Customers** — matched to the customers in **Customers** by organisation number when
      the file is read. Accounting does not make customers: one with a balance that
      Customers does not hold, or holds twice, must be created or found there first; then
@@ -365,14 +371,26 @@ still name the supplier by its number. It cannot be undone, and an anonymised su
 not changed again. Before the date it is refused: the bookkeeping still needs the record.
 A company is not anonymised — its record is not personal data.
 
-Keeping the suppliers needs **Post vouchers**.
+Suppliers can be kept before the books are set up — a buyer may add the companies they
+buy from first; the default account and tax code are given once the books exist.
+
+When another app keeps documents naming a supplier — the purchase orders, once Purchasing
+is on — the supplier is not deleted while any do, and a person is not anonymised while an
+open one does: the refusal says how many. **Export the supplier's data** includes what
+those apps hold about the person, and **Anonymise** takes the person out of them too.
+
+Keeping the suppliers needs **Post vouchers**, or **Keep the suppliers** for every field but
+the bank account, IBAN, BIC, default account and tax code, which stay with **Post vouchers**.
+**Delete** and **Anonymise** need **Post vouchers**.
 
 ## Supplier invoices
 
 **Supplier invoices** lists what suppliers have billed, newest first, filtered by state,
 supplier and due date, or **Overdue only**. An invoice is a **Draft** until it is posted,
 then **Posted** while something is owed, **Paid** when nothing is left, and **Reversed**
-once corrected by Reverse and copy.
+once corrected by Reverse and copy. An invoice matched to a purchase order in Purchasing
+shows **Purchase order** and its number, in the list and on its page — click it to open the
+order — and how many differences the match has; without Purchasing there is none.
 
 ### Entering and posting a supplier invoice
 
@@ -1048,6 +1066,7 @@ the permissions they need:
 | **Use Accounting** (`accounting:read`) | Every screen and report. |
 | **Post vouchers** (`accounting:post`) | Journal entries, reversals, attachments, settlements, suppliers, supplier invoices and their payments, the actions under Needs attention, and marking a VAT term as filed. |
 | **Manage the books** (`accounting:close`) | Setting up the books (from a SAF-T file too), the chart, the tax codes, the posting rules, the opening balances, the lock, and closing and reopening VAT terms and removing a filing mark. Only an Owner can give it. |
+| **Keep the suppliers** (`accounting:suppliers-manage`) | Adding and changing suppliers — but their bank account, default account and tax code — also before the books are set up: a buyer's. It needs no **Use Accounting**. |
 | **Export the books** (`accounting:export`) | The reports as CSV, a supplier's data, and the SAF-T file. |
 
 When the engagement ends, remove the role or disable the user: everything they posted
