@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -23,8 +24,9 @@ import (
 
 // This file is the send (payments and delivery design D4): an issued
 // document's stored PDF, e-mailed now to the customer's current invoice
-// address or an override, with the seller as Reply-To, and logged once in
-// invoices.deliveries. Nothing here runs under a lock: the reads are plain,
+// address or an override, with the seller as Reply-To, a personal message
+// when the sender wrote one (invoices phase 6 design I6) and the document's
+// logo inline in the HTML body (I5), and logged once in invoices.deliveries. Nothing here runs under a lock: the reads are plain,
 // the send goes through the contract-call seam, and the log row is one
 // insert whose trigger — after its wait on the document — blanks the
 // recipient of a customer anonymised meanwhile (D6).
@@ -60,6 +62,21 @@ const sendTimeout = 30 * time.Second
 // holds it (D6). The response after the row is rendered on a timeout of the
 // same length.
 const deliveryRowTimeout = 5 * time.Second
+
+// maxSendMessage is the most characters a personal message holds (I6), as
+// invoices.deliveries.message does.
+const maxSendMessage = 2000
+
+// sendMessage is the request's personal message as the mail carries it and
+// the delivery stores it: trimmed, its line breaks as "\n", "" for none — or
+// false when it is longer than maxSendMessage characters.
+func sendMessage(raw *string) (string, bool) {
+	if raw == nil {
+		return "", true
+	}
+	message := strings.TrimSpace(strings.ReplaceAll(*raw, "\r\n", "\n"))
+	return message, utf8.RuneCountInString(message) <= maxSendMessage
+}
 
 // messageIDDomain is the right-hand side of every Message-ID this module
 // mints: communications' domain.
@@ -238,6 +255,13 @@ func (s *server) PostInvoicesByIdSend(ctx context.Context, req gen.PostInvoicesB
 		return gen.PostInvoicesByIdSend503ApplicationProblemPlusJSONResponse(mailUnavailable()), nil
 	}
 
+	// 1a. The personal message, judged before anything is read (I6).
+	message, ok := sendMessage(req.Body.Message)
+	if !ok {
+		return gen.PostInvoicesByIdSend400ApplicationProblemPlusJSONResponse(invalid(invalidSendTitle,
+			fieldError("message", fmt.Sprintf("A message holds at most %d characters", maxSendMessage)))), nil
+	}
+
 	// 2. The document.
 	q := store.New(s.deps.Pool)
 	inv, err := q.GetInvoice(ctx, req.Id)
@@ -312,8 +336,13 @@ func (s *server) PostInvoicesByIdSend(ctx context.Context, req gen.PostInvoicesB
 	}
 
 	// 6. The envelope: the seller as the PDF names it, replies to today's
-	// mailbox, the text in the buyer's language.
-	out, err := s.envelope(ctx, q, inv, recipient, pdf.body)
+	// mailbox, the text and the HTML in the buyer's language, the logo the
+	// document was issued with inline.
+	out, err := s.envelope(ctx, q, inv, recipient, pdf.body, message)
+	if errors.Is(err, errObjectStore) {
+		return gen.PostInvoicesByIdSend503ApplicationProblemPlusJSONResponse(storageUnavailable(
+			"The document's logo could not be read from the store. Nothing was sent; try again.")), nil
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -343,7 +372,7 @@ func (s *server) PostInvoicesByIdSend(ctx context.Context, req gen.PostInvoicesB
 	defer cancelRow()
 	if _, err := q.InsertDelivery(rowCtx, store.InsertDeliveryParams{
 		InvoiceID: inv.ID, Recipient: recipient, Subject: out.Subject, MessageID: out.MessageID,
-		PdfSha256: pdf.sha256, SentAt: s.deps.Clock(), SentByUserID: callerID(ctx),
+		PdfSha256: pdf.sha256, SentAt: s.deps.Clock(), SentByUserID: callerID(ctx), Message: message,
 	}); err != nil {
 		// The document id only, never the address: it may be a person's
 		// whom an erase is anonymising at this very moment.
@@ -380,9 +409,12 @@ func (s *server) PostInvoicesByIdSend(ctx context.Context, req gen.PostInvoicesB
 
 // envelope is one send's mail.Outbound: From the chosen channel's address
 // (which Communications sets) under the seller snapshot's legal name, Reply-To the current settings' e-mail when there is one, the
-// cover mail in the document's language, a fresh bare Message-ID, and the
-// PDF attached under the download's own name.
-func (s *server) envelope(ctx context.Context, q *store.Queries, inv store.InvoicesInvoice, recipient string, pdf []byte) (mail.Outbound, error) {
+// cover mail in the document's language as text and as HTML, with message
+// above the standard text, a fresh bare Message-ID, the PDF attached under
+// the download's own name, and the logo of the document's snapshot as the
+// HTML body's inline part (I5) — never the settings' current one, so the
+// mail shows what the PDF prints.
+func (s *server) envelope(ctx context.Context, q *store.Queries, inv store.InvoicesInvoice, recipient string, pdf []byte, message string) (mail.Outbound, error) {
 	settings, err := q.GetSettings(ctx)
 	if err != nil {
 		return mail.Outbound{}, fmt.Errorf("invoices: read the settings: %w", err)
@@ -405,14 +437,21 @@ func (s *server) envelope(ctx context.Context, q *store.Queries, inv store.Invoi
 	if err != nil {
 		return mail.Outbound{}, err
 	}
-	text, err := coverMail(inv, original, open, payURL)
+	logo, logoType, err := s.documentLogo(ctx, inv)
+	if err != nil {
+		return mail.Outbound{}, err
+	}
+	text, err := coverMail(inv, original, open, payURL, message, logo != nil)
 	if err != nil {
 		return mail.Outbound{}, err
 	}
 	out := mail.Outbound{
-		To: []string{recipient}, Subject: text.subject, ReplyTo: settings.Email, TextBody: text.body,
+		To: []string{recipient}, Subject: text.subject, ReplyTo: settings.Email, TextBody: text.body, HTMLBody: text.html,
 		MessageID:   uuid.NewString() + "@" + messageIDDomain,
 		Attachments: []mail.Attachment{{FileName: fileName(inv), ContentType: "application/pdf", Content: pdf}},
+	}
+	if logo != nil {
+		out.Attachments = append(out.Attachments, logoAttachment(logo, logoType))
 	}
 	if inv.SellerLegalName != nil {
 		out.DisplayName = *inv.SellerLegalName

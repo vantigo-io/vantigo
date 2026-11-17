@@ -12,6 +12,63 @@ import (
 	"github.com/google/uuid"
 )
 
+const clearSettingsLogo = `-- name: ClearSettingsLogo :one
+UPDATE invoices.settings SET
+    logo_object_key = NULL,
+    logo_sha256 = NULL,
+    logo_content_type = NULL,
+    updated_at = $1::timestamptz,
+    revision = revision + 1
+WHERE id = 1
+RETURNING id, legal_name, organisation_number, vat_registered, in_foretaksregisteret, address_line1, address_line2, postal_code, city, country, bank_account, iban, bic, email, default_payment_terms_days, default_currency, footer_text, series_start, updated_at, revision, peppol_id, kid_length, kid_algorithm, work_vat_code_hours, work_vat_code_expenses, work_vat_code_milestones, timesheet_default, timesheet_person_label, energy_vat_code, energy_vat_code_exempt, send_channel, logo_object_key, logo_sha256, logo_content_type, phone
+`
+
+// ClearSettingsLogo removes the seller's logo (I1): the three columns
+// cleared, the object never deleted, since an issued document's snapshot may
+// name it. The caller holds the row (LockSettings) and has seen a logo set.
+func (q *Queries) ClearSettingsLogo(ctx context.Context, now time.Time) (InvoicesSetting, error) {
+	row := q.db.QueryRow(ctx, clearSettingsLogo, now)
+	var i InvoicesSetting
+	err := row.Scan(
+		&i.ID,
+		&i.LegalName,
+		&i.OrganisationNumber,
+		&i.VatRegistered,
+		&i.InForetaksregisteret,
+		&i.AddressLine1,
+		&i.AddressLine2,
+		&i.PostalCode,
+		&i.City,
+		&i.Country,
+		&i.BankAccount,
+		&i.Iban,
+		&i.Bic,
+		&i.Email,
+		&i.DefaultPaymentTermsDays,
+		&i.DefaultCurrency,
+		&i.FooterText,
+		&i.SeriesStart,
+		&i.UpdatedAt,
+		&i.Revision,
+		&i.PeppolID,
+		&i.KidLength,
+		&i.KidAlgorithm,
+		&i.WorkVatCodeHours,
+		&i.WorkVatCodeExpenses,
+		&i.WorkVatCodeMilestones,
+		&i.TimesheetDefault,
+		&i.TimesheetPersonLabel,
+		&i.EnergyVatCode,
+		&i.EnergyVatCodeExempt,
+		&i.SendChannel,
+		&i.LogoObjectKey,
+		&i.LogoSha256,
+		&i.LogoContentType,
+		&i.Phone,
+	)
+	return i, err
+}
+
 const getSendChannel = `-- name: GetSendChannel :one
 SELECT send_channel FROM invoices.settings WHERE id = 1
 `
@@ -28,7 +85,7 @@ func (q *Queries) GetSendChannel(ctx context.Context) (*uuid.UUID, error) {
 }
 
 const getSettings = `-- name: GetSettings :one
-SELECT id, legal_name, organisation_number, vat_registered, in_foretaksregisteret, address_line1, address_line2, postal_code, city, country, bank_account, iban, bic, email, default_payment_terms_days, default_currency, footer_text, series_start, updated_at, revision, peppol_id, kid_length, kid_algorithm, work_vat_code_hours, work_vat_code_expenses, work_vat_code_milestones, timesheet_default, timesheet_person_label, energy_vat_code, energy_vat_code_exempt, send_channel FROM invoices.settings WHERE id = 1
+SELECT id, legal_name, organisation_number, vat_registered, in_foretaksregisteret, address_line1, address_line2, postal_code, city, country, bank_account, iban, bic, email, default_payment_terms_days, default_currency, footer_text, series_start, updated_at, revision, peppol_id, kid_length, kid_algorithm, work_vat_code_hours, work_vat_code_expenses, work_vat_code_milestones, timesheet_default, timesheet_person_label, energy_vat_code, energy_vat_code_exempt, send_channel, logo_object_key, logo_sha256, logo_content_type, phone FROM invoices.settings WHERE id = 1
 `
 
 // GetSettings reads the installation's single settings row, the seller record
@@ -69,12 +126,16 @@ func (q *Queries) GetSettings(ctx context.Context) (InvoicesSetting, error) {
 		&i.EnergyVatCode,
 		&i.EnergyVatCodeExempt,
 		&i.SendChannel,
+		&i.LogoObjectKey,
+		&i.LogoSha256,
+		&i.LogoContentType,
+		&i.Phone,
 	)
 	return i, err
 }
 
 const lockSettings = `-- name: LockSettings :one
-SELECT id, legal_name, organisation_number, vat_registered, in_foretaksregisteret, address_line1, address_line2, postal_code, city, country, bank_account, iban, bic, email, default_payment_terms_days, default_currency, footer_text, series_start, updated_at, revision, peppol_id, kid_length, kid_algorithm, work_vat_code_hours, work_vat_code_expenses, work_vat_code_milestones, timesheet_default, timesheet_person_label, energy_vat_code, energy_vat_code_exempt, send_channel FROM invoices.settings WHERE id = 1 FOR UPDATE
+SELECT id, legal_name, organisation_number, vat_registered, in_foretaksregisteret, address_line1, address_line2, postal_code, city, country, bank_account, iban, bic, email, default_payment_terms_days, default_currency, footer_text, series_start, updated_at, revision, peppol_id, kid_length, kid_algorithm, work_vat_code_hours, work_vat_code_expenses, work_vat_code_milestones, timesheet_default, timesheet_person_label, energy_vat_code, energy_vat_code_exempt, send_channel, logo_object_key, logo_sha256, logo_content_type, phone FROM invoices.settings WHERE id = 1 FOR UPDATE
 `
 
 // LockSettings takes the settings row FOR UPDATE: PUT /settings and every rate
@@ -115,12 +176,86 @@ func (q *Queries) LockSettings(ctx context.Context) (InvoicesSetting, error) {
 		&i.EnergyVatCode,
 		&i.EnergyVatCodeExempt,
 		&i.SendChannel,
+		&i.LogoObjectKey,
+		&i.LogoSha256,
+		&i.LogoContentType,
+		&i.Phone,
+	)
+	return i, err
+}
+
+const setSettingsLogo = `-- name: SetSettingsLogo :one
+UPDATE invoices.settings SET
+    logo_object_key = $1,
+    logo_sha256 = $2,
+    logo_content_type = $3,
+    updated_at = $4::timestamptz,
+    revision = revision + 1
+WHERE id = 1
+RETURNING id, legal_name, organisation_number, vat_registered, in_foretaksregisteret, address_line1, address_line2, postal_code, city, country, bank_account, iban, bic, email, default_payment_terms_days, default_currency, footer_text, series_start, updated_at, revision, peppol_id, kid_length, kid_algorithm, work_vat_code_hours, work_vat_code_expenses, work_vat_code_milestones, timesheet_default, timesheet_person_label, energy_vat_code, energy_vat_code_exempt, send_channel, logo_object_key, logo_sha256, logo_content_type, phone
+`
+
+type SetSettingsLogoParams struct {
+	LogoObjectKey   *string
+	LogoSha256      *string
+	LogoContentType *string
+	Now             time.Time
+}
+
+// SetSettingsLogo names the seller's logo (invoices phase 6 design I1): the
+// object's key, the hash of its bytes and its type, set together, and moves
+// the revision on. The caller holds the row (LockSettings) and has stored the
+// object.
+func (q *Queries) SetSettingsLogo(ctx context.Context, arg SetSettingsLogoParams) (InvoicesSetting, error) {
+	row := q.db.QueryRow(ctx, setSettingsLogo,
+		arg.LogoObjectKey,
+		arg.LogoSha256,
+		arg.LogoContentType,
+		arg.Now,
+	)
+	var i InvoicesSetting
+	err := row.Scan(
+		&i.ID,
+		&i.LegalName,
+		&i.OrganisationNumber,
+		&i.VatRegistered,
+		&i.InForetaksregisteret,
+		&i.AddressLine1,
+		&i.AddressLine2,
+		&i.PostalCode,
+		&i.City,
+		&i.Country,
+		&i.BankAccount,
+		&i.Iban,
+		&i.Bic,
+		&i.Email,
+		&i.DefaultPaymentTermsDays,
+		&i.DefaultCurrency,
+		&i.FooterText,
+		&i.SeriesStart,
+		&i.UpdatedAt,
+		&i.Revision,
+		&i.PeppolID,
+		&i.KidLength,
+		&i.KidAlgorithm,
+		&i.WorkVatCodeHours,
+		&i.WorkVatCodeExpenses,
+		&i.WorkVatCodeMilestones,
+		&i.TimesheetDefault,
+		&i.TimesheetPersonLabel,
+		&i.EnergyVatCode,
+		&i.EnergyVatCodeExempt,
+		&i.SendChannel,
+		&i.LogoObjectKey,
+		&i.LogoSha256,
+		&i.LogoContentType,
+		&i.Phone,
 	)
 	return i, err
 }
 
 const shareSettings = `-- name: ShareSettings :one
-SELECT id, legal_name, organisation_number, vat_registered, in_foretaksregisteret, address_line1, address_line2, postal_code, city, country, bank_account, iban, bic, email, default_payment_terms_days, default_currency, footer_text, series_start, updated_at, revision, peppol_id, kid_length, kid_algorithm, work_vat_code_hours, work_vat_code_expenses, work_vat_code_milestones, timesheet_default, timesheet_person_label, energy_vat_code, energy_vat_code_exempt, send_channel FROM invoices.settings WHERE id = 1 FOR SHARE
+SELECT id, legal_name, organisation_number, vat_registered, in_foretaksregisteret, address_line1, address_line2, postal_code, city, country, bank_account, iban, bic, email, default_payment_terms_days, default_currency, footer_text, series_start, updated_at, revision, peppol_id, kid_length, kid_algorithm, work_vat_code_hours, work_vat_code_expenses, work_vat_code_milestones, timesheet_default, timesheet_person_label, energy_vat_code, energy_vat_code_exempt, send_channel, logo_object_key, logo_sha256, logo_content_type, phone FROM invoices.settings WHERE id = 1 FOR SHARE
 `
 
 // ShareSettings takes the settings row FOR SHARE: the issue's seller snapshot
@@ -161,6 +296,10 @@ func (q *Queries) ShareSettings(ctx context.Context) (InvoicesSetting, error) {
 		&i.EnergyVatCode,
 		&i.EnergyVatCodeExempt,
 		&i.SendChannel,
+		&i.LogoObjectKey,
+		&i.LogoSha256,
+		&i.LogoContentType,
+		&i.Phone,
 	)
 	return i, err
 }
@@ -183,22 +322,23 @@ UPDATE invoices.settings SET
     default_payment_terms_days = $14,
     default_currency = $15,
     footer_text = $16,
-    series_start = $17,
-    peppol_id = $18,
-    kid_length = $19,
-    kid_algorithm = $20,
-    work_vat_code_hours = $21,
-    work_vat_code_expenses = $22,
-    work_vat_code_milestones = $23,
-    timesheet_default = $24,
-    timesheet_person_label = $25,
-    energy_vat_code = $26,
-    energy_vat_code_exempt = $27,
-    send_channel = $28,
-    updated_at = $29::timestamptz,
+    phone = $17,
+    series_start = $18,
+    peppol_id = $19,
+    kid_length = $20,
+    kid_algorithm = $21,
+    work_vat_code_hours = $22,
+    work_vat_code_expenses = $23,
+    work_vat_code_milestones = $24,
+    timesheet_default = $25,
+    timesheet_person_label = $26,
+    energy_vat_code = $27,
+    energy_vat_code_exempt = $28,
+    send_channel = $29,
+    updated_at = $30::timestamptz,
     revision = revision + 1
 WHERE id = 1
-RETURNING id, legal_name, organisation_number, vat_registered, in_foretaksregisteret, address_line1, address_line2, postal_code, city, country, bank_account, iban, bic, email, default_payment_terms_days, default_currency, footer_text, series_start, updated_at, revision, peppol_id, kid_length, kid_algorithm, work_vat_code_hours, work_vat_code_expenses, work_vat_code_milestones, timesheet_default, timesheet_person_label, energy_vat_code, energy_vat_code_exempt, send_channel
+RETURNING id, legal_name, organisation_number, vat_registered, in_foretaksregisteret, address_line1, address_line2, postal_code, city, country, bank_account, iban, bic, email, default_payment_terms_days, default_currency, footer_text, series_start, updated_at, revision, peppol_id, kid_length, kid_algorithm, work_vat_code_hours, work_vat_code_expenses, work_vat_code_milestones, timesheet_default, timesheet_person_label, energy_vat_code, energy_vat_code_exempt, send_channel, logo_object_key, logo_sha256, logo_content_type, phone
 `
 
 type UpdateSettingsParams struct {
@@ -218,6 +358,7 @@ type UpdateSettingsParams struct {
 	DefaultPaymentTermsDays int32
 	DefaultCurrency         string
 	FooterText              string
+	Phone                   string
 	SeriesStart             int64
 	PeppolID                *string
 	KidLength               *int16
@@ -241,7 +382,8 @@ type UpdateSettingsParams struct {
 // documents and reminders are sent from (integrations design T6; null is
 // Disabled, and the caller decides whether a request that leaves it out keeps
 // the stored one), and moves
-// the revision on. The
+// the revision on. The phone is the seller's (invoices phase 6 design I4);
+// the logo is SetSettingsLogo's and ClearSettingsLogo's, never this one's. The
 // label's CHECK refuses anything but initials, number or name. The caller holds the row (LockSettings) and has checked the
 // revision and the series lock.
 func (q *Queries) UpdateSettings(ctx context.Context, arg UpdateSettingsParams) (InvoicesSetting, error) {
@@ -262,6 +404,7 @@ func (q *Queries) UpdateSettings(ctx context.Context, arg UpdateSettingsParams) 
 		arg.DefaultPaymentTermsDays,
 		arg.DefaultCurrency,
 		arg.FooterText,
+		arg.Phone,
 		arg.SeriesStart,
 		arg.PeppolID,
 		arg.KidLength,
@@ -309,6 +452,10 @@ func (q *Queries) UpdateSettings(ctx context.Context, arg UpdateSettingsParams) 
 		&i.EnergyVatCode,
 		&i.EnergyVatCodeExempt,
 		&i.SendChannel,
+		&i.LogoObjectKey,
+		&i.LogoSha256,
+		&i.LogoContentType,
+		&i.Phone,
 	)
 	return i, err
 }

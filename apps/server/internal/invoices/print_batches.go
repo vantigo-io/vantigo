@@ -379,7 +379,12 @@ func (s *server) storePrintedLetter(ctx context.Context, batchID, letterID int64
 		warn("read", err)
 		return nil
 	}
-	_, body, err := renderLetter(letter, inv, payLink)
+	logo, logoType, err := s.documentLogo(ctx, inv)
+	if err != nil {
+		warn("read", err)
+		return nil
+	}
+	_, body, err := renderLetter(letter, inv, payLink, logo, logoType)
 	if err != nil {
 		warn("rendered", err)
 		return nil
@@ -447,6 +452,7 @@ func (r batchPDF) VisitGetInvoicesReminderPrintBatchesByIdPdfResponse(w http.Res
 func (s *server) GetInvoicesReminderPrintBatchesByIdPdf(ctx context.Context, req gen.GetInvoicesReminderPrintBatchesByIdPdfRequestObject) (gen.GetInvoicesReminderPrintBatchesByIdPdfResponseObject, error) {
 	var batch store.InvoicesReminderPrintBatch
 	var models []reminderModel
+	var modelInvoices []store.InvoicesInvoice
 	var letters []store.InvoicesReminder
 	err := s.withReadTx(ctx, func(ctx context.Context, q *store.Queries) error {
 		var err error
@@ -478,6 +484,7 @@ func (s *server) GetInvoicesReminderPrintBatchesByIdPdf(ctx context.Context, req
 				return err
 			}
 			models = append(models, m)
+			modelInvoices = append(modelInvoices, inv)
 		}
 		return nil
 	})
@@ -488,6 +495,13 @@ func (s *server) GetInvoicesReminderPrintBatchesByIdPdf(ctx context.Context, req
 		return nil, err
 	case len(models) == 0:
 		return gen.GetInvoicesReminderPrintBatchesByIdPdf404Response{}, nil
+	}
+	// Each letter's logo, its invoice's (invoices phase 6 design I3), read
+	// from the store after the snapshot, as a letter's own PDF reads it.
+	for i := range models {
+		if models[i].logo, models[i].logoType, err = s.documentLogo(ctx, modelInvoices[i]); err != nil {
+			return nil, err
+		}
 	}
 	postOn := utcDay(batch.PostOn.Time)
 	body, err := renderLettersPDF(models, postOn, fmt.Sprintf("Reminder letters, print batch %d", batch.ID))

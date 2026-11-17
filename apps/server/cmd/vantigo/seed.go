@@ -304,6 +304,13 @@ func seedDemoDataset(ctx context.Context, pool *pgxpool.Pool, logger *slog.Logge
 		return err
 	}
 
+	// The seller's logo is stored before the transaction, so the seller and
+	// the issued invoices can name it (invoices phase 6 design I1, I2).
+	invoiceLogo, err := storeDemoInvoiceLogo(ctx, cfg)
+	if err != nil {
+		return err
+	}
+
 	var skipped bool
 	var createdDefaultOwner bool
 	err = db.WithTx(ctx, pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
@@ -353,7 +360,7 @@ func seedDemoDataset(ctx context.Context, pool *pgxpool.Pool, logger *slog.Logge
 			return fmt.Errorf("seed time and expenses: %w", err)
 		}
 
-		if err := seedInvoicesReceivables(ctx, tx, now, userIDs, customerIDs, projectIDs); err != nil {
+		if err := seedInvoicesReceivables(ctx, tx, now, userIDs, customerIDs, projectIDs, invoiceLogo); err != nil {
 			return fmt.Errorf("seed invoices: %w", err)
 		}
 
@@ -1522,10 +1529,19 @@ func seedTimeAndExpenses(ctx context.Context, tx pgx.Tx, now time.Time, userIDs 
 	return nil
 }
 
-func seedInvoicesReceivables(ctx context.Context, tx pgx.Tx, now time.Time, userIDs []uuid.UUID, customerIDs []int32, projectIDs []int32) error {
+// seedInvoicesReceivables seeds the seller and thirty invoices. logo is the
+// seller's logo, stored already, or nil without an object store: the
+// settings and the issued invoices' snapshots name it, with the phone
+// (invoices phase 6 design I1, I2, I4).
+func seedInvoicesReceivables(ctx context.Context, tx pgx.Tx, now time.Time, userIDs []uuid.UUID, customerIDs []int32, projectIDs []int32, logo *demoLogo) error {
 	sellerOrg := "987654325"
 	sellerBank := norwegianBankAccount("1506100001")
 	ownerID := userIDs[0]
+	var logoKey, logoSHA, logoType *string
+	if logo != nil {
+		png := "image/png"
+		logoKey, logoSHA, logoType = &logo.key, &logo.sha256, &png
+	}
 
 	if _, err := tx.Exec(ctx, `
 		UPDATE invoices.settings
@@ -1541,13 +1557,17 @@ func seedInvoicesReceivables(ctx context.Context, tx pgx.Tx, now time.Time, user
 		    iban = 'NO9386011117947',
 		    bic = 'DNBANOKKXXX',
 		    email = 'faktura@vantigo.local',
+		    phone = $5,
+		    logo_object_key = $6,
+		    logo_sha256 = $7,
+		    logo_content_type = $8,
 		    peppol_id = $3,
 		    default_currency = 'NOK',
 		    default_payment_terms_days = 14,
 		    series_start = 10001,
 		    updated_at = $4
 		WHERE id = 1
-	`, sellerOrg, sellerBank, "0192:"+sellerOrg, now); err != nil {
+	`, sellerOrg, sellerBank, "0192:"+sellerOrg, now, demoInvoicePhone, logoKey, logoSHA, logoType); err != nil {
 		return err
 	}
 
@@ -1685,6 +1705,9 @@ func seedInvoicesReceivables(ctx context.Context, tx pgx.Tx, now time.Time, user
 			    seller_iban = 'NO9386011117947',
 			    seller_bic = 'DNBANOKKXXX',
 			    seller_email = 'faktura@vantigo.local',
+			    seller_phone = $15,
+			    seller_logo_object_key = $16,
+			    seller_logo_sha256 = $17,
 			    issued_by_user_id = $14,
 			    issued_at = $3,
 			    updated_at = $3
@@ -1692,7 +1715,7 @@ func seedInvoicesReceivables(ctx context.Context, tx pgx.Tx, now time.Time, user
 		`,
 			invID, docNum, issueDate, dueDate,
 			buyerCustNum, buyerName, buyerOrg, buyerLine1, buyerPostal, buyerCity, buyerPeppol,
-			sellerOrg, sellerBank, ownerID,
+			sellerOrg, sellerBank, ownerID, demoInvoicePhone, logoKey, logoSHA,
 		); err != nil {
 			return err
 		}

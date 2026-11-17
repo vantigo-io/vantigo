@@ -19,7 +19,8 @@ SELECT * FROM invoices.settings WHERE id = 1 FOR UPDATE;
 -- documents and reminders are sent from (integrations design T6; null is
 -- Disabled, and the caller decides whether a request that leaves it out keeps
 -- the stored one), and moves
--- the revision on. The
+-- the revision on. The phone is the seller's (invoices phase 6 design I4);
+-- the logo is SetSettingsLogo's and ClearSettingsLogo's, never this one's. The
 -- label's CHECK refuses anything but initials, number or name. The caller holds the row (LockSettings) and has checked the
 -- revision and the series lock.
 UPDATE invoices.settings SET
@@ -39,6 +40,7 @@ UPDATE invoices.settings SET
     default_payment_terms_days = @default_payment_terms_days,
     default_currency = @default_currency,
     footer_text = @footer_text,
+    phone = @phone,
     series_start = @series_start,
     peppol_id = sqlc.narg(peppol_id),
     kid_length = sqlc.narg(kid_length),
@@ -51,6 +53,33 @@ UPDATE invoices.settings SET
     energy_vat_code = @energy_vat_code,
     energy_vat_code_exempt = @energy_vat_code_exempt,
     send_channel = sqlc.narg(send_channel),
+    updated_at = @now::timestamptz,
+    revision = revision + 1
+WHERE id = 1
+RETURNING *;
+
+-- name: SetSettingsLogo :one
+-- SetSettingsLogo names the seller's logo (invoices phase 6 design I1): the
+-- object's key, the hash of its bytes and its type, set together, and moves
+-- the revision on. The caller holds the row (LockSettings) and has stored the
+-- object.
+UPDATE invoices.settings SET
+    logo_object_key = @logo_object_key,
+    logo_sha256 = @logo_sha256,
+    logo_content_type = @logo_content_type,
+    updated_at = @now::timestamptz,
+    revision = revision + 1
+WHERE id = 1
+RETURNING *;
+
+-- name: ClearSettingsLogo :one
+-- ClearSettingsLogo removes the seller's logo (I1): the three columns
+-- cleared, the object never deleted, since an issued document's snapshot may
+-- name it. The caller holds the row (LockSettings) and has seen a logo set.
+UPDATE invoices.settings SET
+    logo_object_key = NULL,
+    logo_sha256 = NULL,
+    logo_content_type = NULL,
     updated_at = @now::timestamptz,
     revision = revision + 1
 WHERE id = 1

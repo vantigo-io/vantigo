@@ -26,7 +26,7 @@ func (q *Queries) CustomerErased(ctx context.Context, customerID int32) (bool, e
 }
 
 const deliveriesOf = `-- name: DeliveriesOf :many
-SELECT id, invoice_id, recipient, subject, message_id, pdf_sha256, sent_at, sent_by_user_id FROM invoices.deliveries
+SELECT id, invoice_id, recipient, subject, message_id, pdf_sha256, sent_at, sent_by_user_id, message FROM invoices.deliveries
 WHERE invoice_id = $1
 ORDER BY sent_at, id
 `
@@ -51,6 +51,7 @@ func (q *Queries) DeliveriesOf(ctx context.Context, invoiceID int64) ([]Invoices
 			&i.PdfSha256,
 			&i.SentAt,
 			&i.SentByUserID,
+			&i.Message,
 		); err != nil {
 			return nil, err
 		}
@@ -64,11 +65,11 @@ func (q *Queries) DeliveriesOf(ctx context.Context, invoiceID int64) ([]Invoices
 
 const insertDelivery = `-- name: InsertDelivery :one
 INSERT INTO invoices.deliveries (
-    invoice_id, recipient, subject, message_id, pdf_sha256, sent_at, sent_by_user_id
+    invoice_id, recipient, subject, message_id, pdf_sha256, sent_at, sent_by_user_id, message
 ) VALUES (
-    $1, $2, $3, $4, $5, $6::timestamptz, $7
+    $1, $2, $3, $4, $5, $6::timestamptz, $7, $8
 )
-RETURNING id, invoice_id, recipient, subject, message_id, pdf_sha256, sent_at, sent_by_user_id
+RETURNING id, invoice_id, recipient, subject, message_id, pdf_sha256, sent_at, sent_by_user_id, message
 `
 
 type InsertDeliveryParams struct {
@@ -79,10 +80,13 @@ type InsertDeliveryParams struct {
 	PdfSha256    string
 	SentAt       time.Time
 	SentByUserID uuid.UUID
+	Message      string
 }
 
-// InsertDelivery logs one send (D4) — a plain insert. Blanking the recipient
-// of a customer erased meanwhile is tr_deliveries_parent's, which reads the
+// InsertDelivery logs one send (D4) — a plain insert — with the personal
+// message it carried, ” for none (invoices phase 6 design I6). Blanking the
+// recipient and the message of a customer erased meanwhile is
+// tr_deliveries_parent's, which reads the
 // marker after its lock wait on the document; a check in this statement would
 // read a snapshot taken before that wait (D6).
 func (q *Queries) InsertDelivery(ctx context.Context, arg InsertDeliveryParams) (InvoicesDelivery, error) {
@@ -94,6 +98,7 @@ func (q *Queries) InsertDelivery(ctx context.Context, arg InsertDeliveryParams) 
 		arg.PdfSha256,
 		arg.SentAt,
 		arg.SentByUserID,
+		arg.Message,
 	)
 	var i InvoicesDelivery
 	err := row.Scan(
@@ -105,6 +110,7 @@ func (q *Queries) InsertDelivery(ctx context.Context, arg InsertDeliveryParams) 
 		&i.PdfSha256,
 		&i.SentAt,
 		&i.SentByUserID,
+		&i.Message,
 	)
 	return i, err
 }

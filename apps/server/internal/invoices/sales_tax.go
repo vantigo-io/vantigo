@@ -25,8 +25,8 @@ import (
 //
 // The seller is read from invoices.settings, the row the issue snapshots onto
 // a document (sellerSnapshot in issue.go) and so the one its PDF prints.
-// Invoices keeps no phone and no logo, so SellerProfile.Phone and
-// LogoStorageKey are "".
+// Phone and LogoStorageKey are the settings' too (invoices phase 6 design
+// I4): the logo's key within Invoices' storage scope, "" while none is set.
 
 // salesTax is this module's contracts.SalesTax.
 type salesTax struct {
@@ -115,7 +115,8 @@ func (t *salesTax) Seller(ctx context.Context) (contracts.SellerProfile, error) 
 		VATRegistered: s.VatRegistered, InForetaksregisteret: s.InForetaksregisteret,
 		AddressLine1: s.AddressLine1, AddressLine2: s.AddressLine2,
 		PostalCode: s.PostalCode, City: s.City, Country: s.Country,
-		Email: s.Email, BankAccount: s.BankAccount, IBAN: s.Iban, BIC: s.Bic, FooterText: s.FooterText,
+		Email: s.Email, Phone: s.Phone, BankAccount: s.BankAccount, IBAN: s.Iban, BIC: s.Bic, FooterText: s.FooterText,
+		LogoStorageKey: deref(s.LogoObjectKey),
 	}, nil
 }
 

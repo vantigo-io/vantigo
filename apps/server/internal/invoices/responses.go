@@ -379,7 +379,10 @@ func (s *server) renderInvoice(ctx context.Context, q *store.Queries, inv store.
 		for _, d := range sends {
 			delivery := gen.InvoicesDelivery{Id: d.ID, Subject: d.Subject, SentAt: d.SentAt, SentByUserId: d.SentByUserID}
 			if showRecipient {
-				delivery.Recipient = ptr(d.Recipient)
+				// The personal message is the sender's words to the
+				// recipient (invoices phase 6 design I6), shown to the
+				// same readers as the address.
+				delivery.Recipient, delivery.Message = ptr(d.Recipient), ptr(d.Message)
 			}
 			deliveries = append(deliveries, delivery)
 		}

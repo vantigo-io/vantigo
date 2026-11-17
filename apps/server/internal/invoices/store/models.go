@@ -227,6 +227,7 @@ type InvoicesDelivery struct {
 	PdfSha256    string
 	SentAt       time.Time
 	SentByUserID uuid.UUID
+	Message      string
 }
 
 type InvoicesErasedCustomer struct {
@@ -305,6 +306,9 @@ type InvoicesInvoice struct {
 	ProjectID                  *int32
 	ProjectReference           *string
 	Timesheet                  bool
+	SellerLogoObjectKey        *string
+	SellerLogoSha256           *string
+	SellerPhone                *string
 }
 
 type InvoicesInvoiceHold struct {
@@ -644,6 +648,10 @@ type InvoicesSetting struct {
 	EnergyVatCode           int32
 	EnergyVatCodeExempt     int32
 	SendChannel             *uuid.UUID
+	LogoObjectKey           *string
+	LogoSha256              *string
+	LogoContentType         *string
+	Phone                   string
 }
 
 type InvoicesTaxCategoryVatCode struct {
