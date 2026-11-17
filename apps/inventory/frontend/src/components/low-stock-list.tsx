@@ -1,5 +1,6 @@
 import { Anchor, Badge, Checkbox, Group, Stack, Table, Text } from "@mantine/core";
 import { Link } from "@tanstack/react-router";
+import type { ReactNode } from "react";
 import type { InventoryLowStockRow } from "../api/placements";
 import { useInventoryFormat } from "../lib/format";
 import { lowStockKey } from "../lib/low-stock";
@@ -15,6 +16,11 @@ export interface LowStockListProps {
   chosenSiteId?: number;
   /** Whether the site column is drawn: the list is not filtered to one site. */
   showSite: boolean;
+  /**
+   * What the host composes at a row's end — Purchasing's **Order…** (purchasing
+   * design P35) — or nothing; no column is drawn without it.
+   */
+  renderRowAction?: (row: InventoryLowStockRow) => ReactNode;
 }
 
 /**
@@ -24,7 +30,14 @@ export interface LowStockListProps {
  * draft to the site holds the variant (I59). Rows are chosen at one site only:
  * a row at another site than the chosen ones cannot be ticked.
  */
-export const LowStockList = ({ rows, selected, onToggle, chosenSiteId, showSite }: LowStockListProps) => {
+export const LowStockList = ({
+  rows,
+  selected,
+  onToggle,
+  chosenSiteId,
+  showSite,
+  renderRowAction,
+}: LowStockListProps) => {
   const { t, quantity, number } = useInventoryFormat();
   const selecting = selected !== undefined && onToggle !== undefined;
   const dash = (
@@ -48,6 +61,7 @@ export const LowStockList = ({ rows, selected, onToggle, chosenSiteId, showSite 
             <Table.Th ta="right">{t("maximumLevel")}</Table.Th>
             <Table.Th>{t("suggestedQuantity")}</Table.Th>
             <Table.Th>{t("elsewhere")}</Table.Th>
+            {renderRowAction && <Table.Th />}
           </Table.Tr>
         </Table.Thead>
         <Table.Tbody>
@@ -121,6 +135,7 @@ export const LowStockList = ({ rows, selected, onToggle, chosenSiteId, showSite 
                     </Text>
                   )}
                 </Table.Td>
+                {renderRowAction && <Table.Td>{renderRowAction(row)}</Table.Td>}
               </Table.Tr>
             );
           })}
