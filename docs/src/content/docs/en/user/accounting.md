@@ -414,7 +414,8 @@ and the differences — *Invoiced more than received*, *Invoiced more than order
 differs*, *Currency differs*. With **Match supplier invoices** you match the invoice there:
 **Match all received**, **Allocate…** line by line, or **Unmatch**. A match is
 **Provisional** while the invoice is a draft and **Posted** once you post it; the
-differences never stop the posting. How the match works is in
+differences never stop the posting. Deleting a matched draft takes its match off the order,
+so what it billed is to invoice again. How the match works is in
 [Purchasing](/en/user/purchasing/#supplier-invoices).
 
 ### A draft made from a purchase order
@@ -443,6 +444,7 @@ invoices**, and the books set up.
    the lines the form adds up the lines and their VAT. While the lines do not make the
    total, it says how much is left.
 4. **Save draft**. A draft can be changed and deleted freely; nothing is in the books yet.
+   A draft matched to a purchase order loses its match when it is deleted.
 5. Under **Files**, attach the invoice as you received it — a PDF or a scan. A draft needs
    one to be posted.
 6. **Post**. The voucher debits each line's account for its net with its tax code, debits

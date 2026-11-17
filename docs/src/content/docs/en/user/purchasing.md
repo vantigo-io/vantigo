@@ -1,6 +1,6 @@
 ---
 title: Purchasing
-description: The Purchasing app — the purchase order list and its filters; make a purchase order for a supplier and a receiving site, with product lines filled from the supplier's items and text lines; send it by e-mail, mark it as sent or send it again; record the supplier's confirmation; change a sent order and read its history; close a line or the whole order, reopen it, cancel it or copy it; the PDF; the suppliers and what each sells — supplier items, the preferred supplier and the price-list import with its CSV columns; the settings; the purchase proposals from low stock or Manufacturing's buy suggestions, and Create orders with Order… from those screens; the dashboard card and the product page's Suppliers card; receiving the goods — the receive screen and scanning, more or less than ordered, the order's receipts, undoing a receipt and marking a text or service line delivered; the supplier invoices — the order's invoices, Register invoice, matching an invoice from Accounting's Purchase order panel, the differences, what posting and reversing the invoice do, the last price, and Received, not invoiced with its CSV; and what comes later — inbound EHF, payment files and supplier returns.
+description: The Purchasing app — the purchase order list and its filters; make a purchase order for a supplier and a receiving site, with product lines filled from the supplier's items and text lines; send it by e-mail, mark it as sent or send it again; record the supplier's confirmation; change a sent order and read its history; close a line or the whole order, reopen it, cancel it or copy it; the PDF; the suppliers and what each sells — supplier items, the preferred supplier and the price-list import with its CSV columns; the settings; the purchase proposals from low stock or Manufacturing's buy suggestions, and Create orders with Order… from those screens; the dashboard card and the product page's Suppliers card; receiving the goods — the receive screen and scanning, more or less than ordered, the order's receipts, undoing a receipt and marking a text or service line delivered; the supplier invoices — the order's invoices, Register invoice, matching an invoice from Accounting's Purchase order panel, the differences, what posting, reversing and deleting the invoice do, the last price, and Received, not invoiced with its CSV; and what comes later — inbound EHF, payment files and supplier returns.
 sidebar:
   order: 68
 sources:
@@ -292,6 +292,8 @@ carried, the service done — choose **Mark delivered** on the line of a sent or
 received order; the line then says *Delivered …*. **Not delivered** takes the mark off
 again, on a received order too, which is then partially received — or sent, when nothing
 else on it has come. A goods line is received instead, and a closed line is not marked.
+**Not delivered** is refused while a supplier invoice bills the line: unmatch the invoice
+first.
 
 Receiving, undoing and marking a line delivered need **Receive goods**.
 
@@ -358,13 +360,14 @@ invoice's matches with their differences.
   line again takes the new quantity.
 - **Unmatch** takes one line's match back, or a whole order's.
 
-More than is received and not invoiced on a line asks first — *Match anyway* matches it,
+Quantities and amounts take a decimal comma or a point. More than is received and not invoiced on a line asks first — *Match anyway* matches it,
 and the line then shows *Invoiced more than received*. A credit note lowers what is invoiced
 and is never matched for more than is invoiced on a line. An invoice of another supplier
 than the order's, in another currency than the order's, or reversed, is not matched; an
-invoice line matched to another order line is unmatched first. Those without **Use
-Accounting** see the panel with the invoice's line numbers and the matched quantities, not
-the lines' texts and amounts.
+invoice line matched to another order line is unmatched first. A reversed invoice is matched
+to nothing, but a match a credit note held on it stays, and **Unmatch** takes it back. Those
+without **Use Accounting** see the panel only for an invoice matched to an order, with the
+matched quantities alone — no invoice lines, amounts or suggested orders.
 
 ### The differences
 
@@ -376,7 +379,8 @@ A match shows its differences as warnings; they never stop a posting:
   quantity by more than the **Price tolerance** in the [settings](#settings).
 - **Currency differs** — the invoice is in another currency than the order.
 
-The panel and Accounting's badge count them.
+The panel and Accounting's badge count them, a line's own — invoiced more than received or
+ordered — once however many invoice lines bill it.
 
 ### When the invoice is posted or reversed
 
@@ -384,12 +388,22 @@ A draft's match is **Provisional**; it is **Posted** when the invoice is posted 
 Accounting, and the prices are judged again from the posted lines. Each matched product
 line's price per unit on the posted invoice then becomes the supplier item's price, marked
 as set by the invoice on its date — unless the invoice is in another currency than the
-supplier item, or the price was set after the invoice's date. A posted invoice whose
-supplier was changed on the draft no longer bills the order, and its match is removed.
+supplier item, or the price was set after the invoice's date, or set by a person or an
+import on that date. A posted invoice whose supplier was changed on the draft no longer
+bills the order, and its match is removed. An invoice posted before it was matched is
+matched as posted.
 
 **Reverse and copy** in Accounting takes the match off the reversed invoice and gives it to
 the copy, provisional again, so what is invoiced stays as it was. An undo of a receipt is
 refused while what it brought in is invoiced: unmatch the invoice first.
+
+### When the draft is deleted
+
+Deleting a draft supplier invoice in Accounting — one you typed, one **Register invoice**
+made, or the copy **Reverse and copy** made — takes its matches off the order, so what they
+counted is to invoice again and **Register invoice** takes it once more. A match a credit
+note holds stays until the credit note is unmatched; then **Unmatch** on the order's
+invoice takes it back, though Accounting no longer has the invoice.
 
 ### Received, not invoiced
 
