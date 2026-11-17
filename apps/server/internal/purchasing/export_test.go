@@ -50,6 +50,8 @@ func RunCycle(ctx context.Context, w worker.Worker) (int, error) {
 		return w.cycle(ctx), nil
 	case *deletionsWorker:
 		return w.cycle(ctx), nil
+	case *followupWorker:
+		return w.cycle(ctx), nil
 	}
 	return 0, fmt.Errorf("purchasing: %s is not one of this module's workers", w.Name())
 }
