@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { purchasingAccessOf, purchasingHomeFor, supplierFormHasBooks } from "./purchasing-access";
+import {
+  canOrderFromProposals,
+  purchasingAccessOf,
+  purchasingHomeFor,
+  supplierFormHasBooks,
+} from "./purchasing-access";
 
 describe("what the Purchasing pages may offer", () => {
   it("asks purchasing:access beside each Purchasing key", () => {
@@ -46,5 +51,13 @@ describe("what the Purchasing pages may offer", () => {
     expect(supplierFormHasBooks(["accounting:read", "accounting:suppliers-manage"])).toBe(false);
     expect(supplierFormHasBooks(["accounting:post"])).toBe(false);
     expect(supplierFormHasBooks(undefined)).toBe(false);
+  });
+
+  it("offers Order… only with Purchasing on and purchasing:orders-manage beside purchasing:access (P35)", () => {
+    const buyer = ["purchasing:access", "purchasing:orders-manage"];
+    expect(canOrderFromProposals(buyer, ["inventory", "purchasing"])).toBe(true);
+    expect(canOrderFromProposals(buyer, ["inventory"])).toBe(false);
+    expect(canOrderFromProposals(["purchasing:access"], ["purchasing"])).toBe(false);
+    expect(canOrderFromProposals(["purchasing:orders-manage"], ["purchasing"])).toBe(false);
   });
 });
