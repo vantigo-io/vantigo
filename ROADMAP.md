@@ -790,15 +790,14 @@ the Orders service so order lines resolve prices the same way the catalog does.
 
 ### Phase 5 — Operational readiness (align with Inventory)
 
-Unit-of-measure conversions (base unit + conversion factor) and supplier records
-per product/variant (vendor SKU, lead time, minimum order quantity), designed with
-Orders. Packagings — a box of 15, a Euro pallet of 40 boxes, each with its own GTIN —
+Unit-of-measure conversions (base unit + conversion factor), designed with Orders.
+Supplier records per variant — the supplier's item number, price, lead time, minimum and
+multiple — left this phase for [Purchasing](#purchasing)'s supplier items (its delivery A). Packagings — a box of 15, a Euro pallet of 40 boxes, each with its own GTIN —
 moved to [Inventory](#inventory)'s phase 1, which needed them first, and were
 **delivered by its delivery B**: up to ten per variant, built from one another, edited
 on the product page, their barcodes unique with the variants' (migration `00109`).
 
-*Unblocks:* purchasing in other units than the stock unit, and supplier records on
-Inventory's goods receipts; designed together with Orders.
+*Unblocks:* purchasing in other units than the stock unit; designed together with Orders.
 
 ### Later
 
@@ -919,13 +918,13 @@ site and exports as CSV; the dashboard raises low stock per site. Documented in
 **Lots, serials, expiry, FEFO and traceability** wait for [Manufacturing](#manufacturing),
 on a transfer too.
 **Negative stock**, allowed per site by an administrator, waits for Point of sale.
-**Purchase orders from the low-stock list**, and incoming from open purchase orders, wait
-for Purchasing; **transfer and low-stock domain events** for a consumer; **a daily
+**Purchase orders from the low-stock list** wait for [Purchasing](#purchasing)'s proposals
+(its delivery C) — what is on its sent orders already counts as *on order*; **transfer and low-stock domain events** for a consumer; **a daily
 low-stock mail, a shelf-level minimum, a reorder point per location and transfer lines
 from a spreadsheet** for demand; **per-site permissions** (only
 the destination receives) for the platform. **Units other than packagings** (kg, litre, purchase units) wait for
-Products phase 5, and **supplier records on receipts** — and with them a supplier column
-in the low-stock CSV — for the same phase with Orders.
+Products phase 5, and **a supplier column in the low-stock CSV** for Purchasing's
+supplier items.
 **Camera scanning** waits for browser support of `BarcodeDetector`, **thermal label
 printers** (ZPL) for demand, **valuation** for a ledger, and the store flag *sells at
 the till* for Point of sale.
@@ -948,17 +947,20 @@ Inventory and Products.
 The design was revised after a critic review, and the owner answered its first question
 on 2026-11-17: the books are kept in Vantigo. It is planned in
 [`docs/superpowers/plans/2026-11-17-purchasing-plan.md`](docs/superpowers/plans/2026-11-17-purchasing-plan.md)
-as one stack of pull requests, one delivery each; building has not started.
+as one stack of pull requests, one delivery each. Delivery 0 and delivery A are built
+(in review); B, C and D are next.
 
-- **0 — The seams.** The supplier directory (`contracts.SupplierDirectory`) and the
+- **0 — The seams (built, in review).** The supplier directory (`contracts.SupplierDirectory`) and the
   register usable before the books are set up; `StockLedger.Receive`, a receipt with its
   source; open purchases as *incoming* for Inventory and Manufacturing
   (`contracts.PurchaseSupply`); Accounting's first events, for a supplier invoice posted
   and reversed.
-- **A — Supplier items and purchase orders.** What a supplier sells of a variant — its
-  item number, price, packaging, lead time, minimum and multiple; an order in the
-  supplier's currency with a number, a PDF and a mail, the supplier's confirmation, and
-  every change after sending kept.
+- **A — Supplier items and purchase orders (built, in review).** What a supplier sells of
+  a variant — its item number, price, packaging, lead time, minimum and multiple, with a
+  price-list import; an order in the supplier's currency with a number, a PDF and a mail
+  (Send, Mark as sent, Send again), the supplier's confirmation, Close, Reopen, Cancel and
+  Copy, every change after sending kept, and its open quantities *on order* in Inventory.
+  See [`docs/src/content/docs/en/reference/purchasing.md`](docs/src/content/docs/en/reference/purchasing.md).
 - **B — Receipts.** Goods received against an order, partial or whole, into locations
   with lots and serials; the remainder closed; a receipt taken back; *incoming* on the
   low-stock list.
@@ -968,10 +970,9 @@ as one stack of pull requests, one delivery each; building has not started.
   in its reference; ordered, received and invoiced per line; differences as warnings;
   received not invoiced as a list.
 
-If the design's defaults stand, three lines elsewhere in this file change with delivery
-A: supplier records per variant leave [Products](#products) phase 5 for this module,
-which keeps the unit conversions; and inbound EHF and supplier invoices paid with KID
-are Accounting's phase 2, not this module's.
+With delivery A, supplier records per variant left [Products](#products) phase 5 for this
+module, which keeps the unit conversions; and inbound EHF and supplier invoices paid with
+KID are [Accounting](#accounting)'s phase 2, not this module's.
 
 ### Later
 
@@ -1178,6 +1179,14 @@ landing as one stack of pull requests, one delivery each. Accounting requires In
   voucher.
 - **E — SAF-T.** Financial 1.40 export, and import as opening balances.
 - **F — Bank.** camt.053 and CSV statements, reconciliation; the Folio bank feed.
+
+### Phase 2 — Inbound EHF and payment files (next, after Purchasing's phase 1)
+
+Inbound EHF landing as a supplier-invoice draft with the purchase order's number in its
+reference, a second person's approval of a supplier invoice, and payment files
+(pain.001) paying supplier invoices with KID, with Folio payment drafts. It needs
+receiving on the access-point port, and research of its own (Purchasing design §13 and
+§14, question 3).
 
 ### Later
 
@@ -1726,7 +1735,7 @@ the [design](docs/superpowers/specs/2026-11-13-bank-feed-folio-design.md) and th
 [plan](docs/superpowers/plans/2026-11-14-bank-feed-folio-plan.md). Left for later (design,
 *Later*): a second adapter — an aggregator such as Aritma rather than another bank —
 company cards and reimbursements paid from the bank in Expenses, and supplier invoices
-paid with KID in Purchasing.
+paid with KID — payment files with KID, in [Accounting](#accounting)'s phase 2.
 
 ### Later
 

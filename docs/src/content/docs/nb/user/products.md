@@ -106,6 +106,11 @@ sine med utløpsdato og status, hvert med lenke til siden for partiet, og et lag
 sperret eller utløpt beholdning sier *herav … sperret eller utløpt*. En tjeneste har ikke noe beholdningskort. Se
 [Lager](/nb/user/inventory/).
 
+Når organisasjonen bruker Innkjøp og du har `purchasing:access`, lister kortet
+**Leverandører** leverandørvarene for produktets varianter: hvilken leverandør som selger
+hver, til hvilken pris og hvilken leverandør som er foretrukket. Leverandørvarene føres i
+Innkjøp, på siden for leverandøren. Se [Innkjøp](/nb/user/purchasing/#leverandørvarer).
+
 ## Varianter og enheter
 
 En variant er det som faktisk selges: den bærer **SKU**, **Enhet**, **Enhetskostnad**
@@ -346,6 +351,10 @@ slettes.**): flytt de produktene til en annen mva-kategori først.
   lagersted, i enheten deres eller i [pakningene](#pakninger) deres, legger kortet
   **Beholdning** til produktsiden og kolonnen **Beholdning** til listen. Se
   [Lager](/nb/user/inventory/).
+- **Innkjøp** — holder det hver leverandør selger av en variant og bestiller variantene
+  fra leverandører, legger kortet **Leverandører** til produktsiden, og hindrer at en
+  variant en leverandørvare eller en linje på en innkjøpsordre nevner, slettes. Se
+  [Innkjøp](/nb/user/purchasing/).
 - **Fakturaer** — fakturalinjer skrives på selve fakturaen (beskrivelse, antall, enhet,
   enhetspris og mva-kode) og leser ikke katalogen. Se
   [referansen for Fakturaer](/en/reference/invoices/).

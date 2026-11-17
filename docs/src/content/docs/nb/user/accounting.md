@@ -380,8 +380,8 @@ opplysningene om det er ikke personopplysninger.
 Leverandørene kan føres før regnskapet er satt opp — en innkjøper kan legge inn selskapene
 dere kjøper fra først; standardkontoen og mva-koden gis når regnskapet finnes.
 
-Når en annen app har dokumenter som nevner en leverandør — innkjøpsordrene, når Innkjøp er
-på — slettes ikke leverandøren mens noen gjør det, og en person anonymiseres ikke mens et
+Når en annen app har dokumenter som nevner en leverandør — innkjøpsordrene og leverandørvarene,
+når Innkjøp er på — slettes ikke leverandøren mens noen gjør det, og en person anonymiseres ikke mens et
 åpent gjør det: avvisningen sier hvor mange. **Eksporter leverandørens opplysninger** tar
 med det de appene har om personen, og **Anonymiser** tar personen ut av dem også.
 
@@ -395,7 +395,9 @@ endring avvises ikke fordi kontoen er gjort inaktiv siden. **Slett** og **Anonym
 
 **Leverandører** her er et skjermbilde i Regnskap, bak **Bruke Regnskap**: den som bare har
 **Vedlikeholde leverandører**, ser det ikke. Innkjøperens eget skjermbilde for registeret
-kommer med Innkjøp-appen; til da fører de leverandører gjennom Assistenten eller API-et.
+kommer med Innkjøp-appen: **Ny leverandør** i listen **Leverandører** der, og **Rediger
+leverandør** på siden for en leverandør der for dem som også har **Bruke Regnskap**
+([Innkjøp](/nb/user/purchasing/#leverandører-og-leverandørvarene-deres)).
 
 ## Leverandørfakturaer
 
