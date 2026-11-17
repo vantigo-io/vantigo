@@ -270,6 +270,14 @@ type Deps struct {
 	// "nothing is on order".
 	SupplierInvoiceMatches contracts.SupplierInvoiceMatches
 	PurchaseSupply         contracts.PurchaseSupply
+	// PurchaseDemand is what should be bought (contracts.PurchaseDemand,
+	// purchasing design P31, A4), the one source Purchasing's proposals read:
+	// Manufacturing's buy suggestions where Manufacturing is enabled,
+	// Inventory's low stock where it is not. Compose and Workers set it right
+	// after PurchaseSupply (withSuppliers), from the enabled modules that
+	// declare Module.PurchaseDemand less those another of them supersedes
+	// (Module.PurchaseDemandSupersedes); nil when none is enabled.
+	PurchaseDemand contracts.PurchaseDemand
 	// SupplierReferenceHolders are every given module's
 	// contracts.SupplierReferenceHolder (P10, A8, rule 28), enabled or not,
 	// and SupplierPersonalData every given module's
@@ -763,6 +771,17 @@ type Module struct {
 	SupplierInvoices       func(Deps) contracts.SupplierInvoices
 	SupplierInvoiceMatches func(Deps) contracts.SupplierInvoiceMatches
 	PurchaseSupply         func(Deps) contracts.PurchaseSupply
+	// PurchaseDemand builds this module's contracts.PurchaseDemand, if it
+	// computes what should be bought (inventory, manufacturing; purchasing
+	// design A4), and PurchaseDemandSupersedes names the modules whose
+	// provider this one replaces when both are enabled — Manufacturing's
+	// projection nets production and sales demand that Inventory's low stock
+	// does not, so its buy rows are the proposals and Inventory's are not
+	// asked. Of the enabled declarers less the superseded, at most one may
+	// remain; Compose and Workers call it after PurchaseSupply, so a provider
+	// may read deps.PurchaseSupply while it serves.
+	PurchaseDemand           func(Deps) contracts.PurchaseDemand
+	PurchaseDemandSupersedes []string
 	// SupplierReferences builds this module's
 	// contracts.SupplierReferenceHolder, if it keeps documents naming a
 	// supplier (purchasing design P10), and SupplierPersonalData its
