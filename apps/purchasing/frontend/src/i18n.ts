@@ -1,4 +1,5 @@
 import { type CatalogResources, registerCatalog } from "@vantigo/frontend-shell";
+import { proposalWords } from "./i18n-proposals";
 
 /**
  * The `purchasing` catalog, flat keys, in English and Norwegian bokmål. The
@@ -12,6 +13,7 @@ import { type CatalogResources, registerCatalog } from "@vantigo/frontend-shell"
  */
 export const purchasingCatalog = {
   en: {
+    ...proposalWords.en,
     purchasing: "Purchasing",
     navOrders: "Purchase orders",
     navReceive: "Receive",
@@ -487,6 +489,7 @@ export const purchasingCatalog = {
     scanLotUnread: "The lot could not be read from the code: type the lot number.",
   },
   nb: {
+    ...proposalWords.nb,
     purchasing: "Innkjøp",
     navOrders: "Innkjøpsordrer",
     navReceive: "Motta",

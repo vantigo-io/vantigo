@@ -16,6 +16,7 @@ import { ProductSuppliersCard } from "../components/product-suppliers-card";
 import type { PurchasingAccess } from "../lib/access";
 import {
   NEW_PURCHASE_ORDER_ROUTE_PATH,
+  PROPOSALS_ROUTE_PATH,
   PURCHASE_ORDER_ROUTE_PATH,
   PURCHASE_ORDERS_ROUTE_PATH,
   RECEIVE_PURCHASE_ORDER_ROUTE_PATH,
@@ -24,9 +25,11 @@ import {
   SUPPLIER_ROUTE_PATH,
   SUPPLIERS_ROUTE_PATH,
   validateNewPurchaseOrderSearch,
+  validateProposalsSearch,
 } from "../lib/routes";
 import { NewPurchaseOrderPage, PurchaseOrderPage } from "../pages/order";
 import { PurchaseOrdersPage } from "../pages/orders";
+import { ProposalsPage } from "../pages/proposals";
 import { ReceivePurchaseOrderPage } from "../pages/receive";
 import { ReceivingPage } from "../pages/receiving";
 import { PurchasingSettingsPage } from "../pages/settings";
@@ -90,8 +93,15 @@ const routeTree = (access: PurchasingAccess, renderSupplierForm?: RenderSupplier
       />
     ),
   });
+  const proposals = createRoute({
+    getParentRoute: () => root,
+    path: PROPOSALS_ROUTE_PATH,
+    validateSearch: validateProposalsSearch,
+    component: () => <ProposalsPage access={access} {...proposals.useSearch()} />,
+  });
   return root.addChildren([
     route(PURCHASE_ORDERS_ROUTE_PATH, () => <PurchaseOrdersPage access={access} />),
+    proposals,
     newOrder,
     orderRoute,
     receiveRoute,
