@@ -1864,3 +1864,12 @@ dispatcher enforces for an agent's run ([module boundaries rule
 `customerId` filter (filled in when left out, refused when it names another), and `GET
 /conversations/{id}` is refused when its `customerId` is not the run's customer. A run with no
 customer reads neither.
+
+## API keys
+
+The anonymous public media operations (`getCommunicationsPublicMediaByToken`,
+`headCommunicationsPublicMediaByToken`) are `x-vantigo-api: never`. An integration cannot be
+mentioned in an internal note (`mentions` answers *Every mentioned user must be a known,
+active user.*), is never mailed about a mention, and is never offered as an assignee. See
+[integration users](/en/admin/authentication/#integration-users), and the marks' rules in
+[module boundaries](/en/contributing/module-boundaries/#the-rules).

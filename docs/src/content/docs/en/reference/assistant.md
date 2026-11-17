@@ -1053,3 +1053,10 @@ canary's outcomes with **Continue** and **Stop**; then a progress bar with the c
 seconds; and the end, with the summary, the first 50 failed items and **Download failed items (CSV)**. The badge says *working* while a
 job runs and *waiting for you* while it waits for **Continue**, and the screen refreshes when the canary is done and when the job ends.
 **Workspace admin** › **Assistant** also holds the budget field and the usage table.
+
+## API keys
+
+Every operation of the Assistant is `x-vantigo-api: never`. A key does not drive the
+Assistant: its conversations, runs and pending actions are a person's, under that person's
+session. See [integration users](/en/admin/authentication/#integration-users), and the
+marks' rules in [module boundaries](/en/contributing/module-boundaries/#the-rules).

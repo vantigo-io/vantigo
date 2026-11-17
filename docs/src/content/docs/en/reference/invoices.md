@@ -6399,3 +6399,11 @@ The Assistant can point at these controls in a guided tour ([the registry](/en/r
 | `invoices.invoice.issue` | `/invoices/{invoiceId}` | Issue |
 | `invoices.settings.logo` | `/invoices/settings` | Upload logo |
 | `invoices.send.message` | `/invoices/{invoiceId}` | Message (the Send dialog) |
+
+## API keys
+
+The public pay page's operations (`postInvoicesPayRead`, `postInvoicesPayAttempts`,
+`getInvoicesPayAttemptsByReference`) are `x-vantigo-api: never`: they answer the customer
+who holds the page's token, not an application. See [integration
+users](/en/admin/authentication/#integration-users), and the marks' rules in [module
+boundaries](/en/contributing/module-boundaries/#the-rules).

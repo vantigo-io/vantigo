@@ -1894,3 +1894,11 @@ bank](#status-codes-of-the-bank).
 ## Endpoints
 
 Every operation, with its request, its responses and the permission it is checked against, is in the generated API reference (`/en/reference/api/accounting/`), built from the contract.
+
+## API keys
+
+`previewAccountingBankCsv` and `previewAccountingVoucher` write nothing, and are marked
+`x-vantigo-api: read`: a read-only API key may call them. `accounting:close` cannot be
+delegated, so no API key holds it, and the chart, the opening balances and the lock stay an
+Owner's. See [integration users](/en/admin/authentication/#integration-users), and the
+marks' rules in [module boundaries](/en/contributing/module-boundaries/#the-rules).
