@@ -1,7 +1,7 @@
 # Purchasing — supplier items, purchase orders, receipts, proposals and the invoice match (phase 1)
 
-Revision 2, 2026-11-17, after a critic review against the code. **§15 amends earlier
-decisions and wins where they differ**; §16 lists what changed. This spec builds on the research
+Revision 3, 2026-11-17, after delivery 0 was built and reviewed. **§15 amends earlier
+decisions and wins where they differ** (A22 to A28 record what delivery 0 built); §16 lists what changed. This spec builds on the research
 `docs/superpowers/research/2026-11-17-purchasing-module.md` ("R"). It does not reopen
 R §8, and it takes the defaults R §9 took for the readings; §14 says what an overturn of
 each would change. Decisions are numbered P*n*. The implementation plan is
@@ -432,7 +432,7 @@ Each is answered by default; the plan is written from the defaults unless overtu
 
 **Answered 2026-11-17, the owner:** the first customer keeps its books in Vantigo, so
 question 1's default stands and delivery D matches against Accounting's supplier
-invoices alone. Questions 2 to 7 stand at their defaults until the owner says otherwise.
+invoices alone. Questions 2 to 8 stand at their defaults until the owner says otherwise.
 
 1. **Purchasing requires Accounting** (P1, P2) — the riskiest default. Accounting
    requires Invoices, and delivery D works only once the books are set up. A business
@@ -455,6 +455,14 @@ invoices alone. Questions 2 to 7 stand at their defaults until the owner says ot
 7. **A buyer may add a supplier** through a new, narrower Accounting key,
    `accounting:suppliers-manage` (A12). Overturned, only a holder of `accounting:post`
    adds suppliers, and a buyer asks the bookkeeper.
+8. **A person supplier is not anonymised before the books are set up.** Anonymisation
+   waits for the bookkeeping's retention, which is counted from the books' fiscal year,
+   so before the setup it is refused (409 `books_not_set_up`, delivery 0). A workspace
+   that keeps a buyer's register but never sets up its books therefore cannot meet an
+   erasure request for a sole proprietor it buys from. **Default: leave it as is** — a
+   workspace with Purchasing on keeps its books in Vantigo (question 1). Overturned,
+   anonymisation before the books takes the supplier out at once when no voucher can
+   name it, which is every supplier then.
 
 ## 15. Amendments (revision 2)
 
@@ -607,7 +615,66 @@ them. Code references are against `main` at `64829c4e2`.
   expiry as Inventory's receipt does. The plan finds where that parsing lives
   (`srv/inventory/gs1.go`) and moves it to where Purchasing may use it.
 
+### Delivery 0, as built (revision 3)
+
+What delivery 0 built where it differs from the decisions above, after its code review.
+Each wins over what it names.
+
+- **A22 — The events carry no reference** (P5). `accounting.supplier_invoice.posted.v1`
+  and `…reversed.v1` carry the ids, the kind, the number, the dates, the currency and the
+  total — no `reference` and no description: a payload holds no free text (module
+  boundaries, rule 23). Purchasing's handlers read the reference through
+  `SupplierInvoices.Invoice` when they need it.
+- **A23 — The holders' codes** (P7, A8). A module's documents naming a supplier refuse its
+  delete with 409 `supplier_has_documents`, and its open documents refuse its
+  anonymisation with 409 `supplier_has_open_documents` — Accounting's codes, whatever the
+  holder's documents are; `supplier_has_open_orders` is not a code.
+- **A24 — The SAF-T import's supplier picks** (A2). The picks travel in the apply's body
+  (`suppliers`, per file supplier id the register's id or 0 for a new one). A supplier
+  of the file that could be several of the register's — several of one name, or one
+  another of the file's suppliers is matched to as well — is `ambiguous`, and Apply is
+  refused (409 `saft_import_ambiguous_suppliers`) until it is picked. A pick names a
+  supplier of the file (`saft_import_file_supplier_unknown`) and of the register
+  (`saft_import_supplier_unknown`), and a register supplier once
+  (`saft_import_supplier_picked_twice`); an inactive one may be picked. The register's
+  suppliers taken are held `FOR SHARE` in the apply's transaction
+  (`saft_import_supplier_gone` when one was deleted since), and an empty bank account,
+  IBAN or BIC of theirs is filled from the file — never one they have.
+- **A25 — The supplier writes are `session`, open to agents by a mark** (A12).
+  `POST /suppliers`, `PUT /suppliers/{id}` and the Brønnøysund lookup are
+  `x-vantigo-access: session` with the handler's rule: `accounting:suppliers-manage`, or
+  `accounting:post` with `accounting:read` (403 `suppliers_manage_required`). They carry
+  `x-vantigo-agent: allowed`, a new extension the OpenAPI lint accepts only beside
+  `session`, which the router carries on `Rule.Agent` and identity's agent check needs
+  to meet a session rule; these three are the only operations marked. The agents' gate
+  still allows no operation whose rule names no permission, so a virtual employee calls
+  them once a role's template and the gate say so — Purchasing's business, not delivery
+  0's.
+- **A26 — The buyer's field scope** (A12). Without `accounting:post` a caller writes every
+  field but the bank account, IBAN, BIC, default account and default tax code, and on a
+  change the person flag and the active flag (403 `supplier_fields_need_post`); a field
+  left out keeps its value. A buyer's new supplier may be a person's and in another
+  currency, and the currency stays a term the buyer changes. A books field kept as it
+  stands is not checked again, so a buyer's rename is not refused because the default
+  account was made inactive since. The register's screen in Accounting stays behind
+  `accounting:read`; the buyer's screen is Purchasing's (delivery A).
+- **A27 — A receipt's document is required, and its reversal idempotent by it alone**
+  (P3, A5, A13). `StockReceipt.Document` is required — one per receipt — and Receive reads
+  its lines with the receipt endpoint's own code: its lot, date and serial rules are the
+  line's refusals (`lot_number_invalid`, `lot_dates_invalid`, `serial_quantity`, and the
+  new `line_invalid`). `ReverseReceipt` hashes the receipt's document alone: a retry with
+  another note answers the first reversal. It checks on hand only, not reservations. The
+  lot trace ends a usage path at the reversal, and the dashboard's receipts this week and
+  a site's last receipt leave a reversed receipt out. No migration came with it:
+  `movements.kind` has no check, and `receipt_reversal` fills its varchar(16) exactly.
+- **A28 — `PurchaseDemand` has no slot until delivery C** (P31). Delivery 0 declares the
+  contract type and composes nothing; delivery C adds the slot to `module.Deps` with its
+  providers.
+
 ## 16. Revision log
+
+- **Revision 3, 2026-11-17** — delivery 0 built and reviewed: A22 to A28 (§15, *Delivery 0,
+  as built*); §14's question 8 added.
 
 - **Revision 2, 2026-11-17** — the critic review: A1 to A21 (§15); §14's question 1
   sharpened and question 7 added; §13's drop-shipment row widened.

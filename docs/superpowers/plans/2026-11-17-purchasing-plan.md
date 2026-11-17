@@ -28,12 +28,20 @@ so; nothing in this plan is started by the plan.
 | # | Branch | Delivery | Migrations claimed (main at `64829c4e2`, latest `00188`) |
 | --- | --- | --- | --- |
 | 1 | `claude/next-feature-planning-c320f7` | Research, spec, plan (docs only) | — |
-| 2 | `claude/purchasing-0-seams` | 0: the supplier directory, `Receive`, open purchases, Accounting's events | `00189_inventory_receipt_reversal` |
-| 3 | `claude/purchasing-a-orders` | A: the module, supplier items, purchase orders | `00190_purchasing_baseline` |
-| 4 | `claude/purchasing-b-receipts` | B: receipts, the remainder, *incoming* | `00191_purchasing_receipts` |
+| 2 | `claude/purchasing-0-seams` | 0: the supplier directory, `Receive`, open purchases, Accounting's events | — |
+| 3 | `claude/purchasing-a-orders` | A: the module, supplier items, purchase orders | `00189_purchasing_baseline` |
+| 4 | `claude/purchasing-b-receipts` | B: receipts, the remainder, *incoming* | `00190_purchasing_receipts` |
 | 5 | `claude/purchasing-c-proposals` | C: proposals | — |
-| 6 | `claude/purchasing-d-match` | D: the invoice match | `00192_purchasing_matches` |
-| 7 | `claude/purchasing-e-seed` | The demo seed's purchases | — |
+| 6 | `claude/purchasing-d-match` | D: the invoice match | `00191_purchasing_matches` |
+
+Delivery 0 takes no migration: `inventory.movements.kind` has no check constraint, and
+`receipt_reversal` fills its `varchar(16)` exactly. Every number is rechecked against
+`main` right before each merge.
+
+**Each delivery carries its own demo seed** (the owner, 2026-11-17). A, B, C and D each
+add what they make to the demo seed and its tests in their own layer, get their PR and
+green CI, and are merged; there is no separate seed layer at the end. Delivery 0 seeds
+nothing of Purchasing's — there is no Purchasing yet.
 
 The spec's §9 names one baseline migration. The stack takes one per delivery instead, so
 each layer's diff carries its own tables.
@@ -119,7 +127,8 @@ R, the spec, this plan and the roadmap's Purchasing section, committed as
 
 **Inventory** (`srv/inventory`):
 
-- `mig/00189`: the kind `receipt_reversal` in the movements' kind check.
+- No migration: `movements.kind` has no check, and `receipt_reversal` fits its
+  `varchar(16)` exactly (spec A27).
 - `Receive` and `ReverseReceipt` in `ledger.go`, through the engine `postMovement`
   uses, on the caller's transaction, idempotent by source; a Discontinued variant
   received (A6); the reversal taking the receipt's own lots whatever their holds and
@@ -162,7 +171,7 @@ AGENTS.md's list of the ones that have been missed:
 
 **Server** (`srv/purchasing`), on Orders' files as the model:
 
-- `mig/00190`: `settings`, `counters`, `supplier_items`, `orders`, `order_lines`,
+- `mig/00189`: `settings`, `counters`, `supplier_items`, `orders`, `order_lines`,
   `order_changes`, `documents`, `mailings`, `import_jobs`.
 - `settings.go`, `supplier_items.go` and its import through `internal/fileimport`
   (P9, P11–P14).
@@ -192,7 +201,7 @@ records; the bank feed's line names Accounting's phase 2 for KID payments (R §9
 
 ## Layer 4 — delivery B, receipts (P24–P30; A5–A7, A10, A11, A21)
 
-- `mig/00191`: `receipts`, `receipt_lines`, the receipt series.
+- `mig/00190`: `receipts`, `receipt_lines`, the receipt series.
 - `receive.go`: the pool read, `LockVariants`, the order lock and recheck, `Receive`,
   the whole transaction retried three times (A7); `acceptOver`; `clientRequestId`.
 - `undo.go`: `ReverseReceipt`, `receipt_invoiced` judged against invoiced quantities —
@@ -229,7 +238,7 @@ pages. The two pull requests link each other.
 
 ## Layer 6 — delivery D, the match (P36–P41; A1, A9–A11, A14, A15, A20)
 
-- `mig/00192`: `invoice_matches`, keyed by the supplier invoice's line.
+- `mig/00191`: `invoice_matches`, keyed by the supplier invoice's line.
 - `match.go`: the suggestion by reference; allocate, *Match all received*, unmatch;
   `credit_exceeds_invoiced`.
 - `register_invoice.go`: the dialog's fields, `CreateDraft`, 200 lines at a time,
@@ -247,11 +256,12 @@ pages. The two pull requests link each other.
 `user/accounting.md` (en, nb) and `reference/accounting.md` for the panel, the badge and
 the draft made from an order. The landing page gains the match.
 
-## Layer 7 — the demo seed
+## The demo seed, in every delivery
 
-Suppliers' items, a handful of orders in each state, receipts and one matched invoice,
-through the module's operations as Go calls, after Inventory's and before the books'.
-`docs(seed)` says what the seed puts in Purchasing.
+There is no seed layer. Each of A to D puts its own part in the demo seed, with its
+tests, in its own layer, through the module's operations as Go calls, after Inventory's
+and before the books', and says so in `docs(seed)`: A the supplier items and a handful
+of orders in each state, B receipts, C a proposal's source, D one matched invoice.
 
 ## After the stack
 
@@ -260,5 +270,5 @@ through the module's operations as Go calls, after Inventory's and before the bo
 - **Accounting's phase 2** is next: inbound EHF landing as a draft with the order
   reference in `reference`, then payment files. It needs receiving on the access-point
   port, and its own research.
-- **The owner's six remaining questions** (spec §14, 2 to 7), any of which may still be
+- **The owner's seven remaining questions** (spec §14, 2 to 8), any of which may still be
   overturned before the layer it touches is built.
