@@ -80,6 +80,7 @@ type PurchasingInvoiceRegistration struct {
 	SupplierInvoiceID int64
 	Lines             int32
 	LinesLeft         int32
+	Total             pgtype.Numeric
 	CreatedAt         time.Time
 }
 

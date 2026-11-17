@@ -73,6 +73,17 @@ func (s *server) MarkPurchasingOrderLineDelivered(ctx context.Context, req gen.M
 		if (target.DeliveredAt != nil) == b.Delivered {
 			return nil // as asked already
 		}
+		// Taking the mark off leaves nothing of the line billable: refused
+		// while an invoice bills it, as a receipt's undo is (A84).
+		if !b.Delivered && ratOrZero(target.Invoiced).Sign() > 0 {
+			name := target.Name
+			if name == "" {
+				name = target.Description
+			}
+			return conflict(codeReceiptInvoiced, "The line is invoiced", fmt.Sprintf(
+				"%s: %s %s is matched to a supplier invoice. Unmatch the invoice first.", name,
+				trimmed(ratOrZero(target.Invoiced), quantityPlaces), target.Unit))
+		}
 		deliveredAt := &now
 		if !b.Delivered {
 			deliveredAt = nil

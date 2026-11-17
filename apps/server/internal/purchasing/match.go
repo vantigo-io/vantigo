@@ -32,14 +32,16 @@ import (
 
 // A match's states and an invoice's kinds.
 const (
-	matchProvisional   = "provisional"
-	matchPosted        = "posted"
-	invoiceKind        = "invoice"
-	creditNoteKind     = "credit_note"
-	invoiceStatePost   = "posted"
-	invoiceStateRev    = "reversed"
-	accountingPosted   = "posted"
-	accountingReversed = "reversed"
+	matchProvisional    = "provisional"
+	matchPosted         = "posted"
+	invoiceKind         = "invoice"
+	creditNoteKind      = "credit_note"
+	invoiceStateOpen    = "open"
+	invoiceStatePost    = "posted"
+	invoiceStateRev     = "reversed"
+	invoiceStateDeleted = "deleted"
+	accountingPosted    = "posted"
+	accountingReversed  = "reversed"
 )
 
 // maxMatchLines is what one allocation names at most: a draft's lines.
@@ -113,6 +115,29 @@ func matchWarnings(m store.PurchasingInvoiceMatch, o store.PurchasingOrder, l st
 		out = append(out, gen.PriceDiffers)
 	}
 	return out
+}
+
+// differences counts the matches' warnings: a line's own — invoiced beyond
+// what is received or ordered — once per order line however many matches
+// bill it, a match's own once per match.
+func differences(views []gen.PurchasingInvoiceMatch) int32 {
+	seen := map[int64]map[gen.PurchasingInvoiceWarning]bool{}
+	n := int32(0)
+	for _, v := range views {
+		for _, w := range v.Warnings {
+			if w == gen.InvoicedOverReceived || w == gen.InvoicedOverOrdered {
+				if seen[v.OrderLineId] == nil {
+					seen[v.OrderLineId] = map[gen.PurchasingInvoiceWarning]bool{}
+				}
+				if seen[v.OrderLineId][w] {
+					continue
+				}
+				seen[v.OrderLineId][w] = true
+			}
+			n++
+		}
+	}
+	return n
 }
 
 // priceDiffers reports whether an invoice line's net differs from what the
@@ -277,10 +302,9 @@ func (s *server) panel(ctx context.Context, inv *contracts.SupplierInvoice) (gen
 			return err
 		}
 		for _, m := range matches {
-			v := mc.view(m, visible)
-			out.Differences += int32(len(v.Warnings))
-			out.Matches = append(out.Matches, v)
+			out.Matches = append(out.Matches, mc.view(m, visible))
 		}
+		out.Differences = differences(out.Matches)
 		left := map[int64]int32{}
 		for _, l := range mc.lines {
 			if toInvoice(l).Sign() > 0 {
@@ -294,6 +318,61 @@ func (s *server) panel(ctx context.Context, inv *contracts.SupplierInvoice) (gen
 		return nil
 	})
 	return out, err
+}
+
+// ownPanel is the panel from what Purchasing keeps of the invoice alone —
+// for a caller without accounting:read (A20, A83), and for an invoice
+// Accounting no longer has (A79): the header the matches were made with,
+// the matches with no amounts, no lines and no suggestions. header names the
+// invoice when no match is left; with neither it is not found.
+func (s *server) ownPanel(ctx context.Context, id int64, header *store.PurchasingInvoiceMatch) (gen.PurchasingInvoicePanel, error) {
+	out := gen.PurchasingInvoicePanel{InvoiceId: id, Lines: []gen.PurchasingInvoiceLine{}, Matches: []gen.PurchasingInvoiceMatch{},
+		Suggestions: []gen.PurchasingInvoiceSuggestion{}}
+	err := s.withReadTx(ctx, func(ctx context.Context, q *store.Queries) error {
+		matches, err := q.InvoiceMatches(ctx, id)
+		if err != nil {
+			return fmt.Errorf("purchasing: read invoice %d's matches: %w", id, err)
+		}
+		h := header
+		if len(matches) > 0 {
+			h = &matches[0]
+		}
+		if h == nil {
+			return notFound("supplier invoice")
+		}
+		mc, err := readMatchContext(ctx, q, matches, h.OrderID)
+		if err != nil {
+			return err
+		}
+		o := mc.orders[h.OrderID]
+		out.SupplierId, out.SupplierName = o.SupplierID, o.SupplierName
+		out.Kind, out.Number, out.Currency = h.Kind, h.InvoiceNumber, h.InvoiceCurrency
+		out.InvoiceDate = openapi_types.Date{Time: h.InvoiceDate.Time}
+		out.State = "draft"
+		st, err := q.InvoiceState(ctx, id)
+		if err != nil && !noRows(err) {
+			return fmt.Errorf("purchasing: read invoice %d's state: %w", id, err)
+		}
+		if st.State != "" && st.State != invoiceStateOpen {
+			out.State = st.State
+		}
+		for _, m := range matches {
+			out.Matches = append(out.Matches, mc.view(m, false))
+		}
+		out.Differences = differences(out.Matches)
+		return nil
+	})
+	return out, err
+}
+
+// answerPanel is the panel a write answers: Accounting's invoice to a holder
+// of accounting:read, Purchasing's own facts otherwise or when the invoice
+// is gone.
+func (s *server) answerPanel(ctx context.Context, id int64, inv *contracts.SupplierInvoice, header *store.PurchasingInvoiceMatch) (gen.PurchasingInvoicePanel, error) {
+	if inv != nil && s.has(ctx, permAccountingRead) {
+		return s.panel(ctx, inv)
+	}
+	return s.ownPanel(ctx, id, header)
 }
 
 // invoiceAnswers are the typed refusals the four invoice operations share.
@@ -311,11 +390,22 @@ func (s *server) GetPurchasingInvoiceMatch(ctx context.Context, req gen.GetPurch
 		func(p gen.PurchasingProblem) gen.GetPurchasingInvoiceMatchResponseObject {
 			return gen.GetPurchasingInvoiceMatch503ApplicationProblemPlusJSONResponse(p)
 		})
-	inv, err := s.invoiceOf(ctx, req.InvoiceId)
+	// Without accounting:read Accounting is not asked at all: the caller
+	// learns of an invoice only what its matches already tell (A83).
+	if !s.has(ctx, permAccountingRead) {
+		out, err := s.ownPanel(ctx, req.InvoiceId, nil)
+		if err != nil {
+			return answer(err, resp)
+		}
+		return gen.GetPurchasingInvoiceMatch200JSONResponse(out), nil
+	}
+	// An invoice Accounting no longer has is read from what Purchasing keeps
+	// of it while a match is left (A79).
+	inv, err := s.supplierInvoice(ctx, req.InvoiceId)
 	if err != nil {
 		return answer(err, resp)
 	}
-	out, err := s.panel(ctx, inv)
+	out, err := s.answerPanel(ctx, req.InvoiceId, inv, nil)
 	if err != nil {
 		return answer(err, resp)
 	}
@@ -408,8 +498,20 @@ func (s *server) allocate(ctx context.Context, inv *contracts.SupplierInvoice, o
 		if err != nil {
 			return err
 		}
-		if st.State == invoiceStateRev {
+		switch {
+		case st.State == invoiceStateRev:
 			return conflict(codeInvoiceReversed, "The invoice is reversed", "A reversed invoice is matched to nothing; match the copy made of it.")
+		case st.State == invoiceStateDeleted:
+			return notFound("supplier invoice")
+		case st.State == invoiceStateOpen && inv.State == accountingPosted:
+			// Posted before Purchasing took its event — before delivery D, or
+			// with the event still queued: the read moves it forward, so the
+			// match is posted and followed up (A80).
+			if err := markPosted(ctx, txq, postedFacts{id: inv.ID, supplierID: inv.SupplierID, kind: inv.Kind, number: inv.Number,
+				date: inv.InvoiceDate, currency: inv.Currency}, now); err != nil {
+				return err
+			}
+			st.State = invoiceStatePost
 		}
 		o, err := txq.LockOrder(ctx, orderID)
 		if noRows(err) {
@@ -561,7 +663,7 @@ func (s *server) MatchPurchasingInvoice(ctx context.Context, req gen.MatchPurcha
 	if err := s.allocate(ctx, inv, b.OrderId, allocs, b.AcceptOver != nil && *b.AcceptOver, by); err != nil {
 		return answer(err, resp)
 	}
-	out, err := s.panel(ctx, inv)
+	out, err := s.answerPanel(ctx, inv.ID, inv, nil)
 	if err != nil {
 		return answer(err, resp)
 	}
@@ -636,7 +738,7 @@ func (s *server) MatchAllPurchasingInvoice(ctx context.Context, req gen.MatchAll
 	if err := s.allocate(ctx, inv, o.ID, allocs, false, by); err != nil {
 		return answer(err, resp)
 	}
-	out, err := s.panel(ctx, inv)
+	out, err := s.answerPanel(ctx, inv.ID, inv, nil)
 	if err != nil {
 		return answer(err, resp)
 	}
@@ -764,18 +866,28 @@ func (s *server) UnmatchPurchasingInvoice(ctx context.Context, req gen.UnmatchPu
 		func(p gen.PurchasingProblem) gen.UnmatchPurchasingInvoiceResponseObject {
 			return gen.UnmatchPurchasingInvoice503ApplicationProblemPlusJSONResponse(p)
 		})
-	inv, err := s.invoiceOf(ctx, req.InvoiceId)
+	// An invoice Accounting no longer has — a deleted draft whose match a
+	// credit note holds (A79) — is unmatched from what Purchasing keeps.
+	inv, err := s.supplierInvoice(ctx, req.InvoiceId)
 	if err != nil {
 		return answer(err, resp)
 	}
+	id := req.InvoiceId
 	b := req.Body
+	var header *store.PurchasingInvoiceMatch
 	err = s.withLockedTx(ctx, func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error {
-		if _, err := lockInvoice(ctx, txq, inv.ID, s.deps.Clock()); err != nil {
+		if _, err := lockInvoice(ctx, txq, id, s.deps.Clock()); err != nil {
 			return err
 		}
-		all, err := txq.InvoiceMatches(ctx, inv.ID)
+		all, err := txq.InvoiceMatches(ctx, id)
 		if err != nil {
-			return fmt.Errorf("purchasing: read invoice %d's matches: %w", inv.ID, err)
+			return fmt.Errorf("purchasing: read invoice %d's matches: %w", id, err)
+		}
+		if inv == nil && len(all) == 0 {
+			return notFound("supplier invoice")
+		}
+		if len(all) > 0 {
+			header = &all[0]
 		}
 		var named []store.PurchasingInvoiceMatch
 		for _, m := range all {
@@ -794,7 +906,7 @@ func (s *server) UnmatchPurchasingInvoice(ctx context.Context, req gen.UnmatchPu
 	if err != nil {
 		return answer(err, resp)
 	}
-	out, err := s.panel(ctx, inv)
+	out, err := s.answerPanel(ctx, id, inv, header)
 	if err != nil {
 		return answer(err, resp)
 	}

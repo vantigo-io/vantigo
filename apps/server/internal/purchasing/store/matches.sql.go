@@ -223,9 +223,9 @@ func (q *Queries) InsertMatch(ctx context.Context, arg InsertMatchParams) (Purch
 }
 
 const insertRegistration = `-- name: InsertRegistration :exec
-INSERT INTO purchasing.invoice_registrations (client_request_id, request_hash, order_id, supplier_invoice_id, lines, lines_left, created_at)
+INSERT INTO purchasing.invoice_registrations (client_request_id, request_hash, order_id, supplier_invoice_id, lines, lines_left, total, created_at)
 VALUES ($1, $2, $3, $4,
-    $5, $6, $7)
+    $5, $6, $7, $8)
 `
 
 type InsertRegistrationParams struct {
@@ -235,6 +235,7 @@ type InsertRegistrationParams struct {
 	SupplierInvoiceID int64
 	Lines             int32
 	LinesLeft         int32
+	Total             pgtype.Numeric
 	Now               time.Time
 }
 
@@ -246,6 +247,7 @@ func (q *Queries) InsertRegistration(ctx context.Context, arg InsertRegistration
 		arg.SupplierInvoiceID,
 		arg.Lines,
 		arg.LinesLeft,
+		arg.Total,
 		arg.Now,
 	)
 	return err
@@ -336,6 +338,23 @@ func (q *Queries) InvoiceMatchesOf(ctx context.Context, ids []int64) ([]Purchasi
 	return items, nil
 }
 
+const invoiceState = `-- name: InvoiceState :one
+SELECT supplier_invoice_id, state, copy_id, updated_at FROM purchasing.invoice_states WHERE supplier_invoice_id = $1
+`
+
+// InvoiceState is what Purchasing knows of an invoice, read without a lock.
+func (q *Queries) InvoiceState(ctx context.Context, id int64) (PurchasingInvoiceState, error) {
+	row := q.db.QueryRow(ctx, invoiceState, id)
+	var i PurchasingInvoiceState
+	err := row.Scan(
+		&i.SupplierInvoiceID,
+		&i.State,
+		&i.CopyID,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const invoiceStateForUpdate = `-- name: InvoiceStateForUpdate :one
 SELECT supplier_invoice_id, state, copy_id, updated_at FROM purchasing.invoice_states WHERE supplier_invoice_id = $1 FOR UPDATE
 `
@@ -393,8 +412,9 @@ type LinesForAccrualRow struct {
 	OrderCurrency      string
 }
 
-// LinesForAccrual is every line of an order sent on or before the day that
-// anything could be received on, with its order, by supplier and number.
+// LinesForAccrual is every line of every order that is neither a draft nor
+// cancelled, with its order, by supplier and number; the caller keeps what
+// was received or delivered by the day.
 func (q *Queries) LinesForAccrual(ctx context.Context, supplierID *int64) ([]LinesForAccrualRow, error) {
 	rows, err := q.db.Query(ctx, linesForAccrual, supplierID)
 	if err != nil {
@@ -783,7 +803,7 @@ func (q *Queries) RefreshMatchFacts(ctx context.Context, arg RefreshMatchFactsPa
 }
 
 const registrationByRequest = `-- name: RegistrationByRequest :one
-SELECT client_request_id, request_hash, order_id, supplier_invoice_id, lines, lines_left, created_at FROM purchasing.invoice_registrations WHERE client_request_id = $1
+SELECT client_request_id, request_hash, order_id, supplier_invoice_id, lines, lines_left, total, created_at FROM purchasing.invoice_registrations WHERE client_request_id = $1
 `
 
 func (q *Queries) RegistrationByRequest(ctx context.Context, clientRequestID uuid.UUID) (PurchasingInvoiceRegistration, error) {
@@ -796,6 +816,7 @@ func (q *Queries) RegistrationByRequest(ctx context.Context, clientRequestID uui
 		&i.SupplierInvoiceID,
 		&i.Lines,
 		&i.LinesLeft,
+		&i.Total,
 		&i.CreatedAt,
 	)
 	return i, err

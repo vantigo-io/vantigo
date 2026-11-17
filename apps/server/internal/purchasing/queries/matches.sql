@@ -12,6 +12,10 @@ ON CONFLICT (supplier_invoice_id) DO NOTHING;
 -- name: InvoiceStateForUpdate :one
 SELECT * FROM purchasing.invoice_states WHERE supplier_invoice_id = sqlc.arg(id) FOR UPDATE;
 
+-- name: InvoiceState :one
+-- InvoiceState is what Purchasing knows of an invoice, read without a lock.
+SELECT * FROM purchasing.invoice_states WHERE supplier_invoice_id = sqlc.arg(id);
+
 -- name: SetInvoiceState :exec
 UPDATE purchasing.invoice_states SET state = sqlc.arg(state), copy_id = sqlc.narg(copy_id), updated_at = sqlc.arg(now)
 WHERE supplier_invoice_id = sqlc.arg(id);
@@ -119,9 +123,9 @@ WHERE id = sqlc.arg(id);
 SELECT * FROM purchasing.invoice_registrations WHERE client_request_id = sqlc.arg(client_request_id);
 
 -- name: InsertRegistration :exec
-INSERT INTO purchasing.invoice_registrations (client_request_id, request_hash, order_id, supplier_invoice_id, lines, lines_left, created_at)
+INSERT INTO purchasing.invoice_registrations (client_request_id, request_hash, order_id, supplier_invoice_id, lines, lines_left, total, created_at)
 VALUES (sqlc.arg(client_request_id), sqlc.arg(request_hash), sqlc.arg(order_id), sqlc.arg(supplier_invoice_id),
-    sqlc.arg(lines), sqlc.arg(lines_left), sqlc.arg(now));
+    sqlc.arg(lines), sqlc.arg(lines_left), sqlc.arg(total), sqlc.arg(now));
 
 -- name: ReceivedAsOf :many
 -- ReceivedAsOf is, per order line, what its receipts brought in on or
@@ -142,8 +146,9 @@ WHERE state = 'posted' AND invoice_date <= sqlc.arg(as_of)::date
 GROUP BY order_line_id;
 
 -- name: LinesForAccrual :many
--- LinesForAccrual is every line of an order sent on or before the day that
--- anything could be received on, with its order, by supplier and number.
+-- LinesForAccrual is every line of every order that is neither a draft nor
+-- cancelled, with its order, by supplier and number; the caller keeps what
+-- was received or delivered by the day.
 SELECT l.*, o.number AS order_number, o.supplier_id AS order_supplier_id, o.supplier_name AS order_supplier_name,
     o.currency AS order_currency
 FROM purchasing.order_lines l JOIN purchasing.orders o ON o.id = l.order_id

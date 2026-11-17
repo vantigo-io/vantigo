@@ -265,7 +265,7 @@ export interface paths {
         put?: never;
         /**
          * Mark an order line delivered
-         * @description Marks a text line or a service line delivered, or not delivered again (P16, §8): such a line is never received into stock. When nothing stays open the order ends (A48): received when every line came in full, closed when a closed line kept a remainder. Taking the mark back off a received order makes it partially received, or sent when nothing else has come. A goods line is received instead (line_not_deliverable). It answers no price unless the caller holds purchasing:access.
+         * @description Marks a text line or a service line delivered, or not delivered again (P16, §8): such a line is never received into stock. When nothing stays open the order ends (A48): received when every line came in full, closed when a closed line kept a remainder. Taking the mark back off a received order makes it partially received, or sent when nothing else has come. A goods line is received instead (line_not_deliverable). It answers no price unless the caller holds purchasing:access. Taking the mark off a line a supplier invoice bills is refused (receipt_invoiced, A84).
          */
         post: operations["markPurchasingOrderLineDelivered"];
         delete?: never;
@@ -389,7 +389,7 @@ export interface paths {
         put?: never;
         /**
          * Register a supplier invoice from a purchase order
-         * @description Register invoice (P37, A1, A11): makes Accounting's supplier-invoice draft through contracts.SupplierInvoices.CreateDraft — the supplier's invoice number, the invoice date, the due date and, in another currency than NOK, the rate or the NOK total; one line per order line of what is received (a text or service line: marked delivered) and not yet invoiced, at the order's net, entered net with the supplier's default account; the order number as its reference — and the provisional matches with it. At most 200 lines at a time: linesLeft says how many are left for another draft. Needs accounting:post as well as purchasing:invoices-match (403 accounting_post_required). A replay of the clientRequestId with the same body answers the first draft; another body is 409 client_request_reused.
+         * @description Register invoice (P37, A1, A11): makes Accounting's supplier-invoice draft through contracts.SupplierInvoices.CreateDraft — the supplier's invoice number, the invoice date, the due date and, in another currency than NOK, the rate or the NOK total; one line per order line of what is received (a text or service line: marked delivered) and not yet invoiced, at the order's net, entered net with the supplier's default account; the order number as its reference — and the provisional matches with it. At most 200 lines at a time: linesLeft says how many are left for another draft. Needs accounting:post as well as purchasing:invoices-match (403 accounting_post_required). A replay of the clientRequestId with the same body answers the first draft with the first answer's figures, a replay racing the first waiting for it (A82); another body is 409 client_request_reused. An order cancelled, or a draft deleted, between the draft and its record leaves the draft unmatched.
          */
         post: operations["registerPurchasingInvoice"];
         delete?: never;
@@ -668,7 +668,7 @@ export interface paths {
         };
         /**
          * Get a supplier invoice's match
-         * @description The Purchase order panel of a supplier invoice (P36–P38, A20): its matches, the orders of its supplier its reference names as whole digit runs, and the differences. The invoice's lines with their text and net, and its reference, are answered only to a holder of accounting:read (linesVisible); others see the lines' positions and the matched quantities alone.
+         * @description The Purchase order panel of a supplier invoice (P36–P38, A20, A83): its matches, the orders of its supplier its reference names as whole digit runs, and the differences. Only a holder of accounting:read is answered from Accounting's invoice — its lines with their text and net, its reference, the suggestions. Others are answered from what Purchasing keeps of the matches alone — the number, date, currency and kind they were made with, the order's supplier, the matched quantities, no lines, no amounts, no suggestions — and an invoice with no match is not found (404). An invoice Accounting no longer has, a deleted draft whose match a credit note holds, is answered the same way, its state deleted (A79).
          */
         get: operations["getPurchasingInvoiceMatch"];
         put?: never;
@@ -730,7 +730,7 @@ export interface paths {
         put?: never;
         /**
          * Unmatch a supplier invoice
-         * @description Unmatches a supplier invoice (P37): every match of the invoice, or of one order, or of one line by its position. The order lines' invoiced quantities go down with them.
+         * @description Unmatches a supplier invoice (P37): every match of the invoice, or of one order, or of one line by its position. The order lines' invoiced quantities go down with them. An invoice Accounting no longer has is unmatched while a match of it is left (A79).
          */
         post: operations["unmatchPurchasingInvoice"];
         delete?: never;
@@ -1074,7 +1074,7 @@ export interface components {
             linesVisible: boolean;
             matches: components["schemas"]["PurchasingInvoiceMatch"][];
         };
-        /** @description The Purchase order panel of a supplier invoice (P36–P38, A20). differences counts the matches' warnings. */
+        /** @description The Purchase order panel of a supplier invoice (P36–P38, A20, A83). differences counts the matches' warnings, a line's own — invoiced more than received or ordered — once per order line. */
         PurchasingInvoicePanel: {
             currency: string;
             /** Format: int32 */
@@ -1092,7 +1092,7 @@ export interface components {
             number: string;
             /** @description The invoice's reference; answered only to a holder of accounting:read. */
             reference?: string | null;
-            /** @description The invoice's state in Accounting, draft, posted or reversed. */
+            /** @description The invoice's state in Accounting, draft, posted or reversed; deleted when Accounting no longer has it and a match a credit note holds is left (A79). */
             state: string;
             suggestions: components["schemas"]["PurchasingInvoiceSuggestion"][];
             /** Format: int64 */
@@ -1136,7 +1136,7 @@ export interface components {
             linesLeft: number;
             /** Format: int64 */
             supplierInvoiceId: number;
-            /** @description The draft's net total, two places. */
+            /** @description The draft's lines' net total, two places, as the first answer gave it; a replay answers the same (A82). */
             total: string;
         };
         /** @description An order of the invoice's supplier whose number the invoice's reference names (P36). */
@@ -1555,7 +1555,7 @@ export interface components {
             /** Format: uuid */
             id?: string | null;
         };
-        /** @description An RFC 9457 problem with this module's refusal code (purchasing design §3). code names the rule that refused and is what a client keys off, never the words. 400: field errors (errors), supplier_not_found, site_not_found, site_archived, currency_invalid, series_start_too_low, send_channel_unknown, recipient_missing, order_empty, import_invalid, amount_out_of_range (an order's total above 999 999 999 999.99), and an order's line refusals in lines, the first of which is also code: too_many_lines, line_invalid, line_not_found, variant_not_found, variant_discontinued, packaging_not_found, quantity_invalid, price_invalid, discount_invalid, quantity_below_received, amount_out_of_range (a line's amount above 999 999 999 999.99). 404: not_found. 409: version_conflict (a stale revision or expectedUpdatedAt), order_not_draft, order_not_sent (the order is not sent or partially received), order_not_closed, order_has_receipts (a cancel of an order with something received), line_closed, line_kind_changed, currency_fixed (a currency change once a line has a price), supplier_inactive, supplier_changed (a sent order's supplier), supplier_item_exists, client_request_reused, proposal_gone (Create orders: a row no longer proposed as the screen showed it — on a draft or sent since, or its remaining changed; lines name the rows). Create orders' rows are refused in lines as an order's are, with supplier_item_not_found (the item is not the row variant's, or not known). 503: dependency_unavailable (a module Purchasing reads is not composed), sending_disabled (Communications is off, or no channel that can send is chosen) and mail_failed (the e-mail did not go out now; the change is made, and its mailing, written in the same transaction, stays queued for the purchasing.mail worker). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither. Receipts (delivery B): 400 line_not_receivable (a line that is not an open goods line of the order) and quantity_invalid (also a line whose received quantity would pass 999 999 999.999, acceptOver or not) in lines; 409 over_receipt (more than a line's remainder without acceptOver, the lines named), receipt_undone (an undo of a receipt undone already), receipt_invoiced (an undo that would leave a line with less received than invoiced) and line_not_deliverable (a delivered mark on a goods line). Inventory's refusals of a receipt or its undo keep Inventory's own codes, each line named by its index. The invoice match (delivery D): 400 invoice_line_unknown (no line of the invoice at the position) in lines, supplier_invoice_invalid (Accounting refused a field of Register invoice, named as the request's); 403 accounting_post_required (Register invoice without accounting:post); 409 invoice_reversed (a reversed invoice is not matched), invoice_supplier_differs (the order is another supplier's), invoice_currency_differs (the invoice is in another currency than the order), invoice_line_matched (the invoice line is matched to another order line; unmatch it first), over_invoiced (more than a line's received and not invoiced without acceptOver, the lines named), credit_exceeds_invoiced (a credit note matched for more than a line's invoiced, the lines named), nothing_to_match, nothing_to_invoice, and Accounting's refusals of the draft: books_not_set_up, supplier_account_missing (the supplier has no default account) and duplicate_supplier_invoice. */
+        /** @description An RFC 9457 problem with this module's refusal code (purchasing design §3). code names the rule that refused and is what a client keys off, never the words. 400: field errors (errors), supplier_not_found, site_not_found, site_archived, currency_invalid, series_start_too_low, send_channel_unknown, recipient_missing, order_empty, import_invalid, amount_out_of_range (an order's total above 999 999 999 999.99), and an order's line refusals in lines, the first of which is also code: too_many_lines, line_invalid, line_not_found, variant_not_found, variant_discontinued, packaging_not_found, quantity_invalid, price_invalid, discount_invalid, quantity_below_received, amount_out_of_range (a line's amount above 999 999 999 999.99). 404: not_found. 409: version_conflict (a stale revision or expectedUpdatedAt), order_not_draft, order_not_sent (the order is not sent or partially received), order_not_closed, order_has_receipts (a cancel of an order with something received), line_closed, line_kind_changed, currency_fixed (a currency change once a line has a price), supplier_inactive, supplier_changed (a sent order's supplier), supplier_item_exists, client_request_reused, proposal_gone (Create orders: a row no longer proposed as the screen showed it — on a draft or sent since, or its remaining changed; lines name the rows). Create orders' rows are refused in lines as an order's are, with supplier_item_not_found (the item is not the row variant's, or not known). 503: dependency_unavailable (a module Purchasing reads is not composed), sending_disabled (Communications is off, or no channel that can send is chosen) and mail_failed (the e-mail did not go out now; the change is made, and its mailing, written in the same transaction, stays queued for the purchasing.mail worker). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither. Receipts (delivery B): 400 line_not_receivable (a line that is not an open goods line of the order) and quantity_invalid (also a line whose received quantity would pass 999 999 999.999, acceptOver or not) in lines; 409 over_receipt (more than a line's remainder without acceptOver, the lines named), receipt_undone (an undo of a receipt undone already), receipt_invoiced (an undo, or a delivered mark taken off, that would leave a line with less received than invoiced) and line_not_deliverable (a delivered mark on a goods line). Inventory's refusals of a receipt or its undo keep Inventory's own codes, each line named by its index. The invoice match (delivery D): 400 invoice_line_unknown (no line of the invoice at the position) in lines, supplier_invoice_invalid (Accounting refused a field of Register invoice, named as the request's); 403 accounting_post_required (Register invoice without accounting:post); 409 invoice_reversed (a reversed invoice is not matched), invoice_supplier_differs (the order is another supplier's), invoice_currency_differs (the invoice is in another currency than the order), invoice_line_matched (the invoice line is matched to another order line; unmatch it first), over_invoiced (more than a line's received and not invoiced without acceptOver, the lines named), credit_exceeds_invoiced (a credit note matched for more than a line's invoiced, the lines named), nothing_to_match, nothing_to_invoice, and Accounting's refusals of the draft: books_not_set_up, supplier_account_missing (the supplier has no default account) and duplicate_supplier_invoice. */
         PurchasingProblem: {
             code?: string | null;
             detail?: string | null;
@@ -3240,7 +3240,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["PurchasingProblem"];
                 };
             };
-            /** @description Conflict — version_conflict, order_not_sent, line_closed, line_not_deliverable. */
+            /** @description Conflict — version_conflict, order_not_sent, line_closed, line_not_deliverable, receipt_invoiced. */
             409: {
                 headers: {
                     [name: string]: unknown;

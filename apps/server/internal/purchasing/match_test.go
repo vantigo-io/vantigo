@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -93,11 +94,19 @@ func TestMatch_SuggestionByReference(t *testing.T) {
 	if p := panelOf(t, c.Do(http.MethodGet, invoicePath(other, "match"), nil), "another supplier"); len(p.Suggestions) != 0 {
 		t.Fatalf("another supplier's suggestions = %+v", p.Suggestions)
 	}
-	// Without accounting:read: the positions, no text, no amounts, no reference.
+	// Without accounting:read (A83): an invoice with no match is not found —
+	// Accounting is not asked —, a matched one answers what its matches tell:
+	// the header they were made with, the quantities, no lines, no amounts, no
+	// reference and no suggestions.
 	r := h.SignIn(t, matcher...)
-	p = panelOf(t, r.Do(http.MethodGet, invoicePath(inv, "match"), nil), "the panel without accounting:read")
-	if p.LinesVisible || len(p.Lines) != 1 || p.Lines[0].Text != nil || p.Lines[0].Net != nil || p.Reference != nil {
-		t.Fatalf("lines without accounting:read = %+v", p)
+	expectRefusal(t, r.Do(http.MethodGet, invoicePath(inv, "match"), nil), http.StatusNotFound, "not_found", "an unmatched invoice without accounting:read")
+	p = panelOf(t, r.Do(http.MethodPost, invoicePath(inv, "matches"), matchIn(o.Id, mline(1, o.Lines[0].Id, "30"))), "allocate without accounting:read")
+	if p.LinesVisible || len(p.Lines) != 0 || p.Reference != nil || len(p.Suggestions) != 0 || len(p.Matches) != 1 ||
+		p.Matches[0].LineNet != nil || p.Number != "F-1" || p.SupplierName != "Norsk Stål AS" || p.State != "draft" {
+		t.Fatalf("the panel without accounting:read = %+v", p)
+	}
+	if got := panelOf(t, r.Do(http.MethodGet, invoicePath(inv, "match"), nil), "the matched panel without accounting:read"); len(got.Matches) != 1 || len(got.Lines) != 0 {
+		t.Fatalf("the matched panel without accounting:read = %+v", got)
 	}
 	expectRefusal(t, c.Do(http.MethodGet, invoicePath(99999, "match"), nil), http.StatusNotFound, "not_found", "an unknown invoice")
 }
@@ -366,6 +375,12 @@ func TestMatch_Permissions(t *testing.T) {
 	mustStatus(t, register(h.SignIn(t, "accounting:post")), http.StatusForbidden, "register with accounting:post alone")
 	mustStatus(t, register(h.SignIn(t, "purchasing:invoices-match", "accounting:post")), http.StatusCreated, "register with both keys")
 	reader := h.SignIn(t, "purchasing:access")
+	// Unmatched, the invoice is not found to a reader without accounting:read
+	// (A83); matched, it is read under purchasing:access.
+	mustStatus(t, reader.Do(http.MethodGet, invoicePath(inv, "match"), nil), http.StatusNotFound, "an unmatched panel under purchasing:access")
+	over := matchIn(o.Id, mline(1, o.Lines[1].Id, "1"))
+	over.AcceptOver = ptrTo(true)
+	panelOf(t, c.Do(http.MethodPost, invoicePath(inv, "matches"), over), "match")
 	mustStatus(t, reader.Do(http.MethodGet, invoicePath(inv, "match"), nil), http.StatusOK, "the panel under purchasing:access")
 	mustStatus(t, reader.Do(http.MethodGet, orderPath(o.Id, "invoices"), nil), http.StatusOK, "the order's invoices under purchasing:access")
 }
@@ -483,8 +498,9 @@ func TestMatch_LastPriceAndDifferences(t *testing.T) {
 	boltItem := item(varBolt, "50", i32(packBox))
 	nutItem := item(varNut, "2", nil)
 	o := receivedOrder(t, c)
-	// The nuts' price was set by a person after the invoice's day.
-	h.Exec(t, `UPDATE purchasing.supplier_items SET price_set_on = '2026-11-12' WHERE id = $1`, nutItem.Id)
+	// The nuts' price was set by a person on the invoice's own day, which a
+	// posting of that day does not take back (A85).
+	h.Exec(t, `UPDATE purchasing.supplier_items SET price_set_on = '2026-11-10', price_set_by = 'person' WHERE id = $1`, nutItem.Id)
 	h.Exec(t, `UPDATE purchasing.supplier_items SET price_set_on = '2026-11-01' WHERE id = $1`, boltItem.Id)
 	// 30 bolts for 153.00 is 2 % over 150.00: within the default tolerance.
 	inv := h.books.enter(supNorsk, "invoice", "F-12", "NOK", "", fakeLine{"Bolter", "153.00"}, fakeLine{"Mutre", "12.00"})
@@ -517,7 +533,7 @@ func TestMatch_LastPriceAndDifferences(t *testing.T) {
 		t.Fatalf("the bolt's last price = %+v", b)
 	}
 	if n := getItem(t, c, nutItem.Id); *n.Price != "2.00" {
-		t.Fatalf("the nut's price, set by a person later, = %s", *n.Price)
+		t.Fatalf("the nut's price, set by a person that day, = %s", *n.Price)
 	}
 	if n := run(); n != 0 {
 		t.Fatalf("a second cycle claimed %d", n)
@@ -733,4 +749,234 @@ func TestMatch_CreditOffsetAndKindChange(t *testing.T) {
 		t.Fatalf("a match of the other kind kept = %d", n)
 	}
 	invoicedAgrees(t, h)
+}
+
+// A deleted draft lets its matches go (A79): Register invoice's draft, and
+// the copy Reverse and copy made; a match a credit note holds stays, and is
+// unmatched from Purchasing's own facts once the invoice is gone.
+func TestMatch_DeletedDraft(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, harnessOptions{})
+	c := h.SignIn(t, everyKey...)
+	o := receivedOrder(t, c)
+	bolt := o.Lines[0].Id
+	register := func(number string) gen.PurchasingInvoiceRegistration {
+		res := c.Do(http.MethodPost, orderPath(o.Id, "register-invoice"), gen.PurchasingInvoiceRegisterInput{ClientRequestId: uuid.New(),
+			InvoiceNumber: number, InvoiceDate: openapi_types.Date{Time: day(2026, 11, 10)}})
+		mustStatus(t, res, http.StatusCreated, "register "+number)
+		var reg gen.PurchasingInvoiceRegistration
+		res.JSON(&reg)
+		return reg
+	}
+	reg := register("D-1")
+	h.books.remove(t, h, reg.SupplierInvoiceId)
+	if n := h.Count(t, `SELECT count(*) FROM purchasing.invoice_matches WHERE supplier_invoice_id = $1`, reg.SupplierInvoiceId); n != 0 ||
+		lineInvoiced(t, c, o.Id, bolt) != "0" {
+		t.Fatalf("after deleting the draft: matches %d, invoiced %s", n, lineInvoiced(t, c, o.Id, bolt))
+	}
+	expectRefusal(t, c.Do(http.MethodPost, invoicePath(reg.SupplierInvoiceId, "unmatch"), gen.PurchasingInvoiceUnmatchInput{}),
+		http.StatusNotFound, "not_found", "unmatch a deleted draft with nothing left")
+	// What was invoiced is to invoice again.
+	reg = register("D-2")
+	if reg.Lines != 2 {
+		t.Fatalf("registering again = %+v", reg)
+	}
+	// The copy Reverse and copy made, deleted.
+	h.books.post(t, h, reg.SupplierInvoiceId)
+	cp := h.books.reverse(t, h, reg.SupplierInvoiceId)
+	if lineInvoiced(t, c, o.Id, bolt) != "30" {
+		t.Fatalf("after the reversal, invoiced %s", lineInvoiced(t, c, o.Id, bolt))
+	}
+	h.books.remove(t, h, cp)
+	if n := h.Count(t, `SELECT count(*) FROM purchasing.invoice_matches WHERE supplier_invoice_id = $1`, cp); n != 0 || lineInvoiced(t, c, o.Id, bolt) != "0" {
+		t.Fatalf("after deleting the copy: matches %d, invoiced %s", n, lineInvoiced(t, c, o.Id, bolt))
+	}
+	invoicedAgrees(t, h)
+
+	// A credit note holds the deleted invoice's match.
+	inv := h.books.enter(supNorsk, "invoice", "D-3", "NOK", "", fakeLine{"Bolter", "50.00"})
+	panelOf(t, c.Do(http.MethodPost, invoicePath(inv, "matches"), matchIn(o.Id, mline(1, bolt, "10"))), "the invoice")
+	credit := h.books.enter(supNorsk, "credit_note", "DK-1", "NOK", "", fakeLine{"Retur", "50.00"})
+	panelOf(t, c.Do(http.MethodPost, invoicePath(credit, "matches"), matchIn(o.Id, mline(1, bolt, "10"))), "the credit note")
+	h.books.remove(t, h, inv)
+	if n := h.Count(t, `SELECT count(*) FROM purchasing.invoice_matches WHERE supplier_invoice_id = $1`, inv); n != 1 {
+		t.Fatalf("the held match = %d, want 1", n)
+	}
+	// Its panel is read from what Purchasing keeps.
+	p := panelOf(t, c.Do(http.MethodGet, invoicePath(inv, "match"), nil), "the deleted invoice's panel")
+	if p.State != "deleted" || p.Number != "D-3" || len(p.Matches) != 1 || p.LinesVisible {
+		t.Fatalf("the deleted invoice's panel = %+v", p)
+	}
+	panelOf(t, c.Do(http.MethodPost, invoicePath(credit, "unmatch"), gen.PurchasingInvoiceUnmatchInput{}), "unmatch the credit note")
+	p = panelOf(t, c.Do(http.MethodPost, invoicePath(inv, "unmatch"), gen.PurchasingInvoiceUnmatchInput{}), "unmatch the deleted invoice")
+	if p.State != "deleted" || len(p.Matches) != 0 || lineInvoiced(t, c, o.Id, bolt) != "0" {
+		t.Fatalf("after unmatching the deleted invoice = %+v", p)
+	}
+	// A deletion delivered again changes nothing.
+	deliverAgain(t, h, "purchasing.invoice-deleted", lastEventID(t, h, "accounting.supplier_invoice.deleted"))
+	invoicedAgrees(t, h)
+}
+
+// An invoice posted before Purchasing took its event — before delivery D,
+// or with the event still queued — is matched posted and followed up (A80);
+// its event, taken later, changes nothing.
+func TestMatch_PostedBeforeItsEvent(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, harnessOptions{})
+	c := h.SignIn(t, everyKey...)
+	o := receivedOrder(t, c)
+	inv := h.books.enter(supNorsk, "invoice", "E-1", "NOK", "", fakeLine{"Bolter", "150.00"})
+	today := h.Now().UTC()
+	h.books.edit(inv, func(i *contracts.SupplierInvoice) {
+		i.State, i.InvoiceDate = "posted", day(today.Year(), today.Month(), today.Day())
+	})
+	p := panelOf(t, c.Do(http.MethodPost, invoicePath(inv, "matches"), matchIn(o.Id, mline(1, o.Lines[0].Id, "30"))), "allocate")
+	if len(p.Matches) != 1 || p.Matches[0].State != "posted" {
+		t.Fatalf("a match of a posted invoice = %+v", p.Matches)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM purchasing.invoice_followups WHERE supplier_invoice_id = $1 AND completed_at IS NULL`, inv); n != 1 {
+		t.Fatalf("follow-ups = %d", n)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM purchasing.invoice_states WHERE supplier_invoice_id = $1 AND state = 'posted'`, inv); n != 1 {
+		t.Fatalf("the invoice's state is not posted")
+	}
+	// Received, not invoiced takes the posted match off.
+	res := c.Do(http.MethodGet, "/api/v1/purchasing/received-not-invoiced?supplierId="+itoa(supNorsk), nil)
+	mustStatus(t, res, http.StatusOK, "the list")
+	var l gen.PurchasingInvoiceUninvoiced
+	res.JSON(&l)
+	for _, r := range l.Rows {
+		if r.OrderLineId == o.Lines[0].Id {
+			t.Fatalf("the posted bolts are listed as not invoiced: %+v", r)
+		}
+	}
+	h.books.post(t, h, inv)
+	if n := h.Count(t, `SELECT count(*) FROM purchasing.invoice_matches WHERE supplier_invoice_id = $1 AND state = 'posted'`, inv); n != 1 ||
+		lineInvoiced(t, c, o.Id, o.Lines[0].Id) != "30" {
+		t.Fatalf("after the late event: posted matches %d", n)
+	}
+	invoicedAgrees(t, h)
+}
+
+// A copy reversed in its turn before its original's reversal is taken hands
+// the matches on to its own copy (A81): none is lost.
+func TestMatch_CopyReversedFirst(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, harnessOptions{})
+	c := h.SignIn(t, everyKey...)
+	o := receivedOrder(t, c)
+	bolt := o.Lines[0].Id
+	inv := h.books.enter(supNorsk, "invoice", "R-9", "NOK", "", fakeLine{"Bolter", "150.00"})
+	panelOf(t, c.Do(http.MethodPost, invoicePath(inv, "matches"), matchIn(o.Id, mline(1, bolt, "30"))), "allocate")
+	h.books.post(t, h, inv)
+	invoiceDay := day(2026, 11, 10).Format("2006-01-02")
+	first, second := inv+500, inv+501
+	ev := func(id, copyID int64) contracts.SupplierInvoiceReversed {
+		return contracts.SupplierInvoiceReversed{InvoiceID: id, SupplierID: supNorsk, Kind: "invoice", Number: "R-9", InvoiceDate: invoiceDay,
+			Currency: "NOK", Total: "150.00", CopyID: copyID, ReversedAt: h.Now()}
+	}
+	publishEvents(t, h, ev(first, second), ev(inv, first))
+	if n := h.Count(t, `SELECT count(*) FROM purchasing.invoice_matches WHERE supplier_invoice_id = $1`, second); n != 1 ||
+		lineInvoiced(t, c, o.Id, bolt) != "30" {
+		t.Fatalf("the second copy's matches = %d, invoiced %s", n, lineInvoiced(t, c, o.Id, bolt))
+	}
+	invoicedAgrees(t, h)
+}
+
+// Taking the delivered mark off an invoiced text line is refused, as a
+// receipt's undo is (A84).
+func TestMatch_UndeliverAnInvoicedLine(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, harnessOptions{})
+	c := h.SignIn(t, everyKey...)
+	o := sentOrder(t, c, textLine("Frakt", "1", "250"))
+	line := o.Lines[0].Id
+	mark := func(delivered bool) *modtest.Response {
+		h.Advance(time.Second)
+		cur := getOrder(t, c, o.Id)
+		return c.Do(http.MethodPost, orderPath(o.Id, "lines", itoa(line), "delivered"),
+			gen.PurchasingDeliveredInput{ExpectedUpdatedAt: cur.UpdatedAt, Delivered: delivered})
+	}
+	mustStatus(t, mark(true), http.StatusOK, "mark delivered")
+	inv := h.books.enter(supNorsk, "invoice", "T-1", "NOK", "", fakeLine{"Frakt", "250.00"})
+	panelOf(t, c.Do(http.MethodPost, invoicePath(inv, "match-all"), gen.PurchasingInvoiceMatchAllInput{OrderId: o.Id}), "match all")
+	expectRefusal(t, mark(false), http.StatusConflict, "receipt_invoiced", "take the mark off an invoiced line")
+	panelOf(t, c.Do(http.MethodPost, invoicePath(inv, "unmatch"), gen.PurchasingInvoiceUnmatchInput{}), "unmatch")
+	mustStatus(t, mark(false), http.StatusOK, "take the mark off once unmatched")
+}
+
+// Two replays of one Register invoice racing: the loser waits for the
+// winner's record and answers its draft; a replay answers the first answer's
+// total whatever was unmatched since (A82).
+func TestRegisterInvoice_RacingReplays(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, harnessOptions{})
+	c := h.SignIn(t, everyKey...)
+	o := receivedOrder(t, c)
+	in := gen.PurchasingInvoiceRegisterInput{ClientRequestId: uuid.New(), InvoiceNumber: "RACE-1",
+		InvoiceDate: openapi_types.Date{Time: day(2026, 11, 10)}}
+	started, release := make(chan struct{}), make(chan struct{})
+	var once sync.Once
+	h.books.afterCreate = func() {
+		once.Do(func() {
+			close(started)
+			<-release
+		})
+	}
+	results := make([]*modtest.Response, 2)
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		results[0] = c.Do(http.MethodPost, orderPath(o.Id, "register-invoice"), in)
+	}()
+	<-started
+	go func() {
+		defer wg.Done()
+		results[1] = c.Do(http.MethodPost, orderPath(o.Id, "register-invoice"), in)
+	}()
+	// The second is refused by Accounting as a duplicate while the first is
+	// held before its record; then the first goes on.
+	time.Sleep(300 * time.Millisecond)
+	close(release)
+	wg.Wait()
+	var regs [2]gen.PurchasingInvoiceRegistration
+	for i, res := range results {
+		mustStatus(t, res, http.StatusCreated, fmt.Sprintf("replay %d", i))
+		res.JSON(&regs[i])
+	}
+	if regs[0] != regs[1] || h.books.draftCount() != 1 || regs[0].Total != "160.00" {
+		t.Fatalf("racing replays = %+v / %+v, drafts %d", regs[0], regs[1], h.books.draftCount())
+	}
+	panelOf(t, c.Do(http.MethodPost, invoicePath(regs[0].SupplierInvoiceId, "unmatch"), gen.PurchasingInvoiceUnmatchInput{LinePosition: i32(2)}), "unmatch the nuts")
+	res := c.Do(http.MethodPost, orderPath(o.Id, "register-invoice"), in)
+	mustStatus(t, res, http.StatusCreated, "replay after an unmatch")
+	var again gen.PurchasingInvoiceRegistration
+	res.JSON(&again)
+	if again != regs[0] {
+		t.Fatalf("replay after an unmatch = %+v, want %+v", again, regs[0])
+	}
+}
+
+// A line's own warnings count once however many invoice lines bill it.
+func TestMatch_DifferencesCountALineOnce(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, harnessOptions{})
+	c := h.SignIn(t, everyKey...)
+	o := receivedOrder(t, c)
+	nut := o.Lines[1].Id
+	inv := h.books.enter(supNorsk, "invoice", "W-1", "NOK", "", fakeLine{"Mutre", "10.00"}, fakeLine{"Mutre", "10.00"})
+	in := matchIn(o.Id, mline(1, nut, "5"), mline(2, nut, "5"))
+	in.AcceptOver = ptrTo(true)
+	p := panelOf(t, c.Do(http.MethodPost, invoicePath(inv, "matches"), in), "ten nuts of five")
+	// Each match warns invoiced beyond received and ordered; the line counts
+	// them once.
+	if len(p.Matches) != 2 || len(p.Matches[0].Warnings) != 2 || p.Differences != 2 {
+		t.Fatalf("differences = %d, matches %+v", p.Differences, p.Matches)
+	}
+	_, holder := h.SignInUser(t, "purchasing:access")
+	got, err := purchasing.Module().SupplierInvoiceMatches(h.Deps()).Summary(contracts.AsUser(context.Background(), holder), []int64{inv})
+	if err != nil || len(got) != 1 || got[0].Differences != 2 {
+		t.Fatalf("summary = %+v, %v", got, err)
+	}
 }
