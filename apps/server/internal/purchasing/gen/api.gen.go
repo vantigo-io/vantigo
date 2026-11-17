@@ -1013,7 +1013,10 @@ type PurchasingSupplier struct {
 	OrganisationNumber string `json:"organisationNumber"`
 	PaymentTermsDays   int32  `json:"paymentTermsDays"`
 	PostalCode         string `json:"postalCode"`
-	SupplierItemCount  int32  `json:"supplierItemCount"`
+
+	// Revision The register row's revision (A26), which a change of the supplier through Accounting's API carries — so a buyer without accounting:read can write it.
+	Revision          int32 `json:"revision"`
+	SupplierItemCount int32 `json:"supplierItemCount"`
 }
 
 // PurchasingSupplierItem A supplier item (P11): what one supplier sells of one variant.

@@ -32,10 +32,10 @@ func newSupplierDirectory(d module.Deps) contracts.SupplierDirectory {
 
 // directoryEntry is a supplier's row as the directory answers it.
 func directoryEntry(id int64, number int32, name string, org *string, country string, address, postal, city, email *string,
-	cur string, terms int16, active, person bool, anonymised *time.Time) contracts.SupplierEntry {
+	cur string, terms int16, active, person bool, anonymised *time.Time, revision int32) contracts.SupplierEntry {
 	return contracts.SupplierEntry{ID: id, Number: number, Name: name, OrganisationNumber: deref(org), Country: country,
 		AddressLine: deref(address), PostalCode: deref(postal), City: deref(city), Email: deref(email), Currency: cur,
-		PaymentTermsDays: int(terms), Active: active, IsPerson: person, Anonymised: anonymised != nil}
+		PaymentTermsDays: int(terms), Active: active, IsPerson: person, Anonymised: anonymised != nil, Revision: revision}
 }
 
 // Supplier is one supplier, nil when none has the id.
@@ -62,7 +62,7 @@ func (d supplierDirectory) Suppliers(ctx context.Context, ids []int64) ([]contra
 	byID := make(map[int64]contracts.SupplierEntry, len(rows))
 	for _, r := range rows {
 		byID[r.ID] = directoryEntry(r.ID, r.Number, r.Name, r.OrganisationNumber, r.Country, r.AddressLine, r.PostalCode, r.City,
-			r.Email, r.Currency, r.PaymentTermsDays, r.Active, r.IsPerson, r.AnonymisedAt)
+			r.Email, r.Currency, r.PaymentTermsDays, r.Active, r.IsPerson, r.AnonymisedAt, r.Revision)
 	}
 	out := make([]contracts.SupplierEntry, 0, len(ids))
 	for _, id := range ids {
@@ -87,7 +87,7 @@ func (d supplierDirectory) SearchSuppliers(ctx context.Context, query string, li
 	out := make([]contracts.SupplierEntry, 0, len(rows))
 	for _, r := range rows {
 		out = append(out, directoryEntry(r.ID, r.Number, r.Name, r.OrganisationNumber, r.Country, r.AddressLine, r.PostalCode,
-			r.City, r.Email, r.Currency, r.PaymentTermsDays, r.Active, r.IsPerson, r.AnonymisedAt))
+			r.City, r.Email, r.Currency, r.PaymentTermsDays, r.Active, r.IsPerson, r.AnonymisedAt, r.Revision))
 	}
 	return out, nil
 }
@@ -108,7 +108,7 @@ func (d supplierDirectory) LockSuppliers(ctx context.Context, tx pgx.Tx, ids []i
 	out := make([]contracts.SupplierEntry, 0, len(rows))
 	for _, r := range rows {
 		out = append(out, directoryEntry(r.ID, r.Number, r.Name, r.OrganisationNumber, r.Country, r.AddressLine, r.PostalCode,
-			r.City, r.Email, r.Currency, r.PaymentTermsDays, r.Active, r.IsPerson, r.AnonymisedAt))
+			r.City, r.Email, r.Currency, r.PaymentTermsDays, r.Active, r.IsPerson, r.AnonymisedAt, r.Revision))
 	}
 	return out, nil
 }

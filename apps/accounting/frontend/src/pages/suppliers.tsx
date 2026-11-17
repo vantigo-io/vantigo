@@ -316,7 +316,16 @@ interface SupplierFields {
   active: boolean;
 }
 
-const fieldsOf = (s?: AccountingSupplier): SupplierFields => ({
+/**
+ * A supplier as the form takes it: its id and revision, and the values it
+ * shows. Accounting's own read answers all of them; a buyer's form opened
+ * from Purchasing is given what Purchasing's supplier read answers — the
+ * register's values and revision, without the books' fields (A26).
+ */
+export type SupplierFormSupplier = Pick<AccountingSupplier, "id" | "revision"> &
+  Partial<Omit<AccountingSupplier, "id" | "revision">>;
+
+const fieldsOf = (s?: SupplierFormSupplier): SupplierFields => ({
   name: s?.name ?? "",
   organisationNumber: s?.organisationNumber ?? "",
   country: s?.country ?? "NO",
@@ -350,7 +359,7 @@ export const SupplierFormModal = ({
   onSaved,
   books = true,
 }: {
-  supplier?: AccountingSupplier;
+  supplier?: SupplierFormSupplier;
   onClose: () => void;
   onSaved?: (s: AccountingSupplier) => void;
   books?: boolean;

@@ -402,7 +402,14 @@ func TestReads(t *testing.T) {
 	if len(sups.Items) != 1 || sups.Items[0].SupplierItemCount != 1 {
 		t.Errorf("suppliers = %+v", sups.Items)
 	}
-	mustStatus(t, c.Do(http.MethodGet, "/api/v1/purchasing/suppliers/501", nil), http.StatusOK, "supplier")
+	h.dir.update(supNorsk, func(e *contracts.SupplierEntry) { e.Revision = 7 })
+	res = c.Do(http.MethodGet, "/api/v1/purchasing/suppliers/501", nil)
+	mustStatus(t, res, http.StatusOK, "supplier")
+	var sup gen.PurchasingSupplier
+	res.JSON(&sup)
+	if sup.Revision != 7 {
+		t.Errorf("the supplier's revision = %d, want the register's 7", sup.Revision)
+	}
 	expectRefusal(t, c.Do(http.MethodGet, "/api/v1/purchasing/suppliers/999", nil), http.StatusNotFound, "not_found", "unknown supplier")
 	var buyers gen.PurchasingBuyerList
 	res = c.Do(http.MethodGet, "/api/v1/purchasing/buyers", nil)

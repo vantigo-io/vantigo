@@ -117,6 +117,21 @@ func TestSuppliers_BeforeTheBooksAndForABuyer(t *testing.T) {
 	if s.Name != "Hansen Rør AS" || deref(s.BankAccount) != "12345678903" || s.DefaultAccountId == nil || *s.DefaultAccountId != chart["6300"].Id {
 		t.Errorf("after the buyer's change = %+v", s)
 	}
+	// The directory answers the revision, which is all a buyer's change
+	// needs: a buyer without accounting:read writes it from what the
+	// directory said (A26).
+	entry, err := d.Supplier(t.Context(), s.Id)
+	if err != nil || entry.Revision != s.Revision {
+		t.Fatalf("the directory's revision = %+v, %v; want %d", entry, err, s.Revision)
+	}
+	if found, _ := d.SearchSuppliers(t.Context(), "hansen", 10); len(found) != 1 || found[0].Revision != s.Revision {
+		t.Errorf("SearchSuppliers' revision = %+v", found)
+	}
+	res = put(b, entry.Revision, map[string]any{"name": entry.Name, "organisationNumber": entry.OrganisationNumber, "city": "Bergen"})
+	if res.Status != http.StatusOK {
+		t.Fatalf("the buyer's change from the directory's revision = %d %s", res.Status, res.Body)
+	}
+	res.JSON(&s)
 	expectProblem(t, put(b, s.Revision, map[string]any{"name": s.Name, "bankAccount": ""}), http.StatusForbidden, "supplier_fields_need_post")
 	expectProblem(t, put(b, s.Revision, map[string]any{"name": s.Name, "defaultAccountId": chart["6000"].Id}), http.StatusForbidden, "supplier_fields_need_post")
 }

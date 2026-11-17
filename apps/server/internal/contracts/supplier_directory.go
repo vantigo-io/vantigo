@@ -63,4 +63,8 @@ type SupplierEntry struct {
 	// retention: the name is "Anonymised supplier N" and every contact field
 	// is empty.
 	Anonymised bool
+	// Revision is the register row's revision, which a change of the
+	// supplier through Accounting's API carries: what lets a buyer's form,
+	// opened from Purchasing without accounting:read, write it (A26).
+	Revision int32
 }

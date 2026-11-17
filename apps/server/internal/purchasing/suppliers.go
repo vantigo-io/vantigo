@@ -54,7 +54,7 @@ func (s *server) suppliersView(ctx context.Context, entries []contracts.Supplier
 			Id: e.ID, Number: e.Number, Name: e.Name, OrganisationNumber: e.OrganisationNumber, Country: e.Country,
 			AddressLine: e.AddressLine, PostalCode: e.PostalCode, City: e.City, Email: e.Email, Currency: e.Currency,
 			PaymentTermsDays: int32(e.PaymentTermsDays), Active: e.Active, IsPerson: e.IsPerson, Anonymised: e.Anonymised,
-			SupplierItemCount: items[e.ID], OpenOrderCount: orders[e.ID],
+			SupplierItemCount: items[e.ID], OpenOrderCount: orders[e.ID], Revision: e.Revision,
 		})
 	}
 	return out, nil

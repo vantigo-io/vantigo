@@ -1315,6 +1315,10 @@ components:
                     type: integer
                 postalCode:
                     type: string
+                revision:
+                    description: The register row's revision (A26), which a change of the supplier through Accounting's API carries — so a buyer without accounting:read can write it.
+                    format: int32
+                    type: integer
                 supplierItemCount:
                     format: int32
                     type: integer
@@ -1335,6 +1339,7 @@ components:
                 - anonymised
                 - supplierItemCount
                 - openOrderCount
+                - revision
             type: object
         PurchasingSupplierItem:
             additionalProperties: false

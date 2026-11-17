@@ -468,14 +468,14 @@ SELECT id FROM accounting.suppliers WHERE id = sqlc.arg(id) FOR UPDATE;
 -- name: DirectorySuppliers :many
 -- DirectorySuppliers is the suppliers named, for the supplier directory.
 SELECT id, number, name, organisation_number, country, address_line, postal_code, city, email, currency,
-    payment_terms_days, active, is_person, anonymised_at
+    payment_terms_days, active, is_person, anonymised_at, revision
 FROM accounting.suppliers WHERE id = ANY(sqlc.arg(ids)::bigint[]);
 
 -- name: LockDirectorySuppliers :many
 -- LockDirectorySuppliers takes FOR SHARE on the suppliers named, in id
 -- order, on the caller's transaction (SupplierDirectory.LockSuppliers).
 SELECT id, number, name, organisation_number, country, address_line, postal_code, city, email, currency,
-    payment_terms_days, active, is_person, anonymised_at
+    payment_terms_days, active, is_person, anonymised_at, revision
 FROM accounting.suppliers WHERE id = ANY(sqlc.arg(ids)::bigint[])
 ORDER BY id FOR SHARE;
 
@@ -483,7 +483,7 @@ ORDER BY id FOR SHARE;
 -- SearchDirectorySuppliers is the suppliers whose name holds the query,
 -- ignoring case, or whose number or organisation number is it, by number.
 SELECT id, number, name, organisation_number, country, address_line, postal_code, city, email, currency,
-    payment_terms_days, active, is_person, anonymised_at
+    payment_terms_days, active, is_person, anonymised_at, revision
 FROM accounting.suppliers s
 WHERE s.name ILIKE '%' || replace(replace(replace(sqlc.arg(q)::text, '\', '\\'), '%', '\%'), '_', '\_') || '%'
    OR s.number::text = sqlc.arg(q)::text OR s.organisation_number = sqlc.arg(q)::text
