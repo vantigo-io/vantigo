@@ -90,6 +90,10 @@ type postOptions struct {
 	// receipt refuses a Discontinued product's variant (I12), and a line
 	// into a blocked lot (M56).
 	receipt bool
+	// receivesDiscontinued lets a receipt take a Discontinued product's
+	// variant: the ledger's Receive for another module's order (purchasing
+	// design A6), as Produce does.
+	receivesDiscontinued bool
 	// check, when set, judges the posting once its variants and balances are
 	// locked, its entries resolved to units, and before any line is applied:
 	// the count post's moved lines (I19), a transfer action's per-line rules
@@ -308,7 +312,7 @@ func (s *server) postOnce(ctx context.Context, tx pgx.Tx, txq *store.Queries, m 
 			fail(l, codeVariantNotFound, fmt.Sprintf("No variant has the id %d.", l.variantID))
 		case v.ProductType != productTypeGoods && l.increases():
 			fail(l, codeVariantNotStockable, fmt.Sprintf("%s is a service; only goods are kept in stock.", v.SKU))
-		case opts.receipt && v.ProductStatus == productStatusDiscontinued:
+		case opts.receipt && !opts.receivesDiscontinued && v.ProductStatus == productStatusDiscontinued:
 			fail(l, codeVariantDiscontinued, fmt.Sprintf("%s is discontinued and is no longer received.", v.SKU))
 		}
 	}
@@ -433,6 +437,13 @@ func (s *server) postOnce(ctx context.Context, tx pgx.Tx, txq *store.Queries, m 
 		// (manufacturing phase 2 M123): taken as the hold takes it, so two
 		// unbuilds into one lot wait for each other rather than deadlock.
 		if m.kind == movementKindUnbuild && l.to != nil && l.lotID != 0 {
+			update[l.lotID] = true
+		}
+		// A lot a receipt's reversal takes back has the receipt's holds
+		// released after the posting (purchasing design A5): taken as the
+		// release takes it, so two reversals of one receipt wait for each
+		// other rather than deadlock.
+		if m.kind == movementKindReceiptReversal && l.lotID != 0 {
 			update[l.lotID] = true
 		}
 	}

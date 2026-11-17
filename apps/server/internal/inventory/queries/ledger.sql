@@ -94,3 +94,13 @@ FROM inventory.balances WHERE variant_id = @variant_id AND on_hand <> 0;
 -- how many sites, on the caller's transaction (the holder, I23).
 SELECT coalesce(sum(quantity), 0)::text AS quantity, count(DISTINCT site_id)::int AS sites
 FROM inventory.reservations WHERE variant_id = @variant_id;
+
+-- name: ReceiptBySource :one
+-- ReceiptBySource is the receipt another module's ledger call posted for a
+-- document (purchasing design A5): the movement of kind receipt that names it
+-- as its source, the first when several would.
+SELECT id, site_id, supplier_name, supplier_reference, source_line_id
+FROM inventory.movements
+WHERE kind = 'receipt' AND source_module = @source_module AND source_kind = @source_kind AND source_id = @source_id
+ORDER BY id
+LIMIT 1;

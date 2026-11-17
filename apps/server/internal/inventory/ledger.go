@@ -53,11 +53,18 @@ import (
 // The movement kinds the ledger posts (design §12: the kinds are an open set
 // of application constants, not a database enum): an issue for another
 // module's delivery, a production for its producing document (manufacturing
-// design M1), and an unbuild that reverses one (manufacturing phase 2 M123).
+// design M1), an unbuild that reverses one (manufacturing phase 2 M123), a
+// receipt for a receiving document and its reversal (purchasing design P3,
+// A5).
 const (
 	movementKindIssue      = "issue"
 	movementKindProduction = "production"
 	movementKindUnbuild    = "unbuild"
+	// movementKindReceipt is a receipt another module's Receive posts
+	// (purchasing design P3), the receipt endpoint's own kind.
+	movementKindReceipt = "receipt"
+	// movementKindReceiptReversal takes such a receipt back (A5).
+	movementKindReceiptReversal = "receipt_reversal"
 )
 
 // issueKeySpace is the UUID namespace an issue's client request id is made

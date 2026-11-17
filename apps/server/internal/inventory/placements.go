@@ -364,7 +364,8 @@ func (s *server) placementAnswer(ctx context.Context, p store.InventoryPlacement
 	}
 	// Low is judged on usable on hand (manufacturing phase 2 M63).
 	onHand.Sub(onHand, sn.held(k))
-	return placementOf(p, sn.sites[p.SiteID], onHand, orZero(sn.reserved[k]), orZero(sn.incoming[k])), nil
+	incoming := new(big.Rat).Add(orZero(sn.incoming[k]), orZero(sn.onOrder[k]))
+	return placementOf(p, sn.sites[p.SiteID], onHand, orZero(sn.reserved[k]), incoming), nil
 }
 
 // DeleteInventoryPlacement Remove a placement

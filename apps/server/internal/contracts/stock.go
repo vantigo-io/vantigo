@@ -711,6 +711,10 @@ const (
 	// StockLotNumberInvalid: a receipt line's lot number or serial is not
 	// 1–20 characters A–Z, a–z, 0–9 and . _ / - (purchasing design P3).
 	StockLotNumberInvalid = "lot_number_invalid"
+	// StockLotDatesInvalid: a receipt line's lot states its dates out of
+	// order — an expiry before the production date, or a best-before date
+	// after the expiry.
+	StockLotDatesInvalid = "lot_dates_invalid"
 	// StockReceiptUnknown: ReverseReceipt names a document no receipt was
 	// posted for (purchasing design A5).
 	StockReceiptUnknown = "receipt_unknown"

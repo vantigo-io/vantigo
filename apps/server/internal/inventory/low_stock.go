@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
+	"math/big"
 	"net/http"
 	"slices"
 	"strconv"
@@ -22,7 +23,10 @@ import (
 )
 
 // The low-stock list (phase 2 design I56–I60): every placement with a reorder
-// point at an active site whose available plus incoming is at or below it,
+// point at an active site whose available plus incoming — in transit, and on
+// order through Purchasing (purchasing design A3), read before the statement
+// and joined in by it so the filter, the paging, the CSV and the dashboard's
+// count agree — is at or below it,
 // by site code, the placement's SKU snapshot and the variant id — one
 // statement within the schema (store LowStock), its cost the placements with
 // a reorder point. Per page, after the statement: the variants through the
@@ -148,8 +152,9 @@ func (s *server) lowStockRows(ctx context.Context, params store.LowStockParams, 
 		if v.SKU != r.Sku || v.ProductName != r.ProductName {
 			stale[v.ID] = v
 		}
+		incoming := new(big.Rat).Add(ratFromText(r.Incoming), ratFromText(r.OnOrder))
 		out = append(out, lowRow{row: r, variant: v, verdict: judgeLow(lowLevels{
-			onHand: ratFromText(r.OnHand), reserved: ratFromText(r.Reserved), incoming: ratFromText(r.Incoming),
+			onHand: ratFromText(r.OnHand), reserved: ratFromText(r.Reserved), incoming: incoming,
 			reorderPoint: ratFromText(r.ReorderPoint), maximum: optionalRat(r.Maximum), multiple: optionalRat(r.Multiple),
 			packagings: v.Packagings,
 		})})
@@ -178,6 +183,9 @@ func (s *server) ListInventoryLowStock(ctx context.Context, req gen.ListInventor
 		return nil, err
 	}
 	params.Today = pgtype.Date{Time: today, Valid: true}
+	if params.OpenVariantIds, params.OpenSiteIds, params.OpenQuantities, err = s.openPurchaseColumns(ctx); err != nil {
+		return nil, err
+	}
 	stale := staleSnapshots{}
 	rows, last, err := s.lowStockRows(ctx, params, lowStockPage, stale)
 	if status, p, ok := answerOf(err); ok && status == http.StatusServiceUnavailable {
@@ -260,7 +268,9 @@ func lowStockRowOf(r lowRow, site store.InventorySite) gen.InventoryLowStockRow 
 	row := gen.InventoryLowStockRow{
 		Site: siteRefOf(site), Variant: variantRefOf(r.variant),
 		OnHand: wireQuantity(ratFromText(r.row.OnHand)), Reserved: wireQuantity(ratFromText(r.row.Reserved)),
-		Available: wireQuantity(v.available), Incoming: wireQuantity(ratFromText(r.row.Incoming)),
+		Available: wireQuantity(v.available),
+		Incoming:  wireQuantity(new(big.Rat).Add(ratFromText(r.row.Incoming), ratFromText(r.row.OnOrder))),
+		InTransit: wireQuantity(ratFromText(r.row.Incoming)), OnOrder: wireQuantity(ratFromText(r.row.OnOrder)),
 		ReorderPoint: wireQuantity(ratFromText(r.row.ReorderPoint)), Maximum: optionalWire(optionalRat(r.row.Maximum)), Multiple: optionalWire(optionalRat(r.row.Multiple)),
 		Needed: wireQuantity(v.needed), Suggested: wireQuantity(v.suggested),
 		Elsewhere: []gen.InventoryLowStockElsewhere{}, OpenDrafts: []int64{},
@@ -277,8 +287,8 @@ func lowStockRowOf(r lowRow, site store.InventorySite) gen.InventoryLowStockRow 
 const csvByteOrderMark = "\ufeff"
 
 // lowStockColumns is the CSV's header (I60).
-var lowStockColumns = []string{"site", "sku", "name", "barcode", "available", "incoming", "reorder_point", "maximum",
-	"needed", "suggested", "packaging", "packaging_count"}
+var lowStockColumns = []string{"site", "sku", "name", "barcode", "available", "incoming", "in_transit", "on_order",
+	"reorder_point", "maximum", "needed", "suggested", "packaging", "packaging_count"}
 
 // csvDownload is a CSV answered as an attachment, kept out of every cache.
 type csvDownload struct {
@@ -299,7 +309,7 @@ func (d csvDownload) VisitExportInventoryLowStockResponse(w http.ResponseWriter)
 // lowStockTextColumns are the CSV's columns of text — site, sku, name,
 // barcode and packaging — the ones the formula guard judges; a number, a
 // negative available included, is written as it is.
-var lowStockTextColumns = map[int]bool{0: true, 1: true, 2: true, 3: true, 10: true}
+var lowStockTextColumns = map[int]bool{0: true, 1: true, 2: true, 3: true, 12: true}
 
 // writeCSVRow writes one row the house's way (the customers export's):
 // semicolons, CRLF, each text cell guarded against a spreadsheet reading it
@@ -343,6 +353,9 @@ func (s *server) ExportInventoryLowStock(ctx context.Context, req gen.ExportInve
 		return nil, err
 	}
 	params.Today = pgtype.Date{Time: businessToday(s.deps.Clock(), zone), Valid: true}
+	if params.OpenVariantIds, params.OpenSiteIds, params.OpenQuantities, err = s.openPurchaseColumns(ctx); err != nil {
+		return nil, err
+	}
 	var b bytes.Buffer
 	b.WriteString(csvByteOrderMark)
 	writeCSVRow(&b, lowStockColumns, nil)
@@ -367,13 +380,13 @@ func (s *server) ExportInventoryLowStock(ctx context.Context, req gen.ExportInve
 			written[k] = true
 			row := lowStockRowOf(r, store.InventorySite{Code: r.row.SiteCode})
 			cells := []string{r.row.SiteCode, r.variant.SKU, r.variant.ProductName, deref(r.variant.Barcode),
-				csvQuantity(row.Available), csvQuantity(row.Incoming), csvQuantity(row.ReorderPoint), "",
-				csvQuantity(row.Needed), csvQuantity(row.Suggested), "", ""}
+				csvQuantity(row.Available), csvQuantity(row.Incoming), csvQuantity(row.InTransit), csvQuantity(row.OnOrder),
+				csvQuantity(row.ReorderPoint), "", csvQuantity(row.Needed), csvQuantity(row.Suggested), "", ""}
 			if row.Maximum != nil {
-				cells[7] = csvQuantity(*row.Maximum)
+				cells[9] = csvQuantity(*row.Maximum)
 			}
 			if p := row.Packaging; p != nil {
-				cells[10], cells[11] = p.Name, strconv.Itoa(int(p.Count))
+				cells[12], cells[13] = p.Name, strconv.Itoa(int(p.Count))
 			}
 			writeCSVRow(&b, cells, lowStockTextColumns)
 		}
@@ -397,7 +410,11 @@ func (s *server) lowStockItems(ctx context.Context, q *store.Queries, now time.T
 	if err != nil {
 		return nil, err
 	}
-	rows, err := q.LowStockCounts(ctx, pgtype.Date{Time: businessToday(now, zone), Valid: true})
+	params := store.LowStockCountsParams{Today: pgtype.Date{Time: businessToday(now, zone), Valid: true}}
+	if params.OpenVariantIds, params.OpenSiteIds, params.OpenQuantities, err = s.openPurchaseColumns(ctx); err != nil {
+		return nil, err
+	}
+	rows, err := q.LowStockCounts(ctx, params)
 	if err != nil {
 		return nil, fmt.Errorf("inventory: count the low placements: %w", err)
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/big"
 	"time"
 
 	"github.com/google/uuid"
@@ -197,4 +198,52 @@ func (s *server) directoryCustomers(ctx context.Context, ids []int32) ([]contrac
 		return nil, nil
 	}
 	return s.deps.Directory.Customers(ctx, ids)
+}
+
+// openPurchases is Purchasing's open purchases (purchasing design P4, A3),
+// before any transaction: of the variants given at siteID (every site when
+// nil), or every (variant, site) with variantIDs nil. Nothing is on order
+// when Purchasing is off.
+func (s *server) openPurchases(ctx context.Context, siteID *int64, variantIDs []int32) ([]contracts.OpenPurchase, error) {
+	if s.deps.PurchaseSupply == nil {
+		return nil, nil
+	}
+	if variantIDs == nil {
+		if err := noteContractCall(ctx, "PurchaseSupply.OpenAll"); err != nil {
+			return nil, err
+		}
+		out, err := s.deps.PurchaseSupply.OpenAll(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("inventory: read the open purchases: %w", err)
+		}
+		return out, nil
+	}
+	if len(variantIDs) == 0 {
+		return nil, nil
+	}
+	if err := noteContractCall(ctx, "PurchaseSupply.OpenByVariants"); err != nil {
+		return nil, err
+	}
+	out, err := s.deps.PurchaseSupply.OpenByVariants(ctx, siteID, variantIDs)
+	if err != nil {
+		return nil, fmt.Errorf("inventory: read the open purchases: %w", err)
+	}
+	return out, nil
+}
+
+// openPurchaseColumns is every open purchase as the three arrays the
+// low-stock statements read side by side.
+func (s *server) openPurchaseColumns(ctx context.Context) ([]int32, []int64, []string, error) {
+	rows, err := s.openPurchases(ctx, nil, nil)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	variants, sites, quantities := make([]int32, 0, len(rows)), make([]int64, 0, len(rows)), make([]string, 0, len(rows))
+	for _, r := range rows {
+		if _, ok := new(big.Rat).SetString(r.Quantity); !ok {
+			return nil, nil, nil, fmt.Errorf("inventory: an open purchase of variant %d has the quantity %q", r.VariantID, r.Quantity)
+		}
+		variants, sites, quantities = append(variants, r.VariantID), append(sites, r.SiteID), append(quantities, r.Quantity)
+	}
+	return variants, sites, quantities, nil
 }

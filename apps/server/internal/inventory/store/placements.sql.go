@@ -405,11 +405,19 @@ func (q *Queries) LockPlacementImports(ctx context.Context, lockKey int64) error
 }
 
 const lowStock = `-- name: LowStock :many
+WITH po AS (
+    SELECT o.variant_id, o.site_id, sum(o.quantity) AS on_order
+    FROM (SELECT unnest($8::int[]) AS variant_id, unnest($9::bigint[]) AS site_id,
+                 unnest($10::text[])::numeric AS quantity) o
+    GROUP BY o.variant_id, o.site_id
+)
 SELECT p.variant_id, p.site_id, s.code AS site_code, p.sku, p.product_name,
        p.reorder_point::text AS reorder_point, p.maximum, p.multiple,
-       oh.on_hand::text AS on_hand, rs.reserved::text AS reserved, it.incoming::text AS incoming
+       oh.on_hand::text AS on_hand, rs.reserved::text AS reserved, it.incoming::text AS incoming,
+       coalesce(po.on_order, 0)::text AS on_order
 FROM inventory.placements p
 JOIN inventory.sites s ON s.id = p.site_id
+LEFT JOIN po ON po.variant_id = p.variant_id AND po.site_id = p.site_id
 CROSS JOIN LATERAL (
     SELECT coalesce(sum(b.on_hand), 0)::numeric AS on_hand
     FROM inventory.balances b
@@ -433,7 +441,7 @@ WHERE p.reorder_point IS NOT NULL
   AND ($3::text IS NULL
        OR strpos(lower(p.sku), lower($3::text)) > 0
        OR strpos(lower(p.product_name), lower($3::text)) > 0)
-  AND oh.on_hand - rs.reserved + it.incoming <= p.reorder_point
+  AND oh.on_hand - rs.reserved + it.incoming + coalesce(po.on_order, 0) <= p.reorder_point
   AND ($4::text IS NULL
        OR (s.code, p.sku, p.variant_id) > ($4::text, $5::text, $6::int))
 ORDER BY s.code, p.sku, p.variant_id
@@ -448,6 +456,9 @@ type LowStockParams struct {
 	CursorSku       *string
 	CursorVariantID *int32
 	RowLimit        int32
+	OpenVariantIds  []int32
+	OpenSiteIds     []int64
+	OpenQuantities  []string
 }
 
 type LowStockRow struct {
@@ -462,16 +473,18 @@ type LowStockRow struct {
 	OnHand       string
 	Reserved     string
 	Incoming     string
+	OnOrder      string
 }
 
 // LowStock is the low-stock list (I56, I58): every placement with a reorder
 // point at an active site whose available (usable on hand over the site's
 // locations — no lot held or expired on today, manufacturing phase 2 M63 —
-// less reserved at the site) plus incoming (in transit to the
-// site) is at or below it — optionally one site, q a part of the SKU or
-// name snapshot, ignoring case — by site code, SKU snapshot and variant id,
-// after the cursor's. Quantities as text, for the rule's arithmetic in
-// decimals.
+// less reserved at the site) plus incoming (in transit to the site, and on
+// order: Purchasing's open purchases, read before the statement and handed in
+// as three arrays read side by side, purchasing design A3) is at or below it
+// — optionally one site, q a part of the SKU or name snapshot, ignoring case
+// — by site code, SKU snapshot and variant id, after the cursor's.
+// Quantities as text, for the rule's arithmetic in decimals.
 func (q *Queries) LowStock(ctx context.Context, arg LowStockParams) ([]LowStockRow, error) {
 	rows, err := q.db.Query(ctx, lowStock,
 		arg.Today,
@@ -481,6 +494,9 @@ func (q *Queries) LowStock(ctx context.Context, arg LowStockParams) ([]LowStockR
 		arg.CursorSku,
 		arg.CursorVariantID,
 		arg.RowLimit,
+		arg.OpenVariantIds,
+		arg.OpenSiteIds,
+		arg.OpenQuantities,
 	)
 	if err != nil {
 		return nil, err
@@ -501,6 +517,7 @@ func (q *Queries) LowStock(ctx context.Context, arg LowStockParams) ([]LowStockR
 			&i.OnHand,
 			&i.Reserved,
 			&i.Incoming,
+			&i.OnOrder,
 		); err != nil {
 			return nil, err
 		}
@@ -513,9 +530,16 @@ func (q *Queries) LowStock(ctx context.Context, arg LowStockParams) ([]LowStockR
 }
 
 const lowStockCounts = `-- name: LowStockCounts :many
+WITH po AS (
+    SELECT o.variant_id, o.site_id, sum(o.quantity) AS on_order
+    FROM (SELECT unnest($2::int[]) AS variant_id, unnest($3::bigint[]) AS site_id,
+                 unnest($4::text[])::numeric AS quantity) o
+    GROUP BY o.variant_id, o.site_id
+)
 SELECT p.site_id, s.code AS site_code, s.name AS site_name, count(*)::int AS low
 FROM inventory.placements p
 JOIN inventory.sites s ON s.id = p.site_id
+LEFT JOIN po ON po.variant_id = p.variant_id AND po.site_id = p.site_id
 CROSS JOIN LATERAL (
     SELECT coalesce(sum(b.on_hand), 0)::numeric AS on_hand
     FROM inventory.balances b
@@ -535,10 +559,17 @@ CROSS JOIN LATERAL (
       AND tl.sent > tl.received + tl.missing + tl.returned) it
 WHERE p.reorder_point IS NOT NULL
   AND s.status = 'active'
-  AND oh.on_hand - rs.reserved + it.incoming <= p.reorder_point
+  AND oh.on_hand - rs.reserved + it.incoming + coalesce(po.on_order, 0) <= p.reorder_point
 GROUP BY p.site_id, s.code, s.name
 ORDER BY s.code
 `
+
+type LowStockCountsParams struct {
+	Today          pgtype.Date
+	OpenVariantIds []int32
+	OpenSiteIds    []int64
+	OpenQuantities []string
+}
 
 type LowStockCountsRow struct {
 	SiteID   int64
@@ -548,9 +579,15 @@ type LowStockCountsRow struct {
 }
 
 // LowStockCounts is LowStock's rule counted per active site, for the
-// dashboard's lowStock items (I62): only sites with at least one.
-func (q *Queries) LowStockCounts(ctx context.Context, today pgtype.Date) ([]LowStockCountsRow, error) {
-	rows, err := q.db.Query(ctx, lowStockCounts, today)
+// dashboard's lowStock items (I62): only sites with at least one. The open
+// purchases come in as LowStock's do.
+func (q *Queries) LowStockCounts(ctx context.Context, arg LowStockCountsParams) ([]LowStockCountsRow, error) {
+	rows, err := q.db.Query(ctx, lowStockCounts,
+		arg.Today,
+		arg.OpenVariantIds,
+		arg.OpenSiteIds,
+		arg.OpenQuantities,
+	)
 	if err != nil {
 		return nil, err
 	}
