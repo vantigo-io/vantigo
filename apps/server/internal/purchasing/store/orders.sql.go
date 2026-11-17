@@ -263,7 +263,8 @@ WHERE (cardinality($1::text[]) = 0 OR o.status = ANY($1::text[]))
   AND (NOT $8::boolean OR (o.status IN ('sent', 'partially_received')
         AND o.supplier_reference IS NULL AND o.confirmed_on IS NULL AND o.sent_at < $9::timestamptz))
   AND ($10::text = '' OR o.number::text = $10::text
-        OR o.supplier_name ILIKE '%' || $10::text || '%' OR o.supplier_reference ILIKE '%' || $10::text || '%')
+        OR o.supplier_name ILIKE '%' || replace(replace(replace($10::text, '\', '\\'), '%', '\%'), '_', '\_') || '%'
+        OR o.supplier_reference ILIKE '%' || replace(replace(replace($10::text, '\', '\\'), '%', '\%'), '_', '\_') || '%')
 ORDER BY o.created_at DESC, o.id DESC
 LIMIT $12 OFFSET $11
 `

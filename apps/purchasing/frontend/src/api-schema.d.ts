@@ -572,7 +572,7 @@ export interface components {
         };
         /** @description One action of a change. */
         PurchasingChangeAction: {
-            /** @description What was done: created, updated, line_added, line_changed, line_removed, sent, marked_sent, sent_again, confirmed, line_closed, closed, reopened, cancelled. */
+            /** @description What was done: created, updated, line_added, line_changed, line_removed, sent, marked_sent, sent_again, confirmed, confirmation_cleared, line_closed, closed, received (the last open line closed with everything received), reopened, cancelled. */
             action: string;
             field?: string | null;
             from?: string | null;

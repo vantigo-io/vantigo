@@ -52,3 +52,26 @@ func TestItemPriceFor(t *testing.T) {
 		})
 	}
 }
+
+// An import's price takes the Norwegian forms where they read one way only.
+func TestImportDecimal(t *testing.T) {
+	t.Parallel()
+	for in, want := range map[string]string{
+		"12.50":        "12.50",
+		"12,50":        "12.50",
+		"1 234,50":     "1234.50",
+		"1 234,50":     "1234.50",
+		"1 234":        "1234",
+		"12 345 678,5": "12345678.5",
+		"1.234,50":     "1234.50",
+		"1.234.567,25": "1234567.25",
+		"1.234":        "1.234",
+		"1 23,5":       "1 23.5",
+		"1,234.50":     "1,234.50",
+		" 99 ":         "99",
+	} {
+		if got := importDecimal(in); got != want {
+			t.Errorf("importDecimal(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
