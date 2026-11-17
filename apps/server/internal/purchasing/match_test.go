@@ -498,9 +498,8 @@ func TestMatch_LastPriceAndDifferences(t *testing.T) {
 	boltItem := item(varBolt, "50", i32(packBox))
 	nutItem := item(varNut, "2", nil)
 	o := receivedOrder(t, c)
-	// The nuts' price was set by a person on the invoice's own day, which a
-	// posting of that day does not take back (A85).
-	h.Exec(t, `UPDATE purchasing.supplier_items SET price_set_on = '2026-11-10', price_set_by = 'person' WHERE id = $1`, nutItem.Id)
+	// The nuts' price was set by a person after the invoice's day.
+	h.Exec(t, `UPDATE purchasing.supplier_items SET price_set_on = '2026-11-12' WHERE id = $1`, nutItem.Id)
 	h.Exec(t, `UPDATE purchasing.supplier_items SET price_set_on = '2026-11-01' WHERE id = $1`, boltItem.Id)
 	// 30 bolts for 153.00 is 2 % over 150.00: within the default tolerance.
 	inv := h.books.enter(supNorsk, "invoice", "F-12", "NOK", "", fakeLine{"Bolter", "153.00"}, fakeLine{"Mutre", "12.00"})
@@ -533,11 +532,23 @@ func TestMatch_LastPriceAndDifferences(t *testing.T) {
 		t.Fatalf("the bolt's last price = %+v", b)
 	}
 	if n := getItem(t, c, nutItem.Id); *n.Price != "2.00" {
-		t.Fatalf("the nut's price, set by a person that day, = %s", *n.Price)
+		t.Fatalf("the nut's price, set by a person later, = %s", *n.Price)
 	}
 	if n := run(); n != 0 {
 		t.Fatalf("a second cycle claimed %d", n)
 	}
+	// A person sets the bolt's price on the invoice's own day after the
+	// posting; a second run of the worker leaves it (A85).
+	h.Exec(t, `UPDATE purchasing.supplier_items SET price = 55, price_set_on = '2026-11-10', price_set_by = 'person',
+		updated_at = (SELECT max(posted_at) FROM purchasing.invoice_matches WHERE supplier_invoice_id = $2) + interval '1 hour' WHERE id = $1`, boltItem.Id, inv)
+	h.Exec(t, `UPDATE purchasing.invoice_followups SET completed_at = NULL, attempts = 0, next_attempt_at = requested_at WHERE supplier_invoice_id = $1`, inv)
+	if n := run(); n != 1 {
+		t.Fatalf("the requeued follow-up claimed %d", n)
+	}
+	if b := getItem(t, c, boltItem.Id); *b.Price != "55.00" {
+		t.Fatalf("a second run took back a person's price of the invoice's day: %s", *b.Price)
+	}
+	h.Exec(t, `UPDATE purchasing.supplier_items SET price = 52, price_set_by = 'invoice' WHERE id = $1`, boltItem.Id)
 	// Another currency than the item's sets nothing.
 	h.Exec(t, `UPDATE purchasing.supplier_items SET currency = 'EUR' WHERE id = $1`, boltItem.Id)
 	o2 := receivedOrder(t, c)
