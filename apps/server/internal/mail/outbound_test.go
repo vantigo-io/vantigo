@@ -439,6 +439,41 @@ func TestRenderMIME_HasTheSamePartsAsTheSMTPMessage(t *testing.T) {
 	}
 }
 
+// TestRenderMIME_ADocumentMailRelatesItsLogo: a document's mail as Invoices
+// sends it (invoices phase 6 design I5) — the text and the HTML, the PDF
+// attached and the logo inline — keeps the HTML and the logo together in a
+// multipart/related, the logo under its bracketed Content-ID for the HTML's
+// cid:logo, and the PDF a plain attachment beside them.
+func TestRenderMIME_ADocumentMailRelatesItsLogo(t *testing.T) {
+	t.Parallel()
+	raw, err := mail.RenderMIME("post@example.test", mail.Outbound{
+		To: []string{"to@example.test"}, Subject: "Faktura 1001 fra Kraft-Verket AS",
+		TextBody: "Hei,", HTMLBody: `<p><img src="cid:logo" alt="Kraft-Verket AS"></p><p>Hei,</p>`,
+		Attachments: []mail.Attachment{
+			{FileName: "faktura-1001.pdf", ContentType: "application/pdf", Content: []byte("%PDF-1.3")},
+			{FileName: "logo.png", ContentType: "image/png", Content: []byte("png-bytes"), ContentID: "logo", Inline: true},
+		},
+	})
+	if err != nil {
+		t.Fatalf("RenderMIME: %v", err)
+	}
+	parts := renderedParts(t, raw)
+	related, logo, pdf := -1, -1, -1
+	for i, p := range parts {
+		switch {
+		case p == "multipart/related":
+			related = i
+		case strings.HasPrefix(p, "image/png|inline|<logo>|png-bytes"):
+			logo = i
+		case strings.HasPrefix(p, "application/pdf|attachment|"):
+			pdf = i
+		}
+	}
+	if related < 0 || logo < related || pdf < 0 {
+		t.Errorf("parts = %q, want a multipart/related holding the logo inline as <logo>, and the PDF attached", parts)
+	}
+}
+
 // TestRenderMIME_RequiresARecipient: as SendOutbound, a message to no one is
 // refused before anything is rendered.
 func TestRenderMIME_RequiresARecipient(t *testing.T) {

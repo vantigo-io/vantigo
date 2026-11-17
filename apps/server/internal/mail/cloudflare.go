@@ -115,11 +115,16 @@ type cloudflareAddress struct {
 	Name    string `json:"name"`
 }
 
+// cloudflareAttachment is one attachment as the REST API takes it. An inline
+// part — an image an HTML body names by cid: — goes with disposition
+// "inline" and its content_id, the REST API's field (the Workers binding's is
+// contentId).
 type cloudflareAttachment struct {
 	Content     string `json:"content"`
 	FileName    string `json:"filename"`
 	Type        string `json:"type"`
 	Disposition string `json:"disposition"`
+	ContentID   string `json:"content_id,omitempty"`
 }
 
 type cloudflareRequest struct {
@@ -150,8 +155,9 @@ type cloudflareResponse struct {
 
 // request is out as the API's JSON body. Message-ID is platform-controlled
 // there — the API refuses the header — so out.MessageID is not carried; the
-// threading headers are. A calendar part or an inline image has no field to
-// travel in, so either is refused rather than silently dropped.
+// threading headers are. An inline image travels as an attachment with
+// disposition "inline" and its content_id. A calendar part has no field to
+// travel in, so it is refused rather than silently dropped.
 func (s *cloudflareSender) request(out Outbound) (cloudflareRequest, error) {
 	n := len(out.To) + len(out.Cc) + len(out.Bcc)
 	if n == 0 {
@@ -196,15 +202,19 @@ func (s *cloudflareSender) request(out Outbound) (cloudflareRequest, error) {
 		req.Headers[name] = value
 	}
 	for _, a := range out.Attachments {
-		if a.Inline || a.ContentID != "" {
-			return cloudflareRequest{}, fmt.Errorf("mail: the cloudflare driver cannot carry an inline attachment")
-		}
-		req.Attachments = append(req.Attachments, cloudflareAttachment{
+		att := cloudflareAttachment{
 			Content:     base64.StdEncoding.EncodeToString(a.Content),
 			FileName:    a.FileName,
 			Type:        a.ContentType,
 			Disposition: "attachment",
-		})
+		}
+		// An inline part is embedded as the SMTP renderer embeds it: only
+		// with a Content-ID for the HTML body's cid: to name, which goes
+		// bare — the API adds the angle brackets.
+		if a.Inline && a.ContentID != "" {
+			att.Disposition, att.ContentID = "inline", a.ContentID
+		}
+		req.Attachments = append(req.Attachments, att)
 	}
 	return req, nil
 }

@@ -146,6 +146,35 @@ func TestSendOutbound_Cloudflare_FullEnvelope(t *testing.T) {
 	}
 }
 
+// An inline part — the logo an HTML body names as cid:logo — goes as an
+// attachment with disposition inline and its content_id, beside a plain
+// attachment that keeps its own disposition and carries no content_id.
+func TestSendOutbound_Cloudflare_CarriesAnInlineAttachment(t *testing.T) {
+	api := newCloudflareAPI(t, http.StatusOK, cfDelivered)
+	err := mail.SendOutbound(context.Background(), cloudflareConfig(), mail.Outbound{
+		To: []string{"a@example.test"}, Subject: "Faktura 1001", TextBody: "text", HTMLBody: `<img src="cid:logo">`,
+		Attachments: []mail.Attachment{
+			{FileName: "faktura-1001.pdf", ContentType: "application/pdf", Content: []byte("%PDF")},
+			{FileName: "logo.png", ContentType: "image/png", Content: []byte("\x89PNG"), ContentID: "logo", Inline: true},
+		},
+	})
+	if err != nil {
+		t.Fatalf("SendOutbound() = %v", err)
+	}
+	atts, _ := api.requests[0].payload["attachments"].([]any)
+	if len(atts) != 2 {
+		t.Fatalf("attachments = %v", atts)
+	}
+	pdf, logo := atts[0].(map[string]any), atts[1].(map[string]any)
+	if _, ok := pdf["content_id"]; ok || pdf["disposition"] != "attachment" {
+		t.Errorf("the PDF = %v, want a plain attachment without content_id", pdf)
+	}
+	if logo["disposition"] != "inline" || logo["content_id"] != "logo" || logo["filename"] != "logo.png" || logo["type"] != "image/png" ||
+		logo["content"] != base64.StdEncoding.EncodeToString([]byte("\x89PNG")) {
+		t.Errorf("the logo = %v, want an inline part with content_id logo", logo)
+	}
+}
+
 func TestSendOutbound_Cloudflare_ReportsAPIError(t *testing.T) {
 	newCloudflareAPI(t, http.StatusTooManyRequests, `{"success":false,"errors":[{"code":10004,"message":"email.sending.error.throttled"}],"messages":[],"result":null}`)
 	err := mail.SendOutbound(context.Background(), cloudflareConfig(), mail.Outbound{To: []string{"a@example.test"}, Subject: "s", TextBody: "secret-body"})
@@ -185,10 +214,9 @@ func TestSendOutbound_Cloudflare_RefusesWhatItCannotCarry(t *testing.T) {
 		many[i] = "r@example.test"
 	}
 	for name, out := range map[string]mail.Outbound{
-		"no recipient":      {Subject: "s"},
-		"over 50":           {To: many, Subject: "s"},
-		"calendar part":     {To: []string{"a@example.test"}, Calendar: &mail.CalendarPart{Method: "REQUEST", Body: "BEGIN:VCALENDAR"}},
-		"inline attachment": {To: []string{"a@example.test"}, Attachments: []mail.Attachment{{FileName: "logo.png", ContentID: "logo", Inline: true}}},
+		"no recipient":  {Subject: "s"},
+		"over 50":       {To: many, Subject: "s"},
+		"calendar part": {To: []string{"a@example.test"}, Calendar: &mail.CalendarPart{Method: "REQUEST", Body: "BEGIN:VCALENDAR"}},
 	} {
 		if err := mail.SendOutbound(context.Background(), cloudflareConfig(), out); err == nil {
 			t.Errorf("%s: SendOutbound() = nil, want a refusal", name)
