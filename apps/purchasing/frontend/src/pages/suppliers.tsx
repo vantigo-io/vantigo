@@ -45,6 +45,7 @@ import {
   purchasingMetaQueryOptions,
   purchasingSupplierQueryOptions,
   purchasingSuppliersQueryOptions,
+  SUPPLIER_LIST_LIMIT,
   searchPurchasingVariants,
   supplierItemsQueryOptions,
   updateSupplierItem,
@@ -159,6 +160,11 @@ export const SuppliersPage = ({ renderSupplierForm }: { renderSupplierForm?: Ren
                 ))}
               </Table.Tbody>
             </Table>
+          )}
+          {list.data && list.data.items.length >= SUPPLIER_LIST_LIMIT && (
+            <Text size="sm" c="dimmed" data-testid="suppliers-truncated">
+              {t("showingFirst", { count: SUPPLIER_LIST_LIMIT })}
+            </Text>
           )}
         </Stack>
       </PageSection>
@@ -457,6 +463,11 @@ const SupplierItems = ({ supplier, canManage }: { supplier: PurchasingSupplier; 
               </Table.Tbody>
             </Table>
           </Table.ScrollContainer>
+        )}
+        {items.data && items.data.total > items.data.items.length && (
+          <Text size="sm" c="dimmed" data-testid="supplier-items-truncated">
+            {t("showingSomeSearch", { shown: items.data.items.length, total: items.data.total })}
+          </Text>
         )}
       </Stack>
       {form !== null && (

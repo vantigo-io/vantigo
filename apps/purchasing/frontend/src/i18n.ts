@@ -173,6 +173,11 @@ export const purchasingCatalog = {
     stopEditing: "Discard changes",
     versionConflict: "Somebody changed the order since you opened it. Load it again and repeat your change.",
     reload: "Load again",
+    showingFirst: "Showing the first {{count}}. Search to find the others.",
+    showingSome: "Showing {{shown}} of {{total}}.",
+    showingSomeSearch: "Showing {{shown}} of {{total}}. Search to find the others.",
+    ordersManageNeeded:
+      "Writing purchase orders needs the permission Manage purchase orders. Ask an administrator for it.",
 
     // The send dialogs
     sendTitle: "Send the purchase order",
@@ -209,6 +214,9 @@ export const purchasingCatalog = {
     "mailingStatus.queued": "Queued",
     "mailingStatus.sent": "Sent",
     "mailingStatus.failed": "Failed",
+    mailingQueuedGeneric: "Not sent yet; it is tried again automatically.",
+    mailingFailedGeneric: "The e-mail could not be sent. Send the order again, or download the PDF.",
+    mailingSuperseded: "Not sent: a newer version was sent again first.",
     "changeAction.created": "Created",
     "changeAction.updated": "Changed",
     "changeAction.line_added": "Line added",
@@ -390,7 +398,7 @@ export const purchasingCatalog = {
     "refusal.client_request_reused": "The request was already made with other contents. Try again.",
     "refusal.dependency_unavailable": "A module Purchasing reads is not available.",
     "refusal.sending_disabled": "Sending by e-mail is not available. Mark the order as sent instead.",
-    "refusal.mail_failed": "The order is sent, but the mail provider did not take the e-mail. It is retried.",
+    "refusal.mail_failed": "The order is sent, but its e-mail did not go out yet. It is queued and sent automatically.",
   },
   nb: {
     purchasing: "Innkjøp",
@@ -550,6 +558,11 @@ export const purchasingCatalog = {
     stopEditing: "Forkast endringene",
     versionConflict: "Noen har endret ordren siden du åpnet den. Last den inn på nytt og gjenta endringen.",
     reload: "Last inn på nytt",
+    showingFirst: "Viser de første {{count}}. Søk for å finne de andre.",
+    showingSome: "Viser {{shown}} av {{total}}.",
+    showingSomeSearch: "Viser {{shown}} av {{total}}. Søk for å finne de andre.",
+    ordersManageNeeded:
+      "Å skrive innkjøpsordrer krever tillatelsen Forvalte innkjøpsordrer. Be en administrator om den.",
 
     sendTitle: "Send innkjøpsordren",
     sendAgainTitle: "Send den reviderte ordren",
@@ -584,6 +597,9 @@ export const purchasingCatalog = {
     "mailingStatus.queued": "I kø",
     "mailingStatus.sent": "Sendt",
     "mailingStatus.failed": "Feilet",
+    mailingQueuedGeneric: "Ikke sendt ennå; den prøves på nytt automatisk.",
+    mailingFailedGeneric: "E-posten kunne ikke sendes. Send ordren på nytt, eller last ned PDF-en.",
+    mailingSuperseded: "Ikke sendt: en nyere versjon ble sendt på nytt først.",
     "changeAction.created": "Opprettet",
     "changeAction.updated": "Endret",
     "changeAction.line_added": "Linje lagt til",
@@ -761,7 +777,7 @@ export const purchasingCatalog = {
     "refusal.client_request_reused": "Forespørselen er allerede gjort med annet innhold. Prøv igjen.",
     "refusal.dependency_unavailable": "En modul Innkjøp leser fra, er ikke tilgjengelig.",
     "refusal.sending_disabled": "Sending på e-post er ikke tilgjengelig. Marker ordren som sendt i stedet.",
-    "refusal.mail_failed": "Ordren er sendt, men e-postleverandøren tok ikke imot e-posten. Den sendes på nytt.",
+    "refusal.mail_failed": "Ordren er sendt, men e-posten er ikke gått ennå. Den står i kø og sendes automatisk.",
   },
 } satisfies CatalogResources;
 

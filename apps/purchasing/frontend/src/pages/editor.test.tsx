@@ -107,4 +107,34 @@ describe("the purchase order editor", () => {
     const words = "The quantity cannot be less than what is received.";
     await waitFor(() => expect(screen.getAllByText(words)).toHaveLength(2));
   });
+
+  it("offers no editor without Manage purchase orders, only why", async () => {
+    const fake = fakeServer((call) => variants(call) ?? commonAnswers(call));
+    renderRoute("/purchasing/orders/new?supplierId=40", { canManageOrders: false });
+    expect(
+      await screen.findByText(
+        "Writing purchase orders needs the permission Manage purchase orders. Ask an administrator for it.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Create the draft" })).not.toBeInTheDocument();
+    expect(fake.count("POST", "/api/v1/purchasing/orders")).toBe(0);
+  });
+
+  it("offers Load again on a version conflict, which reads the order afresh", async () => {
+    const read = order();
+    const fake = fakeServer((call) => {
+      if (call.method === "GET" && call.url === "/api/v1/purchasing/orders/501") return jsonResponse(200, read);
+      if (call.method === "PUT") return refusal(409, "version_conflict");
+      return commonAnswers(call);
+    });
+    renderRoute("/purchasing/orders/501");
+    await userEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Save" }));
+    expect(
+      await screen.findByText("Somebody changed the order since you opened it. Load it again and repeat your change."),
+    ).toBeInTheDocument();
+    const reads = fake.count("GET", "/api/v1/purchasing/orders/501");
+    await userEvent.click(screen.getByRole("button", { name: "Load again" }));
+    await waitFor(() => expect(fake.count("GET", "/api/v1/purchasing/orders/501")).toBeGreaterThan(reads));
+  });
 });

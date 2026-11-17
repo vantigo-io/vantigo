@@ -95,14 +95,92 @@ describe("the purchase order page", () => {
     expect(body.clientRequestId).toMatch(/^[0-9a-f-]{36}$/);
   });
 
-  it("says a refused mail in the reader's words, the order left sent", async () => {
+  it("closes the dialog on a queued mail and says the order is sent, the mail queued", async () => {
     serve(draft(), { write: () => refusal(503, "mail_failed") });
     renderRoute("/purchasing/orders/501");
     await userEvent.click(await screen.findByRole("button", { name: "Send" }));
     await userEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Send" }));
     expect(
-      await screen.findByText("The order is sent, but the mail provider did not take the e-mail. It is retried."),
+      await screen.findByText(
+        "The order is sent, but its e-mail did not go out yet. It is queued and sent automatically.",
+      ),
     ).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
+  it("retries a send whose answer was lost under the same request id", async () => {
+    let attempts = 0;
+    const fake = serve(draft(), {
+      write: () => (++attempts === 1 ? jsonResponse(500, {}) : jsonResponse(200, { order: order() })),
+    });
+    renderRoute("/purchasing/orders/501");
+    await userEvent.click(await screen.findByRole("button", { name: "Send" }));
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(fake.count("POST", "/api/v1/purchasing/orders/501/send")).toBe(1));
+    await userEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Send" }));
+    await screen.findByText("The order is sent");
+    const sends = fake.calls.filter((c) => c.method === "POST" && c.url === "/api/v1/purchasing/orders/501/send");
+    expect(sends).toHaveLength(2);
+    const ids = sends.map((c) => (c.body as { clientRequestId: string }).clientRequestId);
+    expect(ids[0]).toMatch(/^[0-9a-f-]{36}$/);
+    expect(ids[1]).toBe(ids[0]);
+  });
+
+  it("marks a draft as sent with a request id, the same one on a retry", async () => {
+    let attempts = 0;
+    const fake = serve(draft(), {
+      write: () => (++attempts === 1 ? jsonResponse(500, {}) : jsonResponse(200, { order: order() })),
+    });
+    renderRoute("/purchasing/orders/501");
+    await userEvent.click(await screen.findByRole("button", { name: "Mark as sent" }));
+    await userEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Mark as sent" }));
+    await waitFor(() => expect(fake.count("POST", "/api/v1/purchasing/orders/501/mark-sent")).toBe(1));
+    await userEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Mark as sent" }));
+    await screen.findByText("The order is marked as sent");
+    const marks = fake.calls.filter((c) => c.url === "/api/v1/purchasing/orders/501/mark-sent");
+    expect(marks.map((c) => (c.body as { expectedUpdatedAt: string }).expectedUpdatedAt)).toEqual([
+      "2026-11-16T09:00:00Z",
+      "2026-11-16T09:00:00Z",
+    ]);
+    expect((marks[1].body as { clientRequestId: string }).clientRequestId).toBe(
+      (marks[0].body as { clientRequestId: string }).clientRequestId,
+    );
+  });
+
+  it("sends a sent order again, revised, or only stores it with the tick taken off", async () => {
+    const fake = serve(order(), { write: () => jsonResponse(200, { order: order({ version: 2 }) }) });
+    renderRoute("/purchasing/orders/501");
+    await userEvent.click(await screen.findByRole("button", { name: "Send again" }));
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(within(dialog).getByRole("checkbox", { name: "Mail the revised order to the supplier" }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Send again" }));
+    await screen.findByText("A revised order is stored");
+    expect(fake.sent("POST", "/api/v1/purchasing/orders/501/send-again")?.body).toEqual({
+      mail: false,
+      expectedUpdatedAt: "2026-11-16T09:00:00Z",
+    });
+  });
+
+  it("reopens a closed order as it was read", async () => {
+    const closed = order({ status: "closed", lines: [line({ closedAt: "2026-11-16T10:00:00Z" })] });
+    const fake = serve(closed, { write: () => jsonResponse(200, order()) });
+    renderRoute("/purchasing/orders/501");
+    await userEvent.click(await screen.findByRole("button", { name: "Reopen" }));
+    await userEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Reopen" }));
+    await screen.findByText("The order is open again");
+    expect(fake.sent("POST", "/api/v1/purchasing/orders/501/reopen")?.body).toEqual({
+      expectedUpdatedAt: "2026-11-16T09:00:00Z",
+    });
+  });
+
+  it("deletes a draft as it was read and goes back to the orders", async () => {
+    const fake = serve(draft(), { write: () => new Response(null, { status: 204 }) });
+    const { router } = renderRoute("/purchasing/orders/501");
+    await userEvent.click(await screen.findByRole("button", { name: "Delete draft" }));
+    await userEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Delete draft" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/purchasing/orders"));
+    expect(fake.sent("DELETE", /\/api\/v1\/purchasing\/orders\/501\?expectedUpdatedAt=/)).toBeDefined();
   });
 
   it("cancels a mailed order with the supplier told, unless the tick is taken off", async () => {
@@ -201,5 +279,38 @@ describe("the purchase order page", () => {
     expect(within(await screen.findByTestId("order-documents")).getByText("Version 1")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("tab", { name: "Mailings" }));
     expect(within(await screen.findByTestId("order-mailings")).getByText("ordre@skruer.no")).toBeInTheDocument();
+  });
+
+  it("says a failed mailing in the reader's words, the provider's detail beside it", async () => {
+    fakeServer((call) => {
+      if (call.url === "/api/v1/purchasing/orders/501") return jsonResponse(200, order());
+      if (call.url === "/api/v1/purchasing/orders/501/history")
+        return jsonResponse(200, {
+          changes: [],
+          documents: [],
+          mailings: [
+            {
+              id: 4,
+              kind: "order",
+              version: 1,
+              recipient: "ordre@skruer.no",
+              cc: [],
+              subject: "Innkjøpsordre 3001",
+              status: "failed",
+              attempts: 8,
+              lastError: "The mail provider did not take the e-mail. 550 mailbox full",
+              createdAt: "2026-11-16T09:00:00Z",
+            },
+          ],
+        });
+      return commonAnswers(call);
+    });
+    renderRoute("/purchasing/orders/501");
+    await userEvent.click(await screen.findByRole("tab", { name: "Mailings" }));
+    const box = within(await screen.findByTestId("order-mailings"));
+    expect(
+      box.getByText("The e-mail could not be sent. Send the order again, or download the PDF."),
+    ).toBeInTheDocument();
+    expect(box.getByText("The mail provider did not take the e-mail. 550 mailbox full")).toBeInTheDocument();
   });
 });

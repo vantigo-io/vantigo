@@ -25,6 +25,7 @@ import {
   savePurchasingSettings,
 } from "../api/purchasing";
 import { PURCHASING_QUERY_KEY } from "../api/request";
+import { markStaleOnConflict, SaveError } from "../components/common";
 import "../i18n";
 import { noPurchasingAccess, type PurchasingAccess } from "../lib/access";
 import { refusalMessage } from "../lib/errors";
@@ -91,6 +92,7 @@ const SettingsForm = ({ settings, canSave }: { settings: PurchasingSettings; can
       await queryClient.invalidateQueries({ queryKey: [PURCHASING_QUERY_KEY] });
       notifications.show({ color: "green", message: t("saved") });
     },
+    onError: (error) => markStaleOnConflict(queryClient, error),
   });
   const siteList = sites.data?.items ?? [];
   const setAddress = (siteId: number, next: Partial<PurchasingAddress>) =>
@@ -206,11 +208,7 @@ const SettingsForm = ({ settings, canSave }: { settings: PurchasingSettings; can
           })}
         </Stack>
       </PageSection>
-      {save.isError && (
-        <Alert color="red" title={t("couldNotSave")}>
-          {refusalMessage(save.error, t)}
-        </Alert>
-      )}
+      {save.isError && <SaveError error={save.error} conflict="refusal.version_conflict" />}
       {canSave && (
         <Group justify="flex-end">
           <Button leftSection={<IconDeviceFloppy size={16} />} loading={save.isPending} onClick={() => save.mutate()}>

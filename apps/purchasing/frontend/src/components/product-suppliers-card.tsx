@@ -80,6 +80,11 @@ export const ProductSuppliersCard = ({ variantIds }: ProductSuppliersCardProps) 
             </Table.Tbody>
           </Table>
         )}
+        {items.data && items.data.total > items.data.items.length && (
+          <Text size="sm" c="dimmed" data-testid="product-suppliers-truncated">
+            {t("showingSome", { shown: items.data.items.length, total: items.data.total })}
+          </Text>
+        )}
       </Stack>
     </Card>
   );

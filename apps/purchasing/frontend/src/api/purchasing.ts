@@ -145,12 +145,17 @@ export const purchaseOrderPdfUrl = (id: number) => `${BASE}/orders/${id}/pdf`;
 export const purchaseOrderDocumentUrl = (id: number, documentId: number) =>
   `${BASE}/orders/${id}/documents/${documentId}`;
 
+/** How many suppliers a search answers at most; a full page says so. */
+export const SUPPLIER_LIST_LIMIT = 50;
+
 /** The register's suppliers matching a search, inactive ones too (P13). */
 export const purchasingSuppliersQueryOptions = (q?: string) =>
   queryOptions({
     queryKey: [PURCHASING_QUERY_KEY, "suppliers", "list", q ?? ""],
     queryFn: ({ signal }) =>
-      request<{ items: PurchasingSupplier[] }>(`${BASE}/suppliers${queryString({ q, limit: 50 })}`, { signal }),
+      request<{ items: PurchasingSupplier[] }>(`${BASE}/suppliers${queryString({ q, limit: SUPPLIER_LIST_LIMIT })}`, {
+        signal,
+      }),
     placeholderData: keepPreviousData,
   });
 

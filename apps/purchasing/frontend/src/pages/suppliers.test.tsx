@@ -188,4 +188,37 @@ describe("the product page's Suppliers card", () => {
     renderProductSuppliers([302]);
     expect(await screen.findByText("No supplier sells this product yet.")).toBeInTheDocument();
   });
+
+  it("says the suppliers' list is cut at its first 50", async () => {
+    fakeServer((call) => {
+      if (call.url.startsWith("/api/v1/purchasing/suppliers?"))
+        return jsonResponse(200, {
+          items: Array.from({ length: 50 }, (_, i) => supplier({ id: 1000 + i, number: 3000 + i })),
+        });
+      return commonAnswers(call);
+    });
+    renderRoute("/purchasing/suppliers");
+    expect(await screen.findByTestId("suppliers-truncated")).toHaveTextContent(
+      "Showing the first 50. Search to find the others.",
+    );
+  });
+
+  it("says the supplier's items show only part of the total", async () => {
+    fakeServer((call) => {
+      if (call.url === "/api/v1/purchasing/suppliers/40") return jsonResponse(200, supplier());
+      if (call.url.startsWith("/api/v1/purchasing/supplier-items?"))
+        return jsonResponse(200, { items: [supplierItem()], total: 340, page: 1, pageSize: 200 });
+      return commonAnswers(call);
+    });
+    renderRoute("/purchasing/suppliers/40");
+    expect(await screen.findByTestId("supplier-items-truncated")).toHaveTextContent(
+      "Showing 1 of 340. Search to find the others.",
+    );
+  });
+
+  it("says the product card shows only part of the total", async () => {
+    fakeServer(() => jsonResponse(200, { items: [supplierItem()], total: 260, page: 1, pageSize: 200 }));
+    renderProductSuppliers([302]);
+    expect(await screen.findByTestId("product-suppliers-truncated")).toHaveTextContent("Showing 1 of 260.");
+  });
 });
