@@ -6,6 +6,10 @@ sidebar:
 sources:
   - apps/purchasing/frontend
   - apps/host/frontend/src/routes/purchasing
+  - apps/host/frontend/src/lib/purchasing-access.ts
+  - apps/host/frontend/src/lib/dashboard-helpers.ts
+  - apps/host/frontend/src/components/app-spotlight.tsx
+  - apps/host/frontend/src/routes/products/$productId.tsx
 ---
 
 The Purchasing app is where you order goods and services from your suppliers. In
@@ -24,15 +28,20 @@ Purchasing.
 ## The app and its sidebar
 
 The sidebar has **Purchase orders** and **Suppliers** for everyone with **Use Purchasing**,
-and **Settings** for those who manage the Purchasing settings. What you can do depends on
+and **Purchasing settings** for those who manage the Purchasing settings. What you can do depends on
 your permissions: writing orders, sending them and keeping the supplier items are
 separate permissions, so a colleague may see buttons you do not
 ([Permissions](#permissions)). Everyone with **Use Purchasing** sees the prices.
 
 ## The order list
 
-**Purchase orders** lists the orders newest first, with their number, supplier, status,
-receiving site, expected day and total excluding VAT. A draft has no number yet. An order
+**Purchase orders** lists the orders newest first, with their **Number**, **Supplier** —
+the supplier's reference under the name once it is recorded —, **Status**, **Order date**,
+**Expected day**, **Received**, **Invoiced** and the **Net total**, excluding VAT. A draft has no
+number yet. **Received** counts the order's goods lines received in full or closed, out of
+all its goods lines, and **Invoiced** its lines invoiced in full, out of all its lines;
+receiving and the invoice match come with later versions of Purchasing, so until then
+**Received** counts only closed lines and **Invoiced** reads 0 of the lines. An order
 can be:
 
 - **Draft** — being written; it has no number and can be deleted.
@@ -86,8 +95,12 @@ An order has up to 500 lines, of two kinds:
   supplier items for. The line takes from the supplier's item what you leave empty: **the supplier's item
   number**, the price — when the item's price is in the order's currency —, the
   **Purchase packaging** while the product still has it, and the **Expected day**, the
-  order date plus the item's lead time. You enter the quantity in the purchase packaging,
-  and the line shows it in the product's unit too: 3 boxes of 15 are 45 pieces. **Discount %** is a percentage off the price. The line's amount is quantity × price, less
+  order date plus the item's lead time. The item's price is per its own purchase
+  packaging: a line in another packaging takes it converted — the price of a box of 10
+  is ten times the unit's —, and stays at 0 when the packaging's size is not known. You
+  enter the quantity in the purchase packaging; the packaging's choice names how many of
+  the product's unit it holds — **Eske (15 pcs)** —, so 3 of them are 45 pieces on order.
+  **Discount %** is a percentage off the price. The line's amount is quantity × price, less
   the discount, rounded to two decimals.
 - **Text line** (**Add text line**) — something outside the catalog, such as freight or a service: a
   description, a quantity, a unit and a price.
@@ -96,7 +109,12 @@ A quantity under the supplier item's **Minimum quantity**, or not a whole number
 **Multiple**, is shown as a warning; the order can still be saved and sent. A product
 that is **Discontinued** cannot be put on a new line; a service product can be ordered.
 
-All amounts exclude VAT, in the order's currency, and the PDF says so.
+All amounts exclude VAT, in the order's currency, and the PDF says so. A line's amount and
+the order's total are at most 999 999 999 999.99; a larger one is refused.
+
+Writing orders needs **Manage purchase orders**: without it, **New purchase order** and
+**Edit** say so instead of offering a form. If somebody changes the order while you edit
+it, **Save** says so and offers **Load again**, which opens the order as it now is.
 
 ## Send the order
 
@@ -110,17 +128,19 @@ on a mail channel in its [settings](#settings) and Communications in use.
    mailed to the supplier with a short cover mail in the order's language asking them to
    quote the order number on their invoice.
 
-If the mail provider does not take the e-mail, the order is still sent and has its
-number: the app says the e-mail could not be sent, and the mail is tried again by itself
-for a while. The order page says the last mail failed and is retried; **Send again**
-sends a new copy.
+The e-mail is part of the send: it is queued together with the order, so a sent order
+always has its mail. If it does not go out at once — the mail provider does not take it,
+or the PDF could not be stored —, the order is still sent and has its number: the dialog
+closes and the app warns that the order is sent and its e-mail queued, and the mail is
+sent by itself as soon as it can, tried again for a while. The order page says the last
+mail failed and is retried; **Send again** sends a new copy.
 
 **Mark as sent** does the same without a mail — for an order placed by phone or in the
 supplier's web shop: the order gets its number and its PDF is stored. When e-mail is not
 set up, **Mark as sent** is what the order page offers.
 
 Choosing **Send** twice, or a lost connection followed by a retry, does not send the
-order twice.
+order twice: the dialog sends the same request again, and Purchasing answers the first.
 
 ## After sending
 
@@ -143,7 +163,10 @@ On a sent order, **Edit** opens the order for these changes; **Save** writes the
 next version number, and mails it to the supplier; untick the mail to store it only. The
 order's **History** has three parts: **Changes**, **PDFs** — every stored PDF with its
 version — and **Mailings**, each with its recipient and whether it was **Sent**,
-**Queued** to be tried again or **Failed**.
+**Queued** to be tried again or **Failed**. A mailing that did not go out says why in your
+words, with the mail provider's own message beside it. A queued mail of an earlier version
+is not sent once the order is sent again: it is **Failed**, as a newer version was sent
+first.
 
 ## Record the supplier's confirmation
 
@@ -156,7 +179,7 @@ confirmation is a note on the order; it does not change its status. It ends the 
 ## Close a line or an order
 
 - **Close line** ends one line: what is left on it will not come. When no line is left
-  open, the order is closed.
+  open, the order is closed — or **Received**, when everything on it was received.
 - **Close** ends a sent order with what is left on it: every open line is closed and the
   order is **Closed**. What was left stops counting as *on order* in Inventory.
 - **Reopen** opens a closed order again, with the lines its closing ended; a line you
@@ -202,14 +225,16 @@ cancellation **Cancelled**.
 and open orders each has. A supplier's page shows its entry — number, name, organisation
 number, address, e-mail, currency and payment terms — read-only, and its supplier items.
 **Open in Accounting** leads to Accounting's page for the supplier, for those with **Use
-Accounting**.
+Accounting**. The list shows the first 50 suppliers that match; search to find the
+others.
 
 If you may keep the suppliers — **Keep the suppliers**, or **Post vouchers** with **Use
 Accounting** — **New supplier** on the list adds a supplier to the register from
-Purchasing. **Edit supplier** on a supplier's page changes it, and needs **Use
-Accounting** as well. Without **Post vouchers** the form has no bank account, IBAN, BIC,
+Purchasing, and **Edit supplier** on a supplier's page changes it. **Keep the suppliers**
+alone is enough for both: the form opens on the register's entry as Purchasing reads it.
+Without **Post vouchers** and **Use Accounting** the form has no bank account, IBAN, BIC,
 default account or tax code; see [Suppliers](/en/user/accounting/#suppliers) for what
-each permission lets you change.
+each permission lets you change. If the supplier cannot be read, **Edit supplier** says so.
 
 ### Supplier items
 
@@ -232,6 +257,8 @@ the currency differs until someone sets the price again. When the packaging an i
 is deleted from the product, the item falls back to the unit and says so.
 
 **Add supplier item** on a supplier's page adds one; each item can be edited and deleted.
+The page shows up to 200 items and says how many there are when the supplier has more;
+search to find the others.
 Adding, changing and deleting supplier items needs **Manage supplier items**. Deleting
 one does not change the orders that took from it.
 
@@ -258,12 +285,13 @@ header names the columns, in any order and case:
    repeats another.
 2. When every row passes, choose **Import**. Every row is written, or — if any fails — none.
 
-An empty cell keeps what the supplier item has. Prices from the import are marked as set
-by the import.
+An empty cell keeps what the supplier item has. A price may be written as `1234.50`, or the
+Norwegian way, `1234,50`, `1 234,50` or `1.234,50`. Prices from the import are marked as
+set by the import.
 
 ## Settings
 
-**Settings** needs **Manage Purchasing settings**:
+**Purchasing settings** needs **Manage Purchasing settings**:
 
 - **First order number** — where the order series starts. Once numbers are used it can
   only be raised above the last one.
@@ -274,17 +302,24 @@ by the import.
   characters.
 - **Delivery addresses** — per site, tick **Own delivery address** to give the address the
   supplier delivers to; without one, the company's address with the site's name is used.
+  The country is a two-letter code, such as `NO`.
 - **Price tolerance (%)** — a percentage, 2 % unless changed, for the invoice match that
-  comes later.
+  comes later; it changes nothing yet.
+
+If somebody saved the settings while you changed them, **Save** says so and offers **Load
+again**.
 
 ## The dashboard and the product page
 
 Purchasing's card on the dashboard, for those with **Use Purchasing**, counts the orders
-that are late and those unconfirmed.
+that are late and those unconfirmed. When orders where you are **Our reference** are
+unconfirmed, the dashboard's attention list says so — *2 of your purchase orders are not
+confirmed by the supplier* — and opens the order list. Purchasing's pages can also be
+found from the search in the top bar.
 
 On a product's page in Products, the **Suppliers** card lists the supplier items of the
 product's variants — which supplier sells it, at what price and which is preferred — when Purchasing is in use and you have **Use
-Purchasing**.
+Purchasing**. It shows up to 200 and says how many there are when there are more.
 
 When a supplier item or a purchase order line names a product variant, Products does not
 delete it, and a product with an open goods line on a draft or sent order does not become
@@ -296,7 +331,9 @@ A supplier that any purchase order or supplier item names cannot be deleted in
 Accounting; it can be made inactive, and its open orders stay. A supplier who is a person
 is not anonymised while a draft, sent or partially received order names them. When a
 person supplier is anonymised, their name, address, e-mail and contact are removed from
-the orders, and the orders' stored PDFs are deleted.
+the orders, the addresses, messages and refusals from the orders' mailings, and the
+contact and notes from the orders' history — which keeps that they changed —, and the
+orders' stored PDFs are deleted.
 
 ## Permissions
 
@@ -308,9 +345,9 @@ the orders, and the orders' stored PDFs are deleted.
 | **Manage supplier items** (`purchasing:supplier-items-manage`) | Add, change, delete and import supplier items. |
 | **Manage Purchasing settings** (`purchasing:settings`) | The settings. |
 
-**Receive goods** (`purchasing:receive`) and **Match supplier invoices**
-(`purchasing:invoices-match`) can already be given in a role; they are used once
-receiving and the invoice match arrive.
+**Receive goods (coming)** (`purchasing:receive`) and **Match supplier invoices (coming)**
+(`purchasing:invoices-match`) can already be given in a role; they do nothing yet, and are
+used once receiving and the invoice match arrive.
 
 ## What comes later
 

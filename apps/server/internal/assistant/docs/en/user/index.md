@@ -87,7 +87,7 @@ shorter than yours:
 | [Orders](/en/user/orders/) | Quotes, Sales orders, Deliveries, Subscriptions, Quote templates, Sales analysis, Orders settings |
 | [Manufacturing](/en/user/manufacturing/) | Overview, Manufacturing orders, Suggestions, Unbuilds, Shop floor, Production schedule, Deviations, Bills of materials, Work centers |
 | [Accounting](/en/user/accounting/) | Overview, New journal entry, Vouchers, Needs attention, Supplier invoices, Suppliers, Open items, Bank, VAT, Reports, SAF-T, Chart of accounts, Tax codes, Posting rules, Settings |
-| [Purchasing](/en/user/purchasing/) | Purchase orders, Suppliers, Settings |
+| [Purchasing](/en/user/purchasing/) | Purchase orders, Suppliers, Purchasing settings |
 | [Knowledge](/en/user/knowledge/) | Articles, Trash |
 | [Energy](/en/user/energy/) | Metering points |
 | [Microsoft Entra ID](/en/user/entra/) | Microsoft Entra ID (the connection's status and its six setup steps), for `entra:manage` |

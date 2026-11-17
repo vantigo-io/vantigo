@@ -396,7 +396,8 @@ endring avvises ikke fordi kontoen er gjort inaktiv siden. **Slett** og **Anonym
 **Leverandører** her er et skjermbilde i Regnskap, bak **Bruke Regnskap**: den som bare har
 **Vedlikeholde leverandører**, ser det ikke. Innkjøperens eget skjermbilde for registeret
 kommer med Innkjøp-appen: **Ny leverandør** i listen **Leverandører** der, og **Rediger
-leverandør** på siden for en leverandør der for dem som også har **Bruke Regnskap**
+leverandør** på siden for en leverandør der, som åpnes med oppføringen i registeret slik
+Innkjøp leser den, så **Vedlikeholde leverandører** alene holder
 ([Innkjøp](/nb/user/purchasing/#leverandører-og-leverandørvarene-deres)).
 
 ## Leverandørfakturaer
@@ -1082,7 +1083,7 @@ tillatelsene som trengs:
 | **Bruke Regnskap** (`accounting:read`) | Alle skjermbilder og rapporter. |
 | **Bokføre bilag** (`accounting:post`) | Posteringer, tilbakeføringer, vedlegg, oppgjør, leverandører, leverandørfakturaer og betalingene av dem, handlingene under Trenger oppmerksomhet, og å merke en mva-termin som levert. |
 | **Forvalte regnskapet** (`accounting:close`) | Å sette opp regnskapet (også fra en SAF-T-fil), kontoplanen, mva-kodene, posteringsreglene, inngående balanse, sperren, og å lukke og åpne igjen mva-terminer og fjerne et leveringsmerke. Bare en eier kan gi den. |
-| **Vedlikeholde leverandører** (`accounting:suppliers-manage`) | Å legge inn og endre leverandører — unntatt kontonummer, IBAN, BIC, standardkonto, mva-kode, personmerket og aktivmerket — også før regnskapet er satt opp: en innkjøpers. Den krever ikke **Bruke Regnskap**, men å se **Leverandører** i Regnskap gjør det; innkjøperens skjermbilde kommer med Innkjøp. |
+| **Vedlikeholde leverandører** (`accounting:suppliers-manage`) | Å legge inn og endre leverandører — unntatt kontonummer, IBAN, BIC, standardkonto og mva-kode, og ved en endring personmerket og aktivmerket — også før regnskapet er satt opp: en innkjøpers. Den krever ikke **Bruke Regnskap**, men å se **Leverandører** i Regnskap gjør det; innkjøperen legger inn og redigerer leverandører fra **Leverandører** i Innkjøp. |
 | **Eksportere regnskapet** (`accounting:export`) | Rapportene som CSV, en leverandørs opplysninger, og SAF-T-filen. |
 
 Når oppdraget er over, fjerner du rollen eller deaktiverer brukeren: alt vedkommende har
