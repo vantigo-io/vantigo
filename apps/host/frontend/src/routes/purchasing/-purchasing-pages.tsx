@@ -19,6 +19,7 @@ import { ReceivePurchaseOrderPage } from "@vantigo/purchasing-ui/pages/receive";
 import { ReceivingPage } from "@vantigo/purchasing-ui/pages/receiving";
 import { PurchasingSettingsPage } from "@vantigo/purchasing-ui/pages/settings";
 import { SupplierPage, SuppliersPage } from "@vantigo/purchasing-ui/pages/suppliers";
+import { ReceivedNotInvoicedPage } from "@vantigo/purchasing-ui/pages/uninvoiced";
 import type { ReactNode } from "react";
 import { purchasingHomeFor, supplierFormHasBooks, usePurchasingAccess } from "../../lib/purchasing-access";
 
@@ -84,6 +85,7 @@ const RegisterSupplierForm = ({ supplierId, onClose, onSaved, books }: SupplierF
 
 export const PurchaseOrdersRoutePage = withAccess((access) => <PurchaseOrdersPage access={access} />);
 export const SettingsRoutePage = withAccess((access) => <PurchasingSettingsPage access={access} />);
+export const ReceivedNotInvoicedRoutePage = withAccess(() => <ReceivedNotInvoicedPage />);
 export const ReceivingRoutePage = withAccess(() => <ReceivingPage />);
 /**
  * The app's home: the purchase orders, or — for a receiver who holds

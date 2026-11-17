@@ -19,9 +19,18 @@ describe("what the Purchasing pages may offer", () => {
       canManageSettings: false,
       canReceive: false,
       canRead: true,
+      canMatchInvoices: false,
+      canRegisterInvoices: false,
       canOpenInventoryMovements: false,
       userId: "u1",
     });
+    // Matching is purchasing:invoices-match's; Register invoice makes
+    // Accounting's draft, so it needs accounting:post too (A1).
+    const matcher = purchasingAccessOf(["purchasing:access", "purchasing:invoices-match"]);
+    expect([matcher.canMatchInvoices, matcher.canRegisterInvoices]).toEqual([true, false]);
+    const poster = purchasingAccessOf(["purchasing:access", "purchasing:invoices-match", "accounting:post"]);
+    expect([poster.canMatchInvoices, poster.canRegisterInvoices]).toEqual([true, true]);
+    expect(purchasingAccessOf(["purchasing:invoices-match", "accounting:post"]).canRegisterInvoices).toBe(false);
     expect(purchasingAccessOf(["purchasing:access", "purchasing:supplier-items-manage"]).canManageSupplierItems).toBe(
       true,
     );

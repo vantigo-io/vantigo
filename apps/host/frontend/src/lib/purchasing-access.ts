@@ -24,6 +24,14 @@ export const purchasingAccessOf = (permissions: string[] | undefined, user?: { i
     canManageSettings: purchasing("purchasing:settings"),
     canReceive: hasAllPermissions(permissions, ["purchasing:receive"]),
     canRead: hasAllPermissions(permissions, ["purchasing:access"]),
+    canMatchInvoices: purchasing("purchasing:invoices-match"),
+    // Register invoice makes Accounting's draft, so it needs Accounting's
+    // own key as well (A1).
+    canRegisterInvoices: hasAllPermissions(permissions, [
+      "purchasing:access",
+      "purchasing:invoices-match",
+      "accounting:post",
+    ]),
     canOpenInventoryMovements:
       enabledModuleKeys().includes("inventory") && hasAllPermissions(permissions, ["inventory:stock-view"]),
     userId: user?.id,

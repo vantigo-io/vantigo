@@ -185,6 +185,7 @@ describe("the app registry", () => {
       "/purchasing/proposals",
       "/purchasing/receive",
       "/purchasing/suppliers",
+      "/purchasing/received-not-invoiced",
       "/purchasing/settings",
       "/accounting",
       "/accounting/journal",
@@ -822,10 +823,11 @@ describe("the app registry", () => {
   });
 
   // Purchasing's destinations are the package's (`purchasingNavItems`, P23):
-  // the orders, the proposals and the suppliers are purchasing:access's, the
-  // settings purchasing:settings's with it, and receiving purchasing:receive's
-  // alone (P30, A47).
-  it("registers Purchasing with the package's five destinations", () => {
+  // the orders, the proposals and the suppliers are purchasing:access's,
+  // received not invoiced purchasing:invoices-match's with it, the settings
+  // purchasing:settings's with it, and receiving purchasing:receive's alone
+  // (P30, A47).
+  it("registers Purchasing with the package's six destinations", () => {
     const purchasing = appForKey("purchasing");
     expect(purchasing).toMatchObject({ module: "purchasing", label: "navigation.purchasing", home: "/purchasing" });
     const items = purchasing.navSections.flatMap((section) => section.items);
@@ -833,6 +835,9 @@ describe("the app registry", () => {
     const settings = items.find((item) => item.to === "/purchasing/settings");
     expect(settings?.requiredPermissions).toEqual(["purchasing:settings"]);
     expect(settings?.requiredAllPermissions).toEqual(["purchasing:access"]);
+    const uninvoiced = items.find((item) => item.to === "/purchasing/received-not-invoiced");
+    expect(uninvoiced?.requiredPermissions).toEqual(["purchasing:invoices-match"]);
+    expect(navigationCatalog.nb["navigation.purchasingUninvoiced"]).toBe("Mottatt, ikke fakturert");
     expect(navigationCatalog.nb["navigation.purchasing"]).toBe("Innkjøp");
     expect(navigationCatalog.nb["navigation.purchasingOrders"]).toBe("Innkjøpsordrer");
     const keys = (permissions: string[], enabled: readonly ModuleKey[]) =>

@@ -1244,9 +1244,9 @@ const en = {
   "admin.permission.purchasingSupplierItemsManage": "Manage supplier items",
   "admin.permission.purchasingSupplierItemsManageDescription":
     "Write and import supplier items: what each supplier sells, at what price.",
-  "admin.permission.purchasingInvoicesMatch": "Match supplier invoices (coming)",
+  "admin.permission.purchasingInvoicesMatch": "Match supplier invoices",
   "admin.permission.purchasingInvoicesMatchDescription":
-    "Not in use yet: matching supplier invoices to purchase orders comes in a later version of Purchasing.",
+    "Match and unmatch supplier invoices to purchase orders, register an invoice from an order (with accounting:post), and read what is received and not invoiced.",
   "admin.permission.purchasingSettings": "Manage Purchasing settings",
   "admin.permission.purchasingSettingsDescription":
     "Change the settings: the order series, the default site, the mail channel, the order text and the delivery addresses.",
@@ -2055,9 +2055,9 @@ const nb: { [Key in keyof typeof en]: string } = {
   "admin.permission.purchasingSupplierItemsManage": "Forvalte leverandørvarer",
   "admin.permission.purchasingSupplierItemsManageDescription":
     "Skrive og importere leverandørvarer: hva hver leverandør selger, og til hvilken pris.",
-  "admin.permission.purchasingInvoicesMatch": "Avstemme leverandørfakturaer (kommer)",
+  "admin.permission.purchasingInvoicesMatch": "Avstemme leverandørfakturaer",
   "admin.permission.purchasingInvoicesMatchDescription":
-    "Ikke i bruk ennå: avstemming av leverandørfakturaer mot innkjøpsordrer kommer i en senere versjon av Innkjøp.",
+    "Avstemme og oppheve avstemming av leverandørfakturaer mot innkjøpsordrer, registrere en faktura fra en ordre (med accounting:post) og lese hva som er mottatt og ikke fakturert.",
   "admin.permission.purchasingSettings": "Forvalte innstillinger for Innkjøp",
   "admin.permission.purchasingSettingsDescription":
     "Endre innstillingene: ordreserien, standard lagersted, e-postkanalen, teksten på ordren og leveringsadressene.",
