@@ -471,16 +471,24 @@ func setLastPrices(ctx context.Context, txq *store.Queries, inv *contracts.Suppl
 		return fmt.Errorf("purchasing: lock the supplier items: %w", err)
 	}
 	invoiceDay := inv.InvoiceDate
+	// The posting, as Purchasing took it: the earliest of the matches'.
+	var postedAt *time.Time
+	for _, m := range matches {
+		if m.PostedAt != nil && (postedAt == nil || m.PostedAt.Before(*postedAt)) {
+			postedAt = m.PostedAt
+		}
+	}
 	for _, it := range items {
 		if it.Currency != inv.Currency {
 			continue
 		}
 		// A later price stands; so does one a person or an import set on the
-		// invoice's own day, which a run of the worker — or a second run —
-		// would otherwise take back (A85). An invoice's of the same day is
-		// replaced: the later posting wins.
+		// invoice's own day after the invoice was posted, which a second run of
+		// the worker would otherwise take back (A85). One set that day before
+		// the posting, or by an invoice, is replaced.
 		if it.PriceSetOn.Valid && (it.PriceSetOn.Time.After(invoiceDay) ||
-			(it.PriceSetOn.Time.Format(time.DateOnly) == invoiceDay.Format(time.DateOnly) && (it.PriceSetBy == nil || *it.PriceSetBy != "invoice"))) {
+			(it.PriceSetOn.Time.Format(time.DateOnly) == invoiceDay.Format(time.DateOnly) &&
+				(it.PriceSetBy == nil || *it.PriceSetBy != "invoice") && postedAt != nil && it.UpdatedAt.After(*postedAt))) {
 			continue
 		}
 		factor := big.NewRat(1, 1)
