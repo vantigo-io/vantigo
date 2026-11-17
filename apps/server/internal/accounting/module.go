@@ -28,14 +28,17 @@ import (
 // moduleName is the module's name, its schema and its sources' module.
 const moduleName = "accounting"
 
-// The four permission keys (A1). An accountant is an ordinary user holding
-// them. close is the owner's to give (not delegable): it moves the lock and
+// The permission keys (A1). An accountant is an ordinary user holding them.
+// close is the owner's to give (not delegable): it moves the lock and
 // changes the chart. export carries names, so it is sensitive.
+// suppliers-manage is a buyer's (purchasing design A12): a supplier's name,
+// addresses, contact and terms, not the fields of the books' own.
 const (
-	permRead   = "accounting:read"
-	permPost   = "accounting:post"
-	permClose  = "accounting:close"
-	permExport = "accounting:export"
+	permRead            = "accounting:read"
+	permPost            = "accounting:post"
+	permClose           = "accounting:close"
+	permExport          = "accounting:export"
+	permSuppliersManage = "accounting:suppliers-manage"
 )
 
 var permissions = []contracts.Permission{
@@ -46,13 +49,18 @@ var permissions = []contracts.Permission{
 	},
 	{
 		Key: permPost, Display: "Post vouchers",
-		Description: "Post manual journals, reverse vouchers, attach files, keep the suppliers, enter, post and pay supplier invoices, register payments on open items and act on the facts under Needs attention.",
+		Description: "Post manual journals, reverse vouchers, attach files, keep the suppliers with their bank accounts, default accounts and tax codes, enter, post and pay supplier invoices, register payments on open items and act on the facts under Needs attention.",
 		Category:    "Accounting", Sensitive: false, Delegable: true,
 	},
 	{
 		Key: permClose, Display: "Manage the books",
 		Description: "Set up the books (from a SAF-T file too), change the chart of accounts, the tax codes, the system roles and the posting rules, enter the opening balances and move the lock date.",
 		Category:    "Accounting", Sensitive: false, Delegable: false,
+	},
+	{
+		Key: permSuppliersManage, Display: "Keep the suppliers",
+		Description: "Create and change suppliers — the name, the addresses, the contact and the terms — and look them up in Brønnøysundregisteret, also before the books are set up. A supplier's bank account, default account and default tax code need Post vouchers.",
+		Category:    "Accounting", Sensitive: false, Delegable: true,
 	},
 	{
 		Key: permExport, Display: "Export the books",
@@ -103,6 +111,10 @@ func Module() module.Module {
 		Mount:         mount,
 		EventHandlers: eventHandlers,
 		Workers:       workers,
+		// The supplier register and the supplier invoices as other modules
+		// read them (purchasing design P1, P6).
+		SupplierDirectory: newSupplierDirectory,
+		SupplierInvoices:  newSupplierInvoices,
 	}
 }
 

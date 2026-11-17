@@ -111,12 +111,19 @@ func (s *server) withReadTx(ctx context.Context, fn func(q *store.Queries) error
 }
 
 // ungated are the operations that answer before the books are set up (R12).
+// The suppliers' read no settings row, and refuse a default account or tax
+// code with books_not_set_up until there is one.
 // A SAF-T import is the other way to set the books up (A25), so its
 // operations answer before the books are set up too.
 var ungated = map[string]bool{"GetAccountingMeta": true, "SetUpAccountingBooks": true,
 	"ListAccountingSaftImports": true, "UploadAccountingSaftImport": true, "GetAccountingSaftImport": true,
 	"ApplyAccountingSaftImport": true, "DownloadAccountingSaftImportFile": true, "LinkAccountingSaftImportCustomer": true,
-	"MatchAccountingSaftImport": true, "ListAccountingSaftImportCustomers": true, "ListAccountingSaftImportSuppliers": true}
+	"MatchAccountingSaftImport": true, "ListAccountingSaftImportCustomers": true, "ListAccountingSaftImportSuppliers": true,
+	// The supplier register answers before the books are set up (purchasing
+	// design P2): a buyer may keep suppliers first.
+	"ListAccountingSuppliers": true, "GetAccountingSupplier": true, "CreateAccountingSupplier": true,
+	"UpdateAccountingSupplier": true, "DeleteAccountingSupplier": true, "AnonymiseAccountingSupplier": true,
+	"ExportAccountingSupplier": true, "LookupAccountingSupplierBrreg": true}
 
 // setupGate answers 409 books_not_set_up for every other operation until Set
 // up the books has run, so nothing else runs before it (R12).

@@ -2,7 +2,13 @@ package accounting
 
 // Suppliers (A17): this module's own party, numbered gap-free, looked up in
 // Brønnøysundregisteret through the platform's internal/brreg, and never
-// deleted once the books name it. A supplier who is a person (a sole
+// deleted once the books name it. The register answers before the books are
+// set up, and a holder of accounting:suppliers-manage keeps it beside a
+// holder of accounting:post, the fields of the books' own left to the
+// latter (purchasing design P2, A12). Another module reads it through
+// contracts.SupplierDirectory (directory.go), and a supplier its documents
+// name, or that it holds personal data of, is deleted and anonymised only as
+// its holders allow (A8). A supplier who is a person (a sole
 // proprietor) is personal data: Customers' personal-data slot
 // (contracts.CustomerPersonalData) is keyed by a customer of Customers and
 // cannot name a supplier, so the module answers a person's access request
@@ -25,6 +31,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/accounting/gen"
 	"github.com/vantigo-io/vantigo/server/internal/accounting/store"
 	"github.com/vantigo-io/vantigo/server/internal/brreg"
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 )
 
 const (
@@ -113,6 +120,14 @@ type supplierFields struct {
 // and tax code that exist and are active — the tax code a purchase's.
 func checkSupplier(ctx context.Context, q *store.Queries, b gen.AccountingSupplierInput) (supplierFields, error) {
 	const title = "The supplier cannot be saved"
+	if b.DefaultAccountId != nil || b.DefaultTaxCodeId != nil {
+		if _, err := q.GetSettings(ctx); noRows(err) {
+			return supplierFields{}, conflict(codeBooksNotSetUp, "The books are not set up",
+				"A supplier's default account and tax code are set once the books are set up; save the supplier without them.")
+		} else if err != nil {
+			return supplierFields{}, err
+		}
+	}
 	var f fieldErrors
 	out := supplierFields{name: strings.TrimSpace(b.Name), country: "NO", currency: currency, paymentTermsDays: 14,
 		isPerson: b.IsPerson != nil && *b.IsPerson, active: b.Active == nil || *b.Active}
@@ -234,11 +249,99 @@ func (s *server) supplier(ctx context.Context, q *store.Queries, id int64) (gen.
 	if err != nil {
 		return gen.AccountingSupplier{}, err
 	}
-	settings, err := q.GetSettings(ctx)
+	month, err := fiscalStartMonth(ctx, q)
 	if err != nil {
 		return gen.AccountingSupplier{}, err
 	}
-	return supplierView(row, int32(settings.FiscalYearStartMonth)), nil
+	return supplierView(row, month), nil
+}
+
+// fiscalStartMonth is the fiscal year's first month, January before the
+// books are set up (purchasing design A2): no voucher names a supplier then,
+// so no retention date is computed from it.
+func fiscalStartMonth(ctx context.Context, q *store.Queries) (int32, error) {
+	settings, err := q.GetSettings(ctx)
+	if noRows(err) {
+		return 1, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	return int32(settings.FiscalYearStartMonth), nil
+}
+
+// requireSupplierWriter is the 403 suppliers_manage_required of a supplier's
+// write by a caller holding neither accounting:suppliers-manage nor
+// accounting:post (purchasing design A12): the operation's rule asks only for
+// a session, and the handler checks the either-or. It answers whether the
+// caller holds accounting:post, which the books' own fields need.
+func (s *server) requireSupplierWriter(ctx context.Context) (bool, error) {
+	post := s.has(ctx, permPost)
+	if post || s.has(ctx, permSuppliersManage) {
+		return post, nil
+	}
+	return false, refuse(http.StatusForbidden, codeSuppliersManageRequired, "Keeping the suppliers is not yours to do",
+		"A supplier is kept by a holder of accounting:suppliers-manage or accounting:post.")
+}
+
+// needsPost is the 403 supplier_fields_need_post of a field of the books' own
+// written without accounting:post.
+func needsPost(field string) error {
+	return refuse(http.StatusForbidden, codeSupplierFieldsNeedPost, "The supplier's "+field+" is the books'",
+		"A supplier's bank account, IBAN, BIC, default account and default tax code are written by a holder of accounting:post.")
+}
+
+// textField is an optional text as a supplier's write compares it: compacted,
+// upper-cased when upper, "" for none.
+func textField(p *string, upper bool) string {
+	if p == nil {
+		return ""
+	}
+	v := compact(*p)
+	if upper {
+		v = strings.ToUpper(v)
+	}
+	return v
+}
+
+// keepBooksFields holds a write by a caller without accounting:post to the
+// books' fields as they stand (purchasing design A12): a field left out keeps
+// its value in cur (nil for a new supplier), and one sent with another value
+// is refused.
+func keepBooksFields(b *gen.AccountingSupplierInput, cur *store.GetSupplierRow) error {
+	var bank, iban, bic *string
+	var account, code *int32
+	if cur != nil {
+		bank, iban, bic, account, code = cur.BankAccount, cur.Iban, cur.Bic, cur.DefaultAccountID, cur.DefaultTaxCodeID
+	}
+	texts := []struct {
+		field string
+		in    **string
+		have  *string
+		upper bool
+	}{{"bank account", &b.BankAccount, bank, false}, {"IBAN", &b.Iban, iban, true}, {"BIC", &b.Bic, bic, true}}
+	for _, t := range texts {
+		switch {
+		case *t.in == nil:
+			*t.in = t.have
+		case textField(*t.in, t.upper) != textField(t.have, t.upper):
+			return needsPost(t.field)
+		}
+	}
+	ids := []struct {
+		field string
+		in    **int32
+		have  *int32
+	}{{"default account", &b.DefaultAccountId, account}, {"default tax code", &b.DefaultTaxCodeId, code}}
+	for _, t := range ids {
+		switch {
+		case *t.in == nil:
+			*t.in = t.have
+		case t.have == nil || **t.in != *t.have:
+			return needsPost(t.field)
+		}
+	}
+	return nil
 }
 
 // supplierConflict is the 409 of a unique index a supplier's write met.
@@ -264,7 +367,7 @@ func (s *server) ListAccountingSuppliers(ctx context.Context, req gen.ListAccoun
 		params.Q = ptr(strings.TrimSpace(*p.Q))
 	}
 	q := store.New(s.deps.Pool)
-	settings, err := q.GetSettings(ctx)
+	month, err := fiscalStartMonth(ctx, q)
 	if err != nil {
 		return nil, err
 	}
@@ -282,7 +385,7 @@ func (s *server) ListAccountingSuppliers(ctx context.Context, req gen.ListAccoun
 			Currency: r.Currency, IsPerson: r.IsPerson, Active: r.Active, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 			Revision: r.Revision, HasPostings: r.HasPostings, Balance: r.Balance, LastVoucherDate: r.LastVoucherDate,
 			AnonymisedAt: r.AnonymisedAt},
-			int32(settings.FiscalYearStartMonth)))
+			month))
 	}
 	return out, nil
 }
@@ -298,12 +401,22 @@ func (s *server) GetAccountingSupplier(ctx context.Context, req gen.GetAccountin
 
 // CreateAccountingSupplier adds a supplier with the next number.
 func (s *server) CreateAccountingSupplier(ctx context.Context, req gen.CreateAccountingSupplierRequestObject) (gen.CreateAccountingSupplierResponseObject, error) {
+	post, err := s.requireSupplierWriter(ctx)
+	if err != nil {
+		return nil, err
+	}
 	if req.Body == nil {
 		return nil, invalidField("The supplier cannot be saved", "body", "", "A body is required.")
 	}
+	body := *req.Body
+	if !post {
+		if err := keepBooksFields(&body, nil); err != nil {
+			return nil, err
+		}
+	}
 	var id int64
-	err := s.withTx(ctx, func(_ pgx.Tx, q *store.Queries) error {
-		f, err := checkSupplier(ctx, q, *req.Body)
+	err = s.withTx(ctx, func(_ pgx.Tx, q *store.Queries) error {
+		f, err := checkSupplier(ctx, q, body)
 		if err != nil {
 			return err
 		}
@@ -340,14 +453,20 @@ func insertSupplier(ctx context.Context, q *store.Queries, f supplierFields, now
 // UpdateAccountingSupplier changes a supplier under its revision.
 func (s *server) UpdateAccountingSupplier(ctx context.Context, req gen.UpdateAccountingSupplierRequestObject) (gen.UpdateAccountingSupplierResponseObject, error) {
 	const title = "The supplier cannot be saved"
+	post, err := s.requireSupplierWriter(ctx)
+	if err != nil {
+		return nil, err
+	}
 	if req.Body == nil {
 		return nil, invalidField(title, "body", "", "A body is required.")
 	}
 	if req.Body.Revision == nil {
 		return nil, invalidField(title, "revision", "", "The revision read is required.")
 	}
-	err := s.withTx(ctx, func(_ pgx.Tx, q *store.Queries) error {
-		if cur, err := q.GetSupplier(ctx, req.Id); noRows(err) {
+	body := *req.Body
+	err = s.withTx(ctx, func(_ pgx.Tx, q *store.Queries) error {
+		cur, err := q.GetSupplier(ctx, req.Id)
+		if noRows(err) {
 			return notFound()
 		} else if err != nil {
 			return err
@@ -355,11 +474,16 @@ func (s *server) UpdateAccountingSupplier(ctx context.Context, req gen.UpdateAcc
 			return conflict(codeSupplierAnonymised, "The supplier is anonymised",
 				"An anonymised supplier keeps its number and its postings, and is not changed.")
 		}
-		f, err := checkSupplier(ctx, q, *req.Body)
+		if !post {
+			if err := keepBooksFields(&body, &cur); err != nil {
+				return err
+			}
+		}
+		f, err := checkSupplier(ctx, q, body)
 		if err != nil {
 			return err
 		}
-		_, err = q.UpdateSupplier(ctx, store.UpdateSupplierParams{ID: req.Id, Revision: *req.Body.Revision, Name: f.name,
+		_, err = q.UpdateSupplier(ctx, store.UpdateSupplierParams{ID: req.Id, Revision: *body.Revision, Name: f.name,
 			OrganisationNumber: f.organisationNumber, Country: f.country, AddressLine: f.addressLine,
 			PostalCode: f.postalCode, City: f.city, Email: f.email, BankAccount: f.bankAccount, Iban: f.iban, Bic: f.bic,
 			PaymentTermsDays: f.paymentTermsDays, DefaultAccountID: f.defaultAccountID,
@@ -388,12 +512,22 @@ func (s *server) UpdateAccountingSupplier(ctx context.Context, req gen.UpdateAcc
 // becomes "Anonymised supplier N", every contact and bank field is cleared
 // and the supplier is made inactive; vouchers and postings are untouched and
 // keep its id.
+//
+// The supplier is taken FOR UPDATE first; then every module holding an open
+// document naming it is asked (contracts.SupplierReferenceHolder), and every
+// module holding something of the person blanks it in the same transaction
+// (contracts.SupplierPersonalData), before the supplier is marked (purchasing
+// design P7, A8). Before the books are set up it is not anonymisable: the
+// retention it waits for is counted from the books' fiscal year.
 func (s *server) AnonymiseAccountingSupplier(ctx context.Context, req gen.AnonymiseAccountingSupplierRequestObject) (gen.AnonymiseAccountingSupplierResponseObject, error) {
-	err := s.withTx(ctx, func(_ pgx.Tx, q *store.Queries) error {
-		cur, err := q.GetSupplier(ctx, req.Id)
-		if noRows(err) {
+	var erased []contracts.ErasedData
+	err := s.withTx(ctx, func(tx pgx.Tx, q *store.Queries) error {
+		if _, err := q.LockSupplierForUpdate(ctx, req.Id); noRows(err) {
 			return notFound()
+		} else if err != nil {
+			return err
 		}
+		cur, err := q.GetSupplier(ctx, req.Id)
 		if err != nil {
 			return err
 		}
@@ -405,6 +539,10 @@ func (s *server) AnonymiseAccountingSupplier(ctx context.Context, req gen.Anonym
 				"Only a supplier that is a person is anonymised; a company's record is not personal data.")
 		}
 		settings, err := q.GetSettings(ctx)
+		if noRows(err) {
+			return conflict(codeBooksNotSetUp, "The books are not set up",
+				"A supplier is anonymised after the bookkeeping's retention, which is counted once the books are set up.")
+		}
 		if err != nil {
 			return err
 		}
@@ -414,6 +552,16 @@ func (s *server) AnonymiseAccountingSupplier(ctx context.Context, req gen.Anonym
 				return conflict(codeSupplierRetained, "The bookkeeping still keeps the supplier",
 					"The supplier's vouchers are kept through "+until.Format(time.DateOnly)+"; it can be anonymised after that day.")
 			}
+		}
+		if err := s.askSupplierHolders(ctx, tx, req.Id, contracts.SupplierHoldAnonymise); err != nil {
+			return err
+		}
+		for _, h := range s.deps.SupplierPersonalData {
+			got, err := h.Data.EraseSupplierData(ctx, tx, req.Id)
+			if err != nil {
+				return fmt.Errorf("accounting: %s erases supplier %d: %w", h.Module, req.Id, err)
+			}
+			erased = append(erased, got...)
 		}
 		n, err := q.AnonymiseSupplier(ctx, store.AnonymiseSupplierParams{ID: req.Id, Now: ptr(s.now()),
 			Name: fmt.Sprintf("Anonymised supplier %d", cur.Number)})
@@ -428,6 +576,9 @@ func (s *server) AnonymiseAccountingSupplier(ctx context.Context, req gen.Anonym
 	if err != nil {
 		return nil, err
 	}
+	for _, e := range erased {
+		s.logger().InfoContext(ctx, "accounting: a supplier's data was erased", "supplier_id", req.Id, "kind", e.Kind, "count", e.Count)
+	}
 	out, err := s.supplier(ctx, store.New(s.deps.Pool), req.Id)
 	if err != nil {
 		return nil, err
@@ -436,10 +587,13 @@ func (s *server) AnonymiseAccountingSupplier(ctx context.Context, req gen.Anonym
 }
 
 // DeleteAccountingSupplier deletes a supplier the books do not name: no
-// posting, no open item, no invoice. Any other is made inactive instead.
+// posting, no open item, no invoice — and no other module's document
+// (purchasing design A8), asked once the supplier is taken FOR UPDATE, so a
+// document made at the same moment either is seen or waits. Any other is
+// made inactive instead.
 func (s *server) DeleteAccountingSupplier(ctx context.Context, req gen.DeleteAccountingSupplierRequestObject) (gen.DeleteAccountingSupplierResponseObject, error) {
-	err := s.withTx(ctx, func(_ pgx.Tx, q *store.Queries) error {
-		if _, err := q.GetSupplier(ctx, req.Id); noRows(err) {
+	err := s.withTx(ctx, func(tx pgx.Tx, q *store.Queries) error {
+		if _, err := q.LockSupplierForUpdate(ctx, req.Id); noRows(err) {
 			return notFound()
 		} else if err != nil {
 			return err
@@ -452,6 +606,9 @@ func (s *server) DeleteAccountingSupplier(ctx context.Context, req gen.DeleteAcc
 			return conflict(codeSupplierHasPostings, "The supplier is in the books",
 				"A supplier with postings or invoices is kept; make it inactive instead.")
 		}
+		if err := s.askSupplierHolders(ctx, tx, req.Id, contracts.SupplierHoldDelete); err != nil {
+			return err
+		}
 		_, err = q.DeleteSupplier(ctx, req.Id)
 		return err
 	})
@@ -463,6 +620,28 @@ func (s *server) DeleteAccountingSupplier(ctx context.Context, req gen.DeleteAcc
 		return nil, err
 	}
 	return gen.DeleteAccountingSupplier204Response{}, nil
+}
+
+// askSupplierHolders asks every module keeping documents of the supplier
+// whether they stop the write purpose names, inside tx, which holds the
+// supplier FOR UPDATE (rule 28): the first hold refuses it with 409.
+func (s *server) askSupplierHolders(ctx context.Context, tx pgx.Tx, id int64, purpose contracts.SupplierHoldPurpose) error {
+	for _, h := range s.deps.SupplierReferenceHolders {
+		hold, err := h.SupplierHeld(ctx, tx, id, purpose)
+		if err != nil {
+			return fmt.Errorf("accounting: ask a holder of supplier %d: %w", id, err)
+		}
+		if hold == nil {
+			continue
+		}
+		if purpose == contracts.SupplierHoldAnonymise {
+			return conflict(codeSupplierHasOpenDocuments, "Open documents name the supplier",
+				fmt.Sprintf("%d open documents of another app name the supplier; finish or close them first.", hold.Documents))
+		}
+		return conflict(codeSupplierHasDocuments, "Documents name the supplier",
+			fmt.Sprintf("%d documents of another app name the supplier; make it inactive instead.", hold.Documents))
+	}
+	return nil
 }
 
 // ExportAccountingSupplier is everything the books hold about one supplier:
@@ -491,7 +670,19 @@ func (s *server) ExportAccountingSupplier(ctx context.Context, req gen.ExportAcc
 	if err != nil {
 		return nil, err
 	}
-	out := gen.ExportAccountingSupplier200JSONResponse{Supplier: sup, Invoices: invoices,
+	// Every other module's section (contracts.SupplierPersonalData), read on
+	// its own pool with no transaction open.
+	modules := map[string]any{}
+	for _, h := range s.deps.SupplierPersonalData {
+		section, err := h.Data.ExportSupplierData(ctx, req.Id)
+		if err != nil {
+			return nil, fmt.Errorf("accounting: %s exports supplier %d: %w", h.Module, req.Id, err)
+		}
+		if section != nil {
+			modules[h.Module] = section
+		}
+	}
+	out := gen.ExportAccountingSupplier200JSONResponse{Supplier: sup, Invoices: invoices, Modules: modules,
 		Postings: []gen.AccountingSupplierExportPosting{}, ProducedAt: s.now()}
 	for _, r := range rows {
 		out.Postings = append(out.Postings, gen.AccountingSupplierExportPosting{
@@ -508,6 +699,9 @@ func (s *server) ExportAccountingSupplier(ctx context.Context, req gen.ExportAcc
 // postal address when it has none); by name a search of at most ten.
 func (s *server) LookupAccountingSupplierBrreg(ctx context.Context, req gen.LookupAccountingSupplierBrregRequestObject) (gen.LookupAccountingSupplierBrregResponseObject, error) {
 	const title = "The lookup needs an organisation number or a name"
+	if _, err := s.requireSupplierWriter(ctx); err != nil {
+		return nil, err
+	}
 	orgnr := compact(deref(req.Params.OrganisationNumber))
 	name := strings.TrimSpace(deref(req.Params.Q))
 	switch {

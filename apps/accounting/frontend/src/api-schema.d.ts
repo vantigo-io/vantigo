@@ -8647,6 +8647,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuthErrorResponse"];
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
                 };
             };
             /** @description Conflict — books_not_set_up, a default account or tax code before the books are set up; supplier_organisation_number_taken. */
@@ -8708,6 +8709,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuthErrorResponse"];
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
                 };
             };
             /** @description Conflict. */
@@ -8842,6 +8844,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuthErrorResponse"];
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
                 };
             };
             /** @description Not Found */

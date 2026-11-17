@@ -4,7 +4,9 @@ package accounting
 // edited and deleted freely; Post books it through the engine with its
 // source key and makes its open item on payables; its files become the
 // voucher's attachments. A mistake after posting is corrected by Reverse and
-// copy. The same supplier's number twice is refused among the invoices that
+// copy. Post and the reversal publish accounting.supplier_invoice.posted and
+// .reversed on their own transactions (purchasing design P5), and the list
+// and the page carry Purchasing's match as a badge when it is on (P6). The same supplier's number twice is refused among the invoices that
 // are not reversed.
 
 import (
@@ -24,7 +26,9 @@ import (
 
 	"github.com/vantigo-io/vantigo/server/internal/accounting/gen"
 	"github.com/vantigo-io/vantigo/server/internal/accounting/store"
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/docmath"
+	"github.com/vantigo-io/vantigo/server/internal/events"
 )
 
 const (
@@ -428,12 +432,49 @@ func (s *server) supplierInvoices(ctx context.Context, ids []int64) ([]gen.Accou
 		}
 		byID[r.ID] = v
 	}
+	s.purchaseMatches(ctx, ids, byID)
 	for _, id := range ids {
 		if v, ok := byID[id]; ok {
 			out = append(out, v)
 		}
 	}
 	return out, nil
+}
+
+// purchaseMatches puts on each invoice the purchase orders Purchasing has
+// matched it to (contracts.SupplierInvoiceMatches, purchasing design P6),
+// read on the pool with no transaction open: a badge and a link, absent when
+// Purchasing is off or the invoice is matched to none. A failed read is
+// logged and the badge left out; the invoice is the books', not Purchasing's.
+func (s *server) purchaseMatches(ctx context.Context, ids []int64, byID map[int64]gen.AccountingSupplierInvoice) {
+	if s.deps.SupplierInvoiceMatches == nil || len(ids) == 0 {
+		return
+	}
+	got, err := s.deps.SupplierInvoiceMatches.Summary(ctx, ids)
+	if err != nil {
+		s.logger().WarnContext(ctx, "accounting: the purchase matches could not be read", "error", err.Error())
+		return
+	}
+	for _, m := range got {
+		v, ok := byID[m.InvoiceID]
+		if !ok || len(m.Orders) == 0 {
+			continue
+		}
+		match := gen.AccountingSupplierInvoiceMatch{Differences: int32(m.Differences), Orders: make([]gen.AccountingMatchedOrder, 0, len(m.Orders))}
+		for _, o := range m.Orders {
+			match.Orders = append(match.Orders, gen.AccountingMatchedOrder{Id: o.ID, Number: o.Number})
+		}
+		v.PurchaseMatch = &match
+		byID[m.InvoiceID] = v
+	}
+}
+
+// dateText is a nullable date column as YYYY-MM-DD, "" for none.
+func dateText(t *time.Time) string {
+	if t == nil {
+		return ""
+	}
+	return t.Format(time.DateOnly)
 }
 
 // fileView is a draft's file as the contract answers it.
@@ -734,8 +775,16 @@ func (s *server) PostAccountingSupplierInvoice(ctx context.Context, req gen.Post
 		if err != nil {
 			return err
 		}
-		return q.MarkSupplierInvoicePosted(ctx, store.MarkSupplierInvoicePostedParams{ID: inv.ID, VoucherID: &posted.ID,
-			OpenItemID: &item, Now: ptr(s.now()), UserID: &by})
+		if err := q.MarkSupplierInvoicePosted(ctx, store.MarkSupplierInvoicePostedParams{ID: inv.ID, VoucherID: &posted.ID,
+			OpenItemID: &item, Now: ptr(s.now()), UserID: &by}); err != nil {
+			return err
+		}
+		// The posting's event, on its own transaction and under the
+		// invoice's row lock (purchasing design P5, rule 23).
+		return events.Publish(ctx, tx, moduleName, contracts.SupplierInvoicePosted{InvoiceID: inv.ID, SupplierID: inv.SupplierID,
+			Kind: inv.Kind, Number: inv.SupplierNumber, InvoiceDate: inv.InvoiceDate.Format(time.DateOnly),
+			DueDate: dateText(inv.DueDate), Currency: inv.Currency, Total: money(mustRat(inv.Total)),
+			Reference: deref(inv.Reference), PostedAt: s.now()}, s.now())
 	})
 	if err != nil {
 		return nil, err
@@ -1015,7 +1064,12 @@ func (s *server) ReverseAndCopyAccountingSupplierInvoice(ctx context.Context, re
 				return err
 			}
 		}
-		return nil
+		// The reversal's event, on its own transaction and under the
+		// invoice's row lock, naming the copy made of it (P5, A15).
+		return events.Publish(ctx, tx, moduleName, contracts.SupplierInvoiceReversed{InvoiceID: inv.ID, SupplierID: inv.SupplierID,
+			Kind: inv.Kind, Number: inv.SupplierNumber, InvoiceDate: inv.InvoiceDate.Format(time.DateOnly),
+			DueDate: dateText(inv.DueDate), Currency: inv.Currency, Total: money(mustRat(inv.Total)),
+			Reference: deref(inv.Reference), CopyID: copyID, ReversedAt: s.now()}, s.now())
 	})
 	if c := duplicateConflict(err); c != nil {
 		return nil, c

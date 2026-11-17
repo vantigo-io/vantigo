@@ -13354,6 +13354,20 @@ func (response CreateAccountingSupplier403JSONResponse) VisitCreateAccountingSup
 	return err
 }
 
+type CreateAccountingSupplier403ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response CreateAccountingSupplier403ApplicationProblemPlusJSONResponse) VisitCreateAccountingSupplierResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type CreateAccountingSupplier409ApplicationProblemPlusJSONResponse AccountingProblem
 
 func (response CreateAccountingSupplier409ApplicationProblemPlusJSONResponse) VisitCreateAccountingSupplierResponse(w http.ResponseWriter) error {
@@ -13427,6 +13441,20 @@ func (response LookupAccountingSupplierBrreg403JSONResponse) VisitLookupAccounti
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LookupAccountingSupplierBrreg403ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response LookupAccountingSupplierBrreg403ApplicationProblemPlusJSONResponse) VisitLookupAccountingSupplierBrregResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(403)
 	_, err := buf.WriteTo(w)
 	return err
@@ -13666,6 +13694,20 @@ func (response UpdateAccountingSupplier403JSONResponse) VisitUpdateAccountingSup
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAccountingSupplier403ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response UpdateAccountingSupplier403ApplicationProblemPlusJSONResponse) VisitUpdateAccountingSupplierResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(403)
 	_, err := buf.WriteTo(w)
 	return err
