@@ -1,6 +1,6 @@
 # Invoices phase 6 — branding, the customer's balance, foreign currency, eFaktura and AvtaleGiro, sending in bulk
 
-Revision 3, 2026-11-17: the owner chose the consumer provider (§15). This spec builds on the research
+Revision 4, 2026-11-17: delivery A's plan corrected two facts (§15). This spec builds on the research
 `docs/superpowers/research/2026-11-17-invoices-competitive-gaps.md` ("R"). It does not
 reopen R §6, and it takes the defaults R §7 took for the readings. §14 says what an
 overturn of each would change. Decisions are numbered I*n*. Earlier phases' decisions are
@@ -78,8 +78,11 @@ migrations renumbered at merge (see the memory *migration number collisions*).
   - A draft's preview uses the settings' current logo.
   - The EHF carries no logo.
 - **I4 — The phone.**
-  - `invoices.settings.phone` (optional, E.164-normalised as Customers does) and the
-    snapshot `seller_phone`, printed in the seller block after the e-mail.
+  - `invoices.settings.phone` (optional) and the snapshot `seller_phone`, printed in the
+    seller block after the e-mail.
+  - The code has no E.164 helper. The phone is trimmed and validated by Customers'
+    rule (`srv/customers/values.go:326`: at most 30 characters, digits, spaces and
+    `+-().`, at least one digit), and stored as typed.
   - `contracts.SellerProfile` answers `Phone` and `LogoStorageKey` from Invoices
     (`srv/invoices/sales_tax.go:26-29` stops answering `""`). Accounting reads `Phone`
     already (`srv/accounting/saft_export.go:791`). Nothing reads `LogoStorageKey` yet;
@@ -90,6 +93,10 @@ migrations renumbered at merge (see the memory *migration number collisions*).
     `html/template`.
   - The logo goes in as an inline attachment (`cid:logo`); the PDF stays attached. The
     text body is what it is today.
+  - Both drivers must carry inline parts. SMTP does (`srv/mail/outbound.go:268-285`). The
+    Cloudflare driver refuses them today (`srv/mail/cloudflare.go:199-201`). A widens it
+    to send an inline part as `disposition: "inline"` with `content_id`, which is the
+    REST API's field (`contentId` is the Workers binding's).
   - No external image, no tracking pixel, no link but the pay link.
 - **I6 — A personal message.**
   - **Send by e-mail** takes an optional `message` (at most 2,000 characters, plain
@@ -683,3 +690,7 @@ Each has the default this spec takes, and what an overturn changes.
 - **3, 2026-11-17:** the owner chose Mastercard Payment Services, direct, as the
   consumer provider (§14 Q1). I29 now names the APIs, Vantigo's submitter agreement and
   the tenant's own agreements. Q2 may come back with the lookup's hit rate.
+- **4, 2026-11-17:** A's code map:
+  - The phone is validated by Customers' rule. There is no E.164 normalisation to
+    reuse (I4).
+  - The Cloudflare driver learns inline parts (I5).
