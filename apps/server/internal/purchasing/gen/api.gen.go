@@ -80,6 +80,30 @@ func (e PurchasingImportOutcome) Valid() bool {
 	}
 }
 
+// Defines values for PurchasingInvoiceWarning.
+const (
+	CurrencyDiffers      PurchasingInvoiceWarning = "currency_differs"
+	InvoicedOverOrdered  PurchasingInvoiceWarning = "invoiced_over_ordered"
+	InvoicedOverReceived PurchasingInvoiceWarning = "invoiced_over_received"
+	PriceDiffers         PurchasingInvoiceWarning = "price_differs"
+)
+
+// Valid indicates whether the value is a known member of the PurchasingInvoiceWarning enum.
+func (e PurchasingInvoiceWarning) Valid() bool {
+	switch e {
+	case CurrencyDiffers:
+		return true
+	case InvoicedOverOrdered:
+		return true
+	case InvoicedOverReceived:
+		return true
+	case PriceDiffers:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PurchasingLineInputKind.
 const (
 	PurchasingLineInputKindText    PurchasingLineInputKind = "text"
@@ -662,6 +686,189 @@ type PurchasingImportRow struct {
 	VariantId *int32 `json:"variantId,omitempty"`
 }
 
+// PurchasingInvoiceLine A line of a supplier invoice as the panel shows it (A20). text and net are answered only to a holder of accounting:read.
+type PurchasingInvoiceLine struct {
+	// Net The line's net as Accounting computes it, in the invoice's currency.
+	Net      *string `json:"net,omitempty"`
+	Position int32   `json:"position"`
+	Text     *string `json:"text,omitempty"`
+}
+
+// PurchasingInvoiceMatch One line of a supplier invoice billing one order line (P37, A9): the quantity in the order line's unit, provisional while the invoice is a draft, posted once it is posted. invoiceUnitNet is the invoice line's net over the quantity; it and lineNet are answered only to a holder of accounting:read (A20).
+type PurchasingInvoiceMatch struct {
+	// Currency The invoice's currency.
+	Currency    string             `json:"currency"`
+	Id          int64              `json:"id"`
+	InvoiceDate openapi_types.Date `json:"invoiceDate"`
+
+	// InvoiceNumber The supplier's invoice number.
+	InvoiceNumber  string  `json:"invoiceNumber"`
+	InvoiceUnitNet *string `json:"invoiceUnitNet,omitempty"`
+
+	// Kind invoice or credit_note.
+	Kind    string  `json:"kind"`
+	LineNet *string `json:"lineNet,omitempty"`
+
+	// LinePosition The invoice line's position.
+	LinePosition int32 `json:"linePosition"`
+
+	// Name The order line's name or description.
+	Name              string `json:"name"`
+	OrderId           int64  `json:"orderId"`
+	OrderLineId       int64  `json:"orderLineId"`
+	OrderLinePosition int32  `json:"orderLinePosition"`
+	OrderNumber       *int64 `json:"orderNumber,omitempty"`
+
+	// OrderUnitNet The order line's net per unit, four places, in the order's currency.
+	OrderUnitNet string `json:"orderUnitNet"`
+	Quantity     string `json:"quantity"`
+
+	// State provisional while the invoice is a draft, posted once it is posted.
+	State             string                     `json:"state"`
+	SupplierInvoiceId int64                      `json:"supplierInvoiceId"`
+	Unit              string                     `json:"unit"`
+	Warnings          []PurchasingInvoiceWarning `json:"warnings"`
+}
+
+// PurchasingInvoiceMatchAllInput Match all received (P37) of one order.
+type PurchasingInvoiceMatchAllInput struct {
+	OrderId int64 `json:"orderId"`
+}
+
+// PurchasingInvoiceMatchInput Invoice lines allocated to one order's lines (P37).
+type PurchasingInvoiceMatchInput struct {
+	// AcceptOver Match more than a line's received and not invoiced; without it that is refused with over_invoiced, which the panel asks about first.
+	AcceptOver *bool                             `json:"acceptOver,omitempty"`
+	Lines      []PurchasingInvoiceMatchLineInput `json:"lines"`
+	OrderId    int64                             `json:"orderId"`
+}
+
+// PurchasingInvoiceMatchLineInput One invoice line, by its position, billing one order line for a quantity in the order line's unit.
+type PurchasingInvoiceMatchLineInput struct {
+	LinePosition int32  `json:"linePosition"`
+	OrderLineId  int64  `json:"orderLineId"`
+	Quantity     string `json:"quantity"`
+}
+
+// PurchasingInvoiceOrderMatches The supplier invoices matched to an order (P37, P40, A20).
+type PurchasingInvoiceOrderMatches struct {
+	// LinesVisible Whether the caller holds accounting:read and so sees the invoice lines' amounts.
+	LinesVisible bool                     `json:"linesVisible"`
+	Matches      []PurchasingInvoiceMatch `json:"matches"`
+}
+
+// PurchasingInvoicePanel The Purchase order panel of a supplier invoice (P36–P38, A20). differences counts the matches' warnings.
+type PurchasingInvoicePanel struct {
+	Currency    string             `json:"currency"`
+	Differences int32              `json:"differences"`
+	InvoiceDate openapi_types.Date `json:"invoiceDate"`
+	InvoiceId   int64              `json:"invoiceId"`
+
+	// Kind invoice or credit_note.
+	Kind         string                   `json:"kind"`
+	Lines        []PurchasingInvoiceLine  `json:"lines"`
+	LinesVisible bool                     `json:"linesVisible"`
+	Matches      []PurchasingInvoiceMatch `json:"matches"`
+
+	// Number The supplier's invoice number.
+	Number string `json:"number"`
+
+	// Reference The invoice's reference; answered only to a holder of accounting:read.
+	Reference *string `json:"reference,omitempty"`
+
+	// State The invoice's state in Accounting, draft, posted or reversed.
+	State        string                        `json:"state"`
+	Suggestions  []PurchasingInvoiceSuggestion `json:"suggestions"`
+	SupplierId   int64                         `json:"supplierId"`
+	SupplierName string                        `json:"supplierName"`
+}
+
+// PurchasingInvoiceRegisterInput Register invoice (P37, A1, A11): what Accounting's draft must have that the order does not.
+type PurchasingInvoiceRegisterInput struct {
+	// ClientRequestId Makes the registration idempotent (A11).
+	ClientRequestId openapi_types.UUID `json:"clientRequestId"`
+
+	// DueDate The invoice date plus the supplier's terms when left out.
+	DueDate *openapi_types.Date `json:"dueDate,omitempty"`
+
+	// ExchangeRate NOK per unit of the order's currency; this or totalNok in another currency than NOK.
+	ExchangeRate *string            `json:"exchangeRate,omitempty"`
+	InvoiceDate  openapi_types.Date `json:"invoiceDate"`
+
+	// InvoiceNumber The supplier's invoice number.
+	InvoiceNumber string  `json:"invoiceNumber"`
+	TotalNok      *string `json:"totalNok,omitempty"`
+}
+
+// PurchasingInvoiceRegistration The draft Register invoice made (P37, A1).
+type PurchasingInvoiceRegistration struct {
+	Currency string `json:"currency"`
+
+	// Lines The lines on the draft.
+	Lines int32 `json:"lines"`
+
+	// LinesLeft Order lines left with something received and not invoiced beyond the draft's 200, for another draft.
+	LinesLeft         int32 `json:"linesLeft"`
+	SupplierInvoiceId int64 `json:"supplierInvoiceId"`
+
+	// Total The draft's net total, two places.
+	Total string `json:"total"`
+}
+
+// PurchasingInvoiceSuggestion An order of the invoice's supplier whose number the invoice's reference names (P36).
+type PurchasingInvoiceSuggestion struct {
+	Currency string `json:"currency"`
+	NetTotal string `json:"netTotal"`
+	Number   int64  `json:"number"`
+	OrderId  int64  `json:"orderId"`
+	Status   string `json:"status"`
+
+	// ToInvoice The order's lines with something received and not invoiced.
+	ToInvoice int32 `json:"toInvoice"`
+}
+
+// PurchasingInvoiceUninvoiced Received, not invoiced, as of a day (P41).
+type PurchasingInvoiceUninvoiced struct {
+	AsOf   openapi_types.Date                 `json:"asOf"`
+	Rows   []PurchasingInvoiceUninvoicedRow   `json:"rows"`
+	Totals []PurchasingInvoiceUninvoicedTotal `json:"totals"`
+}
+
+// PurchasingInvoiceUninvoicedRow One order line with something received and not invoiced (P41), at the order's net per unit.
+type PurchasingInvoiceUninvoicedRow struct {
+	Amount      string `json:"amount"`
+	Currency    string `json:"currency"`
+	Invoiced    string `json:"invoiced"`
+	Name        string `json:"name"`
+	OrderId     int64  `json:"orderId"`
+	OrderLineId int64  `json:"orderLineId"`
+	OrderNumber *int64 `json:"orderNumber,omitempty"`
+	Position    int32  `json:"position"`
+
+	// Quantity Received and not invoiced, in the line's unit.
+	Quantity     string `json:"quantity"`
+	Received     string `json:"received"`
+	SupplierId   int64  `json:"supplierId"`
+	SupplierName string `json:"supplierName"`
+	Unit         string `json:"unit"`
+	UnitNet      string `json:"unitNet"`
+}
+
+// PurchasingInvoiceUninvoicedTotal The list's sum in one currency.
+type PurchasingInvoiceUninvoicedTotal struct {
+	Amount   string `json:"amount"`
+	Currency string `json:"currency"`
+}
+
+// PurchasingInvoiceUnmatchInput What to unmatch (P37) — every match of the invoice, of one order, or of one line by its position.
+type PurchasingInvoiceUnmatchInput struct {
+	LinePosition *int32 `json:"linePosition,omitempty"`
+	OrderId      *int64 `json:"orderId,omitempty"`
+}
+
+// PurchasingInvoiceWarning A match's differences (P38), warnings that never hold the posting: invoiced_over_received, the order line is invoiced beyond what is received; invoiced_over_ordered, beyond what is ordered; price_differs, the invoice's unit price differs from the order's by more than the settings' tolerance; currency_differs, the invoice is in another currency than the order.
+type PurchasingInvoiceWarning string
+
 // PurchasingLineInput A line as written (P16). id names an existing line of the order; a line without one is new. A variant line names variantId and takes its supplier item's number, price, packaging and expected day when they are left out; a text line names description, unit and unitPrice.
 type PurchasingLineInput struct {
 	Description     *string                 `json:"description,omitempty"`
@@ -999,7 +1206,7 @@ type PurchasingPerson struct {
 	Id          *openapi_types.UUID `json:"id,omitempty"`
 }
 
-// PurchasingProblem An RFC 9457 problem with this module's refusal code (purchasing design §3). code names the rule that refused and is what a client keys off, never the words. 400: field errors (errors), supplier_not_found, site_not_found, site_archived, currency_invalid, series_start_too_low, send_channel_unknown, recipient_missing, order_empty, import_invalid, amount_out_of_range (an order's total above 999 999 999 999.99), and an order's line refusals in lines, the first of which is also code: too_many_lines, line_invalid, line_not_found, variant_not_found, variant_discontinued, packaging_not_found, quantity_invalid, price_invalid, discount_invalid, quantity_below_received, amount_out_of_range (a line's amount above 999 999 999 999.99). 404: not_found. 409: version_conflict (a stale revision or expectedUpdatedAt), order_not_draft, order_not_sent (the order is not sent or partially received), order_not_closed, order_has_receipts (a cancel of an order with something received), line_closed, line_kind_changed, currency_fixed (a currency change once a line has a price), supplier_inactive, supplier_changed (a sent order's supplier), supplier_item_exists, client_request_reused, proposal_gone (Create orders: a row no longer proposed as the screen showed it — on a draft or sent since, or its remaining changed; lines name the rows). Create orders' rows are refused in lines as an order's are, with supplier_item_not_found (the item is not the row variant's, or not known). 503: dependency_unavailable (a module Purchasing reads is not composed), sending_disabled (Communications is off, or no channel that can send is chosen) and mail_failed (the e-mail did not go out now; the change is made, and its mailing, written in the same transaction, stays queued for the purchasing.mail worker). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither. Receipts (delivery B): 400 line_not_receivable (a line that is not an open goods line of the order) and quantity_invalid (also a line whose received quantity would pass 999 999 999.999, acceptOver or not) in lines; 409 over_receipt (more than a line's remainder without acceptOver, the lines named), receipt_undone (an undo of a receipt undone already), receipt_invoiced (an undo that would leave a line with less received than invoiced) and line_not_deliverable (a delivered mark on a goods line). Inventory's refusals of a receipt or its undo keep Inventory's own codes, each line named by its index.
+// PurchasingProblem An RFC 9457 problem with this module's refusal code (purchasing design §3). code names the rule that refused and is what a client keys off, never the words. 400: field errors (errors), supplier_not_found, site_not_found, site_archived, currency_invalid, series_start_too_low, send_channel_unknown, recipient_missing, order_empty, import_invalid, amount_out_of_range (an order's total above 999 999 999 999.99), and an order's line refusals in lines, the first of which is also code: too_many_lines, line_invalid, line_not_found, variant_not_found, variant_discontinued, packaging_not_found, quantity_invalid, price_invalid, discount_invalid, quantity_below_received, amount_out_of_range (a line's amount above 999 999 999 999.99). 404: not_found. 409: version_conflict (a stale revision or expectedUpdatedAt), order_not_draft, order_not_sent (the order is not sent or partially received), order_not_closed, order_has_receipts (a cancel of an order with something received), line_closed, line_kind_changed, currency_fixed (a currency change once a line has a price), supplier_inactive, supplier_changed (a sent order's supplier), supplier_item_exists, client_request_reused, proposal_gone (Create orders: a row no longer proposed as the screen showed it — on a draft or sent since, or its remaining changed; lines name the rows). Create orders' rows are refused in lines as an order's are, with supplier_item_not_found (the item is not the row variant's, or not known). 503: dependency_unavailable (a module Purchasing reads is not composed), sending_disabled (Communications is off, or no channel that can send is chosen) and mail_failed (the e-mail did not go out now; the change is made, and its mailing, written in the same transaction, stays queued for the purchasing.mail worker). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither. Receipts (delivery B): 400 line_not_receivable (a line that is not an open goods line of the order) and quantity_invalid (also a line whose received quantity would pass 999 999 999.999, acceptOver or not) in lines; 409 over_receipt (more than a line's remainder without acceptOver, the lines named), receipt_undone (an undo of a receipt undone already), receipt_invoiced (an undo that would leave a line with less received than invoiced) and line_not_deliverable (a delivered mark on a goods line). Inventory's refusals of a receipt or its undo keep Inventory's own codes, each line named by its index. The invoice match (delivery D): 400 invoice_line_unknown (no line of the invoice at the position) in lines, supplier_invoice_invalid (Accounting refused a field of Register invoice, named as the request's); 403 accounting_post_required (Register invoice without accounting:post); 409 invoice_reversed (a reversed invoice is not matched), invoice_supplier_differs (the order is another supplier's), invoice_currency_differs (the invoice is in another currency than the order), invoice_line_matched (the invoice line is matched to another order line; unmatch it first), over_invoiced (more than a line's received and not invoiced without acceptOver, the lines named), credit_exceeds_invoiced (a credit note matched for more than a line's invoiced, the lines named), nothing_to_match, nothing_to_invoice, and Accounting's refusals of the draft: books_not_set_up, supplier_account_missing (the supplier has no default account) and duplicate_supplier_invoice.
 type PurchasingProblem struct {
 	Code     *string              `json:"code,omitempty"`
 	Detail   *string              `json:"detail,omitempty"`
@@ -1678,6 +1885,20 @@ type ListPurchasingProposalsParams struct {
 	VariantId *int32 `form:"variantId,omitempty" json:"variantId,omitempty"`
 }
 
+// ListPurchasingReceivedNotInvoicedParams defines parameters for ListPurchasingReceivedNotInvoiced.
+type ListPurchasingReceivedNotInvoicedParams struct {
+	// AsOf The day the list is made as of; today in the business zone when left out.
+	AsOf       *openapi_types.Date `form:"asOf,omitempty" json:"asOf,omitempty"`
+	SupplierId *int64              `form:"supplierId,omitempty" json:"supplierId,omitempty"`
+}
+
+// ExportPurchasingReceivedNotInvoicedParams defines parameters for ExportPurchasingReceivedNotInvoiced.
+type ExportPurchasingReceivedNotInvoicedParams struct {
+	// AsOf The day the list is made as of; today in the business zone when left out.
+	AsOf       *openapi_types.Date `form:"asOf,omitempty" json:"asOf,omitempty"`
+	SupplierId *int64              `form:"supplierId,omitempty" json:"supplierId,omitempty"`
+}
+
 // ListPurchasingSupplierItemsParams defines parameters for ListPurchasingSupplierItems.
 type ListPurchasingSupplierItemsParams struct {
 	SupplierId *int64 `form:"supplierId,omitempty" json:"supplierId,omitempty"`
@@ -1737,6 +1958,9 @@ type MarkPurchasingOrderSentJSONRequestBody = PurchasingMarkSentInput
 // ReceivePurchasingOrderJSONRequestBody defines body for ReceivePurchasingOrder for application/json ContentType.
 type ReceivePurchasingOrderJSONRequestBody = PurchasingReceiptInput
 
+// RegisterPurchasingInvoiceJSONRequestBody defines body for RegisterPurchasingInvoice for application/json ContentType.
+type RegisterPurchasingInvoiceJSONRequestBody = PurchasingInvoiceRegisterInput
+
 // ReopenPurchasingOrderJSONRequestBody defines body for ReopenPurchasingOrder for application/json ContentType.
 type ReopenPurchasingOrderJSONRequestBody = PurchasingVersionInput
 
@@ -1754,6 +1978,15 @@ type UndoPurchasingReceiptJSONRequestBody = PurchasingUndoInput
 
 // PutPurchasingSettingsJSONRequestBody defines body for PutPurchasingSettings for application/json ContentType.
 type PutPurchasingSettingsJSONRequestBody = PurchasingSettingsInput
+
+// MatchAllPurchasingInvoiceJSONRequestBody defines body for MatchAllPurchasingInvoice for application/json ContentType.
+type MatchAllPurchasingInvoiceJSONRequestBody = PurchasingInvoiceMatchAllInput
+
+// MatchPurchasingInvoiceJSONRequestBody defines body for MatchPurchasingInvoice for application/json ContentType.
+type MatchPurchasingInvoiceJSONRequestBody = PurchasingInvoiceMatchInput
+
+// UnmatchPurchasingInvoiceJSONRequestBody defines body for UnmatchPurchasingInvoice for application/json ContentType.
+type UnmatchPurchasingInvoiceJSONRequestBody = PurchasingInvoiceUnmatchInput
 
 // CreatePurchasingSupplierItemJSONRequestBody defines body for CreatePurchasingSupplierItem for application/json ContentType.
 type CreatePurchasingSupplierItemJSONRequestBody = PurchasingSupplierItemInput
@@ -1802,6 +2035,9 @@ type ServerInterface interface {
 	// GetPurchasingOrderHistory Get a purchase order's history
 	// (GET /api/v1/purchasing/orders/{orderId}/history)
 	GetPurchasingOrderHistory(w http.ResponseWriter, r *http.Request, orderId int64)
+	// ListPurchasingOrderInvoices List the supplier invoices matched to a purchase order
+	// (GET /api/v1/purchasing/orders/{orderId}/invoices)
+	ListPurchasingOrderInvoices(w http.ResponseWriter, r *http.Request, orderId int64)
 	// ClosePurchasingOrderLine Close an order line
 	// (POST /api/v1/purchasing/orders/{orderId}/lines/{lineId}/close)
 	ClosePurchasingOrderLine(w http.ResponseWriter, r *http.Request, orderId int64, lineId int64)
@@ -1826,6 +2062,9 @@ type ServerInterface interface {
 	// LookupPurchasingReceiveCode Look a scanned code up on the receive screen
 	// (GET /api/v1/purchasing/orders/{orderId}/receive/code)
 	LookupPurchasingReceiveCode(w http.ResponseWriter, r *http.Request, orderId int64, params LookupPurchasingReceiveCodeParams)
+	// RegisterPurchasingInvoice Register a supplier invoice from a purchase order
+	// (POST /api/v1/purchasing/orders/{orderId}/register-invoice)
+	RegisterPurchasingInvoice(w http.ResponseWriter, r *http.Request, orderId int64)
 	// ReopenPurchasingOrder Reopen a purchase order
 	// (POST /api/v1/purchasing/orders/{orderId}/reopen)
 	ReopenPurchasingOrder(w http.ResponseWriter, r *http.Request, orderId int64)
@@ -1847,6 +2086,12 @@ type ServerInterface interface {
 	// UndoPurchasingReceipt Undo a receipt
 	// (POST /api/v1/purchasing/receipts/{receiptId}/undo)
 	UndoPurchasingReceipt(w http.ResponseWriter, r *http.Request, receiptId int64)
+	// ListPurchasingReceivedNotInvoiced List what is received and not invoiced
+	// (GET /api/v1/purchasing/received-not-invoiced)
+	ListPurchasingReceivedNotInvoiced(w http.ResponseWriter, r *http.Request, params ListPurchasingReceivedNotInvoicedParams)
+	// ExportPurchasingReceivedNotInvoiced Download what is received and not invoiced as CSV
+	// (GET /api/v1/purchasing/received-not-invoiced/csv)
+	ExportPurchasingReceivedNotInvoiced(w http.ResponseWriter, r *http.Request, params ExportPurchasingReceivedNotInvoicedParams)
 	// ListPurchasingOrdersToReceive List the orders to receive
 	// (GET /api/v1/purchasing/receiving)
 	ListPurchasingOrdersToReceive(w http.ResponseWriter, r *http.Request)
@@ -1862,6 +2107,18 @@ type ServerInterface interface {
 	// GetPurchasingSummary Get the Purchasing figures
 	// (GET /api/v1/purchasing/summary)
 	GetPurchasingSummary(w http.ResponseWriter, r *http.Request)
+	// GetPurchasingInvoiceMatch Get a supplier invoice's match
+	// (GET /api/v1/purchasing/supplier-invoices/{invoiceId}/match)
+	GetPurchasingInvoiceMatch(w http.ResponseWriter, r *http.Request, invoiceId int64)
+	// MatchAllPurchasingInvoice Match all that is received to a supplier invoice
+	// (POST /api/v1/purchasing/supplier-invoices/{invoiceId}/match-all)
+	MatchAllPurchasingInvoice(w http.ResponseWriter, r *http.Request, invoiceId int64)
+	// MatchPurchasingInvoice Match a supplier invoice to a purchase order
+	// (POST /api/v1/purchasing/supplier-invoices/{invoiceId}/matches)
+	MatchPurchasingInvoice(w http.ResponseWriter, r *http.Request, invoiceId int64)
+	// UnmatchPurchasingInvoice Unmatch a supplier invoice
+	// (POST /api/v1/purchasing/supplier-invoices/{invoiceId}/unmatch)
+	UnmatchPurchasingInvoice(w http.ResponseWriter, r *http.Request, invoiceId int64)
 	// ListPurchasingSupplierItems List supplier items
 	// (GET /api/v1/purchasing/supplier-items)
 	ListPurchasingSupplierItems(w http.ResponseWriter, r *http.Request, params ListPurchasingSupplierItemsParams)
@@ -2370,6 +2627,32 @@ func (siw *ServerInterfaceWrapper) GetPurchasingOrderHistory(w http.ResponseWrit
 	handler.ServeHTTP(w, r)
 }
 
+// ListPurchasingOrderInvoices operation middleware
+func (siw *ServerInterfaceWrapper) ListPurchasingOrderInvoices(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "orderId" -------------
+	var orderId int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orderId", r.PathValue("orderId"), &orderId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orderId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListPurchasingOrderInvoices(w, r, orderId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ClosePurchasingOrderLine operation middleware
 func (siw *ServerInterfaceWrapper) ClosePurchasingOrderLine(w http.ResponseWriter, r *http.Request) {
 
@@ -2612,6 +2895,32 @@ func (siw *ServerInterfaceWrapper) LookupPurchasingReceiveCode(w http.ResponseWr
 	handler.ServeHTTP(w, r)
 }
 
+// RegisterPurchasingInvoice operation middleware
+func (siw *ServerInterfaceWrapper) RegisterPurchasingInvoice(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "orderId" -------------
+	var orderId int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orderId", r.PathValue("orderId"), &orderId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orderId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RegisterPurchasingInvoice(w, r, orderId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ReopenPurchasingOrder operation middleware
 func (siw *ServerInterfaceWrapper) ReopenPurchasingOrder(w http.ResponseWriter, r *http.Request) {
 
@@ -2802,6 +3111,98 @@ func (siw *ServerInterfaceWrapper) UndoPurchasingReceipt(w http.ResponseWriter, 
 	handler.ServeHTTP(w, r)
 }
 
+// ListPurchasingReceivedNotInvoiced operation middleware
+func (siw *ServerInterfaceWrapper) ListPurchasingReceivedNotInvoiced(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListPurchasingReceivedNotInvoicedParams
+
+	// ------------- Optional query parameter "asOf" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "asOf", r.URL.Query(), &params.AsOf, runtime.BindQueryParameterOptions{Type: "string", Format: "date"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "asOf"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "asOf", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "supplierId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "supplierId", r.URL.Query(), &params.SupplierId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "supplierId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "supplierId", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListPurchasingReceivedNotInvoiced(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ExportPurchasingReceivedNotInvoiced operation middleware
+func (siw *ServerInterfaceWrapper) ExportPurchasingReceivedNotInvoiced(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ExportPurchasingReceivedNotInvoicedParams
+
+	// ------------- Optional query parameter "asOf" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "asOf", r.URL.Query(), &params.AsOf, runtime.BindQueryParameterOptions{Type: "string", Format: "date"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "asOf"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "asOf", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "supplierId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "supplierId", r.URL.Query(), &params.SupplierId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "supplierId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "supplierId", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ExportPurchasingReceivedNotInvoiced(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListPurchasingOrdersToReceive operation middleware
 func (siw *ServerInterfaceWrapper) ListPurchasingOrdersToReceive(w http.ResponseWriter, r *http.Request) {
 
@@ -2863,6 +3264,110 @@ func (siw *ServerInterfaceWrapper) GetPurchasingSummary(w http.ResponseWriter, r
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetPurchasingSummary(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetPurchasingInvoiceMatch operation middleware
+func (siw *ServerInterfaceWrapper) GetPurchasingInvoiceMatch(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "invoiceId" -------------
+	var invoiceId int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "invoiceId", r.PathValue("invoiceId"), &invoiceId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "invoiceId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPurchasingInvoiceMatch(w, r, invoiceId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// MatchAllPurchasingInvoice operation middleware
+func (siw *ServerInterfaceWrapper) MatchAllPurchasingInvoice(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "invoiceId" -------------
+	var invoiceId int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "invoiceId", r.PathValue("invoiceId"), &invoiceId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "invoiceId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.MatchAllPurchasingInvoice(w, r, invoiceId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// MatchPurchasingInvoice operation middleware
+func (siw *ServerInterfaceWrapper) MatchPurchasingInvoice(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "invoiceId" -------------
+	var invoiceId int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "invoiceId", r.PathValue("invoiceId"), &invoiceId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "invoiceId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.MatchPurchasingInvoice(w, r, invoiceId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UnmatchPurchasingInvoice operation middleware
+func (siw *ServerInterfaceWrapper) UnmatchPurchasingInvoice(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "invoiceId" -------------
+	var invoiceId int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "invoiceId", r.PathValue("invoiceId"), &invoiceId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "invoiceId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UnmatchPurchasingInvoice(w, r, invoiceId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3372,6 +3877,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/purchasing/orders/{orderId}/copy", wrapper.CopyPurchasingOrder)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/purchasing/orders/{orderId}/documents/{documentId}", wrapper.GetPurchasingOrderDocument)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/purchasing/orders/{orderId}/history", wrapper.GetPurchasingOrderHistory)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/purchasing/orders/{orderId}/invoices", wrapper.ListPurchasingOrderInvoices)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/purchasing/orders/{orderId}/lines/{lineId}/close", wrapper.ClosePurchasingOrderLine)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/purchasing/orders/{orderId}/lines/{lineId}/delivered", wrapper.MarkPurchasingOrderLineDelivered)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/purchasing/orders/{orderId}/mark-sent", wrapper.MarkPurchasingOrderSent)
@@ -3380,6 +3886,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/purchasing/orders/{orderId}/receipts", wrapper.ReceivePurchasingOrder)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/purchasing/orders/{orderId}/receive", wrapper.GetPurchasingReceiveForm)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/purchasing/orders/{orderId}/receive/code", wrapper.LookupPurchasingReceiveCode)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/purchasing/orders/{orderId}/register-invoice", wrapper.RegisterPurchasingInvoice)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/purchasing/orders/{orderId}/reopen", wrapper.ReopenPurchasingOrder)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/purchasing/orders/{orderId}/send", wrapper.SendPurchasingOrder)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/purchasing/orders/{orderId}/send-again", wrapper.ResendPurchasingOrder)
@@ -3387,11 +3894,17 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/purchasing/proposals/orders", wrapper.CreatePurchasingProposalOrders)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/purchasing/receipts/{receiptId}", wrapper.GetPurchasingReceipt)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/purchasing/receipts/{receiptId}/undo", wrapper.UndoPurchasingReceipt)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/purchasing/received-not-invoiced", wrapper.ListPurchasingReceivedNotInvoiced)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/purchasing/received-not-invoiced/csv", wrapper.ExportPurchasingReceivedNotInvoiced)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/purchasing/receiving", wrapper.ListPurchasingOrdersToReceive)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/purchasing/settings", wrapper.GetPurchasingSettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/purchasing/settings", wrapper.PutPurchasingSettings)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/purchasing/sites", wrapper.ListPurchasingSites)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/purchasing/summary", wrapper.GetPurchasingSummary)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/purchasing/supplier-invoices/{invoiceId}/match", wrapper.GetPurchasingInvoiceMatch)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/purchasing/supplier-invoices/{invoiceId}/match-all", wrapper.MatchAllPurchasingInvoice)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/purchasing/supplier-invoices/{invoiceId}/matches", wrapper.MatchPurchasingInvoice)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/purchasing/supplier-invoices/{invoiceId}/unmatch", wrapper.UnmatchPurchasingInvoice)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/purchasing/supplier-items", wrapper.ListPurchasingSupplierItems)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/purchasing/supplier-items", wrapper.CreatePurchasingSupplierItem)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/purchasing/supplier-items/{itemId}", wrapper.DeletePurchasingSupplierItem)
@@ -4452,6 +4965,70 @@ func (response GetPurchasingOrderHistory404ApplicationProblemPlusJSONResponse) V
 	return err
 }
 
+type ListPurchasingOrderInvoicesRequestObject struct {
+	OrderId int64 `json:"orderId"`
+}
+
+type ListPurchasingOrderInvoicesResponseObject interface {
+	VisitListPurchasingOrderInvoicesResponse(w http.ResponseWriter) error
+}
+
+type ListPurchasingOrderInvoices200JSONResponse PurchasingInvoiceOrderMatches
+
+func (response ListPurchasingOrderInvoices200JSONResponse) VisitListPurchasingOrderInvoicesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPurchasingOrderInvoices401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListPurchasingOrderInvoices401JSONResponse) VisitListPurchasingOrderInvoicesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPurchasingOrderInvoices403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListPurchasingOrderInvoices403JSONResponse) VisitListPurchasingOrderInvoicesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPurchasingOrderInvoices404ApplicationProblemPlusJSONResponse PurchasingProblem
+
+func (response ListPurchasingOrderInvoices404ApplicationProblemPlusJSONResponse) VisitListPurchasingOrderInvoicesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ClosePurchasingOrderLineRequestObject struct {
 	OrderId int64 `json:"orderId"`
 	LineId  int64 `json:"lineId"`
@@ -5187,6 +5764,127 @@ func (response LookupPurchasingReceiveCode503ApplicationProblemPlusJSONResponse)
 	return err
 }
 
+type RegisterPurchasingInvoiceRequestObject struct {
+	OrderId int64 `json:"orderId"`
+	Body    *RegisterPurchasingInvoiceJSONRequestBody
+}
+
+type RegisterPurchasingInvoiceResponseObject interface {
+	VisitRegisterPurchasingInvoiceResponse(w http.ResponseWriter) error
+}
+
+type RegisterPurchasingInvoice201JSONResponse PurchasingInvoiceRegistration
+
+func (response RegisterPurchasingInvoice201JSONResponse) VisitRegisterPurchasingInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RegisterPurchasingInvoice400ApplicationProblemPlusJSONResponse PurchasingProblem
+
+func (response RegisterPurchasingInvoice400ApplicationProblemPlusJSONResponse) VisitRegisterPurchasingInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RegisterPurchasingInvoice401JSONResponse externalRef0.AuthErrorResponse
+
+func (response RegisterPurchasingInvoice401JSONResponse) VisitRegisterPurchasingInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RegisterPurchasingInvoice403JSONResponse externalRef0.AuthErrorResponse
+
+func (response RegisterPurchasingInvoice403JSONResponse) VisitRegisterPurchasingInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RegisterPurchasingInvoice403ApplicationProblemPlusJSONResponse PurchasingProblem
+
+func (response RegisterPurchasingInvoice403ApplicationProblemPlusJSONResponse) VisitRegisterPurchasingInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RegisterPurchasingInvoice404ApplicationProblemPlusJSONResponse PurchasingProblem
+
+func (response RegisterPurchasingInvoice404ApplicationProblemPlusJSONResponse) VisitRegisterPurchasingInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RegisterPurchasingInvoice409ApplicationProblemPlusJSONResponse PurchasingProblem
+
+func (response RegisterPurchasingInvoice409ApplicationProblemPlusJSONResponse) VisitRegisterPurchasingInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RegisterPurchasingInvoice503ApplicationProblemPlusJSONResponse PurchasingProblem
+
+func (response RegisterPurchasingInvoice503ApplicationProblemPlusJSONResponse) VisitRegisterPurchasingInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ReopenPurchasingOrderRequestObject struct {
 	OrderId int64 `json:"orderId"`
 	Body    *ReopenPurchasingOrderJSONRequestBody
@@ -5821,6 +6519,112 @@ func (response UndoPurchasingReceipt503ApplicationProblemPlusJSONResponse) Visit
 	return err
 }
 
+type ListPurchasingReceivedNotInvoicedRequestObject struct {
+	Params ListPurchasingReceivedNotInvoicedParams
+}
+
+type ListPurchasingReceivedNotInvoicedResponseObject interface {
+	VisitListPurchasingReceivedNotInvoicedResponse(w http.ResponseWriter) error
+}
+
+type ListPurchasingReceivedNotInvoiced200JSONResponse PurchasingInvoiceUninvoiced
+
+func (response ListPurchasingReceivedNotInvoiced200JSONResponse) VisitListPurchasingReceivedNotInvoicedResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPurchasingReceivedNotInvoiced401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListPurchasingReceivedNotInvoiced401JSONResponse) VisitListPurchasingReceivedNotInvoicedResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPurchasingReceivedNotInvoiced403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListPurchasingReceivedNotInvoiced403JSONResponse) VisitListPurchasingReceivedNotInvoicedResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportPurchasingReceivedNotInvoicedRequestObject struct {
+	Params ExportPurchasingReceivedNotInvoicedParams
+}
+
+type ExportPurchasingReceivedNotInvoicedResponseObject interface {
+	VisitExportPurchasingReceivedNotInvoicedResponse(w http.ResponseWriter) error
+}
+
+type ExportPurchasingReceivedNotInvoiced200TextcsvResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response ExportPurchasingReceivedNotInvoiced200TextcsvResponse) VisitExportPurchasingReceivedNotInvoicedResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "text/csv")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type ExportPurchasingReceivedNotInvoiced401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ExportPurchasingReceivedNotInvoiced401JSONResponse) VisitExportPurchasingReceivedNotInvoicedResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportPurchasingReceivedNotInvoiced403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ExportPurchasingReceivedNotInvoiced403JSONResponse) VisitExportPurchasingReceivedNotInvoicedResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListPurchasingOrdersToReceiveRequestObject struct {
 }
 
@@ -6119,6 +6923,405 @@ func (response GetPurchasingSummary403JSONResponse) VisitGetPurchasingSummaryRes
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPurchasingInvoiceMatchRequestObject struct {
+	InvoiceId int64 `json:"invoiceId"`
+}
+
+type GetPurchasingInvoiceMatchResponseObject interface {
+	VisitGetPurchasingInvoiceMatchResponse(w http.ResponseWriter) error
+}
+
+type GetPurchasingInvoiceMatch200JSONResponse PurchasingInvoicePanel
+
+func (response GetPurchasingInvoiceMatch200JSONResponse) VisitGetPurchasingInvoiceMatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPurchasingInvoiceMatch401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetPurchasingInvoiceMatch401JSONResponse) VisitGetPurchasingInvoiceMatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPurchasingInvoiceMatch403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetPurchasingInvoiceMatch403JSONResponse) VisitGetPurchasingInvoiceMatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPurchasingInvoiceMatch404ApplicationProblemPlusJSONResponse PurchasingProblem
+
+func (response GetPurchasingInvoiceMatch404ApplicationProblemPlusJSONResponse) VisitGetPurchasingInvoiceMatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPurchasingInvoiceMatch503ApplicationProblemPlusJSONResponse PurchasingProblem
+
+func (response GetPurchasingInvoiceMatch503ApplicationProblemPlusJSONResponse) VisitGetPurchasingInvoiceMatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MatchAllPurchasingInvoiceRequestObject struct {
+	InvoiceId int64 `json:"invoiceId"`
+	Body      *MatchAllPurchasingInvoiceJSONRequestBody
+}
+
+type MatchAllPurchasingInvoiceResponseObject interface {
+	VisitMatchAllPurchasingInvoiceResponse(w http.ResponseWriter) error
+}
+
+type MatchAllPurchasingInvoice200JSONResponse PurchasingInvoicePanel
+
+func (response MatchAllPurchasingInvoice200JSONResponse) VisitMatchAllPurchasingInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MatchAllPurchasingInvoice400ApplicationProblemPlusJSONResponse PurchasingProblem
+
+func (response MatchAllPurchasingInvoice400ApplicationProblemPlusJSONResponse) VisitMatchAllPurchasingInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MatchAllPurchasingInvoice401JSONResponse externalRef0.AuthErrorResponse
+
+func (response MatchAllPurchasingInvoice401JSONResponse) VisitMatchAllPurchasingInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MatchAllPurchasingInvoice403JSONResponse externalRef0.AuthErrorResponse
+
+func (response MatchAllPurchasingInvoice403JSONResponse) VisitMatchAllPurchasingInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MatchAllPurchasingInvoice404ApplicationProblemPlusJSONResponse PurchasingProblem
+
+func (response MatchAllPurchasingInvoice404ApplicationProblemPlusJSONResponse) VisitMatchAllPurchasingInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MatchAllPurchasingInvoice409ApplicationProblemPlusJSONResponse PurchasingProblem
+
+func (response MatchAllPurchasingInvoice409ApplicationProblemPlusJSONResponse) VisitMatchAllPurchasingInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MatchAllPurchasingInvoice503ApplicationProblemPlusJSONResponse PurchasingProblem
+
+func (response MatchAllPurchasingInvoice503ApplicationProblemPlusJSONResponse) VisitMatchAllPurchasingInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MatchPurchasingInvoiceRequestObject struct {
+	InvoiceId int64 `json:"invoiceId"`
+	Body      *MatchPurchasingInvoiceJSONRequestBody
+}
+
+type MatchPurchasingInvoiceResponseObject interface {
+	VisitMatchPurchasingInvoiceResponse(w http.ResponseWriter) error
+}
+
+type MatchPurchasingInvoice200JSONResponse PurchasingInvoicePanel
+
+func (response MatchPurchasingInvoice200JSONResponse) VisitMatchPurchasingInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MatchPurchasingInvoice400ApplicationProblemPlusJSONResponse PurchasingProblem
+
+func (response MatchPurchasingInvoice400ApplicationProblemPlusJSONResponse) VisitMatchPurchasingInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MatchPurchasingInvoice401JSONResponse externalRef0.AuthErrorResponse
+
+func (response MatchPurchasingInvoice401JSONResponse) VisitMatchPurchasingInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MatchPurchasingInvoice403JSONResponse externalRef0.AuthErrorResponse
+
+func (response MatchPurchasingInvoice403JSONResponse) VisitMatchPurchasingInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MatchPurchasingInvoice404ApplicationProblemPlusJSONResponse PurchasingProblem
+
+func (response MatchPurchasingInvoice404ApplicationProblemPlusJSONResponse) VisitMatchPurchasingInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MatchPurchasingInvoice409ApplicationProblemPlusJSONResponse PurchasingProblem
+
+func (response MatchPurchasingInvoice409ApplicationProblemPlusJSONResponse) VisitMatchPurchasingInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MatchPurchasingInvoice503ApplicationProblemPlusJSONResponse PurchasingProblem
+
+func (response MatchPurchasingInvoice503ApplicationProblemPlusJSONResponse) VisitMatchPurchasingInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnmatchPurchasingInvoiceRequestObject struct {
+	InvoiceId int64 `json:"invoiceId"`
+	Body      *UnmatchPurchasingInvoiceJSONRequestBody
+}
+
+type UnmatchPurchasingInvoiceResponseObject interface {
+	VisitUnmatchPurchasingInvoiceResponse(w http.ResponseWriter) error
+}
+
+type UnmatchPurchasingInvoice200JSONResponse PurchasingInvoicePanel
+
+func (response UnmatchPurchasingInvoice200JSONResponse) VisitUnmatchPurchasingInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnmatchPurchasingInvoice400ApplicationProblemPlusJSONResponse PurchasingProblem
+
+func (response UnmatchPurchasingInvoice400ApplicationProblemPlusJSONResponse) VisitUnmatchPurchasingInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnmatchPurchasingInvoice401JSONResponse externalRef0.AuthErrorResponse
+
+func (response UnmatchPurchasingInvoice401JSONResponse) VisitUnmatchPurchasingInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnmatchPurchasingInvoice403JSONResponse externalRef0.AuthErrorResponse
+
+func (response UnmatchPurchasingInvoice403JSONResponse) VisitUnmatchPurchasingInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnmatchPurchasingInvoice404ApplicationProblemPlusJSONResponse PurchasingProblem
+
+func (response UnmatchPurchasingInvoice404ApplicationProblemPlusJSONResponse) VisitUnmatchPurchasingInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnmatchPurchasingInvoice409ApplicationProblemPlusJSONResponse PurchasingProblem
+
+func (response UnmatchPurchasingInvoice409ApplicationProblemPlusJSONResponse) VisitUnmatchPurchasingInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnmatchPurchasingInvoice503ApplicationProblemPlusJSONResponse PurchasingProblem
+
+func (response UnmatchPurchasingInvoice503ApplicationProblemPlusJSONResponse) VisitUnmatchPurchasingInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -6848,6 +8051,9 @@ type StrictServerInterface interface {
 	// GetPurchasingOrderHistory Get a purchase order's history
 	// (GET /api/v1/purchasing/orders/{orderId}/history)
 	GetPurchasingOrderHistory(ctx context.Context, request GetPurchasingOrderHistoryRequestObject) (GetPurchasingOrderHistoryResponseObject, error)
+	// ListPurchasingOrderInvoices List the supplier invoices matched to a purchase order
+	// (GET /api/v1/purchasing/orders/{orderId}/invoices)
+	ListPurchasingOrderInvoices(ctx context.Context, request ListPurchasingOrderInvoicesRequestObject) (ListPurchasingOrderInvoicesResponseObject, error)
 	// ClosePurchasingOrderLine Close an order line
 	// (POST /api/v1/purchasing/orders/{orderId}/lines/{lineId}/close)
 	ClosePurchasingOrderLine(ctx context.Context, request ClosePurchasingOrderLineRequestObject) (ClosePurchasingOrderLineResponseObject, error)
@@ -6872,6 +8078,9 @@ type StrictServerInterface interface {
 	// LookupPurchasingReceiveCode Look a scanned code up on the receive screen
 	// (GET /api/v1/purchasing/orders/{orderId}/receive/code)
 	LookupPurchasingReceiveCode(ctx context.Context, request LookupPurchasingReceiveCodeRequestObject) (LookupPurchasingReceiveCodeResponseObject, error)
+	// RegisterPurchasingInvoice Register a supplier invoice from a purchase order
+	// (POST /api/v1/purchasing/orders/{orderId}/register-invoice)
+	RegisterPurchasingInvoice(ctx context.Context, request RegisterPurchasingInvoiceRequestObject) (RegisterPurchasingInvoiceResponseObject, error)
 	// ReopenPurchasingOrder Reopen a purchase order
 	// (POST /api/v1/purchasing/orders/{orderId}/reopen)
 	ReopenPurchasingOrder(ctx context.Context, request ReopenPurchasingOrderRequestObject) (ReopenPurchasingOrderResponseObject, error)
@@ -6893,6 +8102,12 @@ type StrictServerInterface interface {
 	// UndoPurchasingReceipt Undo a receipt
 	// (POST /api/v1/purchasing/receipts/{receiptId}/undo)
 	UndoPurchasingReceipt(ctx context.Context, request UndoPurchasingReceiptRequestObject) (UndoPurchasingReceiptResponseObject, error)
+	// ListPurchasingReceivedNotInvoiced List what is received and not invoiced
+	// (GET /api/v1/purchasing/received-not-invoiced)
+	ListPurchasingReceivedNotInvoiced(ctx context.Context, request ListPurchasingReceivedNotInvoicedRequestObject) (ListPurchasingReceivedNotInvoicedResponseObject, error)
+	// ExportPurchasingReceivedNotInvoiced Download what is received and not invoiced as CSV
+	// (GET /api/v1/purchasing/received-not-invoiced/csv)
+	ExportPurchasingReceivedNotInvoiced(ctx context.Context, request ExportPurchasingReceivedNotInvoicedRequestObject) (ExportPurchasingReceivedNotInvoicedResponseObject, error)
 	// ListPurchasingOrdersToReceive List the orders to receive
 	// (GET /api/v1/purchasing/receiving)
 	ListPurchasingOrdersToReceive(ctx context.Context, request ListPurchasingOrdersToReceiveRequestObject) (ListPurchasingOrdersToReceiveResponseObject, error)
@@ -6908,6 +8123,18 @@ type StrictServerInterface interface {
 	// GetPurchasingSummary Get the Purchasing figures
 	// (GET /api/v1/purchasing/summary)
 	GetPurchasingSummary(ctx context.Context, request GetPurchasingSummaryRequestObject) (GetPurchasingSummaryResponseObject, error)
+	// GetPurchasingInvoiceMatch Get a supplier invoice's match
+	// (GET /api/v1/purchasing/supplier-invoices/{invoiceId}/match)
+	GetPurchasingInvoiceMatch(ctx context.Context, request GetPurchasingInvoiceMatchRequestObject) (GetPurchasingInvoiceMatchResponseObject, error)
+	// MatchAllPurchasingInvoice Match all that is received to a supplier invoice
+	// (POST /api/v1/purchasing/supplier-invoices/{invoiceId}/match-all)
+	MatchAllPurchasingInvoice(ctx context.Context, request MatchAllPurchasingInvoiceRequestObject) (MatchAllPurchasingInvoiceResponseObject, error)
+	// MatchPurchasingInvoice Match a supplier invoice to a purchase order
+	// (POST /api/v1/purchasing/supplier-invoices/{invoiceId}/matches)
+	MatchPurchasingInvoice(ctx context.Context, request MatchPurchasingInvoiceRequestObject) (MatchPurchasingInvoiceResponseObject, error)
+	// UnmatchPurchasingInvoice Unmatch a supplier invoice
+	// (POST /api/v1/purchasing/supplier-invoices/{invoiceId}/unmatch)
+	UnmatchPurchasingInvoice(ctx context.Context, request UnmatchPurchasingInvoiceRequestObject) (UnmatchPurchasingInvoiceResponseObject, error)
 	// ListPurchasingSupplierItems List supplier items
 	// (GET /api/v1/purchasing/supplier-items)
 	ListPurchasingSupplierItems(ctx context.Context, request ListPurchasingSupplierItemsRequestObject) (ListPurchasingSupplierItemsResponseObject, error)
@@ -7347,6 +8574,32 @@ func (sh *strictHandler) GetPurchasingOrderHistory(w http.ResponseWriter, r *htt
 	}
 }
 
+// ListPurchasingOrderInvoices operation middleware
+func (sh *strictHandler) ListPurchasingOrderInvoices(w http.ResponseWriter, r *http.Request, orderId int64) {
+	var request ListPurchasingOrderInvoicesRequestObject
+
+	request.OrderId = orderId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListPurchasingOrderInvoices(ctx, request.(ListPurchasingOrderInvoicesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListPurchasingOrderInvoices")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListPurchasingOrderInvoicesResponseObject); ok {
+		if err := validResponse.VisitListPurchasingOrderInvoicesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ClosePurchasingOrderLine operation middleware
 func (sh *strictHandler) ClosePurchasingOrderLine(w http.ResponseWriter, r *http.Request, orderId int64, lineId int64) {
 	var request ClosePurchasingOrderLineRequestObject
@@ -7586,6 +8839,39 @@ func (sh *strictHandler) LookupPurchasingReceiveCode(w http.ResponseWriter, r *h
 	}
 }
 
+// RegisterPurchasingInvoice operation middleware
+func (sh *strictHandler) RegisterPurchasingInvoice(w http.ResponseWriter, r *http.Request, orderId int64) {
+	var request RegisterPurchasingInvoiceRequestObject
+
+	request.OrderId = orderId
+
+	var body RegisterPurchasingInvoiceJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RegisterPurchasingInvoice(ctx, request.(RegisterPurchasingInvoiceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RegisterPurchasingInvoice")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RegisterPurchasingInvoiceResponseObject); ok {
+		if err := validResponse.VisitRegisterPurchasingInvoiceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ReopenPurchasingOrder operation middleware
 func (sh *strictHandler) ReopenPurchasingOrder(w http.ResponseWriter, r *http.Request, orderId int64) {
 	var request ReopenPurchasingOrderRequestObject
@@ -7801,6 +9087,58 @@ func (sh *strictHandler) UndoPurchasingReceipt(w http.ResponseWriter, r *http.Re
 	}
 }
 
+// ListPurchasingReceivedNotInvoiced operation middleware
+func (sh *strictHandler) ListPurchasingReceivedNotInvoiced(w http.ResponseWriter, r *http.Request, params ListPurchasingReceivedNotInvoicedParams) {
+	var request ListPurchasingReceivedNotInvoicedRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListPurchasingReceivedNotInvoiced(ctx, request.(ListPurchasingReceivedNotInvoicedRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListPurchasingReceivedNotInvoiced")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListPurchasingReceivedNotInvoicedResponseObject); ok {
+		if err := validResponse.VisitListPurchasingReceivedNotInvoicedResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ExportPurchasingReceivedNotInvoiced operation middleware
+func (sh *strictHandler) ExportPurchasingReceivedNotInvoiced(w http.ResponseWriter, r *http.Request, params ExportPurchasingReceivedNotInvoicedParams) {
+	var request ExportPurchasingReceivedNotInvoicedRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ExportPurchasingReceivedNotInvoiced(ctx, request.(ExportPurchasingReceivedNotInvoicedRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ExportPurchasingReceivedNotInvoiced")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ExportPurchasingReceivedNotInvoicedResponseObject); ok {
+		if err := validResponse.VisitExportPurchasingReceivedNotInvoicedResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListPurchasingOrdersToReceive operation middleware
 func (sh *strictHandler) ListPurchasingOrdersToReceive(w http.ResponseWriter, r *http.Request) {
 	var request ListPurchasingOrdersToReceiveRequestObject
@@ -7921,6 +9259,131 @@ func (sh *strictHandler) GetPurchasingSummary(w http.ResponseWriter, r *http.Req
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetPurchasingSummaryResponseObject); ok {
 		if err := validResponse.VisitGetPurchasingSummaryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetPurchasingInvoiceMatch operation middleware
+func (sh *strictHandler) GetPurchasingInvoiceMatch(w http.ResponseWriter, r *http.Request, invoiceId int64) {
+	var request GetPurchasingInvoiceMatchRequestObject
+
+	request.InvoiceId = invoiceId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetPurchasingInvoiceMatch(ctx, request.(GetPurchasingInvoiceMatchRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetPurchasingInvoiceMatch")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetPurchasingInvoiceMatchResponseObject); ok {
+		if err := validResponse.VisitGetPurchasingInvoiceMatchResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// MatchAllPurchasingInvoice operation middleware
+func (sh *strictHandler) MatchAllPurchasingInvoice(w http.ResponseWriter, r *http.Request, invoiceId int64) {
+	var request MatchAllPurchasingInvoiceRequestObject
+
+	request.InvoiceId = invoiceId
+
+	var body MatchAllPurchasingInvoiceJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.MatchAllPurchasingInvoice(ctx, request.(MatchAllPurchasingInvoiceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "MatchAllPurchasingInvoice")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(MatchAllPurchasingInvoiceResponseObject); ok {
+		if err := validResponse.VisitMatchAllPurchasingInvoiceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// MatchPurchasingInvoice operation middleware
+func (sh *strictHandler) MatchPurchasingInvoice(w http.ResponseWriter, r *http.Request, invoiceId int64) {
+	var request MatchPurchasingInvoiceRequestObject
+
+	request.InvoiceId = invoiceId
+
+	var body MatchPurchasingInvoiceJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.MatchPurchasingInvoice(ctx, request.(MatchPurchasingInvoiceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "MatchPurchasingInvoice")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(MatchPurchasingInvoiceResponseObject); ok {
+		if err := validResponse.VisitMatchPurchasingInvoiceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UnmatchPurchasingInvoice operation middleware
+func (sh *strictHandler) UnmatchPurchasingInvoice(w http.ResponseWriter, r *http.Request, invoiceId int64) {
+	var request UnmatchPurchasingInvoiceRequestObject
+
+	request.InvoiceId = invoiceId
+
+	var body UnmatchPurchasingInvoiceJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UnmatchPurchasingInvoice(ctx, request.(UnmatchPurchasingInvoiceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UnmatchPurchasingInvoice")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UnmatchPurchasingInvoiceResponseObject); ok {
+		if err := validResponse.VisitUnmatchPurchasingInvoiceResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

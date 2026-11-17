@@ -65,6 +65,23 @@ const (
 	codeReceiptUndone      = "receipt_undone"
 	codeReceiptInvoiced    = "receipt_invoiced"
 	codeLineNotDeliverable = "line_not_deliverable"
+
+	// The invoice match's codes (delivery D), Accounting's refusals of a
+	// draft among them.
+	codeInvoiceLineUnknown       = "invoice_line_unknown"
+	codeInvoiceReversed          = "invoice_reversed"
+	codeInvoiceSupplierDiffers   = "invoice_supplier_differs"
+	codeInvoiceCurrencyDiffers   = "invoice_currency_differs"
+	codeInvoiceLineMatched       = "invoice_line_matched"
+	codeOverInvoiced             = "over_invoiced"
+	codeCreditExceedsInvoiced    = "credit_exceeds_invoiced"
+	codeNothingToMatch           = "nothing_to_match"
+	codeNothingToInvoice         = "nothing_to_invoice"
+	codeAccountingPostRequired   = "accounting_post_required"
+	codeBooksNotSetUp            = "books_not_set_up"
+	codeSupplierAccountMissing   = "supplier_account_missing"
+	codeDuplicateSupplierInvoice = "duplicate_supplier_invoice"
+	codeSupplierInvoiceInvalid   = "supplier_invoice_invalid"
 )
 
 // refusalCodes is every code above, which PurchasingProblem's description
@@ -78,6 +95,10 @@ var refusalCodes = []string{
 	codeTooManyLines, codeLineInvalid, codeLineNotFound, codeVariantNotFound, codeVariantDiscontinued,
 	codePackagingNotFound, codeQuantityInvalid, codePriceInvalid, codeDiscountInvalid, codeQuantityBelowReceived,
 	codeLineNotReceivable, codeOverReceipt, codeReceiptUndone, codeReceiptInvoiced, codeLineNotDeliverable,
+	codeInvoiceLineUnknown, codeInvoiceReversed, codeInvoiceSupplierDiffers, codeInvoiceCurrencyDiffers,
+	codeInvoiceLineMatched, codeOverInvoiced, codeCreditExceedsInvoiced, codeNothingToMatch, codeNothingToInvoice,
+	codeAccountingPostRequired, codeBooksNotSetUp, codeSupplierAccountMissing, codeDuplicateSupplierInvoice,
+	codeSupplierInvoiceInvalid,
 }
 
 // The titles this module's validation problems carry.
@@ -90,6 +111,8 @@ const (
 	invalidImportTitle       = "Invalid import"
 	invalidConfirmTitle      = "Invalid confirmation"
 	invalidReceiptTitle      = "Invalid receipt"
+	invalidMatchTitle        = "Invalid match"
+	invalidInvoiceTitle      = "Invalid supplier invoice"
 )
 
 // errDependencyUnavailable is every accessor's answer when the contract it
@@ -286,6 +309,7 @@ func answerOf(err error) (int, gen.PurchasingProblem, bool) {
 // 500 — a bug in the handler, never a silent mismatch with the contract.
 type answers[R any] struct {
 	badRequest  func(gen.PurchasingProblem) R
+	forbidden   func(gen.PurchasingProblem) R
 	notFound    func(gen.PurchasingProblem) R
 	conflict    func(gen.PurchasingProblem) R
 	unavailable func(gen.PurchasingProblem) R
@@ -302,6 +326,8 @@ func answer[R any](err error, a answers[R]) (R, error) {
 	switch {
 	case status == http.StatusBadRequest && a.badRequest != nil:
 		return a.badRequest(p), nil
+	case status == http.StatusForbidden && a.forbidden != nil:
+		return a.forbidden(p), nil
 	case status == http.StatusNotFound && a.notFound != nil:
 		return a.notFound(p), nil
 	case status == http.StatusConflict && a.conflict != nil:

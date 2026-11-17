@@ -9,6 +9,7 @@ sql:
       - ../db/migrations/00189_purchasing_baseline.sql
       - ../db/migrations/00190_purchasing_receipts.sql
       - ../db/migrations/00191_purchasing_proposal_requests.sql
+      - ../db/migrations/00192_purchasing_matches.sql
     queries: queries
     gen:
       go:

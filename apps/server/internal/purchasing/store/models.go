@@ -37,6 +37,59 @@ type PurchasingDocument struct {
 	ErasedAt   *time.Time
 }
 
+type PurchasingInvoiceEvent struct {
+	EventID           int64
+	Name              string
+	SupplierInvoiceID int64
+	HandledAt         time.Time
+}
+
+type PurchasingInvoiceFollowup struct {
+	SupplierInvoiceID int64
+	RequestedAt       time.Time
+	NextAttemptAt     time.Time
+	Attempts          int32
+	LastError         *string
+	CompletedAt       *time.Time
+}
+
+type PurchasingInvoiceMatch struct {
+	ID                int64
+	SupplierInvoiceID int64
+	LinePosition      int32
+	OrderID           int64
+	OrderLineID       int64
+	Kind              string
+	Quantity          pgtype.Numeric
+	LineNet           pgtype.Numeric
+	InvoiceNumber     string
+	InvoiceDate       pgtype.Date
+	InvoiceCurrency   string
+	State             string
+	PostedAt          *time.Time
+	MatchedByUserID   *uuid.UUID
+	MatchedByDisplay  *string
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+}
+
+type PurchasingInvoiceRegistration struct {
+	ClientRequestID   uuid.UUID
+	RequestHash       string
+	OrderID           int64
+	SupplierInvoiceID int64
+	Lines             int32
+	LinesLeft         int32
+	CreatedAt         time.Time
+}
+
+type PurchasingInvoiceState struct {
+	SupplierInvoiceID int64
+	State             string
+	CopyID            *int64
+	UpdatedAt         time.Time
+}
+
 type PurchasingMailing struct {
 	ID                int64
 	OrderID           int64

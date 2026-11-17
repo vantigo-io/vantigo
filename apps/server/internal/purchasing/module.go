@@ -21,16 +21,14 @@ import (
 )
 
 // The seven permission keys (§8). Every key is delegable but the settings',
-// which administers the module; none is sensitive. invoices-match is
-// declared now so a role can be built once, and is first asked for by
-// delivery D.
+// which administers the module; none is sensitive.
 const (
 	permAccess              = "purchasing:access"
 	permOrdersManage        = "purchasing:orders-manage"
 	permOrdersSend          = "purchasing:orders-send"
 	permReceive             = "purchasing:receive"
 	permSupplierItemsManage = "purchasing:supplier-items-manage"
-	permInvoicesMatch       = "purchasing:invoices-match" // delivery D
+	permInvoicesMatch       = "purchasing:invoices-match"
 	permSettings            = "purchasing:settings"
 )
 
@@ -61,8 +59,8 @@ var permissions = []contracts.Permission{
 		Category:    "Purchasing", Sensitive: false, Delegable: true,
 	},
 	{
-		Key: permInvoicesMatch, Display: "Match supplier invoices (coming)",
-		Description: "Not in use yet: matching supplier invoices to purchase orders comes in a later version of Purchasing.",
+		Key: permInvoicesMatch, Display: "Match supplier invoices",
+		Description: "Match and unmatch supplier invoices to purchase orders, register an invoice from an order (with accounting:post), and read what is received and not invoiced.",
 		Category:    "Purchasing", Sensitive: false, Delegable: true,
 	},
 	{
@@ -89,6 +87,10 @@ func Module() module.Module {
 		SupplierPersonalData: newSupplierPersonalData,
 		// The open purchases (P4), resolved from the enabled modules only.
 		PurchaseSupply: newPurchaseSupply,
+		// The match's badge on Accounting's supplier invoices (P6), and
+		// Accounting's supplier-invoice events (P37, A15).
+		SupplierInvoiceMatches: newSupplierInvoiceMatches,
+		EventHandlers:          eventHandlers,
 	}
 }
 

@@ -409,3 +409,31 @@ func (s *server) siteLocations(ctx context.Context, siteID int64) ([]contracts.S
 	}
 	return out, nil
 }
+
+// supplierInvoice is Accounting's supplier invoice with its lines, nil when
+// none has the id, before any transaction (P6, A9).
+func (s *server) supplierInvoice(ctx context.Context, id int64) (*contracts.SupplierInvoice, error) {
+	if err := noteContractCall(ctx, "SupplierInvoices.Invoice"); err != nil {
+		return nil, err
+	}
+	if s.deps.SupplierInvoices == nil {
+		return nil, errDependencyUnavailable
+	}
+	inv, err := s.deps.SupplierInvoices.Invoice(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("purchasing: read supplier invoice %d: %w", id, err)
+	}
+	return inv, nil
+}
+
+// createSupplierInvoiceDraft makes Accounting's draft (MB rule 26), on
+// Accounting's own transaction, before any of this module's.
+func (s *server) createSupplierInvoiceDraft(ctx context.Context, d contracts.SupplierInvoiceDraft) (int64, error) {
+	if err := noteContractCall(ctx, "SupplierInvoices.CreateDraft"); err != nil {
+		return 0, err
+	}
+	if s.deps.SupplierInvoices == nil {
+		return 0, errDependencyUnavailable
+	}
+	return s.deps.SupplierInvoices.CreateDraft(ctx, d)
+}

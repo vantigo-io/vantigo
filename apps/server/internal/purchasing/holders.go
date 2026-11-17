@@ -131,6 +131,7 @@ type exportedOrder struct {
 	Mailings           []exportedMailing `json:"mailings,omitempty"`
 	Changes            []exportedChange  `json:"changes,omitempty"`
 	Receipts           []exportedReceipt `json:"receipts,omitempty"`
+	InvoiceMatches     []exportedMatch   `json:"invoiceMatches,omitempty"`
 }
 
 // exportedReceipt is one receipt of an order with what it keeps that may
@@ -143,6 +144,18 @@ type exportedReceipt struct {
 	Note         string     `json:"note,omitempty"`
 	UndoneAt     *time.Time `json:"undoneAt,omitempty"`
 	UndoNote     string     `json:"undoNote,omitempty"`
+}
+
+// exportedMatch is one supplier invoice line matched to the order (P37).
+type exportedMatch struct {
+	SupplierInvoiceID int64  `json:"supplierInvoiceId"`
+	InvoiceNumber     string `json:"invoiceNumber"`
+	InvoiceDate       string `json:"invoiceDate"`
+	Kind              string `json:"kind"`
+	State             string `json:"state"`
+	LinePosition      int32  `json:"linePosition"`
+	OrderLineID       int64  `json:"orderLineId"`
+	Quantity          string `json:"quantity"`
 }
 
 // exportedChange is one row of an order's change log.
@@ -206,6 +219,16 @@ func (p supplierPersonalData) ExportSupplierData(ctx context.Context, supplierID
 			ReceivedOn: r.ReceivedOn.Time.Format(time.DateOnly), DeliveryNote: r.DeliveryNote, Note: r.Note,
 			UndoneAt: r.UndoneAt, UndoNote: deref(r.UndoNote)})
 	}
+	matches, err := q.SupplierMatches(ctx, supplierID)
+	if err != nil {
+		return nil, fmt.Errorf("purchasing: read supplier %d's invoice matches: %w", supplierID, err)
+	}
+	matchesOf := map[int64][]exportedMatch{}
+	for _, m := range matches {
+		matchesOf[m.OrderID] = append(matchesOf[m.OrderID], exportedMatch{SupplierInvoiceID: m.SupplierInvoiceID,
+			InvoiceNumber: m.InvoiceNumber, InvoiceDate: m.InvoiceDate.Time.Format(time.DateOnly), Kind: m.Kind, State: m.State,
+			LinePosition: m.LinePosition, OrderLineID: m.OrderLineID, Quantity: trimmed(ratOrZero(m.Quantity), quantityPlaces)})
+	}
 	out := exportedOrders{Orders: make([]exportedOrder, 0, len(orders))}
 	for _, o := range orders {
 		out.Orders = append(out.Orders, exportedOrder{
@@ -213,7 +236,8 @@ func (p supplierPersonalData) ExportSupplierData(ctx context.Context, supplierID
 			SupplierName: o.SupplierName, OrganisationNumber: deref(o.SupplierOrganisationNumber), Address: deref(o.SupplierAddressLine),
 			PostalCode: deref(o.SupplierPostalCode), City: deref(o.SupplierCity), Country: deref(o.SupplierCountry),
 			Email: deref(o.SupplierEmail), Contact: o.SupplierContact, Mailings: byOrder[o.ID], Changes: changesOf[o.ID],
-			Receipts: receiptsOf[o.ID],
+			Receipts:       receiptsOf[o.ID],
+			InvoiceMatches: matchesOf[o.ID],
 		})
 	}
 	return out, nil
