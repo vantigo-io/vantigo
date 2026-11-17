@@ -149,9 +149,26 @@ func TestRun_SeedBooksTheDemo(t *testing.T) {
 	expect("the loss's VAT taken back", `
 		SELECT (count(*) > 0)::text FROM accounting.postings WHERE tax_specification = 'tapPåKrav'`, "true")
 
+	// Purchasing (delivery A): the workshop's suppliers and items, and an
+	// order in every state, the steel tube the workshop is low on on order.
+	if !strings.Contains(stdout, "purchasing demo seeded") {
+		t.Errorf("expected the purchasing demo's log line, got: %s", stdout)
+	}
+	expect("the purchase orders' states", `SELECT string_agg(status, ',' ORDER BY status) FROM purchasing.orders`,
+		"cancelled,closed,draft,sent,sent,sent")
+	expect("the supplier items", `SELECT count(*)::text FROM purchasing.supplier_items`, "6")
+	expect("the confirmed orders", `SELECT count(*)::text FROM purchasing.orders WHERE supplier_reference IS NOT NULL`, "1")
+	expect("the closed lines", `SELECT count(*)::text FROM purchasing.order_lines WHERE closed_at IS NOT NULL`, "2")
+	expect("the stored PDFs", `SELECT count(*)::text FROM purchasing.documents`, "5")
+	expect("the tube on order at the workshop", `
+		SELECT sum(l.quantity - l.received)::text FROM purchasing.order_lines l JOIN purchasing.orders o ON o.id = l.order_id
+		JOIN products.product_variants v ON v.id = l.variant_id JOIN inventory.sites s ON s.id = o.site_id
+		WHERE v.sku = 'VRK-ROR-40' AND s.code = 'VERK' AND o.status IN ('sent', 'partially_received') AND l.closed_at IS NULL`, "180.000")
+
 	counts := func() string {
 		return value(`SELECT (SELECT count(*) FROM accounting.vouchers) || '/' || (SELECT count(*) FROM accounting.postings)
-			|| '/' || (SELECT count(*) FROM accounting.statement_lines) || '/' || (SELECT count(*) FROM accounting.suppliers)`)
+			|| '/' || (SELECT count(*) FROM accounting.statement_lines) || '/' || (SELECT count(*) FROM accounting.suppliers)
+			|| '/' || (SELECT count(*) FROM purchasing.orders) || '/' || (SELECT count(*) FROM purchasing.supplier_items)`)
 	}
 	before := counts()
 	code2, stdout2, stderr2 := runCapture("seed")
