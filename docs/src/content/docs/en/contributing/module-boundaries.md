@@ -1373,7 +1373,10 @@ lag, never what must refuse — go through the platform's domain-events outbox,
     the row lock the change took. Accounting publishes its first two (purchasing design P5):
     `accounting.supplier_invoice.posted` from Post and `accounting.supplier_invoice.reversed`
     from Reverse and copy, each on the posting's transaction under the invoice's row lock;
-    Purchasing's handlers will fix and release a match with them. Manufacturing's `manufacturing.purchasing-replenish` on Purchasing's
+    Purchasing's `purchasing.invoice-posted` and `purchasing.invoice-reversed` fix, release
+    and copy a match with them in Purchasing's own schema, and the posted one queues the
+    invoice for the worker `purchasing.invoice-posted`, which reads the posted lines through
+    `contracts.SupplierInvoices` on the pool (purchasing design A72). Manufacturing's `manufacturing.purchasing-replenish` on Purchasing's
     `purchasing.order.sent`, `purchasing.receipt.posted` and `purchasing.receipt.undone`
     (purchasing design A4, A45) only inserts a replenishment run for the order's site in its
     own schema, unless one covering it is pending; the run reads `PurchaseSupply` on the pool.

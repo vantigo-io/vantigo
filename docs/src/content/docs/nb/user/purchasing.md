@@ -1,6 +1,6 @@
 ---
 title: Innkjøp
-description: Innkjøp-appen — listen over innkjøpsordrer og filtrene; lag en innkjøpsordre til en leverandør og et lagersted, med produktlinjer fylt ut fra leverandørvarene og tekstlinjer; send den på e-post, marker den som sendt eller send den på nytt; registrer leverandørens bekreftelse; endre en sendt ordre og les historikken; avslutt en linje eller hele ordren, gjenåpne den, kanseller den eller kopier den; PDF-en; leverandørene og hva hver selger — leverandørvarer, foretrukket leverandør og import av prisliste med CSV-kolonnene; innkjøpsforslagene fra lav beholdning eller innkjøpsforslagene i Produksjon, og Lag ordrer med Bestill… fra de skjermbildene; innstillingene; dashbordkortet og produktsidens Leverandører-kort; varemottak — mottaksskjermen og skanning, mer eller mindre enn bestilt, ordrens varemottak, å angre et varemottak og å markere en tekst- eller tjenestelinje som levert; og det som kommer senere — fakturaavstemming.
+description: Innkjøp-appen — listen over innkjøpsordrer og filtrene; lag en innkjøpsordre til en leverandør og et lagersted, med produktlinjer fylt ut fra leverandørvarene og tekstlinjer; send den på e-post, marker den som sendt eller send den på nytt; registrer leverandørens bekreftelse; endre en sendt ordre og les historikken; avslutt en linje eller hele ordren, gjenåpne den, kanseller den eller kopier den; PDF-en; leverandørene og hva hver selger — leverandørvarer, foretrukket leverandør og import av prisliste med CSV-kolonnene; innkjøpsforslagene fra lav beholdning eller innkjøpsforslagene i Produksjon, og Lag ordrer med Bestill… fra de skjermbildene; innstillingene; dashbordkortet og produktsidens Leverandører-kort; varemottak — mottaksskjermen og skanning, mer eller mindre enn bestilt, ordrens varemottak, å angre et varemottak og å markere en tekst- eller tjenestelinje som levert; leverandørfakturaene — ordrens fakturaer, Registrer faktura, å avstemme en faktura fra panelet Innkjøpsordre i Regnskap, avvikene, hva bokføring og tilbakeføring av fakturaen gjør, den siste prisen, og Mottatt, ikke fakturert med CSV-filen; og det som kommer senere — innkommende EHF, betalingsfiler og returer til leverandør.
 sidebar:
   order: 68
 sources:
@@ -10,6 +10,7 @@ sources:
   - apps/host/frontend/src/lib/dashboard-helpers.ts
   - apps/host/frontend/src/components/app-spotlight.tsx
   - apps/host/frontend/src/routes/products/$productId.tsx
+  - apps/host/frontend/src/routes/accounting/supplier-invoices.$supplierInvoiceId.tsx
 ---
 
 I Innkjøp-appen bestiller du varer og tjenester fra leverandørene dine. En
@@ -19,8 +20,8 @@ pris, i hvilken innkjøpsenhet og med hvilken leveringstid.
 
 En innkjøpsordre flytter verken beholdning eller regnskap. Du bestiller og følger opp,
 lager utkast til ordrer fra [innkjøpsforslag](#innkjøpsforslag), og når varene kommer,
-[tar du dem imot](#ta-imot-varene), noe som legger dem på lager i Lager; å avstemme
-leverandørens faktura mot ordren kommer senere ([Det som kommer senere](#det-som-kommer-senere)).
+[tar du dem imot](#ta-imot-varene), noe som legger dem på lager i Lager; når leverandørens
+faktura kommer, [avstemmer du den mot ordren](#leverandørfakturaer).
 Innkjøp kjøper fra leverandørene i registeret i [Regnskap](/nb/user/accounting/#leverandører)
 og bestiller produktene i [Produkter](/nb/user/products/) til et lagersted i
 [Lager](/nb/user/inventory/), så en installasjon med Innkjøp har alle tre.
@@ -28,8 +29,9 @@ og bestiller produktene i [Produkter](/nb/user/products/) til et lagersted i
 ## Appen og sidemenyen
 
 Sidemenyen har **Innkjøpsordrer**, **Innkjøpsforslag** og **Leverandører** for alle med **Bruke Innkjøp**,
-**Motta** for alle med **Ta imot varer**, og **Innkjøpsinnstillinger** for dem som
-forvalter innstillingene for Innkjøp. Hva du kan gjøre,
+**Motta** for alle med **Ta imot varer**, **Mottatt, ikke fakturert** for dem som
+avstemmer leverandørfakturaer, og **Innkjøpsinnstillinger** for dem som forvalter
+innstillingene for Innkjøp. Hva du kan gjøre,
 avhenger av rettighetene dine: å skrive ordrer, å sende dem og å vedlikeholde
 leverandørvarene er egne rettigheter, så en kollega kan se knapper du ikke ser
 ([Rettigheter](#rettigheter)). Alle med **Bruke Innkjøp** ser prisene; den som bare har
@@ -42,8 +44,8 @@ leverandørens referanse under navnet når den er registrert —, **Status**, **
 **Forventet dato**, **Mottatt**, **Fakturert** og **Sum eks. mva.** Et utkast har ikke
 nummer ennå. **Mottatt** teller ordrens varelinjer som er mottatt i sin helhet eller
 avsluttet, av alle varelinjene, og **Fakturert** linjene som er fakturert i sin helhet, av
-alle linjene; fakturaavstemmingen kommer i en senere versjon av Innkjøp, så inntil da
-viser **Fakturert** 0 av linjene. En ordre kan være:
+alle linjene, etter [leverandørfakturaene som er avstemt mot den](#leverandørfakturaer).
+En ordre kan være:
 
 - **Utkast** — under arbeid; den har ikke nummer og kan slettes.
 - **Sendt** — sendt til leverandøren, på e-post eller markert som sendt; den har fått
@@ -299,6 +301,112 @@ har kommet. En varelinje tas imot i stedet, og en avsluttet linje markeres ikke.
 
 Å ta imot, angre og markere en linje som levert krever **Ta imot varer**.
 
+## Leverandørfakturaer
+
+Når leverandørens faktura kommer, er den en leverandørfaktura i
+[Regnskap](/nb/user/accounting/#leverandørfakturaer), og Innkjøp **avstemmer** den mot
+ordren: hvilke ordrelinjer den gjelder, og hvor mye av hver. Avstemmingen er det
+**Fakturert** teller, og den viser hvor fakturaen og ordren avviker. En faktura kan gjelde
+flere ordrer fra samme leverandør og en ordre flere fakturaer, men hver linje på en faktura
+gjelder én ordrelinje. Alt her krever **Avstemme leverandørfakturaer**; å lese
+avstemmingene krever bare **Bruke Innkjøp**.
+
+### Ordrens leverandørfakturaer
+
+Ordresidens **Leverandørfakturaer** lister fakturaene som er avstemt mot ordren — **Faktura
+55120** eller **Kreditnota …**, datoen, **Foreløpig** mens fakturaen er et utkast i Regnskap
+og **Bokført** når den er bokført — med, per fakturalinje, ordrelinjen, antallet
+**Avstemt**, **Ordrens pris per enhet** og avvikene. De som kan bruke Regnskap (**Bruke
+Regnskap**), ser også **Fakturalinje** og **Fakturaens pris per enhet**; andre ser bare
+antallene. Er det ingen, står det *Ingen leverandørfaktura er avstemt mot denne ordren.*
+Hver ordrelinje viser hva som er bestilt, mottatt og fakturert.
+
+### Registrer faktura
+
+**Registrer faktura** på en sendt, mottatt eller avsluttet ordre lager leverandørfakturaen i
+Regnskap for deg, allerede avstemt mot ordren:
+
+1. Skriv **Leverandørens fakturanummer** og **Fakturadato**, og om du vil **Forfallsdato**
+   (tom: leverandørens betalingsbetingelser etter fakturadatoen) og **Fakturabeløp** slik
+   det står på fakturaen, med mva.
+2. For en ordre i en annen valuta enn NOK oppgir du **Valutakurs** eller **Total i NOK**.
+3. **Registrer faktura**. Regnskap får et utkast med én linje per ordrelinje som er mottatt
+   — en tekst- eller tjenestelinje: markert som levert — og ikke fakturert ennå, til
+   ordrens priser, ført netto på leverandørens standardkonto og mva-kode, og ordrenummeret
+   som referanse.
+
+Åpne så utkastet i Regnskap, kontroller det mot fakturaen, legg ved fakturaens fil og
+bokfør det. Uten fakturabeløp er utkastets total linjenes nettobeløp: rett den til
+fakturaens før du bokfører, for Regnskap bokfører en faktura bare når linjene gir totalen.
+Et utkast har plass til 200 linjer; en ordre med flere faktureres i deler — dialogen sier
+hvor mange linjer som gjenstår, og neste **Registrer faktura** tar dem. Det ett utkast tok,
+regnes som fakturert, så en ny registrering tar bare resten, og en ordre uten noe igjen å
+fakturere sier *Ingenting på ordren er mottatt og ikke fakturert.*
+
+**Registrer faktura** krever **Bokføre bilag** i Regnskap i tillegg til **Avstemme
+leverandørfakturaer**. Den avvises mens regnskapet ikke er satt opp, når leverandøren ikke
+har noen standardkonto — *Åpne leverandøren i Regnskap* tar deg dit for å sette den —, og
+når leverandørens fakturanummer allerede er registrert.
+
+### Avstem en faktura fra Regnskap
+
+En faktura en regnskapsfører har skrevet inn i Regnskap, avstemmes fra siden dens der:
+panelet **Innkjøpsordre** viser ordrene fra fakturaens leverandør som referansen nevner
+nummeret til (**Ordrer referansen nevner**, hver med hvor mange linjer som gjenstår å
+fakturere), og fakturaens avstemminger med avvikene.
+
+- **Avstem alt mottatt** parer fakturaens linjer som ikke er avstemt, i rekkefølge, med
+  ordrens linjer som har noe mottatt og ikke fakturert, i rekkefølge, hver for det som
+  gjenstår.
+- **Fordel …** avstemmer linje for linje: velg ordren — en referansen nevner, eller **En
+  annen ordre fra leverandøren** etter nummeret —, deretter for hver fakturalinje
+  **Ordrelinje** og antallet, og **Avstem**. En fakturalinje avstemt mot samme ordrelinje
+  på nytt får det nye antallet.
+- **Opphev avstemming** tar tilbake avstemmingen av én linje, eller av en hel ordre.
+
+Mer enn det som er mottatt og ikke fakturert på en linje spør først — *Avstem likevel*
+avstemmer den, og linjen viser da *Fakturert mer enn mottatt*. En kreditnota senker det som
+er fakturert og avstemmes aldri for mer enn det som er fakturert på en linje. En faktura fra
+en annen leverandør enn ordrens, i en annen valuta enn ordrens, eller tilbakeført, avstemmes
+ikke; en fakturalinje avstemt mot en annen ordrelinje må oppheves først. De uten **Bruke
+Regnskap** ser panelet med fakturaens linjenumre og de avstemte antallene, ikke linjenes
+tekster og beløp.
+
+### Avvikene
+
+En avstemming viser avvikene som advarsler; de stopper aldri en bokføring:
+
+- **Fakturert mer enn mottatt** — ordrelinjen er fakturert ut over det som er mottatt.
+- **Fakturert mer enn bestilt** — ut over det som er bestilt.
+- **Prisen avviker** — fakturalinjens nettobeløp avviker fra det ordren gir for samme antall
+  med mer enn **Pristoleranse** i [innstillingene](#innstillinger).
+- **Valutaen avviker** — fakturaen er i en annen valuta enn ordren.
+
+Panelet og merket i Regnskap teller dem.
+
+### Når fakturaen bokføres eller tilbakeføres
+
+Avstemmingen av et utkast er **Foreløpig**; den blir **Bokført** når fakturaen bokføres i
+Regnskap, og prisene vurderes på nytt fra de bokførte linjene. Hver avstemte produktlinjes
+pris per enhet på den bokførte fakturaen blir da leverandørvarens pris, merket som satt av
+fakturaen på datoen dens — med mindre fakturaen er i en annen valuta enn leverandørvaren,
+eller prisen ble satt etter fakturaens dato. En bokført faktura der leverandøren ble endret
+på utkastet, gjelder ikke lenger ordren, og avstemmingen fjernes.
+
+**Tilbakefør og kopier** i Regnskap tar avstemmingen av den tilbakeførte fakturaen og gir
+den til kopien, foreløpig igjen, så det som er fakturert, står som før. Et varemottak kan
+ikke angres mens det det tok imot, er fakturert: opphev avstemmingen først.
+
+### Mottatt, ikke fakturert
+
+**Mottatt, ikke fakturert** i sidemenyen, for dem som avstemmer leverandørfakturaer, lister
+per leverandør og ordrelinje det som var mottatt **Per** en dag — og ikke tatt tilbake innen
+da — minus det bokførte fakturaer datert til og med den dagen gjelder, til ordrens
+nettopris per enhet, med en sum per valuta. En tekst- eller tjenestelinje teller når den er
+markert som levert innen da. Den er grunnlaget for en periodisering ved en periodes slutt;
+ingenting bokføres fra den. **Last ned CSV** gir samme liste som en fil med semikolon og
+desimalkomma.
+
 ## Avslutt en linje eller en ordre
 
 - **Avslutt linje** avslutter én linje: det som er igjen på den, kommer ikke. Når ingen
@@ -507,8 +615,8 @@ av importen.
 - **Leveringsadresser** — per lagersted krysser du av for **Egen leveringsadresse** for å
   gi adressen leverandøren leverer til; uten en brukes selskapets adresse med lagerstedets
   navn. Landet er en kode på to bokstaver, som `NO`.
-- **Pristoleranse (%)** — en prosent, 2 % om den ikke endres, for fakturaavstemmingen som
-  kommer senere; den endrer ingenting ennå.
+- **Pristoleranse (%)** — hvor mange prosent en fakturas pris kan avvike fra ordrens før
+  avstemmingen viser *Prisen avviker* ([Avvikene](#avvikene)); 2 % om den ikke endres.
 
 Har noen lagret innstillingene mens du endret dem, sier **Lagre** det og tilbyr **Last inn
 på nytt**.
@@ -549,14 +657,13 @@ følgesedlene og merknadene fra ordrenes varemottak, og ordrenes lagrede PDF-er 
 | **Sende innkjøpsordrer** (`purchasing:orders-send`) | Sende, markere som sendt, sende på nytt og kansellere. |
 | **Ta imot varer** (`purchasing:receive`) | Se **Motta** — ordrene som skal tas imot —, ta imot varer på innkjøpsordrer, angre et varemottak, og markere en tekst- eller tjenestelinje som levert. Alene, uten **Bruke Innkjøp**, viser den ingen priser. |
 | **Forvalte leverandørvarer** (`purchasing:supplier-items-manage`) | Legge til, endre, slette og importere leverandørvarer. |
+| **Avstemme leverandørfakturaer** (`purchasing:invoices-match`) | Avstemme og oppheve avstemming av leverandørfakturaer mot ordrer, registrere en faktura fra en ordre — med **Bokføre bilag** i Regnskap i tillegg —, og lese **Mottatt, ikke fakturert**. |
 | **Forvalte innstillinger for Innkjøp** (`purchasing:settings`) | Innstillingene. |
-
-**Avstemme leverandørfakturaer (kommer)** (`purchasing:invoices-match`) kan allerede gis
-i en rolle; den gjør ingenting ennå, og tas i bruk når fakturaavstemmingen kommer.
 
 ## Det som kommer senere
 
-- **Fakturaavstemming** — leverandørens faktura i Regnskap avstemt mot ordren, og det som
-  avviker.
+- **Innkommende EHF og betalingsfiler** — en leverandørfaktura som kommer som EHF med
+  ordrereferansen, og å betale den fra en betalingsfil; begge venter på Regnskaps neste fase.
+- **Returer til leverandør** — varer som sendes tilbake til leverandøren.
 
 Reglene bak hvert skjermbilde står i [referansen for Innkjøp](/en/reference/purchasing/).

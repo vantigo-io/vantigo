@@ -634,7 +634,21 @@ in NOK and in its currency (negative while owed), and `overdue`. When Purchasing
 `contracts.SupplierInvoiceMatches`, each invoice it has matched carries `purchaseMatch`:
 the orders (`id`, `number`) and how many `differences` the match has, read on the pool after
 the invoices; with no provider, or for an invoice matched to none, there is no
-`purchaseMatch`, and a failed read is logged and leaves it out.
+`purchaseMatch`, and a failed read is logged and leaves it out. Purchasing answers it only
+to a holder of `purchasing:access`, and counts each match's warnings — invoiced beyond
+received or ordered, a price beyond its tolerance, another currency
+([Purchasing](/en/reference/purchasing/#the-differences)).
+
+The supplier-invoice page in the host also shows Purchasing's **Purchase order** panel,
+when Purchasing is enabled and the caller holds `purchasing:access`, through the page's
+`extraPanels` slot: Accounting's page never names Purchasing, and the panel reads and
+matches through Purchasing's own endpoints
+([Purchasing](/en/reference/purchasing/#the-invoice-match)). A draft Purchasing's
+**Register invoice** made is an ordinary draft, made through `CreateDraft`
+([below](#contracts-for-other-modules)): the order number in `reference`, each line entered
+net on the supplier's default account and tax code, the total the person gave or the
+lines' net; it is changed, posted or deleted as any other, and posting and Reverse and copy
+publish the events Purchasing's match follows.
 
 **A draft** — `POST /supplier-invoices`, `PUT /supplier-invoices/{id}` under `revision` —
 takes `supplierId` (an active supplier for a new one, else 400 `supplier_inactive`),
@@ -1861,7 +1875,9 @@ P1, P6, P7, A1, A8, A9; [module boundaries](/en/contributing/module-boundaries/)
   it.
 - **`contracts.SupplierInvoiceMatches`**, an optional single-provider slot Purchasing
   fills: the list and the page carry its answer as `purchaseMatch` ([Supplier
-  invoices](#supplier-invoices)).
+  invoices](#supplier-invoices)), read on the pool after the invoices, at most
+  `contracts.MaxSuppliers` ids at a time. Purchasing's `Summary` answers no matches to a
+  caller without `purchasing:access`.
 
 ## Status codes
 
