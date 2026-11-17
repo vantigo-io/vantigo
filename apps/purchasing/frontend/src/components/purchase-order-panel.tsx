@@ -18,6 +18,7 @@ import { PURCHASING_QUERY_KEY, refusalCode } from "../api/request";
 import "../i18n";
 import { refusalMessage } from "../lib/errors";
 import { usePurchasingFormat } from "../lib/format";
+import { decimal } from "../lib/lines";
 import { purchaseOrderLinkOptions } from "../lib/routes";
 import { ConfirmDialog } from "./common";
 import { MatchState, MatchWarnings } from "./order-invoices";
@@ -54,24 +55,35 @@ export const PurchaseOrderPanel = ({ invoiceId, canMatch }: PurchaseOrderPanelPr
             {refusalMessage(panel.error, t)}
           </Text>
         ) : (
-          <PanelBody panel={panel.data} canMatch={canMatch && panel.data.state !== "reversed"} />
+          <PanelBody panel={panel.data} canMatch={canMatch} />
         )}
       </Stack>
     </Card>
   );
 };
 
+/**
+ * The panel's matches and actions. A reversed or deleted invoice is matched
+ * to nothing, but a match a credit note held on it stays for a person to
+ * unmatch (A78, A79): Unmatch is offered whatever the state.
+ */
 const PanelBody = ({ panel, canMatch }: { panel: PurchasingInvoicePanel; canMatch: boolean }) => {
   const { t, quantity, money } = usePurchasingFormat();
   const queryClient = useQueryClient();
   const [orderId, setOrderId] = useState<number | null>(null);
   const credit = panel.kind === "credit_note";
+  const canAllocate = canMatch && panel.state !== "reversed" && panel.state !== "deleted";
   const refresh = async (next: PurchasingInvoicePanel, message: string) => {
     queryClient.setQueryData(invoicePanelQueryOptions(panel.invoiceId).queryKey, next);
     await queryClient.invalidateQueries({ queryKey: [PURCHASING_QUERY_KEY] });
     notifications.show({ color: "green", message });
   };
-  const failed = (error: unknown) => notifications.show({ color: "red", message: refusalMessage(error, t) });
+  // A refused write was judged against the invoice as it stands now, which
+  // the panel may not show yet: it is read again.
+  const failed = (error: unknown) => {
+    notifications.show({ color: "red", message: refusalMessage(error, t) });
+    void queryClient.invalidateQueries({ queryKey: invoicePanelQueryOptions(panel.invoiceId).queryKey });
+  };
   const matchAll = useMutation({
     mutationFn: (id: number) => matchAllPurchasingInvoice(panel.invoiceId, id),
     onSuccess: (next) => refresh(next, t("matchedAll")),
@@ -176,7 +188,7 @@ const PanelBody = ({ panel, canMatch }: { panel: PurchasingInvoicePanel; canMatc
               <Text size="sm" c="dimmed">
                 {`${money(s.netTotal, s.currency)} · ${t("linesToInvoice", { count: s.toInvoice })}`}
               </Text>
-              {canMatch && !credit && (
+              {canAllocate && !credit && (
                 <Button
                   size="compact-xs"
                   loading={matchAll.isPending}
@@ -186,7 +198,7 @@ const PanelBody = ({ panel, canMatch }: { panel: PurchasingInvoicePanel; canMatc
                   {t("matchAllReceived")}
                 </Button>
               )}
-              {canMatch && (
+              {canAllocate && (
                 <Button size="compact-xs" variant="default" onClick={() => setOrderId(s.orderId)}>
                   {t("allocate")}
                 </Button>
@@ -195,8 +207,8 @@ const PanelBody = ({ panel, canMatch }: { panel: PurchasingInvoicePanel; canMatc
           ))}
         </Stack>
       )}
-      {canMatch && <OrderSearch supplierId={panel.supplierId} value={orderId} onChange={setOrderId} />}
-      {canMatch && orderId !== null && (
+      {canAllocate && <OrderSearch supplierId={panel.supplierId} value={orderId} onChange={setOrderId} />}
+      {canAllocate && orderId !== null && (
         <Allocation
           panel={panel}
           orderId={orderId}
@@ -269,6 +281,7 @@ const Allocation = ({
   onDone: (next: PurchasingInvoicePanel) => Promise<void>;
 }) => {
   const { t, money, quantity } = usePurchasingFormat();
+  const queryClient = useQueryClient();
   const order = useQuery(purchaseOrderQueryOptions(orderId));
   const matched = new Set(panel.matches.map((m) => m.linePosition));
   const free = panel.lines.filter((l) => !matched.has(l.position));
@@ -287,6 +300,7 @@ const Allocation = ({
         return;
       }
       notifications.show({ color: "red", message: refusalMessage(error, t) });
+      void queryClient.invalidateQueries({ queryKey: invoicePanelQueryOptions(panel.invoiceId).queryKey });
     },
   });
   if (!order.data) return null;
@@ -297,7 +311,7 @@ const Allocation = ({
   const lines: PurchasingInvoiceMatchLineInput[] = free.flatMap((l) => {
     const row = rows[l.position];
     return row?.orderLineId && row.quantity.trim()
-      ? [{ linePosition: l.position, orderLineId: Number(row.orderLineId), quantity: row.quantity.trim() }]
+      ? [{ linePosition: l.position, orderLineId: Number(row.orderLineId), quantity: decimal(row.quantity) }]
       : [];
   });
   const set = (position: number, change: Partial<{ orderLineId: string | null; quantity: string }>) =>

@@ -115,6 +115,43 @@ describe("the Purchase order panel on a supplier invoice", () => {
     });
   });
 
+  it("reads a decimal comma in an allocated quantity", async () => {
+    const server = serve(panel(), () => jsonResponse(200, panel({ matches: [matched] })));
+    renderInvoicePanel(7001);
+    const suggestions = await screen.findByTestId("panel-suggestions");
+    await userEvent.click(within(suggestions).getByRole("button", { name: "Allocate…" }));
+    const allocation = await screen.findByTestId("panel-allocation");
+    await userEvent.click(within(allocation).getByRole("combobox", { name: "Order line for invoice line 1" }));
+    await userEvent.click(await screen.findByRole("option", { name: /Skrue 10 mm/ }));
+    await userEvent.type(within(allocation).getByRole("textbox", { name: "Quantity for invoice line 1" }), "12,5");
+    await userEvent.click(within(allocation).getByRole("button", { name: "Match" }));
+    await waitFor(() =>
+      expect(server.sent("POST", `${base}/matches`)?.body).toEqual({
+        orderId: 501,
+        lines: [{ linePosition: 1, orderLineId: 11, quantity: "12.5" }],
+        acceptOver: false,
+      }),
+    );
+  });
+
+  it("offers Unmatch on a reversed invoice, and nothing that matches (A78)", async () => {
+    serve(panel({ state: "reversed", matches: [matched] }));
+    renderInvoicePanel(7001);
+    const matches = await screen.findByTestId("panel-matches");
+    expect(within(matches).getByRole("button", { name: "Unmatch" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Match all received" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Allocate…" })).not.toBeInTheDocument();
+  });
+
+  it("reads the panel again after a refused write", async () => {
+    const server = serve(panel({ matches: [matched] }), () => refusal(409, "credit_exceeds_invoiced"));
+    renderInvoicePanel(7001);
+    const matches = await screen.findByTestId("panel-matches");
+    const reads = server.count("GET", `${base}/match`);
+    await userEvent.click(within(matches).getByRole("button", { name: "Unmatch" }));
+    await waitFor(() => expect(server.count("GET", `${base}/match`)).toBeGreaterThan(reads));
+  });
+
   it("shows only positions and quantities without accounting:read, and no actions without purchasing:invoices-match", async () => {
     serve(
       panel({
