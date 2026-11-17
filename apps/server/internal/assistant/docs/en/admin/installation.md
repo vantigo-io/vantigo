@@ -117,8 +117,10 @@ contacts, 62 products, 75 projects, time entries, expenses, invoices, energy met
 points, customer conversations, and a small workshop with its stock, bills of materials,
 manufacturing orders and sales orders) and, when `accounting` is enabled, books set up from 1
 January with the demo's sales and expenses posted, suppliers and their invoices, the VAT
-terms that have ended closed and filed, and last month's bank statement half reconciled.
-The supplier invoices and the bank statement keep files and are left out, as the seed logs,
+terms that have ended closed and filed, and last month's bank statement half reconciled,
+and, when `purchasing` is enabled, three suppliers for the workshop with six supplier
+items and a purchase order in each state.
+The supplier invoices, the bank statement and the sent purchase orders keep files and are left out, as the seed logs,
 when no object store (`STORAGE_PROVIDER`) is configured. No command, or an unknown one, prints usage on
 stderr and exits 2, so a typo in a job definition fails loudly rather than quietly
 becoming a web server.
