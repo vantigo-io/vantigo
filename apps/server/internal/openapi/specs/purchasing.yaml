@@ -3013,7 +3013,7 @@ paths:
                 - Purchasing
             x-vantigo-access: permission:purchasing:access
         put:
-            description: Saves a supplier item's fields whole (P11). A price written is set today by the caller, in the supplier's currency now. Preferred true takes the variant's preference from its other item; false is refused on the variant's only item, which stays preferred.
+            description: Saves a supplier item's fields whole (P11). A price written is set today by the caller, in the supplier's currency now. Preferred true takes the variant's preference from its other item; false changes nothing, as the preference only moves to another item.
             operationId: updatePurchasingSupplierItem
             parameters:
                 - in: path
