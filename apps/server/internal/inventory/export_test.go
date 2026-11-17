@@ -1,6 +1,11 @@
 package inventory
 
-import "context"
+import (
+	"context"
+
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/module"
+)
 
 // InOpenTx exposes inOpenTx to the external tests, whose contract-call hook
 // uses it to tell a call made from inside one of this module's transactions
@@ -71,3 +76,7 @@ func SetBlockWalkedHook(hook func(round int)) {
 func SetBlockRelocks(n int) int {
 	return int(blockRelocks.Swap(int32(n)))
 }
+
+// PurchaseDemandOf is the module's contracts.PurchaseDemand built from d, as
+// module.Compose builds it (purchasing design A4).
+func PurchaseDemandOf(d module.Deps) contracts.PurchaseDemand { return newPurchaseDemand(d) }
