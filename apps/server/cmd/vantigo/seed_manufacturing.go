@@ -962,7 +962,7 @@ func (w *workshop) workThrough(o obj) error {
 		// raw materials store.
 		if variant, ok := l["variant"].(obj); ok {
 			from := w.locations["RAA"]
-			if vid := int32(id(variant, "id")); vid == w.variants["frame"] || vid == w.variants["top"] {
+			if vid := id(variant, "id"); vid == int64(w.variants["frame"]) || vid == int64(w.variants["top"]) {
 				from = w.locations["HALV"]
 			}
 			line["fromLocationId"] = from
