@@ -279,7 +279,7 @@ overturn changes.
    - Default: build a port and pick the first adapter in the plan, not here. An
      aggregator (Maventa) needs no bank agreement for eFaktura, but Maventa is Visma's, a
      competitor's. MPS's Combo API is first-hand, but its submitter terms are not public.
-   - The owner decides (design §14).
+   - **Decided 2026-11-17 by the owner: Mastercard Payment Services, direct** (design I29).
    - Sources:
      - [Maventa](https://documentation.maventa.com/integration-guide/invoice-sending/consumer-invoicing/no/)
      - [MPS Combo API](https://mastercardpaymentservices.com/norway/utvikler/combo-api)
