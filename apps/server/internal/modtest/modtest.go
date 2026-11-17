@@ -184,6 +184,7 @@ type setup struct {
 	purchaseSupply    contracts.PurchaseSupply
 	purchaseDemand    contracts.PurchaseDemand
 	supplierDirectory contracts.SupplierDirectory
+	supplierInvoices  contracts.SupplierInvoices
 	invoiceMatches    contracts.SupplierInvoiceMatches
 	supplierHolders   []contracts.SupplierReferenceHolder
 	supplierData      []contracts.SupplierPersonalDataHolder
@@ -315,6 +316,14 @@ func WithPurchaseDemand(p contracts.PurchaseDemand) Option {
 // Module.SupplierDirectory.
 func WithSupplierDirectory(d contracts.SupplierDirectory) Option {
 	return func(s *setup) { s.supplierDirectory = d }
+}
+
+// WithSupplierInvoices sets Deps.SupplierInvoices directly, for a module
+// under test that reads and drafts Accounting's supplier invoices
+// (purchasing's match) without composing accounting beside it. Compose only
+// overwrites it when a composed module declares Module.SupplierInvoices.
+func WithSupplierInvoices(i contracts.SupplierInvoices) Option {
+	return func(s *setup) { s.supplierInvoices = i }
 }
 
 // WithSupplierInvoiceMatches sets Deps.SupplierInvoiceMatches directly, for
@@ -1028,6 +1037,7 @@ func New(t *testing.T, opts ...Option) *Harness {
 		PurchaseSupply:           s.purchaseSupply,
 		PurchaseDemand:           s.purchaseDemand,
 		SupplierDirectory:        s.supplierDirectory,
+		SupplierInvoices:         s.supplierInvoices,
 		SupplierInvoiceMatches:   s.invoiceMatches,
 		SupplierReferenceHolders: s.supplierHolders,
 		SupplierPersonalData:     s.supplierData,

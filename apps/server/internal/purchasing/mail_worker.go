@@ -15,7 +15,8 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/worker"
 )
 
-// This file is the module's two workers. purchasing.mail (P21, A19) sends
+// This file is the module's mail and deletions workers; handlers.go has
+// the third, purchasing.invoice-posted. purchasing.mail (P21, A19) sends
 // the mailings a person's send queued in its transaction and did not get out
 // — the provider refused it, or the request died after its commit: a cycle claims one queued row at a time under a lease (ClaimMailing:
 // a SKIP LOCKED pick that pushes next_attempt_at out by the lease, so two
@@ -65,7 +66,7 @@ func workers(d module.Deps) []worker.Worker {
 		}
 		return nil
 	}
-	return []worker.Worker{&mailWorker{s: s}, &deletionsWorker{s: s}}
+	return []worker.Worker{&mailWorker{s: s}, &deletionsWorker{s: s}, &followupWorker{s: s}}
 }
 
 // runEvery runs cycle every interval until ctx is done.
