@@ -11,12 +11,12 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 )
 
-var updateAPINever = flag.Bool("update", false, "rewrite testdata/api-never.txt from the contracts")
+var updateAPIMarks = flag.Bool("update", false, "rewrite testdata/api-marks.txt from the contracts")
 
-// apiNeverGolden pins every operation marked x-vantigo-api: never and every
+// apiMarksGolden pins every operation marked x-vantigo-api: never and every
 // POST marked read (API access design K5, K6), so a change to what an API key
 // may call is visible in review.
-const apiNeverGolden = "testdata/api-marks.txt"
+const apiMarksGolden = "testdata/api-marks.txt"
 
 func TestLintChecksTheAPIExtension(t *testing.T) {
 	doc, err := openapi3.NewLoader().LoadFromData([]byte(`
@@ -125,8 +125,8 @@ func TestAPIMarks(t *testing.T) {
 	}
 	slices.Sort(lines)
 	got := strings.Join(lines, "\n") + "\n"
-	path := filepath.FromSlash(apiNeverGolden)
-	if *updateAPINever {
+	path := filepath.FromSlash(apiMarksGolden)
+	if *updateAPIMarks {
 		if err := os.WriteFile(path, []byte(got), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -137,6 +137,6 @@ func TestAPIMarks(t *testing.T) {
 		t.Fatalf("%v (run go test ./internal/openapi -run TestAPIMarks -update)", err)
 	}
 	if string(want) != got {
-		t.Errorf("%s is out of date: the operations an API key may not call, or may call read-only, changed. Review the change and run go test ./internal/openapi -run TestAPIMarks -update", apiNeverGolden)
+		t.Errorf("%s is out of date: the operations an API key may not call, or may call read-only, changed. Review the change and run go test ./internal/openapi -run TestAPIMarks -update", apiMarksGolden)
 	}
 }

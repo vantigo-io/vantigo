@@ -2202,6 +2202,7 @@ paths:
             tags:
                 - Knowledge
             x-vantigo-access: permission:knowledge:manage
+            x-vantigo-api: never
             x-vantigo-assistant: never
         get:
             description: "The trash groups whose root the caller could write; with knowledge:manage, every one that is not private (K10)."
