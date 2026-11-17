@@ -251,13 +251,3 @@ export const SaveError = ({ error, conflict = "versionConflict" }: { error: unkn
     </Alert>
   );
 };
-
-/**
- * What a save's onError does first: a version conflict marks Purchasing's
- * reads stale without refetching them, so the form keeps what was typed
- * until *Load again* is chosen.
- */
-export const markStaleOnConflict = (queryClient: ReturnType<typeof useQueryClient>, error: unknown) =>
-  isVersionConflict(error)
-    ? queryClient.invalidateQueries({ queryKey: [PURCHASING_QUERY_KEY], refetchType: "none" })
-    : Promise.resolve();
