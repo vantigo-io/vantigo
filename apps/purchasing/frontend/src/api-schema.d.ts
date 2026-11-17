@@ -4806,7 +4806,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["PurchasingProblem"];
                 };
             };
-            /** @description Conflict — nothing_to_match (nothing of what was named is matched). */
+            /** @description Conflict — nothing_to_match (nothing of what was named is matched), credit_exceeds_invoiced (a credit note matched to the line would be left beyond what is invoiced; unmatch it first). */
             409: {
                 headers: {
                     [name: string]: unknown;
