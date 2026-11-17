@@ -95,3 +95,19 @@ WHERE o.status IN ('sent', 'partially_received') AND l.kind = 'variant' AND l.pr
   AND (sqlc.narg(site_id)::bigint IS NULL OR o.site_id = sqlc.narg(site_id))
 GROUP BY l.variant_id, o.site_id
 ORDER BY l.variant_id, o.site_id;
+
+-- name: SupplierReceipts :many
+-- SupplierReceipts is the receipts of every order naming the supplier, for
+-- its export (P7): the delivery note, the note and the undo's note may name
+-- a person at the supplier.
+SELECT r.id, r.number, r.order_id, r.received_on, r.delivery_note, r.note, r.undo_note, r.undone_at
+FROM purchasing.receipts r JOIN purchasing.orders o ON o.id = r.order_id
+WHERE o.supplier_id = sqlc.arg(supplier_id) ORDER BY r.order_id, r.id;
+
+-- name: EraseSupplierReceipts :execrows
+-- EraseSupplierReceipts blanks the delivery note, the note and the undo's
+-- note of the receipts of the supplier's orders.
+UPDATE purchasing.receipts r SET delivery_note = '', note = '', undo_note = NULL
+FROM purchasing.orders o
+WHERE o.id = r.order_id AND o.supplier_id = sqlc.arg(supplier_id)
+  AND (r.delivery_note <> '' OR r.note <> '' OR r.undo_note IS NOT NULL);

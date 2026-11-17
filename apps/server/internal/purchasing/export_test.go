@@ -53,3 +53,11 @@ func RunCycle(ctx context.Context, w worker.Worker) (int, error) {
 	}
 	return 0, fmt.Errorf("purchasing: %s is not one of this module's workers", w.Name())
 }
+
+// SetAfterReplayCheck has fn called once a receipt of the order has passed
+// its first replay check, before its attempts: where a concurrent first
+// receipt commits. The answer takes it away again.
+func SetAfterReplayCheck(orderID int64, fn func()) (unset func()) {
+	afterReplayCheck.Store(orderID, fn)
+	return func() { afterReplayCheck.Delete(orderID) }
+}

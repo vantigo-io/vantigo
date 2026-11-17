@@ -42,9 +42,11 @@ CREATE INDEX ix_receipts_order ON purchasing.receipts (order_id, id);
 
 -- A receipt's line: the order line, the variant, where it was put, the
 -- quantity in the variant's unit and as entered, the lot or serials it was
--- received as, and the order line's price then (P28) — the figure a later
--- valuation starts from, read by nothing in this phase and answered by no
--- endpoint (A21).
+-- received as, and the order line's price then (P28, A49): per the variant's
+-- unit — the line's price per its purchase packaging divided by the
+-- packaging's quantity —, net of the line's discount, at four places, in the
+-- order's currency. It is the figure a later valuation starts from, read by
+-- nothing in this phase and answered by no endpoint (A21).
 CREATE TABLE purchasing.receipt_lines (
     id               bigint        GENERATED ALWAYS AS IDENTITY (START WITH 1001) PRIMARY KEY,
     receipt_id       bigint        NOT NULL REFERENCES purchasing.receipts (id) ON DELETE CASCADE,
@@ -73,5 +75,6 @@ CREATE UNIQUE INDEX ux_receipt_lines_position ON purchasing.receipt_lines (recei
 CREATE INDEX ix_receipt_lines_order_line ON purchasing.receipt_lines (order_line_id);
 
 -- +goose Down
+DELETE FROM purchasing.counters WHERE counter_name = 'receipt';
 DROP TABLE purchasing.receipt_lines;
 DROP TABLE purchasing.receipts;

@@ -50,6 +50,9 @@ export type PurchasingReceiptInput = Schemas["PurchasingReceiptInput"];
 export type PurchasingReceiptLineInput = Schemas["PurchasingReceiptLineInput"];
 export type PurchasingReceiptLotInput = Schemas["PurchasingReceiptLotInput"];
 export type PurchasingReceiptResult = Schemas["PurchasingReceiptResult"];
+export type PurchasingDeliveredResult = Schemas["PurchasingDeliveredResult"];
+export type PurchasingOrderProgress = Schemas["PurchasingOrderProgress"];
+export type PurchasingReceivingOrder = Schemas["PurchasingReceivingOrder"];
 
 const BASE = "/api/v1/purchasing";
 
@@ -163,6 +166,13 @@ export const lookupReceiveCode = (orderId: number, code: string, signal?: AbortS
     signal,
   });
 
+/** The orders to receive (A47): sent and partially received orders with goods still to come — no prices. */
+export const ordersToReceiveQueryOptions = () =>
+  queryOptions({
+    queryKey: [PURCHASING_QUERY_KEY, "receiving"],
+    queryFn: ({ signal }) => request<{ items: PurchasingReceivingOrder[] }>(`${BASE}/receiving`, { signal }),
+  });
+
 /** One receipt, idempotent by its clientRequestId (A11); 409 `over_receipt` unless acceptOver. */
 export const receivePurchaseOrder = (orderId: number, input: PurchasingReceiptInput) =>
   send<PurchasingReceiptResult>(`${BASE}/orders/${orderId}/receipts`, json("POST", input));
@@ -191,7 +201,7 @@ export const markPurchaseOrderLineDelivered = (
   delivered: boolean,
   expectedUpdatedAt: string,
 ) =>
-  send<PurchaseOrder>(
+  send<PurchasingDeliveredResult>(
     `${BASE}/orders/${orderId}/lines/${lineId}/delivered`,
     json("POST", { delivered, expectedUpdatedAt }),
   );

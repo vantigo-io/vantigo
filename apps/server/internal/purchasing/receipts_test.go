@@ -112,8 +112,8 @@ func TestReceive_PartialThenFull(t *testing.T) {
 	if l := r.Receipt.Lines[0]; l.Quantity != "10" || l.EnteredQuantity != "1" || !l.InPackaging || deref(l.PackagingName) != "Eske" || l.LocationCode != "HOVED-A1" {
 		t.Errorf("box line = %+v", l)
 	}
-	if r.Order.Status != gen.PurchasingOrderStatusPartiallyReceived || received(t, r.Order, bolt) != "10" || received(t, r.Order, nut) != "5" {
-		t.Fatalf("order after a partial receipt = %s, bolt %s", r.Order.Status, received(t, r.Order, bolt))
+	if r.Order.Status != gen.PurchasingOrderStatusPartiallyReceived || received(t, *r.Order, bolt) != "10" || received(t, *r.Order, nut) != "5" {
+		t.Fatalf("order after a partial receipt = %s, bolt %s", r.Order.Status, received(t, *r.Order, bolt))
 	}
 	n, led, src := h.ledger.last()
 	if n != 1 || led.Document != (contracts.StockSource{Module: "purchasing", Kind: "receipt", ID: r.Receipt.Id}) ||
@@ -133,7 +133,7 @@ func TestReceive_PartialThenFull(t *testing.T) {
 	}
 
 	r2 := receive(t, c, o.Id, receiptInput(rline(bolt, "20", locShelfA)))
-	if r2.Receipt.Number != 2 || r2.Order.Status != gen.PurchasingOrderStatusReceived || received(t, r2.Order, bolt) != "30" {
+	if r2.Receipt.Number != 2 || r2.Order.Status != gen.PurchasingOrderStatusReceived || received(t, *r2.Order, bolt) != "30" {
 		t.Fatalf("second receipt %d, order %s", r2.Receipt.Number, r2.Order.Status)
 	}
 	if got := openOf(t, h, varBolt); got != "0" {
@@ -183,6 +183,18 @@ func TestReceive_PartialThenFull(t *testing.T) {
 
 func ptrTo[T any](v T) *T { return &v }
 
+// deliveredOf is the order a delivered mark answers to a holder of
+// purchasing:access.
+func deliveredOf(t *testing.T, res *modtest.Response) gen.PurchasingOrder {
+	t.Helper()
+	var d gen.PurchasingDeliveredResult
+	res.JSON(&d)
+	if d.Order == nil {
+		t.Fatalf("no order in %s", res.Body)
+	}
+	return *d.Order
+}
+
 // More than the remainder is refused with over_receipt naming the line; the
 // same request id with acceptOver then receives it, and the line holds more
 // than ordered (P26).
@@ -202,8 +214,8 @@ func TestReceive_OverReceipt(t *testing.T) {
 	}
 	in.AcceptOver = ptrTo(true)
 	r := receive(t, c, o.Id, in)
-	if received(t, r.Order, nut) != "7" || r.Order.Status != gen.PurchasingOrderStatusPartiallyReceived {
-		t.Fatalf("over-received = %s, order %s", received(t, r.Order, nut), r.Order.Status)
+	if received(t, *r.Order, nut) != "7" || r.Order.Status != gen.PurchasingOrderStatusPartiallyReceived {
+		t.Fatalf("over-received = %s, order %s", received(t, *r.Order, nut), r.Order.Status)
 	}
 	if got := openOf(t, h, varNut); got != "0" {
 		t.Errorf("nuts on order after an over-receipt = %s, want 0", got)
@@ -222,8 +234,8 @@ func TestReceive_IdempotentReplay(t *testing.T) {
 	in := receiptInput(rline(o.Lines[0].Id, "2", locShelfA))
 	first := receive(t, c, o.Id, in)
 	again := receive(t, c, o.Id, in)
-	if again.Receipt.Id != first.Receipt.Id || received(t, again.Order, o.Lines[0].Id) != "2" {
-		t.Fatalf("replay = receipt %d, received %s", again.Receipt.Id, received(t, again.Order, o.Lines[0].Id))
+	if again.Receipt.Id != first.Receipt.Id || received(t, *again.Order, o.Lines[0].Id) != "2" {
+		t.Fatalf("replay = receipt %d, received %s", again.Receipt.Id, received(t, *again.Order, o.Lines[0].Id))
 	}
 	if n, _, _ := h.ledger.last(); n != 1 {
 		t.Errorf("ledger receipts = %d, want 1", n)
@@ -415,8 +427,8 @@ func TestUndo_TakesTheReceiptBack(t *testing.T) {
 	if u.Receipt.Status != "undone" || u.Receipt.UndoneAt == nil || deref(u.Receipt.UndoNote) != "Feil vare" || u.Receipt.ReversalMovementId == nil {
 		t.Fatalf("undone receipt = %+v", u.Receipt)
 	}
-	if u.Order.Status != gen.PurchasingOrderStatusPartiallyReceived || received(t, u.Order, nut) != "2" {
-		t.Fatalf("order after the undo = %s, received %s", u.Order.Status, received(t, u.Order, nut))
+	if u.Order.Status != gen.PurchasingOrderStatusPartiallyReceived || received(t, *u.Order, nut) != "2" {
+		t.Fatalf("order after the undo = %s, received %s", u.Order.Status, received(t, *u.Order, nut))
 	}
 	if got := openOf(t, h, varNut); got != "3" {
 		t.Errorf("on order after the undo = %s, want 3", got)
@@ -435,7 +447,7 @@ func TestUndo_TakesTheReceiptBack(t *testing.T) {
 	// A closed order stays closed (A16).
 	o2 := sentOrder(t, c, variantLine(varNut, "5"))
 	r := receive(t, c, o2.Id, receiptInput(rline(o2.Lines[0].Id, "2", locShelfA)))
-	res = c.Do(http.MethodPost, orderPath(o2.Id, "close"), version(r.Order))
+	res = c.Do(http.MethodPost, orderPath(o2.Id, "close"), version(*r.Order))
 	mustStatus(t, res, http.StatusOK, "close")
 	res = c.Do(http.MethodPost, receiptPath(r.Receipt.Id, "undo"), gen.PurchasingUndoInput{})
 	mustStatus(t, res, http.StatusOK, "undo on a closed order")
@@ -496,16 +508,20 @@ func TestDelivered_TextAndServiceLines(t *testing.T) {
 			gen.PurchasingDeliveredInput{ExpectedUpdatedAt: o.UpdatedAt, Delivered: delivered})
 	}
 	h.Advance(time.Second) // so the mark moves the order's updatedAt
-	res := mark(r.Order, text, true)
+	res := mark(*r.Order, text, true)
 	mustStatus(t, res, http.StatusOK, "mark delivered")
-	done := orderOf(t, res)
+	done := deliveredOf(t, res)
 	if done.Status != gen.PurchasingOrderStatusReceived || done.Lines[1].DeliveredAt == nil {
 		t.Fatalf("after the mark = %s %v", done.Status, done.Lines[1].DeliveredAt)
 	}
-	expectRefusal(t, mark(r.Order, text, false), http.StatusConflict, "version_conflict", "stale")
+	// The mark that completes the order logs the end as a receipt does (A48).
+	if hist := historyOf(t, c, o.Id); hist.Changes[0].Actions[0].Action != "received" || hist.Changes[1].Actions[0].Action != "line_delivered" {
+		t.Errorf("the change log after the mark = %+v / %+v", hist.Changes[0].Actions, hist.Changes[1].Actions)
+	}
+	expectRefusal(t, mark(*r.Order, text, false), http.StatusConflict, "version_conflict", "stale")
 	res = mark(done, text, false)
 	mustStatus(t, res, http.StatusOK, "take the mark off")
-	if back := orderOf(t, res); back.Status != gen.PurchasingOrderStatusPartiallyReceived || back.Lines[1].DeliveredAt != nil {
+	if back := deliveredOf(t, res); back.Status != gen.PurchasingOrderStatusPartiallyReceived || back.Lines[1].DeliveredAt != nil {
 		t.Errorf("after taking it off = %s", back.Status)
 	}
 	expectRefusal(t, mark(getOrder(t, c, o.Id), nut, true), http.StatusConflict, "line_not_deliverable", "a goods line")

@@ -3,7 +3,8 @@ package purchasing
 // The delivered mark (P16, §8): a text line or a service line is never
 // received into stock; a holder of purchasing:receive marks it delivered,
 // or takes the mark off again. The order's state follows from its lines as
-// after a receipt.
+// after a receipt (A48), and the answer has no price for a caller without
+// purchasing:access (A47).
 
 import (
 	"context"
@@ -34,7 +35,7 @@ func (s *server) MarkPurchasingOrderLineDelivered(ctx context.Context, req gen.M
 		return nil, err
 	}
 	b := *req.Body
-	err = s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
+	err = s.withLockedTx(ctx, func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error {
 		o, err := lockedOrder(ctx, txq, req.OrderId, b.ExpectedUpdatedAt)
 		if err != nil {
 			return err
@@ -79,17 +80,18 @@ func (s *server) MarkPurchasingOrderLineDelivered(ctx context.Context, req gen.M
 		if err := txq.SetLineDelivered(ctx, store.SetLineDeliveredParams{ID: target.ID, DeliveredAt: deliveredAt}); err != nil {
 			return fmt.Errorf("purchasing: mark line %d delivered: %w", target.ID, err)
 		}
-		if _, err := setDerivedStatus(ctx, txq, o, now); err != nil {
+		if err := logChange(ctx, txq, o.ID, by, now, change{Action: action, LineID: &target.ID}); err != nil {
 			return err
 		}
-		return logChange(ctx, txq, o.ID, by, now, change{Action: action, LineID: &target.ID})
+		_, err = settleOrder(ctx, tx, txq, o, by, now)
+		return err
 	})
 	if err != nil {
 		return answer(err, resp)
 	}
-	view, err := s.getOrderView(ctx, req.OrderId)
+	progress, order, err := s.orderAfterReceiving(ctx, req.OrderId)
 	if err != nil {
 		return nil, err
 	}
-	return gen.MarkPurchasingOrderLineDelivered200JSONResponse(view), nil
+	return gen.MarkPurchasingOrderLineDelivered200JSONResponse{Progress: progress, Order: order}, nil
 }

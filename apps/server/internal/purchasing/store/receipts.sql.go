@@ -267,6 +267,69 @@ func (q *Queries) MarkReceiptUndone(ctx context.Context, arg MarkReceiptUndonePa
 	return i, err
 }
 
+const ordersToReceive = `-- name: OrdersToReceive :many
+SELECT o.id, o.number, o.status, o.supplier_name, o.site_id,
+    count(*) FILTER (WHERE l.closed_at IS NULL AND l.received < l.quantity)::integer AS open_lines,
+    count(*)::integer AS goods_lines,
+    min(coalesce(l.expected_on, o.expected_on)) FILTER (WHERE l.closed_at IS NULL AND l.received < l.quantity)::date AS expected_on,
+    coalesce(bool_or(l.closed_at IS NULL AND l.received < l.quantity
+        AND coalesce(l.expected_on, o.expected_on) < $1::date), false)::boolean AS late
+FROM purchasing.orders o
+JOIN purchasing.order_lines l ON l.order_id = o.id AND l.kind = 'variant' AND l.product_type = 'Goods'
+WHERE o.status IN ('sent', 'partially_received')
+GROUP BY o.id
+HAVING count(*) FILTER (WHERE l.closed_at IS NULL AND l.received < l.quantity) > 0
+ORDER BY 8 NULLS LAST, o.number, o.id
+LIMIT 500
+`
+
+type OrdersToReceiveRow struct {
+	ID           int64
+	Number       *int64
+	Status       string
+	SupplierName string
+	SiteID       int64
+	OpenLines    int32
+	GoodsLines   int32
+	ExpectedOn   pgtype.Date
+	Late         bool
+}
+
+// OrdersToReceive is the receiving list (A47): the sent and partially
+// received orders with a goods line still to come — not closed, less
+// received than ordered —, how many such lines, the earliest expected day of
+// them (the line's, else the order's) and whether one was expected before
+// today. No price is read.
+func (q *Queries) OrdersToReceive(ctx context.Context, today pgtype.Date) ([]OrdersToReceiveRow, error) {
+	rows, err := q.db.Query(ctx, ordersToReceive, today)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OrdersToReceiveRow
+	for rows.Next() {
+		var i OrdersToReceiveRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Number,
+			&i.Status,
+			&i.SupplierName,
+			&i.SiteID,
+			&i.OpenLines,
+			&i.GoodsLines,
+			&i.ExpectedOn,
+			&i.Late,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const receiptByRequest = `-- name: ReceiptByRequest :one
 SELECT id, number, order_id, site_id, received_on, delivery_note, note, movement_id, received_by_user_id, received_by_display, client_request_id, request_hash, created_at, undone_at, undone_by_user_id, undone_by_display, undo_note, reversal_movement_id FROM purchasing.receipts WHERE client_request_id = $1
 `

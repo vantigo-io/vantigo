@@ -66,3 +66,23 @@ RETURNING *;
 
 -- name: SetLineDelivered :exec
 UPDATE purchasing.order_lines SET delivered_at = sqlc.narg(delivered_at) WHERE id = sqlc.arg(id);
+
+-- name: OrdersToReceive :many
+-- OrdersToReceive is the receiving list (A47): the sent and partially
+-- received orders with a goods line still to come — not closed, less
+-- received than ordered —, how many such lines, the earliest expected day of
+-- them (the line's, else the order's) and whether one was expected before
+-- today. No price is read.
+SELECT o.id, o.number, o.status, o.supplier_name, o.site_id,
+    count(*) FILTER (WHERE l.closed_at IS NULL AND l.received < l.quantity)::integer AS open_lines,
+    count(*)::integer AS goods_lines,
+    min(coalesce(l.expected_on, o.expected_on)) FILTER (WHERE l.closed_at IS NULL AND l.received < l.quantity)::date AS expected_on,
+    coalesce(bool_or(l.closed_at IS NULL AND l.received < l.quantity
+        AND coalesce(l.expected_on, o.expected_on) < sqlc.arg(today)::date), false)::boolean AS late
+FROM purchasing.orders o
+JOIN purchasing.order_lines l ON l.order_id = o.id AND l.kind = 'variant' AND l.product_type = 'Goods'
+WHERE o.status IN ('sent', 'partially_received')
+GROUP BY o.id
+HAVING count(*) FILTER (WHERE l.closed_at IS NULL AND l.received < l.quantity) > 0
+ORDER BY 8 NULLS LAST, o.number, o.id
+LIMIT 500;

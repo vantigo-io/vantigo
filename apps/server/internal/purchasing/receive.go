@@ -26,6 +26,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -119,6 +120,47 @@ func (s *server) GetPurchasingReceiveForm(ctx context.Context, req gen.GetPurcha
 		return answer(err, resp)
 	}
 	return gen.GetPurchasingReceiveForm200JSONResponse(form), nil
+}
+
+// ListPurchasingOrdersToReceive List the orders to receive
+// (GET /api/v1/purchasing/receiving)
+//
+// The receiving list (P30, A47) is purchasing:receive's own read: the sent
+// and partially received orders with a goods line still to come, without a
+// price, so a holder of the key alone finds what to receive.
+func (s *server) ListPurchasingOrdersToReceive(ctx context.Context, _ gen.ListPurchasingOrdersToReceiveRequestObject) (gen.ListPurchasingOrdersToReceiveResponseObject, error) {
+	zone, err := s.businessZone(ctx)
+	if err != nil {
+		return answer(err, answers[gen.ListPurchasingOrdersToReceiveResponseObject]{
+			unavailable: func(p gen.PurchasingProblem) gen.ListPurchasingOrdersToReceiveResponseObject {
+				return gen.ListPurchasingOrdersToReceive503ApplicationProblemPlusJSONResponse(p)
+			},
+		})
+	}
+	rows, err := s.store().OrdersToReceive(ctx, dayCol(dayOf(s.deps.Clock(), zone)))
+	if err != nil {
+		return nil, fmt.Errorf("purchasing: list the orders to receive: %w", err)
+	}
+	out := gen.ListPurchasingOrdersToReceive200JSONResponse{Items: make([]gen.PurchasingReceivingOrder, 0, len(rows))}
+	if len(rows) == 0 {
+		return out, nil
+	}
+	sites, _, err := s.sites(ctx)
+	if err != nil {
+		return answer(err, answers[gen.ListPurchasingOrdersToReceiveResponseObject]{
+			unavailable: func(p gen.PurchasingProblem) gen.ListPurchasingOrdersToReceiveResponseObject {
+				return gen.ListPurchasingOrdersToReceive503ApplicationProblemPlusJSONResponse(p)
+			},
+		})
+	}
+	for _, r := range rows {
+		out.Items = append(out.Items, gen.PurchasingReceivingOrder{
+			Id: r.ID, Number: r.Number, Status: gen.PurchasingReceivingOrderStatus(r.Status), SupplierName: r.SupplierName,
+			SiteId: r.SiteID, SiteName: sites[r.SiteID].Name, ExpectedOn: dateOut(r.ExpectedOn), Late: r.Late,
+			GoodsLines: r.GoodsLines, OpenLines: r.OpenLines,
+		})
+	}
+	return out, nil
 }
 
 // openGoodsLines is an order's receivable lines with something still to
@@ -341,9 +383,12 @@ type receiptRequest struct {
 }
 
 // receiptHash is what a replay is judged by (A11): the order and the body
-// without its clientRequestId.
+// without its clientRequestId, an acceptOver of false the same as none.
 func receiptHash(orderID int64, b gen.PurchasingReceiptInput) string {
 	b.ClientRequestId = [16]byte{}
+	if b.AcceptOver != nil && !*b.AcceptOver {
+		b.AcceptOver = nil
+	}
 	body, _ := json.Marshal(struct {
 		OrderID int64                      `json:"orderId"`
 		Body    gen.PurchasingReceiptInput `json:"body"`
@@ -465,11 +510,19 @@ func replayed(ctx context.Context, q *store.Queries, r receiptRequest) (int64, b
 	return prior.ID, true, nil
 }
 
+// afterReplayCheck is called, when a test sets it for an order, between a
+// receipt's first replay check and its attempts: where a concurrent first
+// receipt can commit.
+var afterReplayCheck sync.Map // order id → func()
+
 // receive posts the receipt, trying the whole of it up to receiveAttempts
 // times (A7), and answers its id.
 func (s *server) receive(ctx context.Context, r receiptRequest) (int64, error) {
 	if id, ok, err := replayed(ctx, s.store(), r); err != nil || ok {
 		return id, err
+	}
+	if hook, ok := afterReplayCheck.Load(r.orderID); ok {
+		hook.(func())()
 	}
 	for attempt := 1; ; attempt++ {
 		id, err := s.receiveOnce(ctx, r)
@@ -493,18 +546,38 @@ func (s *server) receive(ctx context.Context, r receiptRequest) (int64, error) {
 	}
 }
 
-// receiveOnce is one attempt: the pool reads, then the transaction.
+// receiveOnce is one attempt: the pool reads, then the transaction. A
+// refusal judged on the pool read is answered only once the request is
+// known to be no replay: the first receipt may have committed since the
+// first check, and its order be received now (A42).
 func (s *server) receiveOnce(ctx context.Context, r receiptRequest) (int64, error) {
 	o, lines, err := s.orderAndLines(ctx, r.orderID)
 	if err != nil {
 		return 0, err
 	}
-	if err := judgeSent(o); err != nil {
+	refused := func(err error) (int64, error) {
+		if id, ok, rerr := replayed(ctx, s.store(), r); rerr != nil || ok {
+			return id, rerr
+		}
 		return 0, err
+	}
+	if err := judgeSent(o); err != nil {
+		return refused(err)
 	}
 	planned, failures := planReceipt(lines, r.lines)
 	if len(failures) > 0 {
-		return 0, refuseLines(invalidReceiptTitle, failures)
+		return refused(refuseLines(invalidReceiptTitle, failures))
+	}
+	// The movement names the supplier and its delivery note only when the
+	// supplier is not a person (P7): Inventory's movements are not erased
+	// with a supplier's personal data.
+	supplierName, supplierRef := "", ""
+	sup, err := s.supplier(ctx, o.SupplierID)
+	if err != nil {
+		return 0, err
+	}
+	if sup != nil && !sup.IsPerson {
+		supplierName, supplierRef = o.SupplierName, r.deliveryNote
 	}
 	zone, err := s.businessZone(ctx)
 	if err != nil {
@@ -576,8 +649,8 @@ func (s *server) receiveOnce(ctx context.Context, r receiptRequest) (int64, erro
 			ledger = append(ledger, line)
 		}
 		posted, err := s.deps.StockLedger.Receive(ctx, tx, orderSource(o.ID), contracts.StockReceipt{
-			Document: receiptSource(rec.ID), SiteID: locked.SiteID, Lines: ledger, SupplierName: locked.SupplierName,
-			SupplierReference: r.deliveryNote, Note: r.note, PostedByUserID: by.id, PostedByDisplay: deref(by.display), Today: today,
+			Document: receiptSource(rec.ID), SiteID: locked.SiteID, Lines: ledger, SupplierName: supplierName,
+			SupplierReference: supplierRef, Note: r.note, PostedByUserID: by.id, PostedByDisplay: deref(by.display), Today: today,
 		})
 		if err != nil {
 			if isDeadlock(err) {
@@ -598,15 +671,10 @@ func (s *server) receiveOnce(ctx context.Context, r receiptRequest) (int64, erro
 				return fmt.Errorf("purchasing: count line %d received: %w", id, err)
 			}
 		}
-		status, err := setDerivedStatus(ctx, txq, locked, now)
-		if err != nil {
+		if err := logChange(ctx, txq, o.ID, by, now, change{Action: "receipt_posted", To: ptr(fmt.Sprint(number))}); err != nil {
 			return err
 		}
-		actions := []change{{Action: "receipt_posted", To: ptr(fmt.Sprint(number))}}
-		if status == statusReceived && locked.Status != statusReceived {
-			actions = append(actions, change{Action: "received"})
-		}
-		if err := logChange(ctx, txq, o.ID, by, now, actions...); err != nil {
+		if _, err := settleOrder(ctx, tx, txq, locked, by, now); err != nil {
 			return err
 		}
 		ev := contracts.PurchaseReceiptPosted{
@@ -643,17 +711,29 @@ func (s *server) orderAndLines(ctx context.Context, id int64) (store.PurchasingO
 }
 
 // judgeOver refuses a receipt that takes a line over its remainder unless
-// the request accepts it (P26): every row of such a line is named.
+// the request accepts it (P26): every row of such a line is named. A line
+// whose received quantity would pass what the column holds is refused
+// quantity_invalid (400), acceptOver or not.
 func judgeOver(planned []plannedReceiptLine, acceptOver bool) error {
-	if acceptOver {
-		return nil
-	}
 	sums := map[int64]*big.Rat{}
 	for _, p := range planned {
 		if sums[p.orderLine.ID] == nil {
 			sums[p.orderLine.ID] = new(big.Rat)
 		}
 		sums[p.orderLine.ID].Add(sums[p.orderLine.ID], p.quantity)
+	}
+	var huge []lineFailure
+	for i, p := range planned {
+		if new(big.Rat).Add(ratOrZero(p.orderLine.Received), sums[p.orderLine.ID]).Cmp(maxQuantity) > 0 {
+			huge = append(huge, lineFailure{index: i, code: codeQuantityInvalid,
+				detail: "The line's received quantity would pass 999 999 999.999."})
+		}
+	}
+	if len(huge) > 0 {
+		return refuseLines(invalidReceiptTitle, huge)
+	}
+	if acceptOver {
+		return nil
 	}
 	var failures []lineFailure
 	for i, p := range planned {
@@ -680,7 +760,8 @@ func receiptLineOf(receiptID int64, position int32, p plannedReceiptLine, curren
 	params := store.InsertReceiptLineParams{
 		ReceiptID: receiptID, Position: position, OrderLineID: p.orderLine.ID, VariantID: *p.orderLine.VariantID,
 		LocationID: p.in.LocationId, Quantity: numeric(p.quantity, quantityPlaces), EnteredQuantity: numeric(p.entered, quantityPlaces),
-		InPackaging: p.inPackaging, LotID: p.in.LotId, UnitPrice: p.orderLine.UnitPrice, Currency: currency, Serials: []string{},
+		InPackaging: p.inPackaging, LotID: p.in.LotId, UnitPrice: numeric(unitCost(p.orderLine), pricePlaces), Currency: currency,
+		Serials: []string{},
 	}
 	if p.inPackaging {
 		params.PackagingName = p.orderLine.PackagingName
@@ -689,6 +770,11 @@ func receiptLineOf(receiptID int64, position int32, p plannedReceiptLine, curren
 		Quantity: trimmed(p.quantity, quantityPlaces)}
 	if p.in.LotId != nil {
 		line.LotID = *p.in.LotId
+	}
+	// A lot that gives nothing is no lot: Inventory would number one itself,
+	// and a tracked variant's line left blank is lot_required instead.
+	if l := p.in.Lot; l != nil && blank(l.Number) && blank(l.SupplierLot) && l.ProductionDate == nil && l.BestBefore == nil && l.Expiry == nil {
+		p.in.Lot = nil
 	}
 	if p.in.Lot != nil {
 		l := p.in.Lot
@@ -710,6 +796,20 @@ func receiptLineOf(receiptID int64, position int32, p plannedReceiptLine, curren
 	}
 	return params, line
 }
+
+// unitCost is the price a receipt line keeps (P28, A49): the order line's
+// price per its purchase packaging, net of its discount, per the variant's
+// unit — the unit the receipt line's quantity is in — at four places.
+func unitCost(l store.PurchasingOrderLine) *big.Rat {
+	net := new(big.Rat).Mul(ratOrZero(l.UnitPrice), new(big.Rat).Sub(big.NewRat(1, 1), new(big.Rat).Quo(ratOrZero(l.DiscountPercent), hundred)))
+	if f := ratOf(l.PackagingFactor); f != nil && f.Sign() > 0 {
+		net.Quo(net, f)
+	}
+	return roundTo(net, pricePlaces)
+}
+
+// blank reports whether p is nil or only spaces.
+func blank(p *string) bool { return p == nil || strings.TrimSpace(*p) == "" }
 
 // truncPtr is *p cut to n characters; the ledger refuses what is longer
 // than it keeps, so this only keeps the row's column from failing first.
