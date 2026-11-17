@@ -1085,6 +1085,31 @@
     "description": "The button above the project list that opens the form for a new project."
   },
   {
+    "key": "purchasing.new-order.create",
+    "route": "/purchasing/orders/new",
+    "description": "Creates the draft purchase order for the picked supplier and opens it. A draft has no number until it is sent."
+  },
+  {
+    "key": "purchasing.new-order.supplier",
+    "route": "/purchasing/orders/new",
+    "description": "The supplier picker a new purchase order starts from; its supplier items fill the lines."
+  },
+  {
+    "key": "purchasing.order.edit",
+    "route": "/purchasing/orders/{orderId}",
+    "description": "Opens the order's header and lines for changes; a sent order keeps every change in its history."
+  },
+  {
+    "key": "purchasing.order.send",
+    "route": "/purchasing/orders/{orderId}",
+    "description": "Opens the dialog that gives the draft its number and mails its PDF to the supplier."
+  },
+  {
+    "key": "purchasing.orders.new",
+    "route": "/purchasing/orders",
+    "description": "The button above the purchase order list that starts a new draft order to a supplier."
+  },
+  {
     "key": "time.day.add-entry",
     "route": "/time/day",
     "description": "The button on the Day page that opens the form for a new time entry."

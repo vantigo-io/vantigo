@@ -1,0 +1,62 @@
+[
+  {
+    "key": "purchasing.orders.new",
+    "route": "/purchasing/orders",
+    "label": {
+      "en": "New purchase order",
+      "nb": "Ny innkjøpsordre"
+    },
+    "description": {
+      "en": "The button above the purchase order list that starts a new draft order to a supplier.",
+      "nb": "Knappen over listen med innkjøpsordrer som starter et nytt utkast til en leverandør."
+    }
+  },
+  {
+    "key": "purchasing.new-order.supplier",
+    "route": "/purchasing/orders/new",
+    "label": {
+      "en": "Supplier",
+      "nb": "Leverandør"
+    },
+    "description": {
+      "en": "The supplier picker a new purchase order starts from; its supplier items fill the lines.",
+      "nb": "Leverandørvelgeren en ny innkjøpsordre starter fra; leverandørvarene fyller linjene."
+    }
+  },
+  {
+    "key": "purchasing.new-order.create",
+    "route": "/purchasing/orders/new",
+    "label": {
+      "en": "Create the draft",
+      "nb": "Opprett utkastet"
+    },
+    "description": {
+      "en": "Creates the draft purchase order for the picked supplier and opens it. A draft has no number until it is sent.",
+      "nb": "Oppretter utkastet til innkjøpsordre for den valgte leverandøren og åpner det. Et utkast får nummer først når det sendes."
+    }
+  },
+  {
+    "key": "purchasing.order.edit",
+    "route": "/purchasing/orders/{orderId}",
+    "label": {
+      "en": "Edit",
+      "nb": "Rediger"
+    },
+    "description": {
+      "en": "Opens the order's header and lines for changes; a sent order keeps every change in its history.",
+      "nb": "Åpner ordrens hode og linjer for endringer; en sendt ordre har alle endringer i historikken."
+    }
+  },
+  {
+    "key": "purchasing.order.send",
+    "route": "/purchasing/orders/{orderId}",
+    "label": {
+      "en": "Send",
+      "nb": "Send"
+    },
+    "description": {
+      "en": "Opens the dialog that gives the draft its number and mails its PDF to the supplier.",
+      "nb": "Åpner dialogen som gir utkastet nummer og sender PDF-en til leverandøren på e-post."
+    }
+  }
+]
