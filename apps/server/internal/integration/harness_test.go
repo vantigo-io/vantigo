@@ -25,6 +25,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/orders"
 	"github.com/vantigo-io/vantigo/server/internal/products"
 	"github.com/vantigo-io/vantigo/server/internal/projects"
+	"github.com/vantigo-io/vantigo/server/internal/purchasing"
 	timetracking "github.com/vantigo-io/vantigo/server/internal/time"
 )
 
@@ -62,6 +63,7 @@ const (
 	modInventory     = "inventory"
 	modManufacturing = "manufacturing"
 	modAccounting    = "accounting"
+	modPurchasing    = "purchasing"
 )
 
 // moduleNamed is the real module value for one name. It is the only place this
@@ -92,6 +94,8 @@ func moduleNamed(t *testing.T, name string) module.Module {
 		return manufacturing.Module()
 	case modAccounting:
 		return accounting.Module()
+	case modPurchasing:
+		return purchasing.Module()
 	}
 	t.Fatalf("integration: no module named %q", name)
 	return module.Module{}
@@ -180,7 +184,8 @@ func withStorecove(t *testing.T) (*storecovetest.Server, []modtest.Option) {
 // towards it would let an operation look exercised without its module's suite
 // ever having exercised it.
 var recorder = mergedRecorder(modCustomers, modProjects, modTime, modExpenses, modInvoices, modEnergy, modProducts, modOrders, modInventory, modManufacturing,
-	modAccounting)
+	modAccounting,
+	modPurchasing)
 
 func mergedRecorder(names ...string) *contracttest.Recorder {
 	merged := &openapi3.T{
