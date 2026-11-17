@@ -89,10 +89,12 @@ func managedTarget(ctx context.Context, q *store.Queries, id uuid.UUID) (store.I
 	if errors.Is(err, pgx.ErrNoRows) {
 		return u, notFound
 	}
-	if err == nil && isAgent(u) {
+	if err == nil && !isPerson(u) {
 		// An agent is made and changed through contracts.AgentAccounts only
-		// (virtual employees design V5): no owner operation reaches it, whether
-		// to edit it, give it a role, set a password or link it.
+		// (virtual employees design V5), and an integration through its own
+		// screen (API access design K4): no owner operation reaches either,
+		// whether to edit it, disable or delete it, give it a role, set a
+		// password, manage it from Staff or link it.
 		return u, notFound
 	}
 	return u, err
@@ -100,6 +102,10 @@ func managedTarget(ctx context.Context, q *store.Queries, id uuid.UUID) (store.I
 
 // isAgent reports whether u is a user of kind agent.
 func isAgent(u store.IdentityUser) bool { return u.Kind == contracts.UserKindAgent }
+
+// isPerson reports whether u is a person: neither an agent nor an
+// integration (API access design K4).
+func isPerson(u store.IdentityUser) bool { return u.Kind == contracts.UserKindPerson }
 
 // emailTaken returns the account that has email, compared normalized, and
 // whether there is one.

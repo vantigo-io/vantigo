@@ -174,6 +174,7 @@ func (q *Queries) InsertRolePermissions(ctx context.Context, arg InsertRolePermi
 const listAccessUsers = `-- name: ListAccessUsers :many
 SELECT id, display_name, email, kind, is_disabled, lockout_end, version
 FROM identity.users
+WHERE kind <> 'integration'
 ORDER BY (kind = 'agent'), display_name COLLATE "C", id
 `
 
@@ -190,6 +191,8 @@ type ListAccessUsersRow struct {
 // ListAccessUsers is the authorization user directory
 // (EA/AuthorizationManagementEndpoints.cs:475-487): every user, the people
 // first and the agents after them (kind), by display name (ordinal), then id.
+// An integration is not listed: its roles are given on its own screen (API
+// access design K3, K4).
 func (q *Queries) ListAccessUsers(ctx context.Context) ([]ListAccessUsersRow, error) {
 	rows, err := q.db.Query(ctx, listAccessUsers)
 	if err != nil {
