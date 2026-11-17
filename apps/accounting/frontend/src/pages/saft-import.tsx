@@ -247,7 +247,10 @@ const Preview = ({ id }: { id: number }) => {
               { value: "0", label: t("saftSupplierPickNew") },
             ];
             const picked = picks[s.fileSupplierId];
-            const value = picked !== undefined ? String(picked) : String(s.supplierId ?? 0);
+            // An ambiguous supplier has no answer until one is picked: Apply is
+            // refused (saft_import_ambiguous_suppliers) while it has none.
+            const value =
+              picked !== undefined ? String(picked) : s.match === "ambiguous" ? null : String(s.supplierId ?? 0);
             return (
               <Table.Tr key={s.fileSupplierId}>
                 <Table.Td>
@@ -270,6 +273,8 @@ const Preview = ({ id }: { id: number }) => {
                       aria-label={t("saftSupplierPick", { name: s.name })}
                       data={options}
                       value={value}
+                      placeholder={t("saftSupplierPickOne")}
+                      error={value === null ? t("saftSupplierPickRequired") : undefined}
                       onChange={(v) => v !== null && setPicks((all) => ({ ...all, [s.fileSupplierId]: Number(v) }))}
                       allowDeselect={false}
                       size="xs"

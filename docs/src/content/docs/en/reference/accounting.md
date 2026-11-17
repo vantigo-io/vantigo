@@ -82,9 +82,14 @@ A write asks for `accounting:read` and its own key (`permission:accounting:post+
 and so on) — but for `POST /suppliers`, `PUT /suppliers/{id}` and `GET
 /suppliers/lookup/brreg`, whose rule is `session`: the handler answers 403
 `suppliers_manage_required` (a problem) to a caller holding neither
-`accounting:suppliers-manage` nor `accounting:post`, so a buyer needs no `accounting:read`.
-They are marked for the Assistant (`confirm`, `auto` for the lookup); a virtual employee is
-admitted by a permission rule alone and so never calls them. `accounting:close` is in the agents' never list: no virtual employee may hold
+`accounting:suppliers-manage` nor `accounting:post` with `accounting:read`, so a buyer needs
+no `accounting:read`. They are marked for the Assistant (`confirm`, `auto` for the lookup)
+and for the virtual employees (`x-vantigo-agent: allowed`): an agent grant is admitted by a
+permission rule alone but for a session rule so marked, where the handler's own check
+decides against the agent's roles — the three are the only operations marked
+([Module boundaries](/en/contributing/module-boundaries/), rule 18). The agents' own gate is
+a further lock: it allows no operation whose rule names no permission, and no role's
+template lists these, so no virtual employee calls them until Purchasing's role does. `accounting:close` is in the agents' never list: no virtual employee may hold
 it. The Assistant never uploads or downloads an attachment or a CSV
 (`x-vantigo-assistant: never`); the preview is callable without asking (`auto`). Every
 other write — a manual journal, a reversal, a settlement, the opening balances and the
@@ -573,12 +578,17 @@ a hold is 409 `supplier_has_documents` (another app's documents name it; make it
 operations answer before the books are set up: the reads find no settings row and compute
 no retention date (no voucher can name a supplier yet), and a `defaultAccountId` or
 `defaultTaxCodeId` sent then is 409 `books_not_set_up` — the chart is made by the setup.
-`POST /suppliers` and `PUT /suppliers/{id}` are a holder's of `accounting:post` or of
-`accounting:suppliers-manage`; a caller holding only the latter writes every field but the
-books' own — `bankAccount`, `iban`, `bic`, `defaultAccountId` and `defaultTaxCodeId`: on a
-change a field left out keeps its value, and one sent with another value (an empty one
-included) is 403 `supplier_fields_need_post` (a problem); on a new supplier any of them sent
-is.
+`POST /suppliers` and `PUT /suppliers/{id}` are a holder's of `accounting:post` with
+`accounting:read`, or of `accounting:suppliers-manage`; a caller holding only the latter
+writes every field but the books' own — `bankAccount`, `iban`, `bic`, `defaultAccountId`
+and `defaultTaxCodeId`, and on a change `isPerson` and `active`: on a change a field left
+out keeps its value, and one sent with another value (an empty one included) is 403
+`supplier_fields_need_post` (a problem); on a new supplier any of the five sent is, while
+`isPerson` and `currency` are the buyer's to set (the currency is a term, on a change too).
+A books field is checked only when its value differs from the stored one: a default account
+the accountant made inactive since, a tax code no longer active, or a bank field an import
+wrote unchecked, kept as it stands, does not refuse a change (`account_inactive`,
+`tax_code_unknown`, `supplier_bank_account_invalid` are for a new value).
 
 `GET /suppliers/lookup/brreg` (`accounting:post` or `accounting:suppliers-manage`,
 rate-limited to 600 an hour per client address) takes `organisationNumber` (nine digits: the entity itself, with its business
@@ -715,9 +725,11 @@ and Reverse and copy `accounting.supplier_invoice.reversed` v1, on the posting's
 transaction and while it holds the invoice's row lock, so each commits with its voucher or
 not at all; the aggregate is the invoice. Each carries `invoiceId`, `supplierId`, `kind`,
 `number` (the supplier's), `invoiceDate`, `dueDate`, `currency`, `total` (in the invoice's
-currency) and `reference`; the posted event `postedAt`, the reversed one `copyId` — the
-draft the copy made — and `reversedAt` (`contracts/events_accounting.go`). No handler of
-Accounting's reads them; Purchasing's will.
+currency); the posted event `postedAt`, the reversed one `copyId` — the draft the copy
+made — and `reversedAt` (`contracts/events_accounting.go`). Neither carries the reference
+or the description: a payload holds no free text (module boundaries, rule 23), and a
+consumer reads them through `SupplierInvoices.Invoice`. No handler of Accounting's reads
+the events; Purchasing's will.
 
 ### Payments
 
@@ -1357,12 +1369,22 @@ linked) and `/suppliers` page the parties; `GET /saft-imports` lists the imports
   a buyer may have made them before the books were set up: by organisation number in the
   same country (`match` `matched`), else by exact name, case and spaces aside, among the
   register's suppliers whose organisation number does not say they are another company
-  (`matched_by_name` for one; `ambiguous` for several, listed as `candidates`, and then a
-  new supplier is made). The apply's `suppliers` — per file supplier id, the register's
-  supplier's id or 0 for a new one — overrides any match (`linked`); an id the register
-  does not hold is 400 `saft_import_supplier_unknown`. The matches are made again on every
-  read of the preview, from the register as it stands. A supplier taken from the register
-  is left as it is: the opening's balance is put on it. The others are made, numbered from
+  (`matched_by_name` for one; `ambiguous` for several, listed as `candidates`). An inactive
+  supplier is matched as an active one. Two of the file's suppliers matched to the same
+  supplier of the register are both `ambiguous`, with it as their one candidate. The
+  apply's `suppliers` — per file supplier id, the register's supplier's id or 0 for a new
+  one — overrides any match (`linked`); a file supplier id the file does not hold is 400
+  `saft_import_file_supplier_unknown`, an id the register does not hold 400
+  `saft_import_supplier_unknown`, and one supplier of the register picked for two of the
+  file's 400 `saft_import_supplier_picked_twice`. An `ambiguous` supplier left without a
+  pick blocks Apply as an unmatched customer does: it is named in `blockers` and Apply is
+  409 `saft_import_ambiguous_suppliers` (a pick of 0 resolves it with a new supplier). The
+  matches are made again on every read of the preview, from the register as it stands.
+  Inside the apply's transaction the register's suppliers taken are held FOR SHARE, in id
+  order; one deleted since the plan was read is 409 `saft_import_supplier_gone`. A supplier
+  taken from the register keeps its record, the opening's balance put on it, but for its
+  bank account, IBAN and BIC: each that is empty is filled from the file's, never one it
+  has (the revision moves only when one is filled). The others are made, numbered from
   the counter: the name, a Norwegian organisation
   number that passes mod 11 (a second supplier with the same number keeps none, nor one the
   register has), the country, the address, an e-mail with an @, a bank account of eleven
@@ -1396,8 +1418,8 @@ linked) and `/suppliers` page the parties; `GET /saft-imports` lists the imports
 optional `booksStart` (400 `saft_import_books_start_mismatch` unless the day after the
 selection), `accounts`, `roles` and `confirmOtherCompany`. It builds the plan again from the
 stored parties and matches, with no transaction open, refuses while a blocker stands — 409
-`saft_import_unresolved`, `saft_import_unmatched_customers`, `saft_import_parties_mismatch` or
-`saft_import_other_company` with the blockers in the detail (the preview lists the first 100,
+`saft_import_unresolved`, `saft_import_unmatched_customers`, `saft_import_ambiguous_suppliers`,
+`saft_import_parties_mismatch` or `saft_import_other_company` with the blockers in the detail (the preview lists the first 100,
 `blockersTotal` all) — and then, **in one transaction**, takes the import FOR
 UPDATE (409 `saft_import_applied` a second time), checks again that the ledger has no
 voucher, writes the settings (409 `books_already_set_up` if a setup came first: the one
@@ -1826,10 +1848,14 @@ P1, P6, P7, A1, A8, A9; [module boundaries](/en/contributing/module-boundaries/)
   `CreateDraft` makes a draft through the draft's own write path, `checkDraft` and
   `insertDraft`, so the books' rules judge it as a person's: each line is entered net, its
   account and tax code the supplier's defaults when it names none. It refuses through
-  `*contracts.SupplierInvoiceRefusal`: `books_not_set_up`, `supplier_account_missing` (a
-  line with no account and a supplier with no default), `duplicate_supplier_invoice`, and
+  `*contracts.SupplierInvoiceRefusal`: `books_not_set_up`, `supplier_invoice_invalid` on
+  the field `supplierId` for a supplier the register does not have,
+  `supplier_account_missing` (a line with no account and a supplier with no default),
+  `duplicate_supplier_invoice`, and
   a field rule's code — `exchange_rate_required` and so on, `supplier_invoice_invalid` when
-  it has none — with the fields named as the contract names them. Nothing is posted by it.
+  it has none — with the fields named as the contract names them. A draft whose `By` is
+  `uuid.Nil` is an error, not a refusal: the caller names the person. Nothing is posted by
+  it.
 - **`contracts.SupplierInvoiceMatches`**, an optional single-provider slot Purchasing
   fills: the list and the page carry its answer as `purchaseMatch` ([Supplier
   invoices](#supplier-invoices)).

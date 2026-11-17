@@ -2,6 +2,7 @@ package accounting_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
@@ -117,8 +119,109 @@ func TestSuppliers_BeforeTheBooksAndForABuyer(t *testing.T) {
 	}
 	expectProblem(t, put(b, s.Revision, map[string]any{"name": s.Name, "bankAccount": ""}), http.StatusForbidden, "supplier_fields_need_post")
 	expectProblem(t, put(b, s.Revision, map[string]any{"name": s.Name, "defaultAccountId": chart["6000"].Id}), http.StatusForbidden, "supplier_fields_need_post")
-	if res := b.Do(http.MethodGet, base+"/suppliers/lookup/brreg?q=x", nil); res.Status == http.StatusForbidden {
-		t.Errorf("the buyer's lookup = %d", res.Status)
+}
+
+// The buyer's scope on the register, the either-or of the writes, and the
+// virtual employees the writes admit (purchasing delivery 0): a caller
+// holding neither key is refused create, change and lookup; a buyer's change
+// may not touch IBAN, BIC, the tax code, the person flag or the active flag
+// and keeps them when it leaves them out; a kept default is not checked again;
+// an agent holding either key calls the three writes, one holding neither is
+// refused.
+func TestSuppliers_TheBuyersScopeAndAgents(t *testing.T) {
+	h := newHarness(t, modtest.WithTransport(brregTransport{}), modtest.WithBackoff(func(int) time.Duration { return 0 }))
+	a := h.SignIn(t, accountant...)
+	setUp(t, a, "nb")
+	bk := &books{h: h, c: a, chart: accounts(t, a), codes: taxCodes(t, a)}
+	s := supplier(t, bk, map[string]any{"name": "Varer AS", "bankAccount": "12345678903", "iban": "NO9386011117947",
+		"bic": "DNBANOKK", "defaultAccountId": bk.acc("6300"), "defaultTaxCodeId": bk.code("1"), "isPerson": true})
+	path := fmt.Sprintf("%s/suppliers/%d", base, s.Id)
+
+	// Neither key, or post without read: no write and no lookup.
+	for _, c := range []*modtest.Client{h.SignIn(t), h.SignIn(t, "accounting:post")} {
+		expectProblem(t, c.Do(http.MethodPost, base+"/suppliers", map[string]any{"name": "X"}), http.StatusForbidden, "suppliers_manage_required")
+		expectProblem(t, c.Do(http.MethodPut, path, map[string]any{"name": "X", "revision": s.Revision}), http.StatusForbidden, "suppliers_manage_required")
+		expectProblem(t, c.Do(http.MethodGet, base+"/suppliers/lookup/brreg?q=equinor", nil), http.StatusForbidden, "suppliers_manage_required")
+	}
+
+	b := h.SignIn(t, buyer...)
+	if res := b.Do(http.MethodGet, base+"/suppliers/lookup/brreg?q=equinor", nil); res.Status != http.StatusOK {
+		t.Fatalf("the buyer's lookup = %d %s", res.Status, res.Body)
+	}
+	for field, value := range map[string]any{"iban": "NO8330001234567", "bic": "NDEANOKK", "defaultTaxCodeId": bk.code("11"),
+		"isPerson": false, "active": false} {
+		expectProblem(t, b.Do(http.MethodPut, path, map[string]any{"name": s.Name, "revision": s.Revision, field: value}),
+			http.StatusForbidden, "supplier_fields_need_post")
+	}
+
+	// The accountant makes the default account inactive; the buyer's rename
+	// keeps it, and the flags, and is not refused for it. A poster naming
+	// the inactive account anew is.
+	h.Exec(t, `UPDATE accounting.accounts SET active = false WHERE id = $1`, bk.acc("6300"))
+	res := b.Do(http.MethodPut, path, map[string]any{"name": "Varer Norge AS", "revision": s.Revision})
+	if res.Status != http.StatusOK {
+		t.Fatalf("the buyer's rename over an inactive default = %d %s", res.Status, res.Body)
+	}
+	res.JSON(&s)
+	if s.Name != "Varer Norge AS" || !s.IsPerson || !s.Active || deref(s.Iban) != "NO9386011117947" || s.DefaultAccountId == nil ||
+		*s.DefaultAccountId != bk.acc("6300") || s.DefaultTaxCodeId == nil || *s.DefaultTaxCodeId != bk.code("1") {
+		t.Errorf("after the buyer's rename = %+v", s)
+	}
+	res = a.Do(http.MethodPut, path, map[string]any{"name": s.Name, "revision": s.Revision, "bankAccount": "12345678903",
+		"iban": "NO9386011117947", "bic": "DNBANOKK", "defaultAccountId": bk.acc("6300"), "defaultTaxCodeId": bk.code("1"), "isPerson": true})
+	if res.Status != http.StatusOK {
+		t.Fatalf("the poster's change keeping the inactive default = %d %s", res.Status, res.Body)
+	}
+	res.JSON(&s)
+	h.Exec(t, `UPDATE accounting.accounts SET active = false WHERE id = $1`, bk.acc("6000"))
+	expectProblem(t, a.Do(http.MethodPut, path, map[string]any{"name": s.Name, "revision": s.Revision, "defaultAccountId": bk.acc("6000")}),
+		http.StatusBadRequest, "account_inactive")
+
+	// A buyer's new supplier may be a person's, in another currency.
+	res = b.Do(http.MethodPost, base+"/suppliers", map[string]any{"name": "Kari Nordmann", "isPerson": true, "currency": "EUR"})
+	if res.Status != http.StatusCreated {
+		t.Fatalf("a buyer's person supplier = %d %s", res.Status, res.Body)
+	}
+	var person gen.AccountingSupplier
+	res.JSON(&person)
+	if !person.IsPerson || person.Currency != "EUR" {
+		t.Errorf("the buyer's person supplier = %+v", person)
+	}
+
+	// The virtual employees: either key calls the three writes, neither is
+	// refused by the handler.
+	for _, keys := range [][]string{{"accounting:post", "accounting:read"}, buyer} {
+		ctx, _ := h.AgentContext(t, nil, keys...)
+		status, body, err := h.AgentCall(t, ctx, "createAccountingSupplier", nil, nil, map[string]any{"name": "Agentens leverandør " + keys[0]})
+		if err != nil || status != http.StatusCreated {
+			t.Fatalf("%v: an agent's create = %d %s, %v", keys, status, body, err)
+		}
+		var made gen.AccountingSupplier
+		if err := json.Unmarshal(body, &made); err != nil {
+			t.Fatal(err)
+		}
+		status, body, err = h.AgentCall(t, ctx, "updateAccountingSupplier", map[string]any{"id": made.Id}, nil,
+			map[string]any{"name": made.Name + " AS", "revision": made.Revision})
+		if err != nil || status != http.StatusOK {
+			t.Errorf("%v: an agent's change = %d %s, %v", keys, status, body, err)
+		}
+		status, body, err = h.AgentCall(t, ctx, "lookupAccountingSupplierBrreg", nil, nil, nil)
+		if err != nil || status != http.StatusBadRequest {
+			t.Errorf("%v: an agent's lookup without a query = %d %s, %v (want the handler's 400)", keys, status, body, err)
+		}
+	}
+	ctx, _ := h.AgentContext(t, nil, reader...)
+	for _, call := range []struct {
+		op   string
+		path map[string]any
+		body any
+	}{{"createAccountingSupplier", nil, map[string]any{"name": "X"}},
+		{"updateAccountingSupplier", map[string]any{"id": s.Id}, map[string]any{"name": "X", "revision": s.Revision}},
+		{"lookupAccountingSupplierBrreg", nil, nil}} {
+		if status, body, err := h.AgentCall(t, ctx, call.op, call.path, nil, call.body); err != nil || status != http.StatusForbidden ||
+			!strings.Contains(string(body), "suppliers_manage_required") {
+			t.Errorf("%s by an agent holding neither = %d %s, %v", call.op, status, body, err)
+		}
 	}
 }
 
@@ -300,6 +403,17 @@ func TestSupplierInvoices_ContractEventsAndBadge(t *testing.T) {
 	if _, err := ci.CreateDraft(t.Context(), bad); !errors.As(err, &r) || r.Code != "exchange_rate_required" || len(r.Fields) == 0 {
 		t.Errorf("another currency without its rate = %+v", err)
 	}
+	unknown := d
+	unknown.SupplierID, unknown.Number = 99999, "INV-4"
+	if _, err := ci.CreateDraft(t.Context(), unknown); !errors.As(err, &r) || r.Code != contracts.SupplierInvoiceInvalid ||
+		len(r.Fields) != 1 || r.Fields[0].Field != "supplierId" {
+		t.Errorf("an unknown supplier = %+v", err)
+	}
+	nobody := d
+	nobody.Number, nobody.By = "INV-5", uuid.Nil
+	if _, err := ci.CreateDraft(t.Context(), nobody); err == nil || errors.As(err, &r) {
+		t.Errorf("a draft for no person = %v, want a plain error", err)
+	}
 	if got, err := ci.Invoice(t.Context(), 99999); got != nil || err != nil {
 		t.Errorf("an unknown invoice = %+v, %v", got, err)
 	}
@@ -331,22 +445,23 @@ func TestSupplierInvoices_ContractEventsAndBadge(t *testing.T) {
 	var copied gen.AccountingSupplierInvoice
 	res.JSON(&copied)
 	rows, err := h.Pool().Query(t.Context(), `SELECT name, aggregate_id, payload->>'supplierId', coalesce(payload->>'copyId', ''), payload->>'total',
-		payload->>'reference' FROM platform.events WHERE module = 'accounting' ORDER BY id`)
+		payload ? 'reference' FROM platform.events WHERE module = 'accounting' ORDER BY id`)
 	if err != nil {
 		t.Fatal(err)
 	}
 	var got []string
 	for rows.Next() {
-		var name, agg, supplierID, copyID, total, reference string
+		var name, agg, supplierID, copyID, total string
+		var reference bool
 		if err := rows.Scan(&name, &agg, &supplierID, &copyID, &total, &reference); err != nil {
 			t.Fatal(err)
 		}
-		got = append(got, strings.Join([]string{name, agg, supplierID, copyID, total, reference}, "|"))
+		got = append(got, strings.Join([]string{name, agg, supplierID, copyID, total, fmt.Sprint(reference)}, "|"))
 	}
 	rows.Close()
 	sid, iid := fmt.Sprint(s.Id), fmt.Sprint(id)
-	want := []string{"accounting.supplier_invoice.posted|" + iid + "|" + sid + "||1250.00|PO 1001",
-		"accounting.supplier_invoice.reversed|" + iid + "|" + sid + "|" + fmt.Sprint(copied.Id) + "|1250.00|PO 1001"}
+	want := []string{"accounting.supplier_invoice.posted|" + iid + "|" + sid + "||1250.00|false",
+		"accounting.supplier_invoice.reversed|" + iid + "|" + sid + "|" + fmt.Sprint(copied.Id) + "|1250.00|false"}
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Errorf("events =\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
@@ -435,4 +550,137 @@ func TestSaftImport_SupplierMadeFirst(t *testing.T) {
 			t.Errorf("by name %v: no open item names the supplier made first", byName)
 		}
 	}
+}
+
+// TestSaftImport_SupplierPicksAndBankFields (purchasing delivery 0): two of
+// the file's suppliers matching one of the register's are both ambiguous and
+// block Apply until picked; a pick names a supplier of the file, and a
+// supplier of the register once; an inactive supplier is a valid pick; a
+// register supplier taken gets the file's bank account where its own is
+// empty and keeps its own where it has one; and one deleted between the
+// preview and the apply's transaction is a conflict.
+func TestSaftImport_SupplierPicksAndBankFields(t *testing.T) {
+	old := saftBooks(t)
+	old.ledger(t)
+	second := old.supplier(t, "Verksted AS", "")
+	old.sys(t, "supplier_invoice", "2026-02-03", accounting.Source{Module: "accounting", Kind: "supplier_invoice", ID: 3},
+		accounting.Line{Role: "payables", Amount: rat("-500"), SupplierID: &second},
+		accounting.Line{AccountID: old.acc("7700"), Amount: rat("500")})
+	_, files := old.export(t, map[string]any{"fiscalYear": 2026})
+
+	setUpRegister := func(t *testing.T) (*harness, *modtest.Client, gen.AccountingSupplier, gen.AccountingSupplier, gen.AccountingSaftImport) {
+		t.Helper()
+		h := newHarness(t, modtest.WithSalesTax(fakeSalesTax{seller: fjordSeller}))
+		c := h.SignIn(t, accountant...)
+		made := func(body map[string]any) gen.AccountingSupplier {
+			res := c.Do(http.MethodPost, base+"/suppliers", body)
+			if res.Status != http.StatusCreated {
+				t.Fatalf("a supplier = %d %s", res.Status, res.Body)
+			}
+			var s gen.AccountingSupplier
+			res.JSON(&s)
+			return s
+		}
+		kept := made(map[string]any{"name": "Verksted AS", "organisationNumber": "923456783", "bankAccount": "86011117947"})
+		idle := made(map[string]any{"name": "Gammel leverandør"})
+		res := c.Do(http.MethodPut, fmt.Sprintf("%s/suppliers/%d", base, idle.Id), map[string]any{"name": idle.Name, "active": false, "revision": idle.Revision})
+		if res.Status != http.StatusOK {
+			t.Fatalf("make it inactive = %d %s", res.Status, res.Body)
+		}
+		preview := uploadOK(t, c, "fjord.xml", files[0])
+		return h, c, kept, idle, preview
+	}
+	apply := func(c *modtest.Client, id int64, picks map[string]any) *modtest.Response {
+		body := map[string]any{"vatTerm": "bimonthly", "language": "nb", "fiscalYearStartMonth": 1}
+		if picks != nil {
+			body["suppliers"] = picks
+		}
+		return c.Do(http.MethodPost, fmt.Sprintf("%s/saft-imports/%d/apply", base, id), body)
+	}
+
+	h, c, kept, idle, preview := setUpRegister(t)
+	if len(preview.Suppliers) != 2 {
+		t.Fatalf("preview suppliers = %+v", preview.Suppliers)
+	}
+	var withOrg, without string
+	for _, sp := range preview.Suppliers {
+		if sp.Match != gen.SaftSupplierAmbiguous || sp.SupplierId != nil || len(sp.Candidates) != 1 || sp.Candidates[0].Id != kept.Id {
+			t.Errorf("a supplier both match = %+v", sp)
+		}
+		if sp.OrganisationNumber != nil {
+			withOrg = sp.FileSupplierId
+		} else {
+			without = sp.FileSupplierId
+		}
+	}
+	blocked := false
+	for _, b := range preview.Blockers {
+		blocked = blocked || strings.Contains(b, "pick which it is")
+	}
+	if !blocked || withOrg == "" || without == "" {
+		t.Fatalf("preview blockers = %v, suppliers %q %q", preview.Blockers, withOrg, without)
+	}
+	expectProblem(t, apply(c, preview.Id, nil), http.StatusConflict, "saft_import_ambiguous_suppliers")
+	expectProblem(t, apply(c, preview.Id, map[string]any{withOrg: kept.Id}), http.StatusConflict, "saft_import_ambiguous_suppliers")
+	expectProblem(t, apply(c, preview.Id, map[string]any{withOrg: kept.Id, without: kept.Id}), http.StatusBadRequest, "saft_import_supplier_picked_twice")
+	expectProblem(t, apply(c, preview.Id, map[string]any{withOrg: kept.Id, without: 0, "no-such": 0}), http.StatusBadRequest, "saft_import_file_supplier_unknown")
+
+	res := apply(c, preview.Id, map[string]any{withOrg: kept.Id, without: idle.Id})
+	if res.Status != http.StatusCreated {
+		t.Fatalf("apply = %d %s", res.Status, res.Body)
+	}
+	read := func(id int64) gen.AccountingSupplier {
+		var s gen.AccountingSupplier
+		c.Do(http.MethodGet, fmt.Sprintf("%s/suppliers/%d", base, id), nil).JSON(&s)
+		return s
+	}
+	if got := read(kept.Id); deref(got.BankAccount) != "86011117947" || got.Revision != kept.Revision {
+		t.Errorf("the register's own bank account = %q (revision %d, was %d), want it kept", deref(got.BankAccount), got.Revision, kept.Revision)
+	}
+	if got := read(idle.Id); deref(got.BankAccount) != "12345678903" || got.Active {
+		t.Errorf("the inactive supplier picked = %+v, want the file's bank account and still inactive", got)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM accounting.suppliers`); n != 2 {
+		t.Errorf("suppliers after the import = %d, want the two of the register", n)
+	}
+
+	// A supplier deleted after the plan was read, before the apply's
+	// transaction takes the import: 409, nothing applied.
+	h2, c2, kept2, _, preview2 := setUpRegister(t)
+	var file2 string
+	for _, sp := range preview2.Suppliers {
+		if sp.OrganisationNumber != nil {
+			file2 = sp.FileSupplierId
+		}
+	}
+	other := ""
+	for _, sp := range preview2.Suppliers {
+		if sp.FileSupplierId != file2 {
+			other = sp.FileSupplierId
+		}
+	}
+	tx, err := h2.Pool().Begin(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback(context.Background()) }()
+	if _, err := tx.Exec(t.Context(), `SELECT 1 FROM accounting.saft_imports WHERE id = $1 FOR UPDATE`, preview2.Id); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan *modtest.Response, 1)
+	go func() { done <- apply(c2, preview2.Id, map[string]any{file2: kept2.Id, other: 0}) }()
+	deadline := time.Now().Add(10 * time.Second)
+	for h2.Count(t, `SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND query LIKE '%LockSaftImport%'`) == 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("the apply never waited on the import's lock")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if _, err := tx.Exec(t.Context(), `DELETE FROM accounting.suppliers WHERE id = $1`, kept2.Id); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	expectProblem(t, <-done, http.StatusConflict, "saft_import_supplier_gone")
 }

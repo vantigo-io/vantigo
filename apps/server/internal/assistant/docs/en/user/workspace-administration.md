@@ -537,8 +537,10 @@ themselves; it does nothing until lot tracking is switched on
 lot's dates, supplier lot and note, add and remove its files, and put and release its holds
 on the lot's page ([Inventory](/en/user/inventory/#lots-and-serial-numbers)). In Accounting,
 **Keep the suppliers** is a buyer's: it adds and changes suppliers — but their bank account,
-default account and tax code, which stay with **Post vouchers** — also before the books are
-set up, and needs no **Use Accounting** ([Accounting](/en/user/accounting/#suppliers)).
+IBAN, BIC, default account, tax code, person flag and active flag, which stay with **Post
+vouchers** — also before the books are set up, and needs no **Use Accounting**. Seeing the
+register under **Suppliers** in Accounting does need **Use Accounting**; the buyer's own
+screen comes with Purchasing ([Accounting](/en/user/accounting/#suppliers)).
 
 ### Assignments
 

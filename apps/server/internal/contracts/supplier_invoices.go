@@ -86,7 +86,7 @@ type SupplierInvoiceDraft struct {
 	Reference    string
 	Description  string
 	Lines        []SupplierInvoiceDraftLine
-	// By is the person the draft is made for.
+	// By is the person the draft is made for; uuid.Nil is refused.
 	By uuid.UUID
 }
 
@@ -113,7 +113,7 @@ const (
 	// that is not reversed.
 	SupplierInvoiceDuplicate = "duplicate_supplier_invoice"
 	// SupplierInvoiceInvalid: the draft breaks a field rule; Fields says
-	// which.
+	// which — supplierId for a supplier the register does not have.
 	SupplierInvoiceInvalid = "supplier_invoice_invalid"
 )
 

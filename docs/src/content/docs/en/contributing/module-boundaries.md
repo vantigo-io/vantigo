@@ -1094,7 +1094,15 @@ lag, never what must refuse — go through the platform's domain-events outbox,
       `agent` grant `Access.Check` answers the agent user's own principal — its roles, no
       session, no second factor — with `Via{Kind: "agent", AgentID, RunID, CustomerID,
       ApprovedBy}` (identity's `AgentGrants`), admitted by a permission rule alone: every
-      `session`, `scim` and `policy:` rule is refused. `Dispatcher.Call` accepts either
+      `scim` and `policy:` rule is refused, and every `session` rule but one the operation
+      marks **`x-vantigo-agent: allowed`**. That mark is for an operation whose handler checks
+      the permissions itself — the supplier register's create, change and Brønnøysund lookup,
+      which ask for `accounting:suppliers-manage` or `accounting:post` (purchasing delivery
+      0), and no other. The OpenAPI lint accepts no other value and the mark only beside
+      `x-vantigo-access: session`; the router sets `Rule.Agent` from it (as it sets
+      `Rule.Station`), and `checkAgentGrant` answers a session rule only when `Rule.Agent`
+      holds. The zero value refuses, so a handler's own `Check` never admits an agent to a
+      session rule. `Dispatcher.Call` accepts either
       grant and refuses a call with none; the in-process request's `RemoteAddr` is
       `assistant-<user>` or `agent-<user>`, so the router's rate limits are per principal. The
       dispatcher reads an agent's run from **the grant itself**: it asks identity's

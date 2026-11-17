@@ -784,7 +784,7 @@ func (s *server) PostAccountingSupplierInvoice(ctx context.Context, req gen.Post
 		return events.Publish(ctx, tx, moduleName, contracts.SupplierInvoicePosted{InvoiceID: inv.ID, SupplierID: inv.SupplierID,
 			Kind: inv.Kind, Number: inv.SupplierNumber, InvoiceDate: inv.InvoiceDate.Format(time.DateOnly),
 			DueDate: dateText(inv.DueDate), Currency: inv.Currency, Total: money(mustRat(inv.Total)),
-			Reference: deref(inv.Reference), PostedAt: s.now()}, s.now())
+			PostedAt: s.now()}, s.now())
 	})
 	if err != nil {
 		return nil, err
@@ -1069,7 +1069,7 @@ func (s *server) ReverseAndCopyAccountingSupplierInvoice(ctx context.Context, re
 		return events.Publish(ctx, tx, moduleName, contracts.SupplierInvoiceReversed{InvoiceID: inv.ID, SupplierID: inv.SupplierID,
 			Kind: inv.Kind, Number: inv.SupplierNumber, InvoiceDate: inv.InvoiceDate.Format(time.DateOnly),
 			DueDate: dateText(inv.DueDate), Currency: inv.Currency, Total: money(mustRat(inv.Total)),
-			Reference: deref(inv.Reference), CopyID: copyID, ReversedAt: s.now()}, s.now())
+			CopyID: copyID, ReversedAt: s.now()}, s.now())
 	})
 	if c := duplicateConflict(err); c != nil {
 		return nil, c

@@ -40,6 +40,13 @@ const CustomerScopeExtension = "x-vantigo-customer-scope"
 // it: a station acts within manufacturing:access and manufacturing:shop-floor.
 const StationExtension = "x-vantigo-station"
 
+// AgentExtension opens an operation whose rule is session to an agent grant
+// (purchasing delivery 0): its handler checks the permissions itself, as the
+// supplier register's writes check accounting:suppliers-manage or
+// accounting:post. Its only value is "allowed", and only beside
+// x-vantigo-access: session.
+const AgentExtension = "x-vantigo-agent"
+
 // Problem is one structural rule an operation breaks.
 type Problem struct {
 	OperationID string
@@ -48,7 +55,8 @@ type Problem struct {
 
 // Lint checks the rules every operation must meet: an operationId, a summary
 // (the assistant searches by it, the Assistant design S15), a valid
-// x-vantigo-access, a valid x-vantigo-assistant and x-vantigo-customer-scope when present, and a documented
+// x-vantigo-access, a valid x-vantigo-assistant, x-vantigo-station,
+// x-vantigo-agent and x-vantigo-customer-scope when present, and a documented
 // success response (see hasSuccessResponse).
 func Lint(doc *openapi3.T) []Problem {
 	var problems []Problem
@@ -80,6 +88,13 @@ func Lint(doc *openapi3.T) []Problem {
 				problems = append(problems, Problem{op.OperationID, fmt.Sprintf("%s: %s %v must be allowed", where, StationExtension, value)})
 			} else if !strings.HasPrefix(access, "permission:") || !onlyManufacturing(access) {
 				problems = append(problems, Problem{op.OperationID, fmt.Sprintf("%s: %s is only for an operation behind permission:manufacturing:…, not %q", where, StationExtension, access)})
+			}
+		}
+		if value, present := op.Op.Extensions[AgentExtension]; present {
+			if mode, _ := value.(string); mode != "allowed" {
+				problems = append(problems, Problem{op.OperationID, fmt.Sprintf("%s: %s %v must be allowed", where, AgentExtension, value)})
+			} else if access != "session" {
+				problems = append(problems, Problem{op.OperationID, fmt.Sprintf("%s: %s is only for an operation behind session, not %q", where, AgentExtension, access)})
 			}
 		}
 		if value, present := op.Op.Extensions[CustomerScopeExtension]; present {

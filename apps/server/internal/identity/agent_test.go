@@ -478,6 +478,17 @@ func TestAgentGrant_AnswersTheAgentsPrincipalWithVia(t *testing.T) {
 			t.Errorf("%s: answered %v, want ErrForbidden", rule, got)
 		}
 	}
+
+	// A session rule the operation marks x-vantigo-agent: allowed is met: its
+	// handler asks for the permissions itself. The mark opens nothing else.
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req = req.WithContext(contracts.WithGrant(req.Context(), contracts.GrantRef{Kind: contracts.GrantAgent, ID: id}))
+	if p, err := h.access.Check(req, contracts.Rule{Kind: contracts.RuleSession, Agent: true}); err != nil || p.UserID != agent || p.Via == nil {
+		t.Errorf("a session rule marked for agents = %+v, %v, want the agent", p, err)
+	}
+	if _, err := h.access.Check(req, contracts.Rule{Kind: contracts.RulePolicy, Names: []string{"ActiveAccount"}, Agent: true}); !errors.Is(err, contracts.ErrForbidden) {
+		t.Errorf("a policy rule marked for agents = %v, want ErrForbidden", err)
+	}
 }
 
 func TestAgentGrant_IssueRefusesWhatIsNotAnActiveAgentAndTheGrantEnds(t *testing.T) {

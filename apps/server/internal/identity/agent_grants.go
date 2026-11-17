@@ -22,9 +22,11 @@ import (
 // expired or revoked, or its user is not an agent, is disabled or holds the
 // Owner or SystemAdmin role (which 00141 stops it being given; this is the
 // same line drawn where the rule is evaluated); and, before anything is read,
-// when the rule is a scim rule, a session rule or a policy rule of any name
-// (the Owner tier among them): only a permission rule, or an anonymous one,
-// is answered.
+// when the rule is a scim rule, a policy rule of any name (the Owner tier
+// among them) or a session rule the operation does not open to agents: only a
+// permission rule, an anonymous one, or a session rule marked
+// x-vantigo-agent: allowed (Rule.Agent, whose handler checks the permissions
+// itself) is answered.
 //
 // A grant that does not hold is ErrUnauthenticated, as a session that does not
 // is, except that an agent that may no longer act is ErrForbidden. Under an
@@ -33,10 +35,15 @@ func (a *Access) checkAgentGrant(ctx context.Context, grantID uuid.UUID, rule co
 	// An agent is admitted by a permission its roles hold and by nothing less:
 	// a session rule or a policy alone (ActiveAccount, Business) would let it
 	// reach the self-service endpoints of a person's account, and the Owner
-	// tier and SCIM are never its.
+	// tier and SCIM are never its. A session rule is met only where the
+	// operation is marked for agents and its handler asks for the permissions.
 	switch rule.Kind {
-	case contracts.RuleSCIM, contracts.RuleSession, contracts.RulePolicy:
+	case contracts.RuleSCIM, contracts.RulePolicy:
 		return contracts.Principal{}, contracts.ErrForbidden
+	case contracts.RuleSession:
+		if !rule.Agent {
+			return contracts.Principal{}, contracts.ErrForbidden
+		}
 	}
 	refuse := func(err error) (contracts.Principal, error) {
 		if rule.Kind == contracts.RuleAnonymous {

@@ -547,9 +547,11 @@ partiet; den gjør ingenting før partisporing er slått på
 ([Lager](/en/reference/inventory/#expiry-and-today)). **Administrere partier** lar en person endre
 et partis datoer, leverandørparti og merknad, legge til og fjerne filene, og sette og frigi
 sperringer på siden for partiet ([Lager](/nb/user/inventory/#partier-og-serienumre)). I
-Regnskap er **Holde leverandørene** en innkjøpers: den legger inn og endrer leverandører —
-unntatt kontonummer, standardkonto og mva-kode, som blir hos **Bokføre bilag** — også før
-regnskapet er satt opp, og krever ikke **Bruke Regnskap** ([Regnskap](/nb/user/accounting/#leverandører)).
+Regnskap er **Vedlikeholde leverandører** en innkjøpers: den legger inn og endrer
+leverandører — unntatt kontonummer, IBAN, BIC, standardkonto, mva-kode, personmerket og
+aktivmerket, som blir hos **Bokføre bilag** — også før regnskapet er satt opp, og krever ikke
+**Bruke Regnskap**. Å se registeret under **Leverandører** i Regnskap krever **Bruke
+Regnskap**; innkjøperens eget skjermbilde kommer med Innkjøp ([Regnskap](/nb/user/accounting/#leverandører)).
 
 ### Tildelinger
 

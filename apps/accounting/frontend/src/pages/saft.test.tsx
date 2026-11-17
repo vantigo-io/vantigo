@@ -65,9 +65,13 @@ describe("Coming from another system", () => {
     await userEvent.click(screen.getByRole("button", { name: "Read the file" }));
     const table = await screen.findByTestId("saft-suppliers");
     expect(within(table).getByText("Several in the register")).toBeInTheDocument();
+    expect(within(table).getByText("Pick one, or a new supplier, before you set up the books.")).toBeInTheDocument();
     await userEvent.click(within(table).getByRole("combobox", { name: "Take Verksted AS as" }));
     await userEvent.click(await screen.findByRole("option", { name: "2 Verksted AS" }));
     expect(within(table).getByText("Picked")).toBeInTheDocument();
+    expect(
+      within(table).queryByText("Pick one, or a new supplier, before you set up the books."),
+    ).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Set up the books from the file" }));
     await waitFor(() => expect(sent(fetchMock, "POST", /\/saft-imports\/8001\/apply$/)).toHaveLength(1));
     expect(sent(fetchMock, "POST", /\/saft-imports\/8001\/apply$/)[0].body).toMatchObject({

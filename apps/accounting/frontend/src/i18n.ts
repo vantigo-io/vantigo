@@ -804,8 +804,10 @@ export const accountingCatalog = {
     saftSupplierMatch_linked: "Picked",
     saftSupplierPick: "Take {{name}} as",
     saftSupplierPickNew: "A new supplier",
+    saftSupplierPickOne: "Pick which it is",
+    saftSupplierPickRequired: "Pick one, or a new supplier, before you set up the books.",
     saftSupplierPickHint:
-      "A supplier already in the register is taken as the file's: the opening balance is put on it, and nothing in its record is changed. Pick one where several have the name, or change a match.",
+      "A supplier already in the register is taken as the file's: the opening balance is put on it, and its record is kept — only a bank account, IBAN or BIC it lacks is filled from the file. Where it could be several, pick which it is before you set up the books; you can change any match.",
     saftImportCustomers: "Customers, matched in Customers by organisation number",
     saftMatch_matched: "Matched",
     saftMatch_linked: "Linked",
@@ -1882,8 +1884,10 @@ export const accountingCatalog = {
     saftSupplierMatch_linked: "Valgt",
     saftSupplierPick: "Bruk {{name}} som",
     saftSupplierPickNew: "En ny leverandør",
+    saftSupplierPickOne: "Velg hvilken det er",
+    saftSupplierPickRequired: "Velg én, eller en ny leverandør, før du setter opp regnskapet.",
     saftSupplierPickHint:
-      "En leverandør som allerede er i registeret, brukes for filens leverandør: inngående saldo føres på den, og ingenting i den endres. Velg én der flere har navnet, eller endre et treff.",
+      "En leverandør som allerede er i registeret, brukes for filens leverandør: inngående saldo føres på den, og opplysningene beholdes — bare et kontonummer, IBAN eller BIC den mangler, fylles fra filen. Der den kan være flere, velger du hvilken før du setter opp regnskapet; du kan endre ethvert treff.",
     saftImportCustomers: "Kunder, funnet i Kunder på organisasjonsnummer",
     saftMatch_matched: "Funnet",
     saftMatch_linked: "Koblet",
