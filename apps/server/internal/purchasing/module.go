@@ -21,15 +21,14 @@ import (
 )
 
 // The seven permission keys (§8). Every key is delegable but the settings',
-// which administers the module; none is sensitive. Delivery A's operations
-// ask for access, orders-manage, orders-send, supplier-items-manage and
-// settings; receive and invoices-match are declared now so a role can be
-// built once, and are first asked for by the delivery named beside each.
+// which administers the module; none is sensitive. invoices-match is
+// declared now so a role can be built once, and is first asked for by
+// delivery D.
 const (
 	permAccess              = "purchasing:access"
 	permOrdersManage        = "purchasing:orders-manage"
 	permOrdersSend          = "purchasing:orders-send"
-	permReceive             = "purchasing:receive" // delivery B
+	permReceive             = "purchasing:receive"
 	permSupplierItemsManage = "purchasing:supplier-items-manage"
 	permInvoicesMatch       = "purchasing:invoices-match" // delivery D
 	permSettings            = "purchasing:settings"
@@ -38,7 +37,7 @@ const (
 var permissions = []contracts.Permission{
 	{
 		Key: permAccess, Display: "Use Purchasing",
-		Description: "See the Purchasing app and read purchase orders and supplier items.",
+		Description: "See the Purchasing app and read purchase orders, their receipts and supplier items.",
 		Category:    "Purchasing", Sensitive: false, Delegable: true,
 	},
 	{
@@ -52,8 +51,8 @@ var permissions = []contracts.Permission{
 		Category:    "Purchasing", Sensitive: false, Delegable: true,
 	},
 	{
-		Key: permReceive, Display: "Receive goods (coming)",
-		Description: "Not in use yet: receiving goods against purchase orders comes in a later version of Purchasing.",
+		Key: permReceive, Display: "Receive goods",
+		Description: "Receive goods against purchase orders, undo a receipt, and mark a text or service line delivered.",
 		Category:    "Purchasing", Sensitive: false, Delegable: true,
 	},
 	{

@@ -372,3 +372,38 @@ func (s *server) objectDelete(ctx context.Context, key string) error {
 	}
 	return s.objects.Delete(ctx, key)
 }
+
+// stockLocations is, per variant, the site's active locations holding it,
+// before any transaction (the receive screen's default location, P24).
+func (s *server) stockLocations(ctx context.Context, variantIDs []int32, siteID int64) ([]contracts.StockLocation, error) {
+	if len(variantIDs) == 0 {
+		return nil, nil
+	}
+	if err := noteContractCall(ctx, "Stock.Locations"); err != nil {
+		return nil, err
+	}
+	if s.deps.Stock == nil {
+		return nil, errDependencyUnavailable
+	}
+	out, err := s.deps.Stock.Locations(ctx, variantIDs, siteID)
+	if err != nil {
+		return nil, fmt.Errorf("purchasing: read the locations holding the variants: %w", err)
+	}
+	return out, nil
+}
+
+// siteLocations is every location of the site, archived ones too, before
+// any transaction (P30: the locations a receipt offers are Inventory's).
+func (s *server) siteLocations(ctx context.Context, siteID int64) ([]contracts.StockSiteLocation, error) {
+	if err := noteContractCall(ctx, "Stock.SiteLocations"); err != nil {
+		return nil, err
+	}
+	if s.deps.Stock == nil {
+		return nil, errDependencyUnavailable
+	}
+	out, err := s.deps.Stock.SiteLocations(ctx, siteID)
+	if err != nil {
+		return nil, fmt.Errorf("purchasing: read site %d's locations: %w", siteID, err)
+	}
+	return out, nil
+}

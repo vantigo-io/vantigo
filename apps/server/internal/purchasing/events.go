@@ -6,7 +6,8 @@ package purchasing
 // on the change's own transaction while it holds the order's row lock, so the
 // event commits with the change or not at all. A payload carries ids,
 // numbers, dates, the currency and the net total — no name, address or note
-// (contracts/events_purchasing.go). None has a consumer in this phase.
+// (contracts/events_purchasing.go). purchasing.receipt.posted.v1 and
+// …undone.v1 come from receive.go and undo.go, under the same lock.
 
 import (
 	"context"

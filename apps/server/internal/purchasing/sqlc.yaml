@@ -7,6 +7,7 @@ sql:
   - engine: postgresql
     schema:
       - ../db/migrations/00189_purchasing_baseline.sql
+      - ../db/migrations/00190_purchasing_receipts.sql
     queries: queries
     gen:
       go:

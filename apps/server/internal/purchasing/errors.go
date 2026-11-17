@@ -58,6 +58,13 @@ const (
 	codePriceInvalid          = "price_invalid"
 	codeDiscountInvalid       = "discount_invalid"
 	codeQuantityBelowReceived = "quantity_below_received"
+
+	// Receipts' codes (delivery B).
+	codeLineNotReceivable  = "line_not_receivable"
+	codeOverReceipt        = "over_receipt"
+	codeReceiptUndone      = "receipt_undone"
+	codeReceiptInvoiced    = "receipt_invoiced"
+	codeLineNotDeliverable = "line_not_deliverable"
 )
 
 // refusalCodes is every code above, which PurchasingProblem's description
@@ -70,6 +77,7 @@ var refusalCodes = []string{
 	codeClientRequestReused, codeDependencyUnavailable, codeSendingDisabled, codeMailFailed, codeAmountOutOfRange,
 	codeTooManyLines, codeLineInvalid, codeLineNotFound, codeVariantNotFound, codeVariantDiscontinued,
 	codePackagingNotFound, codeQuantityInvalid, codePriceInvalid, codeDiscountInvalid, codeQuantityBelowReceived,
+	codeLineNotReceivable, codeOverReceipt, codeReceiptUndone, codeReceiptInvoiced, codeLineNotDeliverable,
 }
 
 // The titles this module's validation problems carry.
@@ -81,6 +89,7 @@ const (
 	invalidSupplierItemTitle = "Invalid supplier item"
 	invalidImportTitle       = "Invalid import"
 	invalidConfirmTitle      = "Invalid confirmation"
+	invalidReceiptTitle      = "Invalid receipt"
 )
 
 // errDependencyUnavailable is every accessor's answer when the contract it

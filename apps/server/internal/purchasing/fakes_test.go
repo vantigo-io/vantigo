@@ -243,6 +243,8 @@ func (d *fakeDirectory) LockSuppliers(ctx context.Context, tx pgx.Tx, ids []int6
 type fakeStock struct {
 	contracts.Stock
 	sites []contracts.StockSite
+	// holding is what Stock.Locations answers (receipts_fakes_test.go).
+	holding []contracts.StockLocation
 }
 
 func (f *fakeStock) Sites(ctx context.Context) ([]contracts.StockSite, error) {

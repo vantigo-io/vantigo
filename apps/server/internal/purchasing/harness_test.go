@@ -79,6 +79,7 @@ type harness struct {
 	catalog *fakeCatalog
 	dir     *fakeDirectory
 	stock   *fakeStock
+	ledger  *fakeLedger
 	objects *fakeObjectStore
 	mail    *modtest.FakeOutboundMail
 	channel uuid.UUID
@@ -109,7 +110,7 @@ type harnessOptions struct {
 
 func newHarness(t *testing.T, o harnessOptions) *harness {
 	t.Helper()
-	h := &harness{catalog: newFakeCatalog(), dir: newFakeDirectory(), objects: newFakeObjectStore(),
+	h := &harness{catalog: newFakeCatalog(), dir: newFakeDirectory(), objects: newFakeObjectStore(), ledger: newFakeLedger(),
 		stock: &fakeStock{sites: []contracts.StockSite{
 			{ID: siteMain, Code: "HOVED", Name: "Hovedlager", Active: true},
 			{ID: siteArchived, Code: "GML", Name: "Gammelt lager", Active: false},
@@ -122,7 +123,7 @@ func newHarness(t *testing.T, o harnessOptions) *harness {
 		modtest.WithModule(purchasing.Module()),
 		modtest.WithProducts(h.catalog),
 		modtest.WithSupplierDirectory(h.dir),
-		modtest.WithStock(h.stock, nil),
+		modtest.WithStock(h.stock, h.ledger),
 		modtest.WithSalesTax(tax),
 		modtest.WithObjectStore(h.objects),
 	}
