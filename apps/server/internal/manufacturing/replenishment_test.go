@@ -487,3 +487,35 @@ func TestReplenishment_WorkerOnAPoolOfOne(t *testing.T) {
 		t.Errorf("runs = %+v", run.Items)
 	}
 }
+
+// TestReplenishment_OpenPurchases is purchasing design P4 and A3: what is on
+// order through Purchasing at the site is incoming beside Inventory's
+// transfers, which Stock.Placements answers alone; another site's is not.
+func TestReplenishment_OpenPurchases(t *testing.T) {
+	t.Parallel()
+	supply := modtest.NewFakePurchaseSupply()
+	h := newHarness(t, modtest.WithPurchaseSupply(supply))
+	c := h.SignIn(t, planner...)
+	h.stock.setPlacements(siteMain,
+		contracts.StockPlacement{VariantID: varWheel, ReorderPoint: "20", OnHand: "5", Reserved: "0", Incoming: "1"},
+		contracts.StockPlacement{VariantID: varTube, ReorderPoint: "10", OnHand: "5", Reserved: "0", Incoming: "0"},
+	)
+	supply.Set(
+		contracts.OpenPurchase{VariantID: varWheel, SiteID: siteMain, Quantity: "8"},
+		contracts.OpenPurchase{VariantID: varTube, SiteID: siteMain, Quantity: "6"},
+		contracts.OpenPurchase{VariantID: varWheel, SiteID: siteMain + 1, Quantity: "100"},
+	)
+	runReplenishment(t, h)
+	got := suggestions(t, c, siteMain)
+	// The wheel: 5 + 1 in transit + 8 on order = 14 ≤ 20, still bought; the
+	// tube: 5 + 6 = 11 > 10, no longer low.
+	if wheel, ok := got[varWheel]; !ok || wheel.Kind != gen.Buy || wheel.Reason.Incoming != "9" || wheel.Reason.Projected != "14" {
+		t.Errorf("wheel = %+v", wheel)
+	}
+	if _, ok := got[varTube]; ok {
+		t.Errorf("the tube is suggested with enough on order: %+v", got[varTube])
+	}
+	if supply.Calls() == 0 {
+		t.Error("the open purchases were never read")
+	}
+}
