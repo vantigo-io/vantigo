@@ -385,13 +385,15 @@ type exportedHandoff struct {
 	WithdrawalReason string    `json:"withdrawalReason,omitempty"`
 }
 
-// exportedDelivery is one e-mail that handed a document over: to whom, when
-// and with what subject. The recipient is "" once the customer was
+// exportedDelivery is one e-mail that handed a document over: to whom, when,
+// with what subject and the personal message it carried (invoices phase 6
+// design I6). The recipient and the message are "" once the customer was
 // anonymised.
 type exportedDelivery struct {
 	Recipient string    `json:"recipient"`
 	SentAt    time.Time `json:"sentAt"`
 	Subject   string    `json:"subject"`
+	Message   string    `json:"message,omitempty"`
 }
 
 // exportedTransmission is one EHF transmission of an issued document (EHF
@@ -642,7 +644,7 @@ func exportCustomerData(ctx context.Context, q *store.Queries, customerID int32)
 	deliveriesOf := map[int64][]exportedDelivery{}
 	for _, d := range deliveries {
 		deliveriesOf[d.InvoiceID] = append(deliveriesOf[d.InvoiceID],
-			exportedDelivery{Recipient: d.Recipient, SentAt: d.SentAt.UTC(), Subject: d.Subject})
+			exportedDelivery{Recipient: d.Recipient, SentAt: d.SentAt.UTC(), Subject: d.Subject, Message: d.Message})
 	}
 	transmissions, err := q.EveryTransmissionOfDocuments(ctx, ids)
 	if err != nil {

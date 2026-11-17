@@ -164,6 +164,8 @@ func (s *server) PostInvoicesQuick(ctx context.Context, req gen.PostInvoicesQuic
 		return nil, err
 	}
 	line1, line2, postal, city, country := addressColumns(in.address)
+	// The logo's object, asked of the store before the lock (goneLogo).
+	goneLogo := s.goneLogo(ctx, q)
 
 	var issued store.InvoicesInvoice
 	var refusal *gen.InvoicesConflictProblem
@@ -207,7 +209,7 @@ func (s *server) PostInvoicesQuick(ctx context.Context, req gen.PostInvoicesQuic
 		}
 		// 2. The issue's own body on the document held: the settings row,
 		// the number, the checks, the writes.
-		issued, refusal, err = s.issueLocked(ctx, tx, txq, draft, draft, profile, issueWork{}, nil, true, loc)
+		issued, refusal, err = s.issueLocked(ctx, tx, txq, draft, draft, profile, issueWork{goneLogo: goneLogo}, nil, true, loc)
 		if err != nil {
 			return err
 		}

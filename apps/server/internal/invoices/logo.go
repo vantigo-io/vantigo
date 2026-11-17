@@ -8,15 +8,17 @@ import (
 	"errors"
 	"fmt"
 	"image"
-	_ "image/jpeg" // registers image/jpeg with image.DecodeConfig
-	_ "image/png"  // registers image/png with image.DecodeConfig
+	"image/draw"
+	"image/jpeg"
+	"image/png"
 	"io"
 	"mime/multipart"
 	"net/http"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/phpdave11/gofpdf"
 
-	"github.com/vantigo-io/vantigo/server/internal/imagemeta"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/gen"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/store"
 	"github.com/vantigo-io/vantigo/server/internal/mail"
@@ -33,6 +35,15 @@ import (
 // may name any object a logo ever had (I1). The upload's shape follows
 // Staff's person photo (staff/person_photo.go): one multipart part, file,
 // read no further than the bound allows, its own bytes deciding its type.
+
+// maxStoredLogoBytes bounds a stored logo's read: the normalised file, which
+// may be larger than the upload — a JPEG of a photograph is encoded again —
+// and is refused as logo_too_large past it. logoJPEGQuality is what a JPEG is
+// encoded again at, Products' images' quality.
+const (
+	maxStoredLogoBytes = 4 << 20
+	logoJPEGQuality    = 90
+)
 
 // The logo's bounds (I1). The request — the file and its multipart framing —
 // stays under the router's default body cap of 1 MiB, so the operation needs
@@ -150,6 +161,44 @@ func judgeLogo(data []byte) (string, *gen.InvoicesConflictProblem) {
 	return contentType, nil
 }
 
+// normaliseLogo is a judged logo as it is stored: decoded whole — bounded by
+// judgeLogo's 2,000 pixels — and encoded again, a PNG from an 8-bit NRGBA
+// picture (never interlaced, never 16-bit), a JPEG as baseline at quality 90.
+// Encoding again drops every piece of metadata. The result must then load in
+// the PDF renderer: gofpdf refuses some files silently at render time (an
+// interlaced PNG among them), and maroto would print its error into every
+// document issued with the logo, so one gofpdf will not take is logo_invalid.
+func normaliseLogo(data []byte, contentType string) ([]byte, *gen.InvoicesConflictProblem) {
+	unreadable := ptr(logoRefused(codeLogoUnsupportedType, "A logo is a PNG or a JPEG"))
+	src, _, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		return nil, unreadable
+	}
+	b := src.Bounds()
+	flat := image.NewNRGBA(image.Rect(0, 0, b.Dx(), b.Dy()))
+	draw.Draw(flat, flat.Bounds(), src, b.Min, draw.Src)
+	var out bytes.Buffer
+	pdfType := "PNG"
+	if contentType == contentTypeJPEG {
+		pdfType = "JPG"
+		err = jpeg.Encode(&out, flat, &jpeg.Options{Quality: logoJPEGQuality})
+	} else {
+		err = png.Encode(&out, flat)
+	}
+	if err != nil {
+		return nil, unreadable
+	}
+	if out.Len() > maxStoredLogoBytes {
+		return nil, ptr(logoRefused(codeLogoTooLarge, "A logo is at most 512 KiB"))
+	}
+	probe := gofpdf.New("P", "mm", "A4", "")
+	probe.RegisterImageOptionsReader("logo", gofpdf.ImageOptions{ImageType: pdfType}, bytes.NewReader(out.Bytes()))
+	if probe.Err() {
+		return nil, ptr(logoRefused(codeLogoInvalid, "This picture cannot be printed on a document; save it again as an ordinary PNG or JPEG"))
+	}
+	return out.Bytes(), nil
+}
+
 // logoKey is where a logo's bytes are stored: named by their hash, so the
 // same logo uploaded twice is one object and a key never holds two.
 func logoKey(sha, contentType string) string {
@@ -164,15 +213,55 @@ func settingsLogo(row store.InvoicesSetting) *gen.InvoicesSettingsLogo {
 	return &gen.InvoicesSettingsLogo{ContentType: gen.InvoicesSettingsLogoContentType(*row.LogoContentType), Sha256: *row.LogoSha256}
 }
 
+// withLogoState marks the settings' logo missing when the store no longer
+// holds its object (review of delivery A): the page then asks for it again. A
+// store that cannot be asked leaves the answer as it is, logged.
+func (s *server) withLogoState(ctx context.Context, resp *gen.InvoicesSettingsResponse, row store.InvoicesSetting) {
+	if resp.Logo == nil || row.LogoObjectKey == nil {
+		return
+	}
+	exists, err := s.objectExists(ctx, *row.LogoObjectKey)
+	switch {
+	case err != nil:
+		s.deps.Logger.WarnContext(ctx, "invoices: whether the logo is in the store could not be read", "error", err.Error())
+	case !exists:
+		resp.Logo.Missing = ptr(true)
+	}
+}
+
+// goneLogo is the settings' logo key when an issue must not snapshot it, ""
+// otherwise: its object is not in the store, or the store cannot say. Read on
+// the pool before the issue's transaction, and never a refusal — an issue
+// does not fail for a logo; it is issued without one, and the operator told.
+func (s *server) goneLogo(ctx context.Context, q *store.Queries) string {
+	settings, err := q.GetSettings(ctx)
+	if err != nil || settings.LogoObjectKey == nil {
+		return ""
+	}
+	key := *settings.LogoObjectKey
+	exists, err := s.objectExists(ctx, key)
+	switch {
+	case err != nil:
+		s.deps.Logger.ErrorContext(ctx, "invoices: the logo could not be checked in the store; the document is issued without it",
+			"logo_key", key, "error", err.Error())
+	case !exists:
+		s.deps.Logger.ErrorContext(ctx, "invoices: the logo the settings name is not in the store; the document is issued without it — upload it again",
+			"logo_key", key)
+	default:
+		return ""
+	}
+	return key
+}
+
 // PutInvoicesSettingsLogo Set the seller's logo
 // (PUT /api/v1/invoices/settings/logo)
 //
-// The file is judged first — nothing is stored for a refused one — then its
-// metadata stripped (imagemeta.Strip; one that cannot be walked is
-// logo_unsupported_type), the stripped bytes hashed and put in the store
-// outside any transaction (503 storage_unavailable with nothing recorded),
-// and only then named on the settings under their lock. An object the row
-// no longer names is kept: a document's snapshot may name it (I1).
+// The file is judged first — nothing is stored for a refused one — then
+// normalised (normaliseLogo), the normalised bytes hashed and put in the
+// store outside any transaction (503 storage_unavailable with nothing
+// recorded), and only then named on the settings under their lock, the
+// revision left as it is. An object the row no longer names is kept: a
+// document's snapshot may name it (I1).
 func (s *server) PutInvoicesSettingsLogo(ctx context.Context, req gen.PutInvoicesSettingsLogoRequestObject) (gen.PutInvoicesSettingsLogoResponseObject, error) {
 	data, refusal := readLogo(req.Body)
 	if refusal != nil {
@@ -182,28 +271,29 @@ func (s *server) PutInvoicesSettingsLogo(ctx context.Context, req gen.PutInvoice
 	if refusal != nil {
 		return gen.PutInvoicesSettingsLogo400ApplicationProblemPlusJSONResponse(*refusal), nil
 	}
-	stripped, err := imagemeta.Strip(contentType, data)
-	if err != nil {
-		return gen.PutInvoicesSettingsLogo400ApplicationProblemPlusJSONResponse(logoRefused(codeLogoUnsupportedType, "A logo is a PNG or a JPEG")), nil
+	stored, refusal := normaliseLogo(data, contentType)
+	if refusal != nil {
+		return gen.PutInvoicesSettingsLogo400ApplicationProblemPlusJSONResponse(*refusal), nil
 	}
-	sum := sha256.Sum256(stripped)
+	sum := sha256.Sum256(stored)
 	sha := hex.EncodeToString(sum[:])
 	key := logoKey(sha, contentType)
 	if !s.storageConfigured {
 		return gen.PutInvoicesSettingsLogo503ApplicationProblemPlusJSONResponse(storageUnavailable(
 			"This installation has no object store, so a logo cannot be stored. Nothing was recorded.")), nil
 	}
-	if err := s.objectPut(ctx, key, bytes.NewReader(stripped), contentType); err != nil {
+	if err := s.objectPut(ctx, key, bytes.NewReader(stored), contentType); err != nil {
 		s.deps.Logger.ErrorContext(ctx, "invoices: a logo could not be written to the store", "error", err.Error())
 		return gen.PutInvoicesSettingsLogo503ApplicationProblemPlusJSONResponse(storageUnavailable(
 			"The logo could not be stored. Nothing was recorded; try again.")), nil
 	}
 
 	var saved store.InvoicesSetting
-	err = s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
+	err := s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		if _, err := txq.LockSettings(ctx); err != nil {
 			return fmt.Errorf("invoices: lock the settings: %w", err)
 		}
+		var err error
 		saved, err = txq.SetSettingsLogo(ctx, store.SetSettingsLogoParams{
 			LogoObjectKey: &key, LogoSha256: &sha, LogoContentType: &contentType, Now: s.deps.Clock(),
 		})
@@ -267,19 +357,47 @@ func (r logoDownload) VisitGetInvoicesSettingsLogoResponse(w http.ResponseWriter
 	return r.body.VisitGetInvoicesSettingsLogoResponse(w)
 }
 
+// logoNotModified is the 304 a client holding the current logo is answered,
+// with the same ETag and caching as the logo itself.
+type logoNotModified struct{ sha string }
+
+func (r logoNotModified) VisitGetInvoicesSettingsLogoResponse(w http.ResponseWriter) error {
+	w.Header().Set("Cache-Control", logoCacheControl)
+	w.Header().Set("ETag", `"`+r.sha+`"`)
+	return gen.GetInvoicesSettingsLogo304Response{}.VisitGetInvoicesSettingsLogoResponse(w)
+}
+
+// etagMatches reports whether an If-None-Match header names sha: "*", or one
+// of its comma-separated tags, weak or strong, quoted or bare.
+func etagMatches(header *string, sha string) bool {
+	if header == nil {
+		return false
+	}
+	for _, tag := range strings.Split(*header, ",") {
+		tag = strings.Trim(strings.TrimPrefix(strings.TrimSpace(tag), "W/"), `"`)
+		if tag == "*" || tag == sha {
+			return true
+		}
+	}
+	return false
+}
+
 // GetInvoicesSettingsLogo Get the seller's logo
 // (GET /api/v1/invoices/settings/logo)
 //
 // The logo the settings name, read from the store outside any transaction:
 // none set, or an object the store no longer holds, is the bare 404; a store
 // that cannot be read is 503.
-func (s *server) GetInvoicesSettingsLogo(ctx context.Context, _ gen.GetInvoicesSettingsLogoRequestObject) (gen.GetInvoicesSettingsLogoResponseObject, error) {
+func (s *server) GetInvoicesSettingsLogo(ctx context.Context, req gen.GetInvoicesSettingsLogoRequestObject) (gen.GetInvoicesSettingsLogoResponseObject, error) {
 	row, err := store.New(s.deps.Pool).GetSettings(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("invoices: read the settings: %w", err)
 	}
 	if row.LogoObjectKey == nil || row.LogoSha256 == nil || row.LogoContentType == nil {
 		return gen.GetInvoicesSettingsLogo404Response{}, nil
+	}
+	if etagMatches(req.Params.IfNoneMatch, *row.LogoSha256) {
+		return logoNotModified{sha: *row.LogoSha256}, nil
 	}
 	data, contentType, err := s.logoOf(ctx, row.LogoObjectKey, row.LogoSha256)
 	switch {
@@ -303,7 +421,9 @@ func (s *server) GetInvoicesSettingsLogo(ctx context.Context, _ gen.GetInvoicesS
 // settings — read whole from the store, nil with no key. Its bytes must hash
 // to sha, else it is an error, never a document printed with another logo
 // (I2). A store that cannot be read wraps errObjectStore, so a download
-// answers 503; an object the store does not hold wraps storage.ErrNotExist.
+// answers 503; an object the store does not hold wraps storage.ErrNotExist
+// and errObjectStore both — retryable, since uploading the same file again
+// puts the object back under its content's key.
 // It answers the bytes and the type they sniff as, PNG or JPEG.
 func (s *server) logoOf(ctx context.Context, key, sha *string) ([]byte, string, error) {
 	if key == nil || sha == nil {
@@ -314,13 +434,13 @@ func (s *server) logoOf(ctx context.Context, key, sha *string) ([]byte, string, 
 	}
 	rc, err := s.objectGet(ctx, *key)
 	if errors.Is(err, storage.ErrNotExist) {
-		return nil, "", fmt.Errorf("invoices: logo %s is not in the store: %w", *key, err)
+		return nil, "", fmt.Errorf("%w: logo %s is not in the store: %w", errObjectStore, *key, err)
 	}
 	if err != nil {
 		return nil, "", fmt.Errorf("%w: read logo %s: %w", errObjectStore, *key, err)
 	}
 	defer func() { _ = rc.Close() }()
-	data, err := io.ReadAll(io.LimitReader(rc, maxLogoBytes+1))
+	data, err := io.ReadAll(io.LimitReader(rc, maxStoredLogoBytes+1))
 	if err != nil {
 		return nil, "", fmt.Errorf("%w: read logo %s: %w", errObjectStore, *key, err)
 	}

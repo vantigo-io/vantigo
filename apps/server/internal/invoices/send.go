@@ -68,14 +68,24 @@ const deliveryRowTimeout = 5 * time.Second
 const maxSendMessage = 2000
 
 // sendMessage is the request's personal message as the mail carries it and
-// the delivery stores it: trimmed, its line breaks as "\n", "" for none — or
-// false when it is longer than maxSendMessage characters.
-func sendMessage(raw *string) (string, bool) {
+// the delivery stores it: its line breaks — \r\n and a lone \r — as "\n",
+// trimmed, "" for none. It answers the refusal instead when the message is
+// longer than maxSendMessage characters or carries a C0 control character
+// other than a line break or a tab, which no mail body should hold.
+func sendMessage(raw *string) (string, string) {
 	if raw == nil {
-		return "", true
+		return "", ""
 	}
-	message := strings.TrimSpace(strings.ReplaceAll(*raw, "\r\n", "\n"))
-	return message, utf8.RuneCountInString(message) <= maxSendMessage
+	message := strings.TrimSpace(strings.NewReplacer("\r\n", "\n", "\r", "\n").Replace(*raw))
+	for _, r := range message {
+		if (r < 0x20 && r != '\n' && r != '\t') || r == 0x7f {
+			return "", "A message holds no control characters but line breaks and tabs"
+		}
+	}
+	if utf8.RuneCountInString(message) > maxSendMessage {
+		return "", fmt.Sprintf("A message holds at most %d characters", maxSendMessage)
+	}
+	return message, ""
 }
 
 // messageIDDomain is the right-hand side of every Message-ID this module
@@ -256,10 +266,10 @@ func (s *server) PostInvoicesByIdSend(ctx context.Context, req gen.PostInvoicesB
 	}
 
 	// 1a. The personal message, judged before anything is read (I6).
-	message, ok := sendMessage(req.Body.Message)
-	if !ok {
+	message, refusal := sendMessage(req.Body.Message)
+	if refusal != "" {
 		return gen.PostInvoicesByIdSend400ApplicationProblemPlusJSONResponse(invalid(invalidSendTitle,
-			fieldError("message", fmt.Sprintf("A message holds at most %d characters", maxSendMessage)))), nil
+			fieldError("message", refusal))), nil
 	}
 
 	// 2. The document.

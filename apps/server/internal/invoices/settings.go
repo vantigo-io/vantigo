@@ -529,7 +529,12 @@ func (s *server) settingsAnswer(ctx context.Context, row store.InvoicesSetting) 
 	if err != nil {
 		return gen.InvoicesSettingsResponse{}, err
 	}
-	return s.withSending(ctx, settingsResponse(row, locked, next), row.SendChannel)
+	resp, err := s.withSending(ctx, settingsResponse(row, locked, next), row.SendChannel)
+	if err != nil {
+		return resp, err
+	}
+	s.withLogoState(ctx, &resp, row)
+	return resp, nil
 }
 
 // GetInvoicesSettings Get the invoice settings
@@ -548,6 +553,7 @@ func (s *server) GetInvoicesSettings(ctx context.Context, _ gen.GetInvoicesSetti
 	if err != nil {
 		return nil, err
 	}
+	s.withLogoState(ctx, &resp, row)
 	return gen.GetInvoicesSettings200JSONResponse(resp), nil
 }
 
@@ -746,6 +752,7 @@ func (s *server) PutInvoicesSettings(ctx context.Context, req gen.PutInvoicesSet
 	if err != nil {
 		return nil, err
 	}
+	s.withLogoState(ctx, &resp, saved)
 	return gen.PutInvoicesSettings200JSONResponse(resp), nil
 }
 

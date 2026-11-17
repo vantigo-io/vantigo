@@ -63,21 +63,32 @@ func TestLogo_SetServedAndRemoved(t *testing.T) {
 	logo := pngLogo(t, 240, 80)
 
 	saved := withLogo(t, h, logo)
-	if saved.Logo == nil || saved.Logo.ContentType != "image/png" || saved.Logo.Sha256 != sha(logo) || saved.Revision != 3 {
-		t.Fatalf("settings after PUT = logo %+v revision %d, want the PNG's hash and the revision moved on", saved.Logo, saved.Revision)
+	// The stored file is the normalised one, named by its own hash; setting
+	// the logo leaves the settings' revision as it was (2).
+	if saved.Logo == nil || saved.Logo.ContentType != "image/png" || saved.Logo.Missing != nil || saved.Revision != 2 {
+		t.Fatalf("settings after PUT = logo %+v revision %d, want a PNG and the revision unmoved", saved.Logo, saved.Revision)
 	}
-	key := "branding/logo-" + sha(logo) + ".png"
-	if !bytes.Equal(h.objects.object(key), logo) {
-		t.Errorf("the store holds %d bytes at %s, want the logo", len(h.objects.object(key)), key)
+	key := "branding/logo-" + saved.Logo.Sha256 + ".png"
+	stored := h.objects.object(key)
+	if stored == nil || sha(stored) != saved.Logo.Sha256 {
+		t.Fatalf("the store holds %d bytes at %s, want the normalised logo under its own hash", len(stored), key)
 	}
 
 	res := h.SignIn(t, "invoices:access").Do(http.MethodGet, logoPath, nil)
-	if res.Status != http.StatusOK || !bytes.Equal(res.Body, logo) {
+	if res.Status != http.StatusOK || !bytes.Equal(res.Body, stored) {
 		t.Fatalf("GET /settings/logo = %d, %d bytes; want 200 and the logo", res.Status, len(res.Body))
 	}
-	if res.Header("Content-Type") != "image/png" || res.Header("ETag") != `"`+sha(logo)+`"` ||
+	if res.Header("Content-Type") != "image/png" || res.Header("ETag") != `"`+saved.Logo.Sha256+`"` ||
 		res.Header("Cache-Control") != "private, max-age=0, must-revalidate" || res.Header("X-Content-Type-Options") != "nosniff" {
 		t.Errorf("headers = type %q etag %q cache %q", res.Header("Content-Type"), res.Header("ETag"), res.Header("Cache-Control"))
+	}
+	// A client holding the current logo is answered 304, with no body.
+	again := h.SignIn(t, "invoices:access").Do(http.MethodGet, logoPath, nil, modtest.Header("If-None-Match", `"`+saved.Logo.Sha256+`"`))
+	if again.Status != http.StatusNotModified || len(again.Body) != 0 || again.Header("ETag") != `"`+saved.Logo.Sha256+`"` {
+		t.Errorf("GET with If-None-Match = %d, %d bytes", again.Status, len(again.Body))
+	}
+	if other := h.SignIn(t, "invoices:access").Do(http.MethodGet, logoPath, nil, modtest.Header("If-None-Match", `"0000"`)); other.Status != http.StatusOK {
+		t.Errorf("GET with another ETag = %d, want 200", other.Status)
 	}
 
 	if res := manager(t, h).Do(http.MethodDelete, logoPath, nil); res.Status != http.StatusNoContent {
@@ -85,8 +96,8 @@ func TestLogo_SetServedAndRemoved(t *testing.T) {
 	}
 	var read settingsJSON
 	h.SignIn(t, "invoices:access").Do(http.MethodGet, settingsPath, nil).JSON(&read)
-	if read.Logo != nil || read.Revision != 4 {
-		t.Errorf("settings after DELETE = logo %+v revision %d, want none and 4", read.Logo, read.Revision)
+	if read.Logo != nil || read.Revision != 2 {
+		t.Errorf("settings after DELETE = logo %+v revision %d, want none and the revision unmoved", read.Logo, read.Revision)
 	}
 	if h.objects.object(key) == nil {
 		t.Error("the removed logo's object was deleted; it is kept for the documents that name it")
@@ -185,12 +196,12 @@ func TestIssue_SnapshotsThePhoneAndTheLogo(t *testing.T) {
 	body["phone"] = "22 33 44 55"
 	saveSeller(t, h, body)
 	logo := pngLogo(t, 240, 80)
-	withLogo(t, h, logo)
+	sum := withLogo(t, h, logo).Logo.Sha256
 
 	first := issuedAcme(t, h)
 	snapshot := `SELECT coalesce(seller_phone, '-') || '|' || coalesce(seller_logo_object_key, '-') || '|' || coalesce(seller_logo_sha256, '-')
 		FROM invoices.invoices WHERE id = $1`
-	want := "22 33 44 55|branding/logo-" + sha(logo) + ".png|" + sha(logo)
+	want := "22 33 44 55|branding/logo-" + sum + ".png|" + sum
 	if got := modtest.One[string](t, h.Harness, snapshot, first.ID); got != want {
 		t.Errorf("snapshot = %s, want %s", got, want)
 	}
@@ -220,13 +231,13 @@ func TestPDF_ALogoThatDoesNotVerifyIsNotPrinted(t *testing.T) {
 	t.Parallel()
 	h := readyToIssue(t)
 	logo := pngLogo(t, 240, 80)
-	withLogo(t, h, logo)
+	sum := withLogo(t, h, logo).Logo.Sha256
 	draft := createDraft(t, h, draftBody(customerAcme, line("Konsulenttime", 2, 1000, vat25)))
 	if res := creator(t, h).Do(http.MethodGet, previewPath(draft.ID), nil); res.Status != http.StatusOK {
 		t.Fatalf("preview with a logo = %d %s", res.Status, res.Body)
 	}
 
-	h.objects.replace("branding/logo-"+sha(logo)+".png", pngLogo(t, 240, 81))
+	h.objects.replace("branding/logo-"+sum+".png", pngLogo(t, 240, 81))
 	inv := issued(t, h, draft.ID)
 	if inv.PdfStored != nil && *inv.PdfStored {
 		t.Fatal("a document whose logo does not verify had its PDF stored")
@@ -244,7 +255,7 @@ func TestSend_TheHTMLTheLogoAndTheMessage(t *testing.T) {
 	t.Parallel()
 	h, fake := sendReady(t)
 	logo := pngLogo(t, 240, 80)
-	withLogo(t, h, logo)
+	sum := withLogo(t, h, logo).Logo.Sha256
 	inv := issuedAcme(t, h)
 
 	message := "Hei Acme,\r\nher er fakturaen <b>som avtalt</b>.  "
@@ -261,7 +272,7 @@ func TestSend_TheHTMLTheLogoAndTheMessage(t *testing.T) {
 	if len(out.Attachments) != 2 {
 		t.Fatalf("attachments = %d, want the PDF and the logo", len(out.Attachments))
 	}
-	if a := out.Attachments[1]; !a.Inline || a.ContentID != "logo" || a.ContentType != "image/png" || !bytes.Equal(a.Content, logo) {
+	if a := out.Attachments[1]; !a.Inline || a.ContentID != "logo" || a.ContentType != "image/png" || sha(a.Content) != sum {
 		t.Errorf("the logo part = %q %q inline %v id %q", a.FileName, a.ContentType, a.Inline, a.ContentID)
 	}
 	stored := "Hei Acme,\nher er fakturaen <b>som avtalt</b>."
@@ -280,6 +291,76 @@ func TestSend_TheHTMLTheLogoAndTheMessage(t *testing.T) {
 		t.Errorf("%d mails sent, want the one", n)
 	}
 	sent(t, h, inv.ID, map[string]any{"message": strings.Repeat("æ", 2000)})
+}
+
+// A message is refused, before anything is sent, when it carries a control
+// character but a line break or a tab; \r\n and a lone \r become \n.
+func TestSend_TheMessagesCharacters(t *testing.T) {
+	t.Parallel()
+	h, fake := sendReady(t)
+	inv := issuedAcme(t, h)
+	for _, bad := range []string{"Hei\x00der", "Hei\x1b[31m", "Hei\x07"} {
+		res := sendAs(sender(t, h), inv.ID, map[string]any{"message": bad})
+		if p := problemOf(t, res); res.Status != http.StatusBadRequest || len(p.Errors["message"]) == 0 {
+			t.Errorf("message %q = %d %v, want a 400 on message", bad, res.Status, p.Errors)
+		}
+	}
+	if n := len(fake.mails()); n != 0 {
+		t.Fatalf("%d mails sent for refused messages", n)
+	}
+	got := sent(t, h, inv.ID, map[string]any{"message": "En\r\nto\rtre\tfire"})
+	if d := got.Deliveries[0]; d.Message == nil || *d.Message != "En\nto\ntre\tfire" {
+		t.Errorf("stored message = %v, want the line breaks as \\n and the tab kept", d.Message)
+	}
+}
+
+// A logo the settings name whose object is gone (review of delivery A): the
+// settings say missing; an issue snapshots no logo and is not refused; a
+// document snapshotted before the object went, its PDF not stored yet, is a
+// 503 to retry, and uploading the same file again restores it.
+func TestLogo_AnObjectGoneFromTheStore(t *testing.T) {
+	t.Parallel()
+	h := readyToIssue(t)
+	logo := pngLogo(t, 240, 80)
+	sum := withLogo(t, h, logo).Logo.Sha256
+	key := "branding/logo-" + sum + ".png"
+
+	// A document snapshotted with the logo whose PDF could not be stored.
+	h.objects.failPuts(errors.New("disk full"))
+	pending := issuedAcme(t, h)
+	h.objects.failPuts(nil)
+	if pending.PdfStored != nil && *pending.PdfStored {
+		t.Fatal("the PDF was stored though every put failed")
+	}
+
+	h.objects.lose(key)
+	var read settingsJSON
+	h.SignIn(t, "invoices:access").Do(http.MethodGet, settingsPath, nil).JSON(&read)
+	if read.Logo == nil || read.Logo.Missing == nil || !*read.Logo.Missing {
+		t.Errorf("settings with the object gone = %+v, want logo.missing", read.Logo)
+	}
+	if res := download(t, h, pending.ID); res.Status != http.StatusServiceUnavailable {
+		t.Errorf("download of a document whose logo is gone = %d, want 503", res.Status)
+	}
+	draft := createDraft(t, h, draftBody(customerAcme, line("Konsulenttime", 1, 1000, vat25)))
+	if res := creator(t, h).Do(http.MethodGet, previewPath(draft.ID), nil); res.Status != http.StatusServiceUnavailable {
+		t.Errorf("preview with the settings' logo gone = %d, want 503", res.Status)
+	}
+
+	next := issuedAcme(t, h)
+	if got := modtest.One[string](t, h.Harness, `SELECT coalesce(seller_logo_object_key, '-') FROM invoices.invoices WHERE id = $1`, next.ID); got != "-" {
+		t.Errorf("an issue with the logo's object gone snapshotted %s, want none", got)
+	}
+	if !strings.Contains(h.Logs(), "the document is issued without it") {
+		t.Error("the issue without the logo was not logged")
+	}
+
+	if again := withLogo(t, h, logo); again.Logo.Sha256 != sum || again.Logo.Missing != nil {
+		t.Errorf("the same file again = %+v, want the same key, no longer missing", again.Logo)
+	}
+	if res := download(t, h, pending.ID); res.Status != http.StatusOK {
+		t.Errorf("download once the logo is back = %d, want 200", res.Status)
+	}
 }
 
 // A delivery's message is blanked with its recipient when the customer is

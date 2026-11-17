@@ -3963,7 +3963,7 @@ type InvoicesSendDefaults struct {
 	Warnings   []string `json:"warnings"`
 }
 
-// InvoicesSendRequest POST /invoices/{id}/send's body (D4). recipient overrides the customer's current invoice e-mail: a bare address that parses to itself, at most 254 characters once trimmed (so "Name <a@b>" is refused). Absent, the invoice e-mail is used. message is an optional personal message (invoices phase 6 design I6): plain text, trimmed, at most 2,000 characters (else a 400 on message), placed above the standard text in both the text and the HTML body — escaped in the HTML, its line breaks kept — and stored on the delivery. Absent or blank sends none.
+// InvoicesSendRequest POST /invoices/{id}/send's body (D4). recipient overrides the customer's current invoice e-mail: a bare address that parses to itself, at most 254 characters once trimmed (so "Name <a@b>" is refused). Absent, the invoice e-mail is used. message is an optional personal message (invoices phase 6 design I6): plain text, trimmed, its line breaks as \n, at most 2,000 characters and no control character but a line break or a tab (else a 400 on message), placed above the standard text in both the text and the HTML body — escaped in the HTML, its line breaks kept — and stored on the delivery. Absent or blank sends none.
 type InvoicesSendRequest struct {
 	Message   *string `json:"message,omitempty"`
 	Recipient *string `json:"recipient,omitempty"`
@@ -3972,7 +3972,10 @@ type InvoicesSendRequest struct {
 // InvoicesSettingsLogo The seller's logo (invoices phase 6 design I1), absent from the settings when none is set. contentType is image/png or image/jpeg; sha256 is the hash of the stored bytes, the ETag GET /settings/logo answers, so a client can key its cache by it. A document issued while it was set prints it; one issued before keeps the logo it was issued with, or none.
 type InvoicesSettingsLogo struct {
 	ContentType InvoicesSettingsLogoContentType `json:"contentType"`
-	Sha256      string                          `json:"sha256"`
+
+	// Missing True when the settings name a logo whose object the store no longer holds; upload the logo again (the same file restores it, its key being its content). Documents issued meanwhile carry no logo. Absent otherwise.
+	Missing *bool  `json:"missing,omitempty"`
+	Sha256  string `json:"sha256"`
 }
 
 // InvoicesSettingsLogoContentType defines model for InvoicesSettingsLogo.ContentType.
@@ -4761,6 +4764,12 @@ type GetInvoicesRemindersParamsStatus string
 // GetInvoicesRemindersParamsChannel defines parameters for GetInvoicesReminders.
 type GetInvoicesRemindersParamsChannel string
 
+// GetInvoicesSettingsLogoParams defines parameters for GetInvoicesSettingsLogo.
+type GetInvoicesSettingsLogoParams struct {
+	// IfNoneMatch The ETag a client holds, the logo's SHA-256 quoted; when it is the current logo's the answer is a bare 304.
+	IfNoneMatch *string `json:"If-None-Match,omitempty"`
+}
+
 // PutInvoicesSettingsLogoMultipartBody defines parameters for PutInvoicesSettingsLogo.
 type PutInvoicesSettingsLogoMultipartBody struct {
 	File openapi_types.File `json:"file"`
@@ -5151,7 +5160,7 @@ type ServerInterface interface {
 	DeleteInvoicesSettingsLogo(w http.ResponseWriter, r *http.Request)
 	// GetInvoicesSettingsLogo Get the seller's logo
 	// (GET /api/v1/invoices/settings/logo)
-	GetInvoicesSettingsLogo(w http.ResponseWriter, r *http.Request)
+	GetInvoicesSettingsLogo(w http.ResponseWriter, r *http.Request, params GetInvoicesSettingsLogoParams)
 	// PutInvoicesSettingsLogo Set the seller's logo
 	// (PUT /api/v1/invoices/settings/logo)
 	PutInvoicesSettingsLogo(w http.ResponseWriter, r *http.Request)
@@ -7448,8 +7457,35 @@ func (siw *ServerInterfaceWrapper) DeleteInvoicesSettingsLogo(w http.ResponseWri
 // GetInvoicesSettingsLogo operation middleware
 func (siw *ServerInterfaceWrapper) GetInvoicesSettingsLogo(w http.ResponseWriter, r *http.Request) {
 
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetInvoicesSettingsLogoParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-None-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-None-Match")]; found {
+		var IfNoneMatch string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-None-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-None-Match", valueList[0], &IfNoneMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-None-Match", Err: err})
+			return
+		}
+
+		params.IfNoneMatch = &IfNoneMatch
+
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetInvoicesSettingsLogo(w, r)
+		siw.Handler.GetInvoicesSettingsLogo(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -12899,6 +12935,20 @@ func (response GetInvoicesReminderPrintBatchesByIdPdf404Response) VisitGetInvoic
 	return nil
 }
 
+type GetInvoicesReminderPrintBatchesByIdPdf503ApplicationProblemPlusJSONResponse InvoicesConflictProblem
+
+func (response GetInvoicesReminderPrintBatchesByIdPdf503ApplicationProblemPlusJSONResponse) VisitGetInvoicesReminderPrintBatchesByIdPdfResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PostInvoicesReminderPrintBatchesByIdPostedRequestObject struct {
 	Id   int64 `json:"id"`
 	Body *PostInvoicesReminderPrintBatchesByIdPostedJSONRequestBody
@@ -14055,6 +14105,7 @@ func (response DeleteInvoicesSettingsLogo404Response) VisitDeleteInvoicesSetting
 }
 
 type GetInvoicesSettingsLogoRequestObject struct {
+	Params GetInvoicesSettingsLogoParams
 }
 
 type GetInvoicesSettingsLogoResponseObject interface {
@@ -14099,6 +14150,14 @@ func (response GetInvoicesSettingsLogo200ImagepngResponse) VisitGetInvoicesSetti
 	}
 	_, err := io.Copy(w, response.Body)
 	return err
+}
+
+type GetInvoicesSettingsLogo304Response struct {
+}
+
+func (response GetInvoicesSettingsLogo304Response) VisitGetInvoicesSettingsLogoResponse(w http.ResponseWriter) error {
+	w.WriteHeader(304)
+	return nil
 }
 
 type GetInvoicesSettingsLogo401JSONResponse externalRef0.AuthErrorResponse
@@ -17658,6 +17717,20 @@ func (response GetInvoicesByIdPreviewPdf409ApplicationProblemPlusJSONResponse) V
 	return err
 }
 
+type GetInvoicesByIdPreviewPdf503ApplicationProblemPlusJSONResponse InvoicesConflictProblem
+
+func (response GetInvoicesByIdPreviewPdf503ApplicationProblemPlusJSONResponse) VisitGetInvoicesByIdPreviewPdfResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PostInvoicesByIdSendRequestObject struct {
 	Id   int64 `json:"id"`
 	Body *PostInvoicesByIdSendJSONRequestBody
@@ -20601,8 +20674,10 @@ func (sh *strictHandler) DeleteInvoicesSettingsLogo(w http.ResponseWriter, r *ht
 }
 
 // GetInvoicesSettingsLogo operation middleware
-func (sh *strictHandler) GetInvoicesSettingsLogo(w http.ResponseWriter, r *http.Request) {
+func (sh *strictHandler) GetInvoicesSettingsLogo(w http.ResponseWriter, r *http.Request, params GetInvoicesSettingsLogoParams) {
 	var request GetInvoicesSettingsLogoRequestObject
+
+	request.Params = params
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.GetInvoicesSettingsLogo(ctx, request.(GetInvoicesSettingsLogoRequestObject))

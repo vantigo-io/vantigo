@@ -626,6 +626,11 @@ func (s *server) GetInvoicesByIdPreviewPdf(ctx context.Context, req gen.GetInvoi
 		}
 	}
 	body, err := s.renderPreview(ctx, q, inv, profile)
+	if errors.Is(err, errObjectStore) {
+		// The settings' logo could not be read: a 503 to retry.
+		return gen.GetInvoicesByIdPreviewPdf503ApplicationProblemPlusJSONResponse(storageUnavailable(
+			"The seller's logo could not be read from the store; try again, or upload the logo again.")), nil
+	}
 	if err != nil {
 		return nil, err
 	}
