@@ -47,8 +47,9 @@ delivery 0: [Contracts for other modules](#contracts-for-other-modules)). The us
   number and invoice address) and `CustomersByLegalID` (the import's matching), the
   projects' names, and the names of who asked for an export
   ([SAF-T Financial](#saf-t-financial)).
-- It publishes two events, `accounting.supplier_invoice.posted` and
-  `accounting.supplier_invoice.reversed` ([Supplier invoices](#supplier-invoices)), and
+- It publishes three events, `accounting.supplier_invoice.posted`,
+  `accounting.supplier_invoice.reversed` and `accounting.supplier_invoice.deleted`
+  ([Supplier invoices](#supplier-invoices)), and
   provides two contracts, `contracts.SupplierDirectory` and `contracts.SupplierInvoices`;
   it reads `contracts.SupplierInvoiceMatches` when Purchasing provides it, and calls every
   module's `contracts.SupplierReferenceHolder` and `contracts.SupplierPersonalData`
@@ -665,7 +666,8 @@ it, rounded) or `totalNok` (the rate is then the NOK total over the total), else
 invoice date. The lines need not make the total yet. 409 `duplicate_supplier_invoice` for
 the same supplier, kind and number on another invoice not reversed; a change of a posted
 or reversed one is 409 `supplier_invoice_not_draft`. `DELETE /supplier-invoices/{id}`
-deletes a draft with its lines and files; a file's object is deleted from the store once
+deletes a draft with its lines and files, and publishes `accounting.supplier_invoice.deleted`
+on the same transaction (see *Events* below); a file's object is deleted from the store once
 no file and no attachment names it.
 
 **Files.** `POST /supplier-invoices/{id}/files` (multipart `file`, at most 20 MB, 400
@@ -734,16 +736,17 @@ totals, lines and files (the same objects), `copiedFromId` naming it, which it a
 (201). The duplicate guard lets the copy through: the original is reversed. A row under
 Needs attention that named the original names the copy.
 
-**Events** (purchasing design P5). Post publishes `accounting.supplier_invoice.posted` v1,
-and Reverse and copy `accounting.supplier_invoice.reversed` v1, on the posting's own
-transaction and while it holds the invoice's row lock, so each commits with its voucher or
-not at all; the aggregate is the invoice. Each carries `invoiceId`, `supplierId`, `kind`,
+**Events** (purchasing design P5, A79). Post publishes `accounting.supplier_invoice.posted`
+v1, Reverse and copy `accounting.supplier_invoice.reversed` v1, and deleting a draft
+`accounting.supplier_invoice.deleted` v1, each on its own transaction and while it holds the
+invoice's row lock, so each commits with its voucher — or the deletion — or not at all; the
+aggregate is the invoice. Each carries `invoiceId`, `supplierId`, `kind`,
 `number` (the supplier's), `invoiceDate`, `dueDate`, `currency`, `total` (in the invoice's
 currency); the posted event `postedAt`, the reversed one `copyId` — the draft the copy
-made — and `reversedAt` (`contracts/events_accounting.go`). Neither carries the reference
+made — and `reversedAt`, the deleted one `deletedAt` (`contracts/events_accounting.go`). Neither carries the reference
 or the description: a payload holds no free text (module boundaries, rule 23), and a
 consumer reads them through `SupplierInvoices.Invoice`. No handler of Accounting's reads
-the events; Purchasing's will.
+the events; Purchasing's do, to fix, move and release its matches.
 
 ### Payments
 

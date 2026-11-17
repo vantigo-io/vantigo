@@ -1,6 +1,6 @@
 ---
 title: "Purchasing module"
-description: "The buy side: the module and the three modules it requires, the seven permissions, the settings, supplier items — one per supplier and variant, the preferred item, the currency flag and the price-list import —, purchase orders — the header and its defaults, lines and their arithmetic, the states and every transition with its refusal, the concurrency token, the change log, Late and Unconfirmed —, the number series, Send, Mark as sent and Send again with their idempotency, the PDFs and the mail, Close, Close line, Reopen, Cancel, the confirmation and Copy; the proposals — the purchase demand's one source, the netting of drafts and of what was sent since, the rounding once to the supplier item — and Create orders with its idempotency and lock order; the variant and supplier holders and the supplier's personal data; the events; contracts.PurchaseSupply; the two workers; the contracts read; the dashboard figures; receipts — the receive screen and the scanned code, Receive on one transaction with StockLedger.Receive, its lock order, retry and idempotency, more and less than ordered, the order's status, the receipts read, Undo through StockLedger.ReverseReceipt, and the delivered mark on a text or service line —, the receipt events and Manufacturing's handler of them; the invoice match — the match tables, what is billable, the suggestion by reference, allocate, Match all received and unmatch with their refusals, the panel and the order's invoices with what accounting:read shows, the differences, Register invoice through SupplierInvoices.CreateDraft with its idempotency, the handlers of Accounting's posted and reversed events, the last price, received not invoiced and its CSV, and the SupplierInvoiceMatches badge —; the refusal codes and every endpoint with its permission and status codes."
+description: "The buy side: the module and the three modules it requires, the seven permissions, the settings, supplier items — one per supplier and variant, the preferred item, the currency flag and the price-list import —, purchase orders — the header and its defaults, lines and their arithmetic, the states and every transition with its refusal, the concurrency token, the change log, Late and Unconfirmed —, the number series, Send, Mark as sent and Send again with their idempotency, the PDFs and the mail, Close, Close line, Reopen, Cancel, the confirmation and Copy; the proposals — the purchase demand's one source, the netting of drafts and of what was sent since, the rounding once to the supplier item — and Create orders with its idempotency and lock order; the variant and supplier holders and the supplier's personal data; the events; contracts.PurchaseSupply; the two workers; the contracts read; the dashboard figures; receipts — the receive screen and the scanned code, Receive on one transaction with StockLedger.Receive, its lock order, retry and idempotency, more and less than ordered, the order's status, the receipts read, Undo through StockLedger.ReverseReceipt, and the delivered mark on a text or service line —, the receipt events and Manufacturing's handler of them; the invoice match — the match tables, what is billable, the suggestion by reference, allocate, Match all received and unmatch with their refusals, the panel and the order's invoices with what accounting:read shows, the differences, Register invoice through SupplierInvoices.CreateDraft with its idempotency, the handlers of Accounting's posted, reversed and deleted events, the last price, received not invoiced and its CSV, and the SupplierInvoiceMatches badge —; the refusal codes and every endpoint with its permission and status codes."
 sources:
   - apps/server/internal/purchasing
   - openapi/purchasing.yaml
@@ -50,7 +50,7 @@ The module is `purchasing`, its schema `purchasing` (migration
 
 It fills `contracts.PurchaseSupply`, `contracts.SupplierInvoiceMatches` (the badge on
 Accounting's supplier invoices) and the supplier and variant holders, and handles
-Accounting's `accounting.supplier_invoice.posted.v1` and `…reversed.v1`.
+Accounting's `accounting.supplier_invoice.posted.v1`, `…reversed.v1` and `…deleted.v1`.
 
 `MODULES` refuses `purchasing` without `accounting`, `inventory` or `products`, naming
 the one missing, and the module refuses to mount without the supplier directory, the
@@ -626,7 +626,9 @@ taking the mark off a received order makes it `partially_received`, or `sent` wh
 else has come. It answers **200** with the order's `progress` and, to a holder of
 `purchasing:access`, the order (`PurchasingDeliveredResult`, A47).
 Refused 409 `line_not_deliverable` on a goods line — it is received instead —,
-`line_closed` on a closed line, and `version_conflict` for a stale `expectedUpdatedAt`.
+`line_closed` on a closed line, `receipt_invoiced` for taking the mark off a line whose
+`invoiced` is above 0 — nothing of it would be billable (A84) —, and `version_conflict`
+for a stale `expectedUpdatedAt`.
 
 ## Proposals
 
@@ -718,7 +720,7 @@ supplier, site, `created`, `linesAdded` and `unpricedRows`.
 ## The invoice match
 
 A supplier invoice is Accounting's; the match is Purchasing's (P36–P41, A1, A9–A11, A14,
-A15, A20, A70–A76). Purchasing reads an invoice through `contracts.SupplierInvoices.Invoice`
+A15, A20, A70–A85). Purchasing reads an invoice through `contracts.SupplierInvoices.Invoice`
 on the pool — its header, its state, its reference and each line's net as Accounting
 computes it — and makes one only through `CreateDraft` ([module-boundaries rule
 26](/en/contributing/module-boundaries/)). Migration `00192_purchasing_matches.sql` adds the
@@ -729,10 +731,10 @@ tables.
 | Table | What it holds |
 | --- | --- |
 | `invoice_matches` | One row per supplier-invoice line matched: the invoice's id and the line's **position** — unique together —, the order and the order line, `kind` (`invoice` or `credit_note`), the quantity in the order line's unit (more than 0), the invoice line's net, the invoice's number, date and currency as last read, `state` (`provisional` or `posted`, with `posted_at`) and who matched it. |
-| `invoice_states` | What Purchasing learnt of an invoice from Accounting's events: `open`, `posted` or `reversed`, and the copy a reversal made. Its row is the invoice's lock. |
+| `invoice_states` | What Purchasing learnt of an invoice from Accounting's events — or from a match that read it posted (A80): `open`, `posted`, `reversed` or `deleted`, and the copy a reversal made. Its row is the invoice's lock. |
 | `invoice_events` | Each handled event by its id. |
 | `invoice_followups` | The posted invoices the [worker](#workers) has to finish. |
-| `invoice_registrations` | Register invoice's `clientRequestId`, its request hash, the order and the draft it made. |
+| `invoice_registrations` | Register invoice's `clientRequestId`, its request hash, the order, the draft it made, its line counts and the net total the first answer gave. |
 
 A match is keyed by the line's position, not its id: Accounting writes a draft's lines anew
 on every save and Reverse and copy copies them in order (A70). An invoice line bills one
@@ -780,8 +782,11 @@ under its lock:
 - 409 `over_invoiced`, the lines named, for an invoice that would take a line's `invoiced`
   above its billable quantity, unless `acceptOver`.
 
-A match of an invoice Purchasing knows to be posted is written `posted` and the invoice
-queued for the worker; any other is `provisional`. It answers the panel.
+An invoice Accounting reads as `posted` while its `invoice_states` row is still `open` —
+posted before delivery D, or its event not yet handled — is moved forward first, as the
+posted handler would ([below](#accountings-events)) (A80). A match of an invoice Purchasing
+knows to be posted is written `posted` and the invoice queued for the worker; any other is
+`provisional`. An invoice Purchasing knows to be deleted is 404. It answers the panel.
 
 `POST /supplier-invoices/{invoiceId}/match-all` (`invoices-match`) with an `orderId` pairs
 the invoice's unmatched positions in order with the order's lines that have something to
@@ -793,18 +798,28 @@ invoice, in position order, each for all of it, and allocates them as above with
 neither is given — and takes them off `invoiced`; none named is 409 `nothing_to_match`, and
 an invoice's match a credit note offsets is 409 `credit_exceeds_invoiced` until the credit
 note is unmatched. A
-posted invoice's match may be unmatched too; a last price it set stays.
+posted invoice's match may be unmatched too; a last price it set stays. An invoice
+Accounting no longer has — a deleted draft whose match a credit note held (A79) — is
+unmatched from Purchasing's own rows, and is 404 once none is left.
 
 ### The panel and the order's invoices
 
-`GET /supplier-invoices/{invoiceId}/match` (`access`) answers the invoice's supplier, kind,
-number, date, currency and state, its lines, its matches, the suggestions and the count of
-the matches' warnings; 404 for an unknown invoice, 503 without Accounting.
+`GET /supplier-invoices/{invoiceId}/match` (`access`) answers, to a holder of
+`accounting:read`, Accounting's invoice — its supplier, kind, number, date, currency and
+state, its lines with their texts and nets, its reference —, its matches, the suggestions
+and the count of the differences; 404 for an unknown invoice, 503 without Accounting.
+A caller without `accounting:read` is answered without asking Accounting (A20, A83): the
+header from what Purchasing keeps of the matches — the number, date, currency and kind they
+were made with, the supplier of the first match's order, the state from `invoice_states`
+(`draft` while `open`) —, the matches without amounts, no lines, no reference and no
+suggestions; an invoice with no match is 404, so the read tells nothing of an invoice that
+is not matched. An invoice Accounting no longer has but Purchasing still holds a match of
+is answered the same way to anyone, its state `deleted` (A79). The writes answer the panel
+by the same rule.
 `GET /orders/{orderId}/invoices` (`access`) answers the order's matches. Each match carries
 the order line, the quantity, the order's net per unit (four places), the state and its
-warnings. The invoice's lines' texts and nets, its reference, a match's `lineNet` and
-`invoiceUnitNet` are answered only to a holder of `accounting:read` (`linesVisible`, A20);
-others get the lines' positions alone.
+warnings; a match's `lineNet` and `invoiceUnitNet` only to a holder of `accounting:read`
+(`linesVisible`).
 
 ### The differences
 
@@ -816,6 +831,10 @@ Per match, judged on its order line as it stands (P38, A9):
 | `invoiced_over_ordered` | above its quantity |
 | `currency_differs` | the invoice's currency is not the order's; the price is then not judged |
 | `price_differs` | the invoice line's net differs from what the order makes of the matched quantity by more than the settings' `priceTolerancePercent` of it |
+
+`differences` counts the warnings of the invoice's matches, a line's own —
+`invoiced_over_received`, `invoiced_over_ordered` — once per order line however many
+matches bill it; the badge counts the same.
 
 The invoice line's net is Accounting's as last read: at the match, and the posted line's
 once the worker has finished the posting — never an amount typed in Purchasing (A9). The
@@ -848,16 +867,23 @@ total as printed (more than 0, two decimals). 400 names a field.
 4. One transaction: the draft's `invoice_states` row and the order locked, the request
    recorded, the lines read again, and one provisional match per draft line at its position
    for what is still to invoice — less when a match, an undo or another registration took
-   part of it since, none when it took all.
+   part of it since, none when it took all. The order is judged again on its locked row: an
+   order cancelled since, or a draft whose deletion Purchasing has handled, gets no match —
+   the draft is the person's to match or delete (A82).
 
 It answers **201** with the draft's id, its line count, `linesLeft` — the lines with
-something to invoice beyond the 200 —, its net total and the currency. Two replays racing
-to one invoice number: the loser's `CreateDraft` is refused as a duplicate and it answers
-the winner's draft once recorded.
+something to invoice beyond the 200 —, its lines' net total and the currency; a replay
+answers the same figures, recorded with the request, whatever was matched or unmatched
+since (A82). Two replays racing to one invoice number: the loser's `CreateDraft` is refused
+as a duplicate, and it waits — up to five seconds — for the winner to record the request
+and answers its draft. A Purchasing transaction is never held open across Accounting's,
+so no advisory lock spans the two: a pool of one would wait on itself. A replay whose winner
+died between the two commits is refused as `duplicate_supplier_invoice` (§14, question 14
+of the design).
 
 ### Accounting's events
 
-Two handlers, each on the delivery's own transaction, writing only this module's schema
+Three handlers, each on the delivery's own transaction, writing only this module's schema
 and reading no contract (rule 23). Each records the event's id in `invoice_events` first
 and does nothing for an id seen before.
 
@@ -872,7 +898,13 @@ and does nothing for an id seen before.
   invoice `reversed` with its copy and moves its matches to the copy (`copyId`) at the same
   positions, `provisional` — `posted`, and queued, when the copy's own posting was handled
   first (A15) —, leaving `invoiced` as it was; a match at a position the copy has matched
-  already, or with no copy, is released.
+  already, or with no copy, is released. Events of different invoices are taken in any
+  order, so when the copy was reversed first its own copy takes the matches, and so on
+  down the chain (A81); a copy Purchasing knows to be deleted, or a chain that ends
+  reversed, takes none and the matches are released.
+- **`purchasing.invoice-deleted`** on `accounting.supplier_invoice.deleted.v1`: marks the
+  invoice `deleted` and releases its matches, provisional all — a draft's —, so what they
+  counted is to invoice again (A79).
 
 A handler or the worker never refuses: a release that would leave a line invoiced below
 0 — an invoice's match a credit note offsets — is not made, and the match stays for a
@@ -887,8 +919,9 @@ longer has, writes each other match's posted net, and — for an invoice, not a 
 — sets each matched variant's supplier item of the invoice's supplier to the posted line's
 net over the matched quantity, times the item's packaging factor, four places, with
 `priceSetBy` `invoice` and `priceSetOn` the invoice's date (P39, A9). An item in another
-currency than the invoice's, or whose price was set after the invoice's date, is left; of
-two lines of one variant the later on the invoice wins. A missing item is not created.
+currency than the invoice's, whose price was set after the invoice's date, or set by a
+person or an import on that date (A85), is left; an invoice's price of the same date is
+replaced. Of two lines of one variant the later on the invoice wins. A missing item is not created.
 
 ### Received, not invoiced
 
@@ -907,8 +940,8 @@ the columns `supplier_id`, `supplier`, `order`, `line`, `item`, `unit`, `receive
 ### The badge
 
 Purchasing fills `contracts.SupplierInvoiceMatches`: `Summary(ctx, invoiceIDs)` answers,
-per invoice with a match, its orders — id and number — and the count of the matches'
-warnings, read on the pool. It is provider-gated: a caller without `purchasing:access` gets
+per invoice with a match, its orders — id and number — and the count of the differences,
+a line's own warnings once per order line, read on the pool. It is provider-gated: a caller without `purchasing:access` gets
 no matches; more than `contracts.MaxSuppliers` ids is a failure. Accounting shows it as
 the [badge on its supplier invoices](/en/reference/accounting/#supplier-invoices).
 
@@ -998,7 +1031,7 @@ see nothing on order.
 | Worker | Every | What it does |
 | --- | --- | --- |
 | `purchasing.mail` | 30 s | Sends the mailings a request queued and did not get out — refused, or the request died after its commit: claims one due row at a time under a two-minute lease (a `SKIP LOCKED` pick), counting the attempt; stores the order's PDF and points the row at it when it names none yet; reads it; sends it through `OutboundMail` on the row's channel — else the settings' — and marks it `sent`. A failure waits a minute, doubled per attempt, at most an hour; the eighth attempt, or a row that can never be sent (no channel, no recipient, an order's mailing whose order is cancelled, a version below the order's — superseded —, an erased PDF), is `failed`. Up to 10 rows a cycle. |
-| `purchasing.invoice-posted` | 30 s | Finishes the posted invoices the handler queued ([the last price](#the-last-price)): claims one due row at a time under a two-minute lease, counting the attempt; a failure waits a minute, doubled per attempt, at most an hour, and the eighth is left. Up to 20 a cycle. |
+| `purchasing.invoice-posted` | 30 s | Finishes the posted invoices the handler queued ([the last price](#the-last-price)): claims one due row at a time under a two-minute lease, counting the attempt; a failure waits a minute, doubled per attempt, at most an hour, and the eighth is left, logged at ERROR — its matches keep the draft's nets and no last price is set. Up to 20 a cycle. |
 | `purchasing.deletions` | 1 min | Deletes from the object store the stored PDFs an erase wrote to `deletions`, oldest first, up to 50 a cycle; an object already gone counts as deleted, and a row that failed 8 times is left, logged as an error. |
 
 Every statement runs on its own pooled connection, and no call out of the module is made

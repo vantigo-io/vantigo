@@ -1,8 +1,10 @@
 # Purchasing — supplier items, purchase orders, receipts, proposals and the invoice match (phase 1)
 
-Revision 9, 2026-11-17, after delivery D was built. **§15 amends earlier
+Revision 10, 2026-11-17, after delivery D's code review. **§15 amends earlier
 decisions and wins where they differ** (A22 to A28 record what delivery 0 built, A29 to
-A36 what delivery A built, A37 to A46 what delivery B built and A47 to A49 its review, A50 to A59 what delivery C built and its review, and A70 to A77 what delivery D built); §16 lists what changed. This spec builds on the research
+A36 what delivery A built, A37 to A46 what delivery B built and A47 to A49 its review, A50
+to A59 what delivery C built and its review, and A70 to A78 what delivery D built and A79
+to A85 its review); §16 lists what changed. This spec builds on the research
 `docs/superpowers/research/2026-11-17-purchasing-module.md` ("R"). It does not reopen
 R §8, and it takes the defaults R §9 took for the readings; §14 says what an overturn of
 each would change. Decisions are numbered P*n*. The implementation plan is
@@ -492,12 +494,22 @@ invoices alone. Questions 2 to 8 stand at their defaults until the owner says ot
     ask for an Inventory read permission as well, or leave the need out for a caller
     without one.
 
-12. **A draft Register invoice orphaned by a crash** (A73, A78). Accounting commits the
+14. **A draft Register invoice orphaned by a crash** (A73, A78). Accounting commits the
     draft before Purchasing records the request and the matches; a process that dies in
     between leaves a draft with no match, and a replay is refused as
     `duplicate_supplier_invoice`. **Default: the person matches that draft from its
     Purchase order panel.** Overturned, Register invoice reserves its request before the
     draft and adopts a duplicate of its own number.
+
+15. **What the Purchase order panel tells a reader without `accounting:read`** (A20, A83).
+    The panel is read under `purchasing:access`, and its id is Accounting's. **Default: such
+    a reader is answered from the matches alone** — the number, date, currency and kind they
+    were made with, the matched quantities, no invoice lines, amounts, reference or
+    suggestions — and an invoice with no match is not found, so the read tells nothing of
+    an invoice Purchasing has not matched. A matcher without `accounting:read` therefore
+    cannot allocate an unmatched invoice's lines by position. Overturned, the panel answers
+    such a reader the invoice's header and line positions for any invoice id, as delivery D
+    first built it.
 
 ## 15. Amendments (revision 2)
 
@@ -995,14 +1007,78 @@ Each wins over what it names.
   cannot refuse leaves a match it cannot release. Register invoice judges its plan again
   under the lock and matches each draft line for what is still to invoice. Not done: a
   draft orphaned by a crash between Accounting's commit and Purchasing's has no matches,
-  and a replay of its request is refused as `duplicate_supplier_invoice` (§14, question 12).
+  and a replay of its request is refused as `duplicate_supplier_invoice` (§14, question 14).
 - **A77 — The demo's match comes after the books** (plan, *The demo seed*). A supplier
   invoice is Accounting's and the books take none before their setup, so delivery D's part
   of the seed runs after Accounting's, not before it.
 
+### Delivery D, after its review (revision 10)
+
+From the independent code review of delivery D. Each wins over what it names.
+
+- **A79 — A deleted draft lets its matches go** (P5, P37, A15, A72). Deleting a draft
+  supplier invoice published nothing, so its provisional matches stood for ever: the
+  order stayed invoiced, Register invoice and Match all found nothing, the receipt's undo
+  was refused and Unmatch answered 404. Accounting now publishes
+  `accounting.supplier_invoice.deleted.v1` from the delete, on its transaction under the
+  draft's row lock, carrying what the posted event carries and no free text (rule 23).
+  Purchasing's `purchasing.invoice-deleted` marks the invoice `deleted` in `invoice_states`
+  and releases its matches — a person's draft, Register invoice's, and the copy Reverse
+  and copy made alike. A match a credit note holds stays (A78); the panel, the order's
+  invoices and Unmatch then work from Purchasing's own rows, the panel's state `deleted`,
+  until none is left. A match of an invoice Purchasing knows deleted is 404.
+- **A80 — A posting Purchasing has not taken is read forward** (P37, A72). A match decided
+  posted or provisional from `invoice_states` alone, made `open` on its first lock, and the
+  dispatcher gives a handler no event fanned out before it: an invoice posted before
+  delivery D, or before its event was handled, was matched provisional for ever — counted
+  as not invoiced and never followed up. A match of an invoice Accounting reads as posted
+  while its row is `open` now does what the posted handler does — the row `posted`, the
+  matches fixed, the invoice queued — under the same lock, and the event taken later
+  changes nothing. A reversed invoice needs no such step: it is refused
+  (`invoice_reversed`) and its event releases what it has.
+- **A81 — A reversal follows the copy's own copy** (A15, A72). The dispatcher orders events
+  per aggregate, the invoice, so a copy's reversal may be taken before its original's. The
+  reversed handler now follows `invoice_states.copy_id` from a copy already reversed to its
+  copy, and on, and moves the matches to the first that is not; a deleted copy, or a chain
+  that ends reversed, takes none and the matches are released. No match is lost to the
+  order events are taken in.
+- **A82 — Register invoice's replay and its locked order** (A11, A73). Two replays of one
+  request racing: the loser's draft is refused by Accounting as a duplicate before the
+  winner has recorded the request, and it answered 409. The loser now waits — up to five
+  seconds — for the winner's record and answers its draft. No advisory lock spans the
+  operation: it would hold a Purchasing connection while Accounting's `CreateDraft` takes
+  another, and a pool of one would wait on itself. A replay answers the figures the first
+  answer gave, recorded with the request (`invoice_registrations.total`), not a sum of the
+  matches as they stand. The order is judged again on its locked row: an order cancelled
+  since — or a draft whose deletion Purchasing has taken — gets the request recorded and no
+  match, the draft being the person's to match or delete. §14's question 14 stands for a
+  replay whose first died between the two commits.
+- **A83 — The panel without `accounting:read`** (A20, A74; §14, question 15). The panel's
+  read is `purchasing:access`, yet it answered Accounting's header, line count and the
+  suggested orders' totals for any invoice id. A caller without `accounting:read` is now
+  answered without asking Accounting: the header from what Purchasing keeps of the matches,
+  the matched quantities, no lines, amounts, reference or suggestions, and 404 for an
+  invoice with no match. The writes answer the panel by the same rule.
+- **A84 — An invoiced line keeps its delivered mark** (P16, A10, A71). Taking the delivered
+  mark off a text or service line leaves nothing of it billable; while `invoiced` is above
+  0 it is refused `receipt_invoiced`, as a receipt's undo is.
+- **A85 — The last price's guard on the invoice's own day, and the rest of the review**
+  (P39, A75). A price a person or an import set on the invoice's own date stands; a price an
+  invoice set that day is replaced, so a second run of the worker changes nothing a person
+  did. The worker logs its last failed attempt at ERROR. `differences`, on the panel and in
+  the badge, counts a line's own warnings — invoiced more than received or ordered — once
+  per order line, however many matches bill it. The panel is read again after a refused
+  write, a reversed or deleted invoice still offers Unmatch, and the allocation's quantity
+  and Register invoice's amounts take a decimal comma. No index is added: the review's
+  queries read what they need by the existing keys, or all of a small table.
+
 ## 16. Revision log
 
-- **Revision 9, 2026-11-17** — delivery D built: A70 to A77 (§15, *Delivery D, as built*).
+- **Revision 10, 2026-11-17** — delivery D's code review: A79 to A85 (§15, *Delivery D,
+  after its review*); §14's question 15 added.
+
+- **Revision 9, 2026-11-17** — delivery D built and reviewed: A70 to A78 (§15, *Delivery
+  D, as built*); §14's question 14 added.
 
 - **Revision 8, 2026-11-17** — delivery C reviewed: A58 and A59 added; A52 superseded and
   A53 amended by A58; §8's `purchasing:access` row names the proposals; §14's question 13
