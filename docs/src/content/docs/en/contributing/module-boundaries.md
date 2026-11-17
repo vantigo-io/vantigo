@@ -114,7 +114,7 @@ lag, never what must refuse — go through the platform's domain-events outbox,
 5. **One module, one mount.** A module exposes one `Module()` returning a
    `module.Module`: its name, its `Mount`, the permissions it contributes, the
    background workers it contributes, and the cross-module contracts it *provides*.
-   There are twenty-six single-provider slots, each filled by at most one enabled module:
+   There are twenty-seven single-provider slots, each filled by at most one enabled module:
    `Directory` (`contracts.CustomerDirectory`, customers), `Users`
    (`contracts.UserDirectory`, identity), `Calendar` (`contracts.BusinessCalendar`,
    identity — the workspace's business time zone and the day an instant falls on in
@@ -221,12 +221,19 @@ lag, never what must refuse — go through the platform's domain-events outbox,
    and not yet received per variant and receiving site, `OpenByVariants` with an optional
    site and `OpenAll`, which Inventory's low-stock statements join in and Manufacturing's
    replenishment adds to *incoming*; optional, nil when Purchasing is off, which reads as
-   "nothing on order"); `contracts.PurchaseDemand`, the proposals' many-provider read, is
-   declared beside them and has no slot until delivery C. Compose and `module.Workers`
-   resolve the four, and the two supplier slots below, by one helper, `withSuppliers`, which
+   "nothing on order"). A fifth comes with delivery C: `PurchaseDemand`
+   (`contracts.PurchaseDemand` — what should be bought, the one source Purchasing's
+   proposals read, each need before Purchasing's rounding with the time it was computed),
+   the one slot filled **by precedence**: Inventory (its low stock) and Manufacturing (its
+   stored buy suggestions) both declare `Module.PurchaseDemand`, Manufacturing names
+   Inventory in `Module.PurchaseDemandSupersedes`, and of the enabled declarers less the
+   superseded at most one may remain — so Manufacturing's where it is on, Inventory's
+   where it is not; optional, nil with neither. Compose and `module.Workers` resolve the
+   five, and the two supplier slots below, by one helper, `withSuppliers`, which
    `withStock` calls last — the replenishment worker reads the open purchases in worker
-   mode; `modtest.WithPurchaseSupply` (with `modtest.FakePurchaseSupply`),
-   `WithSupplierInvoiceMatches`, `WithSupplierReferenceHolders` and
+   mode, and the demand comes after the supply, which Inventory's provider reads while it
+   serves; `modtest.WithPurchaseSupply` (with `modtest.FakePurchaseSupply`),
+   `WithPurchaseDemand`, `WithSupplierInvoiceMatches`, `WithSupplierReferenceHolders` and
    `WithSupplierPersonalData` preset them.
    **A provider's read may carry commands.** A single-provider read contract may hold
    methods that write — **provider commands** — when each writes only the provider's

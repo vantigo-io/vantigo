@@ -1,6 +1,6 @@
 ---
 title: "Purchasing module"
-description: "The buy side: the module and the three modules it requires, the seven permissions, the settings, supplier items — one per supplier and variant, the preferred item, the currency flag and the price-list import —, purchase orders — the header and its defaults, lines and their arithmetic, the states and every transition with its refusal, the concurrency token, the change log, Late and Unconfirmed —, the number series, Send, Mark as sent and Send again with their idempotency, the PDFs and the mail, Close, Close line, Reopen, Cancel, the confirmation and Copy; the variant and supplier holders and the supplier's personal data; the events; contracts.PurchaseSupply; the two workers; the contracts read; the dashboard figures; receipts — the receive screen and the scanned code, Receive on one transaction with StockLedger.Receive, its lock order, retry and idempotency, more and less than ordered, the order's status, the receipts read, Undo through StockLedger.ReverseReceipt, and the delivered mark on a text or service line —, the receipt events and Manufacturing's handler of them; the refusal codes and every endpoint with its permission and status codes."
+description: "The buy side: the module and the three modules it requires, the seven permissions, the settings, supplier items — one per supplier and variant, the preferred item, the currency flag and the price-list import —, purchase orders — the header and its defaults, lines and their arithmetic, the states and every transition with its refusal, the concurrency token, the change log, Late and Unconfirmed —, the number series, Send, Mark as sent and Send again with their idempotency, the PDFs and the mail, Close, Close line, Reopen, Cancel, the confirmation and Copy; the proposals — the purchase demand's one source, the netting of drafts and of what was sent since, the rounding once to the supplier item — and Create orders with its idempotency and lock order; the variant and supplier holders and the supplier's personal data; the events; contracts.PurchaseSupply; the two workers; the contracts read; the dashboard figures; receipts — the receive screen and the scanned code, Receive on one transaction with StockLedger.Receive, its lock order, retry and idempotency, more and less than ordered, the order's status, the receipts read, Undo through StockLedger.ReverseReceipt, and the delivered mark on a text or service line —, the receipt events and Manufacturing's handler of them; the refusal codes and every endpoint with its permission and status codes."
 sources:
   - apps/server/internal/purchasing
   - openapi/purchasing.yaml
@@ -14,10 +14,10 @@ catalog's variants (supplier items), and purchase orders with their lines, their
 their mail, the supplier's confirmation and every change made after sending. In
 Norwegian the app is **Innkjøp**. The design is
 [`2026-11-17-purchasing-design.md`](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-11-17-purchasing-design.md)
-(decisions P1–P41, amendments A1–A49); this page describes delivery A, the module,
-supplier items and purchase orders (P8–P23, A11, A16–A19), and delivery B,
-[receipts](#receipts) (P24–P30, A4–A7, A10, A11, A21, A27, A37–A49). Proposals (C) and the
-supplier-invoice match (D) come later.
+(decisions P1–P41, amendments A1–A49 and from A50); this page describes delivery A, the
+module, supplier items and purchase orders (P8–P23, A11, A16–A19), delivery B,
+[receipts](#receipts) (P24–P30, A4–A7, A10, A11, A21, A27, A37–A49), and delivery C, the
+[proposals](#proposals) (P31–P35, A4, A11). The supplier-invoice match (D) comes later.
 
 A purchase order moves neither stock nor the ledger. Stock moves when goods are received,
 through Inventory's `StockLedger.Receive`; the books when the supplier invoice is posted,
@@ -40,7 +40,8 @@ The module is `purchasing`, its schema `purchasing` (migration
   not composed, and Norway's public holidays for a business day when it is,
 - the mail channel and the send through `contracts.OutboundMail` (Communications),
   optional,
-- the holders of `purchasing:orders-manage` (the buyers) through the users contract.
+- the holders of `purchasing:orders-manage` (the buyers) through the users contract,
+- what should be bought through `contracts.PurchaseDemand` ([Proposals](#proposals)).
 
 `MODULES` refuses `purchasing` without `accounting`, `inventory` or `products`, naming
 the one missing, and the module refuses to mount without the supplier directory, the
@@ -64,8 +65,8 @@ write does not also ask for `purchasing:access`.
 
 | Key | Display | Lets a person |
 | --- | --- | --- |
-| `purchasing:access` | Use Purchasing | Read everything: orders, their lines and prices, the PDFs, the history, supplier items, the suppliers, the sites, the buyers, the meta and the figures. |
-| `purchasing:orders-manage` | Manage purchase orders | Create, save and delete drafts; save sent orders; record the confirmation; Close, Close line, Reopen; Copy. |
+| `purchasing:access` | Use Purchasing | Read everything: orders, their lines and prices, the PDFs, the history, supplier items, the suppliers, the sites, the buyers, the meta, the figures and the proposals. |
+| `purchasing:orders-manage` | Manage purchase orders | Create, save and delete drafts; Create orders from proposals; save sent orders; record the confirmation; Close, Close line, Reopen; Copy. |
 | `purchasing:orders-send` | Send purchase orders | Send, Mark as sent, Send again, Cancel. |
 | `purchasing:receive` | Receive goods | Receive goods against purchase orders, undo a receipt, and mark a text or service line delivered: the receiving list, the receive screen, the code lookup, Receive, Undo and the delivered mark. It needs nothing else — no `access`, no `orders-manage`, and no Inventory permission — and none of these answers a price to a caller without `access` (A47). |
 | `purchasing:supplier-items-manage` | Manage supplier items | Create, save, delete and import supplier items. |
@@ -614,6 +615,72 @@ else has come. It answers **200** with the order's `progress` and, to a holder o
 Refused 409 `line_not_deliverable` on a goods line — it is received instead —,
 `line_closed` on a closed line, and `version_conflict` for a stale `expectedUpdatedAt`.
 
+## Proposals
+
+What should be bought comes through `contracts.PurchaseDemand`, a slot with **one
+source** (A4): where Manufacturing is enabled, its open *buy* suggestions — the last
+replenishment run's, each its stored quantity, needed by its need-by day and computed at
+the run's start; where it is not, Inventory's low-stock rows — each its need rounded to
+the placement's multiple and not to a packaging, needed now, computed when it is read.
+`module.Module.PurchaseDemandSupersedes` carries the precedence: Manufacturing's
+provider supersedes Inventory's, and Compose and Workers resolve the one left (two left is
+a failure). A make suggestion is never proposed. With no provider the list is empty and
+Create orders answers 503 `dependency_unavailable`. A source answering two needs of one
+(variant, site) keeps the larger.
+
+`GET /proposals` (optionally `siteId`, `variantId`) answers one row per (variant, site)
+at an active site whose variant the catalog knows, by site code, SKU and variant id:
+
+- `need`, the source's quantity, and `computedAt`, `neededOn` and `source`
+  (`replenishment` or `low_stock`);
+- `onDrafts`, the quantity of the variant on Purchasing's drafts for the site, and
+  `sentSince`, what orders sent to the site after `computedAt` hold of it — a closed line
+  what it received, an open one the larger of ordered and received, a cancelled order
+  nothing; an order sent before is already in the source's own figure, through
+  `PurchaseSupply`;
+- `remaining`, `need − onDrafts − sentSince`; a row with nothing remaining is left out;
+- `options`, every supplier item of the variant whose supplier is active in the register,
+  the preferred first, then by id. Each rounds `remaining` **once**: to whole purchase
+  packagings when the item names a packaging the variant still has, else to three decimals
+  of the unit; then up to the item's minimum; then up to a whole number of its multiple —
+  `orderQuantity` in packagings and `quantity` in the unit. `price` is the item's in that
+  packaging (`itemPriceFor`, A32), `currencyDiffers` when the item's currency is not the
+  supplier's, and `orderBy` the day needed — or today in the business zone — less the
+  lead time.
+
+A row with no option is shown under *No supplier* and cannot be ordered.
+
+### Create orders
+
+`POST /proposals/orders` takes a `clientRequestId` and 1 to 500 rows of `variantId`,
+`siteId`, `supplierItemId` and `orderQuantity` (in the item's packaging). Before the
+transaction it reads the items, the sites, the demand, today and the caller; a row is
+refused in `lines` by its index with `supplier_item_not_found` (not the variant's item),
+`site_not_found`, `site_archived`, `quantity_invalid`, or `line_invalid` (a variant twice
+at a site). Inside one transaction it locks the variants (`LockVariants`), then the
+suppliers (`LockSuppliers`, FOR SHARE), then takes an advisory lock that serialises every
+Create orders, and then reads its own rows: each row is judged again on the drafts as they
+stand, and one no longer proposed — not in the demand, or nothing remaining — refuses the
+whole request with 409 `proposal_gone`, its rows in `lines`, so a second click orders
+nothing twice. An inactive supplier is 409 `supplier_inactive`.
+
+The rows are grouped by supplier and site. Each group's lines go to the oldest draft of
+that supplier and site, locked, or to a new draft in the supplier's currency and language,
+dated today, with the caller as buyer and the delivery address computed as a draft's is.
+A line of the variant already on the draft in the item's packaging takes the added
+quantity; any other row is a new line, planned as the editor plans one — the item's
+number, packaging, price in the order's currency only, and expected day — so a row's
+refusal is a line's (`variant_discontinued`, `too_many_lines` past 500 lines). The total
+is summed again. Each draft is given a change-log row: `created` for a new one, and
+`from_proposals` with the number of lines it touched.
+
+It is idempotent by its `clientRequestId` (A11) with no table of its own (A52): the id and
+the request's hash are kept on the `from_proposals` action, never answered in the
+history. A replay with the same rows answers the first result — every draft it wrote, as
+it stands; the same id with other rows is 409 `client_request_reused`. A replay is
+checked before the transaction and again under its advisory lock. The answer, 200, is
+`orders` — per draft its id, supplier, site, `created` and `linesAdded`.
+
 ## The holders
 
 Purchasing answers inside other modules' transactions, on the caller's `tx`, with its own
@@ -720,9 +787,9 @@ refusals in `lines`. A request the server could not decode is a bare 400.
 
 | Status | Codes |
 | --- | --- |
-| 400 | `supplier_not_found`, `site_not_found`, `site_archived`, `currency_invalid`, `series_start_too_low`, `send_channel_unknown`, `recipient_missing`, `order_empty`, `import_invalid`, `amount_out_of_range` (the total); a line's `too_many_lines`, `line_invalid`, `line_not_found`, `variant_not_found`, `variant_discontinued`, `packaging_not_found`, `quantity_invalid`, `price_invalid`, `discount_invalid`, `quantity_below_received`, `amount_out_of_range`; a receipt line's `line_not_receivable` and `quantity_invalid`, and Inventory's `lot_required`, `lot_not_allowed`, `lot_unknown`, `lot_number_invalid`, `lot_dates_invalid`, `serial_quantity`, `line_invalid`, `location_unknown`, `quantity_invalid`, `lot_dates_differ` |
+| 400 | `supplier_not_found`, `site_not_found`, `site_archived`, `currency_invalid`, `series_start_too_low`, `send_channel_unknown`, `recipient_missing`, `order_empty`, `import_invalid`, `amount_out_of_range` (the total); a line's `too_many_lines`, `line_invalid`, `line_not_found`, `variant_not_found`, `variant_discontinued`, `packaging_not_found`, `quantity_invalid`, `price_invalid`, `discount_invalid`, `quantity_below_received`, `amount_out_of_range`; a receipt line's `line_not_receivable` and `quantity_invalid`, and Inventory's `lot_required`, `lot_not_allowed`, `lot_unknown`, `lot_number_invalid`, `lot_dates_invalid`, `serial_quantity`, `line_invalid`, `location_unknown`, `quantity_invalid`, `lot_dates_differ`; a proposal row's `supplier_item_not_found` |
 | 404 | `not_found` |
-| 409 | `version_conflict`, `order_not_draft`, `order_not_sent`, `order_not_closed`, `order_has_receipts`, `line_closed`, `line_kind_changed`, `currency_fixed`, `supplier_inactive`, `supplier_changed`, `supplier_item_exists`, `client_request_reused`, `over_receipt`, `receipt_undone`, `receipt_invoiced`, `line_not_deliverable`; Inventory's `variant_not_stocked`, `lot_blocked`, `site_archived`, `site_unknown`, `document_reused` on a receipt and `insufficient_stock`, `location_unknown` on an undo, each line by its index |
+| 409 | `version_conflict`, `order_not_draft`, `order_not_sent`, `order_not_closed`, `order_has_receipts`, `line_closed`, `line_kind_changed`, `currency_fixed`, `supplier_inactive`, `supplier_changed`, `supplier_item_exists`, `client_request_reused`, `over_receipt`, `receipt_undone`, `receipt_invoiced`, `line_not_deliverable`, `proposal_gone`; Inventory's `variant_not_stocked`, `lot_blocked`, `site_archived`, `site_unknown`, `document_reused` on a receipt and `insufficient_stock`, `location_unknown` on an undo, each line by its index |
 | 503 | `dependency_unavailable`, `sending_disabled`, `mail_failed` |
 
 ## Endpoints
@@ -764,6 +831,8 @@ answers 409 `version_conflict` for a stale `expectedUpdatedAt`.
 | `GET /orders/{orderId}/history` | access | 200; 404 |
 | `GET /orders/{orderId}/pdf` | access | 200; 404; 503 |
 | `GET /orders/{orderId}/documents/{documentId}` | access | 200; 404 |
+| `GET /proposals` | access | 200; 503 |
+| `POST /proposals/orders` | orders-manage | 200; 400; 409; 503 |
 | `GET /supplier-items` | access | 200; 400 |
 | `POST /supplier-items` | supplier-items-manage | 201; 400; 404; 409; 503 |
 | `GET /supplier-items/{itemId}` | access | 200; 404 |

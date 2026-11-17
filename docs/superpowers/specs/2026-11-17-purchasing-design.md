@@ -1,8 +1,8 @@
 # Purchasing — supplier items, purchase orders, receipts, proposals and the invoice match (phase 1)
 
-Revision 6, 2026-11-17, after delivery B was built and reviewed. **§15 amends earlier
+Revision 7, 2026-11-17, after delivery C was built. **§15 amends earlier
 decisions and wins where they differ** (A22 to A28 record what delivery 0 built, A29 to
-A36 what delivery A built, A37 to A46 what delivery B built and A47 to A49 its review); §16 lists what changed. This spec builds on the research
+A36 what delivery A built, A37 to A46 what delivery B built and A47 to A49 its review, and A50 to A57 what delivery C built); §16 lists what changed. This spec builds on the research
 `docs/superpowers/research/2026-11-17-purchasing-module.md` ("R"). It does not reopen
 R §8, and it takes the defaults R §9 took for the readings; §14 says what an overturn of
 each would change. Decisions are numbered P*n*. The implementation plan is
@@ -823,7 +823,59 @@ From the review of delivery B. Each wins over what it names.
   packaging divided by the packaging's quantity, net of the line's discount, at four places,
   in the order's currency. Delivery D's invoice match and a later valuation start from it.
 
+
+### Delivery C, as built (revision 7)
+
+What delivery C built where it differs from the decisions above. Each wins over what it
+names. Numbered from A50, so delivery B's amendments, written beside it, cannot collide.
+
+- **A50 — The need before Purchasing's rounding** (P31, A4). Each provider answers its need
+  rounded to the placement's multiple — Inventory's `needed` taken up to the multiple,
+  Manufacturing's stored quantity, which its rule already rounded so — and never to a
+  packaging. The multiple is the placement's own, which both providers apply alike;
+  Purchasing then rounds once to the supplier item: whole purchase packagings when the item
+  names one the variant still has (else three decimals of the unit), then up to the minimum,
+  then up to a whole number of the multiple.
+- **A51 — One source by a supersede list, and the time a run started** (P31, P32, A4,
+  A28). `Deps.PurchaseDemand` is one value, not a list: `Module.PurchaseDemandSupersedes`
+  lets Manufacturing name Inventory, and of the enabled declarers less the superseded at
+  most one remains. P32's "the larger quantity wins" applies only to two rows one source
+  answers for one (variant, site). Manufacturing's computed time is its run's `started_at`
+  — before the run read the open purchases — not the suggestion's insert time, so an order
+  sent while a run reads is subtracted twice at worst, never missed; Inventory's is the
+  clock read before its open purchases.
+- **A52 — Create orders' idempotency on the change log** (A11). No migration: the
+  `clientRequestId` and the request's hash are kept on the `from_proposals` action of the
+  change-log row each draft it touched is given, never answered in the history. A replay is
+  found by a JSON containment read of `order_changes`, before the transaction and again
+  under the advisory lock that serialises Create orders. A draft deleted since takes its
+  rows with it, and a replay then creates again.
+- **A53 — A second click is refused, not trimmed** (P33, A4). Inside the transaction —
+  variants locked, then suppliers, then the advisory lock — every row is judged again on the
+  drafts as they stand; a row no longer proposed refuses the whole request with 409
+  `proposal_gone`, its rows in `lines`, and the screen loads the list again. A person's
+  quantity is theirs: a row still proposed may be ordered for more or less than proposed.
+- **A54 — Adding to a draft** (P33). The lines go to the oldest draft of the supplier and
+  site; a variant line of the draft in the item's packaging takes the added quantity, and
+  any other row is a new line planned as the editor's (`planLines`), so its price follows
+  A32. `sentSince` counts, per order sent to the site after the computed time and not
+  cancelled, a closed line's received quantity and an open line's larger of ordered and
+  received; drafts count their lines' quantity whoever the supplier.
+- **A55 — The options are the active suppliers' items** (P33). An item of a supplier
+  inactive in the register is no option; a variant with none is listed under *No supplier*.
+  The day to order by is the day needed, or today in the business zone, less the lead time.
+- **A56 — Order… is the host's link to the filtered proposals** (P35). Inventory's
+  `LowStockPage` and Manufacturing's `SuggestionsPage` take a render slot the host fills with
+  Purchasing's `OrderFromProposalsLink`, shown when Purchasing is enabled and the caller
+  holds `purchasing:access` with `purchasing:orders-manage`.
+- **A57 — The demo's proposals** (plan, *The demo seed*). Three of the workshop's raw
+  materials get a reorder point above what is held and on order, and a replenishment run
+  for every site runs after the purchase orders are sent, so the proposals have rows from
+  the first seed. No `assistTargets` entry is added: the plan names none for C.
+
 ## 16. Revision log
+
+- **Revision 7, 2026-11-17** — delivery C built: A50 to A57 (§15, *Delivery C, as built*); numbered apart from delivery B's, which was built beside it.
 
 - **Revision 6, 2026-11-17** — delivery B reviewed: A47 to A49 (§15, *Delivery B,
   reviewed*); §14's question 12 added.
