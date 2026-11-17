@@ -246,7 +246,9 @@ export const invoicesCatalog = {
     "fieldInvalid.phone": "At most 30 characters: digits, spaces and + - ( ) ., with at least one digit.",
     "logo.title": "Logo",
     "logo.hint":
-      "Shown at the top of the invoice, credit notes and reminder letters issued from now on. Documents already issued keep the logo they were issued with.",
+      "Shown at the top of invoices and credit notes issued from now on, and of the reminder letters for them. Documents already issued, and their reminder letters, keep the logo they were issued with.",
+    "logo.missing":
+      "The logo's file is no longer in the document store, so new documents are issued without it. Upload the logo again.",
     "logo.current": "The current logo",
     "logo.none": "No logo is uploaded.",
     "logo.upload": "Upload logo",
@@ -2561,7 +2563,9 @@ export const invoicesCatalog = {
     "fieldInvalid.phone": "Høyst 30 tegn: sifre, mellomrom og + - ( ) ., med minst ett siffer.",
     "logo.title": "Logo",
     "logo.hint":
-      "Vises øverst på fakturaer, kreditnotaer og purrebrev som utstedes fra nå av. Dokumenter som allerede er utstedt, beholder logoen de ble utstedt med.",
+      "Vises øverst på fakturaer og kreditnotaer som utstedes fra nå av, og på purrebrevene for dem. Dokumenter som allerede er utstedt, og purrebrevene deres, beholder logoen de ble utstedt med.",
+    "logo.missing":
+      "Logofilen finnes ikke lenger i dokumentlageret, så nye dokumenter utstedes uten den. Last opp logoen på nytt.",
     "logo.current": "Gjeldende logo",
     "logo.none": "Ingen logo er lastet opp.",
     "logo.upload": "Last opp logo",

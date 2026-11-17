@@ -812,12 +812,11 @@ describe("the seller's logo (invoices phase 6 design I1)", () => {
         state.settings = {
           ...state.settings,
           logo: { contentType: "image/png", sha256: "ab12" },
-          revision: state.settings.revision + 1,
         };
         return jsonResponse(200, state.settings);
       }
       if (url === "/api/v1/invoices/settings/logo" && method === "DELETE") {
-        state.settings = { ...state.settings, logo: undefined, revision: state.settings.revision + 1 };
+        state.settings = { ...state.settings, logo: undefined };
         return new Response(null, { status: 204 });
       }
       return (base as unknown as (i: RequestInfo | URL, r?: RequestInit) => Response)(input, init);
@@ -846,6 +845,18 @@ describe("the seller's logo (invoices phase 6 design I1)", () => {
     expect(
       fetchMock.actualCalls.some(([u, r]) => path(u) === "/api/v1/invoices/settings/logo" && r?.method === "DELETE"),
     ).toBe(true);
+  });
+
+  it("says a logo whose file is gone is missing, and asks for it again", async () => {
+    const state = world();
+    state.settings = settings({ logo: { contentType: "image/png", sha256: "ab12", missing: true } });
+    server({}, state);
+    renderWithProviders(<SettingsPage />);
+
+    const block = await screen.findByTestId("logo-block");
+    expect(await within(block).findByTestId("logo-missing")).toHaveTextContent("Upload the logo again.");
+    expect(within(block).queryByRole("img")).not.toBeInTheDocument();
+    expect(within(block).getByRole("button", { name: "Remove logo" })).toBeInTheDocument();
   });
 
   it("words a refused logo by its code, in the reader's language", async () => {
