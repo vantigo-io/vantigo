@@ -124,6 +124,7 @@ export const supplier = (overrides: Partial<PurchasingSupplier> = {}): Purchasin
   anonymised: false,
   supplierItemCount: 1,
   openOrderCount: 2,
+  revision: 3,
   ...overrides,
 });
 

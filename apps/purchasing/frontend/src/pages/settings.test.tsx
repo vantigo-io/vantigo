@@ -1,4 +1,4 @@
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import type { PurchasingSettings } from "../api/purchasing";
@@ -72,5 +72,18 @@ describe("the purchasing settings", () => {
     expect(
       within(alert).getByText("The first order number must be above the highest number used."),
     ).toBeInTheDocument();
+  });
+
+  it("offers Load again on a stale revision, which reads the settings afresh", async () => {
+    const fake = serve(() => refusal(409, "version_conflict"));
+    renderRoute("/purchasing/settings");
+    await screen.findByText("The next order sent gets number 3002.");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(
+      await screen.findByText("Somebody changed it since you opened it. Load it again and repeat your change."),
+    ).toBeInTheDocument();
+    const reads = fake.count("GET", "/api/v1/purchasing/settings");
+    await userEvent.click(screen.getByRole("button", { name: "Load again" }));
+    await waitFor(() => expect(fake.count("GET", "/api/v1/purchasing/settings")).toBeGreaterThan(reads));
   });
 });

@@ -34,7 +34,7 @@ import { lineRefusalWords, refusalMessage } from "../lib/errors";
 import { today, usePurchasingFormat } from "../lib/format";
 import { type EditorLine, fromSavedLine, fromVariant, lineInput, lineWarnings, newTextLine } from "../lib/lines";
 import { purchaseOrderLinkOptions } from "../lib/routes";
-import { SupplierPicker, VariantPicker } from "./common";
+import { markStaleOnConflict, SaveError, SupplierPicker, VariantPicker } from "./common";
 
 /** A date picked in the calendar as the contract writes one. */
 const dayOf = (value: string | Date | null): string | null => {
@@ -80,6 +80,27 @@ const headerOf = (order: PurchaseOrder | undefined, supplierId: number | undefin
  * multiple is a warning, never a refusal.
  */
 export const OrderEditor = ({
+  order,
+  supplierId,
+  access,
+  onDone,
+}: {
+  order?: PurchaseOrder;
+  supplierId?: number;
+  access: PurchasingAccess;
+  onDone?: () => void;
+}) => {
+  const { t, money } = usePurchasingFormat();
+  if (!access.canManageOrders)
+    return (
+      <Alert color="yellow" variant="light">
+        {t("ordersManageNeeded")}
+      </Alert>
+    );
+  return <Editor order={order} supplierId={supplierId} access={access} onDone={onDone} />;
+};
+
+const Editor = ({
   order,
   supplierId,
   access,
@@ -142,6 +163,7 @@ export const OrderEditor = ({
       if (!order) await navigate(purchaseOrderLinkOptions(saved.id));
       else onDone?.();
     },
+    onError: (error) => markStaleOnConflict(queryClient, error),
   });
   const problems = new Map(refusedLines(save.error).map((l) => [l.index, lineRefusalWords(l.code, l.detail, t)]));
   const siteOptions = (sites.data?.items ?? [])
@@ -308,11 +330,7 @@ export const OrderEditor = ({
           </Text>
         </Stack>
       </PageSection>
-      {save.isError && (
-        <Alert color="red" title={t("couldNotSave")}>
-          {refusalMessage(save.error, t)}
-        </Alert>
-      )}
+      {save.isError && <SaveError error={save.error} />}
       <Group justify="flex-end">
         {onDone && (
           <Button variant="default" onClick={onDone}>

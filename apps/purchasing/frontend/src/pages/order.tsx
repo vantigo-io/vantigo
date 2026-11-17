@@ -21,7 +21,7 @@ import { IconAlertCircle, IconDownload } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ContentSkeleton, PageHeader, PageSection } from "@vantigo/frontend-shell";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   cancelPurchaseOrder,
   closePurchaseOrder,
@@ -42,7 +42,7 @@ import {
   sendPurchaseOrder,
   sendPurchaseOrderAgain,
 } from "../api/purchasing";
-import { PURCHASING_QUERY_KEY } from "../api/request";
+import { PURCHASING_QUERY_KEY, refusalCode } from "../api/request";
 import { ConfirmDialog, OrderStatusBadges, PdfButton } from "../components/common";
 import { OrderEditor } from "../components/order-editor";
 import "../i18n";
@@ -145,16 +145,41 @@ const OrderView = ({
     notifications.show({ color: "green", message });
   };
   const failed = (error: unknown) => notifications.show({ color: "red", message: refusalMessage(error, t) });
+  // A Send's or a Mark as sent's clientRequestId (A11) belongs to one
+  // attempt: made when the dialog opens or its body changes, and the same on
+  // a retry, so a retry after a lost answer replays the send, never repeats it.
+  const attempt = useRef<{ key: string; id: string } | null>(null);
+  useEffect(() => {
+    if (dialog === "send" || dialog === "markSent") attempt.current = null;
+  }, [dialog]);
+  const requestIdFor = (body: unknown) => {
+    const key = JSON.stringify(body);
+    if (attempt.current?.key !== key) attempt.current = { key, id: newRequestId() };
+    return attempt.current.id;
+  };
+  // The change is made and its mail queued (A19): the dialog closes and the
+  // order shows as it now is, with a warning rather than an error.
+  const mailQueued = async () => {
+    await queryClient.invalidateQueries({ queryKey: [PURCHASING_QUERY_KEY] });
+    setDialog(null);
+    notifications.show({ color: "yellow", message: t("refusal.mail_failed") });
+  };
   const action = useMutation({
     mutationFn: (run: () => Promise<unknown>) => run(),
     onError: async (error) => {
-      // A provider that did not take the mail leaves the order sent (P21): show it as it now is.
+      if (refusalCode(error) === "mail_failed") return mailQueued();
       await queryClient.invalidateQueries({ queryKey: [PURCHASING_QUERY_KEY] });
       failed(error);
     },
   });
   const run = (call: () => Promise<unknown>, message: string) =>
-    action.mutate(call, { onSuccess: () => done(message) });
+    action.mutate(call, {
+      onSuccess: (result) => {
+        const mailing = (result as { mailing?: { status?: string } | null } | undefined)?.mailing;
+        if (mailing && mailing.status !== "sent") return mailQueued();
+        return done(message);
+      },
+    });
   const copy = useMutation({
     mutationFn: () => copyPurchaseOrder(order.id),
     onSuccess: async (copied) => {
@@ -355,17 +380,13 @@ const OrderView = ({
           again={false}
           loading={action.isPending}
           onClose={() => setDialog(null)}
-          onSend={(input) =>
+          onSend={(input) => {
+            const clientRequestId = requestIdFor({ send: input, expectedUpdatedAt: order.updatedAt });
             run(
-              () =>
-                sendPurchaseOrder(order.id, {
-                  ...input,
-                  expectedUpdatedAt: order.updatedAt,
-                  clientRequestId: newRequestId(),
-                }),
+              () => sendPurchaseOrder(order.id, { ...input, expectedUpdatedAt: order.updatedAt, clientRequestId }),
               t("orderSent"),
-            )
-          }
+            );
+          }}
         />
       )}
       {dialog === "sendAgain" && (
@@ -395,9 +416,10 @@ const OrderView = ({
           confirm={t("markSent")}
           loading={action.isPending}
           onClose={() => setDialog(null)}
-          onConfirm={() =>
-            run(() => markPurchaseOrderSent(order.id, order.updatedAt, newRequestId()), t("orderMarkedSent"))
-          }
+          onConfirm={() => {
+            const clientRequestId = requestIdFor({ markSent: true, expectedUpdatedAt: order.updatedAt });
+            run(() => markPurchaseOrderSent(order.id, order.updatedAt, clientRequestId), t("orderMarkedSent"));
+          }}
         />
       )}
       {dialog === "cancel" && (
@@ -888,9 +910,24 @@ const HistoryCard = ({ order }: { order: PurchaseOrder }) => {
                         </Table.Td>
                         <Table.Td>{dateTime(m.sentAt ?? m.createdAt)}</Table.Td>
                         <Table.Td>
-                          <Text size="xs" c="dimmed">
-                            {m.lastError ?? t("attempts", { count: m.attempts })}
-                          </Text>
+                          {m.lastError && m.status !== "sent" ? (
+                            <Stack gap={0}>
+                              <Text size="xs">
+                                {m.lastError.startsWith("Superseded")
+                                  ? t("mailingSuperseded")
+                                  : m.status === "failed"
+                                    ? t("mailingFailedGeneric")
+                                    : t("mailingQueuedGeneric")}
+                              </Text>
+                              <Text size="xs" c="dimmed">
+                                {m.lastError}
+                              </Text>
+                            </Stack>
+                          ) : (
+                            <Text size="xs" c="dimmed">
+                              {t("attempts", { count: m.attempts })}
+                            </Text>
+                          )}
                         </Table.Td>
                       </Table.Tr>
                     ))}

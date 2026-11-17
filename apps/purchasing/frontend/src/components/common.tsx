@@ -1,7 +1,7 @@
-import { Badge, Button, type ButtonProps, Group, Modal, Select, Stack, Text } from "@mantine/core";
+import { Alert, Badge, Button, type ButtonProps, Group, Modal, Select, Stack, Text } from "@mantine/core";
 import { useDebouncedValue } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useState } from "react";
 import { fetchPdf } from "../api/pdf";
 import {
@@ -10,7 +10,7 @@ import {
   purchasingSuppliersQueryOptions,
   searchPurchasingVariants,
 } from "../api/purchasing";
-import { PURCHASING_QUERY_KEY } from "../api/request";
+import { isVersionConflict, PURCHASING_QUERY_KEY } from "../api/request";
 import { refusalMessage } from "../lib/errors";
 import { usePurchasingFormat } from "../lib/format";
 
@@ -221,3 +221,43 @@ export const VariantPicker = ({
     />
   );
 };
+
+/**
+ * A save's refusal. A version conflict says somebody changed it meanwhile
+ * and offers *Load again*, which reads Purchasing afresh — the form then
+ * opens on what is stored now; any other refusal is said in words.
+ */
+export const SaveError = ({ error, conflict = "versionConflict" }: { error: unknown; conflict?: string }) => {
+  const { t } = usePurchasingFormat();
+  const queryClient = useQueryClient();
+  if (isVersionConflict(error))
+    return (
+      <Alert color="yellow" title={t("couldNotSave")}>
+        <Stack gap="xs" align="flex-start">
+          <Text size="sm">{t(conflict)}</Text>
+          <Button
+            size="xs"
+            variant="light"
+            onClick={() => queryClient.invalidateQueries({ queryKey: [PURCHASING_QUERY_KEY] })}
+          >
+            {t("reload")}
+          </Button>
+        </Stack>
+      </Alert>
+    );
+  return (
+    <Alert color="red" title={t("couldNotSave")}>
+      {refusalMessage(error, t)}
+    </Alert>
+  );
+};
+
+/**
+ * What a save's onError does first: a version conflict marks Purchasing's
+ * reads stale without refetching them, so the form keeps what was typed
+ * until *Load again* is chosen.
+ */
+export const markStaleOnConflict = (queryClient: ReturnType<typeof useQueryClient>, error: unknown) =>
+  isVersionConflict(error)
+    ? queryClient.invalidateQueries({ queryKey: [PURCHASING_QUERY_KEY], refetchType: "none" })
+    : Promise.resolve();
