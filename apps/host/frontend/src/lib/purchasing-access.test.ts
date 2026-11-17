@@ -12,6 +12,8 @@ describe("what the Purchasing pages may offer", () => {
       canSendOrders: true,
       canManageSupplierItems: false,
       canManageSettings: false,
+      canReceive: false,
+      canOpenInventoryMovements: false,
       userId: "u1",
     });
     expect(purchasingAccessOf(["purchasing:access", "purchasing:supplier-items-manage"]).canManageSupplierItems).toBe(
@@ -19,6 +21,9 @@ describe("what the Purchasing pages may offer", () => {
     );
     expect(purchasingAccessOf(["purchasing:access", "purchasing:settings"]).canManageSettings).toBe(true);
     expect(purchasingAccessOf(undefined).canSendOrders).toBe(false);
+    expect(purchasingAccessOf(["purchasing:receive"]).canReceive).toBe(false);
+    expect(purchasingAccessOf(["purchasing:access", "purchasing:receive"]).canReceive).toBe(true);
+    expect(purchasingAccessOf(["inventory:stock-view"]).canOpenInventoryMovements).toBe(true);
   });
 
   it("keeps the books' fields in the supplier form only for a poster of the books", () => {

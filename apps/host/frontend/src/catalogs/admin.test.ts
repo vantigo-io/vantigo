@@ -91,6 +91,12 @@ describe("the admin permission catalog", () => {
     expect((adminCatalog.en as Record<string, string>)["admin.permission.purchasingOrdersSend"]).toBe(
       "Send purchase orders",
     );
+    // Receiving is in use since delivery B; matching invoices is still to come.
+    expect((adminCatalog.en as Record<string, string>)["admin.permission.purchasingReceive"]).toBe("Receive goods");
+    expect((adminCatalog.nb as Record<string, string>)["admin.permission.purchasingReceive"]).toBe("Ta imot varer");
+    expect((adminCatalog.en as Record<string, string>)["admin.permission.purchasingInvoicesMatch"]).toContain(
+      "(coming)",
+    );
   });
 
   it("has a display name and a description, in English and Norwegian, for these six projects permissions", () => {
