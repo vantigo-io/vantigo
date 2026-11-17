@@ -396,6 +396,7 @@ paths:
       operationId: redirects
       summary: S
       x-vantigo-access: anonymous
+      x-vantigo-api: never
       responses: {"302": {description: found, headers: {Location: {schema: {type: string}}}}}
   /b:
     get:

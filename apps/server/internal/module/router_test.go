@@ -906,3 +906,85 @@ paths:
 		t.Fatalf("Err() = %v, want the x-vantigo-station problem", err)
 	}
 }
+
+// apiContract has an operation of each x-vantigo-api shape (API access
+// design K5): a GET (a read without a mark), a POST without a mark, a POST
+// marked read and one marked never.
+const apiContract = `
+openapi: 3.0.3
+info:
+  title: Test
+  version: "1"
+paths:
+  /api/v1/x/things:
+    get:
+      operationId: listThings
+      x-vantigo-access: permission:customers:view
+      responses:
+        "204": { description: ok }
+    post:
+      operationId: createThing
+      x-vantigo-access: permission:customers:view
+      responses:
+        "204": { description: ok }
+  /api/v1/x/things/search:
+    post:
+      operationId: searchThings
+      x-vantigo-access: permission:customers:view
+      x-vantigo-api: read
+      responses:
+        "204": { description: ok }
+  /api/v1/x/things/connect:
+    post:
+      operationId: connectThing
+      x-vantigo-access: permission:customers:view
+      x-vantigo-api: never
+      responses:
+        "204": { description: ok }
+`
+
+// wrap tells Check what an API key may do on each operation: the mark, with a
+// GET a read by itself, and a mark of any other value is a mounting problem.
+func TestRouter_APIMark(t *testing.T) {
+	access := &fakeAccess{check: func(*http.Request, contracts.Rule) (contracts.Principal, error) {
+		return contracts.Principal{UserID: uuid.New()}, nil
+	}}
+	r := NewRouter(RouterOptions{Doc: loadDoc(t, apiContract), Access: access, Catalog: map[string]contracts.Permission{"customers:view": {Key: "customers:view"}}})
+	for _, pattern := range []string{"GET /api/v1/x/things", "POST /api/v1/x/things", "POST /api/v1/x/things/search", "POST /api/v1/x/things/connect"} {
+		r.HandleFunc(pattern, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
+	}
+	if err := r.Err(); err != nil {
+		t.Fatal(err)
+	}
+	for i, call := range []struct {
+		method, path string
+		want         contracts.APIMode
+	}{
+		{http.MethodGet, "/api/v1/x/things", contracts.APIRead},
+		{http.MethodPost, "/api/v1/x/things", contracts.APIAllowed},
+		{http.MethodPost, "/api/v1/x/things/search", contracts.APIRead},
+		{http.MethodPost, "/api/v1/x/things/connect", contracts.APIRefused},
+	} {
+		r.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(call.method, call.path, nil))
+		if got := access.checked[i].API; got != call.want {
+			t.Errorf("%s %s: rule API = %d, want %d", call.method, call.path, got, call.want)
+		}
+	}
+
+	bad := NewRouter(RouterOptions{Doc: loadDoc(t, `
+openapi: 3.0.3
+info: {title: Test, version: "1"}
+paths:
+  /api/v1/x/bad:
+    get:
+      operationId: getBad
+      x-vantigo-access: session
+      x-vantigo-api: sometimes
+      responses:
+        "204": { description: ok }
+`), Access: access})
+	bad.HandleFunc("GET /api/v1/x/bad", noopHandler)
+	if err := bad.Err(); err == nil || !strings.Contains(err.Error(), "x-vantigo-api") {
+		t.Fatalf("Err() = %v, want the x-vantigo-api problem", err)
+	}
+}

@@ -206,3 +206,33 @@ func (a *grantingAccess) UserSatisfies(context.Context, uuid.UUID, contracts.Rul
 func (a *grantingAccess) SessionLive(context.Context, uuid.UUID) (uuid.UUID, bool, error) {
 	return uuid.Nil, false, nil
 }
+
+// TestHasPermissions_AnAPIKeyAsksAsARead proves K33 of the API access design:
+// a handler-side check for an integration's API key asks Check with
+// API: APIRead, because the router's wrap has already judged the operation's
+// x-vantigo-api mark and a read-only key against it. Every other caller's
+// question keeps the zero API mode.
+func TestHasPermissions_AnAPIKeyAsksAsARead(t *testing.T) {
+	access := &grantingAccess{granted: []string{"things:view"}}
+	r := httptest.NewRequest(http.MethodGet, "/", nil)
+
+	keyCtx := contracts.WithPrincipal(context.Background(), contracts.Principal{
+		UserID: uuid.New(),
+		Via:    &contracts.Via{Kind: contracts.ViaAPIKey, KeyID: uuid.New()},
+	})
+	keyCtx = contracts.WithRequest(keyCtx, httptest.NewRecorder(), r)
+	if !contracts.HasPermissions(keyCtx, access, "things:view") {
+		t.Fatal("HasPermissions(api key, granted) = false")
+	}
+	if got := access.asked[0].API; got != contracts.APIRead {
+		t.Errorf("an API key's handler-side check asked API mode %d, want APIRead (%d)", got, contracts.APIRead)
+	}
+
+	access.asked = nil
+	personCtx := contracts.WithPrincipal(context.Background(), contracts.Principal{UserID: uuid.New(), SessionID: uuid.New()})
+	personCtx = contracts.WithRequest(personCtx, httptest.NewRecorder(), r)
+	contracts.HasPermissions(personCtx, access, "things:view")
+	if got := access.asked[0].API; got != contracts.APIRefused {
+		t.Errorf("a person's handler-side check asked API mode %d, want the zero APIRefused", got)
+	}
+}
