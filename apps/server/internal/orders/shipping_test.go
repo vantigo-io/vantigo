@@ -394,8 +394,9 @@ func TestShipments_BookOnceTrackAndNotice(t *testing.T) {
 	}
 
 	// The packing slip prints the consignment.
-	mustStatus(t, c.Do(http.MethodGet, deliveryPath(d.Id, "packing-slip"), nil), http.StatusOK, "packing slip")
-	m, ok := pdfModels.find("Pakkseddel", fmt.Sprintf("Leveranse %d – Ordre %d", d.Number, o.Number), func(m orders.PDFModel) bool {
+	served := c.Do(http.MethodGet, deliveryPath(d.Id, "packing-slip"), nil)
+	mustStatus(t, served, http.StatusOK, "packing slip")
+	m, ok := pdfModels.find(served.Body, "Pakkseddel", fmt.Sprintf("Leveranse %d – Ordre %d", d.Number, o.Number), func(m orders.PDFModel) bool {
 		for _, kv := range m.Meta {
 			if kv[0] == "Sending" && strings.Contains(kv[1], *sh.ConsignmentNumber) {
 				return true

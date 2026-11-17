@@ -109,8 +109,9 @@ func TestPackagingEntry_ConvertsAndPrints(t *testing.T) {
 		got.PackagingName == nil || *got.PackagingName != "Case" || got.LineNet != 4500 {
 		t.Fatalf("line %+v; want 45 pcs in 3 cases", got)
 	}
-	mustStatus(t, c.Do(http.MethodGet, quotePath(q.Id, "pdf"), nil), http.StatusOK, "the PDF")
-	m, ok := pdfModels.find("Tilbud", "Tilbud "+strconv.FormatInt(q.Number, 10), func(m orders.PDFModel) bool {
+	served := c.Do(http.MethodGet, quotePath(q.Id, "pdf"), nil)
+	mustStatus(t, served, http.StatusOK, "the PDF")
+	m, ok := pdfModels.find(served.Body, "Tilbud", "Tilbud "+strconv.FormatInt(q.Number, 10), func(m orders.PDFModel) bool {
 		return len(m.Rows) == 1 && strings.Contains(m.Rows[0][0], "Case à 15")
 	})
 	if !ok || len(m.Rows) != 1 || !strings.Contains(m.Rows[0][0], "3 × Case à 15 (45 pcs)") || m.Rows[0][1] != "45" {

@@ -233,7 +233,7 @@ func TestQuote_OptionalLinesAreLeftOutOfTheTotalsAndChosenAtAccept(t *testing.T)
 	if !bytes.HasPrefix(res.Body, []byte("%PDF")) {
 		t.Fatal("the draft's PDF is not a PDF")
 	}
-	m, ok := pdfModels.find("Tilbud", "Tilbud "+strconv.FormatInt(q.Number, 10), func(m orders.PDFModel) bool {
+	m, ok := pdfModels.find(res.Body, "Tilbud", "Tilbud "+strconv.FormatInt(q.Number, 10), func(m orders.PDFModel) bool {
 		return len(m.OptionalRows) == 2
 	})
 	if !ok || len(m.Rows) != 1 || len(m.OptionalRows) != 2 || m.Watermark != "UTKAST" {

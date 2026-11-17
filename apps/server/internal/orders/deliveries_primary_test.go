@@ -35,8 +35,9 @@ func TestDelivery_PrimaryLocationFirst(t *testing.T) {
 		t.Errorf("proposed from %v, want the primary location", d.Lines[0].FromLocationId)
 	}
 
-	mustStatus(t, c.Do(http.MethodGet, deliveryPath(d.Id, "pick-list"), nil), http.StatusOK, "pick list")
-	m, ok := pdfModels.find("Plukkliste", fmt.Sprintf("Leveranse %d – Ordre %d", d.Number, o.Number), func(m orders.PDFModel) bool {
+	served := c.Do(http.MethodGet, deliveryPath(d.Id, "pick-list"), nil)
+	mustStatus(t, served, http.StatusOK, "pick list")
+	m, ok := pdfModels.find(served.Body, "Plukkliste", fmt.Sprintf("Leveranse %d – Ordre %d", d.Number, o.Number), func(m orders.PDFModel) bool {
 		return len(m.Rows) == 1
 	})
 	if !ok || len(m.Rows[0]) < 6 || !strings.HasPrefix(m.Rows[0][5], "OSL-A-02") || !strings.Contains(m.Rows[0][5], ", OSL-A-01") {

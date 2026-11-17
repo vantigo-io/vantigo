@@ -38,10 +38,10 @@ type PDFModel struct {
 	Meta                       [][2]string
 }
 
-// SetPDFModelHook installs fn to hear every PDF model built, once, from
-// TestMain; the hook is shared by every test.
-func SetPDFModelHook(fn func(PDFModel)) {
-	pdfModelBuilt = func(m pdfModel) {
+// SetPDFModelHook installs fn to hear every PDF model rendered, with the bytes
+// it rendered to, once, from TestMain; the hook is shared by every test.
+func SetPDFModelHook(fn func(PDFModel, []byte)) {
+	pdfRendered = func(m pdfModel, pdf []byte) {
 		out := PDFModel{Watermark: m.watermark, Title: m.title, Subtitle: m.subtitle, Header: m.header,
 			VATRows: m.vatRows, Totals: m.totals, Meta: m.meta}
 		for _, r := range m.rows {
@@ -50,7 +50,7 @@ func SetPDFModelHook(fn func(PDFModel)) {
 		for _, r := range m.optionalRows {
 			out.OptionalRows = append(out.OptionalRows, r.cells)
 		}
-		fn(out)
+		fn(out, pdf)
 	}
 }
 

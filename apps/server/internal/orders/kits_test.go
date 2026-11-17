@@ -230,9 +230,10 @@ func TestKits_ReserveDeliverAndPrint(t *testing.T) {
 		t.Fatalf("delivery lines %+v, want the children only, the milk picking its lot", d.Lines)
 	}
 
-	mustStatus(t, c.Do(http.MethodGet, deliveryPath(d.Id, "pick-list"), nil), http.StatusOK, "pick list")
+	served := c.Do(http.MethodGet, deliveryPath(d.Id, "pick-list"), nil)
+	mustStatus(t, served, http.StatusOK, "pick list")
 	subtitle := fmt.Sprintf("Leveranse %d – Ordre %d", d.Number, o.Number)
-	pick, ok := pdfModels.find("Plukkliste", subtitle)
+	pick, ok := pdfModels.find(served.Body, "Plukkliste", subtitle)
 	if !ok {
 		t.Fatal("no pick list printed")
 	}
@@ -250,8 +251,9 @@ func TestKits_ReserveDeliverAndPrint(t *testing.T) {
 	if k := lineOf(t, o, varKit); k.QtyDelivered != 2 || o.DeliveryStatus != gen.OrdersOrderDeliveryStatusDelivered {
 		t.Errorf("kit delivered %v, order %s; want 2 and delivered", k.QtyDelivered, o.DeliveryStatus)
 	}
-	mustStatus(t, c.Do(http.MethodGet, deliveryPath(d.Id, "packing-slip"), nil), http.StatusOK, "packing slip")
-	slip, ok := pdfModels.find("Pakkseddel", subtitle)
+	served = c.Do(http.MethodGet, deliveryPath(d.Id, "packing-slip"), nil)
+	mustStatus(t, served, http.StatusOK, "packing slip")
+	slip, ok := pdfModels.find(served.Body, "Pakkseddel", subtitle)
 	if !ok {
 		t.Fatal("no packing slip printed")
 	}

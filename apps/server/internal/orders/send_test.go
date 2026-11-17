@@ -177,9 +177,6 @@ func TestReviseQuote_KeepsEveryRevisionsPDF(t *testing.T) {
 	expectRefusal(t, c.Do(http.MethodPost, quotePath(q.Id, "revise"), gen.OrdersRevisionInput{ExpectedUpdatedAt: quoteAt(t, c, q.Id), Revision: 2}), http.StatusConflict, "quote_not_sent", "revise a draft")
 	expectRefusal(t, c.Do(http.MethodDelete, withUpdatedAt(quotePath(q.Id), quoteAt(t, c, q.Id)), nil), http.StatusConflict, "quote_not_draft", "delete a revised draft")
 	markSent(t, c, rev)
-	if _, ok := pdfModels.find("Tilbud", "Tilbud "+strconv.FormatInt(q.Number, 10)+" – revisjon 2"); !ok {
-		t.Error("no PDF printed revision 2")
-	}
 	var docs gen.OrdersStoredDocumentList
 	res = c.Do(http.MethodGet, quotePath(q.Id, "documents"), nil)
 	mustStatus(t, res, http.StatusOK, "documents")
@@ -194,13 +191,16 @@ func TestReviseQuote_KeepsEveryRevisionsPDF(t *testing.T) {
 	if bytes.Equal(one.Body, two.Body) {
 		t.Error("revision 1's PDF is revision 2's")
 	}
+	if _, ok := pdfModels.find(two.Body, "Tilbud", "Tilbud "+strconv.FormatInt(q.Number, 10)+" – revisjon 2"); !ok {
+		t.Error("no PDF printed revision 2")
+	}
 	mustStatus(t, c.Do(http.MethodGet, quotePath(q.Id, "pdf")+"?revision=3", nil), http.StatusNotFound, "revision 3")
 	if keys := h.objects.keys(); len(keys) != 2 || !strings.HasPrefix(keys[0], "orders/quote/") {
 		t.Errorf("stored objects %v; want two under orders/quote/", keys)
 	}
 	pro := c.Do(http.MethodGet, quotePath(q.Id, "proforma"), nil)
 	mustStatus(t, pro, http.StatusOK, "pro forma")
-	if _, ok := pdfModels.find("Proforma – ikke en faktura", "Tilbud "+strconv.FormatInt(q.Number, 10)+" – revisjon 2"); !ok {
+	if _, ok := pdfModels.find(pro.Body, "Proforma – ikke en faktura", "Tilbud "+strconv.FormatInt(q.Number, 10)+" – revisjon 2"); !ok {
 		t.Error("no pro forma printed")
 	}
 	if n := h.Count(t, `SELECT count(*) FROM orders.documents`); n != 2 {
@@ -220,8 +220,9 @@ func TestQuotePDF_TheDiscountsVisibility(t *testing.T) {
 		Lines: &[]gen.OrdersLineInput{l}})
 	mustStatus(t, res, http.StatusCreated, "create")
 	q := quoteOf(t, res)
-	mustStatus(t, c.Do(http.MethodGet, quotePath(q.Id, "pdf"), nil), http.StatusOK, "pdf")
-	m, ok := pdfModels.find("Tilbud", "Tilbud "+strconv.FormatInt(q.Number, 10), func(m orders.PDFModel) bool {
+	served := c.Do(http.MethodGet, quotePath(q.Id, "pdf"), nil)
+	mustStatus(t, served, http.StatusOK, "pdf")
+	m, ok := pdfModels.find(served.Body, "Tilbud", "Tilbud "+strconv.FormatInt(q.Number, 10), func(m orders.PDFModel) bool {
 		return len(m.Header) == 5 && len(m.Rows) > 0 && m.Rows[0][3] == "90,00"
 	})
 	if !ok || len(m.Header) != 5 || m.Rows[0][3] != "90,00" || m.Rows[0][4] != "180,00" {

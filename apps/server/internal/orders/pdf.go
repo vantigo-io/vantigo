@@ -172,9 +172,10 @@ type pdfModel struct {
 // pdfCode is one shipment's codes on a packing slip.
 type pdfCode struct{ label, barcode, qr string }
 
-// pdfModelBuilt, when a test sets it, hears every model built: the PDF's text
-// is embedded-subset and cannot be read back from the bytes.
-var pdfModelBuilt func(m pdfModel)
+// pdfRendered, when a test sets it, hears every model rendered with the bytes
+// it rendered to: the PDF's text is embedded-subset and cannot be read back
+// from the bytes, so a test reads the model of the bytes it was served.
+var pdfRendered func(m pdfModel, pdf []byte)
 
 // groupDigits writes an integer part with sep between thousands.
 func groupDigits(digits, sep string) string {
@@ -378,9 +379,6 @@ func buildPDFModel(d printable) pdfModel {
 	m.totals = [][2]string{
 		{l.net, money(t.net, lang)}, {l.vat, money(t.vat, lang)}, {l.gross, currency + " " + money(t.gross, lang)},
 	}
-	if pdfModelBuilt != nil {
-		pdfModelBuilt(m)
-	}
 	return m
 }
 
@@ -572,7 +570,11 @@ func renderPDF(m pdfModel) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("orders: render the PDF: %w", err)
 	}
-	return out.GetBytes(), nil
+	b := out.GetBytes()
+	if pdfRendered != nil {
+		pdfRendered(m, b)
+	}
+	return b, nil
 }
 
 // renderPrintable renders a document's PDF.
