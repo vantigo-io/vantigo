@@ -22,7 +22,9 @@ mounted at `/api/v1/accounting`. The design is
 (the ledger), B (sales post themselves, migration `00183_accounting_sales.sql`), C
 (purchases and expenses, migration `00185_accounting_purchases.sql`), D (VAT, migration
 `00186_accounting_vat.sql`), E (SAF-T, migration `00187_accounting_saft.sql`) and F (the
-bank, migration `00188_accounting_bank.sql`) built. The user guide is [Accounting](/en/user/accounting/).
+bank, migration `00188_accounting_bank.sql`) built, with the seams Purchasing reads and
+writes the books through (purchasing design `docs/superpowers/specs/2026-11-17-purchasing-design.md`,
+delivery 0: [Contracts for other modules](#contracts-for-other-modules)). The user guide is [Accounting](/en/user/accounting/).
 
 ## The module
 
@@ -45,7 +47,12 @@ bank, migration `00188_accounting_bank.sql`) built. The user guide is [Accountin
   number and invoice address) and `CustomersByLegalID` (the import's matching), the
   projects' names, and the names of who asked for an export
   ([SAF-T Financial](#saf-t-financial)).
-- It publishes no event. It starts three workers, `accounting.catchup`, `accounting.saft`
+- It publishes two events, `accounting.supplier_invoice.posted` and
+  `accounting.supplier_invoice.reversed` ([Supplier invoices](#supplier-invoices)), and
+  provides two contracts, `contracts.SupplierDirectory` and `contracts.SupplierInvoices`;
+  it reads `contracts.SupplierInvoiceMatches` when Purchasing provides it, and calls every
+  module's `contracts.SupplierReferenceHolder` and `contracts.SupplierPersonalData`
+  ([Contracts for other modules](#contracts-for-other-modules)). It starts three workers, `accounting.catchup`, `accounting.saft`
   and `accounting.bankfeed` ([The bank feed](#the-bank-feed)), and declares four
   event handlers ([Sales post themselves](#sales-post-themselves)); before the books are
   set up both return at once, and the handlers do nothing with the module off in
@@ -66,12 +73,18 @@ bank, migration `00188_accounting_bank.sql`) built. The user guide is [Accountin
 | Key | Display | Delegable | Sensitive | Asked by |
 | --- | --- | --- | --- | --- |
 | `accounting:read` | Use Accounting | yes | no | every operation |
-| `accounting:post` | Post vouchers | yes | no | manual journals, their preview, reversal, attachments, settlements, suppliers and the Brønnøysund lookup, supplier invoices, their files, Post, Reverse and copy and payments, a retry and the actions under Needs attention, marking a VAT term as filed |
+| `accounting:post` | Post vouchers | yes | no | manual journals, their preview, reversal, attachments, settlements, suppliers with their bank account, IBAN, BIC, default account and default tax code, their delete and anonymisation, the Brønnøysund lookup, supplier invoices, their files, Post, Reverse and copy and payments, a retry and the actions under Needs attention, marking a VAT term as filed |
+| `accounting:suppliers-manage` | Keep the suppliers | yes | no | creating and changing a supplier — every field but the bank account, IBAN, BIC, default account and default tax code — and the Brønnøysund lookup, as `accounting:post` does (purchasing design A12) |
 | `accounting:close` | Manage the books | **no** | no | setup, a SAF-T import (upload, preview, list, apply), the chart, the roles, the tax codes, the posting rules, the opening balances, the lock, closing and reopening a VAT term and removing its filing mark |
 | `accounting:export` | Export the books | yes | **yes** | the reports' CSV, a supplier's export, the SAF-T exports (check, ask for, list, read, download) and an imported SAF-T file's download |
 
 A write asks for `accounting:read` and its own key (`permission:accounting:post+accounting:read`
-and so on). `accounting:close` is in the agents' never list: no virtual employee may hold
+and so on) — but for `POST /suppliers`, `PUT /suppliers/{id}` and `GET
+/suppliers/lookup/brreg`, whose rule is `session`: the handler answers 403
+`suppliers_manage_required` (a problem) to a caller holding neither
+`accounting:suppliers-manage` nor `accounting:post`, so a buyer needs no `accounting:read`.
+They are marked for the Assistant (`confirm`, `auto` for the lookup); a virtual employee is
+admitted by a permission rule alone and so never calls them. `accounting:close` is in the agents' never list: no virtual employee may hold
 it. The Assistant never uploads or downloads an attachment or a CSV
 (`x-vantigo-assistant: never`); the preview is callable without asking (`auto`). Every
 other write — a manual journal, a reversal, a settlement, the opening balances and the
@@ -86,9 +99,10 @@ sensitive operation; the SAF-T files — an export's, an upload, an imported fil
 ## Set up the books
 
 Every known module is on by default, so an upgrade switches Accounting on. **Before the
-settings row exists, every operation but `GET /meta`, `POST /setup` and the SAF-T import's
+settings row exists, every operation but `GET /meta`, `POST /setup`, the SAF-T import's
 (`GET`/`POST /saft-imports`, `GET /saft-imports/{id}`, `POST /saft-imports/{id}/apply`,
-`GET /saft-imports/{id}/file`) answers 409 `books_not_set_up`**, from a strict middleware that runs before any handler.
+`GET /saft-imports/{id}/file`) and the suppliers' ([Suppliers](#suppliers)) answers 409
+`books_not_set_up`**, from a strict middleware that runs before any handler.
 
 `POST /setup` (`accounting:close`) takes `booksStart` (2022-01-01 or later, else 400
 `books_start_too_early`: the seeded rates are known to hold from then), `fiscalYearStartMonth` (1–12,
@@ -528,7 +542,8 @@ for.
 
 ## Purchases
 
-Delivery C (design A17–A19, R5, R8). Every write here needs `accounting:post`.
+Delivery C (design A17–A19, R5, R8). Every write here needs `accounting:post`, but a
+supplier's, which `accounting:suppliers-manage` may make too.
 
 ### Suppliers
 
@@ -547,12 +562,26 @@ are taken out), `country` (two letters, default `NO`), the address, `email`,
 `tax_code_not_purchase`) and `isPerson`; 409 `supplier_organisation_number_taken` for the
 same organisation number in the same country. `GET /suppliers?q=` matches `%` and `_` as
 themselves. `PUT /suppliers/{id}` replaces them, with `active`, under `revision` (400
-without it, 409 `revision_conflict`; `supplier_anonymised` for an anonymised one). `DELETE /suppliers/{id}` deletes one no posting, open item or invoice
-names; any other is 409 `supplier_has_postings` — the postings' and items' foreign keys
-refuse it too.
+without it, 409 `revision_conflict`; `supplier_anonymised` for an anonymised one). `DELETE
+/suppliers/{id}` (`accounting:post`) takes the supplier FOR UPDATE, then deletes one no
+posting, open item or invoice names; any other is 409 `supplier_has_postings` — the
+postings' and items' foreign keys refuse it too. It then asks every module's
+`contracts.SupplierReferenceHolder` for the purpose `delete`, inside the same transaction:
+a hold is 409 `supplier_has_documents` (another app's documents name it; make it inactive).
 
-`GET /suppliers/lookup/brreg` (`accounting:post`, rate-limited to 600 an hour per client
-address) takes `organisationNumber` (nine digits: the entity itself, with its business
+**Before the books, and for a buyer** (purchasing design P2, A2, A12). The supplier
+operations answer before the books are set up: the reads find no settings row and compute
+no retention date (no voucher can name a supplier yet), and a `defaultAccountId` or
+`defaultTaxCodeId` sent then is 409 `books_not_set_up` — the chart is made by the setup.
+`POST /suppliers` and `PUT /suppliers/{id}` are a holder's of `accounting:post` or of
+`accounting:suppliers-manage`; a caller holding only the latter writes every field but the
+books' own — `bankAccount`, `iban`, `bic`, `defaultAccountId` and `defaultTaxCodeId`: on a
+change a field left out keeps its value, and one sent with another value (an empty one
+included) is 403 `supplier_fields_need_post` (a problem); on a new supplier any of them sent
+is.
+
+`GET /suppliers/lookup/brreg` (`accounting:post` or `accounting:suppliers-manage`,
+rate-limited to 600 an hour per client address) takes `organisationNumber` (nine digits: the entity itself, with its business
 address — its postal one without — and its VAT registration; a struck-off one is answered
 `deleted`, an unknown number nothing) or `q` (two characters at least: a name search of at
 most ten, names and numbers only). It writes nothing. An unreachable or unreadable registry
@@ -563,13 +592,23 @@ is 502 `brreg_unavailable`.
 module's supplier, so Accounting answers a person's access request itself: `GET
 /suppliers/{id}/export` (`accounting:export`, never called by the Assistant) answers the
 supplier, its invoices with their lines, files and payments, and every posting naming it,
-with `producedAt`, and logs that it was asked. The record is bookkeeping material, kept
+with `producedAt`, and `modules`: every other module's section of what it holds about the
+supplier as a person, under the module's name, each read through its
+`contracts.SupplierPersonalData` with no transaction open (a module holding nothing has no
+key); it logs that it was asked. The record is bookkeeping material, kept
 until `retainedUntil`. After that day `POST /suppliers/{id}/anonymise` (`accounting:post`,
-confirm for the Assistant) sets the name to `Anonymised supplier <number>`, clears
+confirm for the Assistant) takes the supplier FOR UPDATE, asks every module's
+`contracts.SupplierReferenceHolder` for the purpose `anonymise` (a hold — an open document
+naming it — is 409 `supplier_has_open_documents`), has every module's
+`contracts.SupplierPersonalData` erase what it holds inside the same transaction, logging
+each kind and count, and then sets the name to `Anonymised supplier <number>`, clears
 `organisation_number`, the address, `email`, `bank_account`, `iban` and `bic`, makes it
-inactive and sets `anonymisedAt`; postings, items and vouchers keep its id. 409
-`supplier_retained` on or before `retainedUntil`, `supplier_anonymised` a second time; 400
-for a supplier that is not a person. A person with no voucher has no retention date.
+inactive and sets `anonymisedAt`; postings, items and vouchers keep its id. A failing erase
+rolls the whole anonymisation back. 409
+`supplier_retained` on or before `retainedUntil`, `supplier_anonymised` a second time, and
+`books_not_set_up` before the books are set up — the retention is counted from their fiscal
+year; 400 for a supplier that is not a person. A person with no voucher has no retention
+date.
 
 ### Supplier invoices
 
@@ -581,7 +620,11 @@ settled —, `paid` — posted, its item at zero —, `reversed`), `supplierId`,
 invoice date — `net`, `vat` (the invoice's VAT in its currency; 0.00 on a reverse-charge
 code, whose VAT the buyer calculates) and `gross` —, `linesTotal`, `vat`, its files,
 payments, voucher and reversal, and once posted `balance` and `balanceCurrency`, its item's
-in NOK and in its currency (negative while owed), and `overdue`.
+in NOK and in its currency (negative while owed), and `overdue`. When Purchasing provides
+`contracts.SupplierInvoiceMatches`, each invoice it has matched carries `purchaseMatch`:
+the orders (`id`, `number`) and how many `differences` the match has, read on the pool after
+the invoices; with no provider, or for an invoice matched to none, there is no
+`purchaseMatch`, and a failed read is logged and leaves it out.
 
 **A draft** — `POST /supplier-invoices`, `PUT /supplier-invoices/{id}` under `revision` —
 takes `supplierId` (an active supplier for a new one, else 400 `supplier_inactive`),
@@ -666,6 +709,15 @@ above dated `date` (held to the books' start and the lock as Post is), marks it
 totals, lines and files (the same objects), `copiedFromId` naming it, which it answers
 (201). The duplicate guard lets the copy through: the original is reversed. A row under
 Needs attention that named the original names the copy.
+
+**Events** (purchasing design P5). Post publishes `accounting.supplier_invoice.posted` v1,
+and Reverse and copy `accounting.supplier_invoice.reversed` v1, on the posting's own
+transaction and while it holds the invoice's row lock, so each commits with its voucher or
+not at all; the aggregate is the invoice. Each carries `invoiceId`, `supplierId`, `kind`,
+`number` (the supplier's), `invoiceDate`, `dueDate`, `currency`, `total` (in the invoice's
+currency) and `reference`; the posted event `postedAt`, the reversed one `copyId` — the
+draft the copy made — and `reversedAt` (`contracts/events_accounting.go`). No handler of
+Accounting's reads them; Purchasing's will.
 
 ### Payments
 
@@ -1301,10 +1353,20 @@ linked) and `/suppliers` page the parties; `GET /saft-imports` lists the imports
 - **The tax codes**: the file's tax table mapped to the standard codes by `StandardTaxCode`;
   the books seed Skatteetaten's whole standard list as Set up does, and the unmapped are
   counted in the notes.
-- **The suppliers** are made, numbered from the counter: the name, a Norwegian organisation
-  number that passes mod 11 (a second supplier with the same number keeps none), the
-  country, the address, an e-mail with an @, a bank account of eleven digits passing mod 11,
-  the IBAN and BIC; what is dropped is said per supplier.
+- **The suppliers** are taken as the register's where it has them (purchasing design A2) —
+  a buyer may have made them before the books were set up: by organisation number in the
+  same country (`match` `matched`), else by exact name, case and spaces aside, among the
+  register's suppliers whose organisation number does not say they are another company
+  (`matched_by_name` for one; `ambiguous` for several, listed as `candidates`, and then a
+  new supplier is made). The apply's `suppliers` — per file supplier id, the register's
+  supplier's id or 0 for a new one — overrides any match (`linked`); an id the register
+  does not hold is 400 `saft_import_supplier_unknown`. The matches are made again on every
+  read of the preview, from the register as it stands. A supplier taken from the register
+  is left as it is: the opening's balance is put on it. The others are made, numbered from
+  the counter: the name, a Norwegian organisation
+  number that passes mod 11 (a second supplier with the same number keeps none, nor one the
+  register has), the country, the address, an e-mail with an @, a bank account of eleven
+  digits passing mod 11, the IBAN and BIC; what is dropped is said per supplier.
 - **The customers** are matched to Customers by organisation number through
   `CustomersByLegalID` (a merged-away holder answers its survivor), at the upload and on
   *Match again*: one holder is `matched`, several `ambiguous`, none `unmatched`; a customer
@@ -1340,8 +1402,8 @@ stored parties and matches, with no transaction open, refuses while a blocker st
 UPDATE (409 `saft_import_applied` a second time), checks again that the ledger has no
 voucher, writes the settings (409 `books_already_set_up` if a setup came first: the one
 settings row makes the two ways mutually exclusive), the chart through the same `seedChart`
-and `seedTaxCodes` Set up the books uses, the default posting rules, the suppliers, the
-opening voucher through `Post` as the person's, and marks the import applied with its
+and `seedTaxCodes` Set up the books uses, the default posting rules, the suppliers not taken
+from the register, the opening voucher through `Post` as the person's, and marks the import applied with its
 voucher. History is not imported as vouchers: the uploaded file is the record of those years.
 
 ## The bank
@@ -1733,6 +1795,44 @@ formula guard on text, served as `<report>-<from>-<to>.csv`, never cached.
   deducted from where the code's tax lies. `POST /tax-codes/{id}/rates` starts a rate
   period (0–99.99 %) after the open one's start (400 `rate_period_invalid`), which then ends
   the day before.
+
+## Contracts for other modules
+
+Delivery 0 of the purchasing design (`docs/superpowers/specs/2026-11-17-purchasing-design.md`,
+P1, P6, P7, A1, A8, A9; [module boundaries](/en/contributing/module-boundaries/) rules 26 to
+28) cut the seams Purchasing works with the books through; no other module calls them yet.
+
+- **`contracts.SupplierDirectory`** (`directory.go`), a single-provider slot: `Supplier`,
+  `Suppliers` (at most 1000 ids, in the order asked, an unknown id absent) and
+  `SearchSuppliers` (the name's part ignoring case, the number or the organisation number,
+  by number, inactive ones too) answer `contracts.SupplierEntry` — id, number, name,
+  organisation number, country, address, e-mail, currency, terms, `Active`, `IsPerson`,
+  `Anonymised` — and never the bank account, the default account or the tax code. They read
+  on the pool with no permission of their own, before the books are set up too.
+  `LockSuppliers(tx, ids)` takes the suppliers `FOR SHARE` in id order on the caller's
+  transaction: the delete and the anonymisation take the row `FOR UPDATE` before asking the
+  holders, so a document made at the same moment either is seen by the holder or waits.
+- **`contracts.SupplierReferenceHolder`**, many providers, from every module given: asked
+  inside the delete's and the anonymisation's transaction, after the `FOR UPDATE`, with the
+  purpose `delete` or `anonymise`; the first hold refuses with 409
+  `supplier_has_documents` or `supplier_has_open_documents`.
+- **`contracts.SupplierPersonalData`**, many providers under each module's name: the export
+  reads every `ExportSupplierData` with no transaction open, the anonymisation calls every
+  `EraseSupplierData` inside its transaction.
+- **`contracts.SupplierInvoices`** (`supplier_invoices_contract.go`), a single-provider
+  slot: `Invoice(id)` answers the header — kind, the supplier's number, the dates, currency,
+  total, reference, state, `CreditsInvoiceID`, `CopiedFromID` — and each line as entered
+  with its net, VAT and gross as the invoice page computes them; nil for an unknown id.
+  `CreateDraft` makes a draft through the draft's own write path, `checkDraft` and
+  `insertDraft`, so the books' rules judge it as a person's: each line is entered net, its
+  account and tax code the supplier's defaults when it names none. It refuses through
+  `*contracts.SupplierInvoiceRefusal`: `books_not_set_up`, `supplier_account_missing` (a
+  line with no account and a supplier with no default), `duplicate_supplier_invoice`, and
+  a field rule's code — `exchange_rate_required` and so on, `supplier_invoice_invalid` when
+  it has none — with the fields named as the contract names them. Nothing is posted by it.
+- **`contracts.SupplierInvoiceMatches`**, an optional single-provider slot Purchasing
+  fills: the list and the page carry its answer as `purchaseMatch` ([Supplier
+  invoices](#supplier-invoices)).
 
 ## Status codes
 

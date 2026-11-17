@@ -117,6 +117,16 @@ the delivery ids of the issues the trace reached, in batches of at most
 answers as `deliveries: hidden` — each delivery its movement alone; a nil slot, Orders
 off, as `unavailable`; any other error fails the trace.
 
+**`contracts.PurchaseSupply`** (`Deps.PurchaseSupply`), Purchasing's open purchases
+(purchasing design P4, A3): what is ordered on sent purchase orders and not yet received,
+per variant and receiving site. `OpenAll` is read before the [low-stock
+list](#the-low-stock-list)'s statement, its CSV's and the dashboard's count, and handed in
+as three arrays the statement joins; `OpenByVariants(nil, ids)` before a
+[stock](#stock) read's snapshot. Both are on the pool with no transaction open. The slot is
+optional: nil — Purchasing off — is *nothing on order*, and every read is as before.
+`Stock.Placements` answers transfers alone, so Manufacturing adds the open purchases
+itself.
+
 **`contracts.CustomerDirectory`** (`Deps.Directory`): `Customers(ctx, ids)`, the names of
 the customers a trace's deliveries went to — read only when the deliveries are shown and
 the caller holds **`customers:view`**, which Inventory checks itself, since the directory
@@ -639,8 +649,11 @@ transfer's number; a send, receive or cancel names its movement.
 Every change of stock is a **movement** (I8): a kind — `adjustment`, `move`,
 `receipt`, `count`, `issue`, posted only through
 [`StockLedger.Issue`](#reservations-and-issues), `transfer_out` and `transfer_in`,
-posted only by a [transfer](#transfers), or `production` and `unbuild`, posted only through
-[`StockLedger.Produce`](#production); the set is open — a site, an adjustment's reason, an
+posted only by a [transfer](#transfers), `production` and `unbuild`, posted only through
+[`StockLedger.Produce`](#production), or `receipt_reversal`, posted only through
+[`StockLedger.ReverseReceipt`](#receiving-for-another-module) — a `receipt` is also posted
+through `StockLedger.Receive`; the set is open, kept by no CHECK, and `kind` is
+`varchar(16)` — a site, an adjustment's reason, an
 optional note, a receipt's optional supplier and supplier's reference, a count
 movement's `countId`, the poster and the time. **A movement is never edited or deleted**; a mistake is corrected
 by a new adjustment.
@@ -1658,6 +1671,52 @@ its quarantine takes them after the posting, so two unbuilds restoring into one 
 for each other rather than deadlock. A produce line of a tracked variant names a lot made by
 [`EnsureLots`](#lots-of-other-modules); a consume line names one, or is `AutoLot`.
 
+## Receiving for another module
+
+Purchasing receives a purchase order's goods through the same ledger, on its own
+transaction (purchasing design P3, A5, A6, A13; [rule 24](/en/contributing/module-boundaries/#the-rules)).
+The receiving document is the order — `purchasing/order/12` — and the receipt is its own
+document, `purchasing/receipt/30`. No migration came with it.
+
+- **`Receive`** posts one movement of kind `receipt` at the site through the [posting
+  engine](#locks), with the receipt endpoint's rules: each line puts its quantity, in the
+  variant's unit, on its to-location — an active location of the site
+  (`location_unknown`). A tracked variant's line names its lot one way — `LotID`, an
+  existing lot of the variant; `Lot`, a lot by number found or made with its dates and
+  supplier lot (an empty number generates `L<n>`); or, for a serial variant, `Serials`,
+  one lot of 1 per serial with `Lot`'s dates, the line's quantity their number — and an
+  untracked variant's none (`lot_required`, `lot_not_allowed`, `lot_unknown`,
+  `serial_quantity`, `lot_dates_differ`; `lot_number_invalid` for a number that is not
+  1–20 characters A–Z, a–z, 0–9 and . _ / -; `lot_dates_invalid` for dates out of order); a
+  blocked lot is `lot_blocked`. A variant unknown or a service is `variant_not_stocked`; a
+  **Discontinued** variant is received — the last open order of a product discontinued is
+  the normal sequence — where the receipt endpoint refuses one. The site need only exist
+  and be active (`site_unknown`, `site_archived`); a receipt of no lines is
+  `nothing_to_post`, a bad quantity `quantity_invalid`. A variant inspected on receipt has
+  its lots quarantined, as on the endpoint ([inspection on
+  receipt](#inspection-on-receipt)). The movement keeps the supplier's name (cut to 200),
+  reference (100) and a note (1 000), and its source is the receipt
+  (`StockReceipt.Document`, the receiving document when zero) with **the receiving
+  document's id as its source line id** — the order, which the movement page links to
+  while Purchasing is mounted. **A receipt is idempotent by its document**: its key is a
+  UUID derived from the document in a space of its own, so a second `Receive` with the same
+  body answers the first movement, and one with another body is `document_reused`.
+- **`ReverseReceipt(receipt)`** takes the receipt `Receive` posted for the document back
+  out, in one movement of kind **`receipt_reversal`**: each of the receipt's movement lines
+  from the location and lot it went into, the reversal naming the same source and source
+  line. It takes the receipt's own lots **whatever their holds** — a failed inspection is
+  the commonest reason — and then releases the holds that receipt set (its inspection's
+  quarantine, source `inventory/receipt/<movement>`); another document's holds stay. It
+  takes those lots `FOR NO KEY UPDATE` at the engine's lot lock, as the release takes them,
+  so two reversals of one receipt wait rather than deadlock. It is refused when no receipt
+  was posted for the document (`receipt_unknown`) and when a location no longer holds what
+  the receipt put there (`insufficient_stock`, the line's `Index` its place in the
+  receipt's lines). It is idempotent by the receipt's document: one reversal a receipt.
+
+Both make no contract call but `LockVariants` and need no connection of their own: the
+tests run each on a pool of one, the caller's transaction holding its connection. After a
+refusal the caller rolls back, as after `Produce`.
+
 ## Transfers
 
 A **transfer** moves stock from one site to another (phase 2, I35–I53; `transfers.go`,
@@ -2002,7 +2061,12 @@ One SQL statement within the schema computes it (`LowStock`): the placements wit
 reorder point — `ix_placements_site_sku` serves the per-site filter, while the order is
 by the joined site code — joined to the sums of balances over the site's locations, of
 reservations at the site and of in-transit lines to the site, each grouped on the
-placement's `(variant_id, site_id)`; its cost is the number of placements with a reorder
+placement's `(variant_id, site_id)`, and to **what is on order**: Purchasing's open
+purchases, read through `contracts.PurchaseSupply.OpenAll` before the statement and handed
+in as three arrays — variant, site, quantity — that it sums per pair (purchasing design
+A3). Incoming is in transit plus on order, so the filter, the keyset paging, the CSV and
+the dashboard's count (`LowStockCounts`, handed the same arrays) judge the same rows. With
+Purchasing off the arrays are empty. Its cost is the number of placements with a reorder
 point, not the catalog. Then, per page:
 
 - the variants through **`ProductCatalog.Variants`** in one call; a variant gone from
@@ -2016,8 +2080,8 @@ point, not the catalog. Then, per page:
 - **`openDrafts`** — the numbers of the draft transfers to the site with a line of the
   variant (`OpenDraftsTo`).
 
-Each row carries the site, the variant, `onHand`, `reserved`, `available`, `incoming`,
-`reorderPoint`, `maximum`, `multiple`, `needed`, `suggested`, the `packaging` (`{id, name, kind,
+Each row carries the site, the variant, `onHand`, `reserved`, `available`, `incoming`
+with its two parts `inTransit` and `onOrder`, `reorderPoint`, `maximum`, `multiple`, `needed`, `suggested`, the `packaging` (`{id, name, kind,
 quantity, count}`), `elsewhere` and `openDrafts`. A missing catalog is 503.
 
 **Create transfer** is the UI's (I59): rows at **one** site are chosen and a from site —
@@ -2036,8 +2100,9 @@ with a **decimal comma**, each cell guarded against a spreadsheet reading it as 
 — the customers export's way — and served as the attachment `low-stock-<YYYY-MM-DD>.csv`
 (today in the business zone), `Cache-Control: private, no-store`. Its columns:
 
-`site` (code), `sku`, `name`, `barcode`, `available`, `incoming`, `reorder_point`,
-`maximum`, `needed`, `suggested`, `packaging` (the packaging's name), `packaging_count`.
+`site` (code), `sku`, `name`, `barcode`, `available`, `incoming`, `in_transit`, `on_order`,
+`reorder_point`, `maximum`, `needed`, `suggested`, `packaging` (the packaging's name),
+`packaging_count`; `incoming` is `in_transit` plus `on_order`.
 
 No supplier column: suppliers are free text on receipts until Products phase 5.
 
@@ -2215,7 +2280,10 @@ against packagings that hold until the commit.
   `available`, [usable](#usable-on-hand) on hand less reserved, which may be negative,
   and each site `held`, what lies in lots on hold or expired; a tracked variant's rows
   carry their `lots` ([stock per lot](#stock-per-lot)); each site carries
-  `incoming`, what is [in transit](#in-transit) to it on transfers. A site where the
+  `incoming` and its two parts: `inTransit`, what is [in transit](#in-transit) to it on
+  transfers, and `onOrder`, what Purchasing has on sent orders for it and has not received
+  (read before the snapshot through `contracts.PurchaseSupply`, 0 without Purchasing), and
+  its placement's `low` is judged on both. A site with only something on order is listed too. A site where the
   variant is reserved, or incoming, but lies nowhere is listed with no rows, and so is an
   active site where it only has a [placement](#placement). Each site carries its
   **`placement`** — `{primaryLocationId, reorderPoint, maximum, revision, low}`, `low`
