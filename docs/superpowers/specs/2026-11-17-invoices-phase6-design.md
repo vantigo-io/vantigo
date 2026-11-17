@@ -1,6 +1,6 @@
 # Invoices phase 6 — branding, the customer's balance, foreign currency, eFaktura and AvtaleGiro, sending in bulk
 
-Revision 2, 2026-11-17, after its review (§15). This spec builds on the research
+Revision 3, 2026-11-17: the owner chose the consumer provider (§15). This spec builds on the research
 `docs/superpowers/research/2026-11-17-invoices-competitive-gaps.md` ("R"). It does not
 reopen R §6, and it takes the defaults R §7 took for the readings. §14 says what an
 overturn of each would change. Decisions are numbered I*n*. Earlier phases' decisions are
@@ -393,8 +393,20 @@ migrations renumbered at merge (see the memory *migration number collisions*).
     - `Status(ctx, Ref)`;
     - `Cancel(ctx, Ref)`;
     - `Mandates(ctx, since)`.
-  - The first adapter is chosen by the owner before the plan (§14 Q1). The candidates
-    are MPS's Combo and Mandate APIs, or an aggregator.
+  - **The first adapter is Mastercard Payment Services, direct** (the owner, 2026-11-17,
+    §14 Q1). It uses MPS's Combo API (`addShipment`, eFaktura, AvtaleGiro or both, at most
+    1,000 transactions a shipment), its Mandate API, and the eFaktura recipient lookup.
+    No aggregator is in the flow.
+  - **What that asks of whom:**
+    - Vantigo becomes an MPS **submitter** (*innsender*). That is a commercial step with
+      MPS before D's first live send, and is not code. The plan builds against MPS's
+      test environment meanwhile.
+    - Each tenant, as the issuer, has its own **eFaktura agreement** and, for
+      AvtaleGiro, its own **AvtaleGiro agreement** with its bank, registered at MPS with
+      Vantigo as submitter. The admin page (`admin/e-invoicing.md`) says how, and
+      settings record the tenant's issuer id and agreement state.
+    - The bank's fees are the tenant's.
+  - The port stays provider-neutral, so an aggregator can be a second adapter later.
   - Its credentials are sealed as the access point's are, under `invoices:manage`, with
     a test connection.
 - **I30 — Finding the consumer.**
@@ -612,12 +624,15 @@ Each delivery brings:
 
 Each has the default this spec takes, and what an overturn changes.
 
-1. **The consumer provider.**
-   - Default: none chosen. D starts once the owner picks one.
-   - MPS directly means no third party but a submitter agreement whose terms are not
-     public.
-   - An aggregator such as Maventa means no bank agreement for eFaktura, but puts a
-     competitor (Visma) in the flow.
+1. **The consumer provider — decided 2026-11-17: Mastercard Payment Services, direct**
+   (I29).
+   - What the choice costs: Vantigo's submitter agreement with MPS, which is open
+     before D goes live, and each tenant's own agreements with its bank.
+   - What it avoids: a competitor (Visma's Maventa) in the flow, and an aggregator's
+     margin.
+   - **Still open for the plan:** which identifiers MPS's recipient lookup accepts. If
+     it needs a fødselsnummer to find most consumers, Q2 comes back to the owner with
+     the hit rate measured in MPS's test environment.
 2. **Fødselsnummer.**
    - Default: not stored.
    - Overturned, the lookup hits more reliably, but Customers holds a national identity
@@ -644,7 +659,8 @@ Each has the default this spec takes, and what an overturn changes.
    - Overturned to a second KID agreement, the settings gain a second agreement, and
      phase 2's "several KID lengths on one agreement" is no longer needed.
 8. **Delivery order.**
-   - Default: A, B, C, E, then D when the provider is chosen.
+   - Default: A, B, C, E, then D. D's code can start now, against MPS's test
+     environment. Its live send waits for the submitter agreement (I29).
    - The owner may want D first for Energy's consumers, as R §4.2 argues. D does not
      depend on B or C.
 
@@ -664,3 +680,6 @@ Each has the default this spec takes, and what an overturn changes.
   - The eFaktura lookup is kept in Invoices (I30).
   - The triggers that A and B must widen are named (I6, I13).
   - `TaxCurrencyCode` is written only off NOK (I23).
+- **3, 2026-11-17:** the owner chose Mastercard Payment Services, direct, as the
+  consumer provider (§14 Q1). I29 now names the APIs, Vantigo's submitter agreement and
+  the tenant's own agreements. Q2 may come back with the lookup's hit rate.
