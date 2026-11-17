@@ -82,6 +82,7 @@ type harness struct {
 	stock   *fakeStock
 	ledger  *fakeLedger
 	objects *fakeObjectStore
+	books   *fakeInvoices
 	mail    *modtest.FakeOutboundMail
 	channel uuid.UUID
 }
@@ -116,7 +117,7 @@ type harnessOptions struct {
 
 func newHarness(t *testing.T, o harnessOptions) *harness {
 	t.Helper()
-	h := &harness{catalog: newFakeCatalog(), dir: newFakeDirectory(), objects: newFakeObjectStore(), ledger: newFakeLedger(),
+	h := &harness{catalog: newFakeCatalog(), dir: newFakeDirectory(), objects: newFakeObjectStore(), ledger: newFakeLedger(), books: newFakeInvoices(),
 		stock: &fakeStock{sites: []contracts.StockSite{
 			{ID: siteMain, Code: "HOVED", Name: "Hovedlager", Active: true},
 			{ID: siteArchived, Code: "GML", Name: "Gammelt lager", Active: false},
@@ -140,6 +141,7 @@ func newHarness(t *testing.T, o harnessOptions) *harness {
 		modtest.WithStock(h.stock, h.ledger),
 		modtest.WithSalesTax(tax),
 		modtest.WithObjectStore(h.objects),
+		modtest.WithSupplierInvoices(h.books),
 	}
 	if o.communications {
 		h.mail = modtest.NewFakeOutboundMail()
