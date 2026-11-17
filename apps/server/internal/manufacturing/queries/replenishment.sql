@@ -207,3 +207,14 @@ SET auto_create = excluded.auto_create, auto_confirm = excluded.auto_confirm,
 
 -- name: DeleteRule :exec
 DELETE FROM manufacturing.replenishment_rules WHERE variant_id = @variant_id AND site_id = @site_id;
+
+-- name: QueueSiteRun :execrows
+-- QueueSiteRun asks for a run of one site on Purchasing's events (purchasing
+-- design A4): a run requested by no one, kind manual for the site, unless a
+-- run that would cover the site — of the site or of every site — is still
+-- pending. The caller holds LockRunRequests, so two handlers queue one.
+INSERT INTO manufacturing.replenishment_runs (kind, site_id, requested_at, requested_by_display)
+SELECT 'manual', @site_id::bigint, @now::timestamptz, 'Purchasing'
+WHERE NOT EXISTS (
+    SELECT 1 FROM manufacturing.replenishment_runs
+    WHERE status = 'pending' AND (site_id IS NULL OR site_id = @site_id::bigint));

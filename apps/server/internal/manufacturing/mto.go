@@ -116,6 +116,13 @@ func eventHandlers(d module.Deps) []events.Handler {
 				return flagOriginCancelled(ctx, tx, ev, d, clock)
 			},
 		},
+		{
+			Name:   purchasingHandler,
+			Events: purchasingEvents,
+			Handle: func(ctx context.Context, tx pgx.Tx, ev events.Delivered) error {
+				return queueSiteRun(ctx, tx, ev, d, clock)
+			},
+		},
 	}
 }
 
