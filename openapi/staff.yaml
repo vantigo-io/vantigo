@@ -6313,6 +6313,7 @@ paths:
             tags:
                 - Staff
             x-vantigo-access: permission:staff:access+staff:manage
+            x-vantigo-api: never
     /api/v1/staff/approvals:
         get:
             description: 'The requests the caller decides, oldest first (by when they were made): every person''s of a plain type for staff:approve and staff:manage, a manager''s reports'' today by the one manager rule, and an HR-only type''s for staff:personal-data alone — never the caller''s own, but for the self-approver''s: B''s by-right self-approver''s plain request, and the sole active holder of staff:personal-data''s HR-only one (POST /absences/{id}/approve). Each with the person as the work group names them and the row shaped as GET /absences shapes it for the caller: an HR-only type as leave to all but staff:personal-data.'
@@ -9751,6 +9752,7 @@ paths:
             tags:
                 - Staff
             x-vantigo-access: permission:staff:access+staff:manage+staff:personal-data
+            x-vantigo-api: never
     /api/v1/staff/people:
         get:
             description: 'The directory, by display name, the work group with each person''s manager, department and status today: staff:manage lists everyone, filtered by status (current by default — active, upcoming and no employment yet; ended; all); staff:view without it the people active today (an employment that has started and not ended), whatever status says. q matches each of its words against the names, the employee number and the work email; unitId, departmentId and locationId keep the people with an employment not ended before today in that unit whose terms name that department or location — the row in force today, or an upcoming employment''s first row — all on one employment. Anyone else is the uniform 403.'
@@ -10324,6 +10326,7 @@ paths:
             tags:
                 - Staff
             x-vantigo-access: permission:staff:access+staff:manage
+            x-vantigo-api: never
     /api/v1/staff/people/{id}/account/pass:
         post:
             description: 'Shows the Temporary Access Pass the person''s provider issued for their external account (Entra design D7) — once: the provider answers it a single time and keeps it sealed until then, so a second call, a call after its lifetime and a call when none was issued are pass_gone. Answered with Cache-Control no-store; the link''s passIssuedAt is cleared, and each reveal is a pass_revealed event naming the viewer and never the pass. The provider is called with the caller as the actor, on no transaction. Rate-limited with Run now and Disable now.'
@@ -10446,6 +10449,7 @@ paths:
             tags:
                 - Staff
             x-vantigo-access: permission:staff:access+staff:manage
+            x-vantigo-api: never
     /api/v1/staff/people/{id}/availability:
         get:
             description: A person's availability declaration (staff competence design S10), the recurring rows by weekday first, then the dated ones by day. Data only — nothing in Staff enforces or sums it. Read by the person, their managers today by the one manager rule, staff:manage and staff:personal-data; anyone else — a colleague, staff:approve alone — gets a 404 identical to an unknown id.
@@ -10589,6 +10593,7 @@ paths:
             tags:
                 - Staff
             x-vantigo-access: permission:staff:access+staff:personal-data
+            x-vantigo-api: never
     /api/v1/staff/people/{id}/bank-account/reveal:
         post:
             description: Opens the person's sealed bank account and answers it once, with Cache-Control no-store. Each reveal is a bank_account_revealed event naming the viewer.
@@ -11683,6 +11688,7 @@ paths:
             tags:
                 - Staff
             x-vantigo-access: permission:staff:access+staff:personal-data
+            x-vantigo-api: never
     /api/v1/staff/people/{id}/national-id/reveal:
         post:
             description: Opens the person's sealed national identity number and answers it once, with Cache-Control no-store. Each reveal is a national_id_revealed event naming the viewer.
@@ -11892,6 +11898,7 @@ paths:
             tags:
                 - Staff
             x-vantigo-access: permission:staff:access+staff:personal-data
+            x-vantigo-api: never
     /api/v1/staff/people/{id}/photo:
         delete:
             description: 'Removes the person''s photo (person-glance design S1): the three columns cleared and the revision moved on under the person''s lock, the object queued in the deletion ledger, a photo_removed event. HR alone — staff:manage and staff:personal-data, never the person themselves, whose own picture is their Vantigo avatar; anyone else who sees the person gets the uniform 403, and anyone who may not see them a 404 identical to an unknown id — as does a person without a photo.'

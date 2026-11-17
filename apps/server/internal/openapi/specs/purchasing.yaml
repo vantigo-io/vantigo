@@ -4671,6 +4671,7 @@ paths:
             tags:
                 - Purchasing
             x-vantigo-access: permission:purchasing:settings
+            x-vantigo-api: never
         put:
             description: Saves the settings whole (P9). The series start only rises above the highest number used (series_start_too_low); the send channel is judged through Communications before the transaction (send_channel_unknown); a delivery address names a site of Inventory's.
             operationId: putPurchasingSettings
@@ -4715,6 +4716,7 @@ paths:
             tags:
                 - Purchasing
             x-vantigo-access: permission:purchasing:settings
+            x-vantigo-api: never
     /api/v1/purchasing/sites:
         get:
             description: Inventory's sites, as an order's receiving site picks one.
