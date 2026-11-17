@@ -1,4 +1,4 @@
-import { Alert, Button, Group, Modal, Stack, TextInput } from "@mantine/core";
+import { Alert, Button, Group, Modal, Stack, Textarea, TextInput } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconAlertTriangle, IconInfoCircle } from "@tabler/icons-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -30,13 +30,18 @@ export interface SendDialogProps {
  */
 const loud = new Set(["delivery_preference_ehf", "ehf_preferred", "buyer_norwegian_business_required"]);
 
+/** The most characters a personal message holds (invoices phase 6 design I6), as the server's rule. */
+const maxMessage = 2000;
+
 /** The EHF states in which the document is on its way as EHF, or there (D10's cross-channel note). */
 const ehfCarried = new Set(["queued", "submitted", "delivered", "unconfirmed"]);
 
 /**
  * Sends an issued document by e-mail (D4, D10): the recipient prefilled with
  * the customer's invoice e-mail and editable — an edited one is sent as the
- * override, the customer's own is left to the server; without the send
+ * override, the customer's own is left to the server — and an optional
+ * personal message above the standard text (invoices phase 6 design I6);
+ * without the send
  * defaults the field starts empty and a note says why — the send's warnings,
  * and on an invoice something has been paid on or credited against, what the
  * mail will say about payment. "Sent to …" on success, the address the
@@ -51,13 +56,15 @@ export const SendDialog = ({ document: doc, defaults, onClose }: SendDialogProps
   const { t, money, date } = useInvoiceFormat();
   const queryClient = useQueryClient();
   const [recipient, setRecipient] = useState(defaults?.recipient ?? "");
+  const [message, setMessage] = useState("");
   const [error, setError] = useState<string | undefined>();
+  const [messageError, setMessageError] = useState<string | undefined>();
   const chosen = recipient.trim();
   // The customer's own address is the server's default: only another one is an override.
   const override = chosen && chosen !== defaults?.recipient ? chosen : undefined;
   const anonymised = doc.customerAnonymised === true;
   const send = useMutation({
-    mutationFn: () => sendInvoice(doc.id, override),
+    mutationFn: () => sendInvoice(doc.id, override, message.trim() || undefined),
     onSuccess: async (sent) => {
       // Where it went is the server's log: the newest delivery, the row this
       // send wrote (ids only grow) — what was typed or prefilled only if the
@@ -80,8 +87,14 @@ export const SendDialog = ({ document: doc, defaults, onClose }: SendDialogProps
         return;
       }
       if (refusal instanceof ApiValidationError) {
-        const { onInputs, elsewhere } = fieldRefusals(refusal, t, (field) => field === "recipient", "send");
+        const { onInputs, elsewhere } = fieldRefusals(
+          refusal,
+          t,
+          (field) => field === "recipient" || field === "message",
+          "send",
+        );
         setError(onInputs.recipient);
+        setMessageError(onInputs.message);
         if (elsewhere.length > 0) {
           notifications.show({ color: "red", title: t("couldNotSend"), message: elsewhere.join(" ") });
         }
@@ -172,6 +185,19 @@ export const SendDialog = ({ document: doc, defaults, onClose }: SendDialogProps
           onChange={(e) => {
             setRecipient(e.currentTarget.value);
             setError(undefined);
+          }}
+        />
+        <Textarea
+          label={t("sendMessage")}
+          data-assist="invoices.send.message"
+          description={`${t("sendMessageHint")} ${t("sendMessageCount", { count: message.length, max: maxMessage })}`}
+          rows={4}
+          maxLength={maxMessage}
+          value={message}
+          error={messageError}
+          onChange={(e) => {
+            setMessage(e.currentTarget.value);
+            setMessageError(undefined);
           }}
         />
         {paymentNote && (

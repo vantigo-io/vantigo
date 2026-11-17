@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import type { InvoiceSettings } from "../api/settings";
 import type { VatCode, VatCodeCreateInput, VatCodeUpdateInput } from "../api/vat-codes";
-import { jsonResponse, sent } from "../test/api";
+import { refusal as codedRefusal, jsonResponse, sent } from "../test/api";
 import { stubFetch } from "../test/fetch";
 import { meta, settings, vatCodes } from "../test/fixtures";
 import { renderWithProviders } from "../test/render";
@@ -796,5 +796,67 @@ describe("the Consumption to invoice card", () => {
     await userEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(await card.findByText("Choose one of the channels listed, or Disabled.")).toBeInTheDocument();
     expect(screen.queryByText("Could not save the settings")).not.toBeInTheDocument();
+  });
+});
+
+describe("the seller's logo (invoices phase 6 design I1)", () => {
+  /** The fake server with the logo's three operations: PUT sets it, DELETE clears it. */
+  const logoServer = (refuseUpload?: Response) => {
+    const state = world();
+    const base = server({}, state);
+    return stubFetch((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = path(input);
+      const method = init?.method ?? "GET";
+      if (url === "/api/v1/invoices/settings/logo" && method === "PUT") {
+        if (refuseUpload) return refuseUpload.clone();
+        state.settings = {
+          ...state.settings,
+          logo: { contentType: "image/png", sha256: "ab12" },
+          revision: state.settings.revision + 1,
+        };
+        return jsonResponse(200, state.settings);
+      }
+      if (url === "/api/v1/invoices/settings/logo" && method === "DELETE") {
+        state.settings = { ...state.settings, logo: undefined, revision: state.settings.revision + 1 };
+        return new Response(null, { status: 204 });
+      }
+      return (base as unknown as (i: RequestInfo | URL, r?: RequestInit) => Response)(input, init);
+    });
+  };
+  const png = () => new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], "logo.png", { type: "image/png" });
+
+  it("uploads a logo as the multipart part named file, shows it, and removes it", async () => {
+    const fetchMock = logoServer();
+    renderWithProviders(<SettingsPage />);
+
+    const block = await screen.findByTestId("logo-block");
+    expect(within(block).getByText("No logo is uploaded.")).toBeInTheDocument();
+    const input = block.querySelector('input[type="file"]') as HTMLInputElement;
+    await userEvent.upload(input, png());
+
+    expect(await screen.findByText("Logo uploaded")).toBeInTheDocument();
+    const [, upload] = fetchMock.actualCalls.find(([, r]) => r?.method === "PUT") ?? [];
+    expect(upload?.body).toBeInstanceOf(FormData);
+    expect((upload?.body as FormData | undefined)?.get("file")).toBeInstanceOf(File);
+    const image = await within(await screen.findByTestId("logo-block")).findByRole("img", { name: "The current logo" });
+    expect(image).toHaveAttribute("src", expect.stringContaining("/api/v1/invoices/settings/logo?v=ab12"));
+
+    await userEvent.click(within(screen.getByTestId("logo-block")).getByRole("button", { name: "Remove logo" }));
+    expect(await screen.findByText("Logo removed")).toBeInTheDocument();
+    expect(
+      fetchMock.actualCalls.some(([u, r]) => path(u) === "/api/v1/invoices/settings/logo" && r?.method === "DELETE"),
+    ).toBe(true);
+  });
+
+  it("words a refused logo by its code, in the reader's language", async () => {
+    logoServer(codedRefusal(400, "logo_too_wide"));
+    renderWithProviders(<SettingsPage />);
+
+    const block = await screen.findByTestId("logo-block");
+    await userEvent.upload(block.querySelector('input[type="file"]') as HTMLInputElement, png());
+    expect(await within(block).findByRole("alert")).toHaveTextContent(
+      "A logo is at most 2,000 pixels on its longer side.",
+    );
+    expect(screen.queryByText("The server's English.")).not.toBeInTheDocument();
   });
 });

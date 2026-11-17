@@ -4,7 +4,9 @@ import {
   Badge,
   Button,
   Checkbox,
+  FileButton,
   Group,
+  Image,
   List,
   Modal,
   NumberInput,
@@ -43,7 +45,14 @@ import {
 } from "../api/access-point";
 import { type InvoicesMeta, invoicesMetaQueryOptions } from "../api/meta";
 import { ApiConflictError, ApiValidationError, INVOICES_QUERY_KEY } from "../api/request";
-import { type InvoiceSettings, invoiceSettingsQueryOptions, updateInvoiceSettings } from "../api/settings";
+import {
+  type InvoiceSettings,
+  invoiceLogoUrl,
+  invoiceSettingsQueryOptions,
+  removeInvoiceLogo,
+  updateInvoiceSettings,
+  uploadInvoiceLogo,
+} from "../api/settings";
 import {
   deleteTaxCategoryVatCode,
   productTaxCategoriesQueryOptions,
@@ -188,6 +197,7 @@ const sellerInputs = new Set([
   "city",
   "country",
   "email",
+  "phone",
   "bankAccount",
   "iban",
   "bic",
@@ -268,6 +278,7 @@ const SellerForm = ({ settings, latestRevision, dirty, onDirtyChange: setDirty }
         iban: values.iban,
         bic: values.bic,
         email: values.email,
+        phone: values.phone,
         defaultPaymentTermsDays: values.defaultPaymentTermsDays,
         defaultCurrency: values.defaultCurrency,
         footerText: values.footerText,
@@ -335,7 +346,8 @@ const SellerForm = ({ settings, latestRevision, dirty, onDirtyChange: setDirty }
       | "bankAccount"
       | "iban"
       | "bic"
-      | "email",
+      | "email"
+      | "phone",
   ) => ({
     label: t(`field.${key}`),
     value: values[key],
@@ -393,6 +405,7 @@ const SellerForm = ({ settings, latestRevision, dirty, onDirtyChange: setDirty }
             <TextInput {...text("city")} />
             <TextInput {...text("country")} />
             <TextInput {...text("email")} />
+            <TextInput {...text("phone")} maxLength={30} />
             <TextInput {...text("bankAccount")} />
             <TextInput {...text("iban")} />
             <TextInput {...text("bic")} />
@@ -417,6 +430,7 @@ const SellerForm = ({ settings, latestRevision, dirty, onDirtyChange: setDirty }
               onChange={(e) => set("inForetaksregisteret", e.currentTarget.checked)}
             />
           </Group>
+          <LogoBlock />
           <Textarea
             label={t("field.footerText")}
             error={errors.footerText}
@@ -483,6 +497,107 @@ const SellerForm = ({ settings, latestRevision, dirty, onDirtyChange: setDirty }
           {t("save")}
         </Button>
       </Group>
+    </Stack>
+  );
+};
+
+/** The largest logo the server takes (invoices phase 6 design I1), judged here first so a large file is not sent for nothing. */
+const maxLogoBytes = 512 * 1024;
+
+/**
+ * The seller's logo (invoices phase 6 design I1, I3): the current one, read
+ * with its SHA-256 as the cache key, Upload logo — a PNG or a JPEG of at most
+ * 512 KB — and Remove logo. Each is a write of its own, never the form's: it
+ * answers the settings, which replace the cached ones, and a refusal is worded
+ * by its code. The logo shown is the settings' as last read, so an edit in
+ * progress does not hide a logo set meanwhile.
+ */
+const LogoBlock = () => {
+  const { t, date } = useInvoiceFormat();
+  const queryClient = useQueryClient();
+  const settings = useQuery(invoiceSettingsQueryOptions());
+  const logo = settings.data?.logo;
+  const [refusal, setRefusal] = useState<string | undefined>();
+  const done = async () => {
+    setRefusal(undefined);
+    await queryClient.invalidateQueries({ queryKey: [INVOICES_QUERY_KEY] });
+  };
+  const upload = useMutation({
+    mutationFn: (file: File) => uploadInvoiceLogo(file),
+    onMutate: () => setRefusal(undefined),
+    onSuccess: async (saved) => {
+      queryClient.setQueryData(invoiceSettingsQueryOptions().queryKey, saved);
+      await done();
+      notifications.show({ color: "green", message: t("logo.uploaded") });
+    },
+    onError: (error) => setRefusal(refusalMessage(error, t, date)),
+  });
+  const remove = useMutation({
+    mutationFn: () => removeInvoiceLogo(),
+    onMutate: () => setRefusal(undefined),
+    onSuccess: async () => {
+      await done();
+      notifications.show({ color: "green", message: t("logo.removed") });
+    },
+    onError: (error) => setRefusal(refusalMessage(error, t, date)),
+  });
+  const choose = (file: File | null) => {
+    if (!file) return;
+    if (file.size > maxLogoBytes) {
+      setRefusal(t("refusal.logo_too_large"));
+      return;
+    }
+    upload.mutate(file);
+  };
+  return (
+    <Stack gap="xs" data-testid="logo-block">
+      <Text size="sm" fw={500}>
+        {t("logo.title")}
+      </Text>
+      <Text size="xs" c="dimmed">
+        {t("logo.hint")}
+      </Text>
+      {logo ? (
+        <Image src={invoiceLogoUrl(logo.sha256)} alt={t("logo.current")} h={60} w="auto" maw={220} fit="contain" />
+      ) : (
+        <Text size="sm" c="dimmed">
+          {t("logo.none")}
+        </Text>
+      )}
+      <Group gap="xs">
+        <FileButton onChange={choose} accept="image/png,image/jpeg">
+          {(props) => (
+            <Button
+              {...props}
+              size="xs"
+              variant="default"
+              loading={upload.isPending}
+              disabled={remove.isPending}
+              data-assist="invoices.settings.logo"
+            >
+              {t("logo.upload")}
+            </Button>
+          )}
+        </FileButton>
+        {logo && (
+          <Button
+            size="xs"
+            variant="subtle"
+            color="red"
+            leftSection={<IconTrash size={14} />}
+            loading={remove.isPending}
+            disabled={upload.isPending}
+            onClick={() => remove.mutate()}
+          >
+            {t("logo.remove")}
+          </Button>
+        )}
+      </Group>
+      {refusal && (
+        <Text size="sm" c="red" role="alert">
+          {refusal}
+        </Text>
+      )}
     </Stack>
   );
 };

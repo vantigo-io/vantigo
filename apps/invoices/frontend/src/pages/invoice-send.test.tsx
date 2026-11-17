@@ -88,6 +88,23 @@ describe("the Send dialog", () => {
     expect(requestTo(fetchMock, "POST", "/api/v1/invoices/1001/send")).toEqual({ recipient: "regnskap@acme.no" });
   });
 
+  it("sends the personal message typed, and leaves it out when none is (invoices phase 6 design I6)", async () => {
+    const fetchMock = server(() => issued(), {
+      "POST /api/v1/invoices/1001/send": () => jsonResponse(200, sentTo("faktura@acme.no")),
+    });
+    renderRoute("/invoices/1001");
+
+    const dialog = await openSendDialog();
+    const message = within(dialog).getByRole("textbox", { name: "Message" });
+    expect(within(dialog).getByText(/Shown above the standard text in the e-mail\./)).toBeInTheDocument();
+    await userEvent.type(message, "  Takk for sist!  ");
+    expect(within(dialog).getByText(/18 of 2000 characters\./)).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Send" }));
+
+    expect(await screen.findByText("Sent to faktura@acme.no")).toBeInTheDocument();
+    expect(requestTo(fetchMock, "POST", "/api/v1/invoices/1001/send")).toEqual({ message: "Takk for sist!" });
+  });
+
   it.each([
     [
       "delivery_preference_ehf",
@@ -304,6 +321,18 @@ describe("the deliveries card", () => {
     expect(within(rows[1]).getByText("faktura@acme.no")).toBeInTheDocument();
     expect(within(rows[2]).getByText("regnskap@acme.no")).toBeInTheDocument();
     expect(within(rows[1]).getByText("Faktura 1000 fra Kraft-Verket AS")).toBeInTheDocument();
+  });
+
+  it("shows a send's personal message under its subject", async () => {
+    const base = partlyPaid();
+    server(() =>
+      partlyPaid({ deliveries: base.deliveries?.map((d, i) => (i === 0 ? { ...d, message: "Takk for sist!" } : d)) }),
+    );
+    renderRoute("/invoices/1001");
+
+    const card = await screen.findByTestId("deliveries-card");
+    expect(within(card).getAllByTestId("delivery-message")).toHaveLength(1);
+    expect(within(card).getByText("Takk for sist!")).toBeInTheDocument();
   });
 
   it("says (anonymised) for a recipient the anonymisation blanked", async () => {

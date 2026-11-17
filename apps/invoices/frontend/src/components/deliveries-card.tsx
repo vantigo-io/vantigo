@@ -1,4 +1,4 @@
-import { Button, Group, Stack, Table, Text, Title } from "@mantine/core";
+import { Button, Group, Spoiler, Stack, Table, Text, Title } from "@mantine/core";
 import { IconPlus } from "@tabler/icons-react";
 import { PageSection } from "@vantigo/frontend-shell";
 import { useState } from "react";
@@ -30,7 +30,9 @@ export interface DeliveriesCardProps {
  * The Deliveries card (invoices payments and reminders design D22): every e-mail that handed an issued document over (D4, D10): when it went,
  * to whom and under which subject. The address is the server's to give — only
  * a caller with `invoices:issue` gets it — so a reader sees no address column
- * at all; one the anonymisation blanked says "(anonymised)". On an invoice,
+ * at all; one the anonymisation blanked says "(anonymised)". A send's
+ * personal message (invoices phase 6 design I6), answered to the same
+ * callers, shows under its subject, collapsed to its first lines. On an invoice,
  * the deliveries recorded by hand follow — handed over or posted, by whom, a
  * removed one struck through with its reason — with "Record a delivery" and
  * each record's removal for a caller with `invoices:issue`; a removal a
@@ -89,7 +91,21 @@ export const DeliveriesCard = ({
                         )}
                       </Table.Td>
                     )}
-                    <Table.Td>{d.subject}</Table.Td>
+                    <Table.Td>
+                      {d.subject}
+                      {d.message && (
+                        <Spoiler
+                          maxHeight={22}
+                          showLabel={t("delivery.showMessage")}
+                          hideLabel={t("delivery.hideMessage")}
+                          data-testid="delivery-message"
+                        >
+                          <Text size="sm" c="dimmed" style={{ whiteSpace: "pre-line" }}>
+                            {d.message}
+                          </Text>
+                        </Spoiler>
+                      )}
+                    </Table.Td>
                   </Table.Tr>
                 ))}
               </Table.Tbody>
