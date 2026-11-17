@@ -84,6 +84,14 @@ func (fakeStockLedger) ReleaseLotHolds(context.Context, pgx.Tx, contracts.StockS
 	return nil
 }
 
+func (fakeStockLedger) Receive(context.Context, pgx.Tx, contracts.StockSource, contracts.StockReceipt) (contracts.StockPosted, error) {
+	return contracts.StockPosted{}, nil
+}
+
+func (fakeStockLedger) ReverseReceipt(context.Context, pgx.Tx, contracts.StockSource, contracts.StockReversal) (contracts.StockPosted, error) {
+	return contracts.StockPosted{}, nil
+}
+
 // stockModule is a module providing both stock slots, as Inventory does.
 func stockModule(name string) Module {
 	return Module{

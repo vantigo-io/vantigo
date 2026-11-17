@@ -460,6 +460,16 @@ func (s *fakeStock) ReleaseLotHolds(_ context.Context, tx pgx.Tx, src contracts.
 	return nil
 }
 
+// Receive and ReverseReceipt are Purchasing's (purchasing design P3);
+// Manufacturing calls neither.
+func (s *fakeStock) Receive(context.Context, pgx.Tx, contracts.StockSource, contracts.StockReceipt) (contracts.StockPosted, error) {
+	return contracts.StockPosted{}, errors.New("fake stock: manufacturing receives nothing")
+}
+
+func (s *fakeStock) ReverseReceipt(context.Context, pgx.Tx, contracts.StockSource, contracts.StockReversal) (contracts.StockPosted, error) {
+	return contracts.StockPosted{}, errors.New("fake stock: manufacturing receives nothing")
+}
+
 // deriveStatus is a lot's status from its holds: blocked while any is a
 // block, quarantine while any is a quarantine.
 func (s *fakeStock) deriveStatus(id int64) {

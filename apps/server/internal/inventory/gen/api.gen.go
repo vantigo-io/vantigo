@@ -371,15 +371,16 @@ func (e InventoryLotStatus) Valid() bool {
 
 // Defines values for InventoryMovementKind.
 const (
-	Adjustment  InventoryMovementKind = "adjustment"
-	Count       InventoryMovementKind = "count"
-	Issue       InventoryMovementKind = "issue"
-	Move        InventoryMovementKind = "move"
-	Production  InventoryMovementKind = "production"
-	Receipt     InventoryMovementKind = "receipt"
-	TransferIn  InventoryMovementKind = "transfer_in"
-	TransferOut InventoryMovementKind = "transfer_out"
-	Unbuild     InventoryMovementKind = "unbuild"
+	Adjustment      InventoryMovementKind = "adjustment"
+	Count           InventoryMovementKind = "count"
+	Issue           InventoryMovementKind = "issue"
+	Move            InventoryMovementKind = "move"
+	Production      InventoryMovementKind = "production"
+	Receipt         InventoryMovementKind = "receipt"
+	ReceiptReversal InventoryMovementKind = "receipt_reversal"
+	TransferIn      InventoryMovementKind = "transfer_in"
+	TransferOut     InventoryMovementKind = "transfer_out"
+	Unbuild         InventoryMovementKind = "unbuild"
 )
 
 // Valid indicates whether the value is a known member of the InventoryMovementKind enum.
@@ -396,6 +397,8 @@ func (e InventoryMovementKind) Valid() bool {
 	case Production:
 		return true
 	case Receipt:
+		return true
+	case ReceiptReversal:
 		return true
 	case TransferIn:
 		return true
@@ -1402,7 +1405,7 @@ type InventoryLotMovementLine struct {
 	// From A location as other answers name it.
 	From *InventoryLocationRef `json:"from,omitempty"`
 
-	// Kind An open set (design §12): issue is stock taken out for another module's document, such as an order's delivery (orders design O45); transfer_out leaves the from site of a transfer and transfer_in arrives at its to site, or back at the from site when it is cancelled (I39–I44); production is a producing document's consumption of components, lines with only a from, and its output, lines with only a to, within one site (manufacturing design M1); unbuild reverses a production, its consume lines the finished item and its produce lines the components restored (manufacturing phase 2 M123).
+	// Kind An open set (design §12): issue is stock taken out for another module's document, such as an order's delivery (orders design O45); transfer_out leaves the from site of a transfer and transfer_in arrives at its to site, or back at the from site when it is cancelled (I39–I44); production is a producing document's consumption of components, lines with only a from, and its output, lines with only a to, within one site (manufacturing design M1); unbuild reverses a production, its consume lines the finished item and its produce lines the components restored (manufacturing phase 2 M123); receipt_reversal takes a receipt another module posted (purchasing design P3) back out of the locations and lots it went into, lines with only a from (A5).
 	Kind       InventoryMovementKind `json:"kind"`
 	LineNo     int32                 `json:"lineNo"`
 	MovementId int64                 `json:"movementId"`
@@ -1493,7 +1496,7 @@ type InventoryLowStockPage struct {
 	Rows []InventoryLowStockRow `json:"rows"`
 }
 
-// InventoryLowStockRow One low placement (I56–I58): the variant at an active site whose available plus incoming is at or below its reorder point, what it needs to reach its target — the maximum, or one above the reorder point — and the suggestion rounded up to whole packagings.
+// InventoryLowStockRow One low placement (I56–I58): the variant at an active site whose available plus incoming — in transit and on order — is at or below its reorder point, what it needs to reach its target — the maximum, or one above the reorder point — and the suggestion rounded up to whole packagings.
 type InventoryLowStockRow struct {
 	// Available On hand less reserved.
 	Available float64 `json:"available"`
@@ -1501,7 +1504,10 @@ type InventoryLowStockRow struct {
 	// Elsewhere Every other active site's available, by site code.
 	Elsewhere []InventoryLowStockElsewhere `json:"elsewhere"`
 
-	// Incoming In transit to the site on open transfers.
+	// InTransit In transit to the site on open transfers.
+	InTransit float64 `json:"inTransit"`
+
+	// Incoming In transit plus on order (purchasing design P4).
 	Incoming float64  `json:"incoming"`
 	Maximum  *float64 `json:"maximum"`
 
@@ -1511,6 +1517,9 @@ type InventoryLowStockRow struct {
 	// Needed The target less available plus incoming; at least 1.
 	Needed float64 `json:"needed"`
 	OnHand float64 `json:"onHand"`
+
+	// OnOrder Ordered on sent purchase orders for the site and not yet received (purchasing design P4); 0 when Purchasing is off.
+	OnOrder float64 `json:"onOrder"`
 
 	// OpenDrafts The numbers of the draft transfers to the site with a line of the variant (I59).
 	OpenDrafts   []int64                     `json:"openDrafts"`
@@ -1596,7 +1605,7 @@ type InventoryMovement struct {
 	// InspectionLots A receipt's lots put under a quarantine hold for inspection (manufacturing phase 2 M100): a lot received into that held stock already is in quarantine as a whole until it is released.
 	InspectionLots *[]int64 `json:"inspectionLots,omitempty"`
 
-	// Kind An open set (design §12): issue is stock taken out for another module's document, such as an order's delivery (orders design O45); transfer_out leaves the from site of a transfer and transfer_in arrives at its to site, or back at the from site when it is cancelled (I39–I44); production is a producing document's consumption of components, lines with only a from, and its output, lines with only a to, within one site (manufacturing design M1); unbuild reverses a production, its consume lines the finished item and its produce lines the components restored (manufacturing phase 2 M123).
+	// Kind An open set (design §12): issue is stock taken out for another module's document, such as an order's delivery (orders design O45); transfer_out leaves the from site of a transfer and transfer_in arrives at its to site, or back at the from site when it is cancelled (I39–I44); production is a producing document's consumption of components, lines with only a from, and its output, lines with only a to, within one site (manufacturing design M1); unbuild reverses a production, its consume lines the finished item and its produce lines the components restored (manufacturing phase 2 M123); receipt_reversal takes a receipt another module posted (purchasing design P3) back out of the locations and lots it went into, lines with only a from (A5).
 	Kind     InventoryMovementKind   `json:"kind"`
 	Lines    []InventoryMovementLine `json:"lines"`
 	Note     *string                 `json:"note,omitempty"`
@@ -1618,7 +1627,7 @@ type InventoryMovement struct {
 	Transfer *InventoryTransferRef `json:"transfer,omitempty"`
 }
 
-// InventoryMovementKind An open set (design §12): issue is stock taken out for another module's document, such as an order's delivery (orders design O45); transfer_out leaves the from site of a transfer and transfer_in arrives at its to site, or back at the from site when it is cancelled (I39–I44); production is a producing document's consumption of components, lines with only a from, and its output, lines with only a to, within one site (manufacturing design M1); unbuild reverses a production, its consume lines the finished item and its produce lines the components restored (manufacturing phase 2 M123).
+// InventoryMovementKind An open set (design §12): issue is stock taken out for another module's document, such as an order's delivery (orders design O45); transfer_out leaves the from site of a transfer and transfer_in arrives at its to site, or back at the from site when it is cancelled (I39–I44); production is a producing document's consumption of components, lines with only a from, and its output, lines with only a to, within one site (manufacturing design M1); unbuild reverses a production, its consume lines the finished item and its produce lines the components restored (manufacturing phase 2 M123); receipt_reversal takes a receipt another module posted (purchasing design P3) back out of the locations and lots it went into, lines with only a from (A5).
 type InventoryMovementKind string
 
 // InventoryMovementLine A quantity of a variant from a location, to one, or both (I9).
@@ -1660,7 +1669,7 @@ type InventoryMovementSummary struct {
 	CountId *int64 `json:"countId,omitempty"`
 	Id      int64  `json:"id"`
 
-	// Kind An open set (design §12): issue is stock taken out for another module's document, such as an order's delivery (orders design O45); transfer_out leaves the from site of a transfer and transfer_in arrives at its to site, or back at the from site when it is cancelled (I39–I44); production is a producing document's consumption of components, lines with only a from, and its output, lines with only a to, within one site (manufacturing design M1); unbuild reverses a production, its consume lines the finished item and its produce lines the components restored (manufacturing phase 2 M123).
+	// Kind An open set (design §12): issue is stock taken out for another module's document, such as an order's delivery (orders design O45); transfer_out leaves the from site of a transfer and transfer_in arrives at its to site, or back at the from site when it is cancelled (I39–I44); production is a producing document's consumption of components, lines with only a from, and its output, lines with only a to, within one site (manufacturing design M1); unbuild reverses a production, its consume lines the finished item and its produce lines the components restored (manufacturing phase 2 M123); receipt_reversal takes a receipt another module posted (purchasing design P3) back out of the locations and lots it went into, lines with only a from (A5).
 	Kind      InventoryMovementKind `json:"kind"`
 	LineCount int32                 `json:"lineCount"`
 	Note      *string               `json:"note,omitempty"`
@@ -1929,9 +1938,15 @@ type InventorySiteStock struct {
 	// Held Of on hand, what lies in lots on hold or expired (M63); 0 for an untracked variant.
 	Held float64 `json:"held"`
 
-	// Incoming In transit to the site on open transfers (I46).
+	// InTransit In transit to the site on open transfers (I46).
+	InTransit float64 `json:"inTransit"`
+
+	// Incoming In transit plus on order (purchasing design P4).
 	Incoming float64 `json:"incoming"`
 	OnHand   float64 `json:"onHand"`
+
+	// OnOrder Ordered on sent purchase orders for the site and not yet received (purchasing design P4); 0 when Purchasing is off.
+	OnOrder float64 `json:"onOrder"`
 
 	// Placement A variant's placement at a site (I54): its primary location, reorder point and maximum, and whether it is low (I56) — available plus incoming at or below the reorder point.
 	Placement *InventoryPlacement `json:"placement,omitempty"`
@@ -2014,12 +2029,18 @@ type InventoryStockAtSite struct {
 	// Available On hand less reserved.
 	Available float64 `json:"available"`
 
-	// Incoming In transit to the site on open transfers (I46).
+	// InTransit In transit to the site on open transfers (I46).
+	InTransit float64 `json:"inTransit"`
+
+	// Incoming In transit plus on order (purchasing design P4).
 	Incoming float64 `json:"incoming"`
 
 	// Locations The locations holding it, most first.
 	Locations []InventoryStockAtSiteLocation `json:"locations"`
 	OnHand    float64                        `json:"onHand"`
+
+	// OnOrder Ordered on sent purchase orders for the site and not yet received (purchasing design P4); 0 when Purchasing is off.
+	OnOrder float64 `json:"onOrder"`
 
 	// Placement A variant's placement at a site (I54): its primary location, reorder point and maximum, and whether it is low (I56) — available plus incoming at or below the reorder point.
 	Placement *InventoryPlacement `json:"placement,omitempty"`
@@ -2131,7 +2152,7 @@ type InventoryTraceLot struct {
 type InventoryTraceMovement struct {
 	Id int64 `json:"id"`
 
-	// Kind An open set (design §12): issue is stock taken out for another module's document, such as an order's delivery (orders design O45); transfer_out leaves the from site of a transfer and transfer_in arrives at its to site, or back at the from site when it is cancelled (I39–I44); production is a producing document's consumption of components, lines with only a from, and its output, lines with only a to, within one site (manufacturing design M1); unbuild reverses a production, its consume lines the finished item and its produce lines the components restored (manufacturing phase 2 M123).
+	// Kind An open set (design §12): issue is stock taken out for another module's document, such as an order's delivery (orders design O45); transfer_out leaves the from site of a transfer and transfer_in arrives at its to site, or back at the from site when it is cancelled (I39–I44); production is a producing document's consumption of components, lines with only a from, and its output, lines with only a to, within one site (manufacturing design M1); unbuild reverses a production, its consume lines the finished item and its produce lines the components restored (manufacturing phase 2 M123); receipt_reversal takes a receipt another module posted (purchasing design P3) back out of the locations and lots it went into, lines with only a from (A5).
 	Kind     InventoryMovementKind `json:"kind"`
 	PostedAt time.Time             `json:"postedAt"`
 	Reason   *string               `json:"reason,omitempty"`

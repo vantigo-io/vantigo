@@ -3,6 +3,7 @@ package module
 import (
 	"fmt"
 	"reflect"
+	"slices"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/events"
@@ -573,7 +574,71 @@ func withStock(deps Deps, given, enabled []Module) (Deps, error) {
 	if ledger != nil {
 		deps.StockLedger = ledger.StockLedger(deps)
 	}
-	return withProduction(deps, enabled)
+	if deps, err = withProduction(deps, enabled); err != nil {
+		return deps, err
+	}
+	return withSuppliers(deps, given, enabled)
+}
+
+// withSuppliers resolves the supplier slots (purchasing design P1, P4, P6,
+// P7, P10): contracts.SupplierDirectory, contracts.SupplierInvoices,
+// contracts.SupplierInvoiceMatches and contracts.PurchaseSupply from the
+// enabled modules — at most one may declare each — keeping a preset value
+// when none does; and the supplier holders and personal data from every
+// module given, enabled or not, appended onto a copy of what the caller
+// preset, in module order. No provider reads another while it is built.
+// withStock calls it last, for Compose and Workers both: Manufacturing's
+// replenishment worker reads the open purchases in worker mode.
+func withSuppliers(deps Deps, given, enabled []Module) (Deps, error) {
+	directory, err := soleProvider(enabled, "a supplier directory", func(m Module) bool { return m.SupplierDirectory != nil })
+	if err != nil {
+		return deps, err
+	}
+	if directory != nil {
+		deps.SupplierDirectory = directory.SupplierDirectory(deps)
+	}
+	invoices, err := soleProvider(enabled, "supplier invoices", func(m Module) bool { return m.SupplierInvoices != nil })
+	if err != nil {
+		return deps, err
+	}
+	if invoices != nil {
+		deps.SupplierInvoices = invoices.SupplierInvoices(deps)
+	}
+	matches, err := soleProvider(enabled, "supplier invoice matches", func(m Module) bool { return m.SupplierInvoiceMatches != nil })
+	if err != nil {
+		return deps, err
+	}
+	if matches != nil {
+		deps.SupplierInvoiceMatches = matches.SupplierInvoiceMatches(deps)
+	}
+	supply, err := soleProvider(enabled, "a purchase supply", func(m Module) bool { return m.PurchaseSupply != nil })
+	if err != nil {
+		return deps, err
+	}
+	if supply != nil {
+		deps.PurchaseSupply = supply.PurchaseSupply(deps)
+	}
+	var holders []contracts.SupplierReferenceHolder
+	var data []contracts.SupplierPersonalDataHolder
+	for _, mod := range given {
+		if mod.SupplierReferences != nil {
+			if h := mod.SupplierReferences(deps); h != nil {
+				holders = append(holders, h)
+			}
+		}
+		if mod.SupplierPersonalData != nil {
+			if d := mod.SupplierPersonalData(deps); d != nil {
+				data = append(data, contracts.SupplierPersonalDataHolder{Module: mod.Name, Data: d})
+			}
+		}
+	}
+	if len(holders) > 0 {
+		deps.SupplierReferenceHolders = append(slices.Clone(deps.SupplierReferenceHolders), holders...)
+	}
+	if len(data) > 0 {
+		deps.SupplierPersonalData = append(slices.Clone(deps.SupplierPersonalData), data...)
+	}
+	return deps, nil
 }
 
 // withProduction resolves contracts.SalesOrderLines, contracts.Production,

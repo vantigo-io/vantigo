@@ -253,6 +253,35 @@ type Deps struct {
 	// same way, from Module.KitStructure, beside SalesOrderLines; it is nil
 	// when Manufacturing is off.
 	KitStructure contracts.KitStructure
+	// SupplierDirectory is Accounting's register of suppliers
+	// (contracts.SupplierDirectory, purchasing design P1), and
+	// SupplierInvoices its supplier invoices as another module reads them and
+	// drafts one (contracts.SupplierInvoices, P6, module-boundaries rule 26).
+	// Compose and Workers set both, on every module's Deps copy, from
+	// whichever enabled module declares them, after the stock slots
+	// (withSuppliers); each is nil when Accounting is off.
+	SupplierDirectory contracts.SupplierDirectory
+	SupplierInvoices  contracts.SupplierInvoices
+	// SupplierInvoiceMatches is Purchasing's matches of supplier invoices to
+	// its orders (contracts.SupplierInvoiceMatches, P6), and PurchaseSupply
+	// its open purchases (contracts.PurchaseSupply, P4): optional for their
+	// readers, resolved the same way, nil when Purchasing is off — which
+	// Accounting reads as "no badge" and Inventory and Manufacturing as
+	// "nothing is on order".
+	SupplierInvoiceMatches contracts.SupplierInvoiceMatches
+	PurchaseSupply         contracts.PurchaseSupply
+	// SupplierReferenceHolders are every given module's
+	// contracts.SupplierReferenceHolder (P10, A8, rule 28), enabled or not,
+	// and SupplierPersonalData every given module's
+	// contracts.SupplierPersonalData under its name (P7, rule 27): collected
+	// as VariantReferenceHolders and CustomerPersonalData are, for their
+	// reason, by Compose and Workers alike, appended to what the caller
+	// preset (modtest.WithSupplierReferenceHolders,
+	// modtest.WithSupplierPersonalData). Only Accounting calls them: the
+	// holders inside the transaction that deletes or anonymises a supplier,
+	// after it has locked it; the erase there too, the export outside any.
+	SupplierReferenceHolders []contracts.SupplierReferenceHolder
+	SupplierPersonalData     []contracts.SupplierPersonalDataHolder
 	// Workforce is Staff's register of competences, the one sanctioned way a
 	// module reads who holds what (see contracts.Workforce, staff competence
 	// design S15). Compose sets it, on every module's Deps copy, from
@@ -722,6 +751,27 @@ type Module struct {
 	// provides one (manufacturing). At most one enabled module may set it;
 	// Compose and Workers call it beside SalesOrderLines, from Deps.Pool.
 	KitStructure func(Deps) contracts.KitStructure
+	// SupplierDirectory and SupplierInvoices build this module's
+	// contracts.SupplierDirectory and contracts.SupplierInvoices, if it
+	// provides them (accounting); SupplierInvoiceMatches and PurchaseSupply
+	// its contracts.SupplierInvoiceMatches and contracts.PurchaseSupply
+	// (purchasing). At most one enabled module may set each; Compose and
+	// Workers call them after the stock slots, from Deps.Pool, and put the
+	// results on every module's Deps. None reads another slot while it is
+	// built.
+	SupplierDirectory      func(Deps) contracts.SupplierDirectory
+	SupplierInvoices       func(Deps) contracts.SupplierInvoices
+	SupplierInvoiceMatches func(Deps) contracts.SupplierInvoiceMatches
+	PurchaseSupply         func(Deps) contracts.PurchaseSupply
+	// SupplierReferences builds this module's
+	// contracts.SupplierReferenceHolder, if it keeps documents naming a
+	// supplier (purchasing design P10), and SupplierPersonalData its
+	// contracts.SupplierPersonalData, if it holds anything about a supplier
+	// as a person (P7). Like VariantReferences, any number of modules may set
+	// them, and they are called for a module MODULES leaves out too, so they
+	// must need nothing of Deps a disabled module would lack.
+	SupplierReferences   func(Deps) contracts.SupplierReferenceHolder
+	SupplierPersonalData func(Deps) contracts.SupplierPersonalData
 	// Workforce builds this module's contracts.Workforce implementation, if
 	// it provides one (staff). At most one enabled module may set it; Compose
 	// and Workers call it before anything they build runs — after they have

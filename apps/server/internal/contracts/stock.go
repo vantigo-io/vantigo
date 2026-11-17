@@ -395,6 +395,88 @@ type StockLedger interface {
 	// ReleaseLotHolds releases every active hold src's document put on the lots
 	// named (on every lot when lotIDs is nil). Holds of any other source stay.
 	ReleaseLotHolds(ctx context.Context, tx pgx.Tx, src StockSource, lotIDs []int64, by LotActor) error
+	// Receive posts one movement of kind "receipt" at the site for a
+	// receiving document (purchasing design P3, A6, A13): each line puts its
+	// quantity, in the variant's own unit, on its to-location, as the receipt
+	// endpoint's lines do and with its rules — a goods variant only
+	// (StockVariantNotStocked), the tracking rules (a tracked variant's line
+	// names an existing lot, a lot by number found or made, or serials; an
+	// untracked one none), an active location of the site
+	// (StockLocationUnknown), a lot that is not blocked (StockLotBlocked); a
+	// variant inspected on receipt gets its lots quarantined, as there. A
+	// Discontinued variant is received: the last open order of a product
+	// discontinued is the normal sequence. The site need only exist and be
+	// active (StockSiteUnknown, StockSiteArchived). The movement's source is
+	// r.Document (src when zero) with src's id as its source line id, and
+	// posting it is idempotent by that source: a second Receive for one
+	// document with the same body answers the first movement; one with
+	// another body is refused (StockDocumentReused). After a refusal the
+	// caller rolls back, as after Produce.
+	Receive(ctx context.Context, tx pgx.Tx, src StockSource, r StockReceipt) (StockPosted, error)
+	// ReverseReceipt takes the receipt Receive posted for the document
+	// receipt back out, line for line, from the locations and lots it went
+	// into, in one movement of kind "receipt_reversal" (purchasing design
+	// A5): whatever the lots' holds, and releasing the holds that receipt
+	// set. It is refused when no receipt was posted for the document
+	// (StockReceiptUnknown) and when a location no longer holds what the
+	// receipt put there (StockInsufficientStock, the line's Index its place
+	// in the receipt's movement lines). It is idempotent by the document: a
+	// second call answers the first reversal. After a refusal the caller rolls
+	// back, as after Produce.
+	ReverseReceipt(ctx context.Context, tx pgx.Tx, receipt StockSource, r StockReversal) (StockPosted, error)
+}
+
+// StockReceipt is a movement of stock into a site for a receiving document
+// (purchasing design P3): the receipt record the movement records (the
+// receiving document when zero), the site, the lines, the supplier's name and
+// reference as the movement keeps them, a note, and who posted it.
+type StockReceipt struct {
+	Document          StockSource
+	SiteID            int64
+	Lines             []ReceiveLine
+	SupplierName      string // at most 200 characters, cut to it
+	SupplierReference string // at most 100 characters, cut to it
+	Note              string // at most 1000 characters, cut to it
+	PostedByUserID    *uuid.UUID
+	PostedByDisplay   string
+	// Today is StockIssue's: what a new lot's dates default from.
+	Today time.Time
+}
+
+// ReceiveLine is one line of a receipt: the variant, the receiving
+// document's line id, the location it is put on, and a quantity more than 0
+// (exact decimal text, at most three decimals) in the variant's own unit. A
+// line of a tracked variant names its lot one way: LotID, an existing lot of
+// the variant; Lot, a lot by number found or made (an empty number generates
+// L<n>); or, for a serial variant, Serials, one lot of 1 per serial, each with
+// Lot's dates, the quantity then their number.
+type ReceiveLine struct {
+	VariantID    int32
+	LineID       int64
+	ToLocationID int64
+	Quantity     string
+	LotID        int64
+	Lot          *ReceiveLot
+	Serials      []string
+}
+
+// ReceiveLot is a lot a receipt line finds by number or makes. Its dates are
+// calendar dates at midnight UTC; nil is unstated, and a lot made takes the
+// variant's day offsets from its production date (today when unstated).
+type ReceiveLot struct {
+	Number         string
+	SupplierLot    string
+	ProductionDate *time.Time
+	BestBefore     *time.Time
+	Expiry         *time.Time
+}
+
+// StockReversal is who takes a receipt back, as the movement keeps it, and
+// the note it carries.
+type StockReversal struct {
+	Note            string // at most 1000 characters, cut to it
+	PostedByUserID  *uuid.UUID
+	PostedByDisplay string
 }
 
 // StockPosted is what Issue and Produce posted (manufacturing phase 2 M67):
@@ -626,6 +708,12 @@ const (
 	// StockLotExists: an EnsureLots NewLot that MustCreate names a number the
 	// variant already has (manufacturing phase 2 M80, M81).
 	StockLotExists = "lot_exists"
+	// StockLotNumberInvalid: a receipt line's lot number or serial is not
+	// 1–20 characters A–Z, a–z, 0–9 and . _ / - (purchasing design P3).
+	StockLotNumberInvalid = "lot_number_invalid"
+	// StockReceiptUnknown: ReverseReceipt names a document no receipt was
+	// posted for (purchasing design A5).
+	StockReceiptUnknown = "receipt_unknown"
 )
 
 // StockRefusal is the one error a StockLedger write answers for what it will

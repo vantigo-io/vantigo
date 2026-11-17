@@ -1302,7 +1302,7 @@ components:
             type: object
         InventoryLowStockRow:
             additionalProperties: false
-            description: 'One low placement (I56–I58): the variant at an active site whose available plus incoming is at or below its reorder point, what it needs to reach its target — the maximum, or one above the reorder point — and the suggestion rounded up to whole packagings.'
+            description: 'One low placement (I56–I58): the variant at an active site whose available plus incoming — in transit and on order — is at or below its reorder point, what it needs to reach its target — the maximum, or one above the reorder point — and the suggestion rounded up to whole packagings.'
             properties:
                 available:
                     description: On hand less reserved.
@@ -1313,8 +1313,16 @@ components:
                     items:
                         $ref: '#/components/schemas/InventoryLowStockElsewhere'
                     type: array
-                incoming:
+                inTransit:
                     description: In transit to the site on open transfers.
+                    format: double
+                    type: number
+                incoming:
+                    description: In transit plus on order (purchasing design P4).
+                    format: double
+                    type: number
+                onOrder:
+                    description: Ordered on sent purchase orders for the site and not yet received (purchasing design P4); 0 when Purchasing is off.
                     format: double
                     type: number
                 maximum:
@@ -1364,6 +1372,8 @@ components:
                 - reserved
                 - available
                 - incoming
+                - inTransit
+                - onOrder
                 - reorderPoint
                 - maximum
                 - needed
@@ -1526,7 +1536,7 @@ components:
                 - postedAt
             type: object
         InventoryMovementKind:
-            description: 'An open set (design §12): issue is stock taken out for another module''s document, such as an order''s delivery (orders design O45); transfer_out leaves the from site of a transfer and transfer_in arrives at its to site, or back at the from site when it is cancelled (I39–I44); production is a producing document''s consumption of components, lines with only a from, and its output, lines with only a to, within one site (manufacturing design M1); unbuild reverses a production, its consume lines the finished item and its produce lines the components restored (manufacturing phase 2 M123).'
+            description: 'An open set (design §12): issue is stock taken out for another module''s document, such as an order''s delivery (orders design O45); transfer_out leaves the from site of a transfer and transfer_in arrives at its to site, or back at the from site when it is cancelled (I39–I44); production is a producing document''s consumption of components, lines with only a from, and its output, lines with only a to, within one site (manufacturing design M1); unbuild reverses a production, its consume lines the finished item and its produce lines the components restored (manufacturing phase 2 M123); receipt_reversal takes a receipt another module posted (purchasing design P3) back out of the locations and lots it went into, lines with only a from (A5).'
             enum:
                 - adjustment
                 - move
@@ -1537,6 +1547,7 @@ components:
                 - transfer_in
                 - production
                 - unbuild
+                - receipt_reversal
             type: string
         InventoryMovementLine:
             additionalProperties: false
@@ -2096,8 +2107,16 @@ components:
                     description: Of on hand, what lies in lots on hold or expired (M63); 0 for an untracked variant.
                     format: double
                     type: number
-                incoming:
+                inTransit:
                     description: In transit to the site on open transfers (I46).
+                    format: double
+                    type: number
+                incoming:
+                    description: In transit plus on order (purchasing design P4).
+                    format: double
+                    type: number
+                onOrder:
+                    description: Ordered on sent purchase orders for the site and not yet received (purchasing design P4); 0 when Purchasing is off.
                     format: double
                     type: number
                 onHand:
@@ -2124,6 +2143,8 @@ components:
                 - held
                 - rows
                 - incoming
+                - inTransit
+                - onOrder
             type: object
         InventorySiteUpdate:
             additionalProperties: false
@@ -2249,8 +2270,16 @@ components:
                     description: On hand less reserved.
                     format: double
                     type: number
-                incoming:
+                inTransit:
                     description: In transit to the site on open transfers (I46).
+                    format: double
+                    type: number
+                incoming:
+                    description: In transit plus on order (purchasing design P4).
+                    format: double
+                    type: number
+                onOrder:
+                    description: Ordered on sent purchase orders for the site and not yet received (purchasing design P4); 0 when Purchasing is off.
                     format: double
                     type: number
                 locations:
@@ -2279,6 +2308,8 @@ components:
                 - reserved
                 - available
                 - incoming
+                - inTransit
+                - onOrder
                 - locations
             type: object
         InventoryStockAtSiteLocation:
@@ -4808,7 +4839,7 @@ paths:
             x-vantigo-access: permission:inventory:locations-view+inventory:stock-view
     /api/v1/inventory/low-stock.csv:
         get:
-            description: 'The low-stock list as CSV (I60), with the list''s filter: site, sku, name, barcode, available, incoming, reorder_point, maximum, needed, suggested, packaging, packaging_count — every row, unpaged.'
+            description: 'The low-stock list as CSV (I60), with the list''s filter: site, sku, name, barcode, available, incoming, in_transit, on_order, reorder_point, maximum, needed, suggested, packaging, packaging_count — every row, unpaged; incoming is in_transit plus on_order.'
             operationId: exportInventoryLowStock
             parameters:
                 - description: Only this site.
