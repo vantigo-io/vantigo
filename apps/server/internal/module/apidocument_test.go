@@ -16,6 +16,8 @@ import (
 
 	"github.com/vantigo-io/vantigo/server/internal/config"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/ratelimit"
+	"github.com/vantigo-io/vantigo/server/internal/testdb"
 )
 
 // personAccess admits every request as a signed-in person.
@@ -200,7 +202,7 @@ func TestOpenAPIJSON_KeyWithoutAScopeIsAnError(t *testing.T) {
 // (K46), keyed by the sorted permission set and the read-only flag.
 func TestAPIDocuments_TheCacheIsBounded(t *testing.T) {
 	contract := []byte(`{"openapi":"3.0.3","info":{"title":"t","version":"1"},"paths":{}}`)
-	d := newAPIDocuments(&fakeAccess{}, contract, map[string]contracts.Permission{}, "")
+	d := newAPIDocuments(&fakeAccess{}, nil, contract, map[string]contracts.Permission{}, "")
 	first, err := d.scoped([]string{"b:x", "a:x"}, false)
 	if err != nil {
 		t.Fatal(err)
@@ -229,5 +231,97 @@ func TestAPIDocuments_TheCacheIsBounded(t *testing.T) {
 	var parsed map[string]any
 	if err := json.Unmarshal(first, &parsed); err != nil {
 		t.Errorf("a cached document is not JSON: %v", err)
+	}
+}
+
+// scopedRecordingAccess admits as check says, is the request log, and
+// answers a key's scope.
+type scopedRecordingAccess struct {
+	recordingAccess
+	permissions []string
+}
+
+func (a *scopedRecordingAccess) Scope(context.Context, contracts.Principal) ([]string, bool, error) {
+	return a.permissions, false, nil
+}
+
+func composeLimitedDocuments(t *testing.T, access contracts.Access) http.Handler {
+	t.Helper()
+	pool, _ := testdb.Migrated(t)
+	handler, err := Compose(Deps{Access: access, Limiter: ratelimit.New(pool), Config: &config.Config{
+		Modules: []string{"customers"}, AppOrigin: "https://vantigo.example.com", BasePath: "/erp",
+	}}, customersModules()...)
+	if err != nil {
+		t.Fatalf("Compose: %v", err)
+	}
+	return handler
+}
+
+// The document is the caller's own: no shared cache may keep it (S1).
+func TestOpenAPIJSON_IsNeverCachedByOthers(t *testing.T) {
+	for name, access := range map[string]*fakeAccess{"a session": personAccess(), "nobody": {}} {
+		rec := getDocument(t, composeDocuments(t, access), "/api/openapi.json")
+		if got := rec.Header().Get("Cache-Control"); got != "private, no-store" {
+			t.Errorf("%s: Cache-Control %q, want private, no-store", name, got)
+		}
+		if got := rec.Header().Get("Vary"); got != "Authorization, Cookie" {
+			t.Errorf("%s: Vary %q, want Authorization, Cookie", name, got)
+		}
+	}
+}
+
+// A key loading its document is counted against its integration's rate
+// limit, carries the RateLimit headers, is refused 429 over it, and every
+// answer is in the request log under the document's operation (K23, K24).
+func TestOpenAPIJSON_AKeyIsLimitedAndRecorded(t *testing.T) {
+	integration, key := uuid.New(), uuid.New()
+	access := &scopedRecordingAccess{permissions: []string{"customers:view"}}
+	access.check = func(*http.Request, contracts.Rule) (contracts.Principal, error) {
+		return keyPrincipal(integration, key, 2), nil
+	}
+	handler := composeLimitedDocuments(t, access)
+	for i, want := range []string{"1", "0"} {
+		rec := getDocument(t, handler, "/api/openapi.json")
+		if rec.Code != http.StatusOK || rec.Header().Get("RateLimit-Limit") != "2" || rec.Header().Get("RateLimit-Remaining") != want {
+			t.Fatalf("request %d: %d %v, want 200 with %s remaining", i+1, rec.Code, rec.Header(), want)
+		}
+	}
+	rec := getDocument(t, handler, "/api/openapi.json")
+	if rec.Code != http.StatusTooManyRequests || rec.Header().Get("Retry-After") == "" {
+		t.Fatalf("third request: %d %v, want 429 with Retry-After", rec.Code, rec.Header())
+	}
+
+	access.mu.Lock()
+	defer access.mu.Unlock()
+	if len(access.recorded) != 3 {
+		t.Fatalf("recorded %d requests, want 3", len(access.recorded))
+	}
+	for i, wantStatus := range []int{200, 200, 429} {
+		got := access.recorded[i]
+		if got.Status != wantStatus || got.OperationID != documentOperationID || got.KeyID != key || got.IntegrationID != integration {
+			t.Errorf("record %d = %+v, want status %d under %s", i, got, wantStatus, documentOperationID)
+		}
+	}
+	if access.recorded[2].Reason != contracts.APIReasonRateLimited {
+		t.Errorf("the 429's reason = %q, want %q", access.recorded[2].Reason, contracts.APIReasonRateLimited)
+	}
+}
+
+// A key identity found and refused is recorded with its reason, as the
+// router records one.
+func TestOpenAPIJSON_ARefusedKeyIsRecorded(t *testing.T) {
+	integration, key := uuid.New(), uuid.New()
+	access := &scopedRecordingAccess{}
+	access.check = func(*http.Request, contracts.Rule) (contracts.Principal, error) {
+		return contracts.Principal{}, &contracts.APIKeyRefusal{KeyID: key, IntegrationID: integration, Reason: "expired", Err: contracts.ErrAPIKeyExpired}
+	}
+	rec := getDocument(t, composeLimitedDocuments(t, access), "/api/openapi.json")
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status %d, want 401", rec.Code)
+	}
+	access.mu.Lock()
+	defer access.mu.Unlock()
+	if len(access.recorded) != 1 || access.recorded[0].Reason != "expired" || access.recorded[0].Status != http.StatusUnauthorized || access.recorded[0].OperationID != documentOperationID {
+		t.Errorf("recorded %+v, want one 401 expired under %s", access.recorded, documentOperationID)
 	}
 }

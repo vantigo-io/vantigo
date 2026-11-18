@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/google/uuid"
@@ -17,6 +18,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/httpx"
 	"github.com/vantigo-io/vantigo/server/internal/openapi/integrator"
+	"github.com/vantigo-io/vantigo/server/internal/ratelimit"
 )
 
 // documentRule is GET /api/openapi.json's own check (API access design K28):
@@ -24,6 +26,11 @@ import (
 // key does too (with APIAllowed identity refuses it api_key_read_only). A
 // principal with no user is refused by the handler.
 var documentRule = contracts.Rule{Kind: contracts.RuleAnonymous, API: contracts.APIRead}
+
+// documentOperationID names GET /api/openapi.json in the request log, which
+// records an operation, never a path. No contract declares the endpoint, so
+// the name is the one the contract's convention would give it.
+const documentOperationID = "getApiOpenapiJson"
 
 // filteredDocuments is how many key scopes' documents are kept (K46).
 const filteredDocuments = 64
@@ -35,6 +42,7 @@ const filteredDocuments = 64
 // by the sorted permission set and the read-only flag.
 type apiDocuments struct {
 	access  contracts.Access
+	keys    keyGate
 	full    []byte
 	catalog []contracts.Permission
 	server  string
@@ -55,7 +63,11 @@ type filteredDocument struct {
 // newAPIDocuments serves full, the merged contract, with catalog the composed
 // permission catalog and server the document's servers URL (APP_URL; "" keeps
 // the contract's own).
-func newAPIDocuments(access contracts.Access, full []byte, catalog map[string]contracts.Permission, server string) *apiDocuments {
+//
+// An API key's request goes through the same keyGate as the router's: it is
+// counted against its integration's rate limit and recorded in the request
+// log, refusals included.
+func newAPIDocuments(access contracts.Access, limiter *ratelimit.Limiter, full []byte, catalog map[string]contracts.Permission, server string) *apiDocuments {
 	perms := make([]contracts.Permission, 0, len(catalog))
 	for _, p := range catalog {
 		perms = append(perms, p)
@@ -63,6 +75,7 @@ func newAPIDocuments(access contracts.Access, full []byte, catalog map[string]co
 	slices.SortFunc(perms, func(a, b contracts.Permission) int { return strings.Compare(a.Key, b.Key) })
 	d := &apiDocuments{
 		access:   access,
+		keys:     newKeyGate(access, limiter),
 		full:     full,
 		catalog:  perms,
 		server:   server,
@@ -151,6 +164,12 @@ func (d *apiDocuments) cached() int {
 }
 
 func (d *apiDocuments) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+	// The document is the caller's own (a key's scope, a person's view), so
+	// no shared cache may keep it or answer it to someone else.
+	w.Header().Set("Cache-Control", "private, no-store")
+	w.Header().Add("Vary", "Authorization, Cookie")
+
 	p, err := d.access.Check(r, documentRule)
 	if err == nil && p.UserID == uuid.Nil {
 		// No credentials at all, or a SCIM token: neither is anyone the
@@ -159,40 +178,49 @@ func (d *apiDocuments) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		if errors.Is(err, contracts.ErrUnauthenticated) || errors.Is(err, contracts.ErrForbidden) {
-			d.access.Reject(w, r, documentRule, err)
+			d.keys.refuse(w, r, d.access, documentRule, err, documentOperationID, start)
 			return
 		}
 		httpx.WriteError(w, r, err)
 		return
 	}
 
-	var body []byte
-	switch {
-	case p.Via != nil && p.Via.Kind == contracts.ViaAPIKey:
-		scope, ok := d.access.(contracts.APIKeyScope)
-		if !ok {
-			httpx.WriteError(w, r, errors.New("module: an API key was admitted by an Access that has no APIKeyScope"))
-			return
-		}
-		permissions, readOnly, err := scope.Scope(r.Context(), p)
-		if err != nil {
-			httpx.WriteError(w, r, err)
-			return
-		}
-		body, err = d.scoped(permissions, readOnly)
-		if err != nil {
-			httpx.WriteError(w, r, err)
-			return
-		}
-	case r.URL.Query().Get("view") == "api":
-		body, err = d.integrator()
-		if err != nil {
-			httpx.WriteError(w, r, err)
-			return
-		}
-	default:
-		body = d.full
+	if p.Via != nil && p.Via.Kind == contracts.ViaAPIKey {
+		d.keys.serve(w, r, p, documentOperationID, start, func(w http.ResponseWriter) { d.serveKey(w, r, p) })
+		return
 	}
+	body := d.full
+	if r.URL.Query().Get("view") == "api" {
+		if body, err = d.integrator(); err != nil {
+			httpx.WriteError(w, r, err)
+			return
+		}
+	}
+	writeDocument(w, body)
+}
+
+// serveKey answers an admitted key the integrator's document cut to what
+// contracts.APIKeyScope says it reaches.
+func (d *apiDocuments) serveKey(w http.ResponseWriter, r *http.Request, p contracts.Principal) {
+	scope, ok := d.access.(contracts.APIKeyScope)
+	if !ok {
+		httpx.WriteError(w, r, errors.New("module: an API key was admitted by an Access that has no APIKeyScope"))
+		return
+	}
+	permissions, readOnly, err := scope.Scope(r.Context(), p)
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	body, err := d.scoped(permissions, readOnly)
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	writeDocument(w, body)
+}
+
+func writeDocument(w http.ResponseWriter, body []byte) {
 	w.Header().Set("Content-Type", "application/json")
 	_, _ = w.Write(body)
 }
@@ -224,5 +252,5 @@ func IntegratorDocument(mods ...Module) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return newAPIDocuments(nil, full, catalog, "").integrator()
+	return newAPIDocuments(nil, nil, full, catalog, "").integrator()
 }
