@@ -1,0 +1,38 @@
+/* The key field above Scalar. Scalar styles everything below it. */
+body {
+  margin: 0;
+  font-family: system-ui, sans-serif;
+}
+
+.apiref-header {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid #d0d4da;
+}
+
+.apiref-header h1 {
+  margin: 0 0 0.5rem;
+  font-size: 1.25rem;
+}
+
+.apiref-key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.apiref-key input {
+  min-width: 24rem;
+  max-width: 100%;
+  padding: 0.25rem 0.5rem;
+  font-family: ui-monospace, monospace;
+}
+
+.apiref-key small {
+  flex-basis: 100%;
+  color: #555b65;
+}
+
+.apiref-notice {
+  margin: 0.5rem 0 0;
+}

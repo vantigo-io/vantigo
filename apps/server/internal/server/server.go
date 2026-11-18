@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/vantigo-io/vantigo/server/internal/apiref"
 	"github.com/vantigo-io/vantigo/server/internal/config"
 	"github.com/vantigo-io/vantigo/server/internal/docs"
 	"github.com/vantigo-io/vantigo/server/internal/httpx"
@@ -66,6 +67,7 @@ func New(o Options) http.Handler {
 		documentation = docs.Assets()
 	}
 	docsHandler := docs.Handler(documentation, o.Config.BasePath)
+	reference := apiref.Handler(apiref.Assets())
 
 	mux := http.NewServeMux()
 	mux.Handle("/health/", o.Health)
@@ -88,6 +90,16 @@ func New(o Options) http.Handler {
 		if path := r.URL.EscapedPath(); path == "/api" || strings.HasPrefix(path, "/api/") {
 			if path == livePath && o.Live != nil {
 				o.Live.ServeHTTP(w, r)
+				return
+			}
+			// The API reference (API access design K26): /api itself for a
+			// browser, and the page's files. Everything else under /api,
+			// /api for an API client included, is the API's.
+			if path == apiref.Path {
+				w.Header().Add("Vary", "Accept")
+			}
+			if apiref.Serves(r, path) {
+				reference.ServeHTTP(w, r)
 				return
 			}
 			apiHandler.ServeHTTP(w, r)

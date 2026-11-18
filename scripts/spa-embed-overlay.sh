@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Builds the SPA and the documentation site and overlays them into the two
-# go:embed directories, apps/server/internal/web/dist and
-# apps/server/internal/docs/dist, where the compiler picks them up. Each holds
+# Builds the SPA, the documentation site and the API reference page and
+# overlays them into the three go:embed directories,
+# apps/server/internal/web/dist, apps/server/internal/docs/dist and
+# apps/server/internal/apiref/dist, where the compiler picks them up. Each holds
 # a committed placeholder index.html so `go build` and `go test` work without
 # a frontend build. Callers restore the placeholders afterwards
 # (scripts/restore-embed-overlay.sh) so the working tree stays clean.
@@ -15,6 +16,7 @@ cd "$(dirname "$0")/.."
 
 EMBED_DIR=apps/server/internal/web/dist
 DOCS_EMBED_DIR=apps/server/internal/docs/dist
+APIREF_EMBED_DIR=apps/server/internal/apiref/dist
 VERSION="${1:-${VANTIGO_VERSION:-dev}}"
 
 echo "==> SPA (vite)"
@@ -32,3 +34,11 @@ echo "==> documentation embed overlay"
 rm -rf "$DOCS_EMBED_DIR"
 mkdir -p "$DOCS_EMBED_DIR"
 cp -R docs/dist/. "$DOCS_EMBED_DIR/"
+
+echo "==> API reference (vite, served at /api)"
+bun run --cwd apps/apiref/frontend build
+
+echo "==> API reference embed overlay"
+rm -rf "$APIREF_EMBED_DIR"
+mkdir -p "$APIREF_EMBED_DIR"
+cp -R apps/apiref/frontend/dist/. "$APIREF_EMBED_DIR/"
