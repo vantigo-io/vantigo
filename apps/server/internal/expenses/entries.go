@@ -134,7 +134,7 @@ func (s *server) resolveOwner(ctx context.Context, c *caller, userID *openapi_ty
 	if err != nil {
 		return uuid.Nil, fmt.Errorf("expenses: look up the expense's owner: %w", err)
 	}
-	if user == nil || !user.Active {
+	if user == nil || !user.Active || user.Kind == contracts.UserKindIntegration { // an integration has no expenses (API access design K56)
 		add("userId", "Nobody active has that user id")
 		return c.UserID, nil
 	}

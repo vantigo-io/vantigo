@@ -482,7 +482,7 @@ func (s *server) judgeResponsible(ctx context.Context, id, was *uuid.UUID) error
 	}
 	u, ok := users[*id]
 	switch {
-	case !ok:
+	case !ok || u.Kind == contracts.UserKindIntegration: // an integration is responsible for nothing (API access design K56)
 		return refuseField(orderTitle, "responsibleUserId", "", "No such user")
 	case !u.Active && (was == nil || *was != *id):
 		return refuseField(orderTitle, "responsibleUserId", "", "The user is disabled")

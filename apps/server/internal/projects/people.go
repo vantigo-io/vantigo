@@ -214,6 +214,9 @@ func (s *server) PutProjectsByIdRolesByUserId(ctx context.Context, req gen.PutPr
 	if err != nil {
 		return nil, err
 	}
+	if entry != nil && entry.Kind == contracts.UserKindIntegration {
+		entry = nil // an integration takes no role on a project (API access design K56)
+	}
 	active := entry != nil && entry.Active
 
 	by, err := s.callerAs(ctx)

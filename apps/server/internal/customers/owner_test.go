@@ -570,3 +570,17 @@ func TestPutCustomersByIdOwner_WhenCustomerDoesNotExist_ReturnsNotFound(t *testi
 		t.Errorf("status %d body %s, want 404", r.Status, r.Body)
 	}
 }
+
+// TestPutCustomersByIdOwner_RefusesAnIntegration is API access design K56: an
+// integration's user is one the directory knows, but it owns no customer, so
+// a key cannot make itself or another integration the owner.
+func TestPutCustomersByIdOwner_RefusesAnIntegration(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := authenticatedClientWithID(t, h)
+	created := createCustomer(t, c, "Owned Co")
+	integration := h.Integration(t, "Webshop sync")
+	if r := putOwner(t, c, created.Id, map[string]any{"ownerUserId": integration.String()}); r.Status != http.StatusBadRequest {
+		t.Errorf("an integration as owner: status %d body %s, want 400", r.Status, r.Body)
+	}
+}

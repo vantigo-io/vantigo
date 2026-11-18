@@ -10,6 +10,7 @@ import (
 
 	"github.com/vantigo-io/vantigo/server/internal/assistant/gen"
 	"github.com/vantigo-io/vantigo/server/internal/assistant/store"
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/db"
 )
 
@@ -19,7 +20,7 @@ func (s *server) userExists(ctx context.Context, id uuid.UUID) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("assistant: look up the user: %w", err)
 	}
-	return entry != nil, nil
+	return entry != nil && entry.Kind != contracts.UserKindIntegration, nil // an integration has no Assistant
 }
 
 // personResponse is a person's switch; a person with no row is off at version 0.

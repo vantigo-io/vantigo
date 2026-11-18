@@ -183,6 +183,11 @@ func (s *server) readHeader(ctx context.Context, in headerInput, base *header) (
 		if r.salesperson, err = s.user(ctx, salesperson); err != nil {
 			return r, err
 		}
+		// An integration is no salesperson (API access design K56): named, it is
+		// no such user; as the caller of an API key, the order has none.
+		if r.salesperson != nil && r.salesperson.Kind == contracts.UserKindIntegration {
+			r.salesperson = nil
+		}
 	}
 	project := in.ProjectID
 	if project == nil && base != nil {

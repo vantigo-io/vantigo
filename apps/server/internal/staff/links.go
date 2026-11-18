@@ -181,7 +181,7 @@ func (s *server) PutStaffPeopleByIdUser(ctx context.Context, req gen.PutStaffPeo
 			return nil, fmt.Errorf("staff: read the user to link person %d to: %w", req.Id, err)
 		}
 		switch {
-		case user == nil:
+		case user == nil || user.Kind == contracts.UserKindIntegration: // an integration is no employee (API access design K56)
 			return gen.PutStaffPeopleByIdUser400ApplicationProblemPlusJSONResponse(invalid(invalidLinkTitle, fieldErrors{
 				errs: fieldError("userId", "No user has this id"),
 			})), nil

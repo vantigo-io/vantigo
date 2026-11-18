@@ -18,6 +18,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/manufacturing/gen"
 	"github.com/vantigo-io/vantigo/server/internal/manufacturing/store"
 )
@@ -283,7 +284,8 @@ func (s *server) AddManufacturingTimeLog(ctx context.Context, req gen.AddManufac
 		return nil, err
 	}
 	person, known := users[in.UserId]
-	if s.deps.Users != nil && !known {
+	// An integration logs no time on the floor (API access design K56).
+	if s.deps.Users != nil && (!known || person.Kind == contracts.UserKindIntegration) {
 		f.add("userId", "No such user")
 	}
 	if f.failed() {

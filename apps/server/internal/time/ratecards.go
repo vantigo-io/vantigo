@@ -222,7 +222,8 @@ func (s *server) PostTimeRates(ctx context.Context, req gen.PostTimeRatesRequest
 		if err != nil {
 			return nil, fmt.Errorf("time: look up the rate's user: %w", err)
 		}
-		if user == nil {
+		// An integration bills no hours (API access design K56).
+		if user == nil || user.Kind == contracts.UserKindIntegration {
 			errs = withFieldError(errs, "userId", fmt.Sprintf("User %s was not found", body.UserId))
 		}
 	}

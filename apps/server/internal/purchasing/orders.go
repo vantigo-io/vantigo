@@ -557,7 +557,7 @@ func (s *server) buyerFor(ctx context.Context, f *fieldErrors, id *uuid.UUID) (a
 	if err != nil {
 		return actor{}, err
 	}
-	if u == nil && s.deps.Users != nil {
+	if (u == nil && s.deps.Users != nil) || (u != nil && u.Kind == contracts.UserKindIntegration) { // an integration is no buyer (API access design K56)
 		f.add("buyerId", "No user has this id")
 		return actor{}, nil
 	}
