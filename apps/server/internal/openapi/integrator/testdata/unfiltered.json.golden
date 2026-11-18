@@ -107,6 +107,17 @@
           }
         },
         "type": "object"
+      },
+      "WidgetDraft": {
+        "properties": {
+          "name": {
+            "$ref": "#/components/schemas/WidgetName"
+          }
+        },
+        "type": "object"
+      },
+      "WidgetName": {
+        "type": "string"
       }
     },
     "securitySchemes": {
@@ -154,6 +165,15 @@
       "post": {
         "description": "*Requires `widgets:view` and `widgets:edit`*",
         "operationId": "postWidgets",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WidgetDraft"
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": "Created"

@@ -41,12 +41,13 @@ func load(t *testing.T) *openapi3.T {
 // permission in each description and the stripped extensions.
 func TestBuildGolden(t *testing.T) {
 	cases := []struct {
-		name   string
-		filter *integrator.Filter
+		name       string
+		filter     *integrator.Filter
+		keepsDraft bool
 	}{
-		{"unfiltered", nil},
-		{"narrowed", &integrator.Filter{Permissions: []string{"widgets:view"}}},
-		{"read-only", &integrator.Filter{Permissions: []string{"widgets:view", "widgets:edit"}, ReadOnly: true}},
+		{"unfiltered", nil, true},
+		{"narrowed", &integrator.Filter{Permissions: []string{"widgets:view"}}, false},
+		{"read-only", &integrator.Filter{Permissions: []string{"widgets:view", "widgets:edit"}, ReadOnly: true}, false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -69,6 +70,16 @@ func TestBuildGolden(t *testing.T) {
 			got = append(got, '\n')
 			if strings.Contains(string(got), "x-vantigo-") {
 				t.Error("the document still carries an x-vantigo-* extension")
+			}
+			schemas := doc.Components.Schemas
+			if schemas["Secret"] != nil {
+				t.Error("the document keeps Secret, which only a never operation uses")
+			}
+			if _, kept := schemas["WidgetDraft"]; kept != c.keepsDraft || (schemas["WidgetName"] != nil) != c.keepsDraft {
+				t.Errorf("WidgetDraft and WidgetName kept = %v, want %v: they belong to postWidgets alone", kept, c.keepsDraft)
+			}
+			if schemas["Widget"] == nil || schemas["AuthErrorResponse"] == nil {
+				t.Error("the document lost a schema a kept operation uses")
 			}
 			golden := filepath.Join("testdata", c.name+".json.golden")
 			if *update {
