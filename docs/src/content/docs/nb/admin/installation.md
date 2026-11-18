@@ -114,7 +114,7 @@ Imaget er én binær med en kommandotabell; kommandoen er det første argumentet
 avslutter med 2 utenfor det): den kjører migreringer og fyller inn et idempotent norsk
 demodatasett på tvers av alle moduler (20 brukere fordelt på 9 tilgangsroller, 200
 bedrifter med 400 kontakter, 62 produkter, 75 prosjekter, timeregistreringer, utlegg,
-fakturaer — med en kunde som har kreditt fra en overbetaling —, målepunkter, kundesamtaler og et lite verksted med lager, stykklister,
+fakturaer — med en kunde som har kreditt fra en overbetaling, en betaling fra bankfeeden fordelt på to fakturaer og en liten differanse avrundet —, målepunkter, kundesamtaler og et lite verksted med lager, stykklister,
 produksjonsordrer og salgsordrer) og, når `accounting` er aktivert, et regnskap
 opprettet fra 1. januar med demoens salg og utlegg bokført, leverandører med fakturaene
 sine, mva-terminene som er over lukket og levert, og forrige måneds kontoutskrift halvveis

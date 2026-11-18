@@ -17,7 +17,7 @@ sources:
   - apps/server/internal/db/migrations/00182_invoices_write_offs.sql
   - apps/server/internal/db/migrations/00193_invoices_branding.sql
   - apps/server/internal/db/migrations/00197_invoices_credit.sql
-  - apps/server/internal/db/migrations/00199_invoices_split.sql
+  - apps/server/internal/db/migrations/00200_invoices_split.sql
   - apps/server/internal/docmath
 ---
 The Invoices module issues the sales document of Norwegian bookkeeping: a draft
@@ -155,7 +155,7 @@ registration in the day's CSV — it is told in the business time zone too.
 | `invoices.credit_merges` | A balance a customer merge moved: `from_customer_id`, `into_customer_id`, `currency`, `amount` (above 0), `amount_nok`, `merged_at`. Written by the merge after it re-points the movements, never changed; the fact log hears from it that a balance moved customer. |
 | `invoices.bank_import_accounts` | One row per receiving account a bank file was imported for: the `format` its files come in (`ocr` or `camt054`), set by its first import, and — once a manager changed it — the `previous_format` with `cutover_through`, the latest booking day of the account's own lines in it; who set it and when. Never deleted; an update changes only those columns ([Bank files](#bank-files-and-the-exception-queue)). |
 | `invoices.bank_files` | One imported bank file: its format, the SHA-256 of its bytes and its own identity (each unique), the object key it is stored under, its size, the accounts it names, the first and last booking day of its lines, how many transactions it brought, how many of them were `duplicates` (set once by the import, from `NULL`), how many lines were `ignored` and `ignored_kinds` by kind, who uploaded it and when. Never deleted or changed but by that one write. |
-| `invoices.bank_transactions` | One line of a bank file as the bank wrote it — the line reference, the format, the receiving account, the direction, `negative`, the booking, value and ordering days, the amount (above 0, NOK), the KID, the remittance text, `remittance_refs` (every structured remittance reference of a camt.054 line, of any type, in order, at most 20 of `varchar(35)`, `ck_bank_transactions_remittance_refs`; `'{}'` for an OCR or a feed line and for a line from before migration 00199), the debtor's name and account, the archive reference, the bank's code — its `fingerprint` and `ordinal`, `duplicate_of_id` when it repeats a live line, and its state: `status` (`pending`, `matched`, `exception`, `resolved` or `duplicate`), the `reason` it was queued for, the suggested invoice and the resolution. One live line per account and fingerprint (`ux_bank_transactions_fingerprint`). Never deleted; only the state columns change, never back to `pending`, and a reason once set stays. |
+| `invoices.bank_transactions` | One line of a bank file as the bank wrote it — the line reference, the format, the receiving account, the direction, `negative`, the booking, value and ordering days, the amount (above 0, NOK), the KID, the remittance text, `remittance_refs` (every structured remittance reference of a camt.054 line, of any type, in order, at most 20 of `varchar(35)`, `ck_bank_transactions_remittance_refs`; `'{}'` for an OCR or a feed line and for a line from before migration 00200), the debtor's name and account, the archive reference, the bank's code — its `fingerprint` and `ordinal`, `duplicate_of_id` when it repeats a live line, and its state: `status` (`pending`, `matched`, `exception`, `resolved` or `duplicate`), the `reason` it was queued for, the suggested invoice and the resolution. One live line per account and fingerprint (`ux_bank_transactions_fingerprint`). Never deleted; only the state columns change, never back to `pending`, and a reason once set stays. |
 | `invoices.bank_transaction_events` | What happened to a line, by whom and when — matched, queued, `auto_split` ([The automatic split](#the-automatic-split)), the queue's actions, and `reversed` on a line whose payment a reversal took back — with a reason and a note. Insert-only, but for its note blanked by an erase. |
 | `invoices.deliveries` | One row per e-mail that handed an issued document over: the recipient and the personal `message` (`''` for none; both `''` once the customer is anonymised), the subject, the Message-ID, the SHA-256 of the PDF attached, when and by whom. Never deleted; never changed but by that blanking. |
 | `invoices.manual_deliveries` | A delivery recorded by hand ([The delivery fact](#the-delivery-fact)): the invoice, `kind` (`handed_over` or `posted`), `delivered_on`, a note (`''` once the customer is anonymised), who recorded it and when, and — once removed — when, by whom and why. Never deleted; never changed but by the removal, once, and that blanking. |
@@ -2364,7 +2364,7 @@ the live payments that are not recoveries, plus the standing
 [write-off](#write-offs-and-recovered-payments) — and `writtenOff` that write-off's amount
 when its reason is not `rounding` (0 for a rounding one: a small difference is not a loss,
 so an invoice a rounding write-off closed — automatic or manual, the ones made before
-migration 00199 included — is `paid`), the first match wins:
+migration 00200 included — is `paid`), the first match wins:
 
 | State | When |
 | --- | --- |
@@ -2384,7 +2384,7 @@ is not overdue on its due date, and is from the day after. `credited > 0` keeps 
 invoice of free lines only (gross 0, which can never be credited) out of `credited`: it is
 `paid`, nothing being open. The rule lives once in SQL, `invoices.invoice_state(kind,
 status, gross, credited, paid, written_off, due_date, today)` (migration 00182, every caller
-passing `invoices.loss_written_off_amount(id)` as `written_off` since migration 00199; 00035's
+passing `invoices.loss_written_off_amount(id)` as `written_off` since migration 00200; 00035's
 `document_state` is its rule without the write-off, which the overdue checks still call
 with the write-off counted in `paid`), `IMMUTABLE`, with `today` always a parameter from
 the server's clock and never `CURRENT_DATE`; the list and the stats filter with it. What
@@ -2634,7 +2634,7 @@ is still refused `invoice_written_off` while a rounding write-off stands.
 
 **The setting.** `GET /settings` answers `tolerance`; `PUT /settings` takes it, optional
 (absent keeps the stored one), 0 to 100 with at most two decimals, else 400 on
-`tolerance`. The Down of migration 00199 refuses while an automatic write-off or an
+`tolerance`. The Down of migration 00200 refuses while an automatic write-off or an
 `auto_split` event exists.
 
 ## Charges
@@ -6539,7 +6539,7 @@ facts a ledger posts ([Customer credit](#customer-credit)), on migration
 Delivery B-2 is done too: one bank line matched across several invoices by the references
 it names ([The automatic split](#the-automatic-split)) and small differences rounded off
 under a tolerance ([Small differences](#small-differences)), on migration
-`00199_invoices_split.sql`. Still to come: C, foreign currency; D, eFaktura and AvtaleGiro; and E, sending in bulk, the
+`00200_invoices_split.sql`. Still to come: C, foreign currency; D, eFaktura and AvtaleGiro; and E, sending in bulk, the
 2028 buyer rule and credit limits.
 
 **Phase 5 is complete.** Its delivery D
@@ -6693,6 +6693,10 @@ The Assistant can point at these controls in a guided tour ([the registry](/en/r
 | `invoices.invoice.issue` | `/invoices/{invoiceId}` | Issue |
 | `invoices.settings.logo` | `/invoices/settings` | Upload logo |
 | `invoices.send.message` | `/invoices/{invoiceId}` | Message (the Send dialog) |
+| `invoices.settings.tolerance` | `/invoices/settings` | Rounding tolerance |
+| `invoices.invoice.credit` | `/invoices/{invoiceId}` | Use credit |
+| `invoices.queue.keep-as-credit` | `/invoices/payments` | Keep the rest as credit |
+| `invoices.customer.credit` | `/customers/{customerId}` | Customer credit |
 
 ## API keys
 
