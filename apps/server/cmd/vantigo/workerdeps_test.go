@@ -89,9 +89,9 @@ func TestWorkerMode_StaffAloneStartsTheAccountsWorker(t *testing.T) {
 		accounts, competence string
 		want                 []string
 	}{
-		{want: []string{"identity.api-keys", "staff-retention", "staff-accounts", "staff-competence"}},
-		{accounts: "0", want: []string{"identity.api-keys", "staff-retention", "staff-competence"}},
-		{competence: "0", want: []string{"identity.api-keys", "staff-retention", "staff-accounts"}},
+		{want: []string{"identity.api-keys", "identity.webhook-sender", "staff-retention", "staff-accounts", "staff-competence"}},
+		{accounts: "0", want: []string{"identity.api-keys", "identity.webhook-sender", "staff-retention", "staff-competence"}},
+		{competence: "0", want: []string{"identity.api-keys", "identity.webhook-sender", "staff-retention", "staff-accounts"}},
 	} {
 		env := map[string]string{
 			"DATABASE_URL": databaseURL,
