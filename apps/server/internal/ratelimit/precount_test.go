@@ -6,6 +6,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/vantigo-io/vantigo/server/internal/testdb"
 )
 
 var apiPolicy = Policy{Name: "api", Limit: 5, Window: time.Minute}
@@ -29,21 +31,17 @@ func sharedHits(t *testing.T, l *Limiter, p Policy, client string) int {
 	return hits
 }
 
-// waitFlushed waits for a flush Count started in the background.
-func waitFlushed(t *testing.T, l *Limiter, p Policy, client string) {
+// eventuallyShared waits up to 5 seconds for the shared row to hold want.
+func eventuallyShared(t *testing.T, l *Limiter, p Policy, client string, want int) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		l.mu.Lock()
-		st := l.counts[p.Name+":"+client]
-		busy := st != nil && st.flushing
-		l.mu.Unlock()
-		if !busy {
+		if sharedHits(t, l, p, client) == want {
 			return
 		}
-		time.Sleep(5 * time.Millisecond)
+		time.Sleep(10 * time.Millisecond)
 	}
-	t.Fatal("the flush did not finish")
+	t.Fatalf("shared row = %d, want %d", sharedHits(t, l, p, client), want)
 }
 
 func TestCount_LimitsWithinAWindowWithTheHeadersValues(t *testing.T) {
@@ -66,34 +64,86 @@ func TestCount_LimitsWithinAWindowWithTheHeadersValues(t *testing.T) {
 	}
 }
 
-// Only the window's first hit waits on the shared row; the rest reach it in
-// the background once a second, and the row is what replicas agree on.
-func TestCount_FlushesIntoTheSharedRowOnceASecond(t *testing.T) {
-	l, now := newLimiter(t)
+// Only the window's first hit waits on the shared row; the rest reach it
+// when the flusher runs, and the row is what replicas agree on.
+func TestCount_FlushesIntoTheSharedRow(t *testing.T) {
+	l, _ := newLimiter(t)
 	p := Policy{Name: "api", Limit: 100, Window: time.Minute}
 	for range 3 {
 		mustCount(t, l, p, "c")
 	}
 	if got := sharedHits(t, l, p, "c"); got != 1 {
-		t.Fatalf("shared row = %d before a second passed, want 1 (only the seed)", got)
+		t.Fatalf("shared row = %d before a flush, want 1 (only the seed)", got)
 	}
-	*now = now.Add(time.Second)
-	mustCount(t, l, p, "c") // the fourth hit starts the flush
-	waitFlushed(t, l, p, "c")
-	if got := sharedHits(t, l, p, "c"); got != 4 {
-		t.Fatalf("shared row = %d after the flush, want 4", got)
+	l.flushAll()
+	if got := sharedHits(t, l, p, "c"); got != 3 {
+		t.Fatalf("shared row = %d after the flush, want 3", got)
 	}
 
 	// Another replica's hits reach this one at its next flush.
 	other := NewWithClock(l.pool, l.now)
+	other.flushEvery = time.Hour
+	t.Cleanup(other.Close)
 	for range 10 {
 		mustCount(t, other, p, "c")
 	}
-	*now = now.Add(time.Second)
+	other.flushAll()
 	mustCount(t, l, p, "c")
-	waitFlushed(t, l, p, "c")
-	if d := mustCount(t, l, p, "c"); d.Remaining != 100-7 {
-		t.Errorf("Remaining = %d, want %d: the other replica's seed hit, its nine still in process, and this one's six", d.Remaining, 100-7)
+	l.flushAll()
+	if d := mustCount(t, l, p, "c"); d.Remaining != 100-15 {
+		t.Errorf("Remaining = %d, want %d: the other replica's ten and this one's five", d.Remaining, 100-15)
+	}
+}
+
+// A replica whose traffic stops still adds what it counted: the flusher runs
+// on its own, not on the next hit.
+func TestCount_TheFlusherAddsTheTailWithoutAnotherHit(t *testing.T) {
+	pool, _ := testdb.Migrated(t)
+	l := New(pool)
+	l.flushEvery = 20 * time.Millisecond
+	t.Cleanup(l.Close)
+	p := Policy{Name: "api", Limit: 100, Window: time.Hour}
+	for range 4 {
+		mustCount(t, l, p, "tail")
+	}
+	eventuallyShared(t, l, p, "tail", 4)
+}
+
+// Close adds what is counted before it returns.
+func TestCount_CloseFlushes(t *testing.T) {
+	l, _ := newLimiter(t)
+	p := Policy{Name: "api", Limit: 100, Window: time.Minute}
+	for range 5 {
+		mustCount(t, l, p, "c")
+	}
+	l.Close()
+	if got := sharedHits(t, l, p, "c"); got != 5 {
+		t.Errorf("shared row = %d after Close, want 5", got)
+	}
+}
+
+// Hits counted in a window the shared row has since left are dropped, never
+// added to the newer window.
+func TestCount_AFlushAfterTheRowMovedOnAddsNothing(t *testing.T) {
+	l, now := newLimiter(t)
+	p := Policy{Name: "api", Limit: 100, Window: time.Minute}
+	for range 4 {
+		mustCount(t, l, p, "c") // the seed and 3 in process, in 12:00
+	}
+	later := now.Add(time.Minute)
+	other := NewWithClock(l.pool, func() time.Time { return later })
+	other.flushEvery = time.Hour
+	t.Cleanup(other.Close)
+	mustCount(t, other, p, "c") // another replica starts 12:01 in the row
+	l.flushAll()
+	if got := sharedHits(t, l, p, "c"); got != 1 {
+		t.Errorf("shared row = %d, want 1: 12:00's hits are not 12:01's", got)
+	}
+	l.mu.Lock()
+	pending := l.counts["api:c"].pending
+	l.mu.Unlock()
+	if pending != 0 {
+		t.Errorf("%d hits still pending, want them dropped", pending)
 	}
 }
 

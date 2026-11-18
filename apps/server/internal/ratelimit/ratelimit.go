@@ -88,9 +88,15 @@ type Limiter struct {
 	pool *pgxpool.Pool
 	now  func() time.Time
 
-	// counts are Count's in-process pre-counts, by policy and client.
-	mu     sync.Mutex
-	counts map[string]*preCount
+	// counts are Count's in-process pre-counts, by policy and client, which
+	// the flusher adds to the shared rows every flushEvery until Close.
+	mu         sync.Mutex
+	counts     map[string]*preCount
+	flushEvery time.Duration
+	flusher    sync.Once
+	stop       chan struct{}
+	stopped    chan struct{}
+	closing    sync.Once
 }
 
 // New returns a limiter on pool.
@@ -102,7 +108,7 @@ func New(pool *pgxpool.Pool) *Limiter {
 // than the wall clock, for a caller that owns the clock its time decisions
 // use (a module's Deps.Clock, a test harness).
 func NewWithClock(pool *pgxpool.Pool, now func() time.Time) *Limiter {
-	return &Limiter{pool: pool, now: now}
+	return &Limiter{pool: pool, now: now, flushEvery: flushEvery, stop: make(chan struct{}), stopped: make(chan struct{})}
 }
 
 // hitSQL counts $3 hits atomically: a new key or a newer window starts at

@@ -428,6 +428,11 @@ func serve(ctx context.Context, logger *slog.Logger, cfg *config.Config, ln net.
 		return 1
 	}
 	mods := businessModules(access)
+	// The rate limiter's flusher adds what it counted in process to the
+	// shared rows once more before the pool closes (API access design K24).
+	// Deferred after closePool's, it runs before it, and after the requests
+	// have drained.
+	defer deps.Limiter.Close()
 
 	// The management listener is bound here — before any worker starts —
 	// so a bind failure (the port is taken) returns while nothing is

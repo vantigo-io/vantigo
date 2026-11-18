@@ -22,6 +22,10 @@ func newLimiter(t *testing.T) (*Limiter, *time.Time) {
 	now := time.Date(2026, 9, 10, 12, 0, 10, 0, time.UTC)
 	l := New(pool)
 	l.now = func() time.Time { return now }
+	// Count's flusher runs when a test says (flushAll), and once more on
+	// Close.
+	l.flushEvery = time.Hour
+	t.Cleanup(l.Close)
 	return l, &now
 }
 
