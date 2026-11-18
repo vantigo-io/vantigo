@@ -400,7 +400,16 @@ func (r *Router) wrap(op *openapi3.Operation, rule contracts.Rule, maxBody int64
 			w = rec
 			reason := ""
 			if r.recorder != nil {
-				defer func() { r.record(req, op, p.Via.KeyID, p.UserID, rec.Status(), reason, start) }()
+				defer func() {
+					// A handler that panics has not answered yet: the
+					// recovery further out answers 500, which is what is
+					// recorded, and the panic goes on to it.
+					if v := recover(); v != nil {
+						r.record(req, op, p.Via.KeyID, p.UserID, http.StatusInternalServerError, reason, start)
+						panic(v)
+					}
+					r.record(req, op, p.Via.KeyID, p.UserID, rec.Status(), reason, start)
+				}()
 			}
 			if r.opts.Limiter != nil && p.Via.RateLimitPerMinute > 0 {
 				policy := ratelimit.Policy{Name: apiPolicyName, Limit: p.Via.RateLimitPerMinute, Window: time.Minute}
@@ -435,6 +444,7 @@ func (r *Router) wrap(op *openapi3.Operation, rule contracts.Rule, maxBody int64
 // query string.
 func (r *Router) record(req *http.Request, op *openapi3.Operation, keyID, integrationID uuid.UUID, status int, reason string, start time.Time) {
 	r.recorder.Record(context.WithoutCancel(req.Context()), contracts.APIRequest{
+		At:            start,
 		KeyID:         keyID,
 		IntegrationID: integrationID,
 		Method:        req.Method,

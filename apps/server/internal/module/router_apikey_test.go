@@ -134,3 +134,67 @@ func TestRouter_NoRecorderStillLimits(t *testing.T) {
 		t.Errorf("%d %v", rec.Code, rec.Header())
 	}
 }
+
+// keyRouter is a router over fourOpsContract whose permission operation runs
+// h, for an API key of a recording Access.
+func keyRouter(t *testing.T, h http.HandlerFunc) (*Router, *recordingAccess) {
+	t.Helper()
+	access := &recordingAccess{}
+	access.check = func(*http.Request, contracts.Rule) (contracts.Principal, error) {
+		return keyPrincipal(uuid.New(), uuid.New(), 600), nil
+	}
+	r := newValidRouter(t, &access.fakeAccess, nil)
+	r.opts.Access, r.recorder = access, access
+	r.routes = map[string][]*route{}
+	r.normalized = map[string]string{}
+	r.HandleFunc("GET /api/v1/x/permission", h)
+	return r, access
+}
+
+// A HEAD is served by the GET operation and recorded as a HEAD of it.
+func TestRouter_AKeysHEADIsRecordedAsItsGET(t *testing.T) {
+	r, access := keyRouter(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodHead, "/api/v1/x/permission", nil))
+	if rec.Code != http.StatusOK || len(access.recorded) != 1 ||
+		access.recorded[0].Method != http.MethodHead || access.recorded[0].OperationID != "getPermission" || access.recorded[0].At.IsZero() {
+		t.Errorf("%d, recorded %+v", rec.Code, access.recorded)
+	}
+}
+
+// A streamed answer flushes through the status recorder as it would without
+// it, and is recorded once it has finished.
+func TestRouter_AKeysStreamedAnswerStillFlushes(t *testing.T) {
+	r, access := keyRouter(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("first\n"))
+		if err := http.NewResponseController(w).Flush(); err != nil {
+			t.Errorf("Flush: %v", err)
+		}
+		_, _ = w.Write([]byte("second\n"))
+	})
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/x/permission", nil))
+	if !rec.Flushed || rec.Body.String() != "first\nsecond\n" {
+		t.Errorf("flushed %v, body %q", rec.Flushed, rec.Body.String())
+	}
+	if len(access.recorded) != 1 || access.recorded[0].Status != http.StatusOK {
+		t.Errorf("recorded %+v", access.recorded)
+	}
+}
+
+// A handler that panics is recorded as the 500 the recovery answers, and the
+// panic goes on.
+func TestRouter_APanickingKeyRequestIsRecordedAs500(t *testing.T) {
+	r, access := keyRouter(t, func(http.ResponseWriter, *http.Request) { panic("boom") })
+	func() {
+		defer func() {
+			if v := recover(); v != "boom" {
+				t.Errorf("recovered %v, want the handler's panic", v)
+			}
+		}()
+		r.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/api/v1/x/permission", nil))
+	}()
+	if len(access.recorded) != 1 || access.recorded[0].Status != http.StatusInternalServerError {
+		t.Errorf("recorded %+v, want one 500", access.recorded)
+	}
+}
