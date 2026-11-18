@@ -929,6 +929,16 @@ omvendt avgiftsplikt mangler kjøperens organisasjonsnummer, eller den valgte da
 er tillatt den dagen. Hver avvisning sies i dialogen
 ([alle avvisningene](/en/reference/invoices/#issuing)).
 
+**Bruk kundens kreditt.** Når kunden har [kreditt](#kundens-kreditt) i fakturaens valuta,
+tilbyr dialogen **Bruk kundens kreditt** — *Kunden har NOK 500,00 til gode. Den brukes på
+fakturaen når den er utstedt* — uten kryss. Kryss av for å bruke kreditten med en gang
+fakturaen er utstedt: så mye av den som fakturaens sum tar, registrert under
+**Betalinger** med kilden **Kundekreditt**. Utstedelsen venter aldri på den: kan
+kreditten ikke brukes, utstedes fakturaen likevel, og en melding sier at *kundens kreditt
+ikke kunne brukes på den*; bruk den fra fakturaen i stedet. Det krever `invoices:payments`
+i tillegg til `invoices:issue`, og tilbys ikke på en hurtigfaktura eller i en
+fakturakjøring.
+
 **Å utstede et utkast laget av arbeid** merker også arbeidet som fakturert — timene,
 utleggene og milepælene linjene fakturerer — i samme steg, så de forlater det
 ufakturerte arbeidet for godt. Utstedelsen avvises, med linjen nevnt, når et arbeid på
@@ -1035,7 +1045,11 @@ Kreditnotaen tar neste nummer i samme serie og listes under **Kreditnotaer** på
 fakturaen, som den lenker tilbake til med *Kreditnota til faktura 1001*. Fakturaens
 **Utestående** beløp faller med kreditnotaens sum; når kreditnotaer dekker hele
 fakturaen, blir tilstanden **Kreditert**. En kreditnota etter en betaling er tillatt:
-fakturaen viser da **Til tilbakebetaling**, det som skyldes tilbake. Utkastet advarer, og
+det den krediterer utover det som fortsatt stod åpent, blir [kundens
+kreditt](#kundens-kreditt), og fakturaen står med ingenting utestående — aldri et negativt
+beløp. Kreditten flyttes rett etter utstedelsen; skulle det feile, flytter Vantigo den
+innen fem minutter. Fjernes betalingen senere, kommer kreditten tilbake på fakturaen, så
+langt kunden fortsatt har den. Utkastet advarer, og
 utstedelsen avviser, en kreditnota som er større enn det fakturaen eller en linje har
 igjen; en kreditnota kan ikke selv krediteres
 ([kreditnotaer](/en/reference/invoices/#credit-notes)). **En avskrevet faktura krediteres
@@ -1129,10 +1143,11 @@ siden **Innbetalinger** ([importere innbetalinger fra banken](#importere-innbeta
 innbetalingens tekst, en hvis utestående beløp den er lik, en for kunden som har betalt fra
 samme konto før; avvis den som ikke en kundebetaling, med et notat; for en tilbakeføring,
 fjern betalingen banken tok tilbake; bekreft et duplikat eller behold den som en egen
-betaling; eller gjenåpne den. Det en innbetaling ikke blir ført mot, står synlig på linjen
-— Vantigo fører ingen kreditsaldo og gjør ingen tilbakebetaling. En innbetaling som avvises fordi fakturaen
+betaling; hold resten som kundens kreditt; eller gjenåpne den. Det en innbetaling ikke
+blir ført mot, står synlig på linjen. En innbetaling som avvises fordi fakturaen
 er kreditert eller allerede betalt, eller fordi den var mer enn det som skyldtes, står også
-som ikke ført: pengene skal tilbake, og tilbakebetalingen gjøres utenfor Vantigo. Når en
+som ikke ført: pengene skal tilbake, og tilbakebetalingen gjøres utenfor Vantigo — eller
+hold den som [kundens kreditt](#kundens-kreditt) i stedet. Når en
 tilbakeføring har tatt en betaling tilbake, føres eller gjenåpnes linjen den kom fra aldri
 igjen.
 Det gjelder også den samme innbetalingen i en annen fil fra banken, eller en kopi av
@@ -1144,8 +1159,12 @@ Klikk **Registrer betaling** — tilbys mens noe er igjen å betale — og fyll 
 
 - **Betalingsdato**: dagen pengene kom inn, forhåndsutfylt med i dag; på eller etter
   fakturadatoen, og ikke etter i dag.
-- **Beløp**: forhåndsutfylt med utestående beløp; mer enn 0 og høyst utestående beløp.
-  En overbetaling avvises, med utestående beløp nevnt.
+- **Beløp**: forhåndsutfylt med utestående beløp; mer enn 0. Mer enn det utestående
+  avvises, med utestående beløp nevnt — med mindre du krysser av for **Hold resten som
+  kreditt**, som tilbys når beløpet er over det som står åpent: betalingen tar da det som
+  står åpent, og resten blir [kundens kreditt](#kundens-kreditt). På en faktura uten noe
+  igjen å betale registreres ikke penger her i det hele tatt; hold dem som kreditt fra
+  [avvikskøen](#avvikskøen).
 - **Referanse** (bankens eller betalerens) og **Merknad**, begge valgfrie.
 
 Klikk **Registrer**. Tabellen lister hver betalings **Betalingsdato**, **Beløp**, dens
@@ -1161,7 +1180,47 @@ stå som **Forfalt** etter forfall. En faktura der det utestående er
 En feil registrering redigeres aldri: klikk **Fjern** ved siden av den, oppgi en
 **Begrunnelse** i dialogen **Fjern betalingen**, og bekreft. *Betalingen blir stående på
 fakturaen, gjennomstreket med begrunnelsen. En fjerning kan ikke angres; registrer
-betalingen på nytt om den likevel var riktig.*
+betalingen på nytt om den likevel var riktig.* Å fjerne en betaling med kundekreditt gir
+kreditten tilbake; å fjerne en der resten ble holdt som kreditt, tar den kreditten tilbake,
+og avvises — *Det er mer enn kundens kreditt* — mens den er brukt: fjern det som brukte den,
+først.
+
+## Kundens kreditt
+
+En kunde har **kreditt** når de har betalt mer enn de skyldte, eller en kreditnota
+krediterte mer enn det som var igjen å betale: penger selskapet skylder dem, holdt per
+valuta og aldri under null. Kreditten øker når du **holder resten som kreditt** — av en
+betaling registrert for hånd, eller av en banklinje i [avvikskøen](#avvikskøen) — og når
+[en kreditnotas overskudd](#kreditere-en-faktura) flyttes til kunden. Den brukes på en
+senere faktura eller betales tilbake.
+
+**Bruk den på en faktura.** En utstedt faktura med noe utestående sier *Kunden har NOK
+300,00 til gode* over **Betalinger** mens kunden har kreditt i fakturaens valuta. Klikk
+**Bruk kreditt** (med `invoices:payments`): dialogen **Bruk kundens kreditt** foreslår det
+minste av kreditten og det som står åpent, og i dag som **Brukt dato**. Klikk **Bruk
+kreditt**. Fakturaen viser det som en betaling med kilden **Kundekreditt**; ingen penger
+flyttes. Mer enn kreditten, eller mer enn det som står åpent, avvises med ord. Når du
+utsteder en faktura, gjør **Bruk kundens kreditt** det samme [med en gang den er
+utstedt](#utstede).
+
+**Se den.** Kundens fane **Fakturaer** viser kortet **Kundekreditt** for en kunde som
+noen gang har hatt kreditt: *Kunden har NOK 300,00 til gode*, og hver bevegelse — en
+overbetaling på en faktura, en kreditnota utover det som stod åpent, kreditt brukt på en
+faktura, en tilbakebetaling, en tilbakeføring — hver med dato, beløp og hva den kom fra,
+den nyeste først.
+
+**Betal den tilbake.** Vantigo flytter ingen penger: betal kunden fra banken, og
+registrer det så. På kortet **Kundekreditt** klikker du **Registrer tilbakebetaling** (med
+`invoices:payments`) og fyller ut **Betalt tilbake dato** (ikke etter i dag), **Beløp** —
+høyst kreditten — **Betalt fra konto**, selskapets konto pengene gikk fra (11 siffer), og
+eventuelt **Referanse** og **Merknad**. Klikk **Registrer tilbakebetaling**. En
+tilbakebetaling registrert ved en feil fjernes med **Fjern tilbakebetaling** og en
+begrunnelse: den blir stående på kortet, strøket over, og kreditten kommer tilbake.
+Tilbakebetalinger er i NOK i denne versjonen.
+
+Slås to kunder sammen, legges den sammenslåtte kundens kreditt til den gjenværende kundens.
+Når en kunde anonymiseres, beholder kreditten beløpene og mister merknadene
+([kundekreditt](/en/reference/invoices/#customer-credit)).
 
 ## Å avskrive en faktura
 
@@ -1378,8 +1437,8 @@ Hver årsak med vanlige ord, og hva du gjør:
 | **KID-en er ikke gyldig** | KID-ens kontrollsiffer er feil | **Fordel** den for hånd, eller avvis den |
 | **Ingen faktura har denne KID-en** | et annet systems eller en annen avtales KID | **Fordel** den, eller avvis den |
 | **Fakturaen er kreditert** | KID-ens faktura er kreditert i sin helhet | **Ikke en kundebetaling**, med en merknad: pengene skal tilbake, og betales tilbake utenfor Vantigo |
-| **Ingenting er igjen å betale** | fakturaen er betalt, og betalingen er mer enn purrekravene | det samme |
-| **Mer enn det som skyldes** | mer enn utestående beløp og purrekravene | **Fordel** det som skyldes mot fakturaen og purrekravene; resten blir stående som ikke ført |
+| **Ingenting er igjen å betale** | fakturaen er betalt, og betalingen er mer enn purrekravene | **Hold resten som kreditt**, eller **Ikke en kundebetaling** med en merknad |
+| **Mer enn det som skyldes** | mer enn utestående beløp og purrekravene | **Hold resten som kreditt**: det som står åpent betales, og resten blir kundens kreditt; eller **Fordel** det som skyldes mot fakturaen og purrekravene, med resten stående som ikke ført |
 | **Ingen KID** | betalingen har ingen KID | **Fordel** den mot én eller flere fakturaer fra forslagene |
 | **Et negativt beløp** | en OCR-linje med minustegn | **Ikke en kundebetaling**, med en merknad |
 | **En tilbakeføring** | banken tok en betaling tilbake | **Behandle tilbakeføring** |
@@ -1403,8 +1462,16 @@ enn det som er igjen av betalingen, avvises i dialogen før noe sendes. Klikk **
 avvisning sies med ord, og ingenting føres: et beløp over en fakturas utestående beløp
 nevner fakturaen og det beløpet, en betaling av purrekrav over det som står ute nevner det
 som står ute, og en faktura utstedt etter at banken bokførte betalingen, kan ikke betales
-av den. Det som ikke føres, blir stående synlig på linjen: Vantigo fører ingen kundesaldo
-og betaler ikke tilbake.
+av den. Det som ikke føres, blir stående synlig på linjen.
+
+**Hold resten som kreditt.** For en linje som er mer enn fakturaen hadde utestående, eller
+som kom for en faktura som allerede er betalt: dialogen **Hold resten av linje … som
+kreditt** fører det fakturaen — den KID-en peker på — har utestående, som en betaling, og
+holder resten som fakturakundens [kreditt](#kundens-kreditt), med en valgfri **Merknad**.
+Klikk **Hold resten som kreditt**. Linjen er behandlet, og det som er ført fra den, viser
+kreditten (*Faktura 1001, holdt som kreditt: NOK 300,00*). En linje som er holdt som
+kreditt, gjenåpnes ikke mens kreditten står; en tilbakeføring av den tar kreditten
+tilbake.
 
 **Ikke en kundebetaling.** For en Vipps-utbetaling, en betaling tilbakebetalt utenfor
 Vantigo eller et annet systems KID: si hva den er, eller hva som ble gjort med den, i
@@ -1414,10 +1481,12 @@ Vantigo eller et annet systems KID: si hva den er, eller hva som ble gjort med d
 de som er registrert fra banklinjer med samme konto og beløp, bokført samme dag eller
 tidligere; den leser de siste 500 slike linjene av hvert slag og sier fra når det er
 flere — en eldre betaling tilbys da ikke — og sier fra når de ikke kunne leses, i stedet
-for at det ikke finnes noen. Kryss av for den den tilbakefører, eller velg **Ingen betaling fjernes;
-merknaden sier hvorfor** og skriv merknaden, og klikk **Behandle tilbakeføringen**. Hver
-valgt betaling fjernes med begrunnelsen «Reversed by the bank», og linjen den kom fra,
-føres aldri igjen. Uten en betaling eller en merknad avvises tilbakeføringen, med ord. En
+for at det ikke finnes noen. Kryss av for den den tilbakefører — en betaling, eller kreditt
+en linje holdt for kunden (*Kreditt holdt fra faktura 1001*) — eller velg **Ingen betaling
+fjernes; merknaden sier hvorfor** og skriv merknaden, og klikk **Behandle
+tilbakeføringen**. Hver valgt betaling fjernes med begrunnelsen «Reversed by the bank»,
+hver valgt kreditt tas tilbake — det avvises mens kunden har brukt den — og linjen den kom
+fra, føres aldri igjen. Uten en betaling eller en merknad avvises tilbakeføringen, med ord. En
 tilbakeføring som peker på feil betaling, kan ikke angres: registrer den betalingen på
 nytt for hånd.
 
@@ -2201,8 +2270,9 @@ har ingen graf; et klikk på det åpner listen.
 
 Dashbordets liste **Trenger oppfølging** viser også det som venter i Fakturaer, og hvert
 punkt leder til siden der det tas hånd om: *En faktura til … har forfalt* (de 20 som har
-vært forfalt lengst) og *… skal ha penger tilbake på en faktura* for alle med
-`invoices:access`; med `invoices:payments` også banklinjene som venter i avvikskøen, per
+vært forfalt lengst) og *… skal ha penger tilbake på en faktura* — purrekrav som ble
+betalt og så ettergitt; det en kreditnota krediterer utover det som stod åpent, er
+[kundens kreditt](#kundens-kreditt) i stedet — for alle med `invoices:access`; med `invoices:payments` også banklinjene som venter i avvikskøen, per
 fil; en purring som ikke kunne sendes; purringene som venter på en sats eller på
 gjennomgangen av inkassoregelverket, som leder til **Forfalt**; og en utskriftsbunke som
 ikke er bekreftet postlagt to dager etter postleggingsdagen, med antallet utskrevne brev
@@ -2228,9 +2298,11 @@ den kunden — *levert i dag til du endrer det* — og åpner redigeringen; den 
 `invoices:create` og `customers:view`, og bare på en aktiv kunde, aldri en arkivert,
 sperret, sammenslått eller anonymisert. Over listen viser kortet **Ufakturert arbeid**
 kundens arbeid som ikke er fakturert ennå, til den som også har `invoices:create`
-([Fakturere arbeid](#fakturere-arbeid)). Under listen sier kortet **Purreregel** om
-kunden purres og avkreves gebyrer, endret med `invoices:payments`
-([En kundes purreregel](#en-kundes-purreregel)).
+([Fakturere arbeid](#fakturere-arbeid)). Under listen viser kortet **Kundekreditt**
+kundens kreditt og bevegelsene, for en kunde som noen gang har hatt kreditt, med
+**Registrer tilbakebetaling** for `invoices:payments` ([Kundens kreditt](#kundens-kreditt)),
+og kortet **Purreregel** sier om kunden purres og avkreves gebyrer, endret med
+`invoices:payments` ([En kundes purreregel](#en-kundes-purreregel)).
 
 ## Oppbevaring og anonymiserte kunder
 
@@ -2270,7 +2342,7 @@ Ingen innebygd rolle har disse; en eier har alt
 | Lage, redigere, forhåndsvise og slette utkast | `invoices:create`, og `customers:view` for å velge kjøperen |
 | Se det ufakturerte arbeidet — timene, personene og satsene — på en kundes fane Fakturaer eller et prosjekts fane Fakturagrunnlag, lage et utkast av det eller legge det til i et, oppdatere arbeidet på et utkast, slå timelisten av eller på, trekke fra tidligere fakturaer; se en kundes forbruk som skal faktureres, og lage et utkast av det eller legge det til i et; fakturere ordre med **Fra ordre**; lage, følge og avbryte fakturakjøringer | `invoices:create` (og `invoices:issue` for en kjøring som utsteder fakturaene) |
 | Utstede et utkast — som merker arbeidet på det som fakturert i Timer, Utlegg og Prosjekter, forbruket i Energi og ordrelinjene i Ordre, uten å spørre etter rettighetene der — lage en kreditnota, sende et dokument på e-post eller som EHF, se hvor hver sending gikk, avbryte eller avklare en EHF-sending, registrere en levering manuelt eller fjerne en, lage eller trekke tilbake en betalingslenke og se adressen og QR-koden mens betaling på stedet tilbys, ta imot en Vipps-betaling på stedet | `invoices:issue` |
-| Registrere en betaling eller fjerne en med begrunnelse; importere bankfiler, **Hent nå** fra bankintegrasjonen, og bruke **Innbetalinger** og avvikskøen der; sette en kundes purreregel; forhåndsvise og gjøre purrekjøringer, skrive ut papirbrev, bekrefte en bunke postlagt eller skrive den ut på nytt; trekke tilbake et brev eller sende et som feilet på nytt; registrere en betaling av purrekrav, fjerne en, ettergi et purrekrav; sette en faktura på vent og fjerne den fra vent, registrere en overlevering til inkasso og trekke den tilbake, eksportere inkassofilen; registrere en dags Vipps-betalinger som avstemt; se dashbordets varsler om banklinjer, brev, utskriftsbunker og Vipps-betalinger | `invoices:payments` |
+| Registrere en betaling eller fjerne en med begrunnelse; holde resten av en betaling eller en banklinje som kundens kreditt, bruke kreditt på en faktura, registrere og fjerne en tilbakebetaling av den; importere bankfiler, **Hent nå** fra bankintegrasjonen, og bruke **Innbetalinger** og avvikskøen der; sette en kundes purreregel; forhåndsvise og gjøre purrekjøringer, skrive ut papirbrev, bekrefte en bunke postlagt eller skrive den ut på nytt; trekke tilbake et brev eller sende et som feilet på nytt; registrere en betaling av purrekrav, fjerne en, ettergi et purrekrav; sette en faktura på vent og fjerne den fra vent, registrere en overlevering til inkasso og trekke den tilbake, eksportere inkassofilen; registrere en dags Vipps-betalinger som avstemt; se dashbordets varsler om banklinjer, brev, utskriftsbunker og Vipps-betalinger | `invoices:payments` |
 | Lage en hurtigfaktura — laget og utstedt i ett steg, registrert som overlevert — og ta betalt for den med Vipps på stedet | `invoices:create` og `invoices:issue` |
 | Redigere selgeropplysningene, nummerserien, Peppol-ID-en, aksesspunktet, KID-avtalen, mva-kodene, kortene **Arbeid til fakturering** og **Forbruk til fakturering**, inkassosatsene og purreinnstillingene, gjennomgangen av regelverket blant dem; endre en bankkontos filformat under **Innbetalinger**, som også krever `invoices:payments` for å åpnes; sette opp Vipps og betalingsinnstillingene, bekrefte kontantsalg, forlate en Vipps-betaling som står fast; koble til banken, slå kontoene av og på og koble den fra, under **Administrer arbeidsområde** › **Integrasjoner** › **Bank** | `invoices:manage` |
 

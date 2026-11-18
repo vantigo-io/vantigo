@@ -90,6 +90,10 @@ own panel for this customer and need the module on and a permission in it
 (`energy:metering-points-view`, `projects:access`, `invoices:access`, `orders:access`).
 The **Orders** tab shows the customer's open quotes and orders with **New quote** and
 **New order** ([the customer's Orders tab](/en/user/orders/#the-customers-orders-tab)).
+The **Invoices** tab shows the customer's invoices and, for a customer who ever had any,
+the card **Customer credit** — what the company owes the customer from an overpayment or a
+credit note, every movement of it, and **Record refund**
+([the customer's credit](/en/user/invoices/#the-customers-credit)).
 
 **Overview** opens with the **Customer 360** panel: **Open projects**, **Unbilled
 hours**, **Expenses ready to invoice**, **Outstanding**, **Invoiced this year** and
