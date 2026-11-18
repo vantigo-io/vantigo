@@ -55,6 +55,7 @@ type apiKeyBody struct {
 		Key            string `json:"key"`
 		GrantedByRoles bool   `json:"grantedByRoles"`
 		InCatalog      bool   `json:"inCatalog"`
+		APINever       bool   `json:"apiNever"`
 	} `json:"permissions"`
 }
 
@@ -444,5 +445,32 @@ func TestIntegrations_AStewardMayNotWidenARoleAnIntegrationHolds(t *testing.T) {
 		http.StatusForbidden, "role_edit_denied", "Only delegated stewarded custom roles within the selected delegation boundary may be changed.")
 	if r := updateRole(owner, role.ID, role.Name, edited.Version, "customers:view", "customers:create"); r.status != http.StatusOK {
 		t.Errorf("the Owner's edit: %d %s", r.status, r.body)
+	}
+}
+
+// TestIntegrations_RolesWaitOnTheRoleLock is K56's ordering: giving an
+// integration a role, at create or after, takes the role's lock first, so a
+// role edit holding it (authorizeRoleEdit) is never interleaved with the
+// assignment it would have refused a steward over.
+func TestIntegrations_RolesWaitOnTheRoleLock(t *testing.T) {
+	t.Parallel()
+	h, owner, _ := rbacHarness(t)
+	role := h.insertRole(t, "Webshop", "customers:view")
+	other := h.insertRole(t, "Readers", "customers:view")
+	d := createIntegration(t, owner, "Webshop sync", role)
+
+	out := raceBehind(t, h, holdRoleLock(t, h, other),
+		func() *resp {
+			return owner.do(http.MethodPut, integrationsPath+"/"+d.Integration.ID.String()+"/roles", map[string]any{"roleIds": []uuid.UUID{role, other}})
+		},
+		func() *resp {
+			return owner.do(http.MethodPost, integrationsPath, map[string]any{"name": "Second", "roleIds": []uuid.UUID{other}})
+		},
+	)
+	if out[0].status != http.StatusOK || out[1].status != http.StatusCreated {
+		t.Fatalf("behind the role lock: %d %s / %d %s", out[0].status, out[0].body, out[1].status, out[1].body)
+	}
+	if got := h.roleNames(t, d.Integration.ID); !slices.Equal(got, []string{"Readers", "Webshop"}) {
+		t.Errorf("roles %v", got)
 	}
 }

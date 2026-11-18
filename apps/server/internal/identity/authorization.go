@@ -155,8 +155,9 @@ func roleMutationLockKey(id uuid.UUID) int64 {
 // owner lock (ownerMutationLock) first; then delegation rows, by id (the
 // caller's FOR SHARE, heldDelegations; the one an Owner updates or revokes
 // FOR UPDATE); then role locks, several in the ordinal order of the role
-// ids' text (ordinalIDs — PUT /owner/provisioning-roles is the one
-// transaction that takes several; every other takes one); then
+// ids' text (ordinalIDs — PUT /owner/provisioning-roles and an
+// integration's roles, replaceIntegrationRoles, take several; every other
+// takes one); then
 // access_groups rows; then users rows; then roles rows. Two exceptions are
 // known and accepted. A user's deletion, whose cascade takes the user's
 // delegation rows after their users row, can meet that user's own delegated

@@ -264,7 +264,8 @@ B and C do not depend on each other.
     - `id`, `integration_id` (FK ON DELETE RESTRICT);
     - `name`, 1–100 characters, e.g. "Production";
     - `token_hash`, SHA-256, unique;
-    - `display`: `vtg_` + the first 4 random characters + `…` + the last 4;
+    - `display`: `vtg_` + the first 4 random characters + `…` + the key's last 4,
+      which belong to the checksum (K57);
     - `permissions text[]`: the **narrowing**. NULL means none. Otherwise the key may
       use only the permissions listed, of those its integration's roles grant;
     - `read_only boolean`: the key calls only `read` operations (K5);
@@ -908,6 +909,9 @@ Each question takes R §7's default. An overturn changes the following:
   integration and refusing a steward's edit of a role an integration holds. It also
   sweeps the record-level assignments (an owner, a member, an assignee) that a lookup by
   id would let an integration take.
+- **K57 (amends K11): the display ends with the checksum.** `display` is `vtg_`, the
+  first 4 random characters, `…` and the key's last 4 characters, which belong to the
+  checksum, not to the random part.
 
 ## 15. Revision log
 

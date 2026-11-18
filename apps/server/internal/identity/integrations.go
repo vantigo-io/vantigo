@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/netip"
-	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -46,11 +45,6 @@ const (
 
 // apiKeyDayChoices are the expiries a key may be given in days (K12).
 var apiKeyDayChoices = []int{30, 90, 180, 365}
-
-// narrowingKey is the form of a catalog permission key, which every entry of
-// a key's narrowing must have: one the catalog does not know (yet, or any
-// more) is kept and does nothing (K11).
-var narrowingKey = regexp.MustCompile(`^[a-z]+:[a-z-]+$`)
 
 // The audit actions of K22a.
 const (
@@ -205,9 +199,10 @@ func (s *server) readIntegrationInput(ctx context.Context, name string, descript
 // replaceIntegrationRoles makes requested the integration's roles on q, under
 // the licence that names it (K3, K55): only custom roles, so never Owner,
 // SystemAdmin, User or any other built-in or system role (invalid_roles).
-// Access-group memberships are never an integration's.
+// Access-group memberships are never an integration's. The transaction holds
+// each requested role's lock already (lockIntegrationRoles).
 func replaceIntegrationRoles(ctx context.Context, q *store.Queries, id uuid.UUID, requested []uuid.UUID) error {
-	requested = slices.Compact(slices.SortedFunc(slices.Values(requested), func(a, b uuid.UUID) int { return strings.Compare(a.String(), b.String()) }))
+	requested = ordinalIDs(requested)
 	if err := q.SetIntegrationRolesLicence(ctx, id.String()); err != nil {
 		return fmt.Errorf("identity: licence the integration's roles: %w", err)
 	}
@@ -241,12 +236,29 @@ func replaceIntegrationRoles(ctx context.Context, q *store.Queries, id uuid.UUID
 	return nil
 }
 
+// lockIntegrationRoles takes each role's lock, in ordinalIDs' order, before
+// the transaction locks any users row (authorization.go's lock order): a
+// steward's edit of a role (authorizeRoleEdit, K56) then either sees the
+// integration holding it or is seen by the assignment, never neither.
+func lockIntegrationRoles(ctx context.Context, q *store.Queries, roles []uuid.UUID) error {
+	for _, roleID := range ordinalIDs(roles) {
+		if err := lockRole(ctx, q, roleID); err != nil {
+			return fmt.Errorf("identity: lock the role: %w", err)
+		}
+	}
+	return nil
+}
+
 // integrationTx runs fn in one transaction on the integration id, locked:
 // 404 when there is none, and 409 integration_archived for an archived one
-// unless archivedOK.
-func (s *server) integrationTx(ctx context.Context, id uuid.UUID, archivedOK bool, fn func(q *store.Queries, row store.LockIntegrationRow, now time.Time) error) error {
+// unless archivedOK. The locks of roles are taken first
+// (lockIntegrationRoles).
+func (s *server) integrationTx(ctx context.Context, id uuid.UUID, archivedOK bool, fn func(q *store.Queries, row store.LockIntegrationRow, now time.Time) error, roles ...uuid.UUID) error {
 	return db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		q := store.New(tx)
+		if err := lockIntegrationRoles(ctx, q, roles); err != nil {
+			return err
+		}
 		row, err := q.LockIntegration(ctx, id)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return integrationNotFound
@@ -324,8 +336,9 @@ func optionalTime(v any) *time.Time {
 }
 
 // apiKeyBody is a key as the screen shows it: never its secret, and each
-// name of its narrowing marked with whether held, the integration's
-// effective permissions, grants it, and whether the catalog still has it.
+// name of its narrowing marked with whether no key ever holds it (apiNever),
+// whether it is granted (the integration's effective permissions hold it and
+// it is not apiNever), and whether the catalog still has it.
 func (s *server) apiKeyBody(k store.IdentityApiKey, held []string, now time.Time) gen.ApiKey {
 	status := gen.ApiKeyStatus("active")
 	switch {
@@ -339,7 +352,8 @@ func (s *server) apiKeyBody(k store.IdentityApiKey, held []string, now time.Time
 		marks := make([]gen.ApiKeyPermission, 0, len(k.Permissions))
 		for _, key := range k.Permissions {
 			_, known := s.deps.Catalog[key]
-			marks = append(marks, gen.ApiKeyPermission{Key: key, GrantedByRoles: slices.Contains(held, key), InCatalog: known})
+			never := s.access.apiNever(key)
+			marks = append(marks, gen.ApiKeyPermission{Key: key, GrantedByRoles: slices.Contains(held, key) && !never, InCatalog: known, ApiNever: never})
 		}
 		narrowing = &marks
 	}
@@ -399,6 +413,9 @@ func (s *server) PostIdentityIntegrations(ctx context.Context, req gen.PostIdent
 	id := uuid.New()
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		q := store.New(tx)
+		if err := lockIntegrationRoles(ctx, q, roles); err != nil {
+			return err
+		}
 		now := s.deps.Clock()
 		taken, err := q.IntegrationNameTaken(ctx, store.IntegrationNameTakenParams{Name: in.name, UserID: id})
 		if err != nil || taken {
@@ -562,7 +579,7 @@ func (s *server) PutIdentityIntegrationsByIdRoles(ctx context.Context, req gen.P
 		return writeAudit(ctx, q, r, now, auditEvent{
 			actor: &p.UserID, targetUser: &req.Id, action: auditIntegrationRolesChanged, before: before, after: after, mfa: p.MFAVerified,
 		})
-	})
+	}, body.RoleIds...)
 	if err != nil {
 		return refusalOr[gen.PutIdentityIntegrationsByIdRolesResponseObject](err)
 	}
@@ -651,7 +668,9 @@ func (s *server) PostIdentityIntegrationsByIdArchive(ctx context.Context, req ge
 			return fmt.Errorf("identity: revoke the integration's keys: %w", err)
 		}
 		for _, k := range keys {
-			if k.RevokedAt != nil {
+			// An expired key is not revoked: its end is the expiry worker's
+			// api_key.expired, never a second event.
+			if k.RevokedAt != nil || !k.ExpiresAt.After(now) {
 				continue
 			}
 			revoked := k
@@ -726,7 +745,9 @@ func readKeyInput(body gen.ApiKeyCreateRequest, now time.Time) (keyInput, error)
 		in.permissions = []string{}
 		for _, key := range *body.Permissions {
 			key = strings.TrimSpace(key)
-			if !narrowingKey.MatchString(key) {
+			// Every entry has the form of a catalog key; one the catalog does
+			// not know (yet, or any more) is kept and does nothing (K11).
+			if !contracts.ValidPermissionKey(key) {
 				fields["permissions"] = []string{apiKeyPermissionsMessage}
 				break
 			}

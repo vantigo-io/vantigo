@@ -371,7 +371,7 @@ func (q *Queries) RevokeAPIKey(ctx context.Context, arg RevokeAPIKeyParams) (Ide
 const revokeIntegrationAPIKeys = `-- name: RevokeIntegrationAPIKeys :many
 UPDATE identity.api_keys
 SET revoked_at = $1::timestamptz, revoked_by = $2
-WHERE integration_id = $3 AND revoked_at IS NULL
+WHERE integration_id = $3 AND revoked_at IS NULL AND expires_at > $1::timestamptz
 RETURNING id
 `
 
@@ -381,8 +381,9 @@ type RevokeIntegrationAPIKeysParams struct {
 	IntegrationID uuid.UUID
 }
 
-// RevokeIntegrationAPIKeys revokes every key of an integration not already
-// revoked, as archiving it does, and answers their ids.
+// RevokeIntegrationAPIKeys revokes every live key of an integration, as
+// archiving it does, and answers their ids: one already revoked or expired is
+// left as it is, its end already recorded or the expiry worker's to record.
 func (q *Queries) RevokeIntegrationAPIKeys(ctx context.Context, arg RevokeIntegrationAPIKeysParams) ([]uuid.UUID, error) {
 	rows, err := q.db.Query(ctx, revokeIntegrationAPIKeys, arg.Now, arg.RevokedBy, arg.IntegrationID)
 	if err != nil {

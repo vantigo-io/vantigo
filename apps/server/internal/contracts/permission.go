@@ -30,6 +30,10 @@ type Permission struct {
 // a route.
 var permissionKey = regexp.MustCompile(`^[a-z]+:[a-z-]+$`)
 
+// ValidPermissionKey reports whether s has the contract's permission grammar
+// (permissionKey), whether or not any catalog has it.
+func ValidPermissionKey(s string) bool { return permissionKey.MatchString(s) }
+
 // ValidatePermission checks the key grammar, a display, description and
 // category that are not blank (empty or whitespace only), and that the
 // key's module prefix (before ":") equals module, as .NET's

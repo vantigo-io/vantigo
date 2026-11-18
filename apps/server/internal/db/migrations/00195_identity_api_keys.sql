@@ -34,8 +34,8 @@ CREATE TRIGGER integrations_contact_refuse_agent BEFORE INSERT OR UPDATE OF cont
     FOR EACH ROW EXECUTE FUNCTION identity.refuse_agent_user('contact_user_id');
 
 -- An API key (K11-K13). Only the SHA-256 of its 32 random bytes is stored;
--- display is vtg_, the first four and the last four characters of the
--- random part. permissions is the narrowing: NULL for none, else the only
+-- display is vtg_, the first four characters of the random part and the
+-- key's last four, which belong to its checksum (K57). permissions is the narrowing: NULL for none, else the only
 -- keys the key may use of those its integration's roles grant. Every key
 -- expires. A roll links the new key to the old through rolled_from, unique
 -- so a key is rolled once. expired_recorded_at is when the expiry worker
@@ -66,7 +66,10 @@ CREATE TABLE identity.api_keys (
 CREATE UNIQUE INDEX ux_api_keys_token_hash ON identity.api_keys (token_hash);
 CREATE UNIQUE INDEX ux_api_keys_rolled_from ON identity.api_keys (rolled_from) WHERE rolled_from IS NOT NULL;
 CREATE INDEX ix_api_keys_integration ON identity.api_keys (integration_id);
+-- The expiry worker's audit reads the unrevoked keys; its deletion reads
+-- every key, revoked ones too.
 CREATE INDEX ix_api_keys_expires ON identity.api_keys (expires_at) WHERE revoked_at IS NULL;
+CREATE INDEX ix_api_keys_expires_all ON identity.api_keys (expires_at);
 CREATE INDEX ix_api_keys_created_by ON identity.api_keys (created_by) WHERE created_by IS NOT NULL;
 CREATE INDEX ix_api_keys_revoked_by ON identity.api_keys (revoked_by) WHERE revoked_by IS NOT NULL;
 
