@@ -3,6 +3,7 @@ package httpx
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -96,5 +97,30 @@ func TestStatusRecorder_RecordsTheStatusAndKeepsFlushing(t *testing.T) {
 	}
 	if rec.Status() != http.StatusTooManyRequests || rec.Bytes() != 9 || !w.Flushed {
 		t.Errorf("status %d, bytes %d, flushed %v; want the first status, 9 bytes and a flush", rec.Status(), rec.Bytes(), w.Flushed)
+	}
+}
+
+func TestStatusRecorder_HijackPassesThroughAndRecords101(t *testing.T) {
+	statuses := make(chan int, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		rec := NewStatusRecorder(w)
+		conn, _, err := rec.Hijack()
+		if err != nil {
+			t.Errorf("Hijack: %v", err)
+			statuses <- 0
+			return
+		}
+		statuses <- rec.Status()
+		_ = conn.Close()
+	}))
+	defer srv.Close()
+	if resp, err := http.Get(srv.URL); err == nil {
+		_ = resp.Body.Close()
+	}
+	if status := <-statuses; status != http.StatusSwitchingProtocols {
+		t.Errorf("status %d after Hijack, want 101", status)
+	}
+	if _, _, err := NewStatusRecorder(httptest.NewRecorder()).Hijack(); !errors.Is(err, http.ErrNotSupported) {
+		t.Errorf("Hijack over a writer that cannot: %v, want ErrNotSupported", err)
 	}
 }
