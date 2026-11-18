@@ -2103,6 +2103,14 @@ the day before the due date the bank stops it, and the card says **stopped**; af
 it is too late — *It was too late to cancel the debit. A surplus becomes the customer's
 credit.*
 
+The same happens when the invoice is **settled another way** while its debit is still
+coming — paid by hand, with the customer's credit, by a bank payment applied from the
+queue or split across invoices, rounded off or written off: Vantigo asks the bank to stop
+the debit within a minute or so. If it is too late, the debit still comes, but it never
+pays the invoice twice: what the invoice no longer has open is kept as the customer's
+credit, and the debit is marked **paid**. A debit from the bank feed waits in the queue
+for **Keep the rest as credit**.
+
 ### Following it on the eFaktura card
 
 The card **eFaktura** beside **E-invoice (EHF)** shows the state — **Queued**,

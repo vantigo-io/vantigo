@@ -153,6 +153,9 @@ func (w *EfakturaWorker) RunCycle(ctx context.Context) error {
 			break
 		}
 	}
+	if err := w.CancelSettled(ctx); err != nil {
+		errs = append(errs, err)
+	}
 	for ctx.Err() == nil {
 		processed, err := w.CancelOne(ctx)
 		if err != nil {
@@ -170,6 +173,28 @@ func (w *EfakturaWorker) RunCycle(ctx context.Context) error {
 		errs = append(errs, err)
 	}
 	return errors.Join(errs...)
+}
+
+// CancelSettled asks every live claim to cancel whose invoice was settled
+// another way — paid by hand, with credit, by a split, a queue apply or a
+// rounding, or written off (RequestSettledClaimsCancel) — so CancelOne
+// stops the debit before the bank's deadline. One past it the provider
+// refuses: the claim stays, and its debit is kept as credit when it comes
+// (settleClaimDebit).
+func (w *EfakturaWorker) CancelSettled(ctx context.Context) error {
+	now := w.now()
+	return w.tx(ctx, func(tx pgx.Tx, txq *store.Queries) error {
+		asked, err := txq.RequestSettledClaimsCancel(ctx, now)
+		if err != nil {
+			return fmt.Errorf("invoices: ask the claims of settled invoices to cancel: %w", err)
+		}
+		for _, c := range asked {
+			if err := publishClaimChanged(ctx, tx, c, c.Status, now); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 // MarkUnpaid ends the accepted claims no debit paid within five business

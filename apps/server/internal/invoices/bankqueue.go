@@ -836,6 +836,10 @@ func (s *server) applyLocked(ctx context.Context, txq *store.Queries, line store
 			}); err != nil {
 				return nil, fmt.Errorf("invoices: apply line %d's payment to %d: %w", line.ID, inv.ID, err)
 			}
+			// An AvtaleGiro debit applied pays its claim, as a match does (I32).
+			if err := payClaimOfDebit(ctx, txq, line, inv.ID, now); err != nil {
+				return nil, err
+			}
 			// What the payment leaves open may be a small difference (I15) —
 			// unless money of the line stays unapplied, which a person keeps as
 			// the customer's credit or applies to it instead.

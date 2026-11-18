@@ -252,6 +252,12 @@ func (s *server) matchLines(ctx context.Context, fileID int64, caller *uuid.UUID
 			}
 			outcome, err = s.queueOnPool(ctx, line, reason, invoiceID, caller, now)
 		}
+		if err == nil && outcome == outcomeQueued {
+			// A claim's debit its invoice cannot take — settled another way
+			// meanwhile, the claim past its cancel deadline — is never a
+			// second payment: it is kept as credit and pays its claim.
+			outcome, err = s.settleClaimDebit(ctx, q, line, invoiceID, caller, now, loc)
+		}
 		if err != nil {
 			if passOver(err) {
 				continue
@@ -639,10 +645,8 @@ func registerMatch(ctx context.Context, txq *store.Queries, line store.InvoicesB
 	}
 	// An AvtaleGiro debit pays its claim, in the match's transaction
 	// (phase 6 design I32).
-	if line.Kid != nil && kid.IsCustomerKID(*line.Kid) {
-		if _, err := txq.PayClaimOfInvoice(ctx, store.PayClaimOfInvoiceParams{Now: now, InvoiceID: inv.ID, Kid: *line.Kid}); err != nil {
-			return fmt.Errorf("invoices: mark document %d's claim paid: %w", inv.ID, err)
-		}
+	if err := payClaimOfDebit(ctx, txq, line, inv.ID, now); err != nil {
+		return err
 	}
 	n, err := txq.MarkMatched(ctx, line.ID)
 	if err != nil {
