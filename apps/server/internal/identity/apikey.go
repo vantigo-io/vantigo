@@ -99,3 +99,12 @@ func parseAPIKey(s string) (hash []byte, ok bool) {
 func apiKeyDisplay(key string) string {
 	return apiKeyPrefix + key[len(apiKeyPrefix):len(apiKeyPrefix)+4] + "…" + key[len(key)-4:]
 }
+
+// MintAPIKey mints an API key as the integrations service does and answers
+// the key, the hash it is stored under and how it is displayed. It is for
+// the development seed, which writes its demo integration's key itself and
+// prints the key once; nothing else outside this package mints one.
+func MintAPIKey() (key string, hash []byte, display string) {
+	key, hash = newAPIKey()
+	return key, hash, apiKeyDisplay(key)
+}

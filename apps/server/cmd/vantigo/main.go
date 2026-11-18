@@ -177,7 +177,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 			_, _ = fmt.Fprintln(stderr, "the seed command is only available with APP_ENV=development")
 			return 2
 		}
-		return seed(ctx, logger, cfg)
+		return seed(ctx, logger, cfg, stdout)
 	case modeAPI:
 		if code := migrate(logger, cfg); code != 0 {
 			return code

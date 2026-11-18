@@ -84,7 +84,17 @@ func TestRun_SeedPopulatesDemoDatasetAndIsIdempotent(t *testing.T) {
 		query string
 		want  int
 	}{
-		{"identity.users", "SELECT count(*) FROM identity.users", demoUserCount},
+		{"identity.users", "SELECT count(*) FROM identity.users WHERE kind = 'person'", demoUserCount},
+		// The web shop's integration, its Webshop role and one key (API access
+		// delivery A); the key itself is never asserted, only printed.
+		{"identity.integrations", "SELECT count(*) FROM identity.integrations WHERE name = 'Webshop sync' AND archived_at IS NULL", 1},
+		{"identity.users integration", "SELECT count(*) FROM identity.users WHERE kind = 'integration' AND display_name = 'Webshop sync'", 1},
+		{"identity.user_roles Webshop", `SELECT count(*) FROM identity.user_roles ur JOIN identity.roles r ON r.id = ur.role_id
+			JOIN identity.integrations i ON i.user_id = ur.user_id WHERE r.name = 'Webshop'`, 1},
+		{"identity.role_permissions Webshop", `SELECT count(*) FROM identity.role_permissions rp JOIN identity.roles r ON r.id = rp.role_id
+			WHERE r.name = 'Webshop' AND rp.permission_key IN ('customers:view', 'customers:create', 'customers:update',
+			'products:products-view', 'products:pricing-view', 'orders:access')`, 6},
+		{"identity.api_keys", "SELECT count(*) FROM identity.api_keys WHERE permissions IS NULL AND NOT read_only", 1},
 		{"identity.profile_avatars", "SELECT count(*) FROM identity.profile_avatars WHERE content_type = 'image/jpeg'", demoUserCount},
 		{"staff.people", "SELECT count(*) FROM staff.people", demoUserCount},
 		{"customers.customers", "SELECT count(*) FROM customers.customers", demoCustomerCount},
@@ -134,6 +144,14 @@ func TestRun_SeedPopulatesDemoDatasetAndIsIdempotent(t *testing.T) {
 	}
 	if !strings.Contains(stdout2, "purchase proposals demo: already seeded; skipping") {
 		t.Errorf("expected the proposals' skip message in stdout, got: %s", stdout2)
+	}
+	// The key is printed by the first run alone, and no second key is made.
+	if !strings.Contains(stdout, "vtg_") || strings.Contains(stdout2, "vtg_") {
+		t.Error("the integration's key is printed by the first run only")
+	}
+	var keys int
+	if err := conn.QueryRow(ctx, `SELECT count(*) FROM identity.api_keys`).Scan(&keys); err != nil || keys != 1 {
+		t.Errorf("api keys after a rerun = %d, %v, want 1", keys, err)
 	}
 }
 
