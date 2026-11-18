@@ -195,11 +195,11 @@ func settle(ctx context.Context, q *store.Queries, inv store.InvoicesInvoice, to
 	if err != nil {
 		return fmt.Errorf("invoices: read what document %d is paid: %w", inv.ID, err)
 	}
-	var paid, writtenOff, recovered, moved *big.Rat
+	var paid, writtenOff, lost, recovered, moved *big.Rat
 	for _, f := range []struct {
 		dst **big.Rat
 		n   pgtype.Numeric
-	}{{&paid, sum.Paid}, {&writtenOff, sum.WrittenOff}, {&recovered, sum.Recovered}, {&moved, sum.Moved}} {
+	}{{&paid, sum.Paid}, {&writtenOff, sum.WrittenOff}, {&lost, sum.LossWrittenOff}, {&recovered, sum.Recovered}, {&moved, sum.Moved}} {
 		if *f.dst, err = ratFromNumeric(f.n); err != nil {
 			return err
 		}
@@ -218,7 +218,8 @@ func settle(ctx context.Context, q *store.Queries, inv store.InvoicesInvoice, to
 	settled := new(big.Rat).Add(paid, writtenOff)
 	settled.Sub(settled, moved)
 	open := new(big.Rat).Sub(left, settled)
-	resp.State = documentState(inv.Kind, inv.Status, gross, credited, settled, writtenOff, due, today)
+	// A rounding write-off settles as any does, and reads paid (I15).
+	resp.State = documentState(inv.Kind, inv.Status, gross, credited, settled, lost, due, today)
 	resp.CreditedAmount, resp.UncreditedAmount = ptr(floatFromRat(credited, 2)), ptr(floatFromRat(left, 2))
 	resp.PaidAmount, resp.OpenAmount = ptr(floatFromRat(paid, 2)), ptr(floatFromRat(open, 2))
 	resp.WrittenOffAmount, resp.RecoveredAmount = ptr(floatFromRat(writtenOff, 2)), ptr(floatFromRat(recovered, 2))

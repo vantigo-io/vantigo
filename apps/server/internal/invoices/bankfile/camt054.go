@@ -771,8 +771,15 @@ func (p *camtParser) txAmount(where string, tx *camtTx, direction string) (int64
 // reference before the KID leads the text as "SCOR <ref>", and the search
 // goes on, so a KID in a later SCOR reference of the same TxDtls is still
 // read — the first KID wins; without one, the line reaches the queue as a
-// payment without a KID.
+// payment without a KID. Every structured reference, of any type, is also
+// kept in References, in order (invoices phase 6 design I14), so matching
+// can read the invoices one payment for several names.
 func (p *camtParser) details(where string, tx *camtTx, out *Transaction) error {
+	for _, s := range tx.Structured {
+		if ref := text(s.Ref); ref != "" && len(out.References) < MaxReferences {
+			out.References = append(out.References, cut(ref, ReferenceSize))
+		}
+	}
 	scor := ""
 	for _, s := range tx.Structured {
 		if strings.TrimSpace(s.Type) != "SCOR" {

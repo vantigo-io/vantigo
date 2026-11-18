@@ -21,7 +21,7 @@ LEFT JOIN LATERAL (
 ) cr ON true
 LEFT JOIN LATERAL (
     SELECT invoices.settled_amount(i.id)::numeric(14,2) AS paid,
-        invoices.written_off_amount(i.id)::numeric(14,2) AS written_off
+        invoices.loss_written_off_amount(i.id)::numeric(14,2) AS written_off
 ) pd ON true
 WHERE i.kind = 'invoice' AND i.status = 'issued'
   AND ($1::int IS NULL OR i.customer_id = $1::int)
@@ -247,7 +247,7 @@ LEFT JOIN LATERAL (
 ) cr ON true
 LEFT JOIN LATERAL (
     SELECT invoices.settled_amount(i.id)::numeric(14,2) AS paid,
-        invoices.written_off_amount(i.id)::numeric(14,2) AS written_off
+        invoices.loss_written_off_amount(i.id)::numeric(14,2) AS written_off
 ) pd ON true
 WHERE i.kind = 'invoice' AND i.status = 'issued'
   AND ($1::int IS NULL OR i.customer_id = $1::int)

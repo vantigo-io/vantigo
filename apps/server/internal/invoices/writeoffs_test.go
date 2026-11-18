@@ -136,14 +136,15 @@ func TestWriteOff_ClosesTheOpenAmountRecoversAndUndoes(t *testing.T) {
 		t.Errorf("an unknown invoice's write-off = %d", res.Status)
 	}
 
-	// A credit note is never written off; a rounding is a write-off too.
+	// A credit note is never written off; a rounding is a write-off too, and
+	// the invoice it closes reads paid (invoices phase 6 design I15).
 	credit := issued(t, h, creditDraft(t, h, thousand(t, h).ID).ID)
 	refusedAs(t, "a credit note's write-off", c.Do(http.MethodPost, writeOffPath(credit.ID), map[string]any{"writtenOffOn": "2026-09-12", "reason": "loss"}), "credit_note_no_payments")
 	small := thousand(t, h)
 	registered(t, h, small.ID, pay(999.5, "2026-09-12"))
 	res = c.Do(http.MethodPost, writeOffPath(small.ID), map[string]any{"writtenOffOn": "2026-09-12", "reason": "rounding"})
 	got = writtenOff(t, "a rounding", res, res.Status, http.StatusOK)
-	if got.State != "written_off" || got.WrittenOffAmount != 0.5 {
+	if got.State != "paid" || got.WrittenOffAmount != 0.5 {
 		t.Errorf("rounding = %+v", got)
 	}
 }

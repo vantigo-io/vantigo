@@ -90,7 +90,7 @@ func TestBankFileCamt_Parse(t *testing.T) {
 				FirstBookedOn: day(6), LastBookedOn: day(6),
 				Transactions: []bankfile.Transaction{{
 					LineRef: "20261006173500NOK8903/1/1", Account: accountA, BookedOn: day(6), ValueOn: ptr(day(6)),
-					AmountMinor: 125000, Currency: "NOK", KID: "0010017", DebtorName: "Kunde AS",
+					AmountMinor: 125000, Currency: "NOK", KID: "0010017", References: []string{"0010017"}, DebtorName: "Kunde AS",
 					DebtorAccount: "98765432109", ArchiveRef: "123456789", BankCode: "PMNT/RCDT/VCOM", Ordinal: 1,
 				}},
 			}
@@ -114,11 +114,11 @@ func TestBankFileCamt_Parse(t *testing.T) {
 		noFingerprints(t, f)
 		want := []bankfile.Transaction{{
 			LineRef: "DBNO2026100600017/1/1", Account: accountA, BookedOn: day(5), ValueOn: ptr(day(5)),
-			AmountMinor: 78000, Currency: "NOK", KID: "0010025", DebtorName: "Ola Nordmann",
+			AmountMinor: 78000, Currency: "NOK", KID: "0010025", References: []string{"0010025"}, DebtorName: "Ola Nordmann",
 			DebtorAccount: "15030123456", BankCode: "PMNT/NTAV/NTAV", Ordinal: 1,
 		}, {
 			LineRef: "DBNO2026100600017/2/1", Account: accountA, BookedOn: day(6), ValueOn: ptr(day(6)),
-			AmountMinor: 150050, Currency: "NOK", KID: "0010033", DebtorName: "Kari Nordmann",
+			AmountMinor: 150050, Currency: "NOK", KID: "0010033", References: []string{"0010033"}, DebtorName: "Kari Nordmann",
 			BankCode: "PMNT/NTAV/NTAV", Ordinal: 1,
 		}}
 		if !reflect.DeepEqual(f.Transactions, want) {
@@ -139,6 +139,9 @@ func TestBankFileCamt_Parse(t *testing.T) {
 			t := base
 			t.LineRef, t.AmountMinor, t.KID, t.RemittanceText = "20261006180000NOK8903/1/"+n, amount, kid, text
 			t.DebtorName, t.DebtorAccount, t.ArchiveRef = name, account, archive
+			if kid != "" {
+				t.References = []string{kid}
+			}
 			return t
 		}
 		want := []bankfile.Transaction{
@@ -157,7 +160,7 @@ func TestBankFileCamt_Parse(t *testing.T) {
 		noFingerprints(t, f)
 		want := []bankfile.Transaction{{
 			LineRef: "20261006183000NOK8903/1/1", Account: accountA, Debit: true, BookedOn: day(6), ValueOn: ptr(day(6)),
-			AmountMinor: 125000, Currency: "NOK", KID: "0010017", DebtorName: "Kunde AS", DebtorAccount: "98765432109",
+			AmountMinor: 125000, Currency: "NOK", KID: "0010017", References: []string{"0010017"}, DebtorName: "Kunde AS", DebtorAccount: "98765432109",
 			ArchiveRef: "123456789", BankCode: "PMNT/RCDT/VCOM", Ordinal: 1,
 		}, {
 			LineRef: "20261006183000NOK8903/2/1", Account: accountA, Debit: true, BookedOn: day(6),
@@ -165,7 +168,7 @@ func TestBankFileCamt_Parse(t *testing.T) {
 			ArchiveRef: "234567890", BankCode: "PMNT/ICDT/RRTN", Ordinal: 1,
 		}, {
 			LineRef: "20261006183000NOK8903/4/1", Account: accountA, BookedOn: day(6),
-			AmountMinor: 30000, Currency: "NOK", KID: "0010058", ArchiveRef: "345678901", BankCode: "PMNT/RCDT/VCOM", Ordinal: 1,
+			AmountMinor: 30000, Currency: "NOK", KID: "0010058", References: []string{"0010058"}, ArchiveRef: "345678901", BankCode: "PMNT/RCDT/VCOM", Ordinal: 1,
 		}}
 		if !reflect.DeepEqual(f.Transactions, want) || !reflect.DeepEqual(f.Ignored, ignored(1, 0, 0)) {
 			t.Errorf("transactions =\n%+v\nignored %v; want\n%+v", f.Transactions, f.Ignored, want)
@@ -181,7 +184,7 @@ func TestBankFileCamt_Parse(t *testing.T) {
 			AmountMinor: 12575, Currency: "NOK", RemittanceText: "Renter september", BankCode: "INT", Ordinal: 1,
 		}, {
 			LineRef: "20261006190000NOK8903/3/2", Account: accountA, BookedOn: day(6),
-			AmountMinor: 60000, Currency: "NOK", KID: "0010082", ArchiveRef: "456789012", BankCode: "PMNT/RCDT/VCOM", Ordinal: 1,
+			AmountMinor: 60000, Currency: "NOK", KID: "0010082", References: []string{"0010082"}, ArchiveRef: "456789012", BankCode: "PMNT/RCDT/VCOM", Ordinal: 1,
 		}}
 		if !reflect.DeepEqual(f.Transactions, want) || !reflect.DeepEqual(f.Ignored, ignored(0, 1, 1)) {
 			t.Errorf("transactions =\n%+v\nignored %v; want\n%+v", f.Transactions, f.Ignored, want)
@@ -205,7 +208,7 @@ func TestBankFileCamt_Parse(t *testing.T) {
 		noFingerprints(t, f)
 		want := []bankfile.Transaction{{
 			LineRef: "20261006210000NOK8903/1/1", Account: accountA, BookedOn: day(6), ValueOn: ptr(day(6)),
-			AmountMinor: 200000, Currency: "NOK", KID: "0010090", DebtorName: "Kunde AS", DebtorAccount: "98765432109",
+			AmountMinor: 200000, Currency: "NOK", KID: "0010090", References: []string{"0010090"}, DebtorName: "Kunde AS", DebtorAccount: "98765432109",
 			ArchiveRef: "678901231", BankCode: "PMNT/RCDT/DMCT", Ordinal: 1,
 		}, {
 			LineRef: "20261006210000NOK8903/1/2", Account: accountA, BookedOn: day(6), ValueOn: ptr(day(6)),
@@ -213,7 +216,7 @@ func TestBankFileCamt_Parse(t *testing.T) {
 			ArchiveRef: "678901232", BankCode: "PMNT/RCDT/DMCT", Ordinal: 1,
 		}, {
 			LineRef: "20261006210000NOK8903/2/1", Account: accountA, Debit: true, BookedOn: day(6),
-			AmountMinor: 200000, Currency: "NOK", KID: "0010090", DebtorName: "Kunde AS",
+			AmountMinor: 200000, Currency: "NOK", KID: "0010090", References: []string{"0010090"}, DebtorName: "Kunde AS",
 			ArchiveRef: "678901231", BankCode: "PMNT/RCDT/DMCT", Ordinal: 1,
 		}}
 		if !reflect.DeepEqual(f.Transactions, want) || !reflect.DeepEqual(f.Ignored, ignored(0, 1, 1)) ||
@@ -746,5 +749,29 @@ func TestBankfiletest_CamtIsAccepted(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// Every structured reference is kept, of any type and in order (invoices
+// phase 6 design I14): the KID still the first SCOR reference that is one,
+// the others beside it for the split to read.
+func TestBankFileCamt_KeepsEveryReference(t *testing.T) {
+	t.Parallel()
+	f := mustCamt(t, bankfiletest.Camt054(v02, "M1", day(7), accountA, bankfiletest.CamtEntry{
+		BookedOn: day(6), Txs: []bankfiletest.CamtTx{{AmountMinor: 300000, KID: "0010017", Refs: []string{"1002", "Faktura 1003"}, Ustrd: "Tre fakturaer"}},
+	}))
+	tx := f.Transactions[0]
+	if tx.KID != "0010017" || !reflect.DeepEqual(tx.References, []string{"0010017", "1002", "Faktura 1003"}) || tx.RemittanceText != "Tre fakturaer" {
+		t.Errorf("the line = KID %q, references %q, text %q; want the KID, the three references in order and the text", tx.KID, tx.References, tx.RemittanceText)
+	}
+	many := make([]string, 25)
+	for i := range many {
+		many[i] = strconv.Itoa(1000 + i)
+	}
+	f = mustCamt(t, bankfiletest.Camt054(v02, "M2", day(7), accountA, bankfiletest.CamtEntry{
+		BookedOn: day(6), Txs: []bankfiletest.CamtTx{{AmountMinor: 100, Refs: many}},
+	}))
+	if got := f.Transactions[0].References; len(got) != bankfile.MaxReferences || got[0] != "1000" {
+		t.Errorf("25 references keep %d, from %v; want the first 20", len(got), got)
 	}
 }

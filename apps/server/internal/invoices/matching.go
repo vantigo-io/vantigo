@@ -62,6 +62,13 @@ const (
 	outcomeMatched = "matched"
 	outcomeQueued  = "queued"
 	outcomeNone    = ""
+	// outcomeDone is a split's line found no longer pending under its lock.
+	outcomeDone = "done"
+	// outcomeExceedsOpen is matchLine's line that pays more than its
+	// invoice has open, queued by nothing yet: matchLines tries it as a
+	// split (invoices phase 6 design I14) and queues it exceeds_open when it
+	// is none.
+	outcomeExceedsOpen = "exceeds_open"
 )
 
 // The events a match writes (ck_bank_transaction_events_event).
@@ -192,6 +199,30 @@ func (s *server) matchLines(ctx context.Context, fileID int64, caller *uuid.UUID
 			return stopped(line.ID, err)
 		}
 		var outcome string
+		if reason == "" {
+			outcome, err = s.matchLine(ctx, line.ID, invoiceID, caller, now, loc)
+			if err != nil {
+				if passOver(err) {
+					continue
+				}
+				return stopped(line.ID, err)
+			}
+			if outcome == outcomeExceedsOpen {
+				reason, outcome = reasonExceedsOpen, outcomeNone
+			}
+		}
+		if reason != "" && splittable(reason) {
+			// One payment for several invoices (I14), before it is queued.
+			if outcome, err = s.trySplit(ctx, line, caller, now, loc); err != nil {
+				if passOver(err) {
+					continue
+				}
+				return stopped(line.ID, err)
+			}
+			if outcome != outcomeNone {
+				reason = ""
+			}
+		}
 		if reason != "" {
 			// A line whose KID named no invoice keeps the one unambiguous
 			// suggestion, when there is one (D5, plan reading 24).
@@ -208,8 +239,6 @@ func (s *server) matchLines(ctx context.Context, fileID int64, caller *uuid.UUID
 				}
 			}
 			outcome, err = s.queueOnPool(ctx, line, reason, invoiceID, caller, now)
-		} else {
-			outcome, err = s.matchLine(ctx, line.ID, invoiceID, caller, now, loc)
 		}
 		if err != nil {
 			if passOver(err) {
@@ -440,12 +469,23 @@ func (s *server) matchLine(ctx context.Context, lineID, invoiceID int64, caller 
 		if err != nil {
 			return err
 		}
+		if reason == reasonExceedsOpen {
+			// Queued by matchLines, once it is no split either (I14).
+			outcome = outcomeExceedsOpen
+			return nil
+		}
 		if reason != "" {
 			outcome, err = queueLine(ctx, txq, line.ID, reason, inv.ID, caller, now)
 			return err
 		}
 		if err := registerMatch(ctx, txq, line, inv, principal, charges, caller, now); err != nil {
 			return err
+		}
+		// What the payment leaves open may be a small difference (I15).
+		if principal.Sign() > 0 {
+			if err := roundOffResidual(ctx, txq, inv, line.BookedOn, now); err != nil {
+				return err
+			}
 		}
 		// Every matched line: a payment meets a deadline by its ordering
 		// day where the bank gives one, else by its booking day (reading 32).
@@ -497,7 +537,7 @@ func judgeMatch(ctx context.Context, txq *store.Queries, line store.InvoicesBank
 	if err != nil {
 		return "", nil, nil, err
 	}
-	writtenOff, err := writtenOffOf(ctx, txq, inv.ID)
+	writtenOff, err := lossWrittenOffOf(ctx, txq, inv.ID)
 	if err != nil {
 		return "", nil, nil, err
 	}

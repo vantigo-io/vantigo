@@ -430,7 +430,7 @@ func bankLineParams(file *bankfile.File) (store.InsertBankTransactionsParams, er
 		OrderedOns: make([]pgtype.Date, 0, n), Amounts: make([]pgtype.Numeric, 0, n), Kids: make([]string, 0, n),
 		RemittanceTexts: make([]string, 0, n), DebtorNames: make([]string, 0, n), DebtorAccounts: make([]string, 0, n),
 		ArchiveRefs: make([]string, 0, n), BankCodes: make([]string, 0, n), Fingerprints: make([]string, 0, n),
-		Ordinals: make([]int16, 0, n),
+		Ordinals: make([]int16, 0, n), RemittanceRefs: make([]string, 0, n),
 	}
 	for _, tx := range file.Transactions {
 		direction := "credit"
@@ -456,9 +456,15 @@ func bankLineParams(file *bankfile.File) (store.InsertBankTransactionsParams, er
 		p.BankCodes = append(p.BankCodes, tx.BankCode)
 		p.Fingerprints = append(p.Fingerprints, tx.Fingerprint)
 		p.Ordinals = append(p.Ordinals, int16(tx.Ordinal))
+		p.RemittanceRefs = append(p.RemittanceRefs, strings.Join(tx.References, refSeparator))
 	}
 	return p, nil
 }
+
+// refSeparator joins a line's remittance references into the one element
+// InsertBankTransactions unnests and splits again: the unit separator, a
+// control character the parser makes a space of in every reference.
+const refSeparator = "\x1f"
 
 // skippedLines is the lines of p whose fingerprint the insert did not
 // return — those a live line of their account already had — as the same
@@ -489,6 +495,7 @@ func skippedLines(p store.InsertBankTransactionsParams, live []store.InsertBankT
 		out.BankCodes = append(out.BankCodes, p.BankCodes[i])
 		out.Fingerprints = append(out.Fingerprints, fp)
 		out.Ordinals = append(out.Ordinals, p.Ordinals[i])
+		out.RemittanceRefs = append(out.RemittanceRefs, p.RemittanceRefs[i])
 	}
 	return out
 }
@@ -627,10 +634,14 @@ func bankTransactionResponse(l store.InvoicesBankTransaction) (gen.InvoicesBankT
 	if l.Resolution != nil {
 		resolution = ptr(gen.InvoicesBankTransactionResolution(*l.Resolution))
 	}
+	refs := l.RemittanceRefs
+	if refs == nil {
+		refs = []string{}
+	}
 	return gen.InvoicesBankTransaction{
 		Id: l.ID, LineRef: l.LineRef, Account: l.Account, Direction: l.Direction, Negative: l.Negative,
 		BookedOn: wireDate(l.BookedOn.Time), ValueOn: wireDateOf(l.ValueOn), OrderedOn: wireDateOf(l.OrderedOn),
-		Amount: amount, Kid: l.Kid, RemittanceText: l.RemittanceText, DebtorName: l.DebtorName,
+		Amount: amount, Kid: l.Kid, RemittanceText: l.RemittanceText, References: refs, DebtorName: l.DebtorName,
 		DebtorAccount: l.DebtorAccount, ArchiveRef: l.ArchiveRef, Status: gen.InvoicesBankTransactionStatus(l.Status),
 		Reason: reasonWire(l.Reason), DuplicateOfId: l.DuplicateOfID, SuggestedInvoiceId: l.SuggestedInvoiceID,
 		Resolution: resolution, ResolvedBy: l.ResolvedByUserID, ResolvedAt: l.ResolvedAt, ResolutionNote: l.ResolutionNote,

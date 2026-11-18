@@ -15,11 +15,11 @@ import (
 
 const insertWriteOff = `-- name: InsertWriteOff :one
 INSERT INTO invoices.write_offs (
-    invoice_id, written_off_on, amount, amount_nok, currency, reason, vat_correction, registered_by_user_id, registered_at
+    invoice_id, written_off_on, amount, amount_nok, currency, reason, vat_correction, source, registered_by_user_id, registered_at
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9::timestamptz
+    $1, $2, $3, $4, $5, $6, $7, $8, $9::uuid, $10::timestamptz
 )
-RETURNING id, invoice_id, written_off_on, amount, currency, reason, vat_correction, registered_by_user_id, registered_at, undone_at, undone_by_user_id, undo_reason, amount_nok
+RETURNING id, invoice_id, written_off_on, amount, currency, reason, vat_correction, registered_by_user_id, registered_at, undone_at, undone_by_user_id, undo_reason, amount_nok, source
 `
 
 type InsertWriteOffParams struct {
@@ -30,13 +30,17 @@ type InsertWriteOffParams struct {
 	Currency           string
 	Reason             string
 	VatCorrection      bool
-	RegisteredByUserID uuid.UUID
+	Source             string
+	RegisteredByUserID *uuid.UUID
 	RegisteredAt       time.Time
 }
 
 // InsertWriteOff gives up the open amount. The caller holds the invoice FOR
 // UPDATE and has judged the amount under that lock; ux_write_offs_live keeps
 // one standing write-off per invoice, tr_write_offs_parent an issued invoice.
+// source is manual, by a person, or auto, the rounding write-off a payment
+// leaves by itself (invoices phase 6 design I15), which no one registers
+// (ck_write_offs_actor).
 func (q *Queries) InsertWriteOff(ctx context.Context, arg InsertWriteOffParams) (InvoicesWriteOff, error) {
 	row := q.db.QueryRow(ctx, insertWriteOff,
 		arg.InvoiceID,
@@ -46,6 +50,7 @@ func (q *Queries) InsertWriteOff(ctx context.Context, arg InsertWriteOffParams) 
 		arg.Currency,
 		arg.Reason,
 		arg.VatCorrection,
+		arg.Source,
 		arg.RegisteredByUserID,
 		arg.RegisteredAt,
 	)
@@ -64,6 +69,7 @@ func (q *Queries) InsertWriteOff(ctx context.Context, arg InsertWriteOffParams) 
 		&i.UndoneByUserID,
 		&i.UndoReason,
 		&i.AmountNok,
+		&i.Source,
 	)
 	return i, err
 }
@@ -83,7 +89,7 @@ func (q *Queries) LiveRecoveries(ctx context.Context, writeOffID int64) (pgtype.
 
 const liveWriteOff = `-- name: LiveWriteOff :one
 
-SELECT id, invoice_id, written_off_on, amount, currency, reason, vat_correction, registered_by_user_id, registered_at, undone_at, undone_by_user_id, undo_reason, amount_nok FROM invoices.write_offs WHERE invoice_id = $1 AND undone_at IS NULL
+SELECT id, invoice_id, written_off_on, amount, currency, reason, vat_correction, registered_by_user_id, registered_at, undone_at, undone_by_user_id, undo_reason, amount_nok, source FROM invoices.write_offs WHERE invoice_id = $1 AND undone_at IS NULL
 `
 
 // Write-offs (accounting design A16 as amended by R4): an issued invoice's
@@ -107,6 +113,7 @@ func (q *Queries) LiveWriteOff(ctx context.Context, invoiceID int64) (InvoicesWr
 		&i.UndoneByUserID,
 		&i.UndoReason,
 		&i.AmountNok,
+		&i.Source,
 	)
 	return i, err
 }
@@ -142,7 +149,7 @@ func (q *Queries) UndoWriteOff(ctx context.Context, arg UndoWriteOffParams) (int
 }
 
 const writeOffsOf = `-- name: WriteOffsOf :many
-SELECT id, invoice_id, written_off_on, amount, currency, reason, vat_correction, registered_by_user_id, registered_at, undone_at, undone_by_user_id, undo_reason, amount_nok FROM invoices.write_offs WHERE invoice_id = $1 ORDER BY registered_at, id
+SELECT id, invoice_id, written_off_on, amount, currency, reason, vat_correction, registered_by_user_id, registered_at, undone_at, undone_by_user_id, undo_reason, amount_nok, source FROM invoices.write_offs WHERE invoice_id = $1 ORDER BY registered_at, id
 `
 
 // WriteOffsOf is every write-off of an invoice, undone ones included, in the
@@ -170,6 +177,7 @@ func (q *Queries) WriteOffsOf(ctx context.Context, invoiceID int64) ([]InvoicesW
 			&i.UndoneByUserID,
 			&i.UndoReason,
 			&i.AmountNok,
+			&i.Source,
 		); err != nil {
 			return nil, err
 		}

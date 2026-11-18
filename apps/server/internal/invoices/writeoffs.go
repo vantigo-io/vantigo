@@ -53,6 +53,13 @@ const (
 	writeOffOther    = "other"
 )
 
+// A write-off's sources (ck_write_offs_source): a person's, or the rounding
+// write-off a payment leaves by itself (invoices phase 6 design I15).
+const (
+	writeOffManual = "manual"
+	writeOffAuto   = "auto"
+)
+
 // PostInvoicesByIdWriteOff Write off an invoice's open amount
 // (POST /api/v1/invoices/{id}/write-off)
 func (s *server) PostInvoicesByIdWriteOff(ctx context.Context, req gen.PostInvoicesByIdWriteOffRequestObject) (gen.PostInvoicesByIdWriteOffResponseObject, error) {
@@ -134,7 +141,7 @@ func (s *server) PostInvoicesByIdWriteOff(ctx context.Context, req gen.PostInvoi
 		}
 		if _, err := txq.InsertWriteOff(ctx, store.InsertWriteOffParams{
 			InvoiceID: locked.ID, WrittenOffOn: pgDate(day), Amount: amount, AmountNok: nok, Currency: locked.Currency, Reason: reason,
-			VatCorrection: vatCorrection, RegisteredByUserID: callerID(ctx), RegisteredAt: s.deps.Clock(),
+			VatCorrection: vatCorrection, Source: writeOffManual, RegisteredByUserID: ptr(callerID(ctx)), RegisteredAt: s.deps.Clock(),
 		}); err != nil {
 			return fmt.Errorf("invoices: write off %d: %w", locked.ID, err)
 		}
@@ -284,6 +291,22 @@ func writtenOffOf(ctx context.Context, q *store.Queries, invoiceID int64) (bool,
 	return true, nil
 }
 
+// lossWrittenOffOf reports whether a write-off that is no rounding stands on
+// the invoice, read with q, which holds the invoice's lock: what refuses a
+// bank line as invoice_written_off (plan reading 11). A rounding write-off
+// is a small difference, not a loss: money after it is a late residual,
+// which falls through to invoice_settled and a person keeps as credit (I15).
+func lossWrittenOffOf(ctx context.Context, q *store.Queries, invoiceID int64) (bool, error) {
+	live, err := q.LiveWriteOff(ctx, invoiceID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("invoices: read the write-off of %d: %w", invoiceID, err)
+	}
+	return live.Reason != writeOffRounding, nil
+}
+
 // recoveryRoom is what a write-off has left to recover — its amount less its
 // live recoveries — read with q, which holds the invoice's lock. ok is false
 // when no write-off stands.
@@ -334,7 +357,7 @@ func writeOffsResponse(ctx context.Context, q *store.Queries, invoiceID int64) (
 		out = append(out, gen.InvoicesWriteOff{
 			Id: w.ID, WrittenOffOn: wireDate(w.WrittenOffOn.Time), Amount: floatFromRat(amount, 2), Currency: w.Currency,
 			Reason: gen.InvoicesWriteOffReason(w.Reason), VatCorrection: w.VatCorrection, RecoveredAmount: floatFromRat(recovered, 2),
-			RegisteredAt: w.RegisteredAt, RegisteredByUserId: w.RegisteredByUserID,
+			Source: gen.InvoicesWriteOffSource(w.Source), RegisteredAt: w.RegisteredAt, RegisteredByUserId: w.RegisteredByUserID,
 			UndoneAt: w.UndoneAt, UndoneByUserId: w.UndoneByUserID, UndoReason: w.UndoReason,
 		})
 	}

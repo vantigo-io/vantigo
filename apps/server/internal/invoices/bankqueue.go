@@ -136,7 +136,7 @@ func suggestible(reason string) bool {
 
 // suggestionsFor is the issued invoices line may pay (D5), read on the pool
 // and never registered by itself: those whose number is a whole word of
-// its text (number_in_text), whose open amount equals its amount
+// its text or of one of its remittance references (number_in_text), whose open amount equals its amount
 // (amount_equals_open), and the open ones of the customers whose earlier
 // payments from a bank line — one booked on or before it — came from its
 // debtor account (debtor_account) —
@@ -158,9 +158,14 @@ func suggestionsFor(ctx context.Context, q *store.Queries, line store.InvoicesBa
 		}
 	}
 	var numbers []int64
-	for _, tok := range digitRun.FindAllString(line.RemittanceText, 50) {
-		if n, err := strconv.ParseInt(tok, 10, 64); err == nil && n > 0 && !slices.Contains(numbers, n) {
-			numbers = append(numbers, n)
+	// The text and every remittance reference a camt.054 line kept
+	// (invoices phase 6 design I14), so a line a split could not take is
+	// queued with the invoices it named.
+	for _, text := range append(slices.Clone(line.RemittanceRefs), line.RemittanceText) {
+		for _, tok := range digitRun.FindAllString(text, 50) {
+			if n, err := strconv.ParseInt(tok, 10, 64); err == nil && n > 0 && !slices.Contains(numbers, n) {
+				numbers = append(numbers, n)
+			}
 		}
 	}
 	if len(numbers) > 0 {
@@ -829,6 +834,10 @@ func (s *server) applyLocked(ctx context.Context, txq *store.Queries, line store
 				BankTransactionID: line.ID, Reference: reference, RegisteredByUserID: &caller, RegisteredAt: now,
 			}); err != nil {
 				return nil, fmt.Errorf("invoices: apply line %d's payment to %d: %w", line.ID, inv.ID, err)
+			}
+			// What the payment leaves open may be a small difference (I15).
+			if err := roundOffResidual(ctx, txq, inv, line.BookedOn, now); err != nil {
+				return nil, err
 			}
 		}
 		if a.charges.Sign() > 0 {

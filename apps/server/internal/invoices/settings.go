@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/big"
 	"net/mail"
 	"regexp"
 	"slices"
@@ -50,6 +51,10 @@ var peppolIDPattern = regexp.MustCompile(`^([0-9]{4}):([A-Za-z0-9-]{1,50})$`)
 // phase 1 (D5): § 5-1-1 nr. 6 wants VAT in NOK at the invoice date's rate,
 // which this phase does not model yet.
 const onlyNOK = "Only NOK in this phase"
+
+// maxTolerance is the highest rounding tolerance, NOK 100
+// (ck_settings_tolerance; invoices phase 6 design I15).
+var maxTolerance = big.NewRat(100, 1)
 
 // maxSeriesStart is the highest start a series may have: 2^53 − 1, the
 // largest integer a JavaScript client reads exactly, and far below where the
@@ -249,6 +254,17 @@ func parseSettings(body gen.InvoicesSettingsRequest) (parsedSettings, map[string
 	if body.Phone != nil {
 		p.Phone = strings.TrimSpace(*body.Phone)
 		add("phone", phoneRefusal(p.Phone))
+	}
+	if body.Tolerance != nil {
+		t, msg := amount("The rounding tolerance", *body.Tolerance, 2, zero, false, maxTolerance)
+		add("tolerance", msg)
+		if msg == "" {
+			n, err := numericFromRat(t, 2)
+			if err != nil {
+				add("tolerance", "The rounding tolerance is a number")
+			}
+			p.Tolerance = n
+		}
 	}
 	switch {
 	case p.SeriesStart < 1:
@@ -499,6 +515,8 @@ func settingsResponse(row store.InvoicesSetting, locked bool, next int64) gen.In
 	if row.KidLength != nil {
 		length = ptr(int32(*row.KidLength))
 	}
+	// A NOT NULL numeric(5,2) always reads as a number.
+	tolerance, _ := floatFromNumeric(row.Tolerance)
 	return gen.InvoicesSettingsResponse{
 		PeppolId: row.PeppolID, KidLength: length, KidAlgorithm: row.KidAlgorithm,
 		Warnings: settingsWarnings(row, next),
@@ -515,6 +533,7 @@ func settingsResponse(row store.InvoicesSetting, locked bool, next int64) gen.In
 		BankAccount: row.BankAccount, Iban: row.Iban, Bic: row.Bic, Email: row.Email,
 		DefaultPaymentTermsDays: row.DefaultPaymentTermsDays, DefaultCurrency: row.DefaultCurrency,
 		FooterText: row.FooterText, Phone: row.Phone, Logo: settingsLogo(row),
+		Tolerance:   tolerance,
 		SeriesStart: row.SeriesStart, SeriesLocked: locked, NextNumber: next,
 		MissingSellerFields: sellerMissingFields(row),
 		Revision:            row.Revision, UpdatedAt: row.UpdatedAt,
@@ -718,6 +737,10 @@ func (s *server) PutInvoicesSettings(ctx context.Context, req gen.PutInvoicesSet
 		// 6 design I4), as the sending channel is.
 		if req.Body.Phone == nil {
 			parsed.Phone = current.Phone
+		}
+		// The tolerance a request leaves out is kept as stored (I15).
+		if req.Body.Tolerance == nil {
+			parsed.Tolerance = current.Tolerance
 		}
 		// The sending channel a request leaves out is kept as stored
 		// (integrations design T6), as it is under the lock.
