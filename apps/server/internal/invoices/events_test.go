@@ -64,11 +64,12 @@ func TestPaymentReceived_IsPublishedByTheRegistrationAndByNothingElse(t *testing
 	if err := json.Unmarshal(got[0], &ev); err != nil {
 		t.Fatal(err)
 	}
-	if ev.InvoiceID != inv.ID || ev.CustomerID != customerAcme || ev.Amount != "300.10" || ev.Currency != "NOK" || ev.PaidOn != "2026-09-12" || ev.Source != "manual" || ev.PaymentID == 0 || ev.Number == 0 {
+	if ev.InvoiceID != inv.ID || ev.CustomerID != customerAcme || ev.Amount != "300.10" || ev.AmountNOK != "300.10" || ev.Currency != "NOK" || ev.PaidOn != "2026-09-12" || ev.Source != "manual" || ev.PaymentID == 0 || ev.Number == 0 {
 		t.Errorf("event = %+v, want the registration's ids, amount, currency, day and source", ev)
 	}
 	// No personal data: the fields of the contract and no more, and none of the free text the registration carried.
-	want := map[string]bool{"paymentId": true, "invoiceId": true, "number": true, "customerId": true, "amount": true, "currency": true, "paidOn": true, "source": true, "registeredAt": true}
+	want := map[string]bool{"paymentId": true, "invoiceId": true, "number": true, "customerId": true, "amount": true, "currency": true,
+		"amountNok": true, "paidOn": true, "source": true, "registeredAt": true}
 	for k := range keysOf(t, got[0]) {
 		if !want[k] {
 			t.Errorf("the event carries %q, which is not in the contract", k)

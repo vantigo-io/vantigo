@@ -169,16 +169,35 @@ func (s *server) PostInvoicesByIdWriteOffUndo(ctx context.Context, req gen.PostI
 	if err != nil {
 		return nil, err
 	}
+	// An invoice whose credit note's surplus moved to the customer gets it
+	// back when the undo reopens it (plan reading 8): read on the pool, that
+	// takes the customer's credit lock before the invoice (I17a), and one
+	// found so only under the invoice's lock runs again on that path.
+	q := store.New(s.deps.Pool)
+	movedN, err := q.MovedOf(ctx, req.Id)
+	if err != nil {
+		return nil, fmt.Errorf("invoices: read what moved off document %d: %w", req.Id, err)
+	}
+	moved, err := ratFromNumeric(movedN)
+	if err != nil {
+		return nil, err
+	}
+	withCredit := moved.Sign() > 0
+	caller, now := callerID(ctx), s.deps.Clock()
 	var refusal *gen.InvoicesConflictProblem
 	var inv store.InvoicesInvoice
-	err = s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
-		var err error
-		inv, err = txq.LockInvoice(ctx, req.Id)
-		if errors.Is(err, pgx.ErrNoRows) {
-			return errDocumentGone
-		}
-		if err != nil {
-			return fmt.Errorf("invoices: lock document %d: %w", req.Id, err)
+	undo := func(ctx context.Context, txq *store.Queries, locked store.InvoicesInvoice) error {
+		inv = locked
+		if !withCredit {
+			movedN, err := txq.MovedOf(ctx, inv.ID)
+			if err != nil {
+				return fmt.Errorf("invoices: read what moved off document %d: %w", inv.ID, err)
+			}
+			if m, err := ratFromNumeric(movedN); err != nil {
+				return err
+			} else if m.Sign() > 0 {
+				return errCreditPathNeeded
+			}
 		}
 		live, err := txq.LiveWriteOff(ctx, inv.ID)
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -199,7 +218,7 @@ func (s *server) PostInvoicesByIdWriteOffUndo(ctx context.Context, req gen.PostI
 				"Money was recovered after this write-off. Remove the recovered payments first, then undo the write-off and register them as payments."))
 			return errRefused
 		}
-		n, err := txq.UndoWriteOff(ctx, store.UndoWriteOffParams{UndoneAt: s.deps.Clock(), UndoneByUserID: callerID(ctx),
+		n, err := txq.UndoWriteOff(ctx, store.UndoWriteOffParams{UndoneAt: now, UndoneByUserID: caller,
 			UndoReason: reason, ID: live.ID, InvoiceID: inv.ID})
 		if err != nil {
 			return fmt.Errorf("invoices: undo write-off %d of %d: %w", live.ID, inv.ID, err)
@@ -207,8 +226,31 @@ func (s *server) PostInvoicesByIdWriteOffUndo(ctx context.Context, req gen.PostI
 		if n != 1 {
 			return fmt.Errorf("invoices: undo write-off %d of %d: %d rows, want 1", live.ID, inv.ID, n)
 		}
-		return nil
-	})
+		if !withCredit {
+			return nil
+		}
+		return returnMovedCredit(ctx, txq, inv, holidays.DayIn(now, loc), caller, now)
+	}
+	for attempt := 0; attempt < 2; attempt++ {
+		if withCredit {
+			err = s.withCustomerAndInvoice(ctx, req.Id, undo)
+		} else {
+			err = s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
+				locked, err := txq.LockInvoice(ctx, req.Id)
+				if errors.Is(err, pgx.ErrNoRows) {
+					return errDocumentGone
+				}
+				if err != nil {
+					return fmt.Errorf("invoices: lock document %d: %w", req.Id, err)
+				}
+				return undo(ctx, txq, locked)
+			})
+		}
+		if !errors.Is(err, errCreditPathNeeded) {
+			break
+		}
+		withCredit = true
+	}
 	if refusal != nil {
 		return gen.PostInvoicesByIdWriteOffUndo409ApplicationProblemPlusJSONResponse(*refusal), nil
 	}

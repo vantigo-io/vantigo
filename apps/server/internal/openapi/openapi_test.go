@@ -222,6 +222,7 @@ var KnownServeMuxConflicts = []string{
 	"GET /api/v1/invoices/billing-runs/{id} ⟷ GET /api/v1/invoices/{id}/deductible",
 	"GET /api/v1/invoices/billing-runs/{id} ⟷ GET /api/v1/invoices/{id}/pdf",
 	"GET /api/v1/invoices/billing-runs/{id} ⟷ GET /api/v1/invoices/{id}/preview.pdf",
+	"GET /api/v1/invoices/customers/{customerId}/credit ⟷ GET /api/v1/invoices/{id}/payment-requests/{attemptId}",
 	"GET /api/v1/invoices/customers/{customerId}/reminder-policy ⟷ GET /api/v1/invoices/{id}/payment-requests/{attemptId}",
 	"GET /api/v1/invoices/reminder-print-batches/{id}/pdf ⟷ GET /api/v1/invoices/{id}/payment-requests/{attemptId}",
 	"GET /api/v1/invoices/reminder-runs/{id} ⟷ GET /api/v1/invoices/{id}/deductible",

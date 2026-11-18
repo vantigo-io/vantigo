@@ -19,7 +19,7 @@ INSERT INTO invoices.write_offs (
 ) VALUES (
     $1, $2, $3, $4, $5, $6, $7, $8::timestamptz
 )
-RETURNING id, invoice_id, written_off_on, amount, currency, reason, vat_correction, registered_by_user_id, registered_at, undone_at, undone_by_user_id, undo_reason
+RETURNING id, invoice_id, written_off_on, amount, currency, reason, vat_correction, registered_by_user_id, registered_at, undone_at, undone_by_user_id, undo_reason, amount_nok
 `
 
 type InsertWriteOffParams struct {
@@ -61,6 +61,7 @@ func (q *Queries) InsertWriteOff(ctx context.Context, arg InsertWriteOffParams) 
 		&i.UndoneAt,
 		&i.UndoneByUserID,
 		&i.UndoReason,
+		&i.AmountNok,
 	)
 	return i, err
 }
@@ -80,7 +81,7 @@ func (q *Queries) LiveRecoveries(ctx context.Context, writeOffID int64) (pgtype.
 
 const liveWriteOff = `-- name: LiveWriteOff :one
 
-SELECT id, invoice_id, written_off_on, amount, currency, reason, vat_correction, registered_by_user_id, registered_at, undone_at, undone_by_user_id, undo_reason FROM invoices.write_offs WHERE invoice_id = $1 AND undone_at IS NULL
+SELECT id, invoice_id, written_off_on, amount, currency, reason, vat_correction, registered_by_user_id, registered_at, undone_at, undone_by_user_id, undo_reason, amount_nok FROM invoices.write_offs WHERE invoice_id = $1 AND undone_at IS NULL
 `
 
 // Write-offs (accounting design A16 as amended by R4): an issued invoice's
@@ -103,6 +104,7 @@ func (q *Queries) LiveWriteOff(ctx context.Context, invoiceID int64) (InvoicesWr
 		&i.UndoneAt,
 		&i.UndoneByUserID,
 		&i.UndoReason,
+		&i.AmountNok,
 	)
 	return i, err
 }
@@ -138,7 +140,7 @@ func (q *Queries) UndoWriteOff(ctx context.Context, arg UndoWriteOffParams) (int
 }
 
 const writeOffsOf = `-- name: WriteOffsOf :many
-SELECT id, invoice_id, written_off_on, amount, currency, reason, vat_correction, registered_by_user_id, registered_at, undone_at, undone_by_user_id, undo_reason FROM invoices.write_offs WHERE invoice_id = $1 ORDER BY registered_at, id
+SELECT id, invoice_id, written_off_on, amount, currency, reason, vat_correction, registered_by_user_id, registered_at, undone_at, undone_by_user_id, undo_reason, amount_nok FROM invoices.write_offs WHERE invoice_id = $1 ORDER BY registered_at, id
 `
 
 // WriteOffsOf is every write-off of an invoice, undone ones included, in the
@@ -165,6 +167,7 @@ func (q *Queries) WriteOffsOf(ctx context.Context, invoiceID int64) ([]InvoicesW
 			&i.UndoneAt,
 			&i.UndoneByUserID,
 			&i.UndoReason,
+			&i.AmountNok,
 		); err != nil {
 			return nil, err
 		}

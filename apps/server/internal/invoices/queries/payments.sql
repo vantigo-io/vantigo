@@ -1,11 +1,14 @@
 -- name: LivePaymentsSum :one
 -- LivePaymentsSum is what an invoice's live registrations add up to — the
--- paid of the open amount (D2, D3) — beside its standing write-off and its
--- live recoveries (A16, R4). A removed registration counts for nothing; a
--- recovery is not part of the open amount, which the write-off closed.
+-- paid of the open amount (D2, D3) — beside its standing write-off, its
+-- live recoveries (A16, R4) and what its credit notes' surplus moved to the
+-- customer (moved, I10), which the open amount adds back. A removed
+-- registration counts for nothing; a recovery is not part of the open
+-- amount, which the write-off closed.
 SELECT coalesce(sum(amount) FILTER (WHERE kind = 'payment'), 0)::numeric(14,2) AS paid,
     invoices.written_off_amount(@invoice_id)::numeric(14,2) AS written_off,
-    coalesce(sum(amount) FILTER (WHERE kind = 'recovered'), 0)::numeric(14,2) AS recovered
+    coalesce(sum(amount) FILTER (WHERE kind = 'recovered'), 0)::numeric(14,2) AS recovered,
+    invoices.moved_amount(@invoice_id)::numeric(14,2) AS moved
 FROM invoices.payments
 WHERE invoice_id = @invoice_id AND removed_at IS NULL;
 
@@ -55,3 +58,15 @@ SELECT * FROM invoices.payments WHERE id = @id AND invoice_id = @invoice_id;
 UPDATE invoices.payments
 SET removed_at = @removed_at::timestamptz, removed_by_user_id = @removed_by_user_id::uuid, removal_reason = @removal_reason::text
 WHERE id = @id AND invoice_id = @invoice_id AND removed_at IS NULL;
+
+-- name: InsertCreditPayment :one
+-- InsertCreditPayment registers credit applied to an invoice (I11): source
+-- credit, no bank line and no attempt, the person who applied it. Its
+-- applied movement names it, in the same transaction, under the customer's
+-- credit lock and then the invoice's.
+INSERT INTO invoices.payments (
+    invoice_id, paid_on, amount, currency, reference, note, source, registered_by_user_id, registered_at
+) VALUES (
+    @invoice_id, @paid_on, @amount, @currency, @reference, @note, 'credit', @registered_by_user_id::uuid, @registered_at::timestamptz
+)
+RETURNING *;

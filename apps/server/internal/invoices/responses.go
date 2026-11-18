@@ -178,9 +178,11 @@ func sellerResponse(inv store.InvoicesInvoice) *gen.InvoicesSeller {
 // settle answers an issued invoice's money on resp (D3): what its issued
 // credit notes credit and what is left uncredited, what its live payments
 // paid, what its standing write-off wrote off and its recoveries recovered
-// (A16, R4), what is open (gross − credited − paid − written off, which a
-// credit note after a payment takes below zero), every write-off, the refund due only then, its state through the
-// Go mirror with today the business day, and every payment, removed ones
+// (A16, R4), what is open (gross − credited − paid − written off + moved,
+// where moved is what a credit note's surplus moved to the customer's credit,
+// invoices phase 6 design I10, so it is not below zero once the surplus has
+// moved), every write-off, its state through the Go mirror with today the
+// business day, and every payment, removed ones
 // included with their removal (D2), each with its source and the bank line a
 // match or the queue took it from (payments and reminders design D2). Every
 // figure is exact until the wire.
@@ -193,11 +195,11 @@ func settle(ctx context.Context, q *store.Queries, inv store.InvoicesInvoice, to
 	if err != nil {
 		return fmt.Errorf("invoices: read what document %d is paid: %w", inv.ID, err)
 	}
-	var paid, writtenOff, recovered *big.Rat
+	var paid, writtenOff, recovered, moved *big.Rat
 	for _, f := range []struct {
 		dst **big.Rat
 		n   pgtype.Numeric
-	}{{&paid, sum.Paid}, {&writtenOff, sum.WrittenOff}, {&recovered, sum.Recovered}} {
+	}{{&paid, sum.Paid}, {&writtenOff, sum.WrittenOff}, {&recovered, sum.Recovered}, {&moved, sum.Moved}} {
 		if *f.dst, err = ratFromNumeric(f.n); err != nil {
 			return err
 		}
@@ -211,16 +213,15 @@ func settle(ctx context.Context, q *store.Queries, inv store.InvoicesInvoice, to
 		due = &inv.DueDate.Time
 	}
 	// A standing write-off settles the principal as a payment does (A16); a
-	// recovery is beside it, never part of the open amount.
+	// recovery is beside it, never part of the open amount. What moved to the
+	// customer's credit is no longer settled here (invoices.settled_amount).
 	settled := new(big.Rat).Add(paid, writtenOff)
+	settled.Sub(settled, moved)
 	open := new(big.Rat).Sub(left, settled)
 	resp.State = documentState(inv.Kind, inv.Status, gross, credited, settled, writtenOff, due, today)
 	resp.CreditedAmount, resp.UncreditedAmount = ptr(floatFromRat(credited, 2)), ptr(floatFromRat(left, 2))
 	resp.PaidAmount, resp.OpenAmount = ptr(floatFromRat(paid, 2)), ptr(floatFromRat(open, 2))
 	resp.WrittenOffAmount, resp.RecoveredAmount = ptr(floatFromRat(writtenOff, 2)), ptr(floatFromRat(recovered, 2))
-	if open.Sign() < 0 {
-		resp.RefundDue = ptr(floatFromRat(new(big.Rat).Neg(open), 2))
-	}
 	if resp.WriteOffs, err = writeOffsResponse(ctx, q, inv.ID); err != nil {
 		return err
 	}

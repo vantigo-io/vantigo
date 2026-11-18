@@ -109,7 +109,8 @@ func ratOfMinor(minor int64) *big.Rat { return big.NewRat(minor, 100) }
 
 // openAndReserved is what is open on an issued invoice and what of it the
 // live reservations hold (D2, D16): open = gross − credited − live payments
-// − every live reservation — the captures decided and not yet registered or
+// − the standing write-off + what a credit note's surplus moved to the
+// customer's credit (invoices phase 6 design I10) − every live reservation — the captures decided and not yet registered or
 // disproved, which may already have moved money — and reserved their sum.
 // It is the one place the reservations are subtracted: openOf answers its
 // open. Read with q, which holds the invoice's lock, or a plain read.
@@ -132,6 +133,11 @@ func openAndReserved(ctx context.Context, q *store.Queries, inv store.InvoicesIn
 		return nil, nil, err
 	}
 	paid.Add(paid, written)
+	moved, err := ratFromNumeric(sum.Moved)
+	if err != nil {
+		return nil, nil, err
+	}
+	paid.Sub(paid, moved)
 	held, err := q.LiveReservationsSum(ctx, inv.ID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("invoices: read what document %d's reservations hold: %w", inv.ID, err)

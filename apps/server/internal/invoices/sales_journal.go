@@ -21,12 +21,13 @@ import (
 // This file is the module's contracts.SalesJournal (accounting design A12,
 // R1): its issued documents in number order with their lines and VAT
 // summaries, one by its id, the fact log (invoices.journal_facts, migrations
-// 00180 and 00182) in seq order, an invoice's credit notes, and the invoices
-// open at a day.
+// 00180, 00182 and 00197) in seq order, an invoice's credit notes, the
+// invoices open at a day and the customers' credit at a day.
 //
 // It serves from this module's own tables and nothing else, on the pool, and
-// holds no lock, as salesTax does; OpenAt alone opens a transaction, read-only
-// and REPEATABLE READ, so its invoices and its AsOfSeq are one snapshot. A
+// holds no lock, as salesTax does; OpenAt and CreditsAt alone open a
+// transaction, read-only and REPEATABLE READ, so their rows and their AsOfSeq
+// are one snapshot. A
 // moment becomes a day in the workspace's business time zone, read through
 // the business calendar, as the module judges its own documents' days: a
 // removal fact's day, and the end of OpenAt's day.
@@ -245,7 +246,7 @@ func (j *salesJournal) Facts(ctx context.Context, afterSeq int64, limit int) ([]
 	}
 	var loc *time.Location
 	for _, r := range rows {
-		if r.RemovedAt != nil {
+		if r.RemovedAt != nil || r.MergedAt != nil {
 			if loc, err = j.zone(ctx); err != nil {
 				return nil, err
 			}
@@ -254,19 +255,36 @@ func (j *salesJournal) Facts(ctx context.Context, afterSeq int64, limit int) ([]
 	}
 	facts := make([]contracts.JournalFact, 0, len(rows))
 	for _, r := range rows {
-		amount, err := nok(r.Amount, r.ExchangeRate)
-		if err != nil {
+		// The NOK the row stored (I13), and a charge payment's amount at its
+		// invoice's rate, as before the column.
+		var amount string
+		if r.AmountNok.Valid {
+			a, err := ratFromNumeric(r.AmountNok)
+			if err != nil {
+				return nil, err
+			}
+			amount = a.Abs(a).FloatString(2)
+		} else if amount, err = nok(r.Amount, r.ExchangeRate); err != nil {
 			return nil, err
 		}
 		f := contracts.JournalFact{
-			Seq: r.Seq, Kind: r.Kind, SubjectID: r.SubjectID, InvoiceID: r.InvoiceID, InvoiceNumber: r.InvoiceNumber,
+			Seq: r.Seq, Kind: r.Kind, SubjectID: r.SubjectID, InvoiceID: deref64(r.InvoiceID), InvoiceNumber: r.InvoiceNumber,
 			CustomerID: r.CustomerID, AmountNOK: amount, Source: r.Source, BankAccount: r.BankAccount, BankReference: r.BankReference,
 		}
 		switch {
+		case r.MergedAt != nil:
+			// A merge's day is the business day it was made on, as a
+			// removal's is.
+			f.Date = holidays.DayIn(*r.MergedAt, loc)
 		case r.BusinessDate.Valid:
 			f.Date = r.BusinessDate.Time
 		case r.RemovedAt != nil:
 			f.Date = holidays.DayIn(*r.RemovedAt, loc)
+		}
+		if r.Kind == contracts.FactCredit || r.Kind == contracts.FactCreditMerged {
+			if f.Credit, err = journalCredit(r); err != nil {
+				return nil, err
+			}
 		}
 		if r.WriteOffID != nil {
 			written, err := nok(r.WriteOffAmount, r.ExchangeRate)
@@ -284,6 +302,27 @@ func (j *salesJournal) Facts(ctx context.Context, afterSeq int64, limit int) ([]
 		facts = append(facts, f)
 	}
 	return facts, nil
+}
+
+// journalCredit is a credit fact's movement, or a merge's, as the contract
+// answers it.
+func journalCredit(r store.JournalFactsRow) (*contracts.JournalCredit, error) {
+	amount, err := decimal2(r.Amount)
+	if err != nil {
+		return nil, err
+	}
+	amountNOK, err := decimal2(r.AmountNok)
+	if err != nil {
+		return nil, err
+	}
+	c := &contracts.JournalCredit{
+		Kind: deref(r.CreditKind), Currency: r.CreditCurrency, Amount: amount, AmountNOK: amountNOK,
+		PaymentID: deref64(r.CreditPaymentID), BankTransactionID: deref64(r.CreditBankTransactionID),
+		DocumentID: deref64(r.CreditDocumentID), RefundID: deref64(r.CreditRefundID), ReversesID: deref64(r.CreditReversesID),
+		ReversedKind: deref(r.CreditReversedKind), RefundBankAccount: r.RefundBankAccount,
+		FromCustomerID: derefInt32(r.MergeFromCustomerID),
+	}
+	return c, nil
 }
 
 // OpenAt is up to limit invoices numbered after afterNumber open at the end
@@ -321,6 +360,50 @@ func (j *salesJournal) OpenAt(ctx context.Context, day time.Time, afterNumber in
 		out.Documents = append(out.Documents, contracts.OpenDocument{
 			ID: r.ID, Number: r.Number, CustomerID: r.CustomerID, IssueDate: r.IssueDate.Time, DueDate: r.DueDate.Time,
 			Currency: r.Currency, OpenNOK: open,
+		})
+	}
+	return out, nil
+}
+
+// CreditsAt is up to limit customers with an id after afterCustomerID whose
+// credit at the end of day is not zero, per currency, with the highest seq
+// of a fact seen in the same snapshot (I16): OpenAt's shape, the business
+// time zone read first.
+func (j *salesJournal) CreditsAt(ctx context.Context, day time.Time, afterCustomerID int32, limit int) (contracts.CreditPage, error) {
+	loc, err := j.zone(ctx)
+	if err != nil {
+		return contracts.CreditPage{}, err
+	}
+	d := utcDay(day)
+	liveUntil := time.Date(d.Year(), d.Month(), d.Day()+1, 0, 0, 0, 0, loc)
+	var asOf int64
+	var rows []store.JournalCreditsAtRow
+	err = db.WithTx(ctx, j.pool, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly}, func(tx pgx.Tx) error {
+		q := j.q.WithTx(tx)
+		var err error
+		if rows, err = q.JournalCreditsAt(ctx, store.JournalCreditsAtParams{
+			Day: pgDate(d), LiveUntil: liveUntil, AfterCustomerID: afterCustomerID, RowLimit: journalLimit(limit),
+		}); err != nil {
+			return err
+		}
+		asOf, err = q.JournalLastSeq(ctx)
+		return err
+	})
+	if err != nil {
+		return contracts.CreditPage{}, fmt.Errorf("invoices: read the customers' credit on %s: %w", d.Format(time.DateOnly), err)
+	}
+	out := contracts.CreditPage{AsOfSeq: asOf, Credits: make([]contracts.CustomerCredit, 0, len(rows))}
+	for _, r := range rows {
+		balance, err := decimal2(r.Balance)
+		if err != nil {
+			return contracts.CreditPage{}, err
+		}
+		balanceNOK, err := decimal2(r.BalanceNok)
+		if err != nil {
+			return contracts.CreditPage{}, err
+		}
+		out.Credits = append(out.Credits, contracts.CustomerCredit{
+			CustomerID: r.CustomerID, Currency: r.Currency, Balance: balance, BalanceNOK: balanceNOK,
 		})
 	}
 	return out, nil

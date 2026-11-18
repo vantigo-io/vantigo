@@ -32,7 +32,7 @@ func (q *Queries) AnyCustomerErased(ctx context.Context, ids []int64) (bool, err
 
 const appliedToTransactions = `-- name: AppliedToTransactions :many
 SELECT 'payment'::text AS kind, p.id, p.bank_transaction_id::bigint AS bank_transaction_id, p.invoice_id, i.number,
-       p.amount, (p.removed_at IS NOT NULL)::boolean AS removed
+       p.amount_nok AS amount, (p.removed_at IS NOT NULL)::boolean AS removed
 FROM invoices.payments p
 JOIN invoices.invoices i ON i.id = p.invoice_id
 WHERE p.bank_transaction_id = ANY($1::bigint[])
@@ -42,6 +42,13 @@ SELECT 'charge_payment'::text AS kind, c.id, c.bank_transaction_id::bigint AS ba
 FROM invoices.charge_payments c
 JOIN invoices.invoices i ON i.id = c.invoice_id
 WHERE c.bank_transaction_id = ANY($1::bigint[])
+UNION ALL
+SELECT 'credit'::text AS kind, k.id, k.bank_transaction_id::bigint AS bank_transaction_id, k.invoice_id::bigint AS invoice_id,
+       i.number, k.amount_nok AS amount,
+       EXISTS (SELECT 1 FROM invoices.customer_credits r WHERE r.reverses_id = k.id)::boolean AS removed
+FROM invoices.customer_credits k
+JOIN invoices.invoices i ON i.id = k.invoice_id
+WHERE k.bank_transaction_id = ANY($1::bigint[])
 ORDER BY bank_transaction_id, kind DESC, id
 `
 
@@ -56,8 +63,11 @@ type AppliedToTransactionsRow struct {
 }
 
 // AppliedToTransactions is every payment and charge payment that refers to
-// one of the lines, removed ones included, with its invoice's number — per
-// line, the payments first, each kind by id (D5).
+// one of the lines, removed ones included, with its invoice's number, and
+// every overpayment kept as credit from one (I9), removed when a reversal
+// took it back — per line, the payments first, then the credit, then the
+// charge payments, each kind by id (D5). A payment's amount is the NOK it
+// brought (I13): what it takes of the line.
 func (q *Queries) AppliedToTransactions(ctx context.Context, ids []int64) ([]AppliedToTransactionsRow, error) {
 	rows, err := q.db.Query(ctx, appliedToTransactions, ids)
 	if err != nil {
@@ -129,8 +139,10 @@ const countBankTransactions = `-- name: CountBankTransactions :one
 SELECT count(*)::int
 FROM invoices.bank_transactions t
 CROSS JOIN LATERAL (
-    SELECT (coalesce((SELECT sum(p.amount) FROM invoices.payments p WHERE p.bank_transaction_id = t.id AND p.removed_at IS NULL), 0)
+    SELECT (coalesce((SELECT sum(p.amount_nok) FROM invoices.payments p WHERE p.bank_transaction_id = t.id AND p.removed_at IS NULL), 0)
           + coalesce((SELECT sum(c.amount) FROM invoices.charge_payments c WHERE c.bank_transaction_id = t.id AND c.removed_at IS NULL), 0)
+          + coalesce((SELECT sum(k.amount_nok) FROM invoices.customer_credits k WHERE k.bank_transaction_id = t.id
+                      AND NOT EXISTS (SELECT 1 FROM invoices.customer_credits r WHERE r.reverses_id = k.id)), 0)
            )::numeric(14,2) AS applied
 ) a
 WHERE ($1::text IS NULL OR t.status = $1::text)
@@ -492,8 +504,10 @@ const listBankTransactions = `-- name: ListBankTransactions :many
 SELECT t.id, t.bank_file_id, t.line_ref, t.format, t.account, t.direction, t.negative, t.booked_on, t.value_on, t.ordered_on, t.amount, t.currency, t.kid, t.remittance_text, t.debtor_name, t.debtor_account, t.archive_ref, t.bank_code, t.fingerprint, t.ordinal, t.duplicate_of_id, t.status, t.reason, t.suggested_invoice_id, t.resolution, t.resolved_by_user_id, t.resolved_at, t.resolution_note
 FROM invoices.bank_transactions t
 CROSS JOIN LATERAL (
-    SELECT (coalesce((SELECT sum(p.amount) FROM invoices.payments p WHERE p.bank_transaction_id = t.id AND p.removed_at IS NULL), 0)
+    SELECT (coalesce((SELECT sum(p.amount_nok) FROM invoices.payments p WHERE p.bank_transaction_id = t.id AND p.removed_at IS NULL), 0)
           + coalesce((SELECT sum(c.amount) FROM invoices.charge_payments c WHERE c.bank_transaction_id = t.id AND c.removed_at IS NULL), 0)
+          + coalesce((SELECT sum(k.amount_nok) FROM invoices.customer_credits k WHERE k.bank_transaction_id = t.id
+                      AND NOT EXISTS (SELECT 1 FROM invoices.customer_credits r WHERE r.reverses_id = k.id)), 0)
            )::numeric(14,2) AS applied
 ) a
 WHERE ($1::text IS NULL OR t.status = $1::text)
@@ -534,7 +548,8 @@ type ListBankTransactionsRow struct {
 }
 
 // ListBankTransactions is a page of the bank lines (D5), each with what its
-// live payments and charge payments apply: the open lines — pending,
+// live payments (their NOK, I13), charge payments and standing overpayments
+// kept as credit (I9) apply: the open lines — pending,
 // exception, duplicate — first, each group oldest booking day first, then by
 // id; newest instead lists every line newest booking day first, then the
 // highest id first — a reversal's candidates, the latest before it. account
@@ -610,9 +625,15 @@ const liveAppliedTo = `-- name: LiveAppliedTo :one
 SELECT count(*)::int AS live,
        coalesce(sum(amount), 0)::numeric(14,2) AS applied
 FROM (
-    SELECT p.amount FROM invoices.payments p WHERE p.bank_transaction_id = $1::bigint AND p.removed_at IS NULL
+    SELECT p.amount_nok AS amount FROM invoices.payments p
+    WHERE p.bank_transaction_id = $1::bigint AND p.removed_at IS NULL
     UNION ALL
-    SELECT c.amount FROM invoices.charge_payments c WHERE c.bank_transaction_id = $1::bigint AND c.removed_at IS NULL
+    SELECT c.amount FROM invoices.charge_payments c
+    WHERE c.bank_transaction_id = $1::bigint AND c.removed_at IS NULL
+    UNION ALL
+    SELECT k.amount_nok FROM invoices.customer_credits k
+    WHERE k.bank_transaction_id = $1::bigint
+      AND NOT EXISTS (SELECT 1 FROM invoices.customer_credits r WHERE r.reverses_id = k.id)
 ) live
 `
 
@@ -621,12 +642,14 @@ type LiveAppliedToRow struct {
 	Applied pgtype.Numeric
 }
 
-// LiveAppliedTo is what a line's live payments and charge payments apply,
-// and how many there are: read under the line's lock by the apply (what is
-// left of it) and the reopen (bank_transaction_applied). A payment or charge
-// payment naming the line takes FOR KEY SHARE on it, which its FOR NO KEY
-// UPDATE lets through — only the queue's apply and a match write one, and
-// both hold the line first.
+// LiveAppliedTo is what a line's live payments, charge payments and
+// standing overpayments kept as credit apply, and how many there are: read
+// under the line's lock by the apply and the queue's keep-as-credit (what is
+// left of it) and the reopen (bank_transaction_applied). A payment counts
+// the NOK it brought (I13); a charge payment its amount, which is NOK. A row
+// naming the line takes FOR KEY SHARE on it, which its FOR NO KEY UPDATE
+// lets through — only the queue's actions and a match write one, and each
+// holds the line first.
 func (q *Queries) LiveAppliedTo(ctx context.Context, lineID int64) (LiveAppliedToRow, error) {
 	row := q.db.QueryRow(ctx, liveAppliedTo, lineID)
 	var i LiveAppliedToRow

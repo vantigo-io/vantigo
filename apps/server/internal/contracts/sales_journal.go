@@ -61,8 +61,10 @@ type SalesJournal interface {
 	// and whose open amount at the end of that day is not zero: its gross,
 	// less the credit notes issued on or before day, less the payments paid
 	// on or before day and not removed by then (a payment removed on a later
-	// business day still counts). Charges are never in it. Below zero is
-	// credit the customer has to come back.
+	// business day still counts), plus what its credit notes' surplus moved to
+	// the customer's credit by then. Charges are never in it. It is not below
+	// zero once Invoices moved a credit note's surplus: the customer's credit
+	// is CreditsAt's.
 	//
 	// The page is read in one snapshot, and AsOfSeq says which: the highest
 	// seq of a fact committed in it (0 when there is none). For every
@@ -71,6 +73,16 @@ type SalesJournal interface {
 	// short — a fact with a seq up to AsOfSeq is in the open amount as the
 	// day rule above says, and a fact after it is not, whatever its day.
 	OpenAt(ctx context.Context, day time.Time, afterNumber int64, limit int) (OpenPage, error)
+	// CreditsAt is up to limit customers with an id after afterCustomerID (0
+	// reads from the first), in id order, whose credit at the end of day is
+	// not zero, each with its balance per currency (invoices phase 6 design
+	// I16): the movements dated on or before day, each counted for the
+	// customer it belonged to when it was written, and the balances merges
+	// moved by then. AsOfSeq follows OpenAt's rule: a credit or credit_merged
+	// fact with a seq up to it is in the balance as the day rule says, and a
+	// fact after it is not. A page holds every currency of the customers it
+	// names.
+	CreditsAt(ctx context.Context, day time.Time, afterCustomerID int32, limit int) (CreditPage, error)
 }
 
 // MaxJournalPage is the most a SalesJournal page answers; a larger limit is
@@ -163,7 +175,52 @@ const (
 	// write-off it recovers in WriteOff.
 	FactRecoveredPayment        = "recovered_payment"
 	FactRecoveredPaymentRemoved = "recovered_payment_removed"
+	// FactCredit is one movement of a customer's credit (invoices phase 6
+	// design I16), FactCreditMerged a balance a customer merge moved from
+	// one customer to another; both carry Credit.
+	FactCredit       = "credit"
+	FactCreditMerged = "credit_merged"
 )
+
+// The kinds of JournalCredit.Kind: a movement's, as Invoices stores it.
+const (
+	// CreditOverpayment is money received above what was open, kept as the
+	// customer's credit: by hand (PaymentID, the payment of what was open) or
+	// from a bank line (BankTransactionID).
+	CreditOverpayment = "overpayment"
+	// CreditNoteMoved is a credit note's surplus, moved off its invoice's
+	// open amount (InvoiceID) to the customer (DocumentID the credit note).
+	CreditNoteMoved = "credit_note"
+	// CreditApplied is credit used against an invoice, through a payment of
+	// source credit (PaymentID).
+	CreditApplied = "applied"
+	// CreditRefunded is credit paid back outside Vantigo (RefundID).
+	CreditRefunded = "refunded"
+	// CreditReversed is the counter-movement of a removal (ReversesID,
+	// ReversedKind), of the opposite sign.
+	CreditReversed = "reversed"
+)
+
+// JournalCredit is the credit movement or the merge a fact is about.
+type JournalCredit struct {
+	// Kind is one of the Credit constants; "" on a FactCreditMerged.
+	Kind string
+	// Currency is the movement's; Amount its signed amount in it — positive
+	// when the customer's credit grows — and AmountNOK the NOK it is worth. A
+	// merge's are the balance it moved, positive.
+	Currency, Amount, AmountNOK string
+	// The movement's sources, 0 when it has none: the payment, the bank line,
+	// the credit note, the refund, and the movement it reverses with that
+	// movement's kind.
+	PaymentID, BankTransactionID, DocumentID, RefundID, ReversesID int64
+	ReversedKind                                                   string
+	// RefundBankAccount is, on a refunded movement or its reversal, the
+	// account number the refund left from; "" otherwise.
+	RefundBankAccount string
+	// FromCustomerID is, on a FactCreditMerged, the customer absorbed; the
+	// fact's CustomerID is the survivor.
+	FromCustomerID int32
+}
 
 // The reasons of JournalWriteOff.Reason.
 const (
@@ -206,6 +263,10 @@ const (
 	PaymentSourceCamt054  = "camt054"
 	PaymentSourceVipps    = "vipps"
 	PaymentSourceBankFeed = "bank_feed"
+	// PaymentSourceCredit is credit applied to an invoice (invoices phase 6
+	// design I11): no money moved, so a ledger posts nothing for the payment
+	// and the applied movement's FactCredit moves the credit instead.
+	PaymentSourceCredit = "credit"
 )
 
 // JournalFact is one registration or removal of a payment of an invoice's
@@ -246,6 +307,12 @@ type JournalFact struct {
 	// payment's, the write-off it recovers; nil on every other kind. A
 	// write-off's AmountNOK is its amount, its Source manual.
 	WriteOff *JournalWriteOff
+	// Credit is, on a FactCredit or a FactCreditMerged, the movement or the
+	// merge; nil on every other kind. Such a fact's InvoiceID is the
+	// movement's invoice, 0 on a refund's movement and its reversal and on a
+	// merge; its CustomerID the customer the movement belonged to when it was
+	// written; its AmountNOK the absolute NOK amount.
+	Credit *JournalCredit
 }
 
 // OpenPage is one page of OpenAt: the invoices open at its day, and the
@@ -264,7 +331,22 @@ type OpenDocument struct {
 	IssueDate  time.Time
 	DueDate    time.Time
 	Currency   string
-	// OpenNOK is the open amount in NOK at the day; below zero is credit due
-	// back to the customer.
+	// OpenNOK is the open amount in NOK at the day.
 	OpenNOK string
+}
+
+// CreditPage is one page of CreditsAt: the customers' credit at its day, and
+// the snapshot it was read in (OpenPage's AsOfSeq).
+type CreditPage struct {
+	AsOfSeq int64
+	Credits []CustomerCredit
+}
+
+// CustomerCredit is one customer's credit in one currency at CreditsAt's
+// day: Balance in the currency, BalanceNOK what its movements were worth in
+// NOK. Positive is what the customer has to its good.
+type CustomerCredit struct {
+	CustomerID          int32
+	Currency            string
+	Balance, BalanceNOK string
 }

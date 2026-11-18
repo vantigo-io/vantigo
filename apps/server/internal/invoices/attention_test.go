@@ -116,7 +116,9 @@ func plantBatch(t *testing.T, h *harness, id int64, sequence int, postOn string)
 }
 
 // TestAttention_PerPermission: a reader holding invoices:access alone is
-// answered the overdue invoices and the refunds due, and nothing of the
+// answered the overdue invoices and the refunds due — a credit note after a
+// payment is not one any more: its surplus is the customer's credit
+// (invoices phase 6 design I10) — and nothing of the
 // queue, the letters or the batches — a 200, never a 403; a holder of
 // invoices:payments is answered every type; a caller without invoices:access
 // is refused by the router.
@@ -136,12 +138,12 @@ func TestAttention_PerPermission(t *testing.T) {
 	h.Exec(t, `UPDATE invoices.reminders SET held_reason = 'collection_rates_outdated' WHERE id = $1`, plantQueued(t, h, overdue, 2))
 	plantBatch(t, h, overdue, 3, "2026-09-08")
 
-	all := []string{"invoiceOverdue", "invoiceRefundDue", "bankTransactionsOpen", "reminderFailed", "remindersHeld", "reminderBatchUnposted"}
+	all := []string{"invoiceOverdue", "bankTransactionsOpen", "reminderFailed", "remindersHeld", "reminderBatchUnposted"}
 	if got := typesOf(attentionOf(t, payer(t, h))); !slices.Equal(got, all) {
 		t.Errorf("invoices:payments is answered %v, want %v", got, all)
 	}
-	if got := typesOf(attentionOf(t, reader(t, h))); !slices.Equal(got, all[:2]) {
-		t.Errorf("invoices:access alone is answered %v, want %v and nothing more", got, all[:2])
+	if got := typesOf(attentionOf(t, reader(t, h))); !slices.Equal(got, all[:1]) {
+		t.Errorf("invoices:access alone is answered %v, want %v and nothing more", got, all[:1])
 	}
 	if res := h.SignIn(t, "invoices:create").Do(http.MethodGet, attentionPath, nil); res.Status != http.StatusForbidden {
 		t.Errorf("without invoices:access = %d %s, want 403", res.Status, res.Body)
@@ -210,9 +212,9 @@ func TestAttention_EachTypeAndItsClearing(t *testing.T) {
 		}
 	})
 
-	// A credit note after a payment leaves the invoice owing the buyer: an
-	// item from the credit note's issue, cleared when the payment is removed
-	// (the money paid back outside Vantigo). A fee paid and then waived is a
+	// A credit note after a payment is no refund due of the invoice's: what
+	// it credits beyond the open amount is the customer's credit (invoices
+	// phase 6 design I10). A fee paid and then waived is a
 	// refund of charges: an item from the waiver, cleared when the charge
 	// payment is removed.
 	t.Run("refund due", func(t *testing.T) {
@@ -226,10 +228,8 @@ func TestAttention_EachTypeAndItsClearing(t *testing.T) {
 		}
 		h.Advance(time.Hour)
 		plantCreditNoteAt(t, h, credited, 2, "1000", h.Now())
-		got := ofType(attentionOf(t, c), "invoiceRefundDue")
-		if len(got) != 1 || got[0].ID != "invoiceRefundDue/"+entity(credited) || got[0].EntityID != entity(credited) ||
-			got[0].Title != "Kunde 1" || got[0].OccurredAt != h.Now().Format(time.RFC3339) {
-			t.Errorf("a credit note after the payment = %+v, want the invoice from the credit note's issue", got)
+		if got := ofType(attentionOf(t, c), "invoiceRefundDue"); len(got) != 0 {
+			t.Errorf("a credit note after the payment = %+v, want none: the surplus is the customer's credit", got)
 		}
 		if res := payer(t, h).Do(http.MethodPost, removalPath(credited, payment), map[string]any{"reason": "Betalt tilbake"}); res.Status != http.StatusOK {
 			t.Fatalf("remove the payment = %d %s", res.Status, res.Body)
@@ -250,7 +250,7 @@ func TestAttention_EachTypeAndItsClearing(t *testing.T) {
 		if res := chargePayer(t, h).Do(http.MethodPost, waivePath(fee), waive("goodwill", waiver(letter, "fee"))); res.Status != http.StatusOK {
 			t.Fatalf("waive the fee = %d %s", res.Status, res.Body)
 		}
-		got = ofType(attentionOf(t, c), "invoiceRefundDue")
+		got := ofType(attentionOf(t, c), "invoiceRefundDue")
 		if len(got) != 1 || got[0].EntityID != entity(fee) || got[0].OccurredAt != h.Now().Format(time.RFC3339) {
 			t.Errorf("the paid fee waived = %+v, want the invoice from the waiver", got)
 		}

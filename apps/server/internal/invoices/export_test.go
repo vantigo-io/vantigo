@@ -357,6 +357,12 @@ func LockForTest(ctx context.Context, tx pgx.Tx, what string, keys ...string) er
 			return err
 		}
 		err = shareCustomerDocuments(ctx, txq, int32(id))
+	case "lockCustomerCredit":
+		var id int64
+		if id, err = one(32); err != nil {
+			return err
+		}
+		err = lockCustomerCredit(ctx, txq, int32(id))
 	case "lockPolicies":
 		var ids []int64
 		if ids, err = ints(32); err != nil {
@@ -905,4 +911,23 @@ func SetBankFeedCallsPerCycle(n int) func() {
 	before := bankFeedCallsPerCycle
 	bankFeedCallsPerCycle = n
 	return func() { bankFeedCallsPerCycle = before }
+}
+
+// SetCreditAfterLocks installs a hook every path that writes the customer's
+// credit calls inside its transaction right after its customer's credit lock
+// and its invoice's (invoices phase 6 design I17a), with the invoice's id, 0
+// for a refund; an error it answers rolls the path back. It answers the
+// function that removes it. A test using it does not run in parallel.
+func SetCreditAfterLocks(hook func(ctx context.Context, invoiceID int64) error) func() {
+	creditAfterLocks = hook
+	return func() { creditAfterLocks = nil }
+}
+
+// SetCreditMoveAfterIssue installs a hook a credit note's issue calls before
+// its follow-up moves the surplus to the customer's credit (I10); an error it
+// answers stands for the follow-up's failure. It answers the function that
+// removes it. A test using it does not run in parallel.
+func SetCreditMoveAfterIssue(hook func(ctx context.Context, creditNoteID int64) error) func() {
+	creditMoveAfterIssue = hook
+	return func() { creditMoveAfterIssue = nil }
 }

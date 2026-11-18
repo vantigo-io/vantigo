@@ -11,7 +11,12 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/invoices/store"
 )
 
-// The receivables' row locks (invoices payments and reminders design D18).
+// The receivables' row locks (invoices payments and reminders design D18),
+// and the customer's credit lock (invoices phase 6 design I17a, as the plan's
+// reading 1 amends it). The order every path that writes credit takes them
+// in: the bank line, if any; the customer — two in ascending id for a merge,
+// which takes them before its documents; the invoices in descending id; the
+// settings and the counter.
 // Every lock a new path takes goes through one of these helpers, which take
 // it with the statement of queries/locks.sql (or LockInvoice) and report it
 // to the lock-order seam, so each path's test can pin its order: own row
@@ -28,6 +33,17 @@ func noteLock(ctx context.Context, what, key string) {
 	if hook := lockTaken; hook != nil {
 		hook(ctx, what, key)
 	}
+}
+
+// lockCustomerCredit takes the customer's credit lock, a transaction-scoped
+// advisory lock (I17a), reported "customer": every write of the customer's
+// credit, before any invoice.
+func lockCustomerCredit(ctx context.Context, txq *store.Queries, customerID int32) error {
+	if err := txq.LockCustomerCredit(ctx, customerID); err != nil {
+		return fmt.Errorf("invoices: lock customer %d's credit: %w", customerID, err)
+	}
+	noteLock(ctx, "customer", creditKey(customerID))
+	return nil
 }
 
 // lockInvoice takes one document FOR UPDATE, reported "invoice".

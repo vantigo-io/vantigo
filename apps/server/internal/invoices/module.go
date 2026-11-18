@@ -93,8 +93,10 @@ var permissions = []contracts.Permission{
 	},
 	{
 		Key: "invoices:payments", Display: "Register payments",
-		Description: "Register payments against issued invoices and remove a registration with a reason; import bank " +
-			"files, read the imported files, the bank accounts and their lines, and work the exception queue; " +
+		Description: "Register payments against issued invoices and remove a registration with a reason; keep an " +
+			"overpayment as the customer's credit, apply credit to an invoice, and record and remove a refund of " +
+			"it; import bank files, read the imported files, the bank accounts and their lines, and work the " +
+			"exception queue; " +
 			"make and read reminder runs, print paper letters and confirm them posted or reprint them, and " +
 			"withdraw and retry letters; hold a disputed invoice, hand one to collection and export the " +
 			"collection file; register and remove charge payments and waive charges; set a customer's reminder " +
@@ -178,7 +180,9 @@ func Module() module.Module {
 // while Energy is composed, and each item judges Energy again. So is the
 // invoices.allocation_reconcile worker (orders design O36), which gives back
 // the order allocations this module took and no draft holds; with Orders off
-// its cycle does nothing. The invoices-bank-feed worker, which reads the
+// its cycle does nothing. So is the invoices.credit_moves worker (invoices
+// phase 6 design I10), which moves a credit note's surplus to the customer's
+// credit when the issue's follow-up did not. The invoices-bank-feed worker, which reads the
 // accounts the bank feed is switched on for and matches their incoming
 // payments (invoices bank feed design F5), is handed over only when
 // INVOICES_BANK_FEED_ENABLED is on: off, no bank is called on a schedule and
@@ -188,7 +192,8 @@ func workers(d module.Deps) []worker.Worker {
 	if d.Config != nil && d.Config.InvoicesEhfEnabled {
 		ws = append(ws, NewEhfWorker(d), NewEhfEventsWorker(d))
 	}
-	ws = append(ws, NewReminderWorker(d), NewBillingWorker(d), NewAllocationReconcileWorker(d), NewOverdueEventsWorker(d))
+	ws = append(ws, NewReminderWorker(d), NewBillingWorker(d), NewAllocationReconcileWorker(d), NewOverdueEventsWorker(d),
+		NewCreditMovesWorker(d))
 	if d.Config != nil && d.Config.InvoicesVippsEnabled {
 		ws = append(ws, NewPaymentWorker(d))
 	}

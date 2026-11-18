@@ -79,6 +79,7 @@ func TestCustomerReferences_RepointMovesDraftsAndIssuedDocuments(t *testing.T) {
 	})
 	if want := []contracts.RepointedReferences{
 		{Kind: "invoices.invoices", Count: 2}, {Kind: "invoices.customerReminderPolicies", Count: 0},
+		{Kind: "invoices.customerCredits", Count: 0}, {Kind: "invoices.creditRefunds", Count: 0},
 	}; !slices.Equal(moved, want) {
 		t.Errorf("moved = %+v, want %+v", moved, want)
 	}
@@ -98,6 +99,7 @@ func TestCustomerReferences_RepointMovesDraftsAndIssuedDocuments(t *testing.T) {
 		same, err := holder.RepointCustomer(context.Background(), tx, customerPerson, customerPerson)
 		if err != nil || !slices.Equal(same, []contracts.RepointedReferences{
 			{Kind: "invoices.invoices", Count: 0}, {Kind: "invoices.customerReminderPolicies", Count: 0},
+			{Kind: "invoices.customerCredits", Count: 0}, {Kind: "invoices.creditRefunds", Count: 0},
 		}) {
 			t.Errorf("from == into = %+v, %v; want a zero", same, err)
 		}
@@ -825,7 +827,8 @@ func eraseReport(drafts, payments, deliveries, transmissions int64, more ...cont
 		{Kind: "invoices.transmissions", Count: transmissions},
 		{Kind: "invoices.reminders"}, {Kind: "invoices.chargePayments"}, {Kind: "invoices.chargeWaivers"},
 		{Kind: "invoices.manualDeliveries"}, {Kind: "invoices.invoiceHolds"}, {Kind: "invoices.collectionHandoffs"},
-		{Kind: "invoices.bankTransactions"}, {Kind: "invoices.payLinks"}, {Kind: "invoices.customerReminderPolicies"},
+		{Kind: "invoices.bankTransactions"}, {Kind: "invoices.payLinks"},
+		{Kind: "invoices.customerCredits"}, {Kind: "invoices.creditRefunds"}, {Kind: "invoices.customerReminderPolicies"},
 	}
 	for _, m := range more {
 		for i := range out {
@@ -1614,7 +1617,7 @@ func TestErase_RevokesPayLinks(t *testing.T) {
 	if want := eraseReport(0, 0, 0, 0, contracts.ErasedData{Kind: "invoices.payLinks", Count: 2}); !slices.Equal(got, want) {
 		t.Errorf("erased = %+v, want %+v", got, want)
 	}
-	if got, want := seen.take(), []string{"pay_link " + strconv.FormatInt(live[0], 10), "pay_link " + strconv.FormatInt(live[1], 10)}; !slices.Equal(got, want) {
+	if got, want := seen.take(), []string{"customer " + idKey(int64(customerAcme)), "pay_link " + strconv.FormatInt(live[0], 10), "pay_link " + strconv.FormatInt(live[1], 10)}; !slices.Equal(got, want) {
 		t.Errorf("the erase's reported locks = %v, want the person's live links in id order %v", got, want)
 	}
 	at := modtest.One[string](t, h.Harness, `SELECT $1::timestamptz::text`, h.Now())

@@ -427,7 +427,8 @@ func TestPolicy_LockOrder(t *testing.T) {
 
 	plantPolicy(t, h, customerNoTerms, "none", "")
 	merged(t, h, customerNoTerms, customerAcme)
-	if got, want := seen.take(), []string{"policy " + idKey(customerAcme), "policy " + idKey(customerNoTerms)}; !slices.Equal(got, want) {
-		t.Errorf("the merge locked %v, want %v: by customer id ascending", got, want)
+	if got, want := seen.take(), []string{"customer " + idKey(int64(customerAcme)), "customer " + idKey(int64(customerNoTerms)),
+		"policy " + idKey(customerAcme), "policy " + idKey(customerNoTerms)}; !slices.Equal(got, want) {
+		t.Errorf("the merge locked %v, want %v: the customers' credit, then the policies, by customer id ascending", got, want)
 	}
 }

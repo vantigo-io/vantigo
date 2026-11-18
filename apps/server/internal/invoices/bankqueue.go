@@ -1012,9 +1012,21 @@ func (s *server) PostInvoicesBankTransactionsByIdHandleReversal(ctx context.Cont
 	if req.Body.RemovePayments != nil {
 		named = *req.Body.RemovePayments
 	}
+	var credits []int64
+	if req.Body.ReverseCredits != nil {
+		for i, c := range *req.Body.ReverseCredits {
+			if slices.Contains(credits, c.CreditId) {
+				errs = withFieldError(errs, fmt.Sprintf("reverseCredits[%d].creditId", i), "Each credit is named once")
+			}
+			credits = append(credits, c.CreditId)
+		}
+	}
 	noPayment := req.Body.NoPayment != nil && *req.Body.NoPayment
 	if len(named) > maxReversalPayments {
 		errs = withFieldError(errs, "removePayments", fmt.Sprintf("A reversal removes at most %d payments", maxReversalPayments))
+	}
+	if len(credits) > maxReversalPayments {
+		errs = withFieldError(errs, "reverseCredits", fmt.Sprintf("A reversal takes back at most %d credits", maxReversalPayments))
 	}
 	seen := map[int64]bool{}
 	for i, p := range named {
@@ -1023,7 +1035,7 @@ func (s *server) PostInvoicesBankTransactionsByIdHandleReversal(ctx context.Cont
 		}
 		seen[p.PaymentId] = true
 	}
-	if noPayment && len(named) > 0 {
+	if noPayment && (len(named) > 0 || len(credits) > 0) {
 		errs = withFieldError(errs, "noPayment", "Name the payments the reversal takes back, or say none is — not both")
 	}
 	if errs != nil {
@@ -1035,18 +1047,69 @@ func (s *server) PostInvoicesBankTransactionsByIdHandleReversal(ctx context.Cont
 			return notOpen(cannotHandleReversalTitle)
 		case line.Reason == nil || *line.Reason != reasonReversal:
 			return notApplicable(cannotHandleReversalTitle, "This bank line is not a reversal: apply it or dismiss it instead.")
-		case len(named) == 0 && (!noPayment || note == ""):
+		case len(named) == 0 && len(credits) == 0 && (!noPayment || note == ""):
 			return ptr(conflict(codeReversalPaymentRequired, cannotHandleReversalTitle,
 				"Name the payment the bank took back, or set noPayment and say in the note why no payment is removed."))
 		}
 		return nil
 	}
 	caller, now := callerID(ctx), s.deps.Clock()
-	refusal, err := s.queueAction(ctx, req.Id, judge, func(ctx context.Context, txq *store.Queries, line store.InvoicesBankTransaction) (*gen.InvoicesConflictProblem, error) {
-		ids := make([]int64, 0, len(named))
+	loc, err := s.businessZone(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var refusal *gen.InvoicesConflictProblem
+	for attempt := 0; attempt < 2; attempt++ {
+		refusal, err = s.queueAction(ctx, req.Id, judge, func(ctx context.Context, txq *store.Queries, line store.InvoicesBankTransaction) (*gen.InvoicesConflictProblem, error) {
+			return s.reversalLocked(ctx, txq, line, named, credits, note, caller, now, loc)
+		})
+		if !errors.Is(err, errCustomerMoved) {
+			break
+		}
+	}
+	if resp, done, err := lineRefusal(refusal, err,
+		func() gen.PostInvoicesBankTransactionsByIdHandleReversalResponseObject {
+			return gen.PostInvoicesBankTransactionsByIdHandleReversal404Response{}
+		},
+		func(p gen.InvoicesConflictProblem) gen.PostInvoicesBankTransactionsByIdHandleReversalResponseObject {
+			return gen.PostInvoicesBankTransactionsByIdHandleReversal409ApplicationProblemPlusJSONResponse(p)
+		}); done {
+		return resp, err
+	}
+	tx, err := oneLineResponse(ctx, store.New(s.deps.Pool), req.Id)
+	if err != nil {
+		return nil, err
+	}
+	return gen.PostInvoicesBankTransactionsByIdHandleReversal200JSONResponse(tx), nil
+}
+
+// reversalLocked is a reversal's work, the line held (D5, I9): the credits it
+// takes back read, their customers' credit locks in ascending id, then the
+// invoices named and the line's FOR UPDATE in descending id; each payment
+// removed, each credit reversed — credit_exceeds_balance when it was used —
+// and every line they came from marked reversed; the line resolved.
+func (s *server) reversalLocked(ctx context.Context, txq *store.Queries, line store.InvoicesBankTransaction,
+	named []gen.InvoicesBankTransactionReversalPayment, creditIDs []int64, note string, caller uuid.UUID, now time.Time, loc *time.Location,
+) (*gen.InvoicesConflictProblem, error) {
+	credits, customers, err := reversalCredits(ctx, txq, creditIDs)
+	if err != nil {
+		return nil, err
+	}
+	for _, c := range customers {
+		if err := lockCustomerCredit(ctx, txq, c); err != nil {
+			return nil, err
+		}
+	}
+	{
+		ids := make([]int64, 0, len(named)+len(credits))
 		for _, p := range named {
 			if !slices.Contains(ids, p.InvoiceId) {
 				ids = append(ids, p.InvoiceId)
+			}
+		}
+		for _, c := range credits {
+			if id := deref64(c.InvoicesCustomerCredit.InvoiceID); id != 0 && !slices.Contains(ids, id) {
+				ids = append(ids, id)
 			}
 		}
 		_, note, err := lockForNote(ctx, txq, line.ID, ids, note)
@@ -1087,31 +1150,44 @@ func (s *server) PostInvoicesBankTransactionsByIdHandleReversal(ctx context.Cont
 				reversedLines = append(reversedLines, *payment.BankTransactionID)
 			}
 		}
-		// The line each payment came from is marked reversed, so its money
-		// is never applied again (no unapplied rest, never reopened). The
-		// event's foreign key takes FOR KEY SHARE on that line, which its
-		// FOR NO KEY UPDATE lets through: no wait, no new lock order.
+		// The credits, read again under their customers' locks: a merge
+		// that committed before them moved them, and the action runs again.
+		for _, c := range credits {
+			again, err := txq.GetCustomerCredit(ctx, c.InvoicesCustomerCredit.ID)
+			if err != nil {
+				return nil, fmt.Errorf("invoices: read credit movement %d: %w", c.InvoicesCustomerCredit.ID, err)
+			}
+			if again.InvoicesCustomerCredit.CustomerID != c.InvoicesCustomerCredit.CustomerID {
+				return nil, errCustomerMoved
+			}
+			done, err := ratFromNumeric(again.Reversed)
+			if err != nil {
+				return nil, err
+			}
+			if done.Sign() != 0 {
+				return ptr(conflict(codePaymentRemoved, cannotHandleReversalTitle, fmt.Sprintf(
+					"Credit %d is already taken back. A reversal is never undone; name the credit the bank took back.", again.InvoicesCustomerCredit.ID))), nil
+			}
+			if _, refusal, err := reverseCredit(ctx, txq, again.InvoicesCustomerCredit, again.Reversed, nil,
+				holidays.DayIn(now, loc), caller, now, cannotHandleReversalTitle); refusal != nil || err != nil {
+				return refusal, err
+			}
+			if id := *again.InvoicesCustomerCredit.BankTransactionID; !slices.Contains(reversedLines, id) {
+				reversedLines = append(reversedLines, id)
+			}
+		}
+		// The line each payment or credit came from is marked reversed, so
+		// its money is never applied again (no unapplied rest, never
+		// reopened). The event's foreign key takes FOR KEY SHARE on that
+		// line, which its FOR NO KEY UPDATE lets through: no wait, no new
+		// lock order.
 		for _, id := range reversedLines {
 			if err := lineEvent(ctx, txq, id, eventReversed, nil, reason, caller, now); err != nil {
 				return nil, err
 			}
 		}
 		return nil, resolveLine(ctx, txq, line, resolutionReversalHandled, reasonReversal, eventReversalHandled, note, []string{lineException}, caller, now)
-	})
-	if resp, done, err := lineRefusal(refusal, err,
-		func() gen.PostInvoicesBankTransactionsByIdHandleReversalResponseObject {
-			return gen.PostInvoicesBankTransactionsByIdHandleReversal404Response{}
-		},
-		func(p gen.InvoicesConflictProblem) gen.PostInvoicesBankTransactionsByIdHandleReversalResponseObject {
-			return gen.PostInvoicesBankTransactionsByIdHandleReversal409ApplicationProblemPlusJSONResponse(p)
-		}); done {
-		return resp, err
 	}
-	tx, err := oneLineResponse(ctx, store.New(s.deps.Pool), req.Id)
-	if err != nil {
-		return nil, err
-	}
-	return gen.PostInvoicesBankTransactionsByIdHandleReversal200JSONResponse(tx), nil
 }
 
 // PostInvoicesBankTransactionsByIdConfirmDuplicate Confirm a bank line a

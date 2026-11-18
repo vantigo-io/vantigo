@@ -2473,11 +2473,11 @@ func TestInvoicesBaseline_AppliesAndIsIdempotent(t *testing.T) {
 	// line_sources and timesheet_rows 00040's, and the bank, rate, reminder,
 	// charge, hold and hand-off tables 00041's, and the payment credentials,
 	// settings, pay links, attempts and day reconciliations 00046's, and the
-	// billing runs and their items 00079's, and tax_category_vat_codes 00118's, and the bank feed's connection and accounts 00178's, and journal_facts 00180's, and write_offs 00182's; applyUpDownUp ends with every migration applied, so they stand here
+	// billing runs and their items 00079's, and tax_category_vat_codes 00118's, and the bank feed's connection and accounts 00178's, and journal_facts 00180's, and write_offs 00182's, and the customer's credit 00197's; applyUpDownUp ends with every migration applied, so they stand here
 	// beside the seven this one creates.
 	if want := []string{"access_point_credentials", "bank_feed_accounts", "bank_feed_connections", "bank_files", "bank_import_accounts", "bank_transaction_events",
 		"bank_transactions", "billing_run_items", "billing_runs", "charge_payments", "charge_waivers", "collection_handoffs", "collection_rates", "counters",
-		"customer_reminder_policies", "deliveries", "erased_customers", "invoice_holds", "invoices", "journal_facts", "line_releases",
+		"credit_merges", "credit_refunds", "customer_credits", "customer_reminder_policies", "deliveries", "erased_customers", "invoice_holds", "invoices", "journal_facts", "line_releases",
 		"line_sources", "lines", "manual_deliveries", "order_allocations_taken", "overdue_announced", "pay_links", "payment_attempts", "payment_provider_credentials",
 		"payment_settings", "payments", "quick_requests", "reminder_print_batches", "reminder_runs",
 		"reminder_settings", "reminders", "settings", "tax_category_vat_codes", "timesheet_rows", "transmissions", "vat_code_rates", "vat_codes",
@@ -2605,6 +2605,10 @@ func TestInvoicesBaseline_AppliesAndIsIdempotent(t *testing.T) {
 		"charge_waivers:tr_charge_waivers_immutable", "charge_waivers:tr_charge_waivers_parent",
 		"collection_handoffs:tr_collection_handoffs_immutable", "collection_handoffs:tr_collection_handoffs_parent",
 		"collection_rates:tr_collection_rates_append_only",
+		"credit_merges:tr_credit_merges_changed", "credit_merges:tr_credit_merges_immutable", "credit_merges:tr_credit_merges_journal",
+		"credit_refunds:tr_credit_refunds_guard", "credit_refunds:tr_credit_refunds_immutable",
+		"customer_credits:tr_customer_credits_changed", "customer_credits:tr_customer_credits_guard",
+		"customer_credits:tr_customer_credits_immutable", "customer_credits:tr_customer_credits_journal",
 		"deliveries:tr_deliveries_immutable", "deliveries:tr_deliveries_parent",
 		"invoice_holds:tr_invoice_holds_immutable", "invoice_holds:tr_invoice_holds_parent",
 		"invoices:tr_invoices_immutable", "journal_facts:tr_journal_facts_immutable",
@@ -2614,7 +2618,7 @@ func TestInvoicesBaseline_AppliesAndIsIdempotent(t *testing.T) {
 		"pay_links:tr_pay_links_immutable", "pay_links:tr_pay_links_parent",
 		"payment_attempts:tr_payment_attempts_immutable", "payment_attempts:tr_payment_attempts_parent",
 		"payment_attempts:tr_payment_attempts_reference", "payment_settings:tr_payment_settings_kept",
-		"payments:tr_payments_immutable", "payments:tr_payments_journal_registered", "payments:tr_payments_journal_removed",
+		"payments:tr_payments_amount_nok", "payments:tr_payments_immutable", "payments:tr_payments_journal_registered", "payments:tr_payments_journal_removed",
 		"payments:tr_payments_parent", "payments:tr_payments_received", "payments:tr_payments_removed", "quick_requests:tr_quick_requests_immutable",
 		"reminder_print_batches:tr_reminder_print_batches_immutable", "reminder_runs:tr_reminder_runs_immutable",
 		"reminder_settings:tr_reminder_settings_kept",
@@ -2623,7 +2627,8 @@ func TestInvoicesBaseline_AppliesAndIsIdempotent(t *testing.T) {
 		"transmissions:tr_transmissions_immutable", "transmissions:tr_transmissions_parent",
 		"vat_summaries:tr_vat_summaries_immutable",
 		"vipps_day_reconciliations:tr_vipps_day_reconciliations_immutable",
-		"write_offs:tr_write_offs_immutable", "write_offs:tr_write_offs_journal_made", "write_offs:tr_write_offs_journal_undone",
+		"write_offs:tr_write_offs_amount_nok", "write_offs:tr_write_offs_immutable", "write_offs:tr_write_offs_journal_made",
+		"write_offs:tr_write_offs_journal_undone",
 		"write_offs:tr_write_offs_parent",
 	}; !equalStrings(gotTriggers, want) {
 		t.Errorf("triggers = %v, want %v", gotTriggers, want)
@@ -2721,6 +2726,9 @@ func TestInvoicesPaymentsDelivery_AppliesAndIsIdempotent(t *testing.T) {
 		"payments:tr_payments_immutable:refuse_payment_change",
 		"payments:tr_payments_parent:refuse_payment_on_unissued",
 	}
+	// After every migration, payments also carry 00197's amount_nok default
+	// (invoices phase 6, delivery B-1); at 00035 alone they do not.
+	latestTriggers := append([]string{"payments:tr_payments_amount_nok:guard_payment_amount_nok"}, wantTriggers...)
 	wantChecks := []string{"ck_payments_amount", "ck_payments_removal"}
 	wantFunctions := []string{
 		"document_state:i:s:text", "guard_delivery_insert:v:u:trigger", "refuse_delivery_change:v:u:trigger",
@@ -2731,7 +2739,7 @@ func TestInvoicesPaymentsDelivery_AppliesAndIsIdempotent(t *testing.T) {
 		"ix_payments_invoice:CREATE INDEX ix_payments_invoice ON invoices.payments USING btree (invoice_id)",
 		"ix_payments_invoice_live:CREATE INDEX ix_payments_invoice_live ON invoices.payments USING btree (invoice_id) WHERE (removed_at IS NULL)",
 	}
-	expectAll := func(when string) {
+	expectAll := func(when string, wantTriggers []string) {
 		t.Helper()
 		tables, triggers, checks, functions, indexes := invoicesPhase1BObjects(t, ctx, pool)
 		if !equalStrings(tables, wantTables) {
@@ -2750,7 +2758,7 @@ func TestInvoicesPaymentsDelivery_AppliesAndIsIdempotent(t *testing.T) {
 			t.Errorf("%s: indexes = %v, want %v", when, indexes, wantIndexes)
 		}
 	}
-	expectAll("after up")
+	expectAll("after up", latestTriggers)
 
 	// One draft and one issued invoice of customer 7, and a credit note of
 	// the invoice.
@@ -2941,7 +2949,7 @@ func TestInvoicesPaymentsDelivery_AppliesAndIsIdempotent(t *testing.T) {
 		t.Errorf("after down: %d documents (%v), want the three 1A rows kept", invoicesLeft, err)
 	}
 	migrateTo(t, url, 35)
-	expectAll("after up again")
+	expectAll("after up again", wantTriggers)
 }
 
 // invoicesEhfKidObjects is what 00036 adds to the invoices schema, as found:

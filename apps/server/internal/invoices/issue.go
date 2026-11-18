@@ -268,9 +268,18 @@ func (s *server) PostInvoicesByIdIssue(ctx context.Context, req gen.PostInvoices
 	case out.refusal != nil:
 		return gen.PostInvoicesByIdIssue409ApplicationProblemPlusJSONResponse(*out.refusal), nil
 	}
+	// useCredit (invoices phase 6 design I11): the customer's credit applied
+	// after the issue committed, never inside it; a failure is a warning.
+	var warnings []string
+	if req.Body.UseCredit != nil && *req.Body.UseCredit {
+		warnings = s.useCreditAfterIssue(ctx, out.doc)
+	}
 	resp, err := s.invoiceResponse(ctx, store.New(s.deps.Pool), out.doc, nil, out.loc)
 	if err != nil {
 		return nil, err
+	}
+	if len(warnings) > 0 {
+		resp.Warnings = append(resp.Warnings, warnings...)
 	}
 	return gen.PostInvoicesByIdIssue200JSONResponse(resp), nil
 }
@@ -382,8 +391,13 @@ func (s *server) issueDraft(ctx context.Context, id int64, issueDate *openapi_ty
 		return issueOutcome{}, err
 	}
 	// After the commit, the PDF is stored once (D7). A failure there is
-	// logged and never fails the issue; pdfStored says so.
-	return issueOutcome{doc: s.storeAfterIssue(ctx, q, issued), loc: loc}, nil
+	// logged and never fails the issue; pdfStored says so. A credit note's
+	// surplus then moves to the customer's credit in a transaction of its
+	// own (invoices phase 6 design I10), under the credit's lock order — the
+	// issue's own is untouched — and a failure there is logged too.
+	doc := s.storeAfterIssue(ctx, q, issued)
+	s.moveAfterIssue(ctx, doc)
+	return issueOutcome{doc: doc, loc: loc}, nil
 }
 
 // issueLocked runs the issue's steps 2–6 on a document the transaction tx
