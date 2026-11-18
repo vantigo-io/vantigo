@@ -993,7 +993,13 @@ slik en person har, og den handler bare med en API-nøkkel på forespørselen, a
   utgifts eller et kravs eier, en kobling i Ansatte, en innkjøpsordres innkjøper, en
   produksjonsordres ansvarlige, en timeføringslinjes person, et artikkelmedlem, en
   assistentbryter og et tilbuds eller en ordres selger. Et tilbud eller en ordre en nøkkel
-  oppretter uten å navngi en selger, har ingen. Hver moduls referanse sier hva den svarer.
+  oppretter uten å navngi en selger, har ingen.
+- **Ikke gjenstand for egne poster.** Der en post som standard er den som kaller, gjør en
+  nøkkel aldri integrasjonen til den posten gjelder. En utgift eller en reiseregning en nøkkel
+  registrerer, må navngi personen i `userId`; et prosjekt en nøkkel oppretter, har ingen
+  prosjektleder; og å føre timer, endre en timeføring og levere en uke er aldri tilgjengelig
+  for en nøkkel, siden ingenting i dem navngir en annen person. Hver moduls referanse sier hva
+  den svarer.
 
 Integrasjoner og API-nøklene deres lages under **Administrer arbeidsområde › API-tilgang**
 ([API-tilgang](/nb/admin/api-access/)).

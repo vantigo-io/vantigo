@@ -46,8 +46,9 @@ judged on each request is under
 
 To change it later, choose **Actions › Edit details**: the name, the description, the
 contact and the **Rate limit** (60 to 6,000 requests a minute across its keys; the default is
-600). The rate limit is kept with the integration but not yet enforced. Saving replaces the description and the contact with what the form holds, so clearing a
-field clears it. If someone else changed the integration since you opened it, the save is
+600). The rate limit is kept with the integration but not yet enforced: no request is
+refused for it yet. Saving replaces the description and the contact with what the form
+holds, so clearing a field clears it. If someone else changed the integration since you opened it, the save is
 refused and the page shows the latest; make the change again.
 
 ## Give it roles
@@ -109,8 +110,9 @@ needs. A read-only key that calls anything else is refused `403 api_key_read_onl
 
 **Networks** lists the addresses or CIDR ranges the key may be used from, one per line —
 IPv4 or IPv6, at most 20. Empty means anywhere. A request from outside them is refused
-`401 unauthenticated`, as an unknown key is, so the caller learns nothing about the key, and
-its **Last used** is not updated. The address is the client's as the server sees it through
+`401 unauthenticated`, as an unknown key is, even when the key has also expired or been
+revoked, so the caller learns nothing about the key. **Last used** records only a request the
+key was let through for, never a refused one. The address is the client's as the server sees it through
 `TRUSTED_PROXY_HOPS` and `TRUSTED_PROXY_CIDRS`
 ([Forwarded headers and HTTPS](/en/admin/authentication/#forwarded-headers-and-https)):
 behind a proxy that is not trusted, every request has the proxy's address.
@@ -127,9 +129,13 @@ Rolling replaces a key without a moment in which the application has none.
 4. Put the new key in the application before the overlap ends. The old key then expires on
    its own; it is marked **Rolled** until then.
 
+A roll keeps the old key working through the overlap. If the key has leaked, revoke it
+instead ([When a key leaks](#when-a-key-leaks)): the dialog says so too.
+
 A key can be rolled once: rolling it again is refused `409 api_key_already_rolled`, and a
-revoked or expired key cannot be rolled (`409 api_key_revoked`). Making and rolling keys is
-limited to 30 a minute from one address.
+revoked or expired key cannot be rolled (`409 api_key_revoked`). Making and rolling keys
+share identity's user-management limit (UserManagement) of 30 requests a minute from one
+address, with the other user-management operations.
 
 ## Revoke a key
 
@@ -184,7 +190,7 @@ curl -H "Authorization: Bearer vtg_…" https://vantigo.example.com/api/v1/custo
 | Status | Code | When |
 | --- | --- | --- |
 | `401` | `unauthenticated` | The key is malformed, unknown, revoked, or its integration is disabled or archived; the request came from outside its networks; or it carried several `Authorization` headers |
-| `401` | `api_key_expired` | The key matched but has expired |
+| `401` | `api_key_expired` | The key matched, from within its networks, but has expired |
 | `403` | `forbidden` | A person's or an Owner's operation, or a permission the key does not reach: not in its roles, never available to API keys, or outside its narrowing |
 | `403` | `api_not_available` | The operation is never available to API keys |
 | `403` | `api_key_read_only` | A read-only key on an operation that is not a read |
