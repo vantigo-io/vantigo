@@ -1,0 +1,96 @@
+openapi: 3.0.3
+info:
+  title: Vantigo API
+  version: "1"
+servers:
+  - url: /
+x-vantigo-source: test
+paths:
+  /api/v1/widgets:
+    get:
+      operationId: getWidgets
+      description: Lists the widgets.
+      x-vantigo-access: permission:widgets:view
+      x-vantigo-assistant: auto
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Widget'
+        "401":
+          description: Unauthorized
+    post:
+      operationId: postWidgets
+      x-vantigo-access: permission:widgets:view+widgets:edit
+      responses:
+        "201":
+          description: Created
+  /api/v1/widgets/search:
+    post:
+      operationId: postWidgetsSearch
+      x-vantigo-access: permission:widgets:view
+      x-vantigo-api: read
+      responses:
+        "200":
+          description: OK
+  /api/v1/widgets/secret:
+    post:
+      operationId: postWidgetsSecret
+      x-vantigo-access: permission:widgets:edit
+      x-vantigo-api: never
+      responses:
+        "200":
+          description: OK
+  /api/v1/widgets/owner:
+    get:
+      operationId: getWidgetsOwner
+      x-vantigo-access: permission:widgets:owner
+      responses:
+        "200":
+          description: OK
+  /api/v1/widgets/identity:
+    get:
+      operationId: getWidgetsIdentity
+      x-vantigo-access: permission:identity:manage
+      responses:
+        "200":
+          description: OK
+  /api/v1/widgets/me:
+    get:
+      operationId: getWidgetsMe
+      x-vantigo-access: session
+      responses:
+        "200":
+          description: OK
+  /api/v1/widgets/admin:
+    get:
+      operationId: getWidgetsAdmin
+      x-vantigo-access: policy:Owner
+      responses:
+        "200":
+          description: OK
+  /api/v1/widgets/public:
+    get:
+      operationId: getWidgetsPublic
+      x-vantigo-access: anonymous
+      x-vantigo-api: read
+      responses:
+        "200":
+          description: OK
+    post:
+      operationId: postWidgetsPublic
+      x-vantigo-access: anonymous
+      x-vantigo-api: allowed
+      responses:
+        "204":
+          description: No Content
+components:
+  schemas:
+    Widget:
+      type: object
+      x-vantigo-source: test
+      properties:
+        name:
+          type: string

@@ -1,0 +1,206 @@
+{
+  "components": {
+    "responses": {
+      "Forbidden": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/AuthErrorResponse"
+            }
+          }
+        },
+        "description": "Forbidden. `error.code` is `forbidden` when the key does not reach the permission the operation requires, `api_not_available` when no key may call the operation, and `api_key_read_only` when a read-only key calls an operation that is not a read."
+      },
+      "RateLimited": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/AuthErrorResponse"
+            }
+          }
+        },
+        "description": "Too Many Requests. `error.code` is `rate_limited`: the integration has used every request its limit allows this minute, across all of its keys.",
+        "headers": {
+          "RateLimit-Limit": {
+            "description": "The requests the integration may send per minute.",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          "RateLimit-Remaining": {
+            "description": "The requests left in this minute.",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          "RateLimit-Reset": {
+            "description": "Seconds until the minute ends.",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          "Retry-After": {
+            "description": "Seconds until a request may be sent again.",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        }
+      },
+      "Unauthenticated": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/AuthErrorResponse"
+            }
+          }
+        },
+        "description": "Unauthorized. `error.code` is `unauthenticated` when the key is malformed, unknown, revoked, disabled or archived, when the request comes from outside the key's networks, or when it carries several Authorization headers; and `api_key_expired` when the key has expired.",
+        "headers": {
+          "WWW-Authenticate": {
+            "description": "Bearer realm=\"vantigo\"",
+            "schema": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "AuthErrorResponse": {
+        "properties": {
+          "error": {
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "fields": {
+                "additionalProperties": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "nullable": true,
+                "type": "object"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "type": "object"
+      },
+      "Widget": {
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "bearerFormat": "vtg_…",
+        "description": "An integration's API key, made by an Owner under Workspace admin › API access.",
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "description": "The operations an integration's API key can call. Send the key as `Authorization: Bearer vtg_…`. An Owner makes keys under Workspace admin › API access ([how](https://docs.vantigo.io/en/admin/api-access/)). Within /api/v1 every change is additive; the [compatibility policy](https://docs.vantigo.io/en/reference/api-compatibility/) says what that promises.",
+    "title": "Vantigo API",
+    "version": "1"
+  },
+  "openapi": "3.0.3",
+  "paths": {
+    "/api/v1/widgets": {
+      "get": {
+        "description": "Lists the widgets.\n\n*Requires `widgets:view`*",
+        "operationId": "getWidgets",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Widget"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
+    "/api/v1/widgets/public": {
+      "get": {
+        "operationId": "getWidgetsPublic",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": []
+      }
+    },
+    "/api/v1/widgets/search": {
+      "post": {
+        "description": "*Requires `widgets:view`*",
+        "operationId": "postWidgetsSearch",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    }
+  },
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "servers": [
+    {
+      "url": "/"
+    }
+  ]
+}
