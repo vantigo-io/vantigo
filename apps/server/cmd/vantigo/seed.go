@@ -1579,9 +1579,15 @@ func seedInvoicesReceivables(ctx context.Context, tx pgx.Tx, now time.Time, user
 	// - 24..29: draft invoices
 	const totalInvoices = 30
 	nextDocNumber := int64(10001)
+	invoiceIDs := make([]int64, 0, totalInvoices)
 
 	for i := 0; i < totalInvoices; i++ {
 		custID := customerIDs[i]
+		if i == creditOpenInvoice {
+			// The first customer's later, open invoice, which its credit is
+			// used on (seedInvoicesCredit).
+			custID = customerIDs[0]
+		}
 		projID := projectIDs[i]
 		projRef := fmt.Sprintf("PRJ-%04d", i+1)
 
@@ -1611,6 +1617,7 @@ func seedInvoicesReceivables(ctx context.Context, tx pgx.Tx, now time.Time, user
 		`, custID, fmt.Sprintf("REF-%d", 1000+i), projID, projRef, net, vat, gross, ownerID, now).Scan(&invID); err != nil {
 			return err
 		}
+		invoiceIDs = append(invoiceIDs, invID)
 
 		if _, err := tx.Exec(ctx, `
 			INSERT INTO invoices.lines (
@@ -1749,8 +1756,12 @@ func seedInvoicesReceivables(ctx context.Context, tx pgx.Tx, now time.Time, user
 		return err
 	}
 
-	return nil
+	return seedInvoicesCredit(ctx, tx, now, ownerID, customerIDs[0], invoiceIDs[0], invoiceIDs[creditOpenInvoice], sellerBank)
 }
+
+// creditOpenInvoice is the demo invoice, open and not yet due, that the first
+// customer's credit is used on: it is that customer's.
+const creditOpenInvoice = 16
 
 func seedEnergyAndCommunications(ctx context.Context, tx pgx.Tx, now time.Time, userIDs []uuid.UUID, customerIDs []int32, contactIDs []int32) error {
 	priceAreas := []string{"NO1", "NO2", "NO3", "NO4", "NO5"}
