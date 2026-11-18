@@ -30,8 +30,8 @@ func TestNew_APIServesTheReferenceToABrowser(t *testing.T) {
 			if got := rec.Header().Get("X-Frame-Options"); got != "DENY" {
 				t.Errorf("%s/api: X-Frame-Options %q, want the application's headers kept", base, got)
 			}
-			if !strings.Contains(rec.Header().Get("Vary"), "Accept") {
-				t.Errorf("%s/api: Vary %q, want Accept", base, rec.Header().Get("Vary"))
+			if got := rec.Header().Values("Vary"); len(got) != 1 || got[0] != "Accept" {
+				t.Errorf("%s/api: Vary %q, want Accept once", base, got)
 			}
 		}
 		for _, accept := range []string{"", "*/*", "application/json"} {

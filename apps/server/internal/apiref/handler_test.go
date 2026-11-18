@@ -29,6 +29,11 @@ func TestPrefersHTML(t *testing.T) {
 		"text/*":                            false,
 		"text/html;q=0":                     false,
 		"application/problem+json":          false,
+		"text/html, application/json":       false,
+		"application/json, text/html":       false,
+		"text/html;q=0.9, application/json;q=0.9":         false,
+		"text/html;q=0.5, application/problem+json;q=0.5": false,
+		"text/html, application/json;q=0.9":               true,
 	} {
 		var values []string
 		if accept != "" {
