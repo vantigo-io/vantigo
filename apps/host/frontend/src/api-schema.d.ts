@@ -2168,6 +2168,8 @@ export interface components {
             newPassword: string | null;
         };
         AccountProfileRequest: {
+            /** @description The colour scheme the person chose, 'light' or 'dark'; null, or 'automatic', follows the computer. Omitted, on any of the three operations, leaves it as it is, so a client that predates it does not clear it. Any other value is a 400 invalid_request on colorScheme. */
+            colorScheme?: string | null;
             displayName: string | null;
             preferredLanguage?: string | null;
             /** @description The zone instants are shown to this user in (time zones design D5), an IANA name such as Europe/Oslo that the server and its database read the same way — 'CET', 'Local' or a name either does not know is a 400 invalid_request on timeZone. Null, or a blank name, clears it, so the user follows the workspace's business time zone again. Omitted, on any of the three operations, leaves it as it is, so a client that predates it does not clear it. It never moves a bookkeeping day, which is always the business day. */
@@ -2180,6 +2182,8 @@ export interface components {
              */
             avatarManagedBy?: "staff" | null;
             avatarUrl: string | null;
+            /** @description The colour scheme the person chose, 'light' or 'dark', or null when they follow the computer. Always answered; optional in the schema only because the recorded exchanges predate it. */
+            colorScheme?: string | null;
             displayName: string;
             email: string | null;
             /** Format: uuid */

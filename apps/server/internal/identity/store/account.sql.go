@@ -242,9 +242,10 @@ const updateAccountProfile = `-- name: UpdateAccountProfile :one
 UPDATE identity.users
 SET display_name = $1, preferred_language = $2,
     time_zone = CASE WHEN $3::boolean THEN $4::text ELSE time_zone END,
-    updated_at = $5::timestamptz
-WHERE id = $6
-RETURNING id, display_name, email, preferred_language, time_zone
+    color_scheme = CASE WHEN $5::boolean THEN $6::text ELSE color_scheme END,
+    updated_at = $7::timestamptz
+WHERE id = $8
+RETURNING id, display_name, email, preferred_language, time_zone, color_scheme
 `
 
 type UpdateAccountProfileParams struct {
@@ -252,6 +253,8 @@ type UpdateAccountProfileParams struct {
 	PreferredLanguage *string
 	SetTimeZone       bool
 	TimeZone          *string
+	SetColorScheme    bool
+	ColorScheme       *string
 	Now               time.Time
 	ID                uuid.UUID
 }
@@ -262,12 +265,15 @@ type UpdateAccountProfileRow struct {
 	Email             string
 	PreferredLanguage *string
 	TimeZone          *string
+	ColorScheme       *string
 }
 
 // UpdateAccountProfile is the self-service profile edit
 // (EA/AccountSettingsEndpoints.cs:93-131): display name, preferred
 // language and, when set_time_zone says the request named it, the user's
-// own time zone (time zones design D5; NULL follows the workspace's). Unlike
+// own time zone (time zones design D5; NULL follows the workspace's) and, when
+// set_color_scheme says the request named it, the user's colour scheme (NULL
+// follows the computer). Unlike
 // .NET's UpdateSecurityStampAsync, it deliberately does not touch version or
 // any session (spec *Sessions*, a divergence).
 func (q *Queries) UpdateAccountProfile(ctx context.Context, arg UpdateAccountProfileParams) (UpdateAccountProfileRow, error) {
@@ -276,6 +282,8 @@ func (q *Queries) UpdateAccountProfile(ctx context.Context, arg UpdateAccountPro
 		arg.PreferredLanguage,
 		arg.SetTimeZone,
 		arg.TimeZone,
+		arg.SetColorScheme,
+		arg.ColorScheme,
 		arg.Now,
 		arg.ID,
 	)
@@ -286,6 +294,7 @@ func (q *Queries) UpdateAccountProfile(ctx context.Context, arg UpdateAccountPro
 		&i.Email,
 		&i.PreferredLanguage,
 		&i.TimeZone,
+		&i.ColorScheme,
 	)
 	return i, err
 }

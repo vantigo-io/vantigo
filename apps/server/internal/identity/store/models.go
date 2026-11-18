@@ -433,6 +433,7 @@ type IdentityUser struct {
 	TimeZone            *string
 	ProvisioningRolesAt *time.Time
 	Kind                string
+	ColorScheme         *string
 }
 
 type IdentityUserBadge struct {

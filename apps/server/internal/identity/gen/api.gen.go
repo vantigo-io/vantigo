@@ -479,8 +479,10 @@ type AccountPinResponse struct {
 
 // AccountProfileRequest defines model for AccountProfileRequest.
 type AccountProfileRequest struct {
-	DisplayName       *string `json:"displayName"`
-	PreferredLanguage *string `json:"preferredLanguage,omitempty"`
+	// ColorScheme The colour scheme the person chose, 'light' or 'dark'; null, or 'automatic', follows the computer. Omitted, on any of the three operations, leaves it as it is, so a client that predates it does not clear it. Any other value is a 400 invalid_request on colorScheme.
+	ColorScheme       json.RawMessage `json:"colorScheme,omitempty"`
+	DisplayName       *string         `json:"displayName"`
+	PreferredLanguage *string         `json:"preferredLanguage,omitempty"`
 
 	// TimeZone The zone instants are shown to this user in (time zones design D5), an IANA name such as Europe/Oslo that the server and its database read the same way — 'CET', 'Local' or a name either does not know is a 400 invalid_request on timeZone. Null, or a blank name, clears it, so the user follows the workspace's business time zone again. Omitted, on any of the three operations, leaves it as it is, so a client that predates it does not clear it. It never moves a bookkeeping day, which is always the business day.
 	TimeZone json.RawMessage `json:"timeZone,omitempty"`
@@ -489,12 +491,15 @@ type AccountProfileRequest struct {
 // AccountResponse defines model for AccountResponse.
 type AccountResponse struct {
 	// AvatarManagedBy staff when Staff's photo is the picture and the avatar cannot be changed here; null otherwise. Always answered; optional in the schema only because the recorded exchanges predate it.
-	AvatarManagedBy   *AccountResponseAvatarManagedBy `json:"avatarManagedBy"`
-	AvatarUrl         *string                         `json:"avatarUrl"`
-	DisplayName       string                          `json:"displayName"`
-	Email             *string                         `json:"email"`
-	Id                openapi_types.UUID              `json:"id"`
-	PreferredLanguage *string                         `json:"preferredLanguage"`
+	AvatarManagedBy *AccountResponseAvatarManagedBy `json:"avatarManagedBy"`
+	AvatarUrl       *string                         `json:"avatarUrl"`
+
+	// ColorScheme The colour scheme the person chose, 'light' or 'dark', or null when they follow the computer. Always answered; optional in the schema only because the recorded exchanges predate it.
+	ColorScheme       *string            `json:"colorScheme"`
+	DisplayName       string             `json:"displayName"`
+	Email             *string            `json:"email"`
+	Id                openapi_types.UUID `json:"id"`
+	PreferredLanguage *string            `json:"preferredLanguage"`
 
 	// TimeZone The user's own time zone (time zones design D5), an IANA name, or null when they follow the workspace's business time zone. The zone in effect, whichever it is, is the session's timeZone. Always answered; optional in the schema only because the recorded exchanges predate it.
 	TimeZone *string `json:"timeZone"`
