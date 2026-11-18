@@ -182,6 +182,9 @@ func (s *server) readAttendees(ctx context.Context, raw *[]gen.AttendeeWrite, ow
 	ppl := people{users: map[uuid.UUID]string{}, contacts: map[int32]*contracts.ContactEntry{}}
 	active := map[uuid.UUID]bool{}
 	for _, u := range found {
+		if u.Kind == contracts.UserKindIntegration {
+			continue // an integration attends nothing (API access design K56)
+		}
 		ppl.users[u.ID] = u.DisplayName
 		active[u.ID] = u.Active
 	}

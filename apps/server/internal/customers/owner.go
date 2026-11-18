@@ -340,7 +340,7 @@ func (s *server) PutCustomersByIdOwner(ctx context.Context, req gen.PutCustomers
 			return nil, fmt.Errorf("customers: resolve owner candidate: %w", err)
 		}
 		switch {
-		case user == nil:
+		case user == nil || user.Kind == contracts.UserKindIntegration: // an integration owns no customer (API access design K56)
 			return gen.PutCustomersByIdOwner400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem(
 				"Invalid owner", map[string][]string{"ownerUserId": {ownerNotFound(*after)}})), nil
 		case !user.Active:

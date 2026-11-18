@@ -115,7 +115,7 @@ func (s *server) resolveFollowUpAssignee(ctx context.Context, fu *parsedFollowUp
 		return nil, fmt.Errorf("customers: resolve follow-up assignee: %w", err)
 	}
 	switch {
-	case user == nil:
+	case user == nil || user.Kind == contracts.UserKindIntegration: // an integration is no one's assignee (API access design K56)
 		return map[string][]string{"followUp.assigneeUserId": {ownerNotFound(*fu.AssigneeID)}}, nil
 	case !user.Active:
 		return map[string][]string{"followUp.assigneeUserId": {followUpAssigneeDisabled(*fu.AssigneeID)}}, nil

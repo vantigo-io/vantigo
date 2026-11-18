@@ -118,7 +118,8 @@ func (s *server) PatchCommunicationsConversationsById(ctx context.Context, req g
 				if derr != nil {
 					return nil, fmt.Errorf("communications: look up assignee: %w", derr)
 				}
-				if user == nil || !user.Active {
+				// A person or an agent; an integration is no assignee (API access design K56).
+				if user == nil || !user.Active || user.Kind == contracts.UserKindIntegration {
 					return gen.PatchCommunicationsConversationsById422JSONResponse(flatErrorBody(
 						"assignee_unknown", "The selected user does not exist or is disabled.")), nil
 				}

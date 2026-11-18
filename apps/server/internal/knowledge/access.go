@@ -12,11 +12,13 @@ package knowledge
 import (
 	"context"
 	"fmt"
+	"maps"
 	"slices"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/knowledge/gen"
 	"github.com/vantigo-io/vantigo/server/internal/knowledge/store"
 )
@@ -354,8 +356,19 @@ func (s *server) UpdateKnowledgeArticleAccess(ctx context.Context, req gen.Updat
 	if err != nil {
 		return nil, err
 	}
+	// A person or an agent; an integration is no member (API access design K56).
+	integrations := map[uuid.UUID]bool{}
+	if s.deps.Users != nil && len(known) > 0 {
+		entries, err := s.deps.Users.Users(ctx, slices.Collect(maps.Keys(known)))
+		if err != nil {
+			return nil, fmt.Errorf("knowledge: read the members: %w", err)
+		}
+		for _, e := range entries {
+			integrations[e.ID] = e.Kind == contracts.UserKindIntegration
+		}
+	}
 	for i, m := range body.Members {
-		if _, ok := known[m.UserId]; !ok {
+		if _, ok := known[m.UserId]; !ok || integrations[m.UserId] {
 			f.add("members", fmt.Sprintf("Member %d: no such user.", i+1))
 		}
 	}

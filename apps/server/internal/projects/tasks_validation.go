@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/projects/gen"
 	"github.com/vantigo-io/vantigo/server/internal/projects/store"
 )
@@ -282,7 +283,7 @@ func (s *server) validateTask(ctx context.Context, q *store.Queries, projectID i
 			return parsedTask{}, nil, fmt.Errorf("projects: resolve the task's assignee: %w", err)
 		}
 		switch {
-		case entry == nil:
+		case entry == nil || entry.Kind == contracts.UserKindIntegration: // an integration is no assignee (API access design K56)
 			add("assigneeUserId", assigneeNotFound(*id))
 		case !entry.Active:
 			add("assigneeUserId", assigneeDisabled(*id))
