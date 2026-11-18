@@ -21,7 +21,9 @@ export interface RemovePaymentModalProps {
  * the invoice, struck through with the reason, and a removal is never undone —
  * the dialog says so. The button waits for a reason and is disabled while the
  * request is on its way; a payment someone else removed meanwhile is
- * `payment_removed`, said in the reader's language.
+ * `payment_removed`, said in the reader's language. It says what happens to
+ * the customer's credit (invoices phase 6 design I9-I11): credit applied goes
+ * back to the customer, and credit kept from this payment is taken back.
  */
 export const RemovePaymentModal = ({ invoice, payment, onClose }: RemovePaymentModalProps) => {
   const { t, money, date } = useInvoiceFormat();
@@ -61,6 +63,9 @@ export const RemovePaymentModal = ({ invoice, payment, onClose }: RemovePaymentM
         <Alert color="yellow" icon={<IconAlertTriangle size={16} />}>
           {t("removePaymentHint")}
         </Alert>
+        <Text size="sm" c="dimmed">
+          {t(payment.source === "credit" ? "credit.removeGivesBack" : "credit.removeTakesBack")}
+        </Text>
         <Textarea
           label={t("removalReason")}
           required

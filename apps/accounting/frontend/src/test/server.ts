@@ -622,6 +622,7 @@ export const stubAccountingApi = (change: Partial<ApiState> = {}): StubbedFetch 
       locked: false,
       invoicesAvailable: true,
       openInvoices: [],
+      openCredits: [],
     },
     rules: [
       rule(),

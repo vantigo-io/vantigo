@@ -23,13 +23,12 @@ describe("an issued invoice's money", () => {
     expect(screen.queryByTestId("refund-due")).not.toBeInTheDocument();
   });
 
-  it("says the refund due once a credit note followed a payment", async () => {
-    server(() =>
-      partlyPaid({ state: "credited", creditedAmount: 124.99, uncreditedAmount: 0, openAmount: -50, refundDue: 50 }),
-    );
+  it("reads nothing open once a credit note followed a payment: the surplus is the customer's credit", async () => {
+    server(() => partlyPaid({ state: "credited", creditedAmount: 124.99, uncreditedAmount: 0, openAmount: 0 }));
     renderRoute("/invoices/1001");
 
-    expect(await screen.findByTestId("refund-due")).toHaveTextContent(/NOK\s?50\.00/);
+    expect(await screen.findByTestId("open-amount")).toHaveTextContent(/NOK\s?0\.00/);
+    expect(screen.queryByTestId("refund-due")).not.toBeInTheDocument();
     expect(within(await heading(/^Invoice 1000/)).getByText("Credited")).toBeInTheDocument();
   });
 });
@@ -179,7 +178,7 @@ describe("the payments card", () => {
 
   it.each([
     ["paid", { state: "paid", paidAmount: 124.99, openAmount: 0 }],
-    ["credited", { state: "credited", creditedAmount: 124.99, uncreditedAmount: 0, openAmount: -50, refundDue: 50 }],
+    ["credited", { state: "credited", creditedAmount: 124.99, uncreditedAmount: 0, openAmount: 0 }],
   ] as const)("offers no registration on a %s invoice", async (_state, overrides) => {
     server(() => partlyPaid(overrides));
     renderRoute("/invoices/1001");

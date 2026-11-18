@@ -13,6 +13,7 @@ import { refusalMessage } from "../lib/errors";
 import { useInvoiceFormat } from "../lib/format";
 import { bankFileHref, bankFileLinkOptions } from "../lib/routes";
 import { ApplyDialog } from "../pages/-apply-dialog";
+import { KeepAsCreditDialog } from "../pages/-keep-as-credit-dialog";
 import { QueueNoteDialog } from "../pages/-queue-note-dialog";
 import { ReversalDialog } from "../pages/-reversal-dialog";
 import { DocumentLink } from "./document-link";
@@ -34,8 +35,12 @@ export const BankFileLink = ({ bankFileId, children }: { bankFileId: number; chi
   );
 };
 
+/** The words of a payment, a charge payment or a credit kept from a line. */
+const appliedKey = (a: BankTransactionApplied): string =>
+  a.kind === "payment" ? "bank.appliedPayment" : a.kind === "credit" ? "bank.appliedCredit" : "bank.appliedCharges";
+
 /** Which dialog a line has open. */
-type Open = { line: BankTransaction; dialog: "apply" | "reversal" | "dismiss" | "confirm" };
+type Open = { line: BankTransaction; dialog: "apply" | "reversal" | "dismiss" | "confirm" | "keep" };
 
 /**
  * What a person may do to a line in its state (D5): an exception is applied
@@ -43,13 +48,18 @@ type Open = { line: BankTransaction; dialog: "apply" | "reversal" | "dismiss" | 
  * a possible duplicate also confirmed; a duplicate row confirmed or kept as a
  * payment of its own; a resolved line, or a matched one whose payments were
  * all removed, reopened — never a line the bank reversed a payment of, whose
- * money went back. The server judges each again.
+ * money went back. A line queued as more than was open, or for a settled
+ * invoice, may also have the rest kept as the customer's credit (invoices
+ * phase 6 design I9). The server judges each again.
  */
-const actionsOf = (line: BankTransaction): ("apply" | "dismiss" | "reversal" | "confirm" | "distinct" | "reopen")[] => {
+const actionsOf = (
+  line: BankTransaction,
+): ("apply" | "keep" | "dismiss" | "reversal" | "confirm" | "distinct" | "reopen")[] => {
   if (line.status === "exception") {
     if (line.reason === "reversal") return ["reversal"];
     if (line.reason === "negative_amount") return ["dismiss"];
     if (line.reason === "possible_duplicate") return ["apply", "confirm", "dismiss"];
+    if (line.reason === "exceeds_open" || line.reason === "invoice_settled") return ["apply", "keep", "dismiss"];
     return ["apply", "dismiss"];
   }
   if (line.status === "duplicate") return ["confirm", "distinct"];
@@ -121,10 +131,7 @@ export const BankTransactionTable = ({
     });
 
   const appliedItem = (a: BankTransactionApplied) => {
-    const words =
-      a.kind === "payment"
-        ? t("bank.appliedPayment", { number: a.number ?? a.invoiceId, amount: amount(a.amount) })
-        : t("bank.appliedCharges", { number: a.number ?? a.invoiceId, amount: amount(a.amount) });
+    const words = t(appliedKey(a), { number: a.number ?? a.invoiceId, amount: amount(a.amount) });
     return (
       <Text
         key={`${a.kind}-${a.id}`}
@@ -283,6 +290,9 @@ export const BankTransactionTable = ({
       {open?.dialog === "reversal" && (
         <ReversalDialog line={open.line} currency={currency} onClose={() => setOpen(null)} />
       )}
+      {open?.dialog === "keep" && (
+        <KeepAsCreditDialog line={open.line} currency={currency} onClose={() => setOpen(null)} />
+      )}
       {(open?.dialog === "dismiss" || open?.dialog === "confirm") && (
         <QueueNoteDialog line={open.line} kind={open.dialog} onClose={() => setOpen(null)} />
       )}
@@ -349,7 +359,7 @@ const LineDetails = ({
                     style={a.removed ? { textDecoration: "line-through" } : undefined}
                   >
                     <DocumentLink invoiceId={a.invoiceId}>
-                      {t(a.kind === "payment" ? "bank.appliedPayment" : "bank.appliedCharges", {
+                      {t(appliedKey(a), {
                         number: a.number ?? a.invoiceId,
                         amount: money(a.amount, currency),
                       })}

@@ -24,6 +24,8 @@ interface OpeningLine {
   documentDate: string;
   dueDate: string;
   sourceDocumentId?: number;
+  /** The customer's credit in Invoices (invoices phase 6 design I16), on its credit item. */
+  customerCredit?: boolean;
 }
 
 let opened = 0;
@@ -94,6 +96,7 @@ const Opening = ({ meta }: { meta: AccountingMeta }) => {
             documentDate: l.documentDate || null,
             dueDate: l.dueDate || null,
             sourceDocumentId: l.sourceDocumentId ?? null,
+            ...(l.customerCredit ? { customerCredit: true } : {}),
           })),
       }),
     onSuccess: async (voucher) => {
@@ -144,6 +147,22 @@ const Opening = ({ meta }: { meta: AccountingMeta }) => {
           sourceDocumentId: invoice.documentId,
         })),
     ]);
+  // The customers' credit in Invoices, each a credit line on the customer's
+  // credit item (invoices phase 6 design I16).
+  const addCredits = () =>
+    setLines((current) => [
+      ...current.filter((l) => l.accountId || l.debit || l.credit),
+      ...o.openCredits
+        .filter((c) => !current.some((l) => l.customerCredit && l.customerId === String(c.customerId)))
+        .map((c) => ({
+          ...blank(),
+          accountId: receivables ? String(receivables.id) : null,
+          debit: c.amount.startsWith("-") ? "" : c.amount,
+          credit: c.amount.startsWith("-") ? c.amount.slice(1) : "",
+          customerId: String(c.customerId),
+          customerCredit: true,
+        })),
+    ]);
   const total = lines.reduce((sum, l) => sum + (signedOre(l) ?? 0n), 0n);
   return (
     <Stack gap="md">
@@ -158,6 +177,13 @@ const Opening = ({ meta }: { meta: AccountingMeta }) => {
             data-assist="accounting.opening.add-invoices"
           >
             {t("addOpenInvoices")}
+          </Button>
+        </Alert>
+      )}
+      {o.invoicesAvailable && o.openCredits.length > 0 && (
+        <Alert color="blue" title={t("openCreditsFound", { count: o.openCredits.length })}>
+          <Button size="xs" variant="light" leftSection={<IconFileImport size={14} />} onClick={addCredits}>
+            {t("addOpenCredits")}
           </Button>
         </Alert>
       )}
@@ -210,7 +236,8 @@ const Opening = ({ meta }: { meta: AccountingMeta }) => {
                 )}
               </Table.Td>
               <Table.Td>
-                {isReceivables(l.accountId) && (
+                {l.customerCredit && <Text size="sm">{t("customerCredit")}</Text>}
+                {isReceivables(l.accountId) && !l.customerCredit && (
                   <TextInput
                     aria-label={t("document")}
                     w={100}

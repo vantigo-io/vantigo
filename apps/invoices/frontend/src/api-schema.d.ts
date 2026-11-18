@@ -330,6 +330,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/invoices/customers/{customerId}/credit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a customer's credit
+         * @description The customer's credit (invoices phase 6 design I8): its balance per currency, a page of its movements — the newest first, each with the number of what it came from: the invoice, the credit note, the bank line, the refund — and its refunds. page and pageSize are the codebase's paging, 25 by default, at most 100. A customer with no movement answers no balance and no movement; it reads no directory.
+         */
+        get: operations["getInvoicesCustomersByCustomerIdCredit"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/customers/{customerId}/credit/refunds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record a refund of a customer's credit
+         * @description Records money paid back to the customer outside Vantigo (invoices phase 6 design I12): Vantigo moves no money. The fields are judged first; then one transaction takes the customer's credit lock alone, reads the balance under it, and writes the refund and its refunded movement — 409 credit_exceeds_balance, with balance, when the refund is above the credit. The response is the customer's credit.
+         */
+        post: operations["postInvoicesCustomersByCustomerIdCreditRefunds"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/customers/{customerId}/credit/refunds/{refundId}/remove": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Remove a refund of a customer's credit
+         * @description Removes a refund with a reason (invoices phase 6 design I12): the row is kept with the removal, and a reversed movement gives the credit back. Under the customer's credit lock alone; 409 refund_removed when it is removed already. The response is the customer's credit.
+         */
+        post: operations["postInvoicesCustomersByCustomerIdCreditRefundsByRefundIdRemove"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/invoices/overdue": {
         parameters: {
             query?: never;
@@ -854,6 +914,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/invoices/{id}/apply-credit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply the customer's credit to an invoice
+         * @description Applies the customer's credit to an issued invoice (invoices phase 6 design I11): a payment of source credit, with no bank line and the caller as its user, and the applied movement naming it. The fields are judged first; then one transaction takes the customer's credit lock, then the invoice FOR UPDATE — a customer merged in between is read again once — and reads the balance and what is open under them. The response is the invoice.
+         */
+        post: operations["postInvoicesByIdApplyCredit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/invoices/{id}/payments": {
         parameters: {
             query?: never;
@@ -865,7 +945,7 @@ export interface paths {
         put?: never;
         /**
          * Register a payment
-         * @description Registers money received against an issued invoice (D2). It reads no directory: the customer may be disabled, archived, merged or anonymised since — the money arrived regardless. The fields are judged before anything is locked; then one transaction locks the invoice, reads what its issued credit notes credit and what its live payments paid under that lock, and refuses a payment once nothing is open (invoice_settled) or one over the open amount (payment_exceeds_open, with openAmount). The response is the document with its new state, open amount and payments.
+         * @description Registers money received against an issued invoice (D2). It reads no directory: the customer may be disabled, archived, merged or anonymised since — the money arrived regardless. The fields are judged before anything is locked; then one transaction locks the invoice, reads what its issued credit notes credit and what its live payments paid under that lock, and refuses a payment once nothing is open (invoice_settled) or one over the open amount (payment_exceeds_open, with openAmount) — unless keepRestAsCredit keeps the rest as the customer's credit (invoices phase 6 design I9), when the customer's credit lock is taken first, before the invoice. The response is the document with its new state, open amount and payments.
          */
         post: operations["postInvoicesByIdPayments"];
         delete?: never;
@@ -885,7 +965,7 @@ export interface paths {
         put?: never;
         /**
          * Remove a payment registration
-         * @description Removes a payment registration with a reason (D2): the row is kept, struck through on the document, and counts for nothing. The reason is judged before anything is read; then one transaction locks the invoice first and reads the payment after that lock, so two removals of one payment give one 200 and one payment_removed. A removal is never undone; the payment is registered again. The response is the document.
+         * @description Removes a payment registration with a reason (D2): the row is kept, struck through on the document, and counts for nothing. The reason is judged before anything is read; then one transaction locks the invoice first and reads the payment after that lock, so two removals of one payment give one 200 and one payment_removed. A payment with credit (invoices phase 6 design I9, I11) — one of source credit, or one registered with an overpayment kept beside it — is read first, and then the customer's credit lock is taken before the invoice: its movement is reversed, 409 credit_exceeds_balance (with balance) when the overpayment was used. When the removal reopens an invoice whose credit note's surplus moved to the customer (I10), it returns that surplus, as far as the customer's credit and what the invoice now has open reach. A removal is never undone; the payment is registered again. The response is the document.
          */
         post: operations["postInvoicesByIdPaymentsByPaymentIdRemove"];
         delete?: never;
@@ -1578,6 +1658,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/invoices/bank-transactions/{id}/keep-as-credit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Keep a bank line's surplus as the customer's credit
+         * @description Keeps a bank line's surplus as the customer's credit (invoices phase 6 design I9): for a line queued exceeds_open or invoice_settled, what the invoice has open is applied as a payment and the rest of the line becomes an overpayment movement of the invoice's customer, naming the line. 400 on invoiceId when none is given and the line suggests none, and on note (at most 500 characters); 404; 409 bank_transaction_not_open unless the line is an exception, bank_transaction_not_applicable unless it is queued exceeds_open or invoice_settled. Then one transaction: the line FOR NO KEY UPDATE, judged again; the customer's credit lock; the invoices the line paid and the invoice named FOR UPDATE in descending id; the apply's rules for the payment (allocation_not_an_invoice, paid_before_issue); and a line with nothing left to keep is allocation_exceeds_transaction. The line becomes resolved, applied, with a kept_as_credit event.
+         */
+        post: operations["postInvoicesBankTransactionsByIdKeepAsCredit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/invoices/bank-transactions/{id}/handle-reversal": {
         parameters: {
             query?: never;
@@ -1589,7 +1689,7 @@ export interface paths {
         put?: never;
         /**
          * Handle a reversed bank line
-         * @description Handles a reversal (D5): the payments it takes back are removed, or none with a reason. In order: 400 on the fields — at most 20 payments, each once, not both payments and noPayment, the note at most 500 characters; 404; 409 bank_transaction_not_open unless the line is an exception; 409 bank_transaction_not_applicable unless it is queued reversal; 409 reversal_payment_required when no payment is named and noPayment with a note is not given. Then one transaction: the line FOR NO KEY UPDATE, its state judged again, then the named payments' invoices FOR UPDATE in descending id, and each payment removed by the removal's own rules — 404 a payment that is not its invoice's, 409 payment_removed one already removed — with the reason "Reversed by the bank: line {lineRef}", and the line each removed payment came from given a reversed event, so its money is never applied again. The line becomes resolved, reversal_handled, with a reversal_handled event. Nothing links a reversal to a payment by itself.
+         * @description Handles a reversal (D5): the payments it takes back are removed, or none with a reason. In order: 400 on the fields — at most 20 payments, each once, not both payments and noPayment, the note at most 500 characters; 404; 409 bank_transaction_not_open unless the line is an exception; 409 bank_transaction_not_applicable unless it is queued reversal; 409 reversal_payment_required when no payment is named and noPayment with a note is not given. Then one transaction: the line FOR NO KEY UPDATE, its state judged again, then the named payments' invoices FOR UPDATE in descending id, and each payment removed by the removal's own rules — 404 a payment that is not its invoice's, 409 payment_removed one already removed — with the reason "Reversed by the bank: line {lineRef}", and the line each removed payment came from given a reversed event, so its money is never applied again. reverseCredits (invoices phase 6 design I9) names the overpayments a line kept as credit that the reversal takes back: after the line, the credit's customer lock, then the invoices; each must be an overpayment of a bank line (404 otherwise), not reversed already (409 payment_removed), and within the customer's credit (409 credit_exceeds_balance); its line gets the reversed event too. The line becomes resolved, reversal_handled, with a reversal_handled event. Nothing links a reversal to a payment by itself.
          */
         post: operations["postInvoicesBankTransactionsByIdHandleReversal"];
         delete?: never;
@@ -2066,7 +2166,7 @@ export interface components {
             canIssue: boolean;
             /** @description invoices:manage — the seller record, the series start and the VAT codes. */
             canManage: boolean;
-            /** @description invoices:payments — register a payment against an issued invoice, and remove a registration with a reason. */
+            /** @description invoices:payments — register a payment against an issued invoice, and remove a registration with a reason; keep an overpayment as the customer's credit, apply credit to an invoice, and record and remove a refund of it (invoices phase 6 design I9-I12). */
             canRegisterPayments: boolean;
             /** @description invoices:payments — preview and make reminder runs, and read the runs. */
             canRunReminders: boolean;
@@ -2150,7 +2250,108 @@ export interface components {
             ratePercent: number;
             safTCode: string;
         };
-        /** @description ProblemDetails plus this module's refusal code (invoices foundation design D2-D8). code names the rule that refused — series_locked, vat_code_in_use, rate_change_in_past, rate_period_not_latest, rate_period_last, rate_period_in_use, invoice_issued, invoice_draft, customer_merged, customer_archived, customer_blocked, customer_missing, invoice_changed, seller_incomplete, no_lines, delivery_date_missing, issue_date_not_allowed, buyer_incomplete, vat_code_inactive, vat_code_not_valid, vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, credit_exceeds_line, credit_exceeds_invoice, credit_note_not_creditable, invoice_fully_credited, credit_note_no_payments, invoice_settled, payment_exceeds_open, payment_removed, customer_anonymised, no_invoice_email (invoices payments and delivery design D2, D4), kid_length_exceeded (EHF and KID design D3: the next number no longer fits the KID agreement, which was shortened), transmissions_active (EHF and KID design D7: the access-point credentials still serve a transmission in flight), ehf_unavailable (D7: no access-point credentials to verify — a 409 — or a stored key that cannot be opened — a 503; D8: an installation that cannot send as EHF — a 503), the send as EHF's no_peppol_id, buyer_reference_missing, ehf_already_sent, peppol_not_receivable (with peppolRegistered and peppolCanReceive) and ehf_invalid (with rules) (EHF and KID design D8), transmission_not_cancellable and transmission_not_resolvable (D9), source_held_elsewhere (invoices work design D2: a source a save or the wizard would hold is held by another live draft or invoiced by an unreleased issued line; heldBy, sourceKind and sourceId name the document and the source), the wizard's refusals (invoices work design D3, D4, D11; POST /invoices/from-work) — work_unavailable (no billable read is composed), too_many_sources (more than 5 000 sources on one document, an append target's held ones counted), source_not_for_customer (a source's project bills another customer or is gone), mixed_currency (the selection spans currencies), currency_not_nok (the selection is in another currency than NOK) and too_many_lines (the grouping would make more than 500 lines, with suggestedGrouping, the next coarser grouping that fits) — the issue's refusals about the work it bills (invoices work design D1, each with linePosition, sourceKind and sourceId) — source_not_invoiceable, source_changed and source_already_invoiced (a source's own module would not stamp it: no longer approved, ready or billable; changed since the draft took it; already invoiced), source_customer_changed (a source's project no longer bills the draft's customer, or is gone; judged before a number exists) and source_not_selectable (hours of a project now fixed-price or non-billable, or any work of a project now non-billable) — and projects_unavailable (the draft bills work and the projects module is switched off); a final settlement's (invoices work design D7) deduction_exceeds_invoice (with linePosition: a deduction line takes more than its a-konto has left at its VAT code, or deducts a document that is no longer an issued invoice of this customer, or deducted at a code where it deducts itself), deduction_duplicated (with linePosition: a second deduction line for one deducted invoice and VAT code) and invoice_total_not_positive (a settlement's, or an invoice with energy correction lines', gross is zero or less); a credit note's credit_total_negative (its gross is below zero) and invoice_deducted (it credits more of an a-konto at a VAT code than no issued settlement deducted there; the detail names the settlements); credit_note_deducts_nothing (GET /invoices/{id}/deductible on a credit-note draft), and invoice_changed also when the draft's work changed between the issue's reads and its lock; the bank import's (invoices payments and reminders design D3) bank_account_unknown (an account the file names is neither the seller's nor one an issued invoice printed; the detail names its last four digits), bank_file_duplicate (the same bytes or the same file identity imported before, with bankFileId, uploadedAt and uploadedBy of that import) and bank_import_format_mismatch (the account's files come in the other format; the detail names the account and its format); the collection rates' (invoices payments and reminders design D6) collection_rate_exists (a rate of that kind already takes effect on that day) and collection_rate_in_force (the rate came with a release, is in force or past, or a printed or sent letter relied on it, so it is not deleted); the charges' (invoices payments and reminders design D9) no_charges_outstanding (nothing is outstanding: no letter claimed a charge, or every charge is waived or paid), charge_payment_exceeds_outstanding (with chargesOutstanding), charge_not_claimed (the letter was not sent, claimed no such charge, it is waived already, or no interest is left unpaid) and credit_note_no_reminders (a credit note is never reminded of), and the manual deliveries' (D8) delivery_removed and delivery_relied_on (a letter's charge stands on the record and no other delivery on or before the due date would remain); the reminder runs' and the overdue list's (invoices payments and reminders design D10, D12) reminders_disabled (reminders are switched off in the reminder settings), collection_rates_outdated (a letter of the run needs a rate with no row for a half-year, with kind and halfYear), collection_regime_unreviewed (a letter of the run would carry a fee or be a collection notice past the regime review under the 1988 regime), bank_import_stale (the bank data is stale and a letter of the run would carry a charge, with lastBookedOn; acknowledgeStaleImport confirms it) and too_many_overdue (more than 5 000 overdue invoices to judge; narrow by customer or due date); the holds' and the hand-off's (invoices payments and reminders design D11) invoice_on_hold (a hold is live already), invoice_not_on_hold (no hold is live to lift), invoice_handed_off (a hand-off is live already), invoice_not_handed_off (no hand-off is live to withdraw) and invoice_not_delivered (no delivery on or before the due date; acknowledgeNotDelivered confirms the hand-off); the reminder letters' (invoices payments and reminders design D10) reminder_not_withdrawable (the letter is sent, withdrawn already, or being sent: queued with its facts written under a live lease), reminder_not_failed (only a failed letter is retried) and reminder_not_sent (the letter is neither printed nor sent, so it has no PDF); the paper letters' (D10, reading 39) reminder_not_awaiting_print (a letter named for a print batch is not awaiting print), reminder_posted_early and reminder_posted_late (a batch confirmed posted on another day than the one it was printed for, so it must be reprinted) and print_batch_closed (the batch was posted or reprinted already); the exception queue's (invoices payments and reminders design D5) bank_transaction_not_open (the line is not in the state the action takes — not an exception, for most), bank_transaction_not_applicable (the action is not for this line: an apply of a reversal or a negative line, a dismissal of a reversal, a reversal handled on a line that is none, a duplicate confirmed or kept that is none, a reopen of a line that is open), bank_transaction_applied (a live payment or charge payment still refers to the line), bank_transaction_reversed (a reversal took back a payment of the line, so it is never reopened, or of the line it was kept as a duplicate of, so it is never treated as distinct nor applied), reversal_payment_required (a reversal handled with no payment named and no note saying why), allocation_not_an_invoice (an allocation names no issued invoice), allocation_exceeds_transaction (the allocations add up to more than the line has left) and paid_before_issue (the line was booked before an allocation's invoice was issued), besides payment_exceeds_open with invoiceId and charge_payment_exceeds_outstanding on an allocation; the payments port's (invoices payments and reminders design D14–D17) payments_unavailable (no Vipps credentials are stored — a 409 — or Vipps is switched off on this installation or the stored credentials cannot be opened — a 503), payment_attempts_active (a change of the sales unit, or removing the keys, while a Vipps payment is in flight), attempt_not_abandonable (the payment is neither of unknown outcome nor stranded by the switch or another sales unit), public_url_missing (pay links or a webhook without PUBLIC_BASE_URL), pay_links_unavailable (pay links are off or not set up), pay_link_exists (the invoice has a live pay link already), too_many_attempts (five Vipps payments of the invoice are in flight already), amount_out_of_range (the open amount is below 1.00 or above what Vipps takes), payment_in_progress (Vipps payments being completed leave less than 1.00 open), on_site_payments_unavailable (on-site payment is not turned on), buyer_identity_missing (the buyer is not identified as a kontantfaktura requires), payment_request_active (an on-site payment request of the invoice is live already), day_already_reconciled (the day was reconciled before) and day_not_over (the day is not over yet), and provider_failed, which a 502 carries when Vipps refused or failed the call; the bank feed's (invoices bank feed design F3, F4, F8) bank_feed_disabled (the bank feed is switched off on this installation), bank_feed_not_connected (no bank key is stored), bank_feed_account_not_offered (the bank does not answer the account now, or it is a card account), bank_feed_enabled (a format change away from feed while the feed is switched on for the account), bank_feed_key_changed (another bank key was stored while an account was being switched on), bank_account_unknown as the bank import's, and bank_feed_credential_rejected, which a 422 carries when the bank refused the key, and bank_feed_unavailable, which a 503 carries when the bank could not be reached or the stored key cannot be opened; the quick invoice's (D17) request_id_reused (its requestId came before with another body, with invoiceId, the invoice it issued); the consumption wizard's (energy consumption billing design D7; GET /invoices/consumption, GET /invoices/consumption/settlements, POST /invoices/from-consumption) consumption_unavailable (the energy module is switched off), settlement_blocked (with sourceKind and sourceId: a named settlement Energy cannot bill; the detail names its blocker), cadence_not_allowed (with sourceKind and sourceId: a settlement of a yearly supply for a person, who is billed at least quarterly) and no_consumption_due (nothing is left to invoice through the date); the billing runs' (energy consumption billing design D10; POST /invoices/billing-runs and its cancel) billing_run_active (with runId: a run is queued or running already), billing_run_finished (the run is done or cancelled already) and too_many_customers (more than 5 000 supplies are due; name the customers); the From orders wizard's (orders design O39; GET /invoices/from-orders/due, POST /invoices/from-orders) orders_unavailable (the orders module is switched off), order_blocked (with orderLineId: an order is a draft or on hold), allocation_exceeds_open (with orderLineId: a quantity above what the line has left to invoice) and line_not_invoiceable (with orderLineId: a line Orders will not invoice, or one not of the order named), a save's line_holds_order_allocation (with linePosition, sourceKind and sourceId: a line holding an order allocation keeps its quantity, unit price, discount and VAT code), and the billing run's no_orders_due (no customer has order lines due through the date), and its items' orders_held_by_drafts (drafts of the customer hold what its orders have left) and currency_not_supported (the customer's orders due are in another currency than the settings'); the write-off's (accounting design A16, R4) vipps_in_progress (a Vipps payment is being completed, so the open amount is not settled yet), no_write_off (no write-off stands: nothing to undo or to recover), write_off_recovered (a recovered payment of the write-off stands; remove it before the undo), recovery_exceeds_written_off (with openAmount, the room left: a recovered payment above what is written off less what is already recovered) and invoice_written_off (accounting design R15: a credit note of an invoice a write-off stands on is neither created, saved nor issued; undo the write-off first); the logo's (invoices phase 6 design I1) logo_unsupported_type, logo_too_large, logo_too_wide, logo_too_small and logo_invalid, which a 400 carries in the same shape; and storage_unavailable and mail_unavailable, which a 503 carries in the same shape, and mail_failed and peppol_lookup_failed, which a 502 carries. A revision conflict carries no code; its detail names both revisions. */
+        /** @description POST /invoices/{id}/apply-credit's body (invoices phase 6 design I11). amount is greater than 0 with at most 2 decimals, at most what is open (409 credit_exceeds_open) and at most the customer's credit in the invoice's currency (409 credit_exceeds_balance). paidOn is the day the credit is applied: on or after the invoice's issue date and not after today in the business time zone; today when omitted. */
+        InvoicesApplyCreditRequest: {
+            /** Format: double */
+            amount: number;
+            /** Format: date */
+            paidOn?: string;
+        };
+        /** @description A customer's credit in one currency (invoices phase 6 design I8) — the sum of its movements, never below zero. */
+        InvoicesCreditBalance: {
+            /** Format: double */
+            balance: number;
+            currency: string;
+        };
+        /** @description One movement of a customer's credit (invoices phase 6 design I8), never changed: kind overpayment (+, money received above what was open — by hand, paymentId the payment of what was open, or from a bank line, bankTransactionId and lineRef), credit_note (+, what a credit note credited beyond its invoice's open amount, documentId and documentNumber the credit note), applied (−, credit used against an invoice, paymentId its payment of source credit), refunded (−, a refund, refundId) or reversed (±, the counter-movement of a removal, reversesId). invoiceId and invoiceNumber name the invoice it came from or went to. reversed is what reversals took back of it; registeredByUserId is absent on a credit_note movement, which the module wrote, and note is blanked when the customer is anonymised. */
+        InvoicesCreditMovement: {
+            /** Format: double */
+            amount: number;
+            /** Format: int64 */
+            bankTransactionId?: number;
+            /** Format: date */
+            creditDay: string;
+            currency: string;
+            /** Format: int64 */
+            documentId?: number;
+            /** Format: int64 */
+            documentNumber?: number;
+            /** Format: int64 */
+            id: number;
+            /** Format: int64 */
+            invoiceId?: number;
+            /** Format: int64 */
+            invoiceNumber?: number;
+            /** @enum {string} */
+            kind: "overpayment" | "credit_note" | "applied" | "refunded" | "reversed";
+            lineRef?: string;
+            note: string;
+            /** Format: int64 */
+            paymentId?: number;
+            /** Format: int64 */
+            refundId?: number;
+            /** Format: date-time */
+            registeredAt: string;
+            /** Format: uuid */
+            registeredByUserId?: string;
+            /** Format: double */
+            reversed: number;
+            /** Format: int64 */
+            reversesId?: number;
+        };
+        /** @description Money paid back to the customer outside Vantigo (invoices phase 6 design I12): the day, the amount and currency, the account it left (11 digits), the reference and the note. A removed one keeps its row and carries removedAt, removedByUserId and removalReason; its reversed movement gave the credit back. */
+        InvoicesCreditRefund: {
+            /** Format: double */
+            amount: number;
+            bankAccount: string;
+            currency: string;
+            /** Format: int64 */
+            id: number;
+            note: string;
+            reference: string;
+            /** Format: date */
+            refundedOn: string;
+            /** Format: date-time */
+            registeredAt: string;
+            /** Format: uuid */
+            registeredByUserId: string;
+            removalReason?: string;
+            /** Format: date-time */
+            removedAt?: string;
+            /** Format: uuid */
+            removedByUserId?: string;
+        };
+        /** @description POST …/credit/refunds/{refundId}/remove's body — the reason, 1 to 200 characters, trimmed. */
+        InvoicesCreditRefundRemovalRequest: {
+            reason: string;
+        };
+        /** @description POST /invoices/customers/{customerId}/credit/refunds' body (invoices phase 6 design I12). refundedOn is the day the money left: not after today in the business time zone. amount is greater than 0 with at most 2 decimals, at most the customer's credit in the currency (409 credit_exceeds_balance). currency is NOK in this phase (400 otherwise). bankAccount is the 11-digit account it was paid from, with a valid MOD11 check digit. reference holds at most 100 characters and note at most 500, both trimmed; absent is empty. */
+        InvoicesCreditRefundRequest: {
+            /** Format: double */
+            amount: number;
+            bankAccount: string;
+            currency: string;
+            note?: string;
+            reference?: string;
+            /** Format: date */
+            refundedOn: string;
+        };
+        /** @description A customer's credit (invoices phase 6 design I8, I12): its balance per currency in which it has a movement, a page of its movements, the newest first, and every refund, the newest first. */
+        InvoicesCustomerCredit: {
+            balances: components["schemas"]["InvoicesCreditBalance"][];
+            /** Format: int32 */
+            customerId: number;
+            movements: components["schemas"]["InvoicesCreditMovement"][];
+            pagination: components["schemas"]["PaginationMetadata"];
+            refunds: components["schemas"]["InvoicesCreditRefund"][];
+        };
+        /** @description POST /invoices/bank-transactions/{id}/keep-as-credit's body (invoices phase 6 design I9): invoiceId, the invoice the line paid — the line's suggested invoice when omitted — and an optional note of at most 500 characters, kept on the line, its event and the credit movement. */
+        InvoicesKeepAsCreditRequest: {
+            /** Format: int64 */
+            invoiceId?: number;
+            note?: string;
+        };
+        /** @description ProblemDetails plus this module's refusal code (invoices foundation design D2-D8). code names the rule that refused — series_locked, vat_code_in_use, rate_change_in_past, rate_period_not_latest, rate_period_last, rate_period_in_use, invoice_issued, invoice_draft, customer_merged, customer_archived, customer_blocked, customer_missing, invoice_changed, seller_incomplete, no_lines, delivery_date_missing, issue_date_not_allowed, buyer_incomplete, vat_code_inactive, vat_code_not_valid, vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, credit_exceeds_line, credit_exceeds_invoice, credit_note_not_creditable, invoice_fully_credited, credit_note_no_payments, invoice_settled, payment_exceeds_open, payment_removed, customer_anonymised, no_invoice_email (invoices payments and delivery design D2, D4), kid_length_exceeded (EHF and KID design D3: the next number no longer fits the KID agreement, which was shortened), transmissions_active (EHF and KID design D7: the access-point credentials still serve a transmission in flight), ehf_unavailable (D7: no access-point credentials to verify — a 409 — or a stored key that cannot be opened — a 503; D8: an installation that cannot send as EHF — a 503), the send as EHF's no_peppol_id, buyer_reference_missing, ehf_already_sent, peppol_not_receivable (with peppolRegistered and peppolCanReceive) and ehf_invalid (with rules) (EHF and KID design D8), transmission_not_cancellable and transmission_not_resolvable (D9), source_held_elsewhere (invoices work design D2: a source a save or the wizard would hold is held by another live draft or invoiced by an unreleased issued line; heldBy, sourceKind and sourceId name the document and the source), the wizard's refusals (invoices work design D3, D4, D11; POST /invoices/from-work) — work_unavailable (no billable read is composed), too_many_sources (more than 5 000 sources on one document, an append target's held ones counted), source_not_for_customer (a source's project bills another customer or is gone), mixed_currency (the selection spans currencies), currency_not_nok (the selection is in another currency than NOK) and too_many_lines (the grouping would make more than 500 lines, with suggestedGrouping, the next coarser grouping that fits) — the issue's refusals about the work it bills (invoices work design D1, each with linePosition, sourceKind and sourceId) — source_not_invoiceable, source_changed and source_already_invoiced (a source's own module would not stamp it: no longer approved, ready or billable; changed since the draft took it; already invoiced), source_customer_changed (a source's project no longer bills the draft's customer, or is gone; judged before a number exists) and source_not_selectable (hours of a project now fixed-price or non-billable, or any work of a project now non-billable) — and projects_unavailable (the draft bills work and the projects module is switched off); a final settlement's (invoices work design D7) deduction_exceeds_invoice (with linePosition: a deduction line takes more than its a-konto has left at its VAT code, or deducts a document that is no longer an issued invoice of this customer, or deducted at a code where it deducts itself), deduction_duplicated (with linePosition: a second deduction line for one deducted invoice and VAT code) and invoice_total_not_positive (a settlement's, or an invoice with energy correction lines', gross is zero or less); a credit note's credit_total_negative (its gross is below zero) and invoice_deducted (it credits more of an a-konto at a VAT code than no issued settlement deducted there; the detail names the settlements); credit_note_deducts_nothing (GET /invoices/{id}/deductible on a credit-note draft), and invoice_changed also when the draft's work changed between the issue's reads and its lock; the bank import's (invoices payments and reminders design D3) bank_account_unknown (an account the file names is neither the seller's nor one an issued invoice printed; the detail names its last four digits), bank_file_duplicate (the same bytes or the same file identity imported before, with bankFileId, uploadedAt and uploadedBy of that import) and bank_import_format_mismatch (the account's files come in the other format; the detail names the account and its format); the collection rates' (invoices payments and reminders design D6) collection_rate_exists (a rate of that kind already takes effect on that day) and collection_rate_in_force (the rate came with a release, is in force or past, or a printed or sent letter relied on it, so it is not deleted); the charges' (invoices payments and reminders design D9) no_charges_outstanding (nothing is outstanding: no letter claimed a charge, or every charge is waived or paid), charge_payment_exceeds_outstanding (with chargesOutstanding), charge_not_claimed (the letter was not sent, claimed no such charge, it is waived already, or no interest is left unpaid) and credit_note_no_reminders (a credit note is never reminded of), and the manual deliveries' (D8) delivery_removed and delivery_relied_on (a letter's charge stands on the record and no other delivery on or before the due date would remain); the reminder runs' and the overdue list's (invoices payments and reminders design D10, D12) reminders_disabled (reminders are switched off in the reminder settings), collection_rates_outdated (a letter of the run needs a rate with no row for a half-year, with kind and halfYear), collection_regime_unreviewed (a letter of the run would carry a fee or be a collection notice past the regime review under the 1988 regime), bank_import_stale (the bank data is stale and a letter of the run would carry a charge, with lastBookedOn; acknowledgeStaleImport confirms it) and too_many_overdue (more than 5 000 overdue invoices to judge; narrow by customer or due date); the holds' and the hand-off's (invoices payments and reminders design D11) invoice_on_hold (a hold is live already), invoice_not_on_hold (no hold is live to lift), invoice_handed_off (a hand-off is live already), invoice_not_handed_off (no hand-off is live to withdraw) and invoice_not_delivered (no delivery on or before the due date; acknowledgeNotDelivered confirms the hand-off); the reminder letters' (invoices payments and reminders design D10) reminder_not_withdrawable (the letter is sent, withdrawn already, or being sent: queued with its facts written under a live lease), reminder_not_failed (only a failed letter is retried) and reminder_not_sent (the letter is neither printed nor sent, so it has no PDF); the paper letters' (D10, reading 39) reminder_not_awaiting_print (a letter named for a print batch is not awaiting print), reminder_posted_early and reminder_posted_late (a batch confirmed posted on another day than the one it was printed for, so it must be reprinted) and print_batch_closed (the batch was posted or reprinted already); the exception queue's (invoices payments and reminders design D5) bank_transaction_not_open (the line is not in the state the action takes — not an exception, for most), bank_transaction_not_applicable (the action is not for this line: an apply of a reversal or a negative line, a dismissal of a reversal, a reversal handled on a line that is none, a duplicate confirmed or kept that is none, a reopen of a line that is open), bank_transaction_applied (a live payment or charge payment still refers to the line), bank_transaction_reversed (a reversal took back a payment of the line, so it is never reopened, or of the line it was kept as a duplicate of, so it is never treated as distinct nor applied), reversal_payment_required (a reversal handled with no payment named and no note saying why), allocation_not_an_invoice (an allocation names no issued invoice), allocation_exceeds_transaction (the allocations add up to more than the line has left) and paid_before_issue (the line was booked before an allocation's invoice was issued), besides payment_exceeds_open with invoiceId and charge_payment_exceeds_outstanding on an allocation; the payments port's (invoices payments and reminders design D14–D17) payments_unavailable (no Vipps credentials are stored — a 409 — or Vipps is switched off on this installation or the stored credentials cannot be opened — a 503), payment_attempts_active (a change of the sales unit, or removing the keys, while a Vipps payment is in flight), attempt_not_abandonable (the payment is neither of unknown outcome nor stranded by the switch or another sales unit), public_url_missing (pay links or a webhook without PUBLIC_BASE_URL), pay_links_unavailable (pay links are off or not set up), pay_link_exists (the invoice has a live pay link already), too_many_attempts (five Vipps payments of the invoice are in flight already), amount_out_of_range (the open amount is below 1.00 or above what Vipps takes), payment_in_progress (Vipps payments being completed leave less than 1.00 open), on_site_payments_unavailable (on-site payment is not turned on), buyer_identity_missing (the buyer is not identified as a kontantfaktura requires), payment_request_active (an on-site payment request of the invoice is live already), day_already_reconciled (the day was reconciled before) and day_not_over (the day is not over yet), and provider_failed, which a 502 carries when Vipps refused or failed the call; the bank feed's (invoices bank feed design F3, F4, F8) bank_feed_disabled (the bank feed is switched off on this installation), bank_feed_not_connected (no bank key is stored), bank_feed_account_not_offered (the bank does not answer the account now, or it is a card account), bank_feed_enabled (a format change away from feed while the feed is switched on for the account), bank_feed_key_changed (another bank key was stored while an account was being switched on), bank_account_unknown as the bank import's, and bank_feed_credential_rejected, which a 422 carries when the bank refused the key, and bank_feed_unavailable, which a 503 carries when the bank could not be reached or the stored key cannot be opened; the quick invoice's (D17) request_id_reused (its requestId came before with another body, with invoiceId, the invoice it issued); the consumption wizard's (energy consumption billing design D7; GET /invoices/consumption, GET /invoices/consumption/settlements, POST /invoices/from-consumption) consumption_unavailable (the energy module is switched off), settlement_blocked (with sourceKind and sourceId: a named settlement Energy cannot bill; the detail names its blocker), cadence_not_allowed (with sourceKind and sourceId: a settlement of a yearly supply for a person, who is billed at least quarterly) and no_consumption_due (nothing is left to invoice through the date); the billing runs' (energy consumption billing design D10; POST /invoices/billing-runs and its cancel) billing_run_active (with runId: a run is queued or running already), billing_run_finished (the run is done or cancelled already) and too_many_customers (more than 5 000 supplies are due; name the customers); the From orders wizard's (orders design O39; GET /invoices/from-orders/due, POST /invoices/from-orders) orders_unavailable (the orders module is switched off), order_blocked (with orderLineId: an order is a draft or on hold), allocation_exceeds_open (with orderLineId: a quantity above what the line has left to invoice) and line_not_invoiceable (with orderLineId: a line Orders will not invoice, or one not of the order named), a save's line_holds_order_allocation (with linePosition, sourceKind and sourceId: a line holding an order allocation keeps its quantity, unit price, discount and VAT code), and the billing run's no_orders_due (no customer has order lines due through the date), and its items' orders_held_by_drafts (drafts of the customer hold what its orders have left) and currency_not_supported (the customer's orders due are in another currency than the settings'); the write-off's (accounting design A16, R4) vipps_in_progress (a Vipps payment is being completed, so the open amount is not settled yet), no_write_off (no write-off stands: nothing to undo or to recover), write_off_recovered (a recovered payment of the write-off stands; remove it before the undo), recovery_exceeds_written_off (with openAmount, the room left: a recovered payment above what is written off less what is already recovered) and invoice_written_off (accounting design R15: a credit note of an invoice a write-off stands on is neither created, saved nor issued; undo the write-off first); the logo's (invoices phase 6 design I1) logo_unsupported_type, logo_too_large, logo_too_wide, logo_too_small and logo_invalid, which a 400 carries in the same shape; the customer's credit's (invoices phase 6 design I8-I12) credit_exceeds_balance (with balance: a movement would take the customer's credit in the currency below zero — credit applied or refunded beyond it, or a payment or a bank line whose overpayment was used removed or reversed), credit_exceeds_open (credit applied above what is open, with openAmount) and refund_removed (the refund is removed already); and storage_unavailable and mail_unavailable, which a 503 carries in the same shape, and mail_failed and peppol_lookup_failed, which a 502 carries. A revision conflict carries no code; its detail names both revisions. */
         InvoicesConflictProblem: {
             /** @description On issue_date_not_allowed, the dates this document may be issued with today, the earliest first. Absent otherwise. */
             allowedIssueDates?: string[];
@@ -2159,6 +2360,11 @@ export interface components {
              * @description On payment_request_active, the invoice's live on-site payment attempt, so a client whose answer was lost can read it (GET /invoices/{id}/payment-requests/{attemptId}) or cancel it. Absent otherwise.
              */
             attemptId?: number;
+            /**
+             * Format: double
+             * @description On credit_exceeds_balance, the customer's credit in the currency, which the movement would have taken below zero. Absent otherwise.
+             */
+            balance?: number;
             /**
              * Format: int64
              * @description On bank_file_duplicate, the earlier import of the same file — the same bytes or the same file identity. Absent otherwise.
@@ -2204,7 +2410,7 @@ export interface components {
             orderLineId?: number;
             /**
              * Format: double
-             * @description On payment_exceeds_open, the invoice's open amount the payment exceeded (gross − credited − paid). Absent otherwise.
+             * @description On payment_exceeds_open and credit_exceeds_open, the invoice's open amount the payment or the credit exceeded (gross − credited − paid − written off + moved). Absent otherwise.
              */
             openAmount?: number;
             /** @description On peppol_not_receivable, whether the receiver accepts this document's type (an invoice or a credit note) on the Peppol network at the send's re-check. Absent otherwise. */
@@ -3357,7 +3563,7 @@ export interface components {
             /** Format: date */
             valueOn?: string;
         };
-        /** @description A payment or a charge payment that refers to a bank line (D4, D5): kind payment or charge_payment, its id, its invoice and that invoice's number, the amount, and whether it has been removed (a removed one applies nothing). */
+        /** @description A payment, a charge payment or an overpayment kept as credit that refers to a bank line (D4, D5; invoices phase 6 design I9): kind payment, charge_payment or credit (the customer's credit movement, which invoiceId names the invoice of), its id, its invoice and that invoice's number, the amount — a payment's in NOK, what it took of the line (I13) — and whether it has been removed (a removed one, or a credit a reversal took back, applies nothing). */
         InvoicesBankTransactionApplied: {
             /** Format: double */
             amount: number;
@@ -3366,7 +3572,7 @@ export interface components {
             /** Format: int64 */
             invoiceId: number;
             /** @enum {string} */
-            kind: "payment" | "charge_payment";
+            kind: "payment" | "charge_payment" | "credit";
             /** Format: int64 */
             number?: number;
             removed: boolean;
@@ -3380,7 +3586,7 @@ export interface components {
         InvoicesBankTransactionDismissRequest: {
             note: string;
         };
-        /** @description What happened to a bank line (D5): event matched, queued, applied, dismissed, reversal_handled, reopened, duplicate_confirmed, treated_as_distinct or reversed (a reversal took back a payment of this line; the note names the reversal); the reason the line had or was given (absent on a match); the note given with it; who and when — by is absent on a matched or queued event the bank feed's sync wrote, which no person made (invoices bank feed design F6). Events are never changed; they keep a resolution a reopen cleared from the line. */
+        /** @description What happened to a bank line (D5): event matched, queued, applied, dismissed, reversal_handled, reopened, duplicate_confirmed, treated_as_distinct, reversed (a reversal took back a payment or a credit of this line; the note names the reversal) or kept_as_credit (its surplus was kept as the customer's credit, invoices phase 6 design I9); the reason the line had or was given (absent on a match); the note given with it; who and when — by is absent on a matched or queued event the bank feed's sync wrote, which no person made (invoices bank feed design F6). Events are never changed; they keep a resolution a reopen cleared from the line. */
         InvoicesBankTransactionEvent: {
             /** Format: date-time */
             at: string;
@@ -3390,7 +3596,7 @@ export interface components {
              */
             by?: string;
             /** @enum {string} */
-            event: "matched" | "queued" | "applied" | "dismissed" | "reversal_handled" | "reopened" | "duplicate_confirmed" | "treated_as_distinct" | "reversed";
+            event: "matched" | "queued" | "applied" | "dismissed" | "reversal_handled" | "reopened" | "duplicate_confirmed" | "treated_as_distinct" | "reversed" | "kept_as_credit";
             /** Format: int64 */
             id: number;
             note: string;
@@ -3422,11 +3628,17 @@ export interface components {
             /** Format: int64 */
             paymentId: number;
         };
-        /** @description POST /invoices/bank-transactions/{id}/handle-reversal's body (D5): removePayments, the payments the reversal takes back (at most 20, each once), each removed with the reason "Reversed by the bank: line {lineRef}"; or noPayment true and a note saying why none is removed. The note, at most 500 characters, is kept on the line and its event either way. */
+        /** @description An overpayment kept as credit that a reversal takes back (invoices phase 6 design I9) — the movement's id. */
+        InvoicesBankTransactionReversalCredit: {
+            /** Format: int64 */
+            creditId: number;
+        };
+        /** @description POST /invoices/bank-transactions/{id}/handle-reversal's body (D5): removePayments, the payments the reversal takes back (at most 20, each once), each removed with the reason "Reversed by the bank: line {lineRef}", and reverseCredits, the overpayments a line kept as credit that it takes back (at most 20, each once; invoices phase 6 design I9); or noPayment true and a note saying why none is removed. The note, at most 500 characters, is kept on the line and its event either way. */
         InvoicesBankTransactionReversalRequest: {
             noPayment?: boolean;
             note?: string;
             removePayments?: components["schemas"]["InvoicesBankTransactionReversalPayment"][];
+            reverseCredits?: components["schemas"]["InvoicesBankTransactionReversalCredit"][];
         };
         /** @description An issued invoice a queued line may pay (D5), read when the line is read, never registered by itself: why is number_in_text (the invoice's number is a whole word of the line's text), amount_equals_open (its open amount equals the line's amount) or debtor_account (its customer's earlier payments came from the line's debtor account, and it is open). One entry per invoice, under the first reason in that order. */
         InvoicesBankTransactionSuggestion: {
@@ -3614,7 +3826,7 @@ export interface components {
             timesheet?: boolean;
             yourReference?: string;
         };
-        /** @description One document (D4): every column in camelCase, its lines and its VAT summaries. On a draft the VAT summaries and totals are computed afresh — an invoice draft's with the rates in force today, which the issue resolves again for the issue date; a credit-note draft's at its original lines' snapshot rates, with each line's and the invoice's remainder squared as its issue will — and allowedIssueDates lists the dates it may be issued with today. warnings are never refusals: customer_currency_differs, issued_late (never on a credit note, which keeps its original's delivery), vat_code_not_valid (a line's code has no rate period covering today; the issue would refuse it), credit_exceeds_invoice, credit_exceeds_line, ehf_buyer_reference_missing (EHF and KID design D8: a draft whose customer's billing profile prefers EHF or whose customer has a Peppol id — or, on a credit-note draft, whose buyer snapshot has a Peppol id — with neither yourReference nor orderReference set — Peppol needs one, and neither can change after the issue), and for a document that bills work (invoices work design D2) line_differs_from_sources (on a draft, a line's net differs from its sources' amounts summed and rounded to øre), sources_released (on a save's answer, work the save dropped — named in releasedSources), source_changed and source_not_invoiceable (on GET of an invoice draft, for a caller holding invoices:create: a source's billing facts changed since the draft took them, or it is no longer invoiceable — the issue would refuse either); each of the last three also on the line's own warnings; on an invoice draft that is a final settlement (invoices work design D7) deduction_exceeds_invoice (a deduction line takes more than its a-konto has left at its VAT code) and invoice_total_not_positive (its gross is zero or less) — the issue refuses either. A deduction line is totalled at its a-konto line's snapshot (category and rate), never at today's rate of its code. A document that bills work carries sources, its count by state, and each of its lines its sources[]. An invoice carries creditedAmount (its issued credit notes' gross), uncreditedAmount and creditNotes; a credit note carries credits. Every document carries state (D3); an issued invoice also carries paidAmount, openAmount, payments and — only when openAmount is below zero — refundDue, none of which a draft or a credit note carries. An issued invoice also carries charges, chargePayments, waivers and manualDeliveries (invoices payments and reminders design D8, D9), and its reminders and nextAction — what the reminder engine says to do next today (D8, D10). An issued invoice also carries hold and handoff, its latest hold and hand-off, live or ended (D11); each is absent when the invoice was never held or handed off. Every issued document carries deliveries (D4) and its EHF state, ehf (EHF and KID design D10); sendDefaults is answered only by GET /invoices/{id} and the send, for a caller who may send — and in its place customerAnonymised when the customer is anonymised. An issued invoice with a live pay link carries payLink (invoices payments and reminders design D15), and every issued invoice its Vipps payment attempts, paymentAttempts (D16). */
+        /** @description One document (D4): every column in camelCase, its lines and its VAT summaries. On a draft the VAT summaries and totals are computed afresh — an invoice draft's with the rates in force today, which the issue resolves again for the issue date; a credit-note draft's at its original lines' snapshot rates, with each line's and the invoice's remainder squared as its issue will — and allowedIssueDates lists the dates it may be issued with today. warnings are never refusals: customer_currency_differs, issued_late (never on a credit note, which keeps its original's delivery), vat_code_not_valid (a line's code has no rate period covering today; the issue would refuse it), credit_exceeds_invoice, credit_exceeds_line, ehf_buyer_reference_missing (EHF and KID design D8: a draft whose customer's billing profile prefers EHF or whose customer has a Peppol id — or, on a credit-note draft, whose buyer snapshot has a Peppol id — with neither yourReference nor orderReference set — Peppol needs one, and neither can change after the issue), and for a document that bills work (invoices work design D2) line_differs_from_sources (on a draft, a line's net differs from its sources' amounts summed and rounded to øre), sources_released (on a save's answer, work the save dropped — named in releasedSources), source_changed and source_not_invoiceable (on GET of an invoice draft, for a caller holding invoices:create: a source's billing facts changed since the draft took them, or it is no longer invoiceable — the issue would refuse either); each of the last three also on the line's own warnings; on an invoice draft that is a final settlement (invoices work design D7) deduction_exceeds_invoice (a deduction line takes more than its a-konto has left at its VAT code) and invoice_total_not_positive (its gross is zero or less) — the issue refuses either. A deduction line is totalled at its a-konto line's snapshot (category and rate), never at today's rate of its code. A document that bills work carries sources, its count by state, and each of its lines its sources[]. An invoice carries creditedAmount (its issued credit notes' gross), uncreditedAmount and creditNotes; a credit note carries credits. Every document carries state (D3); an issued invoice also carries paidAmount, openAmount and payments, none of which a draft or a credit note carries; what a credit note credits beyond the open amount moves to the customer's credit (invoices phase 6 design I10). An issued invoice also carries charges, chargePayments, waivers and manualDeliveries (invoices payments and reminders design D8, D9), and its reminders and nextAction — what the reminder engine says to do next today (D8, D10). An issued invoice also carries hold and handoff, its latest hold and hand-off, live or ended (D11); each is absent when the invoice was never held or handed off. Every issued document carries deliveries (D4) and its EHF state, ehf (EHF and KID design D10); sendDefaults is answered only by GET /invoices/{id} and the send, for a caller who may send — and in its place customerAnonymised when the customer is anonymised. An issued invoice with a live pay link carries payLink (invoices payments and reminders design D15), and every issued invoice its Vipps payment attempts, paymentAttempts (D16). */
         InvoicesInvoiceResponse: {
             allowedIssueDates?: string[];
             buyer?: components["schemas"]["InvoicesBuyer"];
@@ -3680,7 +3892,7 @@ export interface components {
             orderReference: string;
             /**
              * Format: double
-             * @description On an issued invoice, grossTotal less creditedAmount less paidAmount less writtenOffAmount. It may be negative — a credit note issued after a payment — and refundDue is then what it is short of zero.
+             * @description On an issued invoice, grossTotal less creditedAmount less paidAmount less writtenOffAmount, plus what a credit note's surplus moved to the customer's credit (invoices phase 6 design I10), so not below zero once the surplus has moved.
              */
             openAmount?: number;
             ourReference: string;
@@ -3710,11 +3922,6 @@ export interface components {
             projectId?: number;
             /** @description The project's code, a snapshot taken when the document's derived project last became this one — what the PDF prints and the EHF carries (BT-11 on an invoice, an AdditionalDocumentReference with DocumentTypeCode 50 on a credit note). Present exactly when projectId is. */
             projectReference?: string;
-            /**
-             * Format: double
-             * @description On an issued invoice whose openAmount is below zero, the amount owed back (−openAmount); absent otherwise. The figure only — refunds are not a flow in this phase.
-             */
-            refundDue?: number;
             /** @description On a save's answer only, the work the save dropped (invoices work design D2) — removed from every line, its line removed, the customer changed, or no longer invoiceable on a refresh — with the warning sources_released. Absent when nothing was dropped. */
             releasedSources?: components["schemas"]["InvoicesSourceRef"][];
             /** @description On an issued invoice, every reminder letter (invoices payments and reminders design D10), any status, by sequence. */
@@ -3922,10 +4129,10 @@ export interface components {
             /** Format: uuid */
             removedByUserId?: string;
             /**
-             * @description manual, ocr, camt054, vipps (a Vipps capture, which paymentAttemptId names) or bank_feed (a line the bank feed fetched, which bankTransactionId names).
+             * @description manual, ocr, camt054, vipps (a Vipps capture, which paymentAttemptId names), bank_feed (a line the bank feed fetched, which bankTransactionId names) or credit (the customer's credit applied to the invoice, invoices phase 6 design I11; no money moved).
              * @enum {string}
              */
-            source: "manual" | "ocr" | "camt054" | "vipps" | "bank_feed";
+            source: "manual" | "ocr" | "camt054" | "vipps" | "bank_feed" | "credit";
             /**
              * Format: int64
              * @description On a recovered payment, the write-off it recovers.
@@ -3976,10 +4183,11 @@ export interface components {
         InvoicesPaymentRemovalRequest: {
             reason: string;
         };
-        /** @description POST /invoices/{id}/payments' body (D2). paidOn is the day the money arrived: on or after the invoice's issue date and not after today in the business time zone. amount is greater than 0 with at most 2 decimals, at most 99999999999.99, in the invoice's currency, and at most its open amount (409 payment_exceeds_open). reference (the bank's or the payer's) holds at most 100 characters and note at most 500, both trimmed; absent is empty. kind (default payment) recovered registers money that arrived after a write-off (accounting design R4): the invoice needs a standing write-off (409 no_write_off), and the amount is at most what is written off less what is already recovered (409 recovery_exceeds_written_off, with openAmount the room left). */
+        /** @description POST /invoices/{id}/payments' body (D2). paidOn is the day the money arrived: on or after the invoice's issue date and not after today in the business time zone. amount is greater than 0 with at most 2 decimals, at most 99999999999.99, in the invoice's currency, and at most its open amount (409 payment_exceeds_open). reference (the bank's or the payer's) holds at most 100 characters and note at most 500, both trimmed; absent is empty. kind (default payment) recovered registers money that arrived after a write-off (accounting design R4): the invoice needs a standing write-off (409 no_write_off), and the amount is at most what is written off less what is already recovered (409 recovery_exceeds_written_off, with openAmount the room left). keepRestAsCredit (default false; invoices phase 6 design I9) takes an amount above what is open: the payment registers what is open and the rest is kept as the customer's credit, an overpayment under the same reference and note. With nothing open it is invoice_settled all the same — money for a settled invoice is kept as credit from the exception queue — and a recovered payment refuses it (400 on keepRestAsCredit). */
         InvoicesPaymentRequest: {
             /** Format: double */
             amount: number;
+            keepRestAsCredit?: boolean;
             kind?: components["schemas"]["InvoicesPaymentKind"];
             note?: string;
             /** Format: date */
@@ -4523,10 +4731,11 @@ export interface components {
             data: components["schemas"]["InvoicesInvoiceListItem"][];
             pagination: components["schemas"]["PaginationMetadata"];
         };
-        /** @description POST /invoices/{id}/issue's body (D6). issueDate is today in the business time zone when omitted; the only other date allowed is the last day of the previous month, while today's calendar day is 15 or less and the delivery ended on or before it — and never a date before the latest issue date of any issued document. */
+        /** @description POST /invoices/{id}/issue's body (D6). issueDate is today in the business time zone when omitted; the only other date allowed is the last day of the previous month, while today's calendar day is 15 or less and the delivery ended on or before it — and never a date before the latest issue date of any issued document. useCredit (default false; invoices phase 6 design I11) applies the customer's credit in the invoice's currency to it once it is issued — the lesser of the credit and the gross, as the issuer, who also needs invoices:payments — in a transaction of its own after the issue's; when that fails, or the issuer may not apply credit, the issue stands and its answer carries the warning credit_not_applied. A credit note ignores it. */
         InvoicesIssueRequest: {
             /** Format: date */
             issueDate?: string;
+            useCredit?: boolean;
         };
         /** @description One line of a quick invoice, by a draft line's rules (D5) — description 1-500 characters; quantity greater than 0 with at most 3 decimals; unitPrice 0 or more with at most 4; discountPercent 0-100 with at most 2 (0 when omitted); unit at most 20; vatCodeId an active code. */
         InvoicesQuickInvoiceLine: {
@@ -4656,7 +4865,7 @@ export interface components {
          *
          *     `invoiceOverdue`: the 20 most overdue issued invoices — overdue today, oldest due date first — each until it is paid or credited; id is 'invoiceOverdue/<invoiceId>', entityId the invoice id, title the buyer's name, occurredAt the day after its effective due date E (the due date moved off a weekend or a public holiday) at UTC midnight. An invoice due on a Saturday is not an item before the Tuesday after it.
          *
-         *     `invoiceRefundDue`: every issued invoice whose open amount is below zero — a credit note issued after a payment — or whose charge payments exceed every charge less its waivers (the charges' refundDue); id 'invoiceRefundDue/<invoiceId>', entityId the invoice id, title the buyer's name, occurredAt when its money last moved (the latest credit note issued, payment or charge payment registered, or waiver made). It clears when what was paid back outside Vantigo is recorded by removing the payment or charge payment with a reason.
+         *     `invoiceRefundDue`: every issued invoice whose charge payments exceed every charge less its waivers (the charges' refundDue) — a principal paid twice or credited after its payment is the customer's credit instead (invoices phase 6 design I10); id 'invoiceRefundDue/<invoiceId>', entityId the invoice id, title the buyer's name, occurredAt when its money last moved (the latest credit note issued, payment or charge payment registered, or waiver made). It clears when what was paid back outside Vantigo is recorded by removing the charge payment with a reason.
          *
          *     `bankTransactionsOpen`: one per bank file with lines pending, exception or duplicate; id 'bankTransactionsOpen/<bankFileId>', entityId the bank file id, title the file's booking days ('2026-10-01' or '2026-10-01 – 2026-10-07'), occurredAt its upload, count its open lines. It clears when every line is matched or resolved.
          *
@@ -5062,14 +5271,6 @@ export interface components {
             title?: string | null;
             type?: string | null;
         };
-        ProblemDetails: {
-            detail?: string | null;
-            instance?: string | null;
-            /** Format: int32 */
-            status?: number | null;
-            title?: string | null;
-            type?: string | null;
-        };
         PaginationMetadata: {
             hasNextPage: boolean;
             hasPreviousPage: boolean;
@@ -5081,6 +5282,14 @@ export interface components {
             totalCount: number;
             /** Format: int32 */
             totalPages: number;
+        };
+        ProblemDetails: {
+            detail?: string | null;
+            instance?: string | null;
+            /** Format: int32 */
+            status?: number | null;
+            title?: string | null;
+            type?: string | null;
         };
     };
     responses: never;
@@ -6388,6 +6597,190 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    getInvoicesCustomersByCustomerIdCredit: {
+        parameters: {
+            query?: {
+                page?: number;
+                pageSize?: number;
+            };
+            header?: never;
+            path: {
+                customerId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesCustomerCredit"];
+                };
+            };
+            /** @description Bad Request — page or pageSize is out of range. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postInvoicesCustomersByCustomerIdCreditRefunds: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                customerId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoicesCreditRefundRequest"];
+            };
+        };
+        responses: {
+            /** @description OK — the customer's credit with the refund. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesCustomerCredit"];
+                };
+            };
+            /** @description Bad Request — a field did not pass; the errors name it: refundedOn, amount, currency (NOK only), bankAccount (11 digits and a valid check digit), reference, note. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — credit_exceeds_balance (with balance). Nothing is written. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
+    postInvoicesCustomersByCustomerIdCreditRefundsByRefundIdRemove: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                customerId: number;
+                refundId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoicesCreditRefundRemovalRequest"];
+            };
+        };
+        responses: {
+            /** @description OK — the customer's credit with the refund removed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesCustomerCredit"];
+                };
+            };
+            /** @description Bad Request — on reason, empty or more than 200 characters. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — the customer has no refund with that id. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — refund_removed. Nothing is written. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
             };
         };
     };
@@ -8299,6 +8692,75 @@ export interface operations {
             };
         };
     };
+    postInvoicesByIdApplyCredit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoicesApplyCreditRequest"];
+            };
+        };
+        responses: {
+            /** @description OK — the invoice with the credit applied. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesInvoiceResponse"];
+                };
+            };
+            /** @description Bad Request — a field did not pass; the errors name it. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no document has that id. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — credit_note_no_payments, invoice_draft, invoice_settled (nothing is open), credit_exceeds_open (with openAmount) or credit_exceeds_balance (with balance). Nothing is written. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
     postInvoicesByIdPayments: {
         parameters: {
             query?: never;
@@ -8427,7 +8889,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — payment_removed (the registration is already removed). */
+            /** @description Conflict — payment_removed (removed already) or credit_exceeds_balance (with balance: the overpayment kept beside it was used). Nothing is written. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -10715,6 +11177,75 @@ export interface operations {
             };
         };
     };
+    postInvoicesBankTransactionsByIdKeepAsCredit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoicesKeepAsCreditRequest"];
+            };
+        };
+        responses: {
+            /** @description OK — the line as it now stands, with its events. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesBankTransaction"];
+                };
+            };
+            /** @description Bad Request — on invoiceId or note. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no bank line has that id. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — bank_transaction_not_open, bank_transaction_not_applicable, bank_transaction_reversed, allocation_not_an_invoice, paid_before_issue or allocation_exceeds_transaction. Nothing is written. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
     postInvoicesBankTransactionsByIdHandleReversal: {
         parameters: {
             query?: never;
@@ -10773,7 +11304,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — bank_transaction_not_open, bank_transaction_not_applicable, reversal_payment_required or payment_removed. Nothing is written. */
+            /** @description Conflict — bank_transaction_not_open, bank_transaction_not_applicable, reversal_payment_required, payment_removed, or credit_exceeds_balance (with balance: a credit it takes back was used). Nothing is written. */
             409: {
                 headers: {
                     [name: string]: unknown;

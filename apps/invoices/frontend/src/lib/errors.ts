@@ -25,7 +25,8 @@ export const refusalProblem = (error: unknown): Record<string, unknown> =>
  * refusal names put into the words: the dates an issue may take
  * (`{{dates}}`, each written by `date`), the line (`{{line}}`), the
  * customer a merged one went into (`{{mergedInto}}`), the open amount a
- * payment exceeded (`{{openAmount}}`, written by `money`), the charges
+ * payment exceeded (`{{openAmount}}`, written by `money`), the customer's
+ * credit a movement exceeded (`{{balance}}`, written by `money`), the charges
  * outstanding a charge payment exceeded (`{{chargesOutstanding}}`, written by
  * `money`), the earlier import a bank file repeats (`{{bankFileId}}`,
  * `{{uploadedAt}}` written by `instant`, `{{uploadedBy}}`), the collection
@@ -63,6 +64,7 @@ export const refusalMessage = (
       line: problem.linePosition ?? "",
       mergedInto: problem.mergedInto ?? "",
       openAmount: typeof problem.openAmount === "number" ? money(problem.openAmount) : "",
+      balance: typeof problem.balance === "number" ? money(problem.balance) : "",
       chargesOutstanding: typeof problem.chargesOutstanding === "number" ? money(problem.chargesOutstanding) : "",
       bankFileId: problem.bankFileId ?? "",
       uploadedAt: typeof problem.uploadedAt === "string" ? instant(problem.uploadedAt) : "",
