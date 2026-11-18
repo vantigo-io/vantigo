@@ -918,6 +918,38 @@ An agent acts under an **agent grant**, a record identity keeps for one run of o
 An installation without virtual employees never has a user of kind `agent` or a row in
 `identity.agent_grants`.
 
+## Integration users
+
+An **integration** is the account of an external application that calls Vantigo's API. Its
+account in identity is a user of kind `integration`, beside `person` and `agent`. It holds
+roles as a person does, and it acts only with an API key on the request, never through a
+session.
+
+- **What an integration never has.** A password, an authenticator, a session, a passkey, an
+  invitation, a link to an identity provider, a SCIM mapping, a delegation or the
+  stewardship of a role, and never the **Owner** or **SystemAdmin** role. Identity refuses
+  each, and the database refuses them again: the agents' guards cover every user who is not
+  a person (`00194_identity_integration_kind`). It cannot be a shared station's operator.
+- **Its roles have one writer.** An integration's roles are changed only on its own screen,
+  never in Roles & access or an access group, so a steward of a role cannot widen what an
+  application may do. The database refuses a role written any other way.
+- **Not a person anywhere.** The Owner's user operations and Roles & access answer `404`
+  for an integration, and neither lists one. The user directory other modules read never
+  offers one in a search or a permission holders' list, and connecting users to the
+  workforce provider never proposes one. A lookup by id does answer it, with kind
+  `integration`, so a record it made can name it, with an **API** badge on its avatar. It
+  cannot be mentioned in a note, notified by an agent or offered as a conversation's
+  assignee.
+- **What a key may call.** Only operations behind a permission or `anonymous` rule, and
+  never one the contract marks `x-vantigo-api: never`: identity's, Entra's, Google's,
+  Meta's, the Assistant's and the agents' operations, browser flows, provider webhooks,
+  public pages and operations whose later work runs as the person who started it. No key
+  holds an `identity:` or `agents:` permission, or one that cannot be delegated, whatever
+  the integration's roles say.
+
+Integrations and their API keys are made on the **API access** screen, which comes with the
+next part of this feature; until then an installation has no user of kind `integration`.
+
 ## Rate limits
 
 Authentication endpoints are rate limited by a fixed-window limiter whose counters

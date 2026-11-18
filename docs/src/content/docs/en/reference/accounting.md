@@ -1930,3 +1930,14 @@ bank](#status-codes-of-the-bank).
 ## Endpoints
 
 Every operation, with its request, its responses and the permission it is checked against, is in the generated API reference (`/en/reference/api/accounting/`), built from the contract.
+
+## API keys
+
+`previewAccountingBankCsv` and `previewAccountingVoucher` write nothing, and are marked
+`x-vantigo-api: read`: a read-only API key may call them. `accounting:close` cannot be
+delegated, so no API key holds it, and every operation that needs it is `x-vantigo-api:
+never`: the chart and its groupings, tax code rates, bank accounts, bank rules and the CSV
+mapping, posting rules, roles, the opening balances, the lock, setting up the books, the VAT
+term's close, reopen and unfile, and the SAF-T import. See [integration
+users](/en/admin/authentication/#integration-users), and the marks' rules in [module
+boundaries](/en/contributing/module-boundaries/#the-rules).

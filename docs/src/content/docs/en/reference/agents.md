@@ -741,3 +741,12 @@ The runner (an API-process runner, not a worker) finishes the hand-offs the work
 
 Sending a Vantigo document as an attachment is not built. Communications records no `Via.ApprovedBy`
 itself: the reviewer is named by the agents action log and the grant.
+
+## API keys
+
+Every operation of the agents module is `x-vantigo-api: never`, and no key holds an
+`agents:` permission: an external application neither runs, reviews nor configures a virtual
+employee. An integration is never an agent's recipient, hand-off person or the target of its
+notify tool, which ask for a person (`not_a_person`). See [integration
+users](/en/admin/authentication/#integration-users), and the marks' rules in [module
+boundaries](/en/contributing/module-boundaries/#the-rules).

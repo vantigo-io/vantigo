@@ -7,10 +7,11 @@ SELECT id, display_name, is_disabled, coalesce(preferred_language, '')::text AS 
 FROM identity.users WHERE id = ANY($1::uuid[]);
 
 -- name: DirectorySearchUsers :many
--- DirectorySearchUsers leaves out users of kind agent unless include_agents.
+-- DirectorySearchUsers leaves out users of kind agent unless include_agents,
+-- and users of kind integration always (API access design K4).
 SELECT id, display_name, is_disabled, coalesce(preferred_language, '')::text AS preferred_language, kind
 FROM identity.users
-WHERE NOT is_disabled AND (sqlc.arg(include_agents)::boolean OR kind = 'person') AND display_name ILIKE '%' || sqlc.arg(pattern)::text || '%' ESCAPE '\'
+WHERE NOT is_disabled AND (kind = 'person' OR (sqlc.arg(include_agents)::boolean AND kind = 'agent')) AND display_name ILIKE '%' || sqlc.arg(pattern)::text || '%' ESCAPE '\'
 ORDER BY display_name, id
 LIMIT sqlc.arg(max_rows);
 
@@ -23,7 +24,8 @@ LIMIT sqlc.arg(max_rows);
 -- access.go's permitted), or through a role among their direct roles and the
 -- roles mapped to every active access group they are effectively a member of
 -- — exactly EffectivePermissionForUser's rule (roles.sql). A delegation
--- grants no key. A user of kind agent is left out unless include_agents.
+-- grants no key. A user of kind agent is left out unless include_agents, and
+-- a user of kind integration always (API access design K4).
 SELECT u.id, u.display_name, u.email, coalesce(u.preferred_language, '')::text AS preferred_language, u.kind
 FROM identity.users u
 CROSS JOIN LATERAL (
@@ -36,7 +38,7 @@ CROSS JOIN LATERAL (
 ) o
 LEFT JOIN identity.scim_user_mappings m ON m.user_id = u.id
 WHERE NOT u.is_disabled
-  AND (@include_agents::boolean OR u.kind = 'person')
+  AND (u.kind = 'person' OR (@include_agents::boolean AND u.kind = 'agent'))
   AND u.pending_since IS NULL
   AND (NOT @scim_enabled::boolean OR m.upstream_active IS NOT FALSE OR o.is_owner)
   AND (o.is_owner OR EXISTS (

@@ -2753,6 +2753,7 @@ paths:
             tags:
                 - Authorization
             x-vantigo-access: policy:OwnerManagement
+            x-vantigo-api: never
     /api/v1/identity/access/catalog:
         get:
             operationId: getIdentityAccessCatalog
@@ -2781,6 +2782,7 @@ paths:
             tags:
                 - Authorization
             x-vantigo-access: policy:AuthorizationManagement
+            x-vantigo-api: never
     /api/v1/identity/access/delegations:
         get:
             operationId: getIdentityAccessDelegations
@@ -2809,6 +2811,7 @@ paths:
             tags:
                 - Authorization
             x-vantigo-access: policy:OwnerManagement
+            x-vantigo-api: never
         post:
             operationId: postIdentityAccessDelegations
             requestBody:
@@ -2855,6 +2858,7 @@ paths:
             tags:
                 - Authorization
             x-vantigo-access: policy:OwnerManagement
+            x-vantigo-api: never
     /api/v1/identity/access/delegations/{id}:
         put:
             operationId: putIdentityAccessDelegationsById
@@ -2909,6 +2913,7 @@ paths:
             tags:
                 - Authorization
             x-vantigo-access: policy:OwnerManagement
+            x-vantigo-api: never
     /api/v1/identity/access/delegations/{id}/revoke:
         post:
             operationId: postIdentityAccessDelegationsByIdRevoke
@@ -2957,6 +2962,7 @@ paths:
             tags:
                 - Authorization
             x-vantigo-access: policy:OwnerManagement
+            x-vantigo-api: never
     /api/v1/identity/access/groups:
         get:
             operationId: getIdentityAccessGroups
@@ -2985,6 +2991,7 @@ paths:
             tags:
                 - Identity control plane
             x-vantigo-access: policy:OwnerManagement
+            x-vantigo-api: never
         post:
             operationId: postIdentityAccessGroups
             requestBody:
@@ -3029,6 +3036,7 @@ paths:
             tags:
                 - Identity control plane
             x-vantigo-access: policy:OwnerManagement
+            x-vantigo-api: never
     /api/v1/identity/access/groups/{groupId}/members/{userId}:
         delete:
             operationId: deleteIdentityAccessGroupsByGroupIdMembersByUserId
@@ -3089,6 +3097,7 @@ paths:
             tags:
                 - Identity control plane
             x-vantigo-access: policy:OwnerManagement
+            x-vantigo-api: never
         post:
             operationId: postIdentityAccessGroupsByGroupIdMembersByUserId
             parameters:
@@ -3148,6 +3157,7 @@ paths:
             tags:
                 - Identity control plane
             x-vantigo-access: policy:OwnerManagement
+            x-vantigo-api: never
         put:
             operationId: putIdentityAccessGroupsByGroupIdMembersByUserId
             parameters:
@@ -3207,6 +3217,7 @@ paths:
             tags:
                 - Identity control plane
             x-vantigo-access: policy:OwnerManagement
+            x-vantigo-api: never
     /api/v1/identity/access/groups/{groupId}/role-mappings/{roleId}:
         delete:
             operationId: deleteIdentityAccessGroupsByGroupIdRoleMappingsByRoleId
@@ -3267,6 +3278,7 @@ paths:
             tags:
                 - Identity control plane
             x-vantigo-access: policy:OwnerManagement
+            x-vantigo-api: never
         post:
             operationId: postIdentityAccessGroupsByGroupIdRoleMappingsByRoleId
             parameters:
@@ -3326,6 +3338,7 @@ paths:
             tags:
                 - Identity control plane
             x-vantigo-access: policy:OwnerManagement
+            x-vantigo-api: never
         put:
             operationId: putIdentityAccessGroupsByGroupIdRoleMappingsByRoleId
             parameters:
@@ -3385,6 +3398,7 @@ paths:
             tags:
                 - Identity control plane
             x-vantigo-access: policy:OwnerManagement
+            x-vantigo-api: never
     /api/v1/identity/access/groups/{id}:
         delete:
             operationId: deleteIdentityAccessGroupsById
@@ -3435,6 +3449,7 @@ paths:
             tags:
                 - Identity control plane
             x-vantigo-access: policy:OwnerManagement
+            x-vantigo-api: never
         get:
             operationId: getIdentityAccessGroupsById
             parameters:
@@ -3469,6 +3484,7 @@ paths:
             tags:
                 - Identity control plane
             x-vantigo-access: policy:OwnerManagement
+            x-vantigo-api: never
         put:
             operationId: putIdentityAccessGroupsById
             parameters:
@@ -3522,6 +3538,7 @@ paths:
             tags:
                 - Identity control plane
             x-vantigo-access: policy:OwnerManagement
+            x-vantigo-api: never
     /api/v1/identity/access/me:
         get:
             operationId: getIdentityAccessMe
@@ -3544,6 +3561,7 @@ paths:
             tags:
                 - AuthorizationManagementEndpoints
             x-vantigo-access: session
+            x-vantigo-api: never
     /api/v1/identity/access/roles:
         get:
             operationId: getIdentityAccessRoles
@@ -3572,6 +3590,7 @@ paths:
             tags:
                 - Authorization
             x-vantigo-access: policy:AuthorizationManagement
+            x-vantigo-api: never
         post:
             operationId: postIdentityAccessRoles
             requestBody:
@@ -3618,6 +3637,7 @@ paths:
             tags:
                 - Authorization
             x-vantigo-access: policy:AuthorizationManagement
+            x-vantigo-api: never
     /api/v1/identity/access/roles/{id}:
         delete:
             operationId: deleteIdentityAccessRolesById
@@ -3664,6 +3684,7 @@ paths:
             tags:
                 - Authorization
             x-vantigo-access: policy:AuthorizationManagement
+            x-vantigo-api: never
         put:
             operationId: putIdentityAccessRolesById
             parameters:
@@ -3719,6 +3740,7 @@ paths:
             tags:
                 - Authorization
             x-vantigo-access: policy:AuthorizationManagement
+            x-vantigo-api: never
     /api/v1/identity/access/roles/{id}/permissions:
         put:
             operationId: putIdentityAccessRolesByIdPermissions
@@ -3775,6 +3797,7 @@ paths:
             tags:
                 - Authorization
             x-vantigo-access: policy:AuthorizationManagement
+            x-vantigo-api: never
     /api/v1/identity/access/users:
         get:
             operationId: getIdentityAccessUsers
@@ -3803,6 +3826,7 @@ paths:
             tags:
                 - Authorization
             x-vantigo-access: policy:AuthorizationManagement
+            x-vantigo-api: never
     /api/v1/identity/access/users/{id}:
         get:
             operationId: getIdentityAccessUsersById
@@ -3838,6 +3862,7 @@ paths:
             tags:
                 - Authorization
             x-vantigo-access: policy:AuthorizationManagement
+            x-vantigo-api: never
     /api/v1/identity/access/users/{id}/roles:
         put:
             operationId: putIdentityAccessUsersByIdRoles
@@ -3894,6 +3919,7 @@ paths:
             tags:
                 - Authorization
             x-vantigo-access: policy:AuthorizationManagement
+            x-vantigo-api: never
     /api/v1/identity/account:
         get:
             operationId: getIdentityAccount
@@ -3920,6 +3946,7 @@ paths:
             tags:
                 - Personal account settings
             x-vantigo-access: policy:ActiveAccount
+            x-vantigo-api: never
         put:
             operationId: putIdentityAccount
             requestBody:
@@ -3958,6 +3985,7 @@ paths:
             tags:
                 - Personal account settings
             x-vantigo-access: policy:ActiveAccount
+            x-vantigo-api: never
     /api/v1/identity/account/avatar:
         delete:
             operationId: deleteIdentityAccountAvatar
@@ -3986,6 +4014,7 @@ paths:
             tags:
                 - Personal account settings
             x-vantigo-access: policy:ActiveAccount
+            x-vantigo-api: never
         get:
             operationId: getIdentityAccountAvatar
             responses:
@@ -4018,6 +4047,7 @@ paths:
             tags:
                 - Personal account settings
             x-vantigo-access: policy:ActiveAccount
+            x-vantigo-api: never
         post:
             operationId: postIdentityAccountAvatar
             requestBody:
@@ -4067,6 +4097,7 @@ paths:
             tags:
                 - Personal account settings
             x-vantigo-access: policy:ActiveAccount
+            x-vantigo-api: never
         put:
             operationId: putIdentityAccountAvatar
             requestBody:
@@ -4116,6 +4147,7 @@ paths:
             tags:
                 - Personal account settings
             x-vantigo-access: policy:ActiveAccount
+            x-vantigo-api: never
     /api/v1/identity/account/mfa:
         get:
             operationId: getIdentityAccountMfa
@@ -4152,6 +4184,7 @@ paths:
             tags:
                 - AuthAccountEndpoints
             x-vantigo-access: policy:ActiveAccount
+            x-vantigo-api: never
     /api/v1/identity/account/mfa/disable:
         post:
             operationId: postIdentityAccountMfaDisable
@@ -4207,6 +4240,7 @@ paths:
             tags:
                 - AuthAccountEndpoints
             x-vantigo-access: policy:ActiveAccount
+            x-vantigo-api: never
             x-vantigo-assistant: never
     /api/v1/identity/account/mfa/enable:
         post:
@@ -4263,6 +4297,7 @@ paths:
             tags:
                 - AuthAccountEndpoints
             x-vantigo-access: policy:ActiveAccount
+            x-vantigo-api: never
             x-vantigo-assistant: never
     /api/v1/identity/account/mfa/recovery-codes:
         post:
@@ -4319,6 +4354,7 @@ paths:
             tags:
                 - AuthAccountEndpoints
             x-vantigo-access: policy:ActiveAccount
+            x-vantigo-api: never
             x-vantigo-assistant: never
     /api/v1/identity/account/mfa/setup:
         get:
@@ -4356,6 +4392,7 @@ paths:
             tags:
                 - AuthAccountEndpoints
             x-vantigo-access: policy:ActiveAccount
+            x-vantigo-api: never
             x-vantigo-assistant: never
         post:
             operationId: postIdentityAccountMfaSetup
@@ -4411,6 +4448,7 @@ paths:
             tags:
                 - AuthAccountEndpoints
             x-vantigo-access: policy:ActiveAccount
+            x-vantigo-api: never
             x-vantigo-assistant: never
     /api/v1/identity/account/passkeys:
         get:
@@ -4446,6 +4484,7 @@ paths:
             tags:
                 - Personal account settings
             x-vantigo-access: policy:ActiveAccount
+            x-vantigo-api: never
     /api/v1/identity/account/passkeys/{credentialId}:
         delete:
             operationId: deleteIdentityAccountPasskeysByCredentialId
@@ -4505,6 +4544,7 @@ paths:
             tags:
                 - Personal account settings
             x-vantigo-access: policy:ActiveAccount
+            x-vantigo-api: never
             x-vantigo-assistant: never
     /api/v1/identity/account/passkeys/begin:
         post:
@@ -4567,6 +4607,7 @@ paths:
             tags:
                 - Personal account settings
             x-vantigo-access: policy:ActiveAccount
+            x-vantigo-api: never
             x-vantigo-assistant: never
     /api/v1/identity/account/passkeys/complete:
         post:
@@ -4623,6 +4664,7 @@ paths:
             tags:
                 - Personal account settings
             x-vantigo-access: policy:ActiveAccount
+            x-vantigo-api: never
             x-vantigo-assistant: never
     /api/v1/identity/account/password:
         post:
@@ -4679,6 +4721,7 @@ paths:
             tags:
                 - Personal account settings
             x-vantigo-access: policy:ActiveAccount
+            x-vantigo-api: never
             x-vantigo-assistant: never
     /api/v1/identity/account/pin:
         delete:
@@ -4703,6 +4746,7 @@ paths:
             tags:
                 - Personal account settings
             x-vantigo-access: policy:ActiveAccount
+            x-vantigo-api: never
             x-vantigo-assistant: never
         get:
             description: Whether the caller has set a PIN for shared shop-floor stations, and when. The PIN itself is never answered.
@@ -4730,6 +4774,7 @@ paths:
             tags:
                 - Personal account settings
             x-vantigo-access: policy:ActiveAccount
+            x-vantigo-api: never
             x-vantigo-assistant: never
         put:
             description: Sets the caller's six-digit PIN for shared shop-floor stations (manufacturing phase 2 M132). It is hashed with argon2id over an HMAC of the PIN under a key from APP_SECRET, and is never a sign-in credential. The request needs the current password, or a session that signed in within the last 10 minutes. Audited pin_set.
@@ -4776,6 +4821,7 @@ paths:
             tags:
                 - Personal account settings
             x-vantigo-access: policy:ActiveAccount
+            x-vantigo-api: never
             x-vantigo-assistant: never
     /api/v1/identity/account/profile:
         patch:
@@ -4816,6 +4862,7 @@ paths:
             tags:
                 - Personal account settings
             x-vantigo-access: policy:ActiveAccount
+            x-vantigo-api: never
         put:
             operationId: putIdentityAccountProfile
             requestBody:
@@ -4854,6 +4901,7 @@ paths:
             tags:
                 - Personal account settings
             x-vantigo-access: policy:ActiveAccount
+            x-vantigo-api: never
     /api/v1/identity/account/sessions/revoke:
         post:
             operationId: postIdentityAccountSessionsRevoke
@@ -4880,6 +4928,7 @@ paths:
             tags:
                 - Personal account settings
             x-vantigo-access: policy:ActiveAccount
+            x-vantigo-api: never
             x-vantigo-assistant: never
     /api/v1/identity/bootstrap:
         post:
@@ -4924,6 +4973,7 @@ paths:
             tags:
                 - Authentication
             x-vantigo-access: anonymous
+            x-vantigo-api: never
     /api/v1/identity/bootstrap-status:
         get:
             operationId: getIdentityBootstrapStatus
@@ -4938,6 +4988,7 @@ paths:
             tags:
                 - Authentication
             x-vantigo-access: anonymous
+            x-vantigo-api: never
     /api/v1/identity/invitations/accept:
         post:
             operationId: postIdentityInvitationsAccept
@@ -4975,6 +5026,7 @@ paths:
             tags:
                 - AuthAccountEndpoints
             x-vantigo-access: anonymous
+            x-vantigo-api: never
     /api/v1/identity/invitations/validate:
         get:
             operationId: getIdentityInvitationsValidate
@@ -5004,6 +5056,7 @@ paths:
             tags:
                 - AuthAccountEndpoints
             x-vantigo-access: anonymous
+            x-vantigo-api: never
     /api/v1/identity/login:
         post:
             operationId: postIdentityLogin
@@ -5047,6 +5100,7 @@ paths:
             tags:
                 - Authentication
             x-vantigo-access: anonymous
+            x-vantigo-api: never
     /api/v1/identity/login/2fa:
         post:
             operationId: postIdentityLogin2fa
@@ -5090,6 +5144,7 @@ paths:
             tags:
                 - Authentication
             x-vantigo-access: anonymous
+            x-vantigo-api: never
     /api/v1/identity/logout:
         post:
             operationId: postIdentityLogout
@@ -5116,6 +5171,7 @@ paths:
             tags:
                 - Authentication
             x-vantigo-access: session
+            x-vantigo-api: never
     /api/v1/identity/oidc/callback:
         get:
             description: The workforce OpenID Connect redirect URI, served by the authentication handler rather than an endpoint (so the .NET OpenAPI dump omits it). Exchanges the authorization code, then redirects to the redirect URI the challenge set, or to /sign-in?error=… on failure.
@@ -5146,6 +5202,7 @@ paths:
                                 type: string
             summary: Finish an OpenID Connect sign-in (redirect)
             x-vantigo-access: anonymous
+            x-vantigo-api: never
         post:
             description: The same redirect URI for the form_post response mode (the ASP.NET default), with the authorization response in a form body.
             operationId: postIdentityOidcCallback
@@ -5173,6 +5230,7 @@ paths:
                                 type: string
             summary: Finish an OpenID Connect sign-in (form post)
             x-vantigo-access: anonymous
+            x-vantigo-api: never
     /api/v1/identity/oidc/challenge:
         get:
             operationId: getIdentityOidcChallenge
@@ -5189,6 +5247,7 @@ paths:
             tags:
                 - Authentication
             x-vantigo-access: anonymous
+            x-vantigo-api: never
     /api/v1/identity/oidc/complete:
         get:
             operationId: getIdentityOidcComplete
@@ -5205,6 +5264,7 @@ paths:
             tags:
                 - Authentication
             x-vantigo-access: anonymous
+            x-vantigo-api: never
     /api/v1/identity/owner/ai/settings:
         get:
             description: 'The installation''s AI plan and the model each AI task uses: the provider, the models the plan allows and that a key is configured (instance configuration, shown and never edited, the key never sent), and the tasks the enabled modules perform grouped by module, each with the model it uses now, the module''s recommendation and where the model comes from. Answered 404 ai_not_configured while the instance has no AI provider, which is how the AI models page knows to be absent. Read from the table, not the cache, so an Owner sees their own save at once.'
@@ -5248,6 +5308,7 @@ paths:
             tags:
                 - AI models
             x-vantigo-access: policy:Owner
+            x-vantigo-api: never
     /api/v1/identity/owner/ai/tasks/{key}:
         put:
             description: Chooses the model an AI task uses, under If-Match on the task's version. The model must be one the plan allows (AI_MODELS), else 422 model_not_allowed; a key no enabled module declares is 404 not_found; an instance with no AI provider is 404 ai_not_configured. Audited ai-task-model.changed with the model before and after (the model the task used, and the one it uses now); every process reads the change within 20 seconds, this one at once.
@@ -5329,6 +5390,7 @@ paths:
             tags:
                 - AI models
             x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
     /api/v1/identity/owner/invitations:
         get:
             operationId: getIdentityOwnerInvitations
@@ -5367,6 +5429,7 @@ paths:
             tags:
                 - Owner account management
             x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
         post:
             operationId: postIdentityOwnerInvitations
             requestBody:
@@ -5421,6 +5484,7 @@ paths:
             tags:
                 - Owner account management
             x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
     /api/v1/identity/owner/invitations/{id}/resend:
         post:
             operationId: postIdentityOwnerInvitationsByIdResend
@@ -5479,6 +5543,7 @@ paths:
             tags:
                 - Owner account management
             x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
     /api/v1/identity/owner/invitations/{id}/revoke:
         post:
             operationId: postIdentityOwnerInvitationsByIdRevoke
@@ -5530,6 +5595,7 @@ paths:
             tags:
                 - Owner account management
             x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
     /api/v1/identity/owner/mfa:
         get:
             operationId: getIdentityOwnerMfa
@@ -5566,6 +5632,7 @@ paths:
             tags:
                 - AuthAccountEndpoints
             x-vantigo-access: policy:ActiveAccount
+            x-vantigo-api: never
     /api/v1/identity/owner/mfa/disable:
         post:
             operationId: postIdentityOwnerMfaDisable
@@ -5621,6 +5688,7 @@ paths:
             tags:
                 - AuthAccountEndpoints
             x-vantigo-access: policy:ActiveAccount
+            x-vantigo-api: never
             x-vantigo-assistant: never
     /api/v1/identity/owner/mfa/enable:
         post:
@@ -5677,6 +5745,7 @@ paths:
             tags:
                 - AuthAccountEndpoints
             x-vantigo-access: policy:ActiveAccount
+            x-vantigo-api: never
             x-vantigo-assistant: never
     /api/v1/identity/owner/mfa/recovery-codes:
         post:
@@ -5733,6 +5802,7 @@ paths:
             tags:
                 - AuthAccountEndpoints
             x-vantigo-access: policy:ActiveAccount
+            x-vantigo-api: never
             x-vantigo-assistant: never
     /api/v1/identity/owner/mfa/reset/{userId}:
         post:
@@ -5798,6 +5868,7 @@ paths:
             tags:
                 - Owner account management
             x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
     /api/v1/identity/owner/mfa/setup:
         get:
             operationId: getIdentityOwnerMfaSetup
@@ -5834,6 +5905,7 @@ paths:
             tags:
                 - AuthAccountEndpoints
             x-vantigo-access: policy:ActiveAccount
+            x-vantigo-api: never
             x-vantigo-assistant: never
         post:
             operationId: postIdentityOwnerMfaSetup
@@ -5889,6 +5961,7 @@ paths:
             tags:
                 - AuthAccountEndpoints
             x-vantigo-access: policy:ActiveAccount
+            x-vantigo-api: never
             x-vantigo-assistant: never
     /api/v1/identity/owner/provisioning-roles:
         get:
@@ -5927,6 +6000,7 @@ paths:
             tags:
                 - Owner account management
             x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
         put:
             description: 'Replaces the roles Staff may give the users it provisions with roleIds, whole. Custom roles only: a built-in, system or unknown role, or a role carrying a permission that grants administration (identity:manage, staff:manage, staff:personal-data, staff:approve), is refused 400 role_not_assignable, the message naming the role and the key, and nothing changes. A role''s delete removes it from the set. Audited provisioning-roles.replaced.'
             operationId: putIdentityOwnerProvisioningRoles
@@ -5982,6 +6056,7 @@ paths:
             tags:
                 - Owner account management
             x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
     /api/v1/identity/owner/sso:
         get:
             description: 'The installation''s single sign-on settings: the workforce OpenID Connect provider and the SCIM credential, with the client secret and every token withheld, the redirect URI and the SCIM endpoint to register, and when each was last used. Sent whether or not either is on, so the screen can show what to register before anything is set.'
@@ -6019,6 +6094,7 @@ paths:
             tags:
                 - Single sign-on
             x-vantigo-access: policy:Owner
+            x-vantigo-api: never
     /api/v1/identity/owner/sso/directory/matches:
         get:
             description: 'Proposes, for every user not yet connected to the configured workforce provider, the one account in its directory that matches them exactly — the review an Owner connects a whole workspace from (Google Workspace design G8). The directory is the module''s whose directory search serves the configured provider; the candidates are identity''s: every user who is not pending and has neither a link nor an announced link under the configured issuer, the caller excluded, at most as many as the provider reads (1000 for Entra), in the users'' order (truncated says when more wait). The directory is asked by the candidates'' addresses and employee numbers, exact values only. A guest account matches nobody. A candidate is proposed only when every key that matched points to one and the same account, and that account is neither held for another user nor the one match of another candidate; everything else is left out, and counted as ambiguous when more than one account was in play. The addresses are compared by the provider and never answered. Connecting is POST /owner/users/{id}/sso-link, once per chosen pair. 409 no_directory while OIDC is off or no enabled module serves the configured provider''s directory; 503 provider_unreachable when the directory could not be asked. Rate limited to 6 per client address a minute, a bucket of its own.'
@@ -6068,6 +6144,7 @@ paths:
             tags:
                 - Single sign-on
             x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
     /api/v1/identity/owner/sso/directory/users:
         get:
             description: 'Searches the configured workforce provider''s directory by name and address — the picker an Owner connects one user from (Google Workspace design G8). At most 25 accounts. Each says who already holds it under the configured issuer, as far as identity knows: an announced link, a SCIM mapping or an announced account. An account whose person signed in through the provider already is not marked: the link a sign-in makes names no key the directory answers, and connecting it twice is still refused. 400 invalid_request when search is not 2 to 100 characters once trimmed; 409 no_directory while OIDC is off or no enabled module serves the configured provider''s directory; 503 provider_unreachable when the directory could not be asked. Rate limited to 60 per client address a minute, a bucket of its own.'
@@ -6130,6 +6207,7 @@ paths:
             tags:
                 - Single sign-on
             x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
     /api/v1/identity/owner/sso/oidc:
         delete:
             description: Turns the workforce OpenID Connect provider off and clears it, the sealed client secret included; every process stops offering it within 20 seconds. While people are linked to the provider, or announced to it and not yet linked, it is refused 409 oidc_links_exist unless confirm is true. Audited sso-settings.changed, without the secret.
@@ -6185,6 +6263,7 @@ paths:
             tags:
                 - Single sign-on
             x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
         put:
             description: Replaces the workforce OpenID Connect provider whole and turns it on, under If-Match on the settings' version. The rules are the ones the OIDC_* environment variables were held to, each refusal a 400 with field errors under the request's field names. An absent clientSecret keeps the sealed one; a present one replaces it. A change of authority while people are linked under the current one is refused 409 oidc_links_exist unless confirmIssuerChange is true. Audited sso-settings.changed, without the secret; every process reads the change within 20 seconds.
             operationId: putIdentityOwnerSsoOidc
@@ -6253,6 +6332,7 @@ paths:
             tags:
                 - Single sign-on
             x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
     /api/v1/identity/owner/sso/scim:
         delete:
             description: Turns SCIM off and forgets its tokens, so the endpoint refuses every request within 20 seconds. The users, mappings and groups it provisioned stay as they are. Audited sso-settings.changed.
@@ -6290,6 +6370,7 @@ paths:
             tags:
                 - Single sign-on
             x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
     /api/v1/identity/owner/sso/scim/previous:
         delete:
             description: 'Ends a rotation''s overlap early: the token the current one replaced stops being accepted now rather than at previousExpiresAt. Audited sso-settings.changed.'
@@ -6327,6 +6408,7 @@ paths:
             tags:
                 - Single sign-on
             x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
     /api/v1/identity/owner/sso/scim/token:
         post:
             description: Generates a SCIM bearer token, turns SCIM on if it was off, and answers the token this once; only its SHA-256 is kept. When a token exists it is still accepted until previousExpiresAt — at most 24 hours ahead, 24 hours when absent — so the directory can be moved to the new one without a gap, and a previous token still overlapping stops being accepted at once. Audited sso-settings.changed, without either token.
@@ -6377,6 +6459,7 @@ paths:
             tags:
                 - Single sign-on
             x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
     /api/v1/identity/owner/system-status:
         get:
             operationId: getIdentityOwnerSystemStatus
@@ -6403,6 +6486,7 @@ paths:
             tags:
                 - Authentication
             x-vantigo-access: policy:Owner
+            x-vantigo-api: never
     /api/v1/identity/owner/user-counts:
         get:
             operationId: getIdentityOwnerUserCounts
@@ -6439,6 +6523,7 @@ paths:
             tags:
                 - Owner account management
             x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
     /api/v1/identity/owner/users:
         get:
             operationId: getIdentityOwnerUsers
@@ -6477,6 +6562,7 @@ paths:
             tags:
                 - Owner account management
             x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
         post:
             operationId: postIdentityOwnerUsers
             requestBody:
@@ -6531,6 +6617,7 @@ paths:
             tags:
                 - Owner account management
             x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
     /api/v1/identity/owner/users/{id}:
         delete:
             description: 'Deletes another user. Refused 409 account_managed for a user Staff manages (stop Staff managing them first), before any other check; 409 last_active_owner for the last active Owner; 409 provenance_conflict for a user SCIM provisioned; 400 for the caller''s own account.'
@@ -6585,6 +6672,7 @@ paths:
             tags:
                 - Owner account management
             x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
         put:
             description: 'Edits another user''s display name, email and role (User or Owner). 409 account_exists for an email another account has; 409 last_active_owner for demoting the last active Owner; 409 account_pending for promoting a pending user (one Staff created who has not accepted their invitation) to Owner. Promoting a user Staff manages to Owner stops Staff managing them in the same change, audited user.staff-unmanaged with the reason promoted, since Staff never manages an Owner.'
             operationId: putIdentityOwnerUsersById
@@ -6649,6 +6737,7 @@ paths:
             tags:
                 - Owner account management
             x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
     /api/v1/identity/owner/users/{id}/avatar:
         get:
             operationId: getIdentityOwnerUsersByIdAvatar
@@ -6699,6 +6788,7 @@ paths:
             tags:
                 - Owner account management
             x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
     /api/v1/identity/owner/users/{id}/disable:
         post:
             description: 'Disables another user and ends their sessions. The disable is recorded as an Owner''s (disabledBy owner), also over a user Staff disabled (that override audited user.disabled-by-changed beside user.disabled), and Staff never re-enables a user an Owner disabled. 409 last_active_owner for the last active Owner; a pending user does not count as an active Owner.'
@@ -6757,6 +6847,7 @@ paths:
             tags:
                 - Owner account management
             x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
     /api/v1/identity/owner/users/{id}/enable:
         post:
             description: 'Enables another user, ending their sessions, and clears disabledBy; enabling a user Staff disabled is also audited user.disabled-by-changed. 409 account_pending for a pending user (one Staff created who has not accepted their invitation): the account becomes usable only by accepting it.'
@@ -6815,6 +6906,7 @@ paths:
             tags:
                 - Owner account management
             x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
     /api/v1/identity/owner/users/{id}/manage:
         post:
             description: 'Adopts the user for Staff: marks them managed by Staff (managedBy staff) with the employee number that ties them to a person in Staff''s register, so Staff''s provisioning may enable, disable and update them. Changing the number of a managed user is the same call. Refused 409 account_privileged for an Owner or a SystemAdmin (an Owner handles Owners by hand), 409 employee_number_taken when another user holds the number however it is cased, 400 invalid_request for a module other than staff or a number that is blank, longer than 16 characters or holding a control character, and 400 for the caller''s own account. A SCIM-mapped user may be adopted. Audited user.staff-managed.'
@@ -6880,6 +6972,7 @@ paths:
             tags:
                 - Owner account management
             x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
     /api/v1/identity/owner/users/{id}/password:
         post:
             operationId: postIdentityOwnerUsersByIdPassword
@@ -6944,6 +7037,7 @@ paths:
             tags:
                 - Owner account management
             x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
     /api/v1/identity/owner/users/{id}/password-reset:
         post:
             operationId: postIdentityOwnerUsersByIdPasswordReset
@@ -7001,6 +7095,7 @@ paths:
             tags:
                 - Owner account management
             x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
     /api/v1/identity/owner/users/{id}/sso-link:
         delete:
             description: 'Disconnects the user from the configured workforce OIDC provider (Entra phase 2 design L2): withdraws their announced link, if any (audited account.link-unexpected), and removes every link of theirs under the provider''s issuer (audited account.unlinked with the count). A SCIM mapping is not touched. Nothing to remove is 200 with the user unchanged; a user left without a credential keeps their account and signs in again through a password reset or a new announcement. 400 for the caller''s own account; 409 sso_not_configured while OIDC is off.'
@@ -7059,6 +7154,7 @@ paths:
             tags:
                 - Owner account management
             x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
         post:
             description: 'Announces the directory account an existing user holds (Entra phase 2 design L2), so that the user''s next sign-in through the configured workforce OIDC provider (matched on the token''s oid under the provider''s issuer, else on its principal name — preferred_username, or the verified email — against the user principal name) or the provider''s SCIM push (matched on userName against the user principal name, then externalId against the object id) attaches to this user as a regular provisioning would, the email claim not consulted; the user''s address, name and roles are kept. The announcement replaces the user''s earlier one whole; the same again changes nothing. Refused 400 invalid_request with neither key, an invalid principal name or object id, or for the caller''s own account; 409 sso_not_configured while OIDC is off; 409 account_pending for a pending user, whose way in is their invitation; 409 account_linked for a user already linked under the issuer; 409 sso_link_taken when another user''s announcement, an account Staff announced, or another user''s SCIM mapping (its userName equal to the principal name, ignoring case, or its externalId to the object id) names the object id or the principal name. A disabled user, an Owner and a SystemAdmin may be announced. Audited account.link-expected with the names of the keys, never the address.'
             operationId: postIdentityOwnerUsersByIdSsoLink
@@ -7123,6 +7219,7 @@ paths:
             tags:
                 - Owner account management
             x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
     /api/v1/identity/owner/users/{id}/unmanage:
         post:
             description: 'Stops Staff managing the user: clears managedBy and the employee number. A pending user stays pending, the Owner''s to finish or delete. Unmanaging a user Staff does not manage changes nothing. 400 for the caller''s own account. Audited user.staff-unmanaged.'
@@ -7175,6 +7272,7 @@ paths:
             tags:
                 - Owner account management
             x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
     /api/v1/identity/owner/workspace:
         get:
             operationId: getIdentityOwnerWorkspace
@@ -7201,6 +7299,7 @@ paths:
             tags:
                 - Workspace
             x-vantigo-access: policy:Owner
+            x-vantigo-api: never
         put:
             description: Replaces the workspace's settings. The business time zone is checked twice — the server must know the name, and the database must read it the same way — and a change is recorded as workspace.business_time_zone_changed in the authorization audit trail. The value already held answers 200 with nothing written.
             operationId: putIdentityOwnerWorkspace
@@ -7240,6 +7339,7 @@ paths:
             tags:
                 - Workspace
             x-vantigo-access: policy:Owner
+            x-vantigo-api: never
     /api/v1/identity/passkeys/login/begin:
         post:
             operationId: postIdentityPasskeysLoginBegin
@@ -7277,6 +7377,7 @@ paths:
             tags:
                 - Passkey sign-in
             x-vantigo-access: anonymous
+            x-vantigo-api: never
     /api/v1/identity/passkeys/login/complete:
         post:
             operationId: postIdentityPasskeysLoginComplete
@@ -7326,6 +7427,7 @@ paths:
             tags:
                 - Passkey sign-in
             x-vantigo-access: anonymous
+            x-vantigo-api: never
     /api/v1/identity/password-recovery/request:
         post:
             operationId: postIdentityPasswordRecoveryRequest
@@ -7363,6 +7465,7 @@ paths:
             tags:
                 - AuthAccountEndpoints
             x-vantigo-access: anonymous
+            x-vantigo-api: never
     /api/v1/identity/password-recovery/reset:
         post:
             operationId: postIdentityPasswordRecoveryReset
@@ -7400,6 +7503,7 @@ paths:
             tags:
                 - AuthAccountEndpoints
             x-vantigo-access: anonymous
+            x-vantigo-api: never
     /api/v1/identity/providers:
         get:
             operationId: getIdentityProviders
@@ -7414,6 +7518,7 @@ paths:
             tags:
                 - Authentication
             x-vantigo-access: anonymous
+            x-vantigo-api: never
     /api/v1/identity/scim/v2/Groups:
         get:
             operationId: getIdentityScimV2Groups
@@ -7465,6 +7570,7 @@ paths:
             tags:
                 - SCIM 2.0
             x-vantigo-access: scim
+            x-vantigo-api: never
         post:
             operationId: postIdentityScimV2Groups
             requestBody:
@@ -7532,6 +7638,7 @@ paths:
             tags:
                 - SCIM 2.0
             x-vantigo-access: scim
+            x-vantigo-api: never
     /api/v1/identity/scim/v2/Groups/{id}:
         delete:
             operationId: deleteIdentityScimV2GroupsById
@@ -7584,6 +7691,7 @@ paths:
             tags:
                 - SCIM 2.0
             x-vantigo-access: scim
+            x-vantigo-api: never
         get:
             operationId: getIdentityScimV2GroupsById
             parameters:
@@ -7629,6 +7737,7 @@ paths:
             tags:
                 - SCIM 2.0
             x-vantigo-access: scim
+            x-vantigo-api: never
         patch:
             operationId: patchIdentityScimV2GroupsById
             parameters:
@@ -7709,6 +7818,7 @@ paths:
             tags:
                 - SCIM 2.0
             x-vantigo-access: scim
+            x-vantigo-api: never
     /api/v1/identity/scim/v2/ResourceTypes:
         get:
             operationId: getIdentityScimV2ResourceTypes
@@ -7735,6 +7845,7 @@ paths:
             tags:
                 - SCIM 2.0
             x-vantigo-access: scim
+            x-vantigo-api: never
     /api/v1/identity/scim/v2/Schemas:
         get:
             operationId: getIdentityScimV2Schemas
@@ -7761,6 +7872,7 @@ paths:
             tags:
                 - SCIM 2.0
             x-vantigo-access: scim
+            x-vantigo-api: never
     /api/v1/identity/scim/v2/ServiceProviderConfig:
         get:
             operationId: getIdentityScimV2ServiceProviderConfig
@@ -7787,6 +7899,7 @@ paths:
             tags:
                 - SCIM 2.0
             x-vantigo-access: scim
+            x-vantigo-api: never
     /api/v1/identity/scim/v2/Users:
         get:
             operationId: getIdentityScimV2Users
@@ -7834,6 +7947,7 @@ paths:
             tags:
                 - SCIM 2.0
             x-vantigo-access: scim
+            x-vantigo-api: never
         post:
             operationId: postIdentityScimV2Users
             requestBody:
@@ -7901,6 +8015,7 @@ paths:
             tags:
                 - SCIM 2.0
             x-vantigo-access: scim
+            x-vantigo-api: never
     /api/v1/identity/scim/v2/Users/{id}:
         delete:
             operationId: deleteIdentityScimV2UsersById
@@ -7955,6 +8070,7 @@ paths:
             tags:
                 - SCIM 2.0
             x-vantigo-access: scim
+            x-vantigo-api: never
         get:
             operationId: getIdentityScimV2UsersById
             parameters:
@@ -7996,6 +8112,7 @@ paths:
             tags:
                 - SCIM 2.0
             x-vantigo-access: scim
+            x-vantigo-api: never
         patch:
             operationId: patchIdentityScimV2UsersById
             parameters:
@@ -8076,6 +8193,7 @@ paths:
             tags:
                 - SCIM 2.0
             x-vantigo-access: scim
+            x-vantigo-api: never
         put:
             operationId: putIdentityScimV2UsersById
             parameters:
@@ -8156,6 +8274,7 @@ paths:
             tags:
                 - SCIM 2.0
             x-vantigo-access: scim
+            x-vantigo-api: never
     /api/v1/identity/session:
         get:
             operationId: getIdentitySession
@@ -8176,6 +8295,7 @@ paths:
             tags:
                 - Authentication
             x-vantigo-access: session
+            x-vantigo-api: never
     /api/v1/identity/station:
         get:
             description: 'The shared shop-floor station this browser is paired as (manufacturing phase 2 M129, M130): its name, idle timeout and badge rule, the workspace''s time zone, and the operators signed in at it. Read with the station cookie alone; a request that also carries a session cookie is refused station_has_session.'
@@ -8203,6 +8323,7 @@ paths:
             tags:
                 - Shop-floor stations
             x-vantigo-access: anonymous
+            x-vantigo-api: never
             x-vantigo-assistant: never
     /api/v1/identity/station/operators:
         get:
@@ -8231,6 +8352,7 @@ paths:
             tags:
                 - Shop-floor stations
             x-vantigo-access: anonymous
+            x-vantigo-api: never
             x-vantigo-assistant: never
         post:
             description: 'Switches an operator in with the station cookie (M133): a user and their PIN, or a badge (and, while the station requires it, the badge''s holder''s PIN as well). Thirty attempts in five minutes, and ten failed ones, close the station for the rest of the window (an attempt refused for a person in backoff counts on neither); attempts for one person at one station are taken one at a time, a second one at once answering 429; from the fifth consecutive failure for one person at this station each attempt waits, 30 seconds doubling to 15 minutes, and a run an hour past its last failure starts again. A PIN or badge enrolled under an earlier version of the installation''s key does not verify. Success answers an operator token for the Authorization header (Station <token>), which the page keeps in memory only. Signing in a person already signed in here replaces their session. Audited operator_signed_in or operator_sign_in_failed.'
@@ -8281,6 +8403,7 @@ paths:
             tags:
                 - Shop-floor stations
             x-vantigo-access: anonymous
+            x-vantigo-api: never
             x-vantigo-assistant: never
     /api/v1/identity/station/operators/{sessionId}/end:
         post:
@@ -8319,6 +8442,7 @@ paths:
             tags:
                 - Shop-floor stations
             x-vantigo-access: anonymous
+            x-vantigo-api: never
             x-vantigo-assistant: never
     /api/v1/identity/station/pair:
         post:
@@ -8358,6 +8482,7 @@ paths:
             tags:
                 - Shop-floor stations
             x-vantigo-access: anonymous
+            x-vantigo-api: never
             x-vantigo-assistant: never
     /api/v1/identity/stations:
         get:
@@ -8386,6 +8511,7 @@ paths:
             tags:
                 - Shop-floor stations
             x-vantigo-access: permission:identity:manage
+            x-vantigo-api: never
             x-vantigo-assistant: never
         post:
             description: 'Registers a shared shop-floor station (M129) and answers a one-time pairing code: eight characters of Crockford base32, valid 15 minutes, stored only as a hash. A station that takes a badge alone (requirePinWithBadge false) needs the current password unless the session signed in within the last 10 minutes, and the holders of identity:manage are mailed. Audited station_registered.'
@@ -8432,6 +8558,7 @@ paths:
             tags:
                 - Shop-floor stations
             x-vantigo-access: permission:identity:manage
+            x-vantigo-api: never
             x-vantigo-assistant: never
     /api/v1/identity/stations/{id}:
         put:
@@ -8493,6 +8620,7 @@ paths:
             tags:
                 - Shop-floor stations
             x-vantigo-access: permission:identity:manage
+            x-vantigo-api: never
             x-vantigo-assistant: never
     /api/v1/identity/stations/{id}/backoff/{userId}:
         delete:
@@ -8538,6 +8666,7 @@ paths:
             tags:
                 - Shop-floor stations
             x-vantigo-access: permission:identity:manage
+            x-vantigo-api: never
             x-vantigo-assistant: never
     /api/v1/identity/stations/{id}/operators/{sessionId}/end:
         post:
@@ -8583,6 +8712,7 @@ paths:
             tags:
                 - Shop-floor stations
             x-vantigo-access: permission:identity:manage
+            x-vantigo-api: never
             x-vantigo-assistant: never
     /api/v1/identity/stations/{id}/pairing:
         post:
@@ -8625,6 +8755,7 @@ paths:
             tags:
                 - Shop-floor stations
             x-vantigo-access: permission:identity:manage
+            x-vantigo-api: never
             x-vantigo-assistant: never
     /api/v1/identity/stations/{id}/revoke:
         post:
@@ -8667,6 +8798,7 @@ paths:
             tags:
                 - Shop-floor stations
             x-vantigo-access: permission:identity:manage
+            x-vantigo-api: never
             x-vantigo-assistant: never
     /api/v1/identity/system/maintenance:
         put:
@@ -8707,6 +8839,7 @@ paths:
             tags:
                 - Identity system
             x-vantigo-access: policy:SystemAdmin
+            x-vantigo-api: never
     /api/v1/identity/system/status:
         get:
             operationId: getIdentitySystemStatus
@@ -8721,6 +8854,7 @@ paths:
             tags:
                 - Identity system
             x-vantigo-access: anonymous
+            x-vantigo-api: never
     /api/v1/identity/system/users/{userId}/sessions/revoke:
         post:
             operationId: postIdentitySystemUsersByUserIdSessionsRevoke
@@ -8760,6 +8894,7 @@ paths:
             tags:
                 - Identity system
             x-vantigo-access: policy:SystemAdmin
+            x-vantigo-api: never
     /api/v1/identity/users/{id}/badge:
         delete:
             description: Removes the badge enrolled for a person. Audited badge_cleared.
@@ -8797,6 +8932,7 @@ paths:
             tags:
                 - Shop-floor stations
             x-vantigo-access: permission:identity:manage
+            x-vantigo-api: never
             x-vantigo-assistant: never
         put:
             description: Enrols the code a keyboard-wedge card reader types for a person who holds manufacturing:shop-floor (M132), stored as an HMAC under a key from APP_SECRET. Replaces the person's badge and ends their operator sessions at every station. Needs the current password unless the session signed in within the last 10 minutes; the person is mailed that a badge was enrolled for them. Audited badge_enrolled.
@@ -8863,6 +8999,7 @@ paths:
             tags:
                 - Shop-floor stations
             x-vantigo-access: permission:identity:manage
+            x-vantigo-api: never
             x-vantigo-assistant: never
     /api/v1/identity/users/{id}/operator-credentials:
         get:
@@ -8905,6 +9042,7 @@ paths:
             tags:
                 - Shop-floor stations
             x-vantigo-access: permission:identity:manage
+            x-vantigo-api: never
             x-vantigo-assistant: never
     /api/v1/identity/users/{id}/pin:
         delete:
@@ -8943,6 +9081,7 @@ paths:
             tags:
                 - Shop-floor stations
             x-vantigo-access: permission:identity:manage
+            x-vantigo-api: never
             x-vantigo-assistant: never
 servers:
     - url: /

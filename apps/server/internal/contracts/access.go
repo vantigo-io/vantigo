@@ -43,14 +43,20 @@ type Via struct {
 	// operator signed in at (manufacturing phase 2 M134). The principal is the
 	// operator, with the operator session as SessionID.
 	StationID uuid.UUID
+	// KeyID is set for an "api_key" Via: the API key the request presented
+	// (API access design K10). The principal is the key's integration, with
+	// no session.
+	KeyID uuid.UUID
 }
 
 // ViaAssistant is Via.Kind of an assistant grant, ViaAgent of an agent grant,
-// ViaStation of an operator signed in at a shared shop-floor station.
+// ViaStation of an operator signed in at a shared shop-floor station, ViaAPIKey
+// of an integration authenticated by an API key.
 const (
 	ViaAssistant = "assistant"
 	ViaAgent     = "agent"
 	ViaStation   = "station"
+	ViaAPIKey    = "api_key"
 )
 
 // StationPermissions are all a shared station's operator may ever hold
@@ -199,7 +205,18 @@ func HasPermissions(ctx context.Context, a Access, keys ...string) bool {
 				return true
 			}
 		}
-		_, err := a.Check(r, Rule{Kind: RulePermission, Names: keys})
+		rule := Rule{Kind: RulePermission, Names: keys}
+		// An integration's key reached the handler only through the router's
+		// wrap, which has already judged the operation's x-vantigo-api mark and
+		// a read-only key against it. The handler's question is about
+		// permissions alone, so it is asked as a read (API access design K33):
+		// with the zero APIRefused every handler-side check would refuse a
+		// key, and with APIAllowed a read-only key would be refused even on a
+		// GET.
+		if p, ok := PrincipalFrom(ctx); ok && p.Via != nil && p.Via.Kind == ViaAPIKey {
+			rule.API = APIRead
+		}
+		_, err := a.Check(r, rule)
 		return err == nil
 	}
 	if userID, ok := AsUserFrom(ctx); ok {
@@ -216,6 +233,15 @@ var (
 	// open to stations, or a work center that is not the station's: 403
 	// station_scope (manufacturing phase 2 M131, M135). It is an ErrForbidden.
 	ErrStationScope = fmt.Errorf("%w: station_scope", ErrForbidden)
+	// ErrAPINotAvailable is an API key refused an operation marked
+	// x-vantigo-api: never: 403 api_not_available (API access design K9, K34).
+	ErrAPINotAvailable = fmt.Errorf("%w: api_not_available", ErrForbidden)
+	// ErrAPIKeyReadOnly is a read-only API key refused an operation that is not
+	// a read: 403 api_key_read_only (K9, K34).
+	ErrAPIKeyReadOnly = fmt.Errorf("%w: api_key_read_only", ErrForbidden)
+	// ErrAPIKeyExpired is an API key that matched but has expired: 401
+	// api_key_expired (K12, K34). It is an ErrUnauthenticated.
+	ErrAPIKeyExpired = fmt.Errorf("%w: api_key_expired", ErrUnauthenticated)
 )
 
 // StationAccess is what the live hub asks of identity for a shared station's

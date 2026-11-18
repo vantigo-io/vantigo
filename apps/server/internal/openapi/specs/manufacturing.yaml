@@ -7731,6 +7731,7 @@ paths:
             tags:
                 - Manufacturing
             x-vantigo-access: permission:manufacturing:access+manufacturing:costs-view
+            x-vantigo-api: never
     /api/v1/manufacturing/reports/time-deviation:
         get:
             description: Per BoM operation (its BoM and sequence), the average actual minutes — the union of each work order's productive logs — against the expected over the last 10 done work orders finished in the period (M42).

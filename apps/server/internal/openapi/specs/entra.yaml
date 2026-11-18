@@ -735,6 +735,7 @@ paths:
             tags:
                 - Entra
             x-vantigo-access: permission:entra:manage
+            x-vantigo-api: never
     /api/v1/entra/accounts/{objectId}/confirm:
         post:
             description: 'Confirms the adoption of a user the module found holding a person''s employee number rather than created. Until it is confirmed the module writes nothing to that user — no property, no pass, no disable, no delete — and reports adoption_unconfirmed; from then on it manages the user as one it created, and the next write brings it to the person''s spec. Audited entra.account.adoption_confirmed with the actor. 404 for an account the module does not keep, 409 adoption_confirmed for one confirmed already or one the module created.'
@@ -777,6 +778,7 @@ paths:
             tags:
                 - Entra
             x-vantigo-access: permission:entra:manage
+            x-vantigo-api: never
     /api/v1/entra/connection:
         get:
             description: The connection, its settings and its secrets without their values, and the accounts' counts — the status card and every step's Done mark. Reads the module's own rows only; nothing reaches the tenant.
@@ -804,6 +806,7 @@ paths:
             tags:
                 - Entra
             x-vantigo-access: permission:entra:manage
+            x-vantigo-api: never
         put:
             description: 'Step 1: sets the tenant and the client, under If-Match on the connection''s version, and sends the status back to unconfigured until the next test. While the module keeps accounts a change is refused 409 connection_in_use unless confirmChange is true; a change deletes nothing in the tenant, but the accounts of the old tenant are no longer disabled or deleted by Vantigo, and a change of the tenant forgets every pass not yet revealed. The Owner''s, as the single sign-on settings are: a tenant-wide application credential is an Owner''s to hold. Audited entra.connection.changed with the ids before and after. Rate limited to 30 per client address a minute, shared with every Owner operation of the module.'
             operationId: putEntraConnection
@@ -871,6 +874,7 @@ paths:
             tags:
                 - Entra
             x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
     /api/v1/entra/connection/credentials:
         post:
             description: 'Step 2: adds a client secret, sealed at once and never answered again. Rotation is adding the new one and revoking the old: the newest unrevoked secret whose expiry is ahead is the one used. The Owner''s. Audited entra.credential.added with the label and the dates, never the value. Rate limited with every Owner operation of the module.'
@@ -920,6 +924,7 @@ paths:
             tags:
                 - Entra
             x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
     /api/v1/entra/connection/credentials/{id}:
         delete:
             description: Revokes a client secret — it is kept, marked revoked, and never used again; nothing changes in the tenant, where the Owner deletes it themselves. The only valid secret is refused 409 credential_in_use while the module keeps accounts. The Owner's. Audited entra.credential.revoked. Rate limited with every Owner operation of the module.
@@ -972,6 +977,7 @@ paths:
             tags:
                 - Entra
             x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
     /api/v1/entra/connection/settings:
         put:
             description: 'Step 4: the account rules, under If-Match on the connection''s version. Every field is optional and one left out keeps its value; each refusal is a field error. Audited entra.settings.changed.'
@@ -1024,6 +1030,7 @@ paths:
             tags:
                 - Entra
             x-vantigo-access: permission:entra:manage
+            x-vantigo-api: never
     /api/v1/entra/connection/skus:
         get:
             description: The licences the tenant subscribes to, with the seats bought and assigned, read from the tenant through the connection — the choices for a Staff group's licences. 503 when the tenant cannot be asked. Rate limited to 30 per client address a minute, a bucket of its own.
@@ -1069,6 +1076,7 @@ paths:
             tags:
                 - Entra
             x-vantigo-access: permission:entra:manage
+            x-vantigo-api: never
     /api/v1/entra/connection/test:
         post:
             description: 'Step 3: tests the connection — a token with the newest valid secret, the organisation and its verified domains read, the token''s roles compared with the permissions the module needs — and writes what it found to the connection. 200 with the result whatever it found, a failure included. The Owner''s. Audited entra.connection.tested with the status and the missing permissions. Rate limited with every Owner operation of the module.'
@@ -1106,6 +1114,7 @@ paths:
             tags:
                 - Entra
             x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
     /api/v1/entra/events:
         get:
             description: The module's recent writes, newest first — the status card's events.
@@ -1148,6 +1157,7 @@ paths:
             tags:
                 - Entra
             x-vantigo-access: permission:entra:manage
+            x-vantigo-api: never
     /api/v1/entra/groups:
         get:
             description: Every group the module keeps in the tenant for Staff's groups, deleted ones included, by display name — a read-only list. Staff decides what exists; the module page shows the tenant's side.
@@ -1177,6 +1187,7 @@ paths:
             tags:
                 - Entra
             x-vantigo-access: permission:entra:manage
+            x-vantigo-api: never
     /api/v1/entra/groups/{objectId}/confirm:
         post:
             description: 'Confirms the adoption of a group the module found holding a Staff group''s mail nickname rather than made. Until it is confirmed the module writes nothing to that group — no name, no description, no owner, no member — and Staff''s sync waits with group_unconfirmed; from then on the module writes to it as to one it made, and Staff''s next cycle adds the owners and writes the name, the description and the members. The module never deletes a group it did not make. Idempotent: a group confirmed already, or one the module made, is answered as it is. Audited entra.group.adoption_confirmed with the actor, once. 404 for a group the module does not keep.'
@@ -1213,6 +1224,7 @@ paths:
             tags:
                 - Entra
             x-vantigo-access: permission:entra:manage
+            x-vantigo-api: never
     /api/v1/entra/mailbox-notifications:
         post:
             description: 'Microsoft Graph''s webhook for the change notifications of the Outlook sync (calendar Outlook sync design O11.5): Graph posts here, to PUBLIC_BASE_URL, on the public host''s allowlist and on the app''s host alike. Anonymous: Graph sends no session, and a signed-in caller is answered alike. A notification is a nudge — it makes the mailbox''s sync due and nothing more; nothing it says is trusted beyond "this subscription fired", nor stored. The handshake: a request carrying validationToken is answered 200 text/plain with the token, only while the module is creating a subscription (for 30 seconds before each create) and only for a token of at most 1024 bytes with no control character; else 404 with no body. A notification: {"value": [...]}, at most 1000 items read, each taken only when its subscriptionId is a GUID the module holds, its clientState''s SHA-256 equals the one stored (compared in constant time) and its tenantId is the connection''s; a valid one marks its subscription notified, and a lifecycle event of reauthorizationRequired or subscriptionRemoved marks the subscription for renewal or as removed. 202 with no body for any body that decodes, whatever it named — an unknown subscription and a valid one are answered alike. The body is capped at 1 MiB. Rate limited to 600 per client address a minute (entra-mailbox-notifications). Served by the generated strict wrapper: it reads a text/plain body as a string and a JSON one as a free-form object, and answers the handshake as text/plain.'
@@ -1277,6 +1289,7 @@ paths:
             tags:
                 - Entra
             x-vantigo-access: anonymous
+            x-vantigo-api: never
     /api/v1/entra/outlook/callback:
         get:
             description: 'The Outlook connection''s redirect URI (Outlook connection design M4), on APP_URL with the base path, never the public host. Anonymous: Microsoft''s redirect carries the browser''s Lax cookies but the session''s Strict one is not sent. It checks the state against the sealed vantigo.entra.connect cookie — nothing is written without a valid one — redeems the code through the module''s guarded client with the PKCE verifier, verifies the id_token''s signature, issuer, audience, nonce and tenant, checks the granted scopes, and seals the result into vantigo.entra.connected for POST /outlook/complete. Every answer clears vantigo.entra.connect and redirects to /settings/connections with outlook=complete, or outlook=failed and code: expired, access_denied, tenant_mismatch, consent_missing or failed. error_description is never read, session_state is ignored. Rate limited to 60 per client address a minute (entra-outlook-callback).'
@@ -1325,6 +1338,7 @@ paths:
             tags:
                 - Entra
             x-vantigo-access: anonymous
+            x-vantigo-api: never
     /api/v1/entra/outlook/complete:
         post:
             description: 'Completes a connect under the session (Outlook connection design M4): opens vantigo.entra.connected, which must be the caller''s and this session''s, checks the switch and that the account signed in is the one Vantigo knows the caller by, and stores the connection with its refresh token sealed — taking over a closing connection of the same account, and closing the caller''s connection of another account. Audited entra.outlook.connected. The cookie is cleared on every answer. 410 expired for a cookie missing, expired or another session''s; 409 switch_off, no_account, account_mismatch (the detail names both accounts) or account_taken. Rate limited to 30 per client address a minute, shared with POST /outlook/connect (entra-outlook).'
@@ -1368,6 +1382,7 @@ paths:
             tags:
                 - Entra
             x-vantigo-access: session
+            x-vantigo-api: never
     /api/v1/entra/outlook/connect:
         post:
             description: 'Starts connecting the caller''s Outlook (Outlook connection design M4): checks the feature, the switch, the Entra account Vantigo knows the caller by (Staff''s directory account, managed by this module, enabled and trusted) and that no other person''s connection holds it; then seals a fresh state, nonce and PKCE verifier with the session into the vantigo.entra.connect cookie (HttpOnly, SameSite=Lax, ten minutes, on /api/v1/entra/outlook) and answers the authorization URL to send the browser to. 422 feature_unknown; 409 switch_off, no_account or account_taken. Rate limited to 30 per client address a minute, shared with POST /outlook/complete (entra-outlook).'
@@ -1417,6 +1432,7 @@ paths:
             tags:
                 - Entra
             x-vantigo-access: session
+            x-vantigo-api: never
     /api/v1/entra/outlook/connection:
         delete:
             description: 'Disconnects the caller''s Outlook (Outlook connection design M7): their live connection closes, its token kept only for the removals that may still need it, and is deleted once nothing does. Audited entra.outlook.disconnected. 204 whether or not there was one. The person''s sign-in sessions are never revoked.'
@@ -1434,6 +1450,7 @@ paths:
             tags:
                 - Entra
             x-vantigo-access: session
+            x-vantigo-api: never
         get:
             description: The caller's own Outlook connection, whether they may connect, and the account Vantigo knows them by. Always 200, so the page can tell "not connected" from "nothing to connect". Reads the module's own rows and Staff's directory account; nothing reaches the tenant.
             operationId: getEntraOutlookConnection
@@ -1454,5 +1471,6 @@ paths:
             tags:
                 - Entra
             x-vantigo-access: session
+            x-vantigo-api: never
 servers:
     - url: /

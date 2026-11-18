@@ -10,6 +10,7 @@ sources:
   - apps/server/generate.go
   - apps/server/internal/openapi/openapi.go
   - apps/server/internal/openapi/lint.go
+  - apps/server/internal/openapi/testdata/api-marks.txt
   - apps/server/internal/openapi/gen
   - apps/calendar/frontend/eslint.config.js
   - apps/communications/frontend/eslint.config.js
@@ -1553,6 +1554,43 @@ lag, never what must refuse — go through the platform's domain-events outbox,
     `anonymise` (an open one does: 409 `supplier_has_open_documents`). The holder keeps rule
     8's discipline and locks nothing of its own: a writer of its rows holds the supplier
     `FOR SHARE`, so it has committed, or waits, before the answer is read.
+
+29. **What an API key may call is the contract's, operation by operation.** An
+    integration — an external application's account, a user of kind `integration` (API
+    access design K1) — calls the API with a key, and meets only `permission:` and
+    `anonymous` rules. The rules that keep it inside what an Owner gave it:
+    - **`x-vantigo-api`** says whether a key may call the operation: `allowed` (the
+      default), `read` (a `POST` that writes nothing, which a read-only key may call too;
+      every `GET` and `HEAD` is a read without the mark) or `never`. The OpenAPI lint
+      requires the mark on every `anonymous` operation and on every operation of
+      `identity.yaml`, `google.yaml` and `entra.yaml`, accepts `allowed` and `read` only
+      behind a `permission:` or `anonymous` rule, and `read` only on a `POST`.
+      `apps/server/internal/openapi/testdata/api-marks.txt` pins every `never` and `read`
+      operation, so a change to what a key may call shows in review. Mark `never` what a
+      server-side client cannot use or must not: a browser flow (sign-in, an OAuth connect
+      or callback), a provider's webhook, a token-in-URL page, a handler that needs a
+      person's `SessionID`, and an operation whose queued work later runs as its creator
+      (`AsUser`, `UserHolds`), which an integration never is.
+    - **`Rule.API`** is how the router tells `Access.Check` what the operation allows:
+      `APIRead` for a `GET`, `HEAD` or a `read` operation behind a permission or `anonymous`
+      rule, `APIAllowed` for another such operation, and `APIRefused` for `never` and for
+      every other rule. `APIRefused` is the zero value, which a `Rule` built by hand carries.
+      `contracts.HasPermissions` asks an API key's handler-side question with `APIRead`,
+      because the router has already judged the mark.
+    - **`contracts.APINever(catalog)`** is the permissions no key holds, whatever its roles
+      grant: every `identity:` and `agents:` key and every permission that is not
+      Delegable. A new Owner-tier permission is therefore never a key's without anyone
+      listing it, and an operation that names one must be marked `never`
+      (`TestAPINever_NoKeyableOperationNamesOne` in `internal/integration`). Mark `never`
+      too what moves money or reveals personal data in bulk although its permission can
+      be delegated: the seller's bank account, a person's national identity number.
+    - **The refusals** are `contracts.ErrAPINotAvailable` and `ErrAPIKeyReadOnly`, which
+      wrap `ErrForbidden`, and `ErrAPIKeyExpired`, which wraps `ErrUnauthenticated`, so
+      every caller that tests the sentinels answers them as `403` or `401`.
+    - **`UserEntry.Kind`** may be `integration` on a lookup by id, so a record an
+      integration made can name it; `SearchUsers` and `PermissionHolders` never answer
+      one, `IncludeAgents` included, and `UserHolds` is false for one. A check that means
+      "a person" asks `Kind == contracts.UserKindPerson`, never `!= UserKindAgent`.
 
 ## The AI platform
 

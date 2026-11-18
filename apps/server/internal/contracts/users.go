@@ -19,9 +19,12 @@ type UserEntry struct {
 	// sensitive, for a module writing something in the user's own language
 	// (calendar invitations design D3).
 	PreferredLanguage string
-	// Kind is UserKindPerson or UserKindAgent: whether the user is a person or
-	// an AI agent (virtual employees design V5), for a caller that shows the
-	// AI badge on an agent's avatar.
+	// Kind is UserKindPerson, UserKindAgent or UserKindIntegration: whether the
+	// user is a person, an AI agent (virtual employees design V5) or an
+	// integration's account (API access design K1), for a caller that shows
+	// the AI or API badge on the avatar. A search or a permission holders'
+	// list never answers an integration; a lookup by id does, so a record an
+	// integration made can name it.
 	Kind string
 }
 
@@ -169,5 +172,5 @@ type Holder struct {
 	DisplayName       string
 	Email             string
 	PreferredLanguage string // "en", "nb" or "" when the user chose none
-	Kind              string // UserKindPerson or UserKindAgent
+	Kind              string // UserKindPerson or UserKindAgent; never UserKindIntegration (directory.sql)
 }

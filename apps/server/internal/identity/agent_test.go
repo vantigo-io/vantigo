@@ -221,13 +221,15 @@ func TestAgent_NeverSignsInOrResetsAPasswordOrIsInvited(t *testing.T) {
 		t.Error("CreateSession for an agent succeeded")
 	}
 
-	// Recovery: no mail goes, and a reset token the table holds is refused.
+	// Recovery: no mail goes, the table holds no reset token for an agent
+	// (00194_identity_integration_kind), and a reset is refused.
 	r = c.do(http.MethodPost, "/api/v1/identity/password-recovery/request", map[string]any{"email": email})
 	if r.status != http.StatusOK || len(h.mailTo(email)) != 0 {
 		t.Errorf("recovery request = %d, mail %v, want 200 and no mail", r.status, h.mailTo(email))
 	}
-	h.exec(t, `INSERT INTO identity.password_reset_tokens (token_hash, user_id, expires_at) VALUES ($1, $2, $3)`,
+	_, err := h.pool.Exec(context.Background(), `INSERT INTO identity.password_reset_tokens (token_hash, user_id, expires_at) VALUES ($1, $2, $3)`,
 		[]byte("hash"), id, h.now().Add(time.Hour))
+	wantViolation(t, "a reset token for an agent", err)
 	r = c.do(http.MethodPost, "/api/v1/identity/password-recovery/reset", map[string]any{"email": email, "token": "irrelevant", "newPassword": "Correct-Horse-9"})
 	if r.status != http.StatusBadRequest || r.code() != "invalid_reset_token" {
 		t.Errorf("reset = %d %s, want 400 invalid_reset_token", r.status, r.body)
@@ -238,7 +240,7 @@ func TestAgent_NeverSignsInOrResetsAPasswordOrIsInvited(t *testing.T) {
 	if r.status != http.StatusConflict {
 		t.Errorf("invite = %d %s, want 409", r.status, r.body)
 	}
-	_, err := h.pool.Exec(context.Background(), `INSERT INTO identity.invitations
+	_, err = h.pool.Exec(context.Background(), `INSERT INTO identity.invitations
 		(id, email, normalized_email, role, token_hash, created_at, expires_at, user_id) VALUES ($1, $2, upper($2), 'User', $3, $4, $5, $6)`,
 		uuid.New(), "x@example.test", []byte("hash"), h.now(), h.now().Add(time.Hour), id)
 	wantViolation(t, "an invitation naming an agent", err)

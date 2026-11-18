@@ -205,8 +205,9 @@ func (s *server) validateDelegation(ctx context.Context, q *store.Queries, body 
 	} else if err != nil {
 		return delegationRequest{}, err
 	}
-	// An agent never manages authorization (virtual employees design V5).
-	if isAgent(grantee) {
+	// An agent never manages authorization (virtual employees design V5), nor
+	// does an integration (API access design K4).
+	if !isPerson(grantee) {
 		return delegationRequest{}, invalidDelegationTarget
 	}
 	owner, err := q.IsOwner(ctx, d.grantee)

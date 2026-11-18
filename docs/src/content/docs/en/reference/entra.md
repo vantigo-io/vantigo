@@ -2594,3 +2594,11 @@ All under `/api/v1/entra`.
 The request and response shapes are in the contract,
 [`openapi/entra.yaml`](https://github.com/vantigo-io/vantigo/blob/main/openapi/entra.yaml),
 and in the API reference generated from it.
+
+## API keys
+
+Every Entra operation is `x-vantigo-api: never`: the connection is an Owner's,
+`entra:manage` cannot be delegated, and the Outlook connect and callback are browser flows.
+Connecting existing users to the directory never proposes an integration. See [integration
+users](/en/admin/authentication/#integration-users), and the marks' rules in [module
+boundaries](/en/contributing/module-boundaries/#the-rules).

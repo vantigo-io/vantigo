@@ -2764,3 +2764,10 @@ requires, all of them.
 | `GET /lots/labels.pdf` | `locations-view` + `stock-view` | Lot labels, internal or (`format=gs1`) GS1-128. |
 
 Every key is `inventory:`'s; the table leaves the prefix out.
+
+## API keys
+
+`printInventoryLabels` renders labels and writes nothing, and is marked `x-vantigo-api:
+read`: a read-only API key may call it. See [integration
+users](/en/admin/authentication/#integration-users), and the marks' rules in [module
+boundaries](/en/contributing/module-boundaries/#the-rules).

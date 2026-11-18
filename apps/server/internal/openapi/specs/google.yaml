@@ -664,6 +664,7 @@ paths:
             tags:
                 - Google
             x-vantigo-access: permission:google:manage
+            x-vantigo-api: never
     /api/v1/google/accounts/{userId}/confirm:
         post:
             description: 'Confirms the adoption of a user the module found holding a person''s employee number rather than created. Until it is confirmed the module writes nothing to that user — no profile, no password, no suspension, no delete — and reports adoption_unconfirmed; from then on it manages the user as one it created, and Staff''s next cycle brings it to the person. Audited google.account.adoption_confirmed. 404 for an account the module does not keep, 409 adoption_confirmed for one confirmed already or one the module created.'
@@ -705,6 +706,7 @@ paths:
             tags:
                 - Google
             x-vantigo-access: permission:google:manage
+            x-vantigo-api: never
     /api/v1/google/calendar-notifications:
         post:
             description: 'Google Calendar''s push notifications for the calendar sync (Google Workspace design G32): Google posts here, to PUBLIC_BASE_URL, for each channel the module opened on a person''s primary calendar with events.watch; on the public host''s allowlist and on the app''s host alike. Anonymous: Google sends no session, and a signed-in caller is answered alike. A notification is a nudge — it makes the person''s sync due and nothing more; nothing it says is stored. Only the headers are read, never a body: X-Goog-Channel-ID must be a UUID naming a channel the module holds, the SHA-256 of X-Goog-Channel-Token must equal the one stored (compared in constant time) and X-Goog-Resource-ID must be the channel''s; then a resource state of exists or not_exists marks the channel notified, and sync (the channel''s first message) or anything else marks nothing. 204 with no body for every request, whatever it named — an unknown channel, a forged token and a valid notification are answered alike, and so is a database that could not be written. Rate limited to 600 per client address a minute (google-calendar-notifications).'
@@ -752,6 +754,7 @@ paths:
             tags:
                 - Google
             x-vantigo-access: anonymous
+            x-vantigo-api: never
     /api/v1/google/complete:
         post:
             description: 'Completes a connect under the session (Google Workspace design G26, G27): opens vantigo.google.connected, which must be the caller''s and this session''s, checks the switch, that Vantigo still knows the caller by a Google account it manages and that the account signed in is that one (the ID token''s sub equals its Directory id), and stores the connection with its refresh token sealed — taking over a closing connection of the same account, and closing the caller''s connection of another account. Audited google.personal.connected. The cookie is cleared on every answer. 410 expired for a cookie missing, expired or another session''s; 409 switch_off, no_account, account_mismatch (the account signed in to is not the one Vantigo knows the caller by; the detail names no address) or account_taken. Rate limited to 30 per client address a minute, shared with POST /connect (google-connect).'
@@ -795,6 +798,7 @@ paths:
             tags:
                 - Google
             x-vantigo-access: session
+            x-vantigo-api: never
     /api/v1/google/connect:
         post:
             description: 'Starts connecting the caller''s own Google account (Google Workspace design G26, G27): checks the feature, the switch and the web client, the Google account Vantigo knows the caller by (Staff''s directory account, managed by this module, enabled and trusted) and that no other person''s connection holds it; then seals a fresh state, nonce and PKCE verifier with the session into the vantigo.google.connect cookie (HttpOnly, SameSite=Lax, ten minutes, on /api/v1/google) and answers the authorization URL to send the browser to, with access_type=offline, prompt=consent, include_granted_scopes=true, login_hint and hd. 422 feature_unknown; 409 switch_off, no_account or account_taken. Rate limited to 30 per client address a minute, shared with POST /complete (google-connect).'
@@ -844,6 +848,7 @@ paths:
             tags:
                 - Google
             x-vantigo-access: session
+            x-vantigo-api: never
     /api/v1/google/connect/callback:
         get:
             description: 'The personal connection''s redirect URI (Google Workspace design G26), on APP_URL with the base path, never the public host. Anonymous: Google''s redirect carries the browser''s Lax cookies but the session''s Strict one is not sent. It checks the state against the sealed vantigo.google.connect cookie — nothing is written without a valid one — redeems the code through the module''s guarded client with the web client''s secret and the PKCE verifier, verifies the ID token''s signature against Google''s published keys, its issuer, audience, expiry and nonce, requires its hd to be one of the organisation''s verified domains, checks that the granted scope holds the feature asked, and seals the result into vantigo.google.connected for POST /complete. Every answer clears vantigo.google.connect and redirects to /settings/connections with connection=google and outcome=complete, or outcome=failed and code: expired, access_denied, domain_mismatch, consent_missing or failed. Google''s error_description is never read. Rate limited to 60 per client address a minute (google-connect-callback).'
@@ -912,6 +917,7 @@ paths:
             tags:
                 - Google
             x-vantigo-access: anonymous
+            x-vantigo-api: never
     /api/v1/google/connection:
         get:
             description: The connection, its credentials without their values, the scopes to delegate and what the last test found — the Status tab and every step of the Connection tab. Reads the module's own rows only; nothing reaches Google.
@@ -939,6 +945,7 @@ paths:
             tags:
                 - Google
             x-vantigo-access: permission:google:manage
+            x-vantigo-api: never
         put:
             description: 'Sets the admin to impersonate and the credential kind, under If-Match on the connection''s version. A changed admin sends the status back to unconfigured and forgets what the last test found. vantigo_hosted is refused 422 credential_kind_unsupported. The Owner''s, as the single sign-on settings are. Audited google.connection.changed, never with the address. Rate limited to 30 per client address a minute, shared with every Owner operation of the module.'
             operationId: putGoogleConnection
@@ -1006,6 +1013,7 @@ paths:
             tags:
                 - Google
             x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
     /api/v1/google/connection/credentials:
         post:
             description: 'Uploads a service account''s JSON key: type service_account, token_uri https://oauth2.googleapis.com/token, an RSA private key in PKCS #8 PEM, at most 8 KiB. The private key is sealed at once and never answered; the service account''s address, its numeric client id, the key''s id and the project are kept in the clear, nothing else of the file. Several keys may be stored — the newest live one is used — but a key for another service account is refused 422 client_mismatch while one of the current account''s is live. The Owner''s. Audited google.credential.added with the ids, never the key. Rate limited with every Owner operation of the module.'
@@ -1061,6 +1069,7 @@ paths:
             tags:
                 - Google
             x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
     /api/v1/google/connection/credentials/{id}:
         delete:
             description: Revokes a key or a client secret — it is kept, marked revoked, and never used again; nothing changes at Google, where the Owner deletes the key themselves. A credential already revoked answers as it is. The Owner's. Audited google.credential.revoked. Rate limited with every Owner operation of the module.
@@ -1107,6 +1116,7 @@ paths:
             tags:
                 - Google
             x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
     /api/v1/google/connection/me:
         delete:
             description: 'Disconnects the caller''s own Google account (Google Workspace design G28): their live connection closes, its token kept only for the removals that may still need it, and is deleted — its token revoked at Google — once nothing does. Audited google.personal.disconnected. 204 whether or not there was one.'
@@ -1124,6 +1134,7 @@ paths:
             tags:
                 - Google
             x-vantigo-access: session
+            x-vantigo-api: never
         get:
             description: The caller's own Google connection, whether they may connect, and the account Vantigo knows them by. Always 200, so the page can tell "not connected" from "nothing to connect". Reads the module's own rows and Staff's directory account; nothing reaches Google.
             operationId: getGoogleConnectionMe
@@ -1144,6 +1155,7 @@ paths:
             tags:
                 - Google
             x-vantigo-access: session
+            x-vantigo-api: never
     /api/v1/google/connection/oauth-client:
         put:
             description: Sets the Internal web client — its id, ending .apps.googleusercontent.com, and its secret, sealed at once and never answered. A changed client id needs its secret; a secret alone rotates the current client's, the older one revoked. The Owner's. Audited google.oauth_client.changed, never with the secret. Rate limited with every Owner operation of the module.
@@ -1193,6 +1205,7 @@ paths:
             tags:
                 - Google
             x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
     /api/v1/google/connection/mail-channels:
         put:
             description: 'Turns Mail channels on or off (Google Workspace design G33): while on, gmail.modify and gmail.send join the scopes to delegate and Test connection checks them, as the first channel mailbox when one is recorded, else as the admin to impersonate; while off, a Gmail scope still delegated is unexpected, and every Gmail channel is unavailable until it is back on. The mailboxes already checked are kept. The Owner''s, as the single sign-on settings are. Audited google.mail_channels.switched. Rate limited with every Owner operation of the module.'
@@ -1236,6 +1249,7 @@ paths:
             tags:
                 - Google
             x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
     /api/v1/google/connection/personal:
         put:
             description: 'Turns Connection for people on or off (Google Workspace design G28, G29). Turning it off closes every person''s connection, tokens kept for the removals, and each must connect again once it is back on; the page asks first while anyone is connected. Turning it on records when, from which the status''s ready is judged. The Owner''s, as the single sign-on settings are. Audited google.personal.switched. Rate limited with every Owner operation of the module.'
@@ -1279,6 +1293,7 @@ paths:
             tags:
                 - Google
             x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
     /api/v1/google/connection/settings:
         put:
             description: The account rules — the address domain and pattern, the organisational unit, the first password's lifetime and who hands it over, and the leaver's steps — under If-Match on the connection's version. Every field is optional and one left out keeps its value; each refusal is a field error. Audited google.settings.changed with the names of what changed.
@@ -1331,6 +1346,7 @@ paths:
             tags:
                 - Google
             x-vantigo-access: permission:google:manage
+            x-vantigo-api: never
     /api/v1/google/connection/skus:
         get:
             description: The licences the organisation holds — for each Google Workspace product Vantigo knows, the SKUs licenseAssignments.listForProduct finds assigned — read from Google as the admin to impersonate and cached on the connection, the choices for a Staff group's licences. A product Google refuses counts as none held. 503 when Google cannot be asked. Rate limited to 30 per client address a minute, a bucket of its own.
@@ -1376,6 +1392,7 @@ paths:
             tags:
                 - Google
             x-vantigo-access: permission:google:manage
+            x-vantigo-api: never
     /api/v1/google/connection/test:
         post:
             description: 'Tests the connection: a token for each scope Vantigo needs and for each scope it never uses, asked as the admin to impersonate with the newest live key, then the organisation and its verified domains read — and writes what it found to the connection. pending_delegation when every needed scope was refused, connected with the missing ones listed when some were, failing with credential_invalid, admin_refused or google_unreachable. 200 with the result whatever it found. The Owner''s. Audited google.connection.tested with the status and the scopes'' codes. Rate limited with every Owner operation of the module.'
@@ -1413,6 +1430,7 @@ paths:
             tags:
                 - Google
             x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
     /api/v1/google/events:
         get:
             description: The module's recent writes, newest first — the Status tab's events.
@@ -1455,6 +1473,7 @@ paths:
             tags:
                 - Google
             x-vantigo-access: permission:google:manage
+            x-vantigo-api: never
     /api/v1/google/groups:
         get:
             description: Every group the module keeps in the organisation for Staff's groups, by address — the Accounts tab's groups. From the module's own rows; nothing asked of Google.
@@ -1484,6 +1503,7 @@ paths:
             tags:
                 - Google
             x-vantigo-access: permission:google:manage
+            x-vantigo-api: never
     /api/v1/google/groups/{groupId}/confirm:
         post:
             description: 'Confirms the adoption of a group the module found holding a Staff group''s address rather than made. Until it is confirmed the module writes nothing to it — no name, no settings, no member — and Staff''s sync waits with group_unconfirmed; from then on it writes to it as to one it made, though it never deletes it. Idempotent: a group confirmed already, or one the module made, is answered as it is. Audited google.group.adoption_confirmed, once. 404 for a group the module does not keep.'
@@ -1519,5 +1539,6 @@ paths:
             tags:
                 - Google
             x-vantigo-access: permission:google:manage
+            x-vantigo-api: never
 servers:
     - url: /

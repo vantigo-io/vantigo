@@ -1121,3 +1121,10 @@ The two PDF downloads, the import and the received-not-invoiced CSV are not offe
 (`x-vantigo-assistant: never`). Every operation, with its request, its responses and the permission it is checked
 against, is in the generated API reference (`/en/reference/api/purchasing/`), built from
 the contract.
+
+## API keys
+
+`purchasing:settings` cannot be delegated, so no API key holds it, and the settings
+(`getPurchasingSettings`, `putPurchasingSettings`) are `x-vantigo-api: never`. See
+[integration users](/en/admin/authentication/#integration-users), and the marks' rules in
+[module boundaries](/en/contributing/module-boundaries/#the-rules).

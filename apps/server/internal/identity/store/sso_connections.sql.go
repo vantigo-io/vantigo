@@ -16,6 +16,7 @@ const listConnectCandidates = `-- name: ListConnectCandidates :many
 SELECT u.id, u.email, u.employee_number, u.is_disabled
 FROM identity.users u
 WHERE u.pending_since IS NULL
+  AND u.kind <> 'integration'
   AND u.id <> $1
   AND NOT EXISTS (
       SELECT 1 FROM identity.oidc_links l
@@ -56,7 +57,8 @@ type ListConnectCandidatesRow struct {
 // ListConnectCandidates is every user who is not pending, holds no OIDC link
 // under @oidc_issuer and no announced link under it, @caller excluded, in
 // ListManagedUsers' order: the Owners first, then by display name
-// ordinally, then by id; at most @max_rows of them.
+// ordinally, then by id; at most @max_rows of them. An integration is never a
+// candidate: it has no directory account (API access design K4).
 func (q *Queries) ListConnectCandidates(ctx context.Context, arg ListConnectCandidatesParams) ([]ListConnectCandidatesRow, error) {
 	rows, err := q.db.Query(ctx, listConnectCandidates, arg.Caller, arg.OidcIssuer, arg.MaxRows)
 	if err != nil {

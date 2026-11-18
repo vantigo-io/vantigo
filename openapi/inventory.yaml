@@ -3710,6 +3710,7 @@ paths:
             tags:
                 - Inventory
             x-vantigo-access: permission:inventory:locations-view
+            x-vantigo-api: read
     /api/v1/inventory/locations:
         post:
             description: Creates a location under an active parent of the same site (I2).

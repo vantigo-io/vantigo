@@ -7,6 +7,7 @@ package contracts
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -92,6 +93,52 @@ type Rule struct {
 	// handler checks the permissions itself. Only the router's wrap sets it;
 	// the zero value refuses an agent every session rule.
 	Agent bool
+	// API says whether an integration's API key may meet the rule (API access
+	// design K5): the operation's x-vantigo-api mark. Only the router's wrap
+	// sets it from the contract, and HasPermissions for a key's handler-side
+	// question; the zero value refuses a key, so a platform endpoint or the
+	// docs handler never admits one unless it says so.
+	API APIMode
+}
+
+// APIMode is Rule.API.
+type APIMode uint8
+
+const (
+	// APIRefused: an API key may not meet the rule (403 api_not_available).
+	APIRefused APIMode = iota
+	// APIAllowed: an API key may meet the rule, but a read-only key may not
+	// (403 api_key_read_only).
+	APIAllowed
+	// APIRead: an API key may meet the rule, a read-only key included.
+	APIRead
+)
+
+// APIExtension is the operation extension that says whether an integration's
+// API key may call the operation (API access design K5): allowed, read (a
+// read-only key may call it too; every GET and HEAD is one without the mark),
+// or never. Absent means allowed, or read for a GET or HEAD.
+const (
+	APIExtension        = "x-vantigo-api"
+	APIExtensionAllowed = "allowed"
+	APIExtensionRead    = "read"
+	APIExtensionNever   = "never"
+)
+
+// APINever is the permissions an API key never holds, whatever its
+// integration's roles grant (API access design K7): every identity: and
+// agents: key, and every permission that cannot be delegated, which is the
+// Owner tier. It is computed from the composed catalog, so a new
+// non-delegable permission joins it without an edit. The answer is sorted.
+func APINever(catalog []Permission) []string {
+	var never []string
+	for _, p := range catalog {
+		if !p.Delegable || strings.HasPrefix(p.Key, "identity:") || strings.HasPrefix(p.Key, "agents:") {
+			never = append(never, p.Key)
+		}
+	}
+	slices.Sort(never)
+	return slices.Compact(never)
 }
 
 // StationMode is Rule.Station.

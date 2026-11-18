@@ -1505,3 +1505,10 @@ The Assistant can point at these controls in a guided tour ([the registry](/en/r
 | `expenses.expenses.form-description` | `/expenses` | Description |
 | `expenses.expenses.form-save` | `/expenses` | Save draft |
 | `expenses.claim.submit` | `/expenses/claims/{claimId}` | Submit claim |
+
+## API keys
+
+`postExpensesClaimsByIdPerDiemSuggestion` writes nothing and is marked `x-vantigo-api:
+read`: a read-only API key may call it. See [integration
+users](/en/admin/authentication/#integration-users), and the marks' rules in [module
+boundaries](/en/contributing/module-boundaries/#the-rules).
