@@ -435,6 +435,11 @@
     "description": "The button in the seller record of Invoice settings that uploads the logo printed at the top of invoices, credit notes and reminder letters, and shown in their e-mails."
   },
   {
+    "key": "invoices.settings.tolerance",
+    "route": "/invoices/settings",
+    "description": "The field in Invoice settings for the largest amount, in NOK, a payment may leave open and have rounded off automatically as a small difference. 0 turns it off."
+  },
+  {
     "key": "manufacturing.bom-overview.cost",
     "route": "/manufacturing/boms/{bomId}/overview",
     "description": "The components at standard cost, the operations' cost and their total, for someone who may see costs."
