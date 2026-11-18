@@ -998,6 +998,105 @@ components:
                 - key
                 - apiNever
             type: object
+        IntegrationRequest:
+            description: One request an API key of the integration made (API access design K23). It never carries a body, a query string or a path parameter's value.
+            properties:
+                at:
+                    format: date-time
+                    type: string
+                clientIp:
+                    nullable: true
+                    type: string
+                durationMs:
+                    type: integer
+                keyId:
+                    format: uuid
+                    type: string
+                keyName:
+                    description: The key's name, null once the key's row is deleted, 90 days after it expired.
+                    nullable: true
+                    type: string
+                method:
+                    type: string
+                operationId:
+                    type: string
+                reason:
+                    description: Why the request was refused, for a refusal.
+                    nullable: true
+                    type: string
+                status:
+                    type: integer
+                traceId:
+                    nullable: true
+                    type: string
+            required:
+                - at
+                - keyId
+                - keyName
+                - method
+                - operationId
+                - status
+                - reason
+                - durationMs
+                - clientIp
+                - traceId
+            type: object
+        IntegrationRequestDay:
+            properties:
+                day:
+                    description: The UTC day.
+                    format: date
+                    type: string
+                requests:
+                    type: integer
+                statusClass:
+                    description: The status class, 2 for 2xx through 5 for 5xx.
+                    type: integer
+            required:
+                - day
+                - statusClass
+                - requests
+            type: object
+        IntegrationRequestLog:
+            properties:
+                days:
+                    description: The requests per UTC day and status class, oldest first; a day with none is left out.
+                    items:
+                        $ref: '#/components/schemas/IntegrationRequestDay'
+                    type: array
+                from:
+                    format: date-time
+                    type: string
+                latest:
+                    description: The latest 200 requests, newest first.
+                    items:
+                        $ref: '#/components/schemas/IntegrationRequest'
+                    type: array
+                operations:
+                    description: The 10 operations called most, most first.
+                    items:
+                        $ref: '#/components/schemas/IntegrationRequestOperation'
+                    type: array
+                to:
+                    format: date-time
+                    type: string
+            required:
+                - from
+                - to
+                - days
+                - operations
+                - latest
+            type: object
+        IntegrationRequestOperation:
+            properties:
+                operationId:
+                    type: string
+                requests:
+                    type: integer
+            required:
+                - operationId
+                - requests
+            type: object
         IntegrationRole:
             properties:
                 displayName:
@@ -5856,6 +5955,89 @@ paths:
                             schema:
                                 type: string
             summary: Roll an API key
+            tags:
+                - API access
+            x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
+            x-vantigo-assistant: never
+    /api/v1/identity/integrations/{id}/requests:
+        get:
+            description: 'The integration''s request log (API access design K23) over the last 30 days, or over one UTC day of them: the requests per day and status class, the 10 operations called most and the latest 200 requests, each filtered by key, status class and reason. Every request an API key made that identity could attribute is in it, admitted or refused; a key that matched nothing is not. Rows are written in batches every few seconds.'
+            operationId: getIdentityIntegrationsByIdRequests
+            parameters:
+                - description: The integration (its user's id).
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+                - description: Only the requests of this key.
+                  in: query
+                  name: key
+                  schema:
+                    format: uuid
+                    type: string
+                - description: Only the requests answered with this status class, 2 for 2xx through 5 for 5xx.
+                  in: query
+                  name: statusClass
+                  schema:
+                    maximum: 5
+                    minimum: 2
+                    type: integer
+                - description: Only the requests refused for this reason.
+                  in: query
+                  name: reason
+                  schema:
+                    enum:
+                        - expired
+                        - revoked
+                        - disabled
+                        - archived
+                        - network
+                        - read_only
+                        - never
+                        - forbidden
+                        - rate_limited
+                    type: string
+                - description: Only this UTC day, one of the last 30.
+                  in: query
+                  name: day
+                  schema:
+                    format: date
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/IntegrationRequestLog'
+                    description: 'OK'
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Bad Request — invalid_request with field errors: a day that is not one of the last 30.'
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Unauthorized'
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Forbidden'
+                "404":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Not Found — not_found, no such integration.'
+            summary: Read an integration's request log
             tags:
                 - API access
             x-vantigo-access: policy:Owner+OwnerManagement

@@ -758,6 +758,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/identity/integrations/{id}/requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read an integration's request log
+         * @description The integration's request log (API access design K23) over the last 30 days, or over one UTC day of them: the requests per day and status class, the 10 operations called most and the latest 200 requests, each filtered by key, status class and reason. Every request an API key made that identity could attribute is in it, admitted or refused; a key that matched nothing is not. Rows are written in batches every few seconds.
+         */
+        get: operations["getIdentityIntegrationsByIdRequests"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/identity/integrations/{id}/roles": {
         parameters: {
             query?: never;
@@ -2503,6 +2523,49 @@ export interface components {
             /** @description True for a permission no API key ever holds, whatever the roles grant (K7). */
             apiNever: boolean;
             key: string;
+        };
+        /** @description One request an API key of the integration made (API access design K23). It never carries a body, a query string or a path parameter's value. */
+        IntegrationRequest: {
+            /** Format: date-time */
+            at: string;
+            clientIp: string | null;
+            durationMs: number;
+            /** Format: uuid */
+            keyId: string;
+            /** @description The key's name, null once the key's row is deleted, 90 days after it expired. */
+            keyName: string | null;
+            method: string;
+            operationId: string;
+            /** @description Why the request was refused, for a refusal. */
+            reason: string | null;
+            status: number;
+            traceId: string | null;
+        };
+        IntegrationRequestDay: {
+            /**
+             * Format: date
+             * @description The UTC day.
+             */
+            day: string;
+            requests: number;
+            /** @description The status class, 2 for 2xx through 5 for 5xx. */
+            statusClass: number;
+        };
+        IntegrationRequestLog: {
+            /** @description The requests per UTC day and status class, oldest first; a day with none is left out. */
+            days: components["schemas"]["IntegrationRequestDay"][];
+            /** Format: date-time */
+            from: string;
+            /** @description The latest 200 requests, newest first. */
+            latest: components["schemas"]["IntegrationRequest"][];
+            /** @description The 10 operations called most, most first. */
+            operations: components["schemas"]["IntegrationRequestOperation"][];
+            /** Format: date-time */
+            to: string;
+        };
+        IntegrationRequestOperation: {
+            operationId: string;
+            requests: number;
         };
         IntegrationRole: {
             displayName: string;
@@ -6890,6 +6953,74 @@ export interface operations {
             429: {
                 headers: {
                     "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getIdentityIntegrationsByIdRequests: {
+        parameters: {
+            query?: {
+                /** @description Only the requests of this key. */
+                key?: string;
+                /** @description Only the requests answered with this status class, 2 for 2xx through 5 for 5xx. */
+                statusClass?: number;
+                /** @description Only the requests refused for this reason. */
+                reason?: "expired" | "revoked" | "disabled" | "archived" | "network" | "read_only" | "never" | "forbidden" | "rate_limited";
+                /** @description Only this UTC day, one of the last 30. */
+                day?: string;
+            };
+            header?: never;
+            path: {
+                /** @description The integration (its user's id). */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationRequestLog"];
+                };
+            };
+            /** @description Bad Request — invalid_request with field errors: a day that is not one of the last 30. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — not_found, no such integration. */
+            404: {
+                headers: {
                     [name: string]: unknown;
                 };
                 content: {

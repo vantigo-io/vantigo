@@ -15,6 +15,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/identity/gen"
 	"github.com/vantigo-io/vantigo/server/internal/module"
 	"github.com/vantigo-io/vantigo/server/internal/ratelimit"
+	"github.com/vantigo-io/vantigo/server/internal/worker"
 )
 
 // authRateLimitMessage is the message of every identity rate-limit rejection
@@ -170,7 +171,7 @@ func Module(a *Access) module.Module {
 		SSOConnections: func(d module.Deps) contracts.SSOConnections {
 			return newSSOConnections(a, d)
 		},
-		Workers: workers,
+		Workers: func(d module.Deps) []worker.Worker { return workers(a, d) },
 	}
 }
 

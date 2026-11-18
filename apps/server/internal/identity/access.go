@@ -9,11 +9,13 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/vantigo-io/vantigo/server/internal/config"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
@@ -66,6 +68,11 @@ type Access struct {
 	// log takes the warnings a request is not failed for, such as an API
 	// key's use that could not be recorded; nil discards them.
 	log *slog.Logger
+	// dbPool is the pool the API request log's writer takes its connections
+	// from, and requests the writer while it runs (StartRequestLog); nil
+	// before it starts and after it stops, when Record keeps nothing.
+	dbPool   *pgxpool.Pool
+	requests atomic.Pointer[apiRequestLog]
 }
 
 // aiModelsFor is the one resolver of this Access, built over d the first time.
@@ -84,7 +91,7 @@ var _ contracts.Access = (*Access)(nil)
 //	deps.Access = a
 //	handler, err := module.Compose(deps, identity.Module(a))
 func NewAccess(d module.Deps) *Access {
-	return &Access{cfg: d.Config, q: store.New(d.Pool), pool: d.Pool, now: d.Clock, sso: newSSOSettingsReader(d.Pool, d.Clock, d.Secrets), log: d.Logger}
+	return &Access{cfg: d.Config, q: store.New(d.Pool), pool: d.Pool, now: d.Clock, sso: newSSOSettingsReader(d.Pool, d.Clock, d.Secrets), log: d.Logger, dbPool: d.Pool}
 }
 
 // Check evaluates rule for r. The scim rule admits a request that presents

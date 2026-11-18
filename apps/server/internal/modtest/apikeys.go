@@ -116,6 +116,11 @@ func (h *Harness) SignInAPIKey(t testing.TB, k APIKey, permissions ...string) (*
 	return h.APIKeyClient(t, key), id
 }
 
+// FlushAPIRequests writes what identity's API request log has queued (API
+// access design K23), so a test reads identity.api_requests right after the
+// requests it made.
+func (h *Harness) FlushAPIRequests() { h.requestLog() }
+
 const base62Alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 
 // base62 is n in base62, left-padded with zeros to width.
