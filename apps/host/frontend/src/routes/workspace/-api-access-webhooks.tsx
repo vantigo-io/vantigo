@@ -27,6 +27,7 @@ import {
   enableWebhook,
   listWebhookEvents,
   listWebhooks,
+  testWebhook,
   updateWebhook,
   type WebhookEndpoint,
   type WebhookEndpointSecret,
@@ -42,6 +43,24 @@ import { RollWebhookSecretDialog, WebhookSecretDialog } from "./-webhook-secret-
 const maxEndpoints = 5;
 /** How many of an endpoint's events its row names before "+n more". */
 const eventsShown = 3;
+
+/**
+ * What an endpoint's badge says (W18): enabled, enabled but failing since
+ * its last success, or disabled.
+ */
+type EndpointStatus = "enabled" | "failing" | "disabled";
+const statusOf = (endpoint: WebhookEndpoint): EndpointStatus =>
+  endpoint.status === "disabled" ? "disabled" : endpoint.failingSince ? "failing" : "enabled";
+const statusColor: Record<EndpointStatus, string> = { enabled: "teal", failing: "yellow", disabled: "orange" };
+
+/** The URL's host, as a banner names an endpoint; the URL itself when it does not parse. */
+const hostOf = (url: string) => {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+};
 
 type EndpointDraft = { url: string; description: string; events: string[] };
 
@@ -190,6 +209,16 @@ export const IntegrationWebhooks = ({ integrationId, archived }: { integrationId
     },
     onError: failed(t("apiAccess.couldNotSave")),
   });
+  const test = useMutation({
+    mutationFn: (endpoint: WebhookEndpoint) => testWebhook(integrationId, endpoint.id),
+    onSuccess: () =>
+      notifications.show({
+        color: "teal",
+        title: t("apiAccess.webhookTestSent"),
+        message: t("apiAccess.webhookTestSentHint"),
+      }),
+    onError: failed(t("apiAccess.webhookCouldNotTest")),
+  });
   const remove = useMutation({
     mutationFn: (endpoint: WebhookEndpoint) => deleteWebhook(integrationId, endpoint.id),
     onSuccess: async () => {
@@ -256,6 +285,32 @@ export const IntegrationWebhooks = ({ integrationId, archived }: { integrationId
             {t("apiAccess.webhookLimit")}
           </Text>
         )}
+        {list
+          .filter((endpoint) => endpoint.disabledReason === "failing" || endpoint.disabledReason === "gone")
+          .map((endpoint) => (
+            <Alert
+              key={endpoint.id}
+              color="orange"
+              mb="sm"
+              title={t("apiAccess.webhookBannerTitle", { host: hostOf(endpoint.url) })}
+              data-testid="webhook-disabled-banner"
+              data-reason={endpoint.disabledReason}
+            >
+              <Stack gap="xs" align="flex-start">
+                <Text size="sm">{t(`apiAccess.webhookBanner_${endpoint.disabledReason}`)}</Text>
+                {!archived && (
+                  <Button
+                    size="compact-sm"
+                    variant="light"
+                    loading={lifecycle.isPending}
+                    onClick={() => lifecycle.mutate({ endpoint, action: "enable" })}
+                  >
+                    {t("apiAccess.webhookEnable")}
+                  </Button>
+                )}
+              </Stack>
+            </Alert>
+          ))}
         {list.length === 0 ? (
           <EmptyState title={t("apiAccess.webhookNone")} description={t("apiAccess.webhookNoneHint")} />
         ) : (
@@ -298,11 +353,21 @@ export const IntegrationWebhooks = ({ integrationId, archived }: { integrationId
                     </Table.Td>
                     <Table.Td>
                       <Stack gap={4}>
-                        <Badge color={endpoint.status === "enabled" ? "teal" : "orange"} variant="light">
-                          {t(`apiAccess.webhookStatus_${endpoint.status}`)}
+                        <Badge color={statusColor[statusOf(endpoint)]} variant="light" data-status={statusOf(endpoint)}>
+                          {t(`apiAccess.webhookStatus_${statusOf(endpoint)}`)}
                         </Badge>
                         {endpoint.disabledReason && (
                           <Text size="xs">{t(`apiAccess.webhookReason_${endpoint.disabledReason}`)}</Text>
+                        )}
+                        {endpoint.status === "enabled" && endpoint.failingSince && (
+                          <Text size="xs" c="orange">
+                            {t("apiAccess.webhookFailingSince", { when: when(endpoint.failingSince) })}
+                          </Text>
+                        )}
+                        {endpoint.lastSuccessAt && (
+                          <Text size="xs" c="dimmed">
+                            {t("apiAccess.webhookLastSuccess", { when: when(endpoint.lastSuccessAt) })}
+                          </Text>
                         )}
                         {endpoint.previousSecretExpiresAt && (
                           <Text size="xs" c="dimmed">
@@ -325,6 +390,9 @@ export const IntegrationWebhooks = ({ integrationId, archived }: { integrationId
                             </Button>
                           </Menu.Target>
                           <Menu.Dropdown>
+                            {!archived && endpoint.status === "enabled" && (
+                              <Menu.Item onClick={() => test.mutate(endpoint)}>{t("apiAccess.webhookTest")}</Menu.Item>
+                            )}
                             {!archived && (
                               <Menu.Item onClick={() => open(endpoint)}>{t("apiAccess.webhookEdit")}</Menu.Item>
                             )}

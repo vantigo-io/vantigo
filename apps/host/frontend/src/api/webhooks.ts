@@ -53,6 +53,9 @@ export const enableWebhook = (integrationId: string, webhookId: string) =>
   post<WebhookEndpoint>(`${base(integrationId)}/${webhookId}/enable`);
 export const disableWebhook = (integrationId: string, webhookId: string) =>
   post<WebhookEndpoint>(`${base(integrationId)}/${webhookId}/disable`);
+/** Queues a webhook.ping to an enabled endpoint, sent once with no retry (W19). */
+export const testWebhook = (integrationId: string, webhookId: string) =>
+  post<components["schemas"]["WebhookTestDelivery"]>(`${base(integrationId)}/${webhookId}/test`);
 /** A new secret, shown once; the one it replaces signs beside it for overlapHours. */
 export const rollWebhookSecret = (integrationId: string, webhookId: string, overlapHours: number) =>
   post<WebhookEndpointSecret>(`${base(integrationId)}/${webhookId}/roll-secret`, { overlapHours });
