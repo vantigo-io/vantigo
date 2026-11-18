@@ -13,6 +13,43 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const appliedByIdempotencyKey = `-- name: AppliedByIdempotencyKey :many
+SELECT c.invoice_id, c.amount FROM invoices.customer_credits c
+WHERE c.registered_by_user_id = $1::uuid AND c.idempotency_key = $2::text
+`
+
+type AppliedByIdempotencyKeyParams struct {
+	RegisteredByUserID uuid.UUID
+	IdempotencyKey     string
+}
+
+type AppliedByIdempotencyKeyRow struct {
+	InvoiceID *int64
+	Amount    pgtype.Numeric
+}
+
+// AppliedByIdempotencyKey is the applied movement a person sent with an
+// Idempotency-Key (B-1 review m4): none, or one, by ux_customer_credits_idempotency.
+func (q *Queries) AppliedByIdempotencyKey(ctx context.Context, arg AppliedByIdempotencyKeyParams) ([]AppliedByIdempotencyKeyRow, error) {
+	rows, err := q.db.Query(ctx, appliedByIdempotencyKey, arg.RegisteredByUserID, arg.IdempotencyKey)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AppliedByIdempotencyKeyRow
+	for rows.Next() {
+		var i AppliedByIdempotencyKeyRow
+		if err := rows.Scan(&i.InvoiceID, &i.Amount); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const blankCreditRefundNotes = `-- name: BlankCreditRefundNotes :execrows
 UPDATE invoices.credit_refunds SET note = '' WHERE customer_id = $1 AND note <> ''
 `
@@ -108,7 +145,7 @@ func (q *Queries) CreditBalances(ctx context.Context, customerID int32) ([]Credi
 }
 
 const creditNoteMovesOf = `-- name: CreditNoteMovesOf :many
-SELECT c.id, c.customer_id, c.currency, c.amount, c.amount_nok, c.kind, c.credit_day, c.note, c.invoice_id, c.payment_id, c.bank_transaction_id, c.document_id, c.refund_id, c.reverses_id, c.registered_by_user_id, c.registered_at,
+SELECT c.id, c.customer_id, c.currency, c.amount, c.amount_nok, c.kind, c.credit_day, c.note, c.invoice_id, c.payment_id, c.bank_transaction_id, c.document_id, c.refund_id, c.reverses_id, c.registered_by_user_id, c.registered_at, c.idempotency_key,
     coalesce((SELECT sum(r.amount) FROM invoices.customer_credits r WHERE r.reverses_id = c.id), 0)::numeric(14,2) AS reversed
 FROM invoices.customer_credits c
 WHERE c.invoice_id = $1 AND c.kind = 'credit_note'
@@ -149,6 +186,7 @@ func (q *Queries) CreditNoteMovesOf(ctx context.Context, invoiceID *int64) ([]Cr
 			&i.InvoicesCustomerCredit.ReversesID,
 			&i.InvoicesCustomerCredit.RegisteredByUserID,
 			&i.InvoicesCustomerCredit.RegisteredAt,
+			&i.InvoicesCustomerCredit.IdempotencyKey,
 			&i.Reversed,
 		); err != nil {
 			return nil, err
@@ -203,7 +241,7 @@ func (q *Queries) CreditRefundsOf(ctx context.Context, customerID int32) ([]Invo
 }
 
 const creditsOfLine = `-- name: CreditsOfLine :many
-SELECT c.id, c.customer_id, c.currency, c.amount, c.amount_nok, c.kind, c.credit_day, c.note, c.invoice_id, c.payment_id, c.bank_transaction_id, c.document_id, c.refund_id, c.reverses_id, c.registered_by_user_id, c.registered_at,
+SELECT c.id, c.customer_id, c.currency, c.amount, c.amount_nok, c.kind, c.credit_day, c.note, c.invoice_id, c.payment_id, c.bank_transaction_id, c.document_id, c.refund_id, c.reverses_id, c.registered_by_user_id, c.registered_at, c.idempotency_key,
     coalesce((SELECT sum(r.amount) FROM invoices.customer_credits r WHERE r.reverses_id = c.id), 0)::numeric(14,2) AS reversed
 FROM invoices.customer_credits c
 WHERE c.bank_transaction_id = $1
@@ -243,6 +281,7 @@ func (q *Queries) CreditsOfLine(ctx context.Context, bankTransactionID *int64) (
 			&i.InvoicesCustomerCredit.ReversesID,
 			&i.InvoicesCustomerCredit.RegisteredByUserID,
 			&i.InvoicesCustomerCredit.RegisteredAt,
+			&i.InvoicesCustomerCredit.IdempotencyKey,
 			&i.Reversed,
 		); err != nil {
 			return nil, err
@@ -256,7 +295,7 @@ func (q *Queries) CreditsOfLine(ctx context.Context, bankTransactionID *int64) (
 }
 
 const creditsOfPayment = `-- name: CreditsOfPayment :many
-SELECT c.id, c.customer_id, c.currency, c.amount, c.amount_nok, c.kind, c.credit_day, c.note, c.invoice_id, c.payment_id, c.bank_transaction_id, c.document_id, c.refund_id, c.reverses_id, c.registered_by_user_id, c.registered_at,
+SELECT c.id, c.customer_id, c.currency, c.amount, c.amount_nok, c.kind, c.credit_day, c.note, c.invoice_id, c.payment_id, c.bank_transaction_id, c.document_id, c.refund_id, c.reverses_id, c.registered_by_user_id, c.registered_at, c.idempotency_key,
     coalesce((SELECT sum(r.amount) FROM invoices.customer_credits r WHERE r.reverses_id = c.id), 0)::numeric(14,2) AS reversed
 FROM invoices.customer_credits c
 WHERE c.payment_id = $1
@@ -297,6 +336,7 @@ func (q *Queries) CreditsOfPayment(ctx context.Context, paymentID *int64) ([]Cre
 			&i.InvoicesCustomerCredit.ReversesID,
 			&i.InvoicesCustomerCredit.RegisteredByUserID,
 			&i.InvoicesCustomerCredit.RegisteredAt,
+			&i.InvoicesCustomerCredit.IdempotencyKey,
 			&i.Reversed,
 		); err != nil {
 			return nil, err
@@ -310,7 +350,7 @@ func (q *Queries) CreditsOfPayment(ctx context.Context, paymentID *int64) ([]Cre
 }
 
 const customerCredits = `-- name: CustomerCredits :many
-SELECT c.id, c.customer_id, c.currency, c.amount, c.amount_nok, c.kind, c.credit_day, c.note, c.invoice_id, c.payment_id, c.bank_transaction_id, c.document_id, c.refund_id, c.reverses_id, c.registered_by_user_id, c.registered_at,
+SELECT c.id, c.customer_id, c.currency, c.amount, c.amount_nok, c.kind, c.credit_day, c.note, c.invoice_id, c.payment_id, c.bank_transaction_id, c.document_id, c.refund_id, c.reverses_id, c.registered_by_user_id, c.registered_at, c.idempotency_key,
     i.number AS invoice_number, d.number AS document_number, t.line_ref AS line_ref,
     coalesce((SELECT sum(r.amount) FROM invoices.customer_credits r WHERE r.reverses_id = c.id), 0)::numeric(14,2) AS reversed
 FROM invoices.customer_credits c
@@ -365,6 +405,7 @@ func (q *Queries) CustomerCredits(ctx context.Context, arg CustomerCreditsParams
 			&i.InvoicesCustomerCredit.ReversesID,
 			&i.InvoicesCustomerCredit.RegisteredByUserID,
 			&i.InvoicesCustomerCredit.RegisteredAt,
+			&i.InvoicesCustomerCredit.IdempotencyKey,
 			&i.InvoiceNumber,
 			&i.DocumentNumber,
 			&i.LineRef,
@@ -450,7 +491,7 @@ func (q *Queries) GetCreditRefund(ctx context.Context, arg GetCreditRefundParams
 }
 
 const getCustomerCredit = `-- name: GetCustomerCredit :one
-SELECT c.id, c.customer_id, c.currency, c.amount, c.amount_nok, c.kind, c.credit_day, c.note, c.invoice_id, c.payment_id, c.bank_transaction_id, c.document_id, c.refund_id, c.reverses_id, c.registered_by_user_id, c.registered_at,
+SELECT c.id, c.customer_id, c.currency, c.amount, c.amount_nok, c.kind, c.credit_day, c.note, c.invoice_id, c.payment_id, c.bank_transaction_id, c.document_id, c.refund_id, c.reverses_id, c.registered_by_user_id, c.registered_at, c.idempotency_key,
     coalesce((SELECT sum(r.amount) FROM invoices.customer_credits r WHERE r.reverses_id = c.id), 0)::numeric(14,2) AS reversed
 FROM invoices.customer_credits c
 WHERE c.id = $1
@@ -483,6 +524,7 @@ func (q *Queries) GetCustomerCredit(ctx context.Context, id int64) (GetCustomerC
 		&i.InvoicesCustomerCredit.ReversesID,
 		&i.InvoicesCustomerCredit.RegisteredByUserID,
 		&i.InvoicesCustomerCredit.RegisteredAt,
+		&i.InvoicesCustomerCredit.IdempotencyKey,
 		&i.Reversed,
 	)
 	return i, err
@@ -619,14 +661,14 @@ func (q *Queries) InsertCreditRefund(ctx context.Context, arg InsertCreditRefund
 const insertCustomerCredit = `-- name: InsertCustomerCredit :one
 INSERT INTO invoices.customer_credits (
     customer_id, currency, amount, amount_nok, kind, credit_day, note, invoice_id, payment_id, bank_transaction_id,
-    document_id, refund_id, reverses_id, registered_by_user_id, registered_at
+    document_id, refund_id, reverses_id, registered_by_user_id, registered_at, idempotency_key
 ) VALUES (
     $1, $2, $3, $4::numeric, $5, $6, $7,
     $8::bigint, $9::bigint, $10::bigint,
     $11::bigint, $12::bigint, $13::bigint,
-    $14::uuid, $15::timestamptz
+    $14::uuid, $15::timestamptz, $16::text
 )
-RETURNING id, customer_id, currency, amount, amount_nok, kind, credit_day, note, invoice_id, payment_id, bank_transaction_id, document_id, refund_id, reverses_id, registered_by_user_id, registered_at
+RETURNING id, customer_id, currency, amount, amount_nok, kind, credit_day, note, invoice_id, payment_id, bank_transaction_id, document_id, refund_id, reverses_id, registered_by_user_id, registered_at, idempotency_key
 `
 
 type InsertCustomerCreditParams struct {
@@ -645,6 +687,7 @@ type InsertCustomerCreditParams struct {
 	ReversesID         *int64
 	RegisteredByUserID *uuid.UUID
 	RegisteredAt       time.Time
+	IdempotencyKey     *string
 }
 
 // InsertCustomerCredit writes one movement (I8). The caller holds the
@@ -668,6 +711,7 @@ func (q *Queries) InsertCustomerCredit(ctx context.Context, arg InsertCustomerCr
 		arg.ReversesID,
 		arg.RegisteredByUserID,
 		arg.RegisteredAt,
+		arg.IdempotencyKey,
 	)
 	var i InvoicesCustomerCredit
 	err := row.Scan(
@@ -687,6 +731,7 @@ func (q *Queries) InsertCustomerCredit(ctx context.Context, arg InsertCustomerCr
 		&i.ReversesID,
 		&i.RegisteredByUserID,
 		&i.RegisteredAt,
+		&i.IdempotencyKey,
 	)
 	return i, err
 }
@@ -762,7 +807,7 @@ func (q *Queries) PendingCreditNoteMoves(ctx context.Context, rowLimit int32) ([
 }
 
 const refundedMoveOf = `-- name: RefundedMoveOf :one
-SELECT id, customer_id, currency, amount, amount_nok, kind, credit_day, note, invoice_id, payment_id, bank_transaction_id, document_id, refund_id, reverses_id, registered_by_user_id, registered_at FROM invoices.customer_credits WHERE refund_id = $1 AND kind = 'refunded'
+SELECT id, customer_id, currency, amount, amount_nok, kind, credit_day, note, invoice_id, payment_id, bank_transaction_id, document_id, refund_id, reverses_id, registered_by_user_id, registered_at, idempotency_key FROM invoices.customer_credits WHERE refund_id = $1 AND kind = 'refunded'
 `
 
 // RefundedMoveOf is the refunded movement a refund wrote.
@@ -786,6 +831,7 @@ func (q *Queries) RefundedMoveOf(ctx context.Context, refundID *int64) (Invoices
 		&i.ReversesID,
 		&i.RegisteredByUserID,
 		&i.RegisteredAt,
+		&i.IdempotencyKey,
 	)
 	return i, err
 }

@@ -122,8 +122,12 @@ func (s *server) keepLocked(ctx context.Context, txq *store.Queries, line store.
 		if err != nil {
 			return nil, err
 		}
+		nokN, err := amountNOKOf(inv, n)
+		if err != nil {
+			return nil, err
+		}
 		if _, err := txq.InsertImportedPayment(ctx, store.InsertImportedPaymentParams{
-			InvoiceID: inv.ID, PaidOn: line.BookedOn, Amount: n, Currency: inv.Currency, Source: paymentSourceOf(line.Format),
+			InvoiceID: inv.ID, PaidOn: line.BookedOn, Amount: n, AmountNok: nokN, Currency: inv.Currency, Source: paymentSourceOf(line.Format),
 			BankTransactionID: line.ID, Reference: reference, RegisteredByUserID: &caller, RegisteredAt: now,
 		}); err != nil {
 			return nil, fmt.Errorf("invoices: apply line %d's payment to %d: %w", line.ID, inv.ID, err)

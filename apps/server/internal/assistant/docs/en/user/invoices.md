@@ -1187,6 +1187,8 @@ invoice, **Use the customer's credit** does the same [as soon as it is issued](#
 customer who ever had any: *The customer has NOK 300.00 in credit*, and every movement —
 an overpayment of an invoice, a credit note beyond what was open, credit used on an invoice,
 a refund, a reversal — each with its day, amount and what it came from, the newest first.
+The account a refund left and the bank line a movement came from show only to someone
+with `invoices:payments`.
 
 **Pay it back.** Vantigo moves no money: pay the customer from your bank, then record it.
 On the card **Customer credit** click **Record refund** (with `invoices:payments`), and
@@ -1460,7 +1462,11 @@ the one it reverses — a payment, or credit a line kept for the customer (*Cred
 invoice 1001*) — or choose **No payment is removed; the note says why** and write the
 note, then click **Handle the reversal**. Each chosen payment is removed with the reason
 "Reversed by the bank", each chosen credit is taken back — refused while the customer has
-used it — and the line it came from is never applied again. Without a
+used it — and the line it came from is never applied again. A payment removed here goes
+as it would from the invoice: the credit kept beside it is taken back (refused while the
+customer has used it), and an invoice it reopens gets back what a credit note had moved
+to the customer's credit. A payment made from the customer's credit is no bank's to take
+back: remove it on the invoice. Without a
 payment or a note the reversal is refused, in words. A reversal that names the wrong
 payment cannot be undone: register that payment again by hand.
 

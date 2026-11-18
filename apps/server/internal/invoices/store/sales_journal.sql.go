@@ -122,7 +122,12 @@ type JournalCreditsAtRow struct {
 // on or before day, each counted for the customer it belonged to when it was
 // written (its fact's), plus the balances merges moved into the customer
 // before live_until, less those they moved out of it. The page holds every
-// currency of the customers it names.
+// currency of the customers it names. A movement written after a merge and
+// dated before it is its fact's customer's — the survivor's — on every day,
+// deliberately (B-1 review m2): Accounting posts it on that customer's credit
+// item, and the merge's fact moves only what the absorbed customer held when
+// it merged, so counting it for the absorbed customer would leave a residue
+// on its item once the merge posts.
 func (q *Queries) JournalCreditsAt(ctx context.Context, arg JournalCreditsAtParams) ([]JournalCreditsAtRow, error) {
 	rows, err := q.db.Query(ctx, journalCreditsAt,
 		arg.Day,

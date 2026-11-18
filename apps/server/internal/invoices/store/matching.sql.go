@@ -63,10 +63,10 @@ func (q *Queries) InsertBankTransactionEvent(ctx context.Context, arg InsertBank
 
 const insertImportedPayment = `-- name: InsertImportedPayment :one
 INSERT INTO invoices.payments (
-    invoice_id, paid_on, amount, currency, source, bank_transaction_id, reference, registered_by_user_id, registered_at
+    invoice_id, paid_on, amount, amount_nok, currency, source, bank_transaction_id, reference, registered_by_user_id, registered_at
 ) VALUES (
-    $1, $2, $3, $4, $5, $6::bigint, $7,
-    $8::uuid, $9::timestamptz
+    $1, $2, $3, $4, $5, $6, $7::bigint, $8,
+    $9::uuid, $10::timestamptz
 )
 RETURNING id, invoice_id, paid_on, amount, currency, reference, note, registered_by_user_id, registered_at, removed_at, removed_by_user_id, removal_reason, source, bank_transaction_id, payment_attempt_id, kind, write_off_id, amount_nok
 `
@@ -75,6 +75,7 @@ type InsertImportedPaymentParams struct {
 	InvoiceID          int64
 	PaidOn             pgtype.Date
 	Amount             pgtype.Numeric
+	AmountNok          pgtype.Numeric
 	Currency           string
 	Source             string
 	BankTransactionID  int64
@@ -94,6 +95,7 @@ func (q *Queries) InsertImportedPayment(ctx context.Context, arg InsertImportedP
 		arg.InvoiceID,
 		arg.PaidOn,
 		arg.Amount,
+		arg.AmountNok,
 		arg.Currency,
 		arg.Source,
 		arg.BankTransactionID,

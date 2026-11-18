@@ -16,9 +16,9 @@ SELECT * FROM invoices.write_offs WHERE invoice_id = @invoice_id ORDER BY regist
 -- UPDATE and has judged the amount under that lock; ux_write_offs_live keeps
 -- one standing write-off per invoice, tr_write_offs_parent an issued invoice.
 INSERT INTO invoices.write_offs (
-    invoice_id, written_off_on, amount, currency, reason, vat_correction, registered_by_user_id, registered_at
+    invoice_id, written_off_on, amount, amount_nok, currency, reason, vat_correction, registered_by_user_id, registered_at
 ) VALUES (
-    @invoice_id, @written_off_on, @amount, @currency, @reason, @vat_correction, @registered_by_user_id, @registered_at::timestamptz
+    @invoice_id, @written_off_on, @amount, @amount_nok, @currency, @reason, @vat_correction, @registered_by_user_id, @registered_at::timestamptz
 )
 RETURNING *;
 

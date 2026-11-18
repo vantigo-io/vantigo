@@ -254,6 +254,7 @@ type InvoicesCustomerCredit struct {
 	ReversesID         *int64
 	RegisteredByUserID *uuid.UUID
 	RegisteredAt       time.Time
+	IdempotencyKey     *string
 }
 
 type InvoicesCustomerReminderPolicy struct {

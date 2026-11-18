@@ -78,8 +78,8 @@ func seedInvoicesCredit(ctx context.Context, tx pgx.Tx, now time.Time, ownerID u
 	appliedOn := now.AddDate(0, 0, -1)
 	var creditPayment int64
 	if err := tx.QueryRow(ctx, `
-		INSERT INTO invoices.payments (invoice_id, paid_on, amount, currency, source, reference, note, registered_by_user_id, registered_at)
-		VALUES ($1, $2::date, 400, 'NOK', 'credit', '', '', $3, $2) RETURNING id`, open, appliedOn, ownerID).Scan(&creditPayment); err != nil {
+		INSERT INTO invoices.payments (invoice_id, paid_on, amount, amount_nok, currency, source, reference, note, registered_by_user_id, registered_at)
+		VALUES ($1, $2::date, 400, 400, 'NOK', 'credit', '', '', $3, $2) RETURNING id`, open, appliedOn, ownerID).Scan(&creditPayment); err != nil {
 		return fmt.Errorf("seed the credit applied: %w", err)
 	}
 	if _, err := tx.Exec(ctx, `

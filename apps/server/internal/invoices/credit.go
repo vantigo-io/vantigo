@@ -8,9 +8,11 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/vantigo-io/vantigo/server/internal/apicommon"
@@ -45,6 +47,7 @@ const (
 	codeCreditExceedsBalance = "credit_exceeds_balance"
 	codeCreditExceedsOpen    = "credit_exceeds_open"
 	codeRefundRemoved        = "refund_removed"
+	codeIdempotencyKeyReused = "idempotency_key_reused"
 
 	cannotApplyCreditTitle = "The credit cannot be applied"
 	cannotRefundTitle      = "The refund cannot be recorded"
@@ -204,6 +207,20 @@ func nokOfInvoice(inv store.InvoicesInvoice, amount *big.Rat) (pgtype.Numeric, e
 		return pgtype.Numeric{}, err
 	}
 	return numericFromRat(docmath.Round2(new(big.Rat).Mul(amount, rate)), 2)
+}
+
+// amountNOKOf is what amount, in inv's currency, is worth in NOK at its
+// exchange rate, to the øre (I13): the amount itself for NOK. Every payment
+// and write-off insert passes it, so the guard's fill is never relied on.
+func amountNOKOf(inv store.InvoicesInvoice, amount pgtype.Numeric) (pgtype.Numeric, error) {
+	if inv.Currency == "NOK" {
+		return amount, nil
+	}
+	a, err := ratFromNumeric(amount)
+	if err != nil {
+		return pgtype.Numeric{}, err
+	}
+	return nokOfInvoice(inv, a)
 }
 
 // withCustomerAndInvoice runs fn in one locked transaction that holds the
@@ -394,11 +411,36 @@ func (s *server) moveAfterIssue(ctx context.Context, doc store.InvoicesInvoice) 
 // invoice's, the refusals judged against what is open and the balance, then
 // a payment of source credit and its applied movement. A nil amount is the
 // lesser of the balance and what is open (useCredit on issue); nothing to
-// apply then writes nothing and answers no refusal.
-func (s *server) applyCredit(ctx context.Context, id int64, amount *big.Rat, day time.Time, by uuid.UUID) (*gen.InvoicesConflictProblem, error) {
+// apply then writes nothing and answers no refusal. A key is the request's
+// Idempotency-Key (B-1 review m4): one by already applied to the same invoice
+// and amount writes nothing again, one applied otherwise is
+// idempotency_key_reused — judged under the customer's lock, which a retry
+// of the same apply waits on.
+func (s *server) applyCredit(ctx context.Context, id int64, amount *big.Rat, day time.Time, by uuid.UUID, key *string) (*gen.InvoicesConflictProblem, error) {
 	var refusal *gen.InvoicesConflictProblem
 	now := s.deps.Clock()
+	reused := func() *gen.InvoicesConflictProblem {
+		return ptr(conflict(codeIdempotencyKeyReused, cannotApplyCreditTitle,
+			"This Idempotency-Key applied credit already, to another invoice or of another amount: send a new key for a new apply."))
+	}
 	err := s.withCustomerAndInvoice(ctx, id, func(ctx context.Context, txq *store.Queries, inv store.InvoicesInvoice) error {
+		if key != nil {
+			earlier, err := txq.AppliedByIdempotencyKey(ctx, store.AppliedByIdempotencyKeyParams{RegisteredByUserID: by, IdempotencyKey: *key})
+			if err != nil {
+				return fmt.Errorf("invoices: read the apply of key %q: %w", *key, err)
+			}
+			if len(earlier) > 0 {
+				applied, err := ratFromNumeric(earlier[0].Amount)
+				if err != nil {
+					return err
+				}
+				if deref64(earlier[0].InvoiceID) == inv.ID && amount != nil && applied.Neg(applied).Cmp(amount) == 0 {
+					return nil
+				}
+				refusal = reused()
+				return errRefused
+			}
+		}
 		switch {
 		case inv.Kind == kindCreditNote:
 			refusal = ptr(conflict(codeCreditNoteNoPayments, cannotApplyCreditTitle, "Credit is applied to an invoice, never a credit note."))
@@ -446,8 +488,12 @@ func (s *server) applyCredit(ctx context.Context, id int64, amount *big.Rat, day
 		if err != nil {
 			return err
 		}
+		paidNOK, err := amountNOKOf(inv, n)
+		if err != nil {
+			return err
+		}
 		payment, err := txq.InsertCreditPayment(ctx, store.InsertCreditPaymentParams{
-			InvoiceID: inv.ID, PaidOn: pgDate(day), Amount: n, Currency: inv.Currency, RegisteredByUserID: by, RegisteredAt: now,
+			InvoiceID: inv.ID, PaidOn: pgDate(day), Amount: n, AmountNok: paidNOK, Currency: inv.Currency, RegisteredByUserID: by, RegisteredAt: now,
 		})
 		if err != nil {
 			return fmt.Errorf("invoices: apply credit to %d: %w", inv.ID, err)
@@ -458,8 +504,14 @@ func (s *server) applyCredit(ctx context.Context, id int64, amount *big.Rat, day
 		}
 		if _, refusal, err = insertCredit(ctx, txq, store.InsertCustomerCreditParams{
 			CustomerID: inv.CustomerID, Currency: inv.Currency, Kind: creditApplied, CreditDay: pgDate(day),
-			InvoiceID: &inv.ID, PaymentID: &payment.ID, RegisteredByUserID: &by, RegisteredAt: now, AmountNok: nok,
+			InvoiceID: &inv.ID, PaymentID: &payment.ID, RegisteredByUserID: &by, RegisteredAt: now, AmountNok: nok, IdempotencyKey: key,
 		}, new(big.Rat).Neg(use), cannotApplyCreditTitle); err != nil {
+			// The same key sent for another customer's invoice at once: the
+			// index, not the lock, sees the two.
+			if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok && pgErr.Code == "23505" && pgErr.ConstraintName == "ux_customer_credits_idempotency" {
+				refusal = reused()
+				return errRefused
+			}
 			return err
 		}
 		if refusal != nil {
@@ -504,10 +556,14 @@ func (s *server) PostInvoicesByIdApplyCredit(ctx context.Context, req gen.PostIn
 			errs = withFieldError(errs, "paidOn", "Credit is applied today at the latest, "+today.Format(time.DateOnly))
 		}
 	}
+	if k := req.Params.IdempotencyKey; k != nil && (*k == "" || strings.TrimSpace(*k) != *k || len(*k) > 200 ||
+		strings.ContainsFunc(*k, unicode.IsControl)) {
+		errs = withFieldError(errs, "Idempotency-Key", "An Idempotency-Key is 1 to 200 characters, with no surrounding whitespace or control characters")
+	}
 	if errs != nil {
 		return gen.PostInvoicesByIdApplyCredit400ApplicationProblemPlusJSONResponse(invalid(invalidCreditTitle, errs)), nil
 	}
-	refusal, err := s.applyCredit(ctx, req.Id, amt, day, callerID(ctx))
+	refusal, err := s.applyCredit(ctx, req.Id, amt, day, callerID(ctx), req.Params.IdempotencyKey)
 	if refusal != nil {
 		return gen.PostInvoicesByIdApplyCredit409ApplicationProblemPlusJSONResponse(*refusal), nil
 	}
@@ -536,7 +592,7 @@ func (s *server) useCreditAfterIssue(ctx context.Context, doc store.InvoicesInvo
 	if doc.Kind != kindInvoice {
 		return nil
 	}
-	refusal, err := s.applyCredit(ctx, doc.ID, nil, doc.IssueDate.Time, callerID(ctx))
+	refusal, err := s.applyCredit(ctx, doc.ID, nil, doc.IssueDate.Time, callerID(ctx), nil)
 	if err != nil {
 		s.deps.Logger.WarnContext(ctx, "invoices: the customer's credit was not applied to the invoice issued", "invoice_id", doc.ID, "error", err)
 	}
@@ -644,7 +700,7 @@ func (s *server) PostInvoicesCustomersByCustomerIdCreditRefunds(ctx context.Cont
 	if err != nil {
 		return nil, err
 	}
-	resp, err := customerCreditResponse(ctx, store.New(s.deps.Pool), req.CustomerId, 1, defaultPageSize)
+	resp, err := customerCreditResponse(ctx, store.New(s.deps.Pool), req.CustomerId, 1, defaultPageSize, true)
 	if err != nil {
 		return nil, err
 	}
@@ -720,7 +776,7 @@ func (s *server) PostInvoicesCustomersByCustomerIdCreditRefundsByRefundIdRemove(
 	case err != nil:
 		return nil, err
 	}
-	resp, err := customerCreditResponse(ctx, store.New(s.deps.Pool), req.CustomerId, 1, defaultPageSize)
+	resp, err := customerCreditResponse(ctx, store.New(s.deps.Pool), req.CustomerId, 1, defaultPageSize, true)
 	if err != nil {
 		return nil, err
 	}
@@ -735,10 +791,14 @@ func (s *server) GetInvoicesCustomersByCustomerIdCredit(ctx context.Context, req
 			fieldError("page", strings.Join(errs, " ")))), nil
 	}
 	page, pageSize := pageParams(req.Params.Page, req.Params.PageSize)
+	// The bank details are the payments' (B-1 review M2): invoices:access
+	// reads the credit, invoices:payments its refunds' accounts and its
+	// bank lines' references too.
+	bank := s.has(ctx, "invoices:payments")
 	var resp gen.InvoicesCustomerCredit
 	err := s.withReadTx(ctx, func(ctx context.Context, q *store.Queries) error {
 		var err error
-		resp, err = customerCreditResponse(ctx, q, req.CustomerId, page, pageSize)
+		resp, err = customerCreditResponse(ctx, q, req.CustomerId, page, pageSize, bank)
 		return err
 	})
 	if err != nil {
@@ -751,8 +811,9 @@ func (s *server) GetInvoicesCustomersByCustomerIdCredit(ctx context.Context, req
 const defaultPageSize int32 = 25
 
 // customerCreditResponse is the customer's credit on the wire: its balances,
-// one page of its movements and every refund.
-func customerCreditResponse(ctx context.Context, q *store.Queries, customerID int32, page, pageSize int32) (gen.InvoicesCustomerCredit, error) {
+// one page of its movements and every refund; the refunds' bank accounts and
+// the movements' line references only when bank is true.
+func customerCreditResponse(ctx context.Context, q *store.Queries, customerID int32, page, pageSize int32, bank bool) (gen.InvoicesCustomerCredit, error) {
 	out := gen.InvoicesCustomerCredit{CustomerId: customerID, Balances: []gen.InvoicesCreditBalance{},
 		Movements: []gen.InvoicesCreditMovement{}, Refunds: []gen.InvoicesCreditRefund{}}
 	balances, err := q.CreditBalances(ctx, customerID)
@@ -784,10 +845,14 @@ func customerCreditResponse(ctx context.Context, q *store.Queries, customerID in
 		if err != nil {
 			return out, err
 		}
+		lineRef := r.LineRef
+		if !bank {
+			lineRef = nil
+		}
 		out.Movements = append(out.Movements, gen.InvoicesCreditMovement{
 			Id: c.ID, Kind: gen.InvoicesCreditMovementKind(c.Kind), Currency: c.Currency, Amount: amount,
 			CreditDay: wireDate(c.CreditDay.Time), Note: c.Note, InvoiceId: c.InvoiceID, InvoiceNumber: r.InvoiceNumber,
-			PaymentId: c.PaymentID, BankTransactionId: c.BankTransactionID, LineRef: r.LineRef, DocumentId: c.DocumentID,
+			PaymentId: c.PaymentID, BankTransactionId: c.BankTransactionID, LineRef: lineRef, DocumentId: c.DocumentID,
 			DocumentNumber: r.DocumentNumber, RefundId: c.RefundID, ReversesId: c.ReversesID, Reversed: reversed,
 			RegisteredByUserId: c.RegisteredByUserID, RegisteredAt: c.RegisteredAt,
 		})
@@ -801,8 +866,12 @@ func customerCreditResponse(ctx context.Context, q *store.Queries, customerID in
 		if err != nil {
 			return out, err
 		}
+		var account *string
+		if bank {
+			account = &r.BankAccount
+		}
 		out.Refunds = append(out.Refunds, gen.InvoicesCreditRefund{
-			Id: r.ID, RefundedOn: wireDate(r.RefundedOn.Time), Amount: amount, Currency: r.Currency, BankAccount: r.BankAccount,
+			Id: r.ID, RefundedOn: wireDate(r.RefundedOn.Time), Amount: amount, Currency: r.Currency, BankAccount: account,
 			Reference: r.Reference, Note: r.Note, RegisteredAt: r.RegisteredAt, RegisteredByUserId: r.RegisteredByUserID,
 			RemovedAt: r.RemovedAt, RemovedByUserId: r.RemovedByUserID, RemovalReason: r.RemovalReason,
 		})

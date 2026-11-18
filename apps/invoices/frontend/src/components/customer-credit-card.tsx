@@ -109,11 +109,16 @@ export const CustomerCreditCard = ({ customerId, canAct }: CustomerCreditCardPro
                   style={r.removedAt ? { textDecoration: "line-through" } : undefined}
                   c={r.removedAt ? "dimmed" : undefined}
                 >
-                  {t("credit.refundLine", {
-                    date: date(r.refundedOn),
-                    amount: money(r.amount, r.currency),
-                    account: accountNumber(r.bankAccount),
-                  })}
+                  {r.bankAccount
+                    ? t("credit.refundLine", {
+                        date: date(r.refundedOn),
+                        amount: money(r.amount, r.currency),
+                        account: accountNumber(r.bankAccount),
+                      })
+                    : t("credit.refundLineNoAccount", {
+                        date: date(r.refundedOn),
+                        amount: money(r.amount, r.currency),
+                      })}
                   {r.removalReason && ` — ${t("credit.refundRemoved", { reason: r.removalReason })}`}
                 </Text>
                 {canAct && !r.removedAt && (
