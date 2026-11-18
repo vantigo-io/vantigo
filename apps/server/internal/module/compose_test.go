@@ -340,7 +340,7 @@ func TestCompose_DisabledModuleContributesNothing(t *testing.T) {
 	var gotCatalog map[string]contracts.Permission
 
 	handler, err := compose(
-		Deps{Access: &fakeAccess{}, Config: &config.Config{Modules: []string{"alpha"}}},
+		Deps{Access: personAccess(), Config: &config.Config{Modules: []string{"alpha"}}},
 		fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract}),
 		Module{Name: "alpha", Permissions: []contracts.Permission{alphaPerm}, Mount: func(d Deps) (http.Handler, error) {
 			gotCatalog = d.Catalog
@@ -439,7 +439,7 @@ func TestCompose_RequiresAConfig(t *testing.T) {
 	}
 }
 
-func TestCompose_OpenAPIJSONRequiresASessionAndListsEveryPath(t *testing.T) {
+func TestCompose_OpenAPIJSONRequiresACallerAndListsEveryPath(t *testing.T) {
 	access := &fakeAccess{check: func(*http.Request, contracts.Rule) (contracts.Principal, error) {
 		return contracts.Principal{}, contracts.ErrUnauthenticated
 	}}
@@ -460,13 +460,11 @@ func TestCompose_OpenAPIJSONRequiresASessionAndListsEveryPath(t *testing.T) {
 	if len(access.rejected) != 1 {
 		t.Fatalf("Reject was called %d times, want 1", len(access.rejected))
 	}
-	if access.rejected[0].rule.Kind != contracts.RuleSession {
-		t.Errorf("Reject's rule = %+v, want RuleSession", access.rejected[0].rule)
+	if access.rejected[0].rule.Kind != contracts.RuleAnonymous || access.rejected[0].rule.API != contracts.APIRead {
+		t.Errorf("Reject's rule = %+v, want the anonymous rule a read-only key meets too", access.rejected[0].rule)
 	}
 
-	access.check = func(*http.Request, contracts.Rule) (contracts.Principal, error) {
-		return contracts.Principal{}, nil
-	}
+	access.check = personAccess().check
 	rec = httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
@@ -605,9 +603,7 @@ func TestCompose_MergesEveryRealContract(t *testing.T) {
 		wantPaths += len(doc.Paths.Map())
 	}
 
-	access := &fakeAccess{check: func(*http.Request, contracts.Rule) (contracts.Principal, error) {
-		return contracts.Principal{}, nil
-	}}
+	access := personAccess()
 	mods := make([]Module, len(openapi.Modules))
 	for i, name := range openapi.Modules {
 		mods[i] = Module{Name: name, Mount: func(Deps) (http.Handler, error) { return http.NotFoundHandler(), nil }}

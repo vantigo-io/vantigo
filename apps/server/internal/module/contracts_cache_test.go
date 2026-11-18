@@ -163,7 +163,7 @@ func TestCompose_RemembersTheEmbeddedContractsBetweenCompositions(t *testing.T) 
 			doc = d.Doc
 			return http.NotFoundHandler(), nil
 		}}}
-		handler, err := Compose(Deps{Access: &fakeAccess{}, Config: &config.Config{}}, mods...)
+		handler, err := Compose(Deps{Access: personAccess(), Config: &config.Config{}}, mods...)
 		if err != nil {
 			t.Fatalf("Compose: %v", err)
 		}

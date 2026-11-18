@@ -12,10 +12,15 @@
 //	migrate      apply migrations and exit 0/1
 //	seed         development data (APP_ENV=development only)
 //	healthcheck  probe this container's /health/ready and exit 0/1
+//	openapi integrator
+//	             write the integrator's API document, every module enabled, to
+//	             stdout (CI's breaking-change check); reads no environment
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -24,6 +29,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -75,7 +81,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/worker"
 )
 
-const usage = "usage: vantigo <api|server|worker|migrate|seed|healthcheck>"
+const usage = "usage: vantigo <api|server|worker|migrate|seed|healthcheck|openapi integrator>"
 
 type mode int
 
@@ -87,6 +93,7 @@ const (
 	modeMigrate
 	modeSeed
 	modeHealthcheck
+	modeOpenAPIIntegrator
 )
 
 // readHeaderTimeout is the slowloris brake. There is deliberately no
@@ -124,6 +131,11 @@ func parseArgs(args []string) (mode, string) {
 		return modeSeed, args[0]
 	case "healthcheck":
 		return modeHealthcheck, args[0]
+	case "openapi":
+		if len(args) == 2 && args[1] == "integrator" {
+			return modeOpenAPIIntegrator, args[0]
+		}
+		return modeUsage, strings.Join(args, " ")
 	default:
 		return modeUsage, args[0]
 	}
@@ -145,6 +157,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 		// Constructs nothing: a liveness probe must not fail because
 		// DATABASE_URL is wrong — that is /health/ready's job to report.
 		return healthcheck(os.Getenv("PORT"), stderr)
+	case modeOpenAPIIntegrator:
+		// Constructs nothing either: CI runs it with no database and no
+		// configuration, and the document depends on neither.
+		return openAPIIntegrator(stdout, stderr)
 	}
 
 	cfg, err := config.FromOS()
@@ -213,6 +229,27 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	return serve(ctx, logger, cfg, ln, m)
+}
+
+// openAPIIntegrator writes the integrator's document (API access design K37)
+// for every module this binary knows, all of them enabled.
+func openAPIIntegrator(stdout, stderr io.Writer) int {
+	body, err := module.IntegratorDocument(businessModules(nil)...)
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, err)
+		return 1
+	}
+	var out bytes.Buffer
+	if err := json.Indent(&out, body, "", "  "); err != nil {
+		_, _ = fmt.Fprintln(stderr, err)
+		return 1
+	}
+	out.WriteByte('\n')
+	if _, err := out.WriteTo(stdout); err != nil {
+		_, _ = fmt.Fprintln(stderr, err)
+		return 1
+	}
+	return 0
 }
 
 func healthcheck(port string, stderr io.Writer) int {
