@@ -1,6 +1,9 @@
 package contracts
 
-import "strings"
+import (
+	"net/url"
+	"strings"
+)
 
 // WebhookEvent is one domain event an integration's webhook endpoint may
 // subscribe to (outgoing webhooks design W4, W5, W26). The catalogue is an
@@ -40,6 +43,19 @@ func (w WebhookEvent) Name() string { return w.Event.EventName() }
 func (w WebhookEvent) Module() string {
 	module, _, _ := strings.Cut(w.Name(), ".")
 	return module
+}
+
+// Href is the path of the resource id names (outgoing webhooks design W12):
+// Path with its one parameter, whatever its name, replaced by id escaped as
+// a path segment. A Path with no parameter is answered as it is; the
+// catalogue test holds every entry to exactly one.
+func (w WebhookEvent) Href(id string) string {
+	start := strings.IndexByte(w.Path, '{')
+	end := strings.IndexByte(w.Path, '}')
+	if start < 0 || end < start {
+		return w.Path
+	}
+	return w.Path[:start] + url.PathEscape(id) + w.Path[end+1:]
 }
 
 // webhookEvents is the catalogue, grouped by module in the order the screen

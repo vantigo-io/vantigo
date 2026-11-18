@@ -98,13 +98,13 @@ func prefixed(prefix string, names []string) []string {
 
 // webhookAudit is an endpoint as the audit trail records it (W24, W28): its
 // URL's scheme and host and a keyed digest of the whole, never its path or
-// query, and never a secret or its ciphertext.
+// query, never a secret or its ciphertext, and not its description, which is
+// an Owner's free text and may hold what the path held.
 type webhookAudit struct {
 	ID                      uuid.UUID  `json:"id"`
 	IntegrationID           uuid.UUID  `json:"integrationId"`
 	URL                     string     `json:"url"`
 	URLDigest               string     `json:"urlDigest"`
-	Description             *string    `json:"description"`
 	Events                  []string   `json:"events"`
 	Status                  string     `json:"status"`
 	DisabledReason          *string    `json:"disabledReason"`
@@ -118,7 +118,7 @@ func (s *server) webhookSnapshot(e store.IdentityWebhookEndpoint) (webhookAudit,
 	}
 	return webhookAudit{
 		ID: e.ID, IntegrationID: e.IntegrationID, URL: webhookURLOrigin(e.Url), URLDigest: digest,
-		Description: e.Description, Events: nonNil(e.Events), Status: e.Status, DisabledReason: e.DisabledReason,
+		Events: nonNil(e.Events), Status: e.Status, DisabledReason: e.DisabledReason,
 		PreviousSecretExpiresAt: e.PreviousSecretExpiresAt,
 	}, nil
 }
@@ -147,9 +147,13 @@ type webhookInput struct {
 // the events is checked in the transaction (webhookEventsPermitted).
 func (s *server) readWebhookInput(ctx context.Context, rawURL string, description *string, events []string) (webhookInput, error) {
 	fields := map[string][]string{}
-	in := webhookInput{url: strings.TrimSpace(rawURL)}
-	u, ok := parseWebhookURL(in.url)
-	if !ok {
+	var in webhookInput
+	u, ok := parseWebhookURL(rawURL)
+	if ok {
+		// The URL stored and dialled is the normalised one: its host in
+		// ASCII, lowered, which is the form every check ran on (S1).
+		in.url = u.String()
+	} else {
 		fields["url"] = []string{webhookURLMessage}
 	}
 	if description != nil {
@@ -200,6 +204,13 @@ func (s *server) webhookEventPermitted(held []string, e contracts.WebhookEvent) 
 
 // webhookEventsPermitted refuses, on q, the events the integration's roles
 // do not let it receive (422 webhook_event_not_permitted).
+//
+// It reads the roles without locking them, so a role taken from the
+// integration while the save commits can leave an endpoint listing an event
+// it no longer may receive. That is accepted: the check here is the screen's
+// advice, and the boundary is W7 and W33 — the fan-out and the sender's claim
+// check the permission again, and record such an event skipped
+// (permission_not_held) instead of sending it.
 func (s *server) webhookEventsPermitted(ctx context.Context, q *store.Queries, integration uuid.UUID, events []string) error {
 	held, err := q.EffectivePermissionsForUser(ctx, integration)
 	if err != nil {
@@ -220,6 +231,13 @@ func (s *server) webhookEventsPermitted(ctx context.Context, q *store.Queries, i
 
 // webhookBody is an endpoint as the screen shows it: never its secret, and
 // the previous secret's expiry only while it still signs.
+//
+// The previous secret's columns are cleared once its overlap has ended by the
+// next write to the endpoint (change, enable, disable, roll), not by a read,
+// so a row can still hold an expired one. The sender (delivery B) must
+// therefore never sign with the previous secret unless
+// previous_secret_expires_at is after the attempt's own time, whatever the
+// columns hold.
 func webhookBody(e store.IdentityWebhookEndpoint, now time.Time) gen.WebhookEndpoint {
 	var reason *gen.WebhookEndpointDisabledReason
 	if e.DisabledReason != nil {
@@ -298,8 +316,9 @@ func (s *server) PostIdentityIntegrationsByIdWebhooks(ctx context.Context, req g
 	if err != nil {
 		return refusalOr[gen.PostIdentityIntegrationsByIdWebhooksResponseObject](err)
 	}
+	id := uuid.New()
 	secret := newWebhookSecret()
-	sealed, err := sealWebhookSecret(s.deps.Secrets, secret)
+	sealed, err := sealWebhookSecret(s.deps.Secrets, id, secret)
 	if err != nil {
 		return nil, err
 	}
@@ -319,7 +338,7 @@ func (s *server) PostIdentityIntegrationsByIdWebhooks(ctx context.Context, req g
 			return webhookLimitReached
 		}
 		created, err = q.InsertWebhookEndpoint(ctx, store.InsertWebhookEndpointParams{
-			ID: uuid.New(), IntegrationID: req.Id, Url: in.url, Description: in.description, Events: in.events,
+			ID: id, IntegrationID: req.Id, Url: in.url, Description: in.description, Events: in.events,
 			SecretCiphertext: sealed, CreatedBy: &p.UserID, Now: now, Version: uuid.New(),
 		})
 		if err != nil {
@@ -547,7 +566,7 @@ func (s *server) PostIdentityIntegrationsByIdWebhooksByWebhookIdRollSecret(ctx c
 		return nil, err
 	}
 	secret := newWebhookSecret()
-	sealed, err := sealWebhookSecret(s.deps.Secrets, secret)
+	sealed, err := sealWebhookSecret(s.deps.Secrets, req.WebhookId, secret)
 	if err != nil {
 		return nil, err
 	}

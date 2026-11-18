@@ -50,6 +50,41 @@ func TestWebhookURL_TheRulesOfW11(t *testing.T) {
 	}
 }
 
+// TestWebhookURL_TheHostIsCheckedAndStoredInASCII holds S1: the host is
+// normalised by IDNA's lookup profile before any check, so a full-width or
+// ideographic dot cannot hide a reserved suffix, and the URL kept is the
+// ASCII form it will resolve as.
+func TestWebhookURL_TheHostIsCheckedAndStoredInASCII(t *testing.T) {
+	t.Parallel()
+	for _, bad := range []string{
+		"https://foo．internal/in", // a full-width full stop
+		"https://foo。local/in",    // an ideographic full stop
+		"https://LOCALHOST．/in",   // localhost, with a full-width trailing dot
+		"https://app．localhost/in",
+		"https://xn--/in", // punycode that does not decode
+	} {
+		if _, ok := parseWebhookURL(bad); ok {
+			t.Errorf("%q was accepted", bad)
+		}
+	}
+	for raw, want := range map[string]string{
+		"https://bücher.example/in?q=1":                  "https://xn--bcher-kva.example/in?q=1",
+		"https://XN--BCHER-KVA.example/in":               "https://xn--bcher-kva.example/in",
+		"https://Hooks.Example.COM./catch/T0K3N?token=x": "https://hooks.example.com/catch/T0K3N?token=x",
+		"https://hooks.example.com:443/in":               "https://hooks.example.com/in",
+		"https://hooks．example.com/in":                   "https://hooks.example.com/in",
+	} {
+		u, ok := parseWebhookURL(raw)
+		if !ok {
+			t.Errorf("%q was refused", raw)
+			continue
+		}
+		if got := u.String(); got != want {
+			t.Errorf("%q is kept as %q, want %q", raw, got, want)
+		}
+	}
+}
+
 func TestWebhookURL_TheSaveTimeResolveIsAdvice(t *testing.T) {
 	t.Parallel()
 	u, _ := parseWebhookURL("https://hooks.example.com/in")

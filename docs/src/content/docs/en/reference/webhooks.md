@@ -11,8 +11,11 @@ sources:
   - apps/server/internal/identity/webhooks_url.go
   - apps/server/internal/identity/webhooks_client.go
   - apps/server/internal/identity/queries/webhooks.sql
-  - apps/server/internal/db/migrations/00201_identity_webhooks.sql
+  - apps/server/internal/db/migrations/00203_identity_webhooks.sql
   - apps/server/internal/integration/webhook_events_test.go
+  - apps/host/frontend/src/routes/workspace/-api-access-webhooks.tsx
+  - apps/host/frontend/src/routes/workspace/-webhook-secret-dialog.tsx
+  - openapi/identity.yaml
 ---
 
 An integration can have **webhook endpoints**: HTTPS URLs to which Vantigo posts a short,
@@ -32,7 +35,7 @@ The message, the headers and the signature below are the contract they will keep
 
 | Field | Rule |
 | --- | --- |
-| `url` | `https` only; a host name, never an IP address, `localhost` or a name under `.localhost`, `.local` or `.internal`, and with at least one dot; no user name or password; no fragment; the port empty or `443`; at most 2,048 characters. A query string is allowed. |
+| `url` | `https` only; a host name, never an IP address, `localhost` or a name under `.localhost`, `.local` or `.internal`, and with at least one dot; no user name or password; no fragment; the port empty or `443`; at most 2,048 characters. A query string is allowed. The host is checked and kept in its ASCII form — lowered, a trailing dot dropped, an internationalised name as punycode and a full-width dot as `.` — so `foo．internal` is refused as `foo.internal`; an explicit `:443` is dropped. |
 | `description` | Optional, up to 500 characters. |
 | `events` | 1 to 50 names from [the catalogue](#the-events), each one the integration may receive. `*` and prefixes are not accepted. |
 | `status` | `enabled` or `disabled`, with `disabledReason` `manual` (an Owner), `failing` (the sender, after 5 days of failure), `gone` (the receiver answered `410 Gone`) or `integration_archived`. |
@@ -142,6 +145,10 @@ same bytes:
 
 No order is promised between messages; dedupe on `webhook-id`.
 
+A receiver that answers `429`, `502`, `503` or `504` with `Retry-After`, in seconds or as a date,
+delays the next attempt by that much, up to an hour; nothing else of the header is kept. An
+attempt the sender itself abandons, because it is stopping, is not counted as one.
+
 ## Signing
 
 Every request is signed as [Standard Webhooks](https://www.standardwebhooks.com/) `v1`
@@ -188,8 +195,9 @@ Vantigo's signer reproduces Svix's published test vector, and this example, in i
 A secret is `whsec_` and the base64 of 32 random bytes, one per endpoint. It is answered
 **once**, in the response to creating the endpoint or rolling its secret, with
 `Cache-Control: no-store`; no read returns it again. It is kept sealed with the installation's
-`APP_SECRET` (AES-256-GCM under the purpose `identity/webhook-secret`), because the sender needs
-it to sign; neither the audit trail nor a log line carries it or its ciphertext.
+`APP_SECRET` (AES-256-GCM under the purpose `identity/webhook-secret/` and the endpoint's id),
+because the sender needs it to sign. The purpose is also the cipher's additional data, so a
+ciphertext copied into another endpoint's row opens nowhere; neither the audit trail nor a log line carries it or its ciphertext.
 
 **Rolling** makes a new secret and keeps the one it replaces signing beside it until the
 overlap ends — 1 to 168 hours, 24 by default — so a receiver can switch without missing a
@@ -200,8 +208,8 @@ secret stops signing. Changing an endpoint's URL does not roll its secret.
 
 The audit trail (`identity.authorization_audit_events`) records, with the Owner who did it:
 `webhook.created`, `webhook.updated`, `webhook.deleted`, `webhook.enabled`, `webhook.disabled`
-and `webhook.secret_rolled`. A snapshot holds the endpoint's id, its integration, its events,
-its status and its description, and of the URL **only the scheme and host** with a short keyed
+and `webhook.secret_rolled`. A snapshot holds the endpoint's id, its integration, its events
+and its status — not its description, which is free text — and of the URL **only the scheme and host** with a short keyed
 digest of the whole, so a change shows: services such as Zapier, Slack and Make carry their
 token in the path, and others in the query. The full URL is shown only on the Owner's screen.
 A log line about an attempt carries the scheme and host too.
@@ -240,7 +248,7 @@ of 30 requests a minute from one address (`429 rate_limited`).
 
 ## Tables
 
-Migration `00201` holds every table of the feature in the `identity` schema.
+Migration `00203` holds every table of the feature in the `identity` schema.
 
 - **`webhook_endpoints`** — an endpoint: its integration (`ON DELETE RESTRICT`; integrations are
   archived, never deleted), URL, description, events (1 to 50), the sealed secret and the
