@@ -485,9 +485,12 @@ func postSource(ctx context.Context, tx pgx.Tx, it sourceItem, now time.Time) (o
 				blocker.SourceKind, deref(blocker.DocumentNumber))
 			return outcomeUnposted, recordUnposted(ctx, q, it, reasonWaitingOn, detail, &blocker.ID, now)
 		}
-	} else if key := creditOrderKey(it); key != "" && !posted {
-		// A refund's and a merge's facts name no invoice: they wait behind
-		// the customer's credit instead (plan step B4).
+	}
+	if key := creditOrderKey(it); key != "" && !posted {
+		// Every credit fact waits behind the customer's credit too (plan
+		// step B4, B-1 review m1): a refund's and a merge's name no invoice,
+		// and a refund must not post before the overpayment it pays back,
+		// which names one.
 		blocker, err := q.UnpostedBlockerByKey(ctx, store.UnpostedBlockerByKeyParams{OrderKey: &key, SourceModule: src.Module,
 			SourceKind: src.Kind, SourceID: src.ID, SourcePart: src.Part})
 		switch {
@@ -548,12 +551,11 @@ func readFactInputs(ctx context.Context, q *store.Queries, it sourceItem) (factI
 	return in, err
 }
 
-// creditOrderKey is what a credit fact with no invoice — a refund's, its
-// reversal's, a merge's — waits behind under Needs attention: the
-// customer's credit. "" for every other item.
+// creditOrderKey is what every credit fact waits behind under Needs
+// attention, besides its invoice when it names one: the customer's credit.
+// "" for every other item.
 func creditOrderKey(it sourceItem) string {
-	if it.fact == nil || it.fact.InvoiceID != 0 ||
-		(it.fact.Kind != contracts.FactCredit && it.fact.Kind != contracts.FactCreditMerged) {
+	if it.fact == nil || (it.fact.Kind != contracts.FactCredit && it.fact.Kind != contracts.FactCreditMerged) {
 		return ""
 	}
 	return fmt.Sprintf("invoices.customer_credit:%d", it.fact.CustomerID)
