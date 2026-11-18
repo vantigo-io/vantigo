@@ -821,8 +821,11 @@ components:
             type: object
         ApiKeyPermission:
             properties:
+                apiNever:
+                    description: True for a permission no API key ever holds, whatever the roles grant (K7).
+                    type: boolean
                 grantedByRoles:
-                    description: Whether the integration's roles grant the permission now.
+                    description: Whether the integration's roles grant the permission now and a key may hold it (it is not apiNever).
                     type: boolean
                 inCatalog:
                     description: Whether the permission catalog still has the permission.
@@ -833,6 +836,7 @@ components:
                 - key
                 - grantedByRoles
                 - inCatalog
+                - apiNever
             type: object
         ApiKeyRollRequest:
             properties:

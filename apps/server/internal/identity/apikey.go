@@ -95,7 +95,7 @@ func parseAPIKey(s string) (hash []byte, ok bool) {
 
 // apiKeyDisplay is what a key is shown as once its secret is gone: vtg_, the
 // first four characters of the random part, an ellipsis, and the key's last
-// four characters.
+// four characters, which belong to the checksum (K57).
 func apiKeyDisplay(key string) string {
 	return apiKeyPrefix + key[len(apiKeyPrefix):len(apiKeyPrefix)+4] + "…" + key[len(key)-4:]
 }

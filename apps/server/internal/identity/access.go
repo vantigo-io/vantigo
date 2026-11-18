@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"slices"
 	"strings"
@@ -62,6 +63,9 @@ type Access struct {
 	// of whichever of the two asks first.
 	ai     *aiModels
 	aiOnce sync.Once
+	// log takes the warnings a request is not failed for, such as an API
+	// key's use that could not be recorded; nil discards them.
+	log *slog.Logger
 }
 
 // aiModelsFor is the one resolver of this Access, built over d the first time.
@@ -80,7 +84,7 @@ var _ contracts.Access = (*Access)(nil)
 //	deps.Access = a
 //	handler, err := module.Compose(deps, identity.Module(a))
 func NewAccess(d module.Deps) *Access {
-	return &Access{cfg: d.Config, q: store.New(d.Pool), pool: d.Pool, now: d.Clock, sso: newSSOSettingsReader(d.Pool, d.Clock, d.Secrets)}
+	return &Access{cfg: d.Config, q: store.New(d.Pool), pool: d.Pool, now: d.Clock, sso: newSSOSettingsReader(d.Pool, d.Clock, d.Secrets), log: d.Logger}
 }
 
 // Check evaluates rule for r. The scim rule admits a request that presents

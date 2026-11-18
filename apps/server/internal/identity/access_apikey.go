@@ -67,18 +67,19 @@ func isAPIKeyRequest(r *http.Request) bool {
 // checkAPIKey is Check for a request whose one Authorization header is
 // Bearer vtg_… (K16, K17). It refuses, in order: a key that does not parse or
 // is unknown (ErrUnauthenticated); one whose integration's user is not of kind
-// integration (ErrUnauthenticated); one revoked, whose integration is archived
-// or disabled (401 unauthenticated); one expired (401 api_key_expired); one
-// presented from outside its networks (401 unauthenticated, reason network,
-// and its use is not recorded); an operation marked x-vantigo-api: never (403
+// integration (ErrUnauthenticated); one presented from outside its networks
+// (401 unauthenticated, reason network, whatever else is true of the key); one
+// revoked, whose integration is archived or disabled (401 unauthenticated);
+// one expired (401 api_key_expired); an operation marked x-vantigo-api: never (403
 // api_not_available); an operation that is not a read, for a read-only key
 // (403 api_key_read_only); and then the rule by its kind (K9): a session or a
 // policy rule is 403 forbidden, an anonymous one admits the integration, and a
 // permission rule is evaluated for the integration's user, each key held
 // through its roles, none in contracts.APINever (K7, K51), and every one in the
 // key's narrowing when it has one. Every refusal of a key identity found is a
-// contracts.APIKeyRefusal. Nothing resolved is cached, so a revocation holds
-// at the very next request on every replica.
+// contracts.APIKeyRefusal. Only an admitted call records the key's use.
+// Nothing resolved is cached, so a revocation holds at the very next request
+// on every replica.
 func (a *Access) checkAPIKey(ctx context.Context, r *http.Request, rule contracts.Rule, raw string, now time.Time) (contracts.Principal, error) {
 	hash, ok := parseAPIKey(raw)
 	if !ok {
@@ -97,6 +98,12 @@ func (a *Access) checkAPIKey(ctx context.Context, r *http.Request, rule contract
 	refuse := func(reason string, err error) (contracts.Principal, error) {
 		return contracts.Principal{}, &contracts.APIKeyRefusal{KeyID: k.ID, IntegrationID: k.IntegrationID, Reason: reason, Err: err}
 	}
+	// The network is judged first, so a caller outside it learns nothing of
+	// the key's state, not even that it has expired.
+	ip := httpx.ClientIP(r)
+	if !addressAllowed(k.AllowedNetworks, ip) {
+		return refuse(apiKeyNetwork, contracts.ErrUnauthenticated)
+	}
 	switch {
 	case k.RevokedAt != nil:
 		return refuse(apiKeyRevoked, contracts.ErrUnauthenticated)
@@ -106,19 +113,6 @@ func (a *Access) checkAPIKey(ctx context.Context, r *http.Request, rule contract
 		return refuse(apiKeyDisabled, contracts.ErrUnauthenticated)
 	case !k.ExpiresAt.After(now):
 		return refuse(apiKeyExpired, contracts.ErrAPIKeyExpired)
-	}
-	ip := httpx.ClientIP(r)
-	if !addressAllowed(k.AllowedNetworks, ip) {
-		return refuse(apiKeyNetwork, contracts.ErrUnauthenticated)
-	}
-	if k.LastUsedAt == nil || now.Sub(*k.LastUsedAt) >= time.Minute {
-		var ipp *string
-		if ip != "" {
-			ipp = &ip
-		}
-		if err := a.q.TouchAPIKey(ctx, store.TouchAPIKeyParams{ID: k.ID, Now: now, Ip: ipp}); err != nil {
-			return contracts.Principal{}, fmt.Errorf("identity: record API key use: %w", err)
-		}
 	}
 
 	if rule.API == contracts.APIRefused {
@@ -140,22 +134,36 @@ func (a *Access) checkAPIKey(ctx context.Context, r *http.Request, rule contract
 	}
 	switch rule.Kind {
 	case contracts.RuleAnonymous:
-		return p, nil
 	case contracts.RulePermission:
 		sub := subject{
 			userID: k.IntegrationID, roles: roles, disabled: k.IsDisabled, lockoutEnd: k.LockoutEnd,
 			apiKey: true, narrowed: k.Permissions != nil, narrowing: k.Permissions,
 		}
-		p, err := a.evaluate(ctx, p, sub, rule, now)
+		p, err = a.evaluate(ctx, p, sub, rule, now)
 		if errors.Is(err, contracts.ErrForbidden) {
 			return refuse(apiKeyForbidden, err)
 		}
-		return p, err
+		if err != nil {
+			return p, err
+		}
 	default:
 		// A session rule is a person's self-service, a policy the Owner tier,
 		// and a scim rule never reaches here (K9).
 		return refuse(apiKeyForbidden, contracts.ErrForbidden)
 	}
+
+	// Only an admitted call is a use, so "last used" never names a refused
+	// one; failing to record it is logged and never fails the call.
+	if k.LastUsedAt == nil || now.Sub(*k.LastUsedAt) >= time.Minute {
+		var ipp *string
+		if ip != "" {
+			ipp = &ip
+		}
+		if err := a.q.TouchAPIKey(ctx, store.TouchAPIKeyParams{ID: k.ID, Now: now, Ip: ipp}); err != nil && a.log != nil {
+			a.log.WarnContext(ctx, "identity: could not record an API key's use", "key", k.ID, "error", err)
+		}
+	}
+	return p, nil
 }
 
 // apiNever reports whether key is one no API key ever holds (K7): an

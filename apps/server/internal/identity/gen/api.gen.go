@@ -584,7 +584,10 @@ type ApiKeyCreateRequest struct {
 
 // ApiKeyPermission defines model for ApiKeyPermission.
 type ApiKeyPermission struct {
-	// GrantedByRoles Whether the integration's roles grant the permission now.
+	// ApiNever True for a permission no API key ever holds, whatever the roles grant (K7).
+	ApiNever bool `json:"apiNever"`
+
+	// GrantedByRoles Whether the integration's roles grant the permission now and a key may hold it (it is not apiNever).
 	GrantedByRoles bool `json:"grantedByRoles"`
 
 	// InCatalog Whether the permission catalog still has the permission.

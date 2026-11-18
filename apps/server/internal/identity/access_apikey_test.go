@@ -137,6 +137,42 @@ func TestAPIKey_TheMatrix(t *testing.T) {
 	}
 }
 
+// TestAPIKey_AnEmptyNarrowingHoldsNothing: a key made with permissions: []
+// is narrowed to nothing, unlike one made without permissions, and is refused
+// every permission rule; its scope is empty. A narrowing entry no key may
+// hold is never shown as granted, whatever the roles give.
+func TestAPIKey_AnEmptyNarrowingHoldsNothing(t *testing.T) {
+	t.Parallel()
+	h, owner, integration := keyHarness(t)
+	empty, secret := createKey(t, owner, integration, map[string]any{"name": "Nothing", "permissions": []string{}})
+	if empty.Permissions == nil || len(*empty.Permissions) != 0 {
+		t.Fatalf("the key's narrowing %v, want an empty one", empty.Permissions)
+	}
+	for _, rule := range []contracts.Rule{
+		permissionRule("customers:view"),
+		permissionRule("customers:create"),
+		{Kind: contracts.RulePermission, Names: []string{"customers:create"}, API: contracts.APIAllowed},
+	} {
+		if _, err := h.access.Check(keyRequest(http.MethodGet, secret), rule); keyOutcome(err) != "forbidden" {
+			t.Errorf("%v: %s, want forbidden", rule.Names, keyOutcome(err))
+		}
+	}
+	p, err := h.access.Check(keyRequest(http.MethodGet, secret), contracts.Rule{Kind: contracts.RuleAnonymous, API: contracts.APIRead})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if perms, _, err := h.access.Scope(context.Background(), p); err != nil || len(perms) != 0 {
+		t.Errorf("scope %v %v, want none", perms, err)
+	}
+
+	never, _ := createKey(t, owner, integration, map[string]any{"name": "Never", "permissions": []string{"customers:view", "identity:manage"}})
+	for _, m := range *never.Permissions {
+		if want := m.Key == "customers:view"; m.GrantedByRoles != want || m.APINever == want {
+			t.Errorf("%s: granted %t, apiNever %t", m.Key, m.GrantedByRoles, m.APINever)
+		}
+	}
+}
+
 // TestAPIKey_WhatIsNotAKey is K16: a malformed or unknown vtg_ key is 401
 // under every rule, anonymous too; a bearer token without the prefix is no
 // key; several Authorization headers are no caller.
@@ -276,8 +312,43 @@ func TestAPIKey_NetworksBehindATrustedProxy(t *testing.T) {
 	if r := inside.do(http.MethodGet, integrationsPath, nil, bearer); r.status != http.StatusForbidden || r.code() != "api_not_available" {
 		t.Errorf("inside: %d %s, want past the network to the mark", r.status, r.body)
 	}
+	if n := h.count(t, `SELECT count(*) FROM identity.api_keys WHERE id = $1 AND last_used_at IS NULL`, key.ID); n != 1 {
+		t.Error("a refused request recorded the key's use")
+	}
+	// An admitted call from the same address is the use, recorded with it.
+	req := keyRequest(http.MethodGet, secret)
+	req.RemoteAddr = inside.ip + ":1234"
+	if _, err := h.access.Check(req, permissionRule("customers:view")); err != nil {
+		t.Fatalf("an admitted call from inside: %v", err)
+	}
 	if n := h.count(t, `SELECT count(*) FROM identity.api_keys WHERE id = $1 AND last_used_ip = $2`, key.ID, inside.ip); n != 1 {
-		t.Error("the inside request's use is not recorded with its address")
+		t.Error("the admitted request's use is not recorded with its address")
+	}
+}
+
+// TestAPIKey_TheNetworkIsJudgedBeforeTheKeysState: a caller outside the
+// networks is 401 unauthenticated, reason network, even for a key that has
+// expired, so it learns nothing of the key.
+func TestAPIKey_TheNetworkIsJudgedBeforeTheKeysState(t *testing.T) {
+	t.Parallel()
+	h, owner, integration := keyHarness(t)
+	inside, outside := h.client(t), h.client(t)
+	_, secret := createKey(t, owner, integration, map[string]any{"expiresInDays": 30, "allowedNetworks": []string{inside.ip + "/32"}})
+	bearer := header("Authorization", "Bearer "+secret)
+	h.advance(31 * 24 * time.Hour)
+
+	r := outside.do(http.MethodGet, integrationsPath, nil, bearer)
+	if r.status != http.StatusUnauthorized || r.code() != "unauthenticated" {
+		t.Errorf("an expired key from outside: %d %s, want unauthenticated", r.status, r.body)
+	}
+	req := keyRequest(http.MethodGet, secret)
+	_, err := h.access.Check(req, permissionRule("customers:view"))
+	var refusal *contracts.APIKeyRefusal
+	if !errors.As(err, &refusal) || refusal.Reason != "network" || !isUnauthenticated(err) {
+		t.Errorf("an expired key from outside: %v, want the network's refusal", err)
+	}
+	if r := inside.do(http.MethodGet, integrationsPath, nil, bearer); r.status != http.StatusUnauthorized || r.code() != "api_key_expired" {
+		t.Errorf("an expired key from inside: %d %s, want api_key_expired", r.status, r.body)
 	}
 }
 
