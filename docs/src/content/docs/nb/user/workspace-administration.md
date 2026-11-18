@@ -203,7 +203,8 @@ om **URL** og **Hendelser**, blant dem integrasjonens roller lar den motta, og v
 det nye endepunktet får en testhendelse med en gang. Under hvert endepunkts **Handlinger**
 velger du **Send testhendelse**, redigerer, deaktiverer eller sletter det, eller velger **Roter
 hemmeligheten**. Et endepunkt der meldingene fortsetter å feile, merkes **Feiler**; et som
-Vantigo har deaktivert — fordi det har feilet i 5 dager eller svarte `410 Gone` — får et banner
+Vantigo har deaktivert — fordi det har feilet i 5 dager og minst 5 meldinger er gitt opp etter alle nye
+forsøk, eller fordi det svarte `410 Gone` — får et banner
 med årsaken og **Aktiver**, og integrasjonens kontaktperson og eierne får en e-post.
 
 Detaljene — hva en nøkkel når, begrensning, nøkler for bare lesing, nettverk,

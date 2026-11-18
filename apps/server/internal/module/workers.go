@@ -63,7 +63,8 @@ func EventHandlers(deps Deps, mods ...Module) ([]events.Handler, error) {
 // Deps.IdentityProvisioners, Deps.MailboxCalendars, Deps.ChannelMailboxes and
 // Deps.PersonalMailboxes, which it resolves from the enabled modules the way
 // Compose does — the same base Deps Compose resolves Directory from, before
-// any Mount runs, with no per-module Doc or Catalog — since a background worker is a data-layer concern (Pool, Config,
+// any Mount runs, with no per-module Doc, and the enabled modules' permission
+// catalog as Catalog unless the caller set one (withCatalog) — since a background worker is a data-layer concern (Pool, Config,
 // Clock, Mail, Secrets, ...), not a contract one.
 func Workers(deps Deps, mods ...Module) []worker.Worker {
 	deps = WorkerDeps(deps, mods...)

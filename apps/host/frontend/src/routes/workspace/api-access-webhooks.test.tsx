@@ -297,6 +297,20 @@ describe("an integration's webhook endpoints", () => {
     await waitFor(() => expect(api.enableWebhook).toHaveBeenCalledWith("i-1", "w-2"));
   });
 
+  it("shows only the endpoint being enabled as busy", async () => {
+    api.listWebhooks.mockResolvedValue([
+      endpoint({ id: "w-2", url: "https://gone.example.com/in", status: "disabled", disabledReason: "gone" }),
+      endpoint({ id: "w-3", url: "https://failing.example.com/in", status: "disabled", disabledReason: "failing" }),
+    ]);
+    api.enableWebhook.mockReturnValue(new Promise(() => {}));
+    await renderTab();
+
+    const banners = await screen.findAllByTestId("webhook-disabled-banner");
+    fireEvent.click(within(banners[0]).getByRole("button", { name: "Enable" }));
+    await waitFor(() => expect(within(banners[0]).getByRole("button")).toHaveAttribute("data-loading", "true"));
+    expect(within(banners[1]).getByRole("button", { name: "Enable" })).not.toHaveAttribute("data-loading");
+  });
+
   it("offers no way to enable from a banner on an archived integration", async () => {
     api.listWebhooks.mockResolvedValue([endpoint({ status: "disabled", disabledReason: "gone" })]);
     await renderTab(true);

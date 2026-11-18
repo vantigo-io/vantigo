@@ -398,7 +398,7 @@ The status says why an endpoint is disabled: by an Owner, because it kept failin
 because it answered `410 Gone`, or because the integration was archived. Archiving an
 integration disables its endpoints; they can then only be deleted. Disabling the integration
 itself pauses its endpoints: nothing is sent while it is disabled, and when you enable it
-again what waited more than 24 hours is dropped and the rest is sent.
+again a message that has been due for more than 24 hours is dropped and the rest is sent.
 
 ### When Vantigo disables an endpoint
 

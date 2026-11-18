@@ -53,8 +53,11 @@ FOR UPDATE OF e SKIP LOCKED;
 -- its own so its snapshot sees every lease committed before the endpoints
 -- were locked: per locked endpoint it counts the unexpired leases, ranks the
 -- due deliveries by creation, and leases those ranked within both the pass's
--- share (2) and what the endpoint's cap (4) leaves, the first of every
--- endpoint before the second of any, at most batch_size in all.
+-- share (2) and what the endpoint's cap (4) leaves, at most batch_size in
+-- all. A delivery's turn is its rank plus what its endpoint already has in
+-- flight, so every endpoint with nothing in flight is served before any gets
+-- a second send; and reserve of the batch is kept for such first sends, so
+-- endpoints that hang never take every slot of the process (S1).
 WITH inflight AS (
     SELECT d.endpoint_id, count(*)::int AS n
     FROM identity.webhook_deliveries d
@@ -68,13 +71,17 @@ WITH inflight AS (
     WHERE d.endpoint_id = ANY(sqlc.arg(endpoint_ids)::uuid[]) AND d.state = 'pending'
       AND d.next_attempt_at <= sqlc.arg(now)::timestamptz
       AND (d.lease_until IS NULL OR d.lease_until <= sqlc.arg(now)::timestamptz)
-), chosen AS (
-    SELECT r.id
+), eligible AS (
+    SELECT r.id, r.rank + COALESCE(f.n, 0) AS turn,
+           row_number() OVER (ORDER BY r.rank + COALESCE(f.n, 0), r.created_at, r.id) AS ordinal
     FROM ranked r
     LEFT JOIN inflight f ON f.endpoint_id = r.endpoint_id
     WHERE r.rank <= LEAST(sqlc.arg(per_pass)::int, sqlc.arg(per_endpoint)::int - COALESCE(f.n, 0))
-    ORDER BY r.rank, r.created_at, r.id
-    LIMIT sqlc.arg(batch_size)::int
+), chosen AS (
+    SELECT e.id
+    FROM eligible e
+    WHERE e.ordinal <= sqlc.arg(batch_size)::int
+      AND (e.turn = 1 OR e.ordinal <= sqlc.arg(batch_size)::int - sqlc.arg(reserve)::int)
 )
 UPDATE identity.webhook_deliveries d
 SET lease_id = sqlc.arg(lease_id), lease_until = sqlc.arg(lease_until)::timestamptz
@@ -157,9 +164,11 @@ FOR UPDATE OF e;
 
 -- name: ListWebhookNoticesDue :many
 -- ListWebhookNoticesDue is the endpoints the sender disabled, as failing or
--- gone, whose notice no one has been mailed yet (W32).
+-- gone, since after since, whose notice no one has been mailed yet (W32): a
+-- notice nobody could get for a week is given up.
 SELECT id FROM identity.webhook_endpoints
 WHERE status = 'disabled' AND disabled_reason IN ('failing', 'gone') AND disabled_notice_sent_at IS NULL
+  AND disabled_at > sqlc.arg(since)::timestamptz
 ORDER BY id
 LIMIT sqlc.arg(batch_size)::int;
 
@@ -183,7 +192,10 @@ WHERE id = sqlc.arg(id) AND disabled_notice_sent_at = sqlc.arg(claimed_at)::time
 
 -- name: ExpireWebhookDeliveries :execrows
 -- ExpireWebhookDeliveries settles as dead (expired) a batch of deliveries
--- still pending since before cutoff and not in flight (W30).
+-- still pending since before cutoff and not in flight (W30). The rows are
+-- taken SKIP LOCKED, so a result being written for one is left to it, and
+-- the outer WHERE checks again what the subquery chose, so a row that was
+-- leased or settled meanwhile is never expired.
 UPDATE identity.webhook_deliveries
 SET state = 'dead', state_reason = 'expired', completed_at = sqlc.arg(now)::timestamptz,
     next_attempt_at = NULL, lease_id = NULL, lease_until = NULL
@@ -192,24 +204,43 @@ WHERE id IN (
     WHERE d.state = 'pending' AND d.created_at < sqlc.arg(cutoff)::timestamptz
       AND (d.lease_until IS NULL OR d.lease_until <= sqlc.arg(now)::timestamptz)
     ORDER BY d.created_at
-    LIMIT sqlc.arg(batch_size)::int);
+    LIMIT sqlc.arg(batch_size)::int
+    FOR UPDATE SKIP LOCKED)
+  AND state = 'pending'
+  AND (lease_until IS NULL OR lease_until <= sqlc.arg(now)::timestamptz);
 
 -- name: PruneWebhookDeliveries :execrows
 -- PruneWebhookDeliveries deletes a batch of deliveries created before
--- cutoff, whatever their state, with their attempts (W23, W30).
+-- cutoff, whatever their state, with their attempts (W23, W30), skipping a
+-- row another transaction holds, which the next sweep takes.
 DELETE FROM identity.webhook_deliveries
 WHERE id IN (
     SELECT d.id FROM identity.webhook_deliveries d
     WHERE d.created_at < sqlc.arg(cutoff)::timestamptz
     ORDER BY d.created_at
-    LIMIT sqlc.arg(batch_size)::int);
+    LIMIT sqlc.arg(batch_size)::int
+    FOR UPDATE SKIP LOCKED)
+  AND created_at < sqlc.arg(cutoff)::timestamptz;
 
 -- name: DeadLetterStaleWebhookDeliveries :execrows
 -- DeadLetterStaleWebhookDeliveries settles as dead (expired) the pending
--- deliveries of the endpoints created before cutoff: what queued while their
--- integration was disabled, too old to send once it is enabled again (W30).
+-- deliveries of the endpoints that have been due since before cutoff: what
+-- waited, overdue, while their integration was disabled, too old to send
+-- once it is enabled again (W30). A delivery queued long ago whose retry is
+-- not yet that overdue keeps its run.
 UPDATE identity.webhook_deliveries
 SET state = 'dead', state_reason = 'expired', completed_at = sqlc.arg(now)::timestamptz,
     next_attempt_at = NULL, lease_id = NULL, lease_until = NULL
 WHERE endpoint_id = ANY(sqlc.arg(endpoint_ids)::uuid[]) AND state = 'pending'
-  AND created_at < sqlc.arg(cutoff)::timestamptz;
+  AND next_attempt_at < sqlc.arg(cutoff)::timestamptz;
+
+-- name: RecentSkippedWebhookDelivery :one
+-- RecentSkippedWebhookDelivery reports whether the endpoint already has a
+-- skipped delivery of the event since since: the fan-out records at most one
+-- a day per endpoint and event (S5), so an integration that lost a role does
+-- not grow the log by a row per event.
+SELECT EXISTS (
+    SELECT 1 FROM identity.webhook_deliveries
+    WHERE endpoint_id = sqlc.arg(endpoint_id) AND event_name = sqlc.arg(event_name)
+      AND state = 'skipped' AND created_at >= sqlc.arg(since)::timestamptz
+) AS found;

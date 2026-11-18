@@ -92,6 +92,7 @@ func (publicResolver) LookupNetIP(context.Context, string, string) ([]netip.Addr
 // WebhookSender is identity.webhook-sender as the tests drive it.
 type WebhookSender interface {
 	Name() string
+	Run(context.Context) error
 	RunPass(context.Context) (int, error)
 	Wait()
 	Housekeep(context.Context) error

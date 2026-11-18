@@ -417,6 +417,40 @@ asymmetric signing (`v1a`/`v2a`); a replay-missing/backfill tool; receivers othe
   - Tests reach a real `httptest` TLS server through `Access.webhookNet` (W20 rev 4), never
     `Deps.HTTPTransport`; a test seam shortens the 15 s budget for the timeout case. No
     migration was needed.
+- **6** (2026-11-19, delivery B's code and security reviews):
+  - The migration is `00204` (A's rename; invoices took `00203`).
+  - **Throughput.** The poll is the idle cadence only: a pass that leased all it could (the
+    process's free slots, or a pass's 2 of some endpoint) is followed by the next at once, and a
+    finished send wakes the loop, so one endpoint is not held to 2 messages per 2 s.
+  - **S1, starvation.** A delivery's turn is its rank plus its endpoint's sends in flight, so
+    every endpoint with nothing in flight is served before any gets a second; the last 4 free
+    slots of a process (`webhookReserve`) are kept for such first sends, so hanging endpoints
+    hold at most 12 of 16.
+  - **Expiry and prune** take their rows `FOR UPDATE SKIP LOCKED` and the expiry's outer
+    `WHERE` repeats `pending` and the free lease, so a row being written or leased meanwhile is
+    left alone.
+  - **An undecryptable secret** is a failed attempt with error `other` (the closed set of W23 is
+    unchanged; adding a word would need a migration), so the run backs off and W18 applies,
+    instead of a claim every lease.
+  - **Notices (W32).** The sweep of notices still owed is skipped when there is no mail driver,
+    backs off per endpoint in memory (1 minute doubling to 1 hour), and gives up on an endpoint
+    disabled more than 7 days ago (`disabled_at`). No `notice_attempts` column. The
+    integration's name loses control and format characters in a notice (S6); the mail drivers
+    encode the subject header themselves.
+  - **W30's re-enable expiry reads `next_attempt_at`, not `created_at`**: a delivery is dropped
+    when it has been due for more than 24 hours, overdue because its integration was disabled; one
+    queued long ago whose retry fell due recently keeps its run.
+  - **S3.** The permission and the endpoint's and integration's status are checked at claim, not
+    at the post: in the window between, one message may still go out; the reference says so.
+  - **S4.** `webhookPermitted` is false for an entry with no permission, and a contracts test
+    holds every entry to at least one.
+  - **S5.** The fan-out writes at most one `skipped` row a day per endpoint and event name, so an
+    integration that lost a role does not grow the log by a row per event. Skips at claim
+    settle rows that already exist.
+  - **S7, for delivery C.** The attempt `excerpt` is a receiver's text: the log screen renders it
+    as React text only, never as HTML or Markdown.
+  - `module.Workers`' comment and `contributing/module-boundaries.md` say that worker-mode deps
+    carry the enabled modules' catalog.
 
 ## 12. What overturning a default changes
 

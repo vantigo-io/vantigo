@@ -161,8 +161,10 @@ the outbox delivery's own transaction, with no network, it:
    its waiting messages were dropped;
 2. reads each integration's permissions once and decides whether it may receive the event;
 3. queues one delivery per endpoint, its body fixed there: `pending`, or `skipped`
-   (`permission_not_held`) when the integration may not. The outbox delivers at least once;
-   a second fan-out of the same event to the same endpoint is a no-op.
+   (`permission_not_held`) when the integration may not — at most one skipped delivery a
+   day per endpoint and event, which shows the cause without a row for every event missed.
+   The outbox delivers at least once; a second fan-out of the same event to the same
+   endpoint is a no-op.
 
 An event whose payload lacks the catalogue's id field is a bug, not an endpoint's fault: the
 handler fails, the outbox retries it and then holds it dead for the operator, and later
@@ -171,20 +173,29 @@ an endpoint created now receives the events published after it.
 
 ## Sending
 
-The sender is the worker `identity.webhook-sender`, which runs where the workers run, every
-2 seconds, unless it is switched off ([Configuration](/en/admin/configuration/)). Each pass
-it:
+The sender is the worker `identity.webhook-sender`, which runs where the workers run, unless
+it is switched off ([Configuration](/en/admin/configuration/)). It passes every 2 seconds
+when idle; a pass that leased all it could is followed by the next at once, and a send that
+finishes starts one, so a fast receiver gets messages as fast as it answers. Each pass it:
 
 1. locks the enabled endpoints of active integrations that have a message due, `FOR UPDATE
    SKIP LOCKED`, so two worker processes never count one endpoint at once;
 2. counts each one's messages in flight, ranks its due messages by when they were queued, and
    leases, for 2 minutes, at most **2 per endpoint per pass**, never more than **4 in flight
    per endpoint** across every process, and no more than its own free slots (**16 sends** at
-   once per process), the first message of every endpoint before the second of any;
+   once per process). An endpoint with nothing in flight is served before any gets a second
+   send, and the last 4 free slots are kept for such first sends, so endpoints that never
+   answer hold at most 12 slots between them and the rest are still served;
 3. checks each integration's permission once and records `skipped` what it may no longer
    receive;
 4. sends each leased message on its own, without waiting for the slowest before the next pass,
    so a slow receiver holds only its own four slots.
+
+The permission, the endpoint's status and the integration's are checked when a message is
+claimed, not again when it is posted: a role taken, or an endpoint or integration disabled or
+archived, in the moment between the claim and the post can still let that one message go
+out. It names a resource the receiver's fetch is then refused or no longer sees; nothing
+after it is sent.
 
 An **attempt** opens the secrets, signs ([Signing](#signing)) with the current secret — and
 with the previous one too while a roll's overlap ends after the attempt's time — and posts
@@ -195,6 +206,9 @@ short transaction of its own, the endpoint held first, and only while the claim'
 holds the message: a message whose lease ran out and was claimed by another sender, settled
 meanwhile or deleted with its endpoint records nothing. An attempt the sender abandons
 because it is stopping is not one either; the message is sent again once its lease runs out.
+A secret that cannot be opened — the installation's `APP_SECRET` changed, say — sends nothing
+and is recorded as a failed attempt with the error `other`, so the message is retried on the
+schedule and the endpoint can be disabled as failing; rolling the secret mends it.
 
 ### Retries
 
@@ -229,9 +243,11 @@ Disabling drops the messages waiting for the endpoint (`dead`, `endpoint_disable
 nothing stale is sent once it is enabled again, and is audited `webhook.disabled` with the
 actor `system:webhooks`. Then **one notice** is mailed, in each recipient's language, to the
 integration's contact and to every Owner: which endpoint, by its scheme and host only, why,
-and where to enable it. The notice is claimed first, so two senders never both mail it; it is
-mailed with no transaction open, and tried again on a later pass when no one could be mailed.
-It goes once per disabling: enabling the endpoint again clears it.
+and where to enable it; the integration's name in it loses any control character. The notice
+is claimed first, so two senders never both mail it; it is mailed with no transaction open.
+When no one could be mailed it is tried again, at most once a minute and backing off to once
+an hour, for a week after the disabling, and not at all on an installation with no mail. It
+goes once per disabling: enabling the endpoint again clears it.
 
 **Enabling** is an Owner's, by hand: the endpoint starts afresh with no failure counted, and a
 test event is queued to it.
@@ -248,9 +264,10 @@ it `dead` with no retry — and never counts toward disabling the endpoint, exce
 
 Once a minute the sender settles as `dead` (`expired`) every message still `pending` 3 days
 after it was queued, and deletes every message queued more than **30 days** ago, with its
-attempts, whatever its state, a thousand at a time. While an integration is disabled its
-endpoints get nothing new and nothing waiting is sent; when it is enabled again, what was
-queued more than 24 hours before is settled `expired` and the rest is sent. With the sender
+attempts, whatever its state, a thousand at a time; a row another transaction holds is left
+for the next sweep. While an integration is disabled its endpoints get nothing new and
+nothing waiting is sent; when it is enabled again, what has been due for more than 24 hours
+— overdue because it was disabled — is settled `expired`, and the rest is sent. With the sender
 switched off, messages queue and expire the same way once it runs again.
 
 ## Signing

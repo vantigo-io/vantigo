@@ -293,7 +293,10 @@ lag, never what must refuse — go through the platform's domain-events outbox,
    in worker mode. Two providers are a compose error naming both, and a panic in
    Workers. `module.WorkerDeps` is that resolution on its own — the `Deps` `module.Workers`
    hands every worker — for a program that drives a module's entry points without composing:
-   the demo seed builds Accounting's `Deps` with it.
+   the demo seed builds Accounting's `Deps` with it. It also fills `Deps.Catalog` with the
+   enabled modules' permissions when the caller set none, as `module.EventHandlers` does for
+   the outbox handlers, since a worker-only process never composes: identity's webhook
+   fan-out and sender decide by it whether an integration may receive an event.
    Fourteen slots are *many-provider* instead — any number of modules may fill them,
    and Compose collects them in module order: `Workers` (background work, from
    the enabled modules), `CalendarSources` (`contracts.CalendarSource`, rule 12,
