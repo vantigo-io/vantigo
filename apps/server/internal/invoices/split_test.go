@@ -3,8 +3,11 @@ package invoices_test
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"slices"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/invoices"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/bankfile/bankfiletest"
@@ -160,5 +163,96 @@ func TestSplit_JudgedAgainUnderTheLocks(t *testing.T) {
 	}
 	if got := livePaymentsOf(t, h, a.ID); len(got) != 0 {
 		t.Errorf("invoice a's payments = %v, want none", got)
+	}
+}
+
+// A line naming more invoices than a split takes is no split: queued, with
+// them among its suggestions.
+func TestSplit_MoreThanTwentyInvoicesIsNoSplit(t *testing.T) {
+	t.Parallel()
+	h, _ := matchHarness(t)
+	var names []string
+	for range 21 {
+		names = append(names, num(kidInvoice(t, h)))
+	}
+	toMatchDay(h)
+	r := imported(t, importer(t, h), camtFile("S21", sellerAccount,
+		camtText(6, 21000, "", "Faktura "+strings.Join(names, " "), nil, "1")))
+	if got := stateOf(t, h, lineID(t, h, r.File.ID, "1")); got != "exception no_kid" {
+		t.Errorf("the line naming 21 invoices = %s, want exception no_kid", got)
+	}
+}
+
+// The bank feed's line is split by no one (ck_payments_origin and
+// ck_bank_transaction_events_by allow it), and a later sync that reads the
+// same transaction again registers nothing twice.
+func TestSplit_FromTheBankFeedByNoOne(t *testing.T) {
+	t.Parallel()
+	h, _ := syncHarness(t)
+	a, b := kidInvoice(t, h), kidInvoice(t, h)
+	feedReady(t, h)
+	tx := incoming(txID(1), "2026-10-06", "2000.00", "")
+	tx.Description = "Faktura " + num(a) + " og " + num(b)
+	h.folio.AddTransaction(sellerAccount, tx)
+	syncNow(t, h)
+	line := feedLine(t, h, txID(1))
+	if got := stateOf(t, h, line); got != "matched -" {
+		t.Fatalf("the feed line = %s, want matched", got)
+	}
+	if got := eventsOf(t, h, line); !slices.Equal(got, []string{"auto_split -"}) {
+		t.Errorf("the feed line's events = %v, want auto_split by no one", got)
+	}
+	if got := texts(t, h, `SELECT concat_ws(' ', invoice_id, amount, source, coalesce(registered_by_user_id::text, 'nobody'))
+		FROM invoices.payments WHERE bank_transaction_id = $1 ORDER BY id`, line); !slices.Equal(got, []string{
+		fmt.Sprintf("%d 1000.00 bank_feed nobody", a.ID), fmt.Sprintf("%d 1000.00 bank_feed nobody", b.ID),
+	}) {
+		t.Errorf("the split's payments = %v, want one of 1000 to each, by no one", got)
+	}
+	h.Advance(30 * time.Minute)
+	syncNow(t, h)
+	if n := h.Count(t, `SELECT count(*) FROM invoices.payments WHERE invoice_id = ANY($1) AND removed_at IS NULL`, []int64{a.ID, b.ID}); n != 2 {
+		t.Errorf("after a second sync, %d live payments of the two invoices; want 2", n)
+	}
+}
+
+// The same file imported again is refused whole, and matching it again
+// finds nothing to do: a split registers once.
+func TestSplit_ReimportRegistersNothingAgain(t *testing.T) {
+	t.Parallel()
+	h, _ := matchHarness(t)
+	a, b := kidInvoice(t, h), kidInvoice(t, h)
+	toMatchDay(h)
+	file := camtFile("S-AGAIN", sellerAccount, camtText(6, 2000, "", "Faktura "+num(a)+" og "+num(b), nil, "1"))
+	r := imported(t, importer(t, h), file)
+	refusedImport(t, "the same file again", upload(t, importer(t, h), file), "bank_file_duplicate")
+	if res := importer(t, h).Do(http.MethodPost, matchPath(r.File.ID), nil); res.Status != http.StatusOK {
+		t.Fatalf("match again = %d %s", res.Status, res.Body)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM invoices.payments WHERE invoice_id = ANY($1) AND removed_at IS NULL`, []int64{a.ID, b.ID}); n != 2 {
+		t.Errorf("%d live payments of the two invoices; want 2", n)
+	}
+}
+
+// Credit applied to one of the split's invoices between the pool's reading
+// and the locks is seen under them: the sum no longer holds, the line is
+// queued, and the credit stands.
+func TestSplit_AgainstApplyCredit(t *testing.T) {
+	h, _ := matchHarness(t)
+	a, b := kidInvoice(t, h), kidInvoice(t, h)
+	overpaid(t, h) // 200 of customerAcme's credit
+	toMatchDay(h)
+	defer invoices.SetSplitBeforeLocks(func(context.Context, int64) error {
+		if res := payer(t, h).Do(http.MethodPost, applyCreditPath(b.ID), map[string]any{"amount": 50}); res.Status != http.StatusOK {
+			t.Errorf("apply credit = %d %s", res.Status, res.Body)
+		}
+		return nil
+	})()
+	r := imported(t, importer(t, h), camtFile("S-CREDIT", sellerAccount,
+		camtText(6, 2000, "", "Faktura "+num(a)+" og "+num(b), nil, "1")))
+	if got := stateOf(t, h, lineID(t, h, r.File.ID, "1")); got != "exception no_kid" {
+		t.Errorf("the line = %s, want exception no_kid", got)
+	}
+	if got := livePaymentsOf(t, h, b.ID); !slices.Equal(got, []string{"50.00 credit"}) {
+		t.Errorf("invoice b's payments = %v, want the credit applied alone", got)
 	}
 }

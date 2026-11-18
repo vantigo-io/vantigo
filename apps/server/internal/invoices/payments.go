@@ -158,7 +158,7 @@ func (s *server) PostInvoicesByIdPayments(ctx context.Context, req gen.PostInvoi
 		if recovering {
 			// Money after a write-off (R4): up to what is written off less
 			// what is already recovered; the open amount stays as it is.
-			writeOff, room, ok, err := recoveryRoom(ctx, txq, locked.ID)
+			writeOff, room, rounding, ok, err := recoveryRoom(ctx, txq, locked.ID)
 			if err != nil {
 				return err
 			}
@@ -166,6 +166,10 @@ func (s *server) PostInvoicesByIdPayments(ctx context.Context, req gen.PostInvoi
 			case !ok:
 				refusal = ptr(conflict(codeNoWriteOff, cannotRegisterTitle,
 					"No write-off of this invoice stands: register the money as an ordinary payment."))
+				return errRefused
+			case rounding:
+				refusal = ptr(conflict(codeNoWriteOff, cannotRegisterTitle,
+					"A rounding write-off stands on this invoice: a small difference, not a loss. Money for it is kept as the customer's credit, or registered as a payment once the write-off is undone."))
 				return errRefused
 			case amt.Cmp(room) > 0:
 				refusal = ptr(conflict(codeRecoveryExceedsWriteOff, cannotRegisterTitle,
@@ -241,7 +245,7 @@ func (s *server) PostInvoicesByIdPayments(ctx context.Context, req gen.PostInvoi
 			return nil
 		}
 		// What the payment leaves open may be a small difference (I15).
-		return roundOffResidual(ctx, txq, locked, payment.PaidOn, payment.RegisteredAt)
+		return roundOffResidual(ctx, txq, locked, amt, payment.PaidOn, payment.RegisteredAt)
 	}
 	if keep {
 		// The customer's credit lock, then the invoice (I17a).
@@ -349,6 +353,10 @@ func (s *server) PostInvoicesByIdPaymentsByPaymentIdRemove(ctx context.Context, 
 		}
 		if n != 1 {
 			return fmt.Errorf("invoices: remove payment %d of %d: %d rows, want 1", payment.ID, inv.ID, n)
+		}
+		// What the payment's residual was rounded off goes with it (I15).
+		if err := undoAutoRoundings(ctx, txq, inv.ID, caller, now); err != nil {
+			return err
 		}
 		if !withCredit {
 			return nil

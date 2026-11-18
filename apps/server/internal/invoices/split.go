@@ -35,11 +35,14 @@ import (
 // Charges are never paid by a split. Any doubt queues the line with the
 // reason it had, as before.
 //
-// The small difference: after a payment is registered — by hand, by a match,
-// by an apply or a split — roundOffResidual writes a rounding write-off of
-// what is left open when that is above zero and at most the tolerance, in
-// the same transaction, under the invoice's lock. Never after a Vipps
-// capture, a recovery or credit applied.
+// The small difference: after a payment is registered — by hand, by a match
+// or by an apply that takes its whole line — roundOffResidual writes a
+// rounding write-off of what is left open when that is above zero and at
+// most the tolerance, and the payment covered at least 95 % of what was open
+// before it, in the same transaction, under the invoice's lock. Never after
+// a Vipps capture, a recovery, credit applied or a split, which pays in full.
+// Removing or reversing a payment of the invoice undoes it
+// (undoAutoRoundings).
 
 // eventAutoSplit is a line matching applied across several invoices.
 const eventAutoSplit = "auto_split"
@@ -96,6 +99,7 @@ func splitCandidates(ctx context.Context, q *store.Queries, line store.InvoicesB
 		}
 	}
 	if len(refs.numbers) > 0 {
+		// One more than a split takes: more invoices named is no split.
 		invs, err := q.IssuedInvoicesByNumbers(ctx, refs.numbers)
 		if err != nil {
 			return nil, fmt.Errorf("invoices: read the invoices line %d names: %w", line.ID, err)
@@ -107,7 +111,30 @@ func splitCandidates(ctx context.Context, q *store.Queries, line store.InvoicesB
 		}
 	}
 	slices.Sort(ids)
+	if len(ids) > maxSplitInvoices {
+		// More invoices named than a split takes: the line is queued, with
+		// them among its suggestions.
+		return nil, nil
+	}
 	return ids, nil
+}
+
+// maxSplitInvoices is the most invoices one automatic split pays; a line
+// naming more is queued (IssuedInvoicesByNumbers reads one more).
+const maxSplitInvoices = 20
+
+// undoAutoRoundings undoes every standing automatic rounding write-off of
+// invoice invoiceID, which txq holds FOR UPDATE, by and at, with the reason
+// "payment removed": the payment whose residual it rounded off is gone
+// (I15), whether a person removed it or a reversal took it back, and what it
+// left open is open again.
+func undoAutoRoundings(ctx context.Context, txq *store.Queries, invoiceID int64, by uuid.UUID, at time.Time) error {
+	if _, err := txq.UndoAutoWriteOffs(ctx, store.UndoAutoWriteOffsParams{
+		UndoneAt: at, UndoneByUserID: by, InvoiceID: invoiceID,
+	}); err != nil {
+		return fmt.Errorf("invoices: undo the automatic rounding of %d: %w", invoiceID, err)
+	}
+	return nil
 }
 
 // splitShare is one invoice of a split and what it has open.
@@ -286,13 +313,15 @@ func (s *server) trySplit(ctx context.Context, line store.InvoicesBankTransactio
 }
 
 // roundOffResidual is I15 for inv, which txq holds FOR UPDATE, right after a
-// payment of it paid on day was registered: when what is left open of its
-// principal is above zero and, in NOK at the document's rate, at most the
-// tolerance — read in this transaction, so a change applies from the next
-// payment on — a rounding write-off of it, source auto, by no one, on day,
-// at now. Nothing while a Vipps payment is in progress on it, nothing with
-// the tolerance at 0.
-func roundOffResidual(ctx context.Context, txq *store.Queries, inv store.InvoicesInvoice, day pgtype.Date, now time.Time) error {
+// payment of paid, paid on day, was registered: when what is left open of
+// its principal is above zero and, in NOK at the document's rate, at most
+// the tolerance — read in this transaction, so a change applies from the
+// next payment on — and the payment covered at least 95 % of what was open
+// just before it (plan reading 14: a test transfer of a krone, or an
+// instalment, never closes an invoice), a rounding write-off of it, source
+// auto, by no one, on day, at now. Nothing while a Vipps payment is in
+// progress on it, nothing with the tolerance at 0.
+func roundOffResidual(ctx context.Context, txq *store.Queries, inv store.InvoicesInvoice, paid *big.Rat, day pgtype.Date, now time.Time) error {
 	settings, err := txq.GetSettings(ctx)
 	if err != nil {
 		return fmt.Errorf("invoices: read the settings: %w", err)
@@ -306,6 +335,11 @@ func roundOffResidual(ctx context.Context, txq *store.Queries, inv store.Invoice
 		return err
 	}
 	if open.Sign() <= 0 || reserved.Sign() > 0 {
+		return nil
+	}
+	// paid ≥ 95 % of (open + paid), in whole numbers: 100·paid ≥ 95·before.
+	before := new(big.Rat).Add(open, paid)
+	if new(big.Rat).Mul(paid, big.NewRat(100, 1)).Cmp(new(big.Rat).Mul(before, big.NewRat(95, 1))) < 0 {
 		return nil
 	}
 	amount, err := numericFromRat(open, 2)
