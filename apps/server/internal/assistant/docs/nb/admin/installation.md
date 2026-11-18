@@ -81,7 +81,9 @@ Compose starter PostgreSQL, kjører applikasjonens databasemigreringer som en
 engangsjobb, og starter deretter Vantigo:
 
 - **Vantigo** — <http://localhost:8080>
-- **API-kontrakten** — `GET http://localhost:8080/api/openapi.json` (krever en sesjon)
+- **API-referansen** — <http://localhost:8080/api> i en nettleser, med en nøkkel eller innlogget
+- **API-kontrakten** — `GET http://localhost:8080/api/openapi.json` (en økt eller en
+  API-nøkkel; `?view=api` gir en økt integratorens dokument)
 
 Modulene Kunder, Produkter, Energi, Kommunikasjon, Prosjekter, Tid, Utgifter,
 Fakturaer, Ansatte, Bemanning, Lager, Ordre, Produksjon, Kunnskap, Kalender, Microsoft Entra ID, Google Workspace og Assistent er aktivert som standard
@@ -699,6 +701,24 @@ innebygde kopien og finnes bare på den offentlige siden. Fordi sidens egne skri
 kjører inline og søket kjører WebAssembly, bærer svar under `/docs/` sidens egen
 innholdssikkerhetspolicy i stedet for applikasjonens; se
 [Transportsikkerhet og herding av nettleseren](/nb/admin/transport-security/#sikkerhetshoder-for-nettleseren).
+
+## API-referansen på `/api`
+
+Imaget serverer også en interaktiv API-referanse på `/api` (under basestien når en er
+satt), bygget inn i den samme binæren. En nettleser som åpner den, får en side med et
+nøkkelfelt: med en API-nøkkel viser den, og lar deg kalle, operasjonene nøkkelen når;
+innlogget uten nøkkel viser den alle operasjoner en nøkkel kan kalle; uten noen av delene
+forklarer den hvordan du får en nøkkel. Alle andre klienter som spør etter `/api`, får
+fortsatt API-ets `404`. Som `/docs/` trenger den verken innstilling eller nettverk, den
+bærer sin egen innholdssikkerhetspolicy
+([Transportsikkerhet](/nb/admin/transport-security/#api-referansen-på-api)), og den
+serveres ikke på den offentlige verten. Nøkler lages under **Administrer arbeidsområde ›
+API-tilgang** ([API-tilgang](/nb/admin/api-access/)).
+
+`GET /api/openapi.json` svarer en økt med den sammenslåtte kontrakten, en økt som ber om
+`?view=api` med integratorens dokument, og en API-nøkkel med integratorens dokument skåret
+ned til det nøkkelen når; se
+[API-kontraktdokumentet](/nb/admin/transport-security/#api-kontraktdokumentet).
 
 ## E-post og observerbarhet
 

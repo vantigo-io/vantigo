@@ -7,6 +7,7 @@ sources:
   - apps/server/internal/server
   - apps/server/internal/security
   - apps/server/internal/netguard
+  - apps/server/internal/apiref
 ---
 Transport — http or https at the edge, TLS or plaintext to PostgreSQL and to the
 SMTP relay — is the operator's choice, made per deployment in the environment. The
@@ -28,7 +29,8 @@ means, what the plaintext options cost, and how to configure the common shapes.
 | Security headers, including CSP | sent | sent |
 | Host header filtering | `APP_URL`'s host + loopback | `APP_URL`'s host + loopback |
 | HTTPS redirection | none | none (HSTS header only) |
-| Merged OpenAPI document | `GET /api/openapi.json`, any authenticated session | `GET /api/openapi.json`, any authenticated session |
+| Merged OpenAPI document | `GET /api/openapi.json`, a session or an API key | `GET /api/openapi.json`, a session or an API key |
+| API reference page | `GET /api` from a browser, public, its own CSP | `GET /api` from a browser, public, its own CSP |
 
 ## What each choice costs
 
@@ -258,6 +260,25 @@ content, so the inline scripts are the site's own. The header name follows
 `CSP_REPORT_ONLY` like the application's. Every other header in this section is
 unchanged on those responses.
 
+### The API reference at `/api`
+
+A browser that opens `/api` — a `GET` or `HEAD` whose `Accept` prefers `text/html` —
+gets the interactive API reference (see
+[API access](/en/admin/api-access/#trying-the-api-at-api)); every other request to `/api`
+keeps the API's `404` problem. The page and its files under `/api/reference/` replace the
+application's policy with their own, under the same header name:
+
+```text
+default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline';
+connect-src 'self'; img-src 'self' data:; font-src 'self'; frame-ancestors 'none'
+```
+
+Scalar, which renders the reference, injects its styles, hence `'unsafe-inline'` for
+styles only. It runs without `'unsafe-eval'`. The page loads no font, image or script from
+anywhere else, and the policy would refuse it if it tried. The files are named by their
+content and cached as immutable; the page itself is `no-cache`. The public host
+(`PUBLIC_BASE_URL` on a host of its own) serves none of it.
+
 ### The live-updates endpoint
 
 `GET /api/v1/live` upgrades to a WebSocket and is a `GET`, which the cross-origin protection
@@ -277,10 +298,21 @@ The running server serves the merged contract of its **enabled** modules at:
 GET /api/openapi.json
 ```
 
-It requires a session in every environment, development included — it is not
-environment-gated, and there is no Swagger, Scalar or other documentation UI in the
-image. The rule is `session`, which **any authenticated user** satisfies: no
-permission, policy or role is checked. The document is therefore protected from
-anonymous visitors, not restricted to administrators. There is no `/openapi/v1.json` route. The per-module source contracts live in
+It needs a caller in every environment, development included — it is not
+environment-gated. What it answers depends on who asks:
+
+- **A session, no parameter:** the merged contract, with the `x-vantigo-*` extensions the
+  server reads. Any authenticated user gets it: no permission, policy or role is checked.
+  The document is therefore protected from anonymous visitors, not restricted to
+  administrators.
+- **A session, `?view=api`:** the integrator's document — every operation an API key can
+  call, with the `bearerAuth` scheme, `servers` set to `APP_URL`, the `401`, `403` and
+  `429` answers and the permission each operation requires, and no `x-vantigo-*`
+  extension.
+- **An API key** (`Authorization: Bearer vtg_…`): the integrator's document cut down to
+  what the key reaches, read-only keys to the reads. A read-only key may load it.
+- **Nobody:** `401`.
+
+The reference page at `/api` loads the same document. There is no `/openapi/v1.json` route. The per-module source contracts live in
 `openapi/*.yaml` in the repository and are the right input for client generation;
 `bun run gen:client` regenerates the typed frontend client from them.
