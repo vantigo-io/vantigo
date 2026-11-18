@@ -21,13 +21,13 @@ rebased once pushed; merge `main` into a branch if it must catch up). Per delive
    (`[[migration-number-collisions]]`), merge via GraphQL `enqueuePullRequest`.
 5. Commits are Conventional, SSH-signed, with the attribution trailer.
 
-Migration: **`00203`** holds every table (A); B and C add none. Renumber in-history before
+Migration: **`00204`** holds every table (A); B and C add none. Renumber in-history before
 the first push if `main` moves.
 
 ## Delivery A — schema, catalogue, signer, endpoints
 
 Code:
-- `srv/db/migrations/00203_identity_webhooks.sql`: `webhook_endpoints`, `webhook_deliveries`
+- `srv/db/migrations/00204_identity_webhooks.sql`: `webhook_endpoints`, `webhook_deliveries`
   (with `resend_count`, `resend_window_start`, `completed_at`), `webhook_attempts`; indexes for
   the claim `(state, next_attempt_at)` partial, `(endpoint_id, event_id)` unique (event_id may
   be null), `(created_at)`, `(integration_id)`; checks on state and reason; the per-endpoint

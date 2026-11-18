@@ -11,7 +11,7 @@ sources:
   - apps/server/internal/identity/webhooks_url.go
   - apps/server/internal/identity/webhooks_client.go
   - apps/server/internal/identity/queries/webhooks.sql
-  - apps/server/internal/db/migrations/00203_identity_webhooks.sql
+  - apps/server/internal/db/migrations/00204_identity_webhooks.sql
   - apps/server/internal/integration/webhook_events_test.go
   - apps/host/frontend/src/routes/workspace/-api-access-webhooks.tsx
   - apps/host/frontend/src/routes/workspace/-webhook-secret-dialog.tsx
@@ -248,7 +248,7 @@ of 30 requests a minute from one address (`429 rate_limited`).
 
 ## Tables
 
-Migration `00203` holds every table of the feature in the `identity` schema.
+Migration `00204` holds every table of the feature in the `identity` schema.
 
 - **`webhook_endpoints`** — an endpoint: its integration (`ON DELETE RESTRICT`; integrations are
   archived, never deleted), URL, description, events (1 to 50), the sealed secret and the

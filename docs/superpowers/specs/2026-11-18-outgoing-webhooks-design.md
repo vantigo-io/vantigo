@@ -259,7 +259,7 @@ asymmetric signing (`v1a`/`v2a`); a replay-missing/backfill tool; receivers othe
 
 ## 7. Platform, registries and documentation
 
-- **Migration `00203`** (renumbered from `00201`, which main took; verify against `origin/main` and open PRs right before merging,
+- **Migration `00204`** (renumbered from `00201`, which main took; verify against `origin/main` and open PRs right before merging,
   `[[migration-number-collisions]]`) holds all tables, so B and C add none.
 - **Config:** `IDENTITY_WEBHOOKS_ENABLED`, `IDENTITY_WEBHOOKS_POLL` in `srv/config`,
   listed in `admin/configuration.md`. A worker switched off sends nothing and delivers
@@ -360,7 +360,7 @@ asymmetric signing (`v1a`/`v2a`); a replay-missing/backfill tool; receivers othe
     contract: identity's operation-coverage gate fails on an operation no test exercises.
   - The pages say plainly that A sends nothing yet.
 - **4** (2026-11-18, delivery A's code and security reviews):
-  - The migration is `00203`: main took `00201` (invoices) and `00202` (customers).
+  - The migration is `00204`: main took `00201` (invoices) and `00202` (customers).
   - Checks: no NULL or empty event name; a pending delivery has a `next_attempt_at`;
     `state_reason` is tied to its state (none for pending or succeeded,
     `permission_not_held` for skipped, the dead reasons for dead). A partial index
