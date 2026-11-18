@@ -29,7 +29,7 @@ import {
 import { useEffect, useState } from "react";
 import "../i18n";
 import { accountMenuSections } from "../account-menu";
-import { getProfile, profileQueryKey } from "../api/account";
+import { getProfile, profileQueryKey, updateProfile } from "../api/account";
 import { fetchBootstrapStatus } from "../api/account-lifecycle";
 import { aiSettingsQueryKey, fetchAiSettings } from "../api/ai";
 import { fetchSession, sessionQueryKey, signOut } from "../api/auth";
@@ -187,6 +187,17 @@ const RootLayout = () => {
     connectionButton: connectionButtonFor(),
     productMessaging,
   });
+  // The account menu's quick switch: the shell has already applied the scheme, this keeps it for the
+  // person. The language is sent back as it is, because the server clears a language left out.
+  const saveColorScheme = useMutation({
+    mutationFn: (colorScheme: "light" | "dark") =>
+      updateProfile({
+        displayName: profile.data?.displayName ?? "",
+        preferredLanguage: profile.data?.preferredLanguage ?? "auto",
+        colorScheme,
+      }),
+    onSuccess: (saved) => queryClient.setQueryData(profileQueryKey(session?.user.id ?? "unknown"), saved),
+  });
   const logout = useMutation({
     mutationFn: signOut,
     onSuccess: () => {
@@ -278,6 +289,7 @@ const RootLayout = () => {
               }))}
               onSignOut={() => logout.mutate()}
               signOutDisabled={logout.isPending}
+              onColorSchemeChange={profile.data ? (colorScheme) => saveColorScheme.mutate(colorScheme) : undefined}
             />
           </>
         }

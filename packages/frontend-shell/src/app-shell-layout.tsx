@@ -5,7 +5,7 @@ import { appConfig, hasSupportContact } from "./app-config";
 import { registerCatalog, useI18n } from "./i18n";
 import { shellCatalog } from "./i18n/catalogs/shell";
 import { type ShellLinkComponent, ShellLinkProvider } from "./link-context";
-import { vantigoLogo } from "./logo";
+import { vantigoLogo, vantigoLogoDark } from "./logo";
 
 registerCatalog("shell", shellCatalog);
 
@@ -144,7 +144,15 @@ export const AppShellLayout = ({
             />
           )}
           <HomeLink linkComponent={linkComponent} label={t("goToDashboard")}>
-            <Image src={config.logoUrl ?? vantigoLogo} alt={config.title} h={32} w="auto" maw="30vw" fit="contain" />
+            {config.logoUrl ? (
+              <Image src={config.logoUrl} alt={config.title} h={32} w="auto" maw="30vw" fit="contain" />
+            ) : (
+              // The Vantigo mark has a variant for each scheme: its navy stroke vanishes on dark.
+              <>
+                <Image src={vantigoLogo} alt={config.title} h={32} w="auto" maw="30vw" fit="contain" darkHidden />
+                <Image src={vantigoLogoDark} alt={config.title} h={32} w="auto" maw="30vw" fit="contain" lightHidden />
+              </>
+            )}
           </HomeLink>
           <Divider orientation="vertical" my="md" />
           <Title

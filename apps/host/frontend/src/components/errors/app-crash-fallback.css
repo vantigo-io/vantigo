@@ -1,0 +1,83 @@
+/*
+ * The last-resort crash page renders outside the MantineProvider, so neither
+ * Mantine's variables nor the shell's tokens (which lean on them) can be
+ * assumed. These are its own colours, for both schemes: the dark values are the
+ * `dark` scale in packages/frontend-shell/src/theme.ts. The pre-paint snippet
+ * sets data-mantine-color-scheme on <html> from the person's choice; the media
+ * query covers a computer set to dark where that snippet did not run (the Vite
+ * dev server).
+ */
+.crash-page {
+  --crash-bg: #f8fafc;
+  --crash-text: #1f2937;
+  --crash-dimmed: #475569;
+  --crash-border: #cbd5e1;
+  --crash-control-bg: #ffffff;
+  --crash-details-bg: #f1f5f9;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: var(--crash-text);
+  background: var(--crash-bg);
+}
+
+:root[data-mantine-color-scheme="dark"] .crash-page {
+  --crash-bg: #15182a;
+  --crash-text: #dde1ef;
+  --crash-dimmed: #8c93ad;
+  --crash-border: #3d4361;
+  --crash-control-bg: #1c1f32;
+  --crash-details-bg: #262a41;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-mantine-color-scheme]) .crash-page {
+    --crash-bg: #15182a;
+    --crash-text: #dde1ef;
+    --crash-dimmed: #8c93ad;
+    --crash-border: #3d4361;
+    --crash-control-bg: #1c1f32;
+    --crash-details-bg: #262a41;
+  }
+}
+
+.crash-card {
+  max-width: 480px;
+  width: 100%;
+  text-align: center;
+}
+
+.crash-title {
+  font-size: 24px;
+  margin: 0;
+}
+
+.crash-body {
+  margin-top: 8px;
+  color: var(--crash-dimmed);
+}
+
+.crash-button {
+  margin-top: 16px;
+  padding: 8px 16px;
+  border: 1px solid var(--crash-border);
+  border-radius: 6px;
+  background: var(--crash-control-bg);
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+}
+
+.crash-details {
+  margin-top: 24px;
+  text-align: left;
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-x: auto;
+  background: var(--crash-details-bg);
+  padding: 12px;
+  border-radius: 6px;
+}
