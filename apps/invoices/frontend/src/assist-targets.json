@@ -84,6 +84,18 @@
     }
   },
   {
+    "key": "invoices.settings.tolerance",
+    "route": "/invoices/settings",
+    "label": {
+      "en": "Rounding tolerance",
+      "nb": "Avrundingsgrense"
+    },
+    "description": {
+      "en": "The field in Invoice settings for the largest amount, in NOK, a payment may leave open and have rounded off automatically as a small difference. 0 turns it off.",
+      "nb": "Feltet i fakturainnstillingene for det største beløpet, i kroner, en betaling kan la stå åpent og få avrundet automatisk som en liten differanse. 0 slår det av."
+    }
+  },
+  {
     "key": "invoices.send.message",
     "route": "/invoices/{invoiceId}",
     "label": {

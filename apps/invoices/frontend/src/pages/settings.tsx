@@ -202,6 +202,7 @@ const sellerInputs = new Set([
   "iban",
   "bic",
   "defaultPaymentTermsDays",
+  "tolerance",
   "footerText",
   "seriesStart",
   "peppolId",
@@ -280,6 +281,9 @@ const SellerForm = ({ settings, latestRevision, dirty, onDirtyChange: setDirty }
         email: values.email,
         phone: values.phone,
         defaultPaymentTermsDays: values.defaultPaymentTermsDays,
+        // What a payment may leave open and be rounded off (invoices phase
+        // 6 design I15).
+        tolerance: values.tolerance,
         defaultCurrency: values.defaultCurrency,
         footerText: values.footerText,
         seriesStart: values.seriesStart,
@@ -416,6 +420,19 @@ const SellerForm = ({ settings, latestRevision, dirty, onDirtyChange: setDirty }
               error={errors.defaultPaymentTermsDays}
               value={values.defaultPaymentTermsDays}
               onChange={(v) => set("defaultPaymentTermsDays", typeof v === "number" ? v : Number(v) || 0)}
+            />
+            <NumberInput
+              label={t("field.tolerance")}
+              data-assist="invoices.settings.tolerance"
+              description={t("toleranceHelp")}
+              min={0}
+              max={100}
+              step={1}
+              decimalScale={2}
+              suffix=" NOK"
+              error={errors.tolerance}
+              value={values.tolerance}
+              onChange={(v) => set("tolerance", typeof v === "number" ? v : Number(v) || 0)}
             />
           </SimpleGrid>
           <Group>
