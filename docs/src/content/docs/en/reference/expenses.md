@@ -1509,7 +1509,14 @@ The Assistant can point at these controls in a guided tour ([the registry](/en/r
 ## API keys
 
 `postExpensesClaimsByIdPerDiemSuggestion` writes nothing and is marked `x-vantigo-api:
-read`: a read-only API key may call it. An integration has no expenses: an expense or a claim recorded for one as its `userId`
-answers `400` *Nobody active has that user id*. See [integration
+read`: a read-only API key may call it.
+
+An integration has no expenses or travel claims of its own. One recorded for an integration
+as its `userId` answers `400` *Nobody active has that user id*. A key's create
+(`postExpensesEntries`, `postExpensesClaims`) must name the person in `userId`, which needs
+`expenses:manage` as for anyone recording for a colleague: leaving it out, or naming the
+key's own integration, answers `400` on `userId`, *An API key records expenses for a person;
+name them in userId*. A line inside a travel claim is the claim's person's, as for anyone.
+See [integration
 users](/en/admin/authentication/#integration-users), and the marks' rules in [module
 boundaries](/en/contributing/module-boundaries/#the-rules).

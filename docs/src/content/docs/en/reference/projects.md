@@ -1849,5 +1849,9 @@ The Assistant can point at these controls in a guided tour ([the registry](/en/r
 An integration takes no role on a project and is no task's assignee:
 `putProjectsByIdRolesByUserId` for one answers `400` on `userId`, and a task naming one as its
 `assigneeUserId` answers `400` on that field, each as for an unknown user.
+
+A project an API key creates (`postProjects`) is created without a manager: the creator
+becomes the manager only when it is a person. The answer's capabilities are what the key's
+own permissions give it, and a person is given the manager role afterwards.
 See [integration users](/en/admin/authentication/#integration-users), and the marks' rules in
 [module boundaries](/en/contributing/module-boundaries/#the-rules).

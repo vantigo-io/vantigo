@@ -11,9 +11,8 @@ sources:
 
 Workspace administration is where an **Owner** manages who can use Vantigo and what
 they may do. Open the avatar menu at the top right and choose **Workspace admin**;
-its sidebar has **Overview**, **Users**, **Invitations**, **Roles & access**, while
-Manufacturing is on, **Stations**, **API access** and,
-under **Integrations**, **Microsoft Entra ID**, **Google Workspace**, **Meta**, **Shipping**, **Bank** and, once Vantigo has set up AI for the
+its sidebar has **Overview**, **Users**, **Invitations**, **Roles & access**,
+**Stations** (while Manufacturing is on), **API access** and, under **Integrations**, **Microsoft Entra ID**, **Google Workspace**, **Meta**, **Shipping**, **Bank** and, once Vantigo has set up AI for the
 installation, **AI models** and **Assistant**.
 
 Everything here needs the Owner role, with one exception: a person to whom an Owner
