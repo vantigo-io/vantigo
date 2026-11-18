@@ -816,6 +816,7 @@ func (s *server) applyLocked(ctx context.Context, txq *store.Queries, line store
 	if line.Kid != nil {
 		reference = *line.Kid
 	}
+	lineKeepsRest := total.Cmp(left) < 0
 	for _, a := range ordered {
 		inv := byID[a.invoiceID]
 		// A bank line is NOK (ck_bank_transactions_currency); an invoice in
@@ -835,9 +836,13 @@ func (s *server) applyLocked(ctx context.Context, txq *store.Queries, line store
 			}); err != nil {
 				return nil, fmt.Errorf("invoices: apply line %d's payment to %d: %w", line.ID, inv.ID, err)
 			}
-			// What the payment leaves open may be a small difference (I15).
-			if err := roundOffResidual(ctx, txq, inv, line.BookedOn, now); err != nil {
-				return nil, err
+			// What the payment leaves open may be a small difference (I15) —
+			// unless money of the line stays unapplied, which a person keeps as
+			// the customer's credit or applies to it instead.
+			if !lineKeepsRest {
+				if err := roundOffResidual(ctx, txq, inv, a.amount, line.BookedOn, now); err != nil {
+					return nil, err
+				}
 			}
 		}
 		if a.charges.Sign() > 0 {
@@ -1199,6 +1204,10 @@ func (s *server) reversalLocked(ctx context.Context, txq *store.Queries, line st
 			}
 			if n != 1 {
 				return nil, fmt.Errorf("invoices: remove payment %d of %d: %d rows, want 1", payment.ID, payment.InvoiceID, n)
+			}
+			// What the payment's residual was rounded off goes with it (I15).
+			if err := undoAutoRoundings(ctx, txq, payment.InvoiceID, caller, now); err != nil {
+				return nil, err
 			}
 			if payment.BankTransactionID != nil && !slices.Contains(reversedLines, *payment.BankTransactionID) {
 				reversedLines = append(reversedLines, *payment.BankTransactionID)

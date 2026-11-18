@@ -79,9 +79,10 @@ VALUES (@bank_transaction_id, @event, sqlc.narg(reason)::text, @note, @by_user_i
 -- name: IssuedInvoicesByNumbers :many
 -- IssuedInvoicesByNumbers is the issued invoices numbered one of numbers —
 -- the invoice numbers a line's remittance names (invoices phase 6 design
--- I14) — at most 20, by id: the automatic split's candidates, read on the
--- pool and judged again under their locks. Credit notes are never paid.
+-- I14) — at most 21, by id, one more than a split takes, so a line naming
+-- more is no split: the automatic split's candidates, read on the pool and
+-- judged again under their locks. Credit notes are never paid.
 SELECT * FROM invoices.invoices
 WHERE kind = 'invoice' AND status = 'issued' AND number = ANY(sqlc.arg(numbers)::bigint[])
 ORDER BY id
-LIMIT 20;
+LIMIT 21;

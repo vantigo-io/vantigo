@@ -309,28 +309,30 @@ func lossWrittenOffOf(ctx context.Context, q *store.Queries, invoiceID int64) (b
 
 // recoveryRoom is what a write-off has left to recover — its amount less its
 // live recoveries — read with q, which holds the invoice's lock. ok is false
-// when no write-off stands.
-func recoveryRoom(ctx context.Context, q *store.Queries, invoiceID int64) (writeOffID int64, room *big.Rat, ok bool, err error) {
+// when no write-off stands; rounding is true when the one standing is a
+// rounding write-off, which money is never recovered against (plan reading
+// 11: a recovery is for a loss or other).
+func recoveryRoom(ctx context.Context, q *store.Queries, invoiceID int64) (writeOffID int64, room *big.Rat, rounding, ok bool, err error) {
 	live, err := q.LiveWriteOff(ctx, invoiceID)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return 0, nil, false, nil
+		return 0, nil, false, false, nil
 	}
 	if err != nil {
-		return 0, nil, false, fmt.Errorf("invoices: read the write-off of %d: %w", invoiceID, err)
+		return 0, nil, false, false, fmt.Errorf("invoices: read the write-off of %d: %w", invoiceID, err)
 	}
 	amount, err := ratFromNumeric(live.Amount)
 	if err != nil {
-		return 0, nil, false, err
+		return 0, nil, false, false, err
 	}
 	sum, err := q.LiveRecoveries(ctx, live.ID)
 	if err != nil {
-		return 0, nil, false, fmt.Errorf("invoices: read the recoveries of write-off %d: %w", live.ID, err)
+		return 0, nil, false, false, fmt.Errorf("invoices: read the recoveries of write-off %d: %w", live.ID, err)
 	}
 	recovered, err := ratFromNumeric(sum)
 	if err != nil {
-		return 0, nil, false, err
+		return 0, nil, false, false, err
 	}
-	return live.ID, amount.Sub(amount, recovered), true, nil
+	return live.ID, amount.Sub(amount, recovered), live.Reason == writeOffRounding, true, nil
 }
 
 // writeOffsResponse is every write-off of an invoice, undone ones included,

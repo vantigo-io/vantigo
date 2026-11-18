@@ -36,3 +36,12 @@ WHERE id = @id AND invoice_id = @invoice_id AND undone_at IS NULL;
 -- LiveRecoveries is what the live recovered payments of a write-off add up to.
 SELECT coalesce(sum(amount), 0)::numeric(14,2) AS recovered FROM invoices.payments
 WHERE write_off_id = @write_off_id::bigint AND removed_at IS NULL;
+
+-- name: UndoAutoWriteOffs :execrows
+-- UndoAutoWriteOffs undoes the invoice's standing automatic rounding
+-- write-off (invoices phase 6 design I15) when the payment it rounded off is
+-- removed or reversed, by the person who did so. The caller holds the
+-- invoice FOR UPDATE.
+UPDATE invoices.write_offs
+SET undone_at = @undone_at::timestamptz, undone_by_user_id = @undone_by_user_id::uuid, undo_reason = 'payment removed'
+WHERE invoice_id = @invoice_id AND undone_at IS NULL AND source = 'auto';

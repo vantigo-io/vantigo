@@ -190,3 +190,121 @@ func TestRounding_TheSetting(t *testing.T) {
 		}
 	}
 }
+
+// issuedGross is an issued invoice for customerAcme of qty units at 80 plus
+// 25 % VAT: gross 100 · qty.
+func issuedGross(t *testing.T, h *harness, qty float64) invoiceJSON {
+	t.Helper()
+	return issued(t, h, createDraft(t, h, draftBody(customerAcme, line("Konsulenttime", qty, 80, vat25))).ID)
+}
+
+// The 95 % rule (plan reading 14): a payment rounds off only what is left
+// after it covered at least 95 % of what was open just before it, so a test
+// transfer of a krone or an instalment never closes an invoice, whatever the
+// tolerance.
+func TestRounding_OnlyAfterNearlyAll(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	saveSeller(t, h, completeSeller(1))
+	setTolerance(t, h, "100")
+	fifty, fiveHundred, thousandInv := issuedGross(t, h, 0.5), issuedGross(t, h, 5), thousand(t, h)
+	registered(t, h, fifty.ID, pay(1, "2026-09-12"))         // a test transfer: 49 left, 2 %
+	registered(t, h, fiveHundred.ID, pay(450, "2026-09-12")) // an instalment: 50 left, 90 %
+	registered(t, h, thousandInv.ID, pay(997, "2026-09-12")) // 3 left, 99.7 %
+	for _, c := range []struct {
+		inv   invoiceJSON
+		state string
+		offs  []string
+	}{
+		{fifty, "partially_paid", nil},
+		{fiveHundred, "partially_paid", nil},
+		{thousandInv, "paid", []string{"3.00 rounding auto -"}},
+	} {
+		if got := writeOffsOf(t, h, c.inv.ID); !slices.Equal(got, c.offs) {
+			t.Errorf("invoice %d's write-offs = %v, want %v", c.inv.ID, got, c.offs)
+		}
+		if got := getInvoice(t, h, c.inv.ID).State; got != c.state {
+			t.Errorf("invoice %d = %s, want %s", c.inv.ID, got, c.state)
+		}
+	}
+}
+
+// autoUndoneOf is invoice id's automatic write-offs, each "undone-by reason",
+// "-" for one standing.
+func autoUndoneOf(t *testing.T, h *harness, id int64) []string {
+	t.Helper()
+	return texts(t, h, `SELECT coalesce(undone_by_user_id::text || ' ' || undo_reason, '-') FROM invoices.write_offs
+		WHERE invoice_id = $1 AND source = 'auto' ORDER BY id`, id)
+}
+
+// The rounding goes with its payment: removing the payment by hand, or a
+// bank reversal taking it back, undoes the automatic write-off in the same
+// transaction, by the person, "payment removed", and the invoice is open
+// again by the whole of it.
+func TestRounding_UndoneWithItsPayment(t *testing.T) {
+	t.Parallel()
+	h, _ := matchHarness(t)
+	setTolerance(t, h, "5")
+	byHand, fromBank := kidInvoice(t, h), kidInvoice(t, h)
+	paidByHand := registered(t, h, byHand.ID, pay(997, "2026-09-12"))
+	toMatchDay(h)
+	c, user := h.SignInUser(t, "invoices:access", "invoices:payments")
+	_, ids := camtLines(t, h, c, "ROUND-REV", kidEntry(5, 998, *fromBank.Kid, "", "PAY"), reversalEntry(6, 998, "REV"))
+	if got := writeOffsOf(t, h, fromBank.ID); !slices.Equal(got, []string{"2.00 rounding auto -"}) {
+		t.Fatalf("the bank-paid invoice's write-offs = %v, want 2.00 auto", got)
+	}
+
+	res := c.Do(http.MethodPost, removalPath(byHand.ID, paidByHand.Payments[0].ID), map[string]any{"reason": "Feilregistrert"})
+	if res.Status != http.StatusOK {
+		t.Fatalf("remove the payment = %d %s", res.Status, res.Body)
+	}
+	acted(t, c, ids["REV"], "handle-reversal", map[string]any{
+		"removePayments": []map[string]any{{"invoiceId": fromBank.ID, "paymentId": paymentOf(t, h, ids["PAY"])}},
+	})
+	for _, inv := range []invoiceJSON{byHand, fromBank} {
+		if got := autoUndoneOf(t, h, inv.ID); !slices.Equal(got, []string{user.String() + " payment removed"}) {
+			t.Errorf("invoice %d's automatic write-off = %v, want undone by %s, payment removed", inv.ID, got, user)
+		}
+		if got := getInvoice(t, h, inv.ID); money(got.OpenAmount) != 1000.0 {
+			t.Errorf("invoice %d is open %v, want 1000", inv.ID, money(got.OpenAmount))
+		}
+	}
+}
+
+// An apply that leaves money of its line unapplied rounds nothing off: the
+// rest may be applied or kept as the customer's credit instead. An apply
+// that takes the whole line does.
+func TestRounding_NotWhileTheLineKeepsMoney(t *testing.T) {
+	t.Parallel()
+	h, _ := matchHarness(t)
+	setTolerance(t, h, "5")
+	partly, whole := kidInvoice(t, h), kidInvoice(t, h)
+	toMatchDay(h)
+	c := importer(t, h)
+	_, ids := camtLines(t, h, c, "ROUND-APPLY", noKidEntry(6, 1100, "To fakturaer", "A"), noKidEntry(6, 997, "En faktura", "B"))
+	acted(t, c, ids["A"], "apply", applyBody(allocate(partly, 997)))
+	acted(t, c, ids["B"], "apply", applyBody(allocate(whole, 997)))
+	if got := writeOffsOf(t, h, partly.ID); len(got) != 0 {
+		t.Errorf("the invoice applied from a line with 103 left = %v, want no write-off", got)
+	}
+	if got := writeOffsOf(t, h, whole.ID); !slices.Equal(got, []string{"3.00 rounding auto -"}) {
+		t.Errorf("the invoice the whole line paid = %v, want 3.00 rounding auto", got)
+	}
+}
+
+// Money is never recovered against a rounding write-off (plan reading 11):
+// a small difference is no loss.
+func TestRounding_NoRecoveryAfterARounding(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	saveSeller(t, h, completeSeller(1))
+	setTolerance(t, h, "5")
+	inv := thousand(t, h)
+	registered(t, h, inv.ID, pay(997, "2026-09-12"))
+	body := pay(3, "2026-09-12")
+	body["kind"] = "recovered"
+	p := refusedAs(t, "a recovery after a rounding", payer(t, h).Do(http.MethodPost, paymentsPath(inv.ID), body), "no_write_off")
+	if !strings.Contains(p.Detail, "rounding") {
+		t.Errorf("the refusal says %q, want it to name the rounding", p.Detail)
+	}
+}
