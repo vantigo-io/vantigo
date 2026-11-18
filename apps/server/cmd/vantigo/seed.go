@@ -1595,6 +1595,11 @@ func seedInvoicesReceivables(ctx context.Context, tx pgx.Tx, now time.Time, user
 			// used on (seedInvoicesCredit).
 			custID = customerIDs[0]
 		}
+		if i == splitInvoices[1] {
+			// One customer's two invoices, which one bank-feed payment pays
+			// (seedInvoicesSplit).
+			custID = customerIDs[splitInvoices[0]]
+		}
 		projID := projectIDs[i]
 		projRef := fmt.Sprintf("PRJ-%04d", i+1)
 
@@ -1736,11 +1741,16 @@ func seedInvoicesReceivables(ctx context.Context, tx pgx.Tx, now time.Time, user
 
 		if i < 12 {
 			paidOn := issueDate.AddDate(0, 0, 10)
+			amount := gross
+			if i == roundedInvoice {
+				// Paid 2 kroner short, the rest rounded off (seedInvoicesSplit).
+				amount = gross - 2
+			}
 			if _, err := tx.Exec(ctx, `
 				INSERT INTO invoices.payments (
 					invoice_id, paid_on, amount, amount_nok, currency, source, reference, note, registered_by_user_id, registered_at
 				) VALUES ($1, $2::date, $3, $3, 'NOK', 'manual', $4, 'Innbetalt via bank', $5, $2)
-			`, invID, paidOn, gross, fmt.Sprintf("BET-%d", docNum), ownerID); err != nil {
+			`, invID, paidOn, amount, fmt.Sprintf("BET-%d", docNum), ownerID); err != nil {
 				return err
 			}
 		} else if i < 16 {
@@ -1763,12 +1773,22 @@ func seedInvoicesReceivables(ctx context.Context, tx pgx.Tx, now time.Time, user
 		return err
 	}
 
-	return seedInvoicesCredit(ctx, tx, now, ownerID, customerIDs[0], invoiceIDs[0], invoiceIDs[creditOpenInvoice], sellerBank)
+	if err := seedInvoicesCredit(ctx, tx, now, ownerID, customerIDs[0], invoiceIDs[0], invoiceIDs[creditOpenInvoice], sellerBank); err != nil {
+		return err
+	}
+	return seedInvoicesSplit(ctx, tx, now, invoiceIDs[roundedInvoice], invoiceIDs[splitInvoices[0]], invoiceIDs[splitInvoices[1]], sellerBank)
 }
 
 // creditOpenInvoice is the demo invoice, open and not yet due, that the first
 // customer's credit is used on: it is that customer's.
 const creditOpenInvoice = 16
+
+// roundedInvoice is the paid invoice the demo paid 2 kroner short, and
+// splitInvoices the two open invoices of one customer one bank-feed payment
+// pays (invoices phase 6 design I14, I15).
+const roundedInvoice = 11
+
+var splitInvoices = [2]int{18, 19}
 
 func seedEnergyAndCommunications(ctx context.Context, tx pgx.Tx, now time.Time, userIDs []uuid.UUID, customerIDs []int32, contactIDs []int32) error {
 	priceAreas := []string{"NO1", "NO2", "NO3", "NO4", "NO5"}
