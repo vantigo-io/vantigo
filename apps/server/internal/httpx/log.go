@@ -1,7 +1,9 @@
 package httpx
 
 import (
+	"bufio"
 	"log/slog"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -81,3 +83,18 @@ func (s *StatusRecorder) Write(b []byte) (int, error) {
 }
 
 func (s *StatusRecorder) Unwrap() http.ResponseWriter { return s.ResponseWriter }
+
+// Hijack hands the connection over, as the writer it wraps does, and records
+// 101 Switching Protocols, the answer a hijacked connection gives (a
+// WebSocket's). It is http.ErrNotSupported when that writer cannot.
+func (s *StatusRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	h, ok := s.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, http.ErrNotSupported
+	}
+	conn, rw, err := h.Hijack()
+	if err == nil && s.status == 0 {
+		s.status = http.StatusSwitchingProtocols
+	}
+	return conn, rw, err
+}
