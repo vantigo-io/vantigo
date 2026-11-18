@@ -179,6 +179,8 @@ identity never getIdentityAccountMfaSetup
 identity never getIdentityAccountPasskeys
 identity never getIdentityAccountPin
 identity never getIdentityBootstrapStatus
+identity never getIdentityIntegrations
+identity never getIdentityIntegrationsById
 identity never getIdentityInvitationsValidate
 identity never getIdentityOidcCallback
 identity never getIdentityOidcChallenge
@@ -211,6 +213,7 @@ identity never getIdentityStations
 identity never getIdentitySystemStatus
 identity never getIdentityUsersByIdOperatorCredentials
 identity never patchIdentityAccountProfile
+identity never patchIdentityIntegrationsById
 identity never patchIdentityScimV2GroupsById
 identity never patchIdentityScimV2UsersById
 identity never postIdentityAccessDelegations
@@ -229,6 +232,13 @@ identity never postIdentityAccountPasskeysComplete
 identity never postIdentityAccountPassword
 identity never postIdentityAccountSessionsRevoke
 identity never postIdentityBootstrap
+identity never postIdentityIntegrations
+identity never postIdentityIntegrationsByIdArchive
+identity never postIdentityIntegrationsByIdDisable
+identity never postIdentityIntegrationsByIdEnable
+identity never postIdentityIntegrationsByIdKeys
+identity never postIdentityIntegrationsByIdKeysByKeyIdRevoke
+identity never postIdentityIntegrationsByIdKeysByKeyIdRoll
 identity never postIdentityInvitationsAccept
 identity never postIdentityLogin
 identity never postIdentityLogin2fa
@@ -276,6 +286,7 @@ identity never putIdentityAccount
 identity never putIdentityAccountAvatar
 identity never putIdentityAccountPin
 identity never putIdentityAccountProfile
+identity never putIdentityIntegrationsByIdRoles
 identity never putIdentityOwnerAiTasksByKey
 identity never putIdentityOwnerProvisioningRoles
 identity never putIdentityOwnerSsoOidc

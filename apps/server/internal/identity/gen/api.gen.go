@@ -96,6 +96,27 @@ func (e AiSettingsTaskSource) Valid() bool {
 	}
 }
 
+// Defines values for ApiKeyStatus.
+const (
+	ApiKeyStatusActive  ApiKeyStatus = "active"
+	ApiKeyStatusExpired ApiKeyStatus = "expired"
+	ApiKeyStatusRevoked ApiKeyStatus = "revoked"
+)
+
+// Valid indicates whether the value is a known member of the ApiKeyStatus enum.
+func (e ApiKeyStatus) Valid() bool {
+	switch e {
+	case ApiKeyStatusActive:
+		return true
+	case ApiKeyStatusExpired:
+		return true
+	case ApiKeyStatusRevoked:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AuthSessionResponseTimeZoneSource.
 const (
 	Business AuthSessionResponseTimeZoneSource = "business"
@@ -108,6 +129,27 @@ func (e AuthSessionResponseTimeZoneSource) Valid() bool {
 	case Business:
 		return true
 	case Personal:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for IntegrationStatus.
+const (
+	IntegrationStatusActive   IntegrationStatus = "active"
+	IntegrationStatusArchived IntegrationStatus = "archived"
+	IntegrationStatusDisabled IntegrationStatus = "disabled"
+)
+
+// Valid indicates whether the value is a known member of the IntegrationStatus enum.
+func (e IntegrationStatus) Valid() bool {
+	switch e {
+	case IntegrationStatusActive:
+		return true
+	case IntegrationStatusArchived:
+		return true
+	case IntegrationStatusDisabled:
 		return true
 	default:
 		return false
@@ -293,25 +335,25 @@ func (e SsoOidcSettingsRequestProvider) Valid() bool {
 
 // Defines values for StationState.
 const (
-	Expired  StationState = "expired"
-	Paired   StationState = "paired"
-	Pairing  StationState = "pairing"
-	Revoked  StationState = "revoked"
-	Unpaired StationState = "unpaired"
+	StationStateExpired  StationState = "expired"
+	StationStatePaired   StationState = "paired"
+	StationStatePairing  StationState = "pairing"
+	StationStateRevoked  StationState = "revoked"
+	StationStateUnpaired StationState = "unpaired"
 )
 
 // Valid indicates whether the value is a known member of the StationState enum.
 func (e StationState) Valid() bool {
 	switch e {
-	case Expired:
+	case StationStateExpired:
 		return true
-	case Paired:
+	case StationStatePaired:
 		return true
-	case Pairing:
+	case StationStatePairing:
 		return true
-	case Revoked:
+	case StationStateRevoked:
 		return true
-	case Unpaired:
+	case StationStateUnpaired:
 		return true
 	default:
 		return false
@@ -489,6 +531,88 @@ type AiTaskRequest struct {
 	Model string `json:"model"`
 }
 
+// ApiKey An API key of an integration, never its secret (API access design K11).
+type ApiKey struct {
+	// AllowedNetworks The CIDRs the key may be used from; empty for anywhere.
+	AllowedNetworks []string            `json:"allowedNetworks"`
+	CreatedAt       time.Time           `json:"createdAt"`
+	CreatedBy       *openapi_types.UUID `json:"createdBy"`
+
+	// Display The key as it can be recognised once its secret is gone, such as vtg_4f2a…9XyZ.
+	Display   string             `json:"display"`
+	ExpiresAt time.Time          `json:"expiresAt"`
+	Id        openapi_types.UUID `json:"id"`
+
+	// LastUsedAt When the key was last used, to the minute.
+	LastUsedAt *time.Time `json:"lastUsedAt"`
+	LastUsedIp *string    `json:"lastUsedIp"`
+	Name       string     `json:"name"`
+
+	// Permissions The narrowing, null for none. A permission the roles do not grant does nothing until they do; one the catalog no longer has is kept and ignored.
+	Permissions *[]ApiKeyPermission `json:"permissions"`
+	ReadOnly    bool                `json:"readOnly"`
+	RevokedAt   *time.Time          `json:"revokedAt"`
+
+	// RolledFrom The key this one was rolled from.
+	RolledFrom *openapi_types.UUID `json:"rolledFrom"`
+	Status     ApiKeyStatus        `json:"status"`
+}
+
+// ApiKeyStatus defines model for ApiKey.Status.
+type ApiKeyStatus string
+
+// ApiKeyCreateRequest defines model for ApiKeyCreateRequest.
+type ApiKeyCreateRequest struct {
+	// AllowedNetworks At most 20 CIDRs, IPv4 or IPv6, or single addresses; absent or empty for anywhere.
+	AllowedNetworks *[]string `json:"allowedNetworks,omitempty"`
+
+	// ExpiresAt When the key expires, at most 365 days ahead; instead of expiresInDays.
+	ExpiresAt *time.Time `json:"expiresAt,omitempty"`
+
+	// ExpiresInDays 30, 90, 180 or 365; 90 when neither this nor expiresAt is given.
+	ExpiresInDays *int `json:"expiresInDays,omitempty"`
+
+	// Name 1 to 100 characters, such as Production.
+	Name string `json:"name"`
+
+	// Permissions The narrowing, permission keys of the catalog's form; absent for none.
+	Permissions *[]string `json:"permissions,omitempty"`
+
+	// ReadOnly True for a key that may call only reads.
+	ReadOnly *bool `json:"readOnly,omitempty"`
+}
+
+// ApiKeyPermission defines model for ApiKeyPermission.
+type ApiKeyPermission struct {
+	// GrantedByRoles Whether the integration's roles grant the permission now.
+	GrantedByRoles bool `json:"grantedByRoles"`
+
+	// InCatalog Whether the permission catalog still has the permission.
+	InCatalog bool   `json:"inCatalog"`
+	Key       string `json:"key"`
+}
+
+// ApiKeyRollRequest defines model for ApiKeyRollRequest.
+type ApiKeyRollRequest struct {
+	// ExpiresAt When the new key expires, at most 365 days ahead; instead of expiresInDays.
+	ExpiresAt *time.Time `json:"expiresAt,omitempty"`
+
+	// ExpiresInDays 30, 90, 180 or 365; 90 when neither this nor expiresAt is given.
+	ExpiresInDays *int `json:"expiresInDays,omitempty"`
+
+	// OverlapHours How long the old key works on, 0 to 168 hours; 24 when absent.
+	OverlapHours *int `json:"overlapHours,omitempty"`
+}
+
+// ApiKeySecret A key just created or rolled, with its secret, which is never shown again.
+type ApiKeySecret struct {
+	// Key An API key of an integration, never its secret (API access design K11).
+	Key ApiKey `json:"key"`
+
+	// Secret The key itself, vtg_ and 49 characters, to send as Authorization Bearer.
+	Secret string `json:"secret"`
+}
+
 // AssignRolesResponse defines model for AssignRolesResponse.
 type AssignRolesResponse struct {
 	RoleIds []openapi_types.UUID `json:"roleIds"`
@@ -654,6 +778,104 @@ type IdentitySystemStatusResponse struct {
 	StaticOidcProvider                *string    `json:"staticOidcProvider"`
 	StaticScimEnabled                 bool       `json:"staticScimEnabled"`
 	Total                             int32      `json:"total"`
+}
+
+// Integration An external application's account (API access design K8).
+type Integration struct {
+	ArchivedAt         *time.Time `json:"archivedAt"`
+	ContactDisplayName *string    `json:"contactDisplayName"`
+
+	// ContactUserId The person responsible, who gets the integration's notices; null for none.
+	ContactUserId *openapi_types.UUID `json:"contactUserId"`
+	CreatedAt     time.Time           `json:"createdAt"`
+	CreatedBy     *openapi_types.UUID `json:"createdBy"`
+	Description   *string             `json:"description"`
+
+	// Id The integration's user, which is what its requests are attributed to.
+	Id openapi_types.UUID `json:"id"`
+
+	// KeyCount The keys in force, neither revoked nor expired.
+	KeyCount   int        `json:"keyCount"`
+	LastUsedAt *time.Time `json:"lastUsedAt"`
+	Name       string     `json:"name"`
+
+	// NearestExpiry The earliest expiry among the keys in force.
+	NearestExpiry      *time.Time        `json:"nearestExpiry"`
+	RateLimitPerMinute int               `json:"rateLimitPerMinute"`
+	Roles              []IntegrationRole `json:"roles"`
+	Status             IntegrationStatus `json:"status"`
+
+	// Version The integration's version for If-Match.
+	Version string `json:"version"`
+}
+
+// IntegrationStatus defines model for Integration.Status.
+type IntegrationStatus string
+
+// IntegrationCreateRequest defines model for IntegrationCreateRequest.
+type IntegrationCreateRequest struct {
+	// ContactUserId A person; absent for none.
+	ContactUserId *openapi_types.UUID `json:"contactUserId,omitempty"`
+
+	// Description Up to 1,000 characters.
+	Description *string `json:"description,omitempty"`
+
+	// Name 1 to 100 characters, unique among the integrations not archived.
+	Name string `json:"name"`
+
+	// RoleIds Custom roles only.
+	RoleIds *[]openapi_types.UUID `json:"roleIds,omitempty"`
+}
+
+// IntegrationDetail defines model for IntegrationDetail.
+type IntegrationDetail struct {
+	// EffectivePermissions Every permission the integration's roles give it, in ordinal order.
+	EffectivePermissions []IntegrationPermission `json:"effectivePermissions"`
+
+	// Integration An external application's account (API access design K8).
+	Integration Integration `json:"integration"`
+
+	// Keys Its keys, newest first.
+	Keys []ApiKey `json:"keys"`
+}
+
+// IntegrationList defines model for IntegrationList.
+type IntegrationList struct {
+	Integrations []Integration `json:"integrations"`
+}
+
+// IntegrationPermission defines model for IntegrationPermission.
+type IntegrationPermission struct {
+	// ApiNever True for a permission no API key ever holds, whatever the roles grant (K7).
+	ApiNever bool   `json:"apiNever"`
+	Key      string `json:"key"`
+}
+
+// IntegrationRole defines model for IntegrationRole.
+type IntegrationRole struct {
+	DisplayName string             `json:"displayName"`
+	Id          openapi_types.UUID `json:"id"`
+	Name        string             `json:"name"`
+}
+
+// IntegrationRolesRequest defines model for IntegrationRolesRequest.
+type IntegrationRolesRequest struct {
+	RoleIds []openapi_types.UUID `json:"roleIds"`
+}
+
+// IntegrationUpdateRequest defines model for IntegrationUpdateRequest.
+type IntegrationUpdateRequest struct {
+	// ContactUserId A person; absent clears the contact.
+	ContactUserId *openapi_types.UUID `json:"contactUserId,omitempty"`
+
+	// Description Up to 1,000 characters; absent clears it.
+	Description *string `json:"description,omitempty"`
+
+	// Name 1 to 100 characters, unique among the integrations not archived.
+	Name string `json:"name"`
+
+	// RateLimitPerMinute 60 to 6,000 requests a minute across the integration's keys; absent keeps it.
+	RateLimitPerMinute *int `json:"rateLimitPerMinute,omitempty"`
 }
 
 // InvitationAcceptanceRequest defines model for InvitationAcceptanceRequest.
@@ -1778,6 +2000,27 @@ type PutIdentityAccountProfileJSONBody = AccountProfileRequest
 // PostIdentityBootstrapJSONBody defines parameters for PostIdentityBootstrap.
 type PostIdentityBootstrapJSONBody = BootstrapRequest
 
+// PostIdentityIntegrationsJSONBody defines parameters for PostIdentityIntegrations.
+type PostIdentityIntegrationsJSONBody = IntegrationCreateRequest
+
+// PatchIdentityIntegrationsByIdJSONBody defines parameters for PatchIdentityIntegrationsById.
+type PatchIdentityIntegrationsByIdJSONBody = IntegrationUpdateRequest
+
+// PatchIdentityIntegrationsByIdParams defines parameters for PatchIdentityIntegrationsById.
+type PatchIdentityIntegrationsByIdParams struct {
+	// IfMatch The integration's version as it was read, bare or quoted. A version that has moved on is a 412 version_mismatch.
+	IfMatch string `json:"If-Match"`
+}
+
+// PostIdentityIntegrationsByIdKeysJSONBody defines parameters for PostIdentityIntegrationsByIdKeys.
+type PostIdentityIntegrationsByIdKeysJSONBody = ApiKeyCreateRequest
+
+// PostIdentityIntegrationsByIdKeysByKeyIdRollJSONBody defines parameters for PostIdentityIntegrationsByIdKeysByKeyIdRoll.
+type PostIdentityIntegrationsByIdKeysByKeyIdRollJSONBody = ApiKeyRollRequest
+
+// PutIdentityIntegrationsByIdRolesJSONBody defines parameters for PutIdentityIntegrationsByIdRoles.
+type PutIdentityIntegrationsByIdRolesJSONBody = IntegrationRolesRequest
+
 // PostIdentityInvitationsAcceptJSONBody defines parameters for PostIdentityInvitationsAccept.
 type PostIdentityInvitationsAcceptJSONBody = InvitationAcceptanceRequest
 
@@ -2054,6 +2297,21 @@ type PutIdentityAccountProfileJSONRequestBody = PutIdentityAccountProfileJSONBod
 
 // PostIdentityBootstrapJSONRequestBody defines body for PostIdentityBootstrap for application/json ContentType.
 type PostIdentityBootstrapJSONRequestBody = PostIdentityBootstrapJSONBody
+
+// PostIdentityIntegrationsJSONRequestBody defines body for PostIdentityIntegrations for application/json ContentType.
+type PostIdentityIntegrationsJSONRequestBody = PostIdentityIntegrationsJSONBody
+
+// PatchIdentityIntegrationsByIdJSONRequestBody defines body for PatchIdentityIntegrationsById for application/json ContentType.
+type PatchIdentityIntegrationsByIdJSONRequestBody = PatchIdentityIntegrationsByIdJSONBody
+
+// PostIdentityIntegrationsByIdKeysJSONRequestBody defines body for PostIdentityIntegrationsByIdKeys for application/json ContentType.
+type PostIdentityIntegrationsByIdKeysJSONRequestBody = PostIdentityIntegrationsByIdKeysJSONBody
+
+// PostIdentityIntegrationsByIdKeysByKeyIdRollJSONRequestBody defines body for PostIdentityIntegrationsByIdKeysByKeyIdRoll for application/json ContentType.
+type PostIdentityIntegrationsByIdKeysByKeyIdRollJSONRequestBody = PostIdentityIntegrationsByIdKeysByKeyIdRollJSONBody
+
+// PutIdentityIntegrationsByIdRolesJSONRequestBody defines body for PutIdentityIntegrationsByIdRoles for application/json ContentType.
+type PutIdentityIntegrationsByIdRolesJSONRequestBody = PutIdentityIntegrationsByIdRolesJSONBody
 
 // PostIdentityInvitationsAcceptJSONRequestBody defines body for PostIdentityInvitationsAccept for application/json ContentType.
 type PostIdentityInvitationsAcceptJSONRequestBody = PostIdentityInvitationsAcceptJSONBody
@@ -2628,6 +2886,39 @@ type ServerInterface interface {
 	// GetIdentityBootstrapStatus Get whether one-time local Owner bootstrap is available
 	// (GET /api/v1/identity/bootstrap-status)
 	GetIdentityBootstrapStatus(w http.ResponseWriter, r *http.Request)
+	// GetIdentityIntegrations List the integrations
+	// (GET /api/v1/identity/integrations)
+	GetIdentityIntegrations(w http.ResponseWriter, r *http.Request)
+	// PostIdentityIntegrations Create an integration
+	// (POST /api/v1/identity/integrations)
+	PostIdentityIntegrations(w http.ResponseWriter, r *http.Request)
+	// GetIdentityIntegrationsById Get an integration
+	// (GET /api/v1/identity/integrations/{id})
+	GetIdentityIntegrationsById(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// PatchIdentityIntegrationsById Change an integration
+	// (PATCH /api/v1/identity/integrations/{id})
+	PatchIdentityIntegrationsById(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params PatchIdentityIntegrationsByIdParams)
+	// PostIdentityIntegrationsByIdArchive Archive an integration
+	// (POST /api/v1/identity/integrations/{id}/archive)
+	PostIdentityIntegrationsByIdArchive(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// PostIdentityIntegrationsByIdDisable Disable an integration
+	// (POST /api/v1/identity/integrations/{id}/disable)
+	PostIdentityIntegrationsByIdDisable(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// PostIdentityIntegrationsByIdEnable Enable an integration
+	// (POST /api/v1/identity/integrations/{id}/enable)
+	PostIdentityIntegrationsByIdEnable(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// PostIdentityIntegrationsByIdKeys Create an API key
+	// (POST /api/v1/identity/integrations/{id}/keys)
+	PostIdentityIntegrationsByIdKeys(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// PostIdentityIntegrationsByIdKeysByKeyIdRevoke Revoke an API key
+	// (POST /api/v1/identity/integrations/{id}/keys/{keyId}/revoke)
+	PostIdentityIntegrationsByIdKeysByKeyIdRevoke(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, keyId openapi_types.UUID)
+	// PostIdentityIntegrationsByIdKeysByKeyIdRoll Roll an API key
+	// (POST /api/v1/identity/integrations/{id}/keys/{keyId}/roll)
+	PostIdentityIntegrationsByIdKeysByKeyIdRoll(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, keyId openapi_types.UUID)
+	// PutIdentityIntegrationsByIdRoles Replace an integration's roles
+	// (PUT /api/v1/identity/integrations/{id}/roles)
+	PutIdentityIntegrationsByIdRoles(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 	// PostIdentityInvitationsAccept Accept an invitation and create the account
 	// (POST /api/v1/identity/invitations/accept)
 	PostIdentityInvitationsAccept(w http.ResponseWriter, r *http.Request)
@@ -3866,6 +4157,314 @@ func (siw *ServerInterfaceWrapper) GetIdentityBootstrapStatus(w http.ResponseWri
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetIdentityBootstrapStatus(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetIdentityIntegrations operation middleware
+func (siw *ServerInterfaceWrapper) GetIdentityIntegrations(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetIdentityIntegrations(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostIdentityIntegrations operation middleware
+func (siw *ServerInterfaceWrapper) PostIdentityIntegrations(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostIdentityIntegrations(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetIdentityIntegrationsById operation middleware
+func (siw *ServerInterfaceWrapper) GetIdentityIntegrationsById(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetIdentityIntegrationsById(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PatchIdentityIntegrationsById operation middleware
+func (siw *ServerInterfaceWrapper) PatchIdentityIntegrationsById(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PatchIdentityIntegrationsByIdParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PatchIdentityIntegrationsById(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostIdentityIntegrationsByIdArchive operation middleware
+func (siw *ServerInterfaceWrapper) PostIdentityIntegrationsByIdArchive(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostIdentityIntegrationsByIdArchive(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostIdentityIntegrationsByIdDisable operation middleware
+func (siw *ServerInterfaceWrapper) PostIdentityIntegrationsByIdDisable(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostIdentityIntegrationsByIdDisable(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostIdentityIntegrationsByIdEnable operation middleware
+func (siw *ServerInterfaceWrapper) PostIdentityIntegrationsByIdEnable(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostIdentityIntegrationsByIdEnable(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostIdentityIntegrationsByIdKeys operation middleware
+func (siw *ServerInterfaceWrapper) PostIdentityIntegrationsByIdKeys(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostIdentityIntegrationsByIdKeys(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostIdentityIntegrationsByIdKeysByKeyIdRevoke operation middleware
+func (siw *ServerInterfaceWrapper) PostIdentityIntegrationsByIdKeysByKeyIdRevoke(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "keyId" -------------
+	var keyId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "keyId", r.PathValue("keyId"), &keyId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "keyId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostIdentityIntegrationsByIdKeysByKeyIdRevoke(w, r, id, keyId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostIdentityIntegrationsByIdKeysByKeyIdRoll operation middleware
+func (siw *ServerInterfaceWrapper) PostIdentityIntegrationsByIdKeysByKeyIdRoll(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "keyId" -------------
+	var keyId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "keyId", r.PathValue("keyId"), &keyId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "keyId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostIdentityIntegrationsByIdKeysByKeyIdRoll(w, r, id, keyId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutIdentityIntegrationsByIdRoles operation middleware
+func (siw *ServerInterfaceWrapper) PutIdentityIntegrationsByIdRoles(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutIdentityIntegrationsByIdRoles(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6124,6 +6723,17 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/account/sessions/revoke", wrapper.PostIdentityAccountSessionsRevoke)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/bootstrap", wrapper.PostIdentityBootstrap)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/bootstrap-status", wrapper.GetIdentityBootstrapStatus)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/integrations", wrapper.GetIdentityIntegrations)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/integrations", wrapper.PostIdentityIntegrations)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/integrations/{id}", wrapper.GetIdentityIntegrationsById)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/v1/identity/integrations/{id}", wrapper.PatchIdentityIntegrationsById)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/integrations/{id}/archive", wrapper.PostIdentityIntegrationsByIdArchive)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/integrations/{id}/disable", wrapper.PostIdentityIntegrationsByIdDisable)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/integrations/{id}/enable", wrapper.PostIdentityIntegrationsByIdEnable)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/integrations/{id}/keys", wrapper.PostIdentityIntegrationsByIdKeys)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/integrations/{id}/keys/{keyId}/revoke", wrapper.PostIdentityIntegrationsByIdKeysByKeyIdRevoke)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/integrations/{id}/keys/{keyId}/roll", wrapper.PostIdentityIntegrationsByIdKeysByKeyIdRoll)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/identity/integrations/{id}/roles", wrapper.PutIdentityIntegrationsByIdRoles)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/invitations/accept", wrapper.PostIdentityInvitationsAccept)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/invitations/validate", wrapper.GetIdentityInvitationsValidate)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/login", wrapper.PostIdentityLogin)
@@ -9988,6 +10598,952 @@ func (response GetIdentityBootstrapStatus200JSONResponse) VisitGetIdentityBootst
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityIntegrationsRequestObject struct {
+}
+
+type GetIdentityIntegrationsResponseObject interface {
+	VisitGetIdentityIntegrationsResponse(w http.ResponseWriter) error
+}
+
+type GetIdentityIntegrations200JSONResponse IntegrationList
+
+func (response GetIdentityIntegrations200JSONResponse) VisitGetIdentityIntegrationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityIntegrations401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityIntegrations401JSONResponse) VisitGetIdentityIntegrationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityIntegrations403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityIntegrations403JSONResponse) VisitGetIdentityIntegrationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityIntegrationsRequestObject struct {
+	Body *PostIdentityIntegrationsJSONRequestBody
+}
+
+type PostIdentityIntegrationsResponseObject interface {
+	VisitPostIdentityIntegrationsResponse(w http.ResponseWriter) error
+}
+
+type PostIdentityIntegrations201JSONResponse IntegrationDetail
+
+func (response PostIdentityIntegrations201JSONResponse) VisitPostIdentityIntegrationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityIntegrations400JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityIntegrations400JSONResponse) VisitPostIdentityIntegrationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityIntegrations401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityIntegrations401JSONResponse) VisitPostIdentityIntegrationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityIntegrations403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityIntegrations403JSONResponse) VisitPostIdentityIntegrationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityIntegrations409JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityIntegrations409JSONResponse) VisitPostIdentityIntegrationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityIntegrationsByIdRequestObject struct {
+	Id openapi_types.UUID `json:"id"`
+}
+
+type GetIdentityIntegrationsByIdResponseObject interface {
+	VisitGetIdentityIntegrationsByIdResponse(w http.ResponseWriter) error
+}
+
+type GetIdentityIntegrationsById200JSONResponse IntegrationDetail
+
+func (response GetIdentityIntegrationsById200JSONResponse) VisitGetIdentityIntegrationsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityIntegrationsById401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityIntegrationsById401JSONResponse) VisitGetIdentityIntegrationsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityIntegrationsById403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityIntegrationsById403JSONResponse) VisitGetIdentityIntegrationsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityIntegrationsById404JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityIntegrationsById404JSONResponse) VisitGetIdentityIntegrationsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PatchIdentityIntegrationsByIdRequestObject struct {
+	Id     openapi_types.UUID `json:"id"`
+	Params PatchIdentityIntegrationsByIdParams
+	Body   *PatchIdentityIntegrationsByIdJSONRequestBody
+}
+
+type PatchIdentityIntegrationsByIdResponseObject interface {
+	VisitPatchIdentityIntegrationsByIdResponse(w http.ResponseWriter) error
+}
+
+type PatchIdentityIntegrationsById200JSONResponse IntegrationDetail
+
+func (response PatchIdentityIntegrationsById200JSONResponse) VisitPatchIdentityIntegrationsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PatchIdentityIntegrationsById400JSONResponse externalRef0.AuthErrorResponse
+
+func (response PatchIdentityIntegrationsById400JSONResponse) VisitPatchIdentityIntegrationsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PatchIdentityIntegrationsById401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PatchIdentityIntegrationsById401JSONResponse) VisitPatchIdentityIntegrationsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PatchIdentityIntegrationsById403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PatchIdentityIntegrationsById403JSONResponse) VisitPatchIdentityIntegrationsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PatchIdentityIntegrationsById404JSONResponse externalRef0.AuthErrorResponse
+
+func (response PatchIdentityIntegrationsById404JSONResponse) VisitPatchIdentityIntegrationsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PatchIdentityIntegrationsById409JSONResponse externalRef0.AuthErrorResponse
+
+func (response PatchIdentityIntegrationsById409JSONResponse) VisitPatchIdentityIntegrationsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PatchIdentityIntegrationsById412JSONResponse externalRef0.AuthErrorResponse
+
+func (response PatchIdentityIntegrationsById412JSONResponse) VisitPatchIdentityIntegrationsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityIntegrationsByIdArchiveRequestObject struct {
+	Id openapi_types.UUID `json:"id"`
+}
+
+type PostIdentityIntegrationsByIdArchiveResponseObject interface {
+	VisitPostIdentityIntegrationsByIdArchiveResponse(w http.ResponseWriter) error
+}
+
+type PostIdentityIntegrationsByIdArchive200JSONResponse IntegrationDetail
+
+func (response PostIdentityIntegrationsByIdArchive200JSONResponse) VisitPostIdentityIntegrationsByIdArchiveResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityIntegrationsByIdArchive401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityIntegrationsByIdArchive401JSONResponse) VisitPostIdentityIntegrationsByIdArchiveResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityIntegrationsByIdArchive403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityIntegrationsByIdArchive403JSONResponse) VisitPostIdentityIntegrationsByIdArchiveResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityIntegrationsByIdArchive404JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityIntegrationsByIdArchive404JSONResponse) VisitPostIdentityIntegrationsByIdArchiveResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityIntegrationsByIdArchive409JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityIntegrationsByIdArchive409JSONResponse) VisitPostIdentityIntegrationsByIdArchiveResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityIntegrationsByIdDisableRequestObject struct {
+	Id openapi_types.UUID `json:"id"`
+}
+
+type PostIdentityIntegrationsByIdDisableResponseObject interface {
+	VisitPostIdentityIntegrationsByIdDisableResponse(w http.ResponseWriter) error
+}
+
+type PostIdentityIntegrationsByIdDisable200JSONResponse IntegrationDetail
+
+func (response PostIdentityIntegrationsByIdDisable200JSONResponse) VisitPostIdentityIntegrationsByIdDisableResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityIntegrationsByIdDisable401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityIntegrationsByIdDisable401JSONResponse) VisitPostIdentityIntegrationsByIdDisableResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityIntegrationsByIdDisable403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityIntegrationsByIdDisable403JSONResponse) VisitPostIdentityIntegrationsByIdDisableResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityIntegrationsByIdDisable404JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityIntegrationsByIdDisable404JSONResponse) VisitPostIdentityIntegrationsByIdDisableResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityIntegrationsByIdDisable409JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityIntegrationsByIdDisable409JSONResponse) VisitPostIdentityIntegrationsByIdDisableResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityIntegrationsByIdEnableRequestObject struct {
+	Id openapi_types.UUID `json:"id"`
+}
+
+type PostIdentityIntegrationsByIdEnableResponseObject interface {
+	VisitPostIdentityIntegrationsByIdEnableResponse(w http.ResponseWriter) error
+}
+
+type PostIdentityIntegrationsByIdEnable200JSONResponse IntegrationDetail
+
+func (response PostIdentityIntegrationsByIdEnable200JSONResponse) VisitPostIdentityIntegrationsByIdEnableResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityIntegrationsByIdEnable401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityIntegrationsByIdEnable401JSONResponse) VisitPostIdentityIntegrationsByIdEnableResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityIntegrationsByIdEnable403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityIntegrationsByIdEnable403JSONResponse) VisitPostIdentityIntegrationsByIdEnableResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityIntegrationsByIdEnable404JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityIntegrationsByIdEnable404JSONResponse) VisitPostIdentityIntegrationsByIdEnableResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityIntegrationsByIdEnable409JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityIntegrationsByIdEnable409JSONResponse) VisitPostIdentityIntegrationsByIdEnableResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityIntegrationsByIdKeysRequestObject struct {
+	Id   openapi_types.UUID `json:"id"`
+	Body *PostIdentityIntegrationsByIdKeysJSONRequestBody
+}
+
+type PostIdentityIntegrationsByIdKeysResponseObject interface {
+	VisitPostIdentityIntegrationsByIdKeysResponse(w http.ResponseWriter) error
+}
+
+type PostIdentityIntegrationsByIdKeys201ResponseHeaders struct {
+	CacheControl *string
+}
+
+type PostIdentityIntegrationsByIdKeys201JSONResponse struct {
+	Body    ApiKeySecret
+	Headers PostIdentityIntegrationsByIdKeys201ResponseHeaders
+}
+
+func (response PostIdentityIntegrationsByIdKeys201JSONResponse) VisitPostIdentityIntegrationsByIdKeysResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.CacheControl != nil {
+		w.Header().Set("Cache-Control", fmt.Sprint(*response.Headers.CacheControl))
+	}
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityIntegrationsByIdKeys400JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityIntegrationsByIdKeys400JSONResponse) VisitPostIdentityIntegrationsByIdKeysResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityIntegrationsByIdKeys401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityIntegrationsByIdKeys401JSONResponse) VisitPostIdentityIntegrationsByIdKeysResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityIntegrationsByIdKeys403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityIntegrationsByIdKeys403JSONResponse) VisitPostIdentityIntegrationsByIdKeysResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityIntegrationsByIdKeys404JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityIntegrationsByIdKeys404JSONResponse) VisitPostIdentityIntegrationsByIdKeysResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityIntegrationsByIdKeys409JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityIntegrationsByIdKeys409JSONResponse) VisitPostIdentityIntegrationsByIdKeysResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityIntegrationsByIdKeys429ResponseHeaders struct {
+	RetryAfter *string
+}
+
+type PostIdentityIntegrationsByIdKeys429JSONResponse struct {
+	Body    externalRef0.AuthErrorResponse
+	Headers PostIdentityIntegrationsByIdKeys429ResponseHeaders
+}
+
+func (response PostIdentityIntegrationsByIdKeys429JSONResponse) VisitPostIdentityIntegrationsByIdKeysResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityIntegrationsByIdKeysByKeyIdRevokeRequestObject struct {
+	Id    openapi_types.UUID `json:"id"`
+	KeyId openapi_types.UUID `json:"keyId"`
+}
+
+type PostIdentityIntegrationsByIdKeysByKeyIdRevokeResponseObject interface {
+	VisitPostIdentityIntegrationsByIdKeysByKeyIdRevokeResponse(w http.ResponseWriter) error
+}
+
+type PostIdentityIntegrationsByIdKeysByKeyIdRevoke200JSONResponse ApiKey
+
+func (response PostIdentityIntegrationsByIdKeysByKeyIdRevoke200JSONResponse) VisitPostIdentityIntegrationsByIdKeysByKeyIdRevokeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityIntegrationsByIdKeysByKeyIdRevoke401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityIntegrationsByIdKeysByKeyIdRevoke401JSONResponse) VisitPostIdentityIntegrationsByIdKeysByKeyIdRevokeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityIntegrationsByIdKeysByKeyIdRevoke403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityIntegrationsByIdKeysByKeyIdRevoke403JSONResponse) VisitPostIdentityIntegrationsByIdKeysByKeyIdRevokeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityIntegrationsByIdKeysByKeyIdRevoke404JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityIntegrationsByIdKeysByKeyIdRevoke404JSONResponse) VisitPostIdentityIntegrationsByIdKeysByKeyIdRevokeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityIntegrationsByIdKeysByKeyIdRollRequestObject struct {
+	Id    openapi_types.UUID `json:"id"`
+	KeyId openapi_types.UUID `json:"keyId"`
+	Body  *PostIdentityIntegrationsByIdKeysByKeyIdRollJSONRequestBody
+}
+
+type PostIdentityIntegrationsByIdKeysByKeyIdRollResponseObject interface {
+	VisitPostIdentityIntegrationsByIdKeysByKeyIdRollResponse(w http.ResponseWriter) error
+}
+
+type PostIdentityIntegrationsByIdKeysByKeyIdRoll201ResponseHeaders struct {
+	CacheControl *string
+}
+
+type PostIdentityIntegrationsByIdKeysByKeyIdRoll201JSONResponse struct {
+	Body    ApiKeySecret
+	Headers PostIdentityIntegrationsByIdKeysByKeyIdRoll201ResponseHeaders
+}
+
+func (response PostIdentityIntegrationsByIdKeysByKeyIdRoll201JSONResponse) VisitPostIdentityIntegrationsByIdKeysByKeyIdRollResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.CacheControl != nil {
+		w.Header().Set("Cache-Control", fmt.Sprint(*response.Headers.CacheControl))
+	}
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityIntegrationsByIdKeysByKeyIdRoll400JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityIntegrationsByIdKeysByKeyIdRoll400JSONResponse) VisitPostIdentityIntegrationsByIdKeysByKeyIdRollResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityIntegrationsByIdKeysByKeyIdRoll401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityIntegrationsByIdKeysByKeyIdRoll401JSONResponse) VisitPostIdentityIntegrationsByIdKeysByKeyIdRollResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityIntegrationsByIdKeysByKeyIdRoll403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityIntegrationsByIdKeysByKeyIdRoll403JSONResponse) VisitPostIdentityIntegrationsByIdKeysByKeyIdRollResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityIntegrationsByIdKeysByKeyIdRoll404JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityIntegrationsByIdKeysByKeyIdRoll404JSONResponse) VisitPostIdentityIntegrationsByIdKeysByKeyIdRollResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityIntegrationsByIdKeysByKeyIdRoll409JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityIntegrationsByIdKeysByKeyIdRoll409JSONResponse) VisitPostIdentityIntegrationsByIdKeysByKeyIdRollResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityIntegrationsByIdKeysByKeyIdRoll429ResponseHeaders struct {
+	RetryAfter *string
+}
+
+type PostIdentityIntegrationsByIdKeysByKeyIdRoll429JSONResponse struct {
+	Body    externalRef0.AuthErrorResponse
+	Headers PostIdentityIntegrationsByIdKeysByKeyIdRoll429ResponseHeaders
+}
+
+func (response PostIdentityIntegrationsByIdKeysByKeyIdRoll429JSONResponse) VisitPostIdentityIntegrationsByIdKeysByKeyIdRollResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityIntegrationsByIdRolesRequestObject struct {
+	Id   openapi_types.UUID `json:"id"`
+	Body *PutIdentityIntegrationsByIdRolesJSONRequestBody
+}
+
+type PutIdentityIntegrationsByIdRolesResponseObject interface {
+	VisitPutIdentityIntegrationsByIdRolesResponse(w http.ResponseWriter) error
+}
+
+type PutIdentityIntegrationsByIdRoles200JSONResponse IntegrationDetail
+
+func (response PutIdentityIntegrationsByIdRoles200JSONResponse) VisitPutIdentityIntegrationsByIdRolesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityIntegrationsByIdRoles400JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutIdentityIntegrationsByIdRoles400JSONResponse) VisitPutIdentityIntegrationsByIdRolesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityIntegrationsByIdRoles401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutIdentityIntegrationsByIdRoles401JSONResponse) VisitPutIdentityIntegrationsByIdRolesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityIntegrationsByIdRoles403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutIdentityIntegrationsByIdRoles403JSONResponse) VisitPutIdentityIntegrationsByIdRolesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityIntegrationsByIdRoles404JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutIdentityIntegrationsByIdRoles404JSONResponse) VisitPutIdentityIntegrationsByIdRolesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityIntegrationsByIdRoles409JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutIdentityIntegrationsByIdRoles409JSONResponse) VisitPutIdentityIntegrationsByIdRolesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -17172,6 +18728,39 @@ type StrictServerInterface interface {
 	// GetIdentityBootstrapStatus Get whether one-time local Owner bootstrap is available
 	// (GET /api/v1/identity/bootstrap-status)
 	GetIdentityBootstrapStatus(ctx context.Context, request GetIdentityBootstrapStatusRequestObject) (GetIdentityBootstrapStatusResponseObject, error)
+	// GetIdentityIntegrations List the integrations
+	// (GET /api/v1/identity/integrations)
+	GetIdentityIntegrations(ctx context.Context, request GetIdentityIntegrationsRequestObject) (GetIdentityIntegrationsResponseObject, error)
+	// PostIdentityIntegrations Create an integration
+	// (POST /api/v1/identity/integrations)
+	PostIdentityIntegrations(ctx context.Context, request PostIdentityIntegrationsRequestObject) (PostIdentityIntegrationsResponseObject, error)
+	// GetIdentityIntegrationsById Get an integration
+	// (GET /api/v1/identity/integrations/{id})
+	GetIdentityIntegrationsById(ctx context.Context, request GetIdentityIntegrationsByIdRequestObject) (GetIdentityIntegrationsByIdResponseObject, error)
+	// PatchIdentityIntegrationsById Change an integration
+	// (PATCH /api/v1/identity/integrations/{id})
+	PatchIdentityIntegrationsById(ctx context.Context, request PatchIdentityIntegrationsByIdRequestObject) (PatchIdentityIntegrationsByIdResponseObject, error)
+	// PostIdentityIntegrationsByIdArchive Archive an integration
+	// (POST /api/v1/identity/integrations/{id}/archive)
+	PostIdentityIntegrationsByIdArchive(ctx context.Context, request PostIdentityIntegrationsByIdArchiveRequestObject) (PostIdentityIntegrationsByIdArchiveResponseObject, error)
+	// PostIdentityIntegrationsByIdDisable Disable an integration
+	// (POST /api/v1/identity/integrations/{id}/disable)
+	PostIdentityIntegrationsByIdDisable(ctx context.Context, request PostIdentityIntegrationsByIdDisableRequestObject) (PostIdentityIntegrationsByIdDisableResponseObject, error)
+	// PostIdentityIntegrationsByIdEnable Enable an integration
+	// (POST /api/v1/identity/integrations/{id}/enable)
+	PostIdentityIntegrationsByIdEnable(ctx context.Context, request PostIdentityIntegrationsByIdEnableRequestObject) (PostIdentityIntegrationsByIdEnableResponseObject, error)
+	// PostIdentityIntegrationsByIdKeys Create an API key
+	// (POST /api/v1/identity/integrations/{id}/keys)
+	PostIdentityIntegrationsByIdKeys(ctx context.Context, request PostIdentityIntegrationsByIdKeysRequestObject) (PostIdentityIntegrationsByIdKeysResponseObject, error)
+	// PostIdentityIntegrationsByIdKeysByKeyIdRevoke Revoke an API key
+	// (POST /api/v1/identity/integrations/{id}/keys/{keyId}/revoke)
+	PostIdentityIntegrationsByIdKeysByKeyIdRevoke(ctx context.Context, request PostIdentityIntegrationsByIdKeysByKeyIdRevokeRequestObject) (PostIdentityIntegrationsByIdKeysByKeyIdRevokeResponseObject, error)
+	// PostIdentityIntegrationsByIdKeysByKeyIdRoll Roll an API key
+	// (POST /api/v1/identity/integrations/{id}/keys/{keyId}/roll)
+	PostIdentityIntegrationsByIdKeysByKeyIdRoll(ctx context.Context, request PostIdentityIntegrationsByIdKeysByKeyIdRollRequestObject) (PostIdentityIntegrationsByIdKeysByKeyIdRollResponseObject, error)
+	// PutIdentityIntegrationsByIdRoles Replace an integration's roles
+	// (PUT /api/v1/identity/integrations/{id}/roles)
+	PutIdentityIntegrationsByIdRoles(ctx context.Context, request PutIdentityIntegrationsByIdRolesRequestObject) (PutIdentityIntegrationsByIdRolesResponseObject, error)
 	// PostIdentityInvitationsAccept Accept an invitation and create the account
 	// (POST /api/v1/identity/invitations/accept)
 	PostIdentityInvitationsAccept(ctx context.Context, request PostIdentityInvitationsAcceptRequestObject) (PostIdentityInvitationsAcceptResponseObject, error)
@@ -19048,6 +20637,341 @@ func (sh *strictHandler) GetIdentityBootstrapStatus(w http.ResponseWriter, r *ht
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetIdentityBootstrapStatusResponseObject); ok {
 		if err := validResponse.VisitGetIdentityBootstrapStatusResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetIdentityIntegrations operation middleware
+func (sh *strictHandler) GetIdentityIntegrations(w http.ResponseWriter, r *http.Request) {
+	var request GetIdentityIntegrationsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetIdentityIntegrations(ctx, request.(GetIdentityIntegrationsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetIdentityIntegrations")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetIdentityIntegrationsResponseObject); ok {
+		if err := validResponse.VisitGetIdentityIntegrationsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostIdentityIntegrations operation middleware
+func (sh *strictHandler) PostIdentityIntegrations(w http.ResponseWriter, r *http.Request) {
+	var request PostIdentityIntegrationsRequestObject
+
+	var body PostIdentityIntegrationsJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if !errors.Is(err, io.EOF) {
+			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+			return
+		}
+	} else {
+		request.Body = &body
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostIdentityIntegrations(ctx, request.(PostIdentityIntegrationsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostIdentityIntegrations")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostIdentityIntegrationsResponseObject); ok {
+		if err := validResponse.VisitPostIdentityIntegrationsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetIdentityIntegrationsById operation middleware
+func (sh *strictHandler) GetIdentityIntegrationsById(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request GetIdentityIntegrationsByIdRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetIdentityIntegrationsById(ctx, request.(GetIdentityIntegrationsByIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetIdentityIntegrationsById")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetIdentityIntegrationsByIdResponseObject); ok {
+		if err := validResponse.VisitGetIdentityIntegrationsByIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PatchIdentityIntegrationsById operation middleware
+func (sh *strictHandler) PatchIdentityIntegrationsById(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params PatchIdentityIntegrationsByIdParams) {
+	var request PatchIdentityIntegrationsByIdRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	var body PatchIdentityIntegrationsByIdJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if !errors.Is(err, io.EOF) {
+			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+			return
+		}
+	} else {
+		request.Body = &body
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PatchIdentityIntegrationsById(ctx, request.(PatchIdentityIntegrationsByIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PatchIdentityIntegrationsById")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PatchIdentityIntegrationsByIdResponseObject); ok {
+		if err := validResponse.VisitPatchIdentityIntegrationsByIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostIdentityIntegrationsByIdArchive operation middleware
+func (sh *strictHandler) PostIdentityIntegrationsByIdArchive(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request PostIdentityIntegrationsByIdArchiveRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostIdentityIntegrationsByIdArchive(ctx, request.(PostIdentityIntegrationsByIdArchiveRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostIdentityIntegrationsByIdArchive")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostIdentityIntegrationsByIdArchiveResponseObject); ok {
+		if err := validResponse.VisitPostIdentityIntegrationsByIdArchiveResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostIdentityIntegrationsByIdDisable operation middleware
+func (sh *strictHandler) PostIdentityIntegrationsByIdDisable(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request PostIdentityIntegrationsByIdDisableRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostIdentityIntegrationsByIdDisable(ctx, request.(PostIdentityIntegrationsByIdDisableRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostIdentityIntegrationsByIdDisable")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostIdentityIntegrationsByIdDisableResponseObject); ok {
+		if err := validResponse.VisitPostIdentityIntegrationsByIdDisableResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostIdentityIntegrationsByIdEnable operation middleware
+func (sh *strictHandler) PostIdentityIntegrationsByIdEnable(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request PostIdentityIntegrationsByIdEnableRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostIdentityIntegrationsByIdEnable(ctx, request.(PostIdentityIntegrationsByIdEnableRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostIdentityIntegrationsByIdEnable")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostIdentityIntegrationsByIdEnableResponseObject); ok {
+		if err := validResponse.VisitPostIdentityIntegrationsByIdEnableResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostIdentityIntegrationsByIdKeys operation middleware
+func (sh *strictHandler) PostIdentityIntegrationsByIdKeys(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request PostIdentityIntegrationsByIdKeysRequestObject
+
+	request.Id = id
+
+	var body PostIdentityIntegrationsByIdKeysJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if !errors.Is(err, io.EOF) {
+			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+			return
+		}
+	} else {
+		request.Body = &body
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostIdentityIntegrationsByIdKeys(ctx, request.(PostIdentityIntegrationsByIdKeysRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostIdentityIntegrationsByIdKeys")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostIdentityIntegrationsByIdKeysResponseObject); ok {
+		if err := validResponse.VisitPostIdentityIntegrationsByIdKeysResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostIdentityIntegrationsByIdKeysByKeyIdRevoke operation middleware
+func (sh *strictHandler) PostIdentityIntegrationsByIdKeysByKeyIdRevoke(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, keyId openapi_types.UUID) {
+	var request PostIdentityIntegrationsByIdKeysByKeyIdRevokeRequestObject
+
+	request.Id = id
+	request.KeyId = keyId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostIdentityIntegrationsByIdKeysByKeyIdRevoke(ctx, request.(PostIdentityIntegrationsByIdKeysByKeyIdRevokeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostIdentityIntegrationsByIdKeysByKeyIdRevoke")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostIdentityIntegrationsByIdKeysByKeyIdRevokeResponseObject); ok {
+		if err := validResponse.VisitPostIdentityIntegrationsByIdKeysByKeyIdRevokeResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostIdentityIntegrationsByIdKeysByKeyIdRoll operation middleware
+func (sh *strictHandler) PostIdentityIntegrationsByIdKeysByKeyIdRoll(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, keyId openapi_types.UUID) {
+	var request PostIdentityIntegrationsByIdKeysByKeyIdRollRequestObject
+
+	request.Id = id
+	request.KeyId = keyId
+
+	var body PostIdentityIntegrationsByIdKeysByKeyIdRollJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if !errors.Is(err, io.EOF) {
+			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+			return
+		}
+	} else {
+		request.Body = &body
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostIdentityIntegrationsByIdKeysByKeyIdRoll(ctx, request.(PostIdentityIntegrationsByIdKeysByKeyIdRollRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostIdentityIntegrationsByIdKeysByKeyIdRoll")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostIdentityIntegrationsByIdKeysByKeyIdRollResponseObject); ok {
+		if err := validResponse.VisitPostIdentityIntegrationsByIdKeysByKeyIdRollResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutIdentityIntegrationsByIdRoles operation middleware
+func (sh *strictHandler) PutIdentityIntegrationsByIdRoles(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request PutIdentityIntegrationsByIdRolesRequestObject
+
+	request.Id = id
+
+	var body PutIdentityIntegrationsByIdRolesJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if !errors.Is(err, io.EOF) {
+			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+			return
+		}
+	} else {
+		request.Body = &body
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutIdentityIntegrationsByIdRoles(ctx, request.(PutIdentityIntegrationsByIdRolesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutIdentityIntegrationsByIdRoles")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutIdentityIntegrationsByIdRolesResponseObject); ok {
+		if err := validResponse.VisitPutIdentityIntegrationsByIdRolesResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

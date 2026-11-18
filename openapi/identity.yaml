@@ -718,6 +718,324 @@ components:
                 - lastAuthenticatedScimRequestAtUtc
             type: object
             x-vantigo-source: Vantigo.Identity
+        ApiKey:
+            description: An API key of an integration, never its secret (API access design K11).
+            properties:
+                allowedNetworks:
+                    description: The CIDRs the key may be used from; empty for anywhere.
+                    items:
+                        type: string
+                    type: array
+                createdAt:
+                    format: date-time
+                    type: string
+                createdBy:
+                    format: uuid
+                    nullable: true
+                    type: string
+                display:
+                    description: The key as it can be recognised once its secret is gone, such as vtg_4f2a…9XyZ.
+                    type: string
+                expiresAt:
+                    format: date-time
+                    type: string
+                id:
+                    format: uuid
+                    type: string
+                lastUsedAt:
+                    description: When the key was last used, to the minute.
+                    format: date-time
+                    nullable: true
+                    type: string
+                lastUsedIp:
+                    nullable: true
+                    type: string
+                name:
+                    type: string
+                permissions:
+                    description: The narrowing, null for none. A permission the roles do not grant does nothing until they do; one the catalog no longer has is kept and ignored.
+                    items:
+                        $ref: '#/components/schemas/ApiKeyPermission'
+                    nullable: true
+                    type: array
+                readOnly:
+                    type: boolean
+                revokedAt:
+                    format: date-time
+                    nullable: true
+                    type: string
+                rolledFrom:
+                    description: The key this one was rolled from.
+                    format: uuid
+                    nullable: true
+                    type: string
+                status:
+                    enum:
+                        - active
+                        - expired
+                        - revoked
+                    type: string
+            required:
+                - id
+                - name
+                - display
+                - status
+                - readOnly
+                - allowedNetworks
+                - permissions
+                - expiresAt
+                - createdAt
+                - createdBy
+                - revokedAt
+                - rolledFrom
+                - lastUsedAt
+                - lastUsedIp
+            type: object
+        ApiKeyCreateRequest:
+            properties:
+                allowedNetworks:
+                    description: At most 20 CIDRs, IPv4 or IPv6, or single addresses; absent or empty for anywhere.
+                    items:
+                        type: string
+                    type: array
+                expiresAt:
+                    description: When the key expires, at most 365 days ahead; instead of expiresInDays.
+                    format: date-time
+                    type: string
+                expiresInDays:
+                    description: 30, 90, 180 or 365; 90 when neither this nor expiresAt is given.
+                    type: integer
+                name:
+                    description: 1 to 100 characters, such as Production.
+                    type: string
+                permissions:
+                    description: The narrowing, permission keys of the catalog's form; absent for none.
+                    items:
+                        type: string
+                    type: array
+                readOnly:
+                    description: True for a key that may call only reads.
+                    type: boolean
+            required:
+                - name
+            type: object
+        ApiKeyPermission:
+            properties:
+                grantedByRoles:
+                    description: Whether the integration's roles grant the permission now.
+                    type: boolean
+                inCatalog:
+                    description: Whether the permission catalog still has the permission.
+                    type: boolean
+                key:
+                    type: string
+            required:
+                - key
+                - grantedByRoles
+                - inCatalog
+            type: object
+        ApiKeyRollRequest:
+            properties:
+                expiresAt:
+                    description: When the new key expires, at most 365 days ahead; instead of expiresInDays.
+                    format: date-time
+                    type: string
+                expiresInDays:
+                    description: 30, 90, 180 or 365; 90 when neither this nor expiresAt is given.
+                    type: integer
+                overlapHours:
+                    description: How long the old key works on, 0 to 168 hours; 24 when absent.
+                    type: integer
+            type: object
+        ApiKeySecret:
+            description: A key just created or rolled, with its secret, which is never shown again.
+            properties:
+                key:
+                    $ref: '#/components/schemas/ApiKey'
+                secret:
+                    description: The key itself, vtg_ and 49 characters, to send as Authorization Bearer.
+                    type: string
+            required:
+                - key
+                - secret
+            type: object
+        Integration:
+            description: An external application's account (API access design K8).
+            properties:
+                archivedAt:
+                    format: date-time
+                    nullable: true
+                    type: string
+                contactDisplayName:
+                    nullable: true
+                    type: string
+                contactUserId:
+                    description: The person responsible, who gets the integration's notices; null for none.
+                    format: uuid
+                    nullable: true
+                    type: string
+                createdAt:
+                    format: date-time
+                    type: string
+                createdBy:
+                    format: uuid
+                    nullable: true
+                    type: string
+                description:
+                    nullable: true
+                    type: string
+                id:
+                    description: The integration's user, which is what its requests are attributed to.
+                    format: uuid
+                    type: string
+                keyCount:
+                    description: The keys in force, neither revoked nor expired.
+                    type: integer
+                lastUsedAt:
+                    format: date-time
+                    nullable: true
+                    type: string
+                name:
+                    type: string
+                nearestExpiry:
+                    description: The earliest expiry among the keys in force.
+                    format: date-time
+                    nullable: true
+                    type: string
+                rateLimitPerMinute:
+                    type: integer
+                roles:
+                    items:
+                        $ref: '#/components/schemas/IntegrationRole'
+                    type: array
+                status:
+                    enum:
+                        - active
+                        - disabled
+                        - archived
+                    type: string
+                version:
+                    description: The integration's version for If-Match.
+                    type: string
+            required:
+                - id
+                - name
+                - description
+                - contactUserId
+                - contactDisplayName
+                - rateLimitPerMinute
+                - status
+                - roles
+                - keyCount
+                - nearestExpiry
+                - lastUsedAt
+                - createdAt
+                - createdBy
+                - archivedAt
+                - version
+            type: object
+        IntegrationCreateRequest:
+            properties:
+                contactUserId:
+                    description: A person; absent for none.
+                    format: uuid
+                    type: string
+                description:
+                    description: Up to 1,000 characters.
+                    type: string
+                name:
+                    description: 1 to 100 characters, unique among the integrations not archived.
+                    type: string
+                roleIds:
+                    description: Custom roles only.
+                    items:
+                        format: uuid
+                        type: string
+                    type: array
+            required:
+                - name
+            type: object
+        IntegrationDetail:
+            properties:
+                effectivePermissions:
+                    description: Every permission the integration's roles give it, in ordinal order.
+                    items:
+                        $ref: '#/components/schemas/IntegrationPermission'
+                    type: array
+                integration:
+                    $ref: '#/components/schemas/Integration'
+                keys:
+                    description: Its keys, newest first.
+                    items:
+                        $ref: '#/components/schemas/ApiKey'
+                    type: array
+            required:
+                - integration
+                - keys
+                - effectivePermissions
+            type: object
+        IntegrationList:
+            properties:
+                integrations:
+                    items:
+                        $ref: '#/components/schemas/Integration'
+                    type: array
+            required:
+                - integrations
+            type: object
+        IntegrationPermission:
+            properties:
+                apiNever:
+                    description: True for a permission no API key ever holds, whatever the roles grant (K7).
+                    type: boolean
+                key:
+                    type: string
+            required:
+                - key
+                - apiNever
+            type: object
+        IntegrationRole:
+            properties:
+                displayName:
+                    type: string
+                id:
+                    format: uuid
+                    type: string
+                name:
+                    type: string
+            required:
+                - id
+                - name
+                - displayName
+            type: object
+        IntegrationRolesRequest:
+            properties:
+                roleIds:
+                    items:
+                        format: uuid
+                        type: string
+                    type: array
+            required:
+                - roleIds
+            type: object
+        IntegrationUpdateRequest:
+            properties:
+                contactUserId:
+                    description: A person; absent clears the contact.
+                    format: uuid
+                    type: string
+                description:
+                    description: Up to 1,000 characters; absent clears it.
+                    type: string
+                name:
+                    description: 1 to 100 characters, unique among the integrations not archived.
+                    type: string
+                rateLimitPerMinute:
+                    description: 60 to 6,000 requests a minute across the integration's keys; absent keeps it.
+                    type: integer
+            required:
+                - name
+            type: object
         InvitationAcceptanceRequest:
             properties:
                 displayName:
@@ -4989,6 +5307,618 @@ paths:
                 - Authentication
             x-vantigo-access: anonymous
             x-vantigo-api: never
+    /api/v1/identity/integrations:
+        get:
+            description: 'Every integration (API access design K21), archived ones last: its status, its roles, the number of keys in force, the nearest expiry among them and when any of its keys was last used.'
+            operationId: getIdentityIntegrations
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/IntegrationList'
+                    description: 'OK'
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Unauthorized'
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Forbidden'
+            summary: List the integrations
+            tags:
+                - API access
+            x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
+            x-vantigo-assistant: never
+        post:
+            description: 'Creates an integration: a user of kind integration that never signs in, holding only the custom roles given and acting only with an API key. Its name is unique among the integrations not archived (409 integration_name_taken); its contact, who gets its notices, must be a person. Audited integration.created.'
+            operationId: postIdentityIntegrations
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            allOf:
+                                - $ref: '#/components/schemas/IntegrationCreateRequest'
+                            nullable: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/IntegrationDetail'
+                    description: 'Created'
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Bad Request — invalid_request with field errors, or invalid_roles: a role that is not a custom role.'
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Unauthorized'
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Forbidden'
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Conflict — integration_name_taken, another integration has the name.'
+            summary: Create an integration
+            tags:
+                - API access
+            x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
+            x-vantigo-assistant: never
+    /api/v1/identity/integrations/{id}:
+        get:
+            description: 'An integration with its keys, never their secrets, and the permissions its roles give it, each marked when no API key may ever hold it (K7). Each key''s narrowing says, per permission, whether the roles grant it and whether the catalog still has it.'
+            operationId: getIdentityIntegrationsById
+            parameters:
+                - description: The integration (its user's id).
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/IntegrationDetail'
+                    description: 'OK'
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Unauthorized'
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Forbidden'
+                "404":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Not Found — not_found, no such integration.'
+            summary: Get an integration
+            tags:
+                - API access
+            x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
+            x-vantigo-assistant: never
+        patch:
+            description: 'Replaces an integration''s name, description and contact (an absent description or contact clears it), and its rate limit when one is given, under If-Match on its version. Audited integration.updated.'
+            operationId: patchIdentityIntegrationsById
+            parameters:
+                - description: The integration (its user's id).
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+                - description: The integration's version as it was read, bare or quoted. A version that has moved on is a 412 version_mismatch.
+                  in: header
+                  name: If-Match
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            allOf:
+                                - $ref: '#/components/schemas/IntegrationUpdateRequest'
+                            nullable: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/IntegrationDetail'
+                    description: 'OK'
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Bad Request — invalid_request with field errors, or an If-Match that is not a version.'
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Unauthorized'
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Forbidden'
+                "404":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Not Found — not_found, no such integration.'
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Conflict — integration_name_taken, another integration has the name; integration_archived, the integration is archived.'
+                "412":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Precondition Failed — version_mismatch, the integration has been changed since the If-Match version.'
+            summary: Change an integration
+            tags:
+                - API access
+            x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
+            x-vantigo-assistant: never
+    /api/v1/identity/integrations/{id}/archive:
+        post:
+            description: 'Revokes every key of an integration and archives it, in one transaction: it can no longer be changed, its name is free again, and the row stays for what it did. It cannot be undone. Audited integration.archived, and api_key.revoked for each key it revokes.'
+            operationId: postIdentityIntegrationsByIdArchive
+            parameters:
+                - description: The integration (its user's id).
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/IntegrationDetail'
+                    description: 'OK'
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Unauthorized'
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Forbidden'
+                "404":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Not Found — not_found, no such integration.'
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Conflict — integration_archived, the integration is archived already.'
+            summary: Archive an integration
+            tags:
+                - API access
+            x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
+            x-vantigo-assistant: never
+    /api/v1/identity/integrations/{id}/disable:
+        post:
+            description: 'Disables an integration: every one of its keys is refused from the next request on, until it is enabled again. Audited integration.disabled.'
+            operationId: postIdentityIntegrationsByIdDisable
+            parameters:
+                - description: The integration (its user's id).
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/IntegrationDetail'
+                    description: 'OK'
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Unauthorized'
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Forbidden'
+                "404":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Not Found — not_found, no such integration.'
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Conflict — integration_archived, the integration is archived.'
+            summary: Disable an integration
+            tags:
+                - API access
+            x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
+            x-vantigo-assistant: never
+    /api/v1/identity/integrations/{id}/enable:
+        post:
+            description: 'Enables a disabled integration, whose keys in force work again. Audited integration.enabled.'
+            operationId: postIdentityIntegrationsByIdEnable
+            parameters:
+                - description: The integration (its user's id).
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/IntegrationDetail'
+                    description: 'OK'
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Unauthorized'
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Forbidden'
+                "404":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Not Found — not_found, no such integration.'
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Conflict — integration_archived, the integration is archived.'
+            summary: Enable an integration
+            tags:
+                - API access
+            x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
+            x-vantigo-assistant: never
+    /api/v1/identity/integrations/{id}/keys:
+        post:
+            description: 'Creates an API key for an integration and answers its secret, once: it is stored only as a hash and never shown again. It expires after 30, 90 (the default), 180 or 365 days, or at a date up to 365 days ahead. A narrowing limits it to the permissions listed of those its integration''s roles grant; a read-only key calls only reads; networks, at most 20 CIDRs, limit where it may be used from. Audited api_key.created, without the secret.'
+            operationId: postIdentityIntegrationsByIdKeys
+            parameters:
+                - description: The integration (its user's id).
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            allOf:
+                                - $ref: '#/components/schemas/ApiKeyCreateRequest'
+                            nullable: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ApiKeySecret'
+                    description: 'Created — the key and its secret, shown once.'
+                    headers:
+                        Cache-Control:
+                            description: no-store, so the secret is never kept by a cache or the browser.
+                            schema:
+                                type: string
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Bad Request — invalid_request with field errors.'
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Unauthorized'
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Forbidden'
+                "404":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Not Found — not_found, no such integration.'
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Conflict — integration_archived, the integration is archived.'
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
+            summary: Create an API key
+            tags:
+                - API access
+            x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
+            x-vantigo-assistant: never
+    /api/v1/identity/integrations/{id}/keys/{keyId}/revoke:
+        post:
+            description: 'Revokes an API key: its next request is refused 401 unauthenticated, on every replica at once. A key revoked already is answered as it is. Audited api_key.revoked.'
+            operationId: postIdentityIntegrationsByIdKeysByKeyIdRevoke
+            parameters:
+                - description: The integration (its user's id).
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+                - description: The key.
+                  in: path
+                  name: keyId
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ApiKey'
+                    description: 'OK'
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Unauthorized'
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Forbidden'
+                "404":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Not Found — not_found, no such integration or key.'
+            summary: Revoke an API key
+            tags:
+                - API access
+            x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
+            x-vantigo-assistant: never
+    /api/v1/identity/integrations/{id}/keys/{keyId}/roll:
+        post:
+            description: 'Issues a new key in place of one, with the same name, narrowing, read-only flag and networks and a new expiry, and answers its secret, once. The old key works on for the overlap, 0 to 168 hours (24 by default), or until its own expiry if that is sooner. A key is rolled once (409 api_key_already_rolled). Audited api_key.rolled, without the secret.'
+            operationId: postIdentityIntegrationsByIdKeysByKeyIdRoll
+            parameters:
+                - description: The integration (its user's id).
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+                - description: The key.
+                  in: path
+                  name: keyId
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            allOf:
+                                - $ref: '#/components/schemas/ApiKeyRollRequest'
+                            nullable: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ApiKeySecret'
+                    description: 'Created — the new key and its secret, shown once.'
+                    headers:
+                        Cache-Control:
+                            description: no-store, so the secret is never kept by a cache or the browser.
+                            schema:
+                                type: string
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Bad Request — invalid_request with field errors.'
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Unauthorized'
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Forbidden'
+                "404":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Not Found — not_found, no such integration or key.'
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Conflict — api_key_already_rolled, the key has been rolled already; api_key_revoked, the key is revoked or has expired; integration_archived, the integration is archived.'
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
+            summary: Roll an API key
+            tags:
+                - API access
+            x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
+            x-vantigo-assistant: never
+    /api/v1/identity/integrations/{id}/roles:
+        put:
+            description: 'Replaces an integration''s roles with the custom roles given (invalid_roles for Owner, SystemAdmin, User or any other built-in role). This and creating it are the only ways an integration gets a role. Audited integration.roles_changed.'
+            operationId: putIdentityIntegrationsByIdRoles
+            parameters:
+                - description: The integration (its user's id).
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            allOf:
+                                - $ref: '#/components/schemas/IntegrationRolesRequest'
+                            nullable: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/IntegrationDetail'
+                    description: 'OK'
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Bad Request — invalid_roles, a role that is not a custom role.'
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Unauthorized'
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Forbidden'
+                "404":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Not Found — not_found, no such integration.'
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Conflict — integration_archived, the integration is archived.'
+            summary: Replace an integration's roles
+            tags:
+                - API access
+            x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
+            x-vantigo-assistant: never
     /api/v1/identity/invitations/accept:
         post:
             operationId: postIdentityInvitationsAccept

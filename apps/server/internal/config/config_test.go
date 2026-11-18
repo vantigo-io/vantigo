@@ -1604,6 +1604,22 @@ func TestLoad_CustomersRegistryWorkersRejectNonsense(t *testing.T) {
 	}
 }
 
+// TestLoad_IdentityAPIKeysWorker pins the API keys worker's two settings (API
+// access design K15): on unless turned off, and hourly.
+func TestLoad_IdentityAPIKeysWorker(t *testing.T) {
+	cfg := mustLoad(t, validEnv())
+	if !cfg.IdentityAPIKeysEnabled || cfg.IdentityAPIKeysPoll != time.Hour {
+		t.Errorf("defaults = %v/%v, want on and 1h", cfg.IdentityAPIKeysEnabled, cfg.IdentityAPIKeysPoll)
+	}
+	tuned := mustLoad(t, with(validEnv(), "IDENTITY_API_KEYS_ENABLED", "0", "IDENTITY_API_KEYS_POLL", "10m"))
+	if tuned.IdentityAPIKeysEnabled || tuned.IdentityAPIKeysPoll != 10*time.Minute {
+		t.Errorf("tuned = %v/%v, want off and 10m", tuned.IdentityAPIKeysEnabled, tuned.IdentityAPIKeysPoll)
+	}
+	if msg := loadError(t, with(validEnv(), "IDENTITY_API_KEYS_POLL", "soon")); !strings.Contains(msg, "IDENTITY_API_KEYS_POLL: must be a positive duration such as 30s") {
+		t.Errorf("error = %q", msg)
+	}
+}
+
 // TestLoad_CustomersAnonymisationWorker pins the anonymisation worker's two
 // settings (customers GDPR design D4): on unless turned off — a date a person
 // chose is kept whether or not the operator remembered a switch — and a daily

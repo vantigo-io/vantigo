@@ -61,6 +61,10 @@ var (
 // NewTokenForTest mints a token and its stored hash the way issueInvitation does.
 func NewTokenForTest() (string, []byte) { return newToken() }
 
+// NewAPIKeyForTest mints an API key and its stored hash as the integrations
+// service does, stored nowhere: a key no installation knows.
+func NewAPIKeyForTest() (string, []byte) { return newAPIKey() }
+
 // NormalizeEmailForTest is normalizeEmail.
 func NormalizeEmailForTest(email string) string { return normalizeEmail(email) }
 

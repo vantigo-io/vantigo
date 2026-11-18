@@ -227,12 +227,21 @@ func (s *server) authorizeRoleCreate(ctx context.Context, q *store.Queries, p co
 // role has and those it is to get, so an edit neither grants nor strips a
 // key outside that one scope. 403 role_edit_denied. .NET's edit named no
 // delegation, and neither does this one.
+//
+// A role an integration holds is an Owner's alone to edit (API access design
+// K56): a steward who added a key to it would widen every API key of that
+// integration, which only an Owner may give anything. The delegate is
+// refused role_edit_denied, as for a role outside their scope.
 func (s *server) authorizeRoleEdit(ctx context.Context, q *store.Queries, p contracts.Principal, held []uuid.UUID, roleID uuid.UUID, keys []string, now time.Time) error {
 	if isOwner(p) {
 		return nil
 	}
 	ok, err := s.stewardedWithin(ctx, q, held, roleID, keys, now)
 	if err != nil || !ok {
+		return cmpOr(err, error(roleEditDenied))
+	}
+	integration, err := q.RoleHeldByIntegration(ctx, roleID)
+	if err != nil || integration {
 		return cmpOr(err, error(roleEditDenied))
 	}
 	return nil

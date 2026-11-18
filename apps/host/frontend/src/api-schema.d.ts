@@ -590,6 +590,194 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/identity/integrations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the integrations
+         * @description Every integration (API access design K21), archived ones last: its status, its roles, the number of keys in force, the nearest expiry among them and when any of its keys was last used.
+         */
+        get: operations["getIdentityIntegrations"];
+        put?: never;
+        /**
+         * Create an integration
+         * @description Creates an integration: a user of kind integration that never signs in, holding only the custom roles given and acting only with an API key. Its name is unique among the integrations not archived (409 integration_name_taken); its contact, who gets its notices, must be a person. Audited integration.created.
+         */
+        post: operations["postIdentityIntegrations"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/identity/integrations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get an integration
+         * @description An integration with its keys, never their secrets, and the permissions its roles give it, each marked when no API key may ever hold it (K7). Each key's narrowing says, per permission, whether the roles grant it and whether the catalog still has it.
+         */
+        get: operations["getIdentityIntegrationsById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Change an integration
+         * @description Replaces an integration's name, description and contact (an absent description or contact clears it), and its rate limit when one is given, under If-Match on its version. Audited integration.updated.
+         */
+        patch: operations["patchIdentityIntegrationsById"];
+        trace?: never;
+    };
+    "/api/v1/identity/integrations/{id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Archive an integration
+         * @description Revokes every key of an integration and archives it, in one transaction: it can no longer be changed, its name is free again, and the row stays for what it did. It cannot be undone. Audited integration.archived, and api_key.revoked for each key it revokes.
+         */
+        post: operations["postIdentityIntegrationsByIdArchive"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/identity/integrations/{id}/disable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Disable an integration
+         * @description Disables an integration: every one of its keys is refused from the next request on, until it is enabled again. Audited integration.disabled.
+         */
+        post: operations["postIdentityIntegrationsByIdDisable"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/identity/integrations/{id}/enable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Enable an integration
+         * @description Enables a disabled integration, whose keys in force work again. Audited integration.enabled.
+         */
+        post: operations["postIdentityIntegrationsByIdEnable"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/identity/integrations/{id}/keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create an API key
+         * @description Creates an API key for an integration and answers its secret, once: it is stored only as a hash and never shown again. It expires after 30, 90 (the default), 180 or 365 days, or at a date up to 365 days ahead. A narrowing limits it to the permissions listed of those its integration's roles grant; a read-only key calls only reads; networks, at most 20 CIDRs, limit where it may be used from. Audited api_key.created, without the secret.
+         */
+        post: operations["postIdentityIntegrationsByIdKeys"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/identity/integrations/{id}/keys/{keyId}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revoke an API key
+         * @description Revokes an API key: its next request is refused 401 unauthenticated, on every replica at once. A key revoked already is answered as it is. Audited api_key.revoked.
+         */
+        post: operations["postIdentityIntegrationsByIdKeysByKeyIdRevoke"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/identity/integrations/{id}/keys/{keyId}/roll": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Roll an API key
+         * @description Issues a new key in place of one, with the same name, narrowing, read-only flag and networks and a new expiry, and answers its secret, once. The old key works on for the overlap, 0 to 168 hours (24 by default), or until its own expiry if that is sooner. A key is rolled once (409 api_key_already_rolled). Audited api_key.rolled, without the secret.
+         */
+        post: operations["postIdentityIntegrationsByIdKeysByKeyIdRoll"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/identity/integrations/{id}/roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Replace an integration's roles
+         * @description Replaces an integration's roles with the custom roles given (invalid_roles for Owner, SystemAdmin, User or any other built-in role). This and creating it are the only ways an integration gets a role. Audited integration.roles_changed.
+         */
+        put: operations["putIdentityIntegrationsByIdRoles"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/identity/invitations/accept": {
         parameters: {
             query?: never;
@@ -2173,6 +2361,168 @@ export interface components {
             staticScimEnabled: boolean;
             /** Format: int32 */
             total: number;
+        };
+        /** @description An API key of an integration, never its secret (API access design K11). */
+        ApiKey: {
+            /** @description The CIDRs the key may be used from; empty for anywhere. */
+            allowedNetworks: string[];
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: uuid */
+            createdBy: string | null;
+            /** @description The key as it can be recognised once its secret is gone, such as vtg_4f2a…9XyZ. */
+            display: string;
+            /** Format: date-time */
+            expiresAt: string;
+            /** Format: uuid */
+            id: string;
+            /**
+             * Format: date-time
+             * @description When the key was last used, to the minute.
+             */
+            lastUsedAt: string | null;
+            lastUsedIp: string | null;
+            name: string;
+            /** @description The narrowing, null for none. A permission the roles do not grant does nothing until they do; one the catalog no longer has is kept and ignored. */
+            permissions: components["schemas"]["ApiKeyPermission"][] | null;
+            readOnly: boolean;
+            /** Format: date-time */
+            revokedAt: string | null;
+            /**
+             * Format: uuid
+             * @description The key this one was rolled from.
+             */
+            rolledFrom: string | null;
+            /** @enum {string} */
+            status: "active" | "expired" | "revoked";
+        };
+        ApiKeyCreateRequest: {
+            /** @description At most 20 CIDRs, IPv4 or IPv6, or single addresses; absent or empty for anywhere. */
+            allowedNetworks?: string[];
+            /**
+             * Format: date-time
+             * @description When the key expires, at most 365 days ahead; instead of expiresInDays.
+             */
+            expiresAt?: string;
+            /** @description 30, 90, 180 or 365; 90 when neither this nor expiresAt is given. */
+            expiresInDays?: number;
+            /** @description 1 to 100 characters, such as Production. */
+            name: string;
+            /** @description The narrowing, permission keys of the catalog's form; absent for none. */
+            permissions?: string[];
+            /** @description True for a key that may call only reads. */
+            readOnly?: boolean;
+        };
+        ApiKeyPermission: {
+            /** @description Whether the integration's roles grant the permission now. */
+            grantedByRoles: boolean;
+            /** @description Whether the permission catalog still has the permission. */
+            inCatalog: boolean;
+            key: string;
+        };
+        ApiKeyRollRequest: {
+            /**
+             * Format: date-time
+             * @description When the new key expires, at most 365 days ahead; instead of expiresInDays.
+             */
+            expiresAt?: string;
+            /** @description 30, 90, 180 or 365; 90 when neither this nor expiresAt is given. */
+            expiresInDays?: number;
+            /** @description How long the old key works on, 0 to 168 hours; 24 when absent. */
+            overlapHours?: number;
+        };
+        /** @description A key just created or rolled, with its secret, which is never shown again. */
+        ApiKeySecret: {
+            key: components["schemas"]["ApiKey"];
+            /** @description The key itself, vtg_ and 49 characters, to send as Authorization Bearer. */
+            secret: string;
+        };
+        /** @description An external application's account (API access design K8). */
+        Integration: {
+            /** Format: date-time */
+            archivedAt: string | null;
+            contactDisplayName: string | null;
+            /**
+             * Format: uuid
+             * @description The person responsible, who gets the integration's notices; null for none.
+             */
+            contactUserId: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: uuid */
+            createdBy: string | null;
+            description: string | null;
+            /**
+             * Format: uuid
+             * @description The integration's user, which is what its requests are attributed to.
+             */
+            id: string;
+            /** @description The keys in force, neither revoked nor expired. */
+            keyCount: number;
+            /** Format: date-time */
+            lastUsedAt: string | null;
+            name: string;
+            /**
+             * Format: date-time
+             * @description The earliest expiry among the keys in force.
+             */
+            nearestExpiry: string | null;
+            rateLimitPerMinute: number;
+            roles: components["schemas"]["IntegrationRole"][];
+            /** @enum {string} */
+            status: "active" | "disabled" | "archived";
+            /** @description The integration's version for If-Match. */
+            version: string;
+        };
+        IntegrationCreateRequest: {
+            /**
+             * Format: uuid
+             * @description A person; absent for none.
+             */
+            contactUserId?: string;
+            /** @description Up to 1,000 characters. */
+            description?: string;
+            /** @description 1 to 100 characters, unique among the integrations not archived. */
+            name: string;
+            /** @description Custom roles only. */
+            roleIds?: string[];
+        };
+        IntegrationDetail: {
+            /** @description Every permission the integration's roles give it, in ordinal order. */
+            effectivePermissions: components["schemas"]["IntegrationPermission"][];
+            integration: components["schemas"]["Integration"];
+            /** @description Its keys, newest first. */
+            keys: components["schemas"]["ApiKey"][];
+        };
+        IntegrationList: {
+            integrations: components["schemas"]["Integration"][];
+        };
+        IntegrationPermission: {
+            /** @description True for a permission no API key ever holds, whatever the roles grant (K7). */
+            apiNever: boolean;
+            key: string;
+        };
+        IntegrationRole: {
+            displayName: string;
+            /** Format: uuid */
+            id: string;
+            name: string;
+        };
+        IntegrationRolesRequest: {
+            roleIds: string[];
+        };
+        IntegrationUpdateRequest: {
+            /**
+             * Format: uuid
+             * @description A person; absent clears the contact.
+             */
+            contactUserId?: string;
+            /** @description Up to 1,000 characters; absent clears it. */
+            description?: string;
+            /** @description 1 to 100 characters, unique among the integrations not archived. */
+            name: string;
+            /** @description 60 to 6,000 requests a minute across the integration's keys; absent keeps it. */
+            rateLimitPerMinute?: number;
         };
         InvitationAcceptanceRequest: {
             displayName?: string | null;
@@ -5911,6 +6261,709 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BootstrapStatusResponse"];
+                };
+            };
+        };
+    };
+    getIdentityIntegrations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postIdentityIntegrations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["IntegrationCreateRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationDetail"];
+                };
+            };
+            /** @description Bad Request — invalid_request with field errors, or invalid_roles: a role that is not a custom role. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — integration_name_taken, another integration has the name. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getIdentityIntegrationsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The integration (its user's id). */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationDetail"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — not_found, no such integration. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    patchIdentityIntegrationsById: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The integration's version as it was read, bare or quoted. A version that has moved on is a 412 version_mismatch. */
+                "If-Match": string;
+            };
+            path: {
+                /** @description The integration (its user's id). */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["IntegrationUpdateRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationDetail"];
+                };
+            };
+            /** @description Bad Request — invalid_request with field errors, or an If-Match that is not a version. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — not_found, no such integration. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — integration_name_taken, another integration has the name; integration_archived, the integration is archived. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Precondition Failed — version_mismatch, the integration has been changed since the If-Match version. */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postIdentityIntegrationsByIdArchive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The integration (its user's id). */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationDetail"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — not_found, no such integration. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — integration_archived, the integration is archived already. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postIdentityIntegrationsByIdDisable: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The integration (its user's id). */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationDetail"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — not_found, no such integration. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — integration_archived, the integration is archived. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postIdentityIntegrationsByIdEnable: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The integration (its user's id). */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationDetail"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — not_found, no such integration. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — integration_archived, the integration is archived. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postIdentityIntegrationsByIdKeys: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The integration (its user's id). */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ApiKeyCreateRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Created — the key and its secret, shown once. */
+            201: {
+                headers: {
+                    /** @description no-store, so the secret is never kept by a cache or the browser. */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiKeySecret"];
+                };
+            };
+            /** @description Bad Request — invalid_request with field errors. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — not_found, no such integration. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — integration_archived, the integration is archived. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postIdentityIntegrationsByIdKeysByKeyIdRevoke: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The integration (its user's id). */
+                id: string;
+                /** @description The key. */
+                keyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiKey"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — not_found, no such integration or key. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postIdentityIntegrationsByIdKeysByKeyIdRoll: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The integration (its user's id). */
+                id: string;
+                /** @description The key. */
+                keyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ApiKeyRollRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Created — the new key and its secret, shown once. */
+            201: {
+                headers: {
+                    /** @description no-store, so the secret is never kept by a cache or the browser. */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiKeySecret"];
+                };
+            };
+            /** @description Bad Request — invalid_request with field errors. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — not_found, no such integration or key. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — api_key_already_rolled, the key has been rolled already; api_key_revoked, the key is revoked or has expired; integration_archived, the integration is archived. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    putIdentityIntegrationsByIdRoles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The integration (its user's id). */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["IntegrationRolesRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationDetail"];
+                };
+            };
+            /** @description Bad Request — invalid_roles, a role that is not a custom role. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — not_found, no such integration. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — integration_archived, the integration is archived. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
         };
