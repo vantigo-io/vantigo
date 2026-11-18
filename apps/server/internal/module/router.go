@@ -266,6 +266,32 @@ func (r *Router) HandleFunc(pattern string, h func(http.ResponseWriter, *http.Re
 		}
 		rule.Agent = true
 	}
+	// An integration's API key may call an operation behind a permission or
+	// anonymous rule, the only rules a key meets, unless it is marked never; a
+	// GET is always a read, and a POST marked read is one too, which a
+	// read-only key may call (API access design K5). Any other rule refuses a
+	// key here already, as the lint refuses a mark that says otherwise.
+	keyable := rule.Kind == contracts.RulePermission || rule.Kind == contracts.RuleAnonymous
+	if keyable {
+		rule.API = contracts.APIAllowed
+		if method == http.MethodGet || method == http.MethodHead {
+			rule.API = contracts.APIRead
+		}
+	}
+	if v, present := op.Extensions[contracts.APIExtension]; present {
+		switch v {
+		case contracts.APIExtensionNever:
+			rule.API = contracts.APIRefused
+		case contracts.APIExtensionAllowed:
+		case contracts.APIExtensionRead:
+			if keyable {
+				rule.API = contracts.APIRead
+			}
+		default:
+			r.problems = append(r.problems, fmt.Sprintf("module: %s (%s): %s %v must be %q, %q or %q", pattern, op.OperationID, contracts.APIExtension, v, contracts.APIExtensionAllowed, contracts.APIExtensionRead, contracts.APIExtensionNever))
+			return
+		}
+	}
 	if rule.Kind == contracts.RulePermission {
 		for _, key := range rule.Names {
 			if _, ok := r.opts.Catalog[key]; !ok {

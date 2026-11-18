@@ -6580,3 +6580,14 @@ The Assistant can point at these controls in a guided tour ([the registry](/en/r
 | `invoices.invoice.issue` | `/invoices/{invoiceId}` | Issue |
 | `invoices.settings.logo` | `/invoices/settings` | Upload logo |
 | `invoices.send.message` | `/invoices/{invoiceId}` | Message (the Send dialog) |
+
+## API keys
+
+The public pay page's operations (`postInvoicesPayRead`, `postInvoicesPayAttempts`,
+`getInvoicesPayAttemptsByReference`) are `x-vantigo-api: never`: they answer the customer
+who holds the page's token, not an application. So are the settings that decide where money
+goes or who sends for the business — the seller's settings with its bank account
+(`putInvoicesSettings`), Vipps, the access point, the bank feed and its accounts, and a bank
+account's file format — so a leaked key can never redirect a payment. See [integration
+users](/en/admin/authentication/#integration-users), and the marks' rules in [module
+boundaries](/en/contributing/module-boundaries/#the-rules).

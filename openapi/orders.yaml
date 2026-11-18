@@ -5018,6 +5018,7 @@ paths:
             tags:
                 - Orders
             x-vantigo-access: "permission:orders:access+orders:carriers-manage"
+            x-vantigo-api: never
     "/api/v1/orders/carrier-accounts/{id}":
         get:
             description: A carrier account; never its credentials.
@@ -5054,6 +5055,7 @@ paths:
             tags:
                 - Orders
             x-vantigo-access: "permission:orders:access+orders:carriers-manage"
+            x-vantigo-api: never
         put:
             description: "Saves a carrier account (O51). Credentials absent keep the stored ones; given, they replace them and the account must be verified again. Archiving keeps the account on its shipments."
             operationId: updateCarrierAccount
@@ -5113,6 +5115,7 @@ paths:
             tags:
                 - Orders
             x-vantigo-access: "permission:orders:access+orders:carriers-manage"
+            x-vantigo-api: never
     "/api/v1/orders/carrier-accounts/{id}/pickup-points":
         get:
             description: "The carrier's pickup points near a postal code (O49), for a carrier with the capability; none otherwise."
@@ -5265,6 +5268,7 @@ paths:
             tags:
                 - Orders
             x-vantigo-access: "permission:orders:access+orders:carriers-manage"
+            x-vantigo-api: never
     "/api/v1/orders/customers/{customerId}/summary":
         get:
             description: "The counts and sums per currency the customer page's Orders tab shows (O31a)."
@@ -7977,6 +7981,7 @@ paths:
             tags:
                 - Orders
             x-vantigo-access: permission:orders:access+orders:settings
+            x-vantigo-api: never
         put:
             description: Replaces the settings; a series start may only rise above the highest number used (O12).
             operationId: putOrdersSettings
@@ -8021,6 +8026,7 @@ paths:
             tags:
                 - Orders
             x-vantigo-access: permission:orders:access+orders:settings
+            x-vantigo-api: never
     "/api/v1/orders/shipments/{id}":
         get:
             description: "A shipment with its packages, documents and tracking events (O50)."
@@ -8419,6 +8425,7 @@ paths:
             tags:
                 - Orders
             x-vantigo-access: "permission:orders:access"
+            x-vantigo-api: read
     /api/v1/orders/shipping/site-defaults:
         get:
             description: The default carrier account per site (O51).
@@ -8484,6 +8491,7 @@ paths:
             tags:
                 - Orders
             x-vantigo-access: "permission:orders:access+orders:carriers-manage"
+            x-vantigo-api: never
     /api/v1/orders/sites:
         get:
             description: "Inventory's sites that are not archived, by code, for the order's site and the default site (contracts.Stock, O46); empty when Inventory keeps no stock."
@@ -9111,6 +9119,7 @@ paths:
             tags:
                 - Orders
             x-vantigo-access: permission:orders:access+orders:settings
+            x-vantigo-api: never
     "/api/v1/orders/templates/{id}":
         delete:
             description: Deletes a template; quotes made from it keep their lines (O23).
@@ -9143,6 +9152,7 @@ paths:
             tags:
                 - Orders
             x-vantigo-access: permission:orders:access+orders:settings
+            x-vantigo-api: never
         get:
             description: The template with its lines (O23).
             operationId: getQuoteTemplate
@@ -9231,6 +9241,7 @@ paths:
             tags:
                 - Orders
             x-vantigo-access: permission:orders:access+orders:settings
+            x-vantigo-api: never
     /api/v1/orders/variants:
         get:
             description: "Search the catalog for a line (O16): the variants of active products, goods and services, whose SKU, name or barcode contains q, each with its list price in currency today and its VAT code as the line would take it. Read through contracts.ProductCatalog and contracts.SalesTax, so a salesperson needs no Products key."
@@ -9357,6 +9368,7 @@ paths:
             tags:
                 - Orders
             x-vantigo-access: permission:orders:access+orders:settings
+            x-vantigo-api: never
         get:
             description: "The customer's warning (O33)."
             operationId: getOrdersCustomerWarning
@@ -9445,6 +9457,7 @@ paths:
             tags:
                 - Orders
             x-vantigo-access: permission:orders:access+orders:settings
+            x-vantigo-api: never
     "/api/v1/orders/warnings/products/{productId}":
         delete:
             description: "Removes the product's warning (O33)."
@@ -9477,6 +9490,7 @@ paths:
             tags:
                 - Orders
             x-vantigo-access: permission:orders:access+orders:settings
+            x-vantigo-api: never
         get:
             description: "The product's warning (O33)."
             operationId: getOrdersProductWarning
@@ -9565,5 +9579,6 @@ paths:
             tags:
                 - Orders
             x-vantigo-access: permission:orders:access+orders:settings
+            x-vantigo-api: never
 servers:
     - url: /

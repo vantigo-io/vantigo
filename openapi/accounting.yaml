@@ -5488,6 +5488,7 @@ paths:
             tags:
                 - Accounting
             x-vantigo-access: permission:accounting:close+accounting:read
+            x-vantigo-api: never
     /api/v1/accounting/accounts/{id}:
         delete:
             operationId: deleteAccountingAccount
@@ -5525,6 +5526,7 @@ paths:
             tags:
                 - Accounting
             x-vantigo-access: permission:accounting:close+accounting:read
+            x-vantigo-api: never
         get:
             operationId: getAccountingAccount
             parameters:
@@ -5617,6 +5619,7 @@ paths:
             tags:
                 - Accounting
             x-vantigo-access: permission:accounting:close+accounting:read
+            x-vantigo-api: never
     /api/v1/accounting/accounts/{id}/groupings:
         put:
             operationId: putAccountingAccountGroupings
@@ -5670,6 +5673,7 @@ paths:
             tags:
                 - Accounting
             x-vantigo-access: permission:accounting:close+accounting:read
+            x-vantigo-api: never
     /api/v1/accounting/bank/accounts:
         get:
             description: Every bank account with its ledger account, its source, its open lines and its last statement (A26); while none has the seller's account number in Invoices, the seller's account is offered as the first, mapped to the bank role's account; and whether the bank feed can be a source (A29).
@@ -5747,6 +5751,7 @@ paths:
             tags:
                 - Accounting
             x-vantigo-access: permission:accounting:close+accounting:read
+            x-vantigo-api: never
     /api/v1/accounting/bank/accounts/{id}:
         delete:
             description: Deletes a bank account with no statement; one with statements is made inactive instead.
@@ -5785,6 +5790,7 @@ paths:
             tags:
                 - Accounting
             x-vantigo-access: permission:accounting:close+accounting:read
+            x-vantigo-api: never
         get:
             description: One bank account.
             operationId: getAccountingBankAccount
@@ -5879,6 +5885,7 @@ paths:
             tags:
                 - Accounting
             x-vantigo-access: permission:accounting:close+accounting:read
+            x-vantigo-api: never
     /api/v1/accounting/bank/accounts/{id}/csv-mapping:
         put:
             description: 'How a CSV statement of the account is read (A27): separator, encoding, header rows, date format, decimal and thousands separators, and the columns.'
@@ -5933,6 +5940,7 @@ paths:
             tags:
                 - Accounting
             x-vantigo-access: permission:accounting:close+accounting:read
+            x-vantigo-api: never
     /api/v1/accounting/bank/accounts/{id}/csv-preview:
         post:
             description: Reads a CSV file in the multipart field file with the mapping in the field mapping (JSON; the saved one when left out) and answers its first rows as they would be imported; nothing is written.
@@ -5996,6 +6004,7 @@ paths:
             tags:
                 - Accounting
             x-vantigo-access: permission:accounting:post+accounting:read
+            x-vantigo-api: read
             x-vantigo-assistant: never
     /api/v1/accounting/bank/accounts/{id}/reconciliation:
         get:
@@ -6140,6 +6149,7 @@ paths:
             tags:
                 - Accounting
             x-vantigo-access: permission:accounting:close+accounting:read
+            x-vantigo-api: never
     /api/v1/accounting/bank/feed/accounts:
         get:
             description: 'The accounts Invoices'' bank key reads, from the bank, with no transaction open (A29): every kind, cards and tax accounts too, each with the bank account here that has its number.'
@@ -6179,6 +6189,7 @@ paths:
             tags:
                 - Accounting
             x-vantigo-access: permission:accounting:close+accounting:read
+            x-vantigo-api: never
     /api/v1/accounting/bank/imports:
         post:
             description: Imports a camt.053 file (ISO 20022 bank-to-customer statement, versions .001.02 and newer) or a CSV file in the multipart field file (A27). A camt.053 file is read as a stream, no DOCTYPE or entity allowed, at most 20 MB; its statements are routed to the bank accounts by account number, booked entries only, a batch with its transactions kept; a statement of an account not here is left out and named in unknownAccounts. A CSV file is read with the mapping saved on bankAccountId. A line already imported is skipped, by the bank's id or by its fingerprint and its ordinal in the file; for an account the feed reads, a line booked on or after the feed's start day is left out (coveredByFeed); a line with the same day and amount and the same KID, counterparty account or text as a line of another origin is written flagged as a possible duplicate. The file is kept in the object store; a gap or an overlap in the balances against the previous statement is flagged, not refused.
@@ -6577,6 +6588,7 @@ paths:
             tags:
                 - Accounting
             x-vantigo-access: permission:accounting:close+accounting:read
+            x-vantigo-api: never
     /api/v1/accounting/bank/rules/{id}:
         delete:
             description: Deletes a rule no match was made with; one that was used is made inactive instead.
@@ -6615,6 +6627,7 @@ paths:
             tags:
                 - Accounting
             x-vantigo-access: permission:accounting:close+accounting:read
+            x-vantigo-api: never
         put:
             description: A change is a new version; a match keeps the version it was made with.
             operationId: updateAccountingBankRule
@@ -6668,6 +6681,7 @@ paths:
             tags:
                 - Accounting
             x-vantigo-access: permission:accounting:close+accounting:read
+            x-vantigo-api: never
     /api/v1/accounting/bank/statements:
         get:
             description: 'The statements imported, newest first, at most 200: their period, balances, continuity and counts.'
@@ -6953,6 +6967,7 @@ paths:
             tags:
                 - Accounting
             x-vantigo-access: permission:accounting:close+accounting:read
+            x-vantigo-api: never
     /api/v1/accounting/meta:
         get:
             operationId: getAccountingMeta
@@ -7177,6 +7192,7 @@ paths:
             tags:
                 - Accounting
             x-vantigo-access: permission:accounting:close+accounting:read
+            x-vantigo-api: never
     /api/v1/accounting/posting-rules:
         get:
             description: The rules in force, in precedence order. It writes nothing; the default rules are seeded by Set up the books, and for books set up before they existed by the catch-up worker.
@@ -7253,6 +7269,7 @@ paths:
             tags:
                 - Accounting
             x-vantigo-access: permission:accounting:close+accounting:read
+            x-vantigo-api: never
     /api/v1/accounting/posting-rules/{id}:
         delete:
             description: Archives a rule that is not a default one (R15). It matches nothing from now on and is no longer listed; its versions are kept, and every posting it placed still names it. A second archive is a 404.
@@ -7291,6 +7308,7 @@ paths:
             tags:
                 - Accounting
             x-vantigo-access: permission:accounting:close+accounting:read
+            x-vantigo-api: never
         put:
             operationId: updateAccountingPostingRule
             parameters:
@@ -7343,6 +7361,7 @@ paths:
             tags:
                 - Accounting
             x-vantigo-access: permission:accounting:close+accounting:read
+            x-vantigo-api: never
     /api/v1/accounting/reports/{report}:
         get:
             description: Computed from the postings by voucher date when it is asked for, with when it was produced (A11).
@@ -7596,6 +7615,7 @@ paths:
             tags:
                 - Accounting
             x-vantigo-access: permission:accounting:close+accounting:read
+            x-vantigo-api: never
     /api/v1/accounting/saft-exports:
         get:
             description: 'Every SAF-T export asked for, newest first, the latest 100: who asked, when, the selection, the state and the files with their size and SHA-256 (A24).'
@@ -7861,6 +7881,7 @@ paths:
             tags:
                 - Accounting
             x-vantigo-access: permission:accounting:close+accounting:read
+            x-vantigo-api: never
         post:
             description: 'Uploads a SAF-T Financial 1.30 or 1.40 file in the multipart field file, to set the books up from another system (A25), and answers its preview; nothing is written to the books. Only while the books are not set up and the ledger has no vouchers. The file is read as a stream with no DOCTYPE, entity or external reference allowed, at most ACCOUNTING_SAFT_IMPORT_MAX_BYTES, and kept in the object store with its SHA-256.'
             operationId: uploadAccountingSaftImport
@@ -7917,6 +7938,7 @@ paths:
             tags:
                 - Accounting
             x-vantigo-access: permission:accounting:close+accounting:read
+            x-vantigo-api: never
             x-vantigo-assistant: never
     /api/v1/accounting/saft-imports/{id}:
         get:
@@ -7954,6 +7976,7 @@ paths:
             tags:
                 - Accounting
             x-vantigo-access: permission:accounting:close+accounting:read
+            x-vantigo-api: never
     /api/v1/accounting/saft-imports/{id}/apply:
         post:
             description: 'Sets the books up from the file, in one transaction (A25): the settings with books starting the day after the file''s selection, the chart from the file with its groupings, the system roles, the standard tax codes, the suppliers, and the opening voucher from the file''s closing balances — the balance-sheet accounts, one open item per customer and supplier with a balance, the VAT accounts'' balances on the settlement account and the result to the opening account. Refused while a problem is unresolved, a customer with a balance is not matched or linked to Customers, or the parties'' balances differ from their control accounts''.'
@@ -8008,6 +8031,7 @@ paths:
             tags:
                 - Accounting
             x-vantigo-access: permission:accounting:close+accounting:read
+            x-vantigo-api: never
     /api/v1/accounting/saft-imports/{id}/customers:
         get:
             description: 'A page of the file''s customers with their match to Customers; with attention, those with a balance that are not matched or linked.'
@@ -8061,6 +8085,7 @@ paths:
             tags:
                 - Accounting
             x-vantigo-access: permission:accounting:close+accounting:read
+            x-vantigo-api: never
     /api/v1/accounting/saft-imports/{id}/customers/{position}/link:
         put:
             description: 'Links a file customer to a customer in Customers that a person picked (A25): refused when the id names no customer; a customer merged away links to the one it was merged into. The preview then shows that customer''s name and organisation number.'
@@ -8121,6 +8146,7 @@ paths:
             tags:
                 - Accounting
             x-vantigo-access: permission:accounting:close+accounting:read
+            x-vantigo-api: never
     /api/v1/accounting/saft-imports/{id}/file:
         get:
             description: 'Streams the uploaded file as it was received, the record of the years before the books, never cached.'
@@ -8207,6 +8233,7 @@ paths:
             tags:
                 - Accounting
             x-vantigo-access: permission:accounting:close+accounting:read
+            x-vantigo-api: never
     /api/v1/accounting/saft-imports/{id}/suppliers:
         get:
             description: 'A page of the suppliers Apply makes from the file.'
@@ -8255,6 +8282,7 @@ paths:
             tags:
                 - Accounting
             x-vantigo-access: permission:accounting:close+accounting:read
+            x-vantigo-api: never
     /api/v1/accounting/setup:
         post:
             description: Writes the settings and seeds the default chart with its grouping codes, the standard tax codes with the 2026 rates and the system roles, named in language (R12). Once only.
@@ -8300,6 +8328,7 @@ paths:
             tags:
                 - Accounting
             x-vantigo-access: permission:accounting:close+accounting:read
+            x-vantigo-api: never
     /api/v1/accounting/supplier-invoices:
         get:
             description: Newest invoice date first.
@@ -9407,6 +9436,7 @@ paths:
             tags:
                 - Accounting
             x-vantigo-access: permission:accounting:close+accounting:read
+            x-vantigo-api: never
     /api/v1/accounting/tax-codes/{id}/rates:
         post:
             description: The open period ends the day before validFrom (A5).
@@ -9461,6 +9491,7 @@ paths:
             tags:
                 - Accounting
             x-vantigo-access: permission:accounting:close+accounting:read
+            x-vantigo-api: never
     /api/v1/accounting/unposted:
         get:
             description: The facts under Needs attention, oldest first.
@@ -9977,6 +10008,7 @@ paths:
             tags:
                 - Accounting
             x-vantigo-access: permission:accounting:close+accounting:read
+            x-vantigo-api: never
     /api/v1/accounting/vat/terms/{year}/{number}/closings/{closing}:
         get:
             description: One close of the term as it was made and kept (H2) — its return as figures — whether the term is closed, reopened or filed since.
@@ -10213,6 +10245,7 @@ paths:
             tags:
                 - Accounting
             x-vantigo-access: permission:accounting:close+accounting:read
+            x-vantigo-api: never
     /api/v1/accounting/vat/terms/{year}/{number}/unfile:
         post:
             description: Takes the filing mark off a term, with a reason the term's history keeps (A22).
@@ -10274,6 +10307,7 @@ paths:
             tags:
                 - Accounting
             x-vantigo-access: permission:accounting:close+accounting:read
+            x-vantigo-api: never
     /api/v1/accounting/vat/terms/{year}/{number}/xml:
         get:
             description: The closed term's return as stored at its close, in Skatteetaten's skattemeldingformerverdiavgift v1.0 schema (A23), served as an attachment and never cached. Filing is done at Skatteetaten in this phase.
@@ -10510,6 +10544,7 @@ paths:
             tags:
                 - Accounting
             x-vantigo-access: permission:accounting:post+accounting:read
+            x-vantigo-api: read
             x-vantigo-assistant: auto
     /api/v1/accounting/vouchers/{id}:
         get:

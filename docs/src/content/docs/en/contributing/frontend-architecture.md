@@ -271,6 +271,15 @@ from Mantine's tokens so it follows the colour scheme.
 `KpiCard` and `WidgetCard` are the dashboard's own cards and keep their own look; dialogs,
 drawers and the sign-in pages are not page surfaces either.
 
+## User avatars
+
+`UserAvatar` (`packages/frontend-shell/src/ui/user-avatar.tsx`) takes the user's `kind` as
+the API answers it. An `agent` gets the **AI** badge and an `integration` — an external
+application's account, which acts through an API key — the **API** badge, and the badge is
+part of the label a screen reader hears. A `person`, or a kind not given, is a plain
+avatar. Pass the kind wherever a list or a "created by" names a user, so an application's
+work is never mistaken for a colleague's.
+
 ## Verification commands
 
 Run these from the repository root before opening a pull request:

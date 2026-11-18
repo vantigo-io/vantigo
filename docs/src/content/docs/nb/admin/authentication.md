@@ -954,6 +954,39 @@ En agent handler under en **agenttilgang**, en post identitetsmodulen holder for
 En installasjon uten virtuelle medarbeidere har aldri en bruker av typen `agent` eller en rad i
 `identity.agent_grants`.
 
+## Integrasjonsbrukere
+
+En **integrasjon** er kontoen til et eksternt program som kaller Vantigos API. Kontoen er en
+bruker av typen `integration` i identity, ved siden av `person` og `agent`. Den har roller
+slik en person har, og den handler bare med en API-nøkkel på forespørselen, aldri gjennom en
+økt.
+
+- **Hva en integrasjon aldri har.** Passord, autentiseringsapp, økt, passnøkkel, invitasjon,
+  kobling til en identitetsleverandør, SCIM-tilordning, delegering eller forvaltning av en
+  rolle, og aldri rollen **Owner** eller **SystemAdmin**. Identity avviser hver av dem, og
+  databasen avviser dem igjen: agentenes vern gjelder alle brukere som ikke er en person
+  (`00194_identity_integration_kind`). Den kan ikke være operatør på en delt stasjon.
+- **Rollene har én skriver.** En integrasjons roller endres bare på dens eget skjermbilde,
+  aldri under Roller og tilgang eller i en tilgangsgruppe, så den som forvalter en rolle,
+  kan ikke utvide hva et program får gjøre. Databasen avviser en rolle som skrives på annen
+  måte.
+- **Aldri en person.** Eierens brukeroperasjoner og Roller og tilgang svarer `404` for en
+  integrasjon, og ingen av dem viser den. Brukerkatalogen andre moduler leser, foreslår den
+  aldri i et søk eller en liste over hvem som har en tillatelse, og kobling av brukere til
+  arbeidsstyrkens leverandør foreslår den aldri. Et oppslag på id svarer den, med typen
+  `integration`, så en post den laget kan navngi den, med et **API**-merke på avataren. Den
+  kan ikke nevnes i et notat, varsles av en agent eller foreslås som ansvarlig for en
+  samtale.
+- **Hva en nøkkel kan kalle.** Bare operasjoner bak en tillatelse eller regelen
+  `anonymous`, og aldri en kontrakten merker `x-vantigo-api: never`: operasjonene til
+  identity, Entra, Google, Meta, Assistenten og agentene, nettleserflyter,
+  leverandør-webhooks, offentlige sider og operasjoner der arbeidet senere kjøres som
+  personen som startet det. Ingen nøkkel har en tillatelse under `identity:` eller
+  `agents:`, eller en som ikke kan delegeres, uansett hva integrasjonens roller sier.
+
+Integrasjoner og API-nøklene deres lages på skjermbildet **API-tilgang**, som kommer med neste
+del av denne funksjonen; inntil da har en installasjon ingen bruker av typen `integration`.
+
 ## Hastighetsbegrensninger
 
 Autentiseringsendepunktene er hastighetsbegrenset av en begrenser med faste vinduer,

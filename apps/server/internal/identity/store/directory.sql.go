@@ -24,7 +24,7 @@ CROSS JOIN LATERAL (
 ) o
 LEFT JOIN identity.scim_user_mappings m ON m.user_id = u.id
 WHERE NOT u.is_disabled
-  AND ($1::boolean OR u.kind = 'person')
+  AND (u.kind = 'person' OR ($1::boolean AND u.kind = 'agent'))
   AND u.pending_since IS NULL
   AND (NOT $2::boolean OR m.upstream_active IS NOT FALSE OR o.is_owner)
   AND (o.is_owner OR EXISTS (
@@ -70,7 +70,8 @@ type DirectoryPermissionHoldersRow struct {
 // access.go's permitted), or through a role among their direct roles and the
 // roles mapped to every active access group they are effectively a member of
 // — exactly EffectivePermissionForUser's rule (roles.sql). A delegation
-// grants no key. A user of kind agent is left out unless include_agents.
+// grants no key. A user of kind agent is left out unless include_agents, and
+// a user of kind integration always (API access design K4).
 func (q *Queries) DirectoryPermissionHolders(ctx context.Context, arg DirectoryPermissionHoldersParams) ([]DirectoryPermissionHoldersRow, error) {
 	rows, err := q.db.Query(ctx, directoryPermissionHolders, arg.IncludeAgents, arg.ScimEnabled, arg.PermissionKey)
 	if err != nil {
@@ -100,7 +101,7 @@ func (q *Queries) DirectoryPermissionHolders(ctx context.Context, arg DirectoryP
 const directorySearchUsers = `-- name: DirectorySearchUsers :many
 SELECT id, display_name, is_disabled, coalesce(preferred_language, '')::text AS preferred_language, kind
 FROM identity.users
-WHERE NOT is_disabled AND ($1::boolean OR kind = 'person') AND display_name ILIKE '%' || $2::text || '%' ESCAPE '\'
+WHERE NOT is_disabled AND (kind = 'person' OR ($1::boolean AND kind = 'agent')) AND display_name ILIKE '%' || $2::text || '%' ESCAPE '\'
 ORDER BY display_name, id
 LIMIT $3
 `
@@ -119,7 +120,8 @@ type DirectorySearchUsersRow struct {
 	Kind              string
 }
 
-// DirectorySearchUsers leaves out users of kind agent unless include_agents.
+// DirectorySearchUsers leaves out users of kind agent unless include_agents,
+// and users of kind integration always (API access design K4).
 func (q *Queries) DirectorySearchUsers(ctx context.Context, arg DirectorySearchUsersParams) ([]DirectorySearchUsersRow, error) {
 	rows, err := q.db.Query(ctx, directorySearchUsers, arg.IncludeAgents, arg.Pattern, arg.MaxRows)
 	if err != nil {

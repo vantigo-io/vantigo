@@ -413,3 +413,11 @@ The design is `docs/superpowers/specs/2026-11-05-communications-messenger-design
 - The last webhook's time is written **at most once every 30 seconds**.
 - The `user_email` quick reply is recognised by its payload not being Vantigo's and its
   text being an address (to be confirmed against a real Page).
+
+## API keys
+
+Every Meta operation is `x-vantigo-api: never`: the webhook (`getMetaWebhook`,
+`postMetaWebhook`), which Meta calls with its own signature, and the connection's settings,
+pages and subscriptions, which are an Owner's. See [integration
+users](/en/admin/authentication/#integration-users), and the marks' rules in [module
+boundaries](/en/contributing/module-boundaries/#the-rules).

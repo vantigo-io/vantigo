@@ -5991,3 +5991,17 @@ All under `/api/v1/staff`.
 Every operation also requires `staff:access`. The request and response shapes are in
 the contract, [`openapi/staff.yaml`](https://github.com/vantigo-io/vantigo/blob/main/openapi/staff.yaml),
 and in the API reference generated from it.
+
+## API keys
+
+These operations are `x-vantigo-api: never`, whatever a key's roles grant: the person's
+account and its pass, run and disable (`putStaffPeopleByIdAccount`,
+`postStaffPeopleByIdAccountPass`, `postStaffPeopleByIdAccountRun`,
+`postStaffPeopleByIdAccountDisable`, `postStaffAccountsRun`), which invite people and change
+their sign-in; the personal data in clear and its reveals (`getStaffPeopleByIdPersonalData`,
+`postStaffPeopleByIdBankAccountReveal`, `postStaffPeopleByIdNationalIdReveal`) and their
+writes (`putStaffPeopleByIdBankAccount`, `putStaffPeopleByIdNationalId`); and the payroll
+export (`getStaffPayrollExport`). `postStaffPeopleSimilarErased` writes nothing and is
+marked `x-vantigo-api: read`. See [integration
+users](/en/admin/authentication/#integration-users), and the marks' rules in [module
+boundaries](/en/contributing/module-boundaries/#the-rules).

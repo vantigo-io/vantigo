@@ -12,6 +12,13 @@ describe("UserAvatar", () => {
     expect(screen.getByLabelText("Hanna (AI)")).toBeInTheDocument();
   });
 
+  it("puts the API badge on an integration's avatar and says so in its label", () => {
+    wrap(<UserAvatar name="Webshop sync" kind="integration" />);
+    expect(screen.getByTestId("api-badge")).toHaveTextContent("API");
+    expect(screen.queryByTestId("ai-badge")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Webshop sync (API integration)")).toBeInTheDocument();
+  });
+
   it("is a plain avatar for a person", () => {
     wrap(<UserAvatar name="Kari Nordmann" kind="person" aria-label="Kari" />);
     expect(screen.queryByTestId("ai-badge")).not.toBeInTheDocument();

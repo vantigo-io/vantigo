@@ -8,11 +8,15 @@ import (
 	"github.com/google/uuid"
 )
 
-// UserKindPerson and UserKindAgent are UserEntry.Kind: a person signs in; an
-// agent is an AI user that never does (virtual employees design V5).
+// UserKindPerson, UserKindAgent and UserKindIntegration are UserEntry.Kind: a
+// person signs in; an agent is an AI user that never does (virtual employees
+// design V5); an integration is an external application's account, which acts
+// only with an API key on the request and never signs in either (API access
+// design K1).
 const (
-	UserKindPerson = "person"
-	UserKindAgent  = "agent"
+	UserKindPerson      = "person"
+	UserKindAgent       = "agent"
+	UserKindIntegration = "integration"
 )
 
 // AgentAddressDomain is the domain of every agent user's address,
