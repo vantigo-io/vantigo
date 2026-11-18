@@ -1067,9 +1067,13 @@ rate_limited` med `Retry-After`, i kroppen alle hastighetsgrenser skriver.
 
 Tellingen ligger i `platform.rate_limit` som de andre, men en nøkkelforespørsel venter ikke på
 den: vinduets første forespørsel registrerer et treff der, og hver replika teller resten i
-prosessen og legger dem til den delte raden én gang i sekundet, og leser tilbake det de andre la
-til. Replikaene kan til sammen slippe gjennom opptil ett sekunds forespørsler mer enn grensen. En
-replika som stopper, mister høyst ett sekund av tellingen.
+prosessen, og en tømmer legger dem til den delte raden hvert sekund, enten det kommer flere
+forespørsler eller ikke, og leser tilbake det de andre la til, og en gang til når begrenseren
+lukkes ved avslutning. En tømming legger bare til i raden for vinduet treffene ble talt i: treff
+fra et vindu raden siden har forlatt, droppes. Hver replika ligger derfor høyst om lag ett sekund
+av sin egen trafikk etter, og replikaene kan til sammen slippe gjennom opptil ett sekunds
+forespørsler mer enn grensen. En replika som stopper uten å avslutte, mister høyst ett sekund av
+tellingen.
 
 ### Forespørselsloggen
 
@@ -1081,7 +1085,8 @@ integrasjonen, metoden, `operationId`, statusen, for en avvisning årsaken (`exp
 ikke passet noen nøkkel, registreres ikke. En kropp, en spørrestreng og verdien til en
 stiparameter registreres aldri, siden de kan inneholde personopplysninger; sporings-ID-en finner
 forespørselen i serverens spor og logglinjer. Det er her du ser hva en nøkkel gjorde, og hvorfor
-den ble avvist: klienten får bare `401 unauthenticated` for de fleste avvisningene. Eiere leser
+den ble avvist: en tilbakekalt nøkkel, en deaktivert eller arkivert integrasjon og en forespørsel
+fra utenfor nøkkelens nettverk får alle bare `401 unauthenticated`. Eiere leser
 den i integrasjonens fane **Forespørsler**
 ([API-tilgang](/nb/admin/api-access/#forespørselsloggen)).
 
@@ -1095,7 +1100,10 @@ metrikken `vantigo.identity.api_requests.dropped` (attributtet `reason`: `queue_
 Tabellen er partisjonert per UTC-døgn på `at`, med en DEFAULT-partisjon, så en skriving aldri
 feiler fordi en partisjon mangler. Arbeideren `identity.api-keys` lager partisjonene for i dag og
 de neste 6 dagene, flytter rader som havnet i DEFAULT, til en partisjon for dagen sin, og sletter
-dagene eldre enn 30 ([Konfigurasjon](/nb/admin/configuration/#arbeidere)). Tabellen har ingen
+det som er eldre enn de 30 dagene som beholdes, i dag medregnet
+([Konfigurasjon](/nb/admin/configuration/#arbeidere)). Hver dag lages i en egen transaksjon som
+venter høyst 5 sekunder (`lock_timeout`) på tabellens lås; en dag som ikke får den, logges og
+lages ved neste syklus, og varslene sendes uansett. Tabellen har ingen
 fremmednøkkel til `api_keys`: en nøkkels rad slettes 90 dager etter at den utløp, og loggradene
 eldes ut av seg selv.
 

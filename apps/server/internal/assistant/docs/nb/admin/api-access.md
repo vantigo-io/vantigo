@@ -215,8 +215,10 @@ ventes. Et program bør senke farten når `RateLimit-Remaining` nærmer seg null
 `Retry-After` når det får `429`.
 
 Tellingen holdes i databasen, så alle replikaer ser den samme. Hver replika legger sine egne
-forespørsler til den én gang i sekundet, så et arbeidsområde med flere replikaer kan slippe
-gjennom opptil ett sekunds forespørsler mer enn grensen før alle avviser.
+forespørsler til den hvert sekund, enten det kommer flere eller ikke, og en gang til når den
+stenges ned, så den ligger høyst om lag ett sekund av sine egne forespørsler etter. Et
+arbeidsområde med flere replikaer kan derfor slippe gjennom opptil ett sekunds forespørsler mer
+enn grensen før alle avviser.
 
 ## Svarene en nøkkel kan få
 
@@ -243,7 +245,7 @@ er noe å knytte den til.
   videresending*, *4xx avvist* og *5xx serverfeil* — som et diagram og en tabell. Dagene er
   UTC-døgn.
 - **Mest brukt** viser de ti operasjonene som er kalt mest.
-- **Siste forespørsler** viser de 200 nyeste: når, nøkkelen, metoden og operasjonen, statusen
+- **Siste forespørsler** viser de 200 nyeste: når, i UTC, nøkkelen, metoden og operasjonen, statusen
   — med årsaken når den ble avvist — hvor lang tid den tok, klientens adresse og sporings-ID-en.
   En nøkkel med slettet rad, 90 dager etter at den utløp, vises som *Slettet nøkkel*.
 - **Nøkkel**, **Status**, **Avvist fordi** og **Dag** filtrerer alle tre.
@@ -262,8 +264,10 @@ En avvisning registreres med årsaken:
 | *Ikke tillatt av rollene* (`forbidden`) | rollene, eller begrensningen, gir ikke det operasjonen trenger |
 | *Over grensen for forespørsler* (`rate_limited`) | integrasjonen hadde gjort så mange forespørsler som **Hastighetsgrense** tillot det minuttet |
 
-Klienten ser `401 unauthenticated` for de fleste av disse, så den får ikke vite noe om
-nøkkelen; loggen sier hva det var.
+En tilbakekalt nøkkel, en deaktivert eller arkivert integrasjon og en forespørsel fra utenfor
+nettverkene får alle `401 unauthenticated`, slik en ukjent nøkkel gjør, så klienten får ikke
+vite noe om nøkkelen; loggen sier hva det var. De andre får koden i
+[Svarene en nøkkel kan få](#svarene-en-nøkkel-kan-få).
 
 Loggen inneholder operasjonen, aldri stien, en spørrestreng eller en kropp, fordi de kan
 inneholde personopplysninger. Sporings-ID-en finner forespørselen i serverens egne spor og
@@ -273,7 +277,7 @@ Når databasen ikke holder følge, droppes rader i stedet for at forespørsler g
 telles i metrikken `vantigo.identity.api_requests.dropped`. Loggen er en driftslogg, ikke
 revisjonssporet.
 
-Rader eldre enn 30 dager slettes av arbeideren `identity.api-keys`
+Loggen beholder 30 dager, i dag medregnet: eldre rader slettes av arbeideren `identity.api-keys`
 ([Konfigurasjon](/nb/admin/configuration/#arbeidere)). Er arbeideren slått av, slettes ingenting
 fra loggen.
 
@@ -290,6 +294,10 @@ fortsatt varselet.
 - En nøkkel som er rotert eller tilbakekalt, får ingen: å rotere nøkkelen er det varselet ber om.
 - Varselet nevner nøkkelen og integrasjonen ved navn, aldri selve nøkkelen, og sier at nøkkelen
   skal roteres under **Administrer arbeidsområde › API-tilgang** og den nye gis til programmet.
+- Et varsel som ikke nådde noen — e-posten feilet, eller ingen mottaker er aktiv med en adresse
+  e-post når fram til — prøves igjen ved neste kjøring. Et varsel som nådde noen, sendes ikke på
+  nytt til dem det ikke nådde. Stopper serveren i øyeblikket mellom at et varsel registreres og
+  sendes, sendes ikke det varselet: hvert går høyst én gang.
 
 Varslene sendes av arbeideren `identity.api-keys`; er den slått av, sendes ingen.
 
