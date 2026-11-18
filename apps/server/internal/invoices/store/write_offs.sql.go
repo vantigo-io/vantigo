@@ -118,6 +118,30 @@ func (q *Queries) LiveWriteOff(ctx context.Context, invoiceID int64) (InvoicesWr
 	return i, err
 }
 
+const undoAutoWriteOffs = `-- name: UndoAutoWriteOffs :execrows
+UPDATE invoices.write_offs
+SET undone_at = $1::timestamptz, undone_by_user_id = $2::uuid, undo_reason = 'payment removed'
+WHERE invoice_id = $3 AND undone_at IS NULL AND source = 'auto'
+`
+
+type UndoAutoWriteOffsParams struct {
+	UndoneAt       time.Time
+	UndoneByUserID uuid.UUID
+	InvoiceID      int64
+}
+
+// UndoAutoWriteOffs undoes the invoice's standing automatic rounding
+// write-off (invoices phase 6 design I15) when the payment it rounded off is
+// removed or reversed, by the person who did so. The caller holds the
+// invoice FOR UPDATE.
+func (q *Queries) UndoAutoWriteOffs(ctx context.Context, arg UndoAutoWriteOffsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, undoAutoWriteOffs, arg.UndoneAt, arg.UndoneByUserID, arg.InvoiceID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const undoWriteOff = `-- name: UndoWriteOff :execrows
 UPDATE invoices.write_offs
 SET undone_at = $1::timestamptz, undone_by_user_id = $2::uuid, undo_reason = $3::text

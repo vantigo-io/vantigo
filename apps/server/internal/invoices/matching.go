@@ -483,7 +483,7 @@ func (s *server) matchLine(ctx context.Context, lineID, invoiceID int64, caller 
 		}
 		// What the payment leaves open may be a small difference (I15).
 		if principal.Sign() > 0 {
-			if err := roundOffResidual(ctx, txq, inv, line.BookedOn, now); err != nil {
+			if err := roundOffResidual(ctx, txq, inv, principal, line.BookedOn, now); err != nil {
 				return err
 			}
 		}
