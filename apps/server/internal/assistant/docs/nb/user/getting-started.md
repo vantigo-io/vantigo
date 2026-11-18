@@ -128,6 +128,7 @@ avsluttes etter planen.
 - **E-post** — vises, men kan ikke endres her: "E-postadressen din administreres av
   innloggingsleverandøren." En eier endrer den fra arbeidsområdets brukerliste.
 - **Foretrukket språk** — **Automatisk**, **Norsk** eller **Engelsk**.
+- **Utseende** — **Automatisk**, **Lys** eller **Mørk** (under).
 - **Tidssone** — **Samme som arbeidsområdet**, eller en egen sone (under).
 
 Velg **Lagre profil**. Språkvalget endrer hele grensesnittet med en gang, og datoer,
@@ -140,6 +141,25 @@ fakturaen oppgir, og kunden kan bytte. Den ber ikke Vantigo om noe fra en konto 
 den lenker til. [Svarsiden](/nb/user/calendar/#hvis-du-har-fått-en-invitasjon) i
 Kalender, som den du inviterer åpner fra invitasjonen sin, er likedan: den er ikke
 innlogget, ber ikke om noen økt, og bruker språket invitasjonen ble skrevet på.
+
+### Velg lys eller mørk
+
+Vantigo finnes i en lys og en mørk fargemodus, og alle appene følger den du velger.
+**Automatisk** følger datamaskinens egen innstilling, så Vantigo blir mørkt når
+datamaskinen din blir det, for eksempel om kvelden. Velg **Lys** eller **Mørk** i
+feltet **Utseende** og **Lagre profil** for å beholde én uansett hva datamaskinen gjør.
+
+For å bytte raskt åpner du avatar-menyen og velger **Bytt til mørk modus** eller
+**Bytt til lys modus**. Skjermen endrer seg med en gang, og valget lagres med kontoen
+din, så det gjelder på alle enheter du logger inn fra. Det erstatter **Automatisk**:
+for å følge datamaskinen igjen setter du **Utseende** tilbake til **Automatisk** på
+siden **Profil**.
+
+Før du logger inn, og på de offentlige sidene som aldri er innlogget, har Vantigo ingen
+konto å lese valget ditt fra. Da brukes det denne nettleseren sist hadde, eller
+datamaskinens innstilling når det ikke finnes noe, så innloggingssiden er allerede
+mørk for den som jobber i mørk modus. [Dokumentasjonsnettstedet](https://docs.vantigo.io)
+har sin egen lys/mørk-bryter, som ikke deles med appen.
 
 ### Velg tidssonen din
 

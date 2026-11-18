@@ -129,6 +129,7 @@ Open the avatar menu at the top right and choose **Settings**. The **Profile** p
 - **Email** — shown but not editable here: "Your email is managed by your sign-in
   provider." An Owner changes it from the workspace's user list.
 - **Preferred language** — **Automatic**, **Norwegian** or **English**.
+- **Appearance** — **Automatic**, **Light** or **Dark** (below).
 - **Time zone** — **Same as the workspace**, or a zone of your own (below).
 
 Choose **Save profile**. The language setting changes the whole interface at once,
@@ -141,6 +142,24 @@ an account — no session, no maintenance notice — and sends no referrer to th
 links to. Calendar's [answer page](/en/user/calendar/#if-you-received-an-invitation),
 which someone you invite opens from their invitation, is the same: not signed in, it
 asks for no session, and it speaks the language the invitation was written in.
+
+### Choose light or dark
+
+Vantigo comes in a light and a dark colour scheme, and every app follows the one you
+choose. **Automatic** follows your computer's own setting, so Vantigo goes dark when
+your computer does, in the evening for example. Choose **Light** or **Dark** in the
+**Appearance** field and **Save profile** to keep one whatever your computer does.
+
+To switch quickly, open the avatar menu and choose **Switch to dark mode** or **Switch
+to light mode**. The screen changes at once and the choice is saved with your account,
+so it applies on every device you sign in from. It replaces **Automatic**: to follow
+the computer again, set **Appearance** back to **Automatic** on the **Profile** page.
+
+Before you sign in, and on the public pages that are never signed in, Vantigo has no
+account to read your choice from. It uses the one this browser last had, or your
+computer's setting when there is none, so the sign-in page is already dark for someone
+who works in dark. The [documentation site](https://docs.vantigo.io) has its own
+light/dark switch, which is not shared with the app.
 
 ### Choose your time zone
 

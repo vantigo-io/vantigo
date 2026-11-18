@@ -659,7 +659,7 @@ on no list.
 | Method | Path |
 | --- | --- |
 | `GET`, `HEAD` | `/pay` (the pay page; any query) |
-| `GET`, `HEAD` | `/assets/…` (the page's bundle), `/favicon.png` |
+| `GET`, `HEAD` | `/assets/…` (the page's bundle), `/favicon.png`, `/favicon-dark.png` |
 | `POST` | `/api/v1/invoices/pay/read` (the page's read; the token in the body) |
 | `POST` | `/api/v1/invoices/pay/attempts` (a payment started) |
 | `GET` | `/api/v1/invoices/pay/attempts/{reference}` (its status) |
