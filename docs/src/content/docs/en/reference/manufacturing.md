@@ -2750,6 +2750,8 @@ generated API reference (`/en/reference/api/manufacturing/`).
 ## API keys
 
 `manufacturing:costs-view` cannot be delegated, so no API key holds it, and
-`getManufacturingProductionCostReport` is `x-vantigo-api: never`. See [integration
+`getManufacturingProductionCostReport` is `x-vantigo-api: never`. An integration is responsible for nothing and logs no time on the floor: a manufacturing
+order naming one as its `responsibleUserId`, or a time log (`addManufacturingTimeLog`) naming
+one as its `userId`, answers `400` *No such user*. See [integration
 users](/en/admin/authentication/#integration-users), and the marks' rules in [module
 boundaries](/en/contributing/module-boundaries/#the-rules).

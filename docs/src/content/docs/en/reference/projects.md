@@ -1843,3 +1843,11 @@ The Assistant can point at these controls in a guided tour ([the registry](/en/r
 | `projects.projects.form-name` | `/projects` | Project name |
 | `projects.projects.form-code` | `/projects` | Project code |
 | `projects.projects.form-save` | `/projects` | Create |
+
+## API keys
+
+An integration takes no role on a project and is no task's assignee:
+`putProjectsByIdRolesByUserId` for one answers `400` on `userId`, and a task naming one as its
+`assigneeUserId` answers `400` on that field, each as for an unknown user.
+See [integration users](/en/admin/authentication/#integration-users), and the marks' rules in
+[module boundaries](/en/contributing/module-boundaries/#the-rules).

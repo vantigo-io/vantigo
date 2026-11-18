@@ -2770,6 +2770,7 @@ operations; the personal feed address (`getCalendarFeed`, `postCalendarFeedByVar
 `deleteCalendarFeedByVariant`); mailbox sync (`putCalendarMailboxSync`,
 `postCalendarMailboxSyncRun`); and subscriptions (`postCalendarSubscriptions`,
 `putCalendarSubscriptionsById`, `postCalendarSubscriptionsByIdRefresh`). Their workers act
-as the person who set them up, which an integration never is. See [integration
+as the person who set them up, which an integration never is. An integration attends nothing: an appointment naming one among its attendees answers `400`
+on that attendee, *No active user has this id*. See [integration
 users](/en/admin/authentication/#integration-users), and the marks' rules in [module
 boundaries](/en/contributing/module-boundaries/#the-rules).

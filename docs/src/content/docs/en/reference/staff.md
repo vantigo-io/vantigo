@@ -6002,6 +6002,7 @@ their sign-in; the personal data in clear and its reveals (`getStaffPeopleByIdPe
 `postStaffPeopleByIdBankAccountReveal`, `postStaffPeopleByIdNationalIdReveal`) and their
 writes (`putStaffPeopleByIdBankAccount`, `putStaffPeopleByIdNationalId`); and the payroll
 export (`getStaffPayrollExport`). `postStaffPeopleSimilarErased` writes nothing and is
-marked `x-vantigo-api: read`. See [integration
+marked `x-vantigo-api: read`. An integration is no employee: linking a person to one (`putStaffPeopleByIdUser`) answers
+`400` *No user has this id*. See [integration
 users](/en/admin/authentication/#integration-users), and the marks' rules in [module
 boundaries](/en/contributing/module-boundaries/#the-rules).

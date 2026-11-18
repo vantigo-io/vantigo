@@ -1058,5 +1058,6 @@ job runs and *waiting for you* while it waits for **Continue**, and the screen r
 
 Every operation of the Assistant is `x-vantigo-api: never`. A key does not drive the
 Assistant: its conversations, runs and pending actions are a person's, under that person's
-session. See [integration users](/en/admin/authentication/#integration-users), and the
+session. An integration has no Assistant: the person's switch (`getAssistantPerson`,
+`putAssistantPerson`) answers `404` for one. See [integration users](/en/admin/authentication/#integration-users), and the
 marks' rules in [module boundaries](/en/contributing/module-boundaries/#the-rules).

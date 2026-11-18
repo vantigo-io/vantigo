@@ -3805,3 +3805,12 @@ The Assistant can point at these controls in a guided tour ([the registry](/en/r
 | `customers.customer.add-contact` | `/customers/{customerId}` | Add contact |
 | `customers.customer.contact-search` | `/customers/{customerId}` | Search for a contact |
 | `customers.customer.contact-save` | `/customers/{customerId}` | Add contact |
+
+## API keys
+
+An integration owns no customer and is no follow-up's assignee: naming one as the owner
+(`putCustomersByIdOwner`, `ownerUserId`) or as a follow-up's `assigneeUserId` answers `400`
+with the field error an unknown user gets, so a key cannot make itself or another integration
+responsible for a customer.
+See [integration users](/en/admin/authentication/#integration-users), and the marks' rules in
+[module boundaries](/en/contributing/module-boundaries/#the-rules).

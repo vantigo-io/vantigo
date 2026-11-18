@@ -1,6 +1,6 @@
 ---
 title: "Identity, authentication and deployment"
-description: "Local accounts, users Staff manages, the accounts it announces and the roles it may give, shared shop-floor stations with their pairing, PINs, badges and backoff, the workforce OIDC provider and SCIM, email, proxy trust, APP_SECRET-derived key material and migrations."
+description: "Local accounts, users Staff manages, the accounts it announces and the roles it may give, integrations and how their API keys are judged, shared shop-floor stations with their pairing, PINs, badges and backoff, the workforce OIDC provider and SCIM, email, proxy trust, APP_SECRET-derived key material and migrations."
 sidebar:
   order: 20
 sources:
@@ -930,9 +930,12 @@ session.
   stewardship of a role, and never the **Owner** or **SystemAdmin** role. Identity refuses
   each, and the database refuses them again: the agents' guards cover every user who is not
   a person (`00194_identity_integration_kind`). It cannot be a shared station's operator.
-- **Its roles have one writer.** An integration's roles are changed only on its own screen,
-  never in Roles & access or an access group, so a steward of a role cannot widen what an
-  application may do. The database refuses a role written any other way.
+- **Its roles have one writer.** An integration's roles are changed only by an Owner on its
+  own page under **API access**, never in Roles & access or an access group, and only custom
+  roles are accepted (`400 invalid_roles` for a built-in one). The database refuses a role
+  written any other way. A delegated administrator who stewards a role an integration holds
+  cannot edit that role (`403 role_edit_denied`): adding a permission to it would widen every
+  key of the integration, which only an Owner may do.
 - **Not a person anywhere.** The Owner's user operations and Roles & access answer `404`
   for an integration, and neither lists one. The user directory other modules read never
   offers one in a search or a permission holders' list, and connecting users to the
@@ -947,8 +950,77 @@ session.
   holds an `identity:` or `agents:` permission, or one that cannot be delegated, whatever
   the integration's roles say.
 
-Integrations and their API keys are made on the **API access** screen, which comes with the
-next part of this feature; until then an installation has no user of kind `integration`.
+- **Not an owner, an assignee or a member.** A module that stores a person picked by id
+  refuses an integration there as it refuses an unknown user: a customer's owner, a
+  follow-up's or a task's assignee, a conversation's assignee, an appointment's attendee, a
+  project role, a person's rate,
+  an expense's or a claim's owner, a staff link, a purchase order's buyer, a manufacturing
+  order's responsible, a time log's person, an article's member, an Assistant switch and a
+  quote's or an order's salesperson. A quote or an order a key creates without naming a
+  salesperson has none. Each module's reference says what it answers.
+
+Integrations and their API keys are made under **Workspace admin › API access**
+([API access](/en/admin/api-access/)).
+
+### How a key is read
+
+A request whose one `Authorization` header is `Bearer vtg_…` (the scheme in any case) is
+judged as that key's alone: a session cookie it also carries is not read, and a refused key
+never clears the cookie, so a bad key never signs a person out. A `Bearer` token without the
+`vtg_` prefix is not a key, and the request is judged as it would be without it. A request with
+several `Authorization` headers is refused `401 unauthenticated` on every rule but SCIM's. A key
+in a query string or a cookie is never read.
+
+The key is checked by its checksum first, so a mistyped one is refused without a database
+read. Then one indexed read finds it with its integration; nothing is cached, so a revoked key,
+a disabled integration or a changed role takes effect on the next request on every replica.
+`last_used_at` and `last_used_ip` are written at most once a minute per key, outside the
+request's transaction, and not for a request from outside the key's networks.
+
+Before the operation's rule, two marks are checked: an operation marked
+`x-vantigo-api: never` answers `403 api_not_available`, and a read-only key on an operation not
+marked a read answers `403 api_key_read_only`. Then the rule decides:
+
+| Rule | A valid key |
+| --- | --- |
+| `permission:…` | Evaluated as the integration's user. Every permission named must be held through its roles, not be one no key ever holds (every `identity:` and `agents:` permission, and every one that cannot be delegated), and, when the key is narrowed, be in its narrowing |
+| `anonymous` | Admitted, with the integration as the principal, so a handler may attribute to it |
+| `session` | `403 forbidden`: an account's self-service is a person's, the operations open to agents included |
+| `policy:…` | `403 forbidden`: a key never manages users, roles, SSO, the workspace or keys |
+| `scim` | Not a key request: the SCIM bearer is read as before, and a `vtg_` token fails it with `401` |
+
+The principal of a key request is the integration's user, with its roles, no session, MFA not
+verified and `Via` of kind `api_key` naming the key. The rule that holds Owners to MFA does not
+apply, because an integration is never an Owner.
+
+### What a refused key is answered
+
+Every refusal is written in the API's usual JSON error body, `{"error": {"code", "message"}}`.
+
+| Status | Code | When |
+| --- | --- | --- |
+| `401` | `unauthenticated` | A malformed, unknown or revoked key; a disabled or archived integration; a request from outside the key's networks; several `Authorization` headers |
+| `401` | `api_key_expired` | The key matched but has expired |
+| `403` | `forbidden` | A session or policy rule, or a permission the key does not reach |
+| `403` | `api_not_available` | The operation is `x-vantigo-api: never` |
+| `403` | `api_key_read_only` | A read-only key on an operation that is not a read |
+| `409` | `api_key_already_rolled` | Rolling a key that has been rolled already |
+| `409` | `api_key_revoked` | Rolling a key that is revoked or has expired |
+
+A key's `401` carries `WWW-Authenticate: Bearer realm="vantigo"`. A key request is not yet held
+to a rate limit of its own; making and rolling keys is, under `UserManagement` (below).
+
+### What is audited for integrations
+
+`integration.created`, `integration.updated`, `integration.roles_changed`,
+`integration.disabled`, `integration.enabled`, `integration.archived`, `api_key.created`,
+`api_key.rolled` and `api_key.revoked`, each on the change's own transaction with the acting
+Owner and whether they used MFA, and `api_key.expired`, written once per key by the
+`identity.api-keys` worker as `system:api-keys`. The before and after carry names, roles, the
+narrowing, read-only, the networks and the expiry, never a key's hash or secret; the target is
+the integration's user. A key's secret is never logged, never in an error, never in a trace and
+never in the audit trail: it appears only in the answer that creates or rolls it, which is sent
+with `Cache-Control: no-store`.
 
 ## Rate limits
 
@@ -966,7 +1038,7 @@ restarts** rather than per process. The limit is applied before the access check
 | `PasswordRecovery` | 10 / 15 minutes | Recovery request, reset and account password change |
 | `Invitations` | 30 / minute | Owner invitation management |
 | `InvitationAcceptance` | 20 / minute | Invitation validate and accept |
-| `UserManagement` | 30 / minute | Owner user management, adoption for Staff and the employee roles |
+| `UserManagement` | 30 / minute | Owner user management, adoption for Staff, the employee roles, and making or rolling an API key |
 | `OwnerAvatarRead` | 300 / minute | Owner avatar reads |
 | `StationPairing` | 10 / 15 minutes | Pairing a station with a code |
 | `StationPairingGlobal` | 60 / hour | Pairing attempts across the installation, whatever their addresses |
