@@ -73,12 +73,16 @@ func TestRun_SeedBooksTheDemo(t *testing.T) {
 	// The workshop's seed ran in the same seed as the books.
 	expect("the workshop's manufacturing orders", `SELECT count(*)::text FROM manufacturing.orders`, "6")
 	expect("the trial balance", `SELECT coalesce(sum(amount), 0)::text FROM accounting.postings`, "0.00")
-	// Receivables on the ledger are what Invoices has open.
-	expect("receivables less Invoices' open amount", `
+	// Receivables on the ledger are what Invoices has open, less the
+	// customers' credit, which is on receivables too (invoices phase 6 design
+	// I16).
+	expect("receivables less Invoices' open amount and credit", `
 		SELECT ((SELECT coalesce(sum(p.amount), 0) FROM accounting.postings p
 		         JOIN accounting.accounts a ON a.id = p.account_id WHERE a.system_role = 'receivables')
 		      - (SELECT coalesce(sum(i.gross_total - invoices.settled_amount(i.id)), 0) FROM invoices.invoices i
-		         WHERE i.kind = 'invoice' AND i.status = 'issued'))::text`, "0.00")
+		         WHERE i.kind = 'invoice' AND i.status = 'issued')
+		      + (SELECT coalesce(sum(amount_nok), 0) FROM invoices.customer_credits))::text`, "0.00")
+	expect("the demo customer's credit", `SELECT coalesce(sum(amount), 0)::text FROM invoices.customer_credits`, "300.00")
 	// Payables on the ledger are the supplier ledger, and something is owed.
 	expect("payables less the supplier ledger", `
 		SELECT ((SELECT coalesce(sum(p.amount), 0) FROM accounting.postings p
