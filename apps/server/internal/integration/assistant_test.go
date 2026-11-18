@@ -208,6 +208,20 @@ var markedByHand = map[string]string{
 	"registerManufacturingWorkOrderQuantity": "never",
 	"uploadManufacturingCheckPhoto":          "never",
 	"getManufacturingCheckPhoto":             "never",
+	// Integrations and their API keys (API access design K21): the Assistant
+	// never creates a credential, and who reaches the API is an Owner's.
+	"getIdentityIntegrations":                       "never",
+	"postIdentityIntegrations":                      "never",
+	"getIdentityIntegrationsById":                   "never",
+	"patchIdentityIntegrationsById":                 "never",
+	"putIdentityIntegrationsByIdRoles":              "never",
+	"postIdentityIntegrationsByIdDisable":           "never",
+	"postIdentityIntegrationsByIdEnable":            "never",
+	"postIdentityIntegrationsByIdArchive":           "never",
+	"postIdentityIntegrationsByIdKeys":              "never",
+	"postIdentityIntegrationsByIdKeysByKeyIdRoll":   "never",
+	"postIdentityIntegrationsByIdKeysByKeyIdRevoke": "never",
+
 	// Shared shop-floor stations (manufacturing phase 2 M129–M143): a station
 	// is a device and its operators people at it; a pairing code, a PIN and a
 	// badge are credentials, and which stations exist and what they reach is
