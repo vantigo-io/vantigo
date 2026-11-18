@@ -33,6 +33,7 @@ import {
   deleteAuthorizationRole,
   getAuthorizationMe,
   getUserAccess,
+  isCustomRole,
   listAuthorizationRoles,
   listAuthorizationUsers,
   listDelegations,
@@ -41,6 +42,7 @@ import {
   revokeDelegation,
   updateAuthorizationRole,
 } from "../../api/authorization";
+import { CustomRolePicker } from "../../components/custom-role-picker";
 import {
   translateHostPermissionCategory,
   translateHostPermissionDescription,
@@ -115,7 +117,7 @@ const RolesPage = () => {
   const scopeForCreation = scopes.find((item) => item.id === selectedScopeId && item.canCreateRoles);
   const stewardedRoleIds = new Set(scopes.flatMap((item) => item.stewardedRoleIds));
   const allRoles = roles.data ?? [];
-  const customRoles = allRoles.filter((role) => !role.isSystem && !role.isBuiltIn);
+  const customRoles = allRoles.filter(isCustomRole);
   const assignmentScope = scopes.find((item) => item.id === assignmentScopeId && item.assignableRoleIds.length > 0);
   const assignableRoleIds = new Set(
     isOwner ? customRoles.map((role) => role.id) : (assignmentScope?.assignableRoleIds ?? []),
@@ -412,9 +414,9 @@ const RolesPage = () => {
                       : access.data.permissions.map((key) => translateHostPermissionKey(key, t)).join(", ") ||
                         t("admin.none")}
                   </Text>
-                  <MultiSelect
+                  <CustomRolePicker
                     label={t("admin.assignableRoles")}
-                    data={assignableRoles.map((role) => ({ value: role.id, label: role.displayName }))}
+                    roles={assignableRoles}
                     value={assignableRoles
                       .filter((role) => access.data?.roleIds?.includes(role.id))
                       .map((role) => role.id)}

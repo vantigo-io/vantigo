@@ -137,6 +137,7 @@ import { Route as TimePeopleRouteImport } from './routes/time/people'
 import { Route as TimeSettingsRouteImport } from './routes/time/settings'
 import { Route as WorkspaceIndexRouteImport } from './routes/workspace/index'
 import { Route as WorkspaceAiRouteImport } from './routes/workspace/ai'
+import { Route as WorkspaceApiAccessRouteImport } from './routes/workspace/api-access'
 import { Route as WorkspaceAssistantRouteImport } from './routes/workspace/assistant'
 import { Route as WorkspaceBankRouteImport } from './routes/workspace/bank'
 import { Route as WorkspaceEntraRouteImport } from './routes/workspace/entra'
@@ -242,6 +243,7 @@ import { Route as StaffGroupsIndexRouteImport } from './routes/staff/groups.inde
 import { Route as StaffGroupsIdRouteImport } from './routes/staff/groups.$id'
 import { Route as StaffPeopleIndexRouteImport } from './routes/staff/people.index'
 import { Route as StaffPeopleIdRouteImport } from './routes/staff/people.$id'
+import { Route as WorkspaceApiAccessIntegrationIdRouteImport } from './routes/workspace/api-access_.$integrationId'
 import { Route as WorkspaceEntraIndexRouteImport } from './routes/workspace/entra/index'
 import { Route as WorkspaceEntraAccountsRouteImport } from './routes/workspace/entra/accounts'
 import { Route as WorkspaceEntraConnectionRouteImport } from './routes/workspace/entra/connection'
@@ -911,6 +913,11 @@ const WorkspaceAiRoute = WorkspaceAiRouteImport.update({
   path: '/ai',
   getParentRoute: () => WorkspaceRoute,
 } as any)
+const WorkspaceApiAccessRoute = WorkspaceApiAccessRouteImport.update({
+  id: '/api-access',
+  path: '/api-access',
+  getParentRoute: () => WorkspaceRoute,
+} as any)
 const WorkspaceAssistantRoute = WorkspaceAssistantRouteImport.update({
   id: '/assistant',
   path: '/assistant',
@@ -1480,6 +1487,12 @@ const StaffPeopleIdRoute = StaffPeopleIdRouteImport.update({
   path: '/people/$id',
   getParentRoute: () => StaffRoute,
 } as any)
+const WorkspaceApiAccessIntegrationIdRoute =
+  WorkspaceApiAccessIntegrationIdRouteImport.update({
+    id: '/api-access_/$integrationId',
+    path: '/api-access/$integrationId',
+    getParentRoute: () => WorkspaceRoute,
+  } as any)
 const WorkspaceEntraIndexRoute = WorkspaceEntraIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -1725,6 +1738,7 @@ export interface FileRoutesByFullPath {
   '/time/people': typeof TimePeopleRoute
   '/time/settings': typeof TimeSettingsRoute
   '/workspace/ai': typeof WorkspaceAiRoute
+  '/workspace/api-access': typeof WorkspaceApiAccessRoute
   '/workspace/assistant': typeof WorkspaceAssistantRoute
   '/workspace/bank': typeof WorkspaceBankRoute
   '/workspace/entra': typeof WorkspaceEntraRouteWithChildren
@@ -1820,6 +1834,7 @@ export interface FileRoutesByFullPath {
   '/purchasing/suppliers/$supplierId': typeof PurchasingSuppliersSupplierIdRoute
   '/staff/groups/$id': typeof StaffGroupsIdRoute
   '/staff/people/$id': typeof StaffPeopleIdRoute
+  '/workspace/api-access/$integrationId': typeof WorkspaceApiAccessIntegrationIdRoute
   '/workspace/entra/accounts': typeof WorkspaceEntraAccountsRoute
   '/workspace/entra/connection': typeof WorkspaceEntraConnectionRoute
   '/workspace/entra/outlook': typeof WorkspaceEntraOutlookRoute
@@ -1959,6 +1974,7 @@ export interface FileRoutesByTo {
   '/time/people': typeof TimePeopleRoute
   '/time/settings': typeof TimeSettingsRoute
   '/workspace/ai': typeof WorkspaceAiRoute
+  '/workspace/api-access': typeof WorkspaceApiAccessRoute
   '/workspace/assistant': typeof WorkspaceAssistantRoute
   '/workspace/bank': typeof WorkspaceBankRoute
   '/workspace/invitations': typeof WorkspaceInvitationsRoute
@@ -2052,6 +2068,7 @@ export interface FileRoutesByTo {
   '/purchasing/suppliers/$supplierId': typeof PurchasingSuppliersSupplierIdRoute
   '/staff/groups/$id': typeof StaffGroupsIdRoute
   '/staff/people/$id': typeof StaffPeopleIdRoute
+  '/workspace/api-access/$integrationId': typeof WorkspaceApiAccessIntegrationIdRoute
   '/workspace/entra/accounts': typeof WorkspaceEntraAccountsRoute
   '/workspace/entra/connection': typeof WorkspaceEntraConnectionRoute
   '/workspace/entra/outlook': typeof WorkspaceEntraOutlookRoute
@@ -2217,6 +2234,7 @@ export interface FileRoutesById {
   '/time/people': typeof TimePeopleRoute
   '/time/settings': typeof TimeSettingsRoute
   '/workspace/ai': typeof WorkspaceAiRoute
+  '/workspace/api-access': typeof WorkspaceApiAccessRoute
   '/workspace/assistant': typeof WorkspaceAssistantRoute
   '/workspace/bank': typeof WorkspaceBankRoute
   '/workspace/entra': typeof WorkspaceEntraRouteWithChildren
@@ -2312,6 +2330,7 @@ export interface FileRoutesById {
   '/purchasing/suppliers/$supplierId': typeof PurchasingSuppliersSupplierIdRoute
   '/staff/groups/$id': typeof StaffGroupsIdRoute
   '/staff/people/$id': typeof StaffPeopleIdRoute
+  '/workspace/api-access_/$integrationId': typeof WorkspaceApiAccessIntegrationIdRoute
   '/workspace/entra/accounts': typeof WorkspaceEntraAccountsRoute
   '/workspace/entra/connection': typeof WorkspaceEntraConnectionRoute
   '/workspace/entra/outlook': typeof WorkspaceEntraOutlookRoute
@@ -2478,6 +2497,7 @@ export interface FileRouteTypes {
     | '/time/people'
     | '/time/settings'
     | '/workspace/ai'
+    | '/workspace/api-access'
     | '/workspace/assistant'
     | '/workspace/bank'
     | '/workspace/entra'
@@ -2573,6 +2593,7 @@ export interface FileRouteTypes {
     | '/purchasing/suppliers/$supplierId'
     | '/staff/groups/$id'
     | '/staff/people/$id'
+    | '/workspace/api-access/$integrationId'
     | '/workspace/entra/accounts'
     | '/workspace/entra/connection'
     | '/workspace/entra/outlook'
@@ -2712,6 +2733,7 @@ export interface FileRouteTypes {
     | '/time/people'
     | '/time/settings'
     | '/workspace/ai'
+    | '/workspace/api-access'
     | '/workspace/assistant'
     | '/workspace/bank'
     | '/workspace/invitations'
@@ -2805,6 +2827,7 @@ export interface FileRouteTypes {
     | '/purchasing/suppliers/$supplierId'
     | '/staff/groups/$id'
     | '/staff/people/$id'
+    | '/workspace/api-access/$integrationId'
     | '/workspace/entra/accounts'
     | '/workspace/entra/connection'
     | '/workspace/entra/outlook'
@@ -2969,6 +2992,7 @@ export interface FileRouteTypes {
     | '/time/people'
     | '/time/settings'
     | '/workspace/ai'
+    | '/workspace/api-access'
     | '/workspace/assistant'
     | '/workspace/bank'
     | '/workspace/entra'
@@ -3064,6 +3088,7 @@ export interface FileRouteTypes {
     | '/purchasing/suppliers/$supplierId'
     | '/staff/groups/$id'
     | '/staff/people/$id'
+    | '/workspace/api-access_/$integrationId'
     | '/workspace/entra/accounts'
     | '/workspace/entra/connection'
     | '/workspace/entra/outlook'
@@ -4060,6 +4085,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof WorkspaceAiRouteImport
       parentRoute: typeof WorkspaceRoute
     }
+    '/workspace/api-access': {
+      id: '/workspace/api-access'
+      path: '/api-access'
+      fullPath: '/workspace/api-access'
+      preLoaderRoute: typeof WorkspaceApiAccessRouteImport
+      parentRoute: typeof WorkspaceRoute
+    }
     '/workspace/assistant': {
       id: '/workspace/assistant'
       path: '/assistant'
@@ -4794,6 +4826,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/staff/people/$id'
       preLoaderRoute: typeof StaffPeopleIdRouteImport
       parentRoute: typeof StaffRoute
+    }
+    '/workspace/api-access_/$integrationId': {
+      id: '/workspace/api-access_/$integrationId'
+      path: '/api-access/$integrationId'
+      fullPath: '/workspace/api-access/$integrationId'
+      preLoaderRoute: typeof WorkspaceApiAccessIntegrationIdRouteImport
+      parentRoute: typeof WorkspaceRoute
     }
     '/workspace/entra/': {
       id: '/workspace/entra/'
@@ -5642,6 +5681,7 @@ const WorkspaceGoogleRouteWithChildren = WorkspaceGoogleRoute._addFileChildren(
 
 interface WorkspaceRouteChildren {
   WorkspaceAiRoute: typeof WorkspaceAiRoute
+  WorkspaceApiAccessRoute: typeof WorkspaceApiAccessRoute
   WorkspaceAssistantRoute: typeof WorkspaceAssistantRoute
   WorkspaceBankRoute: typeof WorkspaceBankRoute
   WorkspaceEntraRoute: typeof WorkspaceEntraRouteWithChildren
@@ -5654,10 +5694,12 @@ interface WorkspaceRouteChildren {
   WorkspaceStationsRoute: typeof WorkspaceStationsRoute
   WorkspaceUsersRoute: typeof WorkspaceUsersRoute
   WorkspaceIndexRoute: typeof WorkspaceIndexRoute
+  WorkspaceApiAccessIntegrationIdRoute: typeof WorkspaceApiAccessIntegrationIdRoute
 }
 
 const WorkspaceRouteChildren: WorkspaceRouteChildren = {
   WorkspaceAiRoute: WorkspaceAiRoute,
+  WorkspaceApiAccessRoute: WorkspaceApiAccessRoute,
   WorkspaceAssistantRoute: WorkspaceAssistantRoute,
   WorkspaceBankRoute: WorkspaceBankRoute,
   WorkspaceEntraRoute: WorkspaceEntraRouteWithChildren,
@@ -5670,6 +5712,7 @@ const WorkspaceRouteChildren: WorkspaceRouteChildren = {
   WorkspaceStationsRoute: WorkspaceStationsRoute,
   WorkspaceUsersRoute: WorkspaceUsersRoute,
   WorkspaceIndexRoute: WorkspaceIndexRoute,
+  WorkspaceApiAccessIntegrationIdRoute: WorkspaceApiAccessIntegrationIdRoute,
 }
 
 const WorkspaceRouteWithChildren = WorkspaceRoute._addFileChildren(

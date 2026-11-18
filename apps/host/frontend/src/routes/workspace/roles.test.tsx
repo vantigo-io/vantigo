@@ -27,6 +27,7 @@ vi.mock("../../api/authorization", () => ({
   createDelegation: vi.fn(),
   deleteAuthorizationRole: vi.fn(),
   getUserAccess: vi.fn(),
+  isCustomRole: (one: AuthorizationRole) => !one.isSystem && !one.isBuiltIn,
   revokeDelegation: vi.fn(),
 }));
 

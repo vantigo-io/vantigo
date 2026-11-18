@@ -2,6 +2,7 @@ import {
   IconAddressBook,
   IconAdjustments,
   IconAlertTriangle,
+  IconApi,
   IconBarcode,
   IconBolt,
   IconBook,
@@ -822,6 +823,9 @@ export const spotlightNavSections: readonly NavSection[] = [
       },
     ],
   },
+  // Workspace admin's pages are reached from the avatar menu, not an app's sidebar. API access is
+  // the Owner's, and Spotlight finds it (API access design K22).
+  { items: [{ label: "navigation.apiAccess", to: "/workspace/api-access", icon: IconApi, ownerOnly: true }] },
   ...allNavSections,
   // External destinations open a new tab, which is not what a Spotlight jump does.
   ...accountMenuSections.map((section) => ({ ...section, items: section.items.filter((item) => !item.external) })),
@@ -881,6 +885,9 @@ export const areas: readonly AreaDefinition[] = [
             module: "manufacturing",
             requiredPermissions: ["identity:manage"],
           },
+          // The integrations and their API keys (API access design K22): the Owner's alone, as
+          // every one of its operations is policy:Owner+OwnerManagement.
+          { label: "navigation.apiAccess", to: "/workspace/api-access", icon: IconApi, ownerOnly: true },
         ],
       },
       // The tenant's connections to systems elsewhere (Integrations design T2).

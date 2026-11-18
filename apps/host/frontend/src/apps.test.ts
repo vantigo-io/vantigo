@@ -1017,6 +1017,7 @@ describe("the administration areas", () => {
       "/workspace/overview",
       "/workspace/users",
       "/workspace/invitations",
+      "/workspace/api-access",
       "/workspace/entra",
       "/workspace/google",
       "/workspace/bank",
@@ -1047,7 +1048,12 @@ describe("the administration areas", () => {
   it("hides Integrations, section and all, while the Entra, Google and Invoices modules are off", () => {
     const withoutEither = allModules.filter((key) => key !== "entra" && key !== "google" && key !== "invoices");
     const sections = workspaceFor(ownerOnWorkspace, withoutEither);
-    expect(workspacePaths(sections)).toEqual(["/workspace/overview", "/workspace/users", "/workspace/invitations"]);
+    expect(workspacePaths(sections)).toEqual([
+      "/workspace/overview",
+      "/workspace/users",
+      "/workspace/invitations",
+      "/workspace/api-access",
+    ]);
     expect(sections.map((section) => section.label)).toEqual([undefined]);
     expect(workspacePaths(workspaceFor({ ...visibility, permissions: ["entra:manage"] }, withoutEither))).toEqual([]);
     expect(workspacePaths(workspaceFor({ ...visibility, permissions: ["google:manage"] }, withoutEither))).toEqual([]);
@@ -1121,6 +1127,7 @@ describe("the administration areas", () => {
         "/workspace/overview",
         "/workspace/users",
         "/workspace/invitations",
+        "/workspace/api-access",
         "/workspace/entra",
         "/workspace/google",
         "/workspace/bank",
@@ -1157,6 +1164,7 @@ describe("the administration areas", () => {
         "/workspace/overview",
         "/workspace/users",
         "/workspace/invitations",
+        "/workspace/api-access",
         "/workspace/bank",
         "/workspace/ai",
         "/workspace/assistant",
@@ -1186,6 +1194,33 @@ describe("the administration areas", () => {
     it("is not offered to anyone but an Owner, whatever they hold", () => {
       expect(metaItem({ ...visibility, permissions: ["*"] })).toBe(false);
       expect(metaItem({ ...visibility, permissions: ["*"], canManageAuthorization: true })).toBe(false);
+    });
+  });
+
+  // API access (API access design K22): the Owner's page beside Stations, and a Spotlight destination.
+  describe("the API access item", () => {
+    const spotlightPaths = (context: NavVisibilityContext) =>
+      visibleNavSections(spotlightNavSections, { ...context, enabledModules: allModules }).flatMap((section) =>
+        section.items.map((item) => item.to),
+      );
+
+    it("is the Owner's, right after Stations, and has no permission or module of its own", () => {
+      const items = areaForKey("workspace").navSections[0].items;
+      const index = items.findIndex((one) => one.to === "/workspace/api-access");
+      expect(items[index - 1]?.to).toBe("/workspace/stations");
+      expect(items[index]).toMatchObject({ label: "navigation.apiAccess", ownerOnly: true });
+      expect(items[index]?.module).toBeUndefined();
+      expect(items[index]?.requiredPermissions).toBeUndefined();
+      expect(workspacePaths(workspaceFor(ownerOnWorkspace))).toContain("/workspace/api-access");
+      expect(spotlightPaths(ownerOnWorkspace)).toContain("/workspace/api-access");
+      expect(navigationCatalog.en["navigation.apiAccess"]).toBe("API access");
+      expect(navigationCatalog.nb["navigation.apiAccess"]).toBe("API-tilgang");
+    });
+
+    it("is hidden from anyone but an Owner, whatever they hold, in the sidebar and in Spotlight", () => {
+      const everything = { ...visibility, permissions: ["*"], canManageAuthorization: true };
+      expect(workspacePaths(workspaceFor(everything))).not.toContain("/workspace/api-access");
+      expect(spotlightPaths(everything)).not.toContain("/workspace/api-access");
     });
   });
 
@@ -1412,6 +1447,7 @@ describe("the Assistant app", () => {
       "/workspace/overview",
       "/workspace/users",
       "/workspace/invitations",
+      "/workspace/api-access",
       "/workspace/entra",
       "/workspace/google",
       "/workspace/bank",
