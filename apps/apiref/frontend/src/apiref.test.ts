@@ -10,7 +10,7 @@ const json = (status: number, body: unknown) =>
 
 type Mounted = { configuration: Record<string, unknown>; destroyed: boolean };
 
-function setup(options: { session: boolean; keyStatus?: number }) {
+function setup(options: { session: boolean; keyStatus?: number; refusedKeys?: string[] }) {
   const mounted: Mounted[] = [];
   const scalar: ScalarGlobal = {
     createApiReference: (_element, configuration) => {
@@ -26,7 +26,8 @@ function setup(options: { session: boolean; keyStatus?: number }) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const headers = new Headers(init?.headers);
     if (String(input) === DOCUMENT_URL && headers.get("Authorization") !== null) {
-      const status = options.keyStatus ?? 200;
+      const refused = options.refusedKeys?.some((k) => headers.get("Authorization") === `Bearer ${k}`);
+      const status = refused ? 401 : (options.keyStatus ?? 200);
       return status === 200
         ? json(200, keyDocument)
         : json(status, { error: { code: "api_key_expired", message: "expired" } });
@@ -163,5 +164,51 @@ describe("the API reference page", () => {
     expect(document.documentElement.lang).toBe("nb");
     expect(root.querySelector("label")?.textContent).toBe("API-nøkkel");
     expect(root.querySelector("[role=status]")?.textContent).toContain("din egen økt");
+  });
+
+  it("a refused second key unmounts the first and falls back to the session", async () => {
+    const OTHER = "vtg_ZZZZEFGHijklMNOPqrstUVWXyz0123456789ABCDEFG000000";
+    const { env, root, mounted } = setup({ session: true, refusedKeys: [OTHER] });
+    await start(root, env);
+    input(root).value = KEY;
+    submit(root);
+    await flush();
+    expect(mounted.at(-1)?.configuration.authentication).toBeDefined();
+
+    input(root).value = OTHER;
+    submit(root);
+    await flush();
+    await flush();
+
+    expect(mounted[1]?.destroyed).toBe(true);
+    const last = mounted.at(-1);
+    expect(last?.destroyed).toBe(false);
+    expect(last?.configuration.content).toEqual(sessionDocument);
+    expect(last?.configuration.authentication).toBeUndefined();
+    expect(JSON.stringify(mounted.filter((m) => !m.destroyed).map((m) => m.configuration))).not.toContain(KEY);
+    const notice = root.querySelector("[role=status]")?.textContent ?? "";
+    expect(notice).toContain("api_key_expired");
+    expect(notice).toContain("your own session");
+  });
+
+  it("a failed fetch for a key leaves no key mounted", async () => {
+    const { env, root, mounted } = setup({ session: false });
+    await start(root, env);
+    input(root).value = KEY;
+    submit(root);
+    await flush();
+    expect(mounted.at(-1)?.configuration.authentication).toBeDefined();
+
+    const failing = vi.fn(async () => {
+      throw new TypeError("network");
+    });
+    env.fetch = failing as unknown as typeof fetch;
+    input(root).value = "vtg_other";
+    submit(root);
+    await flush();
+    await flush();
+
+    expect(mounted.every((m) => m.destroyed)).toBe(true);
+    expect(root.querySelector("[role=status]")?.textContent).toContain("could not be loaded");
   });
 });
