@@ -304,7 +304,9 @@ den dagen regnskapet starter, som ett bilag datert den dagen.
 En faktura lagt til fra Fakturaer beholder kunden sin og beløpet som var åpent den dagen;
 en linje som oppgir den med en annen kunde eller et annet beløp, avvises. Det samme gjelder
 en kundes kreditt: linjen er kundens kredittpost, med nøyaktig den kreditten Fakturaer
-hadde den dagen.
+hadde den dagen. Flytter en kundes kreditt seg i Fakturaer akkurat idet inngående balanse
+bokføres, avvises den — *Det er endret siden du åpnet det* — så ingenting telles to
+ganger: last inn siden på nytt og bokfør den igjen.
 
 **Mva ved regnskapets start.** Mva som var skyldig eller til gode før regnskapet starter —
 den siste terminen i det gamle regnskapet, ennå ikke betalt — føres på **2740**,

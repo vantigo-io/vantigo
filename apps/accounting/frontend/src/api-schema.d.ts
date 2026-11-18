@@ -6483,7 +6483,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
-            /** @description Conflict — books_not_set_up; opening_exists, opening_locked. */
+            /** @description Conflict — books_not_set_up; opening_exists, opening_locked; revision_conflict (a customer's credit moved in Invoices while the opening read its open invoices and credit; enter it again). */
             409: {
                 headers: {
                     [name: string]: unknown;

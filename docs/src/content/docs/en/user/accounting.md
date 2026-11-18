@@ -300,7 +300,10 @@ the day the books start, as one voucher dated that day.
 
 An invoice added from Invoices keeps its customer and the amount open on that day; a line
 that names it with another customer or amount is refused. So does a customer's credit: its
-line is the customer's credit item, at exactly the credit Invoices held that day.
+line is the customer's credit item, at exactly the credit Invoices held that day. If a
+customer's credit moves in Invoices just as the opening is posted, the opening is refused
+— *It was changed since you opened it* — so that nothing counts twice: load the page again
+and post it again.
 
 **VAT at the books' start.** VAT owed or due from before the books start — the last term of
 the old books, not yet paid — goes on **2740**, the VAT settlement account, not on a VAT

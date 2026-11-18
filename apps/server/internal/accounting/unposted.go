@@ -7,7 +7,9 @@ package accounting
 // books cannot hold is fixed, never waved away.
 
 import (
+	"cmp"
 	"context"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -140,20 +142,41 @@ func (s *server) retryAndDependants(ctx context.Context, row store.GetUnpostedRo
 			for _, d := range rows {
 				dependants = append(dependants, store.GetUnpostedRow(d))
 			}
-		} else {
+		}
+		// A credit fact of an invoice waits behind both its invoice and its
+		// customer's credit: what waits behind either goes, in order.
+		if row.OrderKey != nil {
 			rows, err := q.UnpostedDependantsByKey(ctx, store.UnpostedDependantsByKeyParams{OrderKey: row.OrderKey, AfterID: row.ID})
 			if err != nil {
 				return gen.AccountingUnposted{}, err
 			}
 			for _, d := range rows {
-				dependants = append(dependants, store.GetUnpostedRow(d))
+				if !slices.ContainsFunc(dependants, func(o store.GetUnpostedRow) bool { return o.ID == d.ID }) {
+					dependants = append(dependants, store.GetUnpostedRow(d))
+				}
 			}
+			slices.SortFunc(dependants, func(a, b store.GetUnpostedRow) int { return cmp.Compare(a.ID, b.ID) })
 		}
-		for _, d := range dependants {
+		for i := 0; i < len(dependants); i++ {
+			d := dependants[i]
 			if got, err := s.retry(ctx, d); err != nil {
 				return gen.AccountingUnposted{}, err
 			} else if got != outcomePosted {
 				break
+			}
+			// A credit fact of an invoice that waited behind it may hold a
+			// refund behind the customer's credit in turn: that goes next.
+			if d.OrderKey == nil || (row.OrderKey != nil && *d.OrderKey == *row.OrderKey) {
+				continue
+			}
+			rows, err := q.UnpostedDependantsByKey(ctx, store.UnpostedDependantsByKeyParams{OrderKey: d.OrderKey, AfterID: d.ID})
+			if err != nil {
+				return gen.AccountingUnposted{}, err
+			}
+			for _, r := range rows {
+				if !slices.ContainsFunc(dependants, func(o store.GetUnpostedRow) bool { return o.ID == r.ID }) {
+					dependants = append(dependants, store.GetUnpostedRow(r))
+				}
 			}
 		}
 	}

@@ -386,9 +386,11 @@ a change to a rule is a new version.
 is a customer item flagged `customer_credit`, one per customer, found or made as the
 unallocated item is (`OpenItemSpec.CustomerCredit`). A **payment of source `credit`**, and
 its removal, posts **no voucher at all**: the `applied` movement's fact moves the credit,
-so the money moves once. A refund's and a merge's facts name no invoice; under Needs
-attention they wait behind the customer's credit (`order_key`
-`invoices.customer_credit:<customerId>`) rather than an invoice. A credit fact dated before
+so the money moves once. Under Needs attention every credit fact waits behind the
+customer's credit (`order_key` `invoices.customer_credit:<customerId>`), and one that names
+an invoice behind that invoice too, so a refund never posts before the overpayment it pays
+back; a retry that posts a row posts what waited behind its invoice or its credit, in
+order, and what waited behind those. A credit fact dated before
 `books_start` is posted when its seq is above the credit item's `opening_as_of_seq`, else
 the settings'.
 
@@ -443,6 +445,13 @@ too (`Line 2 · rule Hours v1`).
 - A credit fact (`credit`, `credit_merged`) is judged against the customer's credit item's
   `opening_as_of_seq` — the `AsOfSeq` of the `CreditsAt` page its balance was read on —
   else the settings'.
+- A credit fact can touch two items read in two snapshots — a credit note's surplus moved
+  or credit applied posts on the invoice's item and the credit item, a merge on two credit
+  items. So the opening reads `OpenAt` and `CreditsAt` as a pair: when Invoices' journal
+  holds a `credit` or `credit_merged` fact with a seq above the lowest page's `AsOfSeq` and
+  up to the highest, both are read again, up to three times, and a pair that still
+  straddles one refuses the opening, 409 `revision_conflict`. The fact is then in every
+  item's opening amount or in none, and posts once.
 
 `settings.opening_as_of_seq` — the lowest `AsOfSeq` of the opening's pages — is the
 threshold for an invoice that has no opening item, and that is sound: an invoice with no

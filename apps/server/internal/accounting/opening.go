@@ -104,6 +104,72 @@ func (s *server) creditsAtSnapshot(ctx context.Context, day time.Time) ([]openCr
 	}
 }
 
+// openingReads is how many times openingSnapshot reads Invoices before it
+// gives up on a consistent pair.
+const openingReads = 3
+
+// openingSnapshot is openAtSnapshot and creditsAtSnapshot read together so
+// that the fact both an invoice's item and a customer's credit item reflect
+// is in both or in neither (B-1 review M1): a credit or credit_merged fact —
+// a credit note's surplus moved, credit applied, a merge — touches two items
+// read in two snapshots, and one committed between them would be in one
+// item's opening amount and posted again, or missed, on the other. When such
+// a fact has a seq between the lowest and the highest AsOfSeq of the pages,
+// both are read again, up to openingReads times; consistent is false when
+// the last read still straddles one.
+func (s *server) openingSnapshot(ctx context.Context, day time.Time) (open []openInvoice, lowest *int64, credits []openCredit, consistent bool, err error) {
+	for range openingReads {
+		if open, lowest, err = s.openAtSnapshot(ctx, day); err != nil {
+			return nil, nil, nil, false, err
+		}
+		if credits, err = s.creditsAtSnapshot(ctx, day); err != nil {
+			return nil, nil, nil, false, err
+		}
+		if lowest == nil {
+			return open, lowest, credits, true, nil
+		}
+		lo, hi := *lowest, *lowest
+		for _, c := range credits {
+			lo, hi = min(lo, c.asOfSeq), max(hi, c.asOfSeq)
+		}
+		for _, d := range open {
+			hi = max(hi, d.asOfSeq)
+		}
+		straddled, err := s.creditFactBetween(ctx, lo, hi)
+		if err != nil {
+			return nil, nil, nil, false, err
+		}
+		if !straddled {
+			return open, lowest, credits, true, nil
+		}
+	}
+	return open, lowest, credits, false, nil
+}
+
+// creditFactBetween reports whether Invoices' journal holds a credit or
+// credit_merged fact with a seq after lo and up to hi.
+func (s *server) creditFactBetween(ctx context.Context, lo, hi int64) (bool, error) {
+	for after := lo; after < hi; {
+		facts, err := s.deps.SalesJournal.Facts(ctx, after, contracts.MaxJournalPage)
+		if err != nil {
+			return false, err
+		}
+		if len(facts) == 0 {
+			return false, nil
+		}
+		for _, f := range facts {
+			if f.Seq > hi {
+				return false, nil
+			}
+			if f.Kind == contracts.FactCredit || f.Kind == contracts.FactCreditMerged {
+				return true, nil
+			}
+			after = f.Seq
+		}
+	}
+	return false, nil
+}
+
 // openingFinal reports whether the opening balances are final (A9): the
 // books are locked, or have been locked once, even if the lock was lifted
 // since.
@@ -144,15 +210,11 @@ func (s *server) GetAccountingOpening(ctx context.Context, _ gen.GetAccountingOp
 			Source: v.Source, System: v.System, Reverses: v.Reverses, ReversedBy: v.ReversedBy, PostedAt: v.PostedAt}
 	}
 	out.CanEnter = out.Voucher == nil && !out.Locked
-	docs, _, err := s.openAtSnapshot(ctx, settings.BooksStart.AddDate(0, 0, -1))
+	// An offer: what a straddling fact leaves inconsistent the entry reads
+	// again and refuses.
+	docs, _, credits, _, err := s.openingSnapshot(ctx, settings.BooksStart.AddDate(0, 0, -1))
 	if err != nil {
-		s.logger().WarnContext(ctx, "accounting: Invoices' open invoices could not be read", "error", err.Error())
-		out.InvoicesAvailable = false
-		return out, nil
-	}
-	credits, err := s.creditsAtSnapshot(ctx, settings.BooksStart.AddDate(0, 0, -1))
-	if err != nil {
-		s.logger().WarnContext(ctx, "accounting: Invoices' customers' credit could not be read", "error", err.Error())
+		s.logger().WarnContext(ctx, "accounting: Invoices' open invoices and customers' credit could not be read", "error", err.Error())
 		out.InvoicesAvailable = false
 		return out, nil
 	}
@@ -241,17 +303,17 @@ func (s *server) PostAccountingOpening(ctx context.Context, req gen.PostAccounti
 	if err != nil {
 		return nil, err
 	}
-	open, asOfSeq, err := s.openAtSnapshot(ctx, settings.BooksStart.AddDate(0, 0, -1))
+	open, asOfSeq, credits, consistent, err := s.openingSnapshot(ctx, settings.BooksStart.AddDate(0, 0, -1))
 	if err != nil {
 		return nil, err
+	}
+	if !consistent {
+		return nil, conflict(codeRevisionConflict, "Invoices changed while the opening was read",
+			"A customer's credit moved in Invoices while its open invoices and credit were read. Enter the opening again.")
 	}
 	byID := make(map[int64]openInvoice, len(open))
 	for _, d := range open {
 		byID[d.ID] = d
-	}
-	credits, err := s.creditsAtSnapshot(ctx, settings.BooksStart.AddDate(0, 0, -1))
-	if err != nil {
-		return nil, err
 	}
 	var creditCustomers []int32
 	var creditSeqs []int64
