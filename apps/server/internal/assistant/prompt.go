@@ -12,7 +12,7 @@ import (
 // promptVersion names the system prompt below. It is bumped with any change of
 // the rules, so a conversation's behaviour can be traced to the prompt it ran
 // under.
-const promptVersion = "2026-11-17.5"
+const promptVersion = "2026-11-18.1"
 
 // appRoutes are the host's route shapes the assistant links records with: the
 // in-app routes of apps.ts and routes/, kept here because the prompt states

@@ -39,6 +39,7 @@ import { ContentSkeleton, PageHeader, PageSection } from "@vantigo/frontend-shel
 import { type ReactNode, useState } from "react";
 import type { LetterLeft } from "../api/collection";
 import { SETTLEMENT_KIND } from "../api/consumption";
+import { balanceIn, customerCreditQueryOptions } from "../api/credit";
 import { deductibleQueryOptions } from "../api/deductible";
 import { ALLOCATION_KIND } from "../api/from-orders";
 import {
@@ -75,6 +76,7 @@ import { documentTotals, lineAmounts } from "../lib/money";
 import { letterName } from "../lib/reminders";
 import { invoiceLinkOptions } from "../lib/routes";
 import { draftRate } from "../lib/vat";
+import { ApplyCreditModal } from "./-apply-credit-modal";
 import { DeductModal } from "./-deduct-modal";
 import { IssueModal } from "./-issue-modal";
 import { SendDialog } from "./-send-dialog";
@@ -1249,11 +1251,10 @@ interface TotalsProps {
   /** An issued invoice's figures (D3): what its live payments paid, what is open, and — below zero — the refund due. */
   paid?: number;
   open?: number;
-  refundDue?: number;
 }
 
 /** The totals per rate, then net, VAT and gross, and on an issued invoice what is paid and open. */
-const Totals = ({ currency, rates, net, vat, gross, paid, open, refundDue }: TotalsProps) => {
+const Totals = ({ currency, rates, net, vat, gross, paid, open }: TotalsProps) => {
   const { t, money, number } = useInvoiceFormat();
   return (
     <Table withRowBorders={false} data-testid="totals">
@@ -1301,17 +1302,6 @@ const Totals = ({ currency, rates, net, vat, gross, paid, open, refundDue }: Tot
             <Table.Td />
             <Table.Td ta="right" fw={700} data-testid="open-amount">
               {money(open, currency)}
-            </Table.Td>
-          </Table.Tr>
-        )}
-        {refundDue !== undefined && (
-          <Table.Tr>
-            <Table.Td fw={700} c="red">
-              {t("refundDue")}
-            </Table.Td>
-            <Table.Td />
-            <Table.Td ta="right" fw={700} c="red" data-testid="refund-due">
-              {money(refundDue, currency)}
             </Table.Td>
           </Table.Tr>
         )}
@@ -1488,7 +1478,6 @@ const IssuedDocument = ({
           gross={doc.grossTotal}
           paid={doc.paidAmount}
           open={doc.openAmount}
-          refundDue={doc.refundDue}
         />
       </PageSection>
       {doc.kind === "invoice" && (
@@ -1516,6 +1505,7 @@ const IssuedDocument = ({
           </Stack>
         </PageSection>
       )}
+      {doc.kind === "invoice" && <CreditBanner invoice={doc} canApply={canRegisterPayments} today={meta.today} />}
       {doc.kind === "invoice" && <PaymentsCard invoice={doc} canRegister={canRegisterPayments} today={meta.today} />}
       {doc.kind === "invoice" && (
         <>
@@ -1634,6 +1624,38 @@ const LettersLeftAlert = ({
         })}
       </Stack>
       {withdrawing && <WithdrawReminderModal letter={withdrawing} onClose={() => setWithdrawing(null)} />}
+    </Alert>
+  );
+};
+
+/**
+ * The customer's credit on an issued invoice (invoices phase 6 design I11):
+ * "The customer has NOK x in credit" while both the credit in the invoice's
+ * currency and what is open are above zero, with **Use credit** for a caller
+ * holding `invoices:payments`.
+ */
+const CreditBanner = ({ invoice, canApply, today }: { invoice: InvoiceDocument; canApply: boolean; today: string }) => {
+  const { t, money } = useInvoiceFormat();
+  const credit = useQuery({
+    ...customerCreditQueryOptions(invoice.customerId),
+    enabled: invoice.status === "issued" && (invoice.openAmount ?? 0) > 0,
+  });
+  const [applying, setApplying] = useState(false);
+  const balance = balanceIn(credit.data, invoice.currency);
+  if (invoice.status !== "issued" || balance <= 0 || (invoice.openAmount ?? 0) <= 0) return null;
+  return (
+    <Alert color="blue" icon={<IconAlertCircle size={16} />} data-testid="credit-banner">
+      <Group justify="space-between">
+        <Text size="sm">{t("credit.banner", { balance: money(balance, invoice.currency) })}</Text>
+        {canApply && (
+          <Button size="xs" onClick={() => setApplying(true)} data-assist="invoices.invoice.credit">
+            {t("credit.use")}
+          </Button>
+        )}
+      </Group>
+      {applying && (
+        <ApplyCreditModal invoice={invoice} balance={balance} today={today} onClose={() => setApplying(false)} />
+      )}
     </Alert>
   );
 };

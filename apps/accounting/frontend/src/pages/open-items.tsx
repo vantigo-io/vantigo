@@ -97,7 +97,11 @@ const OpenItems = ({ canPost, today }: { canPost: boolean; today: string }) => {
                 <Table.Tr key={item.id}>
                   <Table.Td>{item.customerName ?? item.customerId ?? item.supplierId}</Table.Td>
                   <Table.Td>
-                    {item.unallocated ? t("unallocated") : item.documentNumber}
+                    {item.unallocated
+                      ? t("unallocated")
+                      : item.customerCredit
+                        ? t("customerCredit")
+                        : item.documentNumber}
                     {item.sourceDocumentId !== null && (
                       <Badge ml="xs" variant="light">
                         {t("fromInvoices")}

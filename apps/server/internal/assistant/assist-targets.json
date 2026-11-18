@@ -380,9 +380,19 @@
     "description": "The switch on a tracked variant's page that puts every lot a receipt makes or adds to in quarantine for inspection."
   },
   {
+    "key": "invoices.customer.credit",
+    "route": "/customers/{customerId}",
+    "description": "The customer's credit on the customer's Invoices tab: the balance, every movement and Record refund."
+  },
+  {
     "key": "invoices.invoice.add-line",
     "route": "/invoices/{invoiceId}",
     "description": "The button below a draft invoice's lines that adds an empty line."
+  },
+  {
+    "key": "invoices.invoice.credit",
+    "route": "/invoices/{invoiceId}",
+    "description": "The button in the customer's credit banner on an issued invoice with something open, which applies the customer's credit to it."
   },
   {
     "key": "invoices.invoice.issue",
@@ -408,6 +418,11 @@
     "key": "invoices.invoices.new",
     "route": "/invoices",
     "description": "The button above the invoice list that starts a new invoice."
+  },
+  {
+    "key": "invoices.queue.keep-as-credit",
+    "route": "/invoices/payments",
+    "description": "The button in the Keep the rest as credit dialog of a bank line queued as more than was open, or for a settled invoice: it applies what is open and keeps the rest as the customer's credit."
   },
   {
     "key": "invoices.send.message",

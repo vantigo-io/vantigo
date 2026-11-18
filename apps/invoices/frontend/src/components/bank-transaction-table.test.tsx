@@ -569,3 +569,38 @@ describe("BankTransactionTable", () => {
     expect(requestTo(fetchMock, "POST", "/api/v1/invoices/bank-transactions/1003/reopen")).toBe(NO_BODY);
   });
 });
+
+describe("BankTransactionTable_KeepAsCredit", () => {
+  it("offers Keep the rest as credit on a line queued as more than was open, and keeps it", async () => {
+    const fetchMock = bankServer({
+      answers: {
+        "POST /api/v1/invoices/bank-transactions/1001/keep-as-credit": () =>
+          jsonResponse(200, bankTransaction({ status: "resolved", resolution: "applied", reason: "exceeds_open" })),
+      },
+    });
+    await table([
+      bankTransaction({ lineRef: "K/1", reason: "exceeds_open", suggestions: undefined }),
+      bankTransaction({
+        id: 1002,
+        lineRef: "K/2",
+        status: "resolved",
+        resolution: "applied",
+        reason: "exceeds_open",
+        applied: [
+          { kind: "payment", id: 5001, invoiceId: 1001, number: 1000, amount: 1000, removed: false },
+          { kind: "credit", id: 7001, invoiceId: 1001, number: 1000, amount: 250, removed: false },
+        ],
+      }),
+    ]);
+
+    expect(within(row("K/2")).getByText(/^Invoice 1000, kept as credit: NOK\s?250\.00$/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Keep the rest as credit: line K/1" }));
+    const dialog = await screen.findByRole("dialog", { name: "Keep the rest of line K/1 as credit" });
+    await userEvent.type(within(dialog).getByRole("textbox", { name: "Note" }), "Betalte to ganger");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Keep the rest as credit" }));
+    expect(await screen.findByText("The rest is kept as the customer's credit")).toBeInTheDocument();
+    expect(requestTo(fetchMock, "POST", "/api/v1/invoices/bank-transactions/1001/keep-as-credit")).toEqual({
+      note: "Betalte to ganger",
+    });
+  });
+});

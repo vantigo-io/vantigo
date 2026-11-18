@@ -9,6 +9,7 @@ import "../i18n";
 import { refusalMessage } from "../lib/errors";
 import { useInvoiceFormat } from "../lib/format";
 import { NewInvoiceModal } from "../pages/invoices";
+import { CustomerCreditCard } from "./customer-credit-card";
 import { InvoiceTable } from "./invoice-table";
 import { ReminderPolicyCard } from "./reminder-policy-card";
 
@@ -36,6 +37,7 @@ export interface CustomerInvoicesPanelProps {
  * The customer page's Invoices tab (D8): the list filtered by the customer,
  * each document with its state and open amount, paged as the list is, and
  * "New invoice" making the draft for this customer and opening it. Below it,
+ * the customer's credit (invoices phase 6 design I8), when there is any, and
  * the customer's reminder policy.
  */
 export const CustomerInvoicesPanel = ({
@@ -96,6 +98,8 @@ export const CustomerInvoicesPanel = ({
           />
         )}
       </PageSection>
+      {/* canChangeReminderPolicy is the caller's invoices:payments, which a refund needs too. */}
+      <CustomerCreditCard customerId={customerId} canAct={canChangeReminderPolicy} />
       <ReminderPolicyCard customerId={customerId} canChange={canChangeReminderPolicy} currentUserId={currentUserId} />
     </>
   );

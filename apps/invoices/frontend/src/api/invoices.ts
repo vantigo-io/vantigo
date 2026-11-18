@@ -46,9 +46,16 @@ export const replaceInvoice = (id: number, input: InvoiceInput): Promise<Invoice
 export const deleteInvoice = (id: number): Promise<void> =>
   request<void>(`/api/v1/invoices/${id}`, { method: "DELETE" });
 
-/** Issues a draft; an omitted date is today in Oslo (D6). */
-export const issueInvoice = (id: number, issueDate?: string): Promise<InvoiceDocument> =>
-  request<InvoiceDocument>(`/api/v1/invoices/${id}/issue`, json("POST", issueDate ? { issueDate } : {}));
+/**
+ * Issues a draft; an omitted date is today in Oslo (D6). useCredit applies
+ * the customer's credit after the issue (invoices phase 6 design I11); when
+ * that fails the answer warns credit_not_applied.
+ */
+export const issueInvoice = (id: number, issueDate?: string, useCredit = false): Promise<InvoiceDocument> =>
+  request<InvoiceDocument>(
+    `/api/v1/invoices/${id}/issue`,
+    json("POST", { ...(issueDate ? { issueDate } : {}), ...(useCredit ? { useCredit: true } : {}) }),
+  );
 
 /** Creates a credit-note draft of an issued invoice (D8). */
 export const creditInvoice = (id: number): Promise<InvoiceDocument> =>

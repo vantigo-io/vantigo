@@ -158,7 +158,7 @@ describe("the admin permission catalog", () => {
     );
     expect(en["admin.permission.invoicesPayments"]).toBe("Register payments");
     expect(en["admin.permission.invoicesPaymentsDescription"]).toBe(
-      "Register payments against issued invoices and remove a registration with a reason; import bank files, read the imported files, the bank accounts and their lines, and work the exception queue; make and read reminder runs, print paper letters and confirm them posted or reprint them, and withdraw and retry letters; hold a disputed invoice, hand one to collection and export the collection file; register and remove charge payments and waive charges; set a customer's reminder policy; mark a day's Vipps payments reconciled; and see the attention items about the bank lines, the letters, the print batches and the Vipps payments.",
+      "Register payments against issued invoices and remove a registration with a reason; keep an overpayment as the customer's credit, apply credit to an invoice, and record and remove a refund of it; import bank files, read the imported files, the bank accounts and their lines, and work the exception queue; make and read reminder runs, print paper letters and confirm them posted or reprint them, and withdraw and retry letters; hold a disputed invoice, hand one to collection and export the collection file; register and remove charge payments and waive charges; set a customer's reminder policy; mark a day's Vipps payments reconciled; and see the attention items about the bank lines, the letters, the print batches and the Vipps payments.",
     );
   });
 

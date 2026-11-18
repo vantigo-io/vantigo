@@ -18,10 +18,15 @@ export interface ReversalDialogProps {
   onClose: () => void;
 }
 
-/** One payment a reversal may take back, and the bank line it came from. */
+/**
+ * One payment a reversal may take back, and the bank line it came from — or
+ * a credit a line kept for the customer (invoices phase 6 design I9), which
+ * credit names.
+ */
 interface Candidate {
   invoiceId: number;
   paymentId: number;
+  credit: boolean;
   number: number;
   amount: number;
   lineRef: string;
@@ -46,10 +51,11 @@ const candidatesOf = (reversal: BankTransaction, lines: BankTransaction[]): Cand
     )
     .flatMap((l) =>
       l.applied
-        .filter((a) => a.kind === "payment" && !a.removed)
+        .filter((a) => (a.kind === "payment" || a.kind === "credit") && !a.removed)
         .map((a) => ({
           invoiceId: a.invoiceId,
           paymentId: a.id,
+          credit: a.kind === "credit",
           number: a.number ?? a.invoiceId,
           amount: a.amount,
           lineRef: l.lineRef,
@@ -69,7 +75,8 @@ export const ReversalDialog = ({ line, currency, onClose }: ReversalDialogProps)
   const queryClient = useQueryClient();
   const lines = useQuery(reversalLinesQueryOptions(line));
   const [mode, setMode] = useState<"payments" | "none">("payments");
-  const [chosen, setChosen] = useState<Set<number>>(new Set());
+  const [chosen, setChosen] = useState<Set<string>>(new Set());
+  const keyOf = (c: Candidate) => `${c.credit ? "credit" : "payment"}-${c.paymentId}`;
   const [note, setNote] = useState("");
   const [refusal, setRefusal] = useState<string | null>(null);
   const amount = (value: number) => money(value, currency);
@@ -84,8 +91,15 @@ export const ReversalDialog = ({ line, currency, onClose }: ReversalDialogProps)
           ? { noPayment: true, ...(note.trim() ? { note: note.trim() } : {}) }
           : {
               removePayments: candidates
-                .filter((c) => chosen.has(c.paymentId))
+                .filter((c) => !c.credit && chosen.has(keyOf(c)))
                 .map((c) => ({ invoiceId: c.invoiceId, paymentId: c.paymentId })),
+              ...(candidates.some((c) => c.credit && chosen.has(keyOf(c)))
+                ? {
+                    reverseCredits: candidates
+                      .filter((c) => c.credit && chosen.has(keyOf(c)))
+                      .map((c) => ({ creditId: c.paymentId })),
+                  }
+                : {}),
               ...(note.trim() ? { note: note.trim() } : {}),
             },
       ),
@@ -140,21 +154,21 @@ export const ReversalDialog = ({ line, currency, onClose }: ReversalDialogProps)
                 <Stack gap={4} pl="xl">
                   {candidates.map((c) => (
                     <Checkbox
-                      key={c.paymentId}
-                      label={t("bank.reversal.candidate", {
+                      key={keyOf(c)}
+                      label={t(c.credit ? "bank.reversal.creditCandidate" : "bank.reversal.candidate", {
                         number: c.number,
                         amount: amount(c.amount),
                         ref: c.lineRef,
                         date: date(c.bookedOn),
                       })}
-                      checked={chosen.has(c.paymentId)}
+                      checked={chosen.has(keyOf(c))}
                       onChange={(event) => {
                         const on = event.currentTarget.checked;
                         setRefusal(null);
                         setChosen((current) => {
                           const next = new Set(current);
-                          if (on) next.add(c.paymentId);
-                          else next.delete(c.paymentId);
+                          if (on) next.add(keyOf(c));
+                          else next.delete(keyOf(c));
                           return next;
                         });
                       }}

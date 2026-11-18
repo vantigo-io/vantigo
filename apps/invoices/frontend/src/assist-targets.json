@@ -94,5 +94,41 @@
       "en": "The optional personal message in the Send dialog, shown above the standard text in the e-mail.",
       "nb": "Den valgfrie personlige meldingen i sendedialogen, som vises over standardteksten i e-posten."
     }
+  },
+  {
+    "key": "invoices.invoice.credit",
+    "route": "/invoices/{invoiceId}",
+    "label": {
+      "en": "Use credit",
+      "nb": "Bruk kreditt"
+    },
+    "description": {
+      "en": "The button in the customer's credit banner on an issued invoice with something open, which applies the customer's credit to it.",
+      "nb": "Knappen i kundekredittbanneret på en utstedt faktura med noe åpent, som bruker kundens kreditt på den."
+    }
+  },
+  {
+    "key": "invoices.queue.keep-as-credit",
+    "route": "/invoices/payments",
+    "label": {
+      "en": "Keep the rest as credit",
+      "nb": "Hold resten som kreditt"
+    },
+    "description": {
+      "en": "The button in the Keep the rest as credit dialog of a bank line queued as more than was open, or for a settled invoice: it applies what is open and keeps the rest as the customer's credit.",
+      "nb": "Knappen i dialogen Hold resten som kreditt for en banklinje i køen for mer enn det som stod åpent, eller for en betalt faktura: den fører det som står åpent og holder resten som kundens kreditt."
+    }
+  },
+  {
+    "key": "invoices.customer.credit",
+    "route": "/customers/{customerId}",
+    "label": {
+      "en": "Customer credit",
+      "nb": "Kundekreditt"
+    },
+    "description": {
+      "en": "The customer's credit on the customer's Invoices tab: the balance, every movement and Record refund.",
+      "nb": "Kundens kreditt på kundens Fakturaer-fane: saldoen, hver bevegelse og Registrer tilbakebetaling."
+    }
   }
 ]

@@ -147,7 +147,7 @@ describe("the Send dialog", () => {
     ],
     [
       "a credited",
-      partlyPaid({ state: "credited", creditedAmount: 124.99, uncreditedAmount: 0, openAmount: -50, refundDue: 50 }),
+      partlyPaid({ state: "credited", creditedAmount: 124.99, uncreditedAmount: 0, openAmount: 0 }),
       /^The invoice is settled, so the e-mail says nothing is due\.$/,
     ],
   ] as const)("says what the mail will say about payment on %s invoice", async (_which, doc, words) => {
