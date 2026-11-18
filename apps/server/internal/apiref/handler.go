@@ -69,9 +69,12 @@ func Handler(assets fs.FS) http.Handler {
 			name = "api/reference/" + file
 		}
 		setPolicy(w.Header())
+		// The page names its files by their content (the build's hashes), so a
+		// file never changes under its name; the page itself always may.
+		// Vary: Accept is the caller's (internal/server), which sends it on
+		// every answer to /api, the API's 404 included.
 		if name == "index.html" {
 			w.Header().Set("Cache-Control", "no-cache")
-			w.Header().Add("Vary", "Accept")
 		} else {
 			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 		}
@@ -92,7 +95,8 @@ func setPolicy(h http.Header) {
 }
 
 // prefersHTML reports whether an Accept header names text/html, with a
-// quality above zero and no lower than any JSON type it names. A wildcard
+// quality above zero and strictly higher than any JSON type it names: a tie
+// is an API client's, and gets the API's answer. A wildcard
 // counts for neither, so curl's */* and a client asking for JSON both get
 // the API's answer, and a browser's navigation gets the page.
 func prefersHTML(accept []string) bool {
@@ -117,7 +121,7 @@ func prefersHTML(accept []string) bool {
 			}
 		}
 	}
-	return html > 0 && html >= jsonQ
+	return html > 0 && html > jsonQ
 }
 
 func isFile(fsys fs.FS, name string) bool {
