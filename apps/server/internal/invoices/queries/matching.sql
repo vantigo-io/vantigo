@@ -75,3 +75,13 @@ WHERE id = @id AND status = 'pending';
 -- when (D5): matched, queued with its reason, and the queue's actions.
 INSERT INTO invoices.bank_transaction_events (bank_transaction_id, event, reason, note, by_user_id, at)
 VALUES (@bank_transaction_id, @event, sqlc.narg(reason)::text, @note, @by_user_id, @at::timestamptz);
+
+-- name: IssuedInvoicesByNumbers :many
+-- IssuedInvoicesByNumbers is the issued invoices numbered one of numbers —
+-- the invoice numbers a line's remittance names (invoices phase 6 design
+-- I14) — at most 20, by id: the automatic split's candidates, read on the
+-- pool and judged again under their locks. Credit notes are never paid.
+SELECT * FROM invoices.invoices
+WHERE kind = 'invoice' AND status = 'issued' AND number = ANY(sqlc.arg(numbers)::bigint[])
+ORDER BY id
+LIMIT 20;

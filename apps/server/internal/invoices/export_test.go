@@ -538,6 +538,15 @@ func SetMatchAfterLineLock(hook func(ctx context.Context, bankTransactionID int6
 	return func() { matchAfterLineLock = nil }
 }
 
+// SetSplitBeforeLocks installs a hook an automatic split (invoices phase 6
+// design I14) calls after its reading on the pool and before its
+// transaction locks anything, with the line's id; it answers the restore. A
+// test using it does not run in parallel: the hook is the package's.
+func SetSplitBeforeLocks(hook func(ctx context.Context, bankTransactionID int64) error) func() {
+	splitBeforeLocks = hook
+	return func() { splitBeforeLocks = nil }
+}
+
 // SetMatchAfterInvoiceLock installs a hook a bank line's match calls inside
 // its transaction right after it has locked the line's invoice, before any
 // figure is read, with the line's id, and answers the function that removes

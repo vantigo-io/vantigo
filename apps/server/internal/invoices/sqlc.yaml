@@ -25,6 +25,7 @@ sql:
       - ../db/migrations/00182_invoices_write_offs.sql
       - ../db/migrations/00193_invoices_branding.sql
       - ../db/migrations/00197_invoices_credit.sql
+      - ../db/migrations/00199_invoices_split.sql
     queries: queries
     gen:
       go:

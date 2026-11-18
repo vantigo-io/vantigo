@@ -37,7 +37,10 @@ var invoiceStates = []string{stateOpen, statePartiallyPaid, stateOverdue, stateP
 // or not (paid); past its due date; partly paid; open. credited is the issued
 // credit notes' gross (0 for a credit note), paid what settles the principal —
 // the live payments that are not recoveries and the standing write-off
-// (invoices.settled_amount) — writtenOff that write-off's amount, and today the
+// (invoices.settled_amount) — writtenOff that write-off's amount when its
+// reason is not rounding, 0 for a rounding one (invoices.loss_written_off_amount;
+// invoices phase 6 design I15: a small difference is not a loss, so the
+// invoice reads paid), and today the
 // business day (holidays.DayIn). A nil dueDate is never overdue, as NULL <
 // today is not true in SQL. A draft's and a credit note's state reads none of
 // the figures, which may then be nil.

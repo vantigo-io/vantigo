@@ -48,15 +48,17 @@ RETURNING *;
 -- deadlock. A line whose account and fingerprint a live line already has is
 -- skipped and not returned; InsertDuplicateTransactions keeps it. The
 -- arrays are parallel, one element per line, unnested side by side; an
--- empty kid is NULL.
+-- empty kid is NULL. A line's remittance references (invoices phase 6
+-- design I14) are one element too, joined by the unit separator, which a
+-- reference of the file never holds; "" is none.
 INSERT INTO invoices.bank_transactions (
     bank_file_id, line_ref, format, account, direction, negative, booked_on, value_on, ordered_on,
     amount, currency, kid, remittance_text, debtor_name, debtor_account, archive_ref, bank_code,
-    fingerprint, ordinal
+    fingerprint, ordinal, remittance_refs
 )
 SELECT @bank_file_id::bigint, t.line_ref, @format::text, t.account, t.direction, t.negative, t.booked_on, t.value_on, t.ordered_on,
     t.amount, 'NOK', NULLIF(t.kid, ''), t.remittance_text, t.debtor_name, t.debtor_account, t.archive_ref, t.bank_code,
-    t.fingerprint, t.ordinal
+    t.fingerprint, t.ordinal, string_to_array(t.remittance_refs, E'\x1f')::varchar(35)[]
 FROM (
     SELECT unnest(sqlc.arg(line_refs)::text[]) AS line_ref, unnest(sqlc.arg(accounts)::text[]) AS account,
         unnest(sqlc.arg(directions)::text[]) AS direction, unnest(sqlc.arg(negatives)::boolean[]) AS negative,
@@ -65,7 +67,8 @@ FROM (
         unnest(sqlc.arg(kids)::text[]) AS kid, unnest(sqlc.arg(remittance_texts)::text[]) AS remittance_text,
         unnest(sqlc.arg(debtor_names)::text[]) AS debtor_name, unnest(sqlc.arg(debtor_accounts)::text[]) AS debtor_account,
         unnest(sqlc.arg(archive_refs)::text[]) AS archive_ref, unnest(sqlc.arg(bank_codes)::text[]) AS bank_code,
-        unnest(sqlc.arg(fingerprints)::text[]) AS fingerprint, unnest(sqlc.arg(ordinals)::smallint[]) AS ordinal
+        unnest(sqlc.arg(fingerprints)::text[]) AS fingerprint, unnest(sqlc.arg(ordinals)::smallint[]) AS ordinal,
+        unnest(sqlc.arg(remittance_refs)::text[]) AS remittance_refs
 ) AS t
 ORDER BY t.fingerprint
 ON CONFLICT (account, fingerprint) WHERE duplicate_of_id IS NULL DO NOTHING
@@ -80,11 +83,11 @@ RETURNING id, fingerprint;
 INSERT INTO invoices.bank_transactions (
     bank_file_id, line_ref, format, account, direction, negative, booked_on, value_on, ordered_on,
     amount, currency, kid, remittance_text, debtor_name, debtor_account, archive_ref, bank_code,
-    fingerprint, ordinal, duplicate_of_id, status
+    fingerprint, ordinal, remittance_refs, duplicate_of_id, status
 )
 SELECT @bank_file_id::bigint, t.line_ref, @format::text, t.account, t.direction, t.negative, t.booked_on, t.value_on, t.ordered_on,
     t.amount, 'NOK', NULLIF(t.kid, ''), t.remittance_text, t.debtor_name, t.debtor_account, t.archive_ref, t.bank_code,
-    t.fingerprint, t.ordinal, live.id, 'duplicate'
+    t.fingerprint, t.ordinal, string_to_array(t.remittance_refs, E'\x1f')::varchar(35)[], live.id, 'duplicate'
 FROM (
     SELECT unnest(sqlc.arg(line_refs)::text[]) AS line_ref, unnest(sqlc.arg(accounts)::text[]) AS account,
         unnest(sqlc.arg(directions)::text[]) AS direction, unnest(sqlc.arg(negatives)::boolean[]) AS negative,
@@ -93,7 +96,8 @@ FROM (
         unnest(sqlc.arg(kids)::text[]) AS kid, unnest(sqlc.arg(remittance_texts)::text[]) AS remittance_text,
         unnest(sqlc.arg(debtor_names)::text[]) AS debtor_name, unnest(sqlc.arg(debtor_accounts)::text[]) AS debtor_account,
         unnest(sqlc.arg(archive_refs)::text[]) AS archive_ref, unnest(sqlc.arg(bank_codes)::text[]) AS bank_code,
-        unnest(sqlc.arg(fingerprints)::text[]) AS fingerprint, unnest(sqlc.arg(ordinals)::smallint[]) AS ordinal
+        unnest(sqlc.arg(fingerprints)::text[]) AS fingerprint, unnest(sqlc.arg(ordinals)::smallint[]) AS ordinal,
+        unnest(sqlc.arg(remittance_refs)::text[]) AS remittance_refs
 ) AS t
 JOIN invoices.bank_transactions live
     ON live.account = t.account AND live.fingerprint = t.fingerprint AND live.duplicate_of_id IS NULL

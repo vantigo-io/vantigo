@@ -70,7 +70,7 @@ func (q *Queries) LockBankFeedConnection(ctx context.Context) (InvoicesBankFeedC
 
 const lockBankTransaction = `-- name: LockBankTransaction :one
 
-SELECT id, bank_file_id, line_ref, format, account, direction, negative, booked_on, value_on, ordered_on, amount, currency, kid, remittance_text, debtor_name, debtor_account, archive_ref, bank_code, fingerprint, ordinal, duplicate_of_id, status, reason, suggested_invoice_id, resolution, resolved_by_user_id, resolved_at, resolution_note FROM invoices.bank_transactions WHERE id = $1 FOR NO KEY UPDATE
+SELECT id, bank_file_id, line_ref, format, account, direction, negative, booked_on, value_on, ordered_on, amount, currency, kid, remittance_text, debtor_name, debtor_account, archive_ref, bank_code, fingerprint, ordinal, duplicate_of_id, status, reason, suggested_invoice_id, resolution, resolved_by_user_id, resolved_at, resolution_note, remittance_refs FROM invoices.bank_transactions WHERE id = $1 FOR NO KEY UPDATE
 `
 
 // The lock statements of the receivables (invoices payments and reminders
@@ -115,6 +115,7 @@ func (q *Queries) LockBankTransaction(ctx context.Context, id int64) (InvoicesBa
 		&i.ResolvedByUserID,
 		&i.ResolvedAt,
 		&i.ResolutionNote,
+		&i.RemittanceRefs,
 	)
 	return i, err
 }

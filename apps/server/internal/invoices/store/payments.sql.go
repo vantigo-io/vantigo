@@ -241,6 +241,7 @@ func (q *Queries) InsertVippsPayment(ctx context.Context, arg InsertVippsPayment
 const livePaymentsSum = `-- name: LivePaymentsSum :one
 SELECT coalesce(sum(amount) FILTER (WHERE kind = 'payment'), 0)::numeric(14,2) AS paid,
     invoices.written_off_amount($1)::numeric(14,2) AS written_off,
+    invoices.loss_written_off_amount($1)::numeric(14,2) AS loss_written_off,
     coalesce(sum(amount) FILTER (WHERE kind = 'recovered'), 0)::numeric(14,2) AS recovered,
     invoices.moved_amount($1)::numeric(14,2) AS moved
 FROM invoices.payments
@@ -248,16 +249,19 @@ WHERE invoice_id = $1 AND removed_at IS NULL
 `
 
 type LivePaymentsSumRow struct {
-	Paid       pgtype.Numeric
-	WrittenOff pgtype.Numeric
-	Recovered  pgtype.Numeric
-	Moved      pgtype.Numeric
+	Paid           pgtype.Numeric
+	WrittenOff     pgtype.Numeric
+	LossWrittenOff pgtype.Numeric
+	Recovered      pgtype.Numeric
+	Moved          pgtype.Numeric
 }
 
 // LivePaymentsSum is what an invoice's live registrations add up to — the
 // paid of the open amount (D2, D3) — beside its standing write-off, its
 // live recoveries (A16, R4) and what its credit notes' surplus moved to the
-// customer (moved, I10), which the open amount adds back. A removed
+// customer (moved, I10), which the open amount adds back, and the part of
+// the write-off that is no rounding (loss_written_off, I15), which is what
+// the state reads as written off. A removed
 // registration counts for nothing; a recovery is not part of the open
 // amount, which the write-off closed.
 func (q *Queries) LivePaymentsSum(ctx context.Context, invoiceID int64) (LivePaymentsSumRow, error) {
@@ -266,6 +270,7 @@ func (q *Queries) LivePaymentsSum(ctx context.Context, invoiceID int64) (LivePay
 	err := row.Scan(
 		&i.Paid,
 		&i.WrittenOff,
+		&i.LossWrittenOff,
 		&i.Recovered,
 		&i.Moved,
 	)
