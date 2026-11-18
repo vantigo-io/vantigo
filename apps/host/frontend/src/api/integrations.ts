@@ -51,3 +51,24 @@ export const createApiKey = (id: string, body: ApiKeyCreateRequest) => post<ApiK
 export const rollApiKey = (id: string, keyId: string, body: ApiKeyRollRequest) =>
   post<ApiKeySecret>(`${base}/${id}/keys/${keyId}/roll`, body);
 export const revokeApiKey = (id: string, keyId: string) => post<ApiKey>(`${base}/${id}/keys/${keyId}/revoke`);
+
+export type IntegrationRequestLog = components["schemas"]["IntegrationRequestLog"];
+export type IntegrationRequest = components["schemas"]["IntegrationRequest"];
+/** The filters of the request log (K23); each one left out reads everything. */
+export type RequestLogFilters = {
+  key?: string;
+  statusClass?: number;
+  reason?: string;
+  day?: string;
+};
+export const integrationRequestsQueryKey = (id: string, filters: RequestLogFilters) =>
+  [...integrationQueryKey(id), "requests", filters] as const;
+/** An integration's request log over the last 30 days, or one UTC day of them. */
+export const getIntegrationRequests = (id: string, filters: RequestLogFilters) => {
+  const query = new URLSearchParams();
+  for (const [name, value] of Object.entries(filters)) {
+    if (value !== undefined && value !== "") query.set(name, String(value));
+  }
+  const suffix = query.size > 0 ? `?${query.toString()}` : "";
+  return request<IntegrationRequestLog>(`${base}/${id}/requests${suffix}`);
+};
