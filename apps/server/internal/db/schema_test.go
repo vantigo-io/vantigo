@@ -2728,7 +2728,7 @@ func TestInvoicesPaymentsDelivery_AppliesAndIsIdempotent(t *testing.T) {
 	}
 	// After every migration, payments also carry 00197's amount_nok default
 	// (invoices phase 6, delivery B-1); at 00035 alone they do not.
-	latestTriggers := append([]string{"payments:tr_payments_amount_nok:guard_payment_amount_nok"}, wantTriggers...)
+	latestTriggers := append(append(append([]string{}, wantTriggers[:2]...), "payments:tr_payments_amount_nok:guard_payment_amount_nok"), wantTriggers[2:]...)
 	wantChecks := []string{"ck_payments_amount", "ck_payments_removal"}
 	wantFunctions := []string{
 		"document_state:i:s:text", "guard_delivery_insert:v:u:trigger", "refuse_delivery_change:v:u:trigger",
