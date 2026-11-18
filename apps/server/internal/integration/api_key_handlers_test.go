@@ -145,13 +145,13 @@ func TestAPIKey_NoSecretInALogLineOrASpan(t *testing.T) {
 	}
 	for _, s := range ended {
 		for _, a := range s.Attributes() {
-			if strings.Contains(a.Value.Emit(), "vtg_") {
+			if strings.Contains(a.Value.String(), "vtg_") {
 				t.Errorf("span %s attribute %s carries a key", s.Name(), a.Key)
 			}
 		}
 		for _, e := range s.Events() {
 			for _, a := range e.Attributes {
-				if strings.Contains(a.Value.Emit(), "vtg_") {
+				if strings.Contains(a.Value.String(), "vtg_") {
 					t.Errorf("span %s event %s carries a key", s.Name(), e.Name)
 				}
 			}

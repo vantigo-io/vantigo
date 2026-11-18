@@ -1143,7 +1143,7 @@ func New(t *testing.T, opts ...Option) *Harness {
 	if err != nil {
 		t.Fatalf("modtest: %v", err)
 	}
-	var handler http.Handler = server.New(server.Options{
+	handler := server.New(server.Options{
 		Config: cfg,
 		Logger: logger,
 		Index:  index,
