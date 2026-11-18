@@ -24,7 +24,7 @@ This site is the documentation for Vantigo, built with
 | `user/` | Someone using Vantigo: what they can do, and how. | English and Norwegian |
 | `admin/` | Someone running Vantigo: install, configure, operate, upgrade. | English and Norwegian |
 | `reference/` | Integrators and contributors: the domain model, rules, permissions and endpoints per module. | English |
-| `reference/api/` | Generated from `openapi/*.yaml`; never edited by hand. | English |
+| `reference/api/` | Generated from `openapi/*.yaml`; never edited by hand. The hand-written pages about the API — `api-introduction.md` and `api-compatibility.md` — live in `reference/` beside it. | English |
 | `contributing/` | Contributors: the rules a change is held to. | English |
 
 English is the default language. `nb/` mirrors `en/` page for page with the same file
@@ -56,6 +56,44 @@ The site is built twice from the same content:
 Links in pages are written as site paths without a base (`/en/user/`); a rehype plugin
 in the Astro config prefixes them with the base at build time, so a page never needs
 to know which build it is in.
+
+## The API contract and integrators
+
+Every module's contract in `openapi/*.yaml` becomes a generated API reference on the
+public site. The list is `contracts` in
+[`docs/astro.config.mjs`](https://github.com/vantigo-io/vantigo/blob/main/docs/astro.config.mjs),
+which mirrors the files one for one — Agents and Meta included; a new module's contract is
+added there when the module is.
+
+Every operation also says whether an integration's API key may call it, with
+`x-vantigo-api` beside its `x-vantigo-access`: `allowed`, `read` (a read-only key may call
+it too; every `GET` is one) or `never` ([Module boundaries](/en/contributing/module-boundaries/)).
+From those marks and the composed permission catalog the server builds the
+**integrator's document**: the operations a key can call, with the bearer scheme, the
+`401`, `403` and `429` answers and the permission each requires, and none of the
+`x-vantigo-*` extensions. `GET /api/openapi.json` answers it to a key (cut to the key's
+scope) and to a session asking `?view=api`; `vantigo openapi integrator` writes it, every
+module enabled, to stdout. The interactive reference at `/api` renders it with Scalar,
+from `apps/apiref/frontend`, built into `apps/server/internal/apiref/dist` by the same
+overlay as the SPA and this site.
+
+That document is a promise to integrators ([API compatibility](/en/reference/api-compatibility/)),
+and CI holds pull requests to it: the `lint_server` job builds it for the pull request and
+for its base and runs `oasdiff breaking`. A breaking finding fails the job unless a commit
+in the pull request is marked with Conventional Commits' `!` and names each broken
+operation in a trailer:
+
+```text
+feat(orders)!: report the total as totals.gross
+
+API-Breaking: getOrders — the total moves to totals.gross; getOrdersV2 replaces it
+```
+
+`tools/api/breaking-check.ts` then adds the `breaking-api` label, and
+[`.github/release.yml`](https://github.com/vantigo-io/vantigo/blob/main/.github/release.yml)
+lists labelled pull requests under **Breaking API changes** in the release notes. Prefer a
+new operation to a breaking one: the trailer is for the change that cannot be made
+additive.
 
 ## The assistant's copy
 

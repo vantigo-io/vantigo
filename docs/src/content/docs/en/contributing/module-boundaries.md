@@ -1626,6 +1626,19 @@ lag, never what must refuse — go through the platform's domain-events outbox,
       drains the recorder runs in the API process only (`Access.StartRequestLog`, where
       `identity.NewAccess` is built); `modtest` starts it, and `Harness.FlushAPIRequests`
       writes what is queued before a test reads `identity.api_requests`.
+    - **`compose.go` answers `/api/openapi.json` and leaves `/api` to the reference.**
+      The document has its own check, `Rule{Kind: RuleAnonymous, API: APIRead}` — a
+      read-only key may load its document — and a principal with no user is `401`. A session
+      gets the merged contract; a session with `?view=api` and a key get the integrator's
+      document, built by `internal/openapi/integrator` from the merged contract and the
+      composed catalog (`Build(contract, catalog, filter)`), for a key filtered by
+      `APIKeyScope` and kept in an LRU of 64 by the sorted permission set and the read-only
+      flag (`apidocument.go`). `module.IntegratorDocument` builds the unfiltered one for
+      every module given, which `vantigo openapi integrator` writes for CI. `/api` itself
+      stays the catch-all `404` problem in `compose.go`: `internal/server` hands a browser's
+      `GET` or `HEAD` of `/api` (`Accept` preferring `text/html`) and `/api/reference/` to
+      `internal/apiref`, the interactive reference, before the API is reached, so an API
+      client's `/api` keeps the API's answer.
     - **`UserEntry.Kind`** may be `integration` on a lookup by id, so a record an
       integration made can name it; `SearchUsers` and `PermissionHolders` never answer
       one, `IncludeAgents` included, and `UserHolds` is false for one. A check that means

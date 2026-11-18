@@ -16,6 +16,8 @@ sources:
   - apps/host/frontend/src/routes/workspace/-api-access-integration.tsx
   - apps/host/frontend/src/routes/workspace/-api-key-dialog.tsx
   - apps/host/frontend/src/routes/workspace/-api-access-requests.tsx
+  - apps/server/internal/apiref
+  - apps/apiref/frontend/src
 ---
 
 An **integration** is the account another application — a web shop, a reporting tool, a
@@ -216,6 +218,31 @@ own requests to it every second, whether or not more arrive, and once more as it
 it is at most about a second of its own requests behind. A workspace with several replicas may
 therefore let through up to a second's worth of requests more than the limit before they all
 refuse.
+
+## Trying the API at /api
+
+Vantigo serves an interactive reference of its API at `/api` on the application's own
+address, for example `https://vantigo.example.com/api`. Open it in a browser:
+
+1. **Signed in, without a key,** it lists every operation an API key can call, with the
+   permission each requires. A call you try there with **Test Request** goes with your own
+   session and is judged as your call, as the page says above the list.
+2. **To see what a key reaches,** paste it into **API key** and choose **Use key**. The list
+   is cut down to the operations that key can call — a read-only key's to its reads — and
+   **Test Request** sends the key, so the call is judged, refused and logged as the key's.
+3. **Clear** (or emptying the field) puts the page back to your session.
+4. **Neither signed in nor with a key,** the page says how to get a key and links the
+   [introduction to the API](/en/reference/api-introduction/).
+
+The key stays in the page: it is not stored in the browser, not sent anywhere but this
+installation, and gone when you leave or clear it. A key refused at **Use key** is named
+with its code (see below), and a refused key never signs you out. Nothing on the page is
+fetched from outside the installation. The page is not served on the public host.
+
+A program can load the same document itself: `GET /api/openapi.json` with the key in the
+`Authorization` header answers the OpenAPI document of what that key reaches, ready for a
+client generator; a session asking `?view=api` gets every operation a key can call
+([The API contract document](/en/admin/transport-security/#the-api-contract-document)).
 
 ## The answers a key can get
 

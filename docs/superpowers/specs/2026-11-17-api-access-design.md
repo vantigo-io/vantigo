@@ -913,6 +913,29 @@ Each question takes R §7's default. An overturn changes the following:
   first 4 random characters, `…` and the key's last 4 characters, which belong to the
   checksum, not to the random part.
 
+- **K58 (C.0, for K27): Scalar runs under the policy as written.** `@scalar/api-reference`
+  1.80.0's standalone bundle has no `eval` and one `Function('')`, zod's feature test, which
+  falls back when the policy refuses it, so the page needs no `'unsafe-eval'`. Its external
+  addresses are fonts (`fonts.scalar.com`, off with `withDefaultFonts: false`), the request
+  proxy (used only when `proxyUrl` is set, or by the `web` layout, which the reference does
+  not use), the agent chat and the registry (`api.scalar.com`, `registry.scalar.com`, on by
+  default on localhost; off with `agent: {disabled: true}` and `mcp: {disabled: true}`),
+  the dashboard (`dashboard.scalar.com`, opened in a new window only from the developer
+  tools, off with `showDeveloperTools: 'never'`; the client button is hidden too), and sample
+  image addresses its example generator can put into a request body. `telemetry` is a schema field with no sender in the bundle; it is set
+  false anyway. Checked in a browser under K27's policy: the page, a key's document and a
+  "Test Request" made no request off the origin and wrote nothing to storage.
+- **K59 (amends K28): the document's rule is `APIRead`.** With `APIAllowed`, identity
+  refuses a read-only key `api_key_read_only` on the very request that loads its document.
+- **K60 (amends K37): the builder is `internal/openapi/integrator.Build`.**
+  `internal/contracts` depends on `internal/openapi` through `internal/config`, so the
+  builder, which reads the rules through `contracts`, cannot live in `internal/openapi`
+  itself. `servers` is set by the composition, so the CLI's document is the same everywhere.
+- **K61 (amends K27): URLs relative to the page.** The page fetches `api/openapi.json` and
+  loads `./api/reference/…`, relative to `/api`, so a base path needs no rewriting; the
+  hashed files are the overlay's, as the SPA's are. `oasdiff` comes from mise's `github:`
+  backend, since the aqua registry has none.
+
 ## 15. Revision log
 
 - **Revision 1, 2026-11-17.** First version, from R.
@@ -969,3 +992,5 @@ Each question takes R §7's default. An overturn changes the following:
   - which role writes are guarded.
 
   Delivery 0 adds K48 to K56: what it built differently, and its reviews.
+- **Revision 4, 2026-11-18.** Delivery C adds K58 to K61: the C.0 check of Scalar under
+  the policy, the document's read rule, where the builder lives, and relative URLs.

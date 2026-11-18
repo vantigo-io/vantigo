@@ -81,7 +81,9 @@ Compose starts PostgreSQL, runs the application's database migrations as a one-s
 job, and then starts Vantigo:
 
 - **Vantigo** — <http://localhost:8080>
-- **API contract** — `GET http://localhost:8080/api/openapi.json` (requires a session)
+- **API reference** — <http://localhost:8080/api> in a browser, with a key or signed in
+- **API contract** — `GET http://localhost:8080/api/openapi.json` (a session, or an API
+  key; `?view=api` gives a session the integrator's document)
 
 The Customers, Products, Energy, Communications, Projects, Time, Expenses, Invoices,
 Staff, Planning, Inventory, Orders, Manufacturing, Knowledge, Calendar, Microsoft Entra ID, Google Workspace and Assistant modules are enabled by default
@@ -678,6 +680,23 @@ the embedded copy and lives on the public site only. Because the site's own scri
 run inline and its search runs WebAssembly, responses under `/docs/` carry the site's
 own content security policy instead of the application's; see
 [Transport security and browser hardening](/en/admin/transport-security/#browser-security-headers).
+
+## The API reference at `/api`
+
+The image also serves an interactive API reference at `/api` (under the base path when
+one is set), built from the same binary. A browser that opens it gets a page with a key
+field: with an API key it shows, and lets you call, the operations that key reaches;
+signed in without a key it shows every operation a key can call; with neither it explains
+how to get a key. Any other client asking for `/api` still gets the API's `404`. Like
+`/docs/`, it needs no setting and no network, carries its own content security policy
+([Transport security](/en/admin/transport-security/#the-api-reference-at-api)), and is not
+served on the public host. Keys are made under **Workspace admin › API access**
+([API access](/en/admin/api-access/)).
+
+`GET /api/openapi.json` answers a session with the merged contract, a session asking
+`?view=api` with the integrator's document, and an API key with the integrator's document
+cut to what the key reaches; see
+[The API contract document](/en/admin/transport-security/#the-api-contract-document).
 
 ## Email and observability
 
