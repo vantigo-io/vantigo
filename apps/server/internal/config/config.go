@@ -276,16 +276,16 @@ type Config struct {
 	// days). It is deliberately a duration rather than a day count, so an
 	// installation can shorten it to something a test or a pilot can observe.
 	CustomersPeppolRecheckAge time.Duration
-	// IdentityAPIKeysEnabled is the on/off switch for identity's API keys
+	// IdentityIntegrationsWorkerEnabled is the on/off switch for identity's API keys
 	// worker, identity.api-keys (IDENTITY_API_KEYS_ENABLED, API access design
 	// K15): it audits each key's expiry once and deletes a key's row 90 days
 	// after it expired. Default ON, like the other housekeeping workers; a 0
 	// means the worker is never handed to the runner, and an expired key is
 	// still refused, only not audited or deleted.
-	IdentityAPIKeysEnabled bool
-	// IdentityAPIKeysPoll is how often that worker runs a cycle
+	IdentityIntegrationsWorkerEnabled bool
+	// IdentityIntegrationsWorkerPoll is how often that worker runs a cycle
 	// (IDENTITY_API_KEYS_POLL, default 1 hour).
-	IdentityAPIKeysPoll time.Duration
+	IdentityIntegrationsWorkerPoll time.Duration
 	// CustomersAnonymisationEnabled is the on/off switch for the customers
 	// module's anonymisation worker (CUSTOMERS_ANONYMISATION_ENABLED,
 	// customers GDPR design D4). Default ON, like the registry workers, and for
@@ -979,8 +979,8 @@ func peppolLookup(p *problems, env map[string]string, c *Config) {
 // K15): its switch, on by default, and its cadence, an hour by default. The
 // batch is a constant in the worker, not a knob.
 func identityAPIKeys(p *problems, env map[string]string, c *Config) {
-	c.IdentityAPIKeysEnabled = boolean(p, env, "IDENTITY_API_KEYS_ENABLED", true)
-	c.IdentityAPIKeysPoll = duration(p, env, "IDENTITY_API_KEYS_POLL", time.Hour)
+	c.IdentityIntegrationsWorkerEnabled = boolean(p, env, "IDENTITY_API_KEYS_ENABLED", true)
+	c.IdentityIntegrationsWorkerPoll = duration(p, env, "IDENTITY_API_KEYS_POLL", time.Hour)
 }
 
 // customersRegistryWorkers loads the two customers background workers'

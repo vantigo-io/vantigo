@@ -1604,16 +1604,16 @@ func TestLoad_CustomersRegistryWorkersRejectNonsense(t *testing.T) {
 	}
 }
 
-// TestLoad_IdentityAPIKeysWorker pins the API keys worker's two settings (API
+// TestLoad_IdentityIntegrationsWorker pins the API keys worker's two settings (API
 // access design K15): on unless turned off, and hourly.
-func TestLoad_IdentityAPIKeysWorker(t *testing.T) {
+func TestLoad_IdentityIntegrationsWorker(t *testing.T) {
 	cfg := mustLoad(t, validEnv())
-	if !cfg.IdentityAPIKeysEnabled || cfg.IdentityAPIKeysPoll != time.Hour {
-		t.Errorf("defaults = %v/%v, want on and 1h", cfg.IdentityAPIKeysEnabled, cfg.IdentityAPIKeysPoll)
+	if !cfg.IdentityIntegrationsWorkerEnabled || cfg.IdentityIntegrationsWorkerPoll != time.Hour {
+		t.Errorf("defaults = %v/%v, want on and 1h", cfg.IdentityIntegrationsWorkerEnabled, cfg.IdentityIntegrationsWorkerPoll)
 	}
 	tuned := mustLoad(t, with(validEnv(), "IDENTITY_API_KEYS_ENABLED", "0", "IDENTITY_API_KEYS_POLL", "10m"))
-	if tuned.IdentityAPIKeysEnabled || tuned.IdentityAPIKeysPoll != 10*time.Minute {
-		t.Errorf("tuned = %v/%v, want off and 10m", tuned.IdentityAPIKeysEnabled, tuned.IdentityAPIKeysPoll)
+	if tuned.IdentityIntegrationsWorkerEnabled || tuned.IdentityIntegrationsWorkerPoll != 10*time.Minute {
+		t.Errorf("tuned = %v/%v, want off and 10m", tuned.IdentityIntegrationsWorkerEnabled, tuned.IdentityIntegrationsWorkerPoll)
 	}
 	if msg := loadError(t, with(validEnv(), "IDENTITY_API_KEYS_POLL", "soon")); !strings.Contains(msg, "IDENTITY_API_KEYS_POLL: must be a positive duration such as 30s") {
 		t.Errorf("error = %q", msg)

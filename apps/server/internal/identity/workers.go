@@ -32,7 +32,7 @@ const (
 
 // workers are identity's background workers, each behind its switch.
 func workers(d module.Deps) []worker.Worker {
-	if d.Config == nil || !d.Config.IdentityAPIKeysEnabled {
+	if d.Config == nil || !d.Config.IdentityIntegrationsWorkerEnabled {
 		return nil
 	}
 	return []worker.Worker{&apiKeysWorker{deps: d}}
@@ -42,7 +42,7 @@ func workers(d module.Deps) []worker.Worker {
 type apiKeysWorker struct{ deps module.Deps }
 
 func (*apiKeysWorker) Name() string              { return apiKeysWorkerName }
-func (w *apiKeysWorker) Interval() time.Duration { return w.deps.Config.IdentityAPIKeysPoll }
+func (w *apiKeysWorker) Interval() time.Duration { return w.deps.Config.IdentityIntegrationsWorkerPoll }
 
 func (w *apiKeysWorker) Run(ctx context.Context) error {
 	ticker := time.NewTicker(w.Interval())
