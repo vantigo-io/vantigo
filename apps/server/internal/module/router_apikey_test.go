@@ -41,7 +41,7 @@ func TestRouter_AKeyRequestIsLimitedAndRecorded(t *testing.T) {
 		return keyPrincipal(integration, key, 2), nil
 	}
 	r := newValidRouter(t, &access.fakeAccess, nil)
-	r.opts.Access, r.recorder = access, access
+	r.opts.Access, r.keys.recorder = access, access
 
 	get := func() *httptest.ResponseRecorder {
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/x/permission?secret=1", nil)
@@ -86,7 +86,7 @@ func TestRouter_ARefusedKeyIsRecordedWithItsReason(t *testing.T) {
 		return contracts.Principal{}, answer
 	}
 	r := newValidRouter(t, &access.fakeAccess, nil)
-	r.opts.Access, r.recorder = access, access
+	r.opts.Access, r.keys.recorder = access, access
 	get := func() int {
 		rec := httptest.NewRecorder()
 		r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/x/permission", nil))
@@ -125,7 +125,7 @@ func TestRouter_NoRecorderStillLimits(t *testing.T) {
 		return keyPrincipal(uuid.New(), uuid.New(), 60), nil
 	}}
 	r := newValidRouter(t, access, nil)
-	if r.recorder != nil {
+	if r.keys.recorder != nil {
 		t.Fatal("fakeAccess is no recorder")
 	}
 	rec := httptest.NewRecorder()
@@ -144,7 +144,7 @@ func keyRouter(t *testing.T, h http.HandlerFunc) (*Router, *recordingAccess) {
 		return keyPrincipal(uuid.New(), uuid.New(), 600), nil
 	}
 	r := newValidRouter(t, &access.fakeAccess, nil)
-	r.opts.Access, r.recorder = access, access
+	r.opts.Access, r.keys.recorder = access, access
 	r.routes = map[string][]*route{}
 	r.normalized = map[string]string{}
 	r.HandleFunc("GET /api/v1/x/permission", h)

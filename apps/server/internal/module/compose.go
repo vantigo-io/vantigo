@@ -668,7 +668,7 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 	if deps.Config != nil { // only a test composes without one
 		server = deps.Config.AppOrigin + deps.Config.BasePath
 	}
-	outer.Handle("GET /api/openapi.json", newAPIDocuments(deps.Access, body, catalog, server))
+	outer.Handle("GET /api/openapi.json", newAPIDocuments(deps.Access, deps.Limiter, body, catalog, server))
 
 	// Both the subtree and the bare "/api". Without the bare pattern,
 	// http.ServeMux answers "/api" with its automatic redirect to "/api/" —
