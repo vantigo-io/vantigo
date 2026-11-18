@@ -688,5 +688,10 @@ The Assistant can point at these controls in a guided tour ([the registry](/en/r
 
 An integration bills no hours: a rate (`postTimeRates`) naming one as its `userId` answers
 `400` *User … was not found*, as for an unknown user.
+
+A time entry and a submitted week are the caller's own, and nothing in the contract names
+another person, so logging time (`postTimeEntries`), changing an entry (`putTimeEntriesById`)
+and submitting a week (`postTimeWeeksByWeekStartSubmit`) are marked `x-vantigo-api: never`:
+a key gets `403 api_not_available`.
 See [integration users](/en/admin/authentication/#integration-users), and the marks' rules in
 [module boundaries](/en/contributing/module-boundaries/#the-rules).
