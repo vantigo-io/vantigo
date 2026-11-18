@@ -153,7 +153,8 @@ func withEnv(k, v string) harnessOption {
 	return func(s *harnessSetup) { s.env[k] = v }
 }
 
-// withPermissions adds perms, each a customers: or staff: key, to the
+// withPermissions adds perms, each a customers:, staff:, communications:,
+// orders: or invoices: key, to the
 // composed catalog through a catalogModule per prefix, for tests that give
 // roles keys beyond identity:manage.
 func withPermissions(perms ...contracts.Permission) harnessOption {
@@ -243,6 +244,9 @@ func newHarness(t *testing.T, opts ...harnessOption) *harness {
 	}
 	h.access = identity.NewAccess(h.deps)
 	h.deps.Access = h.access
+	// No test resolves a webhook host through DNS (outgoing webhooks design
+	// W11): every name is a public address unless a test says otherwise.
+	identity.SetWebhookResolver(h.access, webhookHosts)
 	t.Cleanup(h.deps.Limiter.Close)
 	// The API request log runs as in the API process (API access design K23).
 	t.Cleanup(h.access.StartRequestLog())
@@ -250,7 +254,7 @@ func newHarness(t *testing.T, opts ...harnessOption) *harness {
 		setup.oidc.attach(h.access, h.now) // before Compose mounts identity
 	}
 	mods := []module.Module{identity.Module(h.access)}
-	for _, name := range []string{"customers", "staff", "communications"} {
+	for _, name := range []string{"customers", "staff", "communications", "orders", "invoices"} {
 		var perms []contracts.Permission
 		for _, p := range setup.permissions {
 			if strings.HasPrefix(p.Key, name+":") {
