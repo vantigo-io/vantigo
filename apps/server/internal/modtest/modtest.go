@@ -1082,6 +1082,8 @@ func New(t *testing.T, opts ...Option) *Harness {
 	// The API request log runs as in the API process; FlushAPIRequests
 	// writes what it has queued.
 	t.Cleanup(access.StartRequestLog())
+	// The rate limiter's flusher stops, after a last flush, before the pool.
+	t.Cleanup(h.deps.Limiter.Close)
 	h.requestLog = access.FlushRequestLog
 
 	// Identity is mounted beside the module under test so its access layer is

@@ -243,6 +243,7 @@ func newHarness(t *testing.T, opts ...harnessOption) *harness {
 	}
 	h.access = identity.NewAccess(h.deps)
 	h.deps.Access = h.access
+	t.Cleanup(h.deps.Limiter.Close)
 	// The API request log runs as in the API process (API access design K23).
 	t.Cleanup(h.access.StartRequestLog())
 	if setup.oidc != nil {
