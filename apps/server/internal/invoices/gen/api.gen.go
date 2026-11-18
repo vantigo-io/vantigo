@@ -3077,7 +3077,7 @@ type InvoicesInvoiceResponse struct {
 	YourReference    string   `json:"yourReference"`
 }
 
-// InvoicesIssueRequest POST /invoices/{id}/issue's body (D6). issueDate is today in the business time zone when omitted; the only other date allowed is the last day of the previous month, while today's calendar day is 15 or less and the delivery ended on or before it — and never a date before the latest issue date of any issued document. useCredit (default false; invoices phase 6 design I11) applies the customer's credit in the invoice's currency to it once it is issued — the lesser of the credit and the gross, as the issuer — in a transaction of its own after the issue's; when that fails the issue stands and its answer carries the warning credit_not_applied. A credit note ignores it.
+// InvoicesIssueRequest POST /invoices/{id}/issue's body (D6). issueDate is today in the business time zone when omitted; the only other date allowed is the last day of the previous month, while today's calendar day is 15 or less and the delivery ended on or before it — and never a date before the latest issue date of any issued document. useCredit (default false; invoices phase 6 design I11) applies the customer's credit in the invoice's currency to it once it is issued — the lesser of the credit and the gross, as the issuer, who also needs invoices:payments — in a transaction of its own after the issue's; when that fails, or the issuer may not apply credit, the issue stands and its answer carries the warning credit_not_applied. A credit note ignores it.
 type InvoicesIssueRequest struct {
 	IssueDate *openapi_types.Date `json:"issueDate,omitempty"`
 	UseCredit *bool               `json:"useCredit,omitempty"`

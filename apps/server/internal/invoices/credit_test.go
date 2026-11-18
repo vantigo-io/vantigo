@@ -337,14 +337,24 @@ func TestCredit_ACreditNotesSurplusMovesAndReturns(t *testing.T) {
 }
 
 // The issue's useCredit applies the customer's credit after the issue — the
-// lesser of the credit and the gross — and with no credit it applies
+// lesser of the credit and the gross — for an issuer who may apply credit;
+// one who may not gets the warning and no payment. With no credit it applies
 // nothing and warns of nothing.
 func TestCredit_UseCreditOnIssue(t *testing.T) {
 	t.Parallel()
 	h := readyToIssue(t)
 	overpaid(t, h)
+	issueAndPay := h.SignIn(t, "invoices:access", "invoices:issue", "invoices:payments")
+	plain := createDraft(t, h, draftBody(customerAcme, line("A", 1, 100, vat25)))
+	res := issuer(t, h).Do(http.MethodPost, fmt.Sprintf("%s/%d/issue", invoicesPath, plain.ID), map[string]any{"useCredit": true})
+	var refused invoiceJSON
+	res.JSON(&refused)
+	if res.Status != http.StatusOK || len(refused.Payments) != 0 || !slices.Contains(refused.Warnings, "credit_not_applied") {
+		t.Errorf("issued by one without invoices:payments = %d %+v %v, want issued, no payment, credit_not_applied",
+			res.Status, refused.Payments, refused.Warnings)
+	}
 	draft := createDraft(t, h, draftBody(customerAcme, line("Konsulenttime", 10, 80, vat25)))
-	res := issuer(t, h).Do(http.MethodPost, fmt.Sprintf("%s/%d/issue", invoicesPath, draft.ID), map[string]any{"useCredit": true})
+	res = issueAndPay.Do(http.MethodPost, fmt.Sprintf("%s/%d/issue", invoicesPath, draft.ID), map[string]any{"useCredit": true})
 	if res.Status != http.StatusOK {
 		t.Fatalf("issue with useCredit = %d %s", res.Status, res.Body)
 	}
@@ -354,7 +364,7 @@ func TestCredit_UseCreditOnIssue(t *testing.T) {
 		t.Errorf("issued = open %v %+v %v, want 800 open after 200 of credit", money(got.OpenAmount), got.Payments, got.Warnings)
 	}
 	other := createDraft(t, h, draftBody(customerPerson, line("A", 1, 100, vat25)))
-	res = issuer(t, h).Do(http.MethodPost, fmt.Sprintf("%s/%d/issue", invoicesPath, other.ID), map[string]any{"useCredit": true})
+	res = issueAndPay.Do(http.MethodPost, fmt.Sprintf("%s/%d/issue", invoicesPath, other.ID), map[string]any{"useCredit": true})
 	res.JSON(&got)
 	if res.Status != http.StatusOK || len(got.Payments) != 0 || slices.Contains(got.Warnings, "credit_not_applied") {
 		t.Errorf("issued with no credit = %d %+v %v, want no payment and no warning", res.Status, got.Payments, got.Warnings)

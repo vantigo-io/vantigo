@@ -269,10 +269,16 @@ func (s *server) PostInvoicesByIdIssue(ctx context.Context, req gen.PostInvoices
 		return gen.PostInvoicesByIdIssue409ApplicationProblemPlusJSONResponse(*out.refusal), nil
 	}
 	// useCredit (invoices phase 6 design I11): the customer's credit applied
-	// after the issue committed, never inside it; a failure is a warning.
+	// after the issue committed, never inside it, by an issuer who may apply
+	// credit (invoices:payments); a failure, or an issuer who may not, is a
+	// warning.
 	var warnings []string
-	if req.Body.UseCredit != nil && *req.Body.UseCredit {
-		warnings = s.useCreditAfterIssue(ctx, out.doc)
+	if req.Body.UseCredit != nil && *req.Body.UseCredit && out.doc.Kind == kindInvoice {
+		if s.has(ctx, "invoices:payments") {
+			warnings = s.useCreditAfterIssue(ctx, out.doc)
+		} else {
+			warnings = []string{warningCreditNotApplied}
+		}
 	}
 	resp, err := s.invoiceResponse(ctx, store.New(s.deps.Pool), out.doc, nil, out.loc)
 	if err != nil {
