@@ -1029,9 +1029,12 @@ body every rate limit writes.
 
 The count lives in `platform.rate_limit` as the others do, but a key request does not wait on
 it: the window's first request records a hit there, and each replica counts the rest in process
-and adds them to the shared row once a second, reading back what the others added. Replicas may
-together let through up to a second's worth more than the limit. A replica that stops loses at
-most a second of its count.
+and a flusher adds them to the shared row every second, whether or not more requests arrive,
+reading back what the others added, and once more when the limiter is closed at shutdown. A
+flush adds only to the row of the window its hits were counted in: hits of a window the row has
+since left are dropped. Each replica is therefore at most about a second of its own traffic
+behind, and replicas may together let through up to a second's worth more than the limit. A
+replica that stops without shutting down loses at most a second of its count.
 
 ### The request log
 
@@ -1042,8 +1045,9 @@ could attribute, admitted or refused — the time, the key, the integration, the
 client address and the trace id. A request whose key matched no key is not recorded. A body, a
 query string and a path parameter's value are never recorded, since they can carry personal
 data; the trace id finds the request in the server's traces and log lines. This is where to
-look for what a key did, and why it was refused: the client is told only `401
-unauthenticated` for most refusals. Owners read it on the integration's **Requests** tab
+look for what a key did, and why it was refused: a revoked key, a disabled or archived
+integration and a request from outside the key's networks are all told only `401
+unauthenticated`. Owners read it on the integration's **Requests** tab
 ([API access](/en/admin/api-access/#the-request-log)).
 
 The router hands each answered request to identity's recorder, which queues it and never
@@ -1056,8 +1060,11 @@ changes.
 
 The table is partitioned by UTC day on `at`, with a DEFAULT partition, so a write never fails
 for want of a partition. The `identity.api-keys` worker makes today's and the next 6 days'
-partitions, moves rows that landed in DEFAULT into a partition of their day, and drops the days
-older than 30 ([Configuration](/en/admin/configuration/#workers)). The table has no foreign key
+partitions, moves rows that landed in DEFAULT into a partition of their day, and drops what is
+older than the 30 days kept, today included ([Configuration](/en/admin/configuration/#workers)).
+Each day is made in a transaction of its own that waits at most 5 seconds (`lock_timeout`) for
+the table's lock; a day that cannot get it is logged and made on the next cycle, and the
+notices go out regardless. The table has no foreign key
 to `api_keys`: a key's row is deleted 90 days after it expired, and its log rows age out on
 their own.
 

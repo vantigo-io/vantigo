@@ -212,8 +212,10 @@ An application should slow down when `RateLimit-Remaining` nears zero and wait o
 `Retry-After` when it gets a `429`.
 
 The count is kept in the database, so every replica sees the same one. Each replica adds its
-own requests to it once a second, so a workspace with several replicas may let through up to a
-second's worth of requests more than the limit before they all refuse.
+own requests to it every second, whether or not more arrive, and once more as it shuts down, so
+it is at most about a second of its own requests behind. A workspace with several replicas may
+therefore let through up to a second's worth of requests more than the limit before they all
+refuse.
 
 ## The answers a key can get
 
@@ -238,7 +240,7 @@ a request with a key that matched no key is not, because there is nothing to tie
 - **Requests per day** counts them per day and status class — *2xx success*, *3xx redirect*,
   *4xx refused* and *5xx server error* — as a chart and a table. Days are UTC days.
 - **Called most** lists the ten operations called most.
-- **Latest requests** lists the 200 newest: when, the key, the method and the operation, the
+- **Latest requests** lists the 200 newest: when, in UTC, the key, the method and the operation, the
   status — with why, for a refusal — how long it took, the client's address and the trace id.
   A key whose row has been deleted, 90 days after it expired, shows as *Deleted key*.
 - **Key**, **Status**, **Refused because** and **Day** filter all three.
@@ -257,8 +259,10 @@ A refusal is recorded with its reason:
 | *Not allowed by the roles* (`forbidden`) | the roles, or the narrowing, do not give what the operation needs |
 | *Over the rate limit* (`rate_limited`) | the integration had made its **Rate limit** of requests that minute |
 
-The client sees `401 unauthenticated` for most of these, so it learns nothing about the key;
-the log says which it was.
+A revoked key, a disabled or archived integration and a request from outside the networks are
+all answered `401 unauthenticated`, as an unknown key is, so the client learns nothing about the
+key; the log says which it was. The others get the code in
+[The answers a key can get](#the-answers-a-key-can-get).
 
 The log holds the operation, never the path, a query string or a body, because those can
 carry personal data. The trace id finds the request in the server's own traces and log lines.
@@ -268,7 +272,7 @@ database cannot keep up, rows are dropped rather than slowing requests down, and
 the `vantigo.identity.api_requests.dropped` metric. The log is an operational record, not the
 audit trail.
 
-Rows older than 30 days are deleted by the `identity.api-keys` worker
+The log keeps 30 days, today included: older rows are deleted by the `identity.api-keys` worker
 ([Configuration](/en/admin/configuration/#workers)). With the worker switched off, nothing is
 ever deleted from the log.
 
@@ -285,6 +289,10 @@ get the notice.
 - A key that has been rolled or revoked gets none: rolling a key is what the notice asks for.
 - The notice names the key and the integration, never the key itself, and says to roll the
   key under **Workspace admin › API access** and give the new one to the application.
+- A notice that reached no one — the mail failed, or no recipient is active with an address mail
+  reaches — is tried again on the next run. One that reached someone is not sent again to those
+  it missed. If the server stops in the moment between recording a notice and mailing it, that
+  notice is not sent: each goes at most once.
 
 The notices are sent by the `identity.api-keys` worker; with it switched off, none are sent.
 
