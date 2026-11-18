@@ -83,6 +83,15 @@ func TestRun_SeedBooksTheDemo(t *testing.T) {
 		         WHERE i.kind = 'invoice' AND i.status = 'issued')
 		      + (SELECT coalesce(sum(amount_nok), 0) FROM invoices.customer_credits))::text`, "0.00")
 	expect("the demo customer's credit", `SELECT coalesce(sum(amount), 0)::text FROM invoices.customer_credits`, "300.00")
+	// The small difference rounded off by itself, posted to 7790 as a
+	// manual one is, and the bank-feed line split across two invoices
+	// (invoices phase 6 design I14, I15).
+	expect("the automatic rounding write-off", `SELECT string_agg(amount || ' ' || reason, ',') FROM invoices.write_offs
+		WHERE source = 'auto' AND registered_by_user_id IS NULL`, "2.00 rounding")
+	expect("the rounding posting", `SELECT coalesce(sum(p.amount), 0)::text FROM accounting.postings p
+		JOIN accounting.accounts a ON a.id = p.account_id WHERE a.system_role = 'rounding'`, "2.00")
+	expect("the split line's payments", `SELECT count(*)::text FROM invoices.payments p
+		JOIN invoices.bank_transaction_events e ON e.bank_transaction_id = p.bank_transaction_id AND e.event = 'auto_split'`, "2")
 	// Payables on the ledger are the supplier ledger, and something is owed.
 	expect("payables less the supplier ledger", `
 		SELECT ((SELECT coalesce(sum(p.amount), 0) FROM accounting.postings p
