@@ -152,10 +152,12 @@ export async function start(root: HTMLElement, env: Environment): Promise<void> 
   };
 
   // Without a key: the integrator's document under the session, if there is
-  // one, and otherwise the explanation.
-  const loadSession = async () => {
+  // one, and otherwise the explanation. lead, when given, says first why the
+  // page fell back here (a refused key).
+  const loadSession = async (lead = "") => {
     const mine = ++generation;
-    say(copy.loading);
+    const sayAfter = (text: string, link = false) => say(lead ? `${lead} ${text}` : text, link);
+    sayAfter(copy.loading);
     let response: Response;
     try {
       response = await env.fetch(SESSION_DOCUMENT_URL, {
@@ -163,24 +165,24 @@ export async function start(root: HTMLElement, env: Environment): Promise<void> 
         credentials: "same-origin",
       });
     } catch {
-      if (mine === generation) say(copy.failed);
+      if (mine === generation) sayAfter(copy.failed);
       return;
     }
     if (mine !== generation) return;
     if (response.status === 401 || response.status === 403) {
       unmount();
-      say(copy.noAccess, true);
+      sayAfter(copy.noAccess, true);
       return;
     }
     if (!response.ok) {
       unmount();
-      say(copy.failed);
+      sayAfter(copy.failed);
       return;
     }
     const content: unknown = await response.json();
     if (mine !== generation) return;
     mount(content, null);
-    say(copy.session);
+    sayAfter(copy.session);
   };
 
   const loadKey = async (key: string) => {
@@ -195,19 +197,33 @@ export async function start(root: HTMLElement, env: Environment): Promise<void> 
         credentials: "omit",
       });
     } catch {
-      if (mine === generation) say(copy.failed);
+      if (mine === generation) await refuse(copy.failed);
       return;
     }
     if (mine !== generation) return;
     if (!response.ok) {
       const code = await errorCode(response);
-      if (mine === generation) say(copy.refused(code));
+      if (mine === generation) await refuse(copy.refused(code));
       return;
     }
-    const content: unknown = await response.json();
+    let content: unknown;
+    try {
+      content = await response.json();
+    } catch {
+      if (mine === generation) await refuse(copy.failed);
+      return;
+    }
     if (mine !== generation) return;
     mount(content, key);
     say(copy.key);
+  };
+
+  // A key that was refused, or whose document could not be loaded, leaves
+  // nothing of an earlier key mounted: the page goes back to the session's
+  // view, or the explanation, and says first what went wrong.
+  const refuse = async (why: string) => {
+    unmount();
+    await loadSession(why);
   };
 
   const clear = async () => {
