@@ -268,7 +268,9 @@ func owedBack(reason *string) bool {
 		return false
 	}
 	switch *reason {
-	case reasonInvoiceCredited, reasonInvoiceSettled, reasonExceedsOpen:
+	// A line for an invoice in another currency, dismissed, is the
+	// customer's money for an invoice it named (invoices phase 6 design I24).
+	case reasonInvoiceCredited, reasonInvoiceSettled, reasonExceedsOpen, reasonCurrencyDiffers:
 		return true
 	}
 	return false
@@ -643,11 +645,23 @@ func lineRefusal[T any](refusal *gen.InvoicesConflictProblem, err error, notFoun
 }
 
 // allocation is one part of an apply, parsed: an invoice, the principal and
-// the charges it pays, each exact and as numeric(14,2).
+// the charges it pays, each exact and as numeric(14,2), and on an invoice in
+// another currency the line's share in NOK (invoices phase 6 design I24),
+// nil otherwise.
 type allocation struct {
 	invoiceID         int64
 	amount, charges   *big.Rat
 	amountN, chargesN pgtype.Numeric
+	amountNOK         *big.Rat
+}
+
+// lineShare is what an allocation takes of its NOK line: its NOK share on
+// an invoice in another currency, its principal and charges on NOK.
+func (a allocation) lineShare() *big.Rat {
+	if a.amountNOK != nil {
+		return new(big.Rat).Set(a.amountNOK)
+	}
+	return new(big.Rat).Add(a.amount, a.charges)
 }
 
 // parseApply runs D5's field rules over an apply's body, every failure
@@ -705,9 +719,39 @@ func parseApply(body gen.InvoicesBankTransactionApplyRequest) ([]allocation, str
 		if err != nil {
 			return nil, "", nil, fmt.Errorf("invoices: an allocation's charges as numeric: %w", err)
 		}
-		allocs = append(allocs, allocation{invoiceID: a.InvoiceId, amount: amt, charges: charges, amountN: amountN, chargesN: chargesN})
+		al := allocation{invoiceID: a.InvoiceId, amount: amt, charges: charges, amountN: amountN, chargesN: chargesN}
+		if a.AmountNok != nil {
+			nok, msg := amount("A share in NOK", *a.AmountNok, 2, zero, false, maxGrossTotal)
+			add(field("amountNok"), msg)
+			al.amountNOK = nok
+		}
+		allocs = append(allocs, al)
 	}
 	return allocs, note, errs, nil
+}
+
+// checkAllocationCurrencies holds each allocation's amountNok to its
+// invoice's currency, read on the pool — an invoice's currency never changes
+// once it is issued, and the lock judges the rest (I24): required on an
+// invoice in another currency than NOK, refused on NOK.
+func checkAllocationCurrencies(ctx context.Context, q *store.Queries, allocs []allocation, errs map[string][]string) (map[string][]string, error) {
+	for i, a := range allocs {
+		inv, err := q.GetInvoice(ctx, a.invoiceID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			continue // allocation_not_an_invoice, under the lock
+		}
+		if err != nil {
+			return nil, fmt.Errorf("invoices: read document %d: %w", a.invoiceID, err)
+		}
+		field := fmt.Sprintf("allocations[%d].amountNok", i)
+		switch {
+		case inv.Currency != "NOK" && a.amountNOK == nil:
+			errs = withFieldError(errs, field, fmt.Sprintf("The invoice is in %s: give the line's share in NOK", inv.Currency))
+		case inv.Currency == "NOK" && a.amountNOK != nil:
+			errs = withFieldError(errs, field, "The invoice is in NOK: its amount is the line's share")
+		}
+	}
+	return errs, nil
 }
 
 // judgeApplicable is the apply's judgement of the line: an exception, and
@@ -775,6 +819,11 @@ func (s *server) applyLocked(ctx context.Context, txq *store.Queries, line store
 				return &p, nil
 			}
 		}
+		// A charge payment has no NOK of its own (plan reading 6).
+		if inv.Currency != "NOK" && a.charges.Sign() > 0 {
+			return ptr(conflict(codeCurrencyNotNOK, cannotApplyTitle, fmt.Sprintf(
+				"Invoice %s is in %s: its charges are not paid from a bank line; apply its principal only.", numberText(inv), inv.Currency))), nil
+		}
 		if a.charges.Sign() > 0 {
 			state, _, err := chargesOf(ctx, txq, inv.ID)
 			if err != nil {
@@ -793,7 +842,7 @@ func (s *server) applyLocked(ctx context.Context, txq *store.Queries, line store
 				"The bank booked this line on %s, before invoice %s was issued on %s: it cannot be a payment of it.",
 				line.BookedOn.Time.Format(time.DateOnly), numberText(inv), inv.IssueDate.Time.Format(time.DateOnly)))), nil
 		}
-		total.Add(total, a.amount).Add(total, a.charges)
+		total.Add(total, a.lineShare())
 	}
 	live, err := txq.LiveAppliedTo(ctx, line.ID)
 	if err != nil {
@@ -819,20 +868,32 @@ func (s *server) applyLocked(ctx context.Context, txq *store.Queries, line store
 	lineKeepsRest := total.Cmp(left) < 0
 	for _, a := range ordered {
 		inv := byID[a.invoiceID]
-		// A bank line is NOK (ck_bank_transactions_currency); an invoice in
-		// another currency cannot be paid by it, and no refusal says so yet:
-		// fail closed, as a match does.
-		if inv.Currency != "NOK" {
-			return nil, fmt.Errorf("invoices: line %d is in NOK and invoice %d is in %s", line.ID, inv.ID, inv.Currency)
+		// A bank line is NOK (ck_bank_transactions_currency): on an invoice
+		// in another currency the person said what of the line pays it, and
+		// the payment carries that NOK and its exchange difference (I24).
+		if inv.Currency != "NOK" && a.amountNOK == nil {
+			return nil, fmt.Errorf("invoices: line %d's allocation to %d in %s has no NOK share", line.ID, inv.ID, inv.Currency)
 		}
 		if a.amount.Sign() > 0 {
-			nok, err := amountNOKOf(inv, a.amountN)
+			var arrived *big.Rat
+			if inv.Currency != "NOK" {
+				arrived = a.amountNOK
+			}
+			open, err := openOf(ctx, txq, inv)
+			if err != nil {
+				return nil, err
+			}
+			cleared, err := movementNOK(ctx, txq, inv, a.amount, open)
+			if err != nil {
+				return nil, err
+			}
+			nok, diff, err := paymentNOK(arrived, cleared)
 			if err != nil {
 				return nil, err
 			}
 			if _, err := txq.InsertImportedPayment(ctx, store.InsertImportedPaymentParams{
 				InvoiceID: inv.ID, PaidOn: line.BookedOn, Amount: a.amountN, AmountNok: nok, Currency: inv.Currency, Source: paymentSourceOf(line.Format),
-				BankTransactionID: line.ID, Reference: reference, RegisteredByUserID: &caller, RegisteredAt: now,
+				BankTransactionID: line.ID, Reference: reference, RegisteredByUserID: &caller, RegisteredAt: now, ExchangeDifferenceNok: diff,
 			}); err != nil {
 				return nil, fmt.Errorf("invoices: apply line %d's payment to %d: %w", line.ID, inv.ID, err)
 			}
@@ -954,6 +1015,11 @@ func (s *server) PostInvoicesBankTransactionsByIdApply(ctx context.Context, req 
 	allocs, note, errs, err := parseApply(*req.Body)
 	if err != nil {
 		return nil, err
+	}
+	if errs == nil {
+		if errs, err = checkAllocationCurrencies(ctx, store.New(s.deps.Pool), allocs, errs); err != nil {
+			return nil, err
+		}
 	}
 	if errs != nil {
 		return gen.PostInvoicesBankTransactionsByIdApply400ApplicationProblemPlusJSONResponse(invalid(invalidApplyTitle, errs)), nil

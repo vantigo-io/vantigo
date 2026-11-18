@@ -1,4 +1,4 @@
-import { Button, Checkbox, Group, Modal, NumberInput, Stack, Textarea, TextInput } from "@mantine/core";
+import { Button, Checkbox, Group, Modal, NumberInput, Stack, Text, Textarea, TextInput } from "@mantine/core";
 import { DateInput } from "@mantine/dates";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -23,7 +23,10 @@ export interface RegisterPaymentModalProps {
 }
 
 /** The fields of a registration, each of which has an input here. */
-const paymentInputs = new Set(["paidOn", "amount", "reference", "note", "keepRestAsCredit"]);
+const paymentInputs = new Set(["paidOn", "amount", "amountNok", "reference", "note", "keepRestAsCredit"]);
+
+/** Two decimals, the half away from zero. */
+const round2 = (v: number) => (Math.sign(v) * Math.round(Math.abs(v) * 100)) / 100;
 
 /**
  * Registers money received against an issued invoice (D2, D10): the day it
@@ -47,12 +50,20 @@ export const RegisterPaymentModal = ({ invoice, today, recovered = false, onClos
       0,
     ),
   );
+  // Off NOK, what arrived in NOK (invoices phase 6 design I24): proposed at
+  // the day's rate until the person types it.
+  const foreign = invoice.currency !== "NOK";
+  const proposed = invoice.proposedRate ?? invoice.exchangeRate;
+  const [amountNok, setAmountNok] = useState<number | string | null>(null);
   const [reference, setReference] = useState("");
   const [note, setNote] = useState("");
   const [keepRest, setKeepRest] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const numeric = typeof amount === "number" ? amount : Number(amount);
   const overpaid = !recovered && (invoice.openAmount ?? 0) > 0 && numeric > (invoice.openAmount ?? 0);
+  const nok =
+    amountNok === null ? round2(numeric * proposed) : typeof amountNok === "number" ? amountNok : Number(amountNok);
+  const difference = round2(nok - round2(Math.min(numeric, invoice.openAmount ?? numeric) * invoice.exchangeRate));
   const clear = (field: string) =>
     setErrors((current) => Object.fromEntries(Object.entries(current).filter(([f]) => f !== field)));
   const register = useMutation({
@@ -64,6 +75,7 @@ export const RegisterPaymentModal = ({ invoice, today, recovered = false, onClos
         ...(note.trim() ? { note: note.trim() } : {}),
         ...(recovered ? { kind: "recovered" as const } : {}),
         ...(overpaid && keepRest ? { keepRestAsCredit: true } : {}),
+        ...(foreign ? { amountNok: nok } : {}),
       }),
     onSuccess: async () => {
       // The answer carries no send defaults (design D4): the document is read again.
@@ -118,6 +130,31 @@ export const RegisterPaymentModal = ({ invoice, today, recovered = false, onClos
             clear("amount");
           }}
         />
+        {foreign && (
+          <>
+            <NumberInput
+              data-assist="invoices.payment.amount-nok"
+              label={t("currency.receivedInNok")}
+              required
+              min={0}
+              decimalScale={2}
+              hideControls
+              rightSection="NOK"
+              rightSectionWidth={48}
+              value={nok}
+              error={errors.amountNok}
+              onChange={(v) => {
+                setAmountNok(v);
+                clear("amountNok");
+              }}
+            />
+            {difference !== 0 && (
+              <Text size="sm" c="dimmed" data-testid="exchange-difference">
+                {t(difference > 0 ? "currency.gain" : "currency.loss", { amount: money(Math.abs(difference), "NOK") })}
+              </Text>
+            )}
+          </>
+        )}
         {overpaid && (
           <Checkbox
             label={t("credit.keepRest", {

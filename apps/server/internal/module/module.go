@@ -151,6 +151,12 @@ type Deps struct {
 	// enabled module declares Module.SalesJournal, right after SalesTax; it is
 	// nil when invoices is disabled.
 	SalesJournal contracts.SalesJournal
+	// ExchangeRates is Invoices' exchange rates (contracts.ExchangeRates,
+	// invoices phase 6 design I18). Compose and Workers set it, on every
+	// module's Deps copy, from whichever enabled module declares
+	// Module.ExchangeRates, right after SalesJournal; it is nil when invoices
+	// is disabled.
+	ExchangeRates contracts.ExchangeRates
 	// ExpenseJournal is what Expenses has approved and reimbursed, in an
 	// order a reader resumes from (contracts.ExpenseJournal, accounting
 	// design A20, R2). Compose and Workers set it, on every module's Deps
@@ -640,6 +646,12 @@ type Module struct {
 	// SalesTax and put the result on every module's Deps, including the
 	// provider's own.
 	SalesJournal func(Deps) contracts.SalesJournal
+	// ExchangeRates builds this module's contracts.ExchangeRates
+	// implementation, if it provides one (invoices, invoices phase 6 design
+	// I18). At most one enabled module may set it; Compose and Workers call it
+	// right after SalesJournal and put the result on every module's Deps,
+	// including the provider's own.
+	ExchangeRates func(Deps) contracts.ExchangeRates
 	// ExpenseJournal builds this module's contracts.ExpenseJournal
 	// implementation, if it provides one (expenses, accounting design A20,
 	// R2). At most one enabled module may set it; Compose and Workers call it

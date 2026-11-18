@@ -576,7 +576,7 @@ func TestCredit_AForeignFinalNoteSquaresTheNOK(t *testing.T) {
 	t.Parallel()
 	h := readyToIssue(t)
 	draft := createDraft(t, h, draftBody(customerAcme, line("Matvare", 2, 33.30, vat15)))
-	h.Exec(t, `UPDATE invoices.invoices SET currency = 'EUR', exchange_rate = 10.0007 WHERE id = $1`, draft.ID)
+	h.Exec(t, `UPDATE invoices.invoices SET currency = 'EUR', exchange_rate = 10.0007, exchange_rate_source = 'manual' WHERE id = $1`, draft.ID)
 	original := issued(t, h, draft.ID)
 	if original.VatTotalNok != 99.91 {
 		t.Fatalf("the original's NOK VAT = %v, want 99.91", original.VatTotalNok)

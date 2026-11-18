@@ -119,7 +119,7 @@ lag, never what must refuse — go through the platform's domain-events outbox,
 5. **One module, one mount.** A module exposes one `Module()` returning a
    `module.Module`: its name, its `Mount`, the permissions it contributes, the
    background workers it contributes, and the cross-module contracts it *provides*.
-   There are twenty-seven single-provider slots, each filled by at most one enabled module:
+   There are twenty-eight single-provider slots, each filled by at most one enabled module:
    `Directory` (`contracts.CustomerDirectory`, customers), `Users`
    (`contracts.UserDirectory`, identity), `Calendar` (`contracts.BusinessCalendar`,
    identity — the workspace's business time zone and the day an instant falls on in
@@ -282,7 +282,10 @@ lag, never what must refuse — go through the platform's domain-events outbox,
    either. It does resolve `SalesTax` (`withSalesTax`, after the line-level reads): Orders'
    mail worker prints the seller block into every mail it sends. Both resolve, right after
    `SalesTax`, the two journals a ledger posts from: `SalesJournal`
-   (`contracts.SalesJournal`, invoices) and then `ExpenseJournal`
+   (`contracts.SalesJournal`, invoices), with `ExchangeRates` (`contracts.ExchangeRates`,
+   invoices — Norges Bank's rates and the manual ones by the seven-day rule, which
+   Accounting and Orders may read, neither yet; `withExchangeRates`) right after it, and
+   then `ExpenseJournal`
    (`contracts.ExpenseJournal`, expenses — its fact log of approvals, undoings and
    reimbursements, and an expense's receipts to copy; `modtest.WithExpenseJournal` is the
    seam), each from its provider's own tables only, since Accounting's catch-up worker reads

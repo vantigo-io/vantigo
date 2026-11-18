@@ -705,6 +705,7 @@ func TestWorkers_Efaktura(t *testing.T) {
 	d := h.Deps()
 	cfg := *d.Config
 	cfg.InvoicesEhfEnabled, cfg.InvoicesVippsEnabled, cfg.InvoicesBankFeedEnabled, cfg.InvoicesEfakturaEnabled = false, false, false, true
+	cfg.InvoicesRatesEnabled = false // the harness's own is on; TestWorkers_PerSwitch covers it
 	d.Config = &cfg
 	var names []string
 	for _, w := range invoices.Module().Workers(d) {
@@ -736,6 +737,7 @@ func TestWorkers_PerSwitch(t *testing.T) {
 		d := h.Deps()
 		cfg := *d.Config
 		cfg.InvoicesEhfEnabled, cfg.InvoicesVippsEnabled, cfg.InvoicesBankFeedEnabled = c.ehf, c.vipps, c.feed
+		cfg.InvoicesRatesEnabled = false
 		cfg.InvoicesEfakturaEnabled = false // the harness's own is on; TestWorkers_Efaktura covers it
 		d.Config = &cfg
 		var names []string
@@ -745,6 +747,20 @@ func TestWorkers_PerSwitch(t *testing.T) {
 		if !slices.Equal(names, c.want) {
 			t.Errorf("INVOICES_EHF_ENABLED %v, INVOICES_VIPPS_ENABLED %v, INVOICES_BANK_FEED_ENABLED %v: workers %v, want %v", c.ehf, c.vipps, c.feed, names, c.want)
 		}
+	}
+	// INVOICES_RATES_ENABLED adds the exchange rates worker (invoices phase
+	// 6 design I18), last.
+	d := h.Deps()
+	cfg := *d.Config
+	cfg.InvoicesEhfEnabled, cfg.InvoicesVippsEnabled, cfg.InvoicesBankFeedEnabled, cfg.InvoicesRatesEnabled = false, false, false, true
+	cfg.InvoicesEfakturaEnabled = false
+	d.Config = &cfg
+	var names []string
+	for _, w := range invoices.Module().Workers(d) {
+		names = append(names, w.Name())
+	}
+	if want := []string{"invoices-reminders", "invoices-billing", "invoices.allocation_reconcile", "invoices-overdue-events", "invoices.credit_moves", "invoices-rates"}; !slices.Equal(names, want) {
+		t.Errorf("INVOICES_RATES_ENABLED: workers %v, want %v", names, want)
 	}
 }
 

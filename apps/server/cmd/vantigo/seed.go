@@ -1769,6 +1769,13 @@ func seedInvoicesReceivables(ctx context.Context, tx pgx.Tx, now time.Time, user
 		}
 	}
 
+	// An invoice in euro, paid in NOK with an exchange difference
+	// (seedInvoicesCurrency), to the last customer.
+	if err := seedInvoicesCurrency(ctx, tx, now, ownerID, customerIDs[len(customerIDs)-1], nextDocNumber, sellerOrg, sellerBank); err != nil {
+		return err
+	}
+	nextDocNumber++
+
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO invoices.counters (counter_name, next_value)
 		VALUES ('documents', $1)

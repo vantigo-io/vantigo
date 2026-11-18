@@ -1215,6 +1215,9 @@ receiving on the access-point port, and research of its own (Purchasing design �
 
 - **MVA-melding submission and Maskinporten**, year-end, several legal entities, foreign
   currency ledgers, fixed assets and payroll (the design's §12).
+- **The open items in currency**: the customers report and the open items page showing
+  a receivable's amount in its currency beside the NOK (the postings carry it since
+  Invoices phase 6 delivery C), and the unrealised revaluation at year-end.
 
 ## Projects
 
@@ -1798,9 +1801,16 @@ is written off by itself as `rounding`, source `auto`, and a rounding write-off 
 paid. See
 [`docs/src/content/docs/en/reference/invoices.md`](docs/src/content/docs/en/reference/invoices.md#the-automatic-split).
 
-**Delivery C: foreign currency** — Norges Bank's rates, the document in currency with
-VAT in NOK, payments with the exchange difference, Orders' currencies invoiced and
-Accounting posting in currency (after B).
+**Delivery C: foreign currency (done)** — on `claude/invoices-currency`, migration
+`00203_invoices_currency.sql`. Currencies turned on in the settings, with Norges Bank's
+daily rates fetched by the `invoices-rates` worker and rates entered by hand that a fetch
+never overwrites; a document in currency whose receivable in NOK is the sum of each VAT
+row's base and VAT in NOK, with its rate and the VAT in NOK on the PDF and a second
+`TaxTotal` in its EHF; payments received in NOK with the exchange difference, the closing
+one clearing the NOK rest exactly; the queue's `currency_differs`; orders in an enabled
+currency invoiced; and Accounting posting the receivable in currency and the difference to
+8060 and 8160. See
+[`docs/src/content/docs/en/reference/invoices.md`](docs/src/content/docs/en/reference/invoices.md#foreign-currency).
 
 **Delivery D: eFaktura and AvtaleGiro** (built, ships switched off) — the
 `consumerinvoice` port and its Mastercard Payment Services adapter, the lookup without a
@@ -1813,6 +1823,8 @@ limits.
 
 ### Later
 
+Orders' NOK equivalent in its analysis, read through `contracts.ExchangeRates` · a charge
+payment in another currency · a bank account in another currency ·
 Recurring invoices and retainers (a subscription may be invoiced up to a year ahead) ·
 the 2028 buyer org-number rule (bokføringsforskriften § 5-1-2 from 2028-01-01: a
 bokføringspliktig buyer's organisation number always stated — the customers directory

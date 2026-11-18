@@ -8,7 +8,7 @@
 INSERT INTO invoices.invoices (
     kind, customer_id, credits_invoice_id, delivery_date, delivery_from, delivery_to,
     delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country,
-    currency, exchange_rate, exchange_rate_date, your_reference, our_reference, order_reference,
+    currency, exchange_rate, exchange_rate_date, exchange_rate_source, your_reference, our_reference, order_reference,
     buyer_customer_number, buyer_type, buyer_name, buyer_organisation_number, buyer_foreign_id,
     buyer_address_line1, buyer_address_line2, buyer_postal_code, buyer_city, buyer_region, buyer_country,
     buyer_peppol_id, buyer_gln, buyer_language, project_id, project_reference,
@@ -17,7 +17,7 @@ INSERT INTO invoices.invoices (
 SELECT
     'credit_note', o.customer_id, o.id, o.delivery_date, o.delivery_from, o.delivery_to,
     o.delivery_address_line1, o.delivery_address_line2, o.delivery_postal_code, o.delivery_city, o.delivery_country,
-    o.currency, o.exchange_rate, o.exchange_rate_date, o.your_reference, o.our_reference, o.order_reference,
+    o.currency, o.exchange_rate, o.exchange_rate_date, o.exchange_rate_source, o.your_reference, o.our_reference, o.order_reference,
     o.buyer_customer_number, o.buyer_type, o.buyer_name, o.buyer_organisation_number, o.buyer_foreign_id,
     o.buyer_address_line1, o.buyer_address_line2, o.buyer_postal_code, o.buyer_city, o.buyer_region, o.buyer_country,
     o.buyer_peppol_id, o.buyer_gln, o.buyer_language, o.project_id, o.project_reference,
@@ -81,7 +81,8 @@ GROUP BY l.credits_line_id;
 -- original's row, so the credits sum to what was charged, øre for øre (D8).
 SELECT s.vat_category, s.rate_percent,
        sum(s.vat_amount)::numeric(14,2) AS vat,
-       sum(s.vat_amount_nok)::numeric(14,2) AS vat_nok
+       sum(s.vat_amount_nok)::numeric(14,2) AS vat_nok,
+       sum(coalesce(s.taxable_amount_nok, s.taxable_amount))::numeric(14,2) AS base_nok
 FROM invoices.vat_summaries s
 JOIN invoices.invoices c ON c.id = s.invoice_id
 WHERE c.credits_invoice_id = @original_id AND c.status = 'issued'

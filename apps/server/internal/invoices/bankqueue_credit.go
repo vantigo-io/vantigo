@@ -33,12 +33,14 @@ const (
 
 // judgeKeepable is keep-as-credit's judgement of a line: an exception
 // queued exceeds_open or invoice_settled, money above what an invoice had
-// open.
+// open — or currency_differs, a NOK line for an invoice in another currency
+// (invoices phase 6 design I24).
 func judgeKeepable(line store.InvoicesBankTransaction) *gen.InvoicesConflictProblem {
 	switch {
 	case line.Status != lineException:
 		return notOpen(cannotKeepAsCreditTitle)
-	case line.Reason == nil || (*line.Reason != reasonExceedsOpen && *line.Reason != reasonInvoiceSettled):
+	case line.Reason == nil || (*line.Reason != reasonExceedsOpen && *line.Reason != reasonInvoiceSettled &&
+		*line.Reason != reasonCurrencyDiffers):
 		return notApplicable(cannotKeepAsCreditTitle,
 			"Only a line queued as more than its invoice had open, or for a settled invoice, is kept as credit: apply it or dismiss it instead.")
 	}
@@ -54,7 +56,7 @@ func judgeKeepable(line store.InvoicesBankTransaction) *gen.InvoicesConflictProb
 // overpayment movement of the customer naming the line; the line resolved,
 // applied, with a kept_as_credit event.
 func (s *server) keepLocked(ctx context.Context, txq *store.Queries, line store.InvoicesBankTransaction, invoiceID int64, customer int32,
-	note string, caller uuid.UUID, now time.Time, loc *time.Location,
+	note string, caller uuid.UUID, now time.Time, loc *time.Location, foreign foreignKeep,
 ) (*gen.InvoicesConflictProblem, error) {
 	if refusal, err := duplicateOfReversed(ctx, txq, line, cannotKeepAsCreditTitle); refusal != nil || err != nil {
 		return refusal, err
@@ -82,8 +84,8 @@ func (s *server) keepLocked(ctx context.Context, txq *store.Queries, line store.
 			"The bank booked this line on %s, before invoice %s was issued on %s: it cannot be a payment of it.",
 			line.BookedOn.Time.Format(time.DateOnly), numberText(inv), inv.IssueDate.Time.Format(time.DateOnly)))), nil
 	}
-	if inv.Currency != "NOK" {
-		return nil, fmt.Errorf("invoices: line %d is in NOK and invoice %d is in %s", line.ID, inv.ID, inv.Currency)
+	if inv.Currency != "NOK" && foreign.amountNOK == nil {
+		return nil, fmt.Errorf("invoices: line %d is in NOK and invoice %d is in %s, with no NOK share", line.ID, inv.ID, inv.Currency)
 	}
 	live, err := txq.LiveAppliedTo(ctx, line.ID)
 	if err != nil {
@@ -105,6 +107,9 @@ func (s *server) keepLocked(ctx context.Context, txq *store.Queries, line store.
 	open, err := openOf(ctx, txq, inv)
 	if err != nil {
 		return nil, err
+	}
+	if inv.Currency != "NOK" {
+		return s.keepForeignLocked(ctx, txq, line, inv, open, left, note, caller, now, loc, foreign)
 	}
 	pay := new(big.Rat)
 	if open.Sign() > 0 {
@@ -184,6 +189,16 @@ func (s *server) PostInvoicesBankTransactionsByIdKeepAsCredit(ctx context.Contex
 				fieldError("invoiceId", "Name the invoice the line paid: it suggests none"))), nil
 		}
 	}
+	// On an invoice in another currency (I24): the amount it pays in its
+	// currency, what is open when left out, and the line's NOK share for it,
+	// required; the rest of the line is kept as credit in NOK (reading 8).
+	foreign, ferrs, err := parseForeignKeep(ctx, q, *invoiceID, req.Body)
+	if err != nil {
+		return nil, err
+	}
+	if ferrs != nil {
+		return gen.PostInvoicesBankTransactionsByIdKeepAsCredit400ApplicationProblemPlusJSONResponse(invalid(invalidKeepTitle, ferrs)), nil
+	}
 	caller, now := callerID(ctx), s.deps.Clock()
 	loc, err := s.businessZone(ctx)
 	if err != nil {
@@ -205,7 +220,7 @@ func (s *server) PostInvoicesBankTransactionsByIdKeepAsCredit(ctx context.Contex
 			if err := lockCustomerCredit(ctx, txq, inv.CustomerID); err != nil {
 				return nil, err
 			}
-			return s.keepLocked(ctx, txq, line, *invoiceID, inv.CustomerID, note, caller, now, loc)
+			return s.keepLocked(ctx, txq, line, *invoiceID, inv.CustomerID, note, caller, now, loc, foreign)
 		})
 		if !errors.Is(err, errCustomerMoved) {
 			break
@@ -253,4 +268,106 @@ func reversalCredits(ctx context.Context, txq *store.Queries, ids []int64) ([]st
 	}
 	slices.Sort(customers)
 	return rows, customers, nil
+}
+
+// foreignKeep is keep-as-credit's body on an invoice in another currency
+// than NOK (invoices phase 6 design I24): amount, what of the invoice the line
+// pays in its currency, nil for what is open; amountNOK, the line's share in
+// NOK for it. Both nil on NOK.
+type foreignKeep struct {
+	amount, amountNOK *big.Rat
+}
+
+// parseForeignKeep reads the body's amount and amountNok against the
+// invoice's currency, read on the pool — it never changes once issued.
+func parseForeignKeep(ctx context.Context, q *store.Queries, invoiceID int64, body *gen.InvoicesKeepAsCreditRequest) (foreignKeep, map[string][]string, error) {
+	inv, err := q.GetInvoice(ctx, invoiceID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return foreignKeep{}, nil, nil // allocation_not_an_invoice, under the locks
+	}
+	if err != nil {
+		return foreignKeep{}, nil, fmt.Errorf("invoices: read document %d: %w", invoiceID, err)
+	}
+	var errs map[string][]string
+	var out foreignKeep
+	if inv.Currency == "NOK" {
+		if body.AmountNok != nil {
+			errs = withFieldError(errs, "amountNok", "The invoice is in NOK: what it pays is its own amount")
+		}
+		return out, errs, nil
+	}
+	if body.Amount != nil {
+		a, msg := amount("An amount", *body.Amount, 2, zero, true, maxGrossTotal)
+		if msg != "" {
+			errs = withFieldError(errs, "amount", msg)
+		}
+		out.amount = a
+	}
+	if body.AmountNok == nil {
+		errs = withFieldError(errs, "amountNok", fmt.Sprintf("The invoice is in %s: give the line's share in NOK", inv.Currency))
+	} else {
+		n, msg := amount("A share in NOK", *body.AmountNok, 2, zero, true, maxGrossTotal)
+		if msg != "" {
+			errs = withFieldError(errs, "amountNok", msg)
+		}
+		out.amountNOK = n
+	}
+	return out, errs, nil
+}
+
+// keepForeignLocked is keepLocked on an invoice in another currency (I24,
+// reading 8), under the same locks: the payment of what the person said —
+// at most what is open — with the line's NOK share and its exchange
+// difference, and the line's NOK rest an overpayment in NOK naming the line.
+func (s *server) keepForeignLocked(ctx context.Context, txq *store.Queries, line store.InvoicesBankTransaction, inv store.InvoicesInvoice,
+	open, left *big.Rat, note string, caller uuid.UUID, now time.Time, loc *time.Location, foreign foreignKeep,
+) (*gen.InvoicesConflictProblem, error) {
+	pay := foreign.amount
+	if pay == nil {
+		pay = new(big.Rat).Set(open)
+	}
+	switch {
+	case open.Sign() <= 0 || pay.Cmp(open) > 0:
+		p := conflict(codePaymentExceedsOpen, cannotKeepAsCreditTitle, fmt.Sprintf(
+			"Invoice %s has %s %s open, and the line would pay %s of it.", numberText(inv), open.FloatString(2), inv.Currency, pay.FloatString(2)))
+		p.InvoiceId, p.OpenAmount = ptr(inv.ID), ptr(floatFromRat(open, 2))
+		return &p, nil
+	case foreign.amountNOK.Cmp(left) >= 0:
+		return notApplicable(cannotKeepAsCreditTitle, fmt.Sprintf(
+			"The share in NOK is %s, which takes the whole %s left of this line: apply it instead.",
+			foreign.amountNOK.FloatString(2), left.FloatString(2))), nil
+	}
+	n, err := numericFromRat(pay, 2)
+	if err != nil {
+		return nil, err
+	}
+	cleared, err := movementNOK(ctx, txq, inv, pay, open)
+	if err != nil {
+		return nil, err
+	}
+	nok, diff, err := paymentNOK(foreign.amountNOK, cleared)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := txq.InsertImportedPayment(ctx, store.InsertImportedPaymentParams{
+		InvoiceID: inv.ID, PaidOn: line.BookedOn, Amount: n, AmountNok: nok, Currency: inv.Currency, Source: paymentSourceOf(line.Format),
+		BankTransactionID: line.ID, Reference: deref(line.Kid), RegisteredByUserID: &caller, RegisteredAt: now, ExchangeDifferenceNok: diff,
+	}); err != nil {
+		return nil, fmt.Errorf("invoices: apply line %d's payment to %d: %w", line.ID, inv.ID, err)
+	}
+	in, err := s.ruleInputLocked(ctx, txq, inv, holidays.DayIn(now, loc), loc, 0)
+	if err != nil {
+		return nil, err
+	}
+	if err := waiveDeadlineMet(ctx, txq, inv.ID, in, line, &caller, now); err != nil {
+		return nil, err
+	}
+	rest := new(big.Rat).Sub(left, foreign.amountNOK)
+	if _, refusal, err := insertCredit(ctx, txq, store.InsertCustomerCreditParams{
+		CustomerID: inv.CustomerID, Currency: "NOK", Kind: creditOverpayment, CreditDay: line.BookedOn, Note: note,
+		InvoiceID: &inv.ID, BankTransactionID: &line.ID, RegisteredByUserID: &caller, RegisteredAt: now,
+	}, rest, cannotKeepAsCreditTitle); refusal != nil || err != nil {
+		return refusal, err
+	}
+	return nil, resolveLine(ctx, txq, line, resolutionApplied, deref(line.Reason), eventKeptAsCredit, note, []string{lineException}, caller, now)
 }

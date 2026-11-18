@@ -625,15 +625,16 @@ func TestBankFeedSync_UploadForAFeedAccountIsRefused(t *testing.T) {
 }
 
 // One line that cannot be matched never stops the rest (plan C review, item
-// 4): a payment whose KID names an invoice in EUR fails closed and stays
+// 4): a payment whose match fails stays
 // pending, matching goes on with the next line and the next batch, and the
 // account stays ok with the line named in its reason and detail.
 func TestBankFeedSync_AFailingLineDoesNotStopLaterBatches(t *testing.T) {
-	t.Parallel()
+	// Not parallel: the failing match is the package's hook. An invoice in
+	// another currency is queued since invoices phase 6 delivery C, so the
+	// line that cannot be matched is made to fail.
 	h, _ := syncHarness(t)
-	h.Exec(t, `UPDATE invoices.settings SET default_currency = 'EUR'`)
-	euro := kidded(t, issued(t, h, createDraft(t, h, draftBody(customerEuro, line("Konsulenttime", 10, 80, vat25))).ID))
-	h.Exec(t, `UPDATE invoices.settings SET default_currency = 'NOK'`)
+	euro := kidInvoice(t, h)
+	defer failMatchesOf(t, h, *euro.Kid)()
 	inv, later := kidInvoice(t, h), kidInvoice(t, h)
 	feedReady(t, h)
 	h.folio.AddTransaction(sellerAccount, incoming(txID(1), "2026-10-05", "100.00", *euro.Kid))
@@ -791,11 +792,12 @@ func TestBankFeedSync_ARefusalStillMatchesWhatWasStored(t *testing.T) {
 // line that cannot be matched (second review, low): an outage is not passed
 // over line by line.
 func TestBankFeedSync_LinesFailingInARowStopMatching(t *testing.T) {
-	t.Parallel()
+	// Not parallel: the failing match is the package's hook. An invoice in
+	// another currency is queued since invoices phase 6 delivery C, so the
+	// line that cannot be matched is made to fail.
 	h, _ := syncHarness(t)
-	h.Exec(t, `UPDATE invoices.settings SET default_currency = 'EUR'`)
-	euro := kidded(t, issued(t, h, createDraft(t, h, draftBody(customerEuro, line("Konsulenttime", 10, 80, vat25))).ID))
-	h.Exec(t, `UPDATE invoices.settings SET default_currency = 'NOK'`)
+	euro := kidInvoice(t, h)
+	defer failMatchesOf(t, h, *euro.Kid)()
 	feedReady(t, h)
 	for i := range 4 {
 		h.folio.AddTransaction(sellerAccount, incoming(txID(i+1), "2026-10-05", fmt.Sprintf("10%d.00", i), *euro.Kid))
@@ -851,11 +853,12 @@ func TestBankFeedSync_FreshnessIsTheFurthestBehind(t *testing.T) {
 // matching stopped — never as a bank that could not be reached — and keeps
 // the last batch it stored.
 func TestBankFeedSync_AStoppedBatchDoesNotStopTheNext(t *testing.T) {
-	t.Parallel()
+	// Not parallel: the failing match is the package's hook. An invoice in
+	// another currency is queued since invoices phase 6 delivery C, so the
+	// line that cannot be matched is made to fail.
 	h, _ := syncHarness(t)
-	h.Exec(t, `UPDATE invoices.settings SET default_currency = 'EUR'`)
-	euro := kidded(t, issued(t, h, createDraft(t, h, draftBody(customerEuro, line("Konsulenttime", 10, 80, vat25))).ID))
-	h.Exec(t, `UPDATE invoices.settings SET default_currency = 'NOK'`)
+	euro := kidInvoice(t, h)
+	defer failMatchesOf(t, h, *euro.Kid)()
 	inv := kidInvoice(t, h)
 	feedReady(t, h)
 	for i := range 3 {

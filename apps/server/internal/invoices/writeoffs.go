@@ -135,9 +135,21 @@ func (s *server) PostInvoicesByIdWriteOff(ctx context.Context, req gen.PostInvoi
 		if err != nil {
 			return err
 		}
+		// A write-off closes the invoice: off NOK its NOK is the receivable
+		// still open (invoices phase 6 design I24), and it moves no money, so
+		// no difference is posted.
 		nok, err := amountNOKOf(locked, amount)
 		if err != nil {
 			return err
+		}
+		if locked.Currency != "NOK" {
+			rest, err := openNOKOf(ctx, txq, locked.ID)
+			if err != nil {
+				return err
+			}
+			if nok, err = numericFromRat(rest, 2); err != nil {
+				return err
+			}
 		}
 		if _, err := txq.InsertWriteOff(ctx, store.InsertWriteOffParams{
 			InvoiceID: locked.ID, WrittenOffOn: pgDate(day), Amount: amount, AmountNok: nok, Currency: locked.Currency, Reason: reason,

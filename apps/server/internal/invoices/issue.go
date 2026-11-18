@@ -509,10 +509,18 @@ func (s *server) issueLocked(ctx context.Context, tx pgx.Tx, txq *store.Queries,
 	if refusal != nil {
 		return refused()
 	}
-	exchangeRate, err := ratFromNumeric(locked.ExchangeRate)
+	// The rate (invoices phase 6 design I19, I22): an invoice in currency
+	// needs the IBAN and BIC it is paid to, and its automatic rate is
+	// resolved again for the issue date — refused without one within 7 days
+	// — where an agreed one stands; a credit note keeps its original's.
+	rate, refusal, err := issueRate(ctx, txq, locked, settings, issueDate)
 	if err != nil {
 		return failed(err)
 	}
+	if refusal != nil {
+		return refused()
+	}
+	exchangeRate := rate.Rate
 	taxed := make([]taxedLine, 0, len(plan.lines))
 	for _, l := range plan.lines {
 		taxed = append(taxed, l.taxed)
@@ -604,8 +612,10 @@ func (s *server) issueLocked(ctx context.Context, tx pgx.Tx, txq *store.Queries,
 	}
 
 	// 6. The writes: the lines' snapshots, the summaries, and last the
-	// row itself — the trigger refuses line writes under an issued one.
-	for _, l := range plan.lines {
+	// row itself — the trigger refuses line writes under an issued one. Each
+	// line's net in NOK carries its row's remainder (I21).
+	netsNOK := netsNOKOf(taxed, rows, exchangeRate)
+	for i, l := range plan.lines {
 		if a := l.amounts; a != nil {
 			p := store.SquareCreditLineParams{ID: l.id}
 			for _, c := range []struct {
@@ -620,13 +630,17 @@ func (s *server) issueLocked(ctx context.Context, tx pgx.Tx, txq *store.Queries,
 				return failed(fmt.Errorf("invoices: square line %d: %w", l.id, err))
 			}
 		}
-		rate, err := numericFromRat(l.taxed.Rate, 2)
+		vatRate, err := numericFromRat(l.taxed.Rate, 2)
+		if err != nil {
+			return failed(err)
+		}
+		netNOK, err := numericFromRat(netsNOK[i], 2)
 		if err != nil {
 			return failed(err)
 		}
 		if err := txq.SnapshotLine(ctx, store.SnapshotLineParams{
-			ID: l.id, VatRatePercent: rate, VatCategory: &l.taxed.Category, SafTCode: &l.taxed.SAFT,
-			ExemptionReason: l.taxed.Reason,
+			ID: l.id, VatRatePercent: vatRate, VatCategory: &l.taxed.Category, SafTCode: &l.taxed.SAFT,
+			ExemptionReason: l.taxed.Reason, LineNetNok: netNOK,
 		}); err != nil {
 			return failed(fmt.Errorf("invoices: snapshot line %d: %w", l.id, err))
 		}
@@ -636,7 +650,7 @@ func (s *server) issueLocked(ctx context.Context, tx pgx.Tx, txq *store.Queries,
 		for _, c := range []struct {
 			dst *pgtype.Numeric
 			v   *big.Rat
-		}{{&p.RatePercent, r.Rate}, {&p.TaxableAmount, r.Taxable}, {&p.VatAmount, r.VAT}, {&p.VatAmountNok, r.VATNOK}} {
+		}{{&p.RatePercent, r.Rate}, {&p.TaxableAmount, r.Taxable}, {&p.VatAmount, r.VAT}, {&p.VatAmountNok, r.VATNOK}, {&p.TaxableAmountNok, r.BaseNOK}} {
 			if *c.dst, err = numericFromRat(c.v, 2); err != nil {
 				return failed(err)
 			}
@@ -658,6 +672,10 @@ func (s *server) issueLocked(ctx context.Context, tx pgx.Tx, txq *store.Queries,
 		params.SellerLogoObjectKey, params.SellerLogoSha256 = nil, nil
 	}
 	params.Kid, params.KidAlgorithm = documentKid, kidAlgorithm
+	if params.ExchangeRate, err = numericFromRat(rate.Rate, ratesMaxDecimals); err != nil {
+		return failed(err)
+	}
+	params.ExchangeRateDate, params.ExchangeRateSource = pgDate(rate.Day), rate.Source
 	// A person's invoice while AvtaleGiro is on prints the customer KID the
 	// payer creates the mandate with (phase 6 reading 11), frozen here.
 	if documentKid != nil && settings.AvtalegiroEnabled && s.efakturaSwitchedOn() && params.BuyerType != nil && *params.BuyerType == "person" &&
@@ -677,6 +695,14 @@ func (s *server) issueLocked(ctx context.Context, tx pgx.Tx, txq *store.Queries,
 	issued, err := txq.IssueDocument(ctx, params)
 	if err != nil {
 		return failed(fmt.Errorf("invoices: issue document %d: %w", locked.ID, err))
+	}
+	// A credit note that brings its foreign original to zero open in the
+	// currency leaves the NOK rest of its rounding (review M1): written as
+	// an exchange difference, never bent into the credit note's own VAT.
+	if issued.Kind == kindCreditNote && issued.Currency != "NOK" && issued.CreditsInvoiceID != nil {
+		if err := closingDifference(ctx, txq, *issued.CreditsInvoiceID, issued.ID, issueDate, now); err != nil {
+			return failed(err)
+		}
 	}
 	// The document's event, on the issue's transaction and under its lock
 	// (accounting design A12): it commits with the document or not at all.
@@ -751,4 +777,47 @@ func keepBuyer(p *store.IssueDocumentParams, inv store.InvoicesInvoice) {
 	p.BuyerAddressLine1, p.BuyerAddressLine2 = inv.BuyerAddressLine1, inv.BuyerAddressLine2
 	p.BuyerPostalCode, p.BuyerCity, p.BuyerRegion, p.BuyerCountry = inv.BuyerPostalCode, inv.BuyerCity, inv.BuyerRegion, inv.BuyerCountry
 	p.BuyerPeppolID, p.BuyerGln, p.BuyerLanguage = inv.BuyerPeppolID, inv.BuyerGln, inv.BuyerLanguage
+}
+
+// issueRate is the rate a document is issued at (invoices phase 6 design
+// I19, I22; plan C5), read under the issue's lock: NOK's 1 of the issue
+// date; a credit note's original's, which its draft copied; an invoice's
+// agreed rate as it stands, or Norges Bank's resolved again for the issue
+// date. An invoice in currency is refused iban_required without the
+// seller's IBAN and BIC, and exchange_rate_missing without an automatic rate
+// within 7 days. Turning a currency off leaves its drafts issuable (§11).
+func issueRate(ctx context.Context, txq *store.Queries, doc store.InvoicesInvoice, settings store.InvoicesSetting, issueDate time.Time) (resolvedRate, *gen.InvoicesConflictProblem, error) {
+	stored, err := ratFromNumeric(doc.ExchangeRate)
+	if err != nil {
+		return resolvedRate{}, nil, err
+	}
+	day := issueDate
+	if doc.ExchangeRateDate.Valid {
+		day = doc.ExchangeRateDate.Time
+	}
+	switch {
+	case doc.Kind == kindCreditNote:
+		return resolvedRate{Rate: stored, Day: day, Source: doc.ExchangeRateSource}, nil, nil
+	case doc.Currency == "NOK":
+		return resolvedRate{Rate: big.NewRat(1, 1), Day: issueDate, Source: rateSourceNOK}, nil, nil
+	case settings.Iban == "" || settings.Bic == "":
+		return resolvedRate{}, ptr(conflict(codeIbanRequired, cannotIssueTitle,
+			"An invoice in another currency than NOK is paid to the IBAN and BIC: fill in both in the settings first.")), nil
+	case doc.ExchangeRateSource == rateSourceManual:
+		return resolvedRate{Rate: stored, Day: day, Source: rateSourceManual}, nil, nil
+	}
+	r, ok, err := resolveRate(ctx, txq, doc.Currency, issueDate)
+	if err != nil {
+		return resolvedRate{}, nil, err
+	}
+	if !ok {
+		refusal := conflict(codeExchangeRateMissing, cannotIssueTitle, fmt.Sprintf(
+			"No rate of %s on %s or the 7 days before it: fetch the rates, or enter one in the settings or on the draft.",
+			doc.Currency, issueDate.Format(time.DateOnly)))
+		refusal.Currency = ptr(doc.Currency)
+		return resolvedRate{}, &refusal, nil
+	}
+	// The source the day's row has: manual when a manager's rate replaced
+	// Norges Bank's for it, so the PDF says avtalt kurs and the export manual.
+	return resolvedRate{Rate: r.Rate, Day: r.Day, Source: r.Source}, nil, nil
 }

@@ -19,6 +19,7 @@ sources:
   - apps/server/internal/db/migrations/00197_invoices_credit.sql
   - apps/server/internal/db/migrations/00200_invoices_split.sql
   - apps/server/internal/db/migrations/00201_invoices_efaktura.sql
+  - apps/server/internal/db/migrations/00203_invoices_currency.sql
   - apps/server/internal/consumerinvoice
   - apps/server/internal/docmath
 ---
@@ -98,9 +99,12 @@ Billing 3.0 Norway (<https://anskaffelser.dev/postaward/g3/spec/current/billing-
 - **The parties (§ 5-1-2).** The seller's name and organisation number, followed by
   "MVA" when VAT-registered and "Foretaksregisteret" when registered there. The buyer's
   name and either a complete address or an organisation number (409 `buyer_incomplete`).
-- **NOK only (§ 5-1-1 nr. 6).** VAT must be stated in NOK at the invoice date's rate;
-  this phase issues in NOK and nothing else ("Only NOK in this phase"). The exchange
-  rate columns exist, fixed at 1, dated at issue.
+- **VAT in NOK (bokføringsforskriften § 5-1-1 første ledd nr. 6: "Merverdiavgift skal
+  angis i norske kroner").** NOK is the functional currency; a document may be in a
+  currency the settings turn on, and then states its VAT in NOK per rate and in total,
+  and its base in NOK as Skatteetaten recommends. The price and the amount to pay stay in
+  the currency (nr. 5). The rate is fixed at the invoice date (§ 4-2), see
+  [Foreign currency](#foreign-currency).
 
 ## The business day
 
@@ -2184,6 +2188,140 @@ at Vipps — releasing anything the customer approved meanwhile — and records 
 yet (`creating`; a parked one's refusal says a manager abandons it) or that the customer approved (`authorized`, `capturing`,
 `capture_unknown`, `captured`, `capture_failed`) is refused 409 `payment_request_active`.
 
+## Foreign currency
+
+NOK is the functional currency (design I17–I28; [plan](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/plans/2026-11-18-invoices-phase6-c-plan.md)).
+`invoices.settings.currencies` (`char(3)[]`, `ck_settings_currencies`: no NOK) lists the
+currencies a document may be in, each one Norges Bank publishes (`nbCurrencies`; its
+indices I44 and TWI and the SDR are left out); `defaultCurrency` stays NOK (400 *NOK is
+the functional currency*).
+
+**Rates.** `invoices.exchange_rates(currency, rate_date, rate numeric(18,10), source,
+fetched_at, entered_by_user_id)`, primary key (currency, rate_date): NOK per one unit, to
+ten decimals, so a currency worth little — VND, IDR — loses less than 0.0001 % (the
+document's `exchange_rate` is `numeric(18,10)` too);
+`source` `norges_bank` or `manual` (`ck_exchange_rates_actor`: a user exactly on a manual
+row). A manual row replaces a fetched row of its day and is never overwritten by a fetch
+— the upsert's `ON CONFLICT … WHERE source = 'norges_bank'` and
+`refuse_exchange_rate_overwrite`, which also refuses deleting a fetched row. A day's rate
+(`resolveRate`) is the latest row on or before it and at most 7 days before. Each write
+publishes `invoices.exchange_rate.fetched` (`currency`, `day`, `source`).
+
+**The fetch.** `GET {INVOICES_RATES_URL}/EXR/B.{CUR+CUR}.NOK.SP?format=sdmx-json&startPeriod&endPeriod&locale=en`
+through netguard, no redirects, 20 s, 1 MiB. The SDMX-JSON is read by its own structure:
+a series' BASE_CUR index resolves through `structure.dimensions.series` (Norges Bank
+answers another order than the request's), the value (a string) is divided by
+10^UNIT_MULT resolved through the attribute's `values[i].id` (JPY, SEK and DKK are per
+100), rounded to ten decimals; `detail=dataonly` is never sent. A 404 with the
+`errors[0].code` 404 body is no data. Other outcomes are `disallowed_address`,
+`unreachable`, `unreadable`, `too_large`, `answered_redirect`, `answered_<status>`, kept on
+`invoices.rate_fetches.last_error`.
+
+**The worker `invoices-rates`**, every 15 minutes while `INVOICES_RATES_ENABLED`: a
+currency is due when not fetched since the latest business day's 16:30 in the business
+time zone, or fetched since without that day's rate and not asked for an hour. Each
+currency's `rate_fetches` row is claimed with a five-minute lease (`FOR NO KEY UPDATE SKIP
+LOCKED`, one statement), Norges Bank is asked with no transaction open, and a short
+transaction per currency upserts the rows (from a week before the newest fetched day, else
+30 days back) and releases the lease. It holds no connection across the call and runs on
+a pool of one. `POST /invoices/exchange-rates/fetch` (`invoices:manage`, 10 per 10
+minutes) runs one cycle at once. `GET /invoices/exchange-rates` (`invoices:access`),
+`PUT` and `DELETE /invoices/exchange-rates/{currency}/{day}` (`invoices:manage`; a manual
+rate of any currency Norges Bank publishes — so one can be entered before the currency is
+turned on — never a future day; DELETE of a fetched row 409 `exchange_rate_fetched`; DELETE
+of a manual row fetches that day from Norges Bank again at once, after the transaction, so
+the day is not left without a rate). The three writes are `x-vantigo-api: never`: an API
+key may read the rates, never set them.
+
+**The contract** `contracts.ExchangeRates.Rate(ctx, currency, day)` takes the day in the
+business time zone (`holidays.DayIn`), so another module asking for a timestamp's rate
+gets that business day's, not UTC's.
+
+**Turning a currency on** (`PUT /settings` with `currencies`) fetches its last 30 days
+before the transaction, then under the settings lock refuses 409 `iban_required` (IBAN or
+BIC empty) and 409 `exchange_rate_missing` (with `currency`) without a rate within 7 days
+of today. Turning one off is allowed; open drafts stay issuable.
+
+**The draft** takes the request's `currency`, else the billing profile's when enabled,
+else NOK (400 *This currency is not turned on in the settings*);
+`customer_currency_differs` warns when the profile's differs. A draft holding sources or
+deduction lines keeps its currency. `exchangeRate`/`exchangeRateDate` set an agreed rate
+(source `manual`); a `PUT` that leaves `exchangeRate` out keeps a stored agreed rate of the
+same currency, and only `useNorgesBankRate: true` drops it; without one each save stores
+Norges Bank's rate of today (source `norges_bank`), or 1 with no date and the warning
+`exchange_rate_missing`.
+`ck_invoices_exchange_rate_source`: `nok` exactly for NOK, and NOK's rate is 1. Work,
+consumption and the quick invoice stay NOK; orders in an enabled currency are invoiced, a
+draft per currency (`currency_not_enabled` otherwise, in the due list, the wizard and a
+billing run's item).
+
+**The issue** (`issueRate`, under the issue's lock): a credit note keeps its original's
+rate and date; an invoice in currency is refused `iban_required` and, with an automatic
+rate, `exchange_rate_missing` when none is found within 7 days before the issue date —
+otherwise the rate is resolved again for the issue date; an agreed one stands.
+`IssueDocument` writes the rate, its date and its source — `manual` when the rate resolved
+for the day is one a manager entered in place of Norges Bank's, so the PDF prints *avtalt
+kurs* and the CSV `manual`. Per VAT row `BaseNOK =
+round(base × rate)` and `VATNOK = round(VAT × rate)` (`vat_summaries.taxable_amount_nok`,
+`vat_amount_nok`); each line's `line_net_nok = round(net × rate)` with its row's remainder
+on the row's largest line (`docmath.NetsNOK`). **The receivable in NOK** is Σ BaseNOK +
+Σ VATNOK (`invoices.document_nok()`), never round(gross × rate). A final credit note
+squares the NOK base as it squares the NOK VAT. NULL snapshots are documents issued
+before this — every one NOK — read as their currency figures. No pay link is made off NOK;
+`POST …/pay-link` and a Vipps attempt refuse 409 `currency_not_nok`, and so does `POST …/send-efaktura`: eFaktura and AvtaleGiro carry NOK only, so the claim sweep (`RequestSettledClaimsCancel`) reads NOK invoices alone.
+
+**The EHF** off NOK writes `cbc:TaxCurrencyCode` NOK after `DocumentCurrencyCode` and a
+second `cac:TaxTotal` with only `cbc:TaxAmount currencyID="NOK"` (`vat_total_nok`) after
+the one with subtotals; PaymentMeans 30 pays the IBAN with the BIC whatever the buyer's
+country. The pre-check adds `PEPPOL-EN16931-R005` (the tax currency is not the document's)
+and `tax_total_nok` (exactly two totals with a tax currency, the second without
+subtotals, in it and equal to the VAT in NOK; one without). NOK goldens are unchanged;
+`invoice-eur.xml`, `credit-note-eur.xml` and the invalid
+`tax-currency-equals-document.xml` pass the oracle.
+
+**Payments** (design I24, reading 5). A payment's `amount` is in the invoice's currency and
+`amount_nok` is what arrived; `payments.exchange_difference_nok` (0 for NOK,
+`ck_payments_exchange_difference`) is `amount_nok` less the NOK receivable it cleared:
+`round(amount × rate)` while the invoice stays open, and on the movement that brings the
+currency open amount to zero the NOK receivable still open (`invoices.open_nok()`: the
+document's NOK, less its credit notes', less the live payments' `amount_nok −
+exchange_difference_nok`, less the standing write-off's `amount_nok`, plus the NOK moved),
+so `open_nok()` reaches exactly 0. A partial movement never clears more than the NOK still
+open. **A credit note that closes** an invoice in currency — bringing what is open in the
+currency to zero while øre are left in NOK — writes that rest to
+`invoices.exchange_differences` (`invoice_id`, `document_id` the credit note, unique,
+`difference_day`, `amount_nok` ≠ 0; immutable), a journal fact `exchange_difference` whose
+`exchange_difference_nok` is the rest turned (a loss when NOK was left), and `open_nok()`
+subtracts it; the credit note's own VAT figures are never bent. **A recovery** of a
+written-off invoice in currency clears its share of the write-off's NOK — the write-off's
+`amount_nok` × what the live recoveries will have recovered ÷ its `amount`, less what the
+earlier ones cleared, the recovery reaching the whole amount taking the rest — and what
+arrived beyond or short of it is its `exchange_difference_nok`; the fact's
+`recovered_before_nok` sums what the earlier ones cleared, so a ledger never gives back
+more VAT than the write-off took. By hand `amountNok` is required off NOK (400) and must
+equal `amount` on NOK; the response proposes `proposedRate`. A write-off and a credit note
+move off NOK take the NOK rest. Credit applied is used at its carrying NOK (the balance's
+NOK × use / balance, all of it on the last use) and its payment carries the difference;
+a refund off NOK asks `amountNok` and `credit_refunds.exchange_difference_nok` is the
+carrying NOK less it. A credit note's surplus returned in parts is reversed at its NOK
+cumulatively, the last part taking the rest, so the movement reaches 0 in both. A charge payment off NOK is refused `currency_not_nok`.
+
+**Bank lines stay NOK.** Matching queues a line whose KID names an invoice in another
+currency with `currency_differs` (the split never takes one). Its apply needs each such
+allocation's `amountNok`, the line's share (the sum check reads it); keep-as-credit takes
+`amount` (default what is open) and `amountNok`, and the line's NOK rest is kept as an
+overpayment in **NOK** naming the line. A dismissed `currency_differs` line is owed back to
+the customer, as any line naming an invoice is.
+
+**Reminders** off NOK claim no fee and no compensation (`foreign_currency` in the
+letter's charge notes); interest is computed as on any invoice. **The CSV export** gains
+*Exchange rate*, *Rate date* and *Rate source*, and *Base NOK* reads the snapshot. **Stats**
+sum in NOK: a document's `document_nok()` gross and `open_nok()` off NOK.
+
+The Down of `00203_invoices_currency.sql` refuses while any document, payment, write-off or
+credit row is not in NOK, while a rate or an exchange difference exists, or while a line
+was queued `currency_differs`.
+
 ## Credit notes
 
 `POST /invoices/{id}/credit` makes a credit-note draft of an issued invoice: the
@@ -2752,8 +2890,12 @@ not exported in phase 4.
 
 **The currency is on the page** (§ 5-1-1 nr. 6): the line amounts' header reads
 "Beløp (NOK)" / "Amount (NOK)", the VAT column "MVA (NOK)" / "VAT (NOK)", and the
-amount to pay "NOK 15 045,00" — the document's own currency, which is NOK only in this
-phase.
+amount to pay "NOK 15 045,00" — the document's own currency. Off NOK a block below the
+VAT rows prints the rate — *Kurs EUR/NOK 11,7234, Norges Bank 16.11.2026*, or *avtalt
+kurs* for a manual one — and a table of each rate's *Grunnlag (NOK)* and *MVA (NOK)* with
+their total, and the payment block leads with the IBAN and the BIC, then the account and
+the KID; there is no Vipps line. A NOK document renders byte for byte as before (its
+pinned hash is unchanged); a EUR fixture with two rates is pinned beside it.
 
 Rendered with maroto v2 (pure Go; the runtime image has no fonts) in **Noto Sans**,
 embedded, under the SIL Open Font License 1.1 — its text is
@@ -6444,8 +6586,16 @@ after them again until a page comes back short; a page is at most 500
   by then. One snapshot with `AsOfSeq`, by `OpenAt`'s rule; a page holds every currency of
   the customers it names.
 
-Amounts are exact two-decimal text. Invoices issues NOK only in this phase, so an
-amount in NOK is the document's own at its rate of 1.
+Amounts are exact two-decimal text. An amount named NOK is what the document fixed at
+issue: `JournalDocument.ExchangeRate` (six decimals, `1.000000` for NOK) and `GrossNOK`
+(Σ BaseNOK + Σ VATNOK), each `JournalLine.NetNOK` the issue's snapshot with `Net` in the
+currency beside it, each `JournalVATSummary` its `BaseNOK`/`VATNOK` with `Base`/`VAT` in
+the currency. A payment fact carries `Currency`, `Amount` and `ExchangeDifferenceNOK`
+(`0.00` for NOK); a credit fact's `JournalCredit.ExchangeDifferenceNOK` is an applied
+movement's payment's or a refund's difference. `OpenAt` answers `OpenNOK` by
+`open_nok()`'s terms and `Open` in the currency. `contracts.ExchangeRates` (single
+provider, Invoices) answers `Rate(ctx, currency, day)` by the seven-day rule; nothing
+reads it yet.
 
 ### The bank feed contract
 
@@ -6802,13 +6952,17 @@ facts a ledger posts ([Customer credit](#customer-credit)), on migration
 Delivery B-2 is done too: one bank line matched across several invoices by the references
 it names ([The automatic split](#the-automatic-split)) and small differences rounded off
 under a tolerance ([Small differences](#small-differences)), on migration
-`00200_invoices_split.sql`. Delivery D, eFaktura and AvtaleGiro through Mastercard
+`00200_invoices_split.sql`. Delivery C is done too: documents and payments in a foreign
+currency at Norges Bank's rates ([Foreign currency](#foreign-currency)), on migration
+`00203_invoices_currency.sql`. Delivery D, eFaktura and AvtaleGiro through Mastercard
 Payment Services, is built and ships switched off
 ([Sending as eFaktura](#sending-as-efaktura)), on migration `00201_invoices_efaktura.sql`
 and Customers' `00202_customers_date_of_birth.sql`; it goes live when Vantigo's
-submitter agreement is in place and the operator turns it on. Still to come: C, foreign
-currency; and E, sending in bulk, the
-2028 buyer rule and credit limits.
+submitter agreement is in place and the operator turns it on. eFaktura and AvtaleGiro
+are NOK only. Still to come: E, sending in bulk, the 2028 buyer rule and credit limits.
+Orders' NOK equivalent in its analysis through `contracts.ExchangeRates`, a charge
+payment in currency, a currency bank account and unrealised revaluation at year-end are
+later.
 
 **Phase 5 is complete.** Its delivery D
 ([plan](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/plans/2026-10-27-invoices-energy.md))
@@ -6970,6 +7124,10 @@ The Assistant can point at these controls in a guided tour ([the registry](/en/r
 | `invoices.invoice.credit` | `/invoices/{invoiceId}` | Use credit |
 | `invoices.queue.keep-as-credit` | `/invoices/payments` | Keep the rest as credit |
 | `invoices.customer.credit` | `/customers/{customerId}` | Customer credit |
+| `invoices.settings.currencies` | `/invoices/settings` | Currencies besides NOK |
+| `invoices.invoice.currency` | `/invoices/{invoiceId}` | Currency |
+| `invoices.invoice.rate` | `/invoices/{invoiceId}` | Use another rate |
+| `invoices.payment.amount-nok` | `/invoices/{invoiceId}` | Received in NOK (the Register payment dialog) |
 
 ## API keys
 
@@ -6979,6 +7137,10 @@ who holds the page's token, not an application. So are the settings that decide 
 goes or who sends for the business — the seller's settings with its bank account
 (`putInvoicesSettings`), Vipps, the access point, the eFaktura and AvtaleGiro provider
 (`putInvoicesSettingsConsumerProvider`, which names the creditor account), the bank feed and
-its accounts, and a bank account's file format — so a leaked key can never redirect a payment. See [integration
+its accounts, a bank account's file format, and the exchange rates' writes
+(`putInvoicesExchangeRatesByCurrencyByDay`, `deleteInvoicesExchangeRatesByCurrencyByDay`,
+`postInvoicesExchangeRatesFetch`), which set what a document in currency is booked at — so
+a leaked key can never redirect a payment or move a rate. Reading the rates
+(`getInvoicesExchangeRates`) stays callable. See [integration
 users](/en/admin/authentication/#integration-users), and the marks' rules in [module
 boundaries](/en/contributing/module-boundaries/#the-rules).

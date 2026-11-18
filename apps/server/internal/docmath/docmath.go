@@ -63,17 +63,24 @@ type VATSummary struct {
 	Taxable  *big.Rat
 	VAT      *big.Rat
 	VATNOK   *big.Rat
+	// BaseNOK is round(Taxable × exchange rate), the row's base in NOK
+	// (invoices phase 6 design I21).
+	BaseNOK *big.Rat
 }
 
-// Totals are a document's four totals.
+// Totals are a document's totals in its currency, and in NOK: BaseNOK is
+// Σ of the rows' BaseNOK, VATNOK Σ of their VATNOK, and GrossNOK their sum —
+// the receivable in NOK (I21), never round(Gross × rate). For NOK each
+// equals its currency figure.
 type Totals struct {
 	Net, VAT, Gross, VATNOK *big.Rat
+	BaseNOK, GrossNOK       *big.Rat
 }
 
 // Summarize groups the lines per (category, rate) and computes VAT per rate on
 // the sum of the lines' nets (Peppol BR-CO-17), never per line: taxable =
 // Σ line_net, vat = round(taxable × rate / 100), vat_nok = round(vat ×
-// exchange rate). A 0 % category gets its row too (§ 5-1-5). There is no øre
+// exchange rate), base_nok = round(taxable × exchange rate). A 0 % category gets its row too (§ 5-1-5). There is no øre
 // rounding of the total: payment is electronic.
 //
 // ambiguous is true when two lines share a (category, rate) but carry
@@ -100,17 +107,21 @@ func Summarize(lines []TaxedLine, exchangeRate *big.Rat) (rows []VATSummary, tot
 		}
 		row.Taxable.Add(row.Taxable, l.Net)
 	}
-	totals = Totals{Net: new(big.Rat), VAT: new(big.Rat), Gross: new(big.Rat), VATNOK: new(big.Rat)}
+	totals = Totals{Net: new(big.Rat), VAT: new(big.Rat), Gross: new(big.Rat), VATNOK: new(big.Rat),
+		BaseNOK: new(big.Rat), GrossNOK: new(big.Rat)}
 	for _, k := range order {
 		row := byKey[k]
 		row.VAT = Round2(new(big.Rat).Quo(new(big.Rat).Mul(row.Taxable, row.Rate), big.NewRat(100, 1)))
 		row.VATNOK = Round2(new(big.Rat).Mul(row.VAT, exchangeRate))
+		row.BaseNOK = Round2(new(big.Rat).Mul(row.Taxable, exchangeRate))
+		totals.BaseNOK.Add(totals.BaseNOK, row.BaseNOK)
 		totals.Net.Add(totals.Net, row.Taxable)
 		totals.VAT.Add(totals.VAT, row.VAT)
 		totals.VATNOK.Add(totals.VATNOK, row.VATNOK)
 		rows = append(rows, *row)
 	}
 	totals.Gross.Add(totals.Net, totals.VAT)
+	totals.GrossNOK.Add(totals.BaseNOK, totals.VATNOK)
 	SortSummaries(rows)
 	return rows, totals, ambiguous
 }
@@ -124,4 +135,38 @@ func SortSummaries(rows []VATSummary) {
 		}
 		return rows[i].Category < rows[j].Category
 	})
+}
+
+// NetsNOK is each line's net in NOK (I21): round(net × rate), and per
+// (category, rate) row the remainder against the row's BaseNOK put on the
+// row's line with the largest absolute net — the lowest position on a tie —
+// so each row's lines sum to its BaseNOK and SAF-T's per-rate sums hold. A
+// line whose row is not in rows keeps its rounded net. For a rate of 1 every
+// figure is its net.
+func NetsNOK(lines []TaxedLine, rows []VATSummary, rate *big.Rat) []*big.Rat {
+	type key struct{ category, rate string }
+	out := make([]*big.Rat, len(lines))
+	sums := map[key]*big.Rat{}
+	largest := map[key]int{}
+	for i, l := range lines {
+		out[i] = Round2(new(big.Rat).Mul(l.Net, rate))
+		k := key{l.Category, l.Rate.FloatString(2)}
+		if sums[k] == nil {
+			sums[k] = new(big.Rat)
+			largest[k] = i
+		} else if new(big.Rat).Abs(l.Net).Cmp(new(big.Rat).Abs(lines[largest[k]].Net)) > 0 {
+			largest[k] = i
+		}
+		sums[k].Add(sums[k], out[i])
+	}
+	for _, r := range rows {
+		k := key{r.Category, r.Rate.FloatString(2)}
+		if sums[k] == nil || r.BaseNOK == nil {
+			continue
+		}
+		rest := new(big.Rat).Sub(r.BaseNOK, sums[k])
+		i := largest[k]
+		out[i] = new(big.Rat).Add(out[i], rest)
+	}
+	return out
 }

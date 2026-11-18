@@ -48,6 +48,7 @@ SELECT * FROM invoices.vat_summaries WHERE invoice_id = @invoice_id ORDER BY rat
 -- share one, else NULL.
 UPDATE invoices.lines AS l SET
     vat_rate_percent = @vat_rate_percent,
+    line_net_nok = sqlc.narg(line_net_nok)::numeric,
     vat_category = @vat_category,
     saf_t_code = @saf_t_code,
     exemption_reason = @exemption_reason,
@@ -93,7 +94,9 @@ WHERE l.id = @id;
 
 -- name: InsertVatSummary :exec
 INSERT INTO invoices.vat_summaries (
-    invoice_id, vat_category, rate_percent, saf_t_code, exemption_reason, taxable_amount, vat_amount, vat_amount_nok
+    invoice_id, vat_category, rate_percent, saf_t_code, exemption_reason, taxable_amount, vat_amount, vat_amount_nok,
+    taxable_amount_nok
 ) VALUES (
-    @invoice_id, @vat_category, @rate_percent, @saf_t_code, @exemption_reason, @taxable_amount, @vat_amount, @vat_amount_nok
+    @invoice_id, @vat_category, @rate_percent, @saf_t_code, @exemption_reason, @taxable_amount, @vat_amount, @vat_amount_nok,
+    sqlc.narg(taxable_amount_nok)::numeric
 );

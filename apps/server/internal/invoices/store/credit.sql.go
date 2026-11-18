@@ -108,6 +108,27 @@ func (q *Queries) CreditBalance(ctx context.Context, arg CreditBalanceParams) (p
 	return balance, err
 }
 
+const creditBalanceNOK = `-- name: CreditBalanceNOK :one
+SELECT coalesce(sum(amount_nok), 0)::numeric(14,2) AS balance_nok
+FROM invoices.customer_credits
+WHERE customer_id = $1 AND currency = $2
+`
+
+type CreditBalanceNOKParams struct {
+	CustomerID int32
+	Currency   string
+}
+
+// CreditBalanceNOK is what the customer's credit in the currency is carried
+// at in NOK (invoices phase 6 plan reading 7): the sum of its movements'
+// amount_nok, 0 with none. Read after the customer's lock.
+func (q *Queries) CreditBalanceNOK(ctx context.Context, arg CreditBalanceNOKParams) (pgtype.Numeric, error) {
+	row := q.db.QueryRow(ctx, creditBalanceNOK, arg.CustomerID, arg.Currency)
+	var balance_nok pgtype.Numeric
+	err := row.Scan(&balance_nok)
+	return balance_nok, err
+}
+
 const creditBalances = `-- name: CreditBalances :many
 SELECT currency::text AS currency, sum(amount)::numeric(14,2) AS balance, sum(amount_nok)::numeric(14,2) AS balance_nok
 FROM invoices.customer_credits
@@ -200,7 +221,7 @@ func (q *Queries) CreditNoteMovesOf(ctx context.Context, invoiceID *int64) ([]Cr
 }
 
 const creditRefundsOf = `-- name: CreditRefundsOf :many
-SELECT id, customer_id, refunded_on, amount, currency, amount_nok, bank_account, reference, note, registered_by_user_id, registered_at, removed_at, removed_by_user_id, removal_reason FROM invoices.credit_refunds WHERE customer_id = $1 ORDER BY refunded_on DESC, id DESC
+SELECT id, customer_id, refunded_on, amount, currency, amount_nok, bank_account, reference, note, registered_by_user_id, registered_at, removed_at, removed_by_user_id, removal_reason, exchange_difference_nok FROM invoices.credit_refunds WHERE customer_id = $1 ORDER BY refunded_on DESC, id DESC
 `
 
 // CreditRefundsOf is every refund of the customer, removed ones included,
@@ -229,6 +250,7 @@ func (q *Queries) CreditRefundsOf(ctx context.Context, customerID int32) ([]Invo
 			&i.RemovedAt,
 			&i.RemovedByUserID,
 			&i.RemovalReason,
+			&i.ExchangeDifferenceNok,
 		); err != nil {
 			return nil, err
 		}
@@ -459,7 +481,7 @@ func (q *Queries) CustomersWithCredit(ctx context.Context, customerIds []int32) 
 }
 
 const getCreditRefund = `-- name: GetCreditRefund :one
-SELECT id, customer_id, refunded_on, amount, currency, amount_nok, bank_account, reference, note, registered_by_user_id, registered_at, removed_at, removed_by_user_id, removal_reason FROM invoices.credit_refunds WHERE id = $1 AND customer_id = $2
+SELECT id, customer_id, refunded_on, amount, currency, amount_nok, bank_account, reference, note, registered_by_user_id, registered_at, removed_at, removed_by_user_id, removal_reason, exchange_difference_nok FROM invoices.credit_refunds WHERE id = $1 AND customer_id = $2
 `
 
 type GetCreditRefundParams struct {
@@ -486,6 +508,7 @@ func (q *Queries) GetCreditRefund(ctx context.Context, arg GetCreditRefundParams
 		&i.RemovedAt,
 		&i.RemovedByUserID,
 		&i.RemovalReason,
+		&i.ExchangeDifferenceNok,
 	)
 	return i, err
 }
@@ -601,25 +624,27 @@ func (q *Queries) InsertCreditNoteMove(ctx context.Context, arg InsertCreditNote
 
 const insertCreditRefund = `-- name: InsertCreditRefund :one
 INSERT INTO invoices.credit_refunds (
-    customer_id, refunded_on, amount, currency, amount_nok, bank_account, reference, note, registered_by_user_id, registered_at
+    customer_id, refunded_on, amount, currency, amount_nok, bank_account, reference, note, registered_by_user_id, registered_at,
+    exchange_difference_nok
 ) VALUES (
     $1, $2, $3, $4, $5::numeric, $6, $7, $8,
-    $9, $10::timestamptz
+    $9, $10::timestamptz, coalesce($11::numeric, 0)
 )
-RETURNING id, customer_id, refunded_on, amount, currency, amount_nok, bank_account, reference, note, registered_by_user_id, registered_at, removed_at, removed_by_user_id, removal_reason
+RETURNING id, customer_id, refunded_on, amount, currency, amount_nok, bank_account, reference, note, registered_by_user_id, registered_at, removed_at, removed_by_user_id, removal_reason, exchange_difference_nok
 `
 
 type InsertCreditRefundParams struct {
-	CustomerID         int32
-	RefundedOn         pgtype.Date
-	Amount             pgtype.Numeric
-	Currency           string
-	AmountNok          pgtype.Numeric
-	BankAccount        string
-	Reference          string
-	Note               string
-	RegisteredByUserID uuid.UUID
-	RegisteredAt       time.Time
+	CustomerID            int32
+	RefundedOn            pgtype.Date
+	Amount                pgtype.Numeric
+	Currency              string
+	AmountNok             pgtype.Numeric
+	BankAccount           string
+	Reference             string
+	Note                  string
+	RegisteredByUserID    uuid.UUID
+	RegisteredAt          time.Time
+	ExchangeDifferenceNok pgtype.Numeric
 }
 
 // InsertCreditRefund records money paid back outside Vantigo (I12), under
@@ -637,6 +662,7 @@ func (q *Queries) InsertCreditRefund(ctx context.Context, arg InsertCreditRefund
 		arg.Note,
 		arg.RegisteredByUserID,
 		arg.RegisteredAt,
+		arg.ExchangeDifferenceNok,
 	)
 	var i InvoicesCreditRefund
 	err := row.Scan(
@@ -654,6 +680,7 @@ func (q *Queries) InsertCreditRefund(ctx context.Context, arg InsertCreditRefund
 		&i.RemovedAt,
 		&i.RemovedByUserID,
 		&i.RemovalReason,
+		&i.ExchangeDifferenceNok,
 	)
 	return i, err
 }

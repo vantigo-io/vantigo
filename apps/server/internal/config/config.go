@@ -448,6 +448,19 @@ type Config struct {
 	// minutes by default, at least 5 minutes — every read is a call to the
 	// bank — and at most 24 hours. Fetch now makes an account due at once.
 	InvoicesBankFeedInterval time.Duration
+	// InvoicesRatesEnabled is the on/off switch for Norges Bank's exchange
+	// rates (INVOICES_RATES_ENABLED, invoices phase 6 design I18). Default
+	// ON: nothing is fetched until a workspace turns a foreign currency on.
+	// On, the invoices-rates worker runs and turning a currency on fetches its
+	// last 30 days. Off, no request goes to Norges Bank: the worker is not
+	// handed to the runner, Fetch now fetches nothing, and a manual rate is
+	// the only rate a document in currency can be issued at.
+	InvoicesRatesEnabled bool
+	// InvoicesRatesURL is the base Norges Bank's data API is called at
+	// (INVOICES_RATES_URL, I18), default https://data.norges-bank.no/api/data;
+	// https only, no trailing slash. The operator's, never the workspace's:
+	// the request goes through the guarded fetch client to that host only.
+	InvoicesRatesURL string
 
 	// ShippingCarriers are the carrier adapters this installation allows
 	// (SHIPPING_CARRIERS, orders design O51), a comma-separated list of known
@@ -778,6 +791,7 @@ func Load(env map[string]string) (*Config, error) {
 	invoicesEfaktura(&p, env, c)
 	invoicesVipps(&p, env, c)
 	invoicesBankFeed(&p, env, c)
+	invoicesRates(&p, env, c)
 	shippingCarriers(&p, env, c)
 	c.StaffImportMaxRows = integer(&p, env, "STAFF_IMPORT_MAX_ROWS", 5000, 5000, 20000)
 	staffWorkers(&p, env, c)
@@ -1328,6 +1342,16 @@ func invoicesBankFeed(p *problems, env map[string]string, c *Config) {
 		}
 		c.InvoicesBankFeedInterval = d
 	}
+}
+
+// defaultRatesURL is Norges Bank's data API (invoices phase 6 design I18).
+const defaultRatesURL = "https://data.norges-bank.no/api/data"
+
+// invoicesRates loads the exchange rates' settings (I18): the switch, on by
+// default, and Norges Bank's base URL, which must be https.
+func invoicesRates(p *problems, env map[string]string, c *Config) {
+	c.InvoicesRatesEnabled = boolean(p, env, "INVOICES_RATES_ENABLED", true)
+	c.InvoicesRatesURL = httpsBaseURL(p, env, "INVOICES_RATES_URL", defaultRatesURL)
 }
 
 // The bank feed worker's interval (F5): its default and its bounds.

@@ -5,9 +5,12 @@
 -- then outstanding (open, partially paid or overdue, at the open amount) and
 -- overdue. A credit note's state is issued, a draft's draft: neither is ever
 -- outstanding. The CTE is there because an alias cannot be read in a FILTER
--- at its own level.
+-- at its own level. The amounts are in NOK (invoices phase 6 design I27,
+-- plan reading 15): the open amount is open_nok(), the NOK receivable still
+-- open, which for NOK is the open amount itself.
 WITH d AS (
-    SELECT (i.gross_total - coalesce(cr.credited, 0) - coalesce(pd.paid, 0))::numeric(14,2) AS open_amount,
+    SELECT (CASE WHEN i.currency = 'NOK' THEN i.gross_total - coalesce(cr.credited, 0) - coalesce(pd.paid, 0)
+                 ELSE invoices.open_nok(i.id) END)::numeric(14,2) AS open_amount,
            invoices.invoice_state(i.kind, i.status, i.gross_total, coalesce(cr.credited, 0), coalesce(pd.paid, 0), coalesce(pd.written_off, 0), i.due_date, @today::date)::text AS state
     FROM invoices.invoices i
     LEFT JOIN LATERAL (
@@ -31,14 +34,16 @@ FROM d;
 -- the credit notes whose issue date is in [from_day, to_day_exclusive), and
 -- the invoices' gross over the previous period, [previous_from_day, from_day).
 -- The days are business days computed by the caller; this compares dates only.
+-- The gross is in NOK, each document's receivable at its own rate
+-- (document_nok(); invoices phase 6 design I27).
 -- The WHERE bounds the whole span, [previous_from_day, to_day_exclusive) —
 -- previous_from_day is never after from_day — so ix_invoices_issue_date
 -- applies.
 SELECT count(*) FILTER (WHERE kind = 'invoice' AND issue_date >= @from_day::date AND issue_date < @to_day_exclusive::date)::int AS issued_count,
-       coalesce(sum(gross_total) FILTER (WHERE kind = 'invoice' AND issue_date >= @from_day::date AND issue_date < @to_day_exclusive::date), 0)::numeric(14,2) AS issued_gross_total,
+       coalesce(sum(CASE WHEN currency = 'NOK' THEN gross_total ELSE (invoices.document_nok(id)).gross_nok END) FILTER (WHERE kind = 'invoice' AND issue_date >= @from_day::date AND issue_date < @to_day_exclusive::date), 0)::numeric(14,2) AS issued_gross_total,
        count(*) FILTER (WHERE kind = 'credit_note' AND issue_date >= @from_day::date AND issue_date < @to_day_exclusive::date)::int AS credited_count,
-       coalesce(sum(gross_total) FILTER (WHERE kind = 'credit_note' AND issue_date >= @from_day::date AND issue_date < @to_day_exclusive::date), 0)::numeric(14,2) AS credited_gross_total,
-       coalesce(sum(gross_total) FILTER (WHERE kind = 'invoice' AND issue_date >= @previous_from_day::date AND issue_date < @from_day::date), 0)::numeric(14,2) AS previous_issued_gross_total
+       coalesce(sum(CASE WHEN currency = 'NOK' THEN gross_total ELSE (invoices.document_nok(id)).gross_nok END) FILTER (WHERE kind = 'credit_note' AND issue_date >= @from_day::date AND issue_date < @to_day_exclusive::date), 0)::numeric(14,2) AS credited_gross_total,
+       coalesce(sum(CASE WHEN currency = 'NOK' THEN gross_total ELSE (invoices.document_nok(id)).gross_nok END) FILTER (WHERE kind = 'invoice' AND issue_date >= @previous_from_day::date AND issue_date < @from_day::date), 0)::numeric(14,2) AS previous_issued_gross_total
 FROM invoices.invoices
 WHERE status = 'issued' AND issue_date >= @previous_from_day::date AND issue_date < @to_day_exclusive::date;
 

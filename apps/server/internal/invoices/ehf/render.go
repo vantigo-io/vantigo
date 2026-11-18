@@ -98,6 +98,9 @@ func Render(d Document) ([]byte, error) {
 		w.leaf("cbc:CreditNoteTypeCode", creditNoteTypeCode)
 	}
 	w.leaf("cbc:DocumentCurrencyCode", cur)
+	if d.TaxCurrencyCode != "" && d.TaxCurrencyCode != cur {
+		w.leaf("cbc:TaxCurrencyCode", d.TaxCurrencyCode)
+	}
 	w.leaf("cbc:BuyerReference", d.BuyerReference)
 	if d.DeliveryDate == "" && d.DeliveryFrom != "" && d.DeliveryTo != "" {
 		w.start("cac:InvoicePeriod")
@@ -227,12 +230,14 @@ func Render(d Document) ([]byte, error) {
 	}
 
 	// One payment means on an invoice: credit transfer to the domestic
-	// account, or to the IBAN (with the BIC) for a foreign buyer when the
-	// seller has one; the KID as the payment id, and no payment id at all
-	// without one (D3).
+	// account, or to the IBAN (with the BIC) for a foreign buyer or a
+	// document in another currency than NOK (invoices phase 6 design I23)
+	// when the seller has one; the KID as the payment id, and no payment id
+	// at all without one (D3).
 	if invoice {
 		account, bic := d.Payment.BankAccount, ""
-		if foreign := d.Buyer.Address.Country != "" && d.Buyer.Address.Country != "NO"; foreign && d.Payment.IBAN != "" {
+		foreign := (d.Buyer.Address.Country != "" && d.Buyer.Address.Country != "NO") || cur != "NOK"
+		if foreign && d.Payment.IBAN != "" {
 			account, bic = d.Payment.IBAN, d.Payment.BIC
 		}
 		w.start("cac:PaymentMeans")
@@ -278,6 +283,14 @@ func Render(d Document) ([]byte, error) {
 		w.end("cac:TaxSubtotal")
 	}
 	w.end("cac:TaxTotal")
+	// Off NOK, the VAT in the tax currency (BT-111), a second total with no
+	// subtotal, after the first: the precheck and many readers take the
+	// first as the document currency's.
+	if d.TaxCurrencyCode != "" && d.TaxCurrencyCode != cur && d.VATTotalNOK != nil {
+		w.start("cac:TaxTotal")
+		w.amount("cbc:TaxAmount", d.VATTotalNOK, d.TaxCurrencyCode)
+		w.end("cac:TaxTotal")
+	}
 
 	w.start("cac:LegalMonetaryTotal")
 	w.amount("cbc:LineExtensionAmount", d.NetTotal, cur)

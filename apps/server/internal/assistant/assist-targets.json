@@ -400,9 +400,19 @@
     "description": "The button in the customer's credit banner on an issued invoice with something open, which applies the customer's credit to it."
   },
   {
+    "key": "invoices.invoice.currency",
+    "route": "/invoices/{invoiceId}",
+    "description": "The draft's currency: NOK or one turned on in the settings."
+  },
+  {
     "key": "invoices.invoice.issue",
     "route": "/invoices/{invoiceId}",
     "description": "The button that issues a saved draft invoice and gives it its number."
+  },
+  {
+    "key": "invoices.invoice.rate",
+    "route": "/invoices/{invoiceId}",
+    "description": "The field on a draft in another currency for a rate agreed with the customer; empty uses Norges Bank's rate of the issue date."
   },
   {
     "key": "invoices.invoice.save",
@@ -425,6 +435,11 @@
     "description": "The button above the invoice list that starts a new invoice."
   },
   {
+    "key": "invoices.payment.amount-nok",
+    "route": "/invoices/{invoiceId}",
+    "description": "The field of the Register payment dialog, on an invoice in another currency, for what arrived in NOK; the difference is booked as a currency gain or loss."
+  },
+  {
     "key": "invoices.queue.keep-as-credit",
     "route": "/invoices/payments",
     "description": "The button in the Keep the rest as credit dialog of a bank line queued as more than was open, or for a settled invoice: it applies what is open and keeps the rest as the customer's credit."
@@ -438,6 +453,11 @@
     "key": "invoices.send.message",
     "route": "/invoices/{invoiceId}",
     "description": "The optional personal message in the Send dialog, shown above the standard text in the e-mail."
+  },
+  {
+    "key": "invoices.settings.currencies",
+    "route": "/invoices/settings",
+    "description": "The field on the Currencies card in Invoice settings where the currencies an invoice may be in besides NOK are turned on; each needs the IBAN and BIC and a rate from Norges Bank or one entered by hand."
   },
   {
     "key": "invoices.settings.efaktura",

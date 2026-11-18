@@ -1,0 +1,260 @@
+{
+  "meta": {
+    "id": "IREF792151",
+    "prepared": "2026-11-18T05:20:10",
+    "test": false,
+    "datasetId": "60e867f5-bc38-4fb8-80ad-8fd38358580a",
+    "sender": {
+      "id": "Unknown"
+    },
+    "receiver": {
+      "id": "guest"
+    },
+    "links": [
+      {
+        "rel": "self",
+        "href": "/data/EXR/B.EUR+SEK+JPY.NOK.SP?endPeriod=2026-11-17&format=sdmx-json&locale=en&startPeriod=2026-11-12",
+        "uri": "https://raw.githubusercontent.com/sdmx-twg/sdmx-json/develop/data-message/tools/schemas/1.0/sdmx-json-data-schema.json"
+      }
+    ]
+  },
+  "data": {
+    "dataSets": [
+      {
+        "links": [
+          {
+            "rel": "dataflow",
+            "urn": "urn:sdmx:org.sdmx.infomodel.datastructure.Dataflow=NB:EXR(1.0)"
+          }
+        ],
+        "reportingBegin": "2026-11-12T00:00:00",
+        "reportingEnd": "2026-11-17T23:59:59",
+        "action": "Information",
+        "series": {
+          "0:0:0:0": {
+            "attributes": [0, 0, 0, 0],
+            "observations": {
+              "0": ["5.9691"],
+              "1": ["5.9772"],
+              "2": ["6.0155"],
+              "3": ["6.0414"]
+            }
+          },
+          "0:1:0:0": {
+            "attributes": [0, 0, 1, 0],
+            "observations": {
+              "0": ["10.563"],
+              "1": ["10.5695"],
+              "2": ["10.574"],
+              "3": ["10.5755"]
+            }
+          },
+          "0:2:0:0": {
+            "attributes": [1, 0, 0, 0],
+            "observations": {
+              "0": ["95.48"],
+              "1": ["95.16"],
+              "2": ["95.3"],
+              "3": ["95.19"]
+            }
+          }
+        }
+      }
+    ],
+    "structure": {
+      "links": [
+        {
+          "rel": "dataflow",
+          "urn": "urn:sdmx:org.sdmx.infomodel.datastructure.Dataflow=NB:EXR(1.0)"
+        },
+        {
+          "rel": "datastructure",
+          "urn": "urn:sdmx:org.sdmx.infomodel.datastructure.DataStructure=NB:DSD_EXR(1.0)"
+        }
+      ],
+      "name": "Exchange rates",
+      "names": {
+        "en": "Exchange rates"
+      },
+      "description": "Norges Bank exchange rate statistics",
+      "descriptions": {
+        "en": "Norges Bank exchange rate statistics"
+      },
+      "dimensions": {
+        "dataset": [],
+        "series": [
+          {
+            "id": "FREQ",
+            "name": "Frequency",
+            "description": "The time interval at which observations occur over a given time period.",
+            "keyPosition": 0,
+            "role": null,
+            "values": [
+              {
+                "id": "B",
+                "name": "Business",
+                "description": "Business"
+              }
+            ]
+          },
+          {
+            "id": "BASE_CUR",
+            "name": "Base Currency",
+            "description": "The first currency in a currency pair quotation. Also known as the transaction currency.",
+            "keyPosition": 1,
+            "role": null,
+            "values": [
+              {
+                "id": "JPY",
+                "name": "Japanese yen"
+              },
+              {
+                "id": "EUR",
+                "name": "Euro"
+              },
+              {
+                "id": "SEK",
+                "name": "Swedish krona"
+              }
+            ]
+          },
+          {
+            "id": "QUOTE_CUR",
+            "name": "Quote Currency",
+            "description": "The second currency in a currency quote pair. Also known as counter currency.",
+            "keyPosition": 2,
+            "role": null,
+            "values": [
+              {
+                "id": "NOK",
+                "name": "Norwegian krone"
+              }
+            ]
+          },
+          {
+            "id": "TENOR",
+            "name": "Tenor",
+            "description": "The amount of time left for the repayment of a loan or until a financial contract expires.",
+            "keyPosition": 3,
+            "role": null,
+            "values": [
+              {
+                "id": "SP",
+                "name": "Spot"
+              }
+            ]
+          }
+        ],
+        "observation": [
+          {
+            "id": "TIME_PERIOD",
+            "name": "Time Period",
+            "description": "The period of time or point in time to which the measured observation refers.",
+            "keyPosition": 4,
+            "role": "time",
+            "values": [
+              {
+                "start": "2026-11-12T00:00:00",
+                "end": "2026-11-12T23:59:59",
+                "id": "2026-11-12",
+                "name": "2026-11-12"
+              },
+              {
+                "start": "2026-11-13T00:00:00",
+                "end": "2026-11-13T23:59:59",
+                "id": "2026-11-13",
+                "name": "2026-11-13"
+              },
+              {
+                "start": "2026-11-16T00:00:00",
+                "end": "2026-11-16T23:59:59",
+                "id": "2026-11-16",
+                "name": "2026-11-16"
+              },
+              {
+                "start": "2026-11-17T00:00:00",
+                "end": "2026-11-17T23:59:59",
+                "id": "2026-11-17",
+                "name": "2026-11-17"
+              }
+            ]
+          }
+        ]
+      },
+      "attributes": {
+        "dataset": [],
+        "series": [
+          {
+            "id": "DECIMALS",
+            "name": "Decimals",
+            "description": "The number of digits to the right of a decimal point.",
+            "relationship": {
+              "dimensions": ["BASE_CUR", "QUOTE_CUR", "TENOR"]
+            },
+            "role": null,
+            "values": [
+              {
+                "id": "4",
+                "name": "4"
+              },
+              {
+                "id": "2",
+                "name": "2"
+              }
+            ]
+          },
+          {
+            "id": "CALCULATED",
+            "name": "Calculated",
+            "description": "Indicates if the value is calculated or an actual observation.",
+            "relationship": {
+              "dimensions": ["BASE_CUR", "QUOTE_CUR", "TENOR"]
+            },
+            "role": null,
+            "values": [
+              {
+                "id": "false",
+                "name": "false"
+              }
+            ]
+          },
+          {
+            "id": "UNIT_MULT",
+            "name": "Unit Multiplier",
+            "description": "Exponent in base 10 specified so that multiplying the observation numeric values by 10^UNIT_MULT gives a value expressed in the UNIT.",
+            "relationship": {
+              "dimensions": ["BASE_CUR", "QUOTE_CUR", "TENOR"]
+            },
+            "role": null,
+            "values": [
+              {
+                "id": "2",
+                "name": "Hundreds"
+              },
+              {
+                "id": "0",
+                "name": "Units"
+              }
+            ]
+          },
+          {
+            "id": "COLLECTION",
+            "name": "Collection Indicator",
+            "description": "Dates or periods during which the observations have been collected.",
+            "relationship": {
+              "dimensions": ["BASE_CUR", "QUOTE_CUR", "TENOR"]
+            },
+            "role": null,
+            "values": [
+              {
+                "id": "C",
+                "name": "ECB concertation time 14:15 CET"
+              }
+            ]
+          }
+        ],
+        "observation": []
+      }
+    }
+  }
+}

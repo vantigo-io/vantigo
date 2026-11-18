@@ -55,10 +55,11 @@ func plantIssued(t *testing.T, h *harness, d issuedDoc) int64 {
 	}
 	return plantID(t, h, `
 		INSERT INTO invoices.invoices (kind, status, number, customer_id, credits_invoice_id, issue_date, due_date, exchange_rate_date,
-		    currency, seller_legal_name, buyer_name, gross_total, issued_at, created_by_user_id, created_at, updated_at)
+		    currency, seller_legal_name, buyer_name, gross_total, issued_at, created_by_user_id, created_at, updated_at,
+		    exchange_rate_source)
 		VALUES ($1, 'issued', $2, $3, NULLIF($4, 0), $5::date, NULLIF($6, '')::date, $5::date,
-		    $7, 'Selger AS', 'Kunde', $8::numeric, now(), gen_random_uuid(), now(), now())
-		RETURNING id`, d.kind, d.number, d.customer, d.credits, d.issue, d.due, currency, d.gross)
+		    $7, 'Selger AS', 'Kunde', $8::numeric, now(), gen_random_uuid(), now(), now(), $9)
+		RETURNING id`, d.kind, d.number, d.customer, d.credits, d.issue, d.due, currency, d.gross, sourceOf(currency))
 }
 
 // plantPaid is a live payment of amount paid on paidOn against invoice
@@ -326,4 +327,12 @@ func TestReceivables_FollowAMergeAndSurviveAnErase(t *testing.T) {
 	if len(got.Currencies) != 1 || got.Currencies[0].Outstanding != "250.00" || got.OutstandingCount != 1 {
 		t.Errorf("after the erase: %+v, want the issued invoice still outstanding", got)
 	}
+}
+
+// sourceOf is the rate source a planted document in currency carries.
+func sourceOf(currency string) string {
+	if currency == "NOK" {
+		return "nok"
+	}
+	return "norges_bank"
 }

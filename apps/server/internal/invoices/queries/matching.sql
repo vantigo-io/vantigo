@@ -47,10 +47,11 @@ SELECT EXISTS (
 -- F6). The caller holds the line and the invoice and has judged the
 -- open amount under the invoice's lock; ck_payments_origin holds the origin.
 INSERT INTO invoices.payments (
-    invoice_id, paid_on, amount, amount_nok, currency, source, bank_transaction_id, reference, registered_by_user_id, registered_at
+    invoice_id, paid_on, amount, amount_nok, currency, source, bank_transaction_id, reference, registered_by_user_id, registered_at,
+    exchange_difference_nok
 ) VALUES (
     @invoice_id, @paid_on, @amount, @amount_nok, @currency, @source, @bank_transaction_id::bigint, @reference,
-    sqlc.narg(registered_by_user_id)::uuid, @registered_at::timestamptz
+    sqlc.narg(registered_by_user_id)::uuid, @registered_at::timestamptz, coalesce(sqlc.narg(exchange_difference_nok)::numeric, 0)
 )
 RETURNING *;
 

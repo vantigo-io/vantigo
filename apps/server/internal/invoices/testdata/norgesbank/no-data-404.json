@@ -1,0 +1,8 @@
+{
+  "errors": [
+    {
+      "code": 404,
+      "message": "No data for data query against the dataflow: urn:sdmx:org.sdmx.infomodel.datastructure.Dataflow=NB:EXR(1.0)"
+    }
+  ]
+}

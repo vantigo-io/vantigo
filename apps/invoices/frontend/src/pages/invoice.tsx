@@ -54,6 +54,7 @@ import {
 } from "../api/invoices";
 import { type InvoicesMeta, invoicesMetaQueryOptions } from "../api/meta";
 import { ApiConflictError, ApiValidationError, INVOICES_QUERY_KEY } from "../api/request";
+import { invoiceSettingsQueryOptions } from "../api/settings";
 import { vatCodesQueryOptions } from "../api/vat-codes";
 import { AttemptsCard } from "../components/attempts-card";
 import { ChargesCard } from "../components/charges-card";
@@ -262,7 +263,7 @@ const DraftEditor = ({
   meta,
   canViewCustomers,
 }: DraftEditorProps) => {
-  const { t, money, date } = useInvoiceFormat();
+  const { t, money, date, number } = useInvoiceFormat();
   const { vatCodes, today, storageAvailable } = meta;
   const { canCreate, canIssue } = meta.capabilities;
   // Every code, inactive and expired ones too: a line may carry one the
@@ -310,6 +311,16 @@ const DraftEditor = ({
   const [ourReference, setOurReference] = useState(draft.ourReference);
   const [orderReference, setOrderReference] = useState(draft.orderReference);
   const [terms, setTerms] = useState<number | string>(draft.paymentTermsDays ?? "");
+  // The draft's currency and an agreed rate (invoices phase 6 design I19):
+  // empty is Norges Bank's rate, resolved again at issue.
+  const [currency, setCurrency] = useState(draft.currency);
+  const [agreedRate, setAgreedRate] = useState<number | string>(
+    draft.exchangeRateSource === "manual" ? draft.exchangeRate : "",
+  );
+  const [agreedDay, setAgreedDay] = useState(
+    draft.exchangeRateSource === "manual" ? (draft.exchangeRateDate ?? "") : "",
+  );
+  const currencies = useQuery(invoiceSettingsQueryOptions()).data?.currencies ?? [];
   const [note, setNote] = useState(draft.note);
   const [internalNote, setInternalNote] = useState(draft.internalNote);
   const [lines, setLines] = useState<EditorLine[]>(
@@ -478,6 +489,15 @@ const DraftEditor = ({
     ourReference,
     orderReference,
     ...(credit || terms === "" ? {} : { paymentTermsDays: numberOf(terms) }),
+    ...(credit ? {} : { currency }),
+    ...(!credit && currency !== "NOK" && agreedRate !== ""
+      ? { exchangeRate: numberOf(agreedRate), ...(agreedDay ? { exchangeRateDate: agreedDay } : {}) }
+      : {}),
+    // An agreed rate cleared goes back to Norges Bank's; left out, the server
+    // keeps the one the draft holds.
+    ...(!credit && currency !== "NOK" && agreedRate === "" && draft.exchangeRateSource === "manual"
+      ? { useNorgesBankRate: true }
+      : {}),
     note,
     internalNote,
     ...(credit ? {} : { timesheet }),
@@ -822,6 +842,51 @@ const DraftEditor = ({
                 onChange={touch(setTerms, "paymentTermsDays")}
               />
             )}
+            {!credit && (currencies.length > 0 || draft.currency !== "NOK") && (
+              <Select
+                data-assist="invoices.invoice.currency"
+                label={t("currency.label")}
+                data={["NOK", ...currencies.filter((c) => c !== "NOK")]}
+                value={currency}
+                allowDeselect={false}
+                disabled={!editable || holdsWork || lines.some((l) => l.deductsInvoiceId !== undefined)}
+                error={fieldError("currency")}
+                onChange={(v) => v && touch(setCurrency, "currency")(v)}
+              />
+            )}
+            {!credit && currency !== "NOK" && (
+              <>
+                <NumberInput
+                  data-assist="invoices.invoice.rate"
+                  label={t("currency.agreedRate", { currency })}
+                  description={
+                    agreedRate === "" && draft.currency === currency && draft.exchangeRateDate
+                      ? t("currency.norgesBankRate", {
+                          currency,
+                          rate: number(draft.exchangeRate, 6),
+                          day: date(draft.exchangeRateDate),
+                        })
+                      : t("currency.agreedHint")
+                  }
+                  decimalScale={6}
+                  min={0}
+                  readOnly={!editable}
+                  value={agreedRate}
+                  error={fieldError("exchangeRate")}
+                  onChange={touch(setAgreedRate, "exchangeRate")}
+                />
+                {agreedRate !== "" && (
+                  <TextInput
+                    type="date"
+                    label={t("currency.agreedDay")}
+                    readOnly={!editable}
+                    value={agreedDay}
+                    error={fieldError("exchangeRateDate")}
+                    onChange={(e) => touch(setAgreedDay, "exchangeRateDate")(e.currentTarget.value)}
+                  />
+                )}
+              </>
+            )}
           </SimpleGrid>
           {referenceWarning && (
             <Alert color="yellow" icon={<IconAlertCircle size={16} />} data-testid="ehf-reference-warning">
@@ -1024,6 +1089,8 @@ const DraftEditor = ({
             net={totals.net}
             vat={totals.vat}
             gross={totals.gross}
+            vatNok={draft.currency === "NOK" ? undefined : draft.vatTotalNok}
+            grossNok={draft.currency === "NOK" ? undefined : draft.grossTotalNok}
           />
         </Stack>
       </PageSection>
@@ -1253,10 +1320,13 @@ interface TotalsProps {
   /** An issued invoice's figures (D3): what its live payments paid and what is open — never below zero once a credit note's surplus is the customer's credit. */
   paid?: number;
   open?: number;
+  /** Off NOK, the VAT and the receivable in NOK (invoices phase 6 design I21). */
+  vatNok?: number;
+  grossNok?: number;
 }
 
 /** The totals per rate, then net, VAT and gross, and on an issued invoice what is paid and open. */
-const Totals = ({ currency, rates, net, vat, gross, paid, open }: TotalsProps) => {
+const Totals = ({ currency, rates, net, vat, gross, paid, open, vatNok, grossNok }: TotalsProps) => {
   const { t, money, number } = useInvoiceFormat();
   return (
     <Table withRowBorders={false} data-testid="totals">
@@ -1289,6 +1359,24 @@ const Totals = ({ currency, rates, net, vat, gross, paid, open }: TotalsProps) =
             {money(gross, currency)}
           </Table.Td>
         </Table.Tr>
+        {vatNok !== undefined && (
+          <Table.Tr>
+            <Table.Td fw={600}>{t("currency.vatInNok")}</Table.Td>
+            <Table.Td />
+            <Table.Td ta="right" data-testid="vat-total-nok">
+              {money(vatNok, "NOK")}
+            </Table.Td>
+          </Table.Tr>
+        )}
+        {grossNok !== undefined && (
+          <Table.Tr>
+            <Table.Td fw={600}>{t("currency.totalInNok")}</Table.Td>
+            <Table.Td />
+            <Table.Td ta="right" data-testid="gross-total-nok">
+              {money(grossNok, "NOK")}
+            </Table.Td>
+          </Table.Tr>
+        )}
         {paid !== undefined && (
           <Table.Tr>
             <Table.Td fw={600}>{t("paidAmount")}</Table.Td>
@@ -1492,7 +1580,20 @@ const IssuedDocument = ({
           gross={doc.grossTotal}
           paid={doc.paidAmount}
           open={doc.openAmount}
+          vatNok={doc.currency === "NOK" ? undefined : doc.vatTotalNok}
+          grossNok={doc.currency === "NOK" ? undefined : doc.grossTotalNok}
         />
+        {doc.currency !== "NOK" && doc.exchangeRateDate && (
+          <Text size="sm" c="dimmed" data-testid="rate-line">
+            {doc.exchangeRateSource === "manual"
+              ? t("currency.agreedLine", { currency: doc.currency, rate: number(doc.exchangeRate, 6) })
+              : t("currency.norgesBankRate", {
+                  currency: doc.currency,
+                  rate: number(doc.exchangeRate, 6),
+                  day: date(doc.exchangeRateDate),
+                })}
+          </Text>
+        )}
       </PageSection>
       {doc.kind === "invoice" && (
         <PageSection>
@@ -1523,7 +1624,10 @@ const IssuedDocument = ({
       {doc.kind === "invoice" && <PaymentsCard invoice={doc} canRegister={canRegisterPayments} today={meta.today} />}
       {doc.kind === "invoice" && (
         <>
-          <PayLinkCard invoice={doc} canIssue={canIssue} payLinksAvailable={meta.payLinksAvailable} />
+          {/* Vipps is NOK: an invoice in another currency has no pay link (I22). */}
+          {doc.currency === "NOK" && (
+            <PayLinkCard invoice={doc} canIssue={canIssue} payLinksAvailable={meta.payLinksAvailable} />
+          )}
           <AttemptsCard invoice={doc} canManage={canManage} />
         </>
       )}

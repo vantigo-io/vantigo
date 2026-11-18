@@ -141,6 +141,7 @@ func (e InvoicesBankTransactionEventEvent) Valid() bool {
 // Defines values for InvoicesBankTransactionReason.
 const (
 	AccountMismatch   InvoicesBankTransactionReason = "account_mismatch"
+	CurrencyDiffers   InvoicesBankTransactionReason = "currency_differs"
 	ExceedsOpen       InvoicesBankTransactionReason = "exceeds_open"
 	InvoiceCredited   InvoicesBankTransactionReason = "invoice_credited"
 	InvoiceSettled    InvoicesBankTransactionReason = "invoice_settled"
@@ -160,6 +161,8 @@ const (
 func (e InvoicesBankTransactionReason) Valid() bool {
 	switch e {
 	case AccountMismatch:
+		return true
+	case CurrencyDiffers:
 		return true
 	case ExceedsOpen:
 		return true
@@ -444,6 +447,24 @@ func (e InvoicesDueOrderKind) Valid() bool {
 	}
 }
 
+// Defines values for InvoicesExchangeRateSource.
+const (
+	InvoicesExchangeRateSourceManual     InvoicesExchangeRateSource = "manual"
+	InvoicesExchangeRateSourceNorgesBank InvoicesExchangeRateSource = "norges_bank"
+)
+
+// Valid indicates whether the value is a known member of the InvoicesExchangeRateSource enum.
+func (e InvoicesExchangeRateSource) Valid() bool {
+	switch e {
+	case InvoicesExchangeRateSourceManual:
+		return true
+	case InvoicesExchangeRateSourceNorgesBank:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for InvoicesHoldKind.
 const (
 	Disputed InvoicesHoldKind = "disputed"
@@ -453,6 +474,27 @@ const (
 func (e InvoicesHoldKind) Valid() bool {
 	switch e {
 	case Disputed:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InvoicesInvoiceResponseExchangeRateSource.
+const (
+	InvoicesInvoiceResponseExchangeRateSourceManual     InvoicesInvoiceResponseExchangeRateSource = "manual"
+	InvoicesInvoiceResponseExchangeRateSourceNok        InvoicesInvoiceResponseExchangeRateSource = "nok"
+	InvoicesInvoiceResponseExchangeRateSourceNorgesBank InvoicesInvoiceResponseExchangeRateSource = "norges_bank"
+)
+
+// Valid indicates whether the value is a known member of the InvoicesInvoiceResponseExchangeRateSource enum.
+func (e InvoicesInvoiceResponseExchangeRateSource) Valid() bool {
+	switch e {
+	case InvoicesInvoiceResponseExchangeRateSourceManual:
+		return true
+	case InvoicesInvoiceResponseExchangeRateSourceNok:
+		return true
+	case InvoicesInvoiceResponseExchangeRateSourceNorgesBank:
 		return true
 	default:
 		return false
@@ -651,6 +693,7 @@ const (
 	InvoicesNextActionChargeNotesFeeBefore14Days      InvoicesNextActionChargeNotes = "fee_before_14_days"
 	InvoicesNextActionChargeNotesFeeCapReached        InvoicesNextActionChargeNotes = "fee_cap_reached"
 	InvoicesNextActionChargeNotesFeeDeadlineNotMissed InvoicesNextActionChargeNotes = "fee_deadline_not_missed"
+	InvoicesNextActionChargeNotesForeignCurrency      InvoicesNextActionChargeNotes = "foreign_currency"
 	InvoicesNextActionChargeNotesNotDelivered         InvoicesNextActionChargeNotes = "not_delivered"
 )
 
@@ -664,6 +707,8 @@ func (e InvoicesNextActionChargeNotes) Valid() bool {
 	case InvoicesNextActionChargeNotesFeeCapReached:
 		return true
 	case InvoicesNextActionChargeNotesFeeDeadlineNotMissed:
+		return true
+	case InvoicesNextActionChargeNotesForeignCurrency:
 		return true
 	case InvoicesNextActionChargeNotesNotDelivered:
 		return true
@@ -1425,6 +1470,7 @@ const (
 	InvoicesRunPreviewLetterChargeNotesFeeBefore14Days      InvoicesRunPreviewLetterChargeNotes = "fee_before_14_days"
 	InvoicesRunPreviewLetterChargeNotesFeeCapReached        InvoicesRunPreviewLetterChargeNotes = "fee_cap_reached"
 	InvoicesRunPreviewLetterChargeNotesFeeDeadlineNotMissed InvoicesRunPreviewLetterChargeNotes = "fee_deadline_not_missed"
+	InvoicesRunPreviewLetterChargeNotesForeignCurrency      InvoicesRunPreviewLetterChargeNotes = "foreign_currency"
 	InvoicesRunPreviewLetterChargeNotesNotDelivered         InvoicesRunPreviewLetterChargeNotes = "not_delivered"
 )
 
@@ -1438,6 +1484,8 @@ func (e InvoicesRunPreviewLetterChargeNotes) Valid() bool {
 	case InvoicesRunPreviewLetterChargeNotesFeeCapReached:
 		return true
 	case InvoicesRunPreviewLetterChargeNotesFeeDeadlineNotMissed:
+		return true
+	case InvoicesRunPreviewLetterChargeNotesForeignCurrency:
 		return true
 	case InvoicesRunPreviewLetterChargeNotesNotDelivered:
 		return true
@@ -1831,7 +1879,10 @@ type InvoicesAccessPointVerifyResponse struct {
 
 // InvoicesAllocation One part of a bank line applied from the exception queue (invoices payments and reminders design D5): invoiceId, an issued invoice; amount, what the line pays of its principal (0 or more, at most the open amount); chargesAmount, what it pays of its reminder charges (0 or more, at most what is outstanding; absent is 0). Two decimals each; their sum is above 0, so a line can pay the charges alone of a settled invoice.
 type InvoicesAllocation struct {
-	Amount        float64  `json:"amount"`
+	Amount float64 `json:"amount"`
+
+	// AmountNok On an invoice in another currency than NOK, required — the line's share in NOK for the amount in the invoice's currency (invoices phase 6 design I24); the NOK shares add up to at most what the line has left. Refused on a NOK invoice. chargesAmount is refused on an invoice in currency (409 currency_not_nok).
+	AmountNok     *float64 `json:"amountNok,omitempty"`
 	ChargesAmount *float64 `json:"chargesAmount,omitempty"`
 	InvoiceId     int64    `json:"invoiceId"`
 }
@@ -2067,7 +2118,7 @@ type InvoicesBankTransaction struct {
 	// PossibleDuplicateOf The line a possible duplicate may repeat (D5): the line it was kept as a duplicate of, or else the earliest matched or resolved line of another file with the same account, booking day, amount and KID, one with a live payment first — its id, file, lineRef, booking day, amount, KID, status, its payments and charge payments, and reversed, whether a reversal took back a payment of it (why its payment is gone).
 	PossibleDuplicateOf *InvoicesBankTransactionTwin `json:"possibleDuplicateOf,omitempty"`
 
-	// Reason Why a line was queued (D4, D5): kid_invalid, kid_unknown, invoice_credited, invoice_settled, exceeds_open, no_kid, negative_amount, reversal, vipps_payout, paid_before_issue, account_mismatch, possible_duplicate, payment_removed (a matched line whose payments were all removed, reopened) or invoice_written_off (accounting design R15: a write-off stands on the invoice the line pays, so it registers nothing, neither principal nor charges; a person registers the money as a recovered payment).
+	// Reason Why a line was queued (D4, D5): kid_invalid, kid_unknown, invoice_credited, invoice_settled, exceeds_open, no_kid, negative_amount, reversal, vipps_payout, paid_before_issue, account_mismatch, possible_duplicate, payment_removed (a matched line whose payments were all removed, reopened) or invoice_written_off (accounting design R15: a write-off stands on the invoice the line pays, so it registers nothing, neither principal nor charges; a person registers the money as a recovered payment) or currency_differs (invoices phase 6 design I24: the KID names an invoice in another currency than NOK, which matching never pays; a person applies it with the NOK share).
 	Reason *InvoicesBankTransactionReason `json:"reason,omitempty"`
 
 	// References Every structured remittance reference of a camt.054 line (RmtInf/Strd/CdtrRefInf/Ref, of any type), in the file's order, at most 20 (invoices phase 6 design I14); empty for an OCR line, a bank-feed line and a line imported before they were kept, which are read by their text.
@@ -2128,7 +2179,7 @@ type InvoicesBankTransactionEvent struct {
 	Id    int64                             `json:"id"`
 	Note  string                            `json:"note"`
 
-	// Reason Why a line was queued (D4, D5): kid_invalid, kid_unknown, invoice_credited, invoice_settled, exceeds_open, no_kid, negative_amount, reversal, vipps_payout, paid_before_issue, account_mismatch, possible_duplicate, payment_removed (a matched line whose payments were all removed, reopened) or invoice_written_off (accounting design R15: a write-off stands on the invoice the line pays, so it registers nothing, neither principal nor charges; a person registers the money as a recovered payment).
+	// Reason Why a line was queued (D4, D5): kid_invalid, kid_unknown, invoice_credited, invoice_settled, exceeds_open, no_kid, negative_amount, reversal, vipps_payout, paid_before_issue, account_mismatch, possible_duplicate, payment_removed (a matched line whose payments were all removed, reopened) or invoice_written_off (accounting design R15: a write-off stands on the invoice the line pays, so it registers nothing, neither principal nor charges; a person registers the money as a recovered payment) or currency_differs (invoices phase 6 design I24: the KID names an invoice in another currency than NOK, which matching never pays; a person applies it with the NOK share).
 	Reason *InvoicesBankTransactionReason `json:"reason,omitempty"`
 }
 
@@ -2150,7 +2201,7 @@ type InvoicesBankTransactionNoteRequest struct {
 	Note *string `json:"note,omitempty"`
 }
 
-// InvoicesBankTransactionReason Why a line was queued (D4, D5): kid_invalid, kid_unknown, invoice_credited, invoice_settled, exceeds_open, no_kid, negative_amount, reversal, vipps_payout, paid_before_issue, account_mismatch, possible_duplicate, payment_removed (a matched line whose payments were all removed, reopened) or invoice_written_off (accounting design R15: a write-off stands on the invoice the line pays, so it registers nothing, neither principal nor charges; a person registers the money as a recovered payment).
+// InvoicesBankTransactionReason Why a line was queued (D4, D5): kid_invalid, kid_unknown, invoice_credited, invoice_settled, exceeds_open, no_kid, negative_amount, reversal, vipps_payout, paid_before_issue, account_mismatch, possible_duplicate, payment_removed (a matched line whose payments were all removed, reopened) or invoice_written_off (accounting design R15: a write-off stands on the invoice the line pays, so it registers nothing, neither principal nor charges; a person registers the money as a recovered payment) or currency_differs (invoices phase 6 design I24: the KID names an invoice in another currency than NOK, which matching never pays; a person applies it with the NOK share).
 type InvoicesBankTransactionReason string
 
 // InvoicesBankTransactionReversalCredit An overpayment kept as credit that a reversal takes back (invoices phase 6 design I9) — the movement's id.
@@ -2249,7 +2300,7 @@ type InvoicesBillingRunDocument struct {
 	Status    string `json:"status"`
 }
 
-// InvoicesBillingRunItem One customer of a billing run (plan reading 7): its status — queued, drafted, issued, skipped, failed or cancelled —, the documents it made (more than one when the customer's settlements were split by metering point), and on skipped or failed the code of the refusal and its detail (a refusal about a settlement names the metering point); a drafted or issued item of a run of orders carries a detail naming the orders it left out for their currency (currency_not_supported). customerName is the directory's, absent when it does not answer.
+// InvoicesBillingRunItem One customer of a billing run (plan reading 7): its status — queued, drafted, issued, skipped, failed or cancelled —, the documents it made (more than one when the customer's settlements were split by metering point), and on skipped or failed the code of the refusal and its detail (a refusal about a settlement names the metering point); a drafted or issued item of a run of orders carries a detail naming the orders it left out for their currency (currency_not_enabled; currency_not_supported before currencies). customerName is the directory's, absent when it does not answer.
 type InvoicesBillingRunItem struct {
 	Attempts     int32                        `json:"attempts"`
 	Code         *string                      `json:"code,omitempty"`
@@ -2432,7 +2483,7 @@ type InvoicesCollectionRateRequest struct {
 // InvoicesCollectionRateRequestKind defines model for InvoicesCollectionRateRequest.Kind.
 type InvoicesCollectionRateRequestKind string
 
-// InvoicesConflictProblem ProblemDetails plus this module's refusal code (invoices foundation design D2-D8). code names the rule that refused — series_locked, vat_code_in_use, rate_change_in_past, rate_period_not_latest, rate_period_last, rate_period_in_use, invoice_issued, invoice_draft, customer_merged, customer_archived, customer_blocked, customer_missing, invoice_changed, seller_incomplete, no_lines, delivery_date_missing, issue_date_not_allowed, buyer_incomplete, vat_code_inactive, vat_code_not_valid, vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, credit_exceeds_line, credit_exceeds_invoice, credit_note_not_creditable, invoice_fully_credited, credit_note_no_payments, invoice_settled, payment_exceeds_open, payment_removed, customer_anonymised, no_invoice_email (invoices payments and delivery design D2, D4), kid_length_exceeded (EHF and KID design D3: the next number no longer fits the KID agreement, which was shortened), transmissions_active (EHF and KID design D7: the access-point credentials still serve a transmission in flight), ehf_unavailable (D7: no access-point credentials to verify — a 409 — or a stored key that cannot be opened — a 503; D8: an installation that cannot send as EHF — a 503), the send as EHF's no_peppol_id, buyer_reference_missing, ehf_already_sent, peppol_not_receivable (with peppolRegistered and peppolCanReceive) and ehf_invalid (with rules) (EHF and KID design D8), transmission_not_cancellable and transmission_not_resolvable (D9), source_held_elsewhere (invoices work design D2: a source a save or the wizard would hold is held by another live draft or invoiced by an unreleased issued line; heldBy, sourceKind and sourceId name the document and the source), the wizard's refusals (invoices work design D3, D4, D11; POST /invoices/from-work) — work_unavailable (no billable read is composed), too_many_sources (more than 5 000 sources on one document, an append target's held ones counted), source_not_for_customer (a source's project bills another customer or is gone), mixed_currency (the selection spans currencies), currency_not_nok (the selection is in another currency than NOK) and too_many_lines (the grouping would make more than 500 lines, with suggestedGrouping, the next coarser grouping that fits) — the issue's refusals about the work it bills (invoices work design D1, each with linePosition, sourceKind and sourceId) — source_not_invoiceable, source_changed and source_already_invoiced (a source's own module would not stamp it: no longer approved, ready or billable; changed since the draft took it; already invoiced), source_customer_changed (a source's project no longer bills the draft's customer, or is gone; judged before a number exists) and source_not_selectable (hours of a project now fixed-price or non-billable, or any work of a project now non-billable) — and projects_unavailable (the draft bills work and the projects module is switched off); a final settlement's (invoices work design D7) deduction_exceeds_invoice (with linePosition: a deduction line takes more than its a-konto has left at its VAT code, or deducts a document that is no longer an issued invoice of this customer, or deducted at a code where it deducts itself), deduction_duplicated (with linePosition: a second deduction line for one deducted invoice and VAT code) and invoice_total_not_positive (a settlement's, or an invoice with energy correction lines', gross is zero or less); a credit note's credit_total_negative (its gross is below zero) and invoice_deducted (it credits more of an a-konto at a VAT code than no issued settlement deducted there; the detail names the settlements); credit_note_deducts_nothing (GET /invoices/{id}/deductible on a credit-note draft), and invoice_changed also when the draft's work changed between the issue's reads and its lock; the bank import's (invoices payments and reminders design D3) bank_account_unknown (an account the file names is neither the seller's nor one an issued invoice printed; the detail names its last four digits), bank_file_duplicate (the same bytes or the same file identity imported before, with bankFileId, uploadedAt and uploadedBy of that import) and bank_import_format_mismatch (the account's files come in the other format; the detail names the account and its format); the collection rates' (invoices payments and reminders design D6) collection_rate_exists (a rate of that kind already takes effect on that day) and collection_rate_in_force (the rate came with a release, is in force or past, or a printed or sent letter relied on it, so it is not deleted); the charges' (invoices payments and reminders design D9) no_charges_outstanding (nothing is outstanding: no letter claimed a charge, or every charge is waived or paid), charge_payment_exceeds_outstanding (with chargesOutstanding), charge_not_claimed (the letter was not sent, claimed no such charge, it is waived already, or no interest is left unpaid) and credit_note_no_reminders (a credit note is never reminded of), and the manual deliveries' (D8) delivery_removed and delivery_relied_on (a letter's charge stands on the record and no other delivery on or before the due date would remain); the reminder runs' and the overdue list's (invoices payments and reminders design D10, D12) reminders_disabled (reminders are switched off in the reminder settings), collection_rates_outdated (a letter of the run needs a rate with no row for a half-year, with kind and halfYear), collection_regime_unreviewed (a letter of the run would carry a fee or be a collection notice past the regime review under the 1988 regime), bank_import_stale (the bank data is stale and a letter of the run would carry a charge, with lastBookedOn; acknowledgeStaleImport confirms it) and too_many_overdue (more than 5 000 overdue invoices to judge; narrow by customer or due date); the holds' and the hand-off's (invoices payments and reminders design D11) invoice_on_hold (a hold is live already), invoice_not_on_hold (no hold is live to lift), invoice_handed_off (a hand-off is live already), invoice_not_handed_off (no hand-off is live to withdraw) and invoice_not_delivered (no delivery on or before the due date; acknowledgeNotDelivered confirms the hand-off); the reminder letters' (invoices payments and reminders design D10) reminder_not_withdrawable (the letter is sent, withdrawn already, or being sent: queued with its facts written under a live lease), reminder_not_failed (only a failed letter is retried) and reminder_not_sent (the letter is neither printed nor sent, so it has no PDF); the paper letters' (D10, reading 39) reminder_not_awaiting_print (a letter named for a print batch is not awaiting print), reminder_posted_early and reminder_posted_late (a batch confirmed posted on another day than the one it was printed for, so it must be reprinted) and print_batch_closed (the batch was posted or reprinted already); the exception queue's (invoices payments and reminders design D5) bank_transaction_not_open (the line is not in the state the action takes — not an exception, for most), bank_transaction_not_applicable (the action is not for this line: an apply of a reversal or a negative line, a dismissal of a reversal, a reversal handled on a line that is none, a duplicate confirmed or kept that is none, a reopen of a line that is open), bank_transaction_applied (a live payment or charge payment still refers to the line), bank_transaction_reversed (a reversal took back a payment of the line, so it is never reopened, or of the line it was kept as a duplicate of, so it is never treated as distinct nor applied), reversal_payment_required (a reversal handled with no payment named and no note saying why), allocation_not_an_invoice (an allocation names no issued invoice), allocation_exceeds_transaction (the allocations add up to more than the line has left) and paid_before_issue (the line was booked before an allocation's invoice was issued), besides payment_exceeds_open with invoiceId and charge_payment_exceeds_outstanding on an allocation; the payments port's (invoices payments and reminders design D14–D17) payments_unavailable (no Vipps credentials are stored — a 409 — or Vipps is switched off on this installation or the stored credentials cannot be opened — a 503), payment_attempts_active (a change of the sales unit, or removing the keys, while a Vipps payment is in flight), attempt_not_abandonable (the payment is neither of unknown outcome nor stranded by the switch or another sales unit), public_url_missing (pay links or a webhook without PUBLIC_BASE_URL), pay_links_unavailable (pay links are off or not set up), pay_link_exists (the invoice has a live pay link already), too_many_attempts (five Vipps payments of the invoice are in flight already), amount_out_of_range (the open amount is below 1.00 or above what Vipps takes), payment_in_progress (Vipps payments being completed leave less than 1.00 open), on_site_payments_unavailable (on-site payment is not turned on), buyer_identity_missing (the buyer is not identified as a kontantfaktura requires), payment_request_active (an on-site payment request of the invoice is live already), day_already_reconciled (the day was reconciled before) and day_not_over (the day is not over yet), and provider_failed, which a 502 carries when Vipps refused or failed the call; the bank feed's (invoices bank feed design F3, F4, F8) bank_feed_disabled (the bank feed is switched off on this installation), bank_feed_not_connected (no bank key is stored), bank_feed_account_not_offered (the bank does not answer the account now, or it is a card account), bank_feed_enabled (a format change away from feed while the feed is switched on for the account), bank_feed_key_changed (another bank key was stored while an account was being switched on), bank_account_unknown as the bank import's, and bank_feed_credential_rejected, which a 422 carries when the bank refused the key, and bank_feed_unavailable, which a 503 carries when the bank could not be reached or the stored key cannot be opened; the quick invoice's (D17) request_id_reused (its requestId came before with another body, with invoiceId, the invoice it issued); the consumption wizard's (energy consumption billing design D7; GET /invoices/consumption, GET /invoices/consumption/settlements, POST /invoices/from-consumption) consumption_unavailable (the energy module is switched off), settlement_blocked (with sourceKind and sourceId: a named settlement Energy cannot bill; the detail names its blocker), cadence_not_allowed (with sourceKind and sourceId: a settlement of a yearly supply for a person, who is billed at least quarterly) and no_consumption_due (nothing is left to invoice through the date); the billing runs' (energy consumption billing design D10; POST /invoices/billing-runs and its cancel) billing_run_active (with runId: a run is queued or running already), billing_run_finished (the run is done or cancelled already) and too_many_customers (more than 5 000 supplies are due; name the customers); the From orders wizard's (orders design O39; GET /invoices/from-orders/due, POST /invoices/from-orders) orders_unavailable (the orders module is switched off), order_blocked (with orderLineId: an order is a draft or on hold), allocation_exceeds_open (with orderLineId: a quantity above what the line has left to invoice) and line_not_invoiceable (with orderLineId: a line Orders will not invoice, or one not of the order named), a save's line_holds_order_allocation (with linePosition, sourceKind and sourceId: a line holding an order allocation keeps its quantity, unit price, discount and VAT code), and the billing run's no_orders_due (no customer has order lines due through the date), and its items' orders_held_by_drafts (drafts of the customer hold what its orders have left) and currency_not_supported (the customer's orders due are in another currency than the settings'); the write-off's (accounting design A16, R4) vipps_in_progress (a Vipps payment is being completed, so the open amount is not settled yet), no_write_off (no write-off stands: nothing to undo or to recover), write_off_recovered (a recovered payment of the write-off stands; remove it before the undo), recovery_exceeds_written_off (with openAmount, the room left: a recovered payment above what is written off less what is already recovered) and invoice_written_off (accounting design R15: a credit note of an invoice a write-off stands on is neither created, saved nor issued; undo the write-off first); the logo's (invoices phase 6 design I1) logo_unsupported_type, logo_too_large, logo_too_wide, logo_too_small and logo_invalid, which a 400 carries in the same shape; the customer's credit's (invoices phase 6 design I8-I12) idempotency_key_reused (an apply-credit with an Idempotency-Key the caller applied credit with already, to another invoice or of another amount), credit_exceeds_balance (with balance: a movement would take the customer's credit in the currency below zero — credit applied or refunded beyond it, or a payment or a bank line whose overpayment was used removed or reversed), credit_exceeds_open (credit applied above what is open, with openAmount) and refund_removed (the refund is removed already); the eFaktura's and AvtaleGiro's (invoices phase 6 design I29-I34) efaktura_unavailable (a 503, or a 409 on a verify with nothing stored), efaktura_credit_note, efaktura_due_too_soon, efaktura_due_too_far, efaktura_not_found (with efakturaReason, why the person cannot be sent to), efaktura_already_sent, kid_missing, efaktura_person_only, kid_agreement_missing, avtalegiro_agreement_missing, avtalegiro_kid_space_taken, avtalegiro_claim_exists, mandate_resolved, mandate_kid_mismatch, mandate_customer_not_person, mandate_not_resolved and mandate_has_live_claim, and efaktura_lookup_failed, which a 502 carries; and storage_unavailable and mail_unavailable, which a 503 carries in the same shape, and mail_failed and peppol_lookup_failed, which a 502 carries. A revision conflict carries no code; its detail names both revisions.
+// InvoicesConflictProblem ProblemDetails plus this module's refusal code (invoices foundation design D2-D8). code names the rule that refused — series_locked, vat_code_in_use, rate_change_in_past, rate_period_not_latest, rate_period_last, rate_period_in_use, invoice_issued, invoice_draft, customer_merged, customer_archived, customer_blocked, customer_missing, invoice_changed, seller_incomplete, no_lines, delivery_date_missing, issue_date_not_allowed, buyer_incomplete, vat_code_inactive, vat_code_not_valid, vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, credit_exceeds_line, credit_exceeds_invoice, credit_note_not_creditable, invoice_fully_credited, credit_note_no_payments, invoice_settled, payment_exceeds_open, payment_removed, customer_anonymised, no_invoice_email (invoices payments and delivery design D2, D4), kid_length_exceeded (EHF and KID design D3: the next number no longer fits the KID agreement, which was shortened), transmissions_active (EHF and KID design D7: the access-point credentials still serve a transmission in flight), ehf_unavailable (D7: no access-point credentials to verify — a 409 — or a stored key that cannot be opened — a 503; D8: an installation that cannot send as EHF — a 503), the send as EHF's no_peppol_id, buyer_reference_missing, ehf_already_sent, peppol_not_receivable (with peppolRegistered and peppolCanReceive) and ehf_invalid (with rules) (EHF and KID design D8), transmission_not_cancellable and transmission_not_resolvable (D9), source_held_elsewhere (invoices work design D2: a source a save or the wizard would hold is held by another live draft or invoiced by an unreleased issued line; heldBy, sourceKind and sourceId name the document and the source), the wizard's refusals (invoices work design D3, D4, D11; POST /invoices/from-work) — work_unavailable (no billable read is composed), too_many_sources (more than 5 000 sources on one document, an append target's held ones counted), source_not_for_customer (a source's project bills another customer or is gone), mixed_currency (the selection spans currencies), currency_not_nok (the selection is in another currency than NOK) and too_many_lines (the grouping would make more than 500 lines, with suggestedGrouping, the next coarser grouping that fits) — the issue's refusals about the work it bills (invoices work design D1, each with linePosition, sourceKind and sourceId) — source_not_invoiceable, source_changed and source_already_invoiced (a source's own module would not stamp it: no longer approved, ready or billable; changed since the draft took it; already invoiced), source_customer_changed (a source's project no longer bills the draft's customer, or is gone; judged before a number exists) and source_not_selectable (hours of a project now fixed-price or non-billable, or any work of a project now non-billable) — and projects_unavailable (the draft bills work and the projects module is switched off); a final settlement's (invoices work design D7) deduction_exceeds_invoice (with linePosition: a deduction line takes more than its a-konto has left at its VAT code, or deducts a document that is no longer an issued invoice of this customer, or deducted at a code where it deducts itself), deduction_duplicated (with linePosition: a second deduction line for one deducted invoice and VAT code) and invoice_total_not_positive (a settlement's, or an invoice with energy correction lines', gross is zero or less); a credit note's credit_total_negative (its gross is below zero) and invoice_deducted (it credits more of an a-konto at a VAT code than no issued settlement deducted there; the detail names the settlements); credit_note_deducts_nothing (GET /invoices/{id}/deductible on a credit-note draft), and invoice_changed also when the draft's work changed between the issue's reads and its lock; the bank import's (invoices payments and reminders design D3) bank_account_unknown (an account the file names is neither the seller's nor one an issued invoice printed; the detail names its last four digits), bank_file_duplicate (the same bytes or the same file identity imported before, with bankFileId, uploadedAt and uploadedBy of that import) and bank_import_format_mismatch (the account's files come in the other format; the detail names the account and its format); the collection rates' (invoices payments and reminders design D6) collection_rate_exists (a rate of that kind already takes effect on that day) and collection_rate_in_force (the rate came with a release, is in force or past, or a printed or sent letter relied on it, so it is not deleted); the charges' (invoices payments and reminders design D9) no_charges_outstanding (nothing is outstanding: no letter claimed a charge, or every charge is waived or paid), charge_payment_exceeds_outstanding (with chargesOutstanding), charge_not_claimed (the letter was not sent, claimed no such charge, it is waived already, or no interest is left unpaid) and credit_note_no_reminders (a credit note is never reminded of), and the manual deliveries' (D8) delivery_removed and delivery_relied_on (a letter's charge stands on the record and no other delivery on or before the due date would remain); the reminder runs' and the overdue list's (invoices payments and reminders design D10, D12) reminders_disabled (reminders are switched off in the reminder settings), collection_rates_outdated (a letter of the run needs a rate with no row for a half-year, with kind and halfYear), collection_regime_unreviewed (a letter of the run would carry a fee or be a collection notice past the regime review under the 1988 regime), bank_import_stale (the bank data is stale and a letter of the run would carry a charge, with lastBookedOn; acknowledgeStaleImport confirms it) and too_many_overdue (more than 5 000 overdue invoices to judge; narrow by customer or due date); the holds' and the hand-off's (invoices payments and reminders design D11) invoice_on_hold (a hold is live already), invoice_not_on_hold (no hold is live to lift), invoice_handed_off (a hand-off is live already), invoice_not_handed_off (no hand-off is live to withdraw) and invoice_not_delivered (no delivery on or before the due date; acknowledgeNotDelivered confirms the hand-off); the reminder letters' (invoices payments and reminders design D10) reminder_not_withdrawable (the letter is sent, withdrawn already, or being sent: queued with its facts written under a live lease), reminder_not_failed (only a failed letter is retried) and reminder_not_sent (the letter is neither printed nor sent, so it has no PDF); the paper letters' (D10, reading 39) reminder_not_awaiting_print (a letter named for a print batch is not awaiting print), reminder_posted_early and reminder_posted_late (a batch confirmed posted on another day than the one it was printed for, so it must be reprinted) and print_batch_closed (the batch was posted or reprinted already); the exception queue's (invoices payments and reminders design D5) bank_transaction_not_open (the line is not in the state the action takes — not an exception, for most), bank_transaction_not_applicable (the action is not for this line: an apply of a reversal or a negative line, a dismissal of a reversal, a reversal handled on a line that is none, a duplicate confirmed or kept that is none, a reopen of a line that is open), bank_transaction_applied (a live payment or charge payment still refers to the line), bank_transaction_reversed (a reversal took back a payment of the line, so it is never reopened, or of the line it was kept as a duplicate of, so it is never treated as distinct nor applied), reversal_payment_required (a reversal handled with no payment named and no note saying why), allocation_not_an_invoice (an allocation names no issued invoice), allocation_exceeds_transaction (the allocations add up to more than the line has left) and paid_before_issue (the line was booked before an allocation's invoice was issued), besides payment_exceeds_open with invoiceId and charge_payment_exceeds_outstanding on an allocation; the payments port's (invoices payments and reminders design D14–D17) payments_unavailable (no Vipps credentials are stored — a 409 — or Vipps is switched off on this installation or the stored credentials cannot be opened — a 503), payment_attempts_active (a change of the sales unit, or removing the keys, while a Vipps payment is in flight), attempt_not_abandonable (the payment is neither of unknown outcome nor stranded by the switch or another sales unit), public_url_missing (pay links or a webhook without PUBLIC_BASE_URL), pay_links_unavailable (pay links are off or not set up), pay_link_exists (the invoice has a live pay link already), too_many_attempts (five Vipps payments of the invoice are in flight already), amount_out_of_range (the open amount is below 1.00 or above what Vipps takes), payment_in_progress (Vipps payments being completed leave less than 1.00 open), on_site_payments_unavailable (on-site payment is not turned on), buyer_identity_missing (the buyer is not identified as a kontantfaktura requires), payment_request_active (an on-site payment request of the invoice is live already), day_already_reconciled (the day was reconciled before) and day_not_over (the day is not over yet), and provider_failed, which a 502 carries when Vipps refused or failed the call; the bank feed's (invoices bank feed design F3, F4, F8) bank_feed_disabled (the bank feed is switched off on this installation), bank_feed_not_connected (no bank key is stored), bank_feed_account_not_offered (the bank does not answer the account now, or it is a card account), bank_feed_enabled (a format change away from feed while the feed is switched on for the account), bank_feed_key_changed (another bank key was stored while an account was being switched on), bank_account_unknown as the bank import's, and bank_feed_credential_rejected, which a 422 carries when the bank refused the key, and bank_feed_unavailable, which a 503 carries when the bank could not be reached or the stored key cannot be opened; the quick invoice's (D17) request_id_reused (its requestId came before with another body, with invoiceId, the invoice it issued); the consumption wizard's (energy consumption billing design D7; GET /invoices/consumption, GET /invoices/consumption/settlements, POST /invoices/from-consumption) consumption_unavailable (the energy module is switched off), settlement_blocked (with sourceKind and sourceId: a named settlement Energy cannot bill; the detail names its blocker), cadence_not_allowed (with sourceKind and sourceId: a settlement of a yearly supply for a person, who is billed at least quarterly) and no_consumption_due (nothing is left to invoice through the date); the billing runs' (energy consumption billing design D10; POST /invoices/billing-runs and its cancel) billing_run_active (with runId: a run is queued or running already), billing_run_finished (the run is done or cancelled already) and too_many_customers (more than 5 000 supplies are due; name the customers); the From orders wizard's (orders design O39; GET /invoices/from-orders/due, POST /invoices/from-orders) orders_unavailable (the orders module is switched off), order_blocked (with orderLineId: an order is a draft or on hold), allocation_exceeds_open (with orderLineId: a quantity above what the line has left to invoice) and line_not_invoiceable (with orderLineId: a line Orders will not invoice, or one not of the order named), a save's line_holds_order_allocation (with linePosition, sourceKind and sourceId: a line holding an order allocation keeps its quantity, unit price, discount and VAT code), and the billing run's no_orders_due (no customer has order lines due through the date), and its items' orders_held_by_drafts (drafts of the customer hold what its orders have left) and currency_not_enabled (the customer's orders due are in a currency neither NOK nor turned on in the settings); the write-off's (accounting design A16, R4) vipps_in_progress (a Vipps payment is being completed, so the open amount is not settled yet), no_write_off (no write-off stands: nothing to undo or to recover), write_off_recovered (a recovered payment of the write-off stands; remove it before the undo), recovery_exceeds_written_off (with openAmount, the room left: a recovered payment above what is written off less what is already recovered) and invoice_written_off (accounting design R15: a credit note of an invoice a write-off stands on is neither created, saved nor issued; undo the write-off first); the logo's (invoices phase 6 design I1) logo_unsupported_type, logo_too_large, logo_too_wide, logo_too_small and logo_invalid, which a 400 carries in the same shape; the customer's credit's (invoices phase 6 design I8-I12) idempotency_key_reused (an apply-credit with an Idempotency-Key the caller applied credit with already, to another invoice or of another amount), credit_exceeds_balance (with balance: a movement would take the customer's credit in the currency below zero — credit applied or refunded beyond it, or a payment or a bank line whose overpayment was used removed or reversed), credit_exceeds_open (credit applied above what is open, with openAmount) and refund_removed (the refund is removed already); the foreign currency's (invoices phase 6 design I17-I25) exchange_rate_missing (with currency: no rate within 7 days — of today when turning a currency on, of the issue date at issue), iban_required (the seller's IBAN or BIC is empty, which a document in currency needs), currency_not_enabled (an order in a currency neither NOK nor turned on in the settings), exchange_rate_fetched (a fetched rate is never removed; only a manual one is) and currency_not_nok (a pay link, a Vipps payment or a charge payment of an invoice in another currency than NOK); the eFaktura's and AvtaleGiro's (invoices phase 6 design I29-I34) efaktura_unavailable (a 503, or a 409 on a verify with nothing stored), efaktura_credit_note, efaktura_due_too_soon, efaktura_due_too_far, efaktura_not_found (with efakturaReason, why the person cannot be sent to), efaktura_already_sent, kid_missing, efaktura_person_only, kid_agreement_missing, avtalegiro_agreement_missing, avtalegiro_kid_space_taken, avtalegiro_claim_exists, mandate_resolved, mandate_kid_mismatch, mandate_customer_not_person, mandate_not_resolved and mandate_has_live_claim, and efaktura_lookup_failed, which a 502 carries; and storage_unavailable and mail_unavailable, which a 503 carries in the same shape, and mail_failed and peppol_lookup_failed, which a 502 carries. A revision conflict carries no code; its detail names both revisions.
 type InvoicesConflictProblem struct {
 	// AllowedIssueDates On issue_date_not_allowed, the dates this document may be issued with today, the earliest first. Absent otherwise.
 	AllowedIssueDates *[]openapi_types.Date `json:"allowedIssueDates,omitempty"`
@@ -2449,7 +2500,10 @@ type InvoicesConflictProblem struct {
 	// ChargesOutstanding On charge_payment_exceeds_outstanding, the invoice's charges outstanding — the fees and compensation its sent letters claimed and the latest letter's interest, less waivers and charge payments — which the charge payment exceeded. Absent otherwise.
 	ChargesOutstanding *float64 `json:"chargesOutstanding,omitempty"`
 	Code               *string  `json:"code,omitempty"`
-	Detail             *string  `json:"detail,omitempty"`
+
+	// Currency On exchange_rate_missing, the currency without a rate. Absent otherwise.
+	Currency *string `json:"currency,omitempty"`
+	Detail   *string `json:"detail,omitempty"`
 
 	// EfakturaReason On efaktura_not_found, why the person cannot be sent to — not_found, blocked, no_agreement or ambiguous. Absent otherwise.
 	EfakturaReason *string `json:"efakturaReason,omitempty"`
@@ -2687,9 +2741,12 @@ type InvoicesCreditRefundRemovalRequest struct {
 	Reason string `json:"reason"`
 }
 
-// InvoicesCreditRefundRequest POST /invoices/customers/{customerId}/credit/refunds' body (invoices phase 6 design I12). refundedOn is the day the money left: not after today in the business time zone. amount is greater than 0 with at most 2 decimals, at most the customer's credit in the currency (409 credit_exceeds_balance). currency is NOK in this phase (400 otherwise). bankAccount is the 11-digit account it was paid from, with a valid MOD11 check digit. reference holds at most 100 characters and note at most 500, both trimmed; absent is empty.
+// InvoicesCreditRefundRequest POST /invoices/customers/{customerId}/credit/refunds' body (invoices phase 6 design I12). refundedOn is the day the money left: not after today in the business time zone. amount is greater than 0 with at most 2 decimals, at most the customer's credit in the currency (409 credit_exceeds_balance). currency is NOK or a currency turned on in the settings (400 otherwise); off NOK, amountNok is required. bankAccount is the 11-digit account it was paid from, with a valid MOD11 check digit. reference holds at most 100 characters and note at most 500, both trimmed; absent is empty.
 type InvoicesCreditRefundRequest struct {
-	Amount      float64            `json:"amount"`
+	Amount float64 `json:"amount"`
+
+	// AmountNok On a refund in another currency than NOK, required — the NOK that left (plan reading 9); the difference against what the credit was carried at is booked as a currency gain or loss. Refused on NOK.
+	AmountNok   *float64           `json:"amountNok,omitempty"`
 	BankAccount string             `json:"bankAccount"`
 	Currency    string             `json:"currency"`
 	Note        *string            `json:"note,omitempty"`
@@ -2747,9 +2804,9 @@ type InvoicesDeliveryAddress struct {
 	PostalCode *string `json:"postalCode,omitempty"`
 }
 
-// InvoicesDueOrder One order — or, with kind subscription, one subscription with its due periods (orders design O43) — with lines to invoice (orders design O37): its number, customer (customerName as the customer directory names it, absent when it does not), currency, project, the buyer's reference, delivery date, delivery name and address, payment terms, and blocked — draft or on_hold, as Orders answers it, or currency_not_supported, an order in another currency than the settings' — when it cannot be invoiced now.
+// InvoicesDueOrder One order — or, with kind subscription, one subscription with its due periods (orders design O43) — with lines to invoice (orders design O37): its number, customer (customerName as the customer directory names it, absent when it does not), currency, project, the buyer's reference, delivery date, delivery name and address, payment terms, and blocked — draft or on_hold, as Orders answers it, or currency_not_enabled, an order in a currency neither NOK nor turned on in the settings (invoices phase 6 design I20) — when it cannot be invoiced now.
 type InvoicesDueOrder struct {
-	// Blocked Why the order cannot be invoiced now — draft, on_hold or currency_not_supported (another currency than the settings'). Absent when it can.
+	// Blocked Why the order cannot be invoiced now — draft, on_hold or currency_not_enabled (a currency neither NOK nor turned on in the settings; invoices phase 6 design I20). Absent when it can.
 	Blocked      *string `json:"blocked,omitempty"`
 	Currency     string  `json:"currency"`
 	CustomerId   int32   `json:"customerId"`
@@ -2860,6 +2917,29 @@ type InvoicesEhfState struct {
 type InvoicesEnergyVatCodes struct {
 	Energy       int32 `json:"energy"`
 	EnergyExempt int32 `json:"energyExempt"`
+}
+
+// InvoicesExchangeRate A currency's rate of one day (invoices phase 6 design I18): NOK per one unit, at most ten decimals; source norges_bank (fetched) or manual (entered under invoices:manage, never overwritten by a fetch). enteredByUserId names who entered a manual rate.
+type InvoicesExchangeRate struct {
+	Currency        string                     `json:"currency"`
+	Day             openapi_types.Date         `json:"day"`
+	EnteredByUserId *openapi_types.UUID        `json:"enteredByUserId,omitempty"`
+	FetchedAt       time.Time                  `json:"fetchedAt"`
+	Rate            float64                    `json:"rate"`
+	Source          InvoicesExchangeRateSource `json:"source"`
+}
+
+// InvoicesExchangeRateSource defines model for InvoicesExchangeRate.Source.
+type InvoicesExchangeRateSource string
+
+// InvoicesExchangeRateList A currency's rates over a period, the newest first, at most 400.
+type InvoicesExchangeRateList struct {
+	Items []InvoicesExchangeRate `json:"items"`
+}
+
+// InvoicesExchangeRateRequest PUT /invoices/exchange-rates/{currency}/{day}'s body (invoices phase 6 design I18) — rate, NOK per one unit, above 0 with at most ten decimals.
+type InvoicesExchangeRateRequest struct {
+	Rate float64 `json:"rate"`
 }
 
 // InvoicesFromConsumptionRequest POST /invoices/from-consumption's body (energy consumption billing design D7): the customer; through, the last day a billing period may end on — today in the business time zone when absent; settlementIds, the settlements to take (at most 5 000, none twice) — absent takes every settlement Energy settles for the customer through the date that is not blocked, held by a live document or of a yearly supply of a person; the VAT codes; an optional note (a re-pull note suggested when absent); and, to add the lines to an existing invoice draft of this customer, its invoiceId with the revision it was read at.
@@ -3006,7 +3086,7 @@ type InvoicesHoldLiftRequest struct {
 
 // InvoicesHoldOrHandoffResult What a hold, its lift, a hand-off and its withdrawal answer (D11): the invoice, and lettersLeft — the letters of the invoice no withdrawal reaches, by sequence: each printed letter, left for the posting's re-judge because it may be in the post already, and any letter being sent (queued, its facts written, under a live lease), which becomes sent. A person pulls such a letter from the post, or withdraws it by hand once it can be withdrawn (plan reading 9).
 type InvoicesHoldOrHandoffResult struct {
-	// Invoice One document (D4): every column in camelCase, its lines and its VAT summaries. On a draft the VAT summaries and totals are computed afresh — an invoice draft's with the rates in force today, which the issue resolves again for the issue date; a credit-note draft's at its original lines' snapshot rates, with each line's and the invoice's remainder squared as its issue will — and allowedIssueDates lists the dates it may be issued with today. warnings are never refusals: customer_currency_differs, issued_late (never on a credit note, which keeps its original's delivery), vat_code_not_valid (a line's code has no rate period covering today; the issue would refuse it), credit_exceeds_invoice, credit_exceeds_line, ehf_buyer_reference_missing (EHF and KID design D8: a draft whose customer's billing profile prefers EHF or whose customer has a Peppol id — or, on a credit-note draft, whose buyer snapshot has a Peppol id — with neither yourReference nor orderReference set — Peppol needs one, and neither can change after the issue), and for a document that bills work (invoices work design D2) line_differs_from_sources (on a draft, a line's net differs from its sources' amounts summed and rounded to øre), sources_released (on a save's answer, work the save dropped — named in releasedSources), source_changed and source_not_invoiceable (on GET of an invoice draft, for a caller holding invoices:create: a source's billing facts changed since the draft took them, or it is no longer invoiceable — the issue would refuse either); each of the last three also on the line's own warnings; on an invoice draft that is a final settlement (invoices work design D7) deduction_exceeds_invoice (a deduction line takes more than its a-konto has left at its VAT code) and invoice_total_not_positive (its gross is zero or less) — the issue refuses either. A deduction line is totalled at its a-konto line's snapshot (category and rate), never at today's rate of its code. A document that bills work carries sources, its count by state, and each of its lines its sources[]. An invoice carries creditedAmount (its issued credit notes' gross), uncreditedAmount and creditNotes; a credit note carries credits. Every document carries state (D3); an issued invoice also carries paidAmount, openAmount and payments, none of which a draft or a credit note carries; what a credit note credits beyond the open amount moves to the customer's credit (invoices phase 6 design I10). An issued invoice also carries charges, chargePayments, waivers and manualDeliveries (invoices payments and reminders design D8, D9), and its reminders and nextAction — what the reminder engine says to do next today (D8, D10). An issued invoice also carries hold and handoff, its latest hold and hand-off, live or ended (D11); each is absent when the invoice was never held or handed off. Every issued document carries deliveries (D4) and its EHF state, ehf (EHF and KID design D10); sendDefaults is answered only by GET /invoices/{id} and the send, for a caller who may send — and in its place customerAnonymised when the customer is anonymised. An issued invoice with a live pay link carries payLink (invoices payments and reminders design D15), and every issued invoice its Vipps payment attempts, paymentAttempts (D16).
+	// Invoice One document (D4): every column in camelCase, its lines and its VAT summaries. On a draft the VAT summaries and totals are computed afresh — an invoice draft's with the rates in force today, which the issue resolves again for the issue date; a credit-note draft's at its original lines' snapshot rates, with each line's and the invoice's remainder squared as its issue will — and allowedIssueDates lists the dates it may be issued with today. warnings are never refusals: customer_currency_differs (the billing profile's currency is not the draft's), exchange_rate_missing (invoices phase 6 design I19: a draft in currency without a rate within 7 days; the issue refuses it), issued_late (never on a credit note, which keeps its original's delivery), vat_code_not_valid (a line's code has no rate period covering today; the issue would refuse it), credit_exceeds_invoice, credit_exceeds_line, ehf_buyer_reference_missing (EHF and KID design D8: a draft whose customer's billing profile prefers EHF or whose customer has a Peppol id — or, on a credit-note draft, whose buyer snapshot has a Peppol id — with neither yourReference nor orderReference set — Peppol needs one, and neither can change after the issue), and for a document that bills work (invoices work design D2) line_differs_from_sources (on a draft, a line's net differs from its sources' amounts summed and rounded to øre), sources_released (on a save's answer, work the save dropped — named in releasedSources), source_changed and source_not_invoiceable (on GET of an invoice draft, for a caller holding invoices:create: a source's billing facts changed since the draft took them, or it is no longer invoiceable — the issue would refuse either); each of the last three also on the line's own warnings; on an invoice draft that is a final settlement (invoices work design D7) deduction_exceeds_invoice (a deduction line takes more than its a-konto has left at its VAT code) and invoice_total_not_positive (its gross is zero or less) — the issue refuses either. A deduction line is totalled at its a-konto line's snapshot (category and rate), never at today's rate of its code. A document that bills work carries sources, its count by state, and each of its lines its sources[]. An invoice carries creditedAmount (its issued credit notes' gross), uncreditedAmount and creditNotes; a credit note carries credits. Every document carries state (D3); an issued invoice also carries paidAmount, openAmount and payments, none of which a draft or a credit note carries; what a credit note credits beyond the open amount moves to the customer's credit (invoices phase 6 design I10). An issued invoice also carries charges, chargePayments, waivers and manualDeliveries (invoices payments and reminders design D8, D9), and its reminders and nextAction — what the reminder engine says to do next today (D8, D10). An issued invoice also carries hold and handoff, its latest hold and hand-off, live or ended (D11); each is absent when the invoice was never held or handed off. Every issued document carries deliveries (D4) and its EHF state, ehf (EHF and KID design D10); sendDefaults is answered only by GET /invoices/{id} and the send, for a caller who may send — and in its place customerAnonymised when the customer is anonymised. An issued invoice with a live pay link carries payLink (invoices payments and reminders design D15), and every issued invoice its Vipps payment attempts, paymentAttempts (D16).
 	Invoice     InvoicesInvoiceResponse `json:"invoice"`
 	LettersLeft []InvoicesLetterLeft    `json:"lettersLeft"`
 }
@@ -3057,22 +3137,28 @@ type InvoicesInvoiceListItem struct {
 	Status string `json:"status"`
 }
 
-// InvoicesInvoiceRequest A draft, created (POST) or replaced whole (PUT, with revision) (D4). customerId is the buyer. currency, when given, is NOK — "Only NOK in this phase". Delivery is deliveryDate alone, deliveryFrom with deliveryTo (from on or before to), or none — none only on a draft; the issue refuses it. references are at most 100 characters each, note and internalNote 1000. lines are at most 500. On create, an omitted yourReference is the billing profile's buyerReference and an omitted paymentTermsDays the profile's terms, else the settings' default; on PUT an invoice's paymentTermsDays is required and an omitted reference is cleared. On a credit-note draft only what D8 allows may change: lines may be removed, a quantity or a unit price lowered, and a description, the note and the internal note edited. A line's sources name the work it bills (invoices work design D2): never on a create or a credit note; on a PUT of a draft that holds work, required on every line ([] for none), each source one the draft already holds, named once — a save moves work between lines or drops it, and never adds any. At most 5000 sources on one document.
+// InvoicesInvoiceRequest A draft, created (POST) or replaced whole (PUT, with revision) (D4). customerId is the buyer. currency, when given, is NOK or a currency turned on in the settings (invoices phase 6 design I17, I19; else a 400 on currency); on create, absent is the billing profile's currency when it is turned on, else NOK. A draft holding order lines, work or deduction lines keeps its currency (400 on currency). exchangeRate and exchangeRateDate set an agreed rate on a draft in another currency. Delivery is deliveryDate alone, deliveryFrom with deliveryTo (from on or before to), or none — none only on a draft; the issue refuses it. references are at most 100 characters each, note and internalNote 1000. lines are at most 500. On create, an omitted yourReference is the billing profile's buyerReference and an omitted paymentTermsDays the profile's terms, else the settings' default; on PUT an invoice's paymentTermsDays is required and an omitted reference is cleared. On a credit-note draft only what D8 allows may change: lines may be removed, a quantity or a unit price lowered, and a description, the note and the internal note edited. A line's sources name the work it bills (invoices work design D2): never on a create or a credit note; on a PUT of a draft that holds work, required on every line ([] for none), each source one the draft already holds, named once — a save moves work between lines or drops it, and never adds any. At most 5000 sources on one document.
 type InvoicesInvoiceRequest struct {
 	Currency   *string `json:"currency,omitempty"`
 	CustomerId int32   `json:"customerId"`
 
 	// DeliveryAddress The place of delivery (§ 5-1-1 nr. 4), when it is not the buyer's address. line1, city and country are required; country is ISO 3166-1 alpha-2.
-	DeliveryAddress  *InvoicesDeliveryAddress `json:"deliveryAddress,omitempty"`
-	DeliveryDate     *openapi_types.Date      `json:"deliveryDate,omitempty"`
-	DeliveryFrom     *openapi_types.Date      `json:"deliveryFrom,omitempty"`
-	DeliveryTo       *openapi_types.Date      `json:"deliveryTo,omitempty"`
-	InternalNote     *string                  `json:"internalNote,omitempty"`
-	Lines            []InvoicesLineRequest    `json:"lines"`
-	Note             *string                  `json:"note,omitempty"`
-	OrderReference   *string                  `json:"orderReference,omitempty"`
-	OurReference     *string                  `json:"ourReference,omitempty"`
-	PaymentTermsDays *int32                   `json:"paymentTermsDays,omitempty"`
+	DeliveryAddress *InvoicesDeliveryAddress `json:"deliveryAddress,omitempty"`
+	DeliveryDate    *openapi_types.Date      `json:"deliveryDate,omitempty"`
+	DeliveryFrom    *openapi_types.Date      `json:"deliveryFrom,omitempty"`
+	DeliveryTo      *openapi_types.Date      `json:"deliveryTo,omitempty"`
+
+	// ExchangeRate On an invoice draft in another currency than NOK only (invoices phase 6 design I19), the rate a person agreed, NOK per one unit, above 0 with at most ten decimals; the document keeps it at issue (source manual). Absent on a create takes Norges Bank's rate of the issue date, resolved again at issue; absent on a PUT keeps an agreed rate the draft holds, unless useNorgesBankRate. Refused on NOK (400).
+	ExchangeRate *float64 `json:"exchangeRate,omitempty"`
+
+	// ExchangeRateDate The day the agreed exchangeRate is of, not after today; absent is today. Only with exchangeRate.
+	ExchangeRateDate *openapi_types.Date   `json:"exchangeRateDate,omitempty"`
+	InternalNote     *string               `json:"internalNote,omitempty"`
+	Lines            []InvoicesLineRequest `json:"lines"`
+	Note             *string               `json:"note,omitempty"`
+	OrderReference   *string               `json:"orderReference,omitempty"`
+	OurReference     *string               `json:"ourReference,omitempty"`
+	PaymentTermsDays *int32                `json:"paymentTermsDays,omitempty"`
 
 	// RefreshSources PUT of an invoice draft only (invoices work design D2): re-read the work the draft holds through the source modules' billable reads, before the save's transaction, and take each source's current revision, project, quantity, amount, date and kind; work no longer invoiceable, or now in another currency than the draft took it in, is dropped and named in releasedSources. A save that slipped in between the read and the save's lock and changed the held work is 409 invoice_changed. true on a create or on a credit-note draft is a 400.
 	RefreshSources *bool `json:"refreshSources,omitempty"`
@@ -3081,11 +3167,14 @@ type InvoicesInvoiceRequest struct {
 	Revision *int32 `json:"revision,omitempty"`
 
 	// Timesheet Whether the invoice carries a timesheet inside its PDF (invoices work design D5). On a create, absent takes the settings' timesheetDefault; on a PUT, absent keeps the draft's. Turned on, the save reads the hours the draft holds through Time's billable read and the people's names, before its transaction, and writes the rows; turned off, it deletes them; every save prunes them to the hours the draft still holds, and a refreshSources writes them again. true on a credit-note draft is a 400.
-	Timesheet     *bool   `json:"timesheet,omitempty"`
-	YourReference *string `json:"yourReference,omitempty"`
+	Timesheet *bool `json:"timesheet,omitempty"`
+
+	// UseNorgesBankRate On a PUT of an invoice draft in another currency than NOK (invoices phase 6 design I19): true drops an agreed rate the draft holds and takes Norges Bank's again. A PUT that leaves out both exchangeRate and this keeps an agreed rate as it is.
+	UseNorgesBankRate *bool   `json:"useNorgesBankRate,omitempty"`
+	YourReference     *string `json:"yourReference,omitempty"`
 }
 
-// InvoicesInvoiceResponse One document (D4): every column in camelCase, its lines and its VAT summaries. On a draft the VAT summaries and totals are computed afresh — an invoice draft's with the rates in force today, which the issue resolves again for the issue date; a credit-note draft's at its original lines' snapshot rates, with each line's and the invoice's remainder squared as its issue will — and allowedIssueDates lists the dates it may be issued with today. warnings are never refusals: customer_currency_differs, issued_late (never on a credit note, which keeps its original's delivery), vat_code_not_valid (a line's code has no rate period covering today; the issue would refuse it), credit_exceeds_invoice, credit_exceeds_line, ehf_buyer_reference_missing (EHF and KID design D8: a draft whose customer's billing profile prefers EHF or whose customer has a Peppol id — or, on a credit-note draft, whose buyer snapshot has a Peppol id — with neither yourReference nor orderReference set — Peppol needs one, and neither can change after the issue), and for a document that bills work (invoices work design D2) line_differs_from_sources (on a draft, a line's net differs from its sources' amounts summed and rounded to øre), sources_released (on a save's answer, work the save dropped — named in releasedSources), source_changed and source_not_invoiceable (on GET of an invoice draft, for a caller holding invoices:create: a source's billing facts changed since the draft took them, or it is no longer invoiceable — the issue would refuse either); each of the last three also on the line's own warnings; on an invoice draft that is a final settlement (invoices work design D7) deduction_exceeds_invoice (a deduction line takes more than its a-konto has left at its VAT code) and invoice_total_not_positive (its gross is zero or less) — the issue refuses either. A deduction line is totalled at its a-konto line's snapshot (category and rate), never at today's rate of its code. A document that bills work carries sources, its count by state, and each of its lines its sources[]. An invoice carries creditedAmount (its issued credit notes' gross), uncreditedAmount and creditNotes; a credit note carries credits. Every document carries state (D3); an issued invoice also carries paidAmount, openAmount and payments, none of which a draft or a credit note carries; what a credit note credits beyond the open amount moves to the customer's credit (invoices phase 6 design I10). An issued invoice also carries charges, chargePayments, waivers and manualDeliveries (invoices payments and reminders design D8, D9), and its reminders and nextAction — what the reminder engine says to do next today (D8, D10). An issued invoice also carries hold and handoff, its latest hold and hand-off, live or ended (D11); each is absent when the invoice was never held or handed off. Every issued document carries deliveries (D4) and its EHF state, ehf (EHF and KID design D10); sendDefaults is answered only by GET /invoices/{id} and the send, for a caller who may send — and in its place customerAnonymised when the customer is anonymised. An issued invoice with a live pay link carries payLink (invoices payments and reminders design D15), and every issued invoice its Vipps payment attempts, paymentAttempts (D16).
+// InvoicesInvoiceResponse One document (D4): every column in camelCase, its lines and its VAT summaries. On a draft the VAT summaries and totals are computed afresh — an invoice draft's with the rates in force today, which the issue resolves again for the issue date; a credit-note draft's at its original lines' snapshot rates, with each line's and the invoice's remainder squared as its issue will — and allowedIssueDates lists the dates it may be issued with today. warnings are never refusals: customer_currency_differs (the billing profile's currency is not the draft's), exchange_rate_missing (invoices phase 6 design I19: a draft in currency without a rate within 7 days; the issue refuses it), issued_late (never on a credit note, which keeps its original's delivery), vat_code_not_valid (a line's code has no rate period covering today; the issue would refuse it), credit_exceeds_invoice, credit_exceeds_line, ehf_buyer_reference_missing (EHF and KID design D8: a draft whose customer's billing profile prefers EHF or whose customer has a Peppol id — or, on a credit-note draft, whose buyer snapshot has a Peppol id — with neither yourReference nor orderReference set — Peppol needs one, and neither can change after the issue), and for a document that bills work (invoices work design D2) line_differs_from_sources (on a draft, a line's net differs from its sources' amounts summed and rounded to øre), sources_released (on a save's answer, work the save dropped — named in releasedSources), source_changed and source_not_invoiceable (on GET of an invoice draft, for a caller holding invoices:create: a source's billing facts changed since the draft took them, or it is no longer invoiceable — the issue would refuse either); each of the last three also on the line's own warnings; on an invoice draft that is a final settlement (invoices work design D7) deduction_exceeds_invoice (a deduction line takes more than its a-konto has left at its VAT code) and invoice_total_not_positive (its gross is zero or less) — the issue refuses either. A deduction line is totalled at its a-konto line's snapshot (category and rate), never at today's rate of its code. A document that bills work carries sources, its count by state, and each of its lines its sources[]. An invoice carries creditedAmount (its issued credit notes' gross), uncreditedAmount and creditNotes; a credit note carries credits. Every document carries state (D3); an issued invoice also carries paidAmount, openAmount and payments, none of which a draft or a credit note carries; what a credit note credits beyond the open amount moves to the customer's credit (invoices phase 6 design I10). An issued invoice also carries charges, chargePayments, waivers and manualDeliveries (invoices payments and reminders design D8, D9), and its reminders and nextAction — what the reminder engine says to do next today (D8, D10). An issued invoice also carries hold and handoff, its latest hold and hand-off, live or ended (D11); each is absent when the invoice was never held or handed off. Every issued document carries deliveries (D4) and its EHF state, ehf (EHF and KID design D10); sendDefaults is answered only by GET /invoices/{id} and the send, for a caller who may send — and in its place customerAnonymised when the customer is anonymised. An issued invoice with a live pay link carries payLink (invoices payments and reminders design D15), and every issued invoice its Vipps payment attempts, paymentAttempts (D16).
 type InvoicesInvoiceResponse struct {
 	AllowedIssueDates *[]openapi_types.Date `json:"allowedIssueDates,omitempty"`
 
@@ -3127,7 +3216,13 @@ type InvoicesInvoiceResponse struct {
 	Ehf              *InvoicesEhfState   `json:"ehf,omitempty"`
 	ExchangeRate     float64             `json:"exchangeRate"`
 	ExchangeRateDate *openapi_types.Date `json:"exchangeRateDate,omitempty"`
-	GrossTotal       float64             `json:"grossTotal"`
+
+	// ExchangeRateSource Where the rate came from (invoices phase 6 design I19) — nok for a NOK document, norges_bank or manual. On a draft in currency with no rate found within 7 days, the rate is 1 and warnings carries exchange_rate_missing.
+	ExchangeRateSource InvoicesInvoiceResponseExchangeRateSource `json:"exchangeRateSource"`
+	GrossTotal         float64                                   `json:"grossTotal"`
+
+	// GrossTotalNok The receivable in NOK (invoices phase 6 design I21), the sum of each VAT row's base in NOK plus the sum of its VAT in NOK, never the gross times the rate; the gross itself for NOK.
+	GrossTotalNok float64 `json:"grossTotalNok"`
 
 	// Handoff An invoice's hand-off to a collection agency (D11), as read. While it is live — withdrawnOn absent — no letter is made and payments are still registered.
 	Handoff *InvoicesHandoff `json:"handoff,omitempty"`
@@ -3154,7 +3249,10 @@ type InvoicesInvoiceResponse struct {
 	ManualDeliveries *[]InvoicesManualDelivery `json:"manualDeliveries,omitempty"`
 	NetTotal         float64                   `json:"netTotal"`
 
-	// NextAction What the reminder engine says to do next with an issued invoice today (D8): action reminder or collection_notice (a letter, due from earliestOn; letter is how it would go today when earliestOn is today or earlier), hand_off (suggested, never automatic; from earliestOn), blocked or waiting (with reasons; waiting until earliestOn), or none (the principal settled, or handed off). reasons: on_hold, handed_off, policy_none, reminders_disabled, letter_pending (a letter is on its way), waiting (the last letter's deadline and grace not yet passed), not_delivered (no delivery on or before the due date, so no collection notice or hand-off), collection_rates_outdated (with outdated naming the rate and half-year) and collection_regime_unreviewed. chargeNotes say why a letter claims less than it might: not_delivered, charges_barred, fee_cap_reached, fee_before_14_days and fee_deadline_not_missed.
+	// NetTotalNok The net in NOK, the sum of each VAT row's base in NOK (invoices phase 6 design I21); the net itself for NOK.
+	NetTotalNok float64 `json:"netTotalNok"`
+
+	// NextAction What the reminder engine says to do next with an issued invoice today (D8): action reminder or collection_notice (a letter, due from earliestOn; letter is how it would go today when earliestOn is today or earlier), hand_off (suggested, never automatic; from earliestOn), blocked or waiting (with reasons; waiting until earliestOn), or none (the principal settled, or handed off). reasons: on_hold, handed_off, policy_none, reminders_disabled, letter_pending (a letter is on its way), waiting (the last letter's deadline and grace not yet passed), not_delivered (no delivery on or before the due date, so no collection notice or hand-off), collection_rates_outdated (with outdated naming the rate and half-year) and collection_regime_unreviewed. chargeNotes say why a letter claims less than it might: not_delivered, charges_barred, fee_cap_reached, fee_before_14_days, fee_deadline_not_missed and foreign_currency (invoices phase 6 design I25: an invoice in another currency than NOK is claimed no fee and no compensation).
 	NextAction *InvoicesNextAction `json:"nextAction,omitempty"`
 	Note       string              `json:"note"`
 	Number     *int64              `json:"number,omitempty"`
@@ -3185,6 +3283,9 @@ type InvoicesInvoiceResponse struct {
 
 	// ProjectReference The project's code, a snapshot taken when the document's derived project last became this one — what the PDF prints and the EHF carries (BT-11 on an invoice, an AdditionalDocumentReference with DocumentTypeCode 50 on a credit note). Present exactly when projectId is.
 	ProjectReference *string `json:"projectReference,omitempty"`
+
+	// ProposedRate On an issued invoice in another currency than NOK (invoices phase 6 design I24), the rate a payment registered today is proposed at — the latest rate within 7 days, else the document's own — so a client can prefill what arrived in NOK.
+	ProposedRate *float64 `json:"proposedRate,omitempty"`
 
 	// RecoveredAmount On an issued invoice, what its live recovered payments add up to — money that arrived after a write-off (accounting design R4), not part of the open amount.
 	RecoveredAmount *float64 `json:"recoveredAmount,omitempty"`
@@ -3233,6 +3334,9 @@ type InvoicesInvoiceResponse struct {
 	WrittenOffAmount *float64 `json:"writtenOffAmount,omitempty"`
 	YourReference    string   `json:"yourReference"`
 }
+
+// InvoicesInvoiceResponseExchangeRateSource Where the rate came from (invoices phase 6 design I19) — nok for a NOK document, norges_bank or manual. On a draft in currency with no rate found within 7 days, the rate is 1 and warnings carries exchange_rate_missing.
+type InvoicesInvoiceResponseExchangeRateSource string
 
 // InvoicesIssueRequest POST /invoices/{id}/issue's body (D6). issueDate is today in the business time zone when omitted; the only other date allowed is the last day of the previous month, while today's calendar day is 15 or less and the delivery ended on or before it — and never a date before the latest issue date of any issued document. useCredit (default false; invoices phase 6 design I11) applies the customer's credit in the invoice's currency to it once it is issued — the lesser of the credit and the gross, as the issuer, who also needs invoices:payments — in a transaction of its own after the issue's; when that fails, or the issuer may not apply credit, the issue stands and its answer carries the warning credit_not_applied. A credit note ignores it.
 type InvoicesIssueRequest struct {
@@ -3305,8 +3409,13 @@ type InvoicesJournalTotals struct {
 
 // InvoicesKeepAsCreditRequest POST /invoices/bank-transactions/{id}/keep-as-credit's body (invoices phase 6 design I9): invoiceId, the invoice the line paid — the line's suggested invoice when omitted — and an optional note of at most 500 characters, kept on the line, its event and the credit movement.
 type InvoicesKeepAsCreditRequest struct {
-	InvoiceId *int64  `json:"invoiceId,omitempty"`
-	Note      *string `json:"note,omitempty"`
+	// Amount On an invoice in another currency than NOK, the amount in its currency the line pays (invoices phase 6 design I24); absent is what is open. Ignored on NOK.
+	Amount *float64 `json:"amount,omitempty"`
+
+	// AmountNok On an invoice in another currency than NOK, required — the line's share in NOK for amount; the rest of the line is kept as the customer's credit in NOK (plan reading 8). Refused on NOK.
+	AmountNok *float64 `json:"amountNok,omitempty"`
+	InvoiceId *int64   `json:"invoiceId,omitempty"`
+	Note      *string  `json:"note,omitempty"`
 }
 
 // InvoicesLastLetter An invoice's latest letter that was not withdrawn (D12), by sequence; sentOn and deadline once it is printed or sent.
@@ -3599,7 +3708,7 @@ type InvoicesMonthCount struct {
 	Month string `json:"month"`
 }
 
-// InvoicesNextAction What the reminder engine says to do next with an issued invoice today (D8): action reminder or collection_notice (a letter, due from earliestOn; letter is how it would go today when earliestOn is today or earlier), hand_off (suggested, never automatic; from earliestOn), blocked or waiting (with reasons; waiting until earliestOn), or none (the principal settled, or handed off). reasons: on_hold, handed_off, policy_none, reminders_disabled, letter_pending (a letter is on its way), waiting (the last letter's deadline and grace not yet passed), not_delivered (no delivery on or before the due date, so no collection notice or hand-off), collection_rates_outdated (with outdated naming the rate and half-year) and collection_regime_unreviewed. chargeNotes say why a letter claims less than it might: not_delivered, charges_barred, fee_cap_reached, fee_before_14_days and fee_deadline_not_missed.
+// InvoicesNextAction What the reminder engine says to do next with an issued invoice today (D8): action reminder or collection_notice (a letter, due from earliestOn; letter is how it would go today when earliestOn is today or earlier), hand_off (suggested, never automatic; from earliestOn), blocked or waiting (with reasons; waiting until earliestOn), or none (the principal settled, or handed off). reasons: on_hold, handed_off, policy_none, reminders_disabled, letter_pending (a letter is on its way), waiting (the last letter's deadline and grace not yet passed), not_delivered (no delivery on or before the due date, so no collection notice or hand-off), collection_rates_outdated (with outdated naming the rate and half-year) and collection_regime_unreviewed. chargeNotes say why a letter claims less than it might: not_delivered, charges_barred, fee_cap_reached, fee_before_14_days, fee_deadline_not_missed and foreign_currency (invoices phase 6 design I25: an invoice in another currency than NOK is claimed no fee and no compensation).
 type InvoicesNextAction struct {
 	Action      InvoicesNextActionAction        `json:"action"`
 	ChargeNotes []InvoicesNextActionChargeNotes `json:"chargeNotes"`
@@ -3680,7 +3789,7 @@ type InvoicesOverdueItem struct {
 	// LastLetter An invoice's latest letter that was not withdrawn (D12), by sequence; sentOn and deadline once it is printed or sent.
 	LastLetter *InvoicesLastLetter `json:"lastLetter,omitempty"`
 
-	// NextAction What the reminder engine says to do next with an issued invoice today (D8): action reminder or collection_notice (a letter, due from earliestOn; letter is how it would go today when earliestOn is today or earlier), hand_off (suggested, never automatic; from earliestOn), blocked or waiting (with reasons; waiting until earliestOn), or none (the principal settled, or handed off). reasons: on_hold, handed_off, policy_none, reminders_disabled, letter_pending (a letter is on its way), waiting (the last letter's deadline and grace not yet passed), not_delivered (no delivery on or before the due date, so no collection notice or hand-off), collection_rates_outdated (with outdated naming the rate and half-year) and collection_regime_unreviewed. chargeNotes say why a letter claims less than it might: not_delivered, charges_barred, fee_cap_reached, fee_before_14_days and fee_deadline_not_missed.
+	// NextAction What the reminder engine says to do next with an issued invoice today (D8): action reminder or collection_notice (a letter, due from earliestOn; letter is how it would go today when earliestOn is today or earlier), hand_off (suggested, never automatic; from earliestOn), blocked or waiting (with reasons; waiting until earliestOn), or none (the principal settled, or handed off). reasons: on_hold, handed_off, policy_none, reminders_disabled, letter_pending (a letter is on its way), waiting (the last letter's deadline and grace not yet passed), not_delivered (no delivery on or before the due date, so no collection notice or hand-off), collection_rates_outdated (with outdated naming the rate and half-year) and collection_regime_unreviewed. chargeNotes say why a letter claims less than it might: not_delivered, charges_barred, fee_cap_reached, fee_before_14_days, fee_deadline_not_missed and foreign_currency (invoices phase 6 design I25: an invoice in another currency than NOK is claimed no fee and no compensation).
 	NextAction    InvoicesNextAction            `json:"nextAction"`
 	Number        int64                         `json:"number"`
 	PolicyMode    InvoicesOverdueItemPolicyMode `json:"policyMode"`
@@ -3771,10 +3880,16 @@ type InvoicesPaySeller struct {
 type InvoicesPayment struct {
 	Amount float64 `json:"amount"`
 
+	// AmountNok What arrived in NOK (invoices phase 6 design I13, I24); the amount itself for NOK.
+	AmountNok *float64 `json:"amountNok,omitempty"`
+
 	// BankTransactionId The bank line the payment was matched or applied from; absent for one registered by hand.
 	BankTransactionId *int64 `json:"bankTransactionId,omitempty"`
 	Currency          string `json:"currency"`
-	Id                int64  `json:"id"`
+
+	// ExchangeDifferenceNok amountNok less the NOK receivable the payment cleared (invoices phase 6 design I24) — positive a gain, posted to 8060, negative a loss, posted to 8160; 0 for NOK.
+	ExchangeDifferenceNok *float64 `json:"exchangeDifferenceNok,omitempty"`
+	Id                    int64    `json:"id"`
 
 	// Kind payment is a payment of the open amount; recovered is money that arrived after a write-off (accounting design R4): it recovers what was written off, at most that amount, and leaves the open amount as the write-off left it.
 	Kind   InvoicesPaymentKind `json:"kind"`
@@ -3847,8 +3962,11 @@ type InvoicesPaymentRemovalRequest struct {
 
 // InvoicesPaymentRequest POST /invoices/{id}/payments' body (D2). paidOn is the day the money arrived: on or after the invoice's issue date and not after today in the business time zone. amount is greater than 0 with at most 2 decimals, at most 99999999999.99, in the invoice's currency, and at most its open amount (409 payment_exceeds_open). reference (the bank's or the payer's) holds at most 100 characters and note at most 500, both trimmed; absent is empty. kind (default payment) recovered registers money that arrived after a write-off (accounting design R4): the invoice needs a standing write-off (409 no_write_off), and the amount is at most what is written off less what is already recovered (409 recovery_exceeds_written_off, with openAmount the room left). keepRestAsCredit (default false; invoices phase 6 design I9) takes an amount above what is open: the payment registers what is open and the rest is kept as the customer's credit, an overpayment under the same reference and note. With nothing open it is invoice_settled all the same — money for a settled invoice is kept as credit from the exception queue — and a recovered payment refuses it (400 on keepRestAsCredit).
 type InvoicesPaymentRequest struct {
-	Amount           float64 `json:"amount"`
-	KeepRestAsCredit *bool   `json:"keepRestAsCredit,omitempty"`
+	Amount float64 `json:"amount"`
+
+	// AmountNok On an invoice in another currency than NOK, required — what arrived in NOK, above 0 with at most 2 decimals (invoices phase 6 design I24); the form proposes it at proposedRate. On NOK it is refused unless it equals amount.
+	AmountNok        *float64 `json:"amountNok,omitempty"`
+	KeepRestAsCredit *bool    `json:"keepRestAsCredit,omitempty"`
 
 	// Kind payment is a payment of the open amount; recovered is money that arrived after a write-off (accounting design R4): it recovers what was written off, at most that amount, and leaves the open amount as the write-off left it.
 	Kind      *InvoicesPaymentKind `json:"kind,omitempty"`
@@ -3974,14 +4092,27 @@ type InvoicesQuickInvoiceRequest struct {
 
 // InvoicesQuickInvoiceResponse The quick invoice's answer (D17): the issued invoice, and — when the request asked payOnSite — paymentRequest, the on-site payment request made with its QR, or paymentRequestError, the refusal the request met (on_site_payments_unavailable, buyer_identity_missing, payment_request_active, provider_failed, …), or, when the request failed unexpectedly, a problem with status 500 and no code (logged); the invoice is issued either way. A replay (200) answers paymentRequest with the invoice's live on-site request, read and never made — with its QR while the customer has not answered — and no paymentRequestError.
 type InvoicesQuickInvoiceResponse struct {
-	// Invoice One document (D4): every column in camelCase, its lines and its VAT summaries. On a draft the VAT summaries and totals are computed afresh — an invoice draft's with the rates in force today, which the issue resolves again for the issue date; a credit-note draft's at its original lines' snapshot rates, with each line's and the invoice's remainder squared as its issue will — and allowedIssueDates lists the dates it may be issued with today. warnings are never refusals: customer_currency_differs, issued_late (never on a credit note, which keeps its original's delivery), vat_code_not_valid (a line's code has no rate period covering today; the issue would refuse it), credit_exceeds_invoice, credit_exceeds_line, ehf_buyer_reference_missing (EHF and KID design D8: a draft whose customer's billing profile prefers EHF or whose customer has a Peppol id — or, on a credit-note draft, whose buyer snapshot has a Peppol id — with neither yourReference nor orderReference set — Peppol needs one, and neither can change after the issue), and for a document that bills work (invoices work design D2) line_differs_from_sources (on a draft, a line's net differs from its sources' amounts summed and rounded to øre), sources_released (on a save's answer, work the save dropped — named in releasedSources), source_changed and source_not_invoiceable (on GET of an invoice draft, for a caller holding invoices:create: a source's billing facts changed since the draft took them, or it is no longer invoiceable — the issue would refuse either); each of the last three also on the line's own warnings; on an invoice draft that is a final settlement (invoices work design D7) deduction_exceeds_invoice (a deduction line takes more than its a-konto has left at its VAT code) and invoice_total_not_positive (its gross is zero or less) — the issue refuses either. A deduction line is totalled at its a-konto line's snapshot (category and rate), never at today's rate of its code. A document that bills work carries sources, its count by state, and each of its lines its sources[]. An invoice carries creditedAmount (its issued credit notes' gross), uncreditedAmount and creditNotes; a credit note carries credits. Every document carries state (D3); an issued invoice also carries paidAmount, openAmount and payments, none of which a draft or a credit note carries; what a credit note credits beyond the open amount moves to the customer's credit (invoices phase 6 design I10). An issued invoice also carries charges, chargePayments, waivers and manualDeliveries (invoices payments and reminders design D8, D9), and its reminders and nextAction — what the reminder engine says to do next today (D8, D10). An issued invoice also carries hold and handoff, its latest hold and hand-off, live or ended (D11); each is absent when the invoice was never held or handed off. Every issued document carries deliveries (D4) and its EHF state, ehf (EHF and KID design D10); sendDefaults is answered only by GET /invoices/{id} and the send, for a caller who may send — and in its place customerAnonymised when the customer is anonymised. An issued invoice with a live pay link carries payLink (invoices payments and reminders design D15), and every issued invoice its Vipps payment attempts, paymentAttempts (D16).
+	// Invoice One document (D4): every column in camelCase, its lines and its VAT summaries. On a draft the VAT summaries and totals are computed afresh — an invoice draft's with the rates in force today, which the issue resolves again for the issue date; a credit-note draft's at its original lines' snapshot rates, with each line's and the invoice's remainder squared as its issue will — and allowedIssueDates lists the dates it may be issued with today. warnings are never refusals: customer_currency_differs (the billing profile's currency is not the draft's), exchange_rate_missing (invoices phase 6 design I19: a draft in currency without a rate within 7 days; the issue refuses it), issued_late (never on a credit note, which keeps its original's delivery), vat_code_not_valid (a line's code has no rate period covering today; the issue would refuse it), credit_exceeds_invoice, credit_exceeds_line, ehf_buyer_reference_missing (EHF and KID design D8: a draft whose customer's billing profile prefers EHF or whose customer has a Peppol id — or, on a credit-note draft, whose buyer snapshot has a Peppol id — with neither yourReference nor orderReference set — Peppol needs one, and neither can change after the issue), and for a document that bills work (invoices work design D2) line_differs_from_sources (on a draft, a line's net differs from its sources' amounts summed and rounded to øre), sources_released (on a save's answer, work the save dropped — named in releasedSources), source_changed and source_not_invoiceable (on GET of an invoice draft, for a caller holding invoices:create: a source's billing facts changed since the draft took them, or it is no longer invoiceable — the issue would refuse either); each of the last three also on the line's own warnings; on an invoice draft that is a final settlement (invoices work design D7) deduction_exceeds_invoice (a deduction line takes more than its a-konto has left at its VAT code) and invoice_total_not_positive (its gross is zero or less) — the issue refuses either. A deduction line is totalled at its a-konto line's snapshot (category and rate), never at today's rate of its code. A document that bills work carries sources, its count by state, and each of its lines its sources[]. An invoice carries creditedAmount (its issued credit notes' gross), uncreditedAmount and creditNotes; a credit note carries credits. Every document carries state (D3); an issued invoice also carries paidAmount, openAmount and payments, none of which a draft or a credit note carries; what a credit note credits beyond the open amount moves to the customer's credit (invoices phase 6 design I10). An issued invoice also carries charges, chargePayments, waivers and manualDeliveries (invoices payments and reminders design D8, D9), and its reminders and nextAction — what the reminder engine says to do next today (D8, D10). An issued invoice also carries hold and handoff, its latest hold and hand-off, live or ended (D11); each is absent when the invoice was never held or handed off. Every issued document carries deliveries (D4) and its EHF state, ehf (EHF and KID design D10); sendDefaults is answered only by GET /invoices/{id} and the send, for a caller who may send — and in its place customerAnonymised when the customer is anonymised. An issued invoice with a live pay link carries payLink (invoices payments and reminders design D15), and every issued invoice its Vipps payment attempts, paymentAttempts (D16).
 	Invoice InvoicesInvoiceResponse `json:"invoice"`
 
 	// PaymentRequest An on-site Vipps payment request (invoices payments and reminders design D17): attemptId and reference are the payment attempt's, expiresAt when Vipps ends the request unanswered (ten minutes after it was made). qrSvg is Vipps' one-time QR code for the customer standing at the counter to scan — the target URL Vipps answered to the create, rendered by Vantigo as SVG markup, never an image fetched from Vipps; show it as an image, <img src="data:image/svg+xml;base64,…">, never inlined, and never print it. The target URL is kept with the attempt (never logged), so the same code is answered again while the customer has not answered (the attempt created) — by GET /invoices/{id}/payment-requests/{attemptId} and a quick invoice's replay — and never once the request is over.
 	PaymentRequest *InvoicesOnSitePayment `json:"paymentRequest,omitempty"`
 
-	// PaymentRequestError ProblemDetails plus this module's refusal code (invoices foundation design D2-D8). code names the rule that refused — series_locked, vat_code_in_use, rate_change_in_past, rate_period_not_latest, rate_period_last, rate_period_in_use, invoice_issued, invoice_draft, customer_merged, customer_archived, customer_blocked, customer_missing, invoice_changed, seller_incomplete, no_lines, delivery_date_missing, issue_date_not_allowed, buyer_incomplete, vat_code_inactive, vat_code_not_valid, vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, credit_exceeds_line, credit_exceeds_invoice, credit_note_not_creditable, invoice_fully_credited, credit_note_no_payments, invoice_settled, payment_exceeds_open, payment_removed, customer_anonymised, no_invoice_email (invoices payments and delivery design D2, D4), kid_length_exceeded (EHF and KID design D3: the next number no longer fits the KID agreement, which was shortened), transmissions_active (EHF and KID design D7: the access-point credentials still serve a transmission in flight), ehf_unavailable (D7: no access-point credentials to verify — a 409 — or a stored key that cannot be opened — a 503; D8: an installation that cannot send as EHF — a 503), the send as EHF's no_peppol_id, buyer_reference_missing, ehf_already_sent, peppol_not_receivable (with peppolRegistered and peppolCanReceive) and ehf_invalid (with rules) (EHF and KID design D8), transmission_not_cancellable and transmission_not_resolvable (D9), source_held_elsewhere (invoices work design D2: a source a save or the wizard would hold is held by another live draft or invoiced by an unreleased issued line; heldBy, sourceKind and sourceId name the document and the source), the wizard's refusals (invoices work design D3, D4, D11; POST /invoices/from-work) — work_unavailable (no billable read is composed), too_many_sources (more than 5 000 sources on one document, an append target's held ones counted), source_not_for_customer (a source's project bills another customer or is gone), mixed_currency (the selection spans currencies), currency_not_nok (the selection is in another currency than NOK) and too_many_lines (the grouping would make more than 500 lines, with suggestedGrouping, the next coarser grouping that fits) — the issue's refusals about the work it bills (invoices work design D1, each with linePosition, sourceKind and sourceId) — source_not_invoiceable, source_changed and source_already_invoiced (a source's own module would not stamp it: no longer approved, ready or billable; changed since the draft took it; already invoiced), source_customer_changed (a source's project no longer bills the draft's customer, or is gone; judged before a number exists) and source_not_selectable (hours of a project now fixed-price or non-billable, or any work of a project now non-billable) — and projects_unavailable (the draft bills work and the projects module is switched off); a final settlement's (invoices work design D7) deduction_exceeds_invoice (with linePosition: a deduction line takes more than its a-konto has left at its VAT code, or deducts a document that is no longer an issued invoice of this customer, or deducted at a code where it deducts itself), deduction_duplicated (with linePosition: a second deduction line for one deducted invoice and VAT code) and invoice_total_not_positive (a settlement's, or an invoice with energy correction lines', gross is zero or less); a credit note's credit_total_negative (its gross is below zero) and invoice_deducted (it credits more of an a-konto at a VAT code than no issued settlement deducted there; the detail names the settlements); credit_note_deducts_nothing (GET /invoices/{id}/deductible on a credit-note draft), and invoice_changed also when the draft's work changed between the issue's reads and its lock; the bank import's (invoices payments and reminders design D3) bank_account_unknown (an account the file names is neither the seller's nor one an issued invoice printed; the detail names its last four digits), bank_file_duplicate (the same bytes or the same file identity imported before, with bankFileId, uploadedAt and uploadedBy of that import) and bank_import_format_mismatch (the account's files come in the other format; the detail names the account and its format); the collection rates' (invoices payments and reminders design D6) collection_rate_exists (a rate of that kind already takes effect on that day) and collection_rate_in_force (the rate came with a release, is in force or past, or a printed or sent letter relied on it, so it is not deleted); the charges' (invoices payments and reminders design D9) no_charges_outstanding (nothing is outstanding: no letter claimed a charge, or every charge is waived or paid), charge_payment_exceeds_outstanding (with chargesOutstanding), charge_not_claimed (the letter was not sent, claimed no such charge, it is waived already, or no interest is left unpaid) and credit_note_no_reminders (a credit note is never reminded of), and the manual deliveries' (D8) delivery_removed and delivery_relied_on (a letter's charge stands on the record and no other delivery on or before the due date would remain); the reminder runs' and the overdue list's (invoices payments and reminders design D10, D12) reminders_disabled (reminders are switched off in the reminder settings), collection_rates_outdated (a letter of the run needs a rate with no row for a half-year, with kind and halfYear), collection_regime_unreviewed (a letter of the run would carry a fee or be a collection notice past the regime review under the 1988 regime), bank_import_stale (the bank data is stale and a letter of the run would carry a charge, with lastBookedOn; acknowledgeStaleImport confirms it) and too_many_overdue (more than 5 000 overdue invoices to judge; narrow by customer or due date); the holds' and the hand-off's (invoices payments and reminders design D11) invoice_on_hold (a hold is live already), invoice_not_on_hold (no hold is live to lift), invoice_handed_off (a hand-off is live already), invoice_not_handed_off (no hand-off is live to withdraw) and invoice_not_delivered (no delivery on or before the due date; acknowledgeNotDelivered confirms the hand-off); the reminder letters' (invoices payments and reminders design D10) reminder_not_withdrawable (the letter is sent, withdrawn already, or being sent: queued with its facts written under a live lease), reminder_not_failed (only a failed letter is retried) and reminder_not_sent (the letter is neither printed nor sent, so it has no PDF); the paper letters' (D10, reading 39) reminder_not_awaiting_print (a letter named for a print batch is not awaiting print), reminder_posted_early and reminder_posted_late (a batch confirmed posted on another day than the one it was printed for, so it must be reprinted) and print_batch_closed (the batch was posted or reprinted already); the exception queue's (invoices payments and reminders design D5) bank_transaction_not_open (the line is not in the state the action takes — not an exception, for most), bank_transaction_not_applicable (the action is not for this line: an apply of a reversal or a negative line, a dismissal of a reversal, a reversal handled on a line that is none, a duplicate confirmed or kept that is none, a reopen of a line that is open), bank_transaction_applied (a live payment or charge payment still refers to the line), bank_transaction_reversed (a reversal took back a payment of the line, so it is never reopened, or of the line it was kept as a duplicate of, so it is never treated as distinct nor applied), reversal_payment_required (a reversal handled with no payment named and no note saying why), allocation_not_an_invoice (an allocation names no issued invoice), allocation_exceeds_transaction (the allocations add up to more than the line has left) and paid_before_issue (the line was booked before an allocation's invoice was issued), besides payment_exceeds_open with invoiceId and charge_payment_exceeds_outstanding on an allocation; the payments port's (invoices payments and reminders design D14–D17) payments_unavailable (no Vipps credentials are stored — a 409 — or Vipps is switched off on this installation or the stored credentials cannot be opened — a 503), payment_attempts_active (a change of the sales unit, or removing the keys, while a Vipps payment is in flight), attempt_not_abandonable (the payment is neither of unknown outcome nor stranded by the switch or another sales unit), public_url_missing (pay links or a webhook without PUBLIC_BASE_URL), pay_links_unavailable (pay links are off or not set up), pay_link_exists (the invoice has a live pay link already), too_many_attempts (five Vipps payments of the invoice are in flight already), amount_out_of_range (the open amount is below 1.00 or above what Vipps takes), payment_in_progress (Vipps payments being completed leave less than 1.00 open), on_site_payments_unavailable (on-site payment is not turned on), buyer_identity_missing (the buyer is not identified as a kontantfaktura requires), payment_request_active (an on-site payment request of the invoice is live already), day_already_reconciled (the day was reconciled before) and day_not_over (the day is not over yet), and provider_failed, which a 502 carries when Vipps refused or failed the call; the bank feed's (invoices bank feed design F3, F4, F8) bank_feed_disabled (the bank feed is switched off on this installation), bank_feed_not_connected (no bank key is stored), bank_feed_account_not_offered (the bank does not answer the account now, or it is a card account), bank_feed_enabled (a format change away from feed while the feed is switched on for the account), bank_feed_key_changed (another bank key was stored while an account was being switched on), bank_account_unknown as the bank import's, and bank_feed_credential_rejected, which a 422 carries when the bank refused the key, and bank_feed_unavailable, which a 503 carries when the bank could not be reached or the stored key cannot be opened; the quick invoice's (D17) request_id_reused (its requestId came before with another body, with invoiceId, the invoice it issued); the consumption wizard's (energy consumption billing design D7; GET /invoices/consumption, GET /invoices/consumption/settlements, POST /invoices/from-consumption) consumption_unavailable (the energy module is switched off), settlement_blocked (with sourceKind and sourceId: a named settlement Energy cannot bill; the detail names its blocker), cadence_not_allowed (with sourceKind and sourceId: a settlement of a yearly supply for a person, who is billed at least quarterly) and no_consumption_due (nothing is left to invoice through the date); the billing runs' (energy consumption billing design D10; POST /invoices/billing-runs and its cancel) billing_run_active (with runId: a run is queued or running already), billing_run_finished (the run is done or cancelled already) and too_many_customers (more than 5 000 supplies are due; name the customers); the From orders wizard's (orders design O39; GET /invoices/from-orders/due, POST /invoices/from-orders) orders_unavailable (the orders module is switched off), order_blocked (with orderLineId: an order is a draft or on hold), allocation_exceeds_open (with orderLineId: a quantity above what the line has left to invoice) and line_not_invoiceable (with orderLineId: a line Orders will not invoice, or one not of the order named), a save's line_holds_order_allocation (with linePosition, sourceKind and sourceId: a line holding an order allocation keeps its quantity, unit price, discount and VAT code), and the billing run's no_orders_due (no customer has order lines due through the date), and its items' orders_held_by_drafts (drafts of the customer hold what its orders have left) and currency_not_supported (the customer's orders due are in another currency than the settings'); the write-off's (accounting design A16, R4) vipps_in_progress (a Vipps payment is being completed, so the open amount is not settled yet), no_write_off (no write-off stands: nothing to undo or to recover), write_off_recovered (a recovered payment of the write-off stands; remove it before the undo), recovery_exceeds_written_off (with openAmount, the room left: a recovered payment above what is written off less what is already recovered) and invoice_written_off (accounting design R15: a credit note of an invoice a write-off stands on is neither created, saved nor issued; undo the write-off first); the logo's (invoices phase 6 design I1) logo_unsupported_type, logo_too_large, logo_too_wide, logo_too_small and logo_invalid, which a 400 carries in the same shape; the customer's credit's (invoices phase 6 design I8-I12) idempotency_key_reused (an apply-credit with an Idempotency-Key the caller applied credit with already, to another invoice or of another amount), credit_exceeds_balance (with balance: a movement would take the customer's credit in the currency below zero — credit applied or refunded beyond it, or a payment or a bank line whose overpayment was used removed or reversed), credit_exceeds_open (credit applied above what is open, with openAmount) and refund_removed (the refund is removed already); the eFaktura's and AvtaleGiro's (invoices phase 6 design I29-I34) efaktura_unavailable (a 503, or a 409 on a verify with nothing stored), efaktura_credit_note, efaktura_due_too_soon, efaktura_due_too_far, efaktura_not_found (with efakturaReason, why the person cannot be sent to), efaktura_already_sent, kid_missing, efaktura_person_only, kid_agreement_missing, avtalegiro_agreement_missing, avtalegiro_kid_space_taken, avtalegiro_claim_exists, mandate_resolved, mandate_kid_mismatch, mandate_customer_not_person, mandate_not_resolved and mandate_has_live_claim, and efaktura_lookup_failed, which a 502 carries; and storage_unavailable and mail_unavailable, which a 503 carries in the same shape, and mail_failed and peppol_lookup_failed, which a 502 carries. A revision conflict carries no code; its detail names both revisions.
+	// PaymentRequestError ProblemDetails plus this module's refusal code (invoices foundation design D2-D8). code names the rule that refused — series_locked, vat_code_in_use, rate_change_in_past, rate_period_not_latest, rate_period_last, rate_period_in_use, invoice_issued, invoice_draft, customer_merged, customer_archived, customer_blocked, customer_missing, invoice_changed, seller_incomplete, no_lines, delivery_date_missing, issue_date_not_allowed, buyer_incomplete, vat_code_inactive, vat_code_not_valid, vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, credit_exceeds_line, credit_exceeds_invoice, credit_note_not_creditable, invoice_fully_credited, credit_note_no_payments, invoice_settled, payment_exceeds_open, payment_removed, customer_anonymised, no_invoice_email (invoices payments and delivery design D2, D4), kid_length_exceeded (EHF and KID design D3: the next number no longer fits the KID agreement, which was shortened), transmissions_active (EHF and KID design D7: the access-point credentials still serve a transmission in flight), ehf_unavailable (D7: no access-point credentials to verify — a 409 — or a stored key that cannot be opened — a 503; D8: an installation that cannot send as EHF — a 503), the send as EHF's no_peppol_id, buyer_reference_missing, ehf_already_sent, peppol_not_receivable (with peppolRegistered and peppolCanReceive) and ehf_invalid (with rules) (EHF and KID design D8), transmission_not_cancellable and transmission_not_resolvable (D9), source_held_elsewhere (invoices work design D2: a source a save or the wizard would hold is held by another live draft or invoiced by an unreleased issued line; heldBy, sourceKind and sourceId name the document and the source), the wizard's refusals (invoices work design D3, D4, D11; POST /invoices/from-work) — work_unavailable (no billable read is composed), too_many_sources (more than 5 000 sources on one document, an append target's held ones counted), source_not_for_customer (a source's project bills another customer or is gone), mixed_currency (the selection spans currencies), currency_not_nok (the selection is in another currency than NOK) and too_many_lines (the grouping would make more than 500 lines, with suggestedGrouping, the next coarser grouping that fits) — the issue's refusals about the work it bills (invoices work design D1, each with linePosition, sourceKind and sourceId) — source_not_invoiceable, source_changed and source_already_invoiced (a source's own module would not stamp it: no longer approved, ready or billable; changed since the draft took it; already invoiced), source_customer_changed (a source's project no longer bills the draft's customer, or is gone; judged before a number exists) and source_not_selectable (hours of a project now fixed-price or non-billable, or any work of a project now non-billable) — and projects_unavailable (the draft bills work and the projects module is switched off); a final settlement's (invoices work design D7) deduction_exceeds_invoice (with linePosition: a deduction line takes more than its a-konto has left at its VAT code, or deducts a document that is no longer an issued invoice of this customer, or deducted at a code where it deducts itself), deduction_duplicated (with linePosition: a second deduction line for one deducted invoice and VAT code) and invoice_total_not_positive (a settlement's, or an invoice with energy correction lines', gross is zero or less); a credit note's credit_total_negative (its gross is below zero) and invoice_deducted (it credits more of an a-konto at a VAT code than no issued settlement deducted there; the detail names the settlements); credit_note_deducts_nothing (GET /invoices/{id}/deductible on a credit-note draft), and invoice_changed also when the draft's work changed between the issue's reads and its lock; the bank import's (invoices payments and reminders design D3) bank_account_unknown (an account the file names is neither the seller's nor one an issued invoice printed; the detail names its last four digits), bank_file_duplicate (the same bytes or the same file identity imported before, with bankFileId, uploadedAt and uploadedBy of that import) and bank_import_format_mismatch (the account's files come in the other format; the detail names the account and its format); the collection rates' (invoices payments and reminders design D6) collection_rate_exists (a rate of that kind already takes effect on that day) and collection_rate_in_force (the rate came with a release, is in force or past, or a printed or sent letter relied on it, so it is not deleted); the charges' (invoices payments and reminders design D9) no_charges_outstanding (nothing is outstanding: no letter claimed a charge, or every charge is waived or paid), charge_payment_exceeds_outstanding (with chargesOutstanding), charge_not_claimed (the letter was not sent, claimed no such charge, it is waived already, or no interest is left unpaid) and credit_note_no_reminders (a credit note is never reminded of), and the manual deliveries' (D8) delivery_removed and delivery_relied_on (a letter's charge stands on the record and no other delivery on or before the due date would remain); the reminder runs' and the overdue list's (invoices payments and reminders design D10, D12) reminders_disabled (reminders are switched off in the reminder settings), collection_rates_outdated (a letter of the run needs a rate with no row for a half-year, with kind and halfYear), collection_regime_unreviewed (a letter of the run would carry a fee or be a collection notice past the regime review under the 1988 regime), bank_import_stale (the bank data is stale and a letter of the run would carry a charge, with lastBookedOn; acknowledgeStaleImport confirms it) and too_many_overdue (more than 5 000 overdue invoices to judge; narrow by customer or due date); the holds' and the hand-off's (invoices payments and reminders design D11) invoice_on_hold (a hold is live already), invoice_not_on_hold (no hold is live to lift), invoice_handed_off (a hand-off is live already), invoice_not_handed_off (no hand-off is live to withdraw) and invoice_not_delivered (no delivery on or before the due date; acknowledgeNotDelivered confirms the hand-off); the reminder letters' (invoices payments and reminders design D10) reminder_not_withdrawable (the letter is sent, withdrawn already, or being sent: queued with its facts written under a live lease), reminder_not_failed (only a failed letter is retried) and reminder_not_sent (the letter is neither printed nor sent, so it has no PDF); the paper letters' (D10, reading 39) reminder_not_awaiting_print (a letter named for a print batch is not awaiting print), reminder_posted_early and reminder_posted_late (a batch confirmed posted on another day than the one it was printed for, so it must be reprinted) and print_batch_closed (the batch was posted or reprinted already); the exception queue's (invoices payments and reminders design D5) bank_transaction_not_open (the line is not in the state the action takes — not an exception, for most), bank_transaction_not_applicable (the action is not for this line: an apply of a reversal or a negative line, a dismissal of a reversal, a reversal handled on a line that is none, a duplicate confirmed or kept that is none, a reopen of a line that is open), bank_transaction_applied (a live payment or charge payment still refers to the line), bank_transaction_reversed (a reversal took back a payment of the line, so it is never reopened, or of the line it was kept as a duplicate of, so it is never treated as distinct nor applied), reversal_payment_required (a reversal handled with no payment named and no note saying why), allocation_not_an_invoice (an allocation names no issued invoice), allocation_exceeds_transaction (the allocations add up to more than the line has left) and paid_before_issue (the line was booked before an allocation's invoice was issued), besides payment_exceeds_open with invoiceId and charge_payment_exceeds_outstanding on an allocation; the payments port's (invoices payments and reminders design D14–D17) payments_unavailable (no Vipps credentials are stored — a 409 — or Vipps is switched off on this installation or the stored credentials cannot be opened — a 503), payment_attempts_active (a change of the sales unit, or removing the keys, while a Vipps payment is in flight), attempt_not_abandonable (the payment is neither of unknown outcome nor stranded by the switch or another sales unit), public_url_missing (pay links or a webhook without PUBLIC_BASE_URL), pay_links_unavailable (pay links are off or not set up), pay_link_exists (the invoice has a live pay link already), too_many_attempts (five Vipps payments of the invoice are in flight already), amount_out_of_range (the open amount is below 1.00 or above what Vipps takes), payment_in_progress (Vipps payments being completed leave less than 1.00 open), on_site_payments_unavailable (on-site payment is not turned on), buyer_identity_missing (the buyer is not identified as a kontantfaktura requires), payment_request_active (an on-site payment request of the invoice is live already), day_already_reconciled (the day was reconciled before) and day_not_over (the day is not over yet), and provider_failed, which a 502 carries when Vipps refused or failed the call; the bank feed's (invoices bank feed design F3, F4, F8) bank_feed_disabled (the bank feed is switched off on this installation), bank_feed_not_connected (no bank key is stored), bank_feed_account_not_offered (the bank does not answer the account now, or it is a card account), bank_feed_enabled (a format change away from feed while the feed is switched on for the account), bank_feed_key_changed (another bank key was stored while an account was being switched on), bank_account_unknown as the bank import's, and bank_feed_credential_rejected, which a 422 carries when the bank refused the key, and bank_feed_unavailable, which a 503 carries when the bank could not be reached or the stored key cannot be opened; the quick invoice's (D17) request_id_reused (its requestId came before with another body, with invoiceId, the invoice it issued); the consumption wizard's (energy consumption billing design D7; GET /invoices/consumption, GET /invoices/consumption/settlements, POST /invoices/from-consumption) consumption_unavailable (the energy module is switched off), settlement_blocked (with sourceKind and sourceId: a named settlement Energy cannot bill; the detail names its blocker), cadence_not_allowed (with sourceKind and sourceId: a settlement of a yearly supply for a person, who is billed at least quarterly) and no_consumption_due (nothing is left to invoice through the date); the billing runs' (energy consumption billing design D10; POST /invoices/billing-runs and its cancel) billing_run_active (with runId: a run is queued or running already), billing_run_finished (the run is done or cancelled already) and too_many_customers (more than 5 000 supplies are due; name the customers); the From orders wizard's (orders design O39; GET /invoices/from-orders/due, POST /invoices/from-orders) orders_unavailable (the orders module is switched off), order_blocked (with orderLineId: an order is a draft or on hold), allocation_exceeds_open (with orderLineId: a quantity above what the line has left to invoice) and line_not_invoiceable (with orderLineId: a line Orders will not invoice, or one not of the order named), a save's line_holds_order_allocation (with linePosition, sourceKind and sourceId: a line holding an order allocation keeps its quantity, unit price, discount and VAT code), and the billing run's no_orders_due (no customer has order lines due through the date), and its items' orders_held_by_drafts (drafts of the customer hold what its orders have left) and currency_not_enabled (the customer's orders due are in a currency neither NOK nor turned on in the settings); the write-off's (accounting design A16, R4) vipps_in_progress (a Vipps payment is being completed, so the open amount is not settled yet), no_write_off (no write-off stands: nothing to undo or to recover), write_off_recovered (a recovered payment of the write-off stands; remove it before the undo), recovery_exceeds_written_off (with openAmount, the room left: a recovered payment above what is written off less what is already recovered) and invoice_written_off (accounting design R15: a credit note of an invoice a write-off stands on is neither created, saved nor issued; undo the write-off first); the logo's (invoices phase 6 design I1) logo_unsupported_type, logo_too_large, logo_too_wide, logo_too_small and logo_invalid, which a 400 carries in the same shape; the customer's credit's (invoices phase 6 design I8-I12) idempotency_key_reused (an apply-credit with an Idempotency-Key the caller applied credit with already, to another invoice or of another amount), credit_exceeds_balance (with balance: a movement would take the customer's credit in the currency below zero — credit applied or refunded beyond it, or a payment or a bank line whose overpayment was used removed or reversed), credit_exceeds_open (credit applied above what is open, with openAmount) and refund_removed (the refund is removed already); the foreign currency's (invoices phase 6 design I17-I25) exchange_rate_missing (with currency: no rate within 7 days — of today when turning a currency on, of the issue date at issue), iban_required (the seller's IBAN or BIC is empty, which a document in currency needs), currency_not_enabled (an order in a currency neither NOK nor turned on in the settings), exchange_rate_fetched (a fetched rate is never removed; only a manual one is) and currency_not_nok (a pay link, a Vipps payment or a charge payment of an invoice in another currency than NOK); the eFaktura's and AvtaleGiro's (invoices phase 6 design I29-I34) efaktura_unavailable (a 503, or a 409 on a verify with nothing stored), efaktura_credit_note, efaktura_due_too_soon, efaktura_due_too_far, efaktura_not_found (with efakturaReason, why the person cannot be sent to), efaktura_already_sent, kid_missing, efaktura_person_only, kid_agreement_missing, avtalegiro_agreement_missing, avtalegiro_kid_space_taken, avtalegiro_claim_exists, mandate_resolved, mandate_kid_mismatch, mandate_customer_not_person, mandate_not_resolved and mandate_has_live_claim, and efaktura_lookup_failed, which a 502 carries; and storage_unavailable and mail_unavailable, which a 503 carries in the same shape, and mail_failed and peppol_lookup_failed, which a 502 carries. A revision conflict carries no code; its detail names both revisions.
 	PaymentRequestError *InvoicesConflictProblem `json:"paymentRequestError,omitempty"`
+}
+
+// InvoicesRateFetch One currency's fetch of Norges Bank's rates (invoices phase 6 design I18): when the invoices-rates worker or Fetch now last tried, when it last succeeded, and the outcome of the last failure — disallowed_address, unreachable, unreadable, too_large, answered_redirect, answered_<status> or not_configured — absent after a success.
+type InvoicesRateFetch struct {
+	Currency      string     `json:"currency"`
+	LastAttemptAt *time.Time `json:"lastAttemptAt,omitempty"`
+	LastError     *string    `json:"lastError,omitempty"`
+	LastSuccessAt *time.Time `json:"lastSuccessAt,omitempty"`
+}
+
+// InvoicesRateFetchResponse The fetch rows of every enabled currency, after Fetch now (invoices phase 6 design I18).
+type InvoicesRateFetchResponse struct {
+	RateFetches []InvoicesRateFetch `json:"rateFetches"`
 }
 
 // InvoicesReminder A reminder letter (D10): made by a run without its facts, queued for e-mail or awaiting print for paper; its facts — sentOn, the deadline, the regime and the amounts — are written when it is sent (e-mail, by the invoices-reminders worker, on the day it is mailed) or printed (paper) and frozen once sent; a failed attempt clears them again. recipient is the address an e-mail letter goes to, empty for paper and once the customer is anonymised; it is answered only to a caller holding invoices:payments. heldReason is why a queued letter waits an hour at a time without its attempt counted: collection_rates_outdated (a rate it needs has no row for a half-year) or collection_regime_unreviewed (it would carry a fee or be a collection notice past the regime review). withdrawalReason is a code when the module withdrew the letter and withdrawnBy is absent — settled, on_hold, handed_off, policy_none, customer_anonymised or action_changed (the engine no longer gives the letter's action or level) — and the person's own words when withdrawnBy names them (plan reading 44).
@@ -4196,7 +4327,7 @@ type InvoicesRunPreviewHeld struct {
 	CustomerId int32  `json:"customerId"`
 	InvoiceId  int64  `json:"invoiceId"`
 
-	// NextAction What the reminder engine says to do next with an issued invoice today (D8): action reminder or collection_notice (a letter, due from earliestOn; letter is how it would go today when earliestOn is today or earlier), hand_off (suggested, never automatic; from earliestOn), blocked or waiting (with reasons; waiting until earliestOn), or none (the principal settled, or handed off). reasons: on_hold, handed_off, policy_none, reminders_disabled, letter_pending (a letter is on its way), waiting (the last letter's deadline and grace not yet passed), not_delivered (no delivery on or before the due date, so no collection notice or hand-off), collection_rates_outdated (with outdated naming the rate and half-year) and collection_regime_unreviewed. chargeNotes say why a letter claims less than it might: not_delivered, charges_barred, fee_cap_reached, fee_before_14_days and fee_deadline_not_missed.
+	// NextAction What the reminder engine says to do next with an issued invoice today (D8): action reminder or collection_notice (a letter, due from earliestOn; letter is how it would go today when earliestOn is today or earlier), hand_off (suggested, never automatic; from earliestOn), blocked or waiting (with reasons; waiting until earliestOn), or none (the principal settled, or handed off). reasons: on_hold, handed_off, policy_none, reminders_disabled, letter_pending (a letter is on its way), waiting (the last letter's deadline and grace not yet passed), not_delivered (no delivery on or before the due date, so no collection notice or hand-off), collection_rates_outdated (with outdated naming the rate and half-year) and collection_regime_unreviewed. chargeNotes say why a letter claims less than it might: not_delivered, charges_barred, fee_cap_reached, fee_before_14_days, fee_deadline_not_missed and foreign_currency (invoices phase 6 design I25: an invoice in another currency than NOK is claimed no fee and no compensation).
 	NextAction InvoicesNextAction `json:"nextAction"`
 	Number     int64              `json:"number"`
 }
@@ -4283,7 +4414,7 @@ type InvoicesSendEfakturaResponse struct {
 	// Avtalegiro Whether the send carried an AvtaleGiro claim, and why not.
 	Avtalegiro InvoicesSendEfakturaAvtaleGiro `json:"avtalegiro"`
 
-	// Invoice One document (D4): every column in camelCase, its lines and its VAT summaries. On a draft the VAT summaries and totals are computed afresh — an invoice draft's with the rates in force today, which the issue resolves again for the issue date; a credit-note draft's at its original lines' snapshot rates, with each line's and the invoice's remainder squared as its issue will — and allowedIssueDates lists the dates it may be issued with today. warnings are never refusals: customer_currency_differs, issued_late (never on a credit note, which keeps its original's delivery), vat_code_not_valid (a line's code has no rate period covering today; the issue would refuse it), credit_exceeds_invoice, credit_exceeds_line, ehf_buyer_reference_missing (EHF and KID design D8: a draft whose customer's billing profile prefers EHF or whose customer has a Peppol id — or, on a credit-note draft, whose buyer snapshot has a Peppol id — with neither yourReference nor orderReference set — Peppol needs one, and neither can change after the issue), and for a document that bills work (invoices work design D2) line_differs_from_sources (on a draft, a line's net differs from its sources' amounts summed and rounded to øre), sources_released (on a save's answer, work the save dropped — named in releasedSources), source_changed and source_not_invoiceable (on GET of an invoice draft, for a caller holding invoices:create: a source's billing facts changed since the draft took them, or it is no longer invoiceable — the issue would refuse either); each of the last three also on the line's own warnings; on an invoice draft that is a final settlement (invoices work design D7) deduction_exceeds_invoice (a deduction line takes more than its a-konto has left at its VAT code) and invoice_total_not_positive (its gross is zero or less) — the issue refuses either. A deduction line is totalled at its a-konto line's snapshot (category and rate), never at today's rate of its code. A document that bills work carries sources, its count by state, and each of its lines its sources[]. An invoice carries creditedAmount (its issued credit notes' gross), uncreditedAmount and creditNotes; a credit note carries credits. Every document carries state (D3); an issued invoice also carries paidAmount, openAmount and payments, none of which a draft or a credit note carries; what a credit note credits beyond the open amount moves to the customer's credit (invoices phase 6 design I10). An issued invoice also carries charges, chargePayments, waivers and manualDeliveries (invoices payments and reminders design D8, D9), and its reminders and nextAction — what the reminder engine says to do next today (D8, D10). An issued invoice also carries hold and handoff, its latest hold and hand-off, live or ended (D11); each is absent when the invoice was never held or handed off. Every issued document carries deliveries (D4) and its EHF state, ehf (EHF and KID design D10); sendDefaults is answered only by GET /invoices/{id} and the send, for a caller who may send — and in its place customerAnonymised when the customer is anonymised. An issued invoice with a live pay link carries payLink (invoices payments and reminders design D15), and every issued invoice its Vipps payment attempts, paymentAttempts (D16).
+	// Invoice One document (D4): every column in camelCase, its lines and its VAT summaries. On a draft the VAT summaries and totals are computed afresh — an invoice draft's with the rates in force today, which the issue resolves again for the issue date; a credit-note draft's at its original lines' snapshot rates, with each line's and the invoice's remainder squared as its issue will — and allowedIssueDates lists the dates it may be issued with today. warnings are never refusals: customer_currency_differs (the billing profile's currency is not the draft's), exchange_rate_missing (invoices phase 6 design I19: a draft in currency without a rate within 7 days; the issue refuses it), issued_late (never on a credit note, which keeps its original's delivery), vat_code_not_valid (a line's code has no rate period covering today; the issue would refuse it), credit_exceeds_invoice, credit_exceeds_line, ehf_buyer_reference_missing (EHF and KID design D8: a draft whose customer's billing profile prefers EHF or whose customer has a Peppol id — or, on a credit-note draft, whose buyer snapshot has a Peppol id — with neither yourReference nor orderReference set — Peppol needs one, and neither can change after the issue), and for a document that bills work (invoices work design D2) line_differs_from_sources (on a draft, a line's net differs from its sources' amounts summed and rounded to øre), sources_released (on a save's answer, work the save dropped — named in releasedSources), source_changed and source_not_invoiceable (on GET of an invoice draft, for a caller holding invoices:create: a source's billing facts changed since the draft took them, or it is no longer invoiceable — the issue would refuse either); each of the last three also on the line's own warnings; on an invoice draft that is a final settlement (invoices work design D7) deduction_exceeds_invoice (a deduction line takes more than its a-konto has left at its VAT code) and invoice_total_not_positive (its gross is zero or less) — the issue refuses either. A deduction line is totalled at its a-konto line's snapshot (category and rate), never at today's rate of its code. A document that bills work carries sources, its count by state, and each of its lines its sources[]. An invoice carries creditedAmount (its issued credit notes' gross), uncreditedAmount and creditNotes; a credit note carries credits. Every document carries state (D3); an issued invoice also carries paidAmount, openAmount and payments, none of which a draft or a credit note carries; what a credit note credits beyond the open amount moves to the customer's credit (invoices phase 6 design I10). An issued invoice also carries charges, chargePayments, waivers and manualDeliveries (invoices payments and reminders design D8, D9), and its reminders and nextAction — what the reminder engine says to do next today (D8, D10). An issued invoice also carries hold and handoff, its latest hold and hand-off, live or ended (D11); each is absent when the invoice was never held or handed off. Every issued document carries deliveries (D4) and its EHF state, ehf (EHF and KID design D10); sendDefaults is answered only by GET /invoices/{id} and the send, for a caller who may send — and in its place customerAnonymised when the customer is anonymised. An issued invoice with a live pay link carries payLink (invoices payments and reminders design D15), and every issued invoice its Vipps payment attempts, paymentAttempts (D16).
 	Invoice InvoicesInvoiceResponse `json:"invoice"`
 }
 
@@ -4305,17 +4436,20 @@ type InvoicesSettingsLogo struct {
 // InvoicesSettingsLogoContentType defines model for InvoicesSettingsLogo.ContentType.
 type InvoicesSettingsLogoContentType string
 
-// InvoicesSettingsRequest PUT /settings' body, a full replace (D2). Every text field is trimmed; an empty string is "not set". organisationNumber is nine digits with a valid mod-11 check digit; bankAccount eleven digits with a valid mod-11 check digit (spaces and dots are dropped); iban passes mod-97 and bic is 8 or 11 characters, both optional; country is ISO 3166-1 alpha-2; defaultPaymentTermsDays is 0-365; defaultCurrency is NOK and only NOK in this phase; seriesStart is 1 to 9007199254740991 (2^53 − 1) and cannot change once anything is issued (409 series_locked). peppolId, kidLength and kidAlgorithm are required and nullable (EHF and KID design D2, D3): a body without them is a 400, so a client that predates them cannot clear them by leaving them out. kidLength and kidAlgorithm are a pair or both null; the next number to be issued — the counter's, or seriesStart before the first issue — must fit in kidLength less one digits, else a 400 on kidLength. workVatCodes is required too (invoices work design D6; a body without it is a 400 on workVatCodes): the VAT code the uninvoiced view's wizard pre-fills for each kind of work, each a code that exists and — when it differs from the stored one — is active, else a 400 on workVatCodes.hours, workVatCodes.expenses or workVatCodes.milestones. timesheetDefault and timesheetPersonLabel are required too (invoices work design D5; a body without either, or with null, is a 400 on it): whether a new draft — the wizard's or one created by hand — carries a timesheet unless its request says, and how the timesheet names each person — initials, number or name, anything else a 400 on timesheetPersonLabel. energyVatCodes is optional (energy consumption billing design D8): absent keeps the stored codes; given, each is a code that exists and — when it differs from the stored one — is active, else a 400 on energyVatCodes.energy or energyVatCodes.energyExempt. sendChannel is optional and nullable (integrations design T6): absent keeps the stored channel, null is Disabled, and a given id that differs from the stored one must be a channel that exists, else a 400 on sendChannel. phone is optional (invoices phase 6 design I4): absent keeps the stored phone, empty clears it. tolerance is optional (I15): absent keeps the stored tolerance. The logo is not part of this body: PUT and DELETE /settings/logo set and remove it. revision is the one the caller read: a stale one is a 409 naming both.
+// InvoicesSettingsRequest PUT /settings' body, a full replace (D2). Every text field is trimmed; an empty string is "not set". organisationNumber is nine digits with a valid mod-11 check digit; bankAccount eleven digits with a valid mod-11 check digit (spaces and dots are dropped); iban passes mod-97 and bic is 8 or 11 characters, both optional; country is ISO 3166-1 alpha-2; defaultPaymentTermsDays is 0-365; defaultCurrency is NOK, the functional currency (invoices phase 6 design I17); currencies, optional, lists the currencies a document may be in besides NOK — each a code Norges Bank publishes (else a 400 on currencies), NOK never, at most 20, absent keeps the stored list. Turning a currency on fetches its last 30 days of rates first, and is refused 409 iban_required while iban or bic is empty and 409 exchange_rate_missing (with currency) when the currency has no rate within 7 days of today — enter a manual rate first (PUT /invoices/exchange-rates/{currency}/{day}). Turning one off is allowed: open drafts keep their currency; seriesStart is 1 to 9007199254740991 (2^53 − 1) and cannot change once anything is issued (409 series_locked). peppolId, kidLength and kidAlgorithm are required and nullable (EHF and KID design D2, D3): a body without them is a 400, so a client that predates them cannot clear them by leaving them out. kidLength and kidAlgorithm are a pair or both null; the next number to be issued — the counter's, or seriesStart before the first issue — must fit in kidLength less one digits, else a 400 on kidLength. workVatCodes is required too (invoices work design D6; a body without it is a 400 on workVatCodes): the VAT code the uninvoiced view's wizard pre-fills for each kind of work, each a code that exists and — when it differs from the stored one — is active, else a 400 on workVatCodes.hours, workVatCodes.expenses or workVatCodes.milestones. timesheetDefault and timesheetPersonLabel are required too (invoices work design D5; a body without either, or with null, is a 400 on it): whether a new draft — the wizard's or one created by hand — carries a timesheet unless its request says, and how the timesheet names each person — initials, number or name, anything else a 400 on timesheetPersonLabel. energyVatCodes is optional (energy consumption billing design D8): absent keeps the stored codes; given, each is a code that exists and — when it differs from the stored one — is active, else a 400 on energyVatCodes.energy or energyVatCodes.energyExempt. sendChannel is optional and nullable (integrations design T6): absent keeps the stored channel, null is Disabled, and a given id that differs from the stored one must be a channel that exists, else a 400 on sendChannel. phone is optional (invoices phase 6 design I4): absent keeps the stored phone, empty clears it. tolerance is optional (I15): absent keeps the stored tolerance. The logo is not part of this body: PUT and DELETE /settings/logo set and remove it. revision is the one the caller read: a stale one is a 409 naming both.
 type InvoicesSettingsRequest struct {
-	AddressLine1            string  `json:"addressLine1"`
-	AddressLine2            *string `json:"addressLine2,omitempty"`
-	BankAccount             string  `json:"bankAccount"`
-	Bic                     *string `json:"bic,omitempty"`
-	City                    string  `json:"city"`
-	Country                 string  `json:"country"`
-	DefaultCurrency         string  `json:"defaultCurrency"`
-	DefaultPaymentTermsDays int32   `json:"defaultPaymentTermsDays"`
-	Email                   *string `json:"email,omitempty"`
+	AddressLine1 string  `json:"addressLine1"`
+	AddressLine2 *string `json:"addressLine2,omitempty"`
+	BankAccount  string  `json:"bankAccount"`
+	Bic          *string `json:"bic,omitempty"`
+	City         string  `json:"city"`
+	Country      string  `json:"country"`
+
+	// Currencies The currencies a document may be in besides NOK (invoices phase 6 design I17), each one Norges Bank publishes, at most 20; absent keeps the stored list.
+	Currencies              *[]string `json:"currencies,omitempty"`
+	DefaultCurrency         string    `json:"defaultCurrency"`
+	DefaultPaymentTermsDays int32     `json:"defaultPaymentTermsDays"`
+	Email                   *string   `json:"email,omitempty"`
 
 	// EnergyVatCodes The VAT codes an energy line takes by its hint (energy consumption billing design D8) — energy for standard, energyExempt for a household in Nord-Norge (mval. § 6-6) — each the id of a code. 1 (code 3, 25 %) and 10 (code 5N, 0 %, seeded with the § 6-6 reason; 5 where that code could not be seeded) until changed.
 	EnergyVatCodes       *InvoicesEnergyVatCodes `json:"energyVatCodes,omitempty"`
@@ -4359,15 +4493,18 @@ type InvoicesSettingsRequest struct {
 
 // InvoicesSettingsResponse The seller record and the series start (D2). A text field that is not set is the empty string. seriesLocked is true once anything is issued; from then on seriesStart cannot change, and every other field still can — issued documents keep their own seller snapshot. peppolId is the seller's address on the Peppol network, read when a document is sent, never part of the snapshot; kidLength and kidAlgorithm are the KID agreement, which an issued invoice's kid was computed under. phone and logo are the seller's (invoices phase 6 design I1, I4), snapshotted at issue like the rest of the seller record.
 type InvoicesSettingsResponse struct {
-	AddressLine1            string `json:"addressLine1"`
-	AddressLine2            string `json:"addressLine2"`
-	BankAccount             string `json:"bankAccount"`
-	Bic                     string `json:"bic"`
-	City                    string `json:"city"`
-	Country                 string `json:"country"`
-	DefaultCurrency         string `json:"defaultCurrency"`
-	DefaultPaymentTermsDays int32  `json:"defaultPaymentTermsDays"`
-	Email                   string `json:"email"`
+	AddressLine1 string `json:"addressLine1"`
+	AddressLine2 string `json:"addressLine2"`
+	BankAccount  string `json:"bankAccount"`
+	Bic          string `json:"bic"`
+	City         string `json:"city"`
+	Country      string `json:"country"`
+
+	// Currencies The currencies a document may be in besides NOK (invoices phase 6 design I17).
+	Currencies              []string `json:"currencies"`
+	DefaultCurrency         string   `json:"defaultCurrency"`
+	DefaultPaymentTermsDays int32    `json:"defaultPaymentTermsDays"`
+	Email                   string   `json:"email"`
 
 	// EnergyVatCodes The VAT codes an energy line takes by its hint (energy consumption billing design D8) — energy for standard, energyExempt for a household in Nord-Norge (mval. § 6-6) — each the id of a code. 1 (code 3, 25 %) and 10 (code 5N, 0 %, seeded with the § 6-6 reason; 5 where that code could not be seeded) until changed.
 	EnergyVatCodes       InvoicesEnergyVatCodes `json:"energyVatCodes"`
@@ -4398,7 +4535,10 @@ type InvoicesSettingsResponse struct {
 	// Phone The seller's phone, empty when not set (invoices phase 6 design I4).
 	Phone      string `json:"phone"`
 	PostalCode string `json:"postalCode"`
-	Revision   int32  `json:"revision"`
+
+	// RateFetches Per enabled currency, the last fetch of its rates from Norges Bank (I18).
+	RateFetches []InvoicesRateFetch `json:"rateFetches"`
+	Revision    int32               `json:"revision"`
 
 	// SendChannel The id of the channel documents and reminder letters are sent from (integrations design T6), as stored; null is Disabled. Always answered; optional in the schema only because the recorded exchanges predate it.
 	SendChannel *openapi_types.UUID `json:"sendChannel"`
@@ -4648,9 +4788,12 @@ type InvoicesVatSummary struct {
 	RatePercent     float64 `json:"ratePercent"`
 	SafTCode        string  `json:"safTCode"`
 	TaxableAmount   float64 `json:"taxableAmount"`
-	VatAmount       float64 `json:"vatAmount"`
-	VatAmountNok    float64 `json:"vatAmountNok"`
-	VatCategory     string  `json:"vatCategory"`
+
+	// TaxableAmountNok The base in NOK, round(taxableAmount × rate, 2) (invoices phase 6 design I21); absent on a document issued before currencies, every one NOK, whose base is taxableAmount.
+	TaxableAmountNok *float64 `json:"taxableAmountNok,omitempty"`
+	VatAmount        float64  `json:"vatAmount"`
+	VatAmountNok     float64  `json:"vatAmountNok"`
+	VatCategory      string   `json:"vatCategory"`
 }
 
 // InvoicesVippsDayReconciliation A day's Vipps payments reconciled (invoices payments and reminders design D17 rule 4, M15 — bokføringsforskriften § 5-4-5's daily count): the totals as they stood when it was recorded — payments, total, onSiteTotal and payLinkTotal — by whom, when and with what note. Recorded once and never changed: a capture dated that day later changes the day's list, not the record.
@@ -5031,6 +5174,13 @@ type GetInvoicesCustomersByCustomerIdCreditParams struct {
 	PageSize *int32 `form:"pageSize,omitempty" json:"pageSize,omitempty"`
 }
 
+// GetInvoicesExchangeRatesParams defines parameters for GetInvoicesExchangeRates.
+type GetInvoicesExchangeRatesParams struct {
+	Currency string              `form:"currency" json:"currency"`
+	From     *openapi_types.Date `form:"from,omitempty" json:"from,omitempty"`
+	To       *openapi_types.Date `form:"to,omitempty" json:"to,omitempty"`
+}
+
 // GetInvoicesExportCsvParams defines parameters for GetInvoicesExportCsv.
 type GetInvoicesExportCsvParams struct {
 	// From The first issue date to include.
@@ -5205,6 +5355,9 @@ type PostInvoicesCustomersByCustomerIdCreditRefundsByRefundIdRemoveJSONRequestBo
 
 // PutInvoicesCustomersByCustomerIdReminderPolicyJSONRequestBody defines body for PutInvoicesCustomersByCustomerIdReminderPolicy for application/json ContentType.
 type PutInvoicesCustomersByCustomerIdReminderPolicyJSONRequestBody = InvoicesReminderPolicyRequest
+
+// PutInvoicesExchangeRatesByCurrencyByDayJSONRequestBody defines body for PutInvoicesExchangeRatesByCurrencyByDay for application/json ContentType.
+type PutInvoicesExchangeRatesByCurrencyByDayJSONRequestBody = InvoicesExchangeRateRequest
 
 // PostInvoicesFromConsumptionJSONRequestBody defines body for PostInvoicesFromConsumption for application/json ContentType.
 type PostInvoicesFromConsumptionJSONRequestBody = InvoicesFromConsumptionRequest
@@ -5463,6 +5616,18 @@ type ServerInterface interface {
 	// PutInvoicesCustomersByCustomerIdReminderPolicy Set a customer's reminder policy
 	// (PUT /api/v1/invoices/customers/{customerId}/reminder-policy)
 	PutInvoicesCustomersByCustomerIdReminderPolicy(w http.ResponseWriter, r *http.Request, customerId int32)
+	// GetInvoicesExchangeRates List exchange rates
+	// (GET /api/v1/invoices/exchange-rates)
+	GetInvoicesExchangeRates(w http.ResponseWriter, r *http.Request, params GetInvoicesExchangeRatesParams)
+	// PostInvoicesExchangeRatesFetch Fetch exchange rates now
+	// (POST /api/v1/invoices/exchange-rates/fetch)
+	PostInvoicesExchangeRatesFetch(w http.ResponseWriter, r *http.Request)
+	// DeleteInvoicesExchangeRatesByCurrencyByDay Remove a manual exchange rate
+	// (DELETE /api/v1/invoices/exchange-rates/{currency}/{day})
+	DeleteInvoicesExchangeRatesByCurrencyByDay(w http.ResponseWriter, r *http.Request, currency string, day openapi_types.Date)
+	// PutInvoicesExchangeRatesByCurrencyByDay Enter a manual exchange rate
+	// (PUT /api/v1/invoices/exchange-rates/{currency}/{day})
+	PutInvoicesExchangeRatesByCurrencyByDay(w http.ResponseWriter, r *http.Request, currency string, day openapi_types.Date)
 	// GetInvoicesExportCsv Export the issued documents as CSV
 	// (GET /api/v1/invoices/export.csv)
 	GetInvoicesExportCsv(w http.ResponseWriter, r *http.Request, params GetInvoicesExportCsvParams)
@@ -7168,6 +7333,149 @@ func (siw *ServerInterfaceWrapper) PutInvoicesCustomersByCustomerIdReminderPolic
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PutInvoicesCustomersByCustomerIdReminderPolicy(w, r, customerId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetInvoicesExchangeRates operation middleware
+func (siw *ServerInterfaceWrapper) GetInvoicesExchangeRates(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetInvoicesExchangeRatesParams
+
+	// ------------- Required query parameter "currency" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "currency", r.URL.Query(), &params.Currency, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "currency"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "currency", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "string", Format: "date"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "string", Format: "date"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetInvoicesExchangeRates(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostInvoicesExchangeRatesFetch operation middleware
+func (siw *ServerInterfaceWrapper) PostInvoicesExchangeRatesFetch(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostInvoicesExchangeRatesFetch(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteInvoicesExchangeRatesByCurrencyByDay operation middleware
+func (siw *ServerInterfaceWrapper) DeleteInvoicesExchangeRatesByCurrencyByDay(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "currency" -------------
+	var currency string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "currency", r.PathValue("currency"), &currency, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "currency", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "day" -------------
+	var day openapi_types.Date
+
+	err = runtime.BindStyledParameterWithOptions("simple", "day", r.PathValue("day"), &day, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "date", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "day", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteInvoicesExchangeRatesByCurrencyByDay(w, r, currency, day)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutInvoicesExchangeRatesByCurrencyByDay operation middleware
+func (siw *ServerInterfaceWrapper) PutInvoicesExchangeRatesByCurrencyByDay(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "currency" -------------
+	var currency string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "currency", r.PathValue("currency"), &currency, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "currency", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "day" -------------
+	var day openapi_types.Date
+
+	err = runtime.BindStyledParameterWithOptions("simple", "day", r.PathValue("day"), &day, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "date", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "day", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutInvoicesExchangeRatesByCurrencyByDay(w, r, currency, day)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -9852,6 +10160,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/avtalegiro/mandates", wrapper.GetInvoicesAvtalegiroMandates)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/avtalegiro/mandates/{mandateId}/resolve", wrapper.PostInvoicesAvtalegiroMandatesByMandateIdResolve)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/avtalegiro/mandates/{mandateId}/unassign", wrapper.PostInvoicesAvtalegiroMandatesByMandateIdUnassign)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/exchange-rates", wrapper.GetInvoicesExchangeRates)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/invoices/exchange-rates/{currency}/{day}", wrapper.DeleteInvoicesExchangeRatesByCurrencyByDay)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/invoices/exchange-rates/{currency}/{day}", wrapper.PutInvoicesExchangeRatesByCurrencyByDay)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/exchange-rates/fetch", wrapper.PostInvoicesExchangeRatesFetch)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/invoices/settings/access-point", wrapper.DeleteInvoicesSettingsAccessPoint)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/settings/access-point", wrapper.GetInvoicesSettingsAccessPoint)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/invoices/settings/access-point", wrapper.PutInvoicesSettingsAccessPoint)
@@ -13183,6 +13495,252 @@ type PutInvoicesCustomersByCustomerIdReminderPolicy404Response struct {
 func (response PutInvoicesCustomersByCustomerIdReminderPolicy404Response) VisitPutInvoicesCustomersByCustomerIdReminderPolicyResponse(w http.ResponseWriter) error {
 	w.WriteHeader(404)
 	return nil
+}
+
+type GetInvoicesExchangeRatesRequestObject struct {
+	Params GetInvoicesExchangeRatesParams
+}
+
+type GetInvoicesExchangeRatesResponseObject interface {
+	VisitGetInvoicesExchangeRatesResponse(w http.ResponseWriter) error
+}
+
+type GetInvoicesExchangeRates200JSONResponse InvoicesExchangeRateList
+
+func (response GetInvoicesExchangeRates200JSONResponse) VisitGetInvoicesExchangeRatesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesExchangeRates400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response GetInvoicesExchangeRates400ApplicationProblemPlusJSONResponse) VisitGetInvoicesExchangeRatesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesExchangeRates401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetInvoicesExchangeRates401JSONResponse) VisitGetInvoicesExchangeRatesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesExchangeRates403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetInvoicesExchangeRates403JSONResponse) VisitGetInvoicesExchangeRatesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesExchangeRatesFetchRequestObject struct {
+}
+
+type PostInvoicesExchangeRatesFetchResponseObject interface {
+	VisitPostInvoicesExchangeRatesFetchResponse(w http.ResponseWriter) error
+}
+
+type PostInvoicesExchangeRatesFetch200JSONResponse InvoicesRateFetchResponse
+
+func (response PostInvoicesExchangeRatesFetch200JSONResponse) VisitPostInvoicesExchangeRatesFetchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesExchangeRatesFetch401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostInvoicesExchangeRatesFetch401JSONResponse) VisitPostInvoicesExchangeRatesFetchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesExchangeRatesFetch403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostInvoicesExchangeRatesFetch403JSONResponse) VisitPostInvoicesExchangeRatesFetchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteInvoicesExchangeRatesByCurrencyByDayRequestObject struct {
+	Currency string             `json:"currency"`
+	Day      openapi_types.Date `json:"day"`
+}
+
+type DeleteInvoicesExchangeRatesByCurrencyByDayResponseObject interface {
+	VisitDeleteInvoicesExchangeRatesByCurrencyByDayResponse(w http.ResponseWriter) error
+}
+
+type DeleteInvoicesExchangeRatesByCurrencyByDay204Response struct {
+}
+
+func (response DeleteInvoicesExchangeRatesByCurrencyByDay204Response) VisitDeleteInvoicesExchangeRatesByCurrencyByDayResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteInvoicesExchangeRatesByCurrencyByDay401JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteInvoicesExchangeRatesByCurrencyByDay401JSONResponse) VisitDeleteInvoicesExchangeRatesByCurrencyByDayResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteInvoicesExchangeRatesByCurrencyByDay403JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteInvoicesExchangeRatesByCurrencyByDay403JSONResponse) VisitDeleteInvoicesExchangeRatesByCurrencyByDayResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteInvoicesExchangeRatesByCurrencyByDay404Response struct {
+}
+
+func (response DeleteInvoicesExchangeRatesByCurrencyByDay404Response) VisitDeleteInvoicesExchangeRatesByCurrencyByDayResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type DeleteInvoicesExchangeRatesByCurrencyByDay409ApplicationProblemPlusJSONResponse InvoicesConflictProblem
+
+func (response DeleteInvoicesExchangeRatesByCurrencyByDay409ApplicationProblemPlusJSONResponse) VisitDeleteInvoicesExchangeRatesByCurrencyByDayResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInvoicesExchangeRatesByCurrencyByDayRequestObject struct {
+	Currency string             `json:"currency"`
+	Day      openapi_types.Date `json:"day"`
+	Body     *PutInvoicesExchangeRatesByCurrencyByDayJSONRequestBody
+}
+
+type PutInvoicesExchangeRatesByCurrencyByDayResponseObject interface {
+	VisitPutInvoicesExchangeRatesByCurrencyByDayResponse(w http.ResponseWriter) error
+}
+
+type PutInvoicesExchangeRatesByCurrencyByDay200JSONResponse InvoicesExchangeRate
+
+func (response PutInvoicesExchangeRatesByCurrencyByDay200JSONResponse) VisitPutInvoicesExchangeRatesByCurrencyByDayResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInvoicesExchangeRatesByCurrencyByDay400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PutInvoicesExchangeRatesByCurrencyByDay400ApplicationProblemPlusJSONResponse) VisitPutInvoicesExchangeRatesByCurrencyByDayResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInvoicesExchangeRatesByCurrencyByDay401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutInvoicesExchangeRatesByCurrencyByDay401JSONResponse) VisitPutInvoicesExchangeRatesByCurrencyByDayResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInvoicesExchangeRatesByCurrencyByDay403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutInvoicesExchangeRatesByCurrencyByDay403JSONResponse) VisitPutInvoicesExchangeRatesByCurrencyByDayResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type GetInvoicesExportCsvRequestObject struct {
@@ -20684,6 +21242,18 @@ type StrictServerInterface interface {
 	// PutInvoicesCustomersByCustomerIdReminderPolicy Set a customer's reminder policy
 	// (PUT /api/v1/invoices/customers/{customerId}/reminder-policy)
 	PutInvoicesCustomersByCustomerIdReminderPolicy(ctx context.Context, request PutInvoicesCustomersByCustomerIdReminderPolicyRequestObject) (PutInvoicesCustomersByCustomerIdReminderPolicyResponseObject, error)
+	// GetInvoicesExchangeRates List exchange rates
+	// (GET /api/v1/invoices/exchange-rates)
+	GetInvoicesExchangeRates(ctx context.Context, request GetInvoicesExchangeRatesRequestObject) (GetInvoicesExchangeRatesResponseObject, error)
+	// PostInvoicesExchangeRatesFetch Fetch exchange rates now
+	// (POST /api/v1/invoices/exchange-rates/fetch)
+	PostInvoicesExchangeRatesFetch(ctx context.Context, request PostInvoicesExchangeRatesFetchRequestObject) (PostInvoicesExchangeRatesFetchResponseObject, error)
+	// DeleteInvoicesExchangeRatesByCurrencyByDay Remove a manual exchange rate
+	// (DELETE /api/v1/invoices/exchange-rates/{currency}/{day})
+	DeleteInvoicesExchangeRatesByCurrencyByDay(ctx context.Context, request DeleteInvoicesExchangeRatesByCurrencyByDayRequestObject) (DeleteInvoicesExchangeRatesByCurrencyByDayResponseObject, error)
+	// PutInvoicesExchangeRatesByCurrencyByDay Enter a manual exchange rate
+	// (PUT /api/v1/invoices/exchange-rates/{currency}/{day})
+	PutInvoicesExchangeRatesByCurrencyByDay(ctx context.Context, request PutInvoicesExchangeRatesByCurrencyByDayRequestObject) (PutInvoicesExchangeRatesByCurrencyByDayResponseObject, error)
 	// GetInvoicesExportCsv Export the issued documents as CSV
 	// (GET /api/v1/invoices/export.csv)
 	GetInvoicesExportCsv(ctx context.Context, request GetInvoicesExportCsvRequestObject) (GetInvoicesExportCsvResponseObject, error)
@@ -22192,6 +22762,117 @@ func (sh *strictHandler) PutInvoicesCustomersByCustomerIdReminderPolicy(w http.R
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutInvoicesCustomersByCustomerIdReminderPolicyResponseObject); ok {
 		if err := validResponse.VisitPutInvoicesCustomersByCustomerIdReminderPolicyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetInvoicesExchangeRates operation middleware
+func (sh *strictHandler) GetInvoicesExchangeRates(w http.ResponseWriter, r *http.Request, params GetInvoicesExchangeRatesParams) {
+	var request GetInvoicesExchangeRatesRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetInvoicesExchangeRates(ctx, request.(GetInvoicesExchangeRatesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetInvoicesExchangeRates")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetInvoicesExchangeRatesResponseObject); ok {
+		if err := validResponse.VisitGetInvoicesExchangeRatesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostInvoicesExchangeRatesFetch operation middleware
+func (sh *strictHandler) PostInvoicesExchangeRatesFetch(w http.ResponseWriter, r *http.Request) {
+	var request PostInvoicesExchangeRatesFetchRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostInvoicesExchangeRatesFetch(ctx, request.(PostInvoicesExchangeRatesFetchRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostInvoicesExchangeRatesFetch")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostInvoicesExchangeRatesFetchResponseObject); ok {
+		if err := validResponse.VisitPostInvoicesExchangeRatesFetchResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteInvoicesExchangeRatesByCurrencyByDay operation middleware
+func (sh *strictHandler) DeleteInvoicesExchangeRatesByCurrencyByDay(w http.ResponseWriter, r *http.Request, currency string, day openapi_types.Date) {
+	var request DeleteInvoicesExchangeRatesByCurrencyByDayRequestObject
+
+	request.Currency = currency
+	request.Day = day
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteInvoicesExchangeRatesByCurrencyByDay(ctx, request.(DeleteInvoicesExchangeRatesByCurrencyByDayRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteInvoicesExchangeRatesByCurrencyByDay")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteInvoicesExchangeRatesByCurrencyByDayResponseObject); ok {
+		if err := validResponse.VisitDeleteInvoicesExchangeRatesByCurrencyByDayResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutInvoicesExchangeRatesByCurrencyByDay operation middleware
+func (sh *strictHandler) PutInvoicesExchangeRatesByCurrencyByDay(w http.ResponseWriter, r *http.Request, currency string, day openapi_types.Date) {
+	var request PutInvoicesExchangeRatesByCurrencyByDayRequestObject
+
+	request.Currency = currency
+	request.Day = day
+
+	var body PutInvoicesExchangeRatesByCurrencyByDayJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutInvoicesExchangeRatesByCurrencyByDay(ctx, request.(PutInvoicesExchangeRatesByCurrencyByDayRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutInvoicesExchangeRatesByCurrencyByDay")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutInvoicesExchangeRatesByCurrencyByDayResponseObject); ok {
+		if err := validResponse.VisitPutInvoicesExchangeRatesByCurrencyByDayResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -359,6 +359,16 @@ Regnskapets start og sperren bestemmer datoen:
 Et langt etterslep — etter at regnskapet ble satt opp på en travel installasjon, for eksempel —
 leses videre hvert femtende sekund til det er tatt igjen.
 
+### Salg i en annen valuta
+
+En faktura i en annen valuta posteres i NOK etter kursen den ble utstedt med:
+kundefordringslinjen har valutaen, beløpet i den og kursen, og inntekt og MVA posteres
+bare i NOK. Når kunden betaler, er det som kom inn i NOK sjelden det samme som fakturaen
+ble bokført med: fordringen tar det betalingen gjorde opp, og forskjellen posteres på
+**8060** (agiogevinst) eller **8160** (agiotap). Betalingen som bringer fakturaen til null,
+etterlater den åpne posten på nøyaktig null. Kreditt som brukes eller tilbakebetales i en
+annen valuta, posterer forskjellen sin på samme måte.
+
 ## Leverandører
 
 **Leverandører** viser selskapene og personene dere kjøper fra, etter nummer: hver ny

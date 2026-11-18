@@ -60,6 +60,10 @@ type harness struct {
 	// a TLS listener of its own reached through the same Deps.HTTPTransport,
 	// so no test ever calls Folio.
 	folio *foliotest.Server
+	// rates is Norges Bank every harness points INVOICES_RATES_URL at, on a
+	// TLS listener of its own reached through the same Deps.HTTPTransport,
+	// so no test ever calls Norges Bank.
+	rates *fakeNorgesBank
 	// mps is the Mastercard Payment Services every harness points the
 	// INVOICES_MPS_* base URLs at, with eFaktura switched on and the
 	// submitter's files written from its client certificate (phase 6 D2).
@@ -154,6 +158,7 @@ func newInvoicesHarness(t *testing.T, objects *fakeObjectStore, opts ...modtest.
 	vippsServer := vippstest.New(t)
 	wire := &vippsWire{rt: vippsServer.Transport()}
 	folio := foliotest.New(t)
+	rates := newFakeNorgesBank(t)
 	mps := mpstest.New()
 	t.Cleanup(mps.Close)
 	dir := t.TempDir()
@@ -170,6 +175,7 @@ func newInvoicesHarness(t *testing.T, objects *fakeObjectStore, opts ...modtest.
 		modtest.WithEnv("INVOICES_STORECOVE_BASE_URL", storecove.URL()),
 		modtest.WithEnv("INVOICES_VIPPS_BASE_URL", vippsServer.URL()),
 		modtest.WithEnv("INVOICES_FOLIO_BASE_URL", folio.URL()),
+		modtest.WithEnv("INVOICES_RATES_URL", rates.URL()),
 		modtest.WithEnv("INVOICES_EFAKTURA_ENABLED", "1"),
 		modtest.WithEnv("INVOICES_MPS_EFAKTURA_BASE_URL", mps.EfakturaURL()),
 		modtest.WithEnv("INVOICES_MPS_MANDATE_BASE_URL", mps.MandateURL()),
@@ -181,6 +187,7 @@ func newInvoicesHarness(t *testing.T, objects *fakeObjectStore, opts ...modtest.
 			hostOf(t, storecove.URL()):   storecove.Transport(),
 			hostOf(t, vippsServer.URL()): wire,
 			hostOf(t, folio.URL()):       folio.Transport(),
+			hostOf(t, rates.URL()):       rates.Transport(),
 			hostOf(t, mps.EfakturaURL()): mps.ClientTransport(),
 		}),
 	}
@@ -188,7 +195,7 @@ func newInvoicesHarness(t *testing.T, objects *fakeObjectStore, opts ...modtest.
 		base = append(base, modtest.WithObjectStore(objects))
 	}
 	before, beforeTx := lockedContractCalls.count(), lockedContractCalls.txCount()
-	h := &harness{Harness: modtest.New(t, append(base, opts...)...), customers: customers, objects: objects, storecove: storecove, vipps: vippsServer, vippsWire: wire, folio: folio, mps: mps}
+	h := &harness{Harness: modtest.New(t, append(base, opts...)...), customers: customers, objects: objects, storecove: storecove, vipps: vippsServer, vippsWire: wire, folio: folio, mps: mps, rates: rates}
 	t.Cleanup(func() {
 		if calls := lockedContractCalls.since(before); len(calls) > 0 {
 			t.Errorf("a call outside this module's own database was made from inside one of its transactions:\n%s",

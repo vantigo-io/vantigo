@@ -381,6 +381,7 @@ a change to a rule is a new version.
 | `sales.credit_refunded` (2) | `credit`, kind `refunded` | `customer_payment` | `receivables` on the credit item | the ledger account of the bank account the refund left, else `bank` |
 | `sales.credit_reversed` (1) | `credit`, kind `reversed` | `customer_payment` | the reversed movement's stored voucher, line for line with every sign turned, when the reversal is all of it; a credit note's surplus returned in part, or a movement never posted, as the reversed kind's lines at the reversal's amount, turned | |
 | `sales.credit_merged` (1) | `credit_merged` | `customer_payment` | `receivables` on the absorbed customer's credit item | `receivables` on the survivor's credit item |
+| `sales.exchange_difference` (1) | `exchange_difference` — the NOK rest a credit note left when it closed an invoice in another currency | `customer_payment` | `currency_loss` (NOK was left), else `receivables` on the invoice's item | `receivables` on the invoice's item, else `currency_gain` |
 
 **The customer's credit** (invoices phase 6 design I16, plan readings 3–7). A credit item
 is a customer item flagged `customer_credit`, one per customer, found or made as the
@@ -575,6 +576,28 @@ document posted as itself, so a credit note's page finds its own voucher, which 
 the invoice it credits — which an invoice's page links to, the first 20 with a button for
 the rest. The `customers` report's item rows carry the Invoices `documentId` they stand
 for.
+
+
+**Sales in another currency** (invoices phase 6 design I27). A document not in NOK posts
+its receivable line with `currency`, `currency_amount` (the signed gross) and
+`exchange_rate` (`ck_postings_currency` holds the three together); revenue and VAT post
+in NOK alone, and the receivable's amount stays Σ BaseNOK + Σ VATNOK, so the remainder
+guard is zero. A payment fact's bank line is `AmountNOK`; its receivable line takes
+`AmountNOK − ExchangeDifferenceNOK` with the currency columns at the rate it cleared at, and
+a non-zero difference posts to `currency_gain` (8060, a credit) or `currency_loss` (8160,
+a debit), the roles supplier payments use. `sales.credit_applied` and
+`sales.credit_refunded` post their movement's difference the same way. Every receivables
+line on an invoice's item carries the currency triple — the payment's, the write-off's (a
+rounding's too), the credit note's surplus moved and the credit applied — so a closed
+invoice's currency sums reach 0. A recovery of a written-off invoice in currency scales
+the write-off's lines on what it cleared (`AmountNOK − ExchangeDifferenceNOK`, the
+`RecoveredBeforeNOK` of the earlier ones likewise), so the VAT given back never exceeds
+what `tapPåKrav` took, and its difference posts to `currency_gain` or `currency_loss`.
+The fact `exchange_difference` — the NOK rest a closing credit note left — posts as
+`sales.exchange_difference` (1, `customer_payment`): the invoice's item takes the rest,
+`currency_loss` the debit when NOK was left, `currency_gain` the credit otherwise. A
+removal turns the whole voucher, currency amounts included. The closing payment leaves the invoice's
+open item at exactly zero. NOK postings are unchanged.
 
 ## Purchases
 

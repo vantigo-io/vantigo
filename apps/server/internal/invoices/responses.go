@@ -86,10 +86,14 @@ func lineResponse(l store.InvoicesLine) (gen.InvoicesLine, error) {
 
 // summaryResponse renders one computed VAT summary row.
 func summaryResponse(r vatSummary) gen.InvoicesVatSummary {
-	return gen.InvoicesVatSummary{
+	out := gen.InvoicesVatSummary{
 		VatCategory: r.Category, RatePercent: floatFromRat(r.Rate, 2), SafTCode: r.SAFT, ExemptionReason: r.Reason,
 		TaxableAmount: floatFromRat(r.Taxable, 2), VatAmount: floatFromRat(r.VAT, 2), VatAmountNok: floatFromRat(r.VATNOK, 2),
 	}
+	if r.BaseNOK != nil {
+		out.TaxableAmountNok = ptr(floatFromRat(r.BaseNOK, 2))
+	}
+	return out
 }
 
 // storedSummaryResponse renders one issued document's stored summary row.
@@ -106,6 +110,13 @@ func storedSummaryResponse(r store.InvoicesVatSummary) (gen.InvoicesVatSummary, 
 		if *c.dst, err = floatFromNumeric(c.n); err != nil {
 			return gen.InvoicesVatSummary{}, err
 		}
+	}
+	if r.TaxableAmountNok.Valid {
+		v, err := floatFromNumeric(r.TaxableAmountNok)
+		if err != nil {
+			return gen.InvoicesVatSummary{}, err
+		}
+		out.TaxableAmountNok = &v
 	}
 	return out, nil
 }
@@ -243,6 +254,9 @@ func settle(ctx context.Context, q *store.Queries, inv store.InvoicesInvoice, to
 			Reference: p.Reference, Note: p.Note, RegisteredAt: p.RegisteredAt, RegisteredByUserId: p.RegisteredByUserID,
 			RemovedAt: p.RemovedAt, RemovedByUserId: p.RemovedByUserID, RemovalReason: p.RemovalReason,
 		})
+		nok, _ := floatFromNumeric(p.AmountNok)
+		diff, _ := floatFromNumeric(p.ExchangeDifferenceNok)
+		payments[len(payments)-1].AmountNok, payments[len(payments)-1].ExchangeDifferenceNok = &nok, &diff
 	}
 	resp.Payments = &payments
 	return nil
@@ -278,8 +292,9 @@ func (s *server) renderInvoice(ctx context.Context, q *store.Queries, inv store.
 		IssueDate: wireDateOf(inv.IssueDate), DeliveryDate: wireDateOf(inv.DeliveryDate),
 		DeliveryFrom: wireDateOf(inv.DeliveryFrom), DeliveryTo: wireDateOf(inv.DeliveryTo),
 		PaymentTermsDays: inv.PaymentTermsDays, DueDate: wireDateOf(inv.DueDate), Currency: inv.Currency,
-		ExchangeRateDate: wireDateOf(inv.ExchangeRateDate),
-		YourReference:    inv.YourReference, OurReference: inv.OurReference, OrderReference: inv.OrderReference,
+		ExchangeRateDate:   wireDateOf(inv.ExchangeRateDate),
+		ExchangeRateSource: gen.InvoicesInvoiceResponseExchangeRateSource(inv.ExchangeRateSource),
+		YourReference:      inv.YourReference, OurReference: inv.OurReference, OrderReference: inv.OrderReference,
 		Note: inv.Note, InternalNote: inv.InternalNote, Buyer: buyerResponse(inv), Seller: sellerResponse(inv),
 		IssuedAt: inv.IssuedAt, IssuedByUserId: inv.IssuedByUserID, Kid: inv.Kid, KidAlgorithm: inv.KidAlgorithm,
 		CreatedAt: inv.CreatedAt, UpdatedAt: inv.UpdatedAt, Revision: inv.Revision,
@@ -343,12 +358,27 @@ func (s *server) renderInvoice(ctx context.Context, q *store.Queries, inv store.
 		if err != nil {
 			return gen.InvoicesInvoiceResponse{}, fmt.Errorf("invoices: read document %d's VAT: %w", inv.ID, err)
 		}
+		baseNOK, vatNOK := new(big.Rat), new(big.Rat)
 		for _, r := range rows {
 			row, err := storedSummaryResponse(r)
 			if err != nil {
 				return gen.InvoicesInvoiceResponse{}, err
 			}
 			resp.VatSummaries = append(resp.VatSummaries, row)
+			b, v, err := storedRowNOK(r)
+			if err != nil {
+				return gen.InvoicesInvoiceResponse{}, err
+			}
+			baseNOK.Add(baseNOK, b)
+			vatNOK.Add(vatNOK, v)
+		}
+		// The receivable in NOK (invoices phase 6 design I21).
+		resp.NetTotalNok = floatFromRat(baseNOK, 2)
+		resp.GrossTotalNok = floatFromRat(new(big.Rat).Add(baseNOK, vatNOK), 2)
+		if inv.Kind == kindInvoice && inv.Currency != "NOK" {
+			if resp.ProposedRate, err = s.proposedRate(ctx, q, inv, today); err != nil {
+				return gen.InvoicesInvoiceResponse{}, err
+			}
 		}
 		for _, c := range []struct {
 			dst *float64
@@ -505,6 +535,12 @@ func (s *server) renderInvoice(ctx context.Context, q *store.Queries, inv store.
 	}
 	resp.NetTotal, resp.VatTotal = floatFromRat(totals.Net, 2), floatFromRat(totals.VAT, 2)
 	resp.GrossTotal, resp.VatTotalNok = floatFromRat(totals.Gross, 2), floatFromRat(totals.VATNOK, 2)
+	resp.NetTotalNok, resp.GrossTotalNok = floatFromRat(totals.BaseNOK, 2), floatFromRat(totals.GrossNOK, 2)
+	// A draft in currency whose save found no rate (I19): the issue refuses
+	// it unless one is found or entered by then.
+	if inv.Currency != "NOK" && inv.Kind == kindInvoice && !inv.ExchangeRateDate.Valid {
+		resp.Warnings = append(resp.Warnings, warningExchangeRateMiss)
+	}
 	if profile != nil && profile.Currency != "" && profile.Currency != inv.Currency {
 		resp.Warnings = append(resp.Warnings, warningCustomerCurrencyDiffers)
 	}
@@ -529,4 +565,33 @@ func (s *server) renderInvoice(ctx context.Context, q *store.Queries, inv store.
 	}
 	resp.AllowedIssueDates = &allowed
 	return resp, creditLinks(ctx, q, inv, &resp, credit)
+}
+
+// storedRowNOK is a stored VAT row's base and VAT in NOK; a row issued
+// before currencies (all NOK) has no base snapshot and takes its base.
+func storedRowNOK(r store.InvoicesVatSummary) (base, vat *big.Rat, err error) {
+	n := r.TaxableAmountNok
+	if !n.Valid {
+		n = r.TaxableAmount
+	}
+	if base, err = ratFromNumeric(n); err != nil {
+		return nil, nil, err
+	}
+	vat, err = ratFromNumeric(r.VatAmountNok)
+	return base, vat, err
+}
+
+// proposedRate is the rate a payment of a foreign invoice registered today is
+// proposed at (invoices phase 6 design I24): the latest within 7 days, else
+// the document's own.
+func (s *server) proposedRate(ctx context.Context, q *store.Queries, inv store.InvoicesInvoice, today time.Time) (*float64, error) {
+	r, ok, err := resolveRate(ctx, q, inv.Currency, today)
+	if err != nil {
+		return nil, err
+	}
+	if ok {
+		return ptr(floatFromRat(r.Rate, ratesMaxDecimals)), nil
+	}
+	v, err := floatFromNumeric(inv.ExchangeRate)
+	return &v, err
 }

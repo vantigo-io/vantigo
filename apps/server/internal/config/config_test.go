@@ -2203,6 +2203,29 @@ func TestConfig_InvoicesBankFeed(t *testing.T) {
 	}
 }
 
+// Norges Bank's exchange rates (invoices phase 6 design I18): on by default,
+// the base Norges Bank's data API, https only and without a trailing slash.
+func TestConfig_InvoicesRates(t *testing.T) {
+	cfg := mustLoad(t, validEnv())
+	if !cfg.InvoicesRatesEnabled {
+		t.Error("INVOICES_RATES_ENABLED unset did not default to on")
+	}
+	if cfg.InvoicesRatesURL != "https://data.norges-bank.no/api/data" {
+		t.Errorf("InvoicesRatesURL = %q, want Norges Bank's data API", cfg.InvoicesRatesURL)
+	}
+	if cfg := mustLoad(t, with(validEnv(), "INVOICES_RATES_ENABLED", "0")); cfg.InvoicesRatesEnabled {
+		t.Error("INVOICES_RATES_ENABLED=0 left the switch on")
+	}
+	if cfg := mustLoad(t, with(validEnv(), "INVOICES_RATES_URL", "https://rates.example.test/api/data/")); cfg.InvoicesRatesURL != "https://rates.example.test/api/data" {
+		t.Errorf("INVOICES_RATES_URL = %q, want the host without its trailing slash", cfg.InvoicesRatesURL)
+	}
+	for _, bad := range []string{"not-a-url", "http://rates.example.test", "https://"} {
+		if msg := loadError(t, with(validEnv(), "INVOICES_RATES_URL", bad)); !strings.Contains(msg, "INVOICES_RATES_URL: must be an absolute https URL") {
+			t.Errorf("%q: error = %q", bad, msg)
+		}
+	}
+}
+
 // The bank feed worker's interval (F5): 30 minutes by default, 5 minutes to
 // 24 hours, both bounds included.
 func TestConfig_InvoicesBankFeedInterval(t *testing.T) {

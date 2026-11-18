@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/vantigo-io/vantigo/server/internal/holidays"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/gen"
@@ -143,6 +144,13 @@ func (s *server) PostInvoicesByIdPayments(ctx context.Context, req gen.PostInvoi
 	if err != nil {
 		return nil, err
 	}
+	// What arrived in NOK (invoices phase 6 design I24): required on an
+	// invoice in another currency, and on NOK only ever the amount itself.
+	arrived, msg := arrivedNOK(inv, req.Body.AmountNok, amt)
+	if msg != "" {
+		return gen.PostInvoicesByIdPayments400ApplicationProblemPlusJSONResponse(invalid(invalidPaymentTitle,
+			fieldError("amountNok", msg))), nil
+	}
 	recovering := req.Body.Kind != nil && *req.Body.Kind == gen.InvoicesPaymentKindRecovered
 	keep := req.Body.KeepRestAsCredit != nil && *req.Body.KeepRestAsCredit
 	if keep && recovering {
@@ -204,16 +212,29 @@ func (s *server) PostInvoicesByIdPayments(ctx context.Context, req gen.PostInvoi
 			}
 			payment.InvoiceID, payment.Currency = locked.ID, locked.Currency
 			payment.RegisteredAt, payment.RegisteredByUserID = s.deps.Clock(), ptr(callerID(ctx))
-			if payment.AmountNok, err = amountNOKOf(locked, payment.Amount); err != nil {
+			// Off NOK the payment takes its share of what arrived in NOK
+			// and closes the invoice, clearing the NOK rest (I24); the
+			// overpayment is the rest of what arrived.
+			cleared, err := movementNOK(ctx, txq, locked, open, open)
+			if err != nil {
+				return err
+			}
+			var share *big.Rat
+			if arrived != nil {
+				share = nokShare(arrived, open, amt)
+			}
+			if payment.AmountNok, payment.ExchangeDifferenceNok, err = paymentNOK(share, cleared); err != nil {
 				return err
 			}
 			registered, err := txq.InsertPayment(ctx, payment)
 			if err != nil {
 				return fmt.Errorf("invoices: register a payment against %d: %w", locked.ID, err)
 			}
-			nok, err := nokOfInvoice(locked, rest)
-			if err != nil {
-				return err
+			nok := pgtype.Numeric{}
+			if arrived != nil {
+				if nok, err = numericFromRat(new(big.Rat).Sub(arrived, share), 2); err != nil {
+					return err
+				}
 			}
 			_, refusal, err = insertCredit(ctx, txq, store.InsertCustomerCreditParams{
 				CustomerID: locked.CustomerID, Currency: locked.Currency, Kind: creditOverpayment, CreditDay: payment.PaidOn,
@@ -235,7 +256,20 @@ func (s *server) PostInvoicesByIdPayments(ctx context.Context, req gen.PostInvoi
 		}
 		payment.InvoiceID, payment.Currency = locked.ID, locked.Currency
 		payment.RegisteredAt, payment.RegisteredByUserID = s.deps.Clock(), ptr(callerID(ctx))
-		if payment.AmountNok, err = amountNOKOf(locked, payment.Amount); err != nil {
+		// What the payment clears of the NOK receivable (I24); a recovered
+		// payment clears its share of what the write-off closed in NOK
+		// (review M2), cumulatively, the last taking the rest.
+		cleared := amt
+		if !recovering {
+			if cleared, err = movementNOK(ctx, txq, locked, amt, open); err != nil {
+				return err
+			}
+		} else if arrived != nil {
+			if cleared, err = recoveryNOK(ctx, txq, locked.ID, amt); err != nil {
+				return err
+			}
+		}
+		if payment.AmountNok, payment.ExchangeDifferenceNok, err = paymentNOK(arrived, cleared); err != nil {
 			return err
 		}
 		if _, err := txq.InsertPayment(ctx, payment); err != nil {
@@ -448,4 +482,21 @@ func removalWritesCredit(ctx context.Context, q *store.Queries, id, paymentID in
 		return false, err
 	}
 	return m.Sign() > 0, nil
+}
+
+// arrivedNOK reads a payment's amountNok against its invoice (invoices phase
+// 6 design I24): required off NOK — above 0, at most two decimals — and on
+// NOK, when given, the amount itself. nil for NOK.
+func arrivedNOK(inv store.InvoicesInvoice, given *float64, amt *big.Rat) (*big.Rat, string) {
+	if inv.Currency == "NOK" {
+		if given != nil && ratFromFloat(*given).Cmp(amt) != 0 {
+			return nil, "An invoice in NOK is paid what arrives: amountNok is the amount"
+		}
+		return nil, ""
+	}
+	if given == nil {
+		return nil, fmt.Sprintf("What arrived in NOK for this payment in %s is required", inv.Currency)
+	}
+	r, msg := amount("What arrived in NOK", *given, 2, zero, true, maxGrossTotal)
+	return r, msg
 }

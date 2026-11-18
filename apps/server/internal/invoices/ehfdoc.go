@@ -77,6 +77,14 @@ func ehfDocumentOf(inv store.InvoicesInvoice, lines []store.InvoicesLine, sums [
 	if p.kid != "" {
 		d.Payment.KIDAlgorithm = str(inv.KidAlgorithm)
 	}
+	// Off NOK the VAT in NOK is the second TaxTotal (invoices phase 6 design
+	// I23), the document's vat_total_nok.
+	if inv.Currency != "NOK" {
+		if d.VATTotalNOK, err = ratFromNumeric(inv.VatTotalNok); err != nil {
+			return ehf.Document{}, err
+		}
+		d.TaxCurrencyCode = "NOK"
+	}
 	if p.deliveryPlace != nil {
 		place := address(*p.deliveryPlace, "")
 		d.DeliveryPlace = &place

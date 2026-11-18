@@ -476,8 +476,9 @@ func (b creditBook) total(ctx context.Context, q *store.Queries, lines []credite
 }
 
 // remainingRows are a final credit note's VAT rows: its own rows, each with
-// the VAT and the NOK VAT its row of the original charged less what the issued
-// credit notes reversed on it, and a row of the original the note has no line
+// the VAT, the NOK VAT and the NOK base (invoices phase 6 plan reading 3) its
+// row of the original charged less what the issued credit notes reversed on
+// it, and a row of the original the note has no line
 // on when a remainder is left on it, on a taxable amount of 0. The taxable
 // amounts stay its own lines' nets.
 func (b creditBook) remainingRows(ctx context.Context, q *store.Queries, own []vatSummary) ([]vatSummary, documentTotals, error) {
@@ -490,7 +491,7 @@ func (b creditBook) remainingRows(ctx context.Context, q *store.Queries, own []v
 		return nil, documentTotals{}, fmt.Errorf("invoices: read what document %d's VAT is credited: %w", b.original.ID, err)
 	}
 	type key struct{ category, rate string }
-	type remainder struct{ vat, vatNOK *big.Rat }
+	type remainder struct{ vat, vatNOK, baseNOK *big.Rat }
 	left := map[key]remainder{}
 	for _, c := range charged {
 		rate, err := ratFromNumeric(c.RatePercent)
@@ -501,8 +502,12 @@ func (b creditBook) remainingRows(ctx context.Context, q *store.Queries, own []v
 		if err != nil {
 			return nil, documentTotals{}, err
 		}
+		baseNOK, _, err := storedRowNOK(c)
+		if err != nil {
+			return nil, documentTotals{}, err
+		}
 		k := key{c.VatCategory, rate.FloatString(2)}
-		left[k] = remainder{vat, vatNOK}
+		left[k] = remainder{vat, vatNOK, baseNOK}
 		if !rowOf(own, k.category, k.rate) {
 			own = append(own, vatSummary{Category: c.VatCategory, Rate: rate, SAFT: c.SafTCode, Reason: c.ExemptionReason, Taxable: new(big.Rat)})
 		}
@@ -516,26 +521,36 @@ func (b creditBook) remainingRows(ctx context.Context, q *store.Queries, own []v
 		if err != nil {
 			return nil, documentTotals{}, err
 		}
+		baseNOK, err := ratFromNumeric(r.BaseNok)
+		if err != nil {
+			return nil, documentTotals{}, err
+		}
 		k := key{r.VatCategory, rate.FloatString(2)}
 		if l, ok := left[k]; ok {
-			left[k] = remainder{l.vat.Sub(l.vat, vat), l.vatNOK.Sub(l.vatNOK, vatNOK)}
+			left[k] = remainder{l.vat.Sub(l.vat, vat), l.vatNOK.Sub(l.vatNOK, vatNOK), l.baseNOK.Sub(l.baseNOK, baseNOK)}
 		}
 	}
 	var rows []vatSummary
-	totals := documentTotals{Net: new(big.Rat), VAT: new(big.Rat), Gross: new(big.Rat), VATNOK: new(big.Rat)}
+	totals := documentTotals{Net: new(big.Rat), VAT: new(big.Rat), Gross: new(big.Rat), VATNOK: new(big.Rat),
+		BaseNOK: new(big.Rat), GrossNOK: new(big.Rat)}
 	for _, r := range own {
 		if l, ok := left[key{r.Category, r.Rate.FloatString(2)}]; ok {
-			r.VAT, r.VATNOK = l.vat, l.vatNOK
+			r.VAT, r.VATNOK, r.BaseNOK = l.vat, l.vatNOK, l.baseNOK
 		}
-		if r.Taxable.Sign() == 0 && r.VAT.Sign() == 0 && r.VATNOK.Sign() == 0 {
+		if r.BaseNOK == nil {
+			r.BaseNOK = new(big.Rat)
+		}
+		if r.Taxable.Sign() == 0 && r.VAT.Sign() == 0 && r.VATNOK.Sign() == 0 && r.BaseNOK.Sign() == 0 {
 			continue // a row the credits before squared already
 		}
 		totals.Net.Add(totals.Net, r.Taxable)
 		totals.VAT.Add(totals.VAT, r.VAT)
 		totals.VATNOK.Add(totals.VATNOK, r.VATNOK)
+		totals.BaseNOK.Add(totals.BaseNOK, r.BaseNOK)
 		rows = append(rows, r)
 	}
 	totals.Gross.Add(totals.Net, totals.VAT)
+	totals.GrossNOK.Add(totals.BaseNOK, totals.VATNOK)
 	sortSummaries(rows)
 	return rows, totals, nil
 }
@@ -780,7 +795,7 @@ func (s *server) putCreditDraft(ctx context.Context, q *store.Queries, current s
 	if *body.Revision != current.Revision {
 		return gen.PutInvoicesById409ApplicationProblemPlusJSONResponse(revisionConflict("Invoice", current.Revision, *body.Revision)), nil
 	}
-	in, errs := parseDraft(body, current.Currency, nil)
+	in, errs := parseDraft(body, []string{current.Currency}, nil)
 	add := func(field, msg string) { errs = withFieldError(errs, field, msg) }
 	if in.customerID != current.CustomerID {
 		add("customerId", "A credit note's customer is its original's")

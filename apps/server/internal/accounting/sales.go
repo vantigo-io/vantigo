@@ -56,6 +56,9 @@ const (
 	salesRuleCreditRefunded    = "sales.credit_refunded"
 	salesRuleCreditReversed    = "sales.credit_reversed"
 	salesRuleCreditMerged      = "sales.credit_merged"
+	// salesRuleExchangeDifference posts the NOK rest a closing credit note
+	// left on an invoice in another currency (invoices phase 6, review M1).
+	salesRuleExchangeDifference = "sales.exchange_difference"
 
 	salesRuleVersion int32 = 1
 	// salesRulePaymentVersion is the version of the payments' rules —
@@ -312,6 +315,20 @@ func documentVoucher(b salesBooks, d contracts.JournalDocument) (*Voucher, error
 		// credit note makes it, is the invoice's.
 		lines[0].Item = &OpenItemSpec{DocumentNumber: fmt.Sprint(d.CreditsNumber)}
 	}
+	// A document in another currency (invoices phase 6 design I27): the
+	// receivable carries its currency, its signed gross in it and the rate;
+	// revenue and VAT post in NOK alone. Its NOK stays Σ BaseNOK + Σ VATNOK.
+	if d.Currency != "" && d.Currency != "NOK" {
+		gross, err := amountOf(d.Gross)
+		if err != nil {
+			return nil, err
+		}
+		rate, ok := new(big.Rat).SetString(d.ExchangeRate)
+		if !ok {
+			return nil, &unpostable{reason: reasonDocumentUnknown, detail: "The document in " + d.Currency + " carries no rate."}
+		}
+		lines[0].Currency, lines[0].CurrencyAmount, lines[0].ExchangeRate = d.Currency, signed(gross), rate
+	}
 	lines = append(lines, revenue...)
 	lines = append(lines, taxes...)
 	return &Voucher{Kind: kind, Date: d.IssueDate, DocumentDate: d.IssueDate, Description: description,
@@ -409,6 +426,12 @@ func factVoucher(b salesBooks, f contracts.JournalFact, in factInputs) (*Voucher
 		v.Kind, v.Rule = "customer_payment", salesRulePayment
 		v.Description = b.text("Payment of invoice %d", "Innbetaling på faktura %d", f.InvoiceNumber)
 		v.Lines = []Line{withAmount(bank, amount), receivables(neg(amount))}
+		// In currency (I24, I27): the receivable takes what the payment
+		// cleared, with its currency, and the difference to what arrived
+		// posts to currency gain or loss.
+		if err := inCurrency(b, &v.Lines, 1, f.Currency, f.Amount, f.ExchangeDifferenceNOK); err != nil {
+			return nil, err
+		}
 		if f.Kind == contracts.FactPaymentRemoved {
 			v.Rule = salesRulePaymentRemoved
 			v.Description = b.text("Payment of invoice %d removed", "Innbetaling på faktura %d fjernet", f.InvoiceNumber)
@@ -451,6 +474,11 @@ func factVoucher(b salesBooks, f contracts.JournalFact, in factInputs) (*Voucher
 		}
 		v.Rule = rule
 		v.Lines = append([]Line{receivables(neg(amount))}, loss...)
+		// Off NOK the receivable carries what the write-off closed in the
+		// currency (I27), so a closed invoice's currency sums reach 0.
+		if err := withCurrency(&v.Lines[0], f.Currency, f.Amount); err != nil {
+			return nil, err
+		}
 		if f.Kind == contracts.FactWriteOffUndone {
 			// A write-off the books never posted — made before they started —
 			// is undone as it would have been posted.
@@ -497,12 +525,45 @@ func factVoucher(b salesBooks, f contracts.JournalFact, in factInputs) (*Voucher
 			// is removed as if it were the write-off's only one.
 			before = new(big.Rat)
 		}
-		v.Lines = append([]Line{withAmount(bank, amount)}, scaleRecovery(loss, before, amount, written)...)
+		// Off NOK the recovery scales on what it cleared of the write-off's
+		// NOK, and what arrived beyond or short of it is a currency gain or
+		// loss (invoices phase 6, review M2).
+		diff := new(big.Rat)
+		if f.ExchangeDifferenceNOK != "" {
+			if diff, err = amountOf(f.ExchangeDifferenceNOK); err != nil {
+				return nil, err
+			}
+		}
+		cleared := sub(amount, diff)
+		v.Lines = append([]Line{withAmount(bank, amount)}, scaleRecovery(loss, before, cleared, written)...)
+		// A removal turns the whole voucher below, the difference with it.
+		switch diff.Sign() {
+		case 1:
+			v.Lines = append(v.Lines, Line{Role: roleCurrencyGain, Amount: neg(diff), Text: b.text("Currency difference", "Valutadifferanse")})
+		case -1:
+			v.Lines = append(v.Lines, Line{Role: roleCurrencyLoss, Amount: neg(diff), Text: b.text("Currency difference", "Valutadifferanse")})
+		}
 		if f.Kind == contracts.FactRecoveredPaymentRemoved {
 			v.Rule = salesRuleRecoveredRemoved
 			v.Description = b.text("Recovery on invoice %d removed", "Innbetaling på avskrevet faktura %d fjernet", f.InvoiceNumber)
 			turn(v.Lines)
 		}
+	case contracts.FactExchangeDifference:
+		// The NOK rest a closing credit note left (invoices phase 6, review
+		// M1): the invoice's item cleared, the difference to currency gain
+		// or loss.
+		v.Kind, v.Rule = "customer_payment", salesRuleExchangeDifference
+		v.Description = b.text("Currency difference on invoice %d", "Valutadifferanse på faktura %d", f.InvoiceNumber)
+		diff, err := amountOf(f.ExchangeDifferenceNOK)
+		if err != nil {
+			return nil, err
+		}
+		role := roleCurrencyGain
+		if diff.Sign() < 0 {
+			role = roleCurrencyLoss
+		}
+		v.Lines = []Line{receivables(new(big.Rat).Set(diff)), {Role: role, Amount: neg(diff),
+			Text: b.text("Currency difference", "Valutadifferanse")}}
 	default:
 		return nil, &unpostable{reason: reasonUnknownKind,
 			detail: fmt.Sprintf("Invoices' journal holds a fact of kind %q, which this version does not post.", f.Kind)}
@@ -578,10 +639,18 @@ func creditVoucher(b salesBooks, f contracts.JournalFact, original *storedVouche
 		v.Rule = salesRuleCreditNoteMoved
 		v.Description = b.text("Credit note surplus of invoice %d moved to customer credit", "Kreditnotaoverskudd på faktura %d flyttet til kundekreditt", f.InvoiceNumber)
 		v.Lines = []Line{invoice(amount), credit(f.CustomerID, neg(amount))}
+		if err := withCurrency(&v.Lines[0], c.Currency, c.Amount); err != nil {
+			return nil, err
+		}
 	case contracts.CreditApplied:
 		v.Rule = salesRuleCreditApplied
 		v.Description = b.text("Customer credit applied to invoice %d", "Kundekreditt brukt på faktura %d", f.InvoiceNumber)
 		v.Lines = []Line{credit(f.CustomerID, amount), invoice(neg(amount))}
+		// The credit leaves at what it was carried at, the invoice's item
+		// takes what it cleared (plan reading 7).
+		if err := inCurrency(b, &v.Lines, 1, c.Currency, c.Amount, c.ExchangeDifferenceNOK); err != nil {
+			return nil, err
+		}
 	case contracts.CreditRefunded:
 		v.Rule, v.RuleVersion = salesRuleCreditRefunded, salesRulePaymentVersion
 		v.Description = b.text("Customer credit refunded", "Kundekreditt tilbakebetalt")
@@ -590,6 +659,11 @@ func creditVoucher(b salesBooks, f contracts.JournalFact, original *storedVouche
 			bank = Line{AccountID: id}
 		}
 		v.Lines = []Line{credit(f.CustomerID, amount), withAmount(bank, neg(amount))}
+		// The bank gives what left; the difference to the credit's carrying
+		// NOK is a currency gain or loss (plan reading 9).
+		if err := inCurrency(b, &v.Lines, 1, "", "", c.ExchangeDifferenceNOK); err != nil {
+			return nil, err
+		}
 	default:
 		return nil, &unpostable{reason: reasonUnknownKind,
 			detail: fmt.Sprintf("Invoices' journal holds a credit movement of kind %q, which this version does not post.", c.Kind)}
@@ -652,14 +726,73 @@ func withAmount(l Line, amount *big.Rat) Line {
 	return l
 }
 
-// turn turns every line's sign, and a tax line's base with it.
+// turn turns every line's sign, and a tax line's base and a currency
+// amount with it.
 func turn(lines []Line) {
 	for i := range lines {
 		lines[i].Amount = neg(lines[i].Amount)
 		if lines[i].TaxBase != nil {
 			lines[i].TaxBase = neg(lines[i].TaxBase)
 		}
+		if lines[i].CurrencyAmount != nil {
+			lines[i].CurrencyAmount = neg(lines[i].CurrencyAmount)
+		}
 	}
+}
+
+// withCurrency gives a receivables line of a document in currency its
+// currency triple (I27): amount in it, signed as the line, and the rate the
+// line's NOK is of it. NOK, or no amount, leaves the line as it is.
+func withCurrency(l *Line, currency, amount string) error {
+	if currency == "" || currency == "NOK" || amount == "" || l.Amount == nil || l.Amount.Sign() == 0 {
+		return nil
+	}
+	a, err := amountOf(amount)
+	if err != nil {
+		return err
+	}
+	a = abs(a)
+	if a.Sign() == 0 {
+		return nil
+	}
+	cur := new(big.Rat).Set(a)
+	if l.Amount.Sign() < 0 {
+		cur = neg(cur)
+	}
+	rate, _ := new(big.Rat).SetString(new(big.Rat).Quo(abs(l.Amount), a).FloatString(6))
+	l.Currency, l.CurrencyAmount, l.ExchangeRate = currency, cur, rate
+	return nil
+}
+
+// inCurrency adjusts a payment's or a credit's voucher for an exchange
+// difference (invoices phase 6 design I24, I27; plan readings 7 and 9):
+// (*lines)[counter], the side that is not the money's, moves by difference —
+// what arrived less what the receivable cleared, positive a gain — and the
+// difference posts to currency_gain (a credit) or currency_loss (a debit),
+// the roles supplier payments use (8060, 8160). With currency other than ""
+// and NOK the counter line, a receivable, carries amount in that currency at
+// the rate it cleared at. A difference of "0.00" or "" changes no amount.
+func inCurrency(b salesBooks, lines *[]Line, counter int, currency, amount, difference string) error {
+	diff := new(big.Rat)
+	if difference != "" {
+		var err error
+		if diff, err = amountOf(difference); err != nil {
+			return err
+		}
+	}
+	l := &(*lines)[counter]
+	l.Amount = add(l.Amount, diff)
+	if err := withCurrency(l, currency, amount); err != nil {
+		return err
+	}
+	text := b.text("Currency difference", "Valutadifferanse")
+	switch diff.Sign() {
+	case 1:
+		*lines = append(*lines, Line{Role: roleCurrencyGain, Amount: neg(diff), Text: text})
+	case -1:
+		*lines = append(*lines, Line{Role: roleCurrencyLoss, Amount: neg(diff), Text: text})
+	}
+	return nil
 }
 
 // turnBack makes v the reversal of a stored voucher (R15): its postings line

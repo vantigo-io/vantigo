@@ -10,17 +10,22 @@ SELECT * FROM invoices.invoices WHERE id = @id FOR UPDATE;
 -- InsertInvoiceDraft writes an invoice draft (D4). It has no number, no issue
 -- date and no snapshots; its totals are the ones computed with today's rates,
 -- which the issue computes again for the issue date. timesheet is whether it
--- carries a timesheet (invoices work design D5).
+-- carries a timesheet (invoices work design D5). A draft in another currency
+-- than NOK carries its rate, its day and its source (invoices phase 6 design
+-- I19); left out, they are NOK's 1, none and nok.
 INSERT INTO invoices.invoices (
     kind, customer_id, delivery_date, delivery_from, delivery_to,
     delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country,
     payment_terms_days, currency, your_reference, our_reference, order_reference, note, internal_note,
-    net_total, vat_total, gross_total, vat_total_nok, timesheet, created_by_user_id, created_at, updated_at
+    net_total, vat_total, gross_total, vat_total_nok, timesheet, created_by_user_id, created_at, updated_at,
+    exchange_rate, exchange_rate_date, exchange_rate_source
 ) VALUES (
     'invoice', @customer_id, @delivery_date, @delivery_from, @delivery_to,
     @delivery_address_line1, @delivery_address_line2, @delivery_postal_code, @delivery_city, @delivery_country,
     @payment_terms_days, @currency, @your_reference, @our_reference, @order_reference, @note, @internal_note,
-    @net_total, @vat_total, @gross_total, @vat_total_nok, @timesheet, @created_by_user_id, @now::timestamptz, @now::timestamptz
+    @net_total, @vat_total, @gross_total, @vat_total_nok, @timesheet, @created_by_user_id, @now::timestamptz, @now::timestamptz,
+    coalesce(sqlc.narg(exchange_rate)::numeric, 1), sqlc.narg(exchange_rate_date)::date,
+    coalesce(sqlc.narg(exchange_rate_source)::text, 'nok')
 )
 RETURNING *;
 
@@ -53,6 +58,21 @@ UPDATE invoices.invoices SET
     revision = revision + 1
 WHERE id = @id AND status = 'draft'
 RETURNING *;
+
+-- name: SetDraftRate :one
+-- SetDraftRate sets an invoice draft's currency and its rate (invoices phase
+-- 6 design I19): the rate, the day it is of — none while no rate is found —
+-- and its source. The caller holds the row and has checked it is a draft.
+UPDATE invoices.invoices SET
+    currency = @currency, exchange_rate = @exchange_rate, exchange_rate_date = sqlc.narg(exchange_rate_date)::date,
+    exchange_rate_source = @exchange_rate_source
+WHERE id = @id AND status = 'draft'
+RETURNING *;
+
+-- name: OpenNOK :one
+-- OpenNOK is the NOK receivable still open on an invoice (invoices.open_nok,
+-- plan reading 5), read under its lock.
+SELECT invoices.open_nok(@id::bigint)::numeric AS open_nok;
 
 -- name: DeleteDraft :execrows
 -- DeleteDraft removes a draft and, by the cascade, its lines. An issued
@@ -135,9 +155,12 @@ UPDATE invoices.invoices SET
     number = @number,
     issue_date = @issue_date,
     due_date = @due_date,
-    -- A credit note keeps its original's rate and the date it was taken on
-    -- (InsertCreditDraft copies both); an invoice's is its issue date.
-    exchange_rate_date = COALESCE(exchange_rate_date, @issue_date),
+    -- The rate the issue resolved (invoices phase 6 design I19): an
+    -- invoice's automatic rate of the issue date, its agreed one, or NOK's
+    -- 1; a credit note its original's, which InsertCreditDraft copied.
+    exchange_rate = @exchange_rate,
+    exchange_rate_date = @exchange_rate_date,
+    exchange_rate_source = @exchange_rate_source,
     buyer_customer_number = @buyer_customer_number,
     buyer_type = @buyer_type,
     buyer_name = @buyer_name,

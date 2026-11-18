@@ -47,10 +47,10 @@ const (
 // digits and hyphens.
 var peppolIDPattern = regexp.MustCompile(`^([0-9]{4}):([A-Za-z0-9-]{1,50})$`)
 
-// onlyNOK is the one sentence a currency other than NOK is refused with in
-// phase 1 (D5): § 5-1-1 nr. 6 wants VAT in NOK at the invoice date's rate,
-// which this phase does not model yet.
-const onlyNOK = "Only NOK in this phase"
+// onlyNOK is the sentence a default currency other than NOK is refused with
+// (invoices phase 6 design I17): NOK stays the functional currency, and a
+// document in another currency is one the settings' currencies allow.
+const onlyNOK = "NOK is the functional currency"
 
 // maxTolerance is the highest rounding tolerance, NOK 100
 // (ck_settings_tolerance; invoices phase 6 design I15).
@@ -271,6 +271,9 @@ func parseSettings(body gen.InvoicesSettingsRequest) (parsedSettings, map[string
 		add("seriesStart", "The series starts at 1 or later")
 	case p.SeriesStart > maxSeriesStart:
 		add("seriesStart", "The series starts at 9007199254740991 at the latest")
+	}
+	if body.Currencies != nil {
+		p.Currencies = parseCurrencies(*body.Currencies, add)
 	}
 	parseEInvoicing(body, &p, add)
 	parseWorkVatCodes(body.WorkVatCodes, &p, add)
@@ -544,7 +547,8 @@ func settingsResponse(row store.InvoicesSetting, locked bool, next int64) gen.In
 		BankAccount: row.BankAccount, Iban: row.Iban, Bic: row.Bic, Email: row.Email,
 		DefaultPaymentTermsDays: row.DefaultPaymentTermsDays, DefaultCurrency: row.DefaultCurrency,
 		FooterText: row.FooterText, Phone: row.Phone, Logo: settingsLogo(row),
-		Tolerance:   tolerance,
+		Tolerance:  tolerance,
+		Currencies: currenciesOf(row), RateFetches: []gen.InvoicesRateFetch{},
 		SeriesStart: row.SeriesStart, SeriesLocked: locked, NextNumber: next,
 		MissingSellerFields: sellerMissingFields(row),
 		Revision:            row.Revision, UpdatedAt: row.UpdatedAt,
@@ -564,7 +568,26 @@ func (s *server) settingsAnswer(ctx context.Context, row store.InvoicesSetting) 
 		return resp, err
 	}
 	s.withLogoState(ctx, &resp, row)
-	return resp, nil
+	return resp, s.withRateFetches(ctx, &resp, row)
+}
+
+// currenciesOf is the settings' currencies, never nil.
+func currenciesOf(row store.InvoicesSetting) []string {
+	if row.Currencies == nil {
+		return []string{}
+	}
+	return row.Currencies
+}
+
+// withRateFetches adds each enabled currency's last fetch (invoices phase 6
+// design I18), read on the pool.
+func (s *server) withRateFetches(ctx context.Context, resp *gen.InvoicesSettingsResponse, row store.InvoicesSetting) error {
+	rows, err := store.New(s.deps.Pool).RateFetchStatus(ctx)
+	if err != nil {
+		return fmt.Errorf("invoices: read the rate fetches: %w", err)
+	}
+	resp.RateFetches = rateFetchResponses(rows, currenciesOf(row))
+	return nil
 }
 
 // GetInvoicesSettings Get the invoice settings
@@ -584,6 +607,9 @@ func (s *server) GetInvoicesSettings(ctx context.Context, _ gen.GetInvoicesSetti
 		return nil, err
 	}
 	s.withLogoState(ctx, &resp, row)
+	if err := s.withRateFetches(ctx, &resp, row); err != nil {
+		return nil, err
+	}
 	return gen.GetInvoicesSettings200JSONResponse(resp), nil
 }
 
@@ -713,6 +739,21 @@ func (s *server) PutInvoicesSettings(ctx context.Context, req gen.PutInvoicesSet
 		return gen.PutInvoicesSettings400ApplicationProblemPlusJSONResponse(invalid(invalidSettingsTitle, errs)), nil
 	}
 	parsed.Now = s.deps.Clock()
+	today := holidays.DayIn(parsed.Now, loc)
+	// Turning a currency on (invoices phase 6 design I17, I18; reading 16):
+	// its last 30 days are fetched before the transaction, which holds no
+	// lock while Norges Bank answers, and judged under it.
+	var turnedOn []string
+	if req.Body.Currencies != nil {
+		for _, c := range parsed.Currencies {
+			if !slices.Contains(stored.Currencies, c) {
+				turnedOn = append(turnedOn, c)
+			}
+		}
+		if err := s.backfillRates(ctx, turnedOn, today); err != nil {
+			return nil, err
+		}
+	}
 
 	var refusal *gen.InvoicesConflictProblem
 	var unfit map[string][]string
@@ -753,6 +794,39 @@ func (s *server) PutInvoicesSettings(ctx context.Context, req gen.PutInvoicesSet
 		if req.Body.Tolerance == nil {
 			parsed.Tolerance = current.Tolerance
 		}
+		// The currencies a request leaves out are kept as stored (I17). A
+		// document in currency needs the IBAN and BIC (I22) and a rate
+		// within 7 days (I19): a currency newly turned on is refused without
+		// them, one already on is left as it is.
+		if req.Body.Currencies == nil {
+			parsed.Currencies = currenciesOf(current)
+		}
+		var newly []string
+		for _, c := range parsed.Currencies {
+			if !slices.Contains(current.Currencies, c) {
+				newly = append(newly, c)
+			}
+		}
+		if len(newly) > 0 && (parsed.Iban == "" || parsed.Bic == "") {
+			refusal = ptr(conflict(codeIbanRequired, ibanRequiredTitle,
+				"An invoice in another currency than NOK is paid to the IBAN and BIC: fill in both (iban, bic) before turning a currency on."))
+			return errRefused
+		}
+		for _, c := range newly {
+			_, ok, err := resolveRate(ctx, txq, c, today)
+			if err != nil {
+				return err
+			}
+			if !ok {
+				refusal = ptr(conflict(codeExchangeRateMissing, exchangeRateMissingTitle, fmt.Sprintf(
+					"No rate of %s within 7 days of today could be fetched from Norges Bank: enter a manual rate first, then turn the currency on.", c)))
+				refusal.Currency = &c
+				return errRefused
+			}
+			if err := txq.EnsureRateFetch(ctx, c); err != nil {
+				return fmt.Errorf("invoices: add the %s fetch: %w", c, err)
+			}
+		}
 		// The sending channel a request leaves out is kept as stored
 		// (integrations design T6), as it is under the lock.
 		parsed.SendChannel = sendChannel
@@ -787,6 +861,9 @@ func (s *server) PutInvoicesSettings(ctx context.Context, req gen.PutInvoicesSet
 		return nil, err
 	}
 	s.withLogoState(ctx, &resp, saved)
+	if err := s.withRateFetches(ctx, &resp, saved); err != nil {
+		return nil, err
+	}
 	return gen.PutInvoicesSettings200JSONResponse(resp), nil
 }
 

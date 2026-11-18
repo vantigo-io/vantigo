@@ -283,6 +283,13 @@ func (s *server) createAttempt(ctx context.Context, in attemptInput, now time.Ti
 		if hook := attemptInvoiceLocked; hook != nil {
 			hook(ctx, tx)
 		}
+		// Vipps is NOK (invoices phase 6 design I22): never an amount in
+		// another currency sent to the provider.
+		if inv.Currency != "NOK" {
+			refusal = ptr(conflict(codeCurrencyNotNOK, "The payment cannot be made",
+				"Vipps takes NOK only: an invoice in another currency is paid to the IBAN and BIC."))
+			return errRefused
+		}
 		if in.flow == flowOnSite {
 			// D17's hard rules, judged again under the invoice's lock
 			// (onsite.go), before the facts every flow shares.

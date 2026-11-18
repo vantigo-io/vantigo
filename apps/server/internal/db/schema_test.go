@@ -2478,9 +2478,9 @@ func TestInvoicesBaseline_AppliesAndIsIdempotent(t *testing.T) {
 	if want := []string{"access_point_credentials", "avtalegiro_claims", "avtalegiro_mandates", "bank_feed_accounts", "bank_feed_connections", "bank_files", "bank_import_accounts", "bank_transaction_events",
 		"bank_transactions", "billing_run_items", "billing_runs", "charge_payments", "charge_waivers", "collection_handoffs", "collection_rates",
 		"consumer_lookups", "consumer_provider_credentials", "counters",
-		"credit_merges", "credit_refunds", "customer_credits", "customer_reminder_policies", "deliveries", "erased_customers", "invoice_holds", "invoices", "journal_facts", "line_releases",
+		"credit_merges", "credit_refunds", "customer_credits", "customer_reminder_policies", "deliveries", "erased_customers", "exchange_differences", "exchange_rates", "invoice_holds", "invoices", "journal_facts", "line_releases",
 		"line_sources", "lines", "manual_deliveries", "order_allocations_taken", "overdue_announced", "pay_links", "payment_attempts", "payment_provider_credentials",
-		"payment_settings", "payments", "quick_requests", "reminder_print_batches", "reminder_runs",
+		"payment_settings", "payments", "quick_requests", "rate_fetches", "reminder_print_batches", "reminder_runs",
 		"reminder_settings", "reminders", "settings", "tax_category_vat_codes", "timesheet_rows", "transmissions", "vat_code_rates", "vat_codes",
 		"vat_summaries", "vipps_day_reconciliations", "write_offs"}; !equalStrings(gotTables, want) {
 		t.Errorf("tables = %v, want %v", gotTables, want)
@@ -2612,6 +2612,8 @@ func TestInvoicesBaseline_AppliesAndIsIdempotent(t *testing.T) {
 		"customer_credits:tr_customer_credits_changed", "customer_credits:tr_customer_credits_guard",
 		"customer_credits:tr_customer_credits_immutable", "customer_credits:tr_customer_credits_journal",
 		"deliveries:tr_deliveries_immutable", "deliveries:tr_deliveries_parent",
+		"exchange_differences:tr_exchange_differences_immutable", "exchange_differences:tr_exchange_differences_journal",
+		"exchange_rates:tr_exchange_rates_fetched", "exchange_rates:tr_exchange_rates_overwrite",
 		"invoice_holds:tr_invoice_holds_immutable", "invoice_holds:tr_invoice_holds_parent",
 		"invoices:tr_invoices_immutable", "journal_facts:tr_journal_facts_immutable",
 		"line_releases:tr_line_releases_immutable", "line_sources:tr_line_sources_immutable",

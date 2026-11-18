@@ -259,7 +259,7 @@ var knownRules = []string{
 	ehf.RuleBuyerReference, ehf.RuleBuyerEndpoint, ehf.RuleEndpointScheme, ehf.RuleSellerVATID, ehf.RuleCategoryK,
 	ehf.RuleLineTotal, ehf.RuleTaxExclusive, ehf.RuleTaxInclusive, ehf.RuleTaxTotal, ehf.RuleTaxableSum,
 	ehf.RuleKID, ehf.RulePaymentIDWithoutKID,
-	ehf.RuleAttachment, ehf.RuleUnitCode, ehf.RulePriceNegative,
+	ehf.RuleAttachment, ehf.RuleUnitCode, ehf.RulePriceNegative, ehf.RuleTaxCurrency, ehf.RuleTaxTotalNOK,
 }
 
 // The pre-check agrees with the oracle's manifest where it has the rule:

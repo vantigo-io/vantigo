@@ -197,7 +197,7 @@ func (q *Queries) JournalPage(ctx context.Context, arg JournalPageParams) ([]Jou
 }
 
 const journalSummaries = `-- name: JournalSummaries :many
-SELECT id, invoice_id, vat_category, rate_percent, saf_t_code, exemption_reason, taxable_amount, vat_amount, vat_amount_nok FROM invoices.vat_summaries WHERE invoice_id = ANY($1::bigint[])
+SELECT id, invoice_id, vat_category, rate_percent, saf_t_code, exemption_reason, taxable_amount, vat_amount, vat_amount_nok, taxable_amount_nok FROM invoices.vat_summaries WHERE invoice_id = ANY($1::bigint[])
 ORDER BY invoice_id, rate_percent DESC, vat_category
 `
 
@@ -221,6 +221,7 @@ func (q *Queries) JournalSummaries(ctx context.Context, invoiceIds []int64) ([]I
 			&i.TaxableAmount,
 			&i.VatAmount,
 			&i.VatAmountNok,
+			&i.TaxableAmountNok,
 		); err != nil {
 			return nil, err
 		}

@@ -105,9 +105,13 @@ func TestRun_SeedBooksTheDemo(t *testing.T) {
 	expect("supplier invoices by state", `
 		SELECT string_agg(state || '=' || n, ',' ORDER BY state) FROM (
 			SELECT state, count(*) AS n FROM accounting.supplier_invoices GROUP BY state) s`, "draft=2,posted=15")
+	// The EUR invoice paid in NOK leaves nothing open in NOK, with a gain
+	// and a loss beside the supplier payments' two (invoices phase 6 design
+	// I24).
+	expect("the EUR invoice's NOK left open", `SELECT string_agg(invoices.open_nok(id)::text, ',') FROM invoices.invoices WHERE currency = 'EUR'`, "0.00")
 	expect("a currency difference", `
 		SELECT count(*)::text FROM accounting.postings p JOIN accounting.accounts a ON a.id = p.account_id
-		WHERE a.system_role IN ('currency_gain', 'currency_loss')`, "2")
+		WHERE a.system_role IN ('currency_gain', 'currency_loss')`, "4")
 	// Terms 1–5 of 2026 have ended: closed, all but the fifth filed, the
 	// lock at the fifth's end.
 	expect("VAT terms closed", `SELECT count(*)::text FROM accounting.vat_terms WHERE state = 'closed'`, "5")

@@ -138,7 +138,7 @@ func (s *server) settleClaimDebit(ctx context.Context, q *store.Queries, line st
 			if err := lockCustomerCredit(ctx, txq, inv.CustomerID); err != nil {
 				return nil, err
 			}
-			return s.keepLocked(ctx, txq, locked, invoiceID, inv.CustomerID, "", *caller, now, loc)
+			return s.keepLocked(ctx, txq, locked, invoiceID, inv.CustomerID, "", *caller, now, loc, foreignKeep{})
 		})
 		switch {
 		case err == nil && refusal == nil:

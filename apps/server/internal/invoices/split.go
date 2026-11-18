@@ -346,9 +346,21 @@ func roundOffResidual(ctx context.Context, txq *store.Queries, inv store.Invoice
 	if err != nil {
 		return err
 	}
+	// The tolerance is in NOK (I15), and so is what the rounding clears: off
+	// NOK it closes the invoice, so its NOK is the receivable still open
+	// (invoices phase 6 design I24).
 	nok, err := amountNOKOf(inv, amount)
 	if err != nil {
 		return err
+	}
+	if inv.Currency != "NOK" {
+		rest, err := openNOKOf(ctx, txq, inv.ID)
+		if err != nil {
+			return err
+		}
+		if nok, err = numericFromRat(rest, 2); err != nil {
+			return err
+		}
 	}
 	residual, err := ratFromNumeric(nok)
 	if err != nil {

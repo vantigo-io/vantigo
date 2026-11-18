@@ -702,33 +702,8 @@ func TestMatch_PendingFinishedByMatchEndpoint(t *testing.T) {
 	}
 }
 
-// TestMatch_InvoiceNotInNokFailsClosed: a bank line is NOK, so a line whose
-// KID names an invoice in another currency is never registered against it —
-// there is no reason of the queue for it yet, so the match fails closed: the
-// line rolls back and stays pending, matching stops with a warning naming
-// it, and the import stands (Task 8's review, MINOR 2).
-func TestMatch_InvoiceNotInNokFailsClosed(t *testing.T) {
-	t.Parallel()
-	h, _ := matchHarness(t)
-	h.Exec(t, `UPDATE invoices.settings SET default_currency = 'EUR'`)
-	euro := kidded(t, issued(t, h, createDraft(t, h, draftBody(customerEuro, line("Konsulenttime", 10, 80, vat25))).ID))
-	h.Exec(t, `UPDATE invoices.settings SET default_currency = 'NOK'`)
-	if euro.Currency != "EUR" {
-		t.Fatalf("the invoice is in %s, want EUR", euro.Currency)
-	}
-	toMatchDay(h)
-	r := imported(t, importer(t, h), bankfiletest.OCR("1", kidPay(sellerAccount, 6, 100, *euro.Kid, "1")))
-	id := lineID(t, h, r.File.ID, "1")
-	if got := stateOf(t, h, id); got != "pending -" || r.Pending != 1 || r.Matched != 0 {
-		t.Errorf("the line = %s, the import %+v; want it left pending", got, r)
-	}
-	if got := paymentsFrom(t, h, id); len(got) != 0 {
-		t.Errorf("payments from the line = %v, want none", got)
-	}
-	if logs := h.Logs(); !strings.Contains(logs, "matching stopped early") || !strings.Contains(logs, fmt.Sprintf(`"bankTransactionId":%d`, id)) {
-		t.Errorf("no warning names line %d:\n%s", id, logs)
-	}
-}
+// A line whose KID names an invoice in another currency is queued
+// currency_differs since invoices phase 6 delivery C: TestCurrency_TheQueue.
 
 // TestMatch_QueueingIsConditional: a line is queued only from pending — the
 // classification reads the pool, and a concurrent match of the same file may

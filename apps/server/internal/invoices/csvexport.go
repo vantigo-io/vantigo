@@ -7,6 +7,7 @@ import (
 	"math/big"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -21,14 +22,18 @@ import (
 // selection — one row per document and VAT row, in csvfile.go's form. A
 // credit note is stored positive and signed negative here, in every amount,
 // the journal's rule. Every amount is the stored numeric as exact text; the
-// one computed column, Base NOK, is big.Rat arithmetic rounded to øre.
+// Base NOK is the VAT row's stored base in NOK (invoices phase 6 design
+// I21), and for a row issued before it — every one NOK — the base at the
+// document's rate, big.Rat arithmetic rounded to øre.
 
 // exportHeader is D5's header row, fixed and English, in its order. A new
 // column goes at the end: KID is EHF and KID design D3's, Project invoices
-// work design D9's.
+// work design D9's, the rate, its day and its source invoices phase 6 design
+// I27's.
 var exportHeader = []string{
 	"Number", "Kind", "Issue date", "Delivery", "Due", "Customer number", "Buyer", "Buyer org no",
 	"Currency", "SAF-T code", "Rate", "Base", "VAT", "Base NOK", "VAT NOK", "Credits number", "KID", "Project",
+	"Exchange rate", "Rate date", "Rate source",
 }
 
 // tooManyRowsToExport is the cap's 400 (D5): a bare problem asking for a
@@ -145,6 +150,13 @@ func exportCells(r store.ExportRowsRow) ([]csvValue, error) {
 		return nil, err
 	}
 	baseNOK := csvAmount(new(big.Rat).Mul(taxable, exchangeRate), credit)
+	if r.TaxableAmountNok.Valid {
+		if baseNOK, err = csvDecimal(r.TaxableAmountNok, credit); err != nil {
+			return nil, err
+		}
+	}
+	// The rate at its ten decimals, with the file's decimal comma.
+	rateText := strings.ReplaceAll(exchangeRate.FloatString(ratesMaxDecimals), ".", ",")
 
 	text := func(s string) csvValue { return csvValue{text: s, guard: true} }
 	plain := func(s string) csvValue { return csvValue{text: s} }
@@ -167,6 +179,7 @@ func exportCells(r store.ExportRowsRow) ([]csvValue, error) {
 		// The project's code as the document took it: the projects module's
 		// text, so guarded.
 		text(csvText(r.ProjectReference)),
+		plain(rateText), plain(csvDate(r.ExchangeRateDate)), text(r.ExchangeRateSource),
 	}, nil
 }
 

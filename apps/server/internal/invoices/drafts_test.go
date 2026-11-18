@@ -477,11 +477,12 @@ func TestDrafts_TheMoney(t *testing.T) {
 		t.Errorf("501 lines = %d %s, want 400 \"At most 500 lines\"", res.Status, res.Body)
 	}
 
-	// NOK only, on create and on save.
+	// NOK or a currency turned on in the settings (invoices phase 6 design
+	// I17), on create and on save: EUR is not turned on here.
 	eur := draftBody(customerAcme)
 	eur["currency"] = "EUR"
 	if res := c.Do(http.MethodPost, invoicesPath, eur); res.Status != http.StatusBadRequest ||
-		!slices.Equal(problemOf(t, res).Errors["currency"], []string{"Only NOK in this phase"}) {
+		!slices.Equal(problemOf(t, res).Errors["currency"], []string{"This currency is not turned on in the settings"}) {
 		t.Errorf("EUR on create = %d %s, want 400 on currency", res.Status, res.Body)
 	}
 	draft := createDraft(t, h, draftBody(customerAcme))
@@ -571,7 +572,7 @@ func TestDrafts_VatInNOKIsAtTheDraftsRate(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	draft := createDraft(t, h, draftBody(customerAcme, line("A", 1, 100, vat25)))
-	h.Exec(t, `UPDATE invoices.invoices SET currency = 'EUR', exchange_rate = 11.5 WHERE id = $1`, draft.ID)
+	h.Exec(t, `UPDATE invoices.invoices SET currency = 'EUR', exchange_rate = 11.5, exchange_rate_source = 'norges_bank' WHERE id = $1`, draft.ID)
 
 	inv := getInvoice(t, h, draft.ID)
 	if inv.VatTotal != 25 || inv.VatTotalNok != 287.5 {

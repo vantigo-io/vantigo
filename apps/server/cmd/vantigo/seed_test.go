@@ -104,7 +104,8 @@ func TestRun_SeedPopulatesDemoDatasetAndIsIdempotent(t *testing.T) {
 		{"customers.contacts", "SELECT count(*) FROM customers.contacts", demoCustomerCount * demoContactsPerCustomer},
 		{"products.products", "SELECT count(*) FROM products.products", demoProductCount + demoWorkshopProductCount},
 		{"projects.projects", "SELECT count(*) FROM projects.projects", demoProjectCount},
-		{"invoices.invoices", "SELECT count(*) FROM invoices.invoices", 31},
+		// Those of main and one in EUR (seedInvoicesCurrency).
+		{"invoices.invoices", "SELECT count(*) FROM invoices.invoices", 32},
 		{"invoices.consumer_lookups found", "SELECT count(*) FROM invoices.consumer_lookups WHERE status = 'found' AND auto_accept", 1},
 		{"invoices.avtalegiro_mandates unresolved", "SELECT count(*) FROM invoices.avtalegiro_mandates WHERE customer_id IS NULL", 1},
 		{"invoices.avtalegiro_claims accepted", "SELECT count(*) FROM invoices.avtalegiro_claims WHERE status = 'accepted'", 1},

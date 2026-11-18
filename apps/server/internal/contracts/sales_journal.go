@@ -34,9 +34,12 @@ import (
 // transaction of the caller's open (module-boundaries rule 8's discipline);
 // OpenAt opens a read-only one of its own, for its snapshot. It performs no
 // authorization. Every amount is exact decimal text with two
-// decimals, as every money figure crosses a contract. Invoices issues NOK
-// only in this phase; an amount named NOK is the document's own figure at its
-// own exchange rate, which is 1 for NOK. Credit notes, and every line and
+// decimals, as every money figure crosses a contract. NOK is the functional
+// currency (invoices phase 6 design I17): a document in another currency
+// carries its rate, and an amount named NOK is the NOK the document fixed
+// at issue — each VAT row's base and VAT in NOK, each line's net in NOK with
+// its row's remainder (I21) — or the NOK a payment brought; for NOK every
+// NOK figure is the document's own. Credit notes, and every line and
 // summary of one, are answered positive, as Invoices stores them: the kind
 // says which way they go.
 type SalesJournal interface {
@@ -110,10 +113,14 @@ type JournalDocument struct {
 	// credits; zero on an invoice.
 	CreditsID, CreditsNumber int64
 	// Net, VAT and Gross are the document's totals in its currency;
-	// VATNOK is its VAT in NOK.
-	Net, VAT, Gross, VATNOK string
-	Lines                   []JournalLine
-	VATSummaries            []JournalVATSummary
+	// VATNOK is its VAT in NOK, and GrossNOK the receivable in NOK, Σ of the
+	// VAT summaries' BaseNOK and VATNOK (I21).
+	Net, VAT, Gross, VATNOK, GrossNOK string
+	// ExchangeRate is NOK per one unit of Currency, ten decimals ("1.0000000000"
+	// for NOK).
+	ExchangeRate string
+	Lines        []JournalLine
+	VATSummaries []JournalVATSummary
 }
 
 // The kinds of JournalLine.Kind: what the line was made from, snapshotted at
@@ -134,8 +141,10 @@ const (
 type JournalLine struct {
 	ID       int64
 	Position int32
-	// NetNOK is the line's net in NOK: negative on a deduction line.
-	NetNOK string
+	// NetNOK is the line's net in NOK: negative on a deduction line. Net
+	// is the same in the document's currency. The NetNOK of a VAT row's lines
+	// sum to its BaseNOK.
+	NetNOK, Net string
 	// Kind is one of the LineKind constants, "" for a line issued before
 	// the snapshot existed (fall back to the line's tax code). A credit
 	// note's line has its original line's kind, tax category and project.
@@ -156,6 +165,8 @@ type JournalLine struct {
 type JournalVATSummary struct {
 	SAFT, Category, RatePercent string
 	BaseNOK, VATNOK             string
+	// Base and VAT are the row's in the document's currency.
+	Base, VAT string
 }
 
 // The kinds of JournalFact.Kind. Later kinds are added to the end; a reader
@@ -180,6 +191,12 @@ const (
 	// one customer to another; both carry Credit.
 	FactCredit       = "credit"
 	FactCreditMerged = "credit_merged"
+	// FactExchangeDifference is the NOK rest a credit note left when it
+	// brought an invoice in another currency to zero open in it (invoices
+	// phase 6, review M1): AmountNOK the rest, ExchangeDifferenceNOK its
+	// signed difference — negative a loss (a receivable that never comes),
+	// positive a gain.
+	FactExchangeDifference = "exchange_difference"
 )
 
 // The kinds of JournalCredit.Kind: a movement's, as Invoices stores it.
@@ -220,6 +237,11 @@ type JournalCredit struct {
 	// FromCustomerID is, on a FactCreditMerged, the customer absorbed; the
 	// fact's CustomerID is the survivor.
 	FromCustomerID int32
+	// ExchangeDifferenceNOK is, on an applied movement, its payment's
+	// exchange difference, and on a refunded one what the credit was carried
+	// at less the NOK that left (invoices phase 6 plan readings 7 and 9):
+	// positive a gain. A reversal carries its original's. "0.00" otherwise.
+	ExchangeDifferenceNOK string
 }
 
 // The reasons of JournalWriteOff.Reason.
@@ -289,6 +311,13 @@ type JournalFact struct {
 	// charge payment's is all it carries of what it paid: it is not split
 	// by the charges it covered.
 	AmountNOK string
+	// Currency and Amount are the payment's in the invoice's currency, Amount
+	// positive on a removal too; for NOK Amount is AmountNOK.
+	// ExchangeDifferenceNOK is AmountNOK less the NOK receivable the payment
+	// cleared (invoices phase 6 design I24): positive a gain, "0.00" for NOK
+	// and on every fact that is no payment. A removal carries its
+	// original's.
+	Currency, Amount, ExchangeDifferenceNOK string
 	// Source is one of the PaymentSource constants (a charge payment is never
 	// vipps).
 	Source string
@@ -331,8 +360,9 @@ type OpenDocument struct {
 	IssueDate  time.Time
 	DueDate    time.Time
 	Currency   string
-	// OpenNOK is the open amount in NOK at the day.
-	OpenNOK string
+	// OpenNOK is the NOK receivable open at the day (invoices.open_nok's
+	// terms), and Open the open amount in Currency.
+	OpenNOK, Open string
 }
 
 // CreditPage is one page of CreditsAt: the customers' credit at its day, and

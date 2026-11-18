@@ -73,14 +73,17 @@ export const draft = (overrides: Partial<InvoiceDocument> = {}): InvoiceDocument
   paymentTermsDays: 30,
   currency: "NOK",
   exchangeRate: 1,
+  exchangeRateSource: "nok",
   yourReference: "PO-77",
   ourReference: "Ola Nordmann",
   orderReference: "",
   note: "",
   internalNote: "",
   netTotal: 99.99,
+  netTotalNok: 99.99,
   vatTotal: 25,
   grossTotal: 124.99,
+  grossTotalNok: 124.99,
   vatTotalNok: 25,
   lines: [1, 2, 3].map((position) => ({
     id: 5000 + position,
@@ -471,6 +474,7 @@ export const partlyPaid = (overrides: Partial<InvoiceDocument> = {}): InvoiceDoc
   paymentTermsDays: 30,
   currency: "NOK",
   exchangeRate: 1,
+  exchangeRateSource: "nok",
   exchangeRateDate: "2026-09-01",
   yourReference: "PO-77",
   ourReference: "Ola Nordmann",
@@ -478,8 +482,10 @@ export const partlyPaid = (overrides: Partial<InvoiceDocument> = {}): InvoiceDoc
   note: "",
   internalNote: "",
   netTotal: 99.99,
+  netTotalNok: 99.99,
   vatTotal: 25,
   grossTotal: 124.99,
+  grossTotalNok: 124.99,
   vatTotalNok: 25,
   lines: [
     {
@@ -842,6 +848,8 @@ export const vatCodes = (): VatCode[] => [
 
 /** The settings as the server sends them: a seller lacking two fields, the series locked. */
 export const settings = (overrides: Partial<InvoiceSettings> = {}): InvoiceSettings => ({
+  currencies: [],
+  rateFetches: [],
   legalName: "Kraft-Verket AS",
   organisationNumber: "974760673",
   vatRegistered: true,

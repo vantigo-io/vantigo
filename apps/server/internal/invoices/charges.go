@@ -408,6 +408,13 @@ func (s *server) PostInvoicesByIdChargePayments(ctx context.Context, req gen.Pos
 	if inv == nil {
 		return gen.PostInvoicesByIdChargePayments404Response{}, nil
 	}
+	// A charge payment has no NOK of its own (invoices phase 6 plan reading
+	// 6): on an invoice in another currency it is refused, and the interest
+	// goes to collection with the principal.
+	if inv.Currency != "NOK" {
+		return gen.PostInvoicesByIdChargePayments409ApplicationProblemPlusJSONResponse(conflict(codeCurrencyNotNOK, cannotRegisterChargeTitle,
+			"A charge payment is registered in NOK only: an invoice in another currency has its interest collected with the principal.")), nil
+	}
 	loc, err := s.businessZone(ctx)
 	if err != nil {
 		return nil, err

@@ -348,6 +348,11 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 	if deps, err = withSalesJournal(deps, mods); err != nil {
 		return nil, nil, err
 	}
+	// The exchange rates (contracts.ExchangeRates, invoices phase 6 design
+	// I18) resolve right after it: the same module provides them.
+	if deps, err = withExchangeRates(deps, mods); err != nil {
+		return nil, nil, err
+	}
 	// The expense journal (contracts.ExpenseJournal, accounting design A20)
 	// resolves right after it: its own module provides it, from its own
 	// tables only.

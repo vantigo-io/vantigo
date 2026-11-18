@@ -196,6 +196,18 @@ func (j *salesJournal) documents(ctx context.Context, rows []store.JournalDocume
 				return nil, err
 			}
 		}
+		rate, err := ratFromNumeric(r.ExchangeRate)
+		if err != nil {
+			return nil, err
+		}
+		d.ExchangeRate = rate.FloatString(ratesMaxDecimals)
+		grossNOK := new(big.Rat)
+		for _, v := range d.VATSummaries {
+			b, _ := new(big.Rat).SetString(v.BaseNOK)
+			x, _ := new(big.Rat).SetString(v.VATNOK)
+			grossNOK.Add(grossNOK, b).Add(grossNOK, x)
+		}
+		d.GrossNOK = grossNOK.FloatString(2)
 		docs = append(docs, d)
 	}
 	return docs, nil
@@ -203,7 +215,18 @@ func (j *salesJournal) documents(ctx context.Context, rows []store.JournalDocume
 
 // journalLine is a line as the contract answers it.
 func journalLine(l store.JournalLinesRow, rate pgtype.Numeric) (contracts.JournalLine, error) {
+	// The NOK the issue snapshotted (I21); a line issued before it — NOK —
+	// at its document's rate.
 	net, err := nok(l.LineNet, rate)
+	if err != nil {
+		return contracts.JournalLine{}, err
+	}
+	if l.LineNetNok.Valid {
+		if net, err = decimal2(l.LineNetNok); err != nil {
+			return contracts.JournalLine{}, err
+		}
+	}
+	own, err := decimal2(l.LineNet)
 	if err != nil {
 		return contracts.JournalLine{}, err
 	}
@@ -212,7 +235,7 @@ func journalLine(l store.JournalLinesRow, rate pgtype.Numeric) (contracts.Journa
 		return contracts.JournalLine{}, err
 	}
 	return contracts.JournalLine{
-		ID: l.ID, Position: l.Position, NetNOK: net, Kind: deref(l.LineKind),
+		ID: l.ID, Position: l.Position, NetNOK: net, Net: own, Kind: deref(l.LineKind),
 		TaxCategoryID: l.TaxCategoryID, ProjectID: l.ProjectID,
 		SAFT: deref(l.SafTCode), Category: deref(l.VatCategory), RatePercent: ratePercent,
 	}, nil
@@ -224,6 +247,19 @@ func journalSummary(v store.JournalVatSummariesRow, rate pgtype.Numeric) (contra
 	if err != nil {
 		return contracts.JournalVATSummary{}, err
 	}
+	if v.TaxableAmountNok.Valid {
+		if base, err = decimal2(v.TaxableAmountNok); err != nil {
+			return contracts.JournalVATSummary{}, err
+		}
+	}
+	ownBase, err := decimal2(v.TaxableAmount)
+	if err != nil {
+		return contracts.JournalVATSummary{}, err
+	}
+	ownVAT, err := decimal2(v.VatAmount)
+	if err != nil {
+		return contracts.JournalVATSummary{}, err
+	}
 	vat, err := decimal2(v.VatAmountNok)
 	if err != nil {
 		return contracts.JournalVATSummary{}, err
@@ -232,7 +268,8 @@ func journalSummary(v store.JournalVatSummariesRow, rate pgtype.Numeric) (contra
 	if err != nil {
 		return contracts.JournalVATSummary{}, err
 	}
-	return contracts.JournalVATSummary{SAFT: v.SafTCode, Category: v.VatCategory, RatePercent: ratePercent, BaseNOK: base, VATNOK: vat}, nil
+	return contracts.JournalVATSummary{SAFT: v.SafTCode, Category: v.VatCategory, RatePercent: ratePercent, BaseNOK: base, VATNOK: vat,
+		Base: ownBase, VAT: ownVAT}, nil
 }
 
 // Facts is up to limit facts after afterSeq, in seq order.
@@ -270,6 +307,18 @@ func (j *salesJournal) Facts(ctx context.Context, afterSeq int64, limit int) ([]
 		f := contracts.JournalFact{
 			Seq: r.Seq, Kind: r.Kind, SubjectID: r.SubjectID, InvoiceID: deref64(r.InvoiceID), InvoiceNumber: r.InvoiceNumber,
 			CustomerID: r.CustomerID, AmountNOK: amount, Source: r.Source, BankAccount: r.BankAccount, BankReference: r.BankReference,
+			Currency: r.PaymentCurrency, Amount: amount, ExchangeDifferenceNOK: "0.00",
+		}
+		// A payment's own amount and its exchange difference (I24).
+		if r.Amount.Valid && r.Kind != contracts.FactCredit && r.Kind != contracts.FactCreditMerged {
+			a, err := ratFromNumeric(r.Amount)
+			if err != nil {
+				return nil, err
+			}
+			f.Amount = a.Abs(a).FloatString(2)
+			if f.ExchangeDifferenceNOK, err = decimal2(r.ExchangeDifferenceNok); err != nil {
+				return nil, err
+			}
 		}
 		switch {
 		case r.MergedAt != nil:
@@ -286,12 +335,19 @@ func (j *salesJournal) Facts(ctx context.Context, afterSeq int64, limit int) ([]
 				return nil, err
 			}
 		}
+		if r.Kind == contracts.FactExchangeDifference {
+			if f.ExchangeDifferenceNOK, err = decimal2(r.ExchangeDifferenceNok); err != nil {
+				return nil, err
+			}
+		}
 		if r.WriteOffID != nil {
-			written, err := nok(r.WriteOffAmount, r.ExchangeRate)
+			// The NOK the write-off stored — off NOK the receivable it
+			// closed (I24) — and what was recovered before in NOK.
+			written, err := decimal2(r.WriteOffAmountNok)
 			if err != nil {
 				return nil, err
 			}
-			before, err := nok(r.RecoveredBefore, r.ExchangeRate)
+			before, err := decimal2(r.RecoveredBeforeNok)
 			if err != nil {
 				return nil, err
 			}
@@ -321,6 +377,9 @@ func journalCredit(r store.JournalFactsRow) (*contracts.JournalCredit, error) {
 		DocumentID: deref64(r.CreditDocumentID), RefundID: deref64(r.CreditRefundID), ReversesID: deref64(r.CreditReversesID),
 		ReversedKind: deref(r.CreditReversedKind), RefundBankAccount: r.RefundBankAccount,
 		FromCustomerID: derefInt32(r.MergeFromCustomerID),
+	}
+	if c.ExchangeDifferenceNOK, err = decimal2(r.CreditExchangeDifferenceNok); err != nil {
+		return nil, err
 	}
 	return c, nil
 }
@@ -353,13 +412,17 @@ func (j *salesJournal) OpenAt(ctx context.Context, day time.Time, afterNumber in
 	}
 	out := contracts.OpenPage{AsOfSeq: asOf, Documents: make([]contracts.OpenDocument, 0, len(rows))}
 	for _, r := range rows {
-		open, err := nok(r.OpenAmount, r.ExchangeRate)
+		openNOK, err := decimal2(r.OpenNok)
+		if err != nil {
+			return contracts.OpenPage{}, err
+		}
+		open, err := decimal2(r.OpenAmount)
 		if err != nil {
 			return contracts.OpenPage{}, err
 		}
 		out.Documents = append(out.Documents, contracts.OpenDocument{
 			ID: r.ID, Number: r.Number, CustomerID: r.CustomerID, IssueDate: r.IssueDate.Time, DueDate: r.DueDate.Time,
-			Currency: r.Currency, OpenNOK: open,
+			Currency: r.Currency, OpenNOK: openNOK, Open: open,
 		})
 	}
 	return out, nil

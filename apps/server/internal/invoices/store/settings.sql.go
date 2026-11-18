@@ -20,7 +20,7 @@ UPDATE invoices.settings SET
     logo_content_type = NULL,
     updated_at = $1::timestamptz
 WHERE id = 1
-RETURNING id, legal_name, organisation_number, vat_registered, in_foretaksregisteret, address_line1, address_line2, postal_code, city, country, bank_account, iban, bic, email, default_payment_terms_days, default_currency, footer_text, series_start, updated_at, revision, peppol_id, kid_length, kid_algorithm, work_vat_code_hours, work_vat_code_expenses, work_vat_code_milestones, timesheet_default, timesheet_person_label, energy_vat_code, energy_vat_code_exempt, send_channel, logo_object_key, logo_sha256, logo_content_type, phone, tolerance, avtalegiro_enabled, kid_space_reserved
+RETURNING id, legal_name, organisation_number, vat_registered, in_foretaksregisteret, address_line1, address_line2, postal_code, city, country, bank_account, iban, bic, email, default_payment_terms_days, default_currency, footer_text, series_start, updated_at, revision, peppol_id, kid_length, kid_algorithm, work_vat_code_hours, work_vat_code_expenses, work_vat_code_milestones, timesheet_default, timesheet_person_label, energy_vat_code, energy_vat_code_exempt, send_channel, logo_object_key, logo_sha256, logo_content_type, phone, tolerance, avtalegiro_enabled, kid_space_reserved, currencies
 `
 
 // ClearSettingsLogo removes the seller's logo (I1): the three columns
@@ -69,6 +69,7 @@ func (q *Queries) ClearSettingsLogo(ctx context.Context, now time.Time) (Invoice
 		&i.Tolerance,
 		&i.AvtalegiroEnabled,
 		&i.KidSpaceReserved,
+		&i.Currencies,
 	)
 	return i, err
 }
@@ -89,7 +90,7 @@ func (q *Queries) GetSendChannel(ctx context.Context) (*uuid.UUID, error) {
 }
 
 const getSettings = `-- name: GetSettings :one
-SELECT id, legal_name, organisation_number, vat_registered, in_foretaksregisteret, address_line1, address_line2, postal_code, city, country, bank_account, iban, bic, email, default_payment_terms_days, default_currency, footer_text, series_start, updated_at, revision, peppol_id, kid_length, kid_algorithm, work_vat_code_hours, work_vat_code_expenses, work_vat_code_milestones, timesheet_default, timesheet_person_label, energy_vat_code, energy_vat_code_exempt, send_channel, logo_object_key, logo_sha256, logo_content_type, phone, tolerance, avtalegiro_enabled, kid_space_reserved FROM invoices.settings WHERE id = 1
+SELECT id, legal_name, organisation_number, vat_registered, in_foretaksregisteret, address_line1, address_line2, postal_code, city, country, bank_account, iban, bic, email, default_payment_terms_days, default_currency, footer_text, series_start, updated_at, revision, peppol_id, kid_length, kid_algorithm, work_vat_code_hours, work_vat_code_expenses, work_vat_code_milestones, timesheet_default, timesheet_person_label, energy_vat_code, energy_vat_code_exempt, send_channel, logo_object_key, logo_sha256, logo_content_type, phone, tolerance, avtalegiro_enabled, kid_space_reserved, currencies FROM invoices.settings WHERE id = 1
 `
 
 // GetSettings reads the installation's single settings row, the seller record
@@ -137,12 +138,13 @@ func (q *Queries) GetSettings(ctx context.Context) (InvoicesSetting, error) {
 		&i.Tolerance,
 		&i.AvtalegiroEnabled,
 		&i.KidSpaceReserved,
+		&i.Currencies,
 	)
 	return i, err
 }
 
 const lockSettings = `-- name: LockSettings :one
-SELECT id, legal_name, organisation_number, vat_registered, in_foretaksregisteret, address_line1, address_line2, postal_code, city, country, bank_account, iban, bic, email, default_payment_terms_days, default_currency, footer_text, series_start, updated_at, revision, peppol_id, kid_length, kid_algorithm, work_vat_code_hours, work_vat_code_expenses, work_vat_code_milestones, timesheet_default, timesheet_person_label, energy_vat_code, energy_vat_code_exempt, send_channel, logo_object_key, logo_sha256, logo_content_type, phone, tolerance, avtalegiro_enabled, kid_space_reserved FROM invoices.settings WHERE id = 1 FOR UPDATE
+SELECT id, legal_name, organisation_number, vat_registered, in_foretaksregisteret, address_line1, address_line2, postal_code, city, country, bank_account, iban, bic, email, default_payment_terms_days, default_currency, footer_text, series_start, updated_at, revision, peppol_id, kid_length, kid_algorithm, work_vat_code_hours, work_vat_code_expenses, work_vat_code_milestones, timesheet_default, timesheet_person_label, energy_vat_code, energy_vat_code_exempt, send_channel, logo_object_key, logo_sha256, logo_content_type, phone, tolerance, avtalegiro_enabled, kid_space_reserved, currencies FROM invoices.settings WHERE id = 1 FOR UPDATE
 `
 
 // LockSettings takes the settings row FOR UPDATE: PUT /settings and every rate
@@ -190,6 +192,7 @@ func (q *Queries) LockSettings(ctx context.Context) (InvoicesSetting, error) {
 		&i.Tolerance,
 		&i.AvtalegiroEnabled,
 		&i.KidSpaceReserved,
+		&i.Currencies,
 	)
 	return i, err
 }
@@ -201,7 +204,7 @@ UPDATE invoices.settings SET
     logo_content_type = $3,
     updated_at = $4::timestamptz
 WHERE id = 1
-RETURNING id, legal_name, organisation_number, vat_registered, in_foretaksregisteret, address_line1, address_line2, postal_code, city, country, bank_account, iban, bic, email, default_payment_terms_days, default_currency, footer_text, series_start, updated_at, revision, peppol_id, kid_length, kid_algorithm, work_vat_code_hours, work_vat_code_expenses, work_vat_code_milestones, timesheet_default, timesheet_person_label, energy_vat_code, energy_vat_code_exempt, send_channel, logo_object_key, logo_sha256, logo_content_type, phone, tolerance, avtalegiro_enabled, kid_space_reserved
+RETURNING id, legal_name, organisation_number, vat_registered, in_foretaksregisteret, address_line1, address_line2, postal_code, city, country, bank_account, iban, bic, email, default_payment_terms_days, default_currency, footer_text, series_start, updated_at, revision, peppol_id, kid_length, kid_algorithm, work_vat_code_hours, work_vat_code_expenses, work_vat_code_milestones, timesheet_default, timesheet_person_label, energy_vat_code, energy_vat_code_exempt, send_channel, logo_object_key, logo_sha256, logo_content_type, phone, tolerance, avtalegiro_enabled, kid_space_reserved, currencies
 `
 
 type SetSettingsLogoParams struct {
@@ -263,12 +266,13 @@ func (q *Queries) SetSettingsLogo(ctx context.Context, arg SetSettingsLogoParams
 		&i.Tolerance,
 		&i.AvtalegiroEnabled,
 		&i.KidSpaceReserved,
+		&i.Currencies,
 	)
 	return i, err
 }
 
 const shareSettings = `-- name: ShareSettings :one
-SELECT id, legal_name, organisation_number, vat_registered, in_foretaksregisteret, address_line1, address_line2, postal_code, city, country, bank_account, iban, bic, email, default_payment_terms_days, default_currency, footer_text, series_start, updated_at, revision, peppol_id, kid_length, kid_algorithm, work_vat_code_hours, work_vat_code_expenses, work_vat_code_milestones, timesheet_default, timesheet_person_label, energy_vat_code, energy_vat_code_exempt, send_channel, logo_object_key, logo_sha256, logo_content_type, phone, tolerance, avtalegiro_enabled, kid_space_reserved FROM invoices.settings WHERE id = 1 FOR SHARE
+SELECT id, legal_name, organisation_number, vat_registered, in_foretaksregisteret, address_line1, address_line2, postal_code, city, country, bank_account, iban, bic, email, default_payment_terms_days, default_currency, footer_text, series_start, updated_at, revision, peppol_id, kid_length, kid_algorithm, work_vat_code_hours, work_vat_code_expenses, work_vat_code_milestones, timesheet_default, timesheet_person_label, energy_vat_code, energy_vat_code_exempt, send_channel, logo_object_key, logo_sha256, logo_content_type, phone, tolerance, avtalegiro_enabled, kid_space_reserved, currencies FROM invoices.settings WHERE id = 1 FOR SHARE
 `
 
 // ShareSettings takes the settings row FOR SHARE: the issue's seller snapshot
@@ -316,6 +320,7 @@ func (q *Queries) ShareSettings(ctx context.Context) (InvoicesSetting, error) {
 		&i.Tolerance,
 		&i.AvtalegiroEnabled,
 		&i.KidSpaceReserved,
+		&i.Currencies,
 	)
 	return i, err
 }
@@ -352,10 +357,11 @@ UPDATE invoices.settings SET
     energy_vat_code_exempt = $28,
     send_channel = $29,
     tolerance = $30,
-    updated_at = $31::timestamptz,
+    currencies = $31::text[],
+    updated_at = $32::timestamptz,
     revision = revision + 1
 WHERE id = 1
-RETURNING id, legal_name, organisation_number, vat_registered, in_foretaksregisteret, address_line1, address_line2, postal_code, city, country, bank_account, iban, bic, email, default_payment_terms_days, default_currency, footer_text, series_start, updated_at, revision, peppol_id, kid_length, kid_algorithm, work_vat_code_hours, work_vat_code_expenses, work_vat_code_milestones, timesheet_default, timesheet_person_label, energy_vat_code, energy_vat_code_exempt, send_channel, logo_object_key, logo_sha256, logo_content_type, phone, tolerance, avtalegiro_enabled, kid_space_reserved
+RETURNING id, legal_name, organisation_number, vat_registered, in_foretaksregisteret, address_line1, address_line2, postal_code, city, country, bank_account, iban, bic, email, default_payment_terms_days, default_currency, footer_text, series_start, updated_at, revision, peppol_id, kid_length, kid_algorithm, work_vat_code_hours, work_vat_code_expenses, work_vat_code_milestones, timesheet_default, timesheet_person_label, energy_vat_code, energy_vat_code_exempt, send_channel, logo_object_key, logo_sha256, logo_content_type, phone, tolerance, avtalegiro_enabled, kid_space_reserved, currencies
 `
 
 type UpdateSettingsParams struct {
@@ -389,6 +395,7 @@ type UpdateSettingsParams struct {
 	EnergyVatCodeExempt     int32
 	SendChannel             *uuid.UUID
 	Tolerance               pgtype.Numeric
+	Currencies              []string
 	Now                     time.Time
 }
 
@@ -437,6 +444,7 @@ func (q *Queries) UpdateSettings(ctx context.Context, arg UpdateSettingsParams) 
 		arg.EnergyVatCodeExempt,
 		arg.SendChannel,
 		arg.Tolerance,
+		arg.Currencies,
 		arg.Now,
 	)
 	var i InvoicesSetting
@@ -479,6 +487,7 @@ func (q *Queries) UpdateSettings(ctx context.Context, arg UpdateSettingsParams) 
 		&i.Tolerance,
 		&i.AvtalegiroEnabled,
 		&i.KidSpaceReserved,
+		&i.Currencies,
 	)
 	return i, err
 }

@@ -178,5 +178,53 @@
       "en": "The customer's credit on the customer's Invoices tab: the balance, every movement and Record refund.",
       "nb": "Kundens kreditt på kundens Fakturaer-fane: saldoen, hver bevegelse og Registrer tilbakebetaling."
     }
+  },
+  {
+    "key": "invoices.settings.currencies",
+    "route": "/invoices/settings",
+    "label": {
+      "en": "Currencies besides NOK",
+      "nb": "Valutaer i tillegg til NOK"
+    },
+    "description": {
+      "en": "The field on the Currencies card in Invoice settings where the currencies an invoice may be in besides NOK are turned on; each needs the IBAN and BIC and a rate from Norges Bank or one entered by hand.",
+      "nb": "Feltet på kortet Valutaer i fakturainnstillingene der valutaene en faktura kan være i i tillegg til NOK slås på; hver trenger IBAN og BIC og en kurs fra Norges Bank eller en lagt inn for hånd."
+    }
+  },
+  {
+    "key": "invoices.invoice.currency",
+    "route": "/invoices/{invoiceId}",
+    "label": {
+      "en": "Currency",
+      "nb": "Valuta"
+    },
+    "description": {
+      "en": "The draft's currency: NOK or one turned on in the settings.",
+      "nb": "Utkastets valuta: NOK eller en som er slått på i innstillingene."
+    }
+  },
+  {
+    "key": "invoices.invoice.rate",
+    "route": "/invoices/{invoiceId}",
+    "label": {
+      "en": "Use another rate",
+      "nb": "Bruk en annen kurs"
+    },
+    "description": {
+      "en": "The field on a draft in another currency for a rate agreed with the customer; empty uses Norges Bank's rate of the issue date.",
+      "nb": "Feltet på et utkast i en annen valuta for en kurs avtalt med kunden; tomt bruker Norges Banks kurs for fakturadatoen."
+    }
+  },
+  {
+    "key": "invoices.payment.amount-nok",
+    "route": "/invoices/{invoiceId}",
+    "label": {
+      "en": "Received in NOK",
+      "nb": "Mottatt i NOK"
+    },
+    "description": {
+      "en": "The field of the Register payment dialog, on an invoice in another currency, for what arrived in NOK; the difference is booked as a currency gain or loss.",
+      "nb": "Feltet i dialogen Registrer betaling, på en faktura i en annen valuta, for det som kom inn i NOK; forskjellen bokføres som agiogevinst eller agiotap."
+    }
   }
 ]

@@ -47,7 +47,8 @@ func TestSalesJournal_DocumentsByNumberWithLinesAndSummaries(t *testing.T) {
 	d := page[0]
 	if d.ID != first.ID || d.Kind != contracts.JournalInvoice || d.CustomerID != customerAcme || d.Currency != "NOK" ||
 		d.IssueDate.Format(time.DateOnly) != "2026-09-12" || d.DueDate == nil || d.DueDate.Format(time.DateOnly) != "2026-10-12" ||
-		d.Net != "17000.00" || d.VAT != "3000.00" || d.Gross != "20000.00" || d.VATNOK != "3000.00" || d.CreditsID != 0 {
+		d.Net != "17000.00" || d.VAT != "3000.00" || d.Gross != "20000.00" || d.VATNOK != "3000.00" || d.CreditsID != 0 ||
+		d.ExchangeRate != "1.0000000000" || d.GrossNOK != "20000.00" {
 		t.Errorf("document = %+v, want the first invoice's figures", d)
 	}
 	if len(d.Lines) != 2 {
@@ -60,8 +61,8 @@ func TestSalesJournal_DocumentsByNumberWithLinesAndSummaries(t *testing.T) {
 	if l := d.Lines[1]; l.NetNOK != "5000.00" || l.SAFT != "6" || l.Category != "E" || l.RatePercent != "0.00" {
 		t.Errorf("line 2 = %+v, want 5 000 outside the VAT act", l)
 	}
-	if len(d.VATSummaries) != 2 || d.VATSummaries[0] != (contracts.JournalVATSummary{SAFT: "3", Category: "S", RatePercent: "25.00", BaseNOK: "12000.00", VATNOK: "3000.00"}) ||
-		d.VATSummaries[1] != (contracts.JournalVATSummary{SAFT: "6", Category: "E", RatePercent: "0.00", BaseNOK: "5000.00", VATNOK: "0.00"}) {
+	if len(d.VATSummaries) != 2 || d.VATSummaries[0] != (contracts.JournalVATSummary{SAFT: "3", Category: "S", RatePercent: "25.00", BaseNOK: "12000.00", VATNOK: "3000.00", Base: "12000.00", VAT: "3000.00"}) ||
+		d.VATSummaries[1] != (contracts.JournalVATSummary{SAFT: "6", Category: "E", RatePercent: "0.00", BaseNOK: "5000.00", VATNOK: "0.00", Base: "5000.00", VAT: "0.00"}) {
 		t.Errorf("summaries = %+v, want 25 %% then the exempt one", d.VATSummaries)
 	}
 
@@ -300,6 +301,7 @@ func TestSalesJournal_ChargePaymentFactsCarryTheirAmountAlone(t *testing.T) {
 	}
 	for i, w := range want {
 		w.InvoiceID, w.InvoiceNumber, w.CustomerID, w.Source = id, 9001, customerAcme, contracts.PaymentSourceManual
+		w.Currency, w.Amount, w.ExchangeDifferenceNOK = "NOK", w.AmountNOK, "0.00"
 		if facts[i] != w {
 			t.Errorf("fact %d = %+v, want %+v", i+1, facts[i], w)
 		}
