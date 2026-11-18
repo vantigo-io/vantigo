@@ -1788,8 +1788,15 @@ order, customer before invoice, the merge and the erase included; the
 item. See
 [`docs/src/content/docs/en/reference/invoices.md`](docs/src/content/docs/en/reference/invoices.md#customer-credit).
 
-**Delivery B-2: one line for several invoices and small differences** — one bank line
-matched to several invoices by its remittance references; small differences rounded off.
+**Delivery B-2: one line for several invoices and small differences (done)** — on
+`claude/invoices-split`, migration `00199_invoices_split.sql`. Every camt.054 remittance
+reference kept; a line without a KID, with an unknown one or above its invoice's open
+amount matched across several open NOK invoices of one customer when the KIDs and whole
+invoice numbers it names add up to it exactly, oldest due first, with an `auto_split`
+event — any doubt queues; a rounding tolerance (NOK 0–100) under which a payment's rest
+is written off by itself as `rounding`, source `auto`, and a rounding write-off reads
+paid. See
+[`docs/src/content/docs/en/reference/invoices.md`](docs/src/content/docs/en/reference/invoices.md#the-automatic-split).
 
 **Delivery C: foreign currency** — Norges Bank's rates, the document in currency with
 VAT in NOK, payments with the exchange difference, Orders' currencies invoiced and

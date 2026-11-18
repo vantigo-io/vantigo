@@ -60,6 +60,9 @@ Fyll ut feltene og klikk **Lagre**:
   kjøpere i utlandet.
 - **Standard betalingsfrist (dager)**, 0 til 365: fristen et nytt utkast starter med
   når kundens faktureringsprofil ikke oppgir noen.
+- **Avrundingsgrense**, 0 til 100 kroner: *Beløp som står så lite igjen etter en
+  betaling, avrundes som en liten differanse. 0 slår det av.* Se [små
+  differanser](#små-differanser-avrundet). Den starter på 0.
 - **Registrert i Merverdiavgiftsregisteret (skriver MVA etter nummeret)** og
   **Registrert i Foretaksregisteret** — begge skrives på dokumentet slik forskriften
   krever.
@@ -1254,6 +1257,25 @@ avskrivning**. Registrer den her som innbetaling etter avskrivning, og avvis så
 **Ikke en kundebetaling** med en merknad. En avskrevet faktura kan ikke krediteres før
 avskrivningen er angret.
 
+### Små differanser, avrundet
+
+Når **Avrundingsgrense** under **Fakturainnstillinger** er over 0, får en betaling som lar
+en faktura stå litt åpen — mer enn 0 og høyst grensen — resten avskrevet av seg selv, i
+samme øyeblikk, med årsaken **Avrunding**. Det gjelder en betaling du registrerer for
+hånd, en som avstemmes eller føres fra en bankfil eller bankintegrasjonen, og en som
+fordeles på flere fakturaer; aldri en Vipps-betaling, som betaler beløpet nøyaktig, penger
+innbetalt etter en avskrivning, eller kreditt som brukes. Avskrivningen vises under
+**Betalinger** som *Avrundet automatisk*, uten noen som den som gjorde den, og bokføres
+som en avrunding gjort for hånd. Si at grensen er 5: en faktura på 1 000 som betales med
+997, er betalt, og 3 avrundes; betalt med 994 forblir den delvis betalt. En endret grense
+gjelder fra neste betaling.
+
+En faktura som en avrundingsavskrivning har lukket — automatisk eller gjort for hånd —
+står som **Betalt**, ikke **Avskrevet**: en liten differanse er ikke et tap. Betaler
+kunden differansen senere, venter banklinjen i [avvikskøen](#avvikskøen) som **Ingenting
+er igjen å betale**, og **Hold resten som kreditt** holder den som kundens kreditt.
+**Angre avskrivning** angrer en automatisk avskrivning som alle andre.
+
 Å avskrive, å angre og å registrere en innbetaling etter avskrivning krever
 `invoices:payments`. Med [Regnskap](/nb/user/accounting/#slik-kommer-salget-inn-fra-fakturaer)
 slått på bokføres hver av dem av seg selv, og siden til en utstedt faktura viser
@@ -1291,6 +1313,19 @@ ikke er bokført, beløp på null. Hver avstemte betaling registreres mot faktur
 utestående beløp først, eventuelle purrekrav med resten — med dagen banken bokførte den,
 KID-en som referanse og deg som den som registrerte den. **Åpne filen** viser filens egen
 side, med hver betaling den brakte inn.
+
+**Én betaling for flere fakturaer.** En betaling uten KID — eller med en KID ingen
+faktura har, eller som er mer enn fakturaen har åpent — leses for fakturaene den nevner
+før den legges i køen: KID-ene og fakturanumrene i meldingen, i hver referanse på en
+camt.054-linje og i teksten på en linje fra bankintegrasjonen. Et fakturanummer teller
+bare som et eget ord — *Faktura 10023 og 10024*, *Fakt 10023/10024* — aldri som del av et
+beløp (*1 250,00*, *NOK 10023*), en dato eller et kontonummer. Er det to eller flere åpne
+fakturaer til én kunde, ingen kreditert i sin helhet eller avskrevet, og summerer det
+utestående på dem seg nøyaktig til betalingen, registreres den mot hver av dem i sin
+helhet, den som forfaller først, først, og filens side viser den **Fordelt automatisk på
+fakturaer** med hver faktura under. Purrekrav betales aldri på denne måten. Alt annet — to
+kunder, en sum som avviker med en øre — lar betalingen bli i køen som før, med fakturaene
+den nevnte blant forslagene.
 
 **Avstem resten.** Avstemmingen kjører rett etter importen, én betaling om gangen.
 Stopper den tidlig, står filen likevel importert, og noen av betalingene er **Ikke avstemt
