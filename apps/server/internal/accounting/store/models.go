@@ -126,6 +126,7 @@ type AccountingOpenItem struct {
 	SourceDocumentID *int64
 	OpeningAsOfSeq   *int64
 	CreatedAt        time.Time
+	CustomerCredit   bool
 }
 
 type AccountingPosting struct {

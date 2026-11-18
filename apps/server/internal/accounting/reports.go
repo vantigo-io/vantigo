@@ -58,7 +58,7 @@ var words = map[string]map[string]string{
 		"opening": "Opening balance", "closing": "Closing balance", "amount": "Amount", "compare": "Comparison",
 		"party": "Party", "document": "Document", "documentDate": "Document date", "dueDate": "Due date",
 		"notDue": "Not due", "d1": "1–30 days", "d31": "31–60 days", "d61": "61–90 days", "d91": "Over 90 days",
-		"total": "Total", "unallocated": "Unallocated", "movement": "Movement in the period",
+		"total": "Total", "unallocated": "Unallocated", "customerCredit": "Customer credit", "movement": "Movement in the period",
 		"earlierResult": "Earlier years' result, not yet closed",
 		"opIncome":      "Operating income", "goods": "Cost of goods", "payroll": "Payroll costs", "otherCosts": "Other operating costs",
 		"opResult": "Operating result", "finIncome": "Financial income", "finCosts": "Financial costs",
@@ -82,7 +82,7 @@ var words = map[string]map[string]string{
 		"opening": "Inngående saldo", "closing": "Utgående saldo", "amount": "Beløp", "compare": "Sammenligning",
 		"party": "Part", "document": "Dokument", "documentDate": "Dokumentdato", "dueDate": "Forfall",
 		"notDue": "Ikke forfalt", "d1": "1–30 dager", "d31": "31–60 dager", "d61": "61–90 dager", "d91": "Over 90 dager",
-		"total": "Sum", "unallocated": "Uspesifisert", "movement": "Bevegelse i perioden",
+		"total": "Sum", "unallocated": "Uspesifisert", "customerCredit": "Kundekreditt", "movement": "Bevegelse i perioden",
 		"earlierResult": "Tidligere års resultat, ikke avsluttet",
 		"opIncome":      "Driftsinntekter", "goods": "Varekostnad", "payroll": "Lønnskostnad", "otherCosts": "Annen driftskostnad",
 		"opResult": "Driftsresultat", "finIncome": "Finansinntekter", "finCosts": "Finanskostnader",
@@ -397,8 +397,13 @@ func (t *table) parties(ctx context.Context, q *store.Queries, in reportInput) (
 		}
 		balance, movement := mustRat(r.Balance), mustRat(r.Movement)
 		document := deref(r.DocumentNumber)
-		if r.Unallocated {
+		switch {
+		case r.Unallocated:
 			document = t.w("unallocated")
+		case r.CustomerCredit:
+			// The customer's credit (invoices phase 6 design I16): no
+			// document and no due date, so it ages as not due, negative.
+			document = t.w("customerCredit")
 		}
 		cells := map[string]string{"document": document, "balance": money(balance), "movement": money(movement)}
 		if r.DocumentDate != nil {

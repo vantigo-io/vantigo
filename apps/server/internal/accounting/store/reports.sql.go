@@ -280,7 +280,7 @@ func (q *Queries) JournalPostings(ctx context.Context, arg JournalPostingsParams
 
 const partyItemsAt = `-- name: PartyItemsAt :many
 SELECT o.id, o.customer_id, o.supplier_id, o.unallocated, o.document_number, o.document_date, o.due_date,
-    o.source_document_id,
+    o.source_document_id, o.customer_credit,
     sup.name AS supplier_name, coalesce(inv.supplier_invoice_id, 0)::bigint AS supplier_invoice_id,
     coalesce(sum(p.amount), 0)::text AS balance,
     coalesce(sum(p.amount) FILTER (WHERE v.voucher_date >= $1::date), 0)::text AS movement
@@ -318,6 +318,7 @@ type PartyItemsAtRow struct {
 	DocumentDate      *time.Time
 	DueDate           *time.Time
 	SourceDocumentID  *int64
+	CustomerCredit    bool
 	SupplierName      *string
 	SupplierInvoiceID int64
 	Balance           string
@@ -351,6 +352,7 @@ func (q *Queries) PartyItemsAt(ctx context.Context, arg PartyItemsAtParams) ([]P
 			&i.DocumentDate,
 			&i.DueDate,
 			&i.SourceDocumentID,
+			&i.CustomerCredit,
 			&i.SupplierName,
 			&i.SupplierInvoiceID,
 			&i.Balance,

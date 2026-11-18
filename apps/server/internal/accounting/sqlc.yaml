@@ -13,6 +13,7 @@ sql:
       - ../db/migrations/00186_accounting_vat.sql
       - ../db/migrations/00187_accounting_saft.sql
       - ../db/migrations/00188_accounting_bank.sql
+      - ../db/migrations/00198_accounting_customer_credit.sql
     queries: queries
     gen:
       go:

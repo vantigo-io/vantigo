@@ -41,7 +41,8 @@ WHERE o.kind = 'customer' AND o.source_document_id = s.document_id;
 -- name: GetOpenItem :one
 SELECT o.id, o.kind, o.customer_id, o.supplier_id, o.unallocated, o.document_number, o.document_date, o.due_date,
     o.original_amount::text AS original_amount, o.source_document_id,
-    coalesce((SELECT sum(p.amount) FROM accounting.postings p WHERE p.open_item_id = o.id), 0)::text AS balance
+    coalesce((SELECT sum(p.amount) FROM accounting.postings p WHERE p.open_item_id = o.id), 0)::text AS balance,
+    o.customer_credit
 FROM accounting.open_items o WHERE o.id = sqlc.arg(id);
 
 -- name: LockOpenItem :exec
@@ -52,7 +53,7 @@ SELECT 1 FROM accounting.open_items WHERE id = sqlc.arg(id) FOR UPDATE;
 -- of every match.
 SELECT o.id, o.kind, o.customer_id, o.supplier_id, o.unallocated, o.document_number, o.document_date, o.due_date,
     o.original_amount::text AS original_amount, o.source_document_id, b.balance::text AS balance,
-    count(*) OVER () AS total
+    count(*) OVER () AS total, o.customer_credit
 FROM accounting.open_items o
 CROSS JOIN LATERAL (SELECT coalesce(sum(p.amount), 0) AS balance FROM accounting.postings p
     WHERE p.open_item_id = o.id) b
@@ -67,3 +68,24 @@ LIMIT sqlc.arg(row_limit) OFFSET sqlc.arg(row_offset);
 SELECT count(*)::int FROM accounting.open_items o
 WHERE o.kind = 'customer'
   AND coalesce((SELECT sum(p.amount) FROM accounting.postings p WHERE p.open_item_id = o.id), 0) <> 0;
+
+-- name: EnsureCustomerCreditItem :exec
+-- EnsureCustomerCreditItem makes the customer's credit item (invoices phase 6
+-- design I16) when it has none: one per customer, on receivables, with no
+-- document; two posts at once both end up naming the one row.
+INSERT INTO accounting.open_items (kind, customer_id, customer_credit, created_at)
+VALUES ('customer', sqlc.arg(customer_id), true, sqlc.arg(now))
+ON CONFLICT DO NOTHING;
+
+-- name: CustomerCreditItem :one
+-- CustomerCreditItem is the customer's credit item, with the seq of the
+-- opening's CreditsAt page it was read on.
+SELECT id, opening_as_of_seq FROM accounting.open_items
+WHERE customer_credit AND customer_id = sqlc.arg(customer_id);
+
+-- name: SetCreditItemOpeningSeqs :exec
+-- SetCreditItemOpeningSeqs records, on each customer's credit item the
+-- opening made, the AsOfSeq of the CreditsAt page it was read on (I16, R14).
+UPDATE accounting.open_items o SET opening_as_of_seq = s.seq
+FROM (SELECT unnest(sqlc.arg(customer_ids)::int[]) AS customer_id, unnest(sqlc.arg(seqs)::bigint[]) AS seq) s
+WHERE o.customer_credit AND o.customer_id = s.customer_id;

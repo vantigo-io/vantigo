@@ -46,6 +46,16 @@ const (
 	salesRuleWriteOffUndone   = "sales.write_off_undone"
 	salesRuleRecovered        = "sales.recovered"
 	salesRuleRecoveredRemoved = "sales.recovered_removed"
+	// The customer's credit (invoices phase 6 design I16): an overpayment
+	// kept, a credit note's surplus moved off its invoice, credit applied to
+	// an invoice, credit refunded, a movement reversed, and a balance a
+	// customer merge moved. Each posts on the customer's credit item.
+	salesRuleCreditOverpayment = "sales.credit_overpayment"
+	salesRuleCreditNoteMoved   = "sales.credit_note_moved"
+	salesRuleCreditApplied     = "sales.credit_applied"
+	salesRuleCreditRefunded    = "sales.credit_refunded"
+	salesRuleCreditReversed    = "sales.credit_reversed"
+	salesRuleCreditMerged      = "sales.credit_merged"
 
 	salesRuleVersion int32 = 1
 	// salesRulePaymentVersion is the version of the payments' rules —
@@ -318,6 +328,19 @@ func factInBooks(ctx context.Context, q *store.Queries, b salesBooks, f contract
 		return true, nil
 	}
 	threshold := b.openingSeq
+	if f.Kind == contracts.FactCredit || f.Kind == contracts.FactCreditMerged {
+		// A credit fact is in the opening's credit when it is in the
+		// customer's credit item's CreditsAt page (I16).
+		item, err := q.CustomerCreditItem(ctx, &f.CustomerID)
+		switch {
+		case noRows(err):
+		case err != nil:
+			return false, err
+		case item.OpeningAsOfSeq != nil:
+			threshold = item.OpeningAsOfSeq
+		}
+		return threshold != nil && f.Seq > *threshold, nil
+	}
 	item, err := q.OpenItemOpeningSeq(ctx, &f.InvoiceID)
 	switch {
 	case noRows(err):
@@ -355,6 +378,15 @@ type factInputs struct {
 // now. A date before the books start or in a locked period is the engine's to
 // move (A8, R5).
 func factVoucher(b salesBooks, f contracts.JournalFact, in factInputs) (*Voucher, error) {
+	// Credit applied is a payment of source credit, and its applied
+	// movement's FactCredit moves the credit (I16, plan reading 7): the
+	// payment and its removal post nothing, so the money moves once.
+	if (f.Kind == contracts.FactPayment || f.Kind == contracts.FactPaymentRemoved) && f.Source == contracts.PaymentSourceCredit {
+		return nil, nil
+	}
+	if f.Kind == contracts.FactCredit || f.Kind == contracts.FactCreditMerged {
+		return creditVoucher(b, f, in.original)
+	}
 	amount, err := amountOf(f.AmountNOK)
 	if err != nil {
 		return nil, err
@@ -481,6 +513,116 @@ func factVoucher(b salesBooks, f contracts.JournalFact, in factInputs) (*Voucher
 		v.RuleVersion = salesRulePaymentVersion
 	}
 	return v, nil
+}
+
+// creditVoucher is the voucher of a credit fact (invoices phase 6 design
+// I16, plan reading 4), every amount the movement's NOK, on the customer's
+// credit item:
+//
+//   - sales.credit_overpayment: the bank debited — the bank line's account,
+//     else the bank role's — the credit item credited;
+//   - sales.credit_note_moved: the invoice's item debited, which clears the
+//     negative open amount the credit note left, the credit item credited —
+//     zero on receivables;
+//   - sales.credit_applied: the credit item debited, the invoice's item
+//     credited (the payment of source credit posts nothing);
+//   - sales.credit_refunded: the credit item debited, the ledger account of
+//     the bank account the refund left from credited, else the bank role's;
+//   - sales.credit_reversed: the voucher the reversed movement posted turned
+//     back line for line when the reversal is all of it, and otherwise — a
+//     credit note's surplus returned in part — or when it never posted, the
+//     reversed movement's lines at the reversal's amount with every sign
+//     turned;
+//   - sales.credit_merged: the absorbed customer's credit item debited, the
+//     survivor's credited.
+func creditVoucher(b salesBooks, f contracts.JournalFact, original *storedVoucher) (*Voucher, error) {
+	c := f.Credit
+	if c == nil {
+		return nil, &unpostable{reason: reasonDocumentUnknown, detail: "The credit fact names no movement."}
+	}
+	amount, err := amountOf(f.AmountNOK)
+	if err != nil {
+		return nil, err
+	}
+	v := &Voucher{Kind: "customer_payment", Date: f.Date, DocumentDate: f.Date, Source: factSource(f), RuleVersion: salesRuleVersion}
+	if f.InvoiceID != 0 {
+		v.SourceDocumentID = &f.InvoiceID
+	}
+	credit := func(customer int32, a *big.Rat) Line {
+		return Line{Role: roleReceivables, Amount: a, CustomerID: &customer, Item: &OpenItemSpec{CustomerCredit: true}}
+	}
+	invoice := func(a *big.Rat) Line {
+		return Line{Role: roleReceivables, Amount: a, CustomerID: &f.CustomerID, SourceDocumentID: &f.InvoiceID,
+			Item: &OpenItemSpec{DocumentNumber: fmt.Sprint(f.InvoiceNumber)}}
+	}
+	if f.Kind == contracts.FactCreditMerged {
+		v.Rule = salesRuleCreditMerged
+		v.Description = b.text("Customer credit moved by a customer merge", "Kundekreditt flyttet ved sammenslåing av kunder")
+		v.Lines = []Line{credit(c.FromCustomerID, amount), credit(f.CustomerID, neg(amount))}
+		return v, nil
+	}
+	kind := c.Kind
+	reversal := kind == contracts.CreditReversed
+	if reversal {
+		kind = c.ReversedKind
+	}
+	switch kind {
+	case contracts.CreditOverpayment:
+		v.Rule, v.RuleVersion = salesRuleCreditOverpayment, salesRulePaymentVersion
+		v.Description = b.text("Overpayment of invoice %d kept as credit", "Overbetaling på faktura %d holdt som kreditt", f.InvoiceNumber)
+		v.Lines = []Line{withAmount(b.bankLine(f, nil), amount), credit(f.CustomerID, neg(amount))}
+		if !reversal && (f.BankAccount != "" || f.BankReference != "") {
+			v.BankRef = &BankRef{Account: f.BankAccount, Reference: f.BankReference, Source: f.Source}
+		}
+	case contracts.CreditNoteMoved:
+		v.Rule = salesRuleCreditNoteMoved
+		v.Description = b.text("Credit note surplus of invoice %d moved to customer credit", "Kreditnotaoverskudd på faktura %d flyttet til kundekreditt", f.InvoiceNumber)
+		v.Lines = []Line{invoice(amount), credit(f.CustomerID, neg(amount))}
+	case contracts.CreditApplied:
+		v.Rule = salesRuleCreditApplied
+		v.Description = b.text("Customer credit applied to invoice %d", "Kundekreditt brukt på faktura %d", f.InvoiceNumber)
+		v.Lines = []Line{credit(f.CustomerID, amount), invoice(neg(amount))}
+	case contracts.CreditRefunded:
+		v.Rule, v.RuleVersion = salesRuleCreditRefunded, salesRulePaymentVersion
+		v.Description = b.text("Customer credit refunded", "Kundekreditt tilbakebetalt")
+		bank := Line{Role: roleBank}
+		if id, ok := b.bankLedgers[c.RefundBankAccount]; ok && c.RefundBankAccount != "" {
+			bank = Line{AccountID: id}
+		}
+		v.Lines = []Line{credit(f.CustomerID, amount), withAmount(bank, neg(amount))}
+	default:
+		return nil, &unpostable{reason: reasonUnknownKind,
+			detail: fmt.Sprintf("Invoices' journal holds a credit movement of kind %q, which this version does not post.", c.Kind)}
+	}
+	if !reversal {
+		return v, nil
+	}
+	v.Rule, v.RuleVersion = salesRuleCreditReversed, salesRuleVersion
+	v.Description = b.text("Reversal: ", "Tilbakeføring: ") + v.Description
+	if original != nil && storedTotal(original).Cmp(amount) == 0 {
+		turnBack(v, original, b.text("Removed in Invoices", "Fjernet i Fakturering"))
+		v.BankRef = nil
+		return v, nil
+	}
+	if original != nil && len(original.lines) > 0 && kind == contracts.CreditOverpayment {
+		// The bank side the overpayment posted to, whatever the accounts
+		// say now.
+		v.Lines[0].AccountID, v.Lines[0].Role = original.lines[0].AccountID, ""
+	}
+	turn(v.Lines)
+	v.BankRef = nil
+	return v, nil
+}
+
+// storedTotal is what a stored voucher moves: the sum of its debits.
+func storedTotal(v *storedVoucher) *big.Rat {
+	total := new(big.Rat)
+	for _, l := range v.lines {
+		if l.Amount.Sign() > 0 {
+			total.Add(total, l.Amount)
+		}
+	}
+	return total
 }
 
 // bankLine is the bank side of a payment fact (A26, R11, rule
