@@ -2129,6 +2129,13 @@ klokka 14.00 dagen før forfall stopper banken det, og kortet sier **stoppet**; 
 er det for sent — *Det var for sent å stoppe trekket. Et overskudd blir kundens
 tilgode.*
 
+Det samme skjer når fakturaen **gjøres opp på en annen måte** mens trekket ennå er på
+vei — betalt manuelt, med kundens kreditt, med en innbetaling ført fra køen eller fordelt
+på flere fakturaer, avrundet eller avskrevet: Vantigo ber banken stoppe trekket innen et
+minutt eller så. Er det for sent, kommer trekket likevel, men det betaler aldri fakturaen
+to ganger: det fakturaen ikke lenger har åpent, holdes som kundens kreditt, og trekket
+merkes **betalt**. Et trekk fra bankfeeden venter i køen på **Hold resten som kreditt**.
+
 ### Følg sendingen på kortet eFaktura
 
 Kortet **eFaktura** ved siden av **E-faktura (EHF)** viser tilstanden — **I kø**,

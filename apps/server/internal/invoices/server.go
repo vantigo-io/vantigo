@@ -2,6 +2,7 @@ package invoices
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -99,6 +100,19 @@ func (s *server) has(ctx context.Context, key string) bool {
 // locks (withLockedTx).
 type lockedTxKey struct{}
 
+// lockedTxValueKey carries withLockedTx's transaction in its context, for a
+// write deep in a queue action that publishes an event on it (lockedTxOf).
+type lockedTxValueKey struct{}
+
+// lockedTxOf is the transaction withLockedTx runs ctx under.
+func lockedTxOf(ctx context.Context) (pgx.Tx, error) {
+	tx, ok := ctx.Value(lockedTxValueKey{}).(pgx.Tx)
+	if !ok {
+		return nil, errors.New("invoices: no locked transaction in the context")
+	}
+	return tx, nil
+}
+
 // withLockedTx runs fn in one READ COMMITTED transaction on the module's pool —
 // every write here that takes a row lock goes through it. fn gets a context
 // marked as locked, the transaction itself and its queries bound to it.
@@ -115,7 +129,7 @@ type lockedTxKey struct{}
 func (s *server) withLockedTx(ctx context.Context, fn func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error) error {
 	locked := context.WithValue(ctx, lockedTxKey{}, true)
 	return db.WithTx(locked, s.deps.Pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
-		return fn(locked, tx, store.New(tx))
+		return fn(context.WithValue(locked, lockedTxValueKey{}, tx), tx, store.New(tx))
 	})
 }
 

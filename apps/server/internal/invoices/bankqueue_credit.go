@@ -13,7 +13,6 @@ import (
 
 	"github.com/vantigo-io/vantigo/server/internal/holidays"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/gen"
-	"github.com/vantigo-io/vantigo/server/internal/invoices/kid"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/store"
 )
 
@@ -143,10 +142,8 @@ func (s *server) keepLocked(ctx context.Context, txq *store.Queries, line store.
 	}
 	// An AvtaleGiro debit kept as credit pays its claim, as a match does
 	// (I32; plan reading 15: a claim a credit note could not cancel in time).
-	if line.Kid != nil && kid.IsCustomerKID(*line.Kid) {
-		if _, err := txq.PayClaimOfInvoice(ctx, store.PayClaimOfInvoiceParams{Now: now, InvoiceID: inv.ID, Kid: *line.Kid}); err != nil {
-			return nil, fmt.Errorf("invoices: mark document %d's claim paid: %w", inv.ID, err)
-		}
+	if err := payClaimOfDebit(ctx, txq, line, inv.ID, now); err != nil {
+		return nil, err
 	}
 	if _, refusal, err := insertCredit(ctx, txq, store.InsertCustomerCreditParams{
 		CustomerID: inv.CustomerID, Currency: inv.Currency, Kind: creditOverpayment, CreditDay: line.BookedOn, Note: note,

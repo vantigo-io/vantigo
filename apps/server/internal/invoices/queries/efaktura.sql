@@ -402,11 +402,40 @@ WHERE id = 1;
 -- name: ReleaseEfakturaHousekeeping :exec
 UPDATE invoices.consumer_provider_credentials SET housekeeping_lease_until = NULL WHERE id = 1;
 
--- name: PayClaimOfInvoice :execrows
+-- name: PayClaimOfInvoice :many
 -- PayClaimOfInvoice marks the invoice's live claim on @kid paid: an
--- AvtaleGiro debit registered against it, in the match's transaction.
+-- AvtaleGiro debit registered against it — matched, applied or kept as
+-- credit — in that transaction.
 UPDATE invoices.avtalegiro_claims SET status = 'paid', paid_at = @now::timestamptz
-WHERE invoice_id = @invoice_id AND kid = @kid AND status IN ('accepted', 'cancel_requested', 'unpaid');
+WHERE invoice_id = @invoice_id AND kid = @kid AND status IN ('accepted', 'cancel_requested', 'unpaid')
+RETURNING *;
+
+-- name: HasPayableClaim :one
+-- HasPayableClaim reports whether the invoice has a claim on @kid that a
+-- debit would pay (PayClaimOfInvoice's).
+SELECT EXISTS (SELECT 1 FROM invoices.avtalegiro_claims
+               WHERE invoice_id = @invoice_id AND kid = @kid AND status IN ('accepted', 'cancel_requested', 'unpaid'));
+
+-- name: RequestSettledClaimsCancel :many
+-- RequestSettledClaimsCancel asks every live claim to cancel whose invoice
+-- has no principal open any more — paid by hand, with credit, by a split, a
+-- queue apply or a rounding, or written off: gross less what is credited
+-- less settled_amount (B-1's moved_amount in it) is 0 or less. A claim the
+-- provider refused to cancel once (cancel_refused_at) is past its deadline
+-- and stays; a claim whose eFaktura was never handed over is cancelled here,
+-- as RequestClaimCancel does.
+UPDATE invoices.avtalegiro_claims c SET
+    status = CASE WHEN t.status = 'queued' AND t.submit_attempted_at IS NULL THEN 'cancelled' ELSE 'cancel_requested' END,
+    cancelled_at = CASE WHEN t.status = 'queued' AND t.submit_attempted_at IS NULL THEN @now::timestamptz ELSE c.cancelled_at END,
+    cancel_requested_at = @now::timestamptz, next_attempt_at = @now::timestamptz
+FROM invoices.transmissions t, invoices.invoices i
+WHERE t.id = c.transmission_id AND i.id = c.invoice_id
+  AND c.status IN ('submitted', 'accepted') AND c.cancel_refused_at IS NULL
+  AND i.gross_total
+      - coalesce((SELECT sum(x.gross_total) FROM invoices.invoices x
+                  WHERE x.credits_invoice_id = i.id AND x.kind = 'credit_note' AND x.status = 'issued'), 0)
+      - invoices.settled_amount(i.id) <= 0
+RETURNING c.*;
 
 -- name: AcceptedClaimsDueBefore :many
 -- AcceptedClaimsDueBefore is the accepted claims due before @before: the

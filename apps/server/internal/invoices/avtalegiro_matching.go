@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/vantigo-io/vantigo/server/internal/holidays"
+	"github.com/vantigo-io/vantigo/server/internal/invoices/gen"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/kid"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/store"
 )
@@ -66,6 +68,88 @@ func mandateHolds(ctx context.Context, q *store.Queries, line store.InvoicesBank
 		return false, fmt.Errorf("invoices: read the mandate of line %d: %w", line.ID, err)
 	}
 	return true, nil
+}
+
+// payClaimOfDebit moves invoice invoiceID's claim on line's customer KID to
+// paid — the debit came — and publishes invoices.avtalegiro.claim_changed,
+// on the locked transaction ctx carries (I32, I33): a match, a queue apply
+// and a keep-as-credit all pay it so. A line on any other KID pays none.
+func payClaimOfDebit(ctx context.Context, txq *store.Queries, line store.InvoicesBankTransaction, invoiceID int64, now time.Time) error {
+	if line.Kid == nil || !kid.IsCustomerKID(*line.Kid) {
+		return nil
+	}
+	paid, err := txq.PayClaimOfInvoice(ctx, store.PayClaimOfInvoiceParams{Now: now, InvoiceID: invoiceID, Kid: *line.Kid})
+	if err != nil {
+		return fmt.Errorf("invoices: mark document %d's claim paid: %w", invoiceID, err)
+	}
+	if len(paid) == 0 {
+		return nil
+	}
+	tx, err := lockedTxOf(ctx)
+	if err != nil {
+		return err
+	}
+	for _, c := range paid {
+		if err := publishClaimChanged(ctx, tx, c, "paid", now); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// claimDebitOf reports whether line, queued against invoice invoiceID, is
+// the AvtaleGiro debit of a claim of that invoice: a mandate's customer KID
+// and a claim on it the debit would pay.
+func claimDebitOf(ctx context.Context, q *store.Queries, line store.InvoicesBankTransaction, invoiceID int64) (bool, error) {
+	if invoiceID == 0 {
+		return false, nil
+	}
+	if held, err := mandateHolds(ctx, q, line); err != nil || !held {
+		return false, err
+	}
+	ok, err := q.HasPayableClaim(ctx, store.HasPayableClaimParams{InvoiceID: invoiceID, Kid: *line.Kid})
+	if err != nil {
+		return false, fmt.Errorf("invoices: read document %d's claim: %w", invoiceID, err)
+	}
+	return ok, nil
+}
+
+// settleClaimDebit is matching's last step for a line it queued: when the
+// line is the debit of a claim of invoiceID (claimDebitOf), what the invoice
+// has open is applied and the rest kept as the customer's credit, as
+// keep-as-credit does, by the file's uploader or the caller of …/match, and
+// the claim is paid — outcomeMatched. A line keep-as-credit refuses, or one
+// of the bank feed's sync, which keeps no credit without a person, stays
+// queued for a person; its claim is paid all the same, so the worker never
+// calls it unpaid. Any other line stays as it was queued.
+func (s *server) settleClaimDebit(ctx context.Context, q *store.Queries, line store.InvoicesBankTransaction, invoiceID int64,
+	caller *uuid.UUID, now time.Time, loc *time.Location,
+) (string, error) {
+	debit, err := claimDebitOf(ctx, q, line, invoiceID)
+	if err != nil || !debit {
+		return outcomeQueued, err
+	}
+	if caller != nil {
+		refusal, err := s.queueAction(ctx, line.ID, judgeKeepable, func(ctx context.Context, txq *store.Queries, locked store.InvoicesBankTransaction) (*gen.InvoicesConflictProblem, error) {
+			inv, err := txq.GetInvoice(ctx, invoiceID)
+			if err != nil {
+				return nil, fmt.Errorf("invoices: read document %d: %w", invoiceID, err)
+			}
+			if err := lockCustomerCredit(ctx, txq, inv.CustomerID); err != nil {
+				return nil, err
+			}
+			return s.keepLocked(ctx, txq, locked, invoiceID, inv.CustomerID, "", *caller, now, loc)
+		})
+		switch {
+		case err == nil && refusal == nil:
+			return outcomeMatched, nil
+		case err != nil && !errors.Is(err, errCustomerMoved):
+			return outcomeQueued, err
+		}
+	}
+	return outcomeQueued, s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
+		return payClaimOfDebit(ctx, txq, line, invoiceID, now)
+	})
 }
 
 // debitDueDates are the due dates a debit booked on booked may be for: the

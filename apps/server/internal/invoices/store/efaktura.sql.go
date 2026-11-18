@@ -843,6 +843,25 @@ func (q *Queries) GetMandate(ctx context.Context, id int64) (InvoicesAvtalegiroM
 	return i, err
 }
 
+const hasPayableClaim = `-- name: HasPayableClaim :one
+SELECT EXISTS (SELECT 1 FROM invoices.avtalegiro_claims
+               WHERE invoice_id = $1 AND kid = $2 AND status IN ('accepted', 'cancel_requested', 'unpaid'))
+`
+
+type HasPayableClaimParams struct {
+	InvoiceID int64
+	Kid       string
+}
+
+// HasPayableClaim reports whether the invoice has a claim on @kid that a
+// debit would pay (PayClaimOfInvoice's).
+func (q *Queries) HasPayableClaim(ctx context.Context, arg HasPayableClaimParams) (bool, error) {
+	row := q.db.QueryRow(ctx, hasPayableClaim, arg.InvoiceID, arg.Kid)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const insertClaim = `-- name: InsertClaim :one
 
 INSERT INTO invoices.avtalegiro_claims (invoice_id, transmission_id, mandate_id, amount, due_date, kid, submitted_at)
@@ -1313,9 +1332,10 @@ func (q *Queries) PayClaim(ctx context.Context, arg PayClaimParams) (int64, erro
 	return result.RowsAffected(), nil
 }
 
-const payClaimOfInvoice = `-- name: PayClaimOfInvoice :execrows
+const payClaimOfInvoice = `-- name: PayClaimOfInvoice :many
 UPDATE invoices.avtalegiro_claims SET status = 'paid', paid_at = $1::timestamptz
 WHERE invoice_id = $2 AND kid = $3 AND status IN ('accepted', 'cancel_requested', 'unpaid')
+RETURNING id, invoice_id, transmission_id, mandate_id, amount, due_date, kid, status, attention, rejection_code, rejection_text, next_attempt_at, lease_id, lease_until, submitted_at, accepted_at, rejected_at, cancel_requested_at, cancel_refused_at, cancelled_at, paid_at, unpaid_at
 `
 
 type PayClaimOfInvoiceParams struct {
@@ -1325,13 +1345,49 @@ type PayClaimOfInvoiceParams struct {
 }
 
 // PayClaimOfInvoice marks the invoice's live claim on @kid paid: an
-// AvtaleGiro debit registered against it, in the match's transaction.
-func (q *Queries) PayClaimOfInvoice(ctx context.Context, arg PayClaimOfInvoiceParams) (int64, error) {
-	result, err := q.db.Exec(ctx, payClaimOfInvoice, arg.Now, arg.InvoiceID, arg.Kid)
+// AvtaleGiro debit registered against it — matched, applied or kept as
+// credit — in that transaction.
+func (q *Queries) PayClaimOfInvoice(ctx context.Context, arg PayClaimOfInvoiceParams) ([]InvoicesAvtalegiroClaim, error) {
+	rows, err := q.db.Query(ctx, payClaimOfInvoice, arg.Now, arg.InvoiceID, arg.Kid)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	return result.RowsAffected(), nil
+	defer rows.Close()
+	var items []InvoicesAvtalegiroClaim
+	for rows.Next() {
+		var i InvoicesAvtalegiroClaim
+		if err := rows.Scan(
+			&i.ID,
+			&i.InvoiceID,
+			&i.TransmissionID,
+			&i.MandateID,
+			&i.Amount,
+			&i.DueDate,
+			&i.Kid,
+			&i.Status,
+			&i.Attention,
+			&i.RejectionCode,
+			&i.RejectionText,
+			&i.NextAttemptAt,
+			&i.LeaseID,
+			&i.LeaseUntil,
+			&i.SubmittedAt,
+			&i.AcceptedAt,
+			&i.RejectedAt,
+			&i.CancelRequestedAt,
+			&i.CancelRefusedAt,
+			&i.CancelledAt,
+			&i.PaidAt,
+			&i.UnpaidAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const refuseClaimCancel = `-- name: RefuseClaimCancel :execrows
@@ -1439,6 +1495,71 @@ type RequestClaimCancelParams struct {
 // is left as it is.
 func (q *Queries) RequestClaimCancel(ctx context.Context, arg RequestClaimCancelParams) ([]InvoicesAvtalegiroClaim, error) {
 	rows, err := q.db.Query(ctx, requestClaimCancel, arg.Now, arg.InvoiceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []InvoicesAvtalegiroClaim
+	for rows.Next() {
+		var i InvoicesAvtalegiroClaim
+		if err := rows.Scan(
+			&i.ID,
+			&i.InvoiceID,
+			&i.TransmissionID,
+			&i.MandateID,
+			&i.Amount,
+			&i.DueDate,
+			&i.Kid,
+			&i.Status,
+			&i.Attention,
+			&i.RejectionCode,
+			&i.RejectionText,
+			&i.NextAttemptAt,
+			&i.LeaseID,
+			&i.LeaseUntil,
+			&i.SubmittedAt,
+			&i.AcceptedAt,
+			&i.RejectedAt,
+			&i.CancelRequestedAt,
+			&i.CancelRefusedAt,
+			&i.CancelledAt,
+			&i.PaidAt,
+			&i.UnpaidAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const requestSettledClaimsCancel = `-- name: RequestSettledClaimsCancel :many
+UPDATE invoices.avtalegiro_claims c SET
+    status = CASE WHEN t.status = 'queued' AND t.submit_attempted_at IS NULL THEN 'cancelled' ELSE 'cancel_requested' END,
+    cancelled_at = CASE WHEN t.status = 'queued' AND t.submit_attempted_at IS NULL THEN $1::timestamptz ELSE c.cancelled_at END,
+    cancel_requested_at = $1::timestamptz, next_attempt_at = $1::timestamptz
+FROM invoices.transmissions t, invoices.invoices i
+WHERE t.id = c.transmission_id AND i.id = c.invoice_id
+  AND c.status IN ('submitted', 'accepted') AND c.cancel_refused_at IS NULL
+  AND i.gross_total
+      - coalesce((SELECT sum(x.gross_total) FROM invoices.invoices x
+                  WHERE x.credits_invoice_id = i.id AND x.kind = 'credit_note' AND x.status = 'issued'), 0)
+      - invoices.settled_amount(i.id) <= 0
+RETURNING c.id, c.invoice_id, c.transmission_id, c.mandate_id, c.amount, c.due_date, c.kid, c.status, c.attention, c.rejection_code, c.rejection_text, c.next_attempt_at, c.lease_id, c.lease_until, c.submitted_at, c.accepted_at, c.rejected_at, c.cancel_requested_at, c.cancel_refused_at, c.cancelled_at, c.paid_at, c.unpaid_at
+`
+
+// RequestSettledClaimsCancel asks every live claim to cancel whose invoice
+// has no principal open any more — paid by hand, with credit, by a split, a
+// queue apply or a rounding, or written off: gross less what is credited
+// less settled_amount (B-1's moved_amount in it) is 0 or less. A claim the
+// provider refused to cancel once (cancel_refused_at) is past its deadline
+// and stays; a claim whose eFaktura was never handed over is cancelled here,
+// as RequestClaimCancel does.
+func (q *Queries) RequestSettledClaimsCancel(ctx context.Context, now time.Time) ([]InvoicesAvtalegiroClaim, error) {
+	rows, err := q.db.Query(ctx, requestSettledClaimsCancel, now)
 	if err != nil {
 		return nil, err
 	}

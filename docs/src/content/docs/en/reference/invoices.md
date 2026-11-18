@@ -3575,7 +3575,15 @@ change but the state's; a rejected, cancelled or paid claim is final.
 `ux_avtalegiro_claims_live` allows one submitted, accepted or cancel-requested claim
 per invoice. **A credit note's issue** moves its invoice's live claim to
 `cancel_requested` on the issue's transaction (reading 15); the worker carries it to MPS.
-A paid claim is left as it is.
+A paid claim is left as it is. **An invoice settled another way** — paid by hand, with
+credit, by a split, a queue apply or a rounding, or written off — has its live
+(`submitted` or `accepted`) claim asked to cancel by the worker's sweep each cycle
+(`CancelSettled`, `RequestSettledClaimsCancel`: gross less what issued credit notes took
+less `settled_amount`, B-1's `moved_amount` in it, at 0 or below), unless the provider
+already refused to cancel it (`cancel_refused_at`); a claim whose eFaktura was never
+handed over is cancelled outright, as on a credit note. Every move to `paid` — a match, a
+queue apply, a keep-as-credit or the settling below — publishes
+`invoices.avtalegiro.claim_changed` on its transaction (`payClaimOfDebit`).
 
 ### The mandates and the customer KID
 
@@ -3669,7 +3677,17 @@ weekend or holiday day the bank moved to it. One fits: the invoice is matched, a
 account is the AvtaleGiro creditor account, so step 7's check of the account the invoice
 printed is not made on this path. Two: queued `kid_unknown`. None, and a 9 KID that is no
 mandate's, take today's path, `invoiceOfKid`, which finds an invoice issued before the
-space was reserved or queues `kid_unknown`. **The reminder engine** (reading 13): with an accepted claim
+space was reserved or queues `kid_unknown`. **A claim's debit its invoice cannot take**
+— queued `invoice_settled` or `exceeds_open` because the invoice was settled another
+way and the claim was past its cancel deadline — is never a second payment
+(`settleClaimDebit`): after it is queued, the keep-as-credit's transaction keeps what the
+invoice has open as a payment and the rest as an `overpayment`, by the file's uploader or
+the caller of `…/match`, and the claim moves to `paid`; the line is counted matched. A
+line of the bank feed's sync, which has no user to keep credit by
+(`ck_customer_credits_actor`), or one keep-as-credit refuses, stays queued for a person,
+and its claim is paid all the same so the worker never marks it `unpaid`. A queue
+**apply** of a customer-KID line pays the applied invoice's claim, as a match does.
+**The reminder engine** (reading 13): with an accepted claim
 (`reminderrules.Input.AvtaleGiroDue`, from `RuleAvtaleGiroClaims`) the first letter's
 earliest day is `max(EffectiveDue + first_reminder_days, NextBusinessDay(due + 1))`,
 and before it the outcome is `waiting` with the reason `avtalegiro_claim`.
