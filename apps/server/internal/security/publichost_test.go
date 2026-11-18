@@ -90,6 +90,7 @@ var publicHostRefused = []gateRequest{
 	{http.MethodGet, "/api/v1/identity/system/status"},
 	{http.MethodPost, "/api/v1/identity/system/status"},
 	{http.MethodGet, "/api"},
+	{http.MethodGet, "/api/reference/apiref.js"},
 	{http.MethodGet, "/rsvp/x"},
 	{http.MethodGet, "/rsvp/"},
 	{http.MethodPost, "/rsvp"},

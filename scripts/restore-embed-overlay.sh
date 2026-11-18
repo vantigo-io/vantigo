@@ -4,7 +4,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-EMBED_DIRS=(apps/server/internal/web/dist apps/server/internal/docs/dist)
+EMBED_DIRS=(apps/server/internal/web/dist apps/server/internal/docs/dist apps/server/internal/apiref/dist)
 
 if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   git clean -qfdx -- "${EMBED_DIRS[@]}"
