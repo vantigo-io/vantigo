@@ -125,7 +125,7 @@ func TestWebhookEvents_TheReferenceListsEveryEvent(t *testing.T) {
 		}
 	}
 	if strings.Contains(string(page), "`"+contracts.SupplierInvoiceDeleted{}.EventName()+"`") &&
-		!strings.Contains(string(page), "left out") {
+		!strings.Contains(strings.ToLower(string(page)), "left out") {
 		t.Errorf("reference/webhooks.md names %s without saying it is left out", contracts.SupplierInvoiceDeleted{}.EventName())
 	}
 }
