@@ -368,3 +368,40 @@ independent of each other once B-B lands.
    IdP groups?
 5. May a person in two brands choose between them?
 6. Should any Vantigo mark remain in a rebranded shell?
+
+---
+
+## 6. Owner decisions (2026-11-18)
+
+1. **Landing site:** follows the computer's setting first, plus a toggle.
+2. **Documents carry a brand.** Each customer or customer group (`customers` groups,
+   migration 00027) can have a default brand; the person writing an invoice or quote
+   can switch brand for that one document. **Campaigns** — time-bound brand variants
+   (Pride, Christmas, …) — are wanted too.
+3. **No per-brand domains.** Everyone uses the same domain. Instead, the sign-in page
+   starts in the default brand and, once an e-mail address is typed, **fades into the
+   brand that matches its domain** (`name@brandname.com`).
+4. **Assignment targets that matter:** groups and legal entities, plus the **e-mail
+   domain** (or username) as in point 3.
+5. **A person in several brands may switch** between them.
+6. **No "Powered by Vantigo" mark** — leave it out.
+
+### Notes for the brands spec
+
+- **E-mail domain → brand before sign-in** must not leak who has an account: resolve on
+  the *domain* only, answer the same way for any address, and only for domains an admin
+  has attached to a brand. Brand names, colours and logos become public to anyone who
+  types a matching domain; that is acceptable (they are public brands) and should be
+  said in the admin guide. Rate-limit the lookup like other anonymous endpoints. It
+  fits naturally with SSO home-realm discovery, which also keys on the domain.
+- **Campaigns** are best modelled as a dated overlay on a brand (from–to, optionally
+  every year), changing tokens and/or logos, not as separate brands. Recommended: a
+  campaign changes the workspace look and, only if the admin ticks it, e-mails; never
+  issued invoices or other legal documents, which should stay in the plain brand.
+- **Documents:** the brand on an issued invoice is snapshotted like the logo is today
+  (`seller_logo_object_key`), so changing a brand later never changes an issued
+  document. Whether a brand also carries a different seller (name, organisation number,
+  bank account) is the multi-seller question; a brand with only a different logo and
+  colours is much smaller and could come first.
+- **Order of rules** with the new targets: e-mail domain, legal entity, group — still
+  first match wins, with the person's own choice (point 5) above all rules.
