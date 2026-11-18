@@ -27,6 +27,9 @@ import (
 //     the worker switched off, no partition is made and every row lands in
 //     DEFAULT, where it stays.
 //   - It mails the expiry notices (apikey_notices.go).
+//
+// identity.webhook-sender sends integrations' webhook messages
+// (webhooks_worker.go).
 
 const (
 	apiKeysWorkerName = "identity.api-keys"
@@ -45,12 +48,21 @@ const (
 	apiRequestRetentionDays = 30
 )
 
-// workers are identity's background workers, each behind its switch.
+// workers are identity's background workers, each behind its own switch:
+// the API keys worker and the webhook sender (outgoing webhooks design W29)
+// run or not independently of each other.
 func workers(a *Access, d module.Deps) []worker.Worker {
-	if d.Config == nil || !d.Config.IdentityIntegrationsWorkerEnabled {
+	if d.Config == nil {
 		return nil
 	}
-	return []worker.Worker{&apiKeysWorker{deps: d, users: &userDirectory{q: store.New(d.Pool), sso: a.sso, mail: d.Mail}}}
+	var out []worker.Worker
+	if d.Config.IdentityIntegrationsWorkerEnabled {
+		out = append(out, &apiKeysWorker{deps: d, users: &userDirectory{q: store.New(d.Pool), sso: a.sso, mail: d.Mail}})
+	}
+	if d.Config.IdentityWebhooksEnabled {
+		out = append(out, newWebhookSender(a, d))
+	}
+	return out
 }
 
 // apiKeysWorker is identity.api-keys.

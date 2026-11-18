@@ -170,11 +170,15 @@ func (a *Access) checkAPIKey(ctx context.Context, r *http.Request, rule contract
 // identity: or agents: key, or one the composed catalog does not let be
 // delegated. A key missing from the catalog is one too, so a catalog that was
 // never set fails closed.
-func (a *Access) apiNever(key string) bool {
+func (a *Access) apiNever(key string) bool { return apiNeverIn(a.catalog, key) }
+
+// apiNeverIn is apiNever under catalog: what the webhooks' fan-out and
+// sender decide by, built where worker mode never composes (W7, W33).
+func apiNeverIn(catalog map[string]contracts.Permission, key string) bool {
 	if strings.HasPrefix(key, "identity:") || strings.HasPrefix(key, "agents:") {
 		return true
 	}
-	p, ok := a.catalog[key]
+	p, ok := catalog[key]
 	return !ok || !p.Delegable
 }
 

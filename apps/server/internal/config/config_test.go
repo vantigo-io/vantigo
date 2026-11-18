@@ -1620,6 +1620,27 @@ func TestLoad_IdentityIntegrationsWorker(t *testing.T) {
 	}
 }
 
+// TestLoad_IdentityWebhooks pins the webhook sender's two settings (outgoing
+// webhooks design W15): on unless turned off, every two seconds, and
+// independent of the API keys worker's switch.
+func TestLoad_IdentityWebhooks(t *testing.T) {
+	cfg := mustLoad(t, validEnv())
+	if !cfg.IdentityWebhooksEnabled || cfg.IdentityWebhooksPoll != 2*time.Second {
+		t.Errorf("defaults = %v/%v, want on and 2s", cfg.IdentityWebhooksEnabled, cfg.IdentityWebhooksPoll)
+	}
+	tuned := mustLoad(t, with(validEnv(), "IDENTITY_WEBHOOKS_ENABLED", "0", "IDENTITY_WEBHOOKS_POLL", "10s"))
+	if tuned.IdentityWebhooksEnabled || tuned.IdentityWebhooksPoll != 10*time.Second || !tuned.IdentityIntegrationsWorkerEnabled {
+		t.Errorf("tuned = %v/%v (keys %v), want off, 10s and the keys worker on", tuned.IdentityWebhooksEnabled, tuned.IdentityWebhooksPoll, tuned.IdentityIntegrationsWorkerEnabled)
+	}
+	keysOff := mustLoad(t, with(validEnv(), "IDENTITY_API_KEYS_ENABLED", "0"))
+	if !keysOff.IdentityWebhooksEnabled {
+		t.Error("the API keys worker's switch turned the sender off")
+	}
+	if msg := loadError(t, with(validEnv(), "IDENTITY_WEBHOOKS_POLL", "soon")); !strings.Contains(msg, "IDENTITY_WEBHOOKS_POLL: must be a positive duration such as 30s") {
+		t.Errorf("error = %q", msg)
+	}
+}
+
 // TestLoad_CustomersAnonymisationWorker pins the anonymisation worker's two
 // settings (customers GDPR design D4): on unless turned off — a date a person
 // chose is kept whether or not the operator remembered a switch — and a daily

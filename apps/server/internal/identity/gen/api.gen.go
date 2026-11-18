@@ -2102,6 +2102,12 @@ type WebhookSecretRollRequest struct {
 	OverlapHours *int `json:"overlapHours,omitempty"`
 }
 
+// WebhookTestDelivery The test event just queued (outgoing webhooks design W19).
+type WebhookTestDelivery struct {
+	// DeliveryId The delivery of the webhook.ping message, sent once with no retry.
+	DeliveryId openapi_types.UUID `json:"deliveryId"`
+}
+
 // WorkspaceSettings The workspace's own settings (time zones design D2 and D3). businessTimeZone is the one calendar every bookkeeping day in the installation is judged in — an invoice's issue day, a period lock, a trip's departure day, Staff's "today" — which every module reads through the platform's BusinessCalendar contract; Europe/Oslo until an Owner sets another.
 type WorkspaceSettings struct {
 	// BusinessTimeZone An IANA name, such as Europe/Oslo.
@@ -3233,6 +3239,9 @@ type ServerInterface interface {
 	// PostIdentityIntegrationsByIdWebhooksByWebhookIdRollSecret Roll a webhook endpoint's secret
 	// (POST /api/v1/identity/integrations/{id}/webhooks/{webhookId}/roll-secret)
 	PostIdentityIntegrationsByIdWebhooksByWebhookIdRollSecret(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, webhookId openapi_types.UUID)
+	// PostIdentityIntegrationsByIdWebhooksByWebhookIdTest Send a test event to a webhook endpoint
+	// (POST /api/v1/identity/integrations/{id}/webhooks/{webhookId}/test)
+	PostIdentityIntegrationsByIdWebhooksByWebhookIdTest(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, webhookId openapi_types.UUID)
 	// PostIdentityInvitationsAccept Accept an invitation and create the account
 	// (POST /api/v1/identity/invitations/accept)
 	PostIdentityInvitationsAccept(w http.ResponseWriter, r *http.Request)
@@ -5153,6 +5162,41 @@ func (siw *ServerInterfaceWrapper) PostIdentityIntegrationsByIdWebhooksByWebhook
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostIdentityIntegrationsByIdWebhooksByWebhookIdRollSecret(w, r, id, webhookId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostIdentityIntegrationsByIdWebhooksByWebhookIdTest operation middleware
+func (siw *ServerInterfaceWrapper) PostIdentityIntegrationsByIdWebhooksByWebhookIdTest(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "webhookId" -------------
+	var webhookId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "webhookId", r.PathValue("webhookId"), &webhookId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "webhookId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostIdentityIntegrationsByIdWebhooksByWebhookIdTest(w, r, id, webhookId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -7464,6 +7508,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/integrations/{id}/webhooks/{webhookId}/disable", wrapper.PostIdentityIntegrationsByIdWebhooksByWebhookIdDisable)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/integrations/{id}/webhooks/{webhookId}/enable", wrapper.PostIdentityIntegrationsByIdWebhooksByWebhookIdEnable)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/integrations/{id}/webhooks/{webhookId}/roll-secret", wrapper.PostIdentityIntegrationsByIdWebhooksByWebhookIdRollSecret)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/integrations/{id}/webhooks/{webhookId}/test", wrapper.PostIdentityIntegrationsByIdWebhooksByWebhookIdTest)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/invitations/accept", wrapper.PostIdentityInvitationsAccept)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/invitations/validate", wrapper.GetIdentityInvitationsValidate)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/login", wrapper.PostIdentityLogin)
@@ -13164,6 +13209,109 @@ type PostIdentityIntegrationsByIdWebhooksByWebhookIdRollSecret429JSONResponse st
 }
 
 func (response PostIdentityIntegrationsByIdWebhooksByWebhookIdRollSecret429JSONResponse) VisitPostIdentityIntegrationsByIdWebhooksByWebhookIdRollSecretResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityIntegrationsByIdWebhooksByWebhookIdTestRequestObject struct {
+	Id        openapi_types.UUID `json:"id"`
+	WebhookId openapi_types.UUID `json:"webhookId"`
+}
+
+type PostIdentityIntegrationsByIdWebhooksByWebhookIdTestResponseObject interface {
+	VisitPostIdentityIntegrationsByIdWebhooksByWebhookIdTestResponse(w http.ResponseWriter) error
+}
+
+type PostIdentityIntegrationsByIdWebhooksByWebhookIdTest202JSONResponse WebhookTestDelivery
+
+func (response PostIdentityIntegrationsByIdWebhooksByWebhookIdTest202JSONResponse) VisitPostIdentityIntegrationsByIdWebhooksByWebhookIdTestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(202)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityIntegrationsByIdWebhooksByWebhookIdTest401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityIntegrationsByIdWebhooksByWebhookIdTest401JSONResponse) VisitPostIdentityIntegrationsByIdWebhooksByWebhookIdTestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityIntegrationsByIdWebhooksByWebhookIdTest403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityIntegrationsByIdWebhooksByWebhookIdTest403JSONResponse) VisitPostIdentityIntegrationsByIdWebhooksByWebhookIdTestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityIntegrationsByIdWebhooksByWebhookIdTest404JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityIntegrationsByIdWebhooksByWebhookIdTest404JSONResponse) VisitPostIdentityIntegrationsByIdWebhooksByWebhookIdTestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityIntegrationsByIdWebhooksByWebhookIdTest409JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityIntegrationsByIdWebhooksByWebhookIdTest409JSONResponse) VisitPostIdentityIntegrationsByIdWebhooksByWebhookIdTestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityIntegrationsByIdWebhooksByWebhookIdTest429ResponseHeaders struct {
+	RetryAfter *string
+}
+
+type PostIdentityIntegrationsByIdWebhooksByWebhookIdTest429JSONResponse struct {
+	Body    externalRef0.AuthErrorResponse
+	Headers PostIdentityIntegrationsByIdWebhooksByWebhookIdTest429ResponseHeaders
+}
+
+func (response PostIdentityIntegrationsByIdWebhooksByWebhookIdTest429JSONResponse) VisitPostIdentityIntegrationsByIdWebhooksByWebhookIdTestResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -20496,6 +20644,9 @@ type StrictServerInterface interface {
 	// PostIdentityIntegrationsByIdWebhooksByWebhookIdRollSecret Roll a webhook endpoint's secret
 	// (POST /api/v1/identity/integrations/{id}/webhooks/{webhookId}/roll-secret)
 	PostIdentityIntegrationsByIdWebhooksByWebhookIdRollSecret(ctx context.Context, request PostIdentityIntegrationsByIdWebhooksByWebhookIdRollSecretRequestObject) (PostIdentityIntegrationsByIdWebhooksByWebhookIdRollSecretResponseObject, error)
+	// PostIdentityIntegrationsByIdWebhooksByWebhookIdTest Send a test event to a webhook endpoint
+	// (POST /api/v1/identity/integrations/{id}/webhooks/{webhookId}/test)
+	PostIdentityIntegrationsByIdWebhooksByWebhookIdTest(ctx context.Context, request PostIdentityIntegrationsByIdWebhooksByWebhookIdTestRequestObject) (PostIdentityIntegrationsByIdWebhooksByWebhookIdTestResponseObject, error)
 	// PostIdentityInvitationsAccept Accept an invitation and create the account
 	// (POST /api/v1/identity/invitations/accept)
 	PostIdentityInvitationsAccept(ctx context.Context, request PostIdentityInvitationsAcceptRequestObject) (PostIdentityInvitationsAcceptResponseObject, error)
@@ -22982,6 +23133,33 @@ func (sh *strictHandler) PostIdentityIntegrationsByIdWebhooksByWebhookIdRollSecr
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PostIdentityIntegrationsByIdWebhooksByWebhookIdRollSecretResponseObject); ok {
 		if err := validResponse.VisitPostIdentityIntegrationsByIdWebhooksByWebhookIdRollSecretResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostIdentityIntegrationsByIdWebhooksByWebhookIdTest operation middleware
+func (sh *strictHandler) PostIdentityIntegrationsByIdWebhooksByWebhookIdTest(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, webhookId openapi_types.UUID) {
+	var request PostIdentityIntegrationsByIdWebhooksByWebhookIdTestRequestObject
+
+	request.Id = id
+	request.WebhookId = webhookId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostIdentityIntegrationsByIdWebhooksByWebhookIdTest(ctx, request.(PostIdentityIntegrationsByIdWebhooksByWebhookIdTestRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostIdentityIntegrationsByIdWebhooksByWebhookIdTest")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostIdentityIntegrationsByIdWebhooksByWebhookIdTestResponseObject); ok {
+		if err := validResponse.VisitPostIdentityIntegrationsByIdWebhooksByWebhookIdTestResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

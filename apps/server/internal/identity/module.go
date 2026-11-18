@@ -149,6 +149,7 @@ var limits = map[string]ratelimit.Policy{
 	"postIdentityIntegrationsByIdWebhooksByWebhookIdDisable":    policyUserManagement,
 	"postIdentityIntegrationsByIdWebhooksByWebhookIdEnable":     policyUserManagement,
 	"postIdentityIntegrationsByIdWebhooksByWebhookIdRollSecret": policyUserManagement,
+	"postIdentityIntegrationsByIdWebhooksByWebhookIdTest":       policyUserManagement,
 }
 
 // Module is identity as a platform module: its contract mounted under
@@ -181,6 +182,9 @@ func Module(a *Access) module.Module {
 			return newSSOConnections(a, d)
 		},
 		Workers: func(d module.Deps) []worker.Worker { return workers(a, d) },
+		// The webhooks' fan-out, on the outbox (outgoing webhooks design W14,
+		// W39).
+		EventHandlers: webhookEventHandlers,
 	}
 }
 
