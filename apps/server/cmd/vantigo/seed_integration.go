@@ -137,6 +137,9 @@ func seedDemoIntegration(ctx context.Context, pool *pgxpool.Pool, logger *slog.L
 		logger.Warn("integration demo skipped: a role of its name exists and is not the demo's", "integration", demoIntegrationName, "role", demoIntegrationRole)
 		return nil
 	}
+	if err := seedDemoRequestLog(ctx, pool, logger, now); err != nil {
+		return err
+	}
 	if !created {
 		return nil
 	}
