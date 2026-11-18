@@ -1,0 +1,13 @@
+# The release notes `gh release create --generate-notes` writes (API access
+# design K38). A pull request that changes the integrator's API in a breaking
+# way carries the breaking-api label, which CI's breaking-change check adds
+# (lint_server, tools/api/breaking-check.ts); it is listed first, under its
+# own heading. Everything else is listed as before.
+changelog:
+  categories:
+    - title: Breaking API changes
+      labels:
+        - breaking-api
+    - title: Other changes
+      labels:
+        - "*"
