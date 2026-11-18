@@ -2,8 +2,13 @@ package identity
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/base64"
+	"net"
 	"net/http"
+	"net/http/httptest"
+	"net/netip"
 	"time"
 
 	"github.com/google/uuid"
@@ -59,6 +64,50 @@ func SetWebhookResolver(a *Access, r netguard.Resolver) { a.webhookResolver = r 
 // WebhookSecretPurpose is the secrets.Box purpose an endpoint's secret is
 // sealed under, for a test that opens the column.
 var WebhookSecretPurpose = webhookSecretPurpose
+
+// SetWebhookServer makes every webhook the sender posts reach srv, through
+// the guarded transport: each name resolves to a public address, netguard
+// checks it, and the dialler then connects to srv, whose certificate (issued
+// to example.com and *.example.com) is trusted. It must run before
+// module.Workers builds the sender.
+func SetWebhookServer(a *Access, srv *httptest.Server) {
+	roots := x509.NewCertPool()
+	roots.AddCert(srv.Certificate())
+	addr := srv.Listener.Addr().String()
+	a.webhookNet = &webhookNetwork{
+		resolver: publicResolver{},
+		dial: func(ctx context.Context, network, _ string) (net.Conn, error) {
+			return (&net.Dialer{}).DialContext(ctx, network, addr)
+		},
+		tls: &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12},
+	}
+}
+
+type publicResolver struct{}
+
+func (publicResolver) LookupNetIP(context.Context, string, string) ([]netip.Addr, error) {
+	return []netip.Addr{netip.MustParseAddr("93.184.215.14")}, nil
+}
+
+// WebhookSender is identity.webhook-sender as the tests drive it.
+type WebhookSender interface {
+	Name() string
+	RunPass(context.Context) (int, error)
+	Wait()
+	Housekeep(context.Context) error
+}
+
+// SetWebhookJitter fixes the sender's jitter draw, in [0, 1): 0.5 is none.
+func SetWebhookJitter(w WebhookSender, f func() float64) { w.(*webhookSender).jitter = f }
+
+// SetWebhookAttemptBudget shortens one attempt's whole budget, for a test of
+// a receiver that never answers.
+func SetWebhookAttemptBudget(w WebhookSender, d time.Duration) {
+	w.(*webhookSender).client.http.Timeout = d
+}
+
+// WebhookRetrySchedule is W17's schedule.
+var WebhookRetrySchedule = webhookRetrySchedule
 
 var (
 	CreateSession       = (*Access).createSession

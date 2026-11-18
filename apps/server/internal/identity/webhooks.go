@@ -17,6 +17,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/identity/gen"
 	"github.com/vantigo-io/vantigo/server/internal/identity/store"
 	"github.com/vantigo-io/vantigo/server/internal/netguard"
+	"github.com/vantigo-io/vantigo/server/internal/secrets"
 )
 
 // This file is the webhook endpoints service (outgoing webhooks design W1-W3,
@@ -50,9 +51,10 @@ const (
 	webhookReasonEndpointClosed = "endpoint_disabled"
 )
 
-// The audit actions of W24 this service writes; webhook.test_sent and
-// webhook.resent are the sender's and the log's.
+// The audit actions of W24 this service writes; webhook.resent is the
+// log's, and the sender writes webhook.disabled as system:webhooks.
 const (
+	auditWebhookTestSent     = "webhook.test_sent"
 	auditWebhookCreated      = "webhook.created"
 	auditWebhookUpdated      = "webhook.updated"
 	auditWebhookDeleted      = "webhook.deleted"
@@ -73,6 +75,9 @@ var (
 	webhookNotFound        = refuse(http.StatusNotFound, "not_found", "No such webhook endpoint.", nil)
 	webhookLimitReached    = refuse(http.StatusConflict, "webhook_limit_reached", "An integration has at most 5 webhook endpoints, and the workspace 50.", nil)
 	webhookVersionMismatch = refuse(http.StatusPreconditionFailed, "version_mismatch", "The webhook endpoint has been changed since it was read.", nil)
+	// webhookEndpointDisabled refuses a test event to a disabled endpoint,
+	// which the sender would never send (W19).
+	webhookEndpointDisabled = refuse(http.StatusConflict, "webhook_endpoint_disabled", "The webhook endpoint is disabled; enable it first.", nil)
 )
 
 // webhookEventUnknown is the refusal of names no catalogue event has.
@@ -112,7 +117,12 @@ type webhookAudit struct {
 }
 
 func (s *server) webhookSnapshot(e store.IdentityWebhookEndpoint) (webhookAudit, error) {
-	digest, err := webhookURLDigest(s.deps.Secrets, e.Url)
+	return webhookSnapshotOf(s.deps.Secrets, e)
+}
+
+// webhookSnapshotOf is e as the audit records it, its URL digested by box.
+func webhookSnapshotOf(box *secrets.Box, e store.IdentityWebhookEndpoint) (webhookAudit, error) {
+	digest, err := webhookURLDigest(box, e.Url)
 	if err != nil {
 		return webhookAudit{}, err
 	}
@@ -344,6 +354,10 @@ func (s *server) PostIdentityIntegrationsByIdWebhooks(ctx context.Context, req g
 		if err != nil {
 			return fmt.Errorf("identity: create the webhook endpoint: %w", err)
 		}
+		// A new endpoint is sent a test event at once (W19).
+		if _, err := queueWebhookPing(ctx, q, created.ID, now); err != nil {
+			return err
+		}
 		after, err := s.webhookSnapshot(created)
 		if err != nil {
 			return err
@@ -462,7 +476,14 @@ func (s *server) DeleteIdentityIntegrationsByIdWebhooksByWebhookId(ctx context.C
 // deliveries as endpoint_disabled, audited webhook.disabled with actor: the
 // endpoint's row is held already (W18, W31).
 func (s *server) disableWebhook(ctx context.Context, q *store.Queries, r *http.Request, e store.IdentityWebhookEndpoint, reason, settled string, actor *uuid.UUID, mfa bool, now time.Time) (store.IdentityWebhookEndpoint, error) {
-	before, err := s.webhookSnapshot(e)
+	return disableWebhookEndpoint(ctx, q, s.deps.Secrets, r, e, reason, settled, auditEvent{actor: actor, mfa: mfa}, now)
+}
+
+// disableWebhookEndpoint is disableWebhook for whoever who names, a person
+// (actor) or a system: the sender disables a failing or gone endpoint as
+// system:webhooks (W18).
+func disableWebhookEndpoint(ctx context.Context, q *store.Queries, box *secrets.Box, r *http.Request, e store.IdentityWebhookEndpoint, reason, settled string, who auditEvent, now time.Time) (store.IdentityWebhookEndpoint, error) {
+	before, err := webhookSnapshotOf(box, e)
 	if err != nil {
 		return e, err
 	}
@@ -473,13 +494,12 @@ func (s *server) disableWebhook(ctx context.Context, q *store.Queries, r *http.R
 	if _, err := q.DeadLetterWebhookDeliveries(ctx, store.DeadLetterWebhookDeliveriesParams{EndpointIds: []uuid.UUID{e.ID}, Reason: &settled, Now: now}); err != nil {
 		return e, fmt.Errorf("identity: settle the webhook endpoint's deliveries: %w", err)
 	}
-	after, err := s.webhookSnapshot(disabled)
+	after, err := webhookSnapshotOf(box, disabled)
 	if err != nil {
 		return e, err
 	}
-	return disabled, writeAudit(ctx, q, r, now, auditEvent{
-		actor: actor, targetUser: &e.IntegrationID, action: auditWebhookDisabled, before: before, after: after, mfa: mfa,
-	})
+	who.targetUser, who.action, who.before, who.after = &e.IntegrationID, auditWebhookDisabled, before, after
+	return disabled, writeAudit(ctx, q, r, now, who)
 }
 
 // PostIdentityIntegrationsByIdWebhooksByWebhookIdDisable disables an
@@ -528,6 +548,10 @@ func (s *server) PostIdentityIntegrationsByIdWebhooksByWebhookIdEnable(ctx conte
 		out, err = q.EnableWebhookEndpoint(ctx, store.EnableWebhookEndpointParams{ID: e.ID, Now: now, Version: uuid.New()})
 		if err != nil {
 			return fmt.Errorf("identity: enable the webhook endpoint: %w", err)
+		}
+		// An endpoint enabled again is sent a test event at once (W18, W19).
+		if _, err := queueWebhookPing(ctx, q, out.ID, now); err != nil {
+			return err
 		}
 		after, err := s.webhookSnapshot(out)
 		if err != nil {
@@ -598,6 +622,43 @@ func (s *server) PostIdentityIntegrationsByIdWebhooksByWebhookIdRollSecret(ctx c
 		Body:    gen.WebhookEndpointSecret{Endpoint: webhookBody(rolled, s.deps.Clock()), Secret: secret},
 		Headers: gen.PostIdentityIntegrationsByIdWebhooksByWebhookIdRollSecret201ResponseHeaders{CacheControl: &noStore},
 	}, nil
+}
+
+// PostIdentityIntegrationsByIdWebhooksByWebhookIdTest queues a webhook.ping
+// to an enabled endpoint, sent once with no retry (W19, W37), audited
+// webhook.test_sent: 409 webhook_endpoint_disabled for a disabled endpoint,
+// integration_archived for an archived integration (W36).
+// (POST /api/v1/identity/integrations/{id}/webhooks/{webhookId}/test)
+func (s *server) PostIdentityIntegrationsByIdWebhooksByWebhookIdTest(ctx context.Context, req gen.PostIdentityIntegrationsByIdWebhooksByWebhookIdTestRequestObject) (gen.PostIdentityIntegrationsByIdWebhooksByWebhookIdTestResponseObject, error) {
+	p, r, err := integrationCaller(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var delivery uuid.UUID
+	err = s.webhookTx(ctx, req.Id, req.WebhookId, false, func(q *store.Queries, e store.IdentityWebhookEndpoint, now time.Time) error {
+		if e.Status != webhookEnabled {
+			return webhookEndpointDisabled
+		}
+		var err error
+		if delivery, err = queueWebhookPing(ctx, q, e.ID, now); err != nil {
+			return err
+		}
+		snapshot, err := s.webhookSnapshot(e)
+		if err != nil {
+			return err
+		}
+		return writeAudit(ctx, q, r, now, auditEvent{
+			actor: &p.UserID, targetUser: &req.Id, action: auditWebhookTestSent, before: snapshot,
+			after: struct {
+				webhookAudit
+				DeliveryID uuid.UUID `json:"deliveryId"`
+			}{snapshot, delivery}, mfa: p.MFAVerified,
+		})
+	})
+	if err != nil {
+		return refusalOr[gen.PostIdentityIntegrationsByIdWebhooksByWebhookIdTestResponseObject](err)
+	}
+	return gen.PostIdentityIntegrationsByIdWebhooksByWebhookIdTest202JSONResponse(gen.WebhookTestDelivery{DeliveryId: delivery}), nil
 }
 
 // GetIdentityWebhookEvents is the catalogue (W4) as one integration sees it:
@@ -674,6 +735,10 @@ func (r refusal) VisitPostIdentityIntegrationsByIdWebhooksByWebhookIdEnableRespo
 }
 
 func (r refusal) VisitPostIdentityIntegrationsByIdWebhooksByWebhookIdRollSecretResponse(w http.ResponseWriter) error {
+	return r.write(w)
+}
+
+func (r refusal) VisitPostIdentityIntegrationsByIdWebhooksByWebhookIdTestResponse(w http.ResponseWriter) error {
 	return r.write(w)
 }
 

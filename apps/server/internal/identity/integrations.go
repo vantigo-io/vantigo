@@ -613,6 +613,11 @@ func (s *server) setIntegrationDisabled(ctx context.Context, id uuid.UUID, disab
 		if err := q.TouchIntegrationVersion(ctx, store.TouchIntegrationVersionParams{UserID: id, Version: uuid.New()}); err != nil {
 			return fmt.Errorf("identity: change the integration: %w", err)
 		}
+		if !disabled {
+			if err := expireStaleWebhookDeliveries(ctx, q, id, now); err != nil {
+				return err
+			}
+		}
 		after := before
 		after.Disabled = disabled
 		return writeAudit(ctx, q, r, now, auditEvent{

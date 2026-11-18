@@ -19,7 +19,13 @@ import (
 // modules. Compose calls it to refuse a bad composition at startup; the
 // process that runs workers calls it to build the dispatcher,
 // events.NewDispatcher, since worker mode never composes.
+//
+// A handler is built with deps holding the permission catalog of the
+// enabled modules when the caller set none (withCatalog): worker mode never
+// composes, and identity's webhooks fan-out decides by the catalog whether an
+// integration may receive an event (outgoing webhooks design W7).
 func EventHandlers(deps Deps, mods ...Module) ([]events.Handler, error) {
+	deps = withCatalog(deps, enabledModules(deps, mods))
 	var out []events.Handler
 	claimedBy := make(map[string]string)
 	for _, mod := range mods {
@@ -93,6 +99,11 @@ func WorkerDeps(deps Deps, mods ...Module) Deps {
 		panic(err.Error())
 	}
 	enabled := enabledModules(deps, mods)
+	// The permission catalog of the enabled modules, as Compose builds it,
+	// when the caller set none: identity's webhook sender checks by it whether
+	// an integration still may receive an event (outgoing webhooks design
+	// W33), and worker mode never composes.
+	deps = withCatalog(deps, enabled)
 	// The customer directory, resolved as Compose resolves it — from the
 	// enabled module that declares one — since a worker may read customers
 	// too: energy's import worker resolves a file's organisation numbers
@@ -212,6 +223,24 @@ func WorkerDeps(deps Deps, mods ...Module) Deps {
 	if err != nil {
 		panic(err.Error())
 	}
+	return deps
+}
+
+// withCatalog sets deps.Catalog to the permissions the enabled modules
+// declare, keyed as Compose keys them, unless the caller set one. Compose
+// refuses a duplicate key; a process that runs workers has composed, or is
+// built from the same module list as one that did.
+func withCatalog(deps Deps, enabled []Module) Deps {
+	if deps.Catalog != nil {
+		return deps
+	}
+	catalog := make(map[string]contracts.Permission)
+	for _, mod := range enabled {
+		for _, perm := range mod.Permissions {
+			catalog[perm.Key] = perm
+		}
+	}
+	deps.Catalog = catalog
 	return deps
 }
 

@@ -8,7 +8,9 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/vantigo-io/vantigo/server/internal/config"
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/events"
+	"github.com/vantigo-io/vantigo/server/internal/worker"
 )
 
 func eventHandlers(names ...string) func(Deps) []events.Handler {
@@ -67,6 +69,44 @@ func TestEventHandlers_RefusesADuplicateName(t *testing.T) {
 	// One module twice over too.
 	if _, err := EventHandlers(Deps{}, Module{Name: "alpha", EventHandlers: eventHandlers("a.x", "a.x")}); err == nil {
 		t.Error("EventHandlers with one module's duplicate = nil, want an error")
+	}
+}
+
+// TestEventHandlers_AndWorkersSeeTheEnabledModulesCatalog pins the catalog a
+// worker-mode process hands its handlers and workers, which never compose:
+// the enabled modules' permissions, unless the caller set one (outgoing
+// webhooks design W7, W33).
+func TestEventHandlers_AndWorkersSeeTheEnabledModulesCatalog(t *testing.T) {
+	var seen []map[string]contracts.Permission
+	capture := func(d Deps) []events.Handler {
+		seen = append(seen, d.Catalog)
+		return eventHandlers("alpha.one")(d)
+	}
+	mods := []Module{
+		{Name: "alpha", Permissions: []contracts.Permission{{Key: "alpha:access", Delegable: true}}, EventHandlers: capture,
+			Workers: func(d Deps) []worker.Worker { seen = append(seen, d.Catalog); return nil }},
+		{Name: "beta", Permissions: []contracts.Permission{{Key: "beta:access"}}},
+	}
+	deps := Deps{Config: &config.Config{Modules: []string{"alpha"}}}
+	if _, err := EventHandlers(deps, mods...); err != nil {
+		t.Fatal(err)
+	}
+	Workers(deps, mods...)
+	if len(seen) != 2 {
+		t.Fatalf("seen %d catalogs", len(seen))
+	}
+	for _, c := range seen {
+		if _, ok := c["alpha:access"]; !ok || len(c) != 1 {
+			t.Errorf("catalog %v, want alpha's alone", c)
+		}
+	}
+	seen = nil
+	deps.Catalog = map[string]contracts.Permission{"x:y": {}}
+	if _, err := EventHandlers(deps, mods...); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := seen[0]["x:y"]; !ok || len(seen[0]) != 1 {
+		t.Errorf("a preset catalog was replaced: %v", seen[0])
 	}
 }
 

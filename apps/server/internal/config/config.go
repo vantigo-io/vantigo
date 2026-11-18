@@ -286,6 +286,18 @@ type Config struct {
 	// IdentityIntegrationsWorkerPoll is how often that worker runs a cycle
 	// (IDENTITY_API_KEYS_POLL, default 1 hour).
 	IdentityIntegrationsWorkerPoll time.Duration
+	// IdentityWebhooksEnabled is the on/off switch for identity's webhook
+	// sender, identity.webhook-sender (IDENTITY_WEBHOOKS_ENABLED, outgoing
+	// webhooks design W15, W29): it sends what the fan-out queued, retries,
+	// disables a failing endpoint and expires and prunes deliveries. Default
+	// ON. A 0 means the worker is never handed to the runner: events are still
+	// queued for the endpoints, nothing is sent, and a delivery still pending
+	// after 3 days expires once the worker runs again. It is independent of
+	// the API keys worker's switch.
+	IdentityWebhooksEnabled bool
+	// IdentityWebhooksPoll is how often the sender claims due deliveries
+	// (IDENTITY_WEBHOOKS_POLL, default 2 seconds).
+	IdentityWebhooksPoll time.Duration
 	// CustomersAnonymisationEnabled is the on/off switch for the customers
 	// module's anonymisation worker (CUSTOMERS_ANONYMISATION_ENABLED,
 	// customers GDPR design D4). Default ON, like the registry workers, and for
@@ -1007,6 +1019,10 @@ func peppolLookup(p *problems, env map[string]string, c *Config) {
 func identityAPIKeys(p *problems, env map[string]string, c *Config) {
 	c.IdentityIntegrationsWorkerEnabled = boolean(p, env, "IDENTITY_API_KEYS_ENABLED", true)
 	c.IdentityIntegrationsWorkerPoll = duration(p, env, "IDENTITY_API_KEYS_POLL", time.Hour)
+	// The webhook sender's (outgoing webhooks design W15): its own switch,
+	// on by default, and its poll, two seconds by default.
+	c.IdentityWebhooksEnabled = boolean(p, env, "IDENTITY_WEBHOOKS_ENABLED", true)
+	c.IdentityWebhooksPoll = duration(p, env, "IDENTITY_WEBHOOKS_POLL", 2*time.Second)
 }
 
 // customersRegistryWorkers loads the two customers background workers'

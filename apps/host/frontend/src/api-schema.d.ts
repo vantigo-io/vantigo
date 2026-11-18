@@ -813,7 +813,7 @@ export interface paths {
         put?: never;
         /**
          * Create a webhook endpoint
-         * @description Creates a webhook endpoint for an integration and answers its signing secret, once: it is kept sealed and never shown again. The URL is https on port 443 with a host name that resolves only to public addresses; each event is a catalogue name the integration's roles let it receive. At most 5 endpoints per integration and 50 in the workspace. Audited webhook.created, with the URL's scheme and host only.
+         * @description Creates a webhook endpoint for an integration and answers its signing secret, once: it is kept sealed and never shown again. The URL is https on port 443 with a host name that resolves only to public addresses; each event is a catalogue name the integration's roles let it receive. At most 5 endpoints per integration and 50 in the workspace. A webhook.ping test event is queued to it at once. Audited webhook.created, with the URL's scheme and host only.
          */
         post: operations["postIdentityIntegrationsByIdWebhooks"];
         delete?: never;
@@ -881,7 +881,7 @@ export interface paths {
         put?: never;
         /**
          * Enable a webhook endpoint
-         * @description Enables a disabled webhook endpoint: it receives the events published from then on, with no failure counted. One enabled already is answered as it is. Audited webhook.enabled.
+         * @description Enables a disabled webhook endpoint: it receives the events published from then on, with no failure counted, and a webhook.ping test event is queued to it. One enabled already is answered as it is. Audited webhook.enabled.
          */
         post: operations["postIdentityIntegrationsByIdWebhooksByWebhookIdEnable"];
         delete?: never;
@@ -904,6 +904,26 @@ export interface paths {
          * @description Gives a webhook endpoint a new signing secret and answers it, once. The secret it replaces signs every message too, beside the new one, for the overlap, 1 to 168 hours (24 by default); rolling again within an overlap ends the older secret at once. Audited webhook.secret_rolled, without either secret.
          */
         post: operations["postIdentityIntegrationsByIdWebhooksByWebhookIdRollSecret"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/identity/integrations/{id}/webhooks/{webhookId}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send a test event to a webhook endpoint
+         * @description Queues a webhook.ping message to an enabled webhook endpoint: a body with type webhook.ping and empty data, signed as every message is, sent once within seconds with no retry and never counted toward disabling the endpoint. A 410 Gone answer disables the endpoint (gone), as for any message. Audited webhook.test_sent.
+         */
+        post: operations["postIdentityIntegrationsByIdWebhooksByWebhookIdTest"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3655,6 +3675,14 @@ export interface components {
         WebhookSecretRollRequest: {
             /** @description How long the secret replaced signs beside the new one, 1 to 168 hours; 24 when absent. */
             overlapHours?: number;
+        };
+        /** @description The test event just queued (outgoing webhooks design W19). */
+        WebhookTestDelivery: {
+            /**
+             * Format: uuid
+             * @description The delivery of the webhook.ping message, sent once with no retry.
+             */
+            deliveryId: string;
         };
         /** @description The workspace's own settings (time zones design D2 and D3). businessTimeZone is the one calendar every bookkeeping day in the installation is judged in — an invoice's issue day, a period lock, a trip's departure day, Staff's "today" — which every module reads through the platform's BusinessCalendar contract; Europe/Oslo until an Owner sets another. */
         WorkspaceSettings: {
@@ -7879,6 +7907,77 @@ export interface operations {
                 };
             };
             /** @description Conflict — integration_archived, the integration is archived. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postIdentityIntegrationsByIdWebhooksByWebhookIdTest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The integration (its user's id). */
+                id: string;
+                /** @description The endpoint. */
+                webhookId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookTestDelivery"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — not_found, no such integration or endpoint. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — integration_archived, the integration is archived; webhook_endpoint_disabled, the endpoint is disabled. */
             409: {
                 headers: {
                     [name: string]: unknown;

@@ -232,6 +232,7 @@ var markedByHand = map[string]string{
 	"postIdentityIntegrationsByIdWebhooksByWebhookIdDisable":    "never",
 	"postIdentityIntegrationsByIdWebhooksByWebhookIdEnable":     "never",
 	"postIdentityIntegrationsByIdWebhooksByWebhookIdRollSecret": "never",
+	"postIdentityIntegrationsByIdWebhooksByWebhookIdTest":       "never",
 	"getIdentityWebhookEvents":                                  "never",
 
 	// Shared shop-floor stations (manufacturing phase 2 M129–M143): a station
