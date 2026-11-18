@@ -184,8 +184,17 @@ changes the name, description, contact and rate limit, **Disable** stops every k
 choose **Enable**, and **Archive** revokes every key and keeps the integration for what it did —
 it cannot be undone. If a key may have leaked, revoke it at once.
 
-The details — what a key can reach, the narrowing, read-only keys, networks, the answers a
-client gets and what to do when a key leaks — are under [API access](/en/admin/api-access/).
+The **Requests** tab on an integration's page shows what its keys called over the last 30
+days: the requests per day by status, the operations called most, and the latest 200 with the
+key, the status and, for a refused one, why. **Key**, **Status**, **Refused because** and
+**Day** narrow it down. A new request shows there within a few seconds.
+
+The **Contact** and every Owner get an email 14 days and 3 days before a key expires, and on
+the day, unless it has been rolled or revoked. Roll the key before then.
+
+The details — what a key can reach, the narrowing, read-only keys, networks, the rate limit,
+the answers a client gets, the request log and what to do when a key leaks — are under
+[API access](/en/admin/api-access/).
 
 ## Disable, enable or delete a user
 
