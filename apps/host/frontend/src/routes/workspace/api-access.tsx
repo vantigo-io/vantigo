@@ -10,7 +10,7 @@ import { listAuthorizationRoles, listAuthorizationUsers } from "../../api/author
 import { createIntegration, type Integration, integrationsQueryKey, listIntegrations } from "../../api/integrations";
 import { CustomRolePicker } from "../../components/custom-role-picker";
 import "../../i18n";
-import { fieldErrorsOf, integrationStatusColor } from "./-api-access-shared";
+import { contactOptions, fieldErrorsOf, integrationStatusColor } from "./-api-access-shared";
 
 type Draft = { name: string; description: string; contactUserId: string | null; roleIds: string[] };
 const emptyDraft: Draft = { name: "", description: "", contactUserId: null, roleIds: [] };
@@ -159,10 +159,7 @@ const ApiAccessPage = () => {
                 description={t("apiAccess.contactHint")}
                 searchable
                 clearable
-                data={(users.data ?? []).map((user) => ({
-                  value: user.id,
-                  label: user.displayName || user.email || user.id,
-                }))}
+                data={contactOptions(users.data ?? [], draft.contactUserId)}
                 value={draft.contactUserId}
                 error={errors.contactUserId}
                 onChange={(contactUserId) => setDraft({ ...draft, contactUserId })}

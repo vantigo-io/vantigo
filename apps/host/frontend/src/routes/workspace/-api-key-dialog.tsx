@@ -223,7 +223,16 @@ const NarrowingChecklist = ({
       <Switch
         label={t("apiAccess.showUngranted")}
         checked={draft.showUngranted}
-        onChange={(event) => setDraft({ ...draft, showUngranted: event.currentTarget.checked })}
+        onChange={(event) => {
+          const showUngranted = event.currentTarget.checked;
+          // Hiding the rest of the catalog drops what was ticked in it: the
+          // key is never narrowed to a permission the dialog no longer shows.
+          setDraft({
+            ...draft,
+            showUngranted,
+            permissions: showUngranted ? draft.permissions : draft.permissions.filter((key) => effective.has(key)),
+          });
+        }}
       />
       {entries.length === 0 && (
         <Text size="sm" c="dimmed">
@@ -322,6 +331,8 @@ export const NewKeyDialog = ({
       title={secret ? t("apiAccess.secretFor", { name: secret.key.name }) : t("apiAccess.newKey")}
       size="lg"
       closeOnClickOutside={secret === null}
+      closeOnEscape={secret === null}
+      withCloseButton={secret === null}
       centered
     >
       {secret ? (
@@ -449,6 +460,8 @@ export const RollKeyDialog = ({
       }
       size="lg"
       closeOnClickOutside={secret === null}
+      closeOnEscape={secret === null}
+      withCloseButton={secret === null}
       centered
     >
       {secret ? (
@@ -463,6 +476,9 @@ export const RollKeyDialog = ({
           >
             <Stack>
               <Text size="sm">{t("apiAccess.rollBody")}</Text>
+              <Alert color="orange" icon={<IconAlertTriangle size={16} />}>
+                {t("apiAccess.rollLeaked")}
+              </Alert>
               <Select
                 label={t("apiAccess.overlap")}
                 description={t("apiAccess.overlapHint")}

@@ -29,6 +29,9 @@ export interface AuthorizationUser {
   displayName: string | null;
   email: string | null;
   roles?: string[];
+  /** person for one who signs in; agent for an AI agent; integration for an external application's account. */
+  kind?: "person" | "agent" | "integration";
+  isDisabled?: boolean;
 }
 export interface DelegationScope {
   id: string;
