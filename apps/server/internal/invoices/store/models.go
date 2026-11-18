@@ -282,20 +282,21 @@ type InvoicesCreditMerge struct {
 }
 
 type InvoicesCreditRefund struct {
-	ID                 int64
-	CustomerID         int32
-	RefundedOn         pgtype.Date
-	Amount             pgtype.Numeric
-	Currency           string
-	AmountNok          pgtype.Numeric
-	BankAccount        string
-	Reference          string
-	Note               string
-	RegisteredByUserID uuid.UUID
-	RegisteredAt       time.Time
-	RemovedAt          *time.Time
-	RemovedByUserID    *uuid.UUID
-	RemovalReason      *string
+	ID                    int64
+	CustomerID            int32
+	RefundedOn            pgtype.Date
+	Amount                pgtype.Numeric
+	Currency              string
+	AmountNok             pgtype.Numeric
+	BankAccount           string
+	Reference             string
+	Note                  string
+	RegisteredByUserID    uuid.UUID
+	RegisteredAt          time.Time
+	RemovedAt             *time.Time
+	RemovedByUserID       *uuid.UUID
+	RemovalReason         *string
+	ExchangeDifferenceNok pgtype.Numeric
 }
 
 type InvoicesCustomerCredit struct {
@@ -341,6 +342,24 @@ type InvoicesDelivery struct {
 type InvoicesErasedCustomer struct {
 	CustomerID int32
 	ErasedAt   time.Time
+}
+
+type InvoicesExchangeDifference struct {
+	ID            int64
+	InvoiceID     int64
+	DocumentID    int64
+	DifferenceDay pgtype.Date
+	AmountNok     pgtype.Numeric
+	RegisteredAt  time.Time
+}
+
+type InvoicesExchangeRate struct {
+	Currency        string
+	RateDate        pgtype.Date
+	Rate            pgtype.Numeric
+	Source          string
+	FetchedAt       time.Time
+	EnteredByUserID *uuid.UUID
 }
 
 type InvoicesInvoice struct {
@@ -418,6 +437,7 @@ type InvoicesInvoice struct {
 	SellerLogoSha256           *string
 	SellerPhone                *string
 	BuyerAvtalegiroKid         *string
+	ExchangeRateSource         string
 }
 
 type InvoicesInvoiceHold struct {
@@ -467,6 +487,7 @@ type InvoicesLine struct {
 	LineKind         *string
 	TaxCategoryID    *int32
 	ProjectID        *int32
+	LineNetNok       pgtype.Numeric
 }
 
 type InvoicesLineRelease struct {
@@ -539,24 +560,25 @@ type InvoicesPayLink struct {
 }
 
 type InvoicesPayment struct {
-	ID                 int64
-	InvoiceID          int64
-	PaidOn             pgtype.Date
-	Amount             pgtype.Numeric
-	Currency           string
-	Reference          string
-	Note               string
-	RegisteredByUserID *uuid.UUID
-	RegisteredAt       time.Time
-	RemovedAt          *time.Time
-	RemovedByUserID    *uuid.UUID
-	RemovalReason      *string
-	Source             string
-	BankTransactionID  *int64
-	PaymentAttemptID   *int64
-	Kind               string
-	WriteOffID         *int64
-	AmountNok          pgtype.Numeric
+	ID                    int64
+	InvoiceID             int64
+	PaidOn                pgtype.Date
+	Amount                pgtype.Numeric
+	Currency              string
+	Reference             string
+	Note                  string
+	RegisteredByUserID    *uuid.UUID
+	RegisteredAt          time.Time
+	RemovedAt             *time.Time
+	RemovedByUserID       *uuid.UUID
+	RemovalReason         *string
+	Source                string
+	BankTransactionID     *int64
+	PaymentAttemptID      *int64
+	Kind                  string
+	WriteOffID            *int64
+	AmountNok             pgtype.Numeric
+	ExchangeDifferenceNok pgtype.Numeric
 }
 
 type InvoicesPaymentAttempt struct {
@@ -633,6 +655,15 @@ type InvoicesQuickRequest struct {
 	InvoiceID  int64
 	BodySha256 string
 	CreatedAt  time.Time
+}
+
+type InvoicesRateFetch struct {
+	Currency      string
+	LeaseID       *string
+	LeaseUntil    *time.Time
+	LastAttemptAt *time.Time
+	LastSuccessAt *time.Time
+	LastError     *string
 }
 
 type InvoicesReminder struct {
@@ -766,6 +797,7 @@ type InvoicesSetting struct {
 	Tolerance               pgtype.Numeric
 	AvtalegiroEnabled       bool
 	KidSpaceReserved        bool
+	Currencies              []string
 }
 
 type InvoicesTaxCategoryVatCode struct {
@@ -852,15 +884,16 @@ type InvoicesVatCodeRate struct {
 }
 
 type InvoicesVatSummary struct {
-	ID              int64
-	InvoiceID       int64
-	VatCategory     string
-	RatePercent     pgtype.Numeric
-	SafTCode        string
-	ExemptionReason *string
-	TaxableAmount   pgtype.Numeric
-	VatAmount       pgtype.Numeric
-	VatAmountNok    pgtype.Numeric
+	ID               int64
+	InvoiceID        int64
+	VatCategory      string
+	RatePercent      pgtype.Numeric
+	SafTCode         string
+	ExemptionReason  *string
+	TaxableAmount    pgtype.Numeric
+	VatAmount        pgtype.Numeric
+	VatAmountNok     pgtype.Numeric
+	TaxableAmountNok pgtype.Numeric
 }
 
 type InvoicesVippsDayReconciliation struct {

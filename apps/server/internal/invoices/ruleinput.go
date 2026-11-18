@@ -123,7 +123,7 @@ func (s *server) readRuleInputs(ctx context.Context, q *store.Queries, ids []int
 			Invoice: reminderrules.Invoice{
 				IssueDate: utcDay(r.IssueDate.Time), DueDate: utcDay(r.DueDate.Time), Gross: gross,
 				BuyerType: deref(r.BuyerType), BuyerOrganisationNumber: deref(r.BuyerOrganisationNumber),
-				BuyerForeignID: deref(r.BuyerForeignID),
+				BuyerForeignID: deref(r.BuyerForeignID), Foreign: r.Currency != "NOK",
 			},
 			Settings: settings,
 			Mode:     reminderrules.ModeNormal,

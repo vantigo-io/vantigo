@@ -128,6 +128,15 @@ type draftInput struct {
 	// transaction to write its rows anew — nil when the save only prunes them.
 	timesheet     bool
 	timesheetRead *timesheetRead
+	// currency is the request's currency, "" when it left it out; and
+	// exchangeRate and exchangeRateDate an agreed rate (invoices phase 6
+	// design I19), nil for Norges Bank's.
+	currency         string
+	exchangeRate     *big.Rat
+	exchangeRateDate *time.Time
+	// rate is the rate a save sets, resolved before its transaction; nil
+	// keeps the draft's.
+	rate *draftRateOf
 }
 
 // amount is one number of a line: finite, at least minimum (above it when
@@ -217,13 +226,14 @@ func optionalText(v *string) string {
 }
 
 // parseDraft runs D4's and D5's field rules over a draft body, every failure
-// collected. currency is the one this installation invoices in (NOK in phase
-// 1). The VAT codes and the bounds on computed amounts are checked afterwards,
+// collected. allowed is the currencies the draft may be in: NOK and the
+// settings' (invoices phase 6 design I17), only NOK for the quick invoice,
+// the original's for a credit note. The VAT codes and the bounds on computed amounts are checked afterwards,
 // against the codes (checkLines). A negative quantity is accepted here
 // provisionally: whether a line may carry one — a deduction line, or a credit
 // note's line crediting one (invoices work design D7) — is decided once the
 // line's kind is known (deductionRules, putCreditDraft).
-func parseDraft(body gen.InvoicesInvoiceRequest, currency string, stored map[string]bool) (draftInput, map[string][]string) {
+func parseDraft(body gen.InvoicesInvoiceRequest, allowed []string, stored map[string]bool) (draftInput, map[string][]string) {
 	var errs map[string][]string
 	add := func(field, msg string) {
 		if msg != "" {
@@ -245,8 +255,24 @@ func parseDraft(body gen.InvoicesInvoiceRequest, currency string, stored map[str
 	if body.CustomerId <= 0 {
 		add("customerId", "A document needs a customer")
 	}
-	if body.Currency != nil && strings.ToUpper(strings.TrimSpace(*body.Currency)) != currency {
-		add("currency", onlyNOK)
+	if body.Currency != nil {
+		in.currency = strings.ToUpper(strings.TrimSpace(*body.Currency))
+		if !slices.Contains(allowed, in.currency) {
+			add("currency", msgCurrencyNotEnabled)
+		}
+	}
+	if body.ExchangeRate != nil {
+		r, msg := parseExchangeRate("The exchange rate", *body.ExchangeRate)
+		add("exchangeRate", msg)
+		in.exchangeRate = r
+		if in.currency == "NOK" {
+			add("exchangeRate", "A document in NOK has no exchange rate")
+		}
+		if body.ExchangeRateDate != nil {
+			in.exchangeRateDate = &body.ExchangeRateDate.Time
+		}
+	} else if body.ExchangeRateDate != nil {
+		add("exchangeRateDate", "A rate's day is given with the rate")
 	}
 	if t := body.PaymentTermsDays; t != nil && (*t < 0 || *t > 365) {
 		add("paymentTermsDays", "Payment terms are between 0 and 365 days")
@@ -512,7 +538,7 @@ func (s *server) PostInvoices(ctx context.Context, req gen.PostInvoicesRequestOb
 	if err != nil {
 		return nil, fmt.Errorf("invoices: read the settings: %w", err)
 	}
-	in, errs := parseDraft(*req.Body, settings.DefaultCurrency, nil)
+	in, errs := parseDraft(*req.Body, draftCurrencies(settings), nil)
 	// Work arrives on a draft only through the uninvoiced view (D2, D3): a
 	// create holds none, and has none to refresh.
 	for i, l := range in.lines {
@@ -553,16 +579,31 @@ func (s *server) PostInvoices(ctx context.Context, req gen.PostInvoicesRequestOb
 	if err != nil {
 		return nil, err
 	}
-	codes, err := vatCodesOn(ctx, q, pgDate(holidays.DayIn(s.deps.Clock(), loc)))
+	today := holidays.DayIn(s.deps.Clock(), loc)
+	codes, err := vatCodesOn(ctx, q, pgDate(today))
+	if err != nil {
+		return nil, err
+	}
+	// The draft's currency (I19): the request's, else the billing profile's
+	// when it is turned on, else NOK; and its rate.
+	currency := in.currency
+	if currency == "" {
+		currency = "NOK"
+		if slices.Contains(settings.Currencies, profile.Currency) {
+			currency = profile.Currency
+		}
+	}
+	errs = rateRules(currency, in, today, errs)
+	rate, err := draftRate(ctx, q, currency, in, today)
 	if err != nil {
 		return nil, err
 	}
 	errs = checkInvoiceLines(in.lines, codes, errs)
-	errs, duplicated, err := deductionRules(ctx, q, in.customerID, settings.DefaultCurrency, in.lines, errs)
+	errs, duplicated, err := deductionRules(ctx, q, in.customerID, currency, in.lines, errs)
 	if err != nil {
 		return nil, err
 	}
-	_, totals, _ := summarize(taxedLines(in.lines, codes), big.NewRat(1, 1))
+	_, totals, _ := summarize(taxedLines(in.lines, codes), rate.Rate)
 	errs = checkTotal(totals, errs)
 	if len(errs) > 0 {
 		return gen.PostInvoices400ApplicationProblemPlusJSONResponse(invalid(invalidInvoiceTitle, errs)), nil
@@ -580,7 +621,8 @@ func (s *server) PostInvoices(ctx context.Context, req gen.PostInvoicesRequestOb
 		created, err = txq.InsertInvoiceDraft(ctx, store.InsertInvoiceDraftParams{
 			CustomerID: in.customerID, DeliveryDate: in.deliveryDate, DeliveryFrom: in.deliveryFrom, DeliveryTo: in.deliveryTo,
 			DeliveryAddressLine1: line1, DeliveryAddressLine2: line2, DeliveryPostalCode: postal, DeliveryCity: city, DeliveryCountry: country,
-			PaymentTermsDays: in.paymentTermsDays, Currency: settings.DefaultCurrency,
+			PaymentTermsDays: in.paymentTermsDays, Currency: currency,
+			ExchangeRate: rate.numeric(), ExchangeRateDate: rate.day(), ExchangeRateSource: &rate.Source,
 			YourReference: *in.yourReference, OurReference: in.ourReference, OrderReference: in.orderReference,
 			Note: in.note, InternalNote: in.internalNote,
 			NetTotal: net, VatTotal: vat, GrossTotal: gross, VatTotalNok: vatNOK, Timesheet: in.timesheet,
@@ -639,7 +681,7 @@ func (s *server) PutInvoicesById(ctx context.Context, req gen.PutInvoicesByIdReq
 	if err != nil {
 		return nil, err
 	}
-	in, errs := parseDraft(*req.Body, settings.DefaultCurrency, stored)
+	in, errs := parseDraft(*req.Body, draftCurrencies(settings), stored)
 	if in.paymentTermsDays == nil {
 		errs = withFieldError(errs, "paymentTermsDays", "An invoice needs payment terms")
 	}
@@ -700,16 +742,39 @@ func (s *server) PutInvoicesById(ctx context.Context, req gen.PutInvoicesByIdReq
 	if err != nil {
 		return nil, err
 	}
+	// The currency a save leaves out is the draft's (I19); a draft that
+	// holds order lines, work or deductions keeps the one it was made in —
+	// their prices are in it.
+	if in.currency == "" {
+		in.currency = current.Currency
+	}
+	// An agreed rate the draft holds stays until the person drops it
+	// (useNorgesBankRate) or names another, in the same currency.
+	if in.exchangeRate == nil && in.currency == current.Currency && current.ExchangeRateSource == rateSourceManual &&
+		(req.Body.UseNorgesBankRate == nil || !*req.Body.UseNorgesBankRate) {
+		if in.exchangeRate, err = ratFromNumeric(current.ExchangeRate); err != nil {
+			return nil, err
+		}
+		if current.ExchangeRateDate.Valid {
+			in.exchangeRateDate = &current.ExchangeRateDate.Time
+		}
+	}
+	if in.currency != current.Currency && (len(held) > 0 || slices.ContainsFunc(in.lines, func(l draftLine) bool { return l.deductsInvoiceID != nil })) {
+		errs = withFieldError(errs, "currency", "A draft with order lines, work or a-konto keeps the currency it was made in")
+	}
+	today := holidays.DayIn(s.deps.Clock(), loc)
+	errs = rateRules(in.currency, in, today, errs)
+	rate, err := draftRate(ctx, q, in.currency, in, today)
+	if err != nil {
+		return nil, err
+	}
+	in.rate = &rate
 	errs = checkInvoiceLines(in.lines, codes, errs)
-	errs, duplicated, err := deductionRules(ctx, q, in.customerID, current.Currency, in.lines, errs)
+	errs, duplicated, err := deductionRules(ctx, q, in.customerID, in.currency, in.lines, errs)
 	if err != nil {
 		return nil, err
 	}
-	exchangeRate, err := ratFromNumeric(current.ExchangeRate)
-	if err != nil {
-		return nil, err
-	}
-	_, totals, _ := summarize(taxedLines(in.lines, codes), exchangeRate)
+	_, totals, _ := summarize(taxedLines(in.lines, codes), rate.Rate)
 	errs = checkTotal(totals, errs)
 	if len(errs) > 0 {
 		return gen.PutInvoicesById400ApplicationProblemPlusJSONResponse(invalid(invalidInvoiceTitle, errs)), nil
@@ -903,6 +968,14 @@ func (s *server) saveDraft(ctx context.Context, id int64, revision int32, in dra
 		})
 		if err != nil {
 			return fmt.Errorf("invoices: replace draft %d: %w", id, err)
+		}
+		if in.rate != nil && locked.Kind == kindInvoice {
+			if out.doc, err = txq.SetDraftRate(ctx, store.SetDraftRateParams{
+				ID: id, Currency: in.currency, ExchangeRate: in.rate.numeric(), ExchangeRateDate: in.rate.day(),
+				ExchangeRateSource: in.rate.Source,
+			}); err != nil {
+				return fmt.Errorf("invoices: set draft %d's rate: %w", id, err)
+			}
 		}
 		lineIDs, err := writeLines(ctx, txq, id, in.lines)
 		if err != nil {
@@ -1126,4 +1199,65 @@ func (s *server) withDraftFreshness(ctx context.Context, q *store.Queries, invoi
 	if err != nil {
 		s.deps.Logger.WarnContext(ctx, "invoices: a draft's work could not be judged fresh", "invoiceId", invoiceID, "error", err)
 	}
+}
+
+// draftCurrencies is what a draft may be in: NOK and the settings' (I17).
+func draftCurrencies(settings store.InvoicesSetting) []string {
+	return append([]string{"NOK"}, settings.Currencies...)
+}
+
+// draftRateOf is a draft's rate as a save sets it (invoices phase 6 design
+// I19): NOK per one unit, the day it is of — nil while none is found — and
+// its source. Missing is a draft in currency with no rate within 7 days: its
+// rate stays 1, and the response warns exchange_rate_missing.
+type draftRateOf struct {
+	Rate    *big.Rat
+	Day     *time.Time
+	Source  string
+	Missing bool
+}
+
+func (r draftRateOf) numeric() pgtype.Numeric {
+	n, _ := numericFromRat(r.Rate, ratesMaxDecimals)
+	return n
+}
+
+func (r draftRateOf) day() pgtype.Date {
+	if r.Day == nil {
+		return pgtype.Date{}
+	}
+	return pgDate(*r.Day)
+}
+
+// draftRate is the rate a draft in currency takes at a save: the agreed one
+// in, with its day (today when left out), else Norges Bank's of today, which
+// the issue resolves again for the issue date. NOK is 1 and nok.
+func draftRate(ctx context.Context, q *store.Queries, currency string, in draftInput, today time.Time) (draftRateOf, error) {
+	switch {
+	case currency == "NOK":
+		return draftRateOf{Rate: big.NewRat(1, 1), Source: rateSourceNOK}, nil
+	case in.exchangeRate != nil:
+		day := today
+		if in.exchangeRateDate != nil {
+			day = *in.exchangeRateDate
+		}
+		return draftRateOf{Rate: in.exchangeRate, Day: &day, Source: rateSourceManual}, nil
+	}
+	r, ok, err := resolveRate(ctx, q, currency, today)
+	if err != nil || !ok {
+		return draftRateOf{Rate: big.NewRat(1, 1), Source: rateSourceNorgesBank, Missing: !ok}, err
+	}
+	return draftRateOf{Rate: r.Rate, Day: &r.Day, Source: rateSourceNorgesBank}, nil
+}
+
+// rateRules are the agreed rate's rules once the draft's currency is known:
+// none on NOK, and its day not after today.
+func rateRules(currency string, in draftInput, today time.Time, errs map[string][]string) map[string][]string {
+	if in.exchangeRate != nil && currency == "NOK" && in.currency != "NOK" {
+		errs = withFieldError(errs, "exchangeRate", "A document in NOK has no exchange rate")
+	}
+	if in.exchangeRateDate != nil && in.exchangeRateDate.After(today) {
+		errs = withFieldError(errs, "exchangeRateDate", "A rate is of today or a day before")
+	}
+	return errs
 }

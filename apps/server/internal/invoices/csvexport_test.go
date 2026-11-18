@@ -25,7 +25,7 @@ const exportPath = "/api/v1/invoices/export.csv"
 const csvBOM = "\xef\xbb\xbf"
 
 // exportHeader is D5's header row, fixed and English.
-const exportHeader = "Number;Kind;Issue date;Delivery;Due;Customer number;Buyer;Buyer org no;Currency;SAF-T code;Rate;Base;VAT;Base NOK;VAT NOK;Credits number;KID;Project"
+const exportHeader = "Number;Kind;Issue date;Delivery;Due;Customer number;Buyer;Buyer org no;Currency;SAF-T code;Rate;Base;VAT;Base NOK;VAT NOK;Credits number;KID;Project;Exchange rate;Rate date;Rate source"
 
 // exportCSV GETs the export of query (no leading '?') as an invoices:access
 // holder and fails on anything but 200.
@@ -66,8 +66,8 @@ func plantExportDocuments(t *testing.T, h *harness, first, count int, issueDate 
 	t.Helper()
 	batch := uuid.New()
 	h.Exec(t, `
-		INSERT INTO invoices.invoices (kind, customer_id, currency, exchange_rate, created_by_user_id, created_at, updated_at)
-		SELECT 'invoice', 1, 'EUR', 11.234567, $1, now(), now() FROM generate_series(1, $2::int)`, batch, count)
+		INSERT INTO invoices.invoices (kind, customer_id, currency, exchange_rate, exchange_rate_source, created_by_user_id, created_at, updated_at)
+		SELECT 'invoice', 1, 'EUR', 11.234567, 'norges_bank', $1, now(), now() FROM generate_series(1, $2::int)`, batch, count)
 	h.Exec(t, `
 		INSERT INTO invoices.vat_summaries (invoice_id, vat_category, rate_percent, saf_t_code, taxable_amount, vat_amount, vat_amount_nok)
 		SELECT id, 'S', 25, '3', 100.01, 25.00, 280.86 FROM invoices.invoices WHERE created_by_user_id = $1`, batch)
@@ -103,11 +103,11 @@ func TestExportCSV_IsExactlyTheseBytes(t *testing.T) {
 
 	want := csvBOM + strings.Join([]string{
 		exportHeader,
-		"1;invoice;2026-09-12;2026-09-01/2026-09-10;2026-10-12;10001;'=cmd;923609016;NOK;6;0,00;2000,00;0,00;2000,00;0,00;;;",
-		"1;invoice;2026-09-12;2026-09-01/2026-09-10;2026-10-12;10001;'=cmd;923609016;NOK;3;25,00;12345,50;3086,38;12345,50;3086,38;;;",
-		`2;invoice;2026-09-12;2026-09-10;2026-09-26;10002;"Nordmann; Kari";;NOK;5;0,00;299,70;0,00;299,70;0,00;;;`,
-		"3;credit_note;2026-09-12;2026-09-01/2026-09-10;;10001;'=cmd;923609016;NOK;6;0,00;-2000,00;0,00;-2000,00;0,00;1;;",
-		"3;credit_note;2026-09-12;2026-09-01/2026-09-10;;10001;'=cmd;923609016;NOK;3;25,00;-12345,50;-3086,38;-12345,50;-3086,38;1;;",
+		"1;invoice;2026-09-12;2026-09-01/2026-09-10;2026-10-12;10001;'=cmd;923609016;NOK;6;0,00;2000,00;0,00;2000,00;0,00;;;;1,0000000000;2026-09-12;nok",
+		"1;invoice;2026-09-12;2026-09-01/2026-09-10;2026-10-12;10001;'=cmd;923609016;NOK;3;25,00;12345,50;3086,38;12345,50;3086,38;;;;1,0000000000;2026-09-12;nok",
+		`2;invoice;2026-09-12;2026-09-10;2026-09-26;10002;"Nordmann; Kari";;NOK;5;0,00;299,70;0,00;299,70;0,00;;;;1,0000000000;2026-09-12;nok`,
+		"3;credit_note;2026-09-12;2026-09-01/2026-09-10;;10001;'=cmd;923609016;NOK;6;0,00;-2000,00;0,00;-2000,00;0,00;1;;;1,0000000000;2026-09-12;nok",
+		"3;credit_note;2026-09-12;2026-09-01/2026-09-10;;10001;'=cmd;923609016;NOK;3;25,00;-12345,50;-3086,38;-12345,50;-3086,38;1;;;1,0000000000;2026-09-12;nok",
 		"",
 	}, "\r\n")
 
@@ -129,8 +129,8 @@ func TestExportCSV_BaseNOKRoundsHalfAwayFromZero(t *testing.T) {
 	plant := func(kind string, number int64, credits *int64) int64 {
 		t.Helper()
 		id := modtest.One[int64](t, h.Harness, `
-			INSERT INTO invoices.invoices (kind, customer_id, currency, exchange_rate, credits_invoice_id, created_by_user_id, created_at, updated_at)
-			VALUES ($1::text, 1, 'EUR', 1.5, $2, $3, now(), now()) RETURNING id`, kind, credits, uuid.New())
+			INSERT INTO invoices.invoices (kind, customer_id, currency, exchange_rate, exchange_rate_source, credits_invoice_id, created_by_user_id, created_at, updated_at)
+			VALUES ($1::text, 1, 'EUR', 1.5, 'norges_bank', $2, $3, now(), now()) RETURNING id`, kind, credits, uuid.New())
 		h.Exec(t, `
 			INSERT INTO invoices.vat_summaries (invoice_id, vat_category, rate_percent, saf_t_code, taxable_amount, vat_amount, vat_amount_nok)
 			VALUES ($1, 'S', 25, '3', 100.03, 25.01, 37.52)`, id)
@@ -267,7 +267,7 @@ func TestExportCSV_TheKIDColumn(t *testing.T) {
 	}
 
 	header, rows := exportTable(t, exportCSV(t, h, "from=2026-09-01&to=2026-09-30").Body)
-	if len(header) != 18 || header[16] != "KID" {
+	if len(header) != 21 || header[16] != "KID" {
 		t.Fatalf("header = %v, want KID as the seventeenth column", header)
 	}
 	want := []string{"", "0000026", ""}
@@ -275,13 +275,13 @@ func TestExportCSV_TheKIDColumn(t *testing.T) {
 		t.Fatalf("rows = %v, want three", rows)
 	}
 	for i, r := range rows {
-		if len(r) != 18 || r[16] != want[i] {
+		if len(r) != 21 || r[16] != want[i] {
 			t.Errorf("row %d = %v, want KID %q seventeenth", i+1, r, want[i])
 		}
 	}
 }
 
-// The Project column is the eighteenth and last (invoices work design D9):
+// The Project column is the eighteenth (invoices work design D9):
 // the document's project reference as it was frozen at issue — a credit
 // note's its original's — guarded as text, and empty on a document that
 // names no project.
@@ -295,15 +295,15 @@ func TestExportCSV_TheProjectColumnLast(t *testing.T) {
 	issued(t, h, creditDraft(t, h, withProject.ID).ID)
 
 	header, rows := exportTable(t, exportCSV(t, h, "from=2026-09-01&to=2026-09-30").Body)
-	if len(header) != 18 || header[17] != "Project" {
-		t.Fatalf("header = %v, want Project as the eighteenth and last column", header)
+	if len(header) != 21 || header[17] != "Project" {
+		t.Fatalf("header = %v, want Project as the eighteenth column", header)
 	}
 	want := []string{"P-41", "", "P-41"}
 	if len(rows) != len(want) {
 		t.Fatalf("rows = %v, want three", rows)
 	}
 	for i, r := range rows {
-		if len(r) != 18 || r[17] != want[i] {
+		if len(r) != 21 || r[17] != want[i] {
 			t.Errorf("row %d = %v, want Project %q last", i+1, r, want[i])
 		}
 	}
@@ -321,7 +321,7 @@ func TestExportCSV_TheProjectCellIsGuarded(t *testing.T) {
 	issued(t, h, d.ID)
 
 	_, rows := exportTable(t, exportCSV(t, h, "from=2026-09-01&to=2026-09-30").Body)
-	if len(rows) != 1 || len(rows[0]) != 18 || rows[0][17] != "'=P1" {
+	if len(rows) != 1 || len(rows[0]) != 21 || rows[0][17] != "'=P1" {
 		t.Errorf("rows = %v, want the Project cell '=P1", rows)
 	}
 }

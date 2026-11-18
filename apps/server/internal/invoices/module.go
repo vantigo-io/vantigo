@@ -125,6 +125,9 @@ var limits = map[string]ratelimit.Policy{
 	"getInvoicesBankFeedAccounts":          {Name: "invoices-bank-feed-accounts", Limit: 60, Window: 10 * time.Minute},
 	"putInvoicesBankFeedAccountsByAccount": {Name: "invoices-bank-feed-switch", Limit: 60, Window: 10 * time.Minute},
 	"postInvoicesBankFeedSync":             {Name: "invoices-bank-feed-sync", Limit: 30, Window: 10 * time.Minute},
+	// Fetch now of the exchange rates calls Norges Bank at once (invoices
+	// phase 6 design I18): 10 per 10 minutes.
+	"postInvoicesExchangeRatesFetch": {Name: "invoices-rates-fetch", Limit: 10, Window: 10 * time.Minute},
 	// The pay page's three anonymous operations (invoices payments and
 	// reminders design D15, I2), each a bucket of its own: the read 60, the
 	// attempt's create 10 — each makes a Vipps payment — and the status read
@@ -154,6 +157,7 @@ func Module() module.Module {
 		Receivables:          newCustomerReceivables,
 		SalesTax:             newSalesTax,
 		SalesJournal:         newSalesJournal,
+		ExchangeRates:        newExchangeRates,
 		BankFeed:             newBankFeed,
 		CustomerReferences:   newCustomerReferenceHolder,
 		CustomerPersonalData: newCustomerPersonalData,
@@ -186,7 +190,11 @@ func Module() module.Module {
 // accounts the bank feed is switched on for and matches their incoming
 // payments (invoices bank feed design F5), is handed over only when
 // INVOICES_BANK_FEED_ENABLED is on: off, no bank is called on a schedule and
-// what is stored stays.
+// what is stored stays. The invoices-rates worker, which fetches Norges
+// Bank's exchange rates of the currencies turned on each business day after
+// 16:30 (invoices phase 6 design I18), is handed over only when
+// INVOICES_RATES_ENABLED is on: off, Norges Bank is never called, and a
+// manual rate is the only one a document in currency is issued at.
 func workers(d module.Deps) []worker.Worker {
 	var ws []worker.Worker
 	if d.Config != nil && d.Config.InvoicesEhfEnabled {
@@ -199,6 +207,9 @@ func workers(d module.Deps) []worker.Worker {
 	}
 	if d.Config != nil && d.Config.InvoicesBankFeedEnabled {
 		ws = append(ws, NewBankFeedWorker(d))
+	}
+	if d.Config != nil && d.Config.InvoicesRatesEnabled {
+		ws = append(ws, NewRatesWorker(d))
 	}
 	// eFaktura and AvtaleGiro (invoices phase 6 plan D6): only behind the
 	// live switch.

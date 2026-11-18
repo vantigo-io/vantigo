@@ -60,6 +60,9 @@ const actionsOf = (
     if (line.reason === "negative_amount") return ["dismiss"];
     if (line.reason === "possible_duplicate") return ["apply", "confirm", "dismiss"];
     if (line.reason === "exceeds_open" || line.reason === "invoice_settled") return ["apply", "keep", "dismiss"];
+    // A NOK line for an invoice in another currency (invoices phase 6 design
+    // I24): applied with its NOK share, its rest kept as credit in NOK.
+    if (line.reason === "currency_differs") return ["apply", "keep", "dismiss"];
     return ["apply", "dismiss"];
   }
   if (line.status === "duplicate") return ["confirm", "distinct"];

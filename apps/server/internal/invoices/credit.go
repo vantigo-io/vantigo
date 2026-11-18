@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -168,16 +169,20 @@ func reverseCredit(ctx context.Context, q *store.Queries, c store.InvoicesCustom
 	if _, refusal, err := insertCredit(ctx, q, store.InsertCustomerCreditParams{
 		CustomerID: c.CustomerID, Currency: c.Currency, Kind: creditReversed, CreditDay: pgDate(day),
 		InvoiceID: c.InvoiceID, ReversesID: &c.ID, RegisteredByUserID: &by, RegisteredAt: at,
-		AmountNok: nokOfCredit(c, back),
+		AmountNok: nokOfCredit(c, back, done),
 	}, back, title); refusal != nil || err != nil {
 		return nil, refusal, err
 	}
 	return back, nil, nil
 }
 
-// nokOfCredit is the NOK a part of movement c is worth: NULL for NOK, which
-// the trigger fills; else the movement's own rate, amount_nok over amount.
-func nokOfCredit(c store.InvoicesCustomerCredit, part *big.Rat) pgtype.Numeric {
+// nokOfCredit is the NOK a reversal back of movement c is worth, done
+// being what earlier reversals took back: NULL for NOK, which the trigger
+// fills; else the movement's own rate, amount_nok over amount, rounded
+// cumulatively — what all reversals so far are worth less what the earlier
+// ones were — so the reversal that takes the rest takes the rest of the NOK
+// too, and the movement reaches 0 in both.
+func nokOfCredit(c store.InvoicesCustomerCredit, back, done *big.Rat) pgtype.Numeric {
 	if c.Currency == "NOK" {
 		return pgtype.Numeric{}
 	}
@@ -189,7 +194,12 @@ func nokOfCredit(c store.InvoicesCustomerCredit, part *big.Rat) pgtype.Numeric {
 	if err != nil {
 		return pgtype.Numeric{}
 	}
-	n, err := numericFromRat(docmath.Round2(new(big.Rat).Quo(new(big.Rat).Mul(part, nok), amount)), 2)
+	worth := func(taken *big.Rat) *big.Rat {
+		return docmath.Round2(new(big.Rat).Quo(new(big.Rat).Mul(taken, nok), amount))
+	}
+	before := new(big.Rat).Neg(done)
+	after := new(big.Rat).Sub(before, back)
+	n, err := numericFromRat(new(big.Rat).Neg(new(big.Rat).Sub(worth(after), worth(before))), 2)
 	if err != nil {
 		return pgtype.Numeric{}
 	}
@@ -367,6 +377,17 @@ func (s *server) moveCreditNoteSurplus(ctx context.Context, creditNoteID int64) 
 		if err != nil {
 			return err
 		}
+		// The move closes the original (invoices phase 6 design I24): off
+		// NOK it takes the NOK receivable below zero, so open_nok reaches 0.
+		if original.Currency != "NOK" {
+			openNOK, err := openNOKOf(ctx, txq, original.ID)
+			if err != nil {
+				return err
+			}
+			if nok, err = numericFromRat(new(big.Rat).Neg(openNOK), 2); err != nil {
+				return err
+			}
+		}
 		_, err = txq.InsertCreditNoteMove(ctx, store.InsertCreditNoteMoveParams{
 			CustomerID: original.CustomerID, Currency: original.Currency, Amount: n, AmountNok: nok,
 			CreditDay: cn.IssueDate, InvoiceID: &original.ID, DocumentID: &cn.ID, RegisteredAt: now,
@@ -488,19 +509,42 @@ func (s *server) applyCredit(ctx context.Context, id int64, amount *big.Rat, day
 		if err != nil {
 			return err
 		}
+		// Off NOK the credit is used at what it is carried at (plan reading
+		// 7): its share of the balance's NOK, the whole of it when the use
+		// empties the balance; the payment carries that NOK and the
+		// difference against what it clears of the receivable (I24).
 		paidNOK, err := amountNOKOf(inv, n)
 		if err != nil {
 			return err
 		}
+		var diff, nok pgtype.Numeric
+		if inv.Currency != "NOK" {
+			balanceNOK, err := txq.CreditBalanceNOK(ctx, store.CreditBalanceNOKParams{CustomerID: inv.CustomerID, Currency: inv.Currency})
+			if err != nil {
+				return fmt.Errorf("invoices: read customer %d's credit in NOK: %w", inv.CustomerID, err)
+			}
+			carried, err := ratFromNumeric(balanceNOK)
+			if err != nil {
+				return err
+			}
+			carrying := nokShare(carried, use, balance)
+			cleared, err := movementNOK(ctx, txq, inv, use, open)
+			if err != nil {
+				return err
+			}
+			if paidNOK, diff, err = paymentNOK(carrying, cleared); err != nil {
+				return err
+			}
+			if nok, err = numericFromRat(new(big.Rat).Neg(carrying), 2); err != nil {
+				return err
+			}
+		}
 		payment, err := txq.InsertCreditPayment(ctx, store.InsertCreditPaymentParams{
 			InvoiceID: inv.ID, PaidOn: pgDate(day), Amount: n, AmountNok: paidNOK, Currency: inv.Currency, RegisteredByUserID: by, RegisteredAt: now,
+			ExchangeDifferenceNok: diff,
 		})
 		if err != nil {
 			return fmt.Errorf("invoices: apply credit to %d: %w", inv.ID, err)
-		}
-		nok, err := nokOfInvoice(inv, use)
-		if err != nil {
-			return err
 		}
 		if _, refusal, err = insertCredit(ctx, txq, store.InsertCustomerCreditParams{
 			CustomerID: inv.CustomerID, Currency: inv.Currency, Kind: creditApplied, CreditDay: pgDate(day),
@@ -604,7 +648,7 @@ func (s *server) useCreditAfterIssue(ctx context.Context, doc store.InvoicesInvo
 
 // parseRefund runs I12's field rules over a refund's body, every failure
 // collected.
-func parseRefund(body gen.InvoicesCreditRefundRequest, today time.Time) (store.InsertCreditRefundParams, *big.Rat, map[string][]string, error) {
+func parseRefund(body gen.InvoicesCreditRefundRequest, today time.Time, enabled []string) (store.InsertCreditRefundParams, *big.Rat, *big.Rat, map[string][]string, error) {
 	var errs map[string][]string
 	add := func(field, msg string) {
 		if msg != "" {
@@ -628,19 +672,31 @@ func parseRefund(body gen.InvoicesCreditRefundRequest, today time.Time) (store.I
 	if amt != nil {
 		n, err := numericFromRat(amt, 2)
 		if err != nil {
-			return p, nil, nil, fmt.Errorf("invoices: a refund's amount as numeric: %w", err)
+			return p, nil, nil, nil, fmt.Errorf("invoices: a refund's amount as numeric: %w", err)
 		}
 		p.Amount = n
 	}
-	if p.Currency != "NOK" {
-		add("currency", "A refund is in NOK in this version")
+	// NOK or a currency turned on (invoices phase 6 plan reading 9); off NOK
+	// the NOK that left is required.
+	var left *big.Rat
+	switch {
+	case p.Currency != "NOK" && !slices.Contains(enabled, p.Currency):
+		add("currency", msgCurrencyNotEnabled)
+	case p.Currency != "NOK" && body.AmountNok == nil:
+		add("amountNok", fmt.Sprintf("A refund in %s needs the NOK that left", p.Currency))
+	case p.Currency != "NOK":
+		var msg string
+		left, msg = amount("What left in NOK", *body.AmountNok, 2, zero, true, maxGrossTotal)
+		add("amountNok", msg)
+	case body.AmountNok != nil:
+		add("amountNok", "A refund in NOK is its amount")
 	}
 	if !validBankAccount(p.BankAccount) {
 		add("bankAccount", "The account is 11 digits with a valid check digit")
 	}
 	add("reference", maxLength("A reference", p.Reference, 100))
 	add("note", maxLength("The note", p.Note, 500))
-	return p, amt, errs, nil
+	return p, amt, left, errs, nil
 }
 
 // PostInvoicesCustomersByCustomerIdCreditRefunds Record a refund of a
@@ -650,7 +706,11 @@ func (s *server) PostInvoicesCustomersByCustomerIdCreditRefunds(ctx context.Cont
 	if err != nil {
 		return nil, err
 	}
-	refund, amt, errs, err := parseRefund(*req.Body, holidays.DayIn(s.deps.Clock(), loc))
+	enabled, err := enabledCurrencies(ctx, store.New(s.deps.Pool))
+	if err != nil {
+		return nil, err
+	}
+	refund, amt, leftNOK, errs, err := parseRefund(*req.Body, holidays.DayIn(s.deps.Clock(), loc), enabled)
 	if err != nil {
 		return nil, err
 	}
@@ -679,13 +739,36 @@ func (s *server) PostInvoicesCustomersByCustomerIdCreditRefunds(ctx context.Cont
 				"The customer has %s %s in credit, and the refund is %s.", refund.Currency, balance.FloatString(2), amt.FloatString(2)))
 			return errRefused
 		}
+		// Off NOK the credit leaves at what it is carried at, and the NOK
+		// that left differs from it by the exchange difference (reading 9).
+		var carryingNOK pgtype.Numeric
+		if leftNOK != nil {
+			balanceNOK, err := txq.CreditBalanceNOK(ctx, store.CreditBalanceNOKParams{CustomerID: req.CustomerId, Currency: refund.Currency})
+			if err != nil {
+				return fmt.Errorf("invoices: read customer %d's credit in NOK: %w", req.CustomerId, err)
+			}
+			carried, err := ratFromNumeric(balanceNOK)
+			if err != nil {
+				return err
+			}
+			carrying := nokShare(carried, amt, balance)
+			if refund.AmountNok, refund.ExchangeDifferenceNok, err = paymentNOK(leftNOK, carrying); err != nil {
+				return err
+			}
+			if refund.ExchangeDifferenceNok, err = numericFromRat(new(big.Rat).Sub(carrying, leftNOK), 2); err != nil {
+				return err
+			}
+			if carryingNOK, err = numericFromRat(new(big.Rat).Neg(carrying), 2); err != nil {
+				return err
+			}
+		}
 		row, err := txq.InsertCreditRefund(ctx, refund)
 		if err != nil {
 			return fmt.Errorf("invoices: record customer %d's refund: %w", req.CustomerId, err)
 		}
 		if _, refusal, err = insertCredit(ctx, txq, store.InsertCustomerCreditParams{
 			CustomerID: req.CustomerId, Currency: refund.Currency, Kind: creditRefunded, CreditDay: refund.RefundedOn,
-			Note: refund.Note, RefundID: &row.ID, RegisteredByUserID: &caller, RegisteredAt: now,
+			Note: refund.Note, RefundID: &row.ID, RegisteredByUserID: &caller, RegisteredAt: now, AmountNok: carryingNOK,
 		}, new(big.Rat).Neg(amt), cannotRefundTitle); err != nil {
 			return err
 		}

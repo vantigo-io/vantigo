@@ -29,6 +29,12 @@ type Document struct {
 	// IssueDate and DueDate (an invoice's only).
 	IssueDate, DueDate string
 	Currency           string // ISO 4217
+	// TaxCurrencyCode is NOK on a document in another currency (invoices
+	// phase 6 design I23), and VATTotalNOK its VAT in NOK, written as a second
+	// TaxTotal after the one with the subtotals; both empty for NOK, whose
+	// EHF is unchanged byte for byte.
+	TaxCurrencyCode string
+	VATTotalNOK     *big.Rat
 	// BuyerReference (BT-10) and OrderReference (BT-13): Peppol needs one of
 	// the two (PEPPOL-EN16931-R003).
 	BuyerReference, OrderReference string

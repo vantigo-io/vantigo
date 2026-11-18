@@ -180,6 +180,33 @@ func fixtures(t *testing.T) map[string]ehf.Document {
 	credit.PDFName = "kreditnota-10049.pdf"
 	out["credit-note"] = credit
 
+	// An invoice in EUR to a Norwegian buyer at two rates (invoices phase 6
+	// design I23): TaxCurrencyCode NOK, a second TaxTotal with the VAT in
+	// NOK after the one with the subtotals, and the IBAN with the BIC as the
+	// payee account whatever the buyer's country.
+	eur := baseInvoice("10060")
+	eur.Currency, eur.TaxCurrencyCode = "EUR", "NOK"
+	eur.Lines = []ehf.Line{
+		line("1", "Konsulenttimer", "timer", "10", "120", "0", "S", "25"),
+		line("2", "Servering", "stk.", "4", "25", "0", "S", "15"),
+	}
+	eur.VAT = []ehf.VATRow{vat("S", "25", "1200.00", "300.00", ""), vat("S", "15", "100.00", "15.00", "")}
+	eur.NetTotal, eur.VATTotal, eur.GrossTotal = rat("1300.00"), rat("315.00"), rat("1615.00")
+	eur.VATTotalNOK = rat("3692.87")
+	eur.PDFName = "faktura-10060.pdf"
+	out["invoice-eur"] = eur
+
+	// Its credit note: the original's rate, the same two totals.
+	eurCredit := eur
+	eurCredit.Number, eurCredit.Kind, eurCredit.DueDate = "10061", ehf.KindCreditNote, ""
+	eurCredit.Original = &ehf.DocumentReference{Number: "10060", IssueDate: "2026-10-01"}
+	eurCredit.Lines = []ehf.Line{line("1", "Konsulenttimer", "timer", "2", "120", "0", "S", "25")}
+	eurCredit.VAT = []ehf.VATRow{vat("S", "25", "240.00", "60.00", "")}
+	eurCredit.NetTotal, eurCredit.VATTotal, eurCredit.GrossTotal = rat("240.00"), rat("60.00"), rat("300.00")
+	eurCredit.VATTotalNOK = rat("703.40")
+	eurCredit.PDFName = "kreditnota-10061.pdf"
+	out["credit-note-eur"] = eurCredit
+
 	// A partial credit note: one of four discounted chairs returned.
 	partial := credit
 	partial.Number = "10050"

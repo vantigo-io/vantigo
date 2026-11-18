@@ -28,7 +28,17 @@ interface Row {
   openAmount?: number;
   amount: number | string;
   charges: number | string;
+  /**
+   * The invoice's currency when the screen knows it is not NOK (invoices
+   * phase 6 design I24): its row asks for the amount in it and the line's
+   * share in NOK, and the sum check reads the NOK shares.
+   */
+  currency?: string;
+  amountNok?: number | string;
 }
+
+/** What a row takes of its NOK line: its NOK share off NOK, else its amount and charges. */
+const share = (r: Row): number => (r.currency ? ore(r.amountNok ?? 0) : ore(r.amount) + ore(r.charges));
 
 /** Amounts are added in øre, so 0.1 + 0.2 is never more than 0.3. */
 const ore = (value: number | string): number =>
@@ -40,6 +50,10 @@ const ore = (value: number | string): number =>
  * its open amount until the line's rest runs out.
  */
 const initialRows = (line: BankTransaction, named?: Omit<Row, "amount" | "charges">): Row[] => {
+  if (named?.currency) {
+    // A foreign invoice: what is open in its currency, and the whole line in NOK.
+    return [{ ...named, amount: named.openAmount ?? 0, charges: 0, amountNok: line.unappliedAmount }];
+  }
   const candidates: Omit<Row, "amount" | "charges">[] = [];
   if (named) candidates.push(named);
   for (const s of line.suggestions ?? []) {
@@ -68,8 +82,11 @@ export const ApplyDialog = ({ line, currency, onClose }: ApplyDialogProps) => {
   const { t } = useInvoiceFormat();
   // The invoice the KID named, when the suggestions do not carry it, is read
   // for its number and open amount before the form opens.
+  // A line queued currency_differs has its invoice read too: its currency
+  // decides the row.
   const namedId =
-    line.suggestedInvoiceId !== undefined && !line.suggestions?.some((s) => s.invoiceId === line.suggestedInvoiceId)
+    line.suggestedInvoiceId !== undefined &&
+    (line.reason === "currency_differs" || !line.suggestions?.some((s) => s.invoiceId === line.suggestedInvoiceId))
       ? line.suggestedInvoiceId
       : undefined;
   const named = useQuery({ ...invoiceQueryOptions(namedId ?? 0), enabled: namedId !== undefined });
@@ -81,6 +98,7 @@ export const ApplyDialog = ({ line, currency, onClose }: ApplyDialogProps) => {
           number: named.data.number,
           buyer: named.data.customerName ?? "",
           openAmount: named.data.openAmount,
+          ...(named.data.currency !== "NOK" ? { currency: named.data.currency } : {}),
         }
       : undefined;
   return (
@@ -105,7 +123,7 @@ const ApplyForm = ({ line, currency, rows: initial, onClose }: ApplyDialogProps 
   const amount = (value: number) => money(value, currency);
 
   const left = ore(line.unappliedAmount);
-  const allocated = rows.reduce((sum, r) => sum + ore(r.amount) + ore(r.charges), 0);
+  const allocated = rows.reduce((sum, r) => sum + share(r), 0);
   const over = allocated - left;
   // A negative amount is never an allocation: refused here, as the server would.
   const negative = rows.some((r) => ore(r.amount) < 0 || ore(r.charges) < 0);
@@ -145,6 +163,7 @@ const ApplyForm = ({ line, currency, rows: initial, onClose }: ApplyDialogProps 
           openAmount: found.openAmount,
           amount: 0,
           charges: 0,
+          ...(found.currency !== "NOK" ? { currency: found.currency, amountNok: 0 } : {}),
         },
       ]);
       setNumber("");
@@ -163,6 +182,7 @@ const ApplyForm = ({ line, currency, rows: initial, onClose }: ApplyDialogProps 
             invoiceId: r.invoiceId,
             amount: ore(r.amount) / 100,
             ...(ore(r.charges) > 0 ? { chargesAmount: ore(r.charges) / 100 } : {}),
+            ...(r.currency ? { amountNok: ore(r.amountNok ?? 0) / 100 } : {}),
           })),
         ...(note.trim() ? { note: note.trim() } : {}),
       }),
@@ -229,22 +249,36 @@ const ApplyForm = ({ line, currency, rows: initial, onClose }: ApplyDialogProps 
               allowNegative={false}
               decimalScale={2}
               hideControls
-              rightSection={currency}
+              rightSection={r.currency ?? currency}
               rightSectionWidth={48}
               value={r.amount}
               onChange={(v) => change(r.invoiceId, { amount: v })}
             />
-            <NumberInput
-              label={t("bank.apply.charges", { number: r.number })}
-              min={0}
-              allowNegative={false}
-              decimalScale={2}
-              hideControls
-              rightSection={currency}
-              rightSectionWidth={48}
-              value={r.charges}
-              onChange={(v) => change(r.invoiceId, { charges: v })}
-            />
+            {r.currency ? (
+              <NumberInput
+                label={t("bank.apply.shareNok", { number: r.number })}
+                min={0}
+                allowNegative={false}
+                decimalScale={2}
+                hideControls
+                rightSection="NOK"
+                rightSectionWidth={48}
+                value={r.amountNok ?? 0}
+                onChange={(v) => change(r.invoiceId, { amountNok: v })}
+              />
+            ) : (
+              <NumberInput
+                label={t("bank.apply.charges", { number: r.number })}
+                min={0}
+                allowNegative={false}
+                decimalScale={2}
+                hideControls
+                rightSection={currency}
+                rightSectionWidth={48}
+                value={r.charges}
+                onChange={(v) => change(r.invoiceId, { charges: v })}
+              />
+            )}
           </Group>
         </Stack>
       ))}

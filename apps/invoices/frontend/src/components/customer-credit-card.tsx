@@ -27,7 +27,7 @@ export interface CustomerCreditCardProps {
 }
 
 /** The fields of a refund, each of which has an input here. */
-const refundInputs = new Set(["refundedOn", "amount", "bankAccount", "reference", "note"]);
+const refundInputs = new Set(["refundedOn", "amount", "amountNok", "bankAccount", "reference", "note"]);
 
 /**
  * The customer's credit (invoices phase 6 design I8, I12) on the customer's
@@ -41,7 +41,9 @@ const refundInputs = new Set(["refundedOn", "amount", "bankAccount", "reference"
 export const CustomerCreditCard = ({ customerId, canAct }: CustomerCreditCardProps) => {
   const { t, money, date } = useInvoiceFormat();
   const credit = useQuery(customerCreditQueryOptions(customerId));
-  const [recording, setRecording] = useState(false);
+  // The currency a refund is being recorded in, null for none (invoices
+  // phase 6 plan reading 9: credit in another currency is refunded too).
+  const [recording, setRecording] = useState<string | null>(null);
   const [removing, setRemoving] = useState<CreditRefund | null>(null);
   if (credit.isPending) return <ContentSkeleton rows={2} rowHeight={36} />;
   if (credit.isError) {
@@ -53,7 +55,7 @@ export const CustomerCreditCard = ({ customerId, canAct }: CustomerCreditCardPro
   }
   const data = credit.data;
   if (data.movements.length === 0 && data.refunds.length === 0) return null;
-  const nok = data.balances.find((b) => b.currency === "NOK")?.balance ?? 0;
+  const refundable = data.balances.filter((b) => b.balance > 0);
   return (
     <PageSection mt="md" data-testid="customer-credit-card" data-assist="invoices.customer.credit">
       <Stack gap="sm">
@@ -61,10 +63,16 @@ export const CustomerCreditCard = ({ customerId, canAct }: CustomerCreditCardPro
           <Text fw={600} component="h3">
             {t("credit.title")}
           </Text>
-          {canAct && nok > 0 && (
-            <Button size="xs" variant="default" onClick={() => setRecording(true)}>
-              {t("credit.recordRefund")}
-            </Button>
+          {canAct && (
+            <Group gap="xs">
+              {refundable.map((b) => (
+                <Button key={b.currency} size="xs" variant="default" onClick={() => setRecording(b.currency)}>
+                  {refundable.length > 1 || b.currency !== "NOK"
+                    ? t("credit.recordRefundIn", { currency: b.currency })
+                    : t("credit.recordRefund")}
+                </Button>
+              ))}
+            </Group>
           )}
         </Group>
         {data.balances.map((b) => (
@@ -131,7 +139,14 @@ export const CustomerCreditCard = ({ customerId, canAct }: CustomerCreditCardPro
           </Stack>
         )}
       </Stack>
-      {recording && <RefundModal customerId={customerId} balance={nok} onClose={() => setRecording(false)} />}
+      {recording && (
+        <RefundModal
+          customerId={customerId}
+          currency={recording}
+          balance={data.balances.find((b) => b.currency === recording)?.balance ?? 0}
+          onClose={() => setRecording(null)}
+        />
+      )}
       {removing && <RemoveRefundModal customerId={customerId} refund={removing} onClose={() => setRemoving(null)} />}
     </PageSection>
   );
@@ -156,10 +171,12 @@ const MovementWords = ({ movement: m }: { movement: CreditMovement }) => {
 /** Record refund (I12): money paid back outside Vantigo, from one of the company's accounts. */
 const RefundModal = ({
   customerId,
+  currency,
   balance,
   onClose,
 }: {
   customerId: number;
+  currency: string;
   balance: number;
   onClose: () => void;
 }) => {
@@ -170,6 +187,7 @@ const RefundModal = ({
   const [refundedOn, setRefundedOn] = useState<string | null>(today);
   const [amount, setAmount] = useState<number | string>(balance);
   const [bankAccount, setBankAccount] = useState("");
+  const [amountNok, setAmountNok] = useState<number | string>("");
   const [reference, setReference] = useState("");
   const [note, setNote] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -178,7 +196,8 @@ const RefundModal = ({
       recordRefund(customerId, {
         refundedOn: refundedOn ?? today ?? "",
         amount: typeof amount === "number" ? amount : Number(amount),
-        currency: "NOK",
+        currency,
+        ...(currency !== "NOK" ? { amountNok: Number(amountNok) } : {}),
         bankAccount: bankAccount.replace(/[\s.]/g, ""),
         ...(reference.trim() ? { reference: reference.trim() } : {}),
         ...(note.trim() ? { note: note.trim() } : {}),
@@ -224,12 +243,26 @@ const RefundModal = ({
           min={0}
           decimalScale={2}
           hideControls
-          rightSection="NOK"
+          rightSection={currency}
           rightSectionWidth={48}
           value={amount}
           onChange={setAmount}
           {...field("amount")}
         />
+        {currency !== "NOK" && (
+          <NumberInput
+            label={t("credit.leftInNok")}
+            required
+            min={0}
+            decimalScale={2}
+            hideControls
+            rightSection="NOK"
+            rightSectionWidth={48}
+            value={amountNok}
+            onChange={setAmountNok}
+            {...field("amountNok")}
+          />
+        )}
         <TextInput
           label={t("credit.bankAccount")}
           description={t("credit.bankAccountHint")}

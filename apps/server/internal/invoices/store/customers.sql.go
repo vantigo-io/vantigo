@@ -411,7 +411,7 @@ func (q *Queries) ChargePaymentsOfDocuments(ctx context.Context, invoiceIds []in
 }
 
 const customerDocuments = `-- name: CustomerDocuments :many
-SELECT id, kind, status, number, customer_id, credits_invoice_id, issue_date, delivery_date, delivery_from, delivery_to, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, payment_terms_days, due_date, currency, exchange_rate, exchange_rate_date, your_reference, our_reference, order_reference, note, internal_note, buyer_customer_number, buyer_type, buyer_name, buyer_organisation_number, buyer_foreign_id, buyer_address_line1, buyer_address_line2, buyer_postal_code, buyer_city, buyer_region, buyer_country, buyer_peppol_id, buyer_gln, buyer_language, seller_legal_name, seller_organisation_number, seller_vat_registered, seller_in_foretaksregisteret, seller_address_line1, seller_address_line2, seller_postal_code, seller_city, seller_country, seller_bank_account, seller_iban, seller_bic, seller_email, seller_footer_text, net_total, vat_total, gross_total, vat_total_nok, pdf_object_key, pdf_sha256, issued_at, issued_by_user_id, created_by_user_id, created_at, updated_at, revision, kid, kid_algorithm, project_id, project_reference, timesheet, seller_logo_object_key, seller_logo_sha256, seller_phone, buyer_avtalegiro_kid FROM invoices.invoices
+SELECT id, kind, status, number, customer_id, credits_invoice_id, issue_date, delivery_date, delivery_from, delivery_to, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, payment_terms_days, due_date, currency, exchange_rate, exchange_rate_date, your_reference, our_reference, order_reference, note, internal_note, buyer_customer_number, buyer_type, buyer_name, buyer_organisation_number, buyer_foreign_id, buyer_address_line1, buyer_address_line2, buyer_postal_code, buyer_city, buyer_region, buyer_country, buyer_peppol_id, buyer_gln, buyer_language, seller_legal_name, seller_organisation_number, seller_vat_registered, seller_in_foretaksregisteret, seller_address_line1, seller_address_line2, seller_postal_code, seller_city, seller_country, seller_bank_account, seller_iban, seller_bic, seller_email, seller_footer_text, net_total, vat_total, gross_total, vat_total_nok, pdf_object_key, pdf_sha256, issued_at, issued_by_user_id, created_by_user_id, created_at, updated_at, revision, kid, kid_algorithm, project_id, project_reference, timesheet, seller_logo_object_key, seller_logo_sha256, seller_phone, buyer_avtalegiro_kid, exchange_rate_source FROM invoices.invoices
 WHERE customer_id = $1
 ORDER BY status DESC, number, id
 `
@@ -502,6 +502,7 @@ func (q *Queries) CustomerDocuments(ctx context.Context, customerID int32) ([]In
 			&i.SellerLogoSha256,
 			&i.SellerPhone,
 			&i.BuyerAvtalegiroKid,
+			&i.ExchangeRateSource,
 		); err != nil {
 			return nil, err
 		}
@@ -677,7 +678,7 @@ func (q *Queries) HoldsOfDocuments(ctx context.Context, invoiceIds []int64) ([]I
 }
 
 const linesOf = `-- name: LinesOf :many
-SELECT id, invoice_id, position, description, quantity, unit, unit_price, discount_percent, vat_code_id, credits_line_id, line_gross, line_allowance, line_net, vat_rate_percent, vat_category, saf_t_code, exemption_reason, deducts_invoice_id, correction, line_kind, tax_category_id, project_id FROM invoices.lines WHERE invoice_id = ANY($1::bigint[]) ORDER BY invoice_id, position
+SELECT id, invoice_id, position, description, quantity, unit, unit_price, discount_percent, vat_code_id, credits_line_id, line_gross, line_allowance, line_net, vat_rate_percent, vat_category, saf_t_code, exemption_reason, deducts_invoice_id, correction, line_kind, tax_category_id, project_id, line_net_nok FROM invoices.lines WHERE invoice_id = ANY($1::bigint[]) ORDER BY invoice_id, position
 `
 
 // LinesOf is the lines of several documents at once, in their documents'
@@ -714,6 +715,7 @@ func (q *Queries) LinesOf(ctx context.Context, invoiceIds []int64) ([]InvoicesLi
 			&i.LineKind,
 			&i.TaxCategoryID,
 			&i.ProjectID,
+			&i.LineNetNok,
 		); err != nil {
 			return nil, err
 		}
@@ -813,7 +815,7 @@ func (q *Queries) MarkCustomerErased(ctx context.Context, arg MarkCustomerErased
 }
 
 const paymentsOfDocuments = `-- name: PaymentsOfDocuments :many
-SELECT id, invoice_id, paid_on, amount, currency, reference, note, registered_by_user_id, registered_at, removed_at, removed_by_user_id, removal_reason, source, bank_transaction_id, payment_attempt_id, kind, write_off_id, amount_nok FROM invoices.payments
+SELECT id, invoice_id, paid_on, amount, currency, reference, note, registered_by_user_id, registered_at, removed_at, removed_by_user_id, removal_reason, source, bank_transaction_id, payment_attempt_id, kind, write_off_id, amount_nok, exchange_difference_nok FROM invoices.payments
 WHERE invoice_id = ANY($1::bigint[])
 ORDER BY invoice_id, paid_on, id
 `
@@ -848,6 +850,7 @@ func (q *Queries) PaymentsOfDocuments(ctx context.Context, invoiceIds []int64) (
 			&i.Kind,
 			&i.WriteOffID,
 			&i.AmountNok,
+			&i.ExchangeDifferenceNok,
 		); err != nil {
 			return nil, err
 		}
@@ -964,7 +967,7 @@ func (q *Queries) RepointCustomer(ctx context.Context, arg RepointCustomerParams
 const repointQuickInvoice = `-- name: RepointQuickInvoice :one
 UPDATE invoices.invoices SET customer_id = $1
 WHERE id = $2 AND customer_id = $3 AND status = 'issued'
-RETURNING id, kind, status, number, customer_id, credits_invoice_id, issue_date, delivery_date, delivery_from, delivery_to, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, payment_terms_days, due_date, currency, exchange_rate, exchange_rate_date, your_reference, our_reference, order_reference, note, internal_note, buyer_customer_number, buyer_type, buyer_name, buyer_organisation_number, buyer_foreign_id, buyer_address_line1, buyer_address_line2, buyer_postal_code, buyer_city, buyer_region, buyer_country, buyer_peppol_id, buyer_gln, buyer_language, seller_legal_name, seller_organisation_number, seller_vat_registered, seller_in_foretaksregisteret, seller_address_line1, seller_address_line2, seller_postal_code, seller_city, seller_country, seller_bank_account, seller_iban, seller_bic, seller_email, seller_footer_text, net_total, vat_total, gross_total, vat_total_nok, pdf_object_key, pdf_sha256, issued_at, issued_by_user_id, created_by_user_id, created_at, updated_at, revision, kid, kid_algorithm, project_id, project_reference, timesheet, seller_logo_object_key, seller_logo_sha256, seller_phone, buyer_avtalegiro_kid
+RETURNING id, kind, status, number, customer_id, credits_invoice_id, issue_date, delivery_date, delivery_from, delivery_to, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, payment_terms_days, due_date, currency, exchange_rate, exchange_rate_date, your_reference, our_reference, order_reference, note, internal_note, buyer_customer_number, buyer_type, buyer_name, buyer_organisation_number, buyer_foreign_id, buyer_address_line1, buyer_address_line2, buyer_postal_code, buyer_city, buyer_region, buyer_country, buyer_peppol_id, buyer_gln, buyer_language, seller_legal_name, seller_organisation_number, seller_vat_registered, seller_in_foretaksregisteret, seller_address_line1, seller_address_line2, seller_postal_code, seller_city, seller_country, seller_bank_account, seller_iban, seller_bic, seller_email, seller_footer_text, net_total, vat_total, gross_total, vat_total_nok, pdf_object_key, pdf_sha256, issued_at, issued_by_user_id, created_by_user_id, created_at, updated_at, revision, kid, kid_algorithm, project_id, project_reference, timesheet, seller_logo_object_key, seller_logo_sha256, seller_phone, buyer_avtalegiro_kid, exchange_rate_source
 `
 
 type RepointQuickInvoiceParams struct {
@@ -1057,6 +1060,7 @@ func (q *Queries) RepointQuickInvoice(ctx context.Context, arg RepointQuickInvoi
 		&i.SellerLogoSha256,
 		&i.SellerPhone,
 		&i.BuyerAvtalegiroKid,
+		&i.ExchangeRateSource,
 	)
 	return i, err
 }

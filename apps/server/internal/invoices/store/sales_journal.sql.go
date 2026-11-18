@@ -299,13 +299,16 @@ const journalFacts = `-- name: JournalFacts :many
 SELECT f.seq, f.kind, f.subject_id, f.invoice_id, f.business_date, f.removed_at,
     COALESCE(i.number, 0)::bigint AS invoice_number, COALESCE(f.customer_id, i.customer_id)::int AS customer_id, i.exchange_rate,
     COALESCE(p.amount, c.amount, w.amount, k.amount, m.amount)::numeric AS amount,
-    COALESCE(p.amount_nok, w.amount_nok, k.amount_nok, m.amount_nok)::numeric AS amount_nok,
+    COALESCE(p.amount_nok, w.amount_nok, k.amount_nok, m.amount_nok, x.amount_nok)::numeric AS amount_nok,
     COALESCE(p.source, c.source,
         CASE WHEN t.format = 'feed' THEN 'bank_feed' ELSE t.format END, 'manual')::text AS source,
     COALESCE(t.account, '')::text AS bank_account,
     (CASE WHEN t.format = 'feed' THEN t.line_ref ELSE COALESCE(t.archive_ref, '') END)::text AS bank_reference,
     w.id AS write_off_id, w.reason AS write_off_reason, w.vat_correction AS write_off_vat_correction,
-    w.amount AS write_off_amount,
+    w.amount AS write_off_amount, w.amount_nok AS write_off_amount_nok,
+    COALESCE(p.currency, c.currency, i.currency, 'NOK')::text AS payment_currency,
+    COALESCE(p.exchange_difference_nok, -x.amount_nok, 0)::numeric AS exchange_difference_nok,
+    COALESCE(kp.exchange_difference_nok, rf.exchange_difference_nok, 0)::numeric AS credit_exchange_difference_nok,
     COALESCE(CASE WHEN f.kind = 'recovered_payment' THEN (
         SELECT sum(r.amount) FROM invoices.payments r
         JOIN invoices.journal_facts rf ON rf.kind = 'recovered_payment' AND rf.subject_id = r.id
@@ -313,6 +316,13 @@ SELECT f.seq, f.kind, f.subject_id, f.invoice_id, f.business_date, f.removed_at,
           AND NOT EXISTS (SELECT 1 FROM invoices.journal_facts xf
                           WHERE xf.kind = 'recovered_payment_removed' AND xf.subject_id = r.id AND xf.seq < f.seq))
     END, 0)::numeric AS recovered_before,
+    COALESCE(CASE WHEN f.kind = 'recovered_payment' THEN (
+        SELECT sum(r.amount_nok - r.exchange_difference_nok) FROM invoices.payments r
+        JOIN invoices.journal_facts rf ON rf.kind = 'recovered_payment' AND rf.subject_id = r.id
+        WHERE r.write_off_id = p.write_off_id AND rf.seq < f.seq
+          AND NOT EXISTS (SELECT 1 FROM invoices.journal_facts xf
+                          WHERE xf.kind = 'recovered_payment_removed' AND xf.subject_id = r.id AND xf.seq < f.seq))
+    END, 0)::numeric AS recovered_before_nok,
     k.kind AS credit_kind, COALESCE(k.currency, m.currency, '')::text AS credit_currency,
     k.payment_id AS credit_payment_id, k.bank_transaction_id AS credit_bank_transaction_id,
     k.document_id AS credit_document_id, COALESCE(k.refund_id, o.refund_id) AS credit_refund_id,
@@ -329,7 +339,10 @@ LEFT JOIN invoices.write_offs w
 LEFT JOIN invoices.customer_credits k ON f.kind = 'credit' AND k.id = f.subject_id
 LEFT JOIN invoices.customer_credits o ON o.id = k.reverses_id
 LEFT JOIN invoices.credit_refunds rf ON rf.id = COALESCE(k.refund_id, o.refund_id)
+LEFT JOIN invoices.payments kp ON kp.id = COALESCE(k.payment_id, o.payment_id)
+    AND (k.kind = 'applied' OR o.kind = 'applied')
 LEFT JOIN invoices.credit_merges m ON f.kind = 'credit_merged' AND m.id = f.subject_id
+LEFT JOIN invoices.exchange_differences x ON f.kind = 'exchange_difference' AND x.id = f.subject_id
 LEFT JOIN invoices.bank_transactions t
     ON t.id = COALESCE(p.bank_transaction_id, c.bank_transaction_id, k.bank_transaction_id, o.bank_transaction_id)
 WHERE f.seq > $1::bigint
@@ -343,36 +356,41 @@ type JournalFactsParams struct {
 }
 
 type JournalFactsRow struct {
-	Seq                     int64
-	Kind                    string
-	SubjectID               int64
-	InvoiceID               *int64
-	BusinessDate            pgtype.Date
-	RemovedAt               *time.Time
-	InvoiceNumber           int64
-	CustomerID              int32
-	ExchangeRate            pgtype.Numeric
-	Amount                  pgtype.Numeric
-	AmountNok               pgtype.Numeric
-	Source                  string
-	BankAccount             string
-	BankReference           string
-	WriteOffID              *int64
-	WriteOffReason          *string
-	WriteOffVatCorrection   *bool
-	WriteOffAmount          pgtype.Numeric
-	RecoveredBefore         pgtype.Numeric
-	CreditKind              *string
-	CreditCurrency          string
-	CreditPaymentID         *int64
-	CreditBankTransactionID *int64
-	CreditDocumentID        *int64
-	CreditRefundID          *int64
-	CreditReversesID        *int64
-	CreditReversedKind      *string
-	RefundBankAccount       string
-	MergeFromCustomerID     *int32
-	MergedAt                *time.Time
+	Seq                         int64
+	Kind                        string
+	SubjectID                   int64
+	InvoiceID                   *int64
+	BusinessDate                pgtype.Date
+	RemovedAt                   *time.Time
+	InvoiceNumber               int64
+	CustomerID                  int32
+	ExchangeRate                pgtype.Numeric
+	Amount                      pgtype.Numeric
+	AmountNok                   pgtype.Numeric
+	Source                      string
+	BankAccount                 string
+	BankReference               string
+	WriteOffID                  *int64
+	WriteOffReason              *string
+	WriteOffVatCorrection       *bool
+	WriteOffAmount              pgtype.Numeric
+	WriteOffAmountNok           pgtype.Numeric
+	PaymentCurrency             string
+	ExchangeDifferenceNok       pgtype.Numeric
+	CreditExchangeDifferenceNok pgtype.Numeric
+	RecoveredBefore             pgtype.Numeric
+	RecoveredBeforeNok          pgtype.Numeric
+	CreditKind                  *string
+	CreditCurrency              string
+	CreditPaymentID             *int64
+	CreditBankTransactionID     *int64
+	CreditDocumentID            *int64
+	CreditRefundID              *int64
+	CreditReversesID            *int64
+	CreditReversedKind          *string
+	RefundBankAccount           string
+	MergeFromCustomerID         *int32
+	MergedAt                    *time.Time
 }
 
 // JournalFacts is up to row_limit facts after after_seq, in seq order, each
@@ -383,7 +401,11 @@ type JournalFactsRow struct {
 // write-off it recovers. amount_nok is the NOK a payment, a write-off, a
 // movement or a merge stored (I13); a charge payment has none and is read at
 // its invoice's rate. A credit fact's customer is the one its movement
-// belonged to when it was written; a merge's the one it went into.
+// belonged to when it was written; a merge's the one it went into. A
+// payment's currency and exchange difference, a write-off's NOK, and a credit
+// movement's exchange difference — an applied one's payment's, a refunded
+// one's refund's, a reversal's its original's — are invoices phase 6 design
+// I24's.
 func (q *Queries) JournalFacts(ctx context.Context, arg JournalFactsParams) ([]JournalFactsRow, error) {
 	rows, err := q.db.Query(ctx, journalFacts, arg.AfterSeq, arg.RowLimit)
 	if err != nil {
@@ -412,7 +434,12 @@ func (q *Queries) JournalFacts(ctx context.Context, arg JournalFactsParams) ([]J
 			&i.WriteOffReason,
 			&i.WriteOffVatCorrection,
 			&i.WriteOffAmount,
+			&i.WriteOffAmountNok,
+			&i.PaymentCurrency,
+			&i.ExchangeDifferenceNok,
+			&i.CreditExchangeDifferenceNok,
 			&i.RecoveredBefore,
+			&i.RecoveredBeforeNok,
 			&i.CreditKind,
 			&i.CreditCurrency,
 			&i.CreditPaymentID,
@@ -450,7 +477,7 @@ func (q *Queries) JournalLastSeq(ctx context.Context) (int64, error) {
 
 const journalLines = `-- name: JournalLines :many
 SELECT id, invoice_id, position, line_net, vat_rate_percent, vat_category, saf_t_code,
-    line_kind, tax_category_id, project_id
+    line_kind, tax_category_id, project_id, line_net_nok
 FROM invoices.lines
 WHERE invoice_id = ANY($1::bigint[])
 ORDER BY invoice_id, position
@@ -467,10 +494,12 @@ type JournalLinesRow struct {
 	LineKind       *string
 	TaxCategoryID  *int32
 	ProjectID      *int32
+	LineNetNok     pgtype.Numeric
 }
 
 // JournalLines is the lines of the documents named, by document and position,
-// with what they were issued with and made from.
+// with what they were issued with and made from, and the net in NOK the
+// issue snapshotted (invoices phase 6 design I21), NULL before it.
 func (q *Queries) JournalLines(ctx context.Context, invoiceIds []int64) ([]JournalLinesRow, error) {
 	rows, err := q.db.Query(ctx, journalLines, invoiceIds)
 	if err != nil {
@@ -491,6 +520,7 @@ func (q *Queries) JournalLines(ctx context.Context, invoiceIds []int64) ([]Journ
 			&i.LineKind,
 			&i.TaxCategoryID,
 			&i.ProjectID,
+			&i.LineNetNok,
 		); err != nil {
 			return nil, err
 		}
@@ -504,10 +534,14 @@ func (q *Queries) JournalLines(ctx context.Context, invoiceIds []int64) ([]Journ
 
 const journalOpenAt = `-- name: JournalOpenAt :many
 SELECT i.id, i.number::bigint AS number, i.customer_id, i.issue_date, i.due_date, i.currency, i.exchange_rate,
-    (i.gross_total - COALESCE(cr.credited, 0) - COALESCE(pd.paid, 0) + COALESCE(mv.moved, 0))::numeric AS open_amount
+    (i.gross_total - COALESCE(cr.credited, 0) - COALESCE(pd.paid, 0) + COALESCE(mv.moved, 0))::numeric AS open_amount,
+    (CASE WHEN i.currency = 'NOK'
+          THEN i.gross_total - COALESCE(cr.credited, 0) - COALESCE(pd.paid, 0) + COALESCE(mv.moved, 0)
+          ELSE (invoices.document_nok(i.id)).gross_nok - COALESCE(cr.credited_nok, 0) - COALESCE(pd.paid_nok, 0)
+               + COALESCE(mv.moved_nok, 0) END)::numeric AS open_nok
 FROM invoices.invoices i
 CROSS JOIN LATERAL (
-    SELECT sum(c.gross_total) AS credited FROM invoices.invoices c
+    SELECT sum(c.gross_total) AS credited, sum((invoices.document_nok(c.id)).gross_nok) AS credited_nok FROM invoices.invoices c
     WHERE c.credits_invoice_id = i.id AND c.status = 'issued' AND c.issue_date <= $1::date
 ) AS cr
 CROSS JOIN LATERAL (
@@ -516,10 +550,18 @@ CROSS JOIN LATERAL (
           AND (p.removed_at IS NULL OR p.removed_at >= $2::timestamptz)), 0)
       + coalesce((SELECT sum(w.amount) FROM invoices.write_offs w
         WHERE w.invoice_id = i.id AND w.written_off_on <= $1::date
-          AND (w.undone_at IS NULL OR w.undone_at >= $2::timestamptz)), 0) AS paid
+          AND (w.undone_at IS NULL OR w.undone_at >= $2::timestamptz)), 0) AS paid,
+      coalesce((SELECT sum(p.amount_nok - p.exchange_difference_nok) FROM invoices.payments p
+        WHERE p.invoice_id = i.id AND p.kind = 'payment' AND p.paid_on <= $1::date
+          AND (p.removed_at IS NULL OR p.removed_at >= $2::timestamptz)), 0)
+      + coalesce((SELECT sum(w.amount_nok) FROM invoices.write_offs w
+        WHERE w.invoice_id = i.id AND w.written_off_on <= $1::date
+          AND (w.undone_at IS NULL OR w.undone_at >= $2::timestamptz)), 0)
+      + coalesce((SELECT sum(x.amount_nok) FROM invoices.exchange_differences x
+        WHERE x.invoice_id = i.id AND x.difference_day <= $1::date), 0) AS paid_nok
 ) AS pd
 CROSS JOIN LATERAL (
-    SELECT sum(k.amount) AS moved FROM invoices.customer_credits k
+    SELECT sum(k.amount) AS moved, sum(k.amount_nok) AS moved_nok FROM invoices.customer_credits k
     WHERE k.invoice_id = i.id AND k.credit_day <= $1::date
       AND (k.kind = 'credit_note'
            OR (k.kind = 'reversed' AND EXISTS (SELECT 1 FROM invoices.customer_credits o
@@ -548,6 +590,7 @@ type JournalOpenAtRow struct {
 	Currency     string
 	ExchangeRate pgtype.Numeric
 	OpenAmount   pgtype.Numeric
+	OpenNok      pgtype.Numeric
 }
 
 // JournalOpenAt is up to row_limit invoices numbered after after_number, in
@@ -558,7 +601,10 @@ type JournalOpenAtRow struct {
 // write-offs made on or before day that were not undone before it, and plus
 // what its credit notes' surplus moved to the customer by day, less what of
 // it was returned by then (I10). A recovered payment is not part of the open
-// amount.
+// amount. open_nok is the NOK receivable open by the same terms
+// (invoices.open_nok(), invoices phase 6 design I24): the document's NOK, less
+// its credit notes', less what the payments cleared (amount_nok less the
+// exchange difference) and the write-offs' NOK, plus the NOK moved.
 func (q *Queries) JournalOpenAt(ctx context.Context, arg JournalOpenAtParams) ([]JournalOpenAtRow, error) {
 	rows, err := q.db.Query(ctx, journalOpenAt,
 		arg.Day,
@@ -582,6 +628,7 @@ func (q *Queries) JournalOpenAt(ctx context.Context, arg JournalOpenAtParams) ([
 			&i.Currency,
 			&i.ExchangeRate,
 			&i.OpenAmount,
+			&i.OpenNok,
 		); err != nil {
 			return nil, err
 		}
@@ -594,20 +641,21 @@ func (q *Queries) JournalOpenAt(ctx context.Context, arg JournalOpenAtParams) ([
 }
 
 const journalVatSummaries = `-- name: JournalVatSummaries :many
-SELECT invoice_id, vat_category, rate_percent, saf_t_code, taxable_amount, vat_amount, vat_amount_nok
+SELECT invoice_id, vat_category, rate_percent, saf_t_code, taxable_amount, vat_amount, vat_amount_nok, taxable_amount_nok
 FROM invoices.vat_summaries
 WHERE invoice_id = ANY($1::bigint[])
 ORDER BY invoice_id, rate_percent DESC, vat_category
 `
 
 type JournalVatSummariesRow struct {
-	InvoiceID     int64
-	VatCategory   string
-	RatePercent   pgtype.Numeric
-	SafTCode      string
-	TaxableAmount pgtype.Numeric
-	VatAmount     pgtype.Numeric
-	VatAmountNok  pgtype.Numeric
+	InvoiceID        int64
+	VatCategory      string
+	RatePercent      pgtype.Numeric
+	SafTCode         string
+	TaxableAmount    pgtype.Numeric
+	VatAmount        pgtype.Numeric
+	VatAmountNok     pgtype.Numeric
+	TaxableAmountNok pgtype.Numeric
 }
 
 // JournalVatSummaries is the VAT summaries of the documents named, the
@@ -629,6 +677,7 @@ func (q *Queries) JournalVatSummaries(ctx context.Context, invoiceIds []int64) (
 			&i.TaxableAmount,
 			&i.VatAmount,
 			&i.VatAmountNok,
+			&i.TaxableAmountNok,
 		); err != nil {
 			return nil, err
 		}

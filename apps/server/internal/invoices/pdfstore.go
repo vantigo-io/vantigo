@@ -96,7 +96,19 @@ func pdfDocumentOf(inv store.InvoicesInvoice, lines []store.InvoicesLine, sums [
 		if row.VAT, err = ratFromNumeric(s.VatAmount); err != nil {
 			return pdfDocument{}, err
 		}
+		if inv.Currency != "NOK" {
+			if row.BaseNOK, row.VATNOK, err = storedRowNOK(s); err != nil {
+				return pdfDocument{}, err
+			}
+		}
 		d.summaries = append(d.summaries, row)
+	}
+	if inv.Currency != "NOK" && inv.ExchangeRate.Valid {
+		rate, err := ratFromNumeric(inv.ExchangeRate)
+		if err != nil {
+			return pdfDocument{}, err
+		}
+		d.exchangeRate, d.rateDate, d.rateSource = rate, inv.ExchangeRateDate.Time, inv.ExchangeRateSource
 	}
 	var err error
 	if d.totals.Net, err = ratFromNumeric(inv.NetTotal); err != nil {

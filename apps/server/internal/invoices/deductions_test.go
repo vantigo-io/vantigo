@@ -741,7 +741,7 @@ func TestDeduction_TheCurrencyMustBeTheSettlements(t *testing.T) {
 	t.Parallel()
 	h := readyToIssue(t)
 	euro := createDraft(t, h, draftBody(customerAcme, line("A konto i euro", 1, 1000, vat25)))
-	h.Exec(t, `UPDATE invoices.invoices SET currency = 'EUR' WHERE id = $1`, euro.ID)
+	h.Exec(t, `UPDATE invoices.invoices SET currency = 'EUR', exchange_rate_source = 'manual' WHERE id = $1`, euro.ID)
 	e := issued(t, h, euro.ID)
 	if e.Currency != "EUR" {
 		t.Fatalf("the planted a-konto is in %s, want EUR", e.Currency)

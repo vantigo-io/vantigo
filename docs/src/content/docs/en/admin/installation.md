@@ -116,7 +116,7 @@ The image is one binary with a dispatch table; the command is the first argument
 exits 2 outside it): it applies migrations and populates an idempotent Norwegian demo
 dataset across all modules (20 users across 9 permission roles, 200 companies with 400
 contacts, 62 products, 75 projects, time entries, expenses, invoices — with a customer
-holding credit from an overpayment, a bank-feed payment split across two invoices, a small difference rounded off, and eFaktura and AvtaleGiro set up as rows, with no provider called: a person whose eFaktura was delivered with an accepted AvtaleGiro claim, and one AvtaleGiro agreement waiting for a customer —, energy metering
+holding credit from an overpayment, a bank-feed payment split across two invoices, a small difference rounded off, and eFaktura and AvtaleGiro set up as rows, with no provider called: a person whose eFaktura was delivered with an accepted AvtaleGiro claim, and one AvtaleGiro agreement waiting for a customer; and an invoice in euro — EUR turned on with 30 days of Norges Bank's rates and one entered by hand, paid in two NOK transfers with a currency gain and a loss —, energy metering
 points, customer conversations, and a small workshop with its stock, bills of materials,
 manufacturing orders and sales orders) and, when `accounting` is enabled, books set up from 1
 January with the demo's sales and expenses posted, suppliers and their invoices, the VAT

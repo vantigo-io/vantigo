@@ -58,13 +58,13 @@ func absent(t *testing.T, root *ehf.Node, path ...string) {
 // order, this pins the hand writer's part of it without a JVM.
 var (
 	invoiceOrder = []string{
-		"CustomizationID", "ProfileID", "ID", "IssueDate", "DueDate", "InvoiceTypeCode", "DocumentCurrencyCode",
+		"CustomizationID", "ProfileID", "ID", "IssueDate", "DueDate", "InvoiceTypeCode", "DocumentCurrencyCode", "TaxCurrencyCode",
 		"BuyerReference", "InvoicePeriod", "OrderReference", "BillingReference", "AdditionalDocumentReference",
 		"ProjectReference", "AccountingSupplierParty", "AccountingCustomerParty", "Delivery", "PaymentMeans", "PaymentTerms",
 		"TaxTotal", "LegalMonetaryTotal", "InvoiceLine",
 	}
 	creditNoteOrder = []string{
-		"CustomizationID", "ProfileID", "ID", "IssueDate", "CreditNoteTypeCode", "DocumentCurrencyCode",
+		"CustomizationID", "ProfileID", "ID", "IssueDate", "CreditNoteTypeCode", "DocumentCurrencyCode", "TaxCurrencyCode",
 		"BuyerReference", "InvoicePeriod", "OrderReference", "BillingReference", "AdditionalDocumentReference",
 		"AccountingSupplierParty", "AccountingCustomerParty", "Delivery", "PaymentMeans", "PaymentTerms",
 		"TaxTotal", "LegalMonetaryTotal", "CreditNoteLine",
@@ -881,5 +881,34 @@ func TestEHF_PriceDecimals(t *testing.T) {
 		d := fixture(t, "invoice-person")
 		d.Lines[0].UnitPrice = rat(c.price)
 		expect(t, render(t, d), c.want, "cac:InvoiceLine", "cac:Price", "cbc:PriceAmount")
+	}
+}
+
+// A document in another currency than NOK (invoices phase 6 design I23):
+// TaxCurrencyCode NOK right after DocumentCurrencyCode, a second TaxTotal
+// after the one with the subtotals carrying only the VAT in NOK, and the
+// IBAN with the BIC as the payee account for a Norwegian buyer too. A NOK
+// document writes neither.
+func TestEHF_InCurrency(t *testing.T) {
+	t.Parallel()
+	inv := render(t, fixture(t, "invoice-eur"))
+	expect(t, inv, "EUR", "cbc:DocumentCurrencyCode")
+	expect(t, inv, "NOK", "cbc:TaxCurrencyCode")
+	totals := inv.All("cac:TaxTotal")
+	if len(totals) != 2 {
+		t.Fatalf("%d TaxTotals, want two", len(totals))
+	}
+	if got := totals[0].First("cbc:TaxAmount"); got == nil || got.Text != "315.00" || got.Attr("currencyID") != "EUR" || len(totals[0].All("cac:TaxSubtotal")) != 2 {
+		t.Errorf("the first TaxTotal = %+v, want EUR 315.00 with the two subtotals", got)
+	}
+	if got := totals[1].First("cbc:TaxAmount"); got == nil || got.Text != "3692.87" || got.Attr("currencyID") != "NOK" || len(totals[1].All("cac:TaxSubtotal")) != 0 {
+		t.Errorf("the second TaxTotal = %+v, want NOK 3692.87 and no subtotal", got)
+	}
+	expect(t, inv, "NO9386011117947", "cac:PaymentMeans", "cac:PayeeFinancialAccount", "cbc:ID")
+	expect(t, inv, "DNBANOKKXXX", "cac:PaymentMeans", "cac:PayeeFinancialAccount", "cac:FinancialInstitutionBranch", "cbc:ID")
+	nok := render(t, fixture(t, "invoice-person"))
+	absent(t, nok, "cbc:TaxCurrencyCode")
+	if n := len(nok.All("cac:TaxTotal")); n != 1 {
+		t.Errorf("a NOK document has %d TaxTotals, want one", n)
 	}
 }

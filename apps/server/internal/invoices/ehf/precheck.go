@@ -43,6 +43,13 @@ const (
 	RuleAttachment          = "pdf_attachment_missing"
 	RuleUnitCode            = "unit_code_unknown"
 	RulePriceNegative       = "BR-27" // an item's net price is never negative: a deduction is a negative quantity at a positive price
+	// RuleTaxCurrency: a tax currency is never the document's (invoices
+	// phase 6 design I23).
+	RuleTaxCurrency = "PEPPOL-EN16931-R005"
+	// RuleTaxTotalNOK: with a tax currency there are exactly two TaxTotals,
+	// the second without subtotals and in the tax currency, carrying the
+	// document's VAT in NOK; without one there is exactly one.
+	RuleTaxTotalNOK = "tax_total_nok"
 )
 
 // root parses a document and checks it is a UBL Invoice or CreditNote.
@@ -172,9 +179,36 @@ func Invariants(doc []byte, d Document) ([]Rule, error) {
 	if err != nil {
 		return nil, err
 	}
+	// The first TaxTotal is the document currency's, with the subtotals; a
+	// document in another currency carries a second in NOK after it (I23),
+	// which the subtotal loop below never reads — it has none.
 	tax, err := amount(r.First("cac:TaxTotal"), "cbc:TaxAmount")
 	if err != nil {
 		return nil, err
+	}
+	taxCurrency := r.Value("cbc:TaxCurrencyCode")
+	totals := r.All("cac:TaxTotal")
+	switch {
+	case taxCurrency != "" && taxCurrency == r.Value("cbc:DocumentCurrencyCode"):
+		bad(RuleTaxCurrency, "the tax currency %s is the document's", taxCurrency)
+	case taxCurrency == "" && len(totals) != 1:
+		bad(RuleTaxTotalNOK, "%d VAT totals without a tax currency, want one", len(totals))
+	case taxCurrency != "" && len(totals) != 2:
+		bad(RuleTaxTotalNOK, "%d VAT totals with a tax currency, want two", len(totals))
+	case taxCurrency != "":
+		second := totals[1]
+		node := second.First("cbc:TaxAmount")
+		nok, err := amount(second, "cbc:TaxAmount")
+		switch {
+		case err != nil || node == nil:
+			bad(RuleTaxTotalNOK, "the VAT total in %s has no amount", taxCurrency)
+		case len(second.All("cac:TaxSubtotal")) > 0:
+			bad(RuleTaxTotalNOK, "the VAT total in %s has subtotals", taxCurrency)
+		case node.Attr("currencyID") != taxCurrency:
+			bad(RuleTaxTotalNOK, "the second VAT total is in %s, not the tax currency %s", node.Attr("currencyID"), taxCurrency)
+		case d.VATTotalNOK != nil && nok.Cmp(d.VATTotalNOK) != 0:
+			bad(RuleTaxTotalNOK, "the VAT total in %s is %s, not the document's VAT in NOK", taxCurrency, nok.FloatString(2))
+		}
 	}
 	if inclusive.Cmp(new(big.Rat).Add(exclusive, tax)) != 0 {
 		bad(RuleTaxInclusive, "the tax-inclusive amount is %s, not %s plus %s", inclusive.FloatString(2), exclusive.FloatString(2), tax.FloatString(2))

@@ -94,6 +94,9 @@ const (
 	// NoteFeeDeadlineNotMissed is R10: no second fee unless the previous fee
 	// letter's deadline of at least 14 days passed unmet.
 	NoteFeeDeadlineNotMissed = "fee_deadline_not_missed"
+	// NoteForeignCurrency: an invoice in another currency than NOK is claimed
+	// no fee and no compensation (invoices phase 6 design I25).
+	NoteForeignCurrency = "foreign_currency"
 )
 
 // Settings is invoices.reminder_settings as the engine needs it (D6, D7).
@@ -113,6 +116,10 @@ type Invoice struct {
 	IssueDate, DueDate                                 time.Time
 	Gross                                              *big.Rat
 	BuyerType, BuyerOrganisationNumber, BuyerForeignID string // "" for NULL
+	// Foreign is an invoice in another currency than NOK (invoices phase 6
+	// design I25): no reminder fee and no compensation — both NOK amounts
+	// written for Norwegian debtors — while interest runs as on any.
+	Foreign bool
 }
 
 // Credit is a credit note issued against the invoice; Gross is non-nil.
@@ -419,6 +426,10 @@ func judgeCharge(in Input, sent []Letter, regime Regime, delivered bool) chargeJ
 		return j
 	}
 	inv := in.Invoice
+	if inv.Foreign {
+		j.notes = []string{NoteForeignCurrency}
+		return j
+	}
 	business := inv.BuyerType == BuyerBusiness && (inv.BuyerOrganisationNumber != "" || inv.BuyerForeignID != "")
 	switch {
 	case business && in.Settings.BusinessCharge == ChargeCompensation:

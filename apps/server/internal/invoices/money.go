@@ -43,6 +43,7 @@ var (
 	computeLine   = docmath.Line
 	summarize     = docmath.Summarize
 	sortSummaries = docmath.SortSummaries
+	netsNOKOf     = docmath.NetsNOK
 )
 
 // ratFromNumeric reads a numeric column as the exact decimal it holds — Int ×

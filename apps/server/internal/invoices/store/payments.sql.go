@@ -14,7 +14,7 @@ import (
 )
 
 const getPayment = `-- name: GetPayment :one
-SELECT id, invoice_id, paid_on, amount, currency, reference, note, registered_by_user_id, registered_at, removed_at, removed_by_user_id, removal_reason, source, bank_transaction_id, payment_attempt_id, kind, write_off_id, amount_nok FROM invoices.payments WHERE id = $1 AND invoice_id = $2
+SELECT id, invoice_id, paid_on, amount, currency, reference, note, registered_by_user_id, registered_at, removed_at, removed_by_user_id, removal_reason, source, bank_transaction_id, payment_attempt_id, kind, write_off_id, amount_nok, exchange_difference_nok FROM invoices.payments WHERE id = $1 AND invoice_id = $2
 `
 
 type GetPaymentParams struct {
@@ -46,29 +46,33 @@ func (q *Queries) GetPayment(ctx context.Context, arg GetPaymentParams) (Invoice
 		&i.Kind,
 		&i.WriteOffID,
 		&i.AmountNok,
+		&i.ExchangeDifferenceNok,
 	)
 	return i, err
 }
 
 const insertCreditPayment = `-- name: InsertCreditPayment :one
 INSERT INTO invoices.payments (
-    invoice_id, paid_on, amount, amount_nok, currency, reference, note, source, registered_by_user_id, registered_at
+    invoice_id, paid_on, amount, amount_nok, currency, reference, note, source, registered_by_user_id, registered_at,
+    exchange_difference_nok
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, 'credit', $8::uuid, $9::timestamptz
+    $1, $2, $3, $4, $5, $6, $7, 'credit', $8::uuid, $9::timestamptz,
+    coalesce($10::numeric, 0)
 )
-RETURNING id, invoice_id, paid_on, amount, currency, reference, note, registered_by_user_id, registered_at, removed_at, removed_by_user_id, removal_reason, source, bank_transaction_id, payment_attempt_id, kind, write_off_id, amount_nok
+RETURNING id, invoice_id, paid_on, amount, currency, reference, note, registered_by_user_id, registered_at, removed_at, removed_by_user_id, removal_reason, source, bank_transaction_id, payment_attempt_id, kind, write_off_id, amount_nok, exchange_difference_nok
 `
 
 type InsertCreditPaymentParams struct {
-	InvoiceID          int64
-	PaidOn             pgtype.Date
-	Amount             pgtype.Numeric
-	AmountNok          pgtype.Numeric
-	Currency           string
-	Reference          string
-	Note               string
-	RegisteredByUserID uuid.UUID
-	RegisteredAt       time.Time
+	InvoiceID             int64
+	PaidOn                pgtype.Date
+	Amount                pgtype.Numeric
+	AmountNok             pgtype.Numeric
+	Currency              string
+	Reference             string
+	Note                  string
+	RegisteredByUserID    uuid.UUID
+	RegisteredAt          time.Time
+	ExchangeDifferenceNok pgtype.Numeric
 }
 
 // InsertCreditPayment registers credit applied to an invoice (I11): source
@@ -86,6 +90,7 @@ func (q *Queries) InsertCreditPayment(ctx context.Context, arg InsertCreditPayme
 		arg.Note,
 		arg.RegisteredByUserID,
 		arg.RegisteredAt,
+		arg.ExchangeDifferenceNok,
 	)
 	var i InvoicesPayment
 	err := row.Scan(
@@ -107,32 +112,35 @@ func (q *Queries) InsertCreditPayment(ctx context.Context, arg InsertCreditPayme
 		&i.Kind,
 		&i.WriteOffID,
 		&i.AmountNok,
+		&i.ExchangeDifferenceNok,
 	)
 	return i, err
 }
 
 const insertPayment = `-- name: InsertPayment :one
 INSERT INTO invoices.payments (
-    invoice_id, paid_on, amount, amount_nok, currency, reference, note, registered_by_user_id, registered_at, kind, write_off_id
+    invoice_id, paid_on, amount, amount_nok, currency, reference, note, registered_by_user_id, registered_at, kind, write_off_id,
+    exchange_difference_nok
 ) VALUES (
     $1, $2, $3, $4, $5, $6, $7, $8, $9::timestamptz,
-    $10::text, $11::bigint
+    $10::text, $11::bigint, coalesce($12::numeric, 0)
 )
-RETURNING id, invoice_id, paid_on, amount, currency, reference, note, registered_by_user_id, registered_at, removed_at, removed_by_user_id, removal_reason, source, bank_transaction_id, payment_attempt_id, kind, write_off_id, amount_nok
+RETURNING id, invoice_id, paid_on, amount, currency, reference, note, registered_by_user_id, registered_at, removed_at, removed_by_user_id, removal_reason, source, bank_transaction_id, payment_attempt_id, kind, write_off_id, amount_nok, exchange_difference_nok
 `
 
 type InsertPaymentParams struct {
-	InvoiceID          int64
-	PaidOn             pgtype.Date
-	Amount             pgtype.Numeric
-	AmountNok          pgtype.Numeric
-	Currency           string
-	Reference          string
-	Note               string
-	RegisteredByUserID *uuid.UUID
-	RegisteredAt       time.Time
-	Kind               string
-	WriteOffID         *int64
+	InvoiceID             int64
+	PaidOn                pgtype.Date
+	Amount                pgtype.Numeric
+	AmountNok             pgtype.Numeric
+	Currency              string
+	Reference             string
+	Note                  string
+	RegisteredByUserID    *uuid.UUID
+	RegisteredAt          time.Time
+	Kind                  string
+	WriteOffID            *int64
+	ExchangeDifferenceNok pgtype.Numeric
 }
 
 // InsertPayment registers money received against an issued invoice (D2). The
@@ -152,6 +160,7 @@ func (q *Queries) InsertPayment(ctx context.Context, arg InsertPaymentParams) (I
 		arg.RegisteredAt,
 		arg.Kind,
 		arg.WriteOffID,
+		arg.ExchangeDifferenceNok,
 	)
 	var i InvoicesPayment
 	err := row.Scan(
@@ -173,6 +182,7 @@ func (q *Queries) InsertPayment(ctx context.Context, arg InsertPaymentParams) (I
 		&i.Kind,
 		&i.WriteOffID,
 		&i.AmountNok,
+		&i.ExchangeDifferenceNok,
 	)
 	return i, err
 }
@@ -183,7 +193,7 @@ INSERT INTO invoices.payments (
 ) VALUES (
     $1, $2, $3, $4, $5, $6, 'vipps', $7, $8::timestamptz
 )
-RETURNING id, invoice_id, paid_on, amount, currency, reference, note, registered_by_user_id, registered_at, removed_at, removed_by_user_id, removal_reason, source, bank_transaction_id, payment_attempt_id, kind, write_off_id, amount_nok
+RETURNING id, invoice_id, paid_on, amount, currency, reference, note, registered_by_user_id, registered_at, removed_at, removed_by_user_id, removal_reason, source, bank_transaction_id, payment_attempt_id, kind, write_off_id, amount_nok, exchange_difference_nok
 `
 
 type InsertVippsPaymentParams struct {
@@ -234,6 +244,7 @@ func (q *Queries) InsertVippsPayment(ctx context.Context, arg InsertVippsPayment
 		&i.Kind,
 		&i.WriteOffID,
 		&i.AmountNok,
+		&i.ExchangeDifferenceNok,
 	)
 	return i, err
 }
@@ -278,7 +289,7 @@ func (q *Queries) LivePaymentsSum(ctx context.Context, invoiceID int64) (LivePay
 }
 
 const paymentsOf = `-- name: PaymentsOf :many
-SELECT id, invoice_id, paid_on, amount, currency, reference, note, registered_by_user_id, registered_at, removed_at, removed_by_user_id, removal_reason, source, bank_transaction_id, payment_attempt_id, kind, write_off_id, amount_nok FROM invoices.payments
+SELECT id, invoice_id, paid_on, amount, currency, reference, note, registered_by_user_id, registered_at, removed_at, removed_by_user_id, removal_reason, source, bank_transaction_id, payment_attempt_id, kind, write_off_id, amount_nok, exchange_difference_nok FROM invoices.payments
 WHERE invoice_id = $1
 ORDER BY paid_on, id
 `
@@ -313,6 +324,7 @@ func (q *Queries) PaymentsOf(ctx context.Context, invoiceID int64) ([]InvoicesPa
 			&i.Kind,
 			&i.WriteOffID,
 			&i.AmountNok,
+			&i.ExchangeDifferenceNok,
 		); err != nil {
 			return nil, err
 		}

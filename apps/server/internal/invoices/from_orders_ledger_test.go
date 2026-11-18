@@ -167,10 +167,10 @@ func TestFromOrders_ARunItemSaysDraftsHoldTheOrders(t *testing.T) {
 	}
 }
 
-// An order in another currency than the settings': blocked in the due list
-// with its reason; refused currency_not_nok when the wizard is asked for it
+// An order in a currency neither NOK nor turned on in the settings: blocked in the due list
+// with its reason; refused currency_not_enabled when the wizard is asked for it
 // by name; left out of a billing run and named in the item's detail, or the
-// item skipped currency_not_supported when nothing else is due.
+// item skipped currency_not_enabled when nothing else is due.
 func TestFromOrders_AnotherCurrencyIsBlockedNotRefusedWhole(t *testing.T) {
 	t.Parallel()
 	f := newOrdersFixture(t)
@@ -196,10 +196,10 @@ func TestFromOrders_AnotherCurrencyIsBlockedNotRefusedWhole(t *testing.T) {
 			blocked[o.Number] = *o.Blocked
 		}
 	}
-	if len(v.Orders) != 3 || len(blocked) != 1 || blocked[2212] != "currency_not_supported" {
-		t.Errorf("due = %+v, want 2212 alone blocked currency_not_supported", v.Orders)
+	if len(v.Orders) != 3 || len(blocked) != 1 || blocked[2212] != "currency_not_enabled" {
+		t.Errorf("due = %+v, want 2212 alone blocked currency_not_enabled", v.Orders)
 	}
-	refusedFromOrders(t, f.h, "currency_not_nok", false, pick(order2210, 1, 1), pick(order2212, 4, 1))
+	refusedFromOrders(t, f.h, "currency_not_enabled", false, pick(order2210, 1, 1), pick(order2212, 4, 1))
 
 	maker, _ := runMaker(t, f.h)
 	run := startRun(t, maker, map[string]any{"issue": false, "source": "orders", "combine": true, "through": "2026-09-30"})
@@ -219,8 +219,8 @@ func TestFromOrders_AnotherCurrencyIsBlockedNotRefusedWhole(t *testing.T) {
 	if inv := getInvoice(t, f.h, acme.Invoices[0].InvoiceID); len(inv.Lines) != 5 {
 		t.Errorf("Acme's invoice has %d lines, want 2210 and 2211 alone", len(inv.Lines))
 	}
-	if p := byCustomer[customerPerson]; p.Status != "skipped" || p.Code == nil || *p.Code != "currency_not_supported" {
-		t.Errorf("the person's item = %+v, want skipped currency_not_supported", p)
+	if p := byCustomer[customerPerson]; p.Status != "skipped" || p.Code == nil || *p.Code != "currency_not_enabled" {
+		t.Errorf("the person's item = %+v, want skipped currency_not_enabled", p)
 	}
 	if a := f.orders.live(); slices.ContainsFunc(a, func(id int64) bool { return f.orders.allocation(id).OrderID == order2212 }) {
 		t.Errorf("the EUR order was allocated: %v", a)

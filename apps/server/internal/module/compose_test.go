@@ -3368,6 +3368,41 @@ func TestCompose_InjectsTheSalesJournal(t *testing.T) {
 	}
 }
 
+// fakeExchangeRates is a contracts.ExchangeRates that answers no rate.
+type fakeExchangeRates struct{}
+
+func (*fakeExchangeRates) Rate(context.Context, string, time.Time) (contracts.ExchangeRate, bool, error) {
+	return contracts.ExchangeRate{}, false, nil
+}
+
+// The exchange rates (invoices phase 6 design I18) reach every module's Deps
+// from their one provider, and two providers are a compose error naming the
+// slot.
+func TestCompose_InjectsTheExchangeRates(t *testing.T) {
+	rates := &fakeExchangeRates{}
+	var got Deps
+	_, err := compose(Deps{Access: &fakeAccess{}}, fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract}),
+		Module{Name: "beta", ExchangeRates: func(Deps) contracts.ExchangeRates { return rates }, Mount: staticHandler("beta")},
+		Module{Name: "alpha", Mount: func(d Deps) (http.Handler, error) {
+			got = d
+			return staticHandler("alpha")(d)
+		}},
+	)
+	if err != nil {
+		t.Fatalf("compose: %v", err)
+	}
+	if got.ExchangeRates != rates {
+		t.Errorf("Deps.ExchangeRates = %v, want the provider's", got.ExchangeRates)
+	}
+	_, err = compose(Deps{Access: &fakeAccess{}}, fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract}),
+		Module{Name: "alpha", ExchangeRates: func(Deps) contracts.ExchangeRates { return &fakeExchangeRates{} }, Mount: staticHandler("alpha")},
+		Module{Name: "beta", ExchangeRates: func(Deps) contracts.ExchangeRates { return &fakeExchangeRates{} }, Mount: staticHandler("beta")},
+	)
+	if err == nil || !strings.Contains(err.Error(), "exchange rates") {
+		t.Errorf("two exchange rates providers: %v, want an error naming the slot", err)
+	}
+}
+
 // fakeExpenseJournal is a contracts.ExpenseJournal no test calls.
 type fakeExpenseJournal struct{ contracts.ExpenseJournal }
 

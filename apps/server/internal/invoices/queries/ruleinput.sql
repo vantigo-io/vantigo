@@ -6,12 +6,12 @@
 
 -- name: RuleInvoices :many
 -- RuleInvoices is the issued invoices among ids with the snapshot the engine
--- reads: the buyer, the issue and due dates, the gross, and the customer
+-- reads: the buyer, the issue and due dates, the gross, the currency, and the customer
 -- whose policy applies. A draft or a credit note is not one. The buyer's
 -- language is not the engine's: the letter's dispatch reads it from the
 -- invoice row it holds locked.
 SELECT id, customer_id, buyer_type, buyer_organisation_number, buyer_foreign_id,
-       issue_date, due_date, gross_total
+       issue_date, due_date, gross_total, currency
 FROM invoices.invoices
 WHERE id = ANY(@ids::bigint[]) AND kind = 'invoice' AND status = 'issued'
 ORDER BY id;

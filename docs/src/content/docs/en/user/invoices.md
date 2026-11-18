@@ -22,7 +22,8 @@ journal**, **Overdue** (the overdue invoices and their reminders), **Billing run
 (shown with `invoices:create`), **Payments** (the
 bank's files and the exception queue, and the day's Vipps payments, shown only with
 `invoices:payments`) and **Invoice
-settings**. Every amount is in NOK in this phase. An invoice is
+settings**. Amounts are in NOK unless the settings turn another currency on
+([Currencies and exchange rates](#currencies-and-exchange-rates)). An invoice is
 handed over as a PDF — by download or by e-mail — or as an EHF e-invoice over the Peppol
 network, once your installation is set up for it
 ([what the law asks](/en/reference/invoices/#the-law-in-one-page)).
@@ -215,6 +216,33 @@ when the invoice numbers outgrow a length that fitted when it was saved — *The
 invoice number no longer fits the KID agreement's length. Change the KID agreement in
 the settings.* The yellow headroom warning is there so that never comes as a surprise.
 
+### Currencies and exchange rates
+
+An invoice is in NOK unless you turn another currency on. NOK stays the currency of your
+books: an invoice in euro is booked in NOK at the rate it was issued at.
+
+On the card **Currencies** — *Invoices in another currency need the IBAN and BIC. Rates
+come from Norges Bank each business day after 16:30; a rate you enter is never
+overwritten.* — choose the currencies under **Currencies besides NOK**. The list is the
+currencies Norges Bank publishes a daily rate of. Turning one on is saved at once:
+
+- Vantigo first fetches the currency's last 30 days of rates from Norges Bank.
+- It is refused when the seller record lacks the **IBAN** or the **BIC** — a customer
+  abroad pays to them — and when no rate within 7 days of today could be found. Enter a
+  rate yourself (below) and turn it on again.
+
+For each currency the card shows when its rates were last fetched, or why the last fetch
+failed, and its last seven rates with where each came from (**Norges Bank** or
+**Entered**). **Fetch now** fetches at once. To use a rate of your own for a day — Norges
+Bank did not publish one, or you agreed another — fill in **Day** and **Rate (NOK per
+unit)** and click **Enter a rate**. A rate you enter replaces Norges Bank's for that day
+and is never overwritten by a fetch; remove it with the bin to go back to Norges Bank's,
+which Vantigo fetches for that day at once. An invoice issued at a rate you entered prints
+it as the agreed rate.
+
+Turning a currency off keeps every document already in it: open drafts can still be
+issued.
+
 ### AvtaleGiro and the KID
 
 AvtaleGiro identifies the payer by a KID fixed in their agreement, so each customer has
@@ -362,6 +390,19 @@ run again on every save and at issue ([the customer gates](/en/reference/invoice
 To invoice hours, expenses or milestones, start from the work instead: the draft is made
 with its lines ([Invoicing work](#invoicing-work)). To invoice an order, start from the
 order ([Invoicing orders](#invoicing-orders)).
+
+### A draft in another currency
+
+With a currency turned on ([Currencies and exchange rates](#currencies-and-exchange-rates)),
+the draft shows **Currency**. A new draft takes the currency of the customer's billing
+profile when that currency is on, else NOK; a draft whose customer's profile is in another
+currency says so. Beside it the draft shows the rate it is totalled at, such as *EUR/NOK
+11,7234 · Norges Bank 16.11.2026*: Norges Bank's rate of the issue date, or of the latest
+business day before it, taken again when you issue. **Use another rate** takes a rate you
+agreed with the customer, with **The rate's day**; leave it empty to go back to Norges
+Bank's. The totals add **VAT in NOK** and **Total in NOK**. A draft that holds order
+lines, work or a-konto deductions keeps the currency it was made in. Work, consumption
+and the quick invoice are always in NOK.
 
 ## Invoicing work
 
@@ -955,6 +996,13 @@ off, since the work then cannot be checked, or when the draft was saved by someo
 while you issued. Nothing is issued and no number is used: refresh the work or edit the
 line, and issue again ([the write-back](/en/reference/invoices/#the-write-back)).
 
+An invoice in another currency is refused when the seller record lacks the IBAN or the
+BIC (*An invoice in another currency is paid to the IBAN and BIC. Fill in both in the
+settings first.*) and when no rate within 7 days before the issue date is found (*No
+exchange rate within 7 days was found.*). Its PDF states every amount in its currency,
+prints the rate and the VAT in NOK per rate and in total — the law asks for the VAT in
+NOK — and leads the payment block with the IBAN and the BIC. It gets no Vipps pay link.
+
 ## The quick invoice
 
 The quick invoice is for a job finished on site, on a tablet or a phone. Open **Quick
@@ -1185,6 +1233,15 @@ if it was right after all.* Removing a payment of the customer's credit gives th
 back; removing one whose rest was kept as credit takes that credit back, and is refused —
 *That is more than the customer's credit* — while it is used: remove what used it first.
 
+### A payment of an invoice in another currency
+
+On an invoice in another currency, **Register payment** asks for the amount in the
+invoice's currency and **Received in NOK**, proposed at today's rate. What arrived in NOK
+rarely matches the NOK the invoice was booked at; the dialog says the difference, such as
+*Currency gain NOK 12,40*, and it is booked as a currency gain or loss. The payment that
+brings the invoice to zero clears what is left of it in NOK exactly. Reminder charges of
+an invoice in another currency are not registered as payments.
+
 ## The customer's credit
 
 A customer has **credit** when they paid more than they owed or a credit note credited more
@@ -1220,6 +1277,10 @@ comes back. Refunds are in NOK in this version.
 A merge of two customers adds the absorbed customer's credit to the survivor's. When a
 customer is anonymised the credit keeps its amounts and loses its notes
 ([customer credit](/en/reference/invoices/#customer-credit)).
+
+Credit is kept per currency. A refund of credit in another currency asks for **What left
+in NOK** too; the difference against what the credit was booked at is a currency gain or
+loss.
 
 ## Writing an invoice off
 
@@ -1538,6 +1599,12 @@ of is never offered it.
 Every action is checked again as it is made: a line someone else dealt with meanwhile is
 refused, in words, and nothing changes.
 
+A bank line is in NOK. A line whose KID names an invoice in another currency is never
+paid automatically: it waits as *The invoice is in another currency*. **Apply** asks, for
+that invoice, the amount it pays in the invoice's currency and the line's share in NOK;
+**Keep as credit** pays it the same way and keeps what is left of the line as the
+customer's credit in NOK.
+
 ## Reminders
 
 Vantigo sends reminders for overdue invoices: letters with the fee, the compensation and
@@ -1828,6 +1895,10 @@ listed), with a note and who set it. Anyone with `invoices:access` reads it; som
 `invoices:payments` changes it and clicks **Save**. A customer with no invoice or draft
 here, or one anonymised, takes no policy, and the card says so. When two customers are
 merged the stricter policy wins.
+
+An invoice in another currency is reminded of as any other, but its letters claim
+neither a reminder fee nor the compensation — both are NOK amounts written for
+Norwegian debtors. Late-payment interest is still computed, in the invoice's currency.
 
 ## Sending a document by e-mail
 

@@ -55,6 +55,7 @@ UPDATE invoices.settings SET
     energy_vat_code_exempt = @energy_vat_code_exempt,
     send_channel = sqlc.narg(send_channel),
     tolerance = @tolerance,
+    currencies = @currencies::text[],
     updated_at = @now::timestamptz,
     revision = revision + 1
 WHERE id = 1

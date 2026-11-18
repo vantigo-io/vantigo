@@ -155,7 +155,7 @@ WHERE ($1::text IS NULL OR t.status = $1::text)
   AND (NOT $8::boolean
        OR (t.status IN ('matched', 'resolved') AND t.direction = 'credit' AND NOT t.negative
            AND (coalesce(t.resolution, 'applied') = 'applied'
-                OR (t.resolution = 'not_customer_payment' AND t.reason IN ('invoice_credited', 'invoice_settled', 'exceeds_open')))
+                OR (t.resolution = 'not_customer_payment' AND t.reason IN ('invoice_credited', 'invoice_settled', 'exceeds_open', 'currency_differs')))
            AND NOT EXISTS (SELECT 1 FROM invoices.bank_transaction_events e WHERE e.bank_transaction_id = t.id AND e.event = 'reversed')
            AND t.amount > a.applied))
 `
@@ -521,7 +521,7 @@ WHERE ($1::text IS NULL OR t.status = $1::text)
   AND (NOT $8::boolean
        OR (t.status IN ('matched', 'resolved') AND t.direction = 'credit' AND NOT t.negative
            AND (coalesce(t.resolution, 'applied') = 'applied'
-                OR (t.resolution = 'not_customer_payment' AND t.reason IN ('invoice_credited', 'invoice_settled', 'exceeds_open')))
+                OR (t.resolution = 'not_customer_payment' AND t.reason IN ('invoice_credited', 'invoice_settled', 'exceeds_open', 'currency_differs')))
            AND NOT EXISTS (SELECT 1 FROM invoices.bank_transaction_events e WHERE e.bank_transaction_id = t.id AND e.event = 'reversed')
            AND t.amount > a.applied))
 ORDER BY CASE WHEN $9::boolean THEN t.booked_on END DESC,

@@ -63,25 +63,27 @@ func (q *Queries) InsertBankTransactionEvent(ctx context.Context, arg InsertBank
 
 const insertImportedPayment = `-- name: InsertImportedPayment :one
 INSERT INTO invoices.payments (
-    invoice_id, paid_on, amount, amount_nok, currency, source, bank_transaction_id, reference, registered_by_user_id, registered_at
+    invoice_id, paid_on, amount, amount_nok, currency, source, bank_transaction_id, reference, registered_by_user_id, registered_at,
+    exchange_difference_nok
 ) VALUES (
     $1, $2, $3, $4, $5, $6, $7::bigint, $8,
-    $9::uuid, $10::timestamptz
+    $9::uuid, $10::timestamptz, coalesce($11::numeric, 0)
 )
-RETURNING id, invoice_id, paid_on, amount, currency, reference, note, registered_by_user_id, registered_at, removed_at, removed_by_user_id, removal_reason, source, bank_transaction_id, payment_attempt_id, kind, write_off_id, amount_nok
+RETURNING id, invoice_id, paid_on, amount, currency, reference, note, registered_by_user_id, registered_at, removed_at, removed_by_user_id, removal_reason, source, bank_transaction_id, payment_attempt_id, kind, write_off_id, amount_nok, exchange_difference_nok
 `
 
 type InsertImportedPaymentParams struct {
-	InvoiceID          int64
-	PaidOn             pgtype.Date
-	Amount             pgtype.Numeric
-	AmountNok          pgtype.Numeric
-	Currency           string
-	Source             string
-	BankTransactionID  int64
-	Reference          string
-	RegisteredByUserID *uuid.UUID
-	RegisteredAt       time.Time
+	InvoiceID             int64
+	PaidOn                pgtype.Date
+	Amount                pgtype.Numeric
+	AmountNok             pgtype.Numeric
+	Currency              string
+	Source                string
+	BankTransactionID     int64
+	Reference             string
+	RegisteredByUserID    *uuid.UUID
+	RegisteredAt          time.Time
+	ExchangeDifferenceNok pgtype.Numeric
 }
 
 // InsertImportedPayment registers a payment a bank line was matched or
@@ -102,6 +104,7 @@ func (q *Queries) InsertImportedPayment(ctx context.Context, arg InsertImportedP
 		arg.Reference,
 		arg.RegisteredByUserID,
 		arg.RegisteredAt,
+		arg.ExchangeDifferenceNok,
 	)
 	var i InvoicesPayment
 	err := row.Scan(
@@ -123,12 +126,13 @@ func (q *Queries) InsertImportedPayment(ctx context.Context, arg InsertImportedP
 		&i.Kind,
 		&i.WriteOffID,
 		&i.AmountNok,
+		&i.ExchangeDifferenceNok,
 	)
 	return i, err
 }
 
 const invoiceForKid = `-- name: InvoiceForKid :one
-SELECT id, kind, status, number, customer_id, credits_invoice_id, issue_date, delivery_date, delivery_from, delivery_to, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, payment_terms_days, due_date, currency, exchange_rate, exchange_rate_date, your_reference, our_reference, order_reference, note, internal_note, buyer_customer_number, buyer_type, buyer_name, buyer_organisation_number, buyer_foreign_id, buyer_address_line1, buyer_address_line2, buyer_postal_code, buyer_city, buyer_region, buyer_country, buyer_peppol_id, buyer_gln, buyer_language, seller_legal_name, seller_organisation_number, seller_vat_registered, seller_in_foretaksregisteret, seller_address_line1, seller_address_line2, seller_postal_code, seller_city, seller_country, seller_bank_account, seller_iban, seller_bic, seller_email, seller_footer_text, net_total, vat_total, gross_total, vat_total_nok, pdf_object_key, pdf_sha256, issued_at, issued_by_user_id, created_by_user_id, created_at, updated_at, revision, kid, kid_algorithm, project_id, project_reference, timesheet, seller_logo_object_key, seller_logo_sha256, seller_phone, buyer_avtalegiro_kid FROM invoices.invoices WHERE number = $1 AND status = 'issued'
+SELECT id, kind, status, number, customer_id, credits_invoice_id, issue_date, delivery_date, delivery_from, delivery_to, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, payment_terms_days, due_date, currency, exchange_rate, exchange_rate_date, your_reference, our_reference, order_reference, note, internal_note, buyer_customer_number, buyer_type, buyer_name, buyer_organisation_number, buyer_foreign_id, buyer_address_line1, buyer_address_line2, buyer_postal_code, buyer_city, buyer_region, buyer_country, buyer_peppol_id, buyer_gln, buyer_language, seller_legal_name, seller_organisation_number, seller_vat_registered, seller_in_foretaksregisteret, seller_address_line1, seller_address_line2, seller_postal_code, seller_city, seller_country, seller_bank_account, seller_iban, seller_bic, seller_email, seller_footer_text, net_total, vat_total, gross_total, vat_total_nok, pdf_object_key, pdf_sha256, issued_at, issued_by_user_id, created_by_user_id, created_at, updated_at, revision, kid, kid_algorithm, project_id, project_reference, timesheet, seller_logo_object_key, seller_logo_sha256, seller_phone, buyer_avtalegiro_kid, exchange_rate_source FROM invoices.invoices WHERE number = $1 AND status = 'issued'
 `
 
 // InvoiceForKid is the issued document numbered number (ux_invoices_number,
@@ -213,12 +217,13 @@ func (q *Queries) InvoiceForKid(ctx context.Context, number *int64) (InvoicesInv
 		&i.SellerLogoSha256,
 		&i.SellerPhone,
 		&i.BuyerAvtalegiroKid,
+		&i.ExchangeRateSource,
 	)
 	return i, err
 }
 
 const issuedInvoicesByNumbers = `-- name: IssuedInvoicesByNumbers :many
-SELECT id, kind, status, number, customer_id, credits_invoice_id, issue_date, delivery_date, delivery_from, delivery_to, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, payment_terms_days, due_date, currency, exchange_rate, exchange_rate_date, your_reference, our_reference, order_reference, note, internal_note, buyer_customer_number, buyer_type, buyer_name, buyer_organisation_number, buyer_foreign_id, buyer_address_line1, buyer_address_line2, buyer_postal_code, buyer_city, buyer_region, buyer_country, buyer_peppol_id, buyer_gln, buyer_language, seller_legal_name, seller_organisation_number, seller_vat_registered, seller_in_foretaksregisteret, seller_address_line1, seller_address_line2, seller_postal_code, seller_city, seller_country, seller_bank_account, seller_iban, seller_bic, seller_email, seller_footer_text, net_total, vat_total, gross_total, vat_total_nok, pdf_object_key, pdf_sha256, issued_at, issued_by_user_id, created_by_user_id, created_at, updated_at, revision, kid, kid_algorithm, project_id, project_reference, timesheet, seller_logo_object_key, seller_logo_sha256, seller_phone, buyer_avtalegiro_kid FROM invoices.invoices
+SELECT id, kind, status, number, customer_id, credits_invoice_id, issue_date, delivery_date, delivery_from, delivery_to, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, payment_terms_days, due_date, currency, exchange_rate, exchange_rate_date, your_reference, our_reference, order_reference, note, internal_note, buyer_customer_number, buyer_type, buyer_name, buyer_organisation_number, buyer_foreign_id, buyer_address_line1, buyer_address_line2, buyer_postal_code, buyer_city, buyer_region, buyer_country, buyer_peppol_id, buyer_gln, buyer_language, seller_legal_name, seller_organisation_number, seller_vat_registered, seller_in_foretaksregisteret, seller_address_line1, seller_address_line2, seller_postal_code, seller_city, seller_country, seller_bank_account, seller_iban, seller_bic, seller_email, seller_footer_text, net_total, vat_total, gross_total, vat_total_nok, pdf_object_key, pdf_sha256, issued_at, issued_by_user_id, created_by_user_id, created_at, updated_at, revision, kid, kid_algorithm, project_id, project_reference, timesheet, seller_logo_object_key, seller_logo_sha256, seller_phone, buyer_avtalegiro_kid, exchange_rate_source FROM invoices.invoices
 WHERE kind = 'invoice' AND status = 'issued' AND number = ANY($1::bigint[])
 ORDER BY id
 LIMIT 21
@@ -313,6 +318,7 @@ func (q *Queries) IssuedInvoicesByNumbers(ctx context.Context, numbers []int64) 
 			&i.SellerLogoSha256,
 			&i.SellerPhone,
 			&i.BuyerAvtalegiroKid,
+			&i.ExchangeRateSource,
 		); err != nil {
 			return nil, err
 		}

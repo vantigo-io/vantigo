@@ -145,6 +145,10 @@ func WorkerDeps(deps Deps, mods ...Module) Deps {
 	if deps, err = withSalesJournal(deps, enabled); err != nil {
 		panic(err.Error())
 	}
+	// The exchange rates, likewise, right after the sales journal.
+	if deps, err = withExchangeRates(deps, enabled); err != nil {
+		panic(err.Error())
+	}
 	// The expense journal, likewise: the ledger's catch-up reads it too.
 	if deps, err = withExpenseJournal(deps, enabled); err != nil {
 		panic(err.Error())
@@ -289,6 +293,20 @@ func withSalesJournal(deps Deps, enabled []Module) (Deps, error) {
 	}
 	if provider != nil {
 		deps.SalesJournal = provider.SalesJournal(deps)
+	}
+	return deps, nil
+}
+
+// withExchangeRates resolves contracts.ExchangeRates from the enabled modules
+// — at most one may declare it — keeping a preset value when none does.
+// Compose and Workers both call it right after withSalesJournal.
+func withExchangeRates(deps Deps, enabled []Module) (Deps, error) {
+	provider, err := soleProvider(enabled, "exchange rates", func(m Module) bool { return m.ExchangeRates != nil })
+	if err != nil {
+		return deps, err
+	}
+	if provider != nil {
+		deps.ExchangeRates = provider.ExchangeRates(deps)
 	}
 	return deps, nil
 }

@@ -104,7 +104,9 @@ var payLinkAtIssueBeforeInsert func(ctx context.Context, invoiceID int64)
 // the erase) — the savepoint is rolled back and the invoice is issued
 // without a link; any other failure fails the issue.
 func (s *server) payLinkAtIssue(ctx context.Context, tx pgx.Tx, txq *store.Queries, issued store.InvoicesInvoice, handedOver bool) error {
-	if issued.Kind != kindInvoice {
+	// Vipps is NOK: an invoice in another currency gets no link (invoices
+	// phase 6 design I22).
+	if issued.Kind != kindInvoice || issued.Currency != "NOK" {
 		return nil
 	}
 	avail, err := s.paymentsAvailable(ctx, txq)
@@ -296,6 +298,10 @@ func (s *server) payLinkRefusal(ctx context.Context, txq *store.Queries, locked 
 	}
 	if locked.Status != statusIssued {
 		return ptr(conflict(codeInvoiceDraft, cannotPayLinkTitle, "A draft is not a sales document: issue it first.")), nil
+	}
+	if locked.Currency != "NOK" {
+		return ptr(conflict(codeCurrencyNotNOK, cannotPayLinkTitle,
+			"Vipps takes NOK only: an invoice in another currency is paid to the IBAN and BIC, and gets no pay link.")), nil
 	}
 	erased, err := txq.CustomerErased(ctx, locked.CustomerID)
 	if err != nil {

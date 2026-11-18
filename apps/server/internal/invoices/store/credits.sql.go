@@ -156,7 +156,8 @@ func (q *Queries) CreditedPerLine(ctx context.Context, originalID *int64) ([]Cre
 const creditedVatPerRate = `-- name: CreditedVatPerRate :many
 SELECT s.vat_category, s.rate_percent,
        sum(s.vat_amount)::numeric(14,2) AS vat,
-       sum(s.vat_amount_nok)::numeric(14,2) AS vat_nok
+       sum(s.vat_amount_nok)::numeric(14,2) AS vat_nok,
+       sum(coalesce(s.taxable_amount_nok, s.taxable_amount))::numeric(14,2) AS base_nok
 FROM invoices.vat_summaries s
 JOIN invoices.invoices c ON c.id = s.invoice_id
 WHERE c.credits_invoice_id = $1 AND c.status = 'issued'
@@ -168,6 +169,7 @@ type CreditedVatPerRateRow struct {
 	RatePercent pgtype.Numeric
 	Vat         pgtype.Numeric
 	VatNok      pgtype.Numeric
+	BaseNok     pgtype.Numeric
 }
 
 // CreditedVatPerRate is, per (category, rate) row of an invoice, the VAT its
@@ -187,6 +189,7 @@ func (q *Queries) CreditedVatPerRate(ctx context.Context, originalID *int64) ([]
 			&i.RatePercent,
 			&i.Vat,
 			&i.VatNok,
+			&i.BaseNok,
 		); err != nil {
 			return nil, err
 		}
@@ -202,7 +205,7 @@ const insertCreditDraft = `-- name: InsertCreditDraft :one
 INSERT INTO invoices.invoices (
     kind, customer_id, credits_invoice_id, delivery_date, delivery_from, delivery_to,
     delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country,
-    currency, exchange_rate, exchange_rate_date, your_reference, our_reference, order_reference,
+    currency, exchange_rate, exchange_rate_date, exchange_rate_source, your_reference, our_reference, order_reference,
     buyer_customer_number, buyer_type, buyer_name, buyer_organisation_number, buyer_foreign_id,
     buyer_address_line1, buyer_address_line2, buyer_postal_code, buyer_city, buyer_region, buyer_country,
     buyer_peppol_id, buyer_gln, buyer_language, project_id, project_reference,
@@ -211,14 +214,14 @@ INSERT INTO invoices.invoices (
 SELECT
     'credit_note', o.customer_id, o.id, o.delivery_date, o.delivery_from, o.delivery_to,
     o.delivery_address_line1, o.delivery_address_line2, o.delivery_postal_code, o.delivery_city, o.delivery_country,
-    o.currency, o.exchange_rate, o.exchange_rate_date, o.your_reference, o.our_reference, o.order_reference,
+    o.currency, o.exchange_rate, o.exchange_rate_date, o.exchange_rate_source, o.your_reference, o.our_reference, o.order_reference,
     o.buyer_customer_number, o.buyer_type, o.buyer_name, o.buyer_organisation_number, o.buyer_foreign_id,
     o.buyer_address_line1, o.buyer_address_line2, o.buyer_postal_code, o.buyer_city, o.buyer_region, o.buyer_country,
     o.buyer_peppol_id, o.buyer_gln, o.buyer_language, o.project_id, o.project_reference,
     o.net_total, o.vat_total, o.gross_total, o.vat_total_nok, $1, $2::timestamptz, $2::timestamptz
 FROM invoices.invoices o
 WHERE o.id = $3 AND o.kind = 'invoice' AND o.status = 'issued'
-RETURNING id, kind, status, number, customer_id, credits_invoice_id, issue_date, delivery_date, delivery_from, delivery_to, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, payment_terms_days, due_date, currency, exchange_rate, exchange_rate_date, your_reference, our_reference, order_reference, note, internal_note, buyer_customer_number, buyer_type, buyer_name, buyer_organisation_number, buyer_foreign_id, buyer_address_line1, buyer_address_line2, buyer_postal_code, buyer_city, buyer_region, buyer_country, buyer_peppol_id, buyer_gln, buyer_language, seller_legal_name, seller_organisation_number, seller_vat_registered, seller_in_foretaksregisteret, seller_address_line1, seller_address_line2, seller_postal_code, seller_city, seller_country, seller_bank_account, seller_iban, seller_bic, seller_email, seller_footer_text, net_total, vat_total, gross_total, vat_total_nok, pdf_object_key, pdf_sha256, issued_at, issued_by_user_id, created_by_user_id, created_at, updated_at, revision, kid, kid_algorithm, project_id, project_reference, timesheet, seller_logo_object_key, seller_logo_sha256, seller_phone, buyer_avtalegiro_kid
+RETURNING id, kind, status, number, customer_id, credits_invoice_id, issue_date, delivery_date, delivery_from, delivery_to, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, payment_terms_days, due_date, currency, exchange_rate, exchange_rate_date, your_reference, our_reference, order_reference, note, internal_note, buyer_customer_number, buyer_type, buyer_name, buyer_organisation_number, buyer_foreign_id, buyer_address_line1, buyer_address_line2, buyer_postal_code, buyer_city, buyer_region, buyer_country, buyer_peppol_id, buyer_gln, buyer_language, seller_legal_name, seller_organisation_number, seller_vat_registered, seller_in_foretaksregisteret, seller_address_line1, seller_address_line2, seller_postal_code, seller_city, seller_country, seller_bank_account, seller_iban, seller_bic, seller_email, seller_footer_text, net_total, vat_total, gross_total, vat_total_nok, pdf_object_key, pdf_sha256, issued_at, issued_by_user_id, created_by_user_id, created_at, updated_at, revision, kid, kid_algorithm, project_id, project_reference, timesheet, seller_logo_object_key, seller_logo_sha256, seller_phone, buyer_avtalegiro_kid, exchange_rate_source
 `
 
 type InsertCreditDraftParams struct {
@@ -311,6 +314,7 @@ func (q *Queries) InsertCreditDraft(ctx context.Context, arg InsertCreditDraftPa
 		&i.SellerLogoSha256,
 		&i.SellerPhone,
 		&i.BuyerAvtalegiroKid,
+		&i.ExchangeRateSource,
 	)
 	return i, err
 }

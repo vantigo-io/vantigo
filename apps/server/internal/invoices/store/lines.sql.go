@@ -80,21 +80,24 @@ func (q *Queries) InsertLine(ctx context.Context, arg InsertLineParams) (int64, 
 
 const insertVatSummary = `-- name: InsertVatSummary :exec
 INSERT INTO invoices.vat_summaries (
-    invoice_id, vat_category, rate_percent, saf_t_code, exemption_reason, taxable_amount, vat_amount, vat_amount_nok
+    invoice_id, vat_category, rate_percent, saf_t_code, exemption_reason, taxable_amount, vat_amount, vat_amount_nok,
+    taxable_amount_nok
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8
+    $1, $2, $3, $4, $5, $6, $7, $8,
+    $9::numeric
 )
 `
 
 type InsertVatSummaryParams struct {
-	InvoiceID       int64
-	VatCategory     string
-	RatePercent     pgtype.Numeric
-	SafTCode        string
-	ExemptionReason *string
-	TaxableAmount   pgtype.Numeric
-	VatAmount       pgtype.Numeric
-	VatAmountNok    pgtype.Numeric
+	InvoiceID        int64
+	VatCategory      string
+	RatePercent      pgtype.Numeric
+	SafTCode         string
+	ExemptionReason  *string
+	TaxableAmount    pgtype.Numeric
+	VatAmount        pgtype.Numeric
+	VatAmountNok     pgtype.Numeric
+	TaxableAmountNok pgtype.Numeric
 }
 
 func (q *Queries) InsertVatSummary(ctx context.Context, arg InsertVatSummaryParams) error {
@@ -107,12 +110,13 @@ func (q *Queries) InsertVatSummary(ctx context.Context, arg InsertVatSummaryPara
 		arg.TaxableAmount,
 		arg.VatAmount,
 		arg.VatAmountNok,
+		arg.TaxableAmountNok,
 	)
 	return err
 }
 
 const lines = `-- name: Lines :many
-SELECT id, invoice_id, position, description, quantity, unit, unit_price, discount_percent, vat_code_id, credits_line_id, line_gross, line_allowance, line_net, vat_rate_percent, vat_category, saf_t_code, exemption_reason, deducts_invoice_id, correction, line_kind, tax_category_id, project_id FROM invoices.lines WHERE invoice_id = $1 ORDER BY position
+SELECT id, invoice_id, position, description, quantity, unit, unit_price, discount_percent, vat_code_id, credits_line_id, line_gross, line_allowance, line_net, vat_rate_percent, vat_category, saf_t_code, exemption_reason, deducts_invoice_id, correction, line_kind, tax_category_id, project_id, line_net_nok FROM invoices.lines WHERE invoice_id = $1 ORDER BY position
 `
 
 // Lines is one document's lines, in their order.
@@ -148,6 +152,7 @@ func (q *Queries) Lines(ctx context.Context, invoiceID int64) ([]InvoicesLine, e
 			&i.LineKind,
 			&i.TaxCategoryID,
 			&i.ProjectID,
+			&i.LineNetNok,
 		); err != nil {
 			return nil, err
 		}
@@ -162,9 +167,10 @@ func (q *Queries) Lines(ctx context.Context, invoiceID int64) ([]InvoicesLine, e
 const snapshotLine = `-- name: SnapshotLine :exec
 UPDATE invoices.lines AS l SET
     vat_rate_percent = $1,
-    vat_category = $2,
-    saf_t_code = $3,
-    exemption_reason = $4,
+    line_net_nok = $2::numeric,
+    vat_category = $3,
+    saf_t_code = $4,
+    exemption_reason = $5,
     line_kind = d.line_kind,
     tax_category_id = d.tax_category_id,
     project_id = d.project_id
@@ -201,13 +207,14 @@ FROM (
         WHERE ls.invoice_id = b.invoice_id
           AND b.position BETWEEN f.position AND f.position + ls.line_count - 1
     ) AS s
-    WHERE t.id = $5
+    WHERE t.id = $6
 ) AS d
-WHERE l.id = $5
+WHERE l.id = $6
 `
 
 type SnapshotLineParams struct {
 	VatRatePercent  pgtype.Numeric
+	LineNetNok      pgtype.Numeric
 	VatCategory     *string
 	SafTCode        *string
 	ExemptionReason *string
@@ -234,6 +241,7 @@ type SnapshotLineParams struct {
 func (q *Queries) SnapshotLine(ctx context.Context, arg SnapshotLineParams) error {
 	_, err := q.db.Exec(ctx, snapshotLine,
 		arg.VatRatePercent,
+		arg.LineNetNok,
 		arg.VatCategory,
 		arg.SafTCode,
 		arg.ExemptionReason,
@@ -243,7 +251,7 @@ func (q *Queries) SnapshotLine(ctx context.Context, arg SnapshotLineParams) erro
 }
 
 const vatSummaries = `-- name: VatSummaries :many
-SELECT id, invoice_id, vat_category, rate_percent, saf_t_code, exemption_reason, taxable_amount, vat_amount, vat_amount_nok FROM invoices.vat_summaries WHERE invoice_id = $1 ORDER BY rate_percent DESC, vat_category
+SELECT id, invoice_id, vat_category, rate_percent, saf_t_code, exemption_reason, taxable_amount, vat_amount, vat_amount_nok, taxable_amount_nok FROM invoices.vat_summaries WHERE invoice_id = $1 ORDER BY rate_percent DESC, vat_category
 `
 
 // VatSummaries is an issued document's VAT per (category, rate), the highest
@@ -267,6 +275,7 @@ func (q *Queries) VatSummaries(ctx context.Context, invoiceID int64) ([]Invoices
 			&i.TaxableAmount,
 			&i.VatAmount,
 			&i.VatAmountNok,
+			&i.TaxableAmountNok,
 		); err != nil {
 			return nil, err
 		}

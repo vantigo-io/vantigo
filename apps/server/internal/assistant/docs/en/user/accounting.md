@@ -356,6 +356,16 @@ The overview's **Sales from Invoices** says how far the books have read and whet
 anything is waiting. A long backlog — after the books were set up on a busy installation,
 say — keeps reading every fifteen seconds until it is through.
 
+### Sales in another currency
+
+An invoice in another currency posts in NOK at the rate it was issued at: the receivable
+line carries the currency, the amount in it and the rate, and revenue and VAT post in
+NOK alone. When the customer pays, what arrived in NOK seldom matches what the invoice was
+booked at: the receivable takes what the payment cleared, and the difference posts to
+**8060** (currency gain) or **8160** (currency loss). The payment that brings the invoice
+to zero leaves its open item at exactly zero. Credit applied or refunded in another
+currency posts its difference the same way.
+
 ## Suppliers
 
 **Suppliers** lists the companies and people you buy from, by number: each new supplier

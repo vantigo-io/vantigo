@@ -203,8 +203,8 @@ func TestSettings_EveryRuleIsA400OnItsField(t *testing.T) {
 	}
 	body := completeSeller(1)
 	body["defaultCurrency"] = "EUR"
-	if p := problemOf(t, manager.Do(http.MethodPut, settingsPath, body)); !slices.Equal(p.Errors["defaultCurrency"], []string{"Only NOK in this phase"}) {
-		t.Errorf("EUR: %v, want exactly \"Only NOK in this phase\"", p.Errors)
+	if p := problemOf(t, manager.Do(http.MethodPut, settingsPath, body)); !slices.Equal(p.Errors["defaultCurrency"], []string{"NOK is the functional currency"}) {
+		t.Errorf("EUR: %v, want exactly \"NOK is the functional currency\"", p.Errors)
 	}
 }
 

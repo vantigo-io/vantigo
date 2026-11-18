@@ -863,9 +863,9 @@ func TestEhfWorker_RegisteredOnlyWhenEnabled(t *testing.T) {
 		return out
 	}
 	// INVOICES_VIPPS_ENABLED and INVOICES_BANK_FEED_ENABLED stay at their
-	// default, on, and the harness turns INVOICES_EFAKTURA_ENABLED on: the payments and the bank feed workers are there beside
+	// default, on, and the harness turns INVOICES_EFAKTURA_ENABLED on: the payments, the bank feed and the rates workers are there beside
 	// them (TestWorkers_PerSwitch).
-	want := []string{"invoices-bank-feed@1m0s", "invoices-billing@5s", "invoices-efaktura@30s", "invoices-ehf-events@30s", "invoices-ehf@5s", "invoices-overdue-events@15m0s", "invoices-payments@1s", "invoices-reminders@5s",
+	want := []string{"invoices-bank-feed@1m0s", "invoices-billing@5s", "invoices-efaktura@30s", "invoices-ehf-events@30s", "invoices-ehf@5s", "invoices-overdue-events@15m0s", "invoices-payments@1s", "invoices-rates@15m0s", "invoices-reminders@5s",
 		"invoices.allocation_reconcile@10m0s", "invoices.credit_moves@5m0s"}
 	if got := names(newHarness(t)); !slices.Equal(got, want) {
 		t.Errorf("enabled: %v, want %v", got, want)
@@ -873,8 +873,8 @@ func TestEhfWorker_RegisteredOnlyWhenEnabled(t *testing.T) {
 	if got := names(newHarness(t, modtest.WithEnv("PEPPOL_LOOKUP_ENABLED", "0"))); !slices.Equal(got, want) {
 		t.Errorf("lookup disabled: %v, want %v", got, want)
 	}
-	if got := names(newHarness(t, modtest.WithEnv("INVOICES_EHF_ENABLED", "0"))); !slices.Equal(got, []string{"invoices-bank-feed@1m0s", "invoices-billing@5s", "invoices-efaktura@30s", "invoices-overdue-events@15m0s", "invoices-payments@1s", "invoices-reminders@5s", "invoices.allocation_reconcile@10m0s", "invoices.credit_moves@5m0s"}) {
-		t.Errorf("switched off: %v, want the bank feed, billing, eFaktura, overdue events, reminder, payments, reconcile and credit moves workers alone", got)
+	if got := names(newHarness(t, modtest.WithEnv("INVOICES_EHF_ENABLED", "0"))); !slices.Equal(got, []string{"invoices-bank-feed@1m0s", "invoices-billing@5s", "invoices-efaktura@30s", "invoices-overdue-events@15m0s", "invoices-payments@1s", "invoices-rates@15m0s", "invoices-reminders@5s", "invoices.allocation_reconcile@10m0s", "invoices.credit_moves@5m0s"}) {
+		t.Errorf("switched off: %v, want the bank feed, billing, eFaktura, overdue events, reminder, payments, rates, reconcile and credit moves workers alone", got)
 	}
 	if got := names(newHarness(t, modtest.WithEnv("INVOICES_BANK_FEED_ENABLED", "0"))); slices.Contains(got, "invoices-bank-feed@1m0s") {
 		t.Errorf("INVOICES_BANK_FEED_ENABLED=0: %v, want no bank feed worker", got)

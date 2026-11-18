@@ -413,7 +413,10 @@ func (c *billingClaim) billOrders(ctx context.Context) (itemOutcome, error) {
 		if o.Blocked != "" {
 			continue
 		}
-		if o.Currency != settings.DefaultCurrency {
+		// An order in a currency turned on is invoiced in it, a draft per
+		// currency (invoices phase 6 design I20); one in any other is left
+		// out.
+		if !invoiceableCurrency(settings, o.Currency) {
 			foreign = append(foreign, fmt.Sprintf("%d (%s)", o.Number, o.Currency))
 			continue
 		}
@@ -435,8 +438,8 @@ func (c *billingClaim) billOrders(ctx context.Context) (itemOutcome, error) {
 	}
 	var leftOut string
 	if len(foreign) > 0 {
-		leftOut = fmt.Sprintf("Orders %s are in another currency than %s and were left out (%s).",
-			strings.Join(foreign, ", "), settings.DefaultCurrency, codeCurrencyNotSupported)
+		leftOut = fmt.Sprintf("Orders %s are in a currency not turned on in the settings and were left out (%s).",
+			strings.Join(foreign, ", "), codeCurrencyNotEnabled)
 	}
 	earlier, err := c.earlierDocuments(ctx, q)
 	if err != nil {
@@ -444,7 +447,7 @@ func (c *billingClaim) billOrders(ctx context.Context) (itemOutcome, error) {
 	}
 	if len(lines) == 0 && len(subs) == 0 && len(earlier) == 0 {
 		if leftOut != "" {
-			return skipped(codeCurrencyNotSupported, leftOut), nil
+			return skipped(codeCurrencyNotEnabled, leftOut), nil
 		}
 		held, err := q.CustomerDraftsHoldOrders(ctx, customer)
 		if err != nil {

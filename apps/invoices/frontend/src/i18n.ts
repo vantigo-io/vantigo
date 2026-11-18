@@ -127,8 +127,7 @@ export const invoicesCatalog = {
     internalNoteHint: "Never printed.",
     warnings: "Worth a look",
     warningUnknown: "The server flags something this version has no words for ({{code}}).",
-    "warning.customer_currency_differs":
-      "The customer is invoiced in another currency; this phase invoices in NOK only.",
+    "warning.customer_currency_differs": "The customer's billing profile is in another currency than this draft.",
     "warning.issued_late": "The delivery ended more than a month ago; the law asks for the invoice within a month.",
     "warning.credit_exceeds_invoice":
       "This credit note is more than the invoice has left to credit; it cannot be issued as it stands.",
@@ -2487,6 +2486,48 @@ export const invoicesCatalog = {
     "bank.event.auto_split": "Split across invoices automatically",
     "bank.reversal.creditCandidate":
       "Credit kept from invoice {{number}}: {{amount}}, from line {{ref}} booked {{date}}",
+    "currencies.title": "Currencies",
+    "currencies.hint":
+      "Invoices in another currency need the IBAN and BIC. Rates come from Norges Bank each business day after 16:30; a rate you enter is never overwritten.",
+    "currencies.label": "Currencies besides NOK",
+    "currencies.saved": "The currencies are saved.",
+    "currencies.couldNotSave": "The currencies could not be saved",
+    "currencies.fetchNow": "Fetch now",
+    "currencies.lastFetch": "Fetched {{at}}",
+    "currencies.lastError": "Last fetch failed: {{error}}",
+    "currencies.source.norges_bank": "Norges Bank",
+    "currencies.source.manual": "Entered",
+    "currencies.remove": "Remove the rate",
+    "currencies.day": "Day",
+    "currencies.rate": "Rate (NOK per unit)",
+    "currencies.enterRate": "Enter a rate",
+    "currency.label": "Currency",
+    "currency.agreedRate": "Use another rate ({{currency}}/NOK)",
+    "currency.agreedHint": "Leave empty to use Norges Bank's rate of the issue date.",
+    "currency.agreedDay": "The rate's day",
+    "currency.norgesBankRate": "{{currency}}/NOK {{rate}} · Norges Bank {{day}}",
+    "currency.agreedLine": "{{currency}}/NOK {{rate}} · agreed rate",
+    "currency.vatInNok": "VAT in NOK",
+    "currency.totalInNok": "Total in NOK",
+    "currency.receivedInNok": "Received in NOK",
+    "currency.gain": "Currency gain {{amount}}",
+    "currency.loss": "Currency loss {{amount}}",
+    "warning.exchange_rate_missing":
+      "No exchange rate within 7 days was found. Fetch the rates or enter one before issuing.",
+    "refusal.exchange_rate_missing":
+      "No exchange rate within 7 days was found. Enter a manual rate in the settings first.",
+    "refusal.iban_required":
+      "An invoice in another currency is paid to the IBAN and BIC. Fill in both in the settings first.",
+    "refusal.currency_not_enabled": "The currency is not turned on in the settings.",
+    "refusal.exchange_rate_fetched":
+      "A rate fetched from Norges Bank is never removed; enter a manual rate of the day instead.",
+    "fromOrders.blocked.currency_not_enabled": "The order is in a currency not turned on in the settings.",
+    "bank.reason.currency_differs": "The invoice is in another currency",
+    "bank.apply.shareNok": "The line's share in NOK for invoice {{number}}",
+    "bank.keep.pays": "What the line pays of invoice {{number}}",
+    "bank.keep.shareNok": "The line's share in NOK",
+    "credit.recordRefundIn": "Record refund in {{currency}}",
+    "credit.leftInNok": "What left in NOK",
   },
   nb: {
     invoices: "Fakturaer",
@@ -2617,7 +2658,7 @@ export const invoicesCatalog = {
     internalNoteHint: "Skrives aldri ut.",
     warnings: "Verdt å se på",
     warningUnknown: "Serveren påpeker noe denne versjonen ikke har ord for ({{code}}).",
-    "warning.customer_currency_differs": "Kunden faktureres i en annen valuta; denne fasen fakturerer bare i NOK.",
+    "warning.customer_currency_differs": "Kundens fakturaprofil er i en annen valuta enn dette utkastet.",
     "warning.issued_late":
       "Leveringen ble avsluttet for mer enn en måned siden; loven krever fakturaen innen en måned.",
     "warning.credit_exceeds_invoice":
@@ -4988,6 +5029,48 @@ export const invoicesCatalog = {
     "bank.event.auto_split": "Fordelt automatisk på fakturaer",
     "bank.reversal.creditCandidate":
       "Kreditt holdt fra faktura {{number}}: {{amount}}, fra linje {{ref}} bokført {{date}}",
+    "currencies.title": "Valutaer",
+    "currencies.hint":
+      "Fakturaer i en annen valuta trenger IBAN og BIC. Kursene hentes fra Norges Bank hver virkedag etter kl. 16.30; en kurs du legger inn, blir aldri overskrevet.",
+    "currencies.label": "Valutaer i tillegg til NOK",
+    "currencies.saved": "Valutaene er lagret.",
+    "currencies.couldNotSave": "Valutaene kunne ikke lagres",
+    "currencies.fetchNow": "Hent nå",
+    "currencies.lastFetch": "Hentet {{at}}",
+    "currencies.lastError": "Siste henting feilet: {{error}}",
+    "currencies.source.norges_bank": "Norges Bank",
+    "currencies.source.manual": "Lagt inn",
+    "currencies.remove": "Fjern kursen",
+    "currencies.day": "Dag",
+    "currencies.rate": "Kurs (NOK per enhet)",
+    "currencies.enterRate": "Legg inn kurs",
+    "currency.label": "Valuta",
+    "currency.agreedRate": "Bruk en annen kurs ({{currency}}/NOK)",
+    "currency.agreedHint": "La stå tom for å bruke Norges Banks kurs for fakturadatoen.",
+    "currency.agreedDay": "Kursens dag",
+    "currency.norgesBankRate": "{{currency}}/NOK {{rate}} · Norges Bank {{day}}",
+    "currency.agreedLine": "{{currency}}/NOK {{rate}} · avtalt kurs",
+    "currency.vatInNok": "MVA i NOK",
+    "currency.totalInNok": "Sum i NOK",
+    "currency.receivedInNok": "Mottatt i NOK",
+    "currency.gain": "Agiogevinst {{amount}}",
+    "currency.loss": "Agiotap {{amount}}",
+    "warning.exchange_rate_missing":
+      "Ingen kurs innen 7 dager ble funnet. Hent kursene eller legg inn en før fakturaen utstedes.",
+    "refusal.exchange_rate_missing":
+      "Ingen kurs innen 7 dager ble funnet. Legg inn en manuell kurs i innstillingene først.",
+    "refusal.iban_required":
+      "En faktura i en annen valuta betales til IBAN og BIC. Fyll ut begge i innstillingene først.",
+    "refusal.currency_not_enabled": "Valutaen er ikke slått på i innstillingene.",
+    "refusal.exchange_rate_fetched":
+      "En kurs hentet fra Norges Bank fjernes aldri; legg inn en manuell kurs for dagen i stedet.",
+    "fromOrders.blocked.currency_not_enabled": "Ordren er i en valuta som ikke er slått på i innstillingene.",
+    "bank.reason.currency_differs": "Fakturaen er i en annen valuta",
+    "bank.apply.shareNok": "Linjens andel i NOK for faktura {{number}}",
+    "bank.keep.pays": "Hva linjen betaler av faktura {{number}}",
+    "bank.keep.shareNok": "Linjens andel i NOK",
+    "credit.recordRefundIn": "Registrer tilbakebetaling i {{currency}}",
+    "credit.leftInNok": "Hva som gikk ut i NOK",
   },
 } satisfies CatalogResources;
 

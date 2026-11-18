@@ -39,9 +39,6 @@ const (
 	// codeOrdersHeldByDrafts is a billing run item with nothing due because
 	// drafts of the customer hold what its orders have left to invoice.
 	codeOrdersHeldByDrafts = "orders_held_by_drafts"
-	// codeCurrencyNotSupported is an order in another currency than the
-	// settings' — blocked in the due list, and left out of a billing run.
-	codeCurrencyNotSupported = "currency_not_supported"
 	// codeLineHoldsOrderAllocation is a save that changes the quantity, unit
 	// price, discount or VAT code of a line billing an order allocation.
 	codeLineHoldsOrderAllocation = "line_holds_order_allocation"
@@ -119,8 +116,8 @@ func (s *server) GetInvoicesFromOrdersDue(ctx context.Context, req gen.GetInvoic
 		view.Warnings = append(view.Warnings, warningOrdersTruncated)
 	}
 	for _, o := range page.Orders {
-		if o.Blocked == "" && o.Currency != settings.DefaultCurrency {
-			o.Blocked = codeCurrencyNotSupported
+		if o.Blocked == "" && !invoiceableCurrency(settings, o.Currency) {
+			o.Blocked = codeCurrencyNotEnabled
 		}
 		out, err := dueOrderView(o)
 		if err != nil {
@@ -302,6 +299,8 @@ type orderDraft struct {
 	header  orderHeader
 	totals  documentTotals
 	profile *contracts.CustomerBillingProfile
+	// rate is the draft's in its currency (invoices phase 6 design I19).
+	rate draftRateOf
 }
 
 // fromOrders is the wizard's core (O39): the handler's and the billing run's
@@ -431,9 +430,9 @@ func (s *server) fromOrders(ctx context.Context, lines []orderLineInput, subs []
 		profiles[o.CustomerID] = profile
 	}
 	for _, o := range taken {
-		if o.Currency != settings.DefaultCurrency {
-			return ordersOutcome{refusal: ptr(conflict(codeCurrencyNotNOK, cannotInvoiceOrdersTitle, fmt.Sprintf(
-				"Order %d is in %s, and this module invoices in %s only.", o.Number, o.Currency, settings.DefaultCurrency)))}, nil
+		if !invoiceableCurrency(settings, o.Currency) {
+			return ordersOutcome{refusal: ptr(conflict(codeCurrencyNotEnabled, cannotInvoiceOrdersTitle, fmt.Sprintf(
+				"Order %d is in %s, which is not turned on in the settings.", o.Number, o.Currency)))}, nil
 		}
 	}
 	loc, err := s.businessZone(ctx)
@@ -559,7 +558,12 @@ func (s *server) fromOrders(ctx context.Context, lines []orderLineInput, subs []
 				return ordersOutcome{invalid: fieldError("lines", "An order line makes a line too large for one invoice line")}, nil
 			}
 		}
-		_, totals, _ := summarize(taxedLines(made, codes), big.NewRat(1, 1))
+		// A draft per currency, at its rate (I19, I20).
+		rate, err := draftRate(ctx, q, g.key.currency, draftInput{}, today)
+		if err != nil {
+			return ordersOutcome{}, err
+		}
+		_, totals, _ := summarize(taxedLines(made, codes), rate.Rate)
 		if e := checkTotal(totals, nil); e != nil {
 			return ordersOutcome{invalid: e}, nil
 		}
@@ -568,7 +572,7 @@ func (s *server) fromOrders(ctx context.Context, lines []orderLineInput, subs []
 			terms = &settings.DefaultPaymentTermsDays
 		}
 		drafts = append(drafts, orderDraft{
-			group: g, lines: made, rows: rows, totals: totals, profile: profile,
+			group: g, lines: made, rows: rows, totals: totals, profile: profile, rate: rate,
 			header: headerOf(g, rows, profile.BuyerReference, terms, today),
 		})
 	}
@@ -587,7 +591,8 @@ func (s *server) fromOrders(ctx context.Context, lines []orderLineInput, subs []
 			doc, err := txq.InsertInvoiceDraft(ctx, store.InsertInvoiceDraftParams{
 				CustomerID: d.group.customerID, DeliveryDate: h.deliveryDate, DeliveryFrom: h.deliveryFrom, DeliveryTo: h.deliveryTo,
 				DeliveryAddressLine1: line1, DeliveryAddressLine2: line2, DeliveryPostalCode: postal, DeliveryCity: city, DeliveryCountry: country,
-				PaymentTermsDays: h.terms, Currency: settings.DefaultCurrency, YourReference: h.yourReference,
+				PaymentTermsDays: h.terms, Currency: d.group.key.currency, YourReference: h.yourReference,
+				ExchangeRate: d.rate.numeric(), ExchangeRateDate: d.rate.day(), ExchangeRateSource: &d.rate.Source,
 				OrderReference: h.orderReference, NetTotal: net, VatTotal: vatTotal, GrossTotal: gross, VatTotalNok: vatNOK,
 				CreatedByUserID: callerID(ctx), Now: s.deps.Clock(),
 			})
@@ -664,4 +669,10 @@ func (s *server) markAllocationsReleased(ctx context.Context, ids []int64) {
 		s.deps.Logger.WarnContext(ctx, "invoices: the order allocations released could not be marked so in the ledger",
 			"allocations", ids, "error", err.Error())
 	}
+}
+
+// invoiceableCurrency reports whether an order in currency may be invoiced
+// (invoices phase 6 design I20): NOK, or a currency turned on.
+func invoiceableCurrency(settings store.InvoicesSetting, currency string) bool {
+	return currency == "NOK" || slices.Contains(settings.Currencies, currency)
 }

@@ -19,6 +19,14 @@ SELECT coalesce(sum(amount), 0)::numeric(14,2) AS balance
 FROM invoices.customer_credits
 WHERE customer_id = @customer_id AND currency = @currency;
 
+-- name: CreditBalanceNOK :one
+-- CreditBalanceNOK is what the customer's credit in the currency is carried
+-- at in NOK (invoices phase 6 plan reading 7): the sum of its movements'
+-- amount_nok, 0 with none. Read after the customer's lock.
+SELECT coalesce(sum(amount_nok), 0)::numeric(14,2) AS balance_nok
+FROM invoices.customer_credits
+WHERE customer_id = @customer_id AND currency = @currency;
+
 -- name: CreditBalances :many
 -- CreditBalances is the customer's credit per currency in which it has any
 -- movement, by currency: the balance may be 0.
@@ -139,10 +147,11 @@ SELECT count(*)::int FROM invoices.customer_credits WHERE customer_id = @custome
 -- the customer's credit lock; its refunded movement follows in the same
 -- transaction.
 INSERT INTO invoices.credit_refunds (
-    customer_id, refunded_on, amount, currency, amount_nok, bank_account, reference, note, registered_by_user_id, registered_at
+    customer_id, refunded_on, amount, currency, amount_nok, bank_account, reference, note, registered_by_user_id, registered_at,
+    exchange_difference_nok
 ) VALUES (
     @customer_id, @refunded_on, @amount, @currency, sqlc.narg(amount_nok)::numeric, @bank_account, @reference, @note,
-    @registered_by_user_id, @registered_at::timestamptz
+    @registered_by_user_id, @registered_at::timestamptz, coalesce(sqlc.narg(exchange_difference_nok)::numeric, 0)
 )
 RETURNING *;
 

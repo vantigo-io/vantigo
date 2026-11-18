@@ -87,6 +87,10 @@ type pdfLabels struct {
 	// The metering point's block and the consumer's notice (energy
 	// consumption billing design D9, invoices from consumption plan reading 9).
 	pointID, pointAddress, priceArea, contract, period, consumption, correction, estimated, energyNotice string
+	// The rate block of a document in another currency than NOK (invoices
+	// phase 6 design I26): the rate, Norges Bank's with its day or an
+	// agreed one, and the VAT rows' base and VAT in NOK.
+	rateNorgesBank, rateAgreed, nokBasis, nokVAT, nokTotal string
 }
 
 var labels = map[string]pdfLabels{
@@ -108,7 +112,9 @@ var labels = map[string]pdfLabels{
 		sheetTotalFor: "Sum %s", sheetTotal: "Sum timer",
 		pointID: "Målepunkt-ID", pointAddress: "Adresse", priceArea: "Prisområde", contract: "Avtale", period: "Periode",
 		consumption: "Forbruk", correction: "korreksjon %s", estimated: "Forbruket er delvis stipulert",
-		energyNotice: "Prisene på strøm kan sammenlignes på strømpris.no. Klager kan rettes til Elklagenemnda, elklagenemnda.no",
+		energyNotice:   "Prisene på strøm kan sammenlignes på strømpris.no. Klager kan rettes til Elklagenemnda, elklagenemnda.no",
+		rateNorgesBank: "Kurs %s/NOK %s, Norges Bank %s", rateAgreed: "Kurs %s/NOK %s, avtalt kurs",
+		nokBasis: "Grunnlag (NOK)", nokVAT: "MVA (NOK)", nokTotal: "Sum",
 	},
 	"en": {
 		invoice: "Invoice", creditNote: "Credit note", number: "Number", issueDate: "Invoice date",
@@ -128,7 +134,9 @@ var labels = map[string]pdfLabels{
 		sheetTotalFor: "Total %s", sheetTotal: "Total hours",
 		pointID: "Metering point ID", pointAddress: "Address", priceArea: "Price area", contract: "Contract", period: "Period",
 		consumption: "Consumption", correction: "correction %s", estimated: "The consumption is partly estimated",
-		energyNotice: "Electricity prices can be compared at strømpris.no. Complaints can be made to Elklagenemnda, elklagenemnda.no",
+		energyNotice:   "Electricity prices can be compared at strømpris.no. Complaints can be made to Elklagenemnda, elklagenemnda.no",
+		rateNorgesBank: "Rate %s/NOK %s, Norges Bank %s", rateAgreed: "Rate %s/NOK %s, agreed rate",
+		nokBasis: "Basis (NOK)", nokVAT: "VAT (NOK)", nokTotal: "Total",
 	},
 }
 
@@ -201,6 +209,12 @@ type pdfDocument struct {
 	logoType string
 	created  time.Time
 	preview  bool
+	// exchangeRate, rateDate and rateSource are a document's rate in
+	// another currency than NOK (invoices phase 6 design I19, I26); the
+	// summaries then carry their BaseNOK and VATNOK.
+	exchangeRate *big.Rat
+	rateDate     time.Time
+	rateSource   string
 }
 
 // pdfPoint is one metering point as its block prints it (energy consumption
@@ -240,6 +254,13 @@ type pdfModel struct {
 	vatHeader   []string
 	vatRows     [][]string
 	reasons     []string
+	// rateLine, nokHeader and nokRows are the rate block below the VAT rows
+	// of a document in another currency than NOK (invoices phase 6 design
+	// I26, bokføringsforskriften § 5-1-1 første ledd nr. 6: VAT in NOK);
+	// empty for NOK, whose page is as it always was.
+	rateLine    string
+	nokHeader   []string
+	nokRows     [][]string
 	totals      [][2]string
 	payment     [][2]string
 	paymentNote string
@@ -501,6 +522,32 @@ func buildPDFModel(d pdfDocument) pdfModel {
 		m.reasons = append(m.reasons, reason)
 	}
 
+	// The rate and the VAT in NOK, per rate and in total (I26): the VAT in
+	// NOK is required, the base in NOK recommended (Skatteetaten 2006).
+	if currency != "NOK" && d.exchangeRate != nil {
+		rate := formatDecimal(d.exchangeRate, 4, 10, lang)
+		if d.rateSource == rateSourceManual {
+			m.rateLine = fmt.Sprintf(l.rateAgreed, currency, rate)
+		} else {
+			m.rateLine = fmt.Sprintf(l.rateNorgesBank, currency, rate, formatDate(d.rateDate, lang))
+		}
+		m.nokHeader = []string{l.vatCategory, l.nokBasis, l.nokVAT}
+		base, vat := new(big.Rat), new(big.Rat)
+		for _, r := range d.summaries {
+			b, v := r.BaseNOK, r.VATNOK
+			if b == nil {
+				b = new(big.Rat)
+			}
+			if v == nil {
+				v = new(big.Rat)
+			}
+			base.Add(base, b)
+			vat.Add(vat, v)
+			m.nokRows = append(m.nokRows, []string{r.Category + " " + formatDecimal(r.Rate, 0, 2, lang) + " %", money(b, lang), money(v, lang)})
+		}
+		m.nokRows = append(m.nokRows, []string{l.nokTotal, money(base, lang), money(vat, lang)})
+	}
+
 	grossLabel := l.gross
 	if d.kind == kindInvoice {
 		grossLabel = l.toPay
@@ -509,8 +556,22 @@ func buildPDFModel(d pdfDocument) pdfModel {
 		{l.net, money(d.totals.Net, lang)}, {l.vatTotal, money(d.totals.VAT, lang)}, {grossLabel, currency + " " + money(d.totals.Gross, lang)},
 	}
 
-	// The payment block, on an invoice only.
-	if d.kind == kindInvoice {
+	// The payment block, on an invoice only. Off NOK it leads with the IBAN
+	// and the BIC, then the account and the KID a Norwegian payer may use
+	// (I22); an invoice in currency has no pay link.
+	if d.kind == kindInvoice && currency != "NOK" {
+		m.payment = append(m.payment, [2]string{l.iban, d.iban}, [2]string{l.bic, d.bic}, [2]string{l.account, d.bankAccount})
+		if d.kid != "" {
+			m.payment = append(m.payment, [2]string{l.kid, d.kid})
+		}
+		if d.dueDate != nil {
+			m.payment = append(m.payment, [2]string{l.dueDate, formatDate(*d.dueDate, lang)})
+		}
+		m.paymentNote = l.payWithNumber
+		if d.kid != "" {
+			m.paymentNote = l.payWithKid
+		}
+	} else if d.kind == kindInvoice {
 		m.payment = append(m.payment, [2]string{l.account, d.bankAccount})
 		if d.kid != "" {
 			m.payment = append(m.payment, [2]string{l.kid, d.kid})
@@ -714,6 +775,17 @@ func layoutPDF(m pdfModel) (core.Maroto, error) {
 	}
 	for _, reason := range m.reasons {
 		doc.AddAutoRow(text.NewCol(12, reason, props.Text{Top: 1}))
+	}
+	if m.rateLine != "" {
+		doc.AddRow(6, text.NewCol(12, m.rateLine, props.Text{Top: 2}))
+		doc.AddRow(4.5, col.New(6), text.NewCol(2, m.nokHeader[0], bold), text.NewCol(2, m.nokHeader[1], boldRight), text.NewCol(2, m.nokHeader[2], boldRight))
+		for i, r := range m.nokRows {
+			style := right
+			if i == len(m.nokRows)-1 {
+				style = boldRight
+			}
+			doc.AddRow(4.5, col.New(6), text.NewCol(2, r[0]), text.NewCol(2, r[1], style), text.NewCol(2, r[2], style))
+		}
 	}
 	doc.AddRows(line.NewRow(4))
 	for i, kv := range m.totals {

@@ -54,6 +54,10 @@ const (
 	// is a recovery, which a person registers — never a payment of the
 	// principal or of the charges.
 	reasonInvoiceWrittenOff = "invoice_written_off"
+	// reasonCurrencyDiffers: the KID names an invoice in another currency
+	// than NOK, which matching never pays (invoices phase 6 design I24); a
+	// person applies the line with the NOK share.
+	reasonCurrencyDiffers = "currency_differs"
 )
 
 // The outcomes of one line: matched, queued (with its reason), or nothing
@@ -539,6 +543,11 @@ func judgeMatch(ctx context.Context, txq *store.Queries, line store.InvoicesBank
 	} else if dup {
 		return reasonPossibleDuplicate, nil, nil, nil
 	}
+	// A bank line is NOK: what it pays of an invoice in another currency is
+	// a person's to say (I24), never matching's.
+	if inv.Currency != "NOK" {
+		return reasonCurrencyDiffers, nil, nil, nil
+	}
 	credited, _, err := uncredited(ctx, txq, inv)
 	if err != nil {
 		return "", nil, nil, err
@@ -605,9 +614,9 @@ const sourceBankFeed = "bank_feed"
 func registerMatch(ctx context.Context, txq *store.Queries, line store.InvoicesBankTransaction, inv store.InvoicesInvoice, principal, charges *big.Rat, caller *uuid.UUID, now time.Time) error {
 	// Fail closed: a bank line is NOK (ck_bank_transactions_currency), and
 	// its amount was judged against the invoice's figures as if they were
-	// too. An invoice in another currency cannot be paid by it, and no
-	// reason of the queue says so yet: the error rolls the line back, leaves
-	// it pending, and stops matching with a warning naming it.
+	// too. judgeMatch queues a line naming an invoice in another currency
+	// (currency_differs, I24); should one ever reach here the error rolls
+	// the line back, leaves it pending, and stops matching with a warning.
 	if inv.Currency != "NOK" {
 		return fmt.Errorf("invoices: line %d is in NOK and its KID names document %d in %s", line.ID, inv.ID, inv.Currency)
 	}

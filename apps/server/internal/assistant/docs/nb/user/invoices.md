@@ -20,7 +20,7 @@ aldri etter det. Appen har sju områder i sidemenyen: **Fakturaer**, **Hurtigfak
 (vist bare for den som har både `invoices:create` og `invoices:issue`), **Fakturajournal**,
 **Forfalt** (de forfalte fakturaene og purringene deres), **Fakturakjøringer** (vist
 med `invoices:create`), **Innbetalinger** (bankens
-filer og avvikskøen, og dagens Vipps-betalinger, vist bare med `invoices:payments`) og **Fakturainnstillinger**. Alle beløp er i NOK i denne fasen. En faktura leveres som
+filer og avvikskøen, og dagens Vipps-betalinger, vist bare med `invoices:payments`) og **Fakturainnstillinger**. Beløpene er i NOK med mindre innstillingene slår på en annen valuta ([Valutaer og kurser](#valutaer-og-kurser)). En faktura leveres som
 PDF — ved nedlasting eller på e-post — eller som EHF-faktura i Peppol-nettverket, når
 installasjonen er satt opp for det
 ([det loven krever](/en/reference/invoices/#the-law-in-one-page)).
@@ -219,6 +219,34 @@ fakturanummer passer ikke lenger i KID-avtalens lengde. Endre KID-avtalen i
 innstillingene.* Den gule advarselen om reserve er der for at det aldri skal komme
 overraskende.
 
+### Valutaer og kurser
+
+En faktura er i NOK med mindre du slår på en annen valuta. NOK er fortsatt valutaen i
+regnskapet: en faktura i euro bokføres i NOK etter kursen den ble utstedt med.
+
+På kortet **Valutaer** — *Fakturaer i en annen valuta trenger IBAN og BIC. Kursene hentes
+fra Norges Bank hver virkedag etter kl. 16.30; en kurs du legger inn, blir aldri
+overskrevet.* — velger du valutaene under **Valutaer i tillegg til NOK**. Listen er
+valutaene Norges Bank publiserer en daglig kurs for. Når du slår på en, lagres det med en
+gang:
+
+- Vantigo henter først valutaens kurser for de siste 30 dagene fra Norges Bank.
+- Det avvises når selgeropplysningene mangler **IBAN** eller **BIC** — en kunde i
+  utlandet betaler dit — og når ingen kurs innen 7 dager fra i dag ble funnet. Legg inn en
+  kurs selv (nedenfor) og slå valutaen på igjen.
+
+For hver valuta viser kortet når kursene sist ble hentet, eller hvorfor siste henting
+feilet, og de sju siste kursene med hvor hver kom fra (**Norges Bank** eller **Lagt
+inn**). **Hent nå** henter med en gang. For å bruke en egen kurs for en dag — Norges Bank
+publiserte ingen, eller dere avtalte en annen — fyller du ut **Dag** og **Kurs (NOK per
+enhet)** og klikker **Legg inn kurs**. En kurs du legger inn, erstatter Norges Banks for
+den dagen og blir aldri overskrevet av en henting; fjern den med søppelbøtten for å gå
+tilbake til Norges Banks, som Vantigo henter for den dagen med en gang. En faktura utstedt
+med en kurs du har lagt inn, skriver den ut som avtalt kurs.
+
+Når du slår av en valuta, beholder alle dokumenter som alt er i den, valutaen sin: åpne
+utkast kan fortsatt utstedes.
+
 ### AvtaleGiro og KID
 
 AvtaleGiro kjenner igjen betaleren på en KID som står fast i avtalen, så hver kunde har
@@ -363,6 +391,19 @@ kjøres igjen ved hver lagring og ved utstedelse
 Skal du fakturere timer, utlegg eller milepæler, start heller fra arbeidet: utkastet lages
 med linjene sine ([Fakturere arbeid](#fakturere-arbeid)). Skal du fakturere en ordre, start
 fra ordren ([Fakturere ordre](#fakturere-ordre)).
+
+### Et utkast i en annen valuta
+
+Når en valuta er slått på ([Valutaer og kurser](#valutaer-og-kurser)), viser utkastet
+**Valuta**. Et nytt utkast får valutaen i kundens fakturaprofil når den valutaen er slått
+på, ellers NOK; et utkast der kundens profil er i en annen valuta, sier fra om det. Ved
+siden av viser utkastet kursen det summeres med, for eksempel *EUR/NOK 11,7234 · Norges
+Bank 16.11.2026*: Norges Banks kurs for fakturadatoen, eller for siste virkedag før den,
+hentet på nytt når du utsteder. **Bruk en annen kurs** tar en kurs du har avtalt med
+kunden, med **Kursens dag**; la den stå tom for å gå tilbake til Norges Banks. Summene får
+i tillegg **MVA i NOK** og **Sum i NOK**. Et utkast med ordrelinjer, arbeid eller
+a konto-fradrag beholder valutaen det ble laget i. Arbeid, forbruk og hurtigfakturaen er
+alltid i NOK.
 
 ## Fakturere arbeid
 
@@ -969,6 +1010,13 @@ utkastet ble lagret av noen andre mens du utstedte. Ingenting utstedes og ingen 
 brukes: oppdater arbeidet eller endre linjen, og utsted på nytt
 ([tilbakeskrivingen](/en/reference/invoices/#the-write-back)).
 
+En faktura i en annen valuta avvises når selgeropplysningene mangler IBAN eller BIC
+(*En faktura i en annen valuta betales til IBAN og BIC. Fyll ut begge i innstillingene
+først.*) og når ingen kurs innen 7 dager før fakturadatoen finnes (*Ingen kurs innen 7
+dager ble funnet.*). PDF-en oppgir alle beløp i valutaen, skriver kursen og MVA i NOK per
+sats og samlet — loven krever MVA i NOK — og begynner betalingsblokken med IBAN og BIC.
+Den får ingen Vipps-betalingslenke.
+
 ## Hurtigfaktura
 
 Hurtigfakturaen er for en jobb som er gjort ferdig på stedet, på et nettbrett eller en
@@ -1204,6 +1252,15 @@ kreditten tilbake; å fjerne en der resten ble holdt som kreditt, tar den kredit
 og avvises — *Det er mer enn kundens kreditt* — mens den er brukt: fjern det som brukte den,
 først.
 
+### En betaling av en faktura i en annen valuta
+
+På en faktura i en annen valuta spør **Registrer betaling** om beløpet i fakturaens
+valuta og **Mottatt i NOK**, foreslått etter dagens kurs. Det som kom inn i NOK, er
+sjelden det samme som NOK-beløpet fakturaen ble bokført med; dialogen viser forskjellen,
+for eksempel *Agiogevinst NOK 12,40*, og den bokføres som agiogevinst eller agiotap.
+Betalingen som bringer fakturaen til null, gjør opp det som er igjen av den i NOK på øret.
+Purrekrav på en faktura i en annen valuta registreres ikke som betalinger.
+
 ## Kundens kreditt
 
 En kunde har **kreditt** når de har betalt mer enn de skyldte, eller en kreditnota
@@ -1241,6 +1298,10 @@ Tilbakebetalinger er i NOK i denne versjonen.
 Slås to kunder sammen, legges den sammenslåtte kundens kreditt til den gjenværende kundens.
 Når en kunde anonymiseres, beholder kreditten beløpene og mister merknadene
 ([kundekreditt](/en/reference/invoices/#customer-credit)).
+
+Kreditt holdes per valuta. En tilbakebetaling av kreditt i en annen valuta spør også om
+**Hva som gikk ut i NOK**; forskjellen mot det kreditten var bokført med, er en agiogevinst
+eller et agiotap.
 
 ## Å avskrive en faktura
 
@@ -1563,6 +1624,11 @@ tilbakeførte en betaling fra, får aldri tilbudet.
 Hver handling kontrolleres på nytt idet den gjøres: en linje noen andre har behandlet i
 mellomtiden, avvises, med ord, og ingenting endres.
 
+En banklinje er i NOK. En linje der KID-en peker på en faktura i en annen valuta, betales
+aldri automatisk: den venter som *Fakturaen er i en annen valuta*. **Bruk** spør, for den
+fakturaen, hvor mye linjen betaler i fakturaens valuta og linjens andel i NOK; **Hold som
+kreditt** betaler den på samme måte og holder resten av linjen som kundens kreditt i NOK.
+
 ## Purringer
 
 Vantigo sender purringer på forfalte fakturaer: brev med gebyret, kompensasjonen og
@@ -1860,6 +1926,10 @@ vises fortsatt), med en merknad og hvem som satte den. Alle med `invoices:access
 den; den som har `invoices:payments`, endrer den og klikker **Lagre**. En kunde uten
 faktura eller kladd her, eller en anonymisert kunde, kan ikke få noen purreregel, og
 kortet sier det. Når to kunder slås sammen, vinner den strengeste regelen.
+
+En faktura i en annen valuta purres som alle andre, men brevene krever verken purregebyr
+eller kompensasjon — begge er NOK-beløp skrevet for norske skyldnere.
+Forsinkelsesrente beregnes fortsatt, i fakturaens valuta.
 
 ## Sende et dokument på e-post
 
