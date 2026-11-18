@@ -7,6 +7,7 @@ sources:
   - apps/server/internal/server
   - apps/server/internal/security
   - apps/server/internal/netguard
+  - apps/server/internal/apiref
 ---
 Transport — http eller https i ytterkanten, TLS eller klartekst til PostgreSQL og til
 SMTP-reléet — er operatørens valg, gjort per installasjon i miljøet. Prosessen
@@ -28,7 +29,8 @@ koster, og hvordan du konfigurerer de vanlige oppsettene.
 | Sikkerhetshoder, inkludert CSP | sendes | sendes |
 | Filtrering av Host-hode | `APP_URL`s vert + loopback | `APP_URL`s vert + loopback |
 | HTTPS-omdirigering | ingen | ingen (bare HSTS-hode) |
-| Sammenslått OpenAPI-dokument | `GET /api/openapi.json`, enhver autentisert økt | `GET /api/openapi.json`, enhver autentisert økt |
+| Sammenslått OpenAPI-dokument | `GET /api/openapi.json`, en økt eller en API-nøkkel | `GET /api/openapi.json`, en økt eller en API-nøkkel |
+| API-referansesiden | `GET /api` fra en nettleser, offentlig, egen CSP | `GET /api` fra en nettleser, offentlig, egen CSP |
 
 ## Hva hvert valg koster
 
@@ -261,6 +263,25 @@ sidens egen: `script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'`,
 inline-skriptene er sidens egne. Navnet på hodet følger `CSP_REPORT_ONLY` som
 applikasjonens. Alle andre hoder i denne delen er uendret på de svarene.
 
+### API-referansen på `/api`
+
+En nettleser som åpner `/api` — en `GET` eller `HEAD` der `Accept` foretrekker
+`text/html` — får den interaktive API-referansen (se
+[API-tilgang](/nb/admin/api-access/#prøv-api-et-på-api)); alle andre forespørsler til
+`/api` beholder API-ets `404`-problem. Siden og filene under `/api/reference/` erstatter
+applikasjonens policy med sin egen, under samme hodenavn:
+
+```text
+default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline';
+connect-src 'self'; img-src 'self' data:; font-src 'self'; frame-ancestors 'none'
+```
+
+Scalar, som tegner referansen, setter inn stilene sine selv, derfor `'unsafe-inline'` bare
+for stiler. Den kjører uten `'unsafe-eval'`. Siden henter ingen skrifttype, bilder eller
+skript fra andre steder, og policyen ville avvist det om den prøvde. Filene er navngitt
+etter innholdet og mellomlagres som uforanderlige; selve siden er `no-cache`. Den
+offentlige verten (`PUBLIC_BASE_URL` på en egen vert) serverer ingenting av dette.
+
 ### Endepunktet for sanntidsoppdateringer
 
 `GET /api/v1/live` oppgraderes til en WebSocket og er en `GET`, som beskyttelsen mot
@@ -282,11 +303,21 @@ moduler på:
 GET /api/openapi.json
 ```
 
-Det krever en økt i alle miljøer, development inkludert — det er ikke miljøstyrt, og
-det finnes ingen Swagger, Scalar eller annet dokumentasjonsgrensesnitt i imaget.
-Regelen er `session`, som **enhver autentisert bruker** oppfyller: ingen rettighet,
-policy eller rolle kontrolleres. Dokumentet er derfor beskyttet mot anonyme besøkende,
-ikke begrenset til administratorer. Det finnes ingen `/openapi/v1.json`-rute.
+Det krever en innringer i alle miljøer, development inkludert — det er ikke miljøstyrt.
+Hva det svarer, avhenger av hvem som spør:
+
+- **En økt, uten parameter:** den sammenslåtte kontrakten, med `x-vantigo-*`-utvidelsene
+  tjeneren leser. Enhver autentisert bruker får den: ingen rettighet, policy eller rolle
+  kontrolleres. Dokumentet er derfor beskyttet mot anonyme besøkende, ikke begrenset til
+  administratorer.
+- **En økt, `?view=api`:** integratorens dokument — alle operasjoner en API-nøkkel kan
+  kalle, med `bearerAuth`-skjemaet, `servers` satt til `APP_URL`, svarene `401`, `403` og
+  `429` og rettigheten hver operasjon krever, og uten `x-vantigo-*`-utvidelser.
+- **En API-nøkkel** (`Authorization: Bearer vtg_…`): integratorens dokument skåret ned til
+  det nøkkelen når, for en lesenøkkel bare lesingene. En lesenøkkel kan hente det.
+- **Ingen:** `401`.
+
+Referansesiden på `/api` henter det samme dokumentet. Det finnes ingen `/openapi/v1.json`-rute.
 Kildekontraktene per modul ligger i `openapi/*.yaml` i repositoriet og er riktig
 inndata for klientgenerering; `bun run gen:client` regenererer den typede
 frontend-klienten fra dem.
