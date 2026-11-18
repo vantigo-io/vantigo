@@ -27,10 +27,12 @@ type CamtEntry struct {
 // CamtTx is one transaction (TxDtls) of an entry: KID is written as a
 // structured creditor reference of type SCOR, Ustrd as one unstructured
 // line; Debtor and DebtorAccount (an IBAN when it begins with letters)
-// under RltdPties.
+// under RltdPties. Refs are more structured references, each its own
+// Strd after the KID's, of type RADM (invoices phase 6 design I14).
 type CamtTx struct {
 	AmountMinor                                    int64
 	KID, Ustrd, Debtor, DebtorAccount, AcctSvcrRef string
+	Refs                                           []string
 }
 
 // Camt054 is a camt.054 notification in version — "camt.054.001.02" or
@@ -152,13 +154,16 @@ func writeTx(b *strings.Builder, v08 bool, dir string, tx CamtTx) {
 		}
 		w("</RltdPties>")
 	}
-	if tx.KID != "" || tx.Ustrd != "" {
+	if tx.KID != "" || tx.Ustrd != "" || len(tx.Refs) > 0 {
 		w("<RmtInf>")
 		if tx.Ustrd != "" {
 			w("<Ustrd>%s</Ustrd>", esc(tx.Ustrd))
 		}
 		if tx.KID != "" {
 			w("<Strd><CdtrRefInf><Tp><CdOrPrtry><Cd>SCOR</Cd></CdOrPrtry></Tp><Ref>%s</Ref></CdtrRefInf></Strd>", esc(tx.KID))
+		}
+		for _, ref := range tx.Refs {
+			w("<Strd><CdtrRefInf><Tp><CdOrPrtry><Cd>RADM</Cd></CdOrPrtry></Tp><Ref>%s</Ref></CdtrRefInf></Strd>", esc(ref))
 		}
 		w("</RmtInf>")
 	}

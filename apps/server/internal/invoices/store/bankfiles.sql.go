@@ -236,11 +236,11 @@ const insertBankTransactions = `-- name: InsertBankTransactions :many
 INSERT INTO invoices.bank_transactions (
     bank_file_id, line_ref, format, account, direction, negative, booked_on, value_on, ordered_on,
     amount, currency, kid, remittance_text, debtor_name, debtor_account, archive_ref, bank_code,
-    fingerprint, ordinal
+    fingerprint, ordinal, remittance_refs
 )
 SELECT $1::bigint, t.line_ref, $2::text, t.account, t.direction, t.negative, t.booked_on, t.value_on, t.ordered_on,
     t.amount, 'NOK', NULLIF(t.kid, ''), t.remittance_text, t.debtor_name, t.debtor_account, t.archive_ref, t.bank_code,
-    t.fingerprint, t.ordinal
+    t.fingerprint, t.ordinal, string_to_array(t.remittance_refs, E'\x1f')::varchar(35)[]
 FROM (
     SELECT unnest($3::text[]) AS line_ref, unnest($4::text[]) AS account,
         unnest($5::text[]) AS direction, unnest($6::boolean[]) AS negative,
@@ -249,7 +249,8 @@ FROM (
         unnest($11::text[]) AS kid, unnest($12::text[]) AS remittance_text,
         unnest($13::text[]) AS debtor_name, unnest($14::text[]) AS debtor_account,
         unnest($15::text[]) AS archive_ref, unnest($16::text[]) AS bank_code,
-        unnest($17::text[]) AS fingerprint, unnest($18::smallint[]) AS ordinal
+        unnest($17::text[]) AS fingerprint, unnest($18::smallint[]) AS ordinal,
+        unnest($19::text[]) AS remittance_refs
 ) AS t
 ORDER BY t.fingerprint
 ON CONFLICT (account, fingerprint) WHERE duplicate_of_id IS NULL DO NOTHING
@@ -275,6 +276,7 @@ type InsertBankTransactionsParams struct {
 	BankCodes       []string
 	Fingerprints    []string
 	Ordinals        []int16
+	RemittanceRefs  []string
 }
 
 type InsertBankTransactionsRow struct {
@@ -288,7 +290,9 @@ type InsertBankTransactionsRow struct {
 // deadlock. A line whose account and fingerprint a live line already has is
 // skipped and not returned; InsertDuplicateTransactions keeps it. The
 // arrays are parallel, one element per line, unnested side by side; an
-// empty kid is NULL.
+// empty kid is NULL. A line's remittance references (invoices phase 6
+// design I14) are one element too, joined by the unit separator, which a
+// reference of the file never holds; "" is none.
 func (q *Queries) InsertBankTransactions(ctx context.Context, arg InsertBankTransactionsParams) ([]InsertBankTransactionsRow, error) {
 	rows, err := q.db.Query(ctx, insertBankTransactions,
 		arg.BankFileID,
@@ -309,6 +313,7 @@ func (q *Queries) InsertBankTransactions(ctx context.Context, arg InsertBankTran
 		arg.BankCodes,
 		arg.Fingerprints,
 		arg.Ordinals,
+		arg.RemittanceRefs,
 	)
 	if err != nil {
 		return nil, err
@@ -332,11 +337,11 @@ const insertDuplicateTransactions = `-- name: InsertDuplicateTransactions :many
 INSERT INTO invoices.bank_transactions (
     bank_file_id, line_ref, format, account, direction, negative, booked_on, value_on, ordered_on,
     amount, currency, kid, remittance_text, debtor_name, debtor_account, archive_ref, bank_code,
-    fingerprint, ordinal, duplicate_of_id, status
+    fingerprint, ordinal, remittance_refs, duplicate_of_id, status
 )
 SELECT $1::bigint, t.line_ref, $2::text, t.account, t.direction, t.negative, t.booked_on, t.value_on, t.ordered_on,
     t.amount, 'NOK', NULLIF(t.kid, ''), t.remittance_text, t.debtor_name, t.debtor_account, t.archive_ref, t.bank_code,
-    t.fingerprint, t.ordinal, live.id, 'duplicate'
+    t.fingerprint, t.ordinal, string_to_array(t.remittance_refs, E'\x1f')::varchar(35)[], live.id, 'duplicate'
 FROM (
     SELECT unnest($3::text[]) AS line_ref, unnest($4::text[]) AS account,
         unnest($5::text[]) AS direction, unnest($6::boolean[]) AS negative,
@@ -345,7 +350,8 @@ FROM (
         unnest($11::text[]) AS kid, unnest($12::text[]) AS remittance_text,
         unnest($13::text[]) AS debtor_name, unnest($14::text[]) AS debtor_account,
         unnest($15::text[]) AS archive_ref, unnest($16::text[]) AS bank_code,
-        unnest($17::text[]) AS fingerprint, unnest($18::smallint[]) AS ordinal
+        unnest($17::text[]) AS fingerprint, unnest($18::smallint[]) AS ordinal,
+        unnest($19::text[]) AS remittance_refs
 ) AS t
 JOIN invoices.bank_transactions live
     ON live.account = t.account AND live.fingerprint = t.fingerprint AND live.duplicate_of_id IS NULL
@@ -372,6 +378,7 @@ type InsertDuplicateTransactionsParams struct {
 	BankCodes       []string
 	Fingerprints    []string
 	Ordinals        []int16
+	RemittanceRefs  []string
 }
 
 // InsertDuplicateTransactions keeps the lines InsertBankTransactions skipped
@@ -399,6 +406,7 @@ func (q *Queries) InsertDuplicateTransactions(ctx context.Context, arg InsertDup
 		arg.BankCodes,
 		arg.Fingerprints,
 		arg.Ordinals,
+		arg.RemittanceRefs,
 	)
 	if err != nil {
 		return nil, err
@@ -629,7 +637,7 @@ func (q *Queries) SetBankFileDuplicates(ctx context.Context, arg SetBankFileDupl
 }
 
 const transactionsOfFile = `-- name: TransactionsOfFile :many
-SELECT id, bank_file_id, line_ref, format, account, direction, negative, booked_on, value_on, ordered_on, amount, currency, kid, remittance_text, debtor_name, debtor_account, archive_ref, bank_code, fingerprint, ordinal, duplicate_of_id, status, reason, suggested_invoice_id, resolution, resolved_by_user_id, resolved_at, resolution_note FROM invoices.bank_transactions WHERE bank_file_id = $1 ORDER BY id
+SELECT id, bank_file_id, line_ref, format, account, direction, negative, booked_on, value_on, ordered_on, amount, currency, kid, remittance_text, debtor_name, debtor_account, archive_ref, bank_code, fingerprint, ordinal, duplicate_of_id, status, reason, suggested_invoice_id, resolution, resolved_by_user_id, resolved_at, resolution_note, remittance_refs FROM invoices.bank_transactions WHERE bank_file_id = $1 ORDER BY id
 `
 
 // TransactionsOfFile is every line a file brought, duplicates included, in
@@ -672,6 +680,7 @@ func (q *Queries) TransactionsOfFile(ctx context.Context, bankFileID int64) ([]I
 			&i.ResolvedByUserID,
 			&i.ResolvedAt,
 			&i.ResolutionNote,
+			&i.RemittanceRefs,
 		); err != nil {
 			return nil, err
 		}

@@ -237,7 +237,11 @@ func (s *server) PostInvoicesByIdPayments(ctx context.Context, req gen.PostInvoi
 		if _, err := txq.InsertPayment(ctx, payment); err != nil {
 			return fmt.Errorf("invoices: register a payment against %d: %w", locked.ID, err)
 		}
-		return nil
+		if recovering {
+			return nil
+		}
+		// What the payment leaves open may be a small difference (I15).
+		return roundOffResidual(ctx, txq, locked, payment.PaidOn, payment.RegisteredAt)
 	}
 	if keep {
 		// The customer's credit lock, then the invoice (I17a).

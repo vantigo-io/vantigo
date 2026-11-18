@@ -137,7 +137,8 @@ func TestInvoicesBankFeed_AppliesAndIsIdempotent(t *testing.T) {
 		}
 	}
 	// After every migration the payments' two CHECKs are as 00197 (invoices
-	// phase 6, delivery B-1) leaves them: the source credit added.
+	// phase 6, delivery B-1) leaves them: the source credit added; and an
+	// event by no user may also be 00199's auto_split (delivery B-2).
 	latest := map[string][]string{}
 	for k, v := range want {
 		latest[k] = v
@@ -149,6 +150,8 @@ func TestInvoicesBankFeed_AppliesAndIsIdempotent(t *testing.T) {
 			c = paymentsOriginWithCredit
 		case strings.HasPrefix(c, "invoices.payments:ck_payments_source:"):
 			c = paymentsSourceWithCredit
+		case strings.HasPrefix(c, "invoices.bank_transaction_events:ck_bank_transaction_events_by:"):
+			c = "invoices.bank_transaction_events:ck_bank_transaction_events_by:CHECK (((by_user_id IS NOT NULL) OR ((event)::text = ANY ((ARRAY['matched'::character varying, 'queued'::character varying, 'auto_split'::character varying])::text[]))))"
 		}
 		latest["constraints"] = append(latest["constraints"], c)
 	}
@@ -449,8 +452,8 @@ func TestChargeWaivers_ByNoUserOnlyForADeadlineMet(t *testing.T) {
 	}
 }
 
-// TestBankTransactionEvents_ByNoUser: a line's matched and queued events may
-// be by no user — the feed's — and every other event, a person's queue
+// TestBankTransactionEvents_ByNoUser: a line's matched, queued and
+// auto_split events may be by no user — the feed's — and every other event, a person's queue
 // action, keeps its user (ck_bank_transaction_events_by).
 func TestBankTransactionEvents_ByNoUser(t *testing.T) {
 	t.Parallel()
@@ -462,13 +465,13 @@ func TestBankTransactionEvents_ByNoUser(t *testing.T) {
 	for _, c := range []struct {
 		event  string
 		reason *string
-	}{{"matched", nil}, {"queued", &reason}} {
+	}{{"matched", nil}, {"queued", &reason}, {"auto_split", nil}} {
 		if err := f.exec(insert, line, c.event, c.reason, nil); err != nil {
 			t.Errorf("a %s event by no user: %v, want it allowed", c.event, err)
 		}
 	}
 	for _, event := range []string{"applied", "dismissed", "reversal_handled", "reopened", "duplicate_confirmed",
-		"treated_as_distinct", "reversed"} {
+		"treated_as_distinct", "reversed", "kept_as_credit"} {
 		if err := f.exec(insert, line, event, nil, nil); !checkViolationOf(err, "ck_bank_transaction_events_by") {
 			t.Errorf("a %s event by no user: %v, want ck_bank_transaction_events_by", event, err)
 		}

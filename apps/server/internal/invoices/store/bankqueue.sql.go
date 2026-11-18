@@ -230,7 +230,7 @@ func (q *Queries) EventsOf(ctx context.Context, ids []int64) ([]InvoicesBankTran
 }
 
 const getBankTransaction = `-- name: GetBankTransaction :one
-SELECT id, bank_file_id, line_ref, format, account, direction, negative, booked_on, value_on, ordered_on, amount, currency, kid, remittance_text, debtor_name, debtor_account, archive_ref, bank_code, fingerprint, ordinal, duplicate_of_id, status, reason, suggested_invoice_id, resolution, resolved_by_user_id, resolved_at, resolution_note FROM invoices.bank_transactions WHERE id = $1
+SELECT id, bank_file_id, line_ref, format, account, direction, negative, booked_on, value_on, ordered_on, amount, currency, kid, remittance_text, debtor_name, debtor_account, archive_ref, bank_code, fingerprint, ordinal, duplicate_of_id, status, reason, suggested_invoice_id, resolution, resolved_by_user_id, resolved_at, resolution_note, remittance_refs FROM invoices.bank_transactions WHERE id = $1
 `
 
 // GetBankTransaction is one line, read on the pool before its action's
@@ -267,6 +267,7 @@ func (q *Queries) GetBankTransaction(ctx context.Context, id int64) (InvoicesBan
 		&i.ResolvedByUserID,
 		&i.ResolvedAt,
 		&i.ResolutionNote,
+		&i.RemittanceRefs,
 	)
 	return i, err
 }
@@ -281,7 +282,7 @@ LEFT JOIN LATERAL (
 ) cr ON true
 LEFT JOIN LATERAL (
     SELECT invoices.settled_amount(i.id)::numeric(14,2) AS paid,
-        invoices.written_off_amount(i.id)::numeric(14,2) AS written_off
+        invoices.loss_written_off_amount(i.id)::numeric(14,2) AS written_off
 ) pd ON true
 WHERE i.kind = 'invoice' AND i.status = 'issued' AND i.number = ANY($1::bigint[])
 ORDER BY i.id
@@ -335,7 +336,7 @@ LEFT JOIN LATERAL (
 ) cr ON true
 LEFT JOIN LATERAL (
     SELECT invoices.settled_amount(i.id)::numeric(14,2) AS paid,
-        invoices.written_off_amount(i.id)::numeric(14,2) AS written_off
+        invoices.loss_written_off_amount(i.id)::numeric(14,2) AS written_off
 ) pd ON true
 CROSS JOIN LATERAL (
     SELECT (i.gross_total - coalesce(cr.credited, 0) - coalesce(pd.paid, 0))::numeric(14,2) AS open_amount
@@ -404,7 +405,7 @@ LEFT JOIN LATERAL (
 ) cr ON true
 LEFT JOIN LATERAL (
     SELECT invoices.settled_amount(i.id)::numeric(14,2) AS paid,
-        invoices.written_off_amount(i.id)::numeric(14,2) AS written_off
+        invoices.loss_written_off_amount(i.id)::numeric(14,2) AS written_off
 ) pd ON true
 CROSS JOIN LATERAL (
     SELECT (i.gross_total - coalesce(cr.credited, 0) - coalesce(pd.paid, 0))::numeric(14,2) AS open_amount
@@ -501,7 +502,7 @@ func (q *Queries) LineReversed(ctx context.Context, lineID int64) (bool, error) 
 }
 
 const listBankTransactions = `-- name: ListBankTransactions :many
-SELECT t.id, t.bank_file_id, t.line_ref, t.format, t.account, t.direction, t.negative, t.booked_on, t.value_on, t.ordered_on, t.amount, t.currency, t.kid, t.remittance_text, t.debtor_name, t.debtor_account, t.archive_ref, t.bank_code, t.fingerprint, t.ordinal, t.duplicate_of_id, t.status, t.reason, t.suggested_invoice_id, t.resolution, t.resolved_by_user_id, t.resolved_at, t.resolution_note
+SELECT t.id, t.bank_file_id, t.line_ref, t.format, t.account, t.direction, t.negative, t.booked_on, t.value_on, t.ordered_on, t.amount, t.currency, t.kid, t.remittance_text, t.debtor_name, t.debtor_account, t.archive_ref, t.bank_code, t.fingerprint, t.ordinal, t.duplicate_of_id, t.status, t.reason, t.suggested_invoice_id, t.resolution, t.resolved_by_user_id, t.resolved_at, t.resolution_note, t.remittance_refs
 FROM invoices.bank_transactions t
 CROSS JOIN LATERAL (
     SELECT (coalesce((SELECT sum(p.amount_nok) FROM invoices.payments p WHERE p.bank_transaction_id = t.id AND p.removed_at IS NULL), 0)
@@ -610,6 +611,7 @@ func (q *Queries) ListBankTransactions(ctx context.Context, arg ListBankTransact
 			&i.InvoicesBankTransaction.ResolvedByUserID,
 			&i.InvoicesBankTransaction.ResolvedAt,
 			&i.InvoicesBankTransaction.ResolutionNote,
+			&i.InvoicesBankTransaction.RemittanceRefs,
 		); err != nil {
 			return nil, err
 		}
@@ -744,7 +746,7 @@ func (q *Queries) TreatAsDistinct(ctx context.Context, arg TreatAsDistinctParams
 }
 
 const twinsOf = `-- name: TwinsOf :many
-SELECT DISTINCT ON (l.id) l.id AS line_id, t.id, t.bank_file_id, t.line_ref, t.format, t.account, t.direction, t.negative, t.booked_on, t.value_on, t.ordered_on, t.amount, t.currency, t.kid, t.remittance_text, t.debtor_name, t.debtor_account, t.archive_ref, t.bank_code, t.fingerprint, t.ordinal, t.duplicate_of_id, t.status, t.reason, t.suggested_invoice_id, t.resolution, t.resolved_by_user_id, t.resolved_at, t.resolution_note,
+SELECT DISTINCT ON (l.id) l.id AS line_id, t.id, t.bank_file_id, t.line_ref, t.format, t.account, t.direction, t.negative, t.booked_on, t.value_on, t.ordered_on, t.amount, t.currency, t.kid, t.remittance_text, t.debtor_name, t.debtor_account, t.archive_ref, t.bank_code, t.fingerprint, t.ordinal, t.duplicate_of_id, t.status, t.reason, t.suggested_invoice_id, t.resolution, t.resolved_by_user_id, t.resolved_at, t.resolution_note, t.remittance_refs,
        EXISTS (SELECT 1 FROM invoices.bank_transaction_events e
                WHERE e.bank_transaction_id = t.id AND e.event = 'reversed') AS twin_reversed
 FROM invoices.bank_transactions l
@@ -811,6 +813,7 @@ func (q *Queries) TwinsOf(ctx context.Context, ids []int64) ([]TwinsOfRow, error
 			&i.InvoicesBankTransaction.ResolvedByUserID,
 			&i.InvoicesBankTransaction.ResolvedAt,
 			&i.InvoicesBankTransaction.ResolutionNote,
+			&i.InvoicesBankTransaction.RemittanceRefs,
 			&i.TwinReversed,
 		); err != nil {
 			return nil, err

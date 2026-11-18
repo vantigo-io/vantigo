@@ -15,10 +15,13 @@ SELECT * FROM invoices.write_offs WHERE invoice_id = @invoice_id ORDER BY regist
 -- InsertWriteOff gives up the open amount. The caller holds the invoice FOR
 -- UPDATE and has judged the amount under that lock; ux_write_offs_live keeps
 -- one standing write-off per invoice, tr_write_offs_parent an issued invoice.
+-- source is manual, by a person, or auto, the rounding write-off a payment
+-- leaves by itself (invoices phase 6 design I15), which no one registers
+-- (ck_write_offs_actor).
 INSERT INTO invoices.write_offs (
-    invoice_id, written_off_on, amount, amount_nok, currency, reason, vat_correction, registered_by_user_id, registered_at
+    invoice_id, written_off_on, amount, amount_nok, currency, reason, vat_correction, source, registered_by_user_id, registered_at
 ) VALUES (
-    @invoice_id, @written_off_on, @amount, @amount_nok, @currency, @reason, @vat_correction, @registered_by_user_id, @registered_at::timestamptz
+    @invoice_id, @written_off_on, @amount, @amount_nok, @currency, @reason, @vat_correction, @source, sqlc.narg(registered_by_user_id)::uuid, @registered_at::timestamptz
 )
 RETURNING *;
 

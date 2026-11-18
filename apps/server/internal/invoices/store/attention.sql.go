@@ -105,7 +105,7 @@ LEFT JOIN LATERAL (
 ) cr ON true
 LEFT JOIN LATERAL (
     SELECT invoices.settled_amount(i.id)::numeric(14,2) AS paid,
-        invoices.written_off_amount(i.id)::numeric(14,2) AS written_off
+        invoices.loss_written_off_amount(i.id)::numeric(14,2) AS written_off
 ) pd ON true
 WHERE a.state = 'capture_failed' AND a.finished_at >= $1::timestamptz
   AND a.registration_failed_at IS NULL
@@ -287,7 +287,7 @@ LEFT JOIN LATERAL (
 ) cr ON true
 LEFT JOIN LATERAL (
     SELECT invoices.settled_amount(i.id)::numeric(14,2) AS paid,
-        invoices.written_off_amount(i.id)::numeric(14,2) AS written_off
+        invoices.loss_written_off_amount(i.id)::numeric(14,2) AS written_off
 ) pd ON true
 LEFT JOIN LATERAL (
     SELECT coalesce(sum(a.reserved_amount), 0)::numeric(14,2) AS reserved

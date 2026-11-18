@@ -216,6 +216,111 @@ func (q *Queries) InvoiceForKid(ctx context.Context, number *int64) (InvoicesInv
 	return i, err
 }
 
+const issuedInvoicesByNumbers = `-- name: IssuedInvoicesByNumbers :many
+SELECT id, kind, status, number, customer_id, credits_invoice_id, issue_date, delivery_date, delivery_from, delivery_to, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, payment_terms_days, due_date, currency, exchange_rate, exchange_rate_date, your_reference, our_reference, order_reference, note, internal_note, buyer_customer_number, buyer_type, buyer_name, buyer_organisation_number, buyer_foreign_id, buyer_address_line1, buyer_address_line2, buyer_postal_code, buyer_city, buyer_region, buyer_country, buyer_peppol_id, buyer_gln, buyer_language, seller_legal_name, seller_organisation_number, seller_vat_registered, seller_in_foretaksregisteret, seller_address_line1, seller_address_line2, seller_postal_code, seller_city, seller_country, seller_bank_account, seller_iban, seller_bic, seller_email, seller_footer_text, net_total, vat_total, gross_total, vat_total_nok, pdf_object_key, pdf_sha256, issued_at, issued_by_user_id, created_by_user_id, created_at, updated_at, revision, kid, kid_algorithm, project_id, project_reference, timesheet, seller_logo_object_key, seller_logo_sha256, seller_phone FROM invoices.invoices
+WHERE kind = 'invoice' AND status = 'issued' AND number = ANY($1::bigint[])
+ORDER BY id
+LIMIT 20
+`
+
+// IssuedInvoicesByNumbers is the issued invoices numbered one of numbers —
+// the invoice numbers a line's remittance names (invoices phase 6 design
+// I14) — at most 20, by id: the automatic split's candidates, read on the
+// pool and judged again under their locks. Credit notes are never paid.
+func (q *Queries) IssuedInvoicesByNumbers(ctx context.Context, numbers []int64) ([]InvoicesInvoice, error) {
+	rows, err := q.db.Query(ctx, issuedInvoicesByNumbers, numbers)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []InvoicesInvoice
+	for rows.Next() {
+		var i InvoicesInvoice
+		if err := rows.Scan(
+			&i.ID,
+			&i.Kind,
+			&i.Status,
+			&i.Number,
+			&i.CustomerID,
+			&i.CreditsInvoiceID,
+			&i.IssueDate,
+			&i.DeliveryDate,
+			&i.DeliveryFrom,
+			&i.DeliveryTo,
+			&i.DeliveryAddressLine1,
+			&i.DeliveryAddressLine2,
+			&i.DeliveryPostalCode,
+			&i.DeliveryCity,
+			&i.DeliveryCountry,
+			&i.PaymentTermsDays,
+			&i.DueDate,
+			&i.Currency,
+			&i.ExchangeRate,
+			&i.ExchangeRateDate,
+			&i.YourReference,
+			&i.OurReference,
+			&i.OrderReference,
+			&i.Note,
+			&i.InternalNote,
+			&i.BuyerCustomerNumber,
+			&i.BuyerType,
+			&i.BuyerName,
+			&i.BuyerOrganisationNumber,
+			&i.BuyerForeignID,
+			&i.BuyerAddressLine1,
+			&i.BuyerAddressLine2,
+			&i.BuyerPostalCode,
+			&i.BuyerCity,
+			&i.BuyerRegion,
+			&i.BuyerCountry,
+			&i.BuyerPeppolID,
+			&i.BuyerGln,
+			&i.BuyerLanguage,
+			&i.SellerLegalName,
+			&i.SellerOrganisationNumber,
+			&i.SellerVatRegistered,
+			&i.SellerInForetaksregisteret,
+			&i.SellerAddressLine1,
+			&i.SellerAddressLine2,
+			&i.SellerPostalCode,
+			&i.SellerCity,
+			&i.SellerCountry,
+			&i.SellerBankAccount,
+			&i.SellerIban,
+			&i.SellerBic,
+			&i.SellerEmail,
+			&i.SellerFooterText,
+			&i.NetTotal,
+			&i.VatTotal,
+			&i.GrossTotal,
+			&i.VatTotalNok,
+			&i.PdfObjectKey,
+			&i.PdfSha256,
+			&i.IssuedAt,
+			&i.IssuedByUserID,
+			&i.CreatedByUserID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Revision,
+			&i.Kid,
+			&i.KidAlgorithm,
+			&i.ProjectID,
+			&i.ProjectReference,
+			&i.Timesheet,
+			&i.SellerLogoObjectKey,
+			&i.SellerLogoSha256,
+			&i.SellerPhone,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const markMatched = `-- name: MarkMatched :execrows
 UPDATE invoices.bank_transactions SET status = 'matched'
 WHERE id = $1 AND status = 'pending'
@@ -233,7 +338,7 @@ func (q *Queries) MarkMatched(ctx context.Context, id int64) (int64, error) {
 
 const pendingTransactionsOfFile = `-- name: PendingTransactionsOfFile :many
 
-SELECT id, bank_file_id, line_ref, format, account, direction, negative, booked_on, value_on, ordered_on, amount, currency, kid, remittance_text, debtor_name, debtor_account, archive_ref, bank_code, fingerprint, ordinal, duplicate_of_id, status, reason, suggested_invoice_id, resolution, resolved_by_user_id, resolved_at, resolution_note FROM invoices.bank_transactions
+SELECT id, bank_file_id, line_ref, format, account, direction, negative, booked_on, value_on, ordered_on, amount, currency, kid, remittance_text, debtor_name, debtor_account, archive_ref, bank_code, fingerprint, ordinal, duplicate_of_id, status, reason, suggested_invoice_id, resolution, resolved_by_user_id, resolved_at, resolution_note, remittance_refs FROM invoices.bank_transactions
 WHERE bank_file_id = $1 AND status = 'pending' AND duplicate_of_id IS NULL
 ORDER BY id
 `
@@ -283,6 +388,7 @@ func (q *Queries) PendingTransactionsOfFile(ctx context.Context, bankFileID int6
 			&i.ResolvedByUserID,
 			&i.ResolvedAt,
 			&i.ResolutionNote,
+			&i.RemittanceRefs,
 		); err != nil {
 			return nil, err
 		}

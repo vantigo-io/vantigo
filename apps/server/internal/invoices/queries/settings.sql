@@ -20,6 +20,7 @@ SELECT * FROM invoices.settings WHERE id = 1 FOR UPDATE;
 -- Disabled, and the caller decides whether a request that leaves it out keeps
 -- the stored one), and moves
 -- the revision on. The phone is the seller's (invoices phase 6 design I4);
+-- the tolerance what a payment may leave open and be rounded off (I15);
 -- the logo is SetSettingsLogo's and ClearSettingsLogo's, never this one's. The
 -- label's CHECK refuses anything but initials, number or name. The caller holds the row (LockSettings) and has checked the
 -- revision and the series lock.
@@ -53,6 +54,7 @@ UPDATE invoices.settings SET
     energy_vat_code = @energy_vat_code,
     energy_vat_code_exempt = @energy_vat_code_exempt,
     send_channel = sqlc.narg(send_channel),
+    tolerance = @tolerance,
     updated_at = @now::timestamptz,
     revision = revision + 1
 WHERE id = 1

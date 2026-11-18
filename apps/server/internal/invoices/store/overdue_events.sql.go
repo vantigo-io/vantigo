@@ -21,7 +21,7 @@ LEFT JOIN LATERAL (
 ) cr ON true
 LEFT JOIN LATERAL (
     SELECT invoices.settled_amount(i.id)::numeric(14,2) AS paid,
-        invoices.written_off_amount(i.id)::numeric(14,2) AS written_off
+        invoices.loss_written_off_amount(i.id)::numeric(14,2) AS written_off
 ) pd ON true
 WHERE i.kind = 'invoice' AND i.status = 'issued'
   AND invoices.invoice_state(i.kind, i.status, i.gross_total, coalesce(cr.credited, 0), coalesce(pd.paid, 0), coalesce(pd.written_off, 0), i.due_date, $1::date) = 'overdue'

@@ -61,6 +61,14 @@ type File struct {
 	FirstBookedOn, LastBookedOn time.Time
 }
 
+// MaxReferences is how many remittance references a line keeps, and
+// ReferenceSize how long each may be: invoices.bank_transactions'
+// remittance_refs, varchar(35)[] of at most 20.
+const (
+	MaxReferences = 20
+	ReferenceSize = 35
+)
+
 // Transaction is one line of a file that may become a payment.
 type Transaction struct {
 	LineRef   string // OCR "<oppdragsnummer>/<transaksjonsnummer>"; camt "<Ntfctn/Id>/<entry n>/<tx n>", 1-based
@@ -74,6 +82,11 @@ type Transaction struct {
 	AmountMinor int64  // øre, > 0; the sign is Negative or Debit
 	Currency    string // "NOK"
 	KID         string // as the bank wrote it, trimmed; "" when none
+	// References is every structured remittance reference of a camt line
+	// (RmtInf/Strd/CdtrRefInf/Ref, of any type), in order, at most
+	// MaxReferences, each at most ReferenceSize characters (invoices phase 6
+	// design I14); nil for OCR. The fingerprint does not read it.
+	References []string
 
 	RemittanceText, DebtorName, DebtorAccount, ArchiveRef, BankCode string
 

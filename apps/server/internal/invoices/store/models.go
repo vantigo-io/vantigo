@@ -108,6 +108,7 @@ type InvoicesBankTransaction struct {
 	ResolvedByUserID   *uuid.UUID
 	ResolvedAt         *time.Time
 	ResolutionNote     string
+	RemittanceRefs     []string
 }
 
 type InvoicesBankTransactionEvent struct {
@@ -701,6 +702,7 @@ type InvoicesSetting struct {
 	LogoSha256              *string
 	LogoContentType         *string
 	Phone                   string
+	Tolerance               pgtype.Numeric
 }
 
 type InvoicesTaxCategoryVatCode struct {
@@ -811,10 +813,11 @@ type InvoicesWriteOff struct {
 	Currency           string
 	Reason             string
 	VatCorrection      bool
-	RegisteredByUserID uuid.UUID
+	RegisteredByUserID *uuid.UUID
 	RegisteredAt       time.Time
 	UndoneAt           *time.Time
 	UndoneByUserID     *uuid.UUID
 	UndoReason         *string
 	AmountNok          pgtype.Numeric
+	Source             string
 }
