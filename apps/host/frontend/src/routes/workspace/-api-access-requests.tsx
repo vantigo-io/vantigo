@@ -2,7 +2,7 @@ import { BarChart } from "@mantine/charts";
 import { Alert, Badge, Code, Group, Select, SimpleGrid, Stack, Table, Text } from "@mantine/core";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { ContentSkeleton, EmptyState, PageSection, useI18n } from "@vantigo/frontend-shell";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import {
   type ApiKey,
   getIntegrationRequests,
@@ -38,12 +38,27 @@ const classColor: Record<(typeof statusClasses)[number], string> = {
   5: "grape.7",
 };
 
-/** The UTC days of the last 30, newest first, as yyyy-mm-dd. */
-const lastDays = (now: Date) =>
-  Array.from({ length: 30 }, (_, i) => {
-    const day = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - i));
-    return day.toISOString().slice(0, 10);
-  });
+/**
+ * The UTC days from `from` to `to`, the server's window of the log, newest
+ * first, as yyyy-mm-dd: the days the Day filter offers, whatever this
+ * browser's clock says.
+ */
+export const windowDays = (from: string, to: string) => {
+  const days: string[] = [];
+  const first = from.slice(0, 10);
+  const day = new Date(`${to.slice(0, 10)}T00:00:00Z`);
+  for (let i = 0; i < 31; i++) {
+    const value = day.toISOString().slice(0, 10);
+    if (value < first) break;
+    days.push(value);
+    day.setUTCDate(day.getUTCDate() - 1);
+  }
+  return days;
+};
+
+/** A UTC day (yyyy-mm-dd) as the reader's locale writes a date. */
+const utcDate = (format: (value: string, options: Intl.DateTimeFormatOptions) => string, day: string) =>
+  format(`${day}T00:00:00Z`, { dateStyle: "medium", timeZone: "UTC" });
 
 /** The chart's rows: one per day, oldest first, with a count per status class. */
 export const dayRows = (log: IntegrationRequestLog) => {
@@ -70,6 +85,13 @@ export const IntegrationRequests = ({ integrationId, keys }: { integrationId: st
     queryFn: () => getIntegrationRequests(integrationId, filters),
     placeholderData: keepPreviousData,
   });
+  // The window the Day filter offers: the server's last 30 days, from an
+  // answer read without a day, which narrows from and to to that day.
+  const [logWindow, setLogWindow] = useState<{ from: string; to: string } | null>(null);
+  const unfiltered = !filters.day && log.data && !log.isPlaceholderData ? log.data : null;
+  useEffect(() => {
+    if (unfiltered) setLogWindow({ from: unfiltered.from, to: unfiltered.to });
+  }, [unfiltered]);
   const set = (patch: RequestLogFilters) => setFilters((current) => ({ ...current, ...patch }));
   const classLabel = (statusClass: number) => t(`apiAccess.statusClass_${statusClass}`);
 
@@ -103,9 +125,9 @@ export const IntegrationRequests = ({ integrationId, keys }: { integrationId: st
         label={t("apiAccess.filterDay")}
         placeholder={t("apiAccess.filterAllDays")}
         clearable
-        data={lastDays(new Date()).map((value) => ({
+        data={(logWindow ? windowDays(logWindow.from, logWindow.to) : []).map((value) => ({
           value,
-          label: formatters.formatDate(`${value}T00:00:00Z`, { dateStyle: "medium", timeZone: "UTC" }),
+          label: utcDate(formatters.formatDate, value),
         }))}
         value={filters.day ?? null}
         onChange={(value) => set({ day: value ?? undefined })}
@@ -179,7 +201,7 @@ const RequestLog = ({ log: data, keyName }: { log: IntegrationRequestLog; keyNam
                   <Table.Tbody>
                     {rows.map((row) => (
                       <Table.Tr key={String(row.day)}>
-                        <Table.Td>{String(row.day)}</Table.Td>
+                        <Table.Td>{utcDate(formatters.formatDate, String(row.day))}</Table.Td>
                         {statusClasses.map((statusClass) => (
                           <Table.Td key={statusClass} ta="right">
                             {formatters.formatNumber(Number(row[`class${statusClass}`] ?? 0))}
@@ -225,7 +247,11 @@ const RequestLog = ({ log: data, keyName }: { log: IntegrationRequestLog; keyNam
                   {data.latest.map((request, index) => (
                     <Table.Tr key={`${request.at}-${request.keyId}-${index}`}>
                       <Table.Td>
-                        {formatters.formatDate(request.at, { dateStyle: "short", timeStyle: "medium" })}
+                        {formatters.formatDate(request.at, {
+                          dateStyle: "short",
+                          timeStyle: "medium",
+                          timeZone: "UTC",
+                        })}
                       </Table.Td>
                       <Table.Td>
                         {request.keyName ?? keyName.get(request.keyId) ?? (
