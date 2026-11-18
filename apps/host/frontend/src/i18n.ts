@@ -24,6 +24,7 @@ import "@vantigo/purchasing-ui/i18n";
 import "@vantigo/staff-ui/i18n";
 import "@vantigo/time-ui/i18n";
 import { adminCatalog } from "./catalogs/admin";
+import { apiAccessCatalog } from "./catalogs/api-access";
 import { authCatalog } from "./catalogs/auth";
 import { commonCatalog } from "./catalogs/common";
 import { customerCatalog } from "./catalogs/customer";
@@ -61,6 +62,7 @@ export const hostCatalog = {
     ...adminCatalog.en,
     ...settingsCatalog.en,
     ...stationsCatalog.en,
+    ...apiAccessCatalog.en,
     ...systemAdminCatalog.en,
     ...legalCatalog.en,
   },
@@ -75,6 +77,7 @@ export const hostCatalog = {
     ...adminCatalog.nb,
     ...settingsCatalog.nb,
     ...stationsCatalog.nb,
+    ...apiAccessCatalog.nb,
     ...systemAdminCatalog.nb,
     ...legalCatalog.nb,
   },

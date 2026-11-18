@@ -21,6 +21,9 @@ export interface AuthorizationRole {
   version: string;
   permissions: string[];
 }
+/** A custom role: neither a system role nor a built-in one (Owner, User). */
+export const isCustomRole = (role: AuthorizationRole) => !role.isSystem && !role.isBuiltIn;
+
 export interface AuthorizationUser {
   id: string;
   displayName: string | null;
