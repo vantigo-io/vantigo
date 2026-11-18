@@ -238,11 +238,16 @@ The key stays in the page: it is not stored in the browser, not sent anywhere bu
 installation, and gone when you leave or clear it. A key refused at **Use key** is named
 with its code (see below), and a refused key never signs you out. Nothing on the page is
 fetched from outside the installation. The page is not served on the public host.
+**Test Request** works only when the page is opened at the installation's own address,
+`APP_URL`: the document names that address as its server, and the page's content security
+policy refuses requests to any other origin.
 
 A program can load the same document itself: `GET /api/openapi.json` with the key in the
 `Authorization` header answers the OpenAPI document of what that key reaches, ready for a
 client generator; a session asking `?view=api` gets every operation a key can call
 ([The API contract document](/en/admin/transport-security/#the-api-contract-document)).
+Loading it with a key counts against the integration's rate limit and shows in its request
+log, as any other call does.
 
 ## The answers a key can get
 
