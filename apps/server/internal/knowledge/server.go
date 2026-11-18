@@ -76,6 +76,20 @@ func (s *server) withReadTx(ctx context.Context, fn func(q *store.Queries) error
 // actors names the users in ids as the user directory names them now; a user
 // it no longer knows is left out, and is shown as a former user (K17).
 func (s *server) actors(ctx context.Context, ids ...*uuid.UUID) (map[uuid.UUID]string, error) {
+	entries, err := s.directoryEntries(ctx, ids...)
+	if err != nil {
+		return nil, err
+	}
+	names := make(map[uuid.UUID]string, len(entries))
+	for id, u := range entries {
+		names[id] = u.DisplayName
+	}
+	return names, nil
+}
+
+// directoryEntries is actors with each user's whole entry, its kind too, for
+// a caller that must tell a person from an integration.
+func (s *server) directoryEntries(ctx context.Context, ids ...*uuid.UUID) (map[uuid.UUID]contracts.UserEntry, error) {
 	seen := map[uuid.UUID]bool{}
 	var want []uuid.UUID
 	for _, id := range ids {
@@ -84,18 +98,18 @@ func (s *server) actors(ctx context.Context, ids ...*uuid.UUID) (map[uuid.UUID]s
 			want = append(want, *id)
 		}
 	}
-	names := map[uuid.UUID]string{}
+	entries := map[uuid.UUID]contracts.UserEntry{}
 	if len(want) == 0 || s.deps.Users == nil {
-		return names, nil
+		return entries, nil
 	}
 	found, err := s.deps.Users.Users(ctx, want)
 	if err != nil {
 		return nil, fmt.Errorf("knowledge: name the people: %w", err)
 	}
 	for _, u := range found {
-		names[u.ID] = u.DisplayName
+		entries[u.ID] = u
 	}
-	return names, nil
+	return entries, nil
 }
 
 // actorOf is id as a KnowledgeActor, nil for none or a former user.
