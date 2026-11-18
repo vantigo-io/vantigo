@@ -2,7 +2,7 @@ import { BarChart } from "@mantine/charts";
 import { Alert, Badge, Code, Group, Select, SimpleGrid, Stack, Table, Text } from "@mantine/core";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { ContentSkeleton, EmptyState, PageSection, useI18n } from "@vantigo/frontend-shell";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useState } from "react";
 import {
   type ApiKey,
   getIntegrationRequests,
@@ -89,9 +89,9 @@ export const IntegrationRequests = ({ integrationId, keys }: { integrationId: st
   // answer read without a day, which narrows from and to to that day.
   const [logWindow, setLogWindow] = useState<{ from: string; to: string } | null>(null);
   const unfiltered = !filters.day && log.data && !log.isPlaceholderData ? log.data : null;
-  useEffect(() => {
-    if (unfiltered) setLogWindow({ from: unfiltered.from, to: unfiltered.to });
-  }, [unfiltered]);
+  if (unfiltered && (logWindow?.from !== unfiltered.from || logWindow?.to !== unfiltered.to)) {
+    setLogWindow({ from: unfiltered.from, to: unfiltered.to });
+  }
   const set = (patch: RequestLogFilters) => setFilters((current) => ({ ...current, ...patch }));
   const classLabel = (statusClass: number) => t(`apiAccess.statusClass_${statusClass}`);
 
