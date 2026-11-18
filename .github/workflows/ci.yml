@@ -310,6 +310,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      # The breaking-change check labels a pull request that declares one.
+      pull-requests: write
     steps:
       - name: 🛎️ Checkout codebase
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -319,7 +321,7 @@ jobs:
       - name: 💾 Set up toolchain
         uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
         with:
-          install_args: "go bun aqua:golangci/golangci-lint aqua:goreleaser/goreleaser aqua:rhysd/actionlint aqua:koalaman/shellcheck aqua:sqlc-dev/sqlc"
+          install_args: "go bun aqua:golangci/golangci-lint aqua:goreleaser/goreleaser aqua:rhysd/actionlint aqua:koalaman/shellcheck aqua:sqlc-dev/sqlc github:oasdiff/oasdiff"
 
       # Keyed on the sources as well as go.sum, with go.sum's newest entry as
       # the fallback: actions/cache saves only when its key misses, so a key on
@@ -387,6 +389,37 @@ jobs:
 
       - name: 🔍 GoReleaser configuration
         run: goreleaser check
+
+      # The integrator's API may not break in place (API access design K31,
+      # K37, K38): the integrator's documents of the pull request and of its
+      # base are compared with oasdiff. A breaking finding fails unless a
+      # commit marked "!" names the operation in an "API-Breaking:" trailer,
+      # and then the breaking-api label puts it under the release notes'
+      # "Breaking API changes". Pull requests only: a merge group or a push
+      # has no pull request's commits to read, and was judged as one.
+      - name: 🧭 Breaking API changes
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          base="$RUNNER_TEMP/base"
+          git fetch --no-tags --depth=1 origin "$BASE_SHA"
+          git worktree add --detach "$base" FETCH_HEAD
+          # The first pull request to add the command has nothing to compare.
+          if ! grep -q 'openapi integrator' "$base/apps/server/cmd/vantigo/main.go"; then
+            echo "The base has no 'vantigo openapi integrator'; nothing to compare."
+            exit 0
+          fi
+          (cd "$base/apps/server" && go run ./cmd/vantigo openapi integrator) > "$RUNNER_TEMP/base.json"
+          (cd apps/server && go run ./cmd/vantigo openapi integrator) > "$RUNNER_TEMP/head.json"
+          if oasdiff breaking "$RUNNER_TEMP/base.json" "$RUNNER_TEMP/head.json" --fail-on ERR; then
+            exit 0
+          fi
+          oasdiff breaking "$RUNNER_TEMP/base.json" "$RUNNER_TEMP/head.json" --format json > "$RUNNER_TEMP/findings.json"
+          gh pr view "$PR_NUMBER" --json commits --jq .commits > "$RUNNER_TEMP/commits.json"
+          bun run tools/api/breaking-check.ts "$RUNNER_TEMP/findings.json" "$RUNNER_TEMP/commits.json" --label "$PR_NUMBER"
 
   test_server:
     needs: metadata
