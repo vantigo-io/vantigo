@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { type Commit, commitsFrom, declared, type Finding, judge, operationOf } from "./breaking-check";
+import { type Commit, declared, type Finding, judge, operationOf, parseGitLog } from "./breaking-check";
 
 const removedField: Finding = {
   id: "response-property-removed",
@@ -58,14 +58,12 @@ describe("the breaking-change check", () => {
     expect(operationOf({ id: "x", level: 3, operation: "GET", path: "/api/v1/x" })).toBe("GET /api/v1/x");
   });
 
-  it("reads the commits gh pr view answers", () => {
-    const commits = commitsFrom([
-      {
-        oid: "1",
-        messageHeadline: "feat(orders)!: rename the total",
-        messageBody: "Why.\n\nAPI-Breaking: getOrders — renamed\n\nCo-Authored-By: X <x@example.com>",
-      },
-    ]);
+  it("reads the commits git log answers", () => {
+    const out =
+      "1\x00feat(orders)!: rename the total\x00Why.\n\nAPI-Breaking: getOrders — renamed\n\nCo-Authored-By: X <x@example.com>\n\x1e\n" +
+      "2\x00fix(orders): a typo\x00\x1e\n";
+    const commits = parseGitLog(out);
+    expect(commits.map((c) => c.subject)).toEqual(["feat(orders)!: rename the total", "fix(orders): a typo"]);
     const verdict = judge([{ ...removedField, operationId: "getOrders" }], commits);
     expect(verdict.undeclared).toEqual([]);
   });

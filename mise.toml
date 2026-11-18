@@ -28,7 +28,7 @@ java = "temurin-21.0.12+101.0.LTS"
 "aqua:sqlc-dev/sqlc" = "1.31.1"
 # The breaking-change check on the integrator's API (lint_server). The aqua
 # registry has no oasdiff, so it comes from its GitHub releases.
-"github:oasdiff/oasdiff" = "1.39.0"
+"github:oasdiff/oasdiff" = "1.38.0"
 
 # ─── Go server tasks: `mise run <task>` ─────────────────────────────────────
 

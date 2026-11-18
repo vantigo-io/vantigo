@@ -7,16 +7,18 @@
 //
 //   API-Breaking: <operationId> — <reason>
 //
-// When every one has it, the change is declared: the script adds the
-// `breaking-api` label, which .github/release.yml turns into the release
-// notes' "Breaking API changes". Otherwise it names what is missing and fails.
+// It only judges: it writes the verdict — `declared` when every operation
+// has one, `undeclared` otherwise — to --output (the step's $GITHUB_OUTPUT)
+// and fails on `undeclared`. A separate job, which runs nothing from the pull
+// request, turns the verdict into the `breaking-api` label that
+// .github/release.yml lists under "Breaking API changes".
 //
-//   bun run tools/api/breaking-check.ts <findings.json> <commits.json> [--label <pr-number>]
+//   bun run tools/api/breaking-check.ts <findings.json> <base>..<head> [--output <file>]
 //
-// findings.json is `oasdiff breaking … --format json`; commits.json is
-// `gh pr view <n> --json commits --jq .commits`.
+// findings.json is `oasdiff breaking … --format json`; the range names the
+// pull request's commits, which must be fetched.
 
-import { readFile } from "node:fs/promises";
+import { appendFile, readFile } from "node:fs/promises";
 
 /** One oasdiff finding (`--format json`); level 3 is ERR. */
 export type Finding = {
@@ -31,7 +33,6 @@ export type Finding = {
 export type Commit = { sha: string; subject: string; body: string };
 
 export const ERR = 3;
-export const LABEL = "breaking-api";
 
 /** The name a finding's operation is declared by: its operationId, else METHOD path. */
 export function operationOf(finding: Finding): string {
@@ -62,43 +63,51 @@ export function judge(findings: Finding[], commits: Commit[]): Verdict {
   return { breaking, undeclared: breaking.filter((op) => !covered.has(op)) };
 }
 
-/** The pull request's commits, from `gh pr view <n> --json commits --jq .commits`. */
-export function commitsFrom(json: Array<{ oid?: string; messageHeadline?: string; messageBody?: string }>): Commit[] {
-  return json.map((c) => ({ sha: c.oid ?? "", subject: c.messageHeadline ?? "", body: c.messageBody ?? "" }));
+const RECORD = "\x1e";
+const FIELD = "\x00";
+
+/** The format parseGitLog reads: hash, subject and body, NUL-separated, one record per commit. */
+export const GIT_LOG_FORMAT = "%H%x00%s%x00%b%x1e";
+
+/** Parses `git log --format=GIT_LOG_FORMAT`. */
+export function parseGitLog(out: string): Commit[] {
+  return out
+    .split(RECORD)
+    .map((entry) => entry.replace(/^\n/, ""))
+    .filter((entry) => entry.trim() !== "")
+    .map((entry) => {
+      const [sha = "", subject = "", body = ""] = entry.split(FIELD);
+      return { sha, subject, body };
+    });
+}
+
+async function gitLog(range: string): Promise<Commit[]> {
+  const proc = Bun.spawn(["git", "log", `--format=${GIT_LOG_FORMAT}`, range], { stdout: "pipe", stderr: "inherit" });
+  const out = await new Response(proc.stdout).text();
+  if ((await proc.exited) !== 0) throw new Error(`git log ${range} failed`);
+  return parseGitLog(out);
 }
 
 async function main(argv: string[]): Promise<number> {
-  const [findingsPath, commitsPath] = argv;
-  const labelAt = argv.indexOf("--label");
-  const pr = labelAt >= 0 ? argv[labelAt + 1] : undefined;
-  if (!findingsPath || !commitsPath) {
-    console.error("usage: breaking-check.ts <findings.json> <commits.json> [--label <pr-number>]");
+  const [findingsPath, range] = argv;
+  const outputAt = argv.indexOf("--output");
+  const output = outputAt >= 0 ? argv[outputAt + 1] : undefined;
+  if (!findingsPath || !range?.includes("..")) {
+    console.error("usage: breaking-check.ts <findings.json> <base>..<head> [--output <file>]");
     return 2;
   }
   const findings = JSON.parse(await readFile(findingsPath, "utf8")) as Finding[];
-  const commits = commitsFrom(JSON.parse(await readFile(commitsPath, "utf8")));
-  const verdict = judge(findings, commits);
-  if (verdict.breaking.length === 0) {
-    console.log("No breaking change to the integrator's API.");
-    return 0;
+  const verdict = judge(findings, await gitLog(range));
+  const outcome = verdict.breaking.length === 0 ? "clean" : verdict.undeclared.length === 0 ? "declared" : "undeclared";
+  if (output) await appendFile(output, `verdict=${outcome}\n`);
+  for (const op of verdict.undeclared) {
+    console.log(
+      `::error::${op} changes in a breaking way. Ship it as a new operation or version instead (reference/api-compatibility), or mark a commit with "!" and the trailer "API-Breaking: ${op} — <reason>".`,
+    );
   }
-  if (verdict.undeclared.length > 0) {
-    for (const op of verdict.undeclared) {
-      console.log(
-        `::error::${op} changes in a breaking way. Ship it as a new operation or version instead (reference/api-compatibility), or mark a commit with "!" and the trailer "API-Breaking: ${op} — <reason>".`,
-      );
-    }
-    return 1;
-  }
-  console.log(`Declared breaking API changes: ${verdict.breaking.join(", ")}`);
-  if (pr) {
-    const proc = Bun.spawn(["gh", "pr", "edit", pr, "--add-label", LABEL], { stdout: "inherit", stderr: "inherit" });
-    if ((await proc.exited) !== 0) {
-      console.log(`::error::Could not add the ${LABEL} label to #${pr}.`);
-      return 1;
-    }
-  }
-  return 0;
+  if (outcome === "declared") console.log(`Declared breaking API changes: ${verdict.breaking.join(", ")}`);
+  if (outcome === "clean") console.log("No breaking change to the integrator's API.");
+  return outcome === "undeclared" ? 1 : 0;
 }
 
 if (import.meta.main) {

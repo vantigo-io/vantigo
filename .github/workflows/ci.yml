@@ -310,13 +310,17 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      # The breaking-change check labels a pull request that declares one.
-      pull-requests: write
+    outputs:
+      # The breaking-change check's verdict, for label_breaking_api.
+      api_verdict: ${{ steps.breaking.outputs.verdict }}
     steps:
       - name: 🛎️ Checkout codebase
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # On a pull request HEAD is the merge commit, and HEAD^1 the base it
+          # merges into: the breaking-change check compares the two.
+          fetch-depth: 2
 
       - name: 💾 Set up toolchain
         uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
@@ -391,35 +395,72 @@ jobs:
         run: goreleaser check
 
       # The integrator's API may not break in place (API access design K31,
-      # K37, K38): the integrator's documents of the pull request and of its
-      # base are compared with oasdiff. A breaking finding fails unless a
-      # commit marked "!" names the operation in an "API-Breaking:" trailer,
-      # and then the breaking-api label puts it under the release notes'
-      # "Breaking API changes". Pull requests only: a merge group or a push
-      # has no pull request's commits to read, and was judged as one.
+      # K37, K38): the integrator's documents of the merge commit and of the
+      # base it merges into (its first parent) are compared with oasdiff. A
+      # breaking finding fails unless a commit marked "!" names the operation
+      # in an "API-Breaking:" trailer. This step only judges, with nothing but
+      # contents: read; label_breaking_api turns the verdict into the label.
+      # Pull requests only: a merge group or a push has no pull request's
+      # commits to read, and was judged as one.
       - name: 🧭 Breaking API changes
+        id: breaking
         if: github.event_name == 'pull_request'
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          GH_TOKEN: ${{ github.token }}
+          PR_COMMITS: ${{ github.event.pull_request.commits }}
         run: |
           base="$RUNNER_TEMP/base"
-          git fetch --no-tags --depth=1 origin "$BASE_SHA"
-          git worktree add --detach "$base" FETCH_HEAD
+          git worktree add --detach "$base" HEAD^1
           # The first pull request to add the command has nothing to compare.
           if ! grep -q 'openapi integrator' "$base/apps/server/cmd/vantigo/main.go"; then
             echo "The base has no 'vantigo openapi integrator'; nothing to compare."
+            echo "verdict=skipped" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           (cd "$base/apps/server" && go run ./cmd/vantigo openapi integrator) > "$RUNNER_TEMP/base.json"
           (cd apps/server && go run ./cmd/vantigo openapi integrator) > "$RUNNER_TEMP/head.json"
           if oasdiff breaking "$RUNNER_TEMP/base.json" "$RUNNER_TEMP/head.json" --fail-on ERR; then
+            echo "verdict=clean" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           oasdiff breaking "$RUNNER_TEMP/base.json" "$RUNNER_TEMP/head.json" --format json > "$RUNNER_TEMP/findings.json"
-          gh pr view "$PR_NUMBER" --json commits --jq .commits > "$RUNNER_TEMP/commits.json"
-          bun run tools/api/breaking-check.ts "$RUNNER_TEMP/findings.json" "$RUNNER_TEMP/commits.json" --label "$PR_NUMBER"
+          # The pull request's own commits: HEAD^2 is its head.
+          git fetch --no-tags --deepen="$PR_COMMITS" origin
+          bun run tools/api/breaking-check.ts "$RUNNER_TEMP/findings.json" "HEAD^1..HEAD^2" --output "$GITHUB_OUTPUT"
+
+  label_breaking_api:
+    # Adds the breaking-api label when lint_server's check found a declared
+    # breaking change, and removes it when the change is clean again (API
+    # access design K38). It is the only job with pull-requests: write, and
+    # it checks out nothing: no code from the pull request runs beside the
+    # token. A fork's pull request gets a read-only token, so it is told
+    # instead.
+    needs: lint_server
+    if: >-
+      always() && github.event_name == 'pull_request' &&
+      (needs.lint_server.outputs.api_verdict == 'declared' || needs.lint_server.outputs.api_verdict == 'clean')
+    name: 🏷️ Breaking API label
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: 🏷️ Label the pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          VERDICT: ${{ needs.lint_server.outputs.api_verdict }}
+          FORK: ${{ github.event.pull_request.head.repo.full_name != github.repository }}
+        run: |
+          if [ "$FORK" = "true" ]; then
+            echo "::notice::A fork's pull request is not labelled. Verdict: $VERDICT; a maintainer adds or removes breaking-api by hand."
+            exit 0
+          fi
+          labelled="$(gh pr view "$PR_NUMBER" --json labels --jq '.labels[].name' | grep -cx breaking-api || true)"
+          if [ "$VERDICT" = "declared" ] && [ "$labelled" = "0" ]; then
+            gh pr edit "$PR_NUMBER" --add-label breaking-api
+          elif [ "$VERDICT" = "clean" ] && [ "$labelled" != "0" ]; then
+            gh pr edit "$PR_NUMBER" --remove-label breaking-api
+          fi
 
   test_server:
     needs: metadata
