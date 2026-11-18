@@ -1,3 +1,4 @@
+import type { AuthorizationUser } from "../../api/authorization";
 import type { ApiKey, Integration } from "../../api/integrations";
 
 /** The colour of an integration's status (API access design K8). */
@@ -26,3 +27,12 @@ export const fieldErrorsOf = (error: unknown): Record<string, string> => {
 
 /** A refusal's code, whichever shape the client threw it in. */
 export const codeOf = (error: unknown) => (error as { code?: string } | null)?.code;
+
+/**
+ * The people an integration's contact may be (K25 mails them): a person whose
+ * account is not disabled, and the contact already chosen, so it still shows.
+ */
+export const contactOptions = (users: AuthorizationUser[], current: string | null) =>
+  users
+    .filter((user) => (user.kind === "person" && !user.isDisabled) || user.id === current)
+    .map((user) => ({ value: user.id, label: user.displayName || user.email || user.id }));

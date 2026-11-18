@@ -13,6 +13,7 @@ import {
   Text,
   Textarea,
   TextInput,
+  VisuallyHidden,
 } from "@mantine/core";
 import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
@@ -41,10 +42,16 @@ import {
 } from "../../api/integrations";
 import { CustomRolePicker } from "../../components/custom-role-picker";
 import { translateHostPermissionKey, translateHostPermissionModule } from "../../i18n";
-import { codeOf, fieldErrorsOf, integrationStatusColor, keyStatusColor } from "./-api-access-shared";
+import { codeOf, contactOptions, fieldErrorsOf, integrationStatusColor, keyStatusColor } from "./-api-access-shared";
 import { NewKeyDialog, RollKeyDialog } from "./-api-key-dialog";
 
-type DetailsDraft = { name: string; description: string; contactUserId: string | null; rateLimitPerMinute: number };
+type DetailsDraft = {
+  name: string;
+  description: string;
+  contactUserId: string | null;
+  // What the field holds while it is typed in; read as a number on submit.
+  rateLimitPerMinute: number | string;
+};
 
 /** The roles of an integration as ids, in a stable order. */
 const roleIdsOf = (detail: IntegrationDetail) => detail.integration.roles.map((role) => role.id).sort();
@@ -87,7 +94,7 @@ export const IntegrationPage = ({ integrationId }: { integrationId: string }) =>
         name: draft.name.trim(),
         ...(draft.description.trim() ? { description: draft.description.trim() } : {}),
         ...(draft.contactUserId ? { contactUserId: draft.contactUserId } : {}),
-        rateLimitPerMinute: draft.rateLimitPerMinute,
+        rateLimitPerMinute: Number(draft.rateLimitPerMinute),
       }),
     onSuccess: async (next) => {
       setDetails(null);
@@ -349,7 +356,9 @@ export const IntegrationPage = ({ integrationId }: { integrationId: string }) =>
                   <Table.Th>{t("apiAccess.narrowing")}</Table.Th>
                   <Table.Th>{t("apiAccess.networks")}</Table.Th>
                   <Table.Th>{t("apiAccess.lastUsed")}</Table.Th>
-                  <Table.Th />
+                  <Table.Th>
+                    <VisuallyHidden>{t("apiAccess.actions")}</VisuallyHidden>
+                  </Table.Th>
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
@@ -393,10 +402,17 @@ export const IntegrationPage = ({ integrationId }: { integrationId: string }) =>
                                   {t("apiAccess.sensitive")}
                                 </Badge>
                               )}
-                              {entry.inCatalog && !entry.grantedByRoles && (
-                                <Badge size="xs" color="yellow" variant="outline">
-                                  {t("apiAccess.notGranted")}
+                              {entry.apiNever ? (
+                                <Badge size="xs" color="gray" variant="outline">
+                                  {t("apiAccess.apiNever")}
                                 </Badge>
+                              ) : (
+                                entry.inCatalog &&
+                                !entry.grantedByRoles && (
+                                  <Badge size="xs" color="yellow" variant="outline">
+                                    {t("apiAccess.notGranted")}
+                                  </Badge>
+                                )
                               )}
                             </Group>
                           ))}
@@ -453,6 +469,11 @@ export const IntegrationPage = ({ integrationId }: { integrationId: string }) =>
           <form
             onSubmit={(event) => {
               event.preventDefault();
+              const rate = Number(details.rateLimitPerMinute);
+              if (details.rateLimitPerMinute === "" || !Number.isInteger(rate) || rate < 60 || rate > 6000) {
+                setDetailErrors({ rateLimitPerMinute: t("apiAccess.rateLimitInvalid") });
+                return;
+              }
               saveDetails.mutate({ draft: details, version: integration.version });
             }}
           >
@@ -479,10 +500,7 @@ export const IntegrationPage = ({ integrationId }: { integrationId: string }) =>
                 description={t("apiAccess.contactHint")}
                 searchable
                 clearable
-                data={(users.data ?? []).map((user) => ({
-                  value: user.id,
-                  label: user.displayName || user.email || user.id,
-                }))}
+                data={contactOptions(users.data ?? [], details.contactUserId)}
                 value={details.contactUserId}
                 error={detailErrors.contactUserId}
                 onChange={(contactUserId) => setDetails({ ...details, contactUserId })}
@@ -495,7 +513,7 @@ export const IntegrationPage = ({ integrationId }: { integrationId: string }) =>
                 step={60}
                 value={details.rateLimitPerMinute}
                 error={detailErrors.rateLimitPerMinute}
-                onChange={(value) => setDetails({ ...details, rateLimitPerMinute: Number(value) || 600 })}
+                onChange={(value) => setDetails({ ...details, rateLimitPerMinute: value })}
               />
               <Button type="submit" loading={saveDetails.isPending} disabled={!details.name.trim()}>
                 {t("common.save")}

@@ -10,15 +10,17 @@ import "../../i18n";
 const api = vi.hoisted(() => ({
   getIntegration: vi.fn(),
   createApiKey: vi.fn(),
+  rollApiKey: vi.fn(),
+  updateIntegration: vi.fn(),
 }));
 
 vi.mock("../../api/integrations", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../api/integrations")>()),
   getIntegration: api.getIntegration,
   createApiKey: api.createApiKey,
-  rollApiKey: vi.fn(),
+  rollApiKey: api.rollApiKey,
   revokeApiKey: vi.fn(),
-  updateIntegration: vi.fn(),
+  updateIntegration: api.updateIntegration,
   setIntegrationRoles: vi.fn(),
   disableIntegration: vi.fn(),
   enableIntegration: vi.fn(),
@@ -132,9 +134,10 @@ describe("an integration's page", () => {
       detail([
         key({
           permissions: [
-            { key: "alpha:view", grantedByRoles: true, inCatalog: true },
-            { key: "beta:access", grantedByRoles: false, inCatalog: true },
-            { key: "legacy:gone", grantedByRoles: false, inCatalog: false },
+            { key: "alpha:view", grantedByRoles: true, inCatalog: true, apiNever: false },
+            { key: "beta:access", grantedByRoles: false, inCatalog: true, apiNever: false },
+            { key: "legacy:gone", grantedByRoles: false, inCatalog: false, apiNever: false },
+            { key: "alpha:secret", grantedByRoles: false, inCatalog: true, apiNever: true },
           ],
         }),
       ]),
@@ -152,6 +155,9 @@ describe("an integration's page", () => {
     const removed = container.querySelector('[data-narrowing="legacy:gone"]') as HTMLElement;
     expect(within(removed).getByText("legacy:gone")).toHaveAttribute("title", "No longer in Vantigo; kept and ignored");
     expect(within(removed).queryByText("Not granted by the roles")).not.toBeInTheDocument();
+    const never = container.querySelector('[data-narrowing="alpha:secret"]') as HTMLElement;
+    expect(within(never).getByText("Never available to API keys")).toBeInTheDocument();
+    expect(within(never).queryByText("Not granted by the roles")).not.toBeInTheDocument();
   });
 
   it("shows a new key's secret once, with a curl example, and forgets it when the dialog closes", async () => {
@@ -176,6 +182,12 @@ describe("an integration's page", () => {
       screen.getByText(`curl -H "Authorization: Bearer ${secret}" ${window.location.origin}/api/v1/customers`),
     ).toBeInTheDocument();
 
+    // Only "I have copied the key" closes it: no close button, and not Escape.
+    const dialog = screen.getByRole("dialog");
+    expect(dialog.querySelector(".mantine-Modal-close")).toBeNull();
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(screen.getByText(secret)).toBeInTheDocument();
+
     fireEvent.click(screen.getByRole("button", { name: "I have copied the key" }));
     await waitFor(() => expect(screen.queryByText(secret)).not.toBeInTheDocument());
 
@@ -197,7 +209,13 @@ describe("an integration's page", () => {
     expect(within(dialog).getByRole("checkbox", { name: /Alpha secret/ })).toBeDisabled();
     fireEvent.click(within(dialog).getByRole("checkbox", { name: /Alpha view/ }));
     fireEvent.click(within(dialog).getByRole("switch", { name: /Show the permissions the roles do not grant/ }));
+    const showUngranted = within(dialog).getByRole("switch", { name: /Show the permissions the roles do not grant/ });
+    // A tick the dialog stops showing is dropped.
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: /Beta access/ }));
+    fireEvent.click(showUngranted);
+    fireEvent.click(showUngranted);
     const ungranted = within(dialog).getByRole("checkbox", { name: /Beta access/ });
+    expect(ungranted).not.toBeChecked();
     expect(ungranted.closest(".mantine-Checkbox-root")).toHaveTextContent("Not granted by the roles");
     fireEvent.click(ungranted);
     fireEvent.click(within(dialog).getByRole("switch", { name: /Read only/ }));
@@ -212,5 +230,54 @@ describe("an integration's page", () => {
         allowedNetworks: [],
       }),
     );
+  });
+
+  it("rolls a key, showing the new secret once, and marks the rolled key without Roll", async () => {
+    const old = key({ id: "k-1", name: "Production" });
+    api.getIntegration.mockResolvedValue(detail([old]));
+    const secret = "vtg_rolledsecret0123456789abcdefghijABCDEFGHIJ0123456";
+    const made = key({ id: "k-2", name: "Production", rolledFrom: "k-1" });
+    api.rollApiKey.mockResolvedValue({ key: made, secret });
+    await renderPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Roll" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(/If the key has leaked, revoke it instead/)).toBeInTheDocument();
+    api.getIntegration.mockResolvedValue(detail([old, made]));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Roll" }));
+
+    expect(await screen.findByText(secret)).toBeInTheDocument();
+    expect(api.rollApiKey).toHaveBeenCalledWith("i-1", "k-1", { overlapHours: 24, expiresInDays: 90 });
+    fireEvent.click(screen.getByRole("button", { name: "I have copied the key" }));
+    await waitFor(() => expect(screen.queryByText(secret)).not.toBeInTheDocument());
+
+    const rolledRow = (await waitFor(() => {
+      const row = document.querySelector('[data-key="k-1"]');
+      expect(row).not.toBeNull();
+      expect(within(row as HTMLElement).getByText("Rolled")).toBeInTheDocument();
+      return row;
+    })) as HTMLElement;
+    expect(within(rolledRow).queryByRole("button", { name: "Roll" })).not.toBeInTheDocument();
+    expect(within(rolledRow).getByRole("button", { name: "Revoke" })).toBeInTheDocument();
+    const newRow = document.querySelector('[data-key="k-2"]') as HTMLElement;
+    expect(within(newRow).getByRole("button", { name: "Roll" })).toBeInTheDocument();
+  });
+
+  it("answers a stale version by closing the form and reloading the integration", async () => {
+    api.getIntegration.mockResolvedValue(detail());
+    api.updateIntegration.mockRejectedValue(
+      Object.assign(new Error("Precondition failed"), { code: "version_mismatch" }),
+    );
+    await renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "Actions" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Edit details" }));
+    const form = await screen.findByRole("dialog");
+    fireEvent.click(within(form).getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByText(/Someone changed the integration since you opened it/)).toBeInTheDocument();
+    expect(api.updateIntegration).toHaveBeenCalledWith("i-1", "3", { name: "Webshop sync", rateLimitPerMinute: 600 });
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    await waitFor(() => expect(api.getIntegration.mock.calls.length).toBeGreaterThan(1));
   });
 });

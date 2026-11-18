@@ -43,6 +43,7 @@ const en = {
   "apiAccess.details": "Details",
   "apiAccess.rateLimit": "Rate limit",
   "apiAccess.rateLimitHint": "60 to 6,000 requests a minute across the integration's keys.",
+  "apiAccess.rateLimitInvalid": "The rate limit is a whole number from 60 to 6,000.",
   "apiAccess.perMinute": "{{rate}} requests a minute",
   "apiAccess.createdAt": "Created",
   "apiAccess.action_disable": "Disable",
@@ -115,6 +116,8 @@ const en = {
   "apiAccess.rollTitle": "Roll {{name}}",
   "apiAccess.rollBody":
     "A new key is made with the same name, narrowing, read-only setting and networks. The old key works on for the overlap, then stops.",
+  "apiAccess.rollLeaked":
+    "A roll keeps the old key working through the overlap. If the key has leaked, revoke it instead.",
   "apiAccess.overlap": "Overlap",
   "apiAccess.overlapHint": "How long the old key keeps working, so the application can switch.",
   "apiAccess.overlap_0": "None: stop the old key now",
@@ -167,6 +170,7 @@ const nb: Record<keyof typeof en, string> = {
   "apiAccess.details": "Detaljer",
   "apiAccess.rateLimit": "Hastighetsgrense",
   "apiAccess.rateLimitHint": "60 til 6 000 forespørsler i minuttet til sammen for integrasjonens nøkler.",
+  "apiAccess.rateLimitInvalid": "Hastighetsgrensen er et heltall fra 60 til 6 000.",
   "apiAccess.perMinute": "{{rate}} forespørsler i minuttet",
   "apiAccess.createdAt": "Opprettet",
   "apiAccess.action_disable": "Deaktiver",
@@ -239,6 +243,8 @@ const nb: Record<keyof typeof en, string> = {
   "apiAccess.rollTitle": "Roter {{name}}",
   "apiAccess.rollBody":
     "En ny nøkkel lages med samme navn, begrensning, lesetilgang og nettverk. Den gamle nøkkelen virker videre i overlappet, så slutter den å virke.",
+  "apiAccess.rollLeaked":
+    "En rotering lar den gamle nøkkelen virke gjennom overlappet. Har nøkkelen lekket, tilbakekall den i stedet.",
   "apiAccess.overlap": "Overlapp",
   "apiAccess.overlapHint": "Hvor lenge den gamle nøkkelen fortsetter å virke, så programmet rekker å bytte.",
   "apiAccess.overlap_0": "Ingen: stopp den gamle nøkkelen nå",

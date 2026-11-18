@@ -2414,7 +2414,9 @@ export interface components {
             readOnly?: boolean;
         };
         ApiKeyPermission: {
-            /** @description Whether the integration's roles grant the permission now. */
+            /** @description True for a permission no API key ever holds, whatever the roles grant (K7). */
+            apiNever: boolean;
+            /** @description Whether the integration's roles grant the permission now and a key may hold it (it is not apiNever). */
             grantedByRoles: boolean;
             /** @description Whether the permission catalog still has the permission. */
             inCatalog: boolean;
