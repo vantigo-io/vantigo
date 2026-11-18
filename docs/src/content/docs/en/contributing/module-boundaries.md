@@ -1589,8 +1589,8 @@ lag, never what must refuse — go through the platform's domain-events outbox,
       every caller that tests the sentinels answers them as `403` or `401`.
       `Access.Check` returns every refusal of a key identity found as a
       `*contracts.APIKeyRefusal` — the key, its integration, the reason (`revoked`,
-      `disabled`, `archived`, `expired`, `network`, `not_available`, `read_only` or
-      `forbidden`) and the sentinel it unwraps to — so the router's `wrap`, `compose.go`
+      `disabled`, `archived`, `expired`, `network`, `never`, `read_only` or
+      `forbidden`, the `contracts.APIReason…` constants) and the sentinel it unwraps to — so the router's `wrap`, `compose.go`
       and the live handler answer it as the sentinel, and `Access.Reject` writes its code
       without clearing the session cookie. A key that does not parse or is unknown is a
       plain `ErrUnauthenticated`: there is nothing to attribute it to.
@@ -1599,8 +1599,33 @@ lag, never what must refuse — go through the platform's domain-events outbox,
       cut down to the key's narrowing, in ordinal order, and whether the key only reads.
       Identity's `Access` implements it beside `contracts.Access`, and a caller finds it by
       a type assertion on the `Access` it holds, as the live hub finds `StationAccess`.
-      A key's principal has `Via{Kind: contracts.ViaAPIKey, KeyID}`, the integration's user
-      as `UserID` and no `SessionID`.
+      A key's principal has `Via{Kind: contracts.ViaAPIKey, KeyID, RateLimitPerMinute}`,
+      the integration's user as `UserID` and no `SessionID`.
+    - **The router limits and records a key request itself.** Once `Check` admits a key,
+      `wrap` counts the request with `ratelimit.Limiter.Count` under the policy `api`, keyed
+      by the integration, with `Via.RateLimitPerMinute` as the limit (K24), writes the
+      `RateLimit-*` headers with `ratelimit.WriteHeaders` and refuses the rest with
+      `ratelimit.Reject`. A module's own `Limits` still run first, keyed by address.
+      `Count` is `Hit` for a hot key: it seeds a window once per process and key, counts the
+      rest in process, and a flusher adds them to `platform.rate_limit` every second and on
+      `Limiter.Close`, so use it for a key hit many times a minute and `Hit` for the rest. A
+      process that builds a `Limiter` closes it at shutdown, before its pool, as `serve` and
+      the test harnesses do.
+    - **`contracts.APIRequestRecorder`** is the request log's port (K23, K35):
+      `Record(ctx, contracts.APIRequest)`, never blocking and never failing the request.
+      Identity's `Access` implements it beside `contracts.Access`, and the router finds it
+      with `r.opts.Access.(contracts.APIRequestRecorder)` when it is built — there is no
+      option to set — as the live hub finds `StationAccess`. `wrap` records each key
+      request once it is answered, with the `operationId`, never the path or query, the
+      status, the duration, `httpx.ClientIP` and `httpx.TraceID`; and a refusal with the
+      `APIKeyRefusal`'s reason, or `rate_limited`. It knows the status through
+      `httpx.StatusRecorder` (`httpx.NewStatusRecorder(w)`, `Status()`, `Bytes()`), the
+      recorder `httpx.RequestLog` uses too: its `Unwrap` keeps `http.ResponseController`
+      working, so a handler that flushes or streams behind it still does. A module that
+      wraps a `ResponseWriter` itself uses it rather than another recorder. The writer that
+      drains the recorder runs in the API process only (`Access.StartRequestLog`, where
+      `identity.NewAccess` is built); `modtest` starts it, and `Harness.FlushAPIRequests`
+      writes what is queued before a test reads `identity.api_requests`.
     - **`UserEntry.Kind`** may be `integration` on a lookup by id, so a record an
       integration made can name it; `SearchUsers` and `PermissionHolders` never answer
       one, `IncludeAgents` included, and `UserHolds` is false for one. A check that means

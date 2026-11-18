@@ -26,14 +26,14 @@ const apiKeyAuthScheme = "Bearer"
 
 // The reasons an APIKeyRefusal carries.
 const (
-	apiKeyRevoked      = "revoked"
-	apiKeyDisabled     = "disabled"
-	apiKeyArchived     = "archived"
-	apiKeyExpired      = "expired"
-	apiKeyNetwork      = "network"
-	apiKeyNotAvailable = "not_available"
-	apiKeyReadOnly     = "read_only"
-	apiKeyForbidden    = "forbidden"
+	apiKeyRevoked      = contracts.APIReasonRevoked
+	apiKeyDisabled     = contracts.APIReasonDisabled
+	apiKeyArchived     = contracts.APIReasonArchived
+	apiKeyExpired      = contracts.APIReasonExpired
+	apiKeyNetwork      = contracts.APIReasonNetwork
+	apiKeyNotAvailable = contracts.APIReasonNever
+	apiKeyReadOnly     = contracts.APIReasonReadOnly
+	apiKeyForbidden    = contracts.APIReasonForbidden
 )
 
 // The words of K19's answers.
@@ -130,7 +130,7 @@ func (a *Access) checkAPIKey(ctx context.Context, r *http.Request, rule contract
 	p := contracts.Principal{
 		UserID: k.IntegrationID,
 		Roles:  roles,
-		Via:    &contracts.Via{Kind: contracts.ViaAPIKey, KeyID: k.ID},
+		Via:    &contracts.Via{Kind: contracts.ViaAPIKey, KeyID: k.ID, RateLimitPerMinute: int(k.RateLimitPerMinute)},
 	}
 	switch rule.Kind {
 	case contracts.RuleAnonymous:

@@ -109,6 +109,8 @@ type Harness struct {
 	url      string // the installation's origin, APP_URL
 	base     *url.URL
 	log      *syncBuffer
+	// requestLog flushes identity's API request log (FlushAPIRequests).
+	requestLog func()
 	// mods is what Compose was given: identity (with WithAccounts' or
 	// WithoutAccounts' change) and the modules under test, from which
 	// Workers resolves the background workers as worker mode does.
@@ -1077,6 +1079,12 @@ func New(t *testing.T, opts ...Option) *Harness {
 	}
 	access := identity.NewAccess(h.deps)
 	h.deps.Access = access
+	// The API request log runs as in the API process; FlushAPIRequests
+	// writes what it has queued.
+	t.Cleanup(access.StartRequestLog())
+	// The rate limiter's flusher stops, after a last flush, before the pool.
+	t.Cleanup(h.deps.Limiter.Close)
+	h.requestLog = access.FlushRequestLog
 
 	// Identity is mounted beside the module under test so its access layer is
 	// the real one: a signed-in principal, its roles and its permissions are

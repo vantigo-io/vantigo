@@ -11,6 +11,7 @@ import (
 	"math"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -61,12 +62,41 @@ type Decision struct {
 	Allowed bool
 	// RetryAfter is the time left in the current window when a hit is rejected.
 	RetryAfter time.Duration
+	// Remaining is how many more hits the current window allows after this
+	// one, never below zero (API access design K24's RateLimit-Remaining).
+	Remaining int
+	// Reset is when the current window ends and the count starts afresh
+	// (RateLimit-Reset).
+	Reset time.Time
+	// now is the limiter's clock when it decided, which Reset is told from.
+	now time.Time
+}
+
+// decide is the Decision for hits counted so far in the window starting at
+// start, at now.
+func decide(p Policy, hits int, start, now time.Time) Decision {
+	reset := start.Add(p.Window)
+	d := Decision{Allowed: hits <= p.Limit, Remaining: max(p.Limit-hits, 0), Reset: reset, now: now}
+	if !d.Allowed {
+		d.RetryAfter = reset.Sub(now)
+	}
+	return d
 }
 
 // Limiter records hits in PostgreSQL.
 type Limiter struct {
 	pool *pgxpool.Pool
 	now  func() time.Time
+
+	// counts are Count's in-process pre-counts, by policy and client, which
+	// the flusher adds to the shared rows every flushEvery until Close.
+	mu         sync.Mutex
+	counts     map[string]*preCount
+	flushEvery time.Duration
+	flusher    sync.Once
+	stop       chan struct{}
+	stopped    chan struct{}
+	closing    sync.Once
 }
 
 // New returns a limiter on pool.
@@ -78,21 +108,21 @@ func New(pool *pgxpool.Pool) *Limiter {
 // than the wall clock, for a caller that owns the clock its time decisions
 // use (a module's Deps.Clock, a test harness).
 func NewWithClock(pool *pgxpool.Pool, now func() time.Time) *Limiter {
-	return &Limiter{pool: pool, now: now}
+	return &Limiter{pool: pool, now: now, flushEvery: flushEvery, stop: make(chan struct{}), stopped: make(chan struct{})}
 }
 
-// hitSQL counts one hit atomically: a new key or a newer window starts at 1,
-// otherwise the counter increments. A hit stamped with an older window (a
+// hitSQL counts $3 hits atomically: a new key or a newer window starts at
+// $3, otherwise the counter grows by $3. A hit stamped with an older window (a
 // replica whose clock lags) counts toward the newest window recorded rather
 // than resetting the counter or moving the window back. It returns the
 // effective window start. Concurrent hits serialise on the row.
 const hitSQL = `
 INSERT INTO platform.rate_limit (key, window_start, hits)
-VALUES ($1, $2, 1)
+VALUES ($1, $2, $3)
 ON CONFLICT (key) DO UPDATE SET
     hits = CASE WHEN EXCLUDED.window_start > platform.rate_limit.window_start
-                THEN 1
-                ELSE platform.rate_limit.hits + 1 END,
+                THEN EXCLUDED.hits
+                ELSE platform.rate_limit.hits + EXCLUDED.hits END,
     window_start = GREATEST(platform.rate_limit.window_start, EXCLUDED.window_start)
 RETURNING hits, window_start`
 
@@ -108,13 +138,10 @@ func (l *Limiter) Hit(ctx context.Context, p Policy, client string) (Decision, e
 	var hits int
 	var effectiveStart time.Time
 	// Key construction: p.Name cannot contain ':' (validated above), so the first ':' is an unambiguous separator between policy and client.
-	if err := l.pool.QueryRow(ctx, hitSQL, p.Name+":"+client, windowStart).Scan(&hits, &effectiveStart); err != nil {
+	if err := l.pool.QueryRow(ctx, hitSQL, p.Name+":"+client, windowStart, 1).Scan(&hits, &effectiveStart); err != nil {
 		return Decision{}, fmt.Errorf("ratelimit: record hit: %w", err)
 	}
-	if hits <= p.Limit {
-		return Decision{Allowed: true}, nil
-	}
-	return Decision{RetryAfter: effectiveStart.Add(p.Window).Sub(now)}, nil
+	return decide(p, hits, effectiveStart, now), nil
 }
 
 // Blocked reads the current window's hit count for client under p without
@@ -144,17 +171,17 @@ func (l *Limiter) Blocked(ctx context.Context, p Policy, client string) (Decisio
 	).Scan(&hits, &storedStart)
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
-		return Decision{Allowed: true}, nil
+		return Decision{Allowed: true, Remaining: p.Limit, Reset: windowStart.Add(p.Window), now: now}, nil
 	case err != nil:
 		return Decision{}, fmt.Errorf("ratelimit: read hit count: %w", err)
 	}
 	if storedStart.Before(windowStart) {
-		return Decision{Allowed: true}, nil
+		return Decision{Allowed: true, Remaining: p.Limit, Reset: windowStart.Add(p.Window), now: now}, nil
 	}
-	if hits < p.Limit {
-		return Decision{Allowed: true}, nil
-	}
-	return Decision{RetryAfter: storedStart.Add(p.Window).Sub(now)}, nil
+	// Blocked counts no hit, so the next one is what it judges.
+	d := decide(p, hits+1, storedStart, now)
+	d.Remaining = max(p.Limit-hits, 0)
+	return d, nil
 }
 
 // Reset clears client's counter under p, so its next Hit starts a fresh
@@ -167,6 +194,9 @@ func (l *Limiter) Reset(ctx context.Context, p Policy, client string) error {
 	if _, err := l.pool.Exec(ctx, `DELETE FROM platform.rate_limit WHERE key = $1`, p.Name+":"+client); err != nil {
 		return fmt.Errorf("ratelimit: reset: %w", err)
 	}
+	l.mu.Lock()
+	delete(l.counts, p.Name+":"+client)
+	l.mu.Unlock()
 	return nil
 }
 
@@ -191,6 +221,17 @@ func (l *Limiter) Middleware(p Policy) func(http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// WriteHeaders sets the RateLimit-Limit, RateLimit-Remaining and
+// RateLimit-Reset headers of d under p (API access design K24): the limit,
+// the hits the window has left, and the whole seconds until it ends, at
+// least 1 while it has not.
+func WriteHeaders(w http.ResponseWriter, p Policy, d Decision) {
+	h := w.Header()
+	h.Set("RateLimit-Limit", strconv.Itoa(p.Limit))
+	h.Set("RateLimit-Remaining", strconv.Itoa(d.Remaining))
+	h.Set("RateLimit-Reset", strconv.Itoa(max(int(math.Ceil(d.Reset.Sub(d.now).Seconds())), 1)))
 }
 
 // rejectBody is the {"error":{"code","message"}} shape Reject writes.

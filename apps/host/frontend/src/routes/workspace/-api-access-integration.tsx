@@ -19,7 +19,7 @@ import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
 import { IconAlertTriangle, IconDots, IconPlus } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ContentSkeleton, EmptyState, PageHeader, PageSection, useI18n } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageHeader, PageSection, PageTabs, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import {
   listAuthorizationRoles,
@@ -42,6 +42,7 @@ import {
 } from "../../api/integrations";
 import { CustomRolePicker } from "../../components/custom-role-picker";
 import { translateHostPermissionKey, translateHostPermissionModule } from "../../i18n";
+import { IntegrationRequests } from "./-api-access-requests";
 import { codeOf, contactOptions, fieldErrorsOf, integrationStatusColor, keyStatusColor } from "./-api-access-shared";
 import { NewKeyDialog, RollKeyDialog } from "./-api-key-dialog";
 
@@ -62,9 +63,21 @@ const sameIds = (a: string[], b: string[]) => a.length === b.length && [...a].so
  * the permissions they give it — those no API key ever holds marked, the
  * sensitive ones badged — and its keys, each with its narrowing, read-only
  * flag, networks and last use, to make, roll and revoke. An archived
- * integration is shown and not changed.
+ * integration is shown and not changed. Its Requests tab is the request log
+ * (K23, -api-access-requests.tsx).
  */
-export const IntegrationPage = ({ integrationId }: { integrationId: string }) => {
+export type IntegrationTab = "overview" | "requests";
+
+export const IntegrationPage = ({
+  integrationId,
+  tab = "overview",
+  onTab,
+}: {
+  integrationId: string;
+  /** The view, from the URL's tab search param; the overview when absent. */
+  tab?: IntegrationTab;
+  onTab?: (tab: IntegrationTab) => void;
+}) => {
   const { t, formatters } = useI18n("host");
   const queryClient = useQueryClient();
   const detail = useQuery({
@@ -242,220 +255,237 @@ export const IntegrationPage = ({ integrationId }: { integrationId: string }) =>
           {t("apiAccess.disabledBody")}
         </Alert>
       )}
+      <PageTabs
+        aria-label={integration.name}
+        items={[
+          { value: "overview", label: t("apiAccess.tabOverview") },
+          { value: "requests", label: t("apiAccess.tabRequests") },
+        ]}
+        value={tab}
+        onChange={(next) => onTab?.(next)}
+      />
 
-      <PageSection title={t("apiAccess.details")}>
-        <Table variant="vertical" layout="fixed" withTableBorder={false}>
-          <Table.Tbody>
-            <Table.Tr>
-              <Table.Th w={220}>{t("apiAccess.contact")}</Table.Th>
-              <Table.Td>{integration.contactDisplayName ?? t("apiAccess.noContact")}</Table.Td>
-            </Table.Tr>
-            <Table.Tr>
-              <Table.Th>{t("apiAccess.rateLimit")}</Table.Th>
-              <Table.Td>{t("apiAccess.perMinute", { rate: integration.rateLimitPerMinute })}</Table.Td>
-            </Table.Tr>
-            <Table.Tr>
-              <Table.Th>{t("apiAccess.createdAt")}</Table.Th>
-              <Table.Td>{when(integration.createdAt, true)}</Table.Td>
-            </Table.Tr>
-            <Table.Tr>
-              <Table.Th>{t("apiAccess.lastUsed")}</Table.Th>
-              <Table.Td>
-                {integration.lastUsedAt ? when(integration.lastUsedAt, true) : t("apiAccess.neverUsed")}
-              </Table.Td>
-            </Table.Tr>
-          </Table.Tbody>
-        </Table>
-      </PageSection>
-
-      <PageSection title={t("apiAccess.roles")}>
-        <Stack>
-          <CustomRolePicker
-            label={t("apiAccess.roles")}
-            description={t("apiAccess.rolesHint")}
-            roles={roles.data ?? []}
-            value={chosenRoles}
-            disabled={archived || saveRoles.isPending}
-            onChange={setRoleIds}
-          />
-          {roleIds !== null && !sameIds(roleIds, roleIdsOf(detail.data)) && (
-            <Group>
-              <Button loading={saveRoles.isPending} onClick={() => saveRoles.mutate(roleIds)}>
-                {t("apiAccess.saveRoles")}
-              </Button>
-              <Button variant="subtle" onClick={() => setRoleIds(null)}>
-                {t("common.cancel")}
-              </Button>
-            </Group>
-          )}
-          <Text fw={600}>{t("apiAccess.effectivePermissions")}</Text>
-          {sensitiveHeld && (
-            <Alert color="orange" icon={<IconAlertTriangle size={16} />}>
-              {t("apiAccess.sensitiveWarning")}
-            </Alert>
-          )}
-          {effectivePermissions.length === 0 ? (
-            <Text size="sm" c="dimmed">
-              {t("apiAccess.noPermissions")}
-            </Text>
-          ) : (
-            <Table data-testid="effective-permissions">
+      {tab === "requests" ? (
+        <IntegrationRequests integrationId={integrationId} keys={keys} />
+      ) : (
+        <>
+          <PageSection title={t("apiAccess.details")}>
+            <Table variant="vertical" layout="fixed" withTableBorder={false}>
               <Table.Tbody>
-                {effectivePermissions.map((permission) => {
-                  const descriptor = descriptors.get(permission.key);
-                  return (
-                    <Table.Tr key={permission.key} data-permission={permission.key}>
-                      <Table.Td>
-                        <Text size="sm" td={permission.apiNever ? "line-through" : undefined}>
-                          {permissionName(permission.key)}
-                        </Text>
-                      </Table.Td>
-                      <Table.Td>
-                        <Text size="sm" c="dimmed">
-                          {translateHostPermissionModule(
-                            permission.key,
-                            descriptor?.module ?? permission.key.split(":")[0],
-                            t,
-                          )}
-                        </Text>
-                      </Table.Td>
-                      <Table.Td>
-                        <Group gap={4} justify="flex-end">
-                          {descriptor?.sensitive && <Badge color="orange">{t("apiAccess.sensitive")}</Badge>}
-                          {permission.apiNever && <Badge color="gray">{t("apiAccess.apiNever")}</Badge>}
-                        </Group>
-                      </Table.Td>
-                    </Table.Tr>
-                  );
-                })}
+                <Table.Tr>
+                  <Table.Th w={220}>{t("apiAccess.contact")}</Table.Th>
+                  <Table.Td>{integration.contactDisplayName ?? t("apiAccess.noContact")}</Table.Td>
+                </Table.Tr>
+                <Table.Tr>
+                  <Table.Th>{t("apiAccess.rateLimit")}</Table.Th>
+                  <Table.Td>{t("apiAccess.perMinute", { rate: integration.rateLimitPerMinute })}</Table.Td>
+                </Table.Tr>
+                <Table.Tr>
+                  <Table.Th>{t("apiAccess.createdAt")}</Table.Th>
+                  <Table.Td>{when(integration.createdAt, true)}</Table.Td>
+                </Table.Tr>
+                <Table.Tr>
+                  <Table.Th>{t("apiAccess.lastUsed")}</Table.Th>
+                  <Table.Td>
+                    {integration.lastUsedAt ? when(integration.lastUsedAt, true) : t("apiAccess.neverUsed")}
+                  </Table.Td>
+                </Table.Tr>
               </Table.Tbody>
             </Table>
-          )}
-        </Stack>
-      </PageSection>
+          </PageSection>
 
-      <PageSection
-        title={t("apiAccess.keys")}
-        actions={
-          !archived && (
-            <Button leftSection={<IconPlus size={16} />} onClick={() => setNewKey(true)}>
-              {t("apiAccess.newKey")}
-            </Button>
-          )
-        }
-      >
-        {keys.length === 0 ? (
-          <EmptyState title={t("apiAccess.noKeys")} description={t("apiAccess.noKeysHint")} />
-        ) : (
-          <Table.ScrollContainer minWidth={960}>
-            <Table verticalSpacing="sm">
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th>{t("apiAccess.keyName")}</Table.Th>
-                  <Table.Th>{t("apiAccess.expiry")}</Table.Th>
-                  <Table.Th>{t("apiAccess.narrowing")}</Table.Th>
-                  <Table.Th>{t("apiAccess.networks")}</Table.Th>
-                  <Table.Th>{t("apiAccess.lastUsed")}</Table.Th>
-                  <Table.Th>
-                    <VisuallyHidden>{t("apiAccess.actions")}</VisuallyHidden>
-                  </Table.Th>
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {keys.map((key) => (
-                  <Table.Tr key={key.id} data-key={key.id}>
-                    <Table.Td>
-                      <Stack gap={4}>
-                        <Text fw={600}>{key.name}</Text>
-                        <Code>{key.display}</Code>
-                        <Group gap={4}>
-                          <Badge color={keyStatusColor[key.status]} variant="light">
-                            {t(`apiAccess.keyStatus_${key.status}`)}
-                          </Badge>
-                          {key.readOnly && <Badge variant="outline">{t("apiAccess.readOnly")}</Badge>}
-                          {rolled.has(key.id) && key.status === "active" && (
-                            <Badge color="blue" variant="outline">
-                              {t("apiAccess.rolledBadge")}
-                            </Badge>
-                          )}
-                        </Group>
-                      </Stack>
-                    </Table.Td>
-                    <Table.Td>{when(key.expiresAt, true)}</Table.Td>
-                    <Table.Td>
-                      {key.permissions === null ? (
-                        <Text size="sm">{t("apiAccess.notNarrowed")}</Text>
-                      ) : (
-                        <Stack gap={2}>
-                          {key.permissions.length === 0 && <Text size="sm">{t("apiAccess.narrowedToNothing")}</Text>}
-                          {key.permissions.map((entry) => (
-                            <Group key={entry.key} gap={4} wrap="nowrap" data-narrowing={entry.key}>
-                              <Text
-                                size="sm"
-                                td={entry.inCatalog ? undefined : "line-through"}
-                                title={entry.inCatalog ? undefined : t("apiAccess.removedFromCatalog")}
-                              >
-                                {entry.inCatalog ? permissionName(entry.key) : entry.key}
-                              </Text>
-                              {entry.inCatalog && descriptors.get(entry.key)?.sensitive && (
-                                <Badge size="xs" color="orange">
-                                  {t("apiAccess.sensitive")}
-                                </Badge>
+          <PageSection title={t("apiAccess.roles")}>
+            <Stack>
+              <CustomRolePicker
+                label={t("apiAccess.roles")}
+                description={t("apiAccess.rolesHint")}
+                roles={roles.data ?? []}
+                value={chosenRoles}
+                disabled={archived || saveRoles.isPending}
+                onChange={setRoleIds}
+              />
+              {roleIds !== null && !sameIds(roleIds, roleIdsOf(detail.data)) && (
+                <Group>
+                  <Button loading={saveRoles.isPending} onClick={() => saveRoles.mutate(roleIds)}>
+                    {t("apiAccess.saveRoles")}
+                  </Button>
+                  <Button variant="subtle" onClick={() => setRoleIds(null)}>
+                    {t("common.cancel")}
+                  </Button>
+                </Group>
+              )}
+              <Text fw={600}>{t("apiAccess.effectivePermissions")}</Text>
+              {sensitiveHeld && (
+                <Alert color="orange" icon={<IconAlertTriangle size={16} />}>
+                  {t("apiAccess.sensitiveWarning")}
+                </Alert>
+              )}
+              {effectivePermissions.length === 0 ? (
+                <Text size="sm" c="dimmed">
+                  {t("apiAccess.noPermissions")}
+                </Text>
+              ) : (
+                <Table data-testid="effective-permissions">
+                  <Table.Tbody>
+                    {effectivePermissions.map((permission) => {
+                      const descriptor = descriptors.get(permission.key);
+                      return (
+                        <Table.Tr key={permission.key} data-permission={permission.key}>
+                          <Table.Td>
+                            <Text size="sm" td={permission.apiNever ? "line-through" : undefined}>
+                              {permissionName(permission.key)}
+                            </Text>
+                          </Table.Td>
+                          <Table.Td>
+                            <Text size="sm" c="dimmed">
+                              {translateHostPermissionModule(
+                                permission.key,
+                                descriptor?.module ?? permission.key.split(":")[0],
+                                t,
                               )}
-                              {entry.apiNever ? (
-                                <Badge size="xs" color="gray" variant="outline">
-                                  {t("apiAccess.apiNever")}
+                            </Text>
+                          </Table.Td>
+                          <Table.Td>
+                            <Group gap={4} justify="flex-end">
+                              {descriptor?.sensitive && <Badge color="orange">{t("apiAccess.sensitive")}</Badge>}
+                              {permission.apiNever && <Badge color="gray">{t("apiAccess.apiNever")}</Badge>}
+                            </Group>
+                          </Table.Td>
+                        </Table.Tr>
+                      );
+                    })}
+                  </Table.Tbody>
+                </Table>
+              )}
+            </Stack>
+          </PageSection>
+
+          <PageSection
+            title={t("apiAccess.keys")}
+            actions={
+              !archived && (
+                <Button leftSection={<IconPlus size={16} />} onClick={() => setNewKey(true)}>
+                  {t("apiAccess.newKey")}
+                </Button>
+              )
+            }
+          >
+            {keys.length === 0 ? (
+              <EmptyState title={t("apiAccess.noKeys")} description={t("apiAccess.noKeysHint")} />
+            ) : (
+              <Table.ScrollContainer minWidth={960}>
+                <Table verticalSpacing="sm">
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th>{t("apiAccess.keyName")}</Table.Th>
+                      <Table.Th>{t("apiAccess.expiry")}</Table.Th>
+                      <Table.Th>{t("apiAccess.narrowing")}</Table.Th>
+                      <Table.Th>{t("apiAccess.networks")}</Table.Th>
+                      <Table.Th>{t("apiAccess.lastUsed")}</Table.Th>
+                      <Table.Th>
+                        <VisuallyHidden>{t("apiAccess.actions")}</VisuallyHidden>
+                      </Table.Th>
+                    </Table.Tr>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    {keys.map((key) => (
+                      <Table.Tr key={key.id} data-key={key.id}>
+                        <Table.Td>
+                          <Stack gap={4}>
+                            <Text fw={600}>{key.name}</Text>
+                            <Code>{key.display}</Code>
+                            <Group gap={4}>
+                              <Badge color={keyStatusColor[key.status]} variant="light">
+                                {t(`apiAccess.keyStatus_${key.status}`)}
+                              </Badge>
+                              {key.readOnly && <Badge variant="outline">{t("apiAccess.readOnly")}</Badge>}
+                              {rolled.has(key.id) && key.status === "active" && (
+                                <Badge color="blue" variant="outline">
+                                  {t("apiAccess.rolledBadge")}
                                 </Badge>
-                              ) : (
-                                entry.inCatalog &&
-                                !entry.grantedByRoles && (
-                                  <Badge size="xs" color="yellow" variant="outline">
-                                    {t("apiAccess.notGranted")}
-                                  </Badge>
-                                )
                               )}
                             </Group>
-                          ))}
-                        </Stack>
-                      )}
-                    </Table.Td>
-                    <Table.Td>
-                      {key.allowedNetworks.length === 0 ? (
-                        <Text size="sm">{t("apiAccess.anywhere")}</Text>
-                      ) : (
-                        <Stack gap={2}>
-                          {key.allowedNetworks.map((network) => (
-                            <Code key={network}>{network}</Code>
-                          ))}
-                        </Stack>
-                      )}
-                    </Table.Td>
-                    <Table.Td>
-                      {key.lastUsedAt
-                        ? `${when(key.lastUsedAt, true)}${key.lastUsedIp ? ` · ${key.lastUsedIp}` : ""}`
-                        : t("apiAccess.neverUsed")}
-                    </Table.Td>
-                    <Table.Td>
-                      {!archived && key.status === "active" && (
-                        <Group gap={4} wrap="nowrap" justify="flex-end">
-                          {!rolled.has(key.id) && (
-                            <Button size="compact-sm" variant="subtle" onClick={() => setRolling(key)}>
-                              {t("apiAccess.roll")}
-                            </Button>
+                          </Stack>
+                        </Table.Td>
+                        <Table.Td>{when(key.expiresAt, true)}</Table.Td>
+                        <Table.Td>
+                          {key.permissions === null ? (
+                            <Text size="sm">{t("apiAccess.notNarrowed")}</Text>
+                          ) : (
+                            <Stack gap={2}>
+                              {key.permissions.length === 0 && (
+                                <Text size="sm">{t("apiAccess.narrowedToNothing")}</Text>
+                              )}
+                              {key.permissions.map((entry) => (
+                                <Group key={entry.key} gap={4} wrap="nowrap" data-narrowing={entry.key}>
+                                  <Text
+                                    size="sm"
+                                    td={entry.inCatalog ? undefined : "line-through"}
+                                    title={entry.inCatalog ? undefined : t("apiAccess.removedFromCatalog")}
+                                  >
+                                    {entry.inCatalog ? permissionName(entry.key) : entry.key}
+                                  </Text>
+                                  {entry.inCatalog && descriptors.get(entry.key)?.sensitive && (
+                                    <Badge size="xs" color="orange">
+                                      {t("apiAccess.sensitive")}
+                                    </Badge>
+                                  )}
+                                  {entry.apiNever ? (
+                                    <Badge size="xs" color="gray" variant="outline">
+                                      {t("apiAccess.apiNever")}
+                                    </Badge>
+                                  ) : (
+                                    entry.inCatalog &&
+                                    !entry.grantedByRoles && (
+                                      <Badge size="xs" color="yellow" variant="outline">
+                                        {t("apiAccess.notGranted")}
+                                      </Badge>
+                                    )
+                                  )}
+                                </Group>
+                              ))}
+                            </Stack>
                           )}
-                          <Button size="compact-sm" variant="subtle" color="red" onClick={() => confirmRevoke(key)}>
-                            {t("apiAccess.revoke")}
-                          </Button>
-                        </Group>
-                      )}
-                    </Table.Td>
-                  </Table.Tr>
-                ))}
-              </Table.Tbody>
-            </Table>
-          </Table.ScrollContainer>
-        )}
-      </PageSection>
+                        </Table.Td>
+                        <Table.Td>
+                          {key.allowedNetworks.length === 0 ? (
+                            <Text size="sm">{t("apiAccess.anywhere")}</Text>
+                          ) : (
+                            <Stack gap={2}>
+                              {key.allowedNetworks.map((network) => (
+                                <Code key={network}>{network}</Code>
+                              ))}
+                            </Stack>
+                          )}
+                        </Table.Td>
+                        <Table.Td>
+                          {key.lastUsedAt
+                            ? `${when(key.lastUsedAt, true)}${key.lastUsedIp ? ` · ${key.lastUsedIp}` : ""}`
+                            : t("apiAccess.neverUsed")}
+                        </Table.Td>
+                        <Table.Td>
+                          {!archived && key.status === "active" && (
+                            <Group gap={4} wrap="nowrap" justify="flex-end">
+                              {!rolled.has(key.id) && (
+                                <Button size="compact-sm" variant="subtle" onClick={() => setRolling(key)}>
+                                  {t("apiAccess.roll")}
+                                </Button>
+                              )}
+                              <Button size="compact-sm" variant="subtle" color="red" onClick={() => confirmRevoke(key)}>
+                                {t("apiAccess.revoke")}
+                              </Button>
+                            </Group>
+                          )}
+                        </Table.Td>
+                      </Table.Tr>
+                    ))}
+                  </Table.Tbody>
+                </Table>
+              </Table.ScrollContainer>
+            )}
+          </PageSection>
+        </>
+      )}
 
       <NewKeyDialog
         opened={newKey}

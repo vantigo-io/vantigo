@@ -12,6 +12,7 @@ sources:
   - apps/server/internal/db/migrations/00141_identity_agent_users.sql
   - apps/server/internal/db/migrations/00142_identity_agent_grants.sql
   - apps/server/internal/db/migrations/00174_identity_stations.sql
+  - apps/server/internal/db/migrations/00199_identity_api_requests.sql
   - apps/server/internal/live/handler.go
   - apps/server/internal/module/router.go
 ---
@@ -1011,9 +1012,61 @@ Every refusal is written in the API's usual JSON error body, `{"error": {"code",
 | `403` | `api_key_read_only` | A read-only key on an operation that is not a read |
 | `409` | `api_key_already_rolled` | Rolling a key that has been rolled already |
 | `409` | `api_key_revoked` | Rolling a key that is revoked or has expired |
+| `429` | `rate_limited` | The integration's `rate_limit_per_minute` is spent for this minute, across its keys (`api`, below), with `Retry-After` |
 
-A key's `401` carries `WWW-Authenticate: Bearer realm="vantigo"`. A key request is not yet held
-to a rate limit of its own; making and rolling keys is, under `UserManagement` (below).
+A key's `401` carries `WWW-Authenticate: Bearer realm="vantigo"`. Making and rolling keys is
+also held to `UserManagement` (below).
+
+### The rate limit of a key request
+
+Once `Check` has admitted a key, the router counts the request under the policy `api`, keyed by
+the integration, with the integration's `rate_limit_per_minute` (60 to 6,000, default 600) as
+the limit and a one-minute window. Every key of the integration shares the count. A refused key
+is not counted, and the per-operation limits below, keyed by address, are still applied before
+`Check`. Every admitted key response carries `RateLimit-Limit`, `RateLimit-Remaining` and
+`RateLimit-Reset` (seconds); one over the limit is `429 rate_limited` with `Retry-After`, in the
+body every rate limit writes.
+
+The count lives in `platform.rate_limit` as the others do, but a key request does not wait on
+it: the window's first request records a hit there, and each replica counts the rest in process
+and a flusher adds them to the shared row every second, whether or not more requests arrive,
+reading back what the others added, and once more when the limiter is closed at shutdown. A
+flush adds only to the row of the window its hits were counted in: hits of a window the row has
+since left are dropped. Each replica is therefore at most about a second of its own traffic
+behind, and replicas may together let through up to a second's worth more than the limit. A
+replica that stops without shutting down loses at most a second of its count.
+
+### The request log
+
+What a key did is recorded in `identity.api_requests`: every request a key made that identity
+could attribute, admitted or refused — the time, the key, the integration, the method, the
+`operationId`, the status, for a refusal the reason (`expired`, `revoked`, `disabled`,
+`archived`, `network`, `read_only`, `never`, `forbidden` or `rate_limited`), the duration, the
+client address and the trace id. A request whose key matched no key is not recorded. A body, a
+query string and a path parameter's value are never recorded, since they can carry personal
+data; the trace id finds the request in the server's traces and log lines. This is where to
+look for what a key did, and why it was refused: a revoked key, a disabled or archived
+integration and a request from outside the key's networks are all told only `401
+unauthenticated`. Owners read it on the integration's **Requests** tab
+([API access](/en/admin/api-access/#the-request-log)).
+
+The router hands each answered request to identity's recorder, which queues it and never
+waits. A writer in the API process writes the queue every 2 seconds or 500 rows, on a pooled
+connection of its own, and once more at shutdown; a crash may lose the last two seconds. When
+the queue is full, because the database is slow or away, rows are dropped and counted in the
+`vantigo.identity.api_requests.dropped` metric (attribute `reason`: `queue_full` or
+`write_failed`). The log is an operational record; the audit trail below is the record of
+changes.
+
+The table is partitioned by UTC day on `at`, with a DEFAULT partition, so a write never fails
+for want of a partition. The `identity.api-keys` worker makes today's and the next 6 days'
+partitions, moves rows that landed in DEFAULT into a partition of their day, and drops what is
+older than the 30 days kept, today included ([Configuration](/en/admin/configuration/#workers)).
+Each day is made in a transaction of its own that waits at most 5 seconds (`lock_timeout`) for
+the table's lock; a day that cannot get it is logged and made on the next cycle, and the
+notices go out regardless. The table has no foreign key
+to `api_keys`: a key's row is deleted 90 days after it expired, and its log rows age out on
+their own.
 
 ### What is audited for integrations
 
@@ -1031,7 +1084,7 @@ with `Cache-Control: no-store`.
 
 Authentication endpoints are rate limited by a fixed-window limiter whose counters
 live in PostgreSQL (`platform.rate_limit`), so a limit holds **across replicas and
-restarts** rather than per process. The limit is applied before the access check.
+restarts** rather than per process. The limit is applied before the access check, except `api`, which counts an admitted key.
 
 | Policy | Limit | Applies to |
 | --- | --- | --- |
@@ -1044,6 +1097,7 @@ restarts** rather than per process. The limit is applied before the access check
 | `Invitations` | 30 / minute | Owner invitation management |
 | `InvitationAcceptance` | 20 / minute | Invitation validate and accept |
 | `UserManagement` | 30 / minute | Owner user management, adoption for Staff, the employee roles, and making or rolling an API key |
+| `api` | The integration's `rate_limit_per_minute` / minute | Every request an API key is admitted for, keyed by its integration, after the access check ([above](#the-rate-limit-of-a-key-request)) |
 | `OwnerAvatarRead` | 300 / minute | Owner avatar reads |
 | `StationPairing` | 10 / 15 minutes | Pairing a station with a code |
 | `StationPairingGlobal` | 60 / hour | Pairing attempts across the installation, whatever their addresses |
@@ -1052,8 +1106,8 @@ restarts** rather than per process. The limit is applied before the access check
 | `station-operator-sign-in` | 10 failures / 5 minutes | Failed operator sign-ins at one station, keyed by the station; answers without `Retry-After` |
 | `BadgeEnrolment` | 60 / 15 minutes | Enrolling badges |
 
-Every policy except `login-attempts`, `StationPairingGlobal`, `station-operator-attempts` and
-`station-operator-sign-in` keys on the client address, which is why
+Every policy except `login-attempts`, `StationPairingGlobal`, `station-operator-attempts`,
+`station-operator-sign-in` and `api` keys on the client address, which is why
 `TRUSTED_PROXY_HOPS` and `TRUSTED_PROXY_CIDRS` matter behind a proxy: get them
 wrong and every request shares one bucket, or a client picks its own.
 

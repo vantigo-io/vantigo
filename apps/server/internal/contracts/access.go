@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -47,6 +48,10 @@ type Via struct {
 	// (API access design K10). The principal is the key's integration, with
 	// no session.
 	KeyID uuid.UUID
+	// RateLimitPerMinute is set for an "api_key" Via: the requests a minute
+	// the key's integration may make, across all its keys, which the router
+	// counts once Check has admitted the key (K24).
+	RateLimitPerMinute int
 }
 
 // ViaAssistant is Via.Kind of an assistant grant, ViaAgent of an agent grant,
@@ -260,8 +265,9 @@ var (
 // code. A key identity did not find, or one that does not parse, is a plain
 // ErrUnauthenticated: there is nothing to attribute it to.
 //
-// Reason is one of revoked, disabled, archived, expired, network,
-// not_available, read_only and forbidden.
+// Reason is one of revoked, disabled, archived, expired, network, never,
+// read_only and forbidden; the request log (APIRequest.Reason) adds the
+// router's own rate_limited.
 type APIKeyRefusal struct {
 	KeyID         uuid.UUID
 	IntegrationID uuid.UUID
@@ -271,6 +277,53 @@ type APIKeyRefusal struct {
 
 func (e *APIKeyRefusal) Error() string { return "api key refused: " + e.Reason }
 func (e *APIKeyRefusal) Unwrap() error { return e.Err }
+
+// The reasons the request log records a refused API key request under: an
+// APIKeyRefusal's, and the router's own APIReasonRateLimited.
+const (
+	APIReasonRevoked     = "revoked"
+	APIReasonDisabled    = "disabled"
+	APIReasonArchived    = "archived"
+	APIReasonExpired     = "expired"
+	APIReasonNetwork     = "network"
+	APIReasonNever       = "never"
+	APIReasonReadOnly    = "read_only"
+	APIReasonForbidden   = "forbidden"
+	APIReasonRateLimited = "rate_limited"
+)
+
+// APIRequest is one request an API key made that identity could attribute
+// (API access design K23): the key and its integration, the operation and how
+// it was answered. It never carries a body, a query string or a path
+// parameter's value, which can hold personal data; OperationID and TraceID
+// find the request in the server's traces.
+type APIRequest struct {
+	// At is when the request arrived; the recorder stamps its own clock when
+	// it is zero.
+	At            time.Time
+	KeyID         uuid.UUID
+	IntegrationID uuid.UUID
+	Method        string
+	OperationID   string
+	Status        int
+	// Reason is set for a refusal: an APIKeyRefusal's, or
+	// APIReasonRateLimited.
+	Reason   string
+	Duration time.Duration
+	ClientIP string
+	TraceID  string
+}
+
+// APIRequestRecorder is the request log's port (K23, K35): the router's wrap
+// calls Record once a key request it can attribute has been answered, an
+// admitted one or a refused one. identity's Access implements it beside
+// Access; the router finds it by a type assertion on the Access it holds, as
+// the live hub finds StationAccess. Record never blocks on the database and
+// never fails the request: the log is an operational record, not the audit
+// trail, and what it cannot keep it drops.
+type APIRequestRecorder interface {
+	Record(ctx context.Context, req APIRequest)
+}
 
 // APIKeyScope is what reaches an API key's scope without importing identity:
 // the document of what the key may call (API access design K28, K36).

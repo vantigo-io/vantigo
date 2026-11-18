@@ -213,6 +213,7 @@ var markedByHand = map[string]string{
 	"getIdentityIntegrations":                       "never",
 	"postIdentityIntegrations":                      "never",
 	"getIdentityIntegrationsById":                   "never",
+	"getIdentityIntegrationsByIdRequests":           "never",
 	"patchIdentityIntegrationsById":                 "never",
 	"putIdentityIntegrationsByIdRoles":              "never",
 	"postIdentityIntegrationsByIdDisable":           "never",

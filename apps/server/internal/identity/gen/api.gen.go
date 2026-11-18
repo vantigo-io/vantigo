@@ -360,6 +360,45 @@ func (e StationState) Valid() bool {
 	}
 }
 
+// Defines values for GetIdentityIntegrationsByIdRequestsParamsReason.
+const (
+	GetIdentityIntegrationsByIdRequestsParamsReasonArchived    GetIdentityIntegrationsByIdRequestsParamsReason = "archived"
+	GetIdentityIntegrationsByIdRequestsParamsReasonDisabled    GetIdentityIntegrationsByIdRequestsParamsReason = "disabled"
+	GetIdentityIntegrationsByIdRequestsParamsReasonExpired     GetIdentityIntegrationsByIdRequestsParamsReason = "expired"
+	GetIdentityIntegrationsByIdRequestsParamsReasonForbidden   GetIdentityIntegrationsByIdRequestsParamsReason = "forbidden"
+	GetIdentityIntegrationsByIdRequestsParamsReasonNetwork     GetIdentityIntegrationsByIdRequestsParamsReason = "network"
+	GetIdentityIntegrationsByIdRequestsParamsReasonNever       GetIdentityIntegrationsByIdRequestsParamsReason = "never"
+	GetIdentityIntegrationsByIdRequestsParamsReasonRateLimited GetIdentityIntegrationsByIdRequestsParamsReason = "rate_limited"
+	GetIdentityIntegrationsByIdRequestsParamsReasonReadOnly    GetIdentityIntegrationsByIdRequestsParamsReason = "read_only"
+	GetIdentityIntegrationsByIdRequestsParamsReasonRevoked     GetIdentityIntegrationsByIdRequestsParamsReason = "revoked"
+)
+
+// Valid indicates whether the value is a known member of the GetIdentityIntegrationsByIdRequestsParamsReason enum.
+func (e GetIdentityIntegrationsByIdRequestsParamsReason) Valid() bool {
+	switch e {
+	case GetIdentityIntegrationsByIdRequestsParamsReasonArchived:
+		return true
+	case GetIdentityIntegrationsByIdRequestsParamsReasonDisabled:
+		return true
+	case GetIdentityIntegrationsByIdRequestsParamsReasonExpired:
+		return true
+	case GetIdentityIntegrationsByIdRequestsParamsReasonForbidden:
+		return true
+	case GetIdentityIntegrationsByIdRequestsParamsReasonNetwork:
+		return true
+	case GetIdentityIntegrationsByIdRequestsParamsReasonNever:
+		return true
+	case GetIdentityIntegrationsByIdRequestsParamsReasonRateLimited:
+		return true
+	case GetIdentityIntegrationsByIdRequestsParamsReasonReadOnly:
+		return true
+	case GetIdentityIntegrationsByIdRequestsParamsReasonRevoked:
+		return true
+	default:
+		return false
+	}
+}
+
 // AccessGroupRequest defines model for AccessGroupRequest.
 type AccessGroupRequest struct {
 	ConcurrencyStamp *string `json:"concurrencyStamp,omitempty"`
@@ -852,6 +891,54 @@ type IntegrationPermission struct {
 	// ApiNever True for a permission no API key ever holds, whatever the roles grant (K7).
 	ApiNever bool   `json:"apiNever"`
 	Key      string `json:"key"`
+}
+
+// IntegrationRequest One request an API key of the integration made (API access design K23). It never carries a body, a query string or a path parameter's value.
+type IntegrationRequest struct {
+	At         time.Time          `json:"at"`
+	ClientIp   *string            `json:"clientIp"`
+	DurationMs int                `json:"durationMs"`
+	KeyId      openapi_types.UUID `json:"keyId"`
+
+	// KeyName The key's name, null once the key's row is deleted, 90 days after it expired.
+	KeyName     *string `json:"keyName"`
+	Method      string  `json:"method"`
+	OperationId string  `json:"operationId"`
+
+	// Reason Why the request was refused, for a refusal.
+	Reason  *string `json:"reason"`
+	Status  int     `json:"status"`
+	TraceId *string `json:"traceId"`
+}
+
+// IntegrationRequestDay defines model for IntegrationRequestDay.
+type IntegrationRequestDay struct {
+	// Day The UTC day.
+	Day      openapi_types.Date `json:"day"`
+	Requests int                `json:"requests"`
+
+	// StatusClass The status class, 2 for 2xx through 5 for 5xx.
+	StatusClass int `json:"statusClass"`
+}
+
+// IntegrationRequestLog defines model for IntegrationRequestLog.
+type IntegrationRequestLog struct {
+	// Days The requests per UTC day and status class, oldest first; a day with none is left out.
+	Days []IntegrationRequestDay `json:"days"`
+	From time.Time               `json:"from"`
+
+	// Latest The latest 200 requests, newest first.
+	Latest []IntegrationRequest `json:"latest"`
+
+	// Operations The 10 operations called most, most first.
+	Operations []IntegrationRequestOperation `json:"operations"`
+	To         time.Time                     `json:"to"`
+}
+
+// IntegrationRequestOperation defines model for IntegrationRequestOperation.
+type IntegrationRequestOperation struct {
+	OperationId string `json:"operationId"`
+	Requests    int    `json:"requests"`
 }
 
 // IntegrationRole defines model for IntegrationRole.
@@ -2021,6 +2108,24 @@ type PostIdentityIntegrationsByIdKeysJSONBody = ApiKeyCreateRequest
 // PostIdentityIntegrationsByIdKeysByKeyIdRollJSONBody defines parameters for PostIdentityIntegrationsByIdKeysByKeyIdRoll.
 type PostIdentityIntegrationsByIdKeysByKeyIdRollJSONBody = ApiKeyRollRequest
 
+// GetIdentityIntegrationsByIdRequestsParams defines parameters for GetIdentityIntegrationsByIdRequests.
+type GetIdentityIntegrationsByIdRequestsParams struct {
+	// Key Only the requests of this key.
+	Key *openapi_types.UUID `form:"key,omitempty" json:"key,omitempty"`
+
+	// StatusClass Only the requests answered with this status class, 2 for 2xx through 5 for 5xx.
+	StatusClass *int `form:"statusClass,omitempty" json:"statusClass,omitempty"`
+
+	// Reason Only the requests refused for this reason.
+	Reason *GetIdentityIntegrationsByIdRequestsParamsReason `form:"reason,omitempty" json:"reason,omitempty"`
+
+	// Day Only this UTC day, one of the last 30.
+	Day *openapi_types.Date `form:"day,omitempty" json:"day,omitempty"`
+}
+
+// GetIdentityIntegrationsByIdRequestsParamsReason defines parameters for GetIdentityIntegrationsByIdRequests.
+type GetIdentityIntegrationsByIdRequestsParamsReason string
+
 // PutIdentityIntegrationsByIdRolesJSONBody defines parameters for PutIdentityIntegrationsByIdRoles.
 type PutIdentityIntegrationsByIdRolesJSONBody = IntegrationRolesRequest
 
@@ -2919,6 +3024,9 @@ type ServerInterface interface {
 	// PostIdentityIntegrationsByIdKeysByKeyIdRoll Roll an API key
 	// (POST /api/v1/identity/integrations/{id}/keys/{keyId}/roll)
 	PostIdentityIntegrationsByIdKeysByKeyIdRoll(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, keyId openapi_types.UUID)
+	// GetIdentityIntegrationsByIdRequests Read an integration's request log
+	// (GET /api/v1/identity/integrations/{id}/requests)
+	GetIdentityIntegrationsByIdRequests(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params GetIdentityIntegrationsByIdRequestsParams)
 	// PutIdentityIntegrationsByIdRoles Replace an integration's roles
 	// (PUT /api/v1/identity/integrations/{id}/roles)
 	PutIdentityIntegrationsByIdRoles(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
@@ -4442,6 +4550,87 @@ func (siw *ServerInterfaceWrapper) PostIdentityIntegrationsByIdKeysByKeyIdRoll(w
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostIdentityIntegrationsByIdKeysByKeyIdRoll(w, r, id, keyId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetIdentityIntegrationsByIdRequests operation middleware
+func (siw *ServerInterfaceWrapper) GetIdentityIntegrationsByIdRequests(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetIdentityIntegrationsByIdRequestsParams
+
+	// ------------- Optional query parameter "key" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "key", r.URL.Query(), &params.Key, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "key"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "key", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "statusClass" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "statusClass", r.URL.Query(), &params.StatusClass, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "statusClass"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "statusClass", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "reason" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "reason", r.URL.Query(), &params.Reason, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "reason"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "reason", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "day" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "day", r.URL.Query(), &params.Day, runtime.BindQueryParameterOptions{Type: "string", Format: "date"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "day"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "day", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetIdentityIntegrationsByIdRequests(w, r, id, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6736,6 +6925,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/integrations/{id}/keys", wrapper.PostIdentityIntegrationsByIdKeys)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/integrations/{id}/keys/{keyId}/revoke", wrapper.PostIdentityIntegrationsByIdKeysByKeyIdRevoke)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/integrations/{id}/keys/{keyId}/roll", wrapper.PostIdentityIntegrationsByIdKeysByKeyIdRoll)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/integrations/{id}/requests", wrapper.GetIdentityIntegrationsByIdRequests)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/identity/integrations/{id}/roles", wrapper.PutIdentityIntegrationsByIdRoles)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/invitations/accept", wrapper.PostIdentityInvitationsAccept)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/invitations/validate", wrapper.GetIdentityInvitationsValidate)
@@ -11454,6 +11644,85 @@ func (response PostIdentityIntegrationsByIdKeysByKeyIdRoll429JSONResponse) Visit
 		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
 	}
 	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityIntegrationsByIdRequestsRequestObject struct {
+	Id     openapi_types.UUID `json:"id"`
+	Params GetIdentityIntegrationsByIdRequestsParams
+}
+
+type GetIdentityIntegrationsByIdRequestsResponseObject interface {
+	VisitGetIdentityIntegrationsByIdRequestsResponse(w http.ResponseWriter) error
+}
+
+type GetIdentityIntegrationsByIdRequests200JSONResponse IntegrationRequestLog
+
+func (response GetIdentityIntegrationsByIdRequests200JSONResponse) VisitGetIdentityIntegrationsByIdRequestsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityIntegrationsByIdRequests400JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityIntegrationsByIdRequests400JSONResponse) VisitGetIdentityIntegrationsByIdRequestsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityIntegrationsByIdRequests401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityIntegrationsByIdRequests401JSONResponse) VisitGetIdentityIntegrationsByIdRequestsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityIntegrationsByIdRequests403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityIntegrationsByIdRequests403JSONResponse) VisitGetIdentityIntegrationsByIdRequestsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityIntegrationsByIdRequests404JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityIntegrationsByIdRequests404JSONResponse) VisitGetIdentityIntegrationsByIdRequestsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -18761,6 +19030,9 @@ type StrictServerInterface interface {
 	// PostIdentityIntegrationsByIdKeysByKeyIdRoll Roll an API key
 	// (POST /api/v1/identity/integrations/{id}/keys/{keyId}/roll)
 	PostIdentityIntegrationsByIdKeysByKeyIdRoll(ctx context.Context, request PostIdentityIntegrationsByIdKeysByKeyIdRollRequestObject) (PostIdentityIntegrationsByIdKeysByKeyIdRollResponseObject, error)
+	// GetIdentityIntegrationsByIdRequests Read an integration's request log
+	// (GET /api/v1/identity/integrations/{id}/requests)
+	GetIdentityIntegrationsByIdRequests(ctx context.Context, request GetIdentityIntegrationsByIdRequestsRequestObject) (GetIdentityIntegrationsByIdRequestsResponseObject, error)
 	// PutIdentityIntegrationsByIdRoles Replace an integration's roles
 	// (PUT /api/v1/identity/integrations/{id}/roles)
 	PutIdentityIntegrationsByIdRoles(ctx context.Context, request PutIdentityIntegrationsByIdRolesRequestObject) (PutIdentityIntegrationsByIdRolesResponseObject, error)
@@ -20939,6 +21211,33 @@ func (sh *strictHandler) PostIdentityIntegrationsByIdKeysByKeyIdRoll(w http.Resp
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PostIdentityIntegrationsByIdKeysByKeyIdRollResponseObject); ok {
 		if err := validResponse.VisitPostIdentityIntegrationsByIdKeysByKeyIdRollResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetIdentityIntegrationsByIdRequests operation middleware
+func (sh *strictHandler) GetIdentityIntegrationsByIdRequests(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params GetIdentityIntegrationsByIdRequestsParams) {
+	var request GetIdentityIntegrationsByIdRequestsRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetIdentityIntegrationsByIdRequests(ctx, request.(GetIdentityIntegrationsByIdRequestsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetIdentityIntegrationsByIdRequests")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetIdentityIntegrationsByIdRequestsResponseObject); ok {
+		if err := validResponse.VisitGetIdentityIntegrationsByIdRequestsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

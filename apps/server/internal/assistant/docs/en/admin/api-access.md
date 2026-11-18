@@ -1,6 +1,6 @@
 ---
 title: API access
-description: Letting another application use Vantigo's API without a person's session — integrations, their roles, API keys with an expiry, a narrowing, a read-only switch and networks, rolling and revoking a key, what is never available to a key, how a client sends it, the answers it can get, and what to do when a key leaks.
+description: Letting another application use Vantigo's API without a person's session — integrations, their roles, API keys with an expiry, a narrowing, a read-only switch and networks, rolling and revoking a key, what is never available to a key, how a client sends it, the rate limit and its headers, the answers it can get, the request log, the expiry notices, and what to do when a key leaks.
 sidebar:
   order: 22
 sources:
@@ -8,10 +8,14 @@ sources:
   - apps/server/internal/identity/access_apikey.go
   - apps/server/internal/identity/apikey.go
   - apps/server/internal/identity/workers.go
+  - apps/server/internal/identity/apirequests.go
+  - apps/server/internal/identity/apikey_notices.go
+  - apps/server/internal/identity/integration_requests.go
   - apps/host/frontend/src/routes/workspace/api-access.tsx
   - apps/host/frontend/src/routes/workspace/api-access_.$integrationId.tsx
   - apps/host/frontend/src/routes/workspace/-api-access-integration.tsx
   - apps/host/frontend/src/routes/workspace/-api-key-dialog.tsx
+  - apps/host/frontend/src/routes/workspace/-api-access-requests.tsx
 ---
 
 An **integration** is the account another application — a web shop, a reporting tool, a
@@ -46,8 +50,8 @@ judged on each request is under
 
 To change it later, choose **Actions › Edit details**: the name, the description, the
 contact and the **Rate limit** (60 to 6,000 requests a minute across its keys; the default is
-600). The rate limit is kept with the integration but not yet enforced: no request is
-refused for it yet. Saving replaces the description and the contact with what the form
+600; see [The rate limit](#the-rate-limit)). The contact gets the keys'
+[expiry notices](#expiry-notices). Saving replaces the description and the contact with what the form
 holds, so clearing a field clears it. If someone else changed the integration since you opened it, the save is
 refused and the page shows the latest; make the change again.
 
@@ -163,7 +167,9 @@ pasted in a ticket, left on a laptop:
    application. Enable the integration again if you disabled it.
 3. Check what the integration did: what it made and changed is attributed to it, and
    identity's audit trail records every change to the integration and its keys (below). The
-   key's **Last used** says when, and from which address, it was used last.
+   **Requests** tab ([The request log](#the-request-log)) lists what each key called over the
+   last 30 days, from which address, and what was refused; filter it by the key. The key's
+   **Last used** says when, and from which address, it was used last.
 4. If the key held sensitive permissions, treat the data they reach as exposed.
 
 ## How a client sends the key
@@ -185,6 +191,32 @@ curl -H "Authorization: Bearer vtg_…" https://vantigo.example.com/api/v1/custo
   account, an Owner's administration, SSO, SCIM or the keys themselves. Every operation that is
   never available to a key says so in the generated API reference (`/en/reference/api/`).
 
+## The rate limit
+
+Every request an integration's keys make is counted against the integration's **Rate limit**,
+per minute, across all its keys: adding keys does not raise it. A request is counted once its
+key has been let through, so a refused key never uses up the integration's allowance. The
+limits identity and the modules set per address on single operations — signing in, making
+keys — still apply as well.
+
+Every answer to a request a key was let through for carries three headers:
+
+| Header | Says |
+| --- | --- |
+| `RateLimit-Limit` | The integration's limit a minute |
+| `RateLimit-Remaining` | How many more requests this minute allows |
+| `RateLimit-Reset` | The seconds until the minute ends and the count starts again |
+
+A request over the limit is refused `429 rate_limited` with `Retry-After`, the seconds to wait.
+An application should slow down when `RateLimit-Remaining` nears zero and wait out
+`Retry-After` when it gets a `429`.
+
+The count is kept in the database, so every replica sees the same one. Each replica adds its
+own requests to it every second, whether or not more arrive, and once more as it shuts down, so
+it is at most about a second of its own requests behind. A workspace with several replicas may
+therefore let through up to a second's worth of requests more than the limit before they all
+refuse.
+
 ## The answers a key can get
 
 | Status | Code | When |
@@ -194,9 +226,75 @@ curl -H "Authorization: Bearer vtg_…" https://vantigo.example.com/api/v1/custo
 | `403` | `forbidden` | A person's or an Owner's operation, or a permission the key does not reach: not in its roles, never available to API keys, or outside its narrowing |
 | `403` | `api_not_available` | The operation is never available to API keys |
 | `403` | `api_key_read_only` | A read-only key on an operation that is not a read |
+| `429` | `rate_limited` | The integration has made its **Rate limit** of requests this minute; `Retry-After` says how long to wait |
 
 A `401` carries `WWW-Authenticate: Bearer realm="vantigo"`. The body is the same JSON error
 the API answers people with: `{"error": {"code": "…", "message": "…"}}`.
+
+## The request log
+
+The integration's page has a **Requests** tab: what its keys called over the last 30 days.
+Every request a key made that Vantigo could tell was the key's is there, the refused ones too;
+a request with a key that matched no key is not, because there is nothing to tie it to.
+
+- **Requests per day** counts them per day and status class — *2xx success*, *3xx redirect*,
+  *4xx refused* and *5xx server error* — as a chart and a table. Days are UTC days.
+- **Called most** lists the ten operations called most.
+- **Latest requests** lists the 200 newest: when, in UTC, the key, the method and the operation, the
+  status — with why, for a refusal — how long it took, the client's address and the trace id.
+  A key whose row has been deleted, 90 days after it expired, shows as *Deleted key*.
+- **Key**, **Status**, **Refused because** and **Day** filter all three.
+
+A refusal is recorded with its reason:
+
+| Reason | The request was refused because |
+| --- | --- |
+| *Expired* (`expired`) | the key had expired |
+| *Revoked* (`revoked`) | the key was revoked |
+| *Integration disabled* (`disabled`) | the integration was disabled |
+| *Integration archived* (`archived`) | the integration was archived |
+| *Outside its networks* (`network`) | the request came from outside the key's **Networks** |
+| *Read-only key* (`read_only`) | a read-only key called an operation that is not a read |
+| *Not available to API keys* (`never`) | the operation is never available to API keys |
+| *Not allowed by the roles* (`forbidden`) | the roles, or the narrowing, do not give what the operation needs |
+| *Over the rate limit* (`rate_limited`) | the integration had made its **Rate limit** of requests that minute |
+
+A revoked key, a disabled or archived integration and a request from outside the networks are
+all answered `401 unauthenticated`, as an unknown key is, so the client learns nothing about the
+key; the log says which it was. The others get the code in
+[The answers a key can get](#the-answers-a-key-can-get).
+
+The log holds the operation, never the path, a query string or a body, because those can
+carry personal data. The trace id finds the request in the server's own traces and log lines.
+Rows are written in batches every two seconds, so a request shows on the tab a few seconds
+after it was made; a server that stops abruptly may lose its last two seconds. When the
+database cannot keep up, rows are dropped rather than slowing requests down, and counted in
+the `vantigo.identity.api_requests.dropped` metric. The log is an operational record, not the
+audit trail.
+
+The log keeps 30 days, today included: older rows are deleted by the `identity.api-keys` worker
+([Configuration](/en/admin/configuration/#workers)). With the worker switched off, nothing is
+ever deleted from the log.
+
+## Expiry notices
+
+Vantigo mails a notice about a key 14 days before it expires, 3 days before, and on the day
+(UTC days). Each goes to the integration's **Contact**, if that person's account is active, and
+to every active Owner, in each recipient's language, from the address invitations come from.
+A contact whose account is disabled stays on the integration and is skipped; the Owners still
+get the notice.
+
+- Each notice is sent once. A key made with less than 14 days left gets only the notices
+  still ahead of it.
+- A key that has been rolled or revoked gets none: rolling a key is what the notice asks for.
+- The notice names the key and the integration, never the key itself, and says to roll the
+  key under **Workspace admin › API access** and give the new one to the application.
+- A notice that reached no one — the mail failed, or no recipient is active with an address mail
+  reaches — is tried again on the next run. One that reached someone is not sent again to those
+  it missed. If the server stops in the moment between recording a notice and mailing it, that
+  notice is not sent: each goes at most once.
+
+The notices are sent by the `identity.api-keys` worker; with it switched off, none are sent.
 
 ## What is audited
 
@@ -216,6 +314,13 @@ the networks and the expiry are recorded; a key's secret and its hash never are.
   address is within the key's **Networks** as the server sees it behind your proxy.
 - **It gets `403 forbidden`.** The roles do not give the permission, the narrowing leaves it
   out, or the permission is never available to API keys. The integration's page shows which.
+- **It gets `429 rate_limited`.** The integration made more requests this minute than its
+  **Rate limit**, across all its keys. Have the application wait out `Retry-After` and watch
+  `RateLimit-Remaining`, or raise the limit under **Actions › Edit details**. **Called most** on
+  the **Requests** tab shows what it spends its requests on.
+- **A request is not on the Requests tab.** Wait a few seconds: rows are written in batches.
+  A request with a key that matched no key is never recorded; check the key the application
+  sends.
 - **Making a key answers that the expiry is wrong.** The date must be in the future and at most
   365 days ahead.
 - **A key was lost.** It cannot be shown again: roll it.

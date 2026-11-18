@@ -428,6 +428,11 @@ func serve(ctx context.Context, logger *slog.Logger, cfg *config.Config, ln net.
 		return 1
 	}
 	mods := businessModules(access)
+	// The rate limiter's flusher adds what it counted in process to the
+	// shared rows once more before the pool closes (API access design K24).
+	// Deferred after closePool's, it runs before it, and after the requests
+	// have drained.
+	defer deps.Limiter.Close()
 
 	// The management listener is bound here — before any worker starts —
 	// so a bind failure (the port is taken) returns while nothing is
@@ -496,6 +501,11 @@ func serve(ctx context.Context, logger *slog.Logger, cfg *config.Config, ln net.
 			return 1
 		}
 		apiRunners = runners
+		// The API request log's writer runs in the API process only (API
+		// access design K35). Deferred after closePool's, it stops first:
+		// once serveUntilDone has drained the requests, it writes what they
+		// queued while the pool is still open.
+		defer access.StartRequestLog()()
 		// identity.RunStartup runs on every host start (api after migrating,
 		// server on each replica), so it gets the same "finish, don't abort"
 		// treatment as opening the pool above: context.WithoutCancel(ctx), so a

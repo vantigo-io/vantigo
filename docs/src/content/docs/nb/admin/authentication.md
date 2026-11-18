@@ -12,6 +12,7 @@ sources:
   - apps/server/internal/db/migrations/00141_identity_agent_users.sql
   - apps/server/internal/db/migrations/00142_identity_agent_grants.sql
   - apps/server/internal/db/migrations/00174_identity_stations.sql
+  - apps/server/internal/db/migrations/00199_identity_api_requests.sql
   - apps/server/internal/live/handler.go
   - apps/server/internal/module/router.go
 ---
@@ -1049,10 +1050,62 @@ Alle avvisninger skrives i API-ets vanlige JSON-feil, `{"error": {"code", "messa
 | `403` | `api_key_read_only` | En nøkkel for bare lesing på en operasjon som ikke er en lesing |
 | `409` | `api_key_already_rolled` | Rotering av en nøkkel som allerede er rotert |
 | `409` | `api_key_revoked` | Rotering av en nøkkel som er tilbakekalt eller utløpt |
+| `429` | `rate_limited` | Integrasjonens `rate_limit_per_minute` er brukt opp dette minuttet, til sammen for nøklene (`api`, nedenfor), med `Retry-After` |
 
-En nøkkels `401` har `WWW-Authenticate: Bearer realm="vantigo"`. En nøkkelforespørsel har ennå
-ingen hastighetsgrense av sin egen; å lage og rotere nøkler har det, under `UserManagement`
-(nedenfor).
+En nøkkels `401` har `WWW-Authenticate: Bearer realm="vantigo"`. Å lage og rotere nøkler er i
+tillegg holdt til `UserManagement` (nedenfor).
+
+### Hastighetsgrensen for en nøkkelforespørsel
+
+Når `Check` har sluppet en nøkkel gjennom, teller ruteren forespørselen under policyen `api`,
+med integrasjonen som nøkkel, integrasjonens `rate_limit_per_minute` (60 til 6 000, standard
+600) som grense og et vindu på ett minutt. Alle integrasjonens nøkler deler tellingen. En avvist
+nøkkel telles ikke, og grensene per operasjon nedenfor, med adressen som nøkkel, brukes
+fortsatt før `Check`. Hvert svar til en nøkkel som er sluppet gjennom, har `RateLimit-Limit`,
+`RateLimit-Remaining` og `RateLimit-Reset` (sekunder); en forespørsel over grensen får `429
+rate_limited` med `Retry-After`, i kroppen alle hastighetsgrenser skriver.
+
+Tellingen ligger i `platform.rate_limit` som de andre, men en nøkkelforespørsel venter ikke på
+den: vinduets første forespørsel registrerer et treff der, og hver replika teller resten i
+prosessen, og en tømmer legger dem til den delte raden hvert sekund, enten det kommer flere
+forespørsler eller ikke, og leser tilbake det de andre la til, og en gang til når begrenseren
+lukkes ved avslutning. En tømming legger bare til i raden for vinduet treffene ble talt i: treff
+fra et vindu raden siden har forlatt, droppes. Hver replika ligger derfor høyst om lag ett sekund
+av sin egen trafikk etter, og replikaene kan til sammen slippe gjennom opptil ett sekunds
+forespørsler mer enn grensen. En replika som stopper uten å avslutte, mister høyst ett sekund av
+tellingen.
+
+### Forespørselsloggen
+
+Det en nøkkel gjorde, registreres i `identity.api_requests`: hver forespørsel en nøkkel gjorde
+som identitet kunne knytte til den, sluppet gjennom eller avvist — tidspunktet, nøkkelen,
+integrasjonen, metoden, `operationId`, statusen, for en avvisning årsaken (`expired`,
+`revoked`, `disabled`, `archived`, `network`, `read_only`, `never`, `forbidden` eller
+`rate_limited`), varigheten, klientadressen og sporings-ID-en. En forespørsel med en nøkkel som
+ikke passet noen nøkkel, registreres ikke. En kropp, en spørrestreng og verdien til en
+stiparameter registreres aldri, siden de kan inneholde personopplysninger; sporings-ID-en finner
+forespørselen i serverens spor og logglinjer. Det er her du ser hva en nøkkel gjorde, og hvorfor
+den ble avvist: en tilbakekalt nøkkel, en deaktivert eller arkivert integrasjon og en forespørsel
+fra utenfor nøkkelens nettverk får alle bare `401 unauthenticated`. Eiere leser
+den i integrasjonens fane **Forespørsler**
+([API-tilgang](/nb/admin/api-access/#forespørselsloggen)).
+
+Ruteren gir hver besvarte forespørsel til identitets registrator, som legger den i kø og aldri
+venter. En skriver i API-prosessen skriver køen hvert annet sekund eller per 500 rader, på en
+egen tilkobling fra poolen, og en gang til ved avslutning; et krasj kan miste de to siste
+sekundene. Når køen er full, fordi databasen er treg eller borte, droppes rader og telles i
+metrikken `vantigo.identity.api_requests.dropped` (attributtet `reason`: `queue_full` eller
+`write_failed`). Loggen er en driftslogg; revisjonssporet nedenfor er loggen over endringer.
+
+Tabellen er partisjonert per UTC-døgn på `at`, med en DEFAULT-partisjon, så en skriving aldri
+feiler fordi en partisjon mangler. Arbeideren `identity.api-keys` lager partisjonene for i dag og
+de neste 6 dagene, flytter rader som havnet i DEFAULT, til en partisjon for dagen sin, og sletter
+det som er eldre enn de 30 dagene som beholdes, i dag medregnet
+([Konfigurasjon](/nb/admin/configuration/#arbeidere)). Hver dag lages i en egen transaksjon som
+venter høyst 5 sekunder (`lock_timeout`) på tabellens lås; en dag som ikke får den, logges og
+lages ved neste syklus, og varslene sendes uansett. Tabellen har ingen
+fremmednøkkel til `api_keys`: en nøkkels rad slettes 90 dager etter at den utløp, og loggradene
+eldes ut av seg selv.
 
 ### Hva som revideres for integrasjoner
 
@@ -1071,7 +1124,7 @@ med `Cache-Control: no-store`.
 Autentiseringsendepunktene er hastighetsbegrenset av en begrenser med faste vinduer,
 der tellerne ligger i PostgreSQL (`platform.rate_limit`), slik at en grense holder
 **på tvers av replikaer og omstarter** og ikke per prosess. Grensen anvendes før
-tilgangskontrollen.
+tilgangskontrollen, unntatt `api`, som teller en nøkkel som er sluppet gjennom.
 
 | Policy | Grense | Gjelder for |
 | --- | --- | --- |
@@ -1084,6 +1137,7 @@ tilgangskontrollen.
 | `Invitations` | 30 / minutt | Eiers administrasjon av invitasjoner |
 | `InvitationAcceptance` | 20 / minutt | Validering og aksept av invitasjon |
 | `UserManagement` | 30 / minutt | Eiers brukeradministrasjon, å ta inn brukere under Ansatte, ansattrollene og å lage eller rotere en API-nøkkel |
+| `api` | Integrasjonens `rate_limit_per_minute` / minutt | Hver forespørsel en API-nøkkel slippes gjennom for, med integrasjonen som nøkkel, etter tilgangskontrollen ([over](#hastighetsgrensen-for-en-nøkkelforespørsel)) |
 | `OwnerAvatarRead` | 300 / minutt | Lesing av eieres avatarer |
 | `StationPairing` | 10 / 15 minutter | Tilkobling av en nettbrettstasjon med en kode |
 | `StationPairingGlobal` | 60 / time | Tilkoblingsforsøk i hele installasjonen, uansett adresse |
@@ -1092,8 +1146,8 @@ tilgangskontrollen.
 | `station-operator-sign-in` | 10 feil / 5 minutter | Mislykkede operatørpålogginger på én nettbrettstasjon, nøkkel nettbrettstasjonen; svarer uten `Retry-After` |
 | `BadgeEnrolment` | 60 / 15 minutter | Registrering av kort |
 
-Alle policyer unntatt `login-attempts`, `StationPairingGlobal`, `station-operator-attempts` og
-`station-operator-sign-in` bruker klientadressen som nøkkel, og det er
+Alle policyer unntatt `login-attempts`, `StationPairingGlobal`, `station-operator-attempts`,
+`station-operator-sign-in` og `api` bruker klientadressen som nøkkel, og det er
 derfor `TRUSTED_PROXY_HOPS` og `TRUSTED_PROXY_CIDRS` betyr noe bak en proxy: setter du
 dem feil, deler alle forespørsler én bøtte, eller en klient velger sin egen.
 
