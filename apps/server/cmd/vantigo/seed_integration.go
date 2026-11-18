@@ -6,7 +6,9 @@ package main
 // 90 days with no narrowing. The key is made, and printed once to stdout,
 // only when APP_URL is this machine: it is never written anywhere, and on a
 // hosted demo the Owner makes one in Workspace admin › API access. A rerun
-// leaves an integration that exists as it is and makes no second key.
+// leaves an integration that exists as it is and makes no second key. A role
+// named Webshop that is system, built-in or holds other keys than the demo's
+// is never given to it: the integration is skipped, with a log line.
 
 import (
 	"context"
@@ -15,6 +17,7 @@ import (
 	"io"
 	"log/slog"
 	"net/netip"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -50,7 +53,7 @@ func seedLocalHost(cfg *config.Config) bool {
 
 func seedDemoIntegration(ctx context.Context, pool *pgxpool.Pool, logger *slog.Logger, cfg *config.Config, stdout io.Writer, now time.Time) error {
 	var key string
-	created := false
+	created, skipped := false, false
 	err := db.WithTx(ctx, pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		var exists bool
 		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM identity.integrations WHERE lower(name) = lower($1) AND archived_at IS NULL)`,
@@ -69,7 +72,18 @@ func seedDemoIntegration(ctx context.Context, pool *pgxpool.Pool, logger *slog.L
 		}
 
 		var roleID uuid.UUID
-		err := tx.QueryRow(ctx, `SELECT id FROM identity.roles WHERE normalized_name = upper($1)`, demoIntegrationRole).Scan(&roleID)
+		var system, builtIn bool
+		var held []string
+		err := tx.QueryRow(ctx, `SELECT r.id, r.is_system, r.is_built_in,
+				ARRAY(SELECT rp.permission_key FROM identity.role_permissions rp WHERE rp.role_id = r.id ORDER BY 1)
+			FROM identity.roles r WHERE r.normalized_name = upper($1)`, demoIntegrationRole).Scan(&roleID, &system, &builtIn, &held)
+		if err == nil && (system || builtIn || !slices.Equal(held, slices.Sorted(slices.Values(demoIntegrationPermissions)))) {
+			// A role of that name that is not the demo's own is never given
+			// to an integration: its keys would reach what the demo never
+			// meant a web shop to.
+			skipped = true
+			return nil
+		}
 		if errors.Is(err, pgx.ErrNoRows) {
 			roleID = uuid.New()
 			if _, err := tx.Exec(ctx, `INSERT INTO identity.roles (id, name, normalized_name, display_name, description, version, created_at, updated_at)
@@ -118,6 +132,10 @@ func seedDemoIntegration(ctx context.Context, pool *pgxpool.Pool, logger *slog.L
 	})
 	if err != nil {
 		return err
+	}
+	if skipped {
+		logger.Warn("integration demo skipped: a role of its name exists and is not the demo's", "integration", demoIntegrationName, "role", demoIntegrationRole)
+		return nil
 	}
 	if !created {
 		return nil
