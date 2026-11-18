@@ -331,6 +331,34 @@ asymmetric signing (`v1a`/`v2a`); a replay-missing/backfill tool; receivers othe
 
 - **1** (2026-11-18): first draft from R.
 - **2** (2026-11-18): the review's 22 findings, §13.
+- **3** (2026-11-18, as built in delivery A):
+  - **24 events, not 25.** W26's test (`internal/integration/webhook_events_test.go`) passed
+    every entry but `accounting.supplier_invoice.deleted`: its draft is hard-deleted with it
+    (`accounting/supplier_invoices.go`, `DeleteAccountingSupplierInvoice`), so
+    `GET /accounting/supplier-invoices/{id}` can only answer 404. It is left out, and
+    `reference/webhooks.md` says so. Every other GET is `permission:<module>:access` (or
+    `accounting:read`), delegable, and not `x-vantigo-api: never`.
+  - Credit notes: `GET /invoices/{id}` serves them (`kind: credit_note`), so
+    `invoices.document.issued` is exposed with resource `invoice`; `customer_credit.changed`
+    is exposed (resource `customer_credit`, `IDField: customerId`).
+  - The catalogue entry carries `Version` beside the zero-value `Event`; the test asserts
+    `Version == Event.EventVersion() == 1`.
+  - `webhook_deliveries` gains `state_reason` (`permission_not_held`, `attempts_exhausted`,
+    `gone`, `endpoint_disabled`, `integration_archived`, `expired`) and `max_run_attempts` (8,
+    or 1 for a ping), which W7, W18, W19 and W30 need stored. `webhook_attempts.secret_used`
+    is `current` | `both` (whether the previous secret signed too), not `current` | `previous`.
+  - W11 also refuses a single-label host (no dot), which only a search domain could resolve.
+  - W28's "short hash" is a keyed digest: `secrets.Box.MAC` under its own purpose
+    `identity/webhook-url-digest`, 8 bytes in hex, so a path token cannot be guessed back
+    from the audit row.
+  - The 50-per-workspace count leaves out the endpoints of archived integrations. On an
+    archived integration, disable is answered as it is and delete is allowed; create, PATCH,
+    enable and roll are 409 `integration_archived` (W36).
+  - `GET /webhook-events` requires `integrationId`. The writes are in identity's `limits`
+    map at `policyUserManagement`; the reads are not limited, as the integrations' are not.
+  - The test, deliveries and resend operations are declared with B and C, not in A's
+    contract: identity's operation-coverage gate fails on an operation no test exercises.
+  - The pages say plainly that A sends nothing yet.
 
 ## 12. What overturning a default changes
 

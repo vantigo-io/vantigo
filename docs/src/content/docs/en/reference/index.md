@@ -22,7 +22,9 @@ serves under `/docs/`.
 An application calling the API with an integration's key starts at the
 [API introduction](/en/reference/api-introduction/): authentication, the document of what
 a key reaches, the error codes and the rate limit. What changes, and how, is the
-[API compatibility](/en/reference/api-compatibility/) policy.
+[API compatibility](/en/reference/api-compatibility/) policy. An application told of events
+as they happen, rather than polling, reads [Webhooks](/en/reference/webhooks/): the events an
+integration's endpoint may receive, the signed message and how to verify it.
 
 ## Modules
 
