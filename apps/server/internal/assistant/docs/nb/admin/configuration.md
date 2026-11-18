@@ -117,6 +117,7 @@ kjører, hvert 5. sekund ([Bakgrunnsjobber og skalering](/nb/admin/installation/
 
 | Innstilling | Standard | Betydning |
 | --- | --- | --- |
+| `IDENTITY_API_KEYS_ENABLED`, `IDENTITY_API_KEYS_POLL` | `1`, `1h` | Identitys arbeider `identity.api-keys`: den registrerer `api_key.expired` én gang for hver integrasjonsnøkkel som passerer utløpet, og sletter en nøkkels rad 90 dager etter at den utløp; revisjonsradene blir værende. Av avvises en utløpt nøkkel likevel, den blir bare ikke revidert eller slettet ([API-tilgang](/nb/admin/api-access/)) |
 | `STAFF_ACCOUNTS_ENABLED`, `STAFF_RETENTION_ENABLED`, `STAFF_COMPETENCE_ENABLED` | `1` | Arbeiderne i Ansatte for kontoer, oppbevaring og kompetanse |
 | `STAFF_WORKERS_POLL`, `STAFF_IMPORT_MAX_ROWS` | `1h`, fra `5000` til `20000` | Hvor ofte de ser etter; personene én import tar og én eksport skriver |
 | `CALENDAR_CANCELLATIONS_ENABLED`, `CALENDAR_WORKERS_POLL` | `1`, `1h` | Sletting av avlyste avtaler |

@@ -1,6 +1,6 @@
 ---
 title: Workspace administration
-description: Users, invitations, roles and access, delegated administration, first-run setup and system administration.
+description: Users, invitations, roles and access, delegated administration, API access, first-run setup and system administration.
 sidebar:
   order: 90
 sources:
@@ -11,8 +11,8 @@ sources:
 
 Workspace administration is where an **Owner** manages who can use Vantigo and what
 they may do. Open the avatar menu at the top right and choose **Workspace admin**;
-its sidebar has **Overview**, **Users**, **Invitations**, **Roles & access** and, while
-Manufacturing is on, **Stations**, and,
+its sidebar has **Overview**, **Users**, **Invitations**, **Roles & access**, while
+Manufacturing is on, **Stations**, **API access** and,
 under **Integrations**, **Microsoft Entra ID**, **Google Workspace**, **Meta**, **Shipping**, **Bank** and, once Vantigo has set up AI for the
 installation, **AI models** and **Assistant**.
 
@@ -152,6 +152,41 @@ or a badge signs the person out at every station.
 
 The administrator's details — the token, the backoff and the alerts — are under
 [Shop-floor stations](/en/admin/authentication/#shop-floor-stations).
+
+## API access
+
+**API access** is where you let another application — a web shop, a reporting tool, a
+script — use Vantigo's API. Each application gets an **integration**: an account that holds
+roles and acts with an API key, never by signing in. What it makes and changes is shown with
+its name and an **API** badge. The page is the Owner's alone.
+
+The list shows each integration's **Status** (*Active*, *Disabled* or *Archived*), its
+**Roles**, its **Keys in force**, the **Nearest expiry** among them and when a key was
+**Last used**.
+
+1. Make a custom role under **Roles & access** with exactly what the application needs.
+2. Choose **New integration**, give it a **Name**, a **Description** if it helps, a
+   **Contact** — the person responsible for it — and its **Roles**, and choose **Create
+   integration**. Its page opens.
+3. Check **What its roles allow**. A permission marked **Never available to API keys** is one
+   no key ever holds, whatever the roles say. One marked **Sensitive** lets a key read or change
+   that data in bulk.
+4. Under **API keys**, choose **New API key**. Give it a **Name** and an **Expiry** (30, 90,
+   180 or 365 days, or a date up to a year ahead). To limit it further, turn on **Narrow the
+   key** and tick the permissions it may use, turn on **Read only**, or list the **Networks** it
+   may be used from.
+5. Choose **Create key**. The key is shown **once**: choose **Copy**, put it where the
+   application keeps its secrets, and choose **I have copied the key**. The dialog also shows a
+   `curl` example to try it. Once closed, the key cannot be shown again.
+
+In a key's row, **Roll** makes a new key in place of it, the old one working on for the
+**Overlap** you choose, and **Revoke** stops it at once. Under **Actions**, **Edit details**
+changes the name, description, contact and rate limit, **Disable** stops every key until you
+choose **Enable**, and **Archive** revokes every key and keeps the integration for what it did —
+it cannot be undone. If a key may have leaked, revoke it at once.
+
+The details — what a key can reach, the narrowing, read-only keys, networks, the answers a
+client gets and what to do when a key leaks — are under [API access](/en/admin/api-access/).
 
 ## Disable, enable or delete a user
 

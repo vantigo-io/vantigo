@@ -115,6 +115,7 @@ dispatcher, `events.dispatch`, has neither: it runs wherever the workers run, ev
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
+| `IDENTITY_API_KEYS_ENABLED`, `IDENTITY_API_KEYS_POLL` | `1`, `1h` | Identity's `identity.api-keys` worker: it records `api_key.expired` once for each integration key that passes its expiry, and deletes a key's row 90 days after it expired; the audit rows stay. Off, an expired key is still refused, only not audited or deleted ([API access](/en/admin/api-access/)) |
 | `STAFF_ACCOUNTS_ENABLED`, `STAFF_RETENTION_ENABLED`, `STAFF_COMPETENCE_ENABLED` | `1` | The Staff accounts, retention and competence workers |
 | `STAFF_WORKERS_POLL`, `STAFF_IMPORT_MAX_ROWS` | `1h`, from `5000` to `20000` | How often they look; the people one import takes and one export writes |
 | `CALENDAR_CANCELLATIONS_ENABLED`, `CALENDAR_WORKERS_POLL` | `1`, `1h` | Erasing cancelled appointments |
