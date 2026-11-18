@@ -192,9 +192,16 @@ key, the status and, for a refused one, why. **Key**, **Status**, **Refused beca
 The **Contact** and every Owner get an email 14 days and 3 days before a key expires, and on
 the day, unless it has been rolled or revoked. Roll the key before then.
 
+The **Webhooks** tab lists the integration's webhook endpoints: the HTTPS addresses of the
+application that are to be told when something happens, such as a sales order confirmed.
+**New endpoint** asks for the **URL** and the **Events**, of those the integration's roles let
+it receive, and shows the **signing secret** once: choose **I have copied the secret** when it
+is stored. Each endpoint's **Actions** edit, disable, delete it or **Roll secret**. Vantigo
+does not send messages to the endpoints yet; that comes in a later release.
+
 The details — what a key can reach, the narrowing, read-only keys, networks, the rate limit,
-the answers a client gets, the request log and what to do when a key leaks — are under
-[API access](/en/admin/api-access/).
+the answers a client gets, the request log, webhook endpoints and what to do when a key
+leaks — are under [API access](/en/admin/api-access/).
 
 ## Disable, enable or delete a user
 
