@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -17,6 +18,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/identity/store"
 	"github.com/vantigo-io/vantigo/server/internal/module"
+	"github.com/vantigo-io/vantigo/server/internal/secrets"
 )
 
 // The webhook sender, identity.webhook-sender (outgoing webhooks design W15
@@ -49,6 +51,19 @@ const (
 	webhookPerEndpoint = 4
 	webhookPerPass     = 2
 	webhookConcurrency = 16
+	// webhookReserve is how many of the process's slots only an endpoint
+	// with nothing in flight may take, so endpoints that hang never hold
+	// every slot and starve the rest (S1).
+	webhookReserve = 4
+	// webhookSkippedEvery is how often the fan-out records an event an
+	// integration may no longer receive, per endpoint and event (S5).
+	webhookSkippedEvery = 24 * time.Hour
+	// webhookNoticeGiveUp is how long after its disabling a notice no one
+	// could be mailed is still tried; webhookNoticeBackoff and
+	// webhookNoticeBackoffMax the wait between its tries in one process.
+	webhookNoticeGiveUp     = 7 * 24 * time.Hour
+	webhookNoticeBackoff    = time.Minute
+	webhookNoticeBackoffMax = time.Hour
 	// webhookPendingLimit is how long a delivery may stay pending before it
 	// expires; webhookRetention how long any delivery is kept;
 	// webhookStaleOnEnable how old a delivery that queued while its
@@ -92,9 +107,21 @@ type webhookSender struct {
 	// slots holds a token per send in flight.
 	slots chan struct{}
 	sends sync.WaitGroup
+	// wake is nudged when a send finishes, so Run passes again at once
+	// instead of waiting for the next tick to use the slot it freed.
+	wake chan struct{}
 
 	mu          sync.Mutex
 	housekeptAt time.Time
+	// noticeRetry is when the sweep may next try an endpoint's notice that
+	// no one could be mailed, and the wait it doubles from (W32).
+	noticeRetry map[uuid.UUID]webhookNoticeRetry
+}
+
+// webhookNoticeRetry is an unmailed notice's backoff in this process.
+type webhookNoticeRetry struct {
+	at   time.Time
+	wait time.Duration
 }
 
 func newWebhookSender(a *Access, d module.Deps) *webhookSender {
@@ -112,6 +139,9 @@ func newWebhookSender(a *Access, d module.Deps) *webhookSender {
 		clock:   clock,
 		jitter:  rand.Float64,
 		slots:   make(chan struct{}, webhookConcurrency),
+		wake:    make(chan struct{}, 1),
+
+		noticeRetry: map[uuid.UUID]webhookNoticeRetry{},
 	}
 }
 
@@ -119,19 +149,28 @@ func (*webhookSender) Name() string              { return webhookSenderName }
 func (w *webhookSender) Interval() time.Duration { return w.deps.Config.IdentityWebhooksPoll }
 
 // Run passes until ctx is done, then waits for the sends in flight, which
-// ctx's end aborts and which record nothing.
+// ctx's end aborts and which record nothing. The poll is the idle cadence:
+// a pass that leased all it could — the process's free slots, or a pass's
+// share of some endpoint — is followed by the next at once, and a send that
+// finishes wakes the loop, so a fast receiver is not held to two messages a
+// poll.
 func (w *webhookSender) Run(ctx context.Context) error {
 	ticker := time.NewTicker(w.Interval())
 	defer ticker.Stop()
 	defer w.Wait()
 	for {
-		if _, err := w.RunPass(ctx); err != nil && ctx.Err() == nil {
+		_, more, err := w.pass(ctx)
+		if err != nil && ctx.Err() == nil {
 			w.deps.Logger.Error("identity webhook sender pass failed", "worker", w.Name(), "error", err)
+		}
+		if more && err == nil && ctx.Err() == nil {
+			continue
 		}
 		select {
 		case <-ctx.Done():
 			return nil
 		case <-ticker.C:
+		case <-w.wake:
 		}
 	}
 }
@@ -144,9 +183,16 @@ func (w *webhookSender) Wait() { w.sends.Wait() }
 // many sends it started, without waiting for them; a failure in one part does
 // not keep the next from running, and the pass answers them joined.
 func (w *webhookSender) RunPass(ctx context.Context) (int, error) {
-	started, err := w.claimAndSend(ctx)
+	started, _, err := w.pass(ctx)
+	return started, err
+}
+
+// pass is RunPass, also answering whether the claim leased all it could, so
+// more may be due at once.
+func (w *webhookSender) pass(ctx context.Context) (int, bool, error) {
+	started, more, err := w.claimAndSend(ctx)
 	if ctx.Err() != nil {
-		return started, err
+		return started, more, err
 	}
 	if derr := w.disableFailing(ctx); derr != nil {
 		err = errors.Join(err, derr)
@@ -163,7 +209,7 @@ func (w *webhookSender) RunPass(ctx context.Context) (int, error) {
 			err = errors.Join(err, herr)
 		}
 	}
-	return started, err
+	return started, more, err
 }
 
 // webhookClaim is one leased delivery and what its attempt needs of its
@@ -179,26 +225,33 @@ type webhookClaim struct {
 }
 
 // claimAndSend claims as many due deliveries as the process has free slots
-// for, in one short transaction (W29), and starts a send for each.
-func (w *webhookSender) claimAndSend(ctx context.Context) (int, error) {
+// for, in one short transaction (W29), and starts a send for each. It
+// answers whether the claim leased all it could, so more may be due.
+func (w *webhookSender) claimAndSend(ctx context.Context) (int, bool, error) {
 	free := cap(w.slots) - len(w.slots)
 	if free <= 0 {
-		return 0, nil
+		return 0, false, nil
 	}
-	claimed, err := w.claim(ctx, free)
+	claimed, more, err := w.claim(ctx, free)
 	if err != nil {
-		return 0, err
+		return 0, false, err
 	}
 	for _, c := range claimed {
 		w.slots <- struct{}{}
 		w.sends.Add(1)
 		go func() {
 			defer w.sends.Done()
-			defer func() { <-w.slots }()
+			defer func() {
+				<-w.slots
+				select {
+				case w.wake <- struct{}{}:
+				default:
+				}
+			}()
 			w.attempt(ctx, c)
 		}()
 	}
-	return len(claimed), nil
+	return len(claimed), more, nil
 }
 
 // claim is W29's claim at the clock's now, at most limit deliveries: (a)
@@ -207,10 +260,14 @@ func (w *webhookSender) claimAndSend(ctx context.Context) (int, error) {
 // deliveries ranked and leased. Before it commits, each integration's
 // permission is read once and the leased events it no longer may receive
 // are settled skipped instead (W33).
-func (w *webhookSender) claim(ctx context.Context, limit int) ([]webhookClaim, error) {
+//
+// It also answers whether it leased all it could — limit in all, or a pass's
+// share of some endpoint — so the next pass may run at once.
+func (w *webhookSender) claim(ctx context.Context, limit int) ([]webhookClaim, bool, error) {
 	now := w.clock()
 	lease := uuid.New()
 	var out []webhookClaim
+	more := false
 	err := pgx.BeginFunc(ctx, w.pool, func(tx pgx.Tx) error {
 		q := store.New(tx)
 		endpoints, err := q.LockDueWebhookEndpoints(ctx, now)
@@ -229,9 +286,20 @@ func (w *webhookSender) claim(ctx context.Context, limit int) ([]webhookClaim, e
 		rows, err := q.LeaseWebhookDeliveries(ctx, store.LeaseWebhookDeliveriesParams{
 			LeaseID: &lease, LeaseUntil: now.Add(webhookLease), Now: now, EndpointIds: ids,
 			PerPass: webhookPerPass, PerEndpoint: webhookPerEndpoint, BatchSize: int32(min(limit, 1<<20)), //nolint:gosec // bounded
+			Reserve: webhookReserve,
 		})
 		if err != nil {
 			return fmt.Errorf("identity: lease the webhook deliveries: %w", err)
+		}
+		perEndpoint := map[uuid.UUID]int{}
+		for _, d := range rows {
+			perEndpoint[d.EndpointID]++
+			if perEndpoint[d.EndpointID] >= webhookPerPass {
+				more = true
+			}
+		}
+		if len(rows) >= limit {
+			more = true
 		}
 		held := map[uuid.UUID][]string{}
 		var skipped []uuid.UUID
@@ -261,9 +329,9 @@ func (w *webhookSender) claim(ctx context.Context, limit int) ([]webhookClaim, e
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	return out, nil
+	return out, more, nil
 }
 
 // stillPermitted reports whether the integration still may receive the
@@ -290,24 +358,25 @@ func (w *webhookSender) stillPermitted(ctx context.Context, q *store.Queries, he
 // previous secret signs beside the current one only while its overlap is
 // after the attempt's time (W9). An attempt that ctx's end aborted records
 // nothing: its lease runs out and the next claim sends it again.
+//
+// A current secret that does not open — APP_SECRET changed, a row damaged —
+// sends nothing and is recorded as a failed attempt, error other, so the
+// run backs off and dies, and the endpoint can be disabled as failing,
+// rather than being claimed again every lease.
 func (w *webhookSender) attempt(ctx context.Context, c webhookClaim) {
 	at := w.clock()
-	current, err := openWebhookSecret(w.deps.Secrets, c.endpoint, c.secret)
+	key, err := openWebhookKey(w.deps.Secrets, c.endpoint, c.secret)
 	if err != nil {
-		w.deps.Logger.Error("identity: a webhook secret could not be opened", "worker", w.Name(), "endpoint", c.endpoint, "error", err)
-		return
-	}
-	key, err := webhookSecretKey(current)
-	if err != nil {
-		w.deps.Logger.Error("identity: a webhook secret is not one", "worker", w.Name(), "endpoint", c.endpoint)
+		w.deps.Logger.Error("identity: a webhook secret could not be opened", "worker", w.Name(), "endpoint", c.endpoint)
+		if rerr := w.record(context.WithoutCancel(ctx), c, webhookAttempt{at: at, errKind: webhookErrOther}, webhookSecretUsedCurrent); rerr != nil {
+			w.deps.Logger.Error("identity: a webhook attempt could not be recorded", "worker", w.Name(), "delivery", c.id, "error", rerr)
+		}
 		return
 	}
 	keys, used := [][]byte{key}, webhookSecretUsedCurrent
 	if c.previous != nil && c.previousUntil != nil && c.previousUntil.After(at) {
-		if prev, err := openWebhookSecret(w.deps.Secrets, c.endpoint, c.previous); err == nil {
-			if pkey, err := webhookSecretKey(prev); err == nil {
-				keys, used = append(keys, pkey), webhookSecretUsedBoth
-			}
+		if pkey, err := openWebhookKey(w.deps.Secrets, c.endpoint, c.previous); err == nil {
+			keys, used = append(keys, pkey), webhookSecretUsedBoth
 		}
 	}
 	result := w.client.send(ctx, webhookMessage{url: c.url, id: webhookMessageID(c.id), body: []byte(c.body), keys: keys})
@@ -318,6 +387,15 @@ func (w *webhookSender) attempt(ctx context.Context, c webhookClaim) {
 	if err := w.record(context.WithoutCancel(ctx), c, result, used); err != nil {
 		w.deps.Logger.Error("identity: a webhook attempt could not be recorded", "worker", w.Name(), "delivery", c.id, "error", err)
 	}
+}
+
+// openWebhookKey opens a sealed secret of the endpoint into its HMAC key.
+func openWebhookKey(box *secrets.Box, endpoint uuid.UUID, sealed []byte) ([]byte, error) {
+	secret, err := openWebhookSecret(box, endpoint, sealed)
+	if err != nil {
+		return nil, err
+	}
+	return webhookSecretKey(secret)
 }
 
 // nextAttempt is when a run that has failed attempts times retries after a
@@ -480,16 +558,45 @@ func (w *webhookSender) Housekeep(ctx context.Context) error {
 			break
 		}
 	}
-	due, err := w.q.ListWebhookNoticesDue(ctx, webhookNoticeBatch)
+	// The notices no one could be mailed yet: none when the installation
+	// has no mail, none for an endpoint disabled more than a week ago, and
+	// each tried again only once its backoff has passed.
+	if w.deps.Mail == nil {
+		return errs
+	}
+	due, err := w.q.ListWebhookNoticesDue(ctx, store.ListWebhookNoticesDueParams{Since: now.Add(-webhookNoticeGiveUp), BatchSize: webhookNoticeBatch})
 	if err != nil {
 		return errors.Join(errs, fmt.Errorf("identity: read the webhook notices owed: %w", err))
 	}
 	for _, id := range due {
+		w.mu.Lock()
+		retry, waiting := w.noticeRetry[id]
+		w.mu.Unlock()
+		if waiting && now.Before(retry.at) {
+			continue
+		}
 		if _, err := w.sendWebhookNotice(ctx, id); err != nil {
 			errs = errors.Join(errs, err)
 		}
 	}
 	return errs
+}
+
+// noteNoticeTried records how an endpoint's notice went: mailed, or not
+// owed, forgets it; mailed to no one doubles its wait before the sweep
+// tries again, from a minute up to an hour.
+func (w *webhookSender) noteNoticeTried(endpoint uuid.UUID, mailed bool, now time.Time) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if mailed {
+		delete(w.noticeRetry, endpoint)
+		return
+	}
+	wait := webhookNoticeBackoff
+	if prev, ok := w.noticeRetry[endpoint]; ok {
+		wait = min(prev.wait*2, webhookNoticeBackoffMax)
+	}
+	w.noticeRetry[endpoint] = webhookNoticeRetry{at: now.Add(wait), wait: wait}
 }
 
 // sendWebhookNotice mails the notice of an endpoint the sender disabled to
@@ -504,6 +611,7 @@ func (w *webhookSender) sendWebhookNotice(ctx context.Context, endpoint uuid.UUI
 	now := w.clock().UTC().Truncate(time.Microsecond)
 	row, err := w.q.ClaimWebhookNotice(ctx, store.ClaimWebhookNoticeParams{Now: now, ID: endpoint})
 	if errors.Is(err, pgx.ErrNoRows) {
+		w.noteNoticeTried(endpoint, true, now)
 		return false, nil
 	}
 	if err != nil {
@@ -529,6 +637,7 @@ func (w *webhookSender) sendWebhookNotice(ctx context.Context, endpoint uuid.UUI
 			mailed++
 		}
 	}
+	w.noteNoticeTried(endpoint, mailed > 0, now)
 	if mailed == 0 {
 		w.releaseWebhookNotice(ctx, endpoint, now)
 		return false, nil
@@ -545,7 +654,18 @@ func (w *webhookSender) releaseWebhookNotice(ctx context.Context, endpoint uuid.
 // webhookDisabledNotice is the mail of an endpoint's disabling, in English
 // and Norwegian bokmål. It names the endpoint by its URL's scheme and host
 // only, never its path or query (W28).
+//
+// The integration's name is an Owner's text: its control and format
+// characters become spaces, so no line break or bidirectional override
+// reaches a subject or a body. The mail senders encode the subject header
+// themselves (RFC 2047).
 func webhookDisabledNotice(row store.ClaimWebhookNoticeRow) contracts.Notice {
+	row.IntegrationName = strings.TrimSpace(strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
+			return ' '
+		}
+		return r
+	}, row.IntegrationName))
 	origin := webhookURLOrigin(row.Url)
 	gone := row.DisabledReason != nil && *row.DisabledReason == webhookReasonGone
 	enWhy := "its messages have failed for 5 days, and at least 5 of them were given up after every retry."
@@ -569,8 +689,9 @@ func webhookDisabledNotice(row store.ClaimWebhookNoticeRow) contracts.Notice {
 }
 
 // expireStaleWebhookDeliveries settles as dead (expired), on q, the pending
-// deliveries of an integration being enabled again that queued more than 24
-// hours ago (W2, W30): its endpoints are held first, in id order (W31).
+// deliveries of an integration being enabled again that have been due for
+// more than 24 hours — overdue because it was disabled (W2, W30): its
+// endpoints are held first, in id order (W31).
 func expireStaleWebhookDeliveries(ctx context.Context, q *store.Queries, integration uuid.UUID, now time.Time) error {
 	endpoints, err := q.LockIntegrationWebhookEndpoints(ctx, integration)
 	if err != nil {

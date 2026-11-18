@@ -795,18 +795,13 @@ func TestWebhookSender_FourInFlightPerEndpointAndTheRestGoOn(t *testing.T) {
 	}
 	s := h.webhookSender(t)
 	ctx := context.Background()
-	for range 20 {
+	// Pass until the fast endpoint has all ten, the slow ones hanging.
+	waitFor(t, func() bool {
 		if _, err := s.RunPass(ctx); err != nil {
 			t.Fatal(err)
 		}
-		if h.count(t, `SELECT count(*) FROM identity.webhook_deliveries WHERE endpoint_id = $1 AND state = 'succeeded'`, fast.ID) == 10 {
-			break
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
-	if n := h.count(t, `SELECT count(*) FROM identity.webhook_deliveries WHERE endpoint_id = $1 AND state = 'succeeded'`, fast.ID); n != 10 {
-		t.Fatalf("the fast endpoint got %d of 10 while two others hung", n)
-	}
+		return h.count(t, `SELECT count(*) FROM identity.webhook_deliveries WHERE endpoint_id = $1 AND state = 'succeeded'`, fast.ID) == 10
+	})
 	waitFor(t, func() bool { return rc.heldNow("slow-a.example.com") == 4 && rc.heldNow("slow-b.example.com") == 4 })
 	for _, host := range []string{"slow-a.example.com", "slow-b.example.com"} {
 		if got := rc.mostHeld(host); got != 4 {
@@ -853,8 +848,12 @@ func TestWebhookSender_TwoSendersNeverSendOneDeliveryTwice(t *testing.T) {
 		}
 		wg.Wait()
 	}
+	// Every pass has returned: what is leased now is all that can be in
+	// flight, and the receiver holds exactly that.
+	if n := h.count(t, `SELECT count(*) FROM identity.webhook_deliveries WHERE lease_until > $1`, h.now()); n != 4 {
+		t.Errorf("%d leased across two senders, want 4", n)
+	}
 	waitFor(t, func() bool { return rc.heldNow("hooks.example.com") == 4 })
-	time.Sleep(50 * time.Millisecond)
 	if got := rc.mostHeld("hooks.example.com"); got != 4 {
 		t.Errorf("%d in flight at once across two senders, want 4", got)
 	}
@@ -1033,11 +1032,57 @@ func TestWebhookSender_ANoticeNobodyGotIsTriedAgain(t *testing.T) {
 		t.Fatalf("an unmailed notice stayed claimed: %v %v", sentAt, err)
 	}
 	h.exec(t, `UPDATE identity.users SET is_disabled = false WHERE id = $1`, ownerID)
+	// Not before its backoff, a minute after the first try.
+	if err := s.Housekeep(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(h.mailTo(ownerEmail)); n != 0 {
+		t.Errorf("%d notices before the backoff passed, want none", n)
+	}
+	h.advance(61 * time.Second)
 	if err := s.Housekeep(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if n := len(h.mailTo(ownerEmail)); n != 1 {
 		t.Errorf("%d notices once someone could be mailed, want one", n)
+	}
+
+	// A notice owed for an endpoint disabled more than a week ago is given
+	// up.
+	old, _ := createWebhook(t, h.signIn(t, ownerID, false), integration, map[string]any{"url": "https://old.example.com/in"})
+	h.exec(t, `UPDATE identity.webhook_endpoints SET status = 'disabled', disabled_reason = 'gone', disabled_at = $2 WHERE id = $1`,
+		old.ID, h.now().Add(-8*24*time.Hour))
+	if err := s.Housekeep(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(h.mailTo(ownerEmail)); n != 1 {
+		t.Errorf("%d notices, want none for an endpoint disabled 8 days ago", n)
+	}
+}
+
+// TestWebhookSender_ANoticeNamesTheIntegrationWithoutControlCharacters is S6:
+// the integration's name is an Owner's text, and no line break or
+// bidirectional override of it reaches a notice.
+func TestWebhookSender_ANoticeNamesTheIntegrationWithoutControlCharacters(t *testing.T) {
+	t.Parallel()
+	h, owner, _, integration, rc := senderHarness(t)
+	h.exec(t, `UPDATE identity.integrations SET name = $2 WHERE user_id = $1`, integration, "Web\r\nBcc: x@example.com\u202eshop")
+	e, _ := createWebhook(t, owner, integration, map[string]any{})
+	h.dropPings(t)
+	rc.status("hooks.example.com", http.StatusGone)
+	h.insertDelivery(t, e.ID, 1)
+	pass(t, h.webhookSender(t))
+	mails := h.mailTo(ownerEmail)
+	if len(mails) != 1 {
+		t.Fatalf("%d notices", len(mails))
+	}
+	for _, text := range []string{mails[0].Subject, mails[0].TextBody} {
+		if strings.ContainsAny(text, "\r\u202e") || strings.Contains(text, "Web\n") {
+			t.Errorf("a notice carries the name's control characters: %q", text)
+		}
+	}
+	if !strings.Contains(mails[0].Subject, "Web  Bcc: x@example.com shop") {
+		t.Errorf("subject %q", mails[0].Subject)
 	}
 }
 
@@ -1110,6 +1155,10 @@ func TestWebhookSender_EnablingAnIntegrationExpiresWhatQueuedADayAgo(t *testing.
 		t.Errorf("%d queued for a disabled integration", n)
 	}
 	stale := h.insertDelivery(t, e.ID, 1)
+	// Queued as long ago, but its retry fell due only half an hour before
+	// the enabling: it is not that overdue, and keeps its run.
+	retrying := h.insertDelivery(t, e.ID, 3)
+	h.exec(t, `UPDATE identity.webhook_deliveries SET next_attempt_at = $2 WHERE id = $1`, retrying, h.now().Add(24*time.Hour+30*time.Minute))
 	h.advance(25 * time.Hour)
 	fresh := h.insertDelivery(t, e.ID, 2)
 	pass(t, s)
@@ -1121,7 +1170,10 @@ func TestWebhookSender_EnablingAnIntegrationExpiresWhatQueuedADayAgo(t *testing.
 		t.Fatalf("enable: %d", r.status)
 	}
 	if d := h.delivery(t, stale); d.State != "dead" || d.Reason != "expired" {
-		t.Errorf("queued 25 hours ago: %+v", d)
+		t.Errorf("due 25 hours ago: %+v", d)
+	}
+	if d := h.delivery(t, retrying); d.State != "pending" {
+		t.Errorf("queued 25 hours ago but due half an hour ago: %+v", d)
 	}
 	pass(t, s)
 	if d := h.delivery(t, fresh); d.State != "succeeded" {

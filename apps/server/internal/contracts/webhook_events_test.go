@@ -2,6 +2,23 @@ package contracts
 
 import "testing"
 
+// TestWebhookEvents_EveryEntryNamesAPermission holds the catalogue to at
+// least one permission an entry is received by (outgoing webhooks design
+// W7): identity's fan-out refuses an entry with none, so one would never be
+// sent.
+func TestWebhookEvents_EveryEntryNamesAPermission(t *testing.T) {
+	for _, e := range WebhookEvents() {
+		if len(e.Permissions) == 0 {
+			t.Errorf("%s names no permission", e.Name())
+		}
+		for _, key := range e.Permissions {
+			if key == "" {
+				t.Errorf("%s names an empty permission", e.Name())
+			}
+		}
+	}
+}
+
 func TestWebhookEvent_HrefFillsThePathsOneParameter(t *testing.T) {
 	t.Parallel()
 	for _, c := range []struct {

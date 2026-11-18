@@ -302,7 +302,7 @@ export const IntegrationWebhooks = ({ integrationId, archived }: { integrationId
                   <Button
                     size="compact-sm"
                     variant="light"
-                    loading={lifecycle.isPending}
+                    loading={lifecycle.isPending && lifecycle.variables?.endpoint.id === endpoint.id}
                     onClick={() => lifecycle.mutate({ endpoint, action: "enable" })}
                   >
                     {t("apiAccess.webhookEnable")}

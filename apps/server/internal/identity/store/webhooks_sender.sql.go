@@ -55,7 +55,7 @@ UPDATE identity.webhook_deliveries
 SET state = 'dead', state_reason = 'expired', completed_at = $1::timestamptz,
     next_attempt_at = NULL, lease_id = NULL, lease_until = NULL
 WHERE endpoint_id = ANY($2::uuid[]) AND state = 'pending'
-  AND created_at < $3::timestamptz
+  AND next_attempt_at < $3::timestamptz
 `
 
 type DeadLetterStaleWebhookDeliveriesParams struct {
@@ -65,8 +65,10 @@ type DeadLetterStaleWebhookDeliveriesParams struct {
 }
 
 // DeadLetterStaleWebhookDeliveries settles as dead (expired) the pending
-// deliveries of the endpoints created before cutoff: what queued while their
-// integration was disabled, too old to send once it is enabled again (W30).
+// deliveries of the endpoints that have been due since before cutoff: what
+// waited, overdue, while their integration was disabled, too old to send
+// once it is enabled again (W30). A delivery queued long ago whose retry is
+// not yet that overdue keeps its run.
 func (q *Queries) DeadLetterStaleWebhookDeliveries(ctx context.Context, arg DeadLetterStaleWebhookDeliveriesParams) (int64, error) {
 	result, err := q.db.Exec(ctx, deadLetterStaleWebhookDeliveries, arg.Now, arg.EndpointIds, arg.Cutoff)
 	if err != nil {
@@ -84,7 +86,10 @@ WHERE id IN (
     WHERE d.state = 'pending' AND d.created_at < $2::timestamptz
       AND (d.lease_until IS NULL OR d.lease_until <= $1::timestamptz)
     ORDER BY d.created_at
-    LIMIT $3::int)
+    LIMIT $3::int
+    FOR UPDATE SKIP LOCKED)
+  AND state = 'pending'
+  AND (lease_until IS NULL OR lease_until <= $1::timestamptz)
 `
 
 type ExpireWebhookDeliveriesParams struct {
@@ -94,7 +99,10 @@ type ExpireWebhookDeliveriesParams struct {
 }
 
 // ExpireWebhookDeliveries settles as dead (expired) a batch of deliveries
-// still pending since before cutoff and not in flight (W30).
+// still pending since before cutoff and not in flight (W30). The rows are
+// taken SKIP LOCKED, so a result being written for one is left to it, and
+// the outer WHERE checks again what the subquery chose, so a row that was
+// leased or settled meanwhile is never expired.
 func (q *Queries) ExpireWebhookDeliveries(ctx context.Context, arg ExpireWebhookDeliveriesParams) (int64, error) {
 	result, err := q.db.Exec(ctx, expireWebhookDeliveries, arg.Now, arg.Cutoff, arg.BatchSize)
 	if err != nil {
@@ -197,13 +205,17 @@ WITH inflight AS (
     WHERE d.endpoint_id = ANY($4::uuid[]) AND d.state = 'pending'
       AND d.next_attempt_at <= $3::timestamptz
       AND (d.lease_until IS NULL OR d.lease_until <= $3::timestamptz)
-), chosen AS (
-    SELECT r.id
+), eligible AS (
+    SELECT r.id, r.rank + COALESCE(f.n, 0) AS turn,
+           row_number() OVER (ORDER BY r.rank + COALESCE(f.n, 0), r.created_at, r.id) AS ordinal
     FROM ranked r
     LEFT JOIN inflight f ON f.endpoint_id = r.endpoint_id
     WHERE r.rank <= LEAST($5::int, $6::int - COALESCE(f.n, 0))
-    ORDER BY r.rank, r.created_at, r.id
-    LIMIT $7::int
+), chosen AS (
+    SELECT e.id
+    FROM eligible e
+    WHERE e.ordinal <= $7::int
+      AND (e.turn = 1 OR e.ordinal <= $7::int - $8::int)
 )
 UPDATE identity.webhook_deliveries d
 SET lease_id = $1, lease_until = $2::timestamptz
@@ -221,6 +233,7 @@ type LeaseWebhookDeliveriesParams struct {
 	PerPass     int32
 	PerEndpoint int32
 	BatchSize   int32
+	Reserve     int32
 }
 
 type LeaseWebhookDeliveriesRow struct {
@@ -237,8 +250,11 @@ type LeaseWebhookDeliveriesRow struct {
 // its own so its snapshot sees every lease committed before the endpoints
 // were locked: per locked endpoint it counts the unexpired leases, ranks the
 // due deliveries by creation, and leases those ranked within both the pass's
-// share (2) and what the endpoint's cap (4) leaves, the first of every
-// endpoint before the second of any, at most batch_size in all.
+// share (2) and what the endpoint's cap (4) leaves, at most batch_size in
+// all. A delivery's turn is its rank plus what its endpoint already has in
+// flight, so every endpoint with nothing in flight is served before any gets
+// a second send; and reserve of the batch is kept for such first sends, so
+// endpoints that hang never take every slot of the process (S1).
 func (q *Queries) LeaseWebhookDeliveries(ctx context.Context, arg LeaseWebhookDeliveriesParams) ([]LeaseWebhookDeliveriesRow, error) {
 	rows, err := q.db.Query(ctx, leaseWebhookDeliveries,
 		arg.LeaseID,
@@ -248,6 +264,7 @@ func (q *Queries) LeaseWebhookDeliveries(ctx context.Context, arg LeaseWebhookDe
 		arg.PerPass,
 		arg.PerEndpoint,
 		arg.BatchSize,
+		arg.Reserve,
 	)
 	if err != nil {
 		return nil, err
@@ -316,14 +333,21 @@ func (q *Queries) ListFailingWebhookEndpoints(ctx context.Context, arg ListFaili
 const listWebhookNoticesDue = `-- name: ListWebhookNoticesDue :many
 SELECT id FROM identity.webhook_endpoints
 WHERE status = 'disabled' AND disabled_reason IN ('failing', 'gone') AND disabled_notice_sent_at IS NULL
+  AND disabled_at > $1::timestamptz
 ORDER BY id
-LIMIT $1::int
+LIMIT $2::int
 `
 
+type ListWebhookNoticesDueParams struct {
+	Since     time.Time
+	BatchSize int32
+}
+
 // ListWebhookNoticesDue is the endpoints the sender disabled, as failing or
-// gone, whose notice no one has been mailed yet (W32).
-func (q *Queries) ListWebhookNoticesDue(ctx context.Context, batchSize int32) ([]uuid.UUID, error) {
-	rows, err := q.db.Query(ctx, listWebhookNoticesDue, batchSize)
+// gone, since after since, whose notice no one has been mailed yet (W32): a
+// notice nobody could get for a week is given up.
+func (q *Queries) ListWebhookNoticesDue(ctx context.Context, arg ListWebhookNoticesDueParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, listWebhookNoticesDue, arg.Since, arg.BatchSize)
 	if err != nil {
 		return nil, err
 	}
@@ -524,7 +548,9 @@ WHERE id IN (
     SELECT d.id FROM identity.webhook_deliveries d
     WHERE d.created_at < $1::timestamptz
     ORDER BY d.created_at
-    LIMIT $2::int)
+    LIMIT $2::int
+    FOR UPDATE SKIP LOCKED)
+  AND created_at < $1::timestamptz
 `
 
 type PruneWebhookDeliveriesParams struct {
@@ -533,13 +559,39 @@ type PruneWebhookDeliveriesParams struct {
 }
 
 // PruneWebhookDeliveries deletes a batch of deliveries created before
-// cutoff, whatever their state, with their attempts (W23, W30).
+// cutoff, whatever their state, with their attempts (W23, W30), skipping a
+// row another transaction holds, which the next sweep takes.
 func (q *Queries) PruneWebhookDeliveries(ctx context.Context, arg PruneWebhookDeliveriesParams) (int64, error) {
 	result, err := q.db.Exec(ctx, pruneWebhookDeliveries, arg.Cutoff, arg.BatchSize)
 	if err != nil {
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const recentSkippedWebhookDelivery = `-- name: RecentSkippedWebhookDelivery :one
+SELECT EXISTS (
+    SELECT 1 FROM identity.webhook_deliveries
+    WHERE endpoint_id = $1 AND event_name = $2
+      AND state = 'skipped' AND created_at >= $3::timestamptz
+) AS found
+`
+
+type RecentSkippedWebhookDeliveryParams struct {
+	EndpointID uuid.UUID
+	EventName  string
+	Since      time.Time
+}
+
+// RecentSkippedWebhookDelivery reports whether the endpoint already has a
+// skipped delivery of the event since since: the fan-out records at most one
+// a day per endpoint and event (S5), so an integration that lost a role does
+// not grow the log by a row per event.
+func (q *Queries) RecentSkippedWebhookDelivery(ctx context.Context, arg RecentSkippedWebhookDeliveryParams) (bool, error) {
+	row := q.db.QueryRow(ctx, recentSkippedWebhookDelivery, arg.EndpointID, arg.EventName, arg.Since)
+	var found bool
+	err := row.Scan(&found)
+	return found, err
 }
 
 const recordWebhookDeliveryResult = `-- name: RecordWebhookDeliveryResult :execrows

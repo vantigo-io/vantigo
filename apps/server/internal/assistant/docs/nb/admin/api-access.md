@@ -407,7 +407,8 @@ Statusen sier hvorfor et endepunkt er deaktivert: av en eier, fordi det har feil
 fordi det svarte `410 Gone`, eller fordi integrasjonen ble arkivert. Arkiverer du en
 integrasjon, deaktiveres endepunktene; da kan de bare slettes. Deaktiverer du selve
 integrasjonen, settes endepunktene på pause: ingenting sendes mens den er deaktivert, og når du
-aktiverer den igjen, forkastes det som har ventet mer enn 24 timer, og resten sendes.
+aktiverer den igjen, forkastes en melding som har vært klar til sending i mer enn 24 timer, og
+resten sendes.
 
 ### Når Vantigo deaktiverer et endepunkt
 

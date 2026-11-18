@@ -79,7 +79,13 @@ func webhookEventHandlers(d module.Deps) []events.Handler {
 // webhookPermitted reports whether an integration holding held may receive
 // e under catalog (W7): it holds every permission of e's GET, and none of
 // them is one no API key ever holds (apiNeverIn).
+//
+// An entry that names no permission is never permitted: the catalogue test
+// holds every entry to at least one, and a slip there must fail closed.
 func webhookPermitted(catalog map[string]contracts.Permission, held []string, e contracts.WebhookEvent) bool {
+	if len(e.Permissions) == 0 {
+		return false
+	}
 	for _, key := range e.Permissions {
 		if !slices.Contains(held, key) || apiNeverIn(catalog, key) {
 			return false
@@ -92,8 +98,9 @@ func webhookPermitted(catalog map[string]contracts.Permission, held []string, e 
 // delivery's transaction, at now (W14): the endpoints are held FOR SHARE in
 // id order (W31), each integration's permission is read once, and each
 // endpoint gets one row — pending, or skipped (permission_not_held) when the
-// integration no longer may receive the event (W7) — or none when an
-// earlier fan-out of the same event already gave it one. An event whose
+// integration no longer may receive the event (W7), at most one such a day
+// per endpoint and event (S5) — or none when an earlier fan-out of the same
+// event already gave it one. An event whose
 // payload lacks the catalogue's IDField is a bug and an error, so the outbox
 // retries it and then holds it dead for the operator.
 func fanOutWebhook(ctx context.Context, q *store.Queries, catalog map[string]contracts.Permission, ev events.Delivered, now time.Time) error {
@@ -132,6 +139,17 @@ func fanOutWebhook(ctx context.Context, q *store.Queries, catalog map[string]con
 			State: webhookPending, MaxRunAttempts: webhookRunAttempts, NextAttemptAt: &now, CreatedAt: now,
 		}
 		if !ok {
+			// One skipped row a day per endpoint and event shows the
+			// cause; more would only grow the log (S5).
+			recent, err := q.RecentSkippedWebhookDelivery(ctx, store.RecentSkippedWebhookDeliveryParams{
+				EndpointID: e.ID, EventName: ev.Name, Since: now.Add(-webhookSkippedEvery),
+			})
+			if err != nil {
+				return fmt.Errorf("identity: read the webhook endpoint's skipped deliveries: %w", err)
+			}
+			if recent {
+				continue
+			}
 			reason := webhookReasonNotHeld
 			row.State, row.StateReason, row.NextAttemptAt, row.CompletedAt = webhookSkipped, &reason, nil, &now
 		}
