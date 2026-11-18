@@ -134,6 +134,11 @@ var limits = map[string]ratelimit.Policy{
 	"putIdentityAccountPin":        policyMfa,
 	"postIdentityStationOperators": policyStationOperatorsIP,
 	"putIdentityUsersByIdBadge":    policyBadgeEnrolment,
+
+	// An integration's keys (API access design K21): making or rolling one
+	// mints a secret, limited per address as the Owner's user operations are.
+	"postIdentityIntegrationsByIdKeys":            policyUserManagement,
+	"postIdentityIntegrationsByIdKeysByKeyIdRoll": policyUserManagement,
 }
 
 // Module is identity as a platform module: its contract mounted under
@@ -165,6 +170,7 @@ func Module(a *Access) module.Module {
 		SSOConnections: func(d module.Deps) contracts.SSOConnections {
 			return newSSOConnections(a, d)
 		},
+		Workers: workers,
 	}
 }
 

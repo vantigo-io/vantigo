@@ -56,6 +56,26 @@ type IdentityAiTaskModel struct {
 	Subject   string
 }
 
+type IdentityApiKey struct {
+	ID                uuid.UUID
+	IntegrationID     uuid.UUID
+	Name              string
+	TokenHash         []byte
+	Display           string
+	Permissions       []string
+	ReadOnly          bool
+	AllowedNetworks   []netip.Prefix
+	ExpiresAt         time.Time
+	CreatedBy         *uuid.UUID
+	CreatedAt         time.Time
+	RevokedAt         *time.Time
+	RevokedBy         *uuid.UUID
+	RolledFrom        *uuid.UUID
+	LastUsedAt        *time.Time
+	LastUsedIp        *string
+	ExpiredRecordedAt *time.Time
+}
+
 type IdentityAssistantGrant struct {
 	ID             uuid.UUID
 	UserID         uuid.UUID
@@ -129,6 +149,19 @@ type IdentityExpectedLink struct {
 	UserPrincipalName *string
 	CreatedAt         time.Time
 	CreatedByUserID   uuid.UUID
+}
+
+type IdentityIntegration struct {
+	UserID             uuid.UUID
+	Name               string
+	Description        *string
+	ContactUserID      *uuid.UUID
+	RateLimitPerMinute int32
+	CreatedBy          *uuid.UUID
+	CreatedAt          time.Time
+	ArchivedAt         *time.Time
+	ArchivedBy         *uuid.UUID
+	Version            uuid.UUID
 }
 
 type IdentityInvitation struct {

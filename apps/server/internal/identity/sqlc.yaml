@@ -20,6 +20,7 @@ sql:
       - ../db/migrations/00143_identity_ai_task_model_subjects.sql
       - ../db/migrations/00174_identity_stations.sql
       - ../db/migrations/00194_identity_integration_kind.sql
+      - ../db/migrations/00195_identity_api_keys.sql
     queries: queries
     gen:
       go:

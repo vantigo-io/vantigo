@@ -100,6 +100,9 @@ func NewAccess(d module.Deps) *Access {
 // ASP.NET Core authorizes such an endpoint only when every one of its
 // policies succeeds.
 //
+// A request that presents an integration's API key (Authorization: Bearer
+// vtg_…) is resolved by checkAPIKey, and no cookie is read.
+//
 // A request whose context carries a grant (contracts.WithGrant, set only by
 // the operations dispatcher, never from a header or a cookie) is resolved by
 // checkGrant, for an assistant grant, or checkAgentGrant, for an agent grant,
@@ -133,6 +136,18 @@ func (a *Access) Check(r *http.Request, rule contracts.Rule) (contracts.Principa
 
 	ctx := r.Context()
 	now := a.now()
+	// An API key takes precedence too (API access design K16): a request
+	// whose one Authorization header is Bearer vtg_… is judged as the key's
+	// only, and no session cookie it also carries is read. Several
+	// Authorization headers are no caller at all, whatever they say, so a
+	// key is never judged ambiguously.
+	if auth := r.Header.Values("Authorization"); len(auth) > 1 {
+		return contracts.Principal{}, contracts.ErrUnauthenticated
+	} else if len(auth) == 1 {
+		if key, ok := apiKeyFrom(auth[0]); ok {
+			return a.checkAPIKey(ctx, r, rule, key, now)
+		}
+	}
 	// Station credentials take precedence: a request presenting an operator
 	// token is judged as a station's only, never by a session cookie it also
 	// carries (manufacturing phase 2 M134).
@@ -162,6 +177,12 @@ type subject struct {
 	disabled    bool
 	lockoutEnd  *time.Time
 	mfaVerified bool
+	// apiKey marks an integration's API key (checkAPIKey): permitted refuses
+	// it every key in contracts.APINever, and, when narrowed is set, every
+	// key its narrowing does not list.
+	apiKey    bool
+	narrowed  bool
+	narrowing []string
 }
 
 // sessionSubject is the subject a live session is.
@@ -224,7 +245,8 @@ func (a *Access) evaluate(ctx context.Context, p contracts.Principal, sub subjec
 	}
 }
 
-// Reject answers a failed Check: a station's refusal with its own status and
+// Reject answers a failed Check: an API key's refusal with its own code
+// (rejectAPIKey), a station's refusal with its own status and
 // code (station_unknown, operator_session_ended, station_has_session,
 // station_scope), 403 forbidden when the caller is signed in
 // but a requirement failed, else 401 unauthenticated, both as
@@ -236,6 +258,13 @@ func (a *Access) evaluate(ctx context.Context, p contracts.Principal, sub subjec
 func (a *Access) Reject(w http.ResponseWriter, r *http.Request, rule contracts.Rule, err error) {
 	if rule.Kind == contracts.RuleSCIM {
 		scimUnauthorized(w)
+		return
+	}
+	// An API key's refusal is the key's (API access design K18, K19): its own
+	// code, WWW-Authenticate on a 401, and the session cookie a browser on
+	// the reference may also hold is left alone.
+	if isAPIKeyRequest(r) {
+		rejectAPIKey(w, err)
 		return
 	}
 	var station *stationRefusal
@@ -553,6 +582,15 @@ func (a *Access) businessSatisfied(sub subject) bool {
 func (a *Access) permitted(ctx context.Context, sub subject, keys []string, now time.Time) (bool, error) {
 	if !isActive(sub.disabled, sub.lockoutEnd, now) || !a.businessSatisfied(sub) {
 		return false, nil
+	}
+	// An API key never holds what APINever names, whatever its roles grant
+	// (API access design K7, K51), nor a key its narrowing leaves out (K9).
+	if sub.apiKey {
+		for _, key := range keys {
+			if a.apiNever(key) || (sub.narrowed && !slices.Contains(sub.narrowing, key)) {
+				return false, nil
+			}
+		}
 	}
 	if hasRole(sub, RoleOwner) {
 		return true, nil

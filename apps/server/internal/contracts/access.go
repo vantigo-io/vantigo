@@ -244,6 +244,39 @@ var (
 	ErrAPIKeyExpired = fmt.Errorf("%w: api_key_expired", ErrUnauthenticated)
 )
 
+// APIKeyRefusal is Access.Check's refusal of a request that presented an API
+// key identity found (API access design K19, K34): the key and its
+// integration, why it was refused, and the sentinel Err that decides the
+// answer. It unwraps to Err, so the router's wrap, compose.go and the live
+// handler answer it as the 401 or 403 the sentinel is, and Reject writes its
+// code. A key identity did not find, or one that does not parse, is a plain
+// ErrUnauthenticated: there is nothing to attribute it to.
+//
+// Reason is one of revoked, disabled, archived, expired, network,
+// not_available, read_only and forbidden.
+type APIKeyRefusal struct {
+	KeyID         uuid.UUID
+	IntegrationID uuid.UUID
+	Reason        string
+	Err           error
+}
+
+func (e *APIKeyRefusal) Error() string { return "api key refused: " + e.Reason }
+func (e *APIKeyRefusal) Unwrap() error { return e.Err }
+
+// APIKeyScope is what reaches an API key's scope without importing identity:
+// the document of what the key may call (API access design K28, K36).
+// identity's Access implements it beside Access; a caller finds it by a type
+// assertion on the Access it holds, as the live hub finds StationAccess.
+type APIKeyScope interface {
+	// Scope answers what the key of p (Via.Kind ViaAPIKey) reaches now: the
+	// permission keys its integration holds through every effective role,
+	// less APINever, cut down to the key's narrowing when it has one, in
+	// ordinal order; and whether the key is read-only. A principal that is
+	// not an API key's, or a key that no longer exists, is an error.
+	Scope(ctx context.Context, p Principal) (permissions []string, readOnly bool, err error)
+}
+
 // StationAccess is what the live hub asks of identity for a shared station's
 // socket (manufacturing phase 2 §17), which carries the station cookie and no
 // operator: a browser WebSocket cannot set Authorization. identity's Access
