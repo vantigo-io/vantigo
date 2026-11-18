@@ -298,6 +298,8 @@ const (
 // parameter's value, which can hold personal data; OperationID and TraceID
 // find the request in the server's traces.
 type APIRequest struct {
+	// At is when the request arrived; the recorder stamps its own clock when
+	// it is zero.
 	At            time.Time
 	KeyID         uuid.UUID
 	IntegrationID uuid.UUID
