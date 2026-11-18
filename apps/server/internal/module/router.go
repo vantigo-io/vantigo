@@ -1,14 +1,17 @@
 package module
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/getkin/kin-openapi/openapi3"
+	"github.com/google/uuid"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/httpx"
@@ -43,6 +46,10 @@ type RouterOptions struct {
 // HandlerWithOptions mounts on.
 type Router struct {
 	opts RouterOptions
+	// recorder is the API request log, when Access implements it (API access
+	// design K35): found by a type assertion, as the live hub finds
+	// StationAccess.
+	recorder contracts.APIRequestRecorder
 
 	routes map[string][]*route // HTTP method → every route registered for it, each split into segments once, in registration order
 
@@ -208,6 +215,7 @@ func NewRouter(o RouterOptions) *Router {
 		registered:   map[string]bool{},
 		normalized:   map[string]string{},
 	}
+	r.recorder, _ = o.Access.(contracts.APIRequestRecorder)
 	if o.Doc != nil && o.Doc.Paths != nil {
 		for path, item := range o.Doc.Paths.Map() {
 			for method, op := range item.Operations() {
@@ -321,13 +329,26 @@ func (r *Router) bodyLimit(operationID string) int64 {
 	return DefaultMaxBodyBytes
 }
 
+// apiPolicyName is the rate limit every API key request is counted under,
+// keyed by its integration (API access design K24).
+const apiPolicyName = "api"
+
 // wrap orders the checks: rate limit (if opts.Limits names op's
 // operationId) before Access.Check — with rule.Station saying whether the
 // operation is open to a shared station's operator, so Check refuses one
 // with ErrStationScope where it is not (M135) — Access.Reject on
 // ErrUnauthenticated/ErrForbidden, httpx.WriteError on any other Access
-// error, then the body cap, and finally h with the Principal attached to
-// the request context.
+// error, then, for an API key, its integration's rate limit (K24), then the
+// body cap, and finally h with the Principal attached to the request context.
+//
+// An API key's request is counted against its integration's
+// rate_limit_per_minute, after Check, across every key of the integration;
+// its response carries the RateLimit-* headers, and one over the limit is
+// answered by ratelimit.Reject. When Access is also a
+// contracts.APIRequestRecorder, every key request it can attribute is
+// recorded once answered: an admitted one with its status, a refused one
+// with the reason its contracts.APIKeyRefusal or the limit gives. A key
+// identity did not find is not recorded: there is nothing to attribute it to.
 //
 // The cap is an http.MaxBytesReader of maxBody bytes over the body, put in
 // place only once the rate limit and Check have passed, so neither ever
@@ -338,6 +359,7 @@ func (r *Router) bodyLimit(operationID string) int64 {
 // undecodable body (DecodeError: the operation's own documented 400).
 func (r *Router) wrap(op *openapi3.Operation, rule contracts.Rule, maxBody int64, h func(http.ResponseWriter, *http.Request)) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
+		start := time.Now()
 		if policy, ok := r.opts.Limits[op.OperationID]; ok {
 			d, err := r.opts.Limiter.Hit(req.Context(), policy, httpx.ClientIP(req))
 			if err != nil {
@@ -353,6 +375,13 @@ func (r *Router) wrap(op *openapi3.Operation, rule contracts.Rule, maxBody int64
 		p, err := r.opts.Access.Check(req, rule)
 		if err != nil {
 			if errors.Is(err, contracts.ErrUnauthenticated) || errors.Is(err, contracts.ErrForbidden) {
+				var refusal *contracts.APIKeyRefusal
+				if r.recorder != nil && errors.As(err, &refusal) {
+					rec := httpx.NewStatusRecorder(w)
+					r.opts.Access.Reject(rec, req, rule, err)
+					r.record(req, op, refusal.KeyID, refusal.IntegrationID, rec.Status(), refusal.Reason, start)
+					return
+				}
 				r.opts.Access.Reject(w, req, rule, err)
 				return
 			}
@@ -366,6 +395,29 @@ func (r *Router) wrap(op *openapi3.Operation, rule contracts.Rule, maxBody int64
 			return
 		}
 
+		if p.Via != nil && p.Via.Kind == contracts.ViaAPIKey {
+			rec := httpx.NewStatusRecorder(w)
+			w = rec
+			reason := ""
+			if r.recorder != nil {
+				defer func() { r.record(req, op, p.Via.KeyID, p.UserID, rec.Status(), reason, start) }()
+			}
+			if r.opts.Limiter != nil && p.Via.RateLimitPerMinute > 0 {
+				policy := ratelimit.Policy{Name: apiPolicyName, Limit: p.Via.RateLimitPerMinute, Window: time.Minute}
+				d, err := r.opts.Limiter.Count(req.Context(), policy, p.UserID.String())
+				if err != nil {
+					httpx.WriteError(w, req, err)
+					return
+				}
+				ratelimit.WriteHeaders(w, policy, d)
+				if !d.Allowed {
+					reason = contracts.APIReasonRateLimited
+					ratelimit.Reject(w, req, policy, d)
+					return
+				}
+			}
+		}
+
 		if req.Body != nil && req.Body != http.NoBody {
 			req.Body = http.MaxBytesReader(w, req.Body, maxBody)
 		}
@@ -376,6 +428,23 @@ func (r *Router) wrap(op *openapi3.Operation, rule contracts.Rule, maxBody int64
 		req = req.WithContext(contracts.WithPrincipal(req.Context(), p))
 		h(w, req.WithContext(contracts.WithRequest(req.Context(), w, req)))
 	}
+}
+
+// record hands one answered key request to the request log. It carries the
+// operation, never the path, whose parameters can be personal data, nor the
+// query string.
+func (r *Router) record(req *http.Request, op *openapi3.Operation, keyID, integrationID uuid.UUID, status int, reason string, start time.Time) {
+	r.recorder.Record(context.WithoutCancel(req.Context()), contracts.APIRequest{
+		KeyID:         keyID,
+		IntegrationID: integrationID,
+		Method:        req.Method,
+		OperationID:   op.OperationID,
+		Status:        status,
+		Reason:        reason,
+		Duration:      time.Since(start),
+		ClientIP:      httpx.ClientIP(req),
+		TraceID:       httpx.TraceID(req),
+	})
 }
 
 // ServeHTTP dispatches to the handler of the most specific route registered
