@@ -3,7 +3,7 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ApiKey, IntegrationRequestLog } from "../../api/integrations";
 import { renderRoute } from "../../test/render-route";
-import { dayRows, IntegrationRequests } from "./-api-access-requests";
+import { dayRows, IntegrationRequests, windowDays } from "./-api-access-requests";
 import "../../i18n";
 
 const api = vi.hoisted(() => ({ getIntegrationRequests: vi.fn() }));
@@ -92,8 +92,8 @@ describe("an integration's request log", () => {
     const rows = within(days).getAllByRole("row");
     expect(rows.map((row) => row.textContent)).toEqual([
       "Day2xx success3xx redirect4xx refused5xx server error",
-      "2026-11-1712000",
-      "2026-11-1840030",
+      "Nov 17, 202612000",
+      "Nov 18, 202640030",
     ]);
     expect(within(screen.getByTestId("request-operations")).getByText("getCustomers")).toBeTruthy();
 
@@ -134,6 +134,25 @@ describe("an integration's request log", () => {
     api.getIntegrationRequests.mockResolvedValue({ ...log, days: [], operations: [], latest: [] });
     await renderTab();
     expect(await screen.findByText("No requests")).toBeTruthy();
+  });
+
+  it("offers the days of the server's window, whatever the browser's clock", async () => {
+    api.getIntegrationRequests.mockResolvedValue(log);
+    await renderTab();
+    await screen.findByTestId("request-latest");
+    fireEvent.click(screen.getByRole("combobox", { name: "Day" }));
+    const options = await screen.findAllByRole("option");
+    expect(options).toHaveLength(30);
+    expect(options[0]?.textContent).toBe("Nov 18, 2026");
+    expect(options[29]?.textContent).toBe("Oct 20, 2026");
+  });
+
+  it("counts the window's UTC days, newest first", () => {
+    expect(windowDays("2026-10-30T00:00:00Z", "2026-11-01T23:59:00Z")).toEqual([
+      "2026-11-01",
+      "2026-10-31",
+      "2026-10-30",
+    ]);
   });
 
   it("orders the chart's days oldest first, a count per status class", () => {
