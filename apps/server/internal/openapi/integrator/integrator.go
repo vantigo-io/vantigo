@@ -67,7 +67,9 @@ const (
 // naming it (security: [] on an anonymous operation), the 401, 403 and 429
 // answers with K19's codes, "Requires `key`" in each permission operation's
 // description, and an info.description linking the compatibility policy and
-// the page that makes keys. It strips every x-vantigo-* extension. servers is
+// the page that makes keys. It strips every x-vantigo-* extension, and drops
+// every schema, response, parameter, request body and header no kept
+// operation refers to, directly or through another component. servers is
 // the caller's: the composition sets APP_URL.
 func Build(contract *openapi3.T, catalog []contracts.Permission, filter *Filter) (*openapi3.T, error) {
 	doc, err := clone(contract)
@@ -305,10 +307,86 @@ func strip(doc *openapi3.T) (*openapi3.T, error) {
 		return nil, fmt.Errorf("integrator: read the document: %w", err)
 	}
 	generic = stripValue(generic)
+	prune(generic)
 	if data, err = json.Marshal(generic); err != nil {
 		return nil, fmt.Errorf("integrator: marshal the document: %w", err)
 	}
 	return load(data)
+}
+
+// prunedKinds are the components prune drops when nothing kept refers to
+// them. Security schemes, examples, links and callbacks stay as they are.
+var prunedKinds = []string{"schemas", "responses", "parameters", "requestBodies", "headers"}
+
+// prune deletes every component of prunedKinds that no kept operation
+// reaches: it follows $ref transitively from everything outside components
+// (the kept paths, with the responses decorate added), so a schema only a
+// dropped operation used does not reveal itself to a key that cannot call
+// that operation.
+func prune(doc any) {
+	root, ok := doc.(map[string]any)
+	if !ok {
+		return
+	}
+	components, _ := root["components"].(map[string]any)
+	if components == nil {
+		return
+	}
+	reached := map[string]bool{} // "kind/name"
+	var queue []string
+	var walk func(v any)
+	walk = func(v any) {
+		switch v := v.(type) {
+		case map[string]any:
+			if ref, ok := v["$ref"].(string); ok {
+				if rest, ok := strings.CutPrefix(ref, "#/components/"); ok {
+					kind, name, _ := strings.Cut(rest, "/")
+					key := kind + "/" + strings.NewReplacer("~1", "/", "~0", "~").Replace(name)
+					if !reached[key] {
+						reached[key] = true
+						queue = append(queue, key)
+					}
+				}
+			}
+			for _, value := range v {
+				walk(value)
+			}
+		case []any:
+			for _, value := range v {
+				walk(value)
+			}
+		}
+	}
+	for key, value := range root {
+		if key != "components" {
+			walk(value)
+		}
+	}
+	if schemes, ok := components["securitySchemes"].(map[string]any); ok {
+		walk(schemes)
+	}
+	for len(queue) > 0 {
+		key := queue[0]
+		queue = queue[1:]
+		kind, name, _ := strings.Cut(key, "/")
+		if entries, ok := components[kind].(map[string]any); ok {
+			walk(entries[name])
+		}
+	}
+	for _, kind := range prunedKinds {
+		entries, ok := components[kind].(map[string]any)
+		if !ok {
+			continue
+		}
+		for name := range entries {
+			if !reached[kind+"/"+name] {
+				delete(entries, name)
+			}
+		}
+		if len(entries) == 0 {
+			delete(components, kind)
+		}
+	}
 }
 
 func stripValue(v any) any {

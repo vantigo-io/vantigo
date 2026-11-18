@@ -24,6 +24,11 @@ paths:
     post:
       operationId: postWidgets
       x-vantigo-access: permission:widgets:view+widgets:edit
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WidgetDraft'
       responses:
         "201":
           description: Created
@@ -43,6 +48,10 @@ paths:
       responses:
         "200":
           description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Secret'
   /api/v1/widgets/owner:
     get:
       operationId: getWidgetsOwner
@@ -88,6 +97,18 @@ paths:
           description: No Content
 components:
   schemas:
+    Secret:
+      type: object
+      properties:
+        token:
+          type: string
+    WidgetDraft:
+      type: object
+      properties:
+        name:
+          $ref: '#/components/schemas/WidgetName'
+    WidgetName:
+      type: string
     Widget:
       type: object
       x-vantigo-source: test
