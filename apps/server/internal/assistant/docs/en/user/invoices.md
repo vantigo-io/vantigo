@@ -61,6 +61,9 @@ Fill in the fields and click **Save**:
   for buyers abroad.
 - **Default payment terms (days)**, 0 to 365: the terms a new draft starts with when
   the customer's billing profile names none.
+- **Rounding tolerance**, 0 to 100 NOK: *Amounts left this small after a payment are
+  rounded off as a small difference. 0 turns it off.* See [small
+  differences](#small-differences-rounded-off). It starts at 0.
 - **Registered for VAT (prints MVA after the number)** and **Registered in
   Foretaksregisteret** — both print on the document as the regulation asks.
 - **Logo**, optional, described [below](#the-logo).
@@ -1232,6 +1235,25 @@ queue](#the-exception-queue) as **The invoice is written off: register it as rec
 Register it here as recovered, then dismiss the line as **Not a customer payment** with a
 note. A written-off invoice cannot be credited until the write-off is undone.
 
+### Small differences, rounded off
+
+When the **Rounding tolerance** under **Invoice settings** is above 0, a payment that
+leaves an invoice open by a little — more than 0 and at most the tolerance — has the rest
+written off by itself, in the same moment, with the reason **Rounding**. That holds for a
+payment you register by hand, one matched or applied from a bank file or the bank feed,
+and one split across several invoices; never for a Vipps payment, which pays the amount
+exactly, money recovered after a write-off, or credit used. The write-off is shown under
+**Payments** as *Rounded off automatically*, with no one as the one who made it, and posts
+to the books as a rounding write-off made by hand does. Say the tolerance is 5: an invoice
+of 1 000 paid 997 is paid, and 3 is rounded off; paid 994 it stays partly paid. A change
+of the tolerance applies from the next payment on.
+
+An invoice closed by a rounding write-off — automatic or made by hand — reads **Paid**,
+not **Written off**: a small difference is not a loss. If the customer later pays the
+difference, the bank line waits in [the exception queue](#the-exception-queue) as
+**Nothing is left to pay**, and **Keep the rest as credit** keeps it as the
+customer's credit. **Undo write-off** undoes an automatic one as any other.
+
 Writing off, undoing and registering a recovered payment need `invoices:payments`. With
 [Accounting](/en/user/accounting/#how-sales-arrive-from-invoices) on, each posts itself,
 and an issued invoice's page shows **In the books:** with a link to each of its vouchers —
@@ -1269,6 +1291,19 @@ matched payment is registered against its invoice — the open amount first, any
 charges with the rest — on the day the bank booked it, with the KID as its reference and
 you as the one who registered it. **Open the file** shows the file's own page, with every
 payment it brought.
+
+**One payment for several invoices.** A payment without a KID — or with a KID no invoice
+carries, or that is more than its invoice has open — is read for the invoices it names
+before it is queued: the KIDs and the invoice numbers in its message, in every reference
+of a camt.054 line, and in a bank-feed line's text. An invoice number counts only as a
+word of its own — *Faktura 10023 og 10024*, *Fakt 10023/10024* — never as part of an
+amount (*1 250,00*, *NOK 10023*), a date or an account number. When those are two or more
+open invoices of one customer, none credited in full or written off, whose open amounts
+add up to the payment exactly, it is registered against each of them in full, the
+earliest due first, and the file's page shows it **Split across invoices automatically**
+with each invoice under it. Reminder charges are never paid this way. Anything else — two
+customers, a sum that differs by an øre — leaves the payment in the queue as before, with
+the invoices it named among the suggestions.
 
 **Match the rest.** Matching runs right after the import, one payment at a time. If it
 stops early, the file stays imported and some of its payments are **Not yet matched**:
