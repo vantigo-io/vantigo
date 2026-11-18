@@ -11,6 +11,7 @@ sources:
   - apps/server/internal/db/migrations/00186_accounting_vat.sql
   - apps/server/internal/db/migrations/00187_accounting_saft.sql
   - apps/server/internal/db/migrations/00188_accounting_bank.sql
+  - apps/server/internal/db/migrations/00198_accounting_customer_credit.sql
 ---
 
 Accounting keeps the company's books as bokføringsloven asks for them. Its package is
@@ -186,7 +187,7 @@ The setup's choices never change afterwards; nothing changes `books_start`.
 | `vouchers` | `fiscal_year`, `number`, `voucher_date`, `document_date`, `description`, `kind`, `source_module`/`source_kind`/`source_id`/`source_part`, `rule`/`rule_version`, `reverses_voucher_id` with `reversal_reason`, `posted_at`, `posted_by_user_id`. |
 | `postings` | `voucher_id`, `line_no`, `account_id`, `amount` (signed numeric(14,2): debit positive, never zero), `currency`/`currency_amount`/`exchange_rate` (a purchase in another currency's, all three or none — `ck_postings_currency`), `tax_code_id`/`tax_role`/`tax_base`, `customer_id` (Customers' integer id) or `supplier_id` (a `suppliers` row: `fk_postings_supplier`, `NOT VALID` so a journal's supplier id from before the table stays), `open_item_id`, `project_id` (Projects' integer id), `description`. |
 | `attachments` | `voucher_id`, `object_key`, `file_name`, `content_type`, `size_bytes`, `sha256`, `uploaded_at`, `uploaded_by_user_id`. |
-| `open_items` | `kind` (`customer`, `supplier`), the party, `unallocated`, `document_number`, `document_date`, `due_date`, `original_amount`, `source_document_id`, `opening_as_of_seq` (for an item the opening made for an invoice in Invoices, the `AsOfSeq` of the page it was read on; null otherwise). One unallocated item per party and kind; one item per source document and kind. |
+| `open_items` | `kind` (`customer`, `supplier`), the party, `unallocated`, `customer_credit` (the customer's credit item from Invoices, invoices phase 6 design I16: at most one per customer, `ux_open_items_customer_credit`, never the unallocated item nor a document's, `ck_open_items_customer_credit`, and it may carry `opening_as_of_seq`, migration 00198), `document_number`, `document_date`, `due_date`, `original_amount`, `source_document_id`, `opening_as_of_seq` (for an item the opening made for an invoice in Invoices, the `AsOfSeq` of the page it was read on; null otherwise). One unallocated item per party and kind; one item per source document and kind. |
 | `lock_events` | Every move of the lock: from, to, reason, when, who. |
 | `posting_rules` | `name` (unique among the rules in force), `scope` (`sales`, `expense`), `match` (`line_kind`, `tax_category`, `expense_category`, `tax_code`, `default`) with exactly the one value its match names, `account_id`, `vat_deductible` (an expense rule's, null on a sales rule), `version`, `revision`, `archived_at` (set when it is archived; a delete is refused). One rule in force per scope and match value. |
 | `posting_rule_versions` | Every version of a rule: `rule_id`, `version`, `name`, `account_id`, `vat_deductible`, `valid_from`, written by a trigger when a rule is made and each time its version moves. |
@@ -311,6 +312,7 @@ of it refuses an invoice: what cannot be posted waits under
 | `accounting.catchup.document-issued` | `invoices.document.issued` v1 | a wake-up for `invoices.documents` |
 | `accounting.catchup.payment-received` | `invoices.payment.received` v1 | a wake-up for `invoices.facts` |
 | `accounting.catchup.payment-removed` | `invoices.payment.removed` v1 | a wake-up for `invoices.facts` |
+| `accounting.catchup.customer-credit` | `invoices.customer_credit.changed` v1 | a wake-up for `invoices.facts` |
 | `accounting.catchup.expenses` | `expenses.entry.*` and `expenses.claim.*` v1 (approved, unapproved, reimbursed, reimbursement_undone) | a wake-up for `expenses.facts` |
 
 Each upserts its stream's `catchup_requests` row on the delivery's transaction and does
@@ -373,6 +375,22 @@ a change to a rule is a new version.
 | `sales.write_off_undone` (1) | `write_off_undone` | `write_off` | the write-off's **stored** voucher, read back, line for line with every sign turned, on the accounts, tax codes and items it was posted to — an account inactive since included; the voucher names it as the one it `reverses` | |
 | `sales.recovered` (2) | `recovered_payment` | `customer_payment` | the receiving bank account's ledger account, else `bank` | the write-off's stored debit lines scaled **cumulatively** (below), signs turned: `bad_debt`, and with the correction the VAT given back in proportion, `tapPåKrav` |
 | `sales.recovered_removed` (2) | `recovered_payment_removed` | `customer_payment` | the recovery's stored voucher, line for line with every sign turned, naming it as the one it `reverses` | |
+| `sales.credit_overpayment` (2) | `credit`, kind `overpayment` | `customer_payment` | the bank line's account, as `sales.payment`'s bank side, else `bank` | `receivables` on the customer's **credit item** |
+| `sales.credit_note_moved` (1) | `credit`, kind `credit_note` | `customer_payment` | `receivables` on the invoice's item, clearing the negative open amount the credit note left | `receivables` on the credit item — zero on 1500 |
+| `sales.credit_applied` (1) | `credit`, kind `applied` | `customer_payment` | `receivables` on the credit item | `receivables` on the invoice's item |
+| `sales.credit_refunded` (2) | `credit`, kind `refunded` | `customer_payment` | `receivables` on the credit item | the ledger account of the bank account the refund left, else `bank` |
+| `sales.credit_reversed` (1) | `credit`, kind `reversed` | `customer_payment` | the reversed movement's stored voucher, line for line with every sign turned, when the reversal is all of it; a credit note's surplus returned in part, or a movement never posted, as the reversed kind's lines at the reversal's amount, turned | |
+| `sales.credit_merged` (1) | `credit_merged` | `customer_payment` | `receivables` on the absorbed customer's credit item | `receivables` on the survivor's credit item |
+
+**The customer's credit** (invoices phase 6 design I16, plan readings 3–7). A credit item
+is a customer item flagged `customer_credit`, one per customer, found or made as the
+unallocated item is (`OpenItemSpec.CustomerCredit`). A **payment of source `credit`**, and
+its removal, posts **no voucher at all**: the `applied` movement's fact moves the credit,
+so the money moves once. A refund's and a merge's facts name no invoice; under Needs
+attention they wait behind the customer's credit (`order_key`
+`invoices.customer_credit:<customerId>`) rather than an invoice. A credit fact dated before
+`books_start` is posted when its seq is above the credit item's `opening_as_of_seq`, else
+the settings'.
 
 **The bank side of a payment** (version 2, delivery F): a bank payment — a bank file's
 (`ocr`, `camt054`) or the bank feed's (`bank_feed`) — names the account it was received on
@@ -422,6 +440,9 @@ too (`Line 2 · rule Hours v1`).
 - A voucher dated on or before the lock is booked on the first day after it (A8).
 - A payment of an invoice with no item yet — one from before the books that the opening
   left out — opens the item for that invoice.
+- A credit fact (`credit`, `credit_merged`) is judged against the customer's credit item's
+  `opening_as_of_seq` — the `AsOfSeq` of the `CreditsAt` page its balance was read on —
+  else the settings'.
 
 `settings.opening_as_of_seq` — the lowest `AsOfSeq` of the opening's pages — is the
 threshold for an invoice that has no opening item, and that is sound: an invoice with no
@@ -892,14 +913,18 @@ with the customers' names.
 The open invoices are read from `SalesJournal.OpenAt(ctx, day, afterNumber, limit)`, page
 by page in number order until a page comes back short. **Each page is its own snapshot**,
 and its `AsOfSeq` — the highest journal fact it saw — applies to the invoices on that page,
-so every invoice keeps its own page's.
+so every invoice keeps its own page's. The customers' credit is read the same way from
+`SalesJournal.CreditsAt`, by customer id, and answered as `openCredits`: per customer its
+currency and the receivables line that opens it — the NOK credit, negative.
 
 `POST /opening` (`accounting:close`) takes up to 2000 `lines`: `accountId`, a signed
 `amount`, and for a receivables line the `customerId`, `documentNumber`, `documentDate`,
 `dueDate` and `sourceDocumentId` (the invoice in Invoices). It reads the open invoices
 again, outside its transaction, and refuses 400 `open_item_unknown` for a
 `sourceDocumentId` that is not one of them, is another customer's, has another amount
-than its open amount, or is on two lines. It then takes the settings row **FOR UPDATE**,
+than its open amount, or is on two lines; a line with `customerCredit: true` is the
+customer's credit item, at exactly the negated NOK credit `CreditsAt` answered for that
+customer, once — else 400 `open_item_unknown` — and names no document. It then takes the settings row **FOR UPDATE**,
 so two openings entered at once wait for each other and the second sees the first, and
 posts one voucher of kind `opening` dated `books_start`, each line with a document
 opening its own item, and the difference on the `opening` account. It refuses 409
@@ -913,7 +938,8 @@ builds the voucher, not only the endpoint.
 What it stores for delivery B (design R14), with Invoices composed:
 
 - on each item made for an invoice, `open_items.opening_as_of_seq`: the `AsOfSeq` of the
-  page that invoice was read on;
+  page that invoice was read on, and on each customer's credit item the `AsOfSeq` of the
+  `CreditsAt` page its credit was read on;
 - in `settings.opening_as_of_seq`: the **lowest** `AsOfSeq` of every page read (the one
   page's when there is one).
 
@@ -936,7 +962,8 @@ default the `bank` role's) and `text`. It posts, for a customer item, a
 `customer_payment` voucher that moves the item toward zero against the bank — a receipt for
 a balance owed, a refund for a credit — and for a supplier item a `supplier_payment`. It
 refuses 409 `settlement_source_document` for an item that stands for an Invoices document
-(its payment belongs there), `settlement_supplier_invoice` for a supplier invoice's item
+(its payment belongs there) and for a customer's credit item (it is used or refunded in
+Invoices), `settlement_supplier_invoice` for a supplier invoice's item
 (paid on the invoice, [Payments](#payments)), `settlement_settled` for one with nothing left
 and `settlement_exceeds_balance` for more than its balance.
 
@@ -1790,7 +1817,7 @@ label in the books' language and a type, rows with a style (`line`, `heading`, `
 | --- | --- |
 | `journal` | Every posting of the vouchers in the period, in number order, and the total; at most 366 days and 50 000 postings. |
 | `account` | The account's opening balance, its postings with the running balance, the closing balance; `accountId` is required (400 `report_account_required`); at most 50 000 postings. |
-| `customers`, `suppliers` | Per party a heading, its items with a balance at `to` or a movement in the period, the balance aged by due date at `to` (not due, 1–30, 31–60, 61–90, over 90 days), the party's subtotal and the total. A supplier's heading is its name and carries `supplierId`; an item row carries the `supplierInvoiceId` it stands for. The suppliers' total is the balance of `payables`. |
+| `customers`, `suppliers` | Per party a heading, its items with a balance at `to` or a movement in the period, the balance aged by due date at `to` (not due, 1–30, 31–60, 61–90, over 90 days), the party's subtotal and the total. A supplier's heading is its name and carries `supplierId`; an item row carries the `supplierInvoiceId` it stands for. The suppliers' total is the balance of `payables`. A customer's credit item is labelled **Customer credit** (*Kundekreditt*): it has no due date, so it ages as not due, and shows negative. |
 | `trial_balance` | Per account the opening balance, the debits, the credits and the closing balance, and with a comparison the closing balance at `compareTo`. |
 | `profit_and_loss` | The period's movement on income and expense accounts, income positive and costs negative, grouped by class with the operating result, the result before tax and the result; an income or expense account in no class group is under **Other income and costs**, before the result. |
 | `vat` | The [VAT specification](#the-specification): per tax code, rate and specification the base, output VAT, calculated VAT, deductions, loss and VAT not deducted, the reported codes in the return's order and then those left out, each row with its `taxCodeId`; the total the return counts and the VAT accounts' movement. |

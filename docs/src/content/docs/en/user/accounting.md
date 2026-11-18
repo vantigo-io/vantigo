@@ -292,11 +292,15 @@ the day the books start, as one voucher dated that day.
 3. When the company already invoices in Vantigo, **Invoices has … open invoices at the
    books' start** offers them: **Add the open invoices** adds a line per invoice with its
    customer, number, dates and the amount still open the day before the books start.
+   **Invoices has … customers with credit at the books' start** offers the customers'
+   credit in Invoices: **Add the customers' credit** adds a credit line per customer on
+   accounts receivable, marked **Customer credit**.
 4. What the lines do not balance goes to the opening balance account; the form shows how
    much. **Post the opening balances**.
 
 An invoice added from Invoices keeps its customer and the amount open on that day; a line
-that names it with another customer or amount is refused.
+that names it with another customer or amount is refused. So does a customer's credit: its
+line is the customer's credit item, at exactly the credit Invoices held that day.
 
 **VAT at the books' start.** VAT owed or due from before the books start — the last term of
 the old books, not yet paid — goes on **2740**, the VAT settlement account, not on a VAT
@@ -325,6 +329,12 @@ waits under [Needs attention](#needs-attention) while the rest carries on.
 | Reminder charges are paid | The bank debited and the charge income account credited, with tax code 7 (no VAT): fees, compensation and interest are not turnover. A removal turns it back. |
 | An invoice is written off | Bad debts debited and accounts receivable credited for what was open; with the VAT taken back, the VAT share goes back on each rate's VAT account, marked for the VAT return — shared over what is left of the invoice once its credit notes are taken off, so a rate credited away takes no VAT back. A rounding goes to the rounding account. Undoing it turns the voucher posted for it back, line for line, even if an account has changed since. |
 | Money arrives after a write-off | The bank debited and bad debts credited — and the VAT taken back, in proportion, returned. Several part payments that together pay what was written off give back exactly what it took, to the øre; an øre of rounding falls on bad debts, never on VAT. |
+| The rest of a payment is kept as the customer's credit | The bank debited and the customer's **Customer credit** item on accounts receivable credited. |
+| A credit note credits more than was open | Its surplus moves from the invoice's item to the customer's credit item: the invoice's item no longer reads below zero, and nothing counts twice. |
+| The customer's credit is used on an invoice | The credit item debited and the invoice's item credited. The payment Invoices shows for it posts nothing of its own, so the money moves once. |
+| Credit is refunded | The credit item debited and the bank account the money left credited. |
+| A credit movement is reversed — a refund or a payment removed, a reversal from the bank | The voucher posted for it turned back. |
+| Two customers are merged | The absorbed customer's credit moves to the survivor's credit item. |
 
 How [writing off](/en/user/invoices/#writing-an-invoice-off) works in Invoices is on its own page.
 
@@ -692,13 +702,17 @@ Retrying and the actions need **Post vouchers**.
 original amount and the balance, 200 at a time with **Previous** and **Next**. **Show
 settled** shows the settled ones too. A posting on
 accounts receivable that names no document lands on the customer's **Unallocated** item.
+A customer's credit in Invoices — an overpayment kept or a credit note's surplus — is on its
+own item, **Customer credit**, with no document or due date, and shows as a negative
+balance: the company owes it. It moves only with Invoices, and is never registered here.
 
 **Register** on an item records money moved: a receipt from the customer, or a refund of a
 credit balance. Give the date, the amount (at most the balance) and, when it is not the
 bank account, the account the money moved through. The voucher is posted at once.
 
 An item marked **In Invoices** stands for an invoice there: its payment is registered on
-the invoice in Invoices, never here. A supplier invoice's item is paid on the supplier
+the invoice in Invoices, never here. A **Customer credit** item is used or refunded in
+Invoices too ([the customer's credit](/en/user/invoices/#the-customers-credit)). A supplier invoice's item is paid on the supplier
 invoice.
 
 Registering needs **Post vouchers**.

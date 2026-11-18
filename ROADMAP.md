@@ -1777,9 +1777,19 @@ parts); and a personal message on **Send**, stored on the delivery and blanked o
 anonymisation. See
 [`docs/src/content/docs/en/reference/invoices.md`](docs/src/content/docs/en/reference/invoices.md#the-logo-and-the-phone).
 
-**Delivery B: the customer's balance** — an overpayment kept as credit, applied to
-invoices and refunded; one bank line matched to several invoices by its remittance text;
-small differences rounded off.
+**Delivery B-1: the customer's credit (done)** — on `claude/invoices-credit`, migrations
+`00197_invoices_credit.sql` and `00198_accounting_customer_credit.sql`. A ledger of the
+customer's credit, never below zero: an overpayment kept as credit by hand or from the
+exception queue, a credit note's surplus moved off its invoice (so an invoice no longer
+reads below zero open), credit applied to an invoice — or on issue — and refunded outside
+Vantigo, every removal a reversal; the NOK each payment and write-off brought; one lock
+order, customer before invoice, the merge and the erase included; the
+`invoices.credit_moves` worker; and the credit facts Accounting posts on a customer credit
+item. See
+[`docs/src/content/docs/en/reference/invoices.md`](docs/src/content/docs/en/reference/invoices.md#customer-credit).
+
+**Delivery B-2: one line for several invoices and small differences** — one bank line
+matched to several invoices by its remittance references; small differences rounded off.
 
 **Delivery C: foreign currency** — Norges Bank's rates, the document in currency with
 VAT in NOK, payments with the exchange difference, Orders' currencies invoiced and

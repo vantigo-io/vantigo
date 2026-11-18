@@ -88,6 +88,10 @@ panel for denne kunden og krever at modulen er på og en rettighet i den
 (`energy:metering-points-view`, `projects:access`, `invoices:access`, `orders:access`).
 Fanen **Ordre** viser kundens åpne tilbud og ordrer med **Nytt tilbud** og **Ny ordre**
 ([kundens Ordre-fane](/nb/user/orders/#kundens-ordre-fane)).
+Fanen **Fakturaer** viser kundens fakturaer og, for en kunde som noen gang har hatt
+kreditt, kortet **Kundekreditt** — det selskapet skylder kunden etter en overbetaling eller
+en kreditnota, hver bevegelse av det, og **Registrer tilbakebetaling**
+([kundens kreditt](/nb/user/invoices/#kundens-kreditt)).
 
 **Oversikt** åpner med panelet **Kunde 360**: **Åpne prosjekter**, **Ufakturerte
 timer**, **Utlegg klare til fakturering**, **Utestående**, **Fakturert i år** og

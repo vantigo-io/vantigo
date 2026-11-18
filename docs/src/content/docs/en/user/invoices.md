@@ -916,6 +916,16 @@ date, the lines do not match the seller's VAT registration, a reverse-charge lin
 the buyer's organisation number, or the chosen date is not allowed that day. Each
 refusal is said in the dialog ([every refusal](/en/reference/invoices/#issuing)).
 
+**Use the customer's credit.** When the customer has [credit](#the-customers-credit) in
+the invoice's currency, the dialog offers **Use the customer's credit** — *The customer has
+NOK 500.00 in credit. It is applied to the invoice once it is issued* — unticked. Tick it
+to apply the credit as soon as the invoice is issued: as much of it as the invoice's total
+takes, registered under **Payments** with the source **Customer credit**. The issue never
+waits for it: if the credit cannot be applied, the invoice is issued all the same and a
+message says *the customer's credit could not be applied to it*; use it from the invoice
+instead. It needs `invoices:payments` as well as `invoices:issue`, and is not offered on a
+quick invoice or in a billing run.
+
 **Issuing a draft made from work** also marks that work invoiced — the hours, expenses
 and milestones its lines bill — in the same step, so they leave the uninvoiced work for
 good. The issue is refused, naming the line, when a piece of work on it can no longer be
@@ -1023,7 +1033,11 @@ The credit note takes the next number in the same series and is listed under **C
 notes** on the invoice, which links back with *Credit note for invoice 1001*. The
 invoice's **Open** amount falls by the credit note's total; when credit notes cover the
 whole invoice its state becomes **Credited**. A credit note after a payment is allowed:
-the invoice then shows **Refund due**, what is owed back. The draft warns, and the issue
+what it credits beyond what was still open becomes [the customer's credit](#the-customers-credit),
+and the invoice reads nothing open — never a negative amount. The credit moves right after
+the issue; should that fail, Vantigo moves it within five minutes. Remove the payment
+later and the credit comes back to the invoice, as far as the customer still has it. The
+draft warns, and the issue
 refuses, a credit note larger than what the invoice or a line has left; a credit note
 cannot itself be credited ([credit notes](/en/reference/invoices/#credit-notes)). **A
 written-off invoice is not credited**: while its write-off stands, **Credit** is refused,
@@ -1113,10 +1127,11 @@ registered. Someone with `invoices:payments` deals with it in the exception queu
 the payment's text, one whose open amount it equals, one of the customer who paid from the
 same account before; dismiss it as not a customer payment, with a note; for a reversal,
 remove the payment the bank took back; confirm a duplicate or keep it as a payment of its
-own; or reopen it. What a payment leaves unapplied stays visible on its line — Vantigo
-keeps no credit balance and makes no refund. A payment dismissed because its invoice was
+own; keep the rest of it as the customer's credit; or reopen it. What a payment leaves
+unapplied stays visible on its line. A payment dismissed because its invoice was
 credited or already paid, or because it was more than was owed, stays unapplied too: the
-money is owed back, and the refund is made outside Vantigo. Once a reversal has taken a
+money is owed back, and the refund is made outside Vantigo — or keep it as [the
+customer's credit](#the-customers-credit) instead. Once a reversal has taken a
 payment back, the line it came from is never applied or reopened again.
 Nor is the same payment in another file of the bank's, or a copy of the line: those are
 held back for a person, never registered by themselves. A reversal that named the wrong
@@ -1126,8 +1141,12 @@ Click **Register payment** — offered while something is left to pay — and fi
 
 - **Paid on**: the day the money arrived, prefilled with today; on or after the issue
   date and not after today.
-- **Amount**: prefilled with the open amount; more than 0 and at most the open amount.
-  An overpayment is refused, with the open amount named.
+- **Amount**: prefilled with the open amount; more than 0. More than the open amount is
+  refused, with the open amount named — unless you tick **Keep the rest as credit**,
+  offered once the amount is above what is open: the payment then takes what is open and
+  the rest becomes [the customer's credit](#the-customers-credit). On an invoice with
+  nothing left to pay, money is not registered here at all; keep it as credit from [the
+  exception queue](#the-exception-queue).
 - **Reference** (the bank's or the payer's) and **Note**, both optional.
 
 Click **Register**. The table lists each payment's **Paid on**, **Amount**, its
@@ -1143,7 +1162,43 @@ it **Overdue** when the due date has passed. An invoice whose open amount is
 A wrong registration is never edited: click **Remove** beside it, give a **Reason** in
 the dialog **Remove the payment**, and confirm. *The payment stays on the invoice,
 struck through with the reason. A removal cannot be undone; register the payment again
-if it was right after all.*
+if it was right after all.* Removing a payment of the customer's credit gives the credit
+back; removing one whose rest was kept as credit takes that credit back, and is refused —
+*That is more than the customer's credit* — while it is used: remove what used it first.
+
+## The customer's credit
+
+A customer has **credit** when they paid more than they owed or a credit note credited more
+than was left to pay: money the company owes them, kept per currency and never below zero.
+Credit grows when you **keep the rest as credit** — of a payment by hand, or of a bank line
+in [the exception queue](#the-exception-queue) — and when [a credit note's
+surplus](#crediting-an-invoice) moves to the customer. It is used on a later invoice or
+paid back.
+
+**Use it on an invoice.** An issued invoice with something open says *The customer has
+NOK 300.00 in credit* above **Payments** while the customer has credit in its currency.
+Click **Use credit** (with `invoices:payments`): the dialog **Use the customer's credit**
+offers the lesser of the credit and what is open, and today as **Applied on**. Click **Use
+credit**. The invoice shows it as a payment with the source **Customer credit**; no money
+moves. More than the credit, or more than is open, is refused in words. When you issue an
+invoice, **Use the customer's credit** does the same [as soon as it is issued](#issuing).
+
+**See it.** The customer's **Invoices** tab shows the card **Customer credit** for a
+customer who ever had any: *The customer has NOK 300.00 in credit*, and every movement —
+an overpayment of an invoice, a credit note beyond what was open, credit used on an invoice,
+a refund, a reversal — each with its day, amount and what it came from, the newest first.
+
+**Pay it back.** Vantigo moves no money: pay the customer from your bank, then record it.
+On the card **Customer credit** click **Record refund** (with `invoices:payments`), and
+fill in **Paid back on** (not after today), the **Amount** — at most the credit — **Paid
+from account**, the company's account the money left (11 digits), and an optional
+**Reference** and **Note**. Click **Record refund**. A refund recorded by mistake is removed
+with **Remove refund** and a reason: it stays on the card, struck through, and the credit
+comes back. Refunds are in NOK in this version.
+
+A merge of two customers adds the absorbed customer's credit to the survivor's. When a
+customer is anonymised the credit keeps its amounts and loses its notes
+([customer credit](/en/reference/invoices/#customer-credit)).
 
 ## Writing an invoice off
 
@@ -1357,8 +1412,8 @@ Each reason in plain words, and what to do:
 | **The KID is not valid** | the KID's check digit is wrong | **Apply** it by hand, or dismiss it |
 | **No invoice has this KID** | another system's or another agreement's KID | **Apply** it, or dismiss it |
 | **The invoice is credited** | the KID's invoice is credited in full | **Not a customer payment**, with a note: the money is owed back, and refunded outside Vantigo |
-| **Nothing is left to pay** | the invoice is paid, and the payment is more than its reminder charges | the same |
-| **More than is owed** | more than the open amount and the charges | **Apply** what is owed to the invoice and its charges; the rest stays unapplied |
+| **Nothing is left to pay** | the invoice is paid, and the payment is more than its reminder charges | **Keep the rest as credit**, or **Not a customer payment** with a note |
+| **More than is owed** | more than the open amount and the charges | **Keep the rest as credit**: what is open is paid and the rest is the customer's credit; or **Apply** what is owed to the invoice and its charges, the rest unapplied |
 | **No KID** | the payment carries no KID | **Apply** it to one or more invoices from the suggestions |
 | **A negative amount** | an OCR line with a minus sign | **Not a customer payment**, with a note |
 | **A reversal** | the bank took a payment back | **Handle reversal** |
@@ -1382,8 +1437,15 @@ than is left of the payment are refused in the dialog before anything is sent. C
 **Apply**. A refusal is said in words and nothing is applied: an amount over an invoice's
 open amount names the invoice and that amount, a charge payment over the charges
 outstanding names what is outstanding, and an invoice issued after the bank booked the
-payment cannot be paid by it. What is not applied stays visible on the line: Vantigo keeps
-no credit balance and makes no refund.
+payment cannot be paid by it. What is not applied stays visible on the line.
+
+**Keep the rest as credit.** For a line that is more than its invoice had open, or that
+arrived for an invoice already paid: the dialog **Keep the rest of line … as credit**
+applies what the invoice — the one its KID names — has open as a payment, and keeps the
+rest as the invoice's customer's [credit](#the-customers-credit), with an optional
+**Note**. Click **Keep the rest as credit**. The line is resolved, and its applied list
+names the credit (*Invoice 1001, kept as credit: NOK 300.00*). A line kept as credit is
+not reopened while its credit stands; a reversal of it takes the credit back.
 
 **Not a customer payment.** For a Vipps payout, a payment refunded outside Vantigo or
 another system's KID: say what it is, or what was done about it, in the **Note**, and
@@ -1394,9 +1456,11 @@ registered from bank lines of the same account and amount, booked on or before i
 reads the latest 500 such lines of each kind and says so when there are more — an older
 payment is then not offered — and says so when they could not be read, rather than that
 there are none. Tick
-the one it reverses, or choose **No payment is removed; the note says why** and write the
+the one it reverses — a payment, or credit a line kept for the customer (*Credit kept from
+invoice 1001*) — or choose **No payment is removed; the note says why** and write the
 note, then click **Handle the reversal**. Each chosen payment is removed with the reason
-"Reversed by the bank", and the line it came from is never applied again. Without a
+"Reversed by the bank", each chosen credit is taken back — refused while the customer has
+used it — and the line it came from is never applied again. Without a
 payment or a note the reversal is refused, in words. A reversal that names the wrong
 payment cannot be undone: register that payment again by hand.
 
@@ -2177,7 +2241,9 @@ card has no chart; clicking it opens the list.
 
 The dashboard's **Needs attention** list carries Invoices' items too, each leading to the
 page that deals with it: *An invoice to … is overdue* (the 20 most overdue) and *Money is
-owed back to … on an invoice* for everyone with `invoices:access`; with
+owed back to … on an invoice* — reminder charges paid and then waived; what a credit note
+credits beyond what was open is [the customer's credit](#the-customers-credit) instead —
+for everyone with `invoices:access`; with
 `invoices:payments` also the bank lines waiting in the exception queue, per file; a
 reminder that could not be sent; the reminders waiting for a collection rate or for the
 review of the collection-law regime, which lead to **Overdue**; and a print batch not
@@ -2205,6 +2271,9 @@ offered with `invoices:create` and `customers:view`, and only on an active custo
 never an archived, disabled, merged or anonymised one. Above the list, the card
 **Uninvoiced work** shows the customer's work not yet invoiced to whoever holds
 `invoices:create` as well ([Invoicing work](#invoicing-work)). Below it, the card
+**Customer credit** shows the customer's credit and its movements, for a customer who ever
+had any, with **Record refund** for `invoices:payments`
+([The customer's credit](#the-customers-credit)), and the card
 **Reminder policy** says whether the customer is reminded and charged, changed with
 `invoices:payments` ([A customer's reminder policy](#a-customers-reminder-policy)).
 
@@ -2242,11 +2311,11 @@ No built-in role holds these; an Owner holds everything
 
 | You want to | You need |
 | --- | --- |
-| Open the app, read every document, download PDFs and EHF files, see payments, sends and EHF states, read the journal, export the CSV, see the dashboard card, read the overdue list, see an invoice's reminders, charges, deliveries, hold and hand-off and download a letter's PDF, read a customer's reminder policy, the collection rates and the reminder settings, see the dashboard's notices about overdue invoices and money owed back, see an invoice's pay link and Vipps payments, list the day's Vipps payments and download them as CSV | `invoices:access` |
+| Open the app, read every document, download PDFs and EHF files, see payments, sends and EHF states, read the journal, export the CSV, see the dashboard card, read the overdue list, see an invoice's reminders, charges, deliveries, hold and hand-off and download a letter's PDF, read a customer's reminder policy, the collection rates and the reminder settings, see the dashboard's notices about overdue invoices and reminder charges owed back, see an invoice's pay link and Vipps payments, list the day's Vipps payments and download them as CSV | `invoices:access` |
 | Create, edit, preview and delete drafts | `invoices:create`, and `customers:view` to pick the buyer |
 | See the uninvoiced work — its hours, people and rates — on a customer's Invoices tab or a project's Invoicing tab, make a draft of it or add it to one, refresh a draft's work, turn its timesheet on or off, deduct earlier invoices; see a customer's consumption due and make a draft of it, or add it to one; invoice orders with **From orders**; make, follow and cancel billing runs | `invoices:create` (and `invoices:issue` for a run that issues the invoices) |
 | Issue a draft — which marks its work invoiced in Time, Expenses and Projects, its consumption in Energy and its order lines in Orders, without asking for their permissions — make a credit note, send a document by e-mail or as EHF, see where each send went, cancel or resolve an EHF transmission, record a delivery by hand or remove one, make or revoke a pay link and see its address and QR code while payment on site is offered, take a Vipps payment on site | `invoices:issue` |
-| Register a payment or remove one with a reason; import bank files, **Fetch now** from the bank feed, and use **Payments** and its exception queue; set a customer's reminder policy; preview and make reminder runs, print paper letters, confirm a batch posted or reprint it; withdraw a letter or send a failed one again; register a charge payment, remove one, waive a charge; put an invoice on hold and lift the hold, record a hand-off to a collection agency and withdraw it, export the collection file; mark a day's Vipps payments reconciled; see the dashboard's notices about bank lines, letters, print batches and Vipps payments | `invoices:payments` |
+| Register a payment or remove one with a reason; keep the rest of a payment or a bank line as the customer's credit, use credit on an invoice, record and remove a refund of it; import bank files, **Fetch now** from the bank feed, and use **Payments** and its exception queue; set a customer's reminder policy; preview and make reminder runs, print paper letters, confirm a batch posted or reprint it; withdraw a letter or send a failed one again; register a charge payment, remove one, waive a charge; put an invoice on hold and lift the hold, record a hand-off to a collection agency and withdraw it, export the collection file; mark a day's Vipps payments reconciled; see the dashboard's notices about bank lines, letters, print batches and Vipps payments | `invoices:payments` |
 | Make a quick invoice — created and issued in one step, recorded as handed over — and take payment for it with Vipps on the spot | `invoices:create` and `invoices:issue` |
 | Edit the seller record, the number series, the Peppol id, the access point, the KID agreement, the VAT codes, the cards **Work to invoice** and **Consumption to invoice**, the collection rates and the reminder settings, the regime's review among them; change a bank account's file format under **Payments**, which also needs `invoices:payments` to open; set up Vipps and the payment settings, acknowledge kontantsalg, abandon a stuck Vipps payment; connect the bank, switch its accounts on and off, and disconnect it, under **Workspace admin** › **Integrations** › **Bank** | `invoices:manage` |
 

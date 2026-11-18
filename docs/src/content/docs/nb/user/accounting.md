@@ -295,11 +295,16 @@ den dagen regnskapet starter, som ett bilag datert den dagen.
 3. Når selskapet allerede fakturerer i Vantigo, tilbyr **Fakturaer har … åpne fakturaer ved
    regnskapets start** dem: **Legg til de åpne fakturaene** legger til en linje per faktura
    med kunde, nummer, datoer og beløpet som var åpent dagen før regnskapet starter.
+   **Fakturaer har … kunder med kreditt ved regnskapets start** tilbyr kundenes kreditt i
+   Fakturaer: **Legg til kundenes kreditt** legger til en kreditlinje per kunde på
+   kundefordringer, merket **Kundekreditt**.
 4. Det linjene ikke går i balanse med, føres på motkontoen for inngående balanse; skjemaet
    viser hvor mye. Klikk **Bokfør inngående balanse**.
 
 En faktura lagt til fra Fakturaer beholder kunden sin og beløpet som var åpent den dagen;
-en linje som oppgir den med en annen kunde eller et annet beløp, avvises.
+en linje som oppgir den med en annen kunde eller et annet beløp, avvises. Det samme gjelder
+en kundes kreditt: linjen er kundens kredittpost, med nøyaktig den kreditten Fakturaer
+hadde den dagen.
 
 **Mva ved regnskapets start.** Mva som var skyldig eller til gode før regnskapet starter —
 den siste terminen i det gamle regnskapet, ennå ikke betalt — føres på **2740**,
@@ -328,6 +333,12 @@ venter det under [Trenger oppmerksomhet](#trenger-oppmerksomhet) mens resten gå
 | Purrekostnader betales | Banken debiteres og kontoen for purreinntekter krediteres, med mva-kode 7 (uten mva): gebyr, erstatning og renter er ikke omsetning. Fjernes betalingen, snus det tilbake. |
 | En faktura avskrives | Tap på fordringer debiteres og kundefordringer krediteres for det som var åpent; tilbakeføres merverdiavgiften, føres mva-andelen tilbake på hver sats' mva-konto, merket for mva-meldingen — fordelt på det som er igjen av fakturaen når kreditnotaene er trukket fra, så en sats som er kreditert bort, tar ingen merverdiavgift tilbake. En avrunding føres på avrundingskontoen. Angres avskrivningen, snus bilaget som ble bokført for den, tilbake linje for linje, selv om en konto er endret siden. |
 | Det kommer penger etter en avskrivning | Banken debiteres og tap på fordringer krediteres — og den tilbakeførte merverdiavgiften føres tilbake, forholdsmessig. Flere delbetalinger som til sammen betaler det som ble avskrevet, fører tilbake nøyaktig det avskrivningen tok, på øret; en øre i avrunding havner på tap på fordringer, aldri på merverdiavgiften. |
+| Resten av en betaling holdes som kundens kreditt | Banken debiteres og kundens post **Kundekreditt** på kundefordringer krediteres. |
+| En kreditnota krediterer mer enn det som stod åpent | Overskuddet flyttes fra fakturaens post til kundens kredittpost: fakturaens post står ikke lenger under null, og ingenting telles to ganger. |
+| Kundens kreditt brukes på en faktura | Kredittposten debiteres og fakturaens post krediteres. Betalingen Fakturaer viser for den, bokfører ingenting selv, så pengene flyttes én gang. |
+| Kreditt betales tilbake | Kredittposten debiteres og bankkontoen pengene gikk fra, krediteres. |
+| En kredittbevegelse tilbakeføres — en tilbakebetaling eller en betaling fjernet, en tilbakeføring fra banken | Bilaget som ble bokført for den, snus tilbake. |
+| To kunder slås sammen | Den sammenslåtte kundens kreditt flyttes til den gjenværende kundens kredittpost. |
 
 Hvordan du [avskriver en faktura](/nb/user/invoices/#å-avskrive-en-faktura) i Fakturaer, står på den siden.
 
@@ -693,13 +704,18 @@ tilbakefører du utgiftens bilag med en postering og fører den på nytt med rik
 opprinnelig beløp og saldo, 200 om gangen med **Forrige** og **Neste**. **Vis oppgjorte**
 viser de oppgjorte også. En postering på
 kundefordringer som ikke oppgir noe dokument, havner på kundens **Uspesifisert**-post.
+En kundes kreditt i Fakturaer — en overbetaling som er holdt, eller en kreditnotas
+overskudd — står på en egen post, **Kundekreditt**, uten dokument og forfall, og vises med
+negativ saldo: selskapet skylder den. Den flyttes bare med Fakturaer og registreres aldri
+her.
 
 **Registrer** på en post registrerer penger som er flyttet: en innbetaling fra kunden,
 eller en tilbakebetaling av et tilgodehavende. Oppgi dato, beløp (høyst saldoen) og, når
 det ikke er bankkontoen, kontoen pengene gikk gjennom. Bilaget bokføres med en gang.
 
 En post merket **I Fakturaer** står for en faktura der: betalingen registreres på fakturaen
-i Fakturaer, aldri her. En leverandørfakturas post betales på leverandørfakturaen.
+i Fakturaer, aldri her. En post **Kundekreditt** brukes eller betales tilbake i Fakturaer
+også ([kundens kreditt](/nb/user/invoices/#kundens-kreditt)). En leverandørfakturas post betales på leverandørfakturaen.
 
 Å registrere krever **Bokføre bilag**.
 

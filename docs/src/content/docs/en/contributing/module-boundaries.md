@@ -1360,9 +1360,10 @@ lag, never what must refuse — go through the platform's domain-events outbox,
     on `manufacturing.order.done` likewise only marks the line in its own schema: the
     reserve stays the person's **Reserve now** (M48a). `manufacturing.mto-cancelled` on
     `orders.sales_order.cancelled` sets a flag on Manufacturing's own orders and nothing
-    else. Accounting's three catch-up handlers on Invoices' `invoices.document.issued`,
-    `invoices.payment.received` and `invoices.payment.removed` (accounting design R7),
-    and its fourth on Expenses' `expenses.entry.*` and `expenses.claim.*` (R2), each
+    else. Accounting's four catch-up handlers on Invoices' `invoices.document.issued`,
+    `invoices.payment.received`, `invoices.payment.removed` (accounting design R7) and
+    `invoices.customer_credit.changed` (invoices phase 6 design I16), and its fifth on
+    Expenses' `expenses.entry.*` and `expenses.claim.*` (R2), each
     upsert a wake-up in `accounting.catchup_requests` and nothing else; the worker
     `accounting.catchup` claims a stream's lease, reads `contracts.SalesJournal` — its
     `Documents`, `Facts` and `Document` — or `contracts.ExpenseJournal`'s `Facts` with no
@@ -2061,7 +2062,9 @@ single-provider contracts, `Receivables` and `SalesTax` — its VAT codes, the V
 each of Products' tax categories maps to, and its seller block, each read from its own
 tables on the pool ([What Invoices reports to other modules](/en/reference/invoices/#what-invoices-reports-to-other-modules)). It fills both many-provider slots: as a `CustomerReferenceHolder` it re-points every document of a
 merged-away customer, drafts and issued alike (`invoices.invoices`), the immutability
-trigger allowing exactly `customer_id` to change on an issued one; as
+trigger allowing exactly `customer_id` to change on an issued one, and the customer's
+credit — every movement (`invoices.customerCredits`) and refund (`invoices.creditRefunds`),
+both customers' credit locks taken first in ascending id; as
 `CustomerPersonalData` it exports a person's documents and drafts with their payments,
 deliveries and EHF transmissions — and an issued document's charge payments, waivers,
 manual deliveries, letters, holds and hand-offs, each payment's source and an imported
@@ -2076,7 +2079,9 @@ notes of the receivables (`invoices.chargePayments`, `invoices.chargeWaivers`,
 and of the resolved bank lines their money came from (`invoices.bankTransactions` —
 the lock order's one named exception, the [reference](/en/reference/invoices/#issuing)
 says why it cannot cycle), revokes every live pay link of the person's documents
-(`invoices.payLinks`) and leaves every Vipps payment attempt as it is, deletes the reminder policy
+(`invoices.payLinks`) and leaves every Vipps payment attempt as it is, blanks the notes of
+the customer's credit movements and refunds (`invoices.customerCredits`,
+`invoices.creditRefunds`, the customer's credit lock its first lock), deletes the reminder policy
 (`invoices.customerReminderPolicies`), and keeps the issued documents, their payments,
 letters and every other transmission under bokføringsloven § 13
 (`invoices.documents`, at 0). Every write runs on the customers module's transaction
