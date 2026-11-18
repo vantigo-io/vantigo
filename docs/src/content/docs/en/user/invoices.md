@@ -1240,19 +1240,23 @@ note. A written-off invoice cannot be credited until the write-off is undone.
 When the **Rounding tolerance** under **Invoice settings** is above 0, a payment that
 leaves an invoice open by a little — more than 0 and at most the tolerance — has the rest
 written off by itself, in the same moment, with the reason **Rounding**. That holds for a
-payment you register by hand, one matched or applied from a bank file or the bank feed,
-and one split across several invoices; never for a Vipps payment, which pays the amount
-exactly, money recovered after a write-off, or credit used. The write-off is shown under
+payment you register by hand and one matched or applied from a bank file or the bank
+feed, when the payment covered at least 95 % of what was open just before it — so a test
+transfer of a krone or an instalment never closes an invoice. It never holds for a Vipps
+payment, which pays the amount exactly, for money recovered after a write-off, for credit
+used, or for an apply that leaves money of the bank line unapplied. The write-off is shown under
 **Payments** as *Rounded off automatically*, with no one as the one who made it, and posts
 to the books as a rounding write-off made by hand does. Say the tolerance is 5: an invoice
 of 1 000 paid 997 is paid, and 3 is rounded off; paid 994 it stays partly paid. A change
-of the tolerance applies from the next payment on.
+of the tolerance applies from the next payment on. Remove the payment — or let a bank
+reversal take it back — and its rounding is undone with it, *payment removed*.
 
 An invoice closed by a rounding write-off — automatic or made by hand — reads **Paid**,
 not **Written off**: a small difference is not a loss. If the customer later pays the
 difference, the bank line waits in [the exception queue](#the-exception-queue) as
 **Nothing is left to pay**, and **Keep the rest as credit** keeps it as the
-customer's credit. **Undo write-off** undoes an automatic one as any other.
+customer's credit; it is never registered as recovered. **Undo write-off** undoes an
+automatic one as any other.
 
 Writing off, undoing and registering a recovered payment need `invoices:payments`. With
 [Accounting](/en/user/accounting/#how-sales-arrive-from-invoices) on, each posts itself,

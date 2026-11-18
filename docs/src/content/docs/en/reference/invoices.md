@@ -2593,16 +2593,20 @@ the undo (`tr_write_offs_immutable`), belongs to an issued invoice
 
 **The rule.** `roundOffResidual` runs after a payment is registered, in its transaction and
 under the invoice's `FOR UPDATE` lock: by hand (`POST /{id}/payments`, a `payment` kind,
-never a recovery), by a match, by the queue's apply, and by [the automatic
-split](#the-automatic-split). It reads `invoices.settings.tolerance` in that transaction —
-a change applies from the next payment on — and the open amount and the live Vipps
-reservations after the payment. When the tolerance is above 0, no reservation holds part of
-the invoice, and the open principal is above 0 and, **in NOK at the document's rate**, at
-most the tolerance, it writes a write-off of the whole open amount with `reason`
+never a recovery), by a match, and by the queue's apply — unless money of the line stays
+unapplied after it, which a person applies or keeps as the customer's credit instead. It
+reads `invoices.settings.tolerance` in that transaction — a change applies from the next
+payment on — and the open amount and the live Vipps reservations after the payment. When
+the tolerance is above 0, no reservation holds part of the invoice, the open principal is
+above 0 and, **in NOK at the document's rate**, at most the tolerance, and **the payment
+covered at least 95 % of what was open just before it** (plan reading 14, the owner's
+default: a test transfer of a krone or an instalment never closes an invoice — 997 of 1000
+is rounded off, 450 of 500 is not, whatever the tolerance), it writes a write-off of the whole open amount with `reason`
 `rounding`, `source` `auto`, no `registered_by_user_id`, `written_off_on` the payment's day
 (`paid_on`, a line's booking day) and the request's clock as `registered_at`. A Vipps
 capture never runs it (it pays the reserved amount exactly), nor credit applied, nor the
-keep-as-credit action, which pays what is open in full. Every document is NOK in this
+keep-as-credit action or [the automatic split](#the-automatic-split), which pay what is
+open in full. Every document is NOK in this
 phase; the comparison already converts, for C's foreign currencies.
 
 **The write-off.** `invoices.write_offs.source` is `manual` or `auto`
@@ -2610,7 +2614,11 @@ phase; the comparison already converts, for C's foreign currencies.
 `auto` (`ck_write_offs_actor`), and only a `rounding` write-off is ever `auto`
 (`ck_write_offs_auto`). `InvoicesWriteOff` answers `source`, and `registeredByUserId` is
 absent on an automatic one. It is undone, and posted, as any other: the fact is
-`write_off`, and Accounting's `sales.write_off_rounding` posts it to 7790.
+`write_off`, and Accounting's `sales.write_off_rounding` posts it to 7790. **It goes with
+its payment**: removing a payment of the invoice (`POST /{id}/payments/{paymentId}/remove`)
+or a reversal taking one back (`handle-reversal`) undoes, in the same transaction, every
+standing automatic write-off of that invoice, by the person, with the reason `payment
+removed` (`UndoAutoWriteOffs`); the invoice is open again by the whole of it.
 
 **The state and a late residual.** A standing `rounding` write-off reads `paid`
 ([Payments and the state of an invoice](#payments-and-the-state-of-an-invoice)), so the
@@ -2619,7 +2627,9 @@ line that pays an invoice a `rounding` write-off closed is no recovery: matching
 `invoice_written_off` row looks only at a standing write-off that is not `rounding`
 (`lossWrittenOffOf`), so the line falls through to `invoice_settled`, and a person keeps
 it as the customer's credit ([Customer credit](#customer-credit)). A recovery
-(`kind: recovered`) is still registered by hand on any standing write-off. A credit note
+(`kind: recovered`) is registered by hand on a standing `loss` or `other` write-off only:
+against a `rounding` one it is 409 `no_write_off`, saying a small difference is no loss
+(plan reading 11). A credit note
 is still refused `invoice_written_off` while a rounding write-off stands.
 
 **The setting.** `GET /settings` answers `tolerance`; `PUT /settings` takes it, optional
@@ -4000,19 +4010,30 @@ Phase 6 (I14, as the plan's reading 10 amends it): one bank line for several inv
 **When it is tried.** Before a line is queued `no_kid` or `kid_unknown` by the
 classification, or `exceeds_open` by the judgement under the lock, its remittance is read on
 the pool (`referencesOf`, pure): the tokens of `remittance_refs`, of the remittance text
-and of the KID field — split at whitespace and `,;/:#` — that are a valid KID under MOD10
+and of the KID field — split at whitespace and `,;/:#+&()` — that are a valid KID under MOD10
 or MOD11, each then looked up as step 6 does, exactly; and every **invoice number of the
 series** (from `series_start` to the counter's next value) standing as a whole token.
 
-**The token rule.** A run of ASCII digits, not inside a longer one, bounded on each side by
-the text's start or end, whitespace or one of `,;/:#`; not right after a currency code
-(`NOK`, `kr`, `EUR`, `USD`, `SEK`, `DKK`, `GBP`, `CHF`, `ISK`, `PLN`, with whitespace or
-a dot between, or none); not beside a decimal separator (a comma between digits, or before
-`-`); never with a leading zero, so a KID's digits are never one; at most 18 digits. Before
-any token is read, an amount with grouped thousands and decimals (`1 250,00`, `12.500,-`),
-a date (`17.11.2026`, `17/11/26`, `2026-11-17`) and an account number in its groups
-(`1234 56 78903`) are blanked out. `Fakt 1001/1002` names 1001 and 1002; `NOK 1001`,
-`1250,00`, `1001.50` and `00010017` name nothing.
+**The token rule** (`wholeNumbers`, as delivery B-2's review settled it). Before any
+token is read, each anchored at a word's start: an amount the currency follows (`3000 kr`,
+`1 250,50 NOK`), an amount with grouped thousands and decimals (`1 250,00`, `12.500,-`), a
+date (`17.11.2026`, `17/11/26`, `2026-11-17`) and an account number in its groups
+(`1234 56 78903`) are blanked out. Then a run of ASCII digits, not inside a longer one, is
+an invoice number when it is bounded on each side by the text's start or end, whitespace,
+one of `,;/:#+&()`, or:
+
+- a `.` or `-` followed by whitespace, the end or a non-digit (`faktura 1001.`);
+- a `,` or `.` between two runs, which is a **list** (`1001,1002`, `1001.1002` name both)
+  unless the run after it is one or two digits, or the next character is `-`: then it is a
+  decimal separator and neither run is a number (`1250,00`, `1001.50`, `1250,-`);
+- a `-` between two runs of three digits or more, which names **both ends** and never the
+  numbers between (`1001-1002`); between shorter runs it joins them, and neither is one.
+
+Never right after a currency code (`NOK`, `kr`, `EUR`, `USD`, `SEK`, `DKK`, `GBP`, `CHF`,
+`ISK`, `PLN`, with whitespace or a dot between, or none); never with a leading zero, so a
+KID's digits are never one; at most 18 digits. `Faktura 10023 450,00` names 10023;
+`inv 1001+1002` and `(1001) (1002)` name both; `NOK 1001`, `3000 kr`, `1001.50` and
+`00010017` name nothing.
 
 **The judgement**, made on the pool to decide whether to try and again under the locks to
 decide: **two or more** invoices, every one an issued NOK invoice of **one customer**, not
@@ -4033,7 +4054,8 @@ deadline-met waiver for each, the line `matched` and one **`auto_split`** event,
 same user or none (`ck_bank_transaction_events_by` allows it, as for `matched`).
 
 **Any doubt queues**: two customers, a sum that differs, a candidate credited in full or
-written off, a single invoice. The queue's suggestions (`number_in_text`) read the
+written off, a single invoice, more than 20 invoices named (`IssuedInvoicesByNumbers`
+reads 21). The queue's suggestions (`number_in_text`) read the
 references as well as the text, so such a line is offered the invoices it named.
 
 ### The exception queue

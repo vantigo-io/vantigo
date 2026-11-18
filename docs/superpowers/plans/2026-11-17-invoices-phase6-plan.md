@@ -835,6 +835,14 @@ These become spec amendments (revision 5).
       amount.
 13. **A manual registration with nothing open** keeps `invoice_settled`, even with
     `keepRestAsCredit`. Money for a settled invoice goes through the queue.
+14. **The tolerance guard** (B-2's review; the owner's default until overturned). A
+    residual is rounded off only when the payment that left it covered at least 95 % of
+    what was open just before it, beside residual ≤ tolerance: a 1-krone test transfer or
+    an instalment (450 of 500) never closes an invoice; 997 of 1000 does. The manual
+    registration has no "partial" flag, so the 95 % rule is the whole guard. An automatic
+    rounding write-off is undone, `payment removed`, when a payment of its invoice is
+    removed or reversed; an apply that leaves money of its line unapplied rounds nothing
+    off; and no recovery is registered against a rounding write-off (reading 11).
 
 ## Deliveries C to E
 

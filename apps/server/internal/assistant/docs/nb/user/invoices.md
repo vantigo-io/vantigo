@@ -1262,19 +1262,23 @@ avskrivningen er angret.
 Når **Avrundingsgrense** under **Fakturainnstillinger** er over 0, får en betaling som lar
 en faktura stå litt åpen — mer enn 0 og høyst grensen — resten avskrevet av seg selv, i
 samme øyeblikk, med årsaken **Avrunding**. Det gjelder en betaling du registrerer for
-hånd, en som avstemmes eller føres fra en bankfil eller bankintegrasjonen, og en som
-fordeles på flere fakturaer; aldri en Vipps-betaling, som betaler beløpet nøyaktig, penger
-innbetalt etter en avskrivning, eller kreditt som brukes. Avskrivningen vises under
+hånd og en som avstemmes eller føres fra en bankfil eller bankintegrasjonen, når
+betalingen dekket minst 95 % av det som stod åpent rett før den — så en prøveoverføring på
+én krone eller en avdragsbetaling lukker aldri en faktura. Det gjelder aldri en
+Vipps-betaling, som betaler beløpet nøyaktig, penger innbetalt etter en avskrivning,
+kreditt som brukes, eller en føring som lar penger fra banklinjen stå igjen. Avskrivningen vises under
 **Betalinger** som *Avrundet automatisk*, uten noen som den som gjorde den, og bokføres
 som en avrunding gjort for hånd. Si at grensen er 5: en faktura på 1 000 som betales med
 997, er betalt, og 3 avrundes; betalt med 994 forblir den delvis betalt. En endret grense
-gjelder fra neste betaling.
+gjelder fra neste betaling. Fjernes betalingen — eller tar en tilbakeføring fra banken den
+tilbake — angres avrundingen med den, *payment removed*.
 
 En faktura som en avrundingsavskrivning har lukket — automatisk eller gjort for hånd —
 står som **Betalt**, ikke **Avskrevet**: en liten differanse er ikke et tap. Betaler
 kunden differansen senere, venter banklinjen i [avvikskøen](#avvikskøen) som **Ingenting
-er igjen å betale**, og **Hold resten som kreditt** holder den som kundens kreditt.
-**Angre avskrivning** angrer en automatisk avskrivning som alle andre.
+er igjen å betale**, og **Hold resten som kreditt** holder den som kundens kreditt; den registreres aldri som
+innbetalt etter avskrivning. **Angre avskrivning** angrer en automatisk avskrivning som
+alle andre.
 
 Å avskrive, å angre og å registrere en innbetaling etter avskrivning krever
 `invoices:payments`. Med [Regnskap](/nb/user/accounting/#slik-kommer-salget-inn-fra-fakturaer)
