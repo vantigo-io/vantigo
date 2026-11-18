@@ -17,6 +17,7 @@ sources:
   - apps/server/internal/db/migrations/00182_invoices_write_offs.sql
   - apps/server/internal/db/migrations/00193_invoices_branding.sql
   - apps/server/internal/db/migrations/00197_invoices_credit.sql
+  - apps/server/internal/db/migrations/00199_invoices_split.sql
   - apps/server/internal/docmath
 ---
 The Invoices module issues the sales document of Norwegian bookkeeping: a draft
@@ -137,7 +138,7 @@ registration in the day's CSV — it is told in the business time zone too.
 
 | Table | What it holds |
 | --- | --- |
-| `invoices.settings` | One row: the seller record (legal name, organisation number, VAT registration, Foretaksregisteret, address, bank account, IBAN/BIC, e-mail, footer), the default terms and currency, `series_start`, the seller's Peppol id `peppol_id`, the KID agreement `kid_length` and `kid_algorithm` (a pair or both NULL, `ck_settings_kid`), the VAT code each kind of work is invoiced at — `work_vat_code_hours`, `work_vat_code_expenses`, `work_vat_code_milestones`, each a code that exists, all 1 (`3`, 25 %) by default — the two codes an energy line takes by its hint, `energy_vat_code` (1) and `energy_vat_code_exempt` (10 where 5N was seeded, else 5), foreign keys `ON DELETE RESTRICT` ([VAT codes for energy](#vat-codes-for-energy)) — the timesheet's default `timesheet_default` (off) and person label `timesheet_person_label` (`initials`, the default, `number` or `name`) — and `send_channel` (`uuid`, NULL), the id of the Communications channel documents and reminder letters are [sent from](#the-sending-channel), NULL meaning Disabled, with **no foreign key** across schemas (rule 4) — and the seller's `phone` (`''` for none) and logo, `logo_object_key`, `logo_sha256` and `logo_content_type` (`image/png` or `image/jpeg`), all three or none (`ck_settings_logo`; [The logo and the phone](#the-logo-and-the-phone)). |
+| `invoices.settings` | One row: the seller record (legal name, organisation number, VAT registration, Foretaksregisteret, address, bank account, IBAN/BIC, e-mail, footer), the default terms and currency, `series_start`, the seller's Peppol id `peppol_id`, the KID agreement `kid_length` and `kid_algorithm` (a pair or both NULL, `ck_settings_kid`), the VAT code each kind of work is invoiced at — `work_vat_code_hours`, `work_vat_code_expenses`, `work_vat_code_milestones`, each a code that exists, all 1 (`3`, 25 %) by default — the two codes an energy line takes by its hint, `energy_vat_code` (1) and `energy_vat_code_exempt` (10 where 5N was seeded, else 5), foreign keys `ON DELETE RESTRICT` ([VAT codes for energy](#vat-codes-for-energy)) — the timesheet's default `timesheet_default` (off) and person label `timesheet_person_label` (`initials`, the default, `number` or `name`) — and `send_channel` (`uuid`, NULL), the id of the Communications channel documents and reminder letters are [sent from](#the-sending-channel), NULL meaning Disabled, with **no foreign key** across schemas (rule 4) — and the seller's `phone` (`''` for none) and logo, `logo_object_key`, `logo_sha256` and `logo_content_type` (`image/png` or `image/jpeg`), all three or none (`ck_settings_logo`; [The logo and the phone](#the-logo-and-the-phone)) — and the rounding `tolerance` (`numeric(5,2)`, NOK, 0 to 100, default 0, `ck_settings_tolerance`; [Small differences](#small-differences)). |
 | `invoices.counters` | The one counter row, `documents`; it exists exactly when something has been issued. |
 | `invoices.vat_codes` | The tenant's codes: label, name, SAF-T code, UNCL5305 category, exemption reason, active. |
 | `invoices.vat_code_rates` | Each code's rates as dated periods that never overlap (an exclusion constraint). A rate change is a new period, not a new code. |
@@ -154,8 +155,8 @@ registration in the day's CSV — it is told in the business time zone too.
 | `invoices.credit_merges` | A balance a customer merge moved: `from_customer_id`, `into_customer_id`, `currency`, `amount` (above 0), `amount_nok`, `merged_at`. Written by the merge after it re-points the movements, never changed; the fact log hears from it that a balance moved customer. |
 | `invoices.bank_import_accounts` | One row per receiving account a bank file was imported for: the `format` its files come in (`ocr` or `camt054`), set by its first import, and — once a manager changed it — the `previous_format` with `cutover_through`, the latest booking day of the account's own lines in it; who set it and when. Never deleted; an update changes only those columns ([Bank files](#bank-files-and-the-exception-queue)). |
 | `invoices.bank_files` | One imported bank file: its format, the SHA-256 of its bytes and its own identity (each unique), the object key it is stored under, its size, the accounts it names, the first and last booking day of its lines, how many transactions it brought, how many of them were `duplicates` (set once by the import, from `NULL`), how many lines were `ignored` and `ignored_kinds` by kind, who uploaded it and when. Never deleted or changed but by that one write. |
-| `invoices.bank_transactions` | One line of a bank file as the bank wrote it — the line reference, the format, the receiving account, the direction, `negative`, the booking, value and ordering days, the amount (above 0, NOK), the KID, the remittance text, the debtor's name and account, the archive reference, the bank's code — its `fingerprint` and `ordinal`, `duplicate_of_id` when it repeats a live line, and its state: `status` (`pending`, `matched`, `exception`, `resolved` or `duplicate`), the `reason` it was queued for, the suggested invoice and the resolution. One live line per account and fingerprint (`ux_bank_transactions_fingerprint`). Never deleted; only the state columns change, never back to `pending`, and a reason once set stays. |
-| `invoices.bank_transaction_events` | What happened to a line, by whom and when — matched, queued, the queue's actions, and `reversed` on a line whose payment a reversal took back — with a reason and a note. Insert-only, but for its note blanked by an erase. |
+| `invoices.bank_transactions` | One line of a bank file as the bank wrote it — the line reference, the format, the receiving account, the direction, `negative`, the booking, value and ordering days, the amount (above 0, NOK), the KID, the remittance text, `remittance_refs` (every structured remittance reference of a camt.054 line, of any type, in order, at most 20 of `varchar(35)`, `ck_bank_transactions_remittance_refs`; `'{}'` for an OCR or a feed line and for a line from before migration 00199), the debtor's name and account, the archive reference, the bank's code — its `fingerprint` and `ordinal`, `duplicate_of_id` when it repeats a live line, and its state: `status` (`pending`, `matched`, `exception`, `resolved` or `duplicate`), the `reason` it was queued for, the suggested invoice and the resolution. One live line per account and fingerprint (`ux_bank_transactions_fingerprint`). Never deleted; only the state columns change, never back to `pending`, and a reason once set stays. |
+| `invoices.bank_transaction_events` | What happened to a line, by whom and when — matched, queued, `auto_split` ([The automatic split](#the-automatic-split)), the queue's actions, and `reversed` on a line whose payment a reversal took back — with a reason and a note. Insert-only, but for its note blanked by an erase. |
 | `invoices.deliveries` | One row per e-mail that handed an issued document over: the recipient and the personal `message` (`''` for none; both `''` once the customer is anonymised), the subject, the Message-ID, the SHA-256 of the PDF attached, when and by whom. Never deleted; never changed but by that blanking. |
 | `invoices.manual_deliveries` | A delivery recorded by hand ([The delivery fact](#the-delivery-fact)): the invoice, `kind` (`handed_over` or `posted`), `delivered_on`, a note (`''` once the customer is anonymised), who recorded it and when, and — once removed — when, by whom and why. Never deleted; never changed but by the removal, once, and that blanking. |
 | `invoices.charge_payments` | Money received against an invoice's charges, never its principal ([Charges](#charges)): the day, the amount and the currency (the invoice's), `source` (`manual`, `ocr` or `camt054`) and the bank line of one taken from a bank file (`ck_charge_payments_origin`: a line exactly when the source is not `manual`), the reference, a note (blanked as the payments' is), who registered it and when, and the removal. Never deleted; never changed but by the removal, once, and that blanking. |
@@ -2360,8 +2361,10 @@ RESTRICT`. The API refuses first, with its own codes; the triggers are the floor
 **The state is derived, never stored.** Judged against today's [business day](#the-business-day), with `credited`
 the issued credit notes' gross (0 for a credit note), `paid` what settles the principal —
 the live payments that are not recoveries, plus the standing
-[write-off](#write-offs-and-recovered-payments) — and `writtenOff` that write-off's amount,
-the first match wins:
+[write-off](#write-offs-and-recovered-payments) — and `writtenOff` that write-off's amount
+when its reason is not `rounding` (0 for a rounding one: a small difference is not a loss,
+so an invoice a rounding write-off closed — automatic or manual, the ones made before
+migration 00199 included — is `paid`), the first match wins:
 
 | State | When |
 | --- | --- |
@@ -2380,7 +2383,8 @@ payment is `overdue`, not `partially_paid` — overdue is the fact that matters.
 is not overdue on its due date, and is from the day after. `credited > 0` keeps an
 invoice of free lines only (gross 0, which can never be credited) out of `credited`: it is
 `paid`, nothing being open. The rule lives once in SQL, `invoices.invoice_state(kind,
-status, gross, credited, paid, written_off, due_date, today)` (migration 00182; 00035's
+status, gross, credited, paid, written_off, due_date, today)` (migration 00182, every caller
+passing `invoices.loss_written_off_amount(id)` as `written_off` since migration 00199; 00035's
 `document_state` is its rule without the write-off, which the overdue checks still call
 with the write-off counted in `paid`), `IMMUTABLE`, with `today` always a parameter from
 the server's clock and never `CURRENT_DATE`; the list and the stats filter with it. What
@@ -2580,6 +2584,48 @@ the undo (`tr_write_offs_immutable`), belongs to an issued invoice
 (`ux_write_offs_live`), and keeps `vat_correction` to a loss. A payment's `kind` is
 `payment` or `recovered`, a recovery names its write-off and is `manual`
 (`ck_payments_recovered`). The Down refuses while a write-off or a recovery exists.
+
+### Small differences
+
+[Phase 6](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-11-17-invoices-phase6-design.md)
+(I15, as the [plan's readings](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/plans/2026-11-17-invoices-phase6-plan.md)
+10–12 amend it) writes the `rounding` write-off by itself.
+
+**The rule.** `roundOffResidual` runs after a payment is registered, in its transaction and
+under the invoice's `FOR UPDATE` lock: by hand (`POST /{id}/payments`, a `payment` kind,
+never a recovery), by a match, by the queue's apply, and by [the automatic
+split](#the-automatic-split). It reads `invoices.settings.tolerance` in that transaction —
+a change applies from the next payment on — and the open amount and the live Vipps
+reservations after the payment. When the tolerance is above 0, no reservation holds part of
+the invoice, and the open principal is above 0 and, **in NOK at the document's rate**, at
+most the tolerance, it writes a write-off of the whole open amount with `reason`
+`rounding`, `source` `auto`, no `registered_by_user_id`, `written_off_on` the payment's day
+(`paid_on`, a line's booking day) and the request's clock as `registered_at`. A Vipps
+capture never runs it (it pays the reserved amount exactly), nor credit applied, nor the
+keep-as-credit action, which pays what is open in full. Every document is NOK in this
+phase; the comparison already converts, for C's foreign currencies.
+
+**The write-off.** `invoices.write_offs.source` is `manual` or `auto`
+(`ck_write_offs_source`, default `manual`); `registered_by_user_id` is NULL exactly for
+`auto` (`ck_write_offs_actor`), and only a `rounding` write-off is ever `auto`
+(`ck_write_offs_auto`). `InvoicesWriteOff` answers `source`, and `registeredByUserId` is
+absent on an automatic one. It is undone, and posted, as any other: the fact is
+`write_off`, and Accounting's `sales.write_off_rounding` posts it to 7790.
+
+**The state and a late residual.** A standing `rounding` write-off reads `paid`
+([Payments and the state of an invoice](#payments-and-the-state-of-an-invoice)), so the
+reminder rules and the attention items, which follow the state, treat it as paid. A bank
+line that pays an invoice a `rounding` write-off closed is no recovery: matching's
+`invoice_written_off` row looks only at a standing write-off that is not `rounding`
+(`lossWrittenOffOf`), so the line falls through to `invoice_settled`, and a person keeps
+it as the customer's credit ([Customer credit](#customer-credit)). A recovery
+(`kind: recovered`) is still registered by hand on any standing write-off. A credit note
+is still refused `invoice_written_off` while a rounding write-off stands.
+
+**The setting.** `GET /settings` answers `tolerance`; `PUT /settings` takes it, optional
+(absent keeps the stored one), 0 to 100 with at most two decimals, else 400 on
+`tolerance`. The Down of migration 00199 refuses while an automatic write-off or an
+`auto_split` event exists.
 
 ## Charges
 
@@ -3902,7 +3948,7 @@ decides:
 | Judged | Result |
 | --- | --- |
 | credited > 0 and credited ≥ gross | queued `invoice_credited` |
-| a write-off of the invoice stands | queued `invoice_written_off` |
+| a write-off of the invoice stands whose reason is not `rounding` | queued `invoice_written_off` |
 | booked before the invoice's issue day | queued `paid_before_issue` |
 | open > 0 and amount ≤ open | a payment of the amount |
 | open > 0 and amount ≤ open + charges | a payment of the open amount and a charge payment of the rest |
@@ -3946,6 +3992,49 @@ logged at warn with the file and the line, and the import's 201 (or `…/match`'
 reports what is left in `pending`. The file's rows, committed before matching began,
 stand. Matching reads no directory and calls nothing out of the module, so no call is
 made under its locks.
+
+### The automatic split
+
+Phase 6 (I14, as the plan's reading 10 amends it): one bank line for several invoices.
+
+**When it is tried.** Before a line is queued `no_kid` or `kid_unknown` by the
+classification, or `exceeds_open` by the judgement under the lock, its remittance is read on
+the pool (`referencesOf`, pure): the tokens of `remittance_refs`, of the remittance text
+and of the KID field — split at whitespace and `,;/:#` — that are a valid KID under MOD10
+or MOD11, each then looked up as step 6 does, exactly; and every **invoice number of the
+series** (from `series_start` to the counter's next value) standing as a whole token.
+
+**The token rule.** A run of ASCII digits, not inside a longer one, bounded on each side by
+the text's start or end, whitespace or one of `,;/:#`; not right after a currency code
+(`NOK`, `kr`, `EUR`, `USD`, `SEK`, `DKK`, `GBP`, `CHF`, `ISK`, `PLN`, with whitespace or
+a dot between, or none); not beside a decimal separator (a comma between digits, or before
+`-`); never with a leading zero, so a KID's digits are never one; at most 18 digits. Before
+any token is read, an amount with grouped thousands and decimals (`1 250,00`, `12.500,-`),
+a date (`17.11.2026`, `17/11/26`, `2026-11-17`) and an account number in its groups
+(`1234 56 78903`) are blanked out. `Fakt 1001/1002` names 1001 and 1002; `NOK 1001`,
+`1250,00`, `1001.50` and `00010017` name nothing.
+
+**The judgement**, made on the pool to decide whether to try and again under the locks to
+decide: **two or more** invoices, every one an issued NOK invoice of **one customer**, not
+fully credited, with no standing write-off, something open and no live Vipps reservation,
+printed with the line's account and issued on or before the line's booking day; the line's
+soft key clear when it has a KID; and their open principals adding up to the line's amount
+**exactly**. Charges are never taken.
+
+**The transaction.** The line `FOR NO KEY UPDATE` — still `pending`, else nothing to do —
+then the invoices `FOR UPDATE` in descending id (D18); no customer lock, since no credit
+is written. Under them the judgement runs again; if it no longer holds, nothing is written
+and the line is queued with its reason as before, on the pool. If it holds, one payment
+per invoice of its open amount, the **earliest due date first** (then the number), each
+`source` the line's (`camt054`, `ocr` or `bank_feed`), `reference` the line's KID, paid on
+the booking day, registered by the uploader or the caller of `…/match` — by no one for the
+bank feed (`ck_payments_origin` requires a user on `ocr` and `camt054`) — then the
+deadline-met waiver for each, the line `matched` and one **`auto_split`** event, by the
+same user or none (`ck_bank_transaction_events_by` allows it, as for `matched`).
+
+**Any doubt queues**: two customers, a sum that differs, a candidate credited in full or
+written off, a single invoice. The queue's suggestions (`number_in_text`) read the
+references as well as the text, so such a line is offered the invoices it named.
 
 ### The exception queue
 
@@ -6425,8 +6514,10 @@ an overpayment kept as credit by hand or from the queue, a credit note's surplus
 the customer, credit applied and refunded, the NOK each payment brought, and the credit
 facts a ledger posts ([Customer credit](#customer-credit)), on migration
 `00197_invoices_credit.sql` (Accounting's side `00198_accounting_customer_credit.sql`).
-Still to come: B-2, one bank line for several invoices and small differences rounded off;
-C, foreign currency; D, eFaktura and AvtaleGiro; and E, sending in bulk, the
+Delivery B-2 is done too: one bank line matched across several invoices by the references
+it names ([The automatic split](#the-automatic-split)) and small differences rounded off
+under a tolerance ([Small differences](#small-differences)), on migration
+`00199_invoices_split.sql`. Still to come: C, foreign currency; D, eFaktura and AvtaleGiro; and E, sending in bulk, the
 2028 buyer rule and credit limits.
 
 **Phase 5 is complete.** Its delivery D
