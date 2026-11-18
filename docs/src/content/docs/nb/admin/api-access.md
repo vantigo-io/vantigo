@@ -242,12 +242,16 @@ Nøkkelen blir i siden: den lagres ikke i nettleseren, sendes ikke noe annet ste
 denne installasjonen, og er borte når du går herfra eller tømmer feltet. En nøkkel som
 avvises ved **Bruk nøkkel**, navngis med koden sin (se nedenfor), og en avvist nøkkel logger
 deg aldri ut. Ingenting på siden hentes utenfra installasjonen. Siden serveres ikke på den
-offentlige verten.
+offentlige verten. **Test Request** virker bare når siden er åpnet på installasjonens egen
+adresse, `APP_URL`: dokumentet oppgir den adressen som tjener, og sidens
+innholdssikkerhetspolicy avviser forespørsler til alle andre opphav.
 
 Et program kan hente det samme dokumentet selv: `GET /api/openapi.json` med nøkkelen i
 `Authorization`-headeren svarer med OpenAPI-dokumentet for det nøkkelen når, klart for en
 klientgenerator; en økt som ber om `?view=api`, får alle operasjoner en nøkkel kan kalle
 ([API-kontraktdokumentet](/nb/admin/transport-security/#api-kontraktdokumentet)).
+Å hente det med en nøkkel teller mot integrasjonens hastighetsgrense og vises i
+forespørselsloggen, som ethvert annet kall.
 
 ## Svarene en nøkkel kan få
 

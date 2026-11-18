@@ -1633,7 +1633,11 @@ lag, never what must refuse — go through the platform's domain-events outbox,
       document, built by `internal/openapi/integrator` from the merged contract and the
       composed catalog (`Build(contract, catalog, filter)`), for a key filtered by
       `APIKeyScope` and kept in an LRU of 64 by the sorted permission set and the read-only
-      flag (`apidocument.go`). `module.IntegratorDocument` builds the unfiltered one for
+      flag (`apidocument.go`). A key loading it goes through the router's own `keyGate`
+(`apikeygate.go`): counted against its integration's rate limit with the `RateLimit-*`
+headers, `429` over it, and recorded in the request log as `getApiOpenapiJson`, refusals
+included. Every answer is `Cache-Control: private, no-store` with
+`Vary: Authorization, Cookie`. `module.IntegratorDocument` builds the unfiltered one for
       every module given, which `vantigo openapi integrator` writes for CI. `/api` itself
       stays the catch-all `404` problem in `compose.go`: `internal/server` hands a browser's
       `GET` or `HEAD` of `/api` (`Accept` preferring `text/html`) and `/api/reference/` to

@@ -8,6 +8,7 @@ sources:
   - apps/apiref/frontend
   - apps/server/internal/openapi/integrator
   - apps/server/internal/module/apidocument.go
+  - apps/server/internal/module/apikeygate.go
 ---
 
 Vantigo's API is the same HTTP API its own screens use: JSON over HTTPS, one set of paths per
@@ -88,7 +89,8 @@ document.
 ## The rate limit
 
 Each integration has a limit of requests per minute, shared by all of its keys, so adding a
-key does not raise it. Every response to a key carries:
+key does not raise it. Every answer to a request the key is let through for — loading
+`/api/openapi.json` included — carries:
 
 | Header | Meaning |
 | --- | --- |

@@ -75,7 +75,10 @@ From those marks and the composed permission catalog the server builds the
 scope) and to a session asking `?view=api`; `vantigo openapi integrator` writes it, every
 module enabled, to stdout. The interactive reference at `/api` renders it with Scalar,
 from `apps/apiref/frontend`, built into `apps/server/internal/apiref/dist` by the same
-overlay as the SPA and this site.
+overlay as the SPA and this site. That package pins `@scalar/api-reference`, whose bundle
+runs in the installation's own origin with a person's session beside it: a bump of it is
+reviewed by hand — what the new bundle fetches, and whether it still runs under the page's
+policy — and never merged automatically, Dependabot's included.
 
 That document is a promise to integrators ([API compatibility](/en/reference/api-compatibility/)),
 and CI holds pull requests to it: the `lint_server` job builds it for the pull request and
@@ -89,7 +92,11 @@ feat(orders)!: report the total as totals.gross
 API-Breaking: getOrders — the total moves to totals.gross; getOrdersV2 replaces it
 ```
 
-`tools/api/breaking-check.ts` then adds the `breaking-api` label, and
+`tools/api/breaking-check.ts` only judges, with a read-only token: it writes the verdict
+to the step's outputs. A separate job, `label_breaking_api`, which checks out nothing from
+the pull request and is the only one allowed to write to it, then adds the `breaking-api`
+label, or removes it when the change is clean again; a fork's pull request is labelled by
+a maintainer instead. Then
 [`.github/release.yml`](https://github.com/vantigo-io/vantigo/blob/main/.github/release.yml)
 lists labelled pull requests under **Breaking API changes** in the release notes. Prefer a
 new operation to a breaking one: the trailer is for the change that cannot be made
