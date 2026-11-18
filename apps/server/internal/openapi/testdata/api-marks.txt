@@ -346,3 +346,6 @@ staff never putStaffPeopleByIdAccount
 staff never putStaffPeopleByIdBankAccount
 staff never putStaffPeopleByIdNationalId
 staff read postStaffPeopleSimilarErased
+time never postTimeEntries
+time never postTimeWeeksByWeekStartSubmit
+time never putTimeEntriesById
