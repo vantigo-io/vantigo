@@ -28,6 +28,8 @@ CREATE TABLE identity.api_requests (
     trace_id       varchar(64)
 ) PARTITION BY RANGE (at);
 CREATE TABLE identity.api_requests_default PARTITION OF identity.api_requests DEFAULT;
+-- What the worker drains and deletes from DEFAULT is a range of at.
+CREATE INDEX ix_api_requests_default_at ON identity.api_requests_default (at);
 CREATE INDEX ix_api_requests_key_at ON identity.api_requests (key_id, at DESC);
 -- The Requests screen reads one integration's log.
 CREATE INDEX ix_api_requests_integration_at ON identity.api_requests (integration_id, at DESC);
@@ -38,7 +40,10 @@ CREATE INDEX ix_api_requests_integration_at ON identity.api_requests (integratio
 -- moves that day's rows out of DEFAULT into a temporary table, creates the
 -- partition and inserts them back. Taking the lock first keeps a write from
 -- landing in DEFAULT between the move and the create; writes wait the few
--- milliseconds it takes and then go to the new partition.
+-- milliseconds it takes and then go to the new partition. The lock is waited
+-- for at most 5 seconds (lock_timeout, for this transaction only): a long
+-- read of the log is not held up behind it, and the worker tries again on its
+-- next cycle.
 -- +goose StatementBegin
 CREATE FUNCTION identity.ensure_api_requests_partition(day date)
 RETURNS boolean LANGUAGE plpgsql AS $function$
@@ -50,6 +55,7 @@ BEGIN
     IF to_regclass(format('identity.%I', partition_name)) IS NOT NULL THEN
         RETURN false;
     END IF;
+    PERFORM set_config('lock_timeout', '5s', true);
     LOCK TABLE identity.api_requests IN ACCESS EXCLUSIVE MODE;
     IF to_regclass(format('identity.%I', partition_name)) IS NOT NULL THEN
         RETURN false;

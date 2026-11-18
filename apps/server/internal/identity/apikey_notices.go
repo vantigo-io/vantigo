@@ -25,9 +25,13 @@ import (
 // sendAPIKeyNotices sends every notice due at now, a batch at a time, and
 // answers how many it sent. It holds no connection while it mails: each
 // notice is claimed first, by its row in api_key_notices, which another
-// replica's cycle cannot claim again, and then mailed. When not one of its
-// recipients could be mailed, the claim is taken back and the notice tried
-// again next cycle; when some could, it is kept, and the failures are logged.
+// replica's cycle cannot claim again, and then mailed. When no one was mailed
+// — every send failed, or every recipient was skipped as not active or
+// without an address that mail reaches — the claim is taken back and the
+// notice tried again next cycle. When someone was, it is kept, and the
+// failures are logged. A process that stops between the claim and the mails
+// has sent the notice to no one and never sends it: a notice goes at most
+// once.
 func (w *apiKeysWorker) sendAPIKeyNotices(ctx context.Context, now time.Time) (int, error) {
 	q := store.New(w.deps.Pool)
 	sent := 0
@@ -70,14 +74,17 @@ func (w *apiKeysWorker) sendAPIKeyNotice(ctx context.Context, q *store.Queries, 
 		recipients = append([]uuid.UUID{*k.ContactUserID}, recipients...)
 	}
 	notice := apiKeyNotice(k)
-	failed := 0
+	mailed := 0
 	for _, id := range recipients {
-		if err := w.users.Notify(ctx, id, notice); err != nil {
-			failed++
+		sent, err := w.users.notify(ctx, id, notice)
+		if err != nil {
 			w.deps.Logger.Warn("identity: an API key notice could not be mailed", "key", k.ID, "kind", k.Kind, "error", err)
 		}
+		if sent {
+			mailed++
+		}
 	}
-	if len(recipients) > 0 && failed == len(recipients) {
+	if mailed == 0 {
 		if err := q.DeleteAPIKeyNotice(context.WithoutCancel(ctx), store.DeleteAPIKeyNoticeParams{KeyID: k.ID, Kind: k.Kind}); err != nil {
 			return false, fmt.Errorf("identity: take back an undelivered API key notice: %w", err)
 		}

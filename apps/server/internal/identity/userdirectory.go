@@ -141,29 +141,36 @@ func (d *userDirectory) PermissionHolders(ctx context.Context, key string, opts 
 // naming the user's id only, never the driver's own error, which can name the
 // recipient (go-mail lists the affected recipients).
 func (d *userDirectory) Notify(ctx context.Context, userID uuid.UUID, n contracts.Notice) error {
+	_, err := d.notify(ctx, userID, n)
+	return err
+}
+
+// notify is Notify, answering too whether a mail was sent: false, with no
+// error, for each of the cases Notify skips.
+func (d *userDirectory) notify(ctx context.Context, userID uuid.UUID, n contracts.Notice) (bool, error) {
 	if d.mail == nil || len(n.Texts) == 0 {
-		return nil
+		return false, nil
 	}
 	scimEnabled, err := d.sso.scimEnabled(ctx)
 	if err != nil {
-		return fmt.Errorf("identity: user directory notice for user %s: %w", userID, err)
+		return false, fmt.Errorf("identity: user directory notice for user %s: %w", userID, err)
 	}
 	row, err := d.q.DirectoryUserForNotice(ctx, store.DirectoryUserForNoticeParams{ID: userID, ScimEnabled: scimEnabled})
 	if errors.Is(err, pgx.ErrNoRows) {
-		return nil
+		return false, nil
 	}
 	if err != nil {
-		return fmt.Errorf("identity: user directory notice for user %s: %w", userID, err)
+		return false, fmt.Errorf("identity: user directory notice for user %s: %w", userID, err)
 	}
 	to := publicEmail(row.Email)
 	if to == nil {
-		return nil
+		return false, nil
 	}
 	text := noticeText(n, row.PreferredLanguage)
 	if err := d.mail.Send(ctx, mail.Message{To: *to, Subject: text.Subject, TextBody: text.Body}); err != nil {
-		return fmt.Errorf("identity: notice to user %s could not be sent", userID)
+		return false, fmt.Errorf("identity: notice to user %s could not be sent", userID)
 	}
-	return nil
+	return true, nil
 }
 
 // noticeText is the text of n Notify sends a user preferring language: that

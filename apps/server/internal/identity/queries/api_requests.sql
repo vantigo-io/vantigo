@@ -72,7 +72,8 @@ SELECT EXISTS (SELECT 1 FROM identity.integrations WHERE user_id = @user_id)::bo
 
 -- name: ListAPIKeyNoticesDue :many
 -- ListAPIKeyNoticesDue is every key owed an expiry notice at now (K25), with
--- the one kind it is owed: today on the UTC day it expires, 3_days when it
+-- the one kind it is owed: today on the UTC day it expires, before it has, 3_days
+-- when it
 -- expires 1 to 3 days ahead, 14_days 4 to 14 days ahead, each when not sent
 -- yet. A key revoked, or rolled (another key's rolled_from), is owed none,
 -- nor is one of an archived integration.
@@ -89,6 +90,7 @@ CROSS JOIN LATERAL (
                  ELSE '14_days' END)::text AS kind
 ) d
 WHERE ak.revoked_at IS NULL
+  AND ak.expires_at > sqlc.arg(now)::timestamptz
   AND i.archived_at IS NULL
   AND left_days.days BETWEEN 0 AND 14
   AND NOT EXISTS (SELECT 1 FROM identity.api_keys n WHERE n.rolled_from = ak.id)
