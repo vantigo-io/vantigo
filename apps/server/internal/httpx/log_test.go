@@ -81,3 +81,20 @@ func TestRequestLog_KeepsTheResponseControllerWorking(t *testing.T) {
 		t.Errorf("Flush through the log wrapper: %v", flushErr)
 	}
 }
+
+func TestStatusRecorder_RecordsTheStatusAndKeepsFlushing(t *testing.T) {
+	w := httptest.NewRecorder()
+	rec := NewStatusRecorder(w)
+	if rec.Status() != http.StatusOK {
+		t.Errorf("Status before anything is written = %d, want 200", rec.Status())
+	}
+	rec.WriteHeader(http.StatusTooManyRequests)
+	rec.WriteHeader(http.StatusOK)
+	_, _ = rec.Write([]byte("slow down"))
+	if err := http.NewResponseController(rec).Flush(); err != nil {
+		t.Errorf("Flush through the recorder: %v", err)
+	}
+	if rec.Status() != http.StatusTooManyRequests || rec.Bytes() != 9 || !w.Flushed {
+		t.Errorf("status %d, bytes %d, flushed %v; want the first status, 9 bytes and a flush", rec.Status(), rec.Bytes(), w.Flushed)
+	}
+}

@@ -16,13 +16,10 @@ func RequestLog(logger *slog.Logger, basePath string) func(http.Handler) http.Ha
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
-			rec := &statusRecorder{ResponseWriter: w}
+			rec := NewStatusRecorder(w)
 			next.ServeHTTP(rec, r)
 
-			status := rec.status
-			if status == 0 {
-				status = http.StatusOK
-			}
+			status := rec.Status()
 			level := slog.LevelInfo
 			if strings.HasPrefix(strings.TrimPrefix(r.URL.Path, basePath), "/health/") {
 				level = slog.LevelDebug
@@ -31,7 +28,7 @@ func RequestLog(logger *slog.Logger, basePath string) func(http.Handler) http.Ha
 				slog.String("method", r.Method),
 				slog.String("path", r.URL.Path),
 				slog.Int("status", status),
-				slog.Int64("bytes", rec.bytes),
+				slog.Int64("bytes", rec.Bytes()),
 				slog.Duration("duration", time.Since(start)),
 				slog.String("client_ip", ClientIP(r)),
 				slog.String("trace_id", TraceID(r)),
@@ -40,22 +37,41 @@ func RequestLog(logger *slog.Logger, basePath string) func(http.Handler) http.Ha
 	}
 }
 
-// statusRecorder captures the status and size of a response. Unwrap keeps
-// http.ResponseController (flush, deadlines) working through it.
-type statusRecorder struct {
+// StatusRecorder captures the status and size of a response: RequestLog's
+// line, and the router's API request log (API access design K23). Unwrap
+// keeps http.ResponseController (flush, deadlines) working through it, so a
+// streamed response streams as it would without it.
+type StatusRecorder struct {
 	http.ResponseWriter
 	status int
 	bytes  int64
 }
 
-func (s *statusRecorder) WriteHeader(code int) {
+// NewStatusRecorder returns a StatusRecorder over w.
+func NewStatusRecorder(w http.ResponseWriter) *StatusRecorder {
+	return &StatusRecorder{ResponseWriter: w}
+}
+
+// Status is the status written, 200 when the handler wrote a body without
+// one or nothing at all, as net/http answers then.
+func (s *StatusRecorder) Status() int {
+	if s.status == 0 {
+		return http.StatusOK
+	}
+	return s.status
+}
+
+// Bytes is the size of the body written.
+func (s *StatusRecorder) Bytes() int64 { return s.bytes }
+
+func (s *StatusRecorder) WriteHeader(code int) {
 	if s.status == 0 {
 		s.status = code
 	}
 	s.ResponseWriter.WriteHeader(code)
 }
 
-func (s *statusRecorder) Write(b []byte) (int, error) {
+func (s *StatusRecorder) Write(b []byte) (int, error) {
 	if s.status == 0 {
 		s.status = http.StatusOK
 	}
@@ -64,4 +80,4 @@ func (s *statusRecorder) Write(b []byte) (int, error) {
 	return n, err
 }
 
-func (s *statusRecorder) Unwrap() http.ResponseWriter { return s.ResponseWriter }
+func (s *StatusRecorder) Unwrap() http.ResponseWriter { return s.ResponseWriter }
