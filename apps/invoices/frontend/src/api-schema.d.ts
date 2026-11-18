@@ -46,6 +46,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/invoices/avtalegiro/mandates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the AvtaleGiro mandates
+         * @description The AvtaleGiro mandates synced from the provider (I32), the newest first; unresolved=true lists only those whose KID names no customer, for a person to assign.
+         */
+        get: operations["getInvoicesAvtalegiroMandates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/avtalegiro/mandates/{mandateId}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Assign a mandate to a customer
+         * @description Assigns an unresolved mandate to a customer (I32). 404 for no such mandate or no such customer; 409 mandate_resolved when the mandate already names a customer; 409 mandate_customer_not_person for a business; 409 customer_merged or customer_anonymised; 409 mandate_kid_mismatch when the KID carries another customer number and confirmMismatch is not given with a reason.
+         */
+        post: operations["postInvoicesAvtalegiroMandatesByMandateIdResolve"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/avtalegiro/mandates/{mandateId}/unassign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Take a mandate's customer away
+         * @description Takes a mandate's customer away again (I32), so a person can assign it right. 404 for no such mandate; 409 mandate_not_resolved when it names no customer; 409 mandate_has_live_claim while a claim on it is submitted, accepted or asked to cancel.
+         */
+        post: operations["postInvoicesAvtalegiroMandatesByMandateIdUnassign"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/invoices/settings/access-point": {
         parameters: {
             query?: never;
@@ -88,6 +148,74 @@ export interface paths {
          * @description Asks the provider to answer one authenticated read with the stored credentials (EHF and KID design D7) and says how it went. ok clears rejectedAt; unauthorized sets it.
          */
         post: operations["postInvoicesSettingsAccessPointVerify"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/settings/consumer-provider": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the consumer provider settings
+         * @description The stored eFaktura and AvtaleGiro settings (invoices phase 6 design I29) — the agreements, the creditor account, the names, whether a mandate certificate is stored — never the certificate. With none stored the answer is 200 with hasCredentials false. It also answers the AvtaleGiro switch, whether the operator has configured the submitter, and the eFaktura count per month (I35).
+         */
+        get: operations["getInvoicesSettingsConsumerProvider"];
+        /**
+         * Store the consumer provider settings
+         * @description Stores the provider, the agreements, the creditor account and the names (invoices phase 6 design I29, plan readings 6 and 7) in their own row, an optional Mandate API certificate sealed by the secrets box under invoices/consumer-provider-credential; an omitted certificate keeps the stored one, opened and sealed again in the same transaction. The issuer is the sellers organisation number. A PUT clears rejectedAt.
+         */
+        put: operations["putInvoicesSettingsConsumerProvider"];
+        post?: never;
+        /**
+         * Remove the consumer provider settings
+         * @description Removes the consumer provider settings; eFaktura is unavailable until new ones are stored. Refused with 409 transmissions_active while an eFaktura transmission is queued, submitted or unconfirmed, or an AvtaleGiro claim is submitted, accepted or asked to cancel. Removing what is not there is a 204 too.
+         */
+        delete: operations["deleteInvoicesSettingsConsumerProvider"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/settings/consumer-provider/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify the consumer provider settings
+         * @description Makes the cheapest authenticated calls to Mastercard Payment Services with the operators submitter certificate and user for this issuer — a lookup and, with an AvtaleGiro creditor account, a coverage check that reads no mandate — and says how it went. ok clears rejectedAt; unauthorized sets it.
+         */
+        post: operations["postInvoicesSettingsConsumerProviderVerify"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/settings/avtalegiro": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Turn AvtaleGiro on or off
+         * @description Turns AvtaleGiro on or off (plan reading 12). On is 503 efaktura_unavailable while INVOICES_EFAKTURA_ENABLED is off, and needs a KID agreement (409 kid_agreement_missing), an active AvtaleGiro agreement with a creditor account in the consumer provider settings (409 avtalegiro_agreement_missing), and room for the customer KIDs: the next invoice number must fit in the KID length less two digits and no issued KID may begin with 9 (409 avtalegiro_kid_space_taken). The first time it is turned on the customer KIDs' space is reserved for good: from then on the issue caps invoice numbers one digit lower, AvtaleGiro on or off, so no invoice KID begins with 9 once customer KIDs have been handed out. Off is always allowed; live claims keep their state.
+         */
+        put: operations["putInvoicesSettingsAvtalegiro"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -301,6 +429,30 @@ export interface paths {
          * @description Locks the rate row, then deletes a user's rate that is not yet in force and that no printed or sent letter has used (D6, plan reading 6); a seeded row, a row in force or past, and a used row are 409 collection_rate_in_force. A deleted row a release had seeded over is replaced, in the same transaction, by a seeded row of the release's value and regulation, so its half-year never goes empty.
          */
         delete: operations["deleteInvoicesCollectionRatesById"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/customers/{customerId}/efaktura-lookup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a customers eFaktura lookup
+         * @description What the provider last answered about the customer (I30), or not_checked. No identifier, name, phone or e-mail is answered.
+         */
+        get: operations["getInvoicesCustomersByCustomerIdEfakturaLookup"];
+        put?: never;
+        /**
+         * Look a customer up for eFaktura now
+         * @description Looks the customer up at the provider now (I30), from the billing profiles phone, e-mail, date of birth, name and address — never a fødselsnummer — and stores the answer, due again in seven days. A business is never looked up (409 efaktura_person_only); a person without keys that satisfy the matching rule is stored not_found with no call. 503 efaktura_unavailable when the installation cannot send eFaktura; 502 efaktura_lookup_failed when the provider could not answer.
+         */
+        post: operations["postInvoicesCustomersByCustomerIdEfakturaLookup"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1474,6 +1626,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/invoices/{id}/send-efaktura": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send an issued invoice as eFaktura
+         * @description Queues an issued invoice as eFaktura through Mastercard Payment Services (invoices phase 6 design I31, I33), in this order: 503 efaktura_unavailable when INVOICES_EFAKTURA_ENABLED is off, no consumer provider settings are stored or the eFaktura agreement is not active; 404; 409 invoice_draft; 409 efaktura_credit_note — a credit note goes by e-mail or post; 409 customer_anonymised; 409 currency_not_nok; 409 kid_missing; 409 efaktura_due_too_soon when the due date is before the third day from today in Europe/Oslo, efaktura_due_too_far when it is more than twelve months ahead; the lookup refreshed outside any transaction when older than seven days (502 efaktura_lookup_failed), and 409 efaktura_not_found with reason not_found, blocked, no_agreement or ambiguous when the person cannot be sent to; 409 efaktura_already_sent while an eFaktura transmission is live; the AvtaleGiro claim judged — AvtaleGiro on, an active mandate, the due date at least the fourth day after the next working day before 14:00, and the mandate covering the amount, asked outside any transaction; then, under the documents lock and the settings share, the transmission and its claim queued. The provider is not called here: the invoices-efaktura worker submits it. Rate limited to 60 per client per 10 minutes.
+         */
+        post: operations["postInvoicesByIdSendEfaktura"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/invoices/{id}/transmissions/{transmissionId}/cancel": {
         parameters: {
             query?: never;
@@ -1505,7 +1677,7 @@ export interface paths {
         put?: never;
         /**
          * Resolve an unconfirmed EHF transmission
-         * @description A person's verdict on an unconfirmed EHF transmission after checking with the provider (EHF and KID design D9): delivered closes it, failed allows a new send — which carries the same UBL, since those bytes may have reached the receiver. The outcome, who and the note are recorded. Only an unconfirmed transmission is resolved; anything else is 409 transmission_not_resolvable. The response is the document.
+         * @description A person's verdict on an unconfirmed EHF transmission after checking with the provider (EHF and KID design D9): delivered closes it, failed allows a new send — which carries the same UBL, since those bytes may have reached the receiver. The outcome, who and the note are recorded. An unconfirmed eFaktura is resolved the same way (invoices phase 6 design I31): delivered or failed, and an AvtaleGiro claim of it never accepted by the bank is cancelled. Only an unconfirmed transmission is resolved; anything else is 409 transmission_not_resolvable. The response is the document.
          */
         post: operations["postInvoicesByIdTransmissionsByTransmissionIdResolve"];
         delete?: never;
@@ -2174,6 +2346,8 @@ export interface components {
             canSend: boolean;
             /** @description invoices:issue and ehfAvailable — send an issued document to the customer as EHF over Peppol. */
             canSendEhf: boolean;
+            /** @description invoices:issue and efakturaAvailable — send an issued invoice to a person's online bank as eFaktura (invoices phase 6 design I31). */
+            canSendEfaktura: boolean;
             /** @description invoices:create and invoices:issue — create and issue a quick invoice in one step, handed over on site (invoices payments and reminders design D1, D17). */
             canQuickInvoice: boolean;
             /** @description invoices:issue and onSitePaymentsAvailable — take a Vipps payment on site, and see an invoice's pay link and its QR code on screen (invoices payments and reminders design D1, D17). */
@@ -2193,6 +2367,12 @@ export interface components {
              * @description The seller's default payment terms, which a new draft takes when neither the request nor the customer's billing profile decides.
              */
             defaultPaymentTermsDays: number;
+            /** @description Whether this installation can send eFaktura (invoices phase 6 design I29) — INVOICES_EFAKTURA_ENABLED is on, consumer provider settings are stored and their eFaktura agreement is active. Without it canSendEfaktura is false. */
+            efakturaAvailable: boolean;
+            /** @description Whether AvtaleGiro is on (plan reading 12) — an eFaktura to a person with an active mandate carries its claim. */
+            avtalegiroEnabled: boolean;
+            /** @description Whether Mastercard Payment Services refused the submitter's certificate or user, or the stored mandate certificate could not be opened. Cleared by the next accepted call or a new PUT. */
+            consumerProviderCredentialsRejected: boolean;
             /** @description Whether this installation can send EHF over Peppol — INVOICES_EHF_ENABLED is on, the Peppol lookup is enabled (PEPPOL_LOOKUP_ENABLED), access-point credentials are stored and the seller's Peppol id is set. Without it canSendEhf is false. */
             ehfAvailable: boolean;
             /** @description Whether this installation's mail driver is smtp. Without it nothing can be sent (503 mail_unavailable), and canSend is false. */
@@ -2351,8 +2531,10 @@ export interface components {
             invoiceId?: number;
             note?: string;
         };
-        /** @description ProblemDetails plus this module's refusal code (invoices foundation design D2-D8). code names the rule that refused — series_locked, vat_code_in_use, rate_change_in_past, rate_period_not_latest, rate_period_last, rate_period_in_use, invoice_issued, invoice_draft, customer_merged, customer_archived, customer_blocked, customer_missing, invoice_changed, seller_incomplete, no_lines, delivery_date_missing, issue_date_not_allowed, buyer_incomplete, vat_code_inactive, vat_code_not_valid, vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, credit_exceeds_line, credit_exceeds_invoice, credit_note_not_creditable, invoice_fully_credited, credit_note_no_payments, invoice_settled, payment_exceeds_open, payment_removed, customer_anonymised, no_invoice_email (invoices payments and delivery design D2, D4), kid_length_exceeded (EHF and KID design D3: the next number no longer fits the KID agreement, which was shortened), transmissions_active (EHF and KID design D7: the access-point credentials still serve a transmission in flight), ehf_unavailable (D7: no access-point credentials to verify — a 409 — or a stored key that cannot be opened — a 503; D8: an installation that cannot send as EHF — a 503), the send as EHF's no_peppol_id, buyer_reference_missing, ehf_already_sent, peppol_not_receivable (with peppolRegistered and peppolCanReceive) and ehf_invalid (with rules) (EHF and KID design D8), transmission_not_cancellable and transmission_not_resolvable (D9), source_held_elsewhere (invoices work design D2: a source a save or the wizard would hold is held by another live draft or invoiced by an unreleased issued line; heldBy, sourceKind and sourceId name the document and the source), the wizard's refusals (invoices work design D3, D4, D11; POST /invoices/from-work) — work_unavailable (no billable read is composed), too_many_sources (more than 5 000 sources on one document, an append target's held ones counted), source_not_for_customer (a source's project bills another customer or is gone), mixed_currency (the selection spans currencies), currency_not_nok (the selection is in another currency than NOK) and too_many_lines (the grouping would make more than 500 lines, with suggestedGrouping, the next coarser grouping that fits) — the issue's refusals about the work it bills (invoices work design D1, each with linePosition, sourceKind and sourceId) — source_not_invoiceable, source_changed and source_already_invoiced (a source's own module would not stamp it: no longer approved, ready or billable; changed since the draft took it; already invoiced), source_customer_changed (a source's project no longer bills the draft's customer, or is gone; judged before a number exists) and source_not_selectable (hours of a project now fixed-price or non-billable, or any work of a project now non-billable) — and projects_unavailable (the draft bills work and the projects module is switched off); a final settlement's (invoices work design D7) deduction_exceeds_invoice (with linePosition: a deduction line takes more than its a-konto has left at its VAT code, or deducts a document that is no longer an issued invoice of this customer, or deducted at a code where it deducts itself), deduction_duplicated (with linePosition: a second deduction line for one deducted invoice and VAT code) and invoice_total_not_positive (a settlement's, or an invoice with energy correction lines', gross is zero or less); a credit note's credit_total_negative (its gross is below zero) and invoice_deducted (it credits more of an a-konto at a VAT code than no issued settlement deducted there; the detail names the settlements); credit_note_deducts_nothing (GET /invoices/{id}/deductible on a credit-note draft), and invoice_changed also when the draft's work changed between the issue's reads and its lock; the bank import's (invoices payments and reminders design D3) bank_account_unknown (an account the file names is neither the seller's nor one an issued invoice printed; the detail names its last four digits), bank_file_duplicate (the same bytes or the same file identity imported before, with bankFileId, uploadedAt and uploadedBy of that import) and bank_import_format_mismatch (the account's files come in the other format; the detail names the account and its format); the collection rates' (invoices payments and reminders design D6) collection_rate_exists (a rate of that kind already takes effect on that day) and collection_rate_in_force (the rate came with a release, is in force or past, or a printed or sent letter relied on it, so it is not deleted); the charges' (invoices payments and reminders design D9) no_charges_outstanding (nothing is outstanding: no letter claimed a charge, or every charge is waived or paid), charge_payment_exceeds_outstanding (with chargesOutstanding), charge_not_claimed (the letter was not sent, claimed no such charge, it is waived already, or no interest is left unpaid) and credit_note_no_reminders (a credit note is never reminded of), and the manual deliveries' (D8) delivery_removed and delivery_relied_on (a letter's charge stands on the record and no other delivery on or before the due date would remain); the reminder runs' and the overdue list's (invoices payments and reminders design D10, D12) reminders_disabled (reminders are switched off in the reminder settings), collection_rates_outdated (a letter of the run needs a rate with no row for a half-year, with kind and halfYear), collection_regime_unreviewed (a letter of the run would carry a fee or be a collection notice past the regime review under the 1988 regime), bank_import_stale (the bank data is stale and a letter of the run would carry a charge, with lastBookedOn; acknowledgeStaleImport confirms it) and too_many_overdue (more than 5 000 overdue invoices to judge; narrow by customer or due date); the holds' and the hand-off's (invoices payments and reminders design D11) invoice_on_hold (a hold is live already), invoice_not_on_hold (no hold is live to lift), invoice_handed_off (a hand-off is live already), invoice_not_handed_off (no hand-off is live to withdraw) and invoice_not_delivered (no delivery on or before the due date; acknowledgeNotDelivered confirms the hand-off); the reminder letters' (invoices payments and reminders design D10) reminder_not_withdrawable (the letter is sent, withdrawn already, or being sent: queued with its facts written under a live lease), reminder_not_failed (only a failed letter is retried) and reminder_not_sent (the letter is neither printed nor sent, so it has no PDF); the paper letters' (D10, reading 39) reminder_not_awaiting_print (a letter named for a print batch is not awaiting print), reminder_posted_early and reminder_posted_late (a batch confirmed posted on another day than the one it was printed for, so it must be reprinted) and print_batch_closed (the batch was posted or reprinted already); the exception queue's (invoices payments and reminders design D5) bank_transaction_not_open (the line is not in the state the action takes — not an exception, for most), bank_transaction_not_applicable (the action is not for this line: an apply of a reversal or a negative line, a dismissal of a reversal, a reversal handled on a line that is none, a duplicate confirmed or kept that is none, a reopen of a line that is open), bank_transaction_applied (a live payment or charge payment still refers to the line), bank_transaction_reversed (a reversal took back a payment of the line, so it is never reopened, or of the line it was kept as a duplicate of, so it is never treated as distinct nor applied), reversal_payment_required (a reversal handled with no payment named and no note saying why), allocation_not_an_invoice (an allocation names no issued invoice), allocation_exceeds_transaction (the allocations add up to more than the line has left) and paid_before_issue (the line was booked before an allocation's invoice was issued), besides payment_exceeds_open with invoiceId and charge_payment_exceeds_outstanding on an allocation; the payments port's (invoices payments and reminders design D14–D17) payments_unavailable (no Vipps credentials are stored — a 409 — or Vipps is switched off on this installation or the stored credentials cannot be opened — a 503), payment_attempts_active (a change of the sales unit, or removing the keys, while a Vipps payment is in flight), attempt_not_abandonable (the payment is neither of unknown outcome nor stranded by the switch or another sales unit), public_url_missing (pay links or a webhook without PUBLIC_BASE_URL), pay_links_unavailable (pay links are off or not set up), pay_link_exists (the invoice has a live pay link already), too_many_attempts (five Vipps payments of the invoice are in flight already), amount_out_of_range (the open amount is below 1.00 or above what Vipps takes), payment_in_progress (Vipps payments being completed leave less than 1.00 open), on_site_payments_unavailable (on-site payment is not turned on), buyer_identity_missing (the buyer is not identified as a kontantfaktura requires), payment_request_active (an on-site payment request of the invoice is live already), day_already_reconciled (the day was reconciled before) and day_not_over (the day is not over yet), and provider_failed, which a 502 carries when Vipps refused or failed the call; the bank feed's (invoices bank feed design F3, F4, F8) bank_feed_disabled (the bank feed is switched off on this installation), bank_feed_not_connected (no bank key is stored), bank_feed_account_not_offered (the bank does not answer the account now, or it is a card account), bank_feed_enabled (a format change away from feed while the feed is switched on for the account), bank_feed_key_changed (another bank key was stored while an account was being switched on), bank_account_unknown as the bank import's, and bank_feed_credential_rejected, which a 422 carries when the bank refused the key, and bank_feed_unavailable, which a 503 carries when the bank could not be reached or the stored key cannot be opened; the quick invoice's (D17) request_id_reused (its requestId came before with another body, with invoiceId, the invoice it issued); the consumption wizard's (energy consumption billing design D7; GET /invoices/consumption, GET /invoices/consumption/settlements, POST /invoices/from-consumption) consumption_unavailable (the energy module is switched off), settlement_blocked (with sourceKind and sourceId: a named settlement Energy cannot bill; the detail names its blocker), cadence_not_allowed (with sourceKind and sourceId: a settlement of a yearly supply for a person, who is billed at least quarterly) and no_consumption_due (nothing is left to invoice through the date); the billing runs' (energy consumption billing design D10; POST /invoices/billing-runs and its cancel) billing_run_active (with runId: a run is queued or running already), billing_run_finished (the run is done or cancelled already) and too_many_customers (more than 5 000 supplies are due; name the customers); the From orders wizard's (orders design O39; GET /invoices/from-orders/due, POST /invoices/from-orders) orders_unavailable (the orders module is switched off), order_blocked (with orderLineId: an order is a draft or on hold), allocation_exceeds_open (with orderLineId: a quantity above what the line has left to invoice) and line_not_invoiceable (with orderLineId: a line Orders will not invoice, or one not of the order named), a save's line_holds_order_allocation (with linePosition, sourceKind and sourceId: a line holding an order allocation keeps its quantity, unit price, discount and VAT code), and the billing run's no_orders_due (no customer has order lines due through the date), and its items' orders_held_by_drafts (drafts of the customer hold what its orders have left) and currency_not_supported (the customer's orders due are in another currency than the settings'); the write-off's (accounting design A16, R4) vipps_in_progress (a Vipps payment is being completed, so the open amount is not settled yet), no_write_off (no write-off stands: nothing to undo or to recover), write_off_recovered (a recovered payment of the write-off stands; remove it before the undo), recovery_exceeds_written_off (with openAmount, the room left: a recovered payment above what is written off less what is already recovered) and invoice_written_off (accounting design R15: a credit note of an invoice a write-off stands on is neither created, saved nor issued; undo the write-off first); the logo's (invoices phase 6 design I1) logo_unsupported_type, logo_too_large, logo_too_wide, logo_too_small and logo_invalid, which a 400 carries in the same shape; the customer's credit's (invoices phase 6 design I8-I12) idempotency_key_reused (an apply-credit with an Idempotency-Key the caller applied credit with already, to another invoice or of another amount), credit_exceeds_balance (with balance: a movement would take the customer's credit in the currency below zero — credit applied or refunded beyond it, or a payment or a bank line whose overpayment was used removed or reversed), credit_exceeds_open (credit applied above what is open, with openAmount) and refund_removed (the refund is removed already); and storage_unavailable and mail_unavailable, which a 503 carries in the same shape, and mail_failed and peppol_lookup_failed, which a 502 carries. A revision conflict carries no code; its detail names both revisions. */
+        /** @description ProblemDetails plus this module's refusal code (invoices foundation design D2-D8). code names the rule that refused — series_locked, vat_code_in_use, rate_change_in_past, rate_period_not_latest, rate_period_last, rate_period_in_use, invoice_issued, invoice_draft, customer_merged, customer_archived, customer_blocked, customer_missing, invoice_changed, seller_incomplete, no_lines, delivery_date_missing, issue_date_not_allowed, buyer_incomplete, vat_code_inactive, vat_code_not_valid, vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, credit_exceeds_line, credit_exceeds_invoice, credit_note_not_creditable, invoice_fully_credited, credit_note_no_payments, invoice_settled, payment_exceeds_open, payment_removed, customer_anonymised, no_invoice_email (invoices payments and delivery design D2, D4), kid_length_exceeded (EHF and KID design D3: the next number no longer fits the KID agreement, which was shortened), transmissions_active (EHF and KID design D7: the access-point credentials still serve a transmission in flight), ehf_unavailable (D7: no access-point credentials to verify — a 409 — or a stored key that cannot be opened — a 503; D8: an installation that cannot send as EHF — a 503), the send as EHF's no_peppol_id, buyer_reference_missing, ehf_already_sent, peppol_not_receivable (with peppolRegistered and peppolCanReceive) and ehf_invalid (with rules) (EHF and KID design D8), transmission_not_cancellable and transmission_not_resolvable (D9), source_held_elsewhere (invoices work design D2: a source a save or the wizard would hold is held by another live draft or invoiced by an unreleased issued line; heldBy, sourceKind and sourceId name the document and the source), the wizard's refusals (invoices work design D3, D4, D11; POST /invoices/from-work) — work_unavailable (no billable read is composed), too_many_sources (more than 5 000 sources on one document, an append target's held ones counted), source_not_for_customer (a source's project bills another customer or is gone), mixed_currency (the selection spans currencies), currency_not_nok (the selection is in another currency than NOK) and too_many_lines (the grouping would make more than 500 lines, with suggestedGrouping, the next coarser grouping that fits) — the issue's refusals about the work it bills (invoices work design D1, each with linePosition, sourceKind and sourceId) — source_not_invoiceable, source_changed and source_already_invoiced (a source's own module would not stamp it: no longer approved, ready or billable; changed since the draft took it; already invoiced), source_customer_changed (a source's project no longer bills the draft's customer, or is gone; judged before a number exists) and source_not_selectable (hours of a project now fixed-price or non-billable, or any work of a project now non-billable) — and projects_unavailable (the draft bills work and the projects module is switched off); a final settlement's (invoices work design D7) deduction_exceeds_invoice (with linePosition: a deduction line takes more than its a-konto has left at its VAT code, or deducts a document that is no longer an issued invoice of this customer, or deducted at a code where it deducts itself), deduction_duplicated (with linePosition: a second deduction line for one deducted invoice and VAT code) and invoice_total_not_positive (a settlement's, or an invoice with energy correction lines', gross is zero or less); a credit note's credit_total_negative (its gross is below zero) and invoice_deducted (it credits more of an a-konto at a VAT code than no issued settlement deducted there; the detail names the settlements); credit_note_deducts_nothing (GET /invoices/{id}/deductible on a credit-note draft), and invoice_changed also when the draft's work changed between the issue's reads and its lock; the bank import's (invoices payments and reminders design D3) bank_account_unknown (an account the file names is neither the seller's nor one an issued invoice printed; the detail names its last four digits), bank_file_duplicate (the same bytes or the same file identity imported before, with bankFileId, uploadedAt and uploadedBy of that import) and bank_import_format_mismatch (the account's files come in the other format; the detail names the account and its format); the collection rates' (invoices payments and reminders design D6) collection_rate_exists (a rate of that kind already takes effect on that day) and collection_rate_in_force (the rate came with a release, is in force or past, or a printed or sent letter relied on it, so it is not deleted); the charges' (invoices payments and reminders design D9) no_charges_outstanding (nothing is outstanding: no letter claimed a charge, or every charge is waived or paid), charge_payment_exceeds_outstanding (with chargesOutstanding), charge_not_claimed (the letter was not sent, claimed no such charge, it is waived already, or no interest is left unpaid) and credit_note_no_reminders (a credit note is never reminded of), and the manual deliveries' (D8) delivery_removed and delivery_relied_on (a letter's charge stands on the record and no other delivery on or before the due date would remain); the reminder runs' and the overdue list's (invoices payments and reminders design D10, D12) reminders_disabled (reminders are switched off in the reminder settings), collection_rates_outdated (a letter of the run needs a rate with no row for a half-year, with kind and halfYear), collection_regime_unreviewed (a letter of the run would carry a fee or be a collection notice past the regime review under the 1988 regime), bank_import_stale (the bank data is stale and a letter of the run would carry a charge, with lastBookedOn; acknowledgeStaleImport confirms it) and too_many_overdue (more than 5 000 overdue invoices to judge; narrow by customer or due date); the holds' and the hand-off's (invoices payments and reminders design D11) invoice_on_hold (a hold is live already), invoice_not_on_hold (no hold is live to lift), invoice_handed_off (a hand-off is live already), invoice_not_handed_off (no hand-off is live to withdraw) and invoice_not_delivered (no delivery on or before the due date; acknowledgeNotDelivered confirms the hand-off); the reminder letters' (invoices payments and reminders design D10) reminder_not_withdrawable (the letter is sent, withdrawn already, or being sent: queued with its facts written under a live lease), reminder_not_failed (only a failed letter is retried) and reminder_not_sent (the letter is neither printed nor sent, so it has no PDF); the paper letters' (D10, reading 39) reminder_not_awaiting_print (a letter named for a print batch is not awaiting print), reminder_posted_early and reminder_posted_late (a batch confirmed posted on another day than the one it was printed for, so it must be reprinted) and print_batch_closed (the batch was posted or reprinted already); the exception queue's (invoices payments and reminders design D5) bank_transaction_not_open (the line is not in the state the action takes — not an exception, for most), bank_transaction_not_applicable (the action is not for this line: an apply of a reversal or a negative line, a dismissal of a reversal, a reversal handled on a line that is none, a duplicate confirmed or kept that is none, a reopen of a line that is open), bank_transaction_applied (a live payment or charge payment still refers to the line), bank_transaction_reversed (a reversal took back a payment of the line, so it is never reopened, or of the line it was kept as a duplicate of, so it is never treated as distinct nor applied), reversal_payment_required (a reversal handled with no payment named and no note saying why), allocation_not_an_invoice (an allocation names no issued invoice), allocation_exceeds_transaction (the allocations add up to more than the line has left) and paid_before_issue (the line was booked before an allocation's invoice was issued), besides payment_exceeds_open with invoiceId and charge_payment_exceeds_outstanding on an allocation; the payments port's (invoices payments and reminders design D14–D17) payments_unavailable (no Vipps credentials are stored — a 409 — or Vipps is switched off on this installation or the stored credentials cannot be opened — a 503), payment_attempts_active (a change of the sales unit, or removing the keys, while a Vipps payment is in flight), attempt_not_abandonable (the payment is neither of unknown outcome nor stranded by the switch or another sales unit), public_url_missing (pay links or a webhook without PUBLIC_BASE_URL), pay_links_unavailable (pay links are off or not set up), pay_link_exists (the invoice has a live pay link already), too_many_attempts (five Vipps payments of the invoice are in flight already), amount_out_of_range (the open amount is below 1.00 or above what Vipps takes), payment_in_progress (Vipps payments being completed leave less than 1.00 open), on_site_payments_unavailable (on-site payment is not turned on), buyer_identity_missing (the buyer is not identified as a kontantfaktura requires), payment_request_active (an on-site payment request of the invoice is live already), day_already_reconciled (the day was reconciled before) and day_not_over (the day is not over yet), and provider_failed, which a 502 carries when Vipps refused or failed the call; the bank feed's (invoices bank feed design F3, F4, F8) bank_feed_disabled (the bank feed is switched off on this installation), bank_feed_not_connected (no bank key is stored), bank_feed_account_not_offered (the bank does not answer the account now, or it is a card account), bank_feed_enabled (a format change away from feed while the feed is switched on for the account), bank_feed_key_changed (another bank key was stored while an account was being switched on), bank_account_unknown as the bank import's, and bank_feed_credential_rejected, which a 422 carries when the bank refused the key, and bank_feed_unavailable, which a 503 carries when the bank could not be reached or the stored key cannot be opened; the quick invoice's (D17) request_id_reused (its requestId came before with another body, with invoiceId, the invoice it issued); the consumption wizard's (energy consumption billing design D7; GET /invoices/consumption, GET /invoices/consumption/settlements, POST /invoices/from-consumption) consumption_unavailable (the energy module is switched off), settlement_blocked (with sourceKind and sourceId: a named settlement Energy cannot bill; the detail names its blocker), cadence_not_allowed (with sourceKind and sourceId: a settlement of a yearly supply for a person, who is billed at least quarterly) and no_consumption_due (nothing is left to invoice through the date); the billing runs' (energy consumption billing design D10; POST /invoices/billing-runs and its cancel) billing_run_active (with runId: a run is queued or running already), billing_run_finished (the run is done or cancelled already) and too_many_customers (more than 5 000 supplies are due; name the customers); the From orders wizard's (orders design O39; GET /invoices/from-orders/due, POST /invoices/from-orders) orders_unavailable (the orders module is switched off), order_blocked (with orderLineId: an order is a draft or on hold), allocation_exceeds_open (with orderLineId: a quantity above what the line has left to invoice) and line_not_invoiceable (with orderLineId: a line Orders will not invoice, or one not of the order named), a save's line_holds_order_allocation (with linePosition, sourceKind and sourceId: a line holding an order allocation keeps its quantity, unit price, discount and VAT code), and the billing run's no_orders_due (no customer has order lines due through the date), and its items' orders_held_by_drafts (drafts of the customer hold what its orders have left) and currency_not_supported (the customer's orders due are in another currency than the settings'); the write-off's (accounting design A16, R4) vipps_in_progress (a Vipps payment is being completed, so the open amount is not settled yet), no_write_off (no write-off stands: nothing to undo or to recover), write_off_recovered (a recovered payment of the write-off stands; remove it before the undo), recovery_exceeds_written_off (with openAmount, the room left: a recovered payment above what is written off less what is already recovered) and invoice_written_off (accounting design R15: a credit note of an invoice a write-off stands on is neither created, saved nor issued; undo the write-off first); the logo's (invoices phase 6 design I1) logo_unsupported_type, logo_too_large, logo_too_wide, logo_too_small and logo_invalid, which a 400 carries in the same shape; the customer's credit's (invoices phase 6 design I8-I12) idempotency_key_reused (an apply-credit with an Idempotency-Key the caller applied credit with already, to another invoice or of another amount), credit_exceeds_balance (with balance: a movement would take the customer's credit in the currency below zero — credit applied or refunded beyond it, or a payment or a bank line whose overpayment was used removed or reversed), credit_exceeds_open (credit applied above what is open, with openAmount) and refund_removed (the refund is removed already); the eFaktura's and AvtaleGiro's (invoices phase 6 design I29-I34) efaktura_unavailable (a 503, or a 409 on a verify with nothing stored), efaktura_credit_note, efaktura_due_too_soon, efaktura_due_too_far, efaktura_not_found (with efakturaReason, why the person cannot be sent to), efaktura_already_sent, kid_missing, efaktura_person_only, kid_agreement_missing, avtalegiro_agreement_missing, avtalegiro_kid_space_taken, avtalegiro_claim_exists, mandate_resolved, mandate_kid_mismatch, mandate_customer_not_person, mandate_not_resolved and mandate_has_live_claim, and efaktura_lookup_failed, which a 502 carries; and storage_unavailable and mail_unavailable, which a 503 carries in the same shape, and mail_failed and peppol_lookup_failed, which a 502 carries. A revision conflict carries no code; its detail names both revisions. */
         InvoicesConflictProblem: {
+            /** @description On efaktura_not_found, why the person cannot be sent to — not_found, blocked, no_agreement or ambiguous. Absent otherwise. */
+            efakturaReason?: string;
             /** @description On issue_date_not_allowed, the dates this document may be issued with today, the earliest first. Absent otherwise. */
             allowedIssueDates?: string[];
             /**
@@ -2667,6 +2849,158 @@ export interface components {
             provider?: string;
             /** Format: date-time */
             rejectedAt?: string;
+        };
+        /** @description The consumer provider's settings (invoices phase 6 design I29): the tenant's own agreements with its bank for eFaktura and AvtaleGiro as registered at Mastercard Payment Services, the AvtaleGiro creditor account, and the names the bank shows. The submitter's certificate and user are the operator's and never set here. mandateCertificate is an optional PEM certificate and key for the Mandate API, sealed under invoices/consumer-provider-credential; omitted, a stored one is kept; an empty string removes it. */
+        InvoicesConsumerProviderRequest: {
+            /** @description The AvtaleGiro short name the bank shows, at most 10 characters. */
+            abbreviatedName?: string;
+            /** @description none, pending or active. */
+            avtalegiroAgreement: string;
+            /** @description The name the online bank shows the eFaktura under, at most 40 characters. */
+            brandName: string;
+            /** @description The AvtaleGiro creditor account, 11 digits, required when avtalegiroAgreement is not none. */
+            creditorAccount?: string;
+            /** @description none, pending or active. */
+            efakturaAgreement: string;
+            /** @description A PEM certificate and its key, for the Mandate API, when the bank issued the tenant one of its own. Write only. */
+            mandateCertificate?: string;
+            /** @description mps, the one provider so far. */
+            provider: string;
+        };
+        /** @description The stored consumer provider settings, never the mandate certificate. hasCredentials is false with nothing stored. operatorReady is whether this installation can send at all — INVOICES_EFAKTURA_ENABLED on and the submitter's files configured. avtalegiroEnabled is the AvtaleGiro switch. sentPerMonth is the count of eFaktura transmissions queued per calendar month, the newest first, for the last twelve months (I35). */
+        InvoicesConsumerProviderResponse: {
+            abbreviatedName?: string;
+            avtalegiroAgreement?: string;
+            avtalegiroEnabled: boolean;
+            brandName?: string;
+            creditorAccount?: string;
+            efakturaAgreement?: string;
+            hasCredentials: boolean;
+            hasMandateCertificate: boolean;
+            operatorReady: boolean;
+            provider?: string;
+            /** Format: date-time */
+            rejectedAt?: string;
+            sentPerMonth: components["schemas"]["InvoicesMonthCount"][];
+        };
+        /** @description One calendar month's count, the month as YYYY-MM in the business time zone. */
+        InvoicesMonthCount: {
+            /** Format: int64 */
+            count: number;
+            month: string;
+        };
+        /** @description The AvtaleGiro switch (plan reading 12). */
+        InvoicesAvtaleGiroRequest: {
+            enabled: boolean;
+        };
+        /** @description Whether AvtaleGiro is on. */
+        InvoicesAvtaleGiroResponse: {
+            enabled: boolean;
+        };
+        /** @description An issued document's eFaktura state (invoices phase 6 design I31); absent on a draft. status is the latest eFaktura transmission's — queued, submitted, delivered, failed, unconfirmed or cancelled — or not_sent. canSend is what POST /invoices/{id}/send-efaktura would answer without the network, and blockedBy names the first refusal: efaktura_unavailable, efaktura_credit_note, customer_anonymised, currency_not_nok, kid_missing, efaktura_due_too_soon, efaktura_due_too_far or efaktura_already_sent. claim is the AvtaleGiro claim of the latest transmission, when it went as both. */
+        InvoicesEfakturaState: {
+            blockedBy?: string;
+            canSend: boolean;
+            claim?: components["schemas"]["InvoicesAvtaleGiroClaim"];
+            status: string;
+            transmissions: components["schemas"]["InvoicesEfakturaTransmission"][];
+        };
+        /** @description One eFaktura transmission. paymentType is efaktura or both. providerStatus is the network's own state name. reason is the last error, redacted, answered only to a caller with invoices:issue. */
+        InvoicesEfakturaTransmission: {
+            /** Format: date-time */
+            cancelledAt?: string;
+            /** Format: date-time */
+            deliveredAt?: string;
+            /** Format: date-time */
+            failedAt?: string;
+            /** Format: int64 */
+            id: number;
+            paymentType: string;
+            providerStatus?: string;
+            /** Format: date-time */
+            queuedAt: string;
+            reason?: string;
+            status: string;
+            /** Format: date-time */
+            submittedAt?: string;
+        };
+        /** @description One AvtaleGiro claim (I33): what was claimed, and its state — submitted, accepted, rejected, cancel_requested, cancelled, paid, or unpaid (accepted, and no debit matched within five business days of the due date: the ordinary reminders take over; a late debit still pays it). attention is the bank's flag that the amount is above the payer's limit. rejectionText is the network's words, redacted. */
+        InvoicesAvtaleGiroClaim: {
+            /** Format: date-time */
+            acceptedAt?: string;
+            /** Format: double */
+            amount: number;
+            attention: boolean;
+            /** Format: date-time */
+            cancelRefusedAt?: string;
+            /** Format: date-time */
+            cancelRequestedAt?: string;
+            /** Format: date-time */
+            cancelledAt?: string;
+            /** Format: date */
+            dueDate: string;
+            /** Format: int64 */
+            id: number;
+            kid: string;
+            /** Format: date-time */
+            paidAt?: string;
+            /** Format: date-time */
+            unpaidAt?: string;
+            /** Format: date-time */
+            rejectedAt?: string;
+            rejectionCode?: string;
+            rejectionText?: string;
+            status: string;
+        };
+        /** @description The document after a send as eFaktura, and whether its AvtaleGiro claim went too. avtalegiro.reason, when it did not, is avtalegiro_off, avtalegiro_no_mandate, avtalegiro_due_too_soon or avtalegiro_limit. */
+        InvoicesSendEfakturaResponse: {
+            avtalegiro: components["schemas"]["InvoicesSendEfakturaAvtaleGiro"];
+            invoice: components["schemas"]["InvoicesInvoiceResponse"];
+        };
+        /** @description Whether the send carried an AvtaleGiro claim, and why not. */
+        InvoicesSendEfakturaAvtaleGiro: {
+            included: boolean;
+            reason?: string;
+        };
+        /** @description What the provider last answered about a person (I30): status found, not_found, blocked or ambiguous — or not_checked, never looked up; sendable is found, not blocked, and the person accepts everything or has an agreement with this issuer. No identifier, name, phone or e-mail is answered. */
+        InvoicesConsumerLookup: {
+            autoAccept: boolean;
+            /** Format: date-time */
+            checkedAt?: string;
+            /** Format: int32 */
+            customerId: number;
+            hasAgreement: boolean;
+            /** Format: date-time */
+            nextCheckAt?: string;
+            sendable: boolean;
+            status: string;
+        };
+        /** @description One AvtaleGiro mandate as synced from the provider (I32). customerId is absent while the KID names no customer this module knows; a person assigns it. */
+        InvoicesAvtaleGiroMandate: {
+            /** Format: int32 */
+            customerId?: number;
+            /** Format: int64 */
+            id: number;
+            kid: string;
+            notifyByMail: boolean;
+            /** Format: date-time */
+            providerSeenAt: string;
+            /** @description A person's reason for assigning the mandate to a customer whose number its KID does not carry. */
+            resolutionNote?: string;
+            status: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        /** @description The mandates, the newest first. */
+        InvoicesAvtaleGiroMandateList: {
+            items: components["schemas"]["InvoicesAvtaleGiroMandate"][];
+        };
+        /** @description The customer an unresolved mandate belongs to. When the KID carries another customer number than the customer's, confirmMismatch must be true and reason say why (at most 500 characters), which is kept on the mandate. */
+        InvoicesResolveMandateRequest: {
+            confirmMismatch?: boolean;
+            /** Format: int32 */
+            customerId: number;
+            reason?: string;
         };
         /** @description What the provider answered the cheapest authenticated read (Storecove: the legal entity). result is ok (the key reaches the legal entity), unauthorized (the provider refused the key — 401 or 403 — which also flags it as rejected) or unreachable (anything else: the network, a timeout, a 5xx, a legal entity the key does not reach). */
         InvoicesAccessPointVerifyResponse: {
@@ -3781,6 +4115,8 @@ export interface components {
             customerName?: string;
             /** Format: date */
             dueDate?: string;
+            /** @description On an issued invoice, its latest eFaktura transmission's status — queued, submitted, delivered, failed, unconfirmed or cancelled — or not_sent (invoices phase 6 design I31). Absent on a draft. */
+            efakturaStatus?: string;
             /** @description On an issued document, its latest EHF transmission's status — queued, submitted, delivered, failed, unconfirmed or cancelled — or not_sent (EHF and KID design D10). Absent on a draft. */
             ehfStatus?: string;
             /** Format: double */
@@ -3869,6 +4205,7 @@ export interface components {
             /** Format: date */
             dueDate?: string;
             ehf?: components["schemas"]["InvoicesEhfState"];
+            efaktura?: components["schemas"]["InvoicesEfakturaState"];
             /** Format: double */
             exchangeRate: number;
             /** Format: date */
@@ -5453,6 +5790,171 @@ export interface operations {
             };
         };
     };
+    getInvoicesAvtalegiroMandates: {
+        parameters: {
+            query?: {
+                unresolved?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesAvtaleGiroMandateList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postInvoicesAvtalegiroMandatesByMandateIdResolve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                mandateId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoicesResolveMandateRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesAvtaleGiroMandate"];
+                };
+            };
+            /** @description Bad Request — customerId did not pass. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such mandate or customer. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — mandate_resolved, mandate_customer_not_person, customer_merged, customer_anonymised or mandate_kid_mismatch. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
+    postInvoicesAvtalegiroMandatesByMandateIdUnassign: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                mandateId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesAvtaleGiroMandate"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such mandate. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — mandate_not_resolved or mandate_has_live_claim. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
     getInvoicesSettingsAccessPoint: {
         parameters: {
             query?: never;
@@ -5651,6 +6153,265 @@ export interface operations {
                 };
             };
             /** @description Service Unavailable — ehf_unavailable, the stored key cannot be opened; the credentials are flagged as rejected. Store the key again. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
+    getInvoicesSettingsConsumerProvider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesConsumerProviderResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    putInvoicesSettingsConsumerProvider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoicesConsumerProviderRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesConsumerProviderResponse"];
+                };
+            };
+            /** @description Bad Request — a field did not pass; the errors name it. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable — efaktura_unavailable, the certificate was omitted and the stored one cannot be opened; send it again. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
+    deleteInvoicesSettingsConsumerProvider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content — the settings are gone. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — transmissions_active. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
+    postInvoicesSettingsConsumerProviderVerify: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesAccessPointVerifyResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — efaktura_unavailable, no settings are stored. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+            /** @description Service Unavailable — efaktura_unavailable, INVOICES_EFAKTURA_ENABLED is off or the submitters files cannot be read. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
+    putInvoicesSettingsAvtalegiro: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoicesAvtaleGiroRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesAvtaleGiroResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — kid_agreement_missing, avtalegiro_agreement_missing or avtalegiro_kid_space_taken. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+            /** @description Service Unavailable — efaktura_unavailable, turning AvtaleGiro on while eFaktura is switched off. */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -6508,6 +7269,120 @@ export interface operations {
             };
             /** @description Conflict — collection_rate_in_force. */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
+    getInvoicesCustomersByCustomerIdEfakturaLookup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                customerId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesConsumerLookup"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postInvoicesCustomersByCustomerIdEfakturaLookup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                customerId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesConsumerLookup"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — the directory knows no such customer. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — efaktura_person_only. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+            /** @description Bad Gateway — efaktura_lookup_failed. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+            /** @description Service Unavailable — efaktura_unavailable. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -10578,6 +11453,99 @@ export interface operations {
                 };
             };
             /** @description Service Unavailable — ehf_unavailable, the installation cannot send as EHF; or storage_unavailable, the object store is not configured or could not be reached. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
+    postInvoicesByIdSendEfaktura: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — the document, its eFaktura queued, and whether AvtaleGiro went too. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesSendEfakturaResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no document has that id. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — invoice_draft, efaktura_credit_note, customer_anonymised, currency_not_nok, kid_missing, efaktura_due_too_soon, efaktura_due_too_far, efaktura_not_found (with efakturaReason), efaktura_already_sent or avtalegiro_claim_exists. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error — the stored PDF is gone or altered, or the database failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Bad Gateway — efaktura_lookup_failed, the provider could not be asked; nothing is queued. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+            /** @description Service Unavailable — efaktura_unavailable, or storage_unavailable. */
             503: {
                 headers: {
                     [name: string]: unknown;

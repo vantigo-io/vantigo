@@ -1,11 +1,12 @@
 ---
 title: E-invoicing
-description: Sending invoices as EHF over the Peppol network through a Storecove access point, the two workers that carry them, and the KID agreement with the bank.
+description: Sending invoices as EHF over the Peppol network through a Storecove access point, the two workers that carry them, the KID agreement with the bank, and eFaktura and AvtaleGiro through Mastercard Payment Services.
 sidebar:
   order: 42
 sources:
   - apps/server/internal/invoices/accesspoint
   - apps/server/internal/invoices/ehf
+  - apps/server/internal/consumerinvoice
 ---
 
 EHF is the Norwegian e-invoice: EHF Billing 3.0, which is Peppol BIS Billing 3.0 with two
@@ -278,6 +279,117 @@ legal entity's own). Without the two variables the tests skip
 ([the test](https://github.com/vantigo-io/vantigo/blob/main/apps/server/internal/invoices/accesspoint/storecove_sandbox_test.go)).
 An installation can likewise be pointed at a mock Storecove with
 `INVOICES_STORECOVE_BASE_URL`.
+
+## eFaktura and AvtaleGiro through Mastercard Payment Services
+
+eFaktura puts an invoice in a private customer's online bank, and AvtaleGiro has the
+bank debit it on the due date. Vantigo sends both directly through **Mastercard Payment
+Services (MPS)**, with no aggregator in between: Vantigo is the **submitter**
+(*innsender*), and each tenant is the **issuer** (*utsteder*), named by its organisation
+number. The feature ships **off**; nothing is sent until the steps below are done and
+the live switch is turned on.
+
+### What each party arranges
+
+- **Vantigo, once per installation:** a submitter agreement with MPS. MPS issues a client
+  certificate from Vantigo's certificate signing request and creates a WS-Security user,
+  and allow-lists the installation's outgoing IP address for each environment — test and
+  production. Ask at Support.Norway@mastercard.com. MPS does not allow-list private, very
+  large or shared cloud ranges: the installation needs a fixed egress address of its own.
+- **Each tenant, with its own bank:** an **eFaktura agreement** and, for AvtaleGiro, an
+  **AvtaleGiro agreement** on its account, registered at MPS with Vantigo as submitter.
+  The bank's fees are the tenant's. For AvtaleGiro the bank also needs the tenant's KID
+  agreement (OCR giro).
+
+### Configure the installation
+
+Put the submitter's files where the server can read them, and set:
+
+| Variable | Meaning |
+| --- | --- |
+| `INVOICES_EFAKTURA_ENABLED` | The live switch, default `0`. Off, a send answers *eFaktura is unavailable* and the `invoices-efaktura` worker does not run. |
+| `INVOICES_MPS_EFAKTURA_BASE_URL` | The Kombo submitter service's endpoint, https. Default MPS's production endpoint. |
+| `INVOICES_MPS_MANDATE_BASE_URL` | The creditor Mandate API's base, https. Default `https://payments.mastercard.no/creditor-mandate`. |
+| `INVOICES_MPS_CLIENT_CERT_FILE`, `INVOICES_MPS_CLIENT_KEY_FILE` | The client certificate MPS issued and its key, PEM, absolute paths. |
+| `INVOICES_MPS_USERNAME`, `INVOICES_MPS_PASSWORD_FILE` | The WS-Security user MPS created, and a file holding its password. |
+
+With the switch on, the server refuses to start unless the user and the three files are
+set, absolute and readable. Only the paths are configuration: the key and the password
+are read from the files when Vantigo calls MPS, never printed and never stored in the
+database.
+
+### Store and verify the tenant's settings
+
+Someone with `invoices:manage` opens **Invoice settings › eFaktura and AvtaleGiro** and
+enters the agreements' states, the name the bank shows, and for AvtaleGiro the short
+name and the creditor account ([the user guide](/en/user/invoices/#set-up-efaktura-and-avtalegiro)).
+**Verify** asks MPS with the submitter's certificate and user for this issuer — a lookup,
+and with AvtaleGiro a coverage check that reads no agreement — and answers *Verified*,
+*Refused* (the certificate or the user, or the IP address) or *Not reached*. If the bank
+issued the tenant a certificate of its own for the Mandate API, the API takes it as
+`mandateCertificate` (PEM, certificate and key), sealed by the secrets box under
+`invoices/consumer-provider-credential` and never answered.
+
+### Turn AvtaleGiro on
+
+**AvtaleGiro** on the same card needs the KID agreement and an active AvtaleGiro
+agreement with its account. It reserves the KID's first digit for the customer KIDs, so
+it is refused while the next invoice number would not fit in the length less two digits,
+or when an issued KID already begins with 9 ([the KID](/en/user/invoices/#avtalegiro-and-the-kid)).
+Agree a longer KID with the bank first if it is refused.
+
+### What the worker does
+
+`invoices-efaktura` runs every 30 seconds while the switch is on:
+
+1. **Submit** each queued eFaktura: one shipment of one transaction, the stored PDF
+   inside, under the shipment and transaction ids stored before the first call, so a
+   retry is the same shipment.
+2. **Poll** what is submitted, after 1, 5, 15 and 30 minutes, then hourly. Accepted or
+   processed is **In the online bank**; rejected, stopped or not found is **Failed**; with
+   no outcome after seven days a person is asked (**Awaiting confirmation**). The
+   AvtaleGiro half moves the debit; the last answer is stored as the evidence once the
+   debit has settled.
+3. **Stop** a debit a credit note asked to cancel, until 14:00 the day before its due
+   date; after that it is put back as accepted.
+4. **Once a day**, under a lease so one worker does it: drain the AvtaleGiro agreements
+   MPS has created, changed or deleted since the last call, and look the due persons up
+   again.
+
+It holds no database connection while it calls MPS. A refused certificate or user sets
+the card's alert and the eFaktura waits an hour.
+
+### Test against MPS's test environment
+
+Point the two base URLs at MPS's test environment, configure the test certificate and
+user, and from an allow-listed address run the opt-in adapter test:
+
+```
+go test -tags mps -run TestMpsTestEnv ./internal/consumerinvoice/mps/
+```
+
+with the variables it names (`MPS_TEST_EFAKTURA_URL`, `MPS_TEST_MANDATE_URL`,
+`MPS_TEST_CERT_FILE`, `MPS_TEST_KEY_FILE`, `MPS_TEST_USERNAME`, `MPS_TEST_PASSWORD`,
+`MPS_TEST_ISSUER` and, for AvtaleGiro, `MPS_TEST_CREDITOR_ACCOUNT`). Test data is shared
+by every user of the test environment, and MPS asks for a formal test before production.
+
+### The live switch
+
+Going live is: the submitter agreement in place, the production certificate and user
+configured, the egress address allow-listed for production, the two base URLs at their
+production defaults, and `INVOICES_EFAKTURA_ENABLED=1`. Turning it off again stops the
+worker; queued eFaktura wait until it is on.
+
+### Known limits of eFaktura
+
+- A person is found without a national identity number, by phone, e-mail, date of birth,
+  name and address. Some persons will not be found; they get e-mail or paper.
+- Credit notes are not carried by the network; they go by e-mail or post.
+- Some details of MPS's service are not in its public documentation — the service's XML
+  namespace, whether a lookup answers in the order of its keys, how the coverage check
+  names the KID — and are confirmed in the test environment before going live.
+- An AvtaleGiro debit refused after its eFaktura was stored as evidence is not followed
+  further; the invoice then follows the ordinary reminders.
 
 ## Known limits
 

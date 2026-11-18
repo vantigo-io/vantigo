@@ -74,6 +74,7 @@ import { useInvoiceFormat } from "../lib/format";
 import { computeKid, kidFits } from "../lib/kid";
 import { rateOn } from "../lib/vat";
 import { CollectionRatesCard } from "./-collection-rates";
+import { EfakturaSettingsCard } from "./-efaktura-settings";
 import { PaymentSettingsCard } from "./-payment-settings";
 import { ReminderSettingsCard } from "./-reminder-settings";
 import { SendingCard } from "./-sending-card";
@@ -183,6 +184,7 @@ const Settings = ({
       <CollectionRatesCard today={today} currentUserId={currentUserId} />
       <VippsSettingsCard />
       <PaymentSettingsCard />
+      <EfakturaSettingsCard />
     </>
   );
 };

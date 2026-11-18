@@ -200,6 +200,11 @@ func workers(d module.Deps) []worker.Worker {
 	if d.Config != nil && d.Config.InvoicesBankFeedEnabled {
 		ws = append(ws, NewBankFeedWorker(d))
 	}
+	// eFaktura and AvtaleGiro (invoices phase 6 plan D6): only behind the
+	// live switch.
+	if d.Config != nil && d.Config.InvoicesEfakturaEnabled {
+		ws = append(ws, NewEfakturaWorker(d))
+	}
 	return ws
 }
 

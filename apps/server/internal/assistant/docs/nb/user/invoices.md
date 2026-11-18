@@ -172,6 +172,9 @@ at det ble sendt, tas ut av køen som **Feilet** (eller **Ubekreftet**, når Sto
 ha det) og må følges opp av en person
 ([tilstandene](#følg-sendingen-på-kortet-e-faktura-ehf)).
 
+**eFaktura og AvtaleGiro**, for privatkunder, settes opp på et eget kort
+([Sett opp eFaktura og AvtaleGiro](#sett-opp-efaktura-og-avtalegiro)).
+
 ### Avtal KID med banken
 
 En KID er betalingsreferansen banken kobler en innbetaling til. For å bruke den ber du
@@ -215,6 +218,19 @@ bare når fakturanumrene vokser forbi en lengde som passet da den ble lagret —
 fakturanummer passer ikke lenger i KID-avtalens lengde. Endre KID-avtalen i
 innstillingene.* Den gule advarselen om reserve er der for at det aldri skal komme
 overraskende.
+
+### AvtaleGiro og KID
+
+AvtaleGiro kjenner igjen betaleren på en KID som står fast i avtalen, så hver kunde har
+en egen — **kunde-KID-en**: sifferet 9, kundenummeret fylt ut til lengden minus to, og så
+kontrollsifferet. For at ingen fakturas KID noen gang skal bli lik en kundes, reserverer
+AvtaleGiro det første sifferet i KID-en når den slås på: fra da av kan et fakturanummer
+bruke lengden minus to sifre, og hver faktura-KID begynner med 0. Bryteren nektes —
+*KID-en har ikke plass til kunde-KID-ene for AvtaleGiro. Avtal en lengre KID med
+banken.* — når neste fakturanummer ikke ville passe, eller en utstedt fakturas KID
+allerede begynner med 9; be banken om en lengre KID først. Den gule advarselen om plassen
+i KID-en regner med det reserverte sifferet mens AvtaleGiro er på
+([Sende som eFaktura](#sende-som-efaktura)).
 
 ### Mva-koder
 
@@ -1628,6 +1644,10 @@ navngis og venter på en annen bunke. Dette gjøres under **Forfalt** → **Papi
 ([Skrive ut og postlegge papirbrev](#skrive-ut-og-postlegge-papirbrev); referansens
 [papir og postlegging](/en/reference/invoices/#paper-and-posting)).
 
+En faktura der banken har godtatt AvtaleGiro-trekket, venter på det: første brev sendes
+ikke før en virkedag etter at forfallsdatoen har gått uten betaling, og til da er neste
+handling **Venter** med AvtaleGiro som grunn ([Sende som eFaktura](#sende-som-efaktura)).
+
 ### Forfalte fakturaer og purringer
 
 **Forfalt** i sidemenyen viser hver forfalte faktura til alle med `invoices:access`, hver
@@ -2026,6 +2046,116 @@ bruk **Send som EHF** i stedet, med mindre du har avtalt noe annet med kunden. E
 dokumentet allerede underveis som EHF, eller levert, sier e-postdialogen *Dette
 dokumentet er allerede underveis som EHF, eller levert*; en e-post sender da kunden en
 kopi til.
+
+## Sende som eFaktura
+
+eFaktura legger en faktura i nettbanken til en privatkunde, der kunden godkjenner den
+med ett klikk — og har kunden en **AvtaleGiro**-avtale med dere, trekker banken den også
+på forfallsdatoen. Vantigo sender begge deler gjennom Mastercard Payment Services (MPS),
+med Vantigo som innsender og firmaet deres som utsteder. Det krever `invoices:issue`, en
+installasjon som driftsansvarlig har satt opp for det
+([eFaktura og AvtaleGiro](/nb/admin/e-invoicing/#efaktura-og-avtalegiro-gjennom-mastercard-payment-services)),
+og deres egen eFaktura-avtale med banken, lagt inn under **eFaktura og AvtaleGiro** i
+innstillingene (se under).
+
+### Hvem kan få eFaktura
+
+eFaktura er for personer. Vantigo finner personen hos MPS ved kundens telefon, e-post,
+fødselsdato, navn og fakturaadresse — aldri ved fødselsnummer, som Vantigo ikke lagrer.
+Jo flere av disse kunden har, desto sikrere treff: to av telefon, e-post og fødselsdato
+er nok alene; med bare én må også navnet eller adressen stemme. Fødselsdatoen legges inn
+på kundens kort **Kontakt og adresser** (Kunder).
+
+Svaret tas vare på i sju dager og spørres på nytt før en sending når det er eldre. På
+kundens fane **Fakturaer** viser kortet **eFaktura** svaret — **Funnet**, **Ikke funnet**,
+**Sperret** (personen har sperret eFaktura fra dere) eller **Tvetydig** (flere personer
+passer) — og når det ble sjekket. **Sjekk eFaktura** spør på nytt nå. En person som er
+funnet, får fakturaen når personen tar imot alt i nettbanken, eller har en
+eFaktura-avtale med dere.
+
+### Sett opp eFaktura og AvtaleGiro
+
+I **Fakturainnstillinger** har kortet **eFaktura og AvtaleGiro** (`invoices:manage`)
+avtalene slik banken registrerte dem hos MPS:
+
+- **eFaktura-avtale** og **AvtaleGiro-avtale**: **Ingen**, **Under behandling** eller
+  **Aktiv**. Å sende som eFaktura krever at den første er **Aktiv**.
+- **Navn i nettbanken**, høyst 40 tegn, navnet banken viser fakturaen under.
+- **Kortnavn for AvtaleGiro**, høyst 10 tegn, og **Konto for AvtaleGiro**, de 11 sifrene
+  trekkene betales inn på — begge trengs for AvtaleGiro.
+
+Klikk **Lagre**, deretter **Kontroller**: *Kontrollert*, *Avvist* eller *Ikke nådd*. Når
+kortet sier *Denne installasjonen er ikke satt opp for å sende eFaktura ennå*, har ikke
+driftsansvarlig slått det på. Kortet viser også hvor mange eFakturaer som ble sendt hver
+måned — MPS og banken tar betalt per faktura, og de gebyrene er firmaets.
+
+**AvtaleGiro** er en bryter på det samme kortet. Å slå den på krever KID-avtalen
+([se under](#avtalegiro-og-kid)) og en aktiv AvtaleGiro-avtale med konto, og nektes når
+KID-en ikke har plass til kunde-KID-ene. Mens den er på, får hver faktura til en person
+en linje under betalingsopplysningene — *AvtaleGiro: opprett avtale i nettbanken med
+KID 9…* — KID-en kunden oppretter AvtaleGiro-avtalen med i nettbanken. Vantigo henter
+avtalene fra MPS én gang i døgnet. En avtale der KID-en ikke viser til noen kunde, står
+under **AvtaleGiro-avtaler uten kunde**: skriv kundens ID og klikk **Knytt til kunde**
+(`invoices:payments`). KID-en i avtalen bærer kundenummeret den ble laget for; å knytte
+den til en kunde med et annet nummer krever at **KID-en viser til et annet kundenummer**
+er krysset av og en begrunnelse, som tas vare på. Bare en person som ikke er slått
+sammen eller anonymisert, kan få en avtale.
+
+### Send en faktura som eFaktura
+
+Åpne den utstedte fakturaen og klikk **Send som eFaktura**, som vises når fakturaen kan
+sendes. Dialogen forklarer: *Fakturaen går til kundens nettbank. Har kunden en
+AvtaleGiro-avtale, og forfallsdatoen gir banken tid, trekkes den også med AvtaleGiro.*
+Klikk **Send som eFaktura**. Meldingen sier *Lagt i kø for sending som eFaktura.*, og
+enten *AvtaleGiro går med.* eller hvorfor ikke:
+
+- *kunden har ingen aktiv AvtaleGiro-avtale*;
+- *forfallsdatoen er for nær for banken* — AvtaleGiro krever at forfallsdatoen er minst
+  fire dager etter neste virkedag, regnet fra klokka 14.00;
+- *beløpet er over kundens beløpsgrense for AvtaleGiro*.
+
+eFakturaen går da alene, og kunden betaler den i nettbanken.
+
+En sending kan nektes, og dialogen sier *Kunne ikke sende som eFaktura* og hvorfor:
+forfallsdatoen må være minst tre dager og høyst tolv måneder fram; fakturaen må være i
+NOK og ha KID; *Kunden kan ikke få eFaktura*, med om kunden ikke ble funnet, sperrer dere,
+ikke har avtale med dere eller passer med flere personer; eller fakturaen er allerede
+sendt som eFaktura.
+
+**Kreditnotaer** kan ikke sendes som eFaktura — nettverket fører ingen. Dialogen sier
+*Kreditnotaer kan ikke sendes som eFaktura. Send den på e-post eller i posten.* Å utstede
+en kreditnota på en faktura med et AvtaleGiro-trekk ber om at trekket stoppes: fram til
+klokka 14.00 dagen før forfall stopper banken det, og kortet sier **stoppet**; etter det
+er det for sent — *Det var for sent å stoppe trekket. Et overskudd blir kundens
+tilgode.*
+
+### Følg sendingen på kortet eFaktura
+
+Kortet **eFaktura** ved siden av **E-faktura (EHF)** viser tilstanden — **I kø**,
+**Sendt**, **I nettbanken**, **Feilet**, **Venter på bekreftelse** eller **Avbrutt** —
+hver sending med om den gikk med AvtaleGiro, og AvtaleGiro-trekket: *sendt til banken*,
+*blir trukket*, *avvist*, *blir stoppet*, *stoppet*, *betalt* eller *ikke betalt*, med beløp og
+forfallsdato. *Banken merker at beløpet er over kundens beløpsgrense* når banken
+flagger det. Et trekk er betalt når bankfilen kommer og KID-en — kundens AvtaleGiro-KID —
+passer med trekket som forfaller den dagen med det beløpet; Vantigo registrerer da
+betalingen og merker trekket **betalt**. En innbetaling med en kunde-KID som ikke passer
+med noe trekk, venter i unntakskøen som *Ingen faktura har denne KID-en*.
+
+Et trekk ingen bankfil har betalt fem virkedager etter
+forfallsdatoen, er *ikke betalt*, og fakturaen purres da som alle andre; et trekk som
+kommer senere, betaler den likevel.
+
+**Venter på bekreftelse** betyr at Vantigo leverte eFakturaen, men aldri fikk svar,
+eller at MPS ikke har gitt noe utfall på sju dager. Vantigo fortsetter å spørre MPS én
+gang i døgnet, ved sendingens egen referanse, i 37 dager, og avgjør den selv når MPS
+svarer — feilet, hvis MPS aldri fikk den. En person kan avgjøre den før: sjekk med banken
+eller MPS, klikk **Avklar** på raden, velg **Levert** eller **Feilet** og skriv hva du fikk
+vite. Et AvtaleGiro-trekk banken ennå ikke hadde godtatt, stoppes da på Vantigos side;
+trekker banken det likevel, venter betalingen i unntakskøen på en person.
+
+En faktura med et AvtaleGiro-trekk banken skal gjøre, purres ikke før en virkedag etter
+at forfallsdatoen har gått uten betaling; fram til da sier purringen *venter*, med
+AvtaleGiro som grunn.
 
 ## Vipps og betalingslenker
 

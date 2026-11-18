@@ -15,7 +15,7 @@ import (
 const activeTransmissionExists = `-- name: ActiveTransmissionExists :one
 SELECT EXISTS (
     SELECT 1 FROM invoices.transmissions
-    WHERE invoice_id = $1 AND status IN ('queued', 'submitted', 'delivered', 'unconfirmed')
+    WHERE invoice_id = $1 AND channel = 'ehf' AND status IN ('queued', 'submitted', 'delivered', 'unconfirmed')
 ) AS active
 `
 
@@ -29,7 +29,7 @@ func (q *Queries) ActiveTransmissionExists(ctx context.Context, invoiceID int64)
 }
 
 const activeTransmissionsCount = `-- name: ActiveTransmissionsCount :one
-SELECT count(*) FROM invoices.transmissions WHERE status IN ('queued', 'submitted', 'unconfirmed')
+SELECT count(*) FROM invoices.transmissions WHERE channel = 'ehf' AND status IN ('queued', 'submitted', 'unconfirmed')
 `
 
 // ActiveTransmissionsCount is how many transmissions the credentials still
@@ -45,11 +45,11 @@ func (q *Queries) ActiveTransmissionsCount(ctx context.Context) (int64, error) {
 const anyAwaitingEvents = `-- name: AnyAwaitingEvents :one
 SELECT EXISTS (
     SELECT 1 FROM invoices.transmissions
-    WHERE status = 'submitted'
+    WHERE channel = 'ehf' AND (status = 'submitted'
        OR (status = 'unconfirmed' AND (
              next_attempt_at <> 'infinity'::timestamptz
              OR (provider_ref IS NULL AND queued_at + interval '14 days' > $1::timestamptz)))
-       OR (status = 'queued' AND submit_attempted_at IS NOT NULL)
+       OR (status = 'queued' AND submit_attempted_at IS NOT NULL))
 ) AS awaiting
 `
 
@@ -77,7 +77,7 @@ UPDATE invoices.transmissions SET
     poll_attempts = 0, last_error = NULL
 WHERE (idempotency_key = $4
        OR (provider_ref = $2::text AND provider_ref IS NOT NULL AND $2::text <> ''))
-  AND status IN ('queued', 'submitted', 'unconfirmed')
+  AND channel = 'ehf' AND status IN ('queued', 'submitted', 'unconfirmed')
 `
 
 type ApplyEventDeliveredParams struct {
@@ -112,7 +112,7 @@ UPDATE invoices.transmissions SET
     resolution_note = CASE WHEN status = 'unconfirmed' THEN $4 ELSE resolution_note END
 WHERE (idempotency_key = $5
        OR (provider_ref = $3::text AND provider_ref IS NOT NULL AND $3::text <> ''))
-  AND status IN ('queued', 'submitted', 'unconfirmed')
+  AND channel = 'ehf' AND status IN ('queued', 'submitted', 'unconfirmed')
 `
 
 type ApplyEventFailedParams struct {
@@ -164,7 +164,7 @@ func (q *Queries) CancelCustomerUnattemptedTransmissions(ctx context.Context, ar
 
 const cancelUnattemptedTransmission = `-- name: CancelUnattemptedTransmission :execrows
 UPDATE invoices.transmissions SET status = 'cancelled', cancelled_at = $1::timestamptz
-WHERE id = $2 AND invoice_id = $3 AND status = 'queued' AND submit_attempted_at IS NULL
+WHERE id = $2 AND invoice_id = $3 AND channel = 'ehf' AND status = 'queued' AND submit_attempted_at IS NULL
   AND (lease_until IS NULL OR lease_until < $1::timestamptz)
 `
 
@@ -188,7 +188,8 @@ const claimTransmission = `-- name: ClaimTransmission :one
 UPDATE invoices.transmissions SET lease_id = $1, lease_until = $2::timestamptz
 WHERE id = (
     SELECT t.id FROM invoices.transmissions t
-    WHERE ((t.status = 'queued' AND (NOT $3::boolean OR t.queued_at + interval '48 hours' < $4::timestamptz))
+    WHERE t.channel = 'ehf'
+      AND ((t.status = 'queued' AND (NOT $3::boolean OR t.queued_at + interval '48 hours' < $4::timestamptz))
            OR t.status IN ('submitted', 'unconfirmed')
            OR (t.status = 'delivered' AND t.evidence_object_key IS NULL AND t.provider_ref IS NOT NULL))
       AND t.next_attempt_at <= $4::timestamptz
@@ -197,7 +198,7 @@ WHERE id = (
     LIMIT 1
     FOR UPDATE SKIP LOCKED
 )
-RETURNING id, invoice_id, provider, idempotency_key, sender_participant, receiver_participant, document_type, process_id, ubl_object_key, ubl_sha256, pdf_sha256, status, provider_ref, evidence_object_key, evidence_sha256, submit_attempts, poll_attempts, next_attempt_at, submit_attempted_at, lease_id, lease_until, last_error, lookup_registered, lookup_can_receive, lookup_at, queued_at, submitted_at, delivered_at, failed_at, cancelled_at, resolved_by_user_id, resolution_note, created_by_user_id
+RETURNING id, invoice_id, provider, idempotency_key, sender_participant, receiver_participant, document_type, process_id, ubl_object_key, ubl_sha256, pdf_sha256, status, provider_ref, evidence_object_key, evidence_sha256, submit_attempts, poll_attempts, next_attempt_at, submit_attempted_at, lease_id, lease_until, last_error, lookup_registered, lookup_can_receive, lookup_at, queued_at, submitted_at, delivered_at, failed_at, cancelled_at, resolved_by_user_id, resolution_note, created_by_user_id, channel, efaktura_identifier, shipment_id, payment_type, pdf_object_key, provider_status
 `
 
 type ClaimTransmissionParams struct {
@@ -257,12 +258,18 @@ func (q *Queries) ClaimTransmission(ctx context.Context, arg ClaimTransmissionPa
 		&i.ResolvedByUserID,
 		&i.ResolutionNote,
 		&i.CreatedByUserID,
+		&i.Channel,
+		&i.EfakturaIdentifier,
+		&i.ShipmentID,
+		&i.PaymentType,
+		&i.PdfObjectKey,
+		&i.ProviderStatus,
 	)
 	return i, err
 }
 
 const everyTransmissionOfDocuments = `-- name: EveryTransmissionOfDocuments :many
-SELECT id, invoice_id, provider, idempotency_key, sender_participant, receiver_participant, document_type, process_id, ubl_object_key, ubl_sha256, pdf_sha256, status, provider_ref, evidence_object_key, evidence_sha256, submit_attempts, poll_attempts, next_attempt_at, submit_attempted_at, lease_id, lease_until, last_error, lookup_registered, lookup_can_receive, lookup_at, queued_at, submitted_at, delivered_at, failed_at, cancelled_at, resolved_by_user_id, resolution_note, created_by_user_id FROM invoices.transmissions
+SELECT id, invoice_id, provider, idempotency_key, sender_participant, receiver_participant, document_type, process_id, ubl_object_key, ubl_sha256, pdf_sha256, status, provider_ref, evidence_object_key, evidence_sha256, submit_attempts, poll_attempts, next_attempt_at, submit_attempted_at, lease_id, lease_until, last_error, lookup_registered, lookup_can_receive, lookup_at, queued_at, submitted_at, delivered_at, failed_at, cancelled_at, resolved_by_user_id, resolution_note, created_by_user_id, channel, efaktura_identifier, shipment_id, payment_type, pdf_object_key, provider_status FROM invoices.transmissions
 WHERE invoice_id = ANY($1::bigint[])
 ORDER BY invoice_id, id
 `
@@ -312,6 +319,12 @@ func (q *Queries) EveryTransmissionOfDocuments(ctx context.Context, invoiceIds [
 			&i.ResolvedByUserID,
 			&i.ResolutionNote,
 			&i.CreatedByUserID,
+			&i.Channel,
+			&i.EfakturaIdentifier,
+			&i.ShipmentID,
+			&i.PaymentType,
+			&i.PdfObjectKey,
+			&i.ProviderStatus,
 		); err != nil {
 			return nil, err
 		}
@@ -324,7 +337,7 @@ func (q *Queries) EveryTransmissionOfDocuments(ctx context.Context, invoiceIds [
 }
 
 const getTransmission = `-- name: GetTransmission :one
-SELECT id, invoice_id, provider, idempotency_key, sender_participant, receiver_participant, document_type, process_id, ubl_object_key, ubl_sha256, pdf_sha256, status, provider_ref, evidence_object_key, evidence_sha256, submit_attempts, poll_attempts, next_attempt_at, submit_attempted_at, lease_id, lease_until, last_error, lookup_registered, lookup_can_receive, lookup_at, queued_at, submitted_at, delivered_at, failed_at, cancelled_at, resolved_by_user_id, resolution_note, created_by_user_id FROM invoices.transmissions WHERE id = $1
+SELECT id, invoice_id, provider, idempotency_key, sender_participant, receiver_participant, document_type, process_id, ubl_object_key, ubl_sha256, pdf_sha256, status, provider_ref, evidence_object_key, evidence_sha256, submit_attempts, poll_attempts, next_attempt_at, submit_attempted_at, lease_id, lease_until, last_error, lookup_registered, lookup_can_receive, lookup_at, queued_at, submitted_at, delivered_at, failed_at, cancelled_at, resolved_by_user_id, resolution_note, created_by_user_id, channel, efaktura_identifier, shipment_id, payment_type, pdf_object_key, provider_status FROM invoices.transmissions WHERE id = $1
 `
 
 // GetTransmission re-reads one row by id.
@@ -365,6 +378,12 @@ func (q *Queries) GetTransmission(ctx context.Context, id int64) (InvoicesTransm
 		&i.ResolvedByUserID,
 		&i.ResolutionNote,
 		&i.CreatedByUserID,
+		&i.Channel,
+		&i.EfakturaIdentifier,
+		&i.ShipmentID,
+		&i.PaymentType,
+		&i.PdfObjectKey,
+		&i.ProviderStatus,
 	)
 	return i, err
 }
@@ -376,11 +395,11 @@ INSERT INTO invoices.transmissions (
     document_type, process_id, ubl_object_key, ubl_sha256, pdf_sha256,
     next_attempt_at, lookup_registered, lookup_can_receive, lookup_at, queued_at, created_by_user_id
 ) VALUES (
-    $1, $2, $3, $4, $5,
-    $6, $7, $8, $9, $10,
-    $11::timestamptz, $12, $13, $14::timestamptz, $11::timestamptz, $15
+    $1, $2, $3, $4::text, $5::text,
+    $6::text, $7::text, $8::text, $9::text, $10,
+    $11::timestamptz, $12::boolean, $13::boolean, $14::timestamptz, $11::timestamptz, $15
 )
-RETURNING id, invoice_id, provider, idempotency_key, sender_participant, receiver_participant, document_type, process_id, ubl_object_key, ubl_sha256, pdf_sha256, status, provider_ref, evidence_object_key, evidence_sha256, submit_attempts, poll_attempts, next_attempt_at, submit_attempted_at, lease_id, lease_until, last_error, lookup_registered, lookup_can_receive, lookup_at, queued_at, submitted_at, delivered_at, failed_at, cancelled_at, resolved_by_user_id, resolution_note, created_by_user_id
+RETURNING id, invoice_id, provider, idempotency_key, sender_participant, receiver_participant, document_type, process_id, ubl_object_key, ubl_sha256, pdf_sha256, status, provider_ref, evidence_object_key, evidence_sha256, submit_attempts, poll_attempts, next_attempt_at, submit_attempted_at, lease_id, lease_until, last_error, lookup_registered, lookup_can_receive, lookup_at, queued_at, submitted_at, delivered_at, failed_at, cancelled_at, resolved_by_user_id, resolution_note, created_by_user_id, channel, efaktura_identifier, shipment_id, payment_type, pdf_object_key, provider_status
 `
 
 type InsertTransmissionParams struct {
@@ -415,7 +434,8 @@ type InsertTransmissionParams struct {
 // trigger's refusal of a change to a final row. A completion that can move an
 // unconfirmed row writes @machine_note as its resolution_note — the machine's
 // resolution, with no user — and leaves the note alone on any other row.
-// InsertTransmission queues one transmission (D8), due at once. The trigger
+// InsertTransmission queues one EHF transmission (D8), due at once; channel
+// takes its default, 'ehf'. The trigger
 // refuses a draft's and an anonymised customer's; ux_transmissions_active
 // refuses a second live one for the same document (23505).
 func (q *Queries) InsertTransmission(ctx context.Context, arg InsertTransmissionParams) (InvoicesTransmission, error) {
@@ -471,13 +491,19 @@ func (q *Queries) InsertTransmission(ctx context.Context, arg InsertTransmission
 		&i.ResolvedByUserID,
 		&i.ResolutionNote,
 		&i.CreatedByUserID,
+		&i.Channel,
+		&i.EfakturaIdentifier,
+		&i.ShipmentID,
+		&i.PaymentType,
+		&i.PdfObjectKey,
+		&i.ProviderStatus,
 	)
 	return i, err
 }
 
 const latestPersonResolvedFailedTransmission = `-- name: LatestPersonResolvedFailedTransmission :one
-SELECT id, invoice_id, provider, idempotency_key, sender_participant, receiver_participant, document_type, process_id, ubl_object_key, ubl_sha256, pdf_sha256, status, provider_ref, evidence_object_key, evidence_sha256, submit_attempts, poll_attempts, next_attempt_at, submit_attempted_at, lease_id, lease_until, last_error, lookup_registered, lookup_can_receive, lookup_at, queued_at, submitted_at, delivered_at, failed_at, cancelled_at, resolved_by_user_id, resolution_note, created_by_user_id FROM invoices.transmissions
-WHERE invoice_id = $1 AND status = 'failed' AND resolved_by_user_id IS NOT NULL
+SELECT id, invoice_id, provider, idempotency_key, sender_participant, receiver_participant, document_type, process_id, ubl_object_key, ubl_sha256, pdf_sha256, status, provider_ref, evidence_object_key, evidence_sha256, submit_attempts, poll_attempts, next_attempt_at, submit_attempted_at, lease_id, lease_until, last_error, lookup_registered, lookup_can_receive, lookup_at, queued_at, submitted_at, delivered_at, failed_at, cancelled_at, resolved_by_user_id, resolution_note, created_by_user_id, channel, efaktura_identifier, shipment_id, payment_type, pdf_object_key, provider_status FROM invoices.transmissions
+WHERE invoice_id = $1 AND channel = 'ehf' AND status = 'failed' AND resolved_by_user_id IS NOT NULL
 ORDER BY id DESC LIMIT 1
 `
 
@@ -524,6 +550,12 @@ func (q *Queries) LatestPersonResolvedFailedTransmission(ctx context.Context, in
 		&i.ResolvedByUserID,
 		&i.ResolutionNote,
 		&i.CreatedByUserID,
+		&i.Channel,
+		&i.EfakturaIdentifier,
+		&i.ShipmentID,
+		&i.PaymentType,
+		&i.PdfObjectKey,
+		&i.ProviderStatus,
 	)
 	return i, err
 }
@@ -718,7 +750,7 @@ func (q *Queries) MarkUnconfirmedLeased(ctx context.Context, arg MarkUnconfirmed
 }
 
 const queuedTransmissionsDue = `-- name: QueuedTransmissionsDue :one
-SELECT count(*) FROM invoices.transmissions WHERE status = 'queued' AND next_attempt_at <= $1::timestamptz
+SELECT count(*) FROM invoices.transmissions WHERE channel = 'ehf' AND status = 'queued' AND next_attempt_at <= $1::timestamptz
 `
 
 // QueuedTransmissionsDue is how many queued rows are due by @now: what an
@@ -733,7 +765,7 @@ func (q *Queries) QueuedTransmissionsDue(ctx context.Context, now time.Time) (in
 
 const refreshTransmissionLookup = `-- name: RefreshTransmissionLookup :execrows
 UPDATE invoices.transmissions SET
-    lookup_registered = $1, lookup_can_receive = $2, lookup_at = $3::timestamptz
+    lookup_registered = $1::boolean, lookup_can_receive = $2::boolean, lookup_at = $3::timestamptz
 WHERE id = $4 AND lease_id = $5 AND status = 'queued'
 `
 
@@ -894,12 +926,18 @@ func (q *Queries) SetEvidenceLeased(ctx context.Context, arg SetEvidenceLeasedPa
 }
 
 const transmissionsOf = `-- name: TransmissionsOf :many
-SELECT id, invoice_id, provider, idempotency_key, sender_participant, receiver_participant, document_type, process_id, ubl_object_key, ubl_sha256, pdf_sha256, status, provider_ref, evidence_object_key, evidence_sha256, submit_attempts, poll_attempts, next_attempt_at, submit_attempted_at, lease_id, lease_until, last_error, lookup_registered, lookup_can_receive, lookup_at, queued_at, submitted_at, delivered_at, failed_at, cancelled_at, resolved_by_user_id, resolution_note, created_by_user_id FROM invoices.transmissions WHERE invoice_id = $1 ORDER BY id DESC
+SELECT id, invoice_id, provider, idempotency_key, sender_participant, receiver_participant, document_type, process_id, ubl_object_key, ubl_sha256, pdf_sha256, status, provider_ref, evidence_object_key, evidence_sha256, submit_attempts, poll_attempts, next_attempt_at, submit_attempted_at, lease_id, lease_until, last_error, lookup_registered, lookup_can_receive, lookup_at, queued_at, submitted_at, delivered_at, failed_at, cancelled_at, resolved_by_user_id, resolution_note, created_by_user_id, channel, efaktura_identifier, shipment_id, payment_type, pdf_object_key, provider_status FROM invoices.transmissions WHERE invoice_id = $1 AND channel = $2 ORDER BY id DESC
 `
 
-// TransmissionsOf is every transmission of one document, the newest first.
-func (q *Queries) TransmissionsOf(ctx context.Context, invoiceID int64) ([]InvoicesTransmission, error) {
-	rows, err := q.db.Query(ctx, transmissionsOf, invoiceID)
+type TransmissionsOfParams struct {
+	InvoiceID int64
+	Channel   string
+}
+
+// TransmissionsOf is every transmission of one document on one channel, the
+// newest first.
+func (q *Queries) TransmissionsOf(ctx context.Context, arg TransmissionsOfParams) ([]InvoicesTransmission, error) {
+	rows, err := q.db.Query(ctx, transmissionsOf, arg.InvoiceID, arg.Channel)
 	if err != nil {
 		return nil, err
 	}
@@ -941,6 +979,12 @@ func (q *Queries) TransmissionsOf(ctx context.Context, invoiceID int64) ([]Invoi
 			&i.ResolvedByUserID,
 			&i.ResolutionNote,
 			&i.CreatedByUserID,
+			&i.Channel,
+			&i.EfakturaIdentifier,
+			&i.ShipmentID,
+			&i.PaymentType,
+			&i.PdfObjectKey,
+			&i.ProviderStatus,
 		); err != nil {
 			return nil, err
 		}
@@ -953,16 +997,21 @@ func (q *Queries) TransmissionsOf(ctx context.Context, invoiceID int64) ([]Invoi
 }
 
 const transmissionsOfDocuments = `-- name: TransmissionsOfDocuments :many
-SELECT DISTINCT ON (invoice_id) id, invoice_id, provider, idempotency_key, sender_participant, receiver_participant, document_type, process_id, ubl_object_key, ubl_sha256, pdf_sha256, status, provider_ref, evidence_object_key, evidence_sha256, submit_attempts, poll_attempts, next_attempt_at, submit_attempted_at, lease_id, lease_until, last_error, lookup_registered, lookup_can_receive, lookup_at, queued_at, submitted_at, delivered_at, failed_at, cancelled_at, resolved_by_user_id, resolution_note, created_by_user_id
+SELECT DISTINCT ON (invoice_id) id, invoice_id, provider, idempotency_key, sender_participant, receiver_participant, document_type, process_id, ubl_object_key, ubl_sha256, pdf_sha256, status, provider_ref, evidence_object_key, evidence_sha256, submit_attempts, poll_attempts, next_attempt_at, submit_attempted_at, lease_id, lease_until, last_error, lookup_registered, lookup_can_receive, lookup_at, queued_at, submitted_at, delivered_at, failed_at, cancelled_at, resolved_by_user_id, resolution_note, created_by_user_id, channel, efaktura_identifier, shipment_id, payment_type, pdf_object_key, provider_status
 FROM invoices.transmissions
-WHERE invoice_id = ANY($1::bigint[])
+WHERE invoice_id = ANY($1::bigint[]) AND channel = $2
 ORDER BY invoice_id, id DESC
 `
 
+type TransmissionsOfDocumentsParams struct {
+	InvoiceIds []int64
+	Channel    string
+}
+
 // TransmissionsOfDocuments is the newest transmission of each of a page of
-// documents: the list's ehfStatus (D10).
-func (q *Queries) TransmissionsOfDocuments(ctx context.Context, invoiceIds []int64) ([]InvoicesTransmission, error) {
-	rows, err := q.db.Query(ctx, transmissionsOfDocuments, invoiceIds)
+// documents on one channel: the list's ehfStatus (D10) and efakturaStatus.
+func (q *Queries) TransmissionsOfDocuments(ctx context.Context, arg TransmissionsOfDocumentsParams) ([]InvoicesTransmission, error) {
+	rows, err := q.db.Query(ctx, transmissionsOfDocuments, arg.InvoiceIds, arg.Channel)
 	if err != nil {
 		return nil, err
 	}
@@ -1004,6 +1053,12 @@ func (q *Queries) TransmissionsOfDocuments(ctx context.Context, invoiceIds []int
 			&i.ResolvedByUserID,
 			&i.ResolutionNote,
 			&i.CreatedByUserID,
+			&i.Channel,
+			&i.EfakturaIdentifier,
+			&i.ShipmentID,
+			&i.PaymentType,
+			&i.PdfObjectKey,
+			&i.ProviderStatus,
 		); err != nil {
 			return nil, err
 		}

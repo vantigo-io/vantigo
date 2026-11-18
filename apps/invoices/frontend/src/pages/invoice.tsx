@@ -60,6 +60,7 @@ import { ChargesCard } from "../components/charges-card";
 import { CustomerPicker } from "../components/customer-picker";
 import { DeliveriesCard } from "../components/deliveries-card";
 import { DocumentLink } from "../components/document-link";
+import { EfakturaCard } from "../components/efaktura-card";
 import { EhfCard } from "../components/ehf-card";
 import { HandoffCard } from "../components/handoff-card";
 import { HoldCard } from "../components/hold-card";
@@ -80,6 +81,7 @@ import { ApplyCreditModal } from "./-apply-credit-modal";
 import { DeductModal } from "./-deduct-modal";
 import { IssueModal } from "./-issue-modal";
 import { SendDialog } from "./-send-dialog";
+import { SendEfakturaDialog } from "./-send-efaktura-dialog";
 import { SendEhfDialog } from "./-send-ehf-dialog";
 import { TakePaymentModal } from "./-take-payment-modal";
 
@@ -1332,7 +1334,8 @@ const IssuedDocument = ({
   ledger?: (documentId: number) => ReactNode;
 }) => {
   const { t, money, unitPrice, date, number } = useInvoiceFormat();
-  const { canIssue, canManage, canRegisterPayments, canSend, canSendEhf, canTakeOnSitePayment } = meta.capabilities;
+  const { canIssue, canManage, canRegisterPayments, canSend, canSendEhf, canSendEfaktura, canTakeOnSitePayment } =
+    meta.capabilities;
   // The letters a hold, a lift, a hand-off or its withdrawal left alone (D11),
   // named until the person dismisses them or acts on them.
   const [lettersLeft, setLettersLeft] = useState<LetterLeft[]>([]);
@@ -1341,6 +1344,7 @@ const IssuedDocument = ({
   const heading = useHeading(doc);
   const [sending, setSending] = useState(false);
   const [sendingEhf, setSendingEhf] = useState(false);
+  const [sendingEfaktura, setSendingEfaktura] = useState(false);
   const [takingPayment, setTakingPayment] = useState(false);
   // "Take a Vipps payment now" (D17): on site, for the whole open amount, only
   // where meta says the caller can — the server judges the rest, in words.
@@ -1384,6 +1388,16 @@ const IssuedDocument = ({
             {ehfPrimary && (
               <Button variant="filled" leftSection={<IconSend size={16} />} onClick={() => setSendingEhf(true)}>
                 {t("sendAsEhf")}
+              </Button>
+            )}
+            {canSendEfaktura && doc.efaktura?.canSend && (
+              <Button
+                variant="default"
+                leftSection={<IconSend size={16} />}
+                onClick={() => setSendingEfaktura(true)}
+                data-assist="invoices.send.efaktura"
+              >
+                {t("efaktura.send")}
               </Button>
             )}
             {canSend && (
@@ -1559,9 +1573,13 @@ const IssuedDocument = ({
             onSend={() => setSendingEhf(true)}
           />
         )}
+        {doc.efaktura && (doc.efaktura.transmissions.length > 0 || canSendEfaktura) && (
+          <EfakturaCard document={doc} offerSend={false} canIssue={canIssue} onSend={() => setSendingEfaktura(true)} />
+        )}
       </SimpleGrid>
       {sending && <SendDialog document={doc} defaults={doc.sendDefaults} onClose={() => setSending(false)} />}
       {sendingEhf && <SendEhfDialog document={doc} onClose={() => setSendingEhf(false)} />}
+      {sendingEfaktura && <SendEfakturaDialog document={doc} onClose={() => setSendingEfaktura(false)} />}
       {takingPayment && <TakePaymentModal invoice={doc} onClose={() => setTakingPayment(false)} />}
     </Stack>
   );

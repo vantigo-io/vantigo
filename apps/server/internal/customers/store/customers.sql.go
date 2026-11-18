@@ -529,7 +529,8 @@ SELECT c.id, c.customer_number, c.name, c.type, c.status = 'archived' AS archive
        c.legal_country, c.legal_id, c.legal_name, c.legal_source, c.legal_type, c.email,
        c.invoice_email, c.reminder_email, c.payment_terms_days, c.currency, c.language,
        c.invoice_delivery, c.reminder_delivery, c.peppol_id, c.gln, c.buyer_reference, c.default_bill_rate,
-       g.default_payment_terms_days AS group_default_payment_terms_days
+       g.default_payment_terms_days AS group_default_payment_terms_days,
+       c.phone, c.date_of_birth
 FROM customers.customers c
 LEFT JOIN customers.customer_groups g ON g.id = c.group_id
 WHERE c.id = $1
@@ -561,6 +562,8 @@ type DirectoryBillingProfileRow struct {
 	BuyerReference               *string
 	DefaultBillRate              pgtype.Numeric
 	GroupDefaultPaymentTermsDays *int32
+	Phone                        *string
+	DateOfBirth                  pgtype.Date
 }
 
 // DirectoryBillingProfile is contracts.CustomerDirectory.BillingProfile's
@@ -580,7 +583,9 @@ type DirectoryBillingProfileRow struct {
 // payment term, which resolveBillingProfile applies as the middle tier of
 // PaymentTermsDays' resolution (customer groups design D4) — a LEFT JOIN
 // rather than a second round trip, since the group is this module's own table
-// and a customer in no group must still answer a row.
+// and a customer in no group must still answer a row. The phone and a
+// person's date of birth are what Invoices finds the person for eFaktura by
+// (invoices phase 6 reading 16), passed straight through.
 func (q *Queries) DirectoryBillingProfile(ctx context.Context, id int32) (DirectoryBillingProfileRow, error) {
 	row := q.db.QueryRow(ctx, directoryBillingProfile, id)
 	var i DirectoryBillingProfileRow
@@ -610,6 +615,8 @@ func (q *Queries) DirectoryBillingProfile(ctx context.Context, id int32) (Direct
 		&i.BuyerReference,
 		&i.DefaultBillRate,
 		&i.GroupDefaultPaymentTermsDays,
+		&i.Phone,
+		&i.DateOfBirth,
 	)
 	return i, err
 }
@@ -1002,6 +1009,32 @@ func (q *Queries) GetCustomerBillingProfile(ctx context.Context, id int32) (GetC
 	return i, err
 }
 
+const getCustomerDateOfBirth = `-- name: GetCustomerDateOfBirth :one
+SELECT id, type, date_of_birth, revision FROM customers.customers WHERE id = $1
+`
+
+type GetCustomerDateOfBirthRow struct {
+	ID          int32
+	Type        string
+	DateOfBirth pgtype.Date
+	Revision    int32
+}
+
+// GetCustomerDateOfBirth is GET /customers/{id}/date-of-birth's read
+// (invoices phase 6 delivery D, design I30): a person's date of birth, with
+// the type and the revision the PUT checks.
+func (q *Queries) GetCustomerDateOfBirth(ctx context.Context, id int32) (GetCustomerDateOfBirthRow, error) {
+	row := q.db.QueryRow(ctx, getCustomerDateOfBirth, id)
+	var i GetCustomerDateOfBirthRow
+	err := row.Scan(
+		&i.ID,
+		&i.Type,
+		&i.DateOfBirth,
+		&i.Revision,
+	)
+	return i, err
+}
+
 const insertCustomer = `-- name: InsertCustomer :one
 INSERT INTO customers.customers (
     customer_number, name, status, legal_country, legal_id, legal_name, legal_source, legal_type,
@@ -1353,6 +1386,50 @@ func (q *Queries) NextCounterValue(ctx context.Context, counterName string) (int
 	return next_value, err
 }
 
+const setCustomerDateOfBirth = `-- name: SetCustomerDateOfBirth :one
+UPDATE customers.customers
+SET date_of_birth = $1::date,
+    updated_at = $2::timestamptz,
+    revision = revision + 1
+WHERE id = $3
+  AND ($4::int IS NULL OR revision = $4::int)
+RETURNING id, type, date_of_birth, revision
+`
+
+type SetCustomerDateOfBirthParams struct {
+	DateOfBirth      pgtype.Date
+	UpdatedAt        time.Time
+	ID               int32
+	ExpectedRevision *int32
+}
+
+type SetCustomerDateOfBirthRow struct {
+	ID          int32
+	Type        string
+	DateOfBirth pgtype.Date
+	Revision    int32
+}
+
+// SetCustomerDateOfBirth is PUT /customers/{id}/date-of-birth's write: the
+// date only, guarded and revision-bumping as UpdateCustomerContactInfo is.
+// 00202's CHECK refuses one on a business; the handler refuses it first.
+func (q *Queries) SetCustomerDateOfBirth(ctx context.Context, arg SetCustomerDateOfBirthParams) (SetCustomerDateOfBirthRow, error) {
+	row := q.db.QueryRow(ctx, setCustomerDateOfBirth,
+		arg.DateOfBirth,
+		arg.UpdatedAt,
+		arg.ID,
+		arg.ExpectedRevision,
+	)
+	var i SetCustomerDateOfBirthRow
+	err := row.Scan(
+		&i.ID,
+		&i.Type,
+		&i.DateOfBirth,
+		&i.Revision,
+	)
+	return i, err
+}
+
 const setCustomerStatus = `-- name: SetCustomerStatus :one
 UPDATE customers.customers
 SET status = $1, updated_at = $2::timestamptz, revision = revision + 1
@@ -1418,7 +1495,10 @@ func (q *Queries) SetCustomerStatus(ctx context.Context, arg SetCustomerStatusPa
 
 const setCustomerType = `-- name: SetCustomerType :one
 UPDATE customers.customers
-SET type = $1,
+SET type = $1::varchar,
+    -- Only a person has a date of birth (00202's CHECK): a change to
+    -- business clears it in the same update.
+    date_of_birth = CASE WHEN $1::varchar = 'person' THEN date_of_birth ELSE NULL END,
     legal_country = $2,
     legal_id = $3,
     legal_name = $4,

@@ -14,7 +14,8 @@
 -- resolution, with no user — and leaves the note alone on any other row.
 
 -- name: InsertTransmission :one
--- InsertTransmission queues one transmission (D8), due at once. The trigger
+-- InsertTransmission queues one EHF transmission (D8), due at once; channel
+-- takes its default, 'ehf'. The trigger
 -- refuses a draft's and an anonymised customer's; ux_transmissions_active
 -- refuses a second live one for the same document (23505).
 INSERT INTO invoices.transmissions (
@@ -22,15 +23,16 @@ INSERT INTO invoices.transmissions (
     document_type, process_id, ubl_object_key, ubl_sha256, pdf_sha256,
     next_attempt_at, lookup_registered, lookup_can_receive, lookup_at, queued_at, created_by_user_id
 ) VALUES (
-    @invoice_id, @provider, @idempotency_key, @sender_participant, @receiver_participant,
-    @document_type, @process_id, @ubl_object_key, @ubl_sha256, @pdf_sha256,
-    @now::timestamptz, @lookup_registered, @lookup_can_receive, @lookup_at::timestamptz, @now::timestamptz, @created_by_user_id
+    @invoice_id, @provider, @idempotency_key, @sender_participant::text, @receiver_participant::text,
+    @document_type::text, @process_id::text, @ubl_object_key::text, @ubl_sha256::text, @pdf_sha256,
+    @now::timestamptz, @lookup_registered::boolean, @lookup_can_receive::boolean, @lookup_at::timestamptz, @now::timestamptz, @created_by_user_id
 )
 RETURNING *;
 
 -- name: TransmissionsOf :many
--- TransmissionsOf is every transmission of one document, the newest first.
-SELECT * FROM invoices.transmissions WHERE invoice_id = @invoice_id ORDER BY id DESC;
+-- TransmissionsOf is every transmission of one document on one channel, the
+-- newest first.
+SELECT * FROM invoices.transmissions WHERE invoice_id = @invoice_id AND channel = @channel ORDER BY id DESC;
 
 -- name: LatestPersonResolvedFailedTransmission :one
 -- LatestPersonResolvedFailedTransmission is the newest of one document's
@@ -40,7 +42,7 @@ SELECT * FROM invoices.transmissions WHERE invoice_id = @invoice_id ORDER BY id 
 -- later cancelled leaves the next send carrying them still. No row is
 -- pgx.ErrNoRows: the send renders fresh.
 SELECT * FROM invoices.transmissions
-WHERE invoice_id = @invoice_id AND status = 'failed' AND resolved_by_user_id IS NOT NULL
+WHERE invoice_id = @invoice_id AND channel = 'ehf' AND status = 'failed' AND resolved_by_user_id IS NOT NULL
 ORDER BY id DESC LIMIT 1;
 
 -- name: ActiveTransmissionExists :one
@@ -48,7 +50,7 @@ ORDER BY id DESC LIMIT 1;
 -- the predicate of ux_transmissions_active.
 SELECT EXISTS (
     SELECT 1 FROM invoices.transmissions
-    WHERE invoice_id = @invoice_id AND status IN ('queued', 'submitted', 'delivered', 'unconfirmed')
+    WHERE invoice_id = @invoice_id AND channel = 'ehf' AND status IN ('queued', 'submitted', 'delivered', 'unconfirmed')
 ) AS active;
 
 -- name: ClaimTransmission :one
@@ -63,7 +65,8 @@ SELECT EXISTS (
 UPDATE invoices.transmissions SET lease_id = @lease_id, lease_until = @lease_until::timestamptz
 WHERE id = (
     SELECT t.id FROM invoices.transmissions t
-    WHERE ((t.status = 'queued' AND (NOT @skip_queued::boolean OR t.queued_at + interval '48 hours' < @now::timestamptz))
+    WHERE t.channel = 'ehf'
+      AND ((t.status = 'queued' AND (NOT @skip_queued::boolean OR t.queued_at + interval '48 hours' < @now::timestamptz))
            OR t.status IN ('submitted', 'unconfirmed')
            OR (t.status = 'delivered' AND t.evidence_object_key IS NULL AND t.provider_ref IS NOT NULL))
       AND t.next_attempt_at <= @now::timestamptz
@@ -147,7 +150,7 @@ WHERE id = @id AND lease_id = @lease_id AND status = @status::text;
 -- RefreshTransmissionLookup records a queued row's fresh receiver lookup,
 -- made in its claim when the old one is older than a day (D9).
 UPDATE invoices.transmissions SET
-    lookup_registered = @lookup_registered, lookup_can_receive = @lookup_can_receive, lookup_at = @now::timestamptz
+    lookup_registered = @lookup_registered::boolean, lookup_can_receive = @lookup_can_receive::boolean, lookup_at = @now::timestamptz
 WHERE id = @id AND lease_id = @lease_id AND status = 'queued';
 
 -- name: MarkDeliveredLeased :execrows
@@ -181,7 +184,7 @@ UPDATE invoices.transmissions SET
     poll_attempts = 0, last_error = NULL
 WHERE (idempotency_key = @idempotency_key
        OR (provider_ref = sqlc.narg(provider_ref)::text AND provider_ref IS NOT NULL AND sqlc.narg(provider_ref)::text <> ''))
-  AND status IN ('queued', 'submitted', 'unconfirmed');
+  AND channel = 'ehf' AND status IN ('queued', 'submitted', 'unconfirmed');
 
 -- name: ApplyEventFailed :execrows
 -- ApplyEventFailed applies a "failed" or "no_action_taken" event the same way.
@@ -191,7 +194,7 @@ UPDATE invoices.transmissions SET
     resolution_note = CASE WHEN status = 'unconfirmed' THEN sqlc.narg(machine_note) ELSE resolution_note END
 WHERE (idempotency_key = @idempotency_key
        OR (provider_ref = sqlc.narg(provider_ref)::text AND provider_ref IS NOT NULL AND sqlc.narg(provider_ref)::text <> ''))
-  AND status IN ('queued', 'submitted', 'unconfirmed');
+  AND channel = 'ehf' AND status IN ('queued', 'submitted', 'unconfirmed');
 
 -- name: AnyAwaitingEvents :one
 -- AnyAwaitingEvents is whether the events worker has anything to drain for:
@@ -205,24 +208,24 @@ WHERE (idempotency_key = @idempotency_key
 -- row still in the queue is applied whenever a drain runs.
 SELECT EXISTS (
     SELECT 1 FROM invoices.transmissions
-    WHERE status = 'submitted'
+    WHERE channel = 'ehf' AND (status = 'submitted'
        OR (status = 'unconfirmed' AND (
              next_attempt_at <> 'infinity'::timestamptz
              OR (provider_ref IS NULL AND queued_at + interval '14 days' > @now::timestamptz)))
-       OR (status = 'queued' AND submit_attempted_at IS NOT NULL)
+       OR (status = 'queued' AND submit_attempted_at IS NOT NULL))
 ) AS awaiting;
 
 -- name: QueuedTransmissionsDue :one
 -- QueuedTransmissionsDue is how many queued rows are due by @now: what an
 -- installation whose Peppol lookup is disabled leaves alone, said once per
 -- cycle.
-SELECT count(*) FROM invoices.transmissions WHERE status = 'queued' AND next_attempt_at <= @now::timestamptz;
+SELECT count(*) FROM invoices.transmissions WHERE channel = 'ehf' AND status = 'queued' AND next_attempt_at <= @now::timestamptz;
 
 -- name: CancelUnattemptedTransmission :execrows
 -- CancelUnattemptedTransmission cancels a queued row that was never attempted
 -- and is not leased (D9). 0 rows is 409 transmission_not_cancellable.
 UPDATE invoices.transmissions SET status = 'cancelled', cancelled_at = @now::timestamptz
-WHERE id = @id AND invoice_id = @invoice_id AND status = 'queued' AND submit_attempted_at IS NULL
+WHERE id = @id AND invoice_id = @invoice_id AND channel = 'ehf' AND status = 'queued' AND submit_attempted_at IS NULL
   AND (lease_until IS NULL OR lease_until < @now::timestamptz);
 
 -- name: ResolveTransmission :execrows
@@ -243,7 +246,7 @@ WHERE id = @id AND invoice_id = @invoice_id AND status = 'unconfirmed'
 -- ActiveTransmissionsCount is how many transmissions the credentials still
 -- serve (D7): a DELETE or a provider switch is refused while any is queued,
 -- submitted or unconfirmed.
-SELECT count(*) FROM invoices.transmissions WHERE status IN ('queued', 'submitted', 'unconfirmed');
+SELECT count(*) FROM invoices.transmissions WHERE channel = 'ehf' AND status IN ('queued', 'submitted', 'unconfirmed');
 
 -- name: CancelCustomerUnattemptedTransmissions :execrows
 -- CancelCustomerUnattemptedTransmissions cancels, at an erase, every queued
@@ -257,10 +260,10 @@ WHERE invoice_id IN (SELECT i.id FROM invoices.invoices i WHERE i.customer_id = 
 
 -- name: TransmissionsOfDocuments :many
 -- TransmissionsOfDocuments is the newest transmission of each of a page of
--- documents: the list's ehfStatus (D10).
+-- documents on one channel: the list's ehfStatus (D10) and efakturaStatus.
 SELECT DISTINCT ON (invoice_id) *
 FROM invoices.transmissions
-WHERE invoice_id = ANY(@invoice_ids::bigint[])
+WHERE invoice_id = ANY(@invoice_ids::bigint[]) AND channel = @channel
 ORDER BY invoice_id, id DESC;
 
 -- name: EveryTransmissionOfDocuments :many

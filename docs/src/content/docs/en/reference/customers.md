@@ -6,6 +6,7 @@ sources:
   - apps/customers/frontend
   - openapi/customers.yaml
   - apps/server/internal/contracts/directory.go
+  - apps/server/internal/db/migrations/00202_customers_date_of_birth.sql
   - apps/server/internal/contracts/agent_memory.go
 ---
 The Customers module is where every other module finds out who the work is for: a
@@ -410,6 +411,21 @@ needs its own permission, `customers:billing-manage`**, deliberately narrower th
 `customers:update` — payment terms and delivery channel decide when and how money
 arrives, and the person who may rename a customer is not thereby the person who may
 give it 90 days' credit.
+
+### A person's date of birth
+
+`date_of_birth` (migration `00202_customers_date_of_birth.sql`) is an optional date on
+`customers.customers`, held to persons by `ck_customers_date_of_birth` (`date_of_birth IS
+NULL OR type = 'person'`); `SetCustomerType` clears it in the same update when a person
+becomes a business. It is its own sub-resource, `GET` and `PUT
+/customers/{id}/date-of-birth` (`customers:update` and `customers:view`): a past date on
+or after 1900-01-01, 400 `date_of_birth_person_only` on a business, the revision guard and
+the read-only refusals of a merged-away or anonymised customer, no timeline event.
+Anonymisation blanks it; the personal-data file carries it. `contracts.CustomerBillingProfile`
+answers it as `DateOfBirth`, beside `Phone` (the customer's own), which Invoices finds a
+person for eFaktura by ([Sending as eFaktura](/en/reference/invoices/#the-consumer-lookups));
+it is never printed. A merge reports `invoices.consumerLookups` and
+`invoices.avtalegiroMandates` among the kinds it moved.
 
 ### Contact info
 

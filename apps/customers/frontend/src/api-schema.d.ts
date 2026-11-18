@@ -182,6 +182,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/customers/{id}/date-of-birth": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a person's date of birth
+         * @description A person's date of birth (invoices phase 6 design I30), absent when none is stored.
+         */
+        get: operations["getCustomersByIdDateOfBirth"];
+        /**
+         * Set a person's date of birth
+         * @description Sets or clears a person's date of birth (invoices phase 6 design I30). 400 date_of_birth_person_only for a business, and a field error for a date that is not in the past or is before 1900-01-01. A merged-away or anonymised customer is refused as every write to it is (409). No timeline event names the date.
+         */
+        put: operations["putCustomersByIdDateOfBirth"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/customers/{id}/contacts": {
         parameters: {
             query?: never;
@@ -1209,6 +1233,20 @@ export interface components {
             title?: string | null;
             type?: string | null;
         };
+        /** @description A person's date of birth (invoices phase 6 design I30): used to find the person for eFaktura, never printed, and blanked when the customer is anonymised. Absent when none is stored. revision is the customer's. */
+        CustomerDateOfBirth: {
+            /** Format: date */
+            dateOfBirth?: string;
+            /** Format: int32 */
+            revision: number;
+        };
+        /** @description PUT /customers/{id}/date-of-birth's body: the date, or null to clear it. A past date after 1900-01-01, on a person only. revision is optional, as PUT /customers/{id}/contact-info's own is. */
+        PutCustomerDateOfBirthRequest: {
+            /** Format: date */
+            dateOfBirth?: string | null;
+            /** Format: int32 */
+            revision?: number | null;
+        };
         /** @description A customer's own contact details (invoice-ready customer design D2) — what reaches the customer itself, not one of its contacts. Each field is optional; a blank value is stored as null, but the response never sends null back — a field with none is simply absent. */
         CustomerContactInfo: {
             email?: string | null;
@@ -1639,6 +1677,11 @@ export interface components {
         };
         /** @description The customer row in a personal-data file (customers GDPR design D3): what SafeCustomerResponse carries, plus the legal identity whatever the caller's legal-identity permission — the file is shaped by customers:personal-data alone — and the addresses and billing profile's own values. */
         CustomerPersonalDataCustomer: {
+            /**
+             * Format: date
+             * @description A person's date of birth, when one is stored (invoices phase 6 design I30).
+             */
+            dateOfBirth?: string;
             addresses: components["schemas"]["CustomerAddress"][];
             anonymisation?: components["schemas"]["CustomerAnonymisation"];
             /** @description Every attachment of the customer (customer attachments design D6), oldest first, its metadata only: the file is built in memory and streamed, and each attachment is downloaded through GET .../attachments/{attachmentId} for as long as the customer is not anonymised. */
@@ -3220,6 +3263,122 @@ export interface operations {
                 content?: never;
             };
             /** @description Conflict. Among its codes: customer_merged (customers merge design D2) or customer_anonymised (customers GDPR design D4) when the customer is read-only: a merged-away customer takes no more changes, and the detail names the one its records went to; nor does an anonymised one, and the detail names the day. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["CustomerConflictProblem"];
+                };
+            };
+        };
+    };
+    getCustomersByIdDateOfBirth: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomerDateOfBirth"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    putCustomersByIdDateOfBirth: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PutCustomerDateOfBirthRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomerDateOfBirth"];
+                };
+            };
+            /** @description Bad Request — dateOfBirth did not pass, or date_of_birth_person_only. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — a stale revision, customer_merged or customer_anonymised. */
             409: {
                 headers: {
                     [name: string]: unknown;

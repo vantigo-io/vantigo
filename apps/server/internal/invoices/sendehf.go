@@ -275,7 +275,7 @@ var errUBLBroken = errors.New("invoices: a stored UBL is missing or does not mat
 // whole and verified against the hash the row carries. errUBLBroken is a
 // missing or altered object; errObjectStore a store that could not be read.
 func (s *server) loadStoredUBL(ctx context.Context, t store.InvoicesTransmission) ([]byte, error) {
-	rc, err := s.objectGet(ctx, t.UblObjectKey)
+	rc, err := s.objectGet(ctx, deref(t.UblObjectKey))
 	switch {
 	case errors.Is(err, storage.ErrNotExist):
 		s.deps.Logger.ErrorContext(ctx, "invoices: a transmission's stored UBL is gone", "invoice_id", t.InvoiceID,
@@ -291,7 +291,7 @@ func (s *server) loadStoredUBL(ctx context.Context, t store.InvoicesTransmission
 		return nil, fmt.Errorf("%w: %w", errObjectStore, err)
 	}
 	sum := sha256.Sum256(body)
-	if hex.EncodeToString(sum[:]) != t.UblSha256 {
+	if hex.EncodeToString(sum[:]) != deref(t.UblSha256) {
 		s.deps.Logger.ErrorContext(ctx, "invoices: a transmission's stored UBL does not match its hash", "invoice_id", t.InvoiceID,
 			"transmission_id", t.ID, "key", t.UblObjectKey)
 		return nil, errUBLBroken
@@ -317,8 +317,8 @@ func (s *server) reusedEHF(ctx context.Context, q *store.Queries, invoiceID int6
 		return renderedEHF{}, false, err
 	}
 	return renderedEHF{
-		body: body, key: latest.UblObjectKey, sha256: latest.UblSha256, pdfHash: latest.PdfSha256,
-		sender: latest.SenderParticipant, reused: true,
+		body: body, key: deref(latest.UblObjectKey), sha256: deref(latest.UblSha256), pdfHash: latest.PdfSha256,
+		sender: deref(latest.SenderParticipant), reused: true,
 	}, true, nil
 }
 

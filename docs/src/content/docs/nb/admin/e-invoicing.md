@@ -1,11 +1,12 @@
 ---
 title: E-faktura
-description: Sende fakturaer som EHF i Peppol-nettverket gjennom et aksesspunkt hos Storecove, de to bakgrunnsjobbene som bærer dem, og KID-avtalen med banken.
+description: Sende fakturaer som EHF i Peppol-nettverket gjennom et aksesspunkt hos Storecove, de to bakgrunnsjobbene som bærer dem, KID-avtalen med banken, og eFaktura og AvtaleGiro gjennom Mastercard Payment Services.
 sidebar:
   order: 42
 sources:
   - apps/server/internal/invoices/accesspoint
   - apps/server/internal/invoices/ehf
+  - apps/server/internal/consumerinvoice
 ---
 
 EHF er den norske e-fakturaen: EHF Billing 3.0, som er Peppol BIS Billing 3.0 med to
@@ -285,6 +286,116 @@ juridiske enhetens eget). Uten de to variablene hoppes testene over
 ([testen](https://github.com/vantigo-io/vantigo/blob/main/apps/server/internal/invoices/accesspoint/storecove_sandbox_test.go)).
 En installasjon kan på samme måte pekes mot en etterligning av Storecove med
 `INVOICES_STORECOVE_BASE_URL`.
+
+## eFaktura og AvtaleGiro gjennom Mastercard Payment Services
+
+eFaktura legger en faktura i nettbanken til en privatkunde, og med AvtaleGiro trekker
+banken den på forfallsdatoen. Vantigo sender begge deler direkte gjennom **Mastercard
+Payment Services (MPS)**, uten noen mellomledd: Vantigo er **innsender**, og hver
+leietaker er **utsteder**, kjent ved organisasjonsnummeret sitt. Funksjonen leveres
+**avslått**; ingenting sendes før stegene under er gjort og bryteren er slått på.
+
+### Hva hver part ordner
+
+- **Vantigo, én gang per installasjon:** en innsenderavtale med MPS. MPS utsteder et
+  klientsertifikat ut fra Vantigos sertifikatforespørsel, oppretter en
+  WS-Security-bruker og hvitelister installasjonens utgående IP-adresse i hvert miljø —
+  test og produksjon. Spør Support.Norway@mastercard.com. MPS hvitelister ikke private,
+  svært store eller delte skyområder: installasjonen trenger en egen, fast utgående
+  adresse.
+- **Hver leietaker, med sin egen bank:** en **eFaktura-avtale** og, for AvtaleGiro, en
+  **AvtaleGiro-avtale** på kontoen sin, registrert hos MPS med Vantigo som innsender.
+  Bankens gebyrer er leietakerens. For AvtaleGiro trenger banken også leietakerens
+  KID-avtale (OCR giro).
+
+### Konfigurer installasjonen
+
+Legg innsenderens filer der serveren kan lese dem, og sett:
+
+| Variabel | Betydning |
+| --- | --- |
+| `INVOICES_EFAKTURA_ENABLED` | Bryteren, standard `0`. Av svarer en sending *eFaktura er ikke tilgjengelig*, og arbeideren `invoices-efaktura` kjører ikke. |
+| `INVOICES_MPS_EFAKTURA_BASE_URL` | Endepunktet til Kombo-tjenesten for innsendere, https. Standard er MPS' produksjonsendepunkt. |
+| `INVOICES_MPS_MANDATE_BASE_URL` | Grunnadressen til Mandate-API-et for kreditorer, https. Standard `https://payments.mastercard.no/creditor-mandate`. |
+| `INVOICES_MPS_CLIENT_CERT_FILE`, `INVOICES_MPS_CLIENT_KEY_FILE` | Klientsertifikatet MPS utstedte og nøkkelen, PEM, absolutte stier. |
+| `INVOICES_MPS_USERNAME`, `INVOICES_MPS_PASSWORD_FILE` | WS-Security-brukeren MPS opprettet, og en fil med passordet. |
+
+Med bryteren på nekter serveren å starte uten brukeren og de tre filene, satt, absolutte
+og lesbare. Bare stiene er konfigurasjon: nøkkelen og passordet leses fra filene når
+Vantigo kaller MPS, skrives aldri ut og lagres aldri i databasen.
+
+### Lagre og kontroller leietakerens innstillinger
+
+Noen med `invoices:manage` åpner **Fakturainnstillinger › eFaktura og AvtaleGiro** og
+legger inn tilstanden til avtalene, navnet banken viser, og for AvtaleGiro kortnavnet og
+kreditorkontoen ([brukerveiledningen](/nb/user/invoices/#sett-opp-efaktura-og-avtalegiro)).
+**Kontroller** spør MPS med innsenderens sertifikat og bruker for denne utstederen — et
+oppslag, og med AvtaleGiro en dekningskontroll som ikke leser noen avtale — og svarer
+*Kontrollert*, *Avvist* (sertifikatet, brukeren eller IP-adressen) eller *Ikke nådd*. Har
+banken gitt leietakeren et eget sertifikat for Mandate-API-et, tar API-et det som
+`mandateCertificate` (PEM, sertifikat og nøkkel), forseglet av hemmelighetsboksen under
+`invoices/consumer-provider-credential` og aldri vist igjen.
+
+### Slå på AvtaleGiro
+
+**AvtaleGiro** på det samme kortet krever KID-avtalen og en aktiv AvtaleGiro-avtale med
+konto. Den reserverer det første sifferet i KID-en til kunde-KID-ene, så den nektes så
+lenge neste fakturanummer ikke får plass i lengden minus to sifre, eller når en utstedt
+KID allerede begynner med 9 ([KID-en](/nb/user/invoices/#avtalegiro-og-kid)). Avtal en
+lengre KID med banken først hvis den nektes.
+
+### Hva arbeideren gjør
+
+`invoices-efaktura` kjører hvert 30. sekund mens bryteren er på:
+
+1. **Sender** hver eFaktura i kø: én forsendelse med én transaksjon og den lagrede
+   PDF-en, under forsendelses- og transaksjons-ID-ene som ble lagret før første kall, så
+   et nytt forsøk er den samme forsendelsen.
+2. **Spør** om det som er sendt, etter 1, 5, 15 og 30 minutter, deretter hver time.
+   Godtatt eller behandlet er **I nettbanken**; avvist, stoppet eller ikke funnet er
+   **Feilet**; uten utfall etter sju dager spørres en person (**Venter på bekreftelse**).
+   AvtaleGiro-delen flytter trekket; det siste svaret lagres som bevis når trekket er
+   avgjort.
+3. **Stopper** et trekk en kreditnota ba om å stoppe, fram til klokka 14.00 dagen før
+   forfall; etter det settes det tilbake som godtatt.
+4. **Én gang i døgnet**, under en lease så bare én arbeider gjør det: henter
+   AvtaleGiro-avtalene MPS har opprettet, endret eller slettet siden forrige kall, og slår
+   opp personene som er forfalt for et nytt oppslag.
+
+Den holder ingen databaseforbindelse mens den kaller MPS. Et avvist sertifikat eller en
+avvist bruker setter varselet på kortet, og eFakturaen venter en time.
+
+### Test mot MPS' testmiljø
+
+Pek de to grunnadressene mot MPS' testmiljø, konfigurer testsertifikatet og
+testbrukeren, og kjør adaptertesten fra en hvitelistet adresse:
+
+```
+go test -tags mps -run TestMpsTestEnv ./internal/consumerinvoice/mps/
+```
+
+med variablene den nevner (`MPS_TEST_EFAKTURA_URL`, `MPS_TEST_MANDATE_URL`,
+`MPS_TEST_CERT_FILE`, `MPS_TEST_KEY_FILE`, `MPS_TEST_USERNAME`, `MPS_TEST_PASSWORD`,
+`MPS_TEST_ISSUER` og, for AvtaleGiro, `MPS_TEST_CREDITOR_ACCOUNT`). Testdataene deles av
+alle som bruker testmiljøet, og MPS krever en formell test før produksjon.
+
+### Bryteren for produksjon
+
+Å gå i produksjon er: innsenderavtalen på plass, produksjonssertifikatet og
+produksjonsbrukeren konfigurert, den utgående adressen hvitelistet for produksjon, de to
+grunnadressene på produksjonsstandardene, og `INVOICES_EFAKTURA_ENABLED=1`. Slås den av
+igjen, stopper arbeideren; eFakturaer i kø venter til den er på.
+
+### Kjente begrensninger for eFaktura
+
+- En person finnes uten fødselsnummer, ved telefon, e-post, fødselsdato, navn og adresse.
+  Noen personer blir ikke funnet; de får e-post eller papir.
+- Nettverket fører ikke kreditnotaer; de går på e-post eller i posten.
+- Noen detaljer i MPS' tjeneste står ikke i den offentlige dokumentasjonen —
+  XML-navnerommet til tjenesten, om et oppslag svarer i samme rekkefølge som nøklene, og
+  hvordan dekningskontrollen oppgir KID-en — og bekreftes i testmiljøet før produksjon.
+- Et AvtaleGiro-trekk som avvises etter at eFakturaen er lagret som bevis, følges ikke
+  videre; fakturaen følger da de vanlige purringene.
 
 ## Kjente begrensninger
 

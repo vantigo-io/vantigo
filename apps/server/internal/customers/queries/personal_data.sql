@@ -21,7 +21,7 @@ WHERE id = ANY(@customer_ids::int[]) AND anonymise_on IS NOT NULL;
 -- identity, the contact info and the billing profile's eleven columns.
 SELECT id, customer_number, name, type, status, revision, merged_into_customer_id, anonymise_on, anonymised_at,
        legal_country, legal_id, legal_name, legal_source, legal_type,
-       email, phone, website, owner_user_id, group_id, created_at, updated_at,
+       email, phone, website, owner_user_id, group_id, created_at, updated_at, date_of_birth,
        invoice_email, reminder_email, payment_terms_days, currency, language,
        invoice_delivery, reminder_delivery, peppol_id, gln, buyer_reference, default_bill_rate
 FROM customers.customers
@@ -242,7 +242,7 @@ WHERE customer_id = @survivor_id::int AND event_type = 'customer.merged'
 UPDATE customers.customers
 SET name = @name::text,
     legal_country = NULL, legal_id = NULL, legal_name = NULL, legal_source = NULL, legal_type = NULL,
-    email = NULL, phone = NULL, website = NULL,
+    email = NULL, phone = NULL, website = NULL, date_of_birth = NULL,
     invoice_email = NULL, reminder_email = NULL, peppol_id = NULL, gln = NULL, buyer_reference = NULL,
     group_id = NULL,
     anonymise_on = @anonymise_on::date,

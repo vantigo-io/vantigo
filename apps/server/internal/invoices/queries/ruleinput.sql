@@ -48,7 +48,8 @@ ORDER BY r.invoice_id, r.paid_on, r.writeoff, r.id;
 -- RuleDeliveries is every live delivery of the invoices the engine's delivery
 -- fact reads (D8; plan reading 34) — the one definition of a qualifying
 -- delivery, which deliveriesOf reads too, for one invoice: each e-mail by
--- when it was sent, each delivered EHF transmission by when it was delivered
+-- when it was sent, each delivered transmission — EHF or eFaktura, its
+-- channel the kind (phase 6 reading 14) — by when it was delivered
 -- — at, whose business day the caller derives, never this statement — and each
 -- manual delivery not removed by its delivered_on. A failed, queued or
 -- cancelled transmission and a removed manual record are not deliveries.
@@ -63,7 +64,7 @@ SELECT d.invoice_id, 'email'::text, d.sent_at, NULL::date, ''::text
 FROM invoices.deliveries d
 WHERE d.invoice_id = ANY(@ids::bigint[])
 UNION ALL
-SELECT t.invoice_id, 'ehf'::text, t.delivered_at, NULL::date, ''::text
+SELECT t.invoice_id, t.channel::text, t.delivered_at, NULL::date, ''::text
 FROM invoices.transmissions t
 WHERE t.invoice_id = ANY(@ids::bigint[]) AND t.status = 'delivered';
 

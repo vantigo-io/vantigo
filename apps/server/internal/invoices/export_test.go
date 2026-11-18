@@ -68,6 +68,14 @@ func SetIssueAfterAllocation(hook func(ctx context.Context, tx pgx.Tx, invoiceID
 	return func() { issueAfterAllocation = nil }
 }
 
+// SetBeforeMandateUpsert installs a hook the mandate drain calls before it
+// stores each mandate of a page — an error fails the page — and answers the
+// function that removes it. A test using it does not run in parallel.
+func SetBeforeMandateUpsert(hook func(kid string) error) func() {
+	beforeMandateUpsert = hook
+	return func() { beforeMandateUpsert = nil }
+}
+
 // SetIssueBeforeLock installs a hook the issue calls after its reads before
 // the transaction and before the transaction begins, and answers the function
 // that removes it. A test using it does not run in parallel: the hook is the

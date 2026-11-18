@@ -59,6 +59,10 @@ func (s *server) GetInvoicesMeta(ctx context.Context, _ gen.GetInvoicesMetaReque
 	if err != nil {
 		return nil, err
 	}
+	efaktura, efakturaRejected, _, err := s.efakturaAvailable(ctx, q)
+	if err != nil {
+		return nil, err
+	}
 	canIssue := s.has(ctx, "invoices:issue")
 	// Whether reminders are offered at all (invoices payments and reminders
 	// design D1, D7).
@@ -81,8 +85,12 @@ func (s *server) GetInvoicesMeta(ctx context.Context, _ gen.GetInvoicesMetaReque
 		MailAvailable:                  mail,
 		EhfAvailable:                   ehf,
 		AccessPointCredentialsRejected: rejected,
-		Today:                          wireDate(today),
-		VatCodes:                       inForce,
+		// eFaktura and AvtaleGiro (invoices phase 6 design I29, plan D3).
+		EfakturaAvailable:                   efaktura,
+		AvtalegiroEnabled:                   row.AvtalegiroEnabled,
+		ConsumerProviderCredentialsRejected: efakturaRejected,
+		Today:                               wireDate(today),
+		VatCodes:                            inForce,
 		// What work this installation can invoice (invoices work design D3):
 		// the billable reads composed, each optional.
 		WorkAvailable:    s.workAvailable(),
@@ -105,6 +113,7 @@ func (s *server) GetInvoicesMeta(ctx context.Context, _ gen.GetInvoicesMetaReque
 			CanRunReminders:      s.has(ctx, "invoices:payments"),
 			CanSend:              canIssue && mail,
 			CanSendEhf:           canIssue && ehf,
+			CanSendEfaktura:      canIssue && efaktura,
 			CanTakeOnSitePayment: canIssue && pay.onSite,
 		},
 	}), nil

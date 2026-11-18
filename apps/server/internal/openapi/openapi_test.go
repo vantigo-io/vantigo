@@ -182,6 +182,14 @@ func TestOperationIDsAreUniqueAcrossModules(t *testing.T) {
 // production code, so this white-box test file — package openapi — cannot
 // import module itself without an import cycle.
 var KnownServeMuxConflicts = []string{
+	// A person's date of birth and the eFaktura lookup (invoices phase 6 D),
+	// the same shapes as the legal identity's and the reminder policy's.
+	"GET /api/v1/customers/contacts/{id} ⟷ GET /api/v1/customers/{id}/date-of-birth",
+	"PUT /api/v1/customers/contacts/{id} ⟷ PUT /api/v1/customers/{id}/date-of-birth",
+	"PUT /api/v1/customers/groups/{groupId} ⟷ PUT /api/v1/customers/{id}/date-of-birth",
+	"GET /api/v1/customers/imports/{importId} ⟷ GET /api/v1/customers/{id}/date-of-birth",
+	"PUT /api/v1/customers/tags/{tagId} ⟷ PUT /api/v1/customers/{id}/date-of-birth",
+	"GET /api/v1/invoices/customers/{customerId}/efaktura-lookup ⟷ GET /api/v1/invoices/{id}/payment-requests/{attemptId}",
 	"DELETE /api/v1/customers/contacts/{id} ⟷ DELETE /api/v1/customers/{id}/anonymisation",
 	"DELETE /api/v1/customers/contacts/{id} ⟷ DELETE /api/v1/customers/{id}/legal-identity",
 	"DELETE /api/v1/customers/groups/{groupId} ⟷ DELETE /api/v1/customers/{id}/anonymisation",

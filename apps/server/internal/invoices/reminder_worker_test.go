@@ -697,6 +697,24 @@ func TestReminderWorker_BackoffAndFailedAfter48Hours(t *testing.T) {
 	}
 }
 
+// INVOICES_EFAKTURA_ENABLED adds the invoices-efaktura worker (phase 6 plan
+// D6), last; off, it is never handed to the runner.
+func TestWorkers_Efaktura(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	d := h.Deps()
+	cfg := *d.Config
+	cfg.InvoicesEhfEnabled, cfg.InvoicesVippsEnabled, cfg.InvoicesBankFeedEnabled, cfg.InvoicesEfakturaEnabled = false, false, false, true
+	d.Config = &cfg
+	var names []string
+	for _, w := range invoices.Module().Workers(d) {
+		names = append(names, w.Name())
+	}
+	if want := []string{"invoices-reminders", "invoices-billing", "invoices.allocation_reconcile", "invoices-overdue-events", "invoices.credit_moves", "invoices-efaktura"}; !slices.Equal(names, want) {
+		t.Errorf("workers %v, want %v", names, want)
+	}
+}
+
 // The workers per switch (D1): INVOICES_EHF_ENABLED adds the two EHF
 // workers, INVOICES_VIPPS_ENABLED the payments worker,
 // INVOICES_BANK_FEED_ENABLED the bank feed worker; the reminder worker,
@@ -718,6 +736,7 @@ func TestWorkers_PerSwitch(t *testing.T) {
 		d := h.Deps()
 		cfg := *d.Config
 		cfg.InvoicesEhfEnabled, cfg.InvoicesVippsEnabled, cfg.InvoicesBankFeedEnabled = c.ehf, c.vipps, c.feed
+		cfg.InvoicesEfakturaEnabled = false // the harness's own is on; TestWorkers_Efaktura covers it
 		d.Config = &cfg
 		var names []string
 		for _, w := range invoices.Module().Workers(d) {

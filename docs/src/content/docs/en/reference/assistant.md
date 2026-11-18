@@ -306,7 +306,7 @@ it sees is a plain-text transcript, tool calls and results cut to 600 characters
 ## The system prompt
 
 The prompt is built **once, at a conversation's first run, and frozen**: it is stored on `conversation_state`
-with its `prompt_version` (`promptVersion`, `2026-11-18.2`, bumped with any change of the rules) and sent unchanged on every
+with its `prompt_version` (`promptVersion`, `2026-11-18.3`, bumped with any change of the rules) and sent unchanged on every
 later run, whatever the code says by then. A conversation that began under an older version keeps the prompt
 it began with; a new one gets the current. This is what a Claude model's thinking needs
 ([below](#claude-and-preserved-thinking)), and it keeps Anthropic's prompt cache warm. The prompt states, in order, who the assistant is; **the

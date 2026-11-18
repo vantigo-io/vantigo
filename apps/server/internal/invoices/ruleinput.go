@@ -306,5 +306,19 @@ func readRuleFacts(ctx context.Context, q *store.Queries, ids []int64, ins ruleI
 		}
 		in.Mode = reminderrules.Mode(r.Mode)
 	}
+
+	// The accepted AvtaleGiro claim's due date (invoices phase 6 reading 13).
+	claims, err := q.RuleAvtaleGiroClaims(ctx, ids)
+	if err != nil {
+		return fmt.Errorf("invoices: read the AvtaleGiro claims: %w", err)
+	}
+	for _, r := range claims {
+		in, err := ins.of(r.InvoiceID, "an AvtaleGiro claim")
+		if err != nil {
+			return err
+		}
+		due := utcDay(r.DueDate.Time)
+		in.AvtaleGiroDue = &due
+	}
 	return nil
 }

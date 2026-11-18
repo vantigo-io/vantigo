@@ -211,7 +211,19 @@ func (s *server) matchLines(ctx context.Context, fileID int64, caller *uuid.UUID
 				reason, outcome = reasonExceedsOpen, outcomeNone
 			}
 		}
-		if reason != "" && splittable(reason) {
+		split := reason != "" && splittable(reason)
+		if split {
+			// An AvtaleGiro debit is never split (I32 before I14).
+			if held, err := mandateHolds(ctx, q, line); err != nil {
+				if passOver(err) {
+					continue
+				}
+				return stopped(line.ID, err)
+			} else if held {
+				split = false
+			}
+		}
+		if split {
 			// One payment for several invoices (I14), before it is queued.
 			if outcome, err = s.trySplit(ctx, line, caller, now, loc); err != nil {
 				if passOver(err) {
@@ -335,6 +347,11 @@ func (s *server) classify(ctx context.Context, q *store.Queries, line store.Invo
 	// 4. No KID.
 	if line.Kid == nil {
 		return reasonNoKid, 0, nil
+	}
+	// The mandate rule, before step 5 (phase 6 design I32): a customer KID
+	// that is a mandate's never reaches invoiceOfKid.
+	if reason, invoiceID, handled, err := mandateClaimOf(ctx, q, line); handled || err != nil {
+		return reason, invoiceID, err
 	}
 	// 5 and 6. A KID that is not valid, or that no issued invoice carries.
 	inv, reason, err := invoiceOfKid(ctx, q, line)
@@ -618,6 +635,13 @@ func registerMatch(ctx context.Context, txq *store.Queries, line store.InvoicesB
 			BankTransactionID: &line.ID, Reference: reference, RegisteredByUserID: caller, RegisteredAt: now,
 		}); err != nil {
 			return err
+		}
+	}
+	// An AvtaleGiro debit pays its claim, in the match's transaction
+	// (phase 6 design I32).
+	if line.Kid != nil && kid.IsCustomerKID(*line.Kid) {
+		if _, err := txq.PayClaimOfInvoice(ctx, store.PayClaimOfInvoiceParams{Now: now, InvoiceID: inv.ID, Kid: *line.Kid}); err != nil {
+			return fmt.Errorf("invoices: mark document %d's claim paid: %w", inv.ID, err)
 		}
 	}
 	n, err := txq.MarkMatched(ctx, line.ID)

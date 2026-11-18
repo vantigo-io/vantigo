@@ -6,6 +6,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/vantigo-io/vantigo/server/internal/holidays"
 )
 
 // Level is a letter's kind: a purring, or the creditor's inkassovarsel.
@@ -74,9 +76,12 @@ const (
 	ReasonRemindersDisabled = "reminders_disabled"
 	ReasonLetterPending     = "letter_pending"
 	ReasonWaiting           = "waiting"
-	ReasonNotDelivered      = "not_delivered"
-	ReasonRatesOutdated     = "collection_rates_outdated"
-	ReasonRegimeUnreviewed  = "collection_regime_unreviewed"
+	// ReasonAvtaleGiroClaim is the first letter waiting for an accepted
+	// AvtaleGiro claim's debit (invoices phase 6 reading 13).
+	ReasonAvtaleGiroClaim  = "avtalegiro_claim"
+	ReasonNotDelivered     = "not_delivered"
+	ReasonRatesOutdated    = "collection_rates_outdated"
+	ReasonRegimeUnreviewed = "collection_regime_unreviewed"
 )
 
 // Why a letter claims less than it might (Outcome.ChargeNotes, the letter's
@@ -184,6 +189,10 @@ type Input struct {
 	ChargesBarred  bool // a lifted hold barred charges (D11)
 	Rates          []Rate
 	Exclude        int64 // the letter being dispatched or posted, left out of every set
+	// AvtaleGiroDue is the due date of the invoice's accepted AvtaleGiro
+	// claim (invoices phase 6 reading 13), nil without one: the first letter
+	// waits until a business day after it has passed unpaid.
+	AvtaleGiroDue *time.Time
 }
 
 // LetterFacts is a letter as it would be sent on L: what invoices.reminders
@@ -262,7 +271,19 @@ func Next(in Input) Outcome {
 		if s.RemindersBeforeNotice == 0 && (s.CollectionNotice || RegimeOn(s, in.L) == Regime2026) {
 			level = LevelNotice
 		}
-		return letter(in, sent, level, addDays(EffectiveDue(in.Invoice.DueDate), s.FirstReminderDays))
+		earliest := addDays(EffectiveDue(in.Invoice.DueDate), s.FirstReminderDays)
+		// An accepted claim's debit lands on the due date's business day; the
+		// first letter waits until a business day after it (reading 13).
+		if in.AvtaleGiroDue != nil {
+			claim := holidays.NextBusinessDay(addDays(*in.AvtaleGiroDue, 1))
+			if claim.After(earliest) {
+				earliest = claim
+			}
+			if in.L.Before(earliest) {
+				return Outcome{Action: ActionWaiting, EarliestOn: earliest, Reasons: []string{ReasonAvtaleGiroClaim}}
+			}
+		}
+		return letter(in, sent, level, earliest)
 	}
 	last := sent[len(sent)-1]
 	resume := addDays(deadlineOf(last), s.GraceDays+1)

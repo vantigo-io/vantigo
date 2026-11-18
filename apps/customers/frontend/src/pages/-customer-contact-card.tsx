@@ -19,6 +19,7 @@ import type { CustomerRegistryRecord } from "../api/registry";
 import { useCustomerReload } from "../lib/customer-reload";
 import { customerWriteErrorMessage } from "../lib/customer-write-error";
 import { CustomerAddressesSection } from "./-customer-address-list";
+import { CustomerDateOfBirth } from "./-customer-date-of-birth";
 import "../i18n";
 
 /**
@@ -64,6 +65,8 @@ export const CustomerContactCard = ({
           canEdit={canEdit}
           onEdit={() => setContactModalOpened(true)}
         />
+
+        {customer.type === "person" && <CustomerDateOfBirth customerId={customerId} canEdit={canEdit} />}
 
         <Divider />
 

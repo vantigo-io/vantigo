@@ -158,7 +158,7 @@ func TestEhfWorker_SubmitsOnceUnderALease(t *testing.T) {
 	if subs[0].IdempotencyGUID != row.IdempotencyKey.String() || subs[0].Scheme != "NO:ORG" || subs[0].ID != "923609016" {
 		t.Errorf("submission key %s scheme %s id %s, want %s NO:ORG 923609016", subs[0].IdempotencyGUID, subs[0].Scheme, subs[0].ID, row.IdempotencyKey)
 	}
-	if string(subs[0].UBL) != string(h.objects.object(row.UblObjectKey)) {
+	if string(subs[0].UBL) != string(h.objects.object(*row.UblObjectKey)) {
 		t.Errorf("the submitted UBL is not the stored one")
 	}
 	if asked := fake.asked(); len(asked) != 1 {
@@ -196,7 +196,7 @@ func TestEhfWorker_RefreshesAnAgedLookup(t *testing.T) {
 	now := h.Now()
 
 	processOne(t, w)
-	if row := txRow(t, h, fresh); row.Status != "submitted" || !row.LookupAt.Equal(now) || !row.LookupCanReceive {
+	if row := txRow(t, h, fresh); row.Status != "submitted" || !row.LookupAt.Equal(now) || !*row.LookupCanReceive {
 		t.Errorf("fresh = %s, lookup_at %v can %v; want submitted, looked up at %v", row.Status, row.LookupAt, row.LookupCanReceive, now)
 	}
 	if asked := fake.asked(); len(asked) != 4 || asked[3] != "0192:923609016" {
@@ -209,7 +209,7 @@ func TestEhfWorker_RefreshesAnAgedLookup(t *testing.T) {
 	if row.Status != "failed" || row.LastError == nil || *row.LastError != "receiver_not_receivable" {
 		t.Errorf("gone = %s (%v), want failed with receiver_not_receivable", row.Status, row.LastError)
 	}
-	if row.SubmitAttemptedAt != nil || row.LookupCanReceive || !row.LookupAt.Equal(now) {
+	if row.SubmitAttemptedAt != nil || *row.LookupCanReceive || !row.LookupAt.Equal(now) {
 		t.Errorf("gone marker %v can %v lookup_at %v, want no marker and the fresh refusal", row.SubmitAttemptedAt, row.LookupCanReceive, row.LookupAt)
 	}
 
@@ -863,9 +863,9 @@ func TestEhfWorker_RegisteredOnlyWhenEnabled(t *testing.T) {
 		return out
 	}
 	// INVOICES_VIPPS_ENABLED and INVOICES_BANK_FEED_ENABLED stay at their
-	// default, on: the payments and the bank feed workers are there beside
+	// default, on, and the harness turns INVOICES_EFAKTURA_ENABLED on: the payments and the bank feed workers are there beside
 	// them (TestWorkers_PerSwitch).
-	want := []string{"invoices-bank-feed@1m0s", "invoices-billing@5s", "invoices-ehf-events@30s", "invoices-ehf@5s", "invoices-overdue-events@15m0s", "invoices-payments@1s", "invoices-reminders@5s",
+	want := []string{"invoices-bank-feed@1m0s", "invoices-billing@5s", "invoices-efaktura@30s", "invoices-ehf-events@30s", "invoices-ehf@5s", "invoices-overdue-events@15m0s", "invoices-payments@1s", "invoices-reminders@5s",
 		"invoices.allocation_reconcile@10m0s", "invoices.credit_moves@5m0s"}
 	if got := names(newHarness(t)); !slices.Equal(got, want) {
 		t.Errorf("enabled: %v, want %v", got, want)
@@ -873,8 +873,8 @@ func TestEhfWorker_RegisteredOnlyWhenEnabled(t *testing.T) {
 	if got := names(newHarness(t, modtest.WithEnv("PEPPOL_LOOKUP_ENABLED", "0"))); !slices.Equal(got, want) {
 		t.Errorf("lookup disabled: %v, want %v", got, want)
 	}
-	if got := names(newHarness(t, modtest.WithEnv("INVOICES_EHF_ENABLED", "0"))); !slices.Equal(got, []string{"invoices-bank-feed@1m0s", "invoices-billing@5s", "invoices-overdue-events@15m0s", "invoices-payments@1s", "invoices-reminders@5s", "invoices.allocation_reconcile@10m0s", "invoices.credit_moves@5m0s"}) {
-		t.Errorf("switched off: %v, want the bank feed, billing, overdue events, reminder, payments, reconcile and credit moves workers alone", got)
+	if got := names(newHarness(t, modtest.WithEnv("INVOICES_EHF_ENABLED", "0"))); !slices.Equal(got, []string{"invoices-bank-feed@1m0s", "invoices-billing@5s", "invoices-efaktura@30s", "invoices-overdue-events@15m0s", "invoices-payments@1s", "invoices-reminders@5s", "invoices.allocation_reconcile@10m0s", "invoices.credit_moves@5m0s"}) {
+		t.Errorf("switched off: %v, want the bank feed, billing, eFaktura, overdue events, reminder, payments, reconcile and credit moves workers alone", got)
 	}
 	if got := names(newHarness(t, modtest.WithEnv("INVOICES_BANK_FEED_ENABLED", "0"))); slices.Contains(got, "invoices-bank-feed@1m0s") {
 		t.Errorf("INVOICES_BANK_FEED_ENABLED=0: %v, want no bank feed worker", got)

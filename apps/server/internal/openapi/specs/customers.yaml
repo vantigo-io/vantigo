@@ -476,6 +476,30 @@ components:
                     nullable: true
                     type: string
             type: object
+        CustomerDateOfBirth:
+            description: "A person's date of birth (invoices phase 6 design I30): used to find the person for eFaktura, never printed, and blanked when the customer is anonymised. Absent when none is stored. revision is the customer's."
+            properties:
+                dateOfBirth:
+                    format: date
+                    type: string
+                revision:
+                    format: int32
+                    type: integer
+            required:
+                - revision
+            type: object
+        PutCustomerDateOfBirthRequest:
+            description: "PUT /customers/{id}/date-of-birth's body: the date, or null to clear it. A past date after 1900-01-01, on a person only. revision is optional, as PUT /customers/{id}/contact-info's own is."
+            properties:
+                dateOfBirth:
+                    format: date
+                    nullable: true
+                    type: string
+                revision:
+                    format: int32
+                    nullable: true
+                    type: integer
+            type: object
         CustomerContactInfo:
             description: A customer's own contact details (invoice-ready customer design D2) — what reaches the customer itself, not one of its contacts. Each field is optional; a blank value is stored as null, but the response never sends null back — a field with none is simply absent.
             properties:
@@ -1290,6 +1314,10 @@ components:
         CustomerPersonalDataCustomer:
             description: "The customer row in a personal-data file (customers GDPR design D3): what SafeCustomerResponse carries, plus the legal identity whatever the caller's legal-identity permission — the file is shaped by customers:personal-data alone — and the addresses and billing profile's own values."
             properties:
+                dateOfBirth:
+                    description: A person's date of birth, when one is stored (invoices phase 6 design I30).
+                    format: date
+                    type: string
                 addresses:
                     items:
                         $ref: '#/components/schemas/CustomerAddress'
@@ -3215,6 +3243,95 @@ paths:
                                 $ref: '#/components/schemas/CustomerConflictProblem'
                     description: "Conflict. Among its codes: customer_merged (customers merge design D2) or customer_anonymised (customers GDPR design D4) when the customer is read-only: a merged-away customer takes no more changes, and the detail names the one its records went to; nor does an anonymised one, and the detail names the day."
             summary: Replace a customer's contact info
+            tags:
+                - Customers
+            x-vantigo-access: permission:customers:update+customers:view
+    /api/v1/customers/{id}/date-of-birth:
+        get:
+            description: A person's date of birth (invoices phase 6 design I30), absent when none is stored.
+            operationId: getCustomersByIdDateOfBirth
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CustomerDateOfBirth'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+            summary: Get a person's date of birth
+            tags:
+                - Customers
+            x-vantigo-access: permission:customers:update+customers:view
+        put:
+            description: "Sets or clears a person's date of birth (invoices phase 6 design I30). 400 date_of_birth_person_only for a business, and a field error for a date that is not in the past or is before 1900-01-01. A merged-away or anonymised customer is refused as every write to it is (409). No timeline event names the date."
+            operationId: putCustomersByIdDateOfBirth
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/PutCustomerDateOfBirthRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CustomerDateOfBirth'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request — dateOfBirth did not pass, or date_of_birth_person_only.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/CustomerConflictProblem'
+                    description: Conflict — a stale revision, customer_merged or customer_anonymised.
+            summary: Set a person's date of birth
             tags:
                 - Customers
             x-vantigo-access: permission:customers:update+customers:view

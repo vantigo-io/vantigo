@@ -108,6 +108,42 @@
     }
   },
   {
+    "key": "invoices.send.efaktura",
+    "route": "/invoices/{invoiceId}",
+    "label": {
+      "en": "Send as eFaktura",
+      "nb": "Send som eFaktura"
+    },
+    "description": {
+      "en": "The button on an issued invoice that sends it to the customer's online bank as eFaktura, with AvtaleGiro when the customer has an agreement.",
+      "nb": "Knappen på en utstedt faktura som sender den til kundens nettbank som eFaktura, med AvtaleGiro når kunden har en avtale."
+    }
+  },
+  {
+    "key": "invoices.settings.efaktura",
+    "route": "/invoices/settings",
+    "label": {
+      "en": "eFaktura and AvtaleGiro",
+      "nb": "eFaktura og AvtaleGiro"
+    },
+    "description": {
+      "en": "The settings section with the agreements with the bank for eFaktura and AvtaleGiro, Verify and the AvtaleGiro switch.",
+      "nb": "Innstillingene med avtalene med banken om eFaktura og AvtaleGiro, Kontroller og bryteren for AvtaleGiro."
+    }
+  },
+  {
+    "key": "invoices.avtalegiro.mandates",
+    "route": "/invoices/settings",
+    "label": {
+      "en": "AvtaleGiro agreements without a customer",
+      "nb": "AvtaleGiro-avtaler uten kunde"
+    },
+    "description": {
+      "en": "The list of AvtaleGiro agreements whose KID names no customer, each with Assign to customer.",
+      "nb": "Listen over AvtaleGiro-avtaler der KID-en ikke viser til noen kunde, hver med Knytt til kunde."
+    }
+  },
+  {
     "key": "invoices.invoice.credit",
     "route": "/invoices/{invoiceId}",
     "label": {

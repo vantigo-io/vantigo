@@ -218,7 +218,7 @@ SELECT
     o.net_total, o.vat_total, o.gross_total, o.vat_total_nok, $1, $2::timestamptz, $2::timestamptz
 FROM invoices.invoices o
 WHERE o.id = $3 AND o.kind = 'invoice' AND o.status = 'issued'
-RETURNING id, kind, status, number, customer_id, credits_invoice_id, issue_date, delivery_date, delivery_from, delivery_to, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, payment_terms_days, due_date, currency, exchange_rate, exchange_rate_date, your_reference, our_reference, order_reference, note, internal_note, buyer_customer_number, buyer_type, buyer_name, buyer_organisation_number, buyer_foreign_id, buyer_address_line1, buyer_address_line2, buyer_postal_code, buyer_city, buyer_region, buyer_country, buyer_peppol_id, buyer_gln, buyer_language, seller_legal_name, seller_organisation_number, seller_vat_registered, seller_in_foretaksregisteret, seller_address_line1, seller_address_line2, seller_postal_code, seller_city, seller_country, seller_bank_account, seller_iban, seller_bic, seller_email, seller_footer_text, net_total, vat_total, gross_total, vat_total_nok, pdf_object_key, pdf_sha256, issued_at, issued_by_user_id, created_by_user_id, created_at, updated_at, revision, kid, kid_algorithm, project_id, project_reference, timesheet, seller_logo_object_key, seller_logo_sha256, seller_phone
+RETURNING id, kind, status, number, customer_id, credits_invoice_id, issue_date, delivery_date, delivery_from, delivery_to, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, payment_terms_days, due_date, currency, exchange_rate, exchange_rate_date, your_reference, our_reference, order_reference, note, internal_note, buyer_customer_number, buyer_type, buyer_name, buyer_organisation_number, buyer_foreign_id, buyer_address_line1, buyer_address_line2, buyer_postal_code, buyer_city, buyer_region, buyer_country, buyer_peppol_id, buyer_gln, buyer_language, seller_legal_name, seller_organisation_number, seller_vat_registered, seller_in_foretaksregisteret, seller_address_line1, seller_address_line2, seller_postal_code, seller_city, seller_country, seller_bank_account, seller_iban, seller_bic, seller_email, seller_footer_text, net_total, vat_total, gross_total, vat_total_nok, pdf_object_key, pdf_sha256, issued_at, issued_by_user_id, created_by_user_id, created_at, updated_at, revision, kid, kid_algorithm, project_id, project_reference, timesheet, seller_logo_object_key, seller_logo_sha256, seller_phone, buyer_avtalegiro_kid
 `
 
 type InsertCreditDraftParams struct {
@@ -310,6 +310,7 @@ func (q *Queries) InsertCreditDraft(ctx context.Context, arg InsertCreditDraftPa
 		&i.SellerLogoObjectKey,
 		&i.SellerLogoSha256,
 		&i.SellerPhone,
+		&i.BuyerAvtalegiroKid,
 	)
 	return i, err
 }

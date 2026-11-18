@@ -2,6 +2,7 @@ package contracts
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -118,6 +119,12 @@ type CustomerBillingProfile struct {
 	// ReminderEmail is already resolved too: the billing profile's own
 	// reminderEmail, else the resolved InvoiceEmail above.
 	ReminderEmail string
+	// Phone is the customer's own contact-info phone, "" when none, and
+	// DateOfBirth a person's date of birth, nil when not known or a business
+	// (invoices phase 6 reading 16): what Invoices finds a person for
+	// eFaktura by. Neither is ever printed.
+	Phone       string
+	DateOfBirth *time.Time
 	// PaymentTermsDays is already resolved: the billing profile's own
 	// paymentTermsDays, else the customer's group's default (customer groups
 	// design D4), else nil — so nil means neither the customer nor its group

@@ -9,6 +9,8 @@ import (
 	"maps"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"runtime/debug"
 	"slices"
 	"strings"
@@ -20,6 +22,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/vantigo-io/vantigo/server/internal/bankfeed/folio/foliotest"
+	"github.com/vantigo-io/vantigo/server/internal/consumerinvoice/mps/mpstest"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/invoices"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/accesspoint/storecovetest"
@@ -57,6 +60,10 @@ type harness struct {
 	// a TLS listener of its own reached through the same Deps.HTTPTransport,
 	// so no test ever calls Folio.
 	folio *foliotest.Server
+	// mps is the Mastercard Payment Services every harness points the
+	// INVOICES_MPS_* base URLs at, with eFaktura switched on and the
+	// submitter's files written from its client certificate (phase 6 D2).
+	mps *mpstest.Server
 }
 
 // vippsWire carries the module's requests to vippstest. A test may observe
@@ -147,6 +154,15 @@ func newInvoicesHarness(t *testing.T, objects *fakeObjectStore, opts ...modtest.
 	vippsServer := vippstest.New(t)
 	wire := &vippsWire{rt: vippsServer.Transport()}
 	folio := foliotest.New(t)
+	mps := mpstest.New()
+	t.Cleanup(mps.Close)
+	dir := t.TempDir()
+	certFile, keyFile, passwordFile := filepath.Join(dir, "mps.crt"), filepath.Join(dir, "mps.key"), filepath.Join(dir, "mps.password")
+	for file, body := range map[string][]byte{certFile: mps.CertificatePEM(), keyFile: mps.KeyPEM(), passwordFile: []byte("secret\n")} {
+		if err := os.WriteFile(file, body, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
 	base := []modtest.Option{
 		modtest.WithRecorder(recorder),
 		modtest.WithModule(invoices.Module()),
@@ -154,17 +170,25 @@ func newInvoicesHarness(t *testing.T, objects *fakeObjectStore, opts ...modtest.
 		modtest.WithEnv("INVOICES_STORECOVE_BASE_URL", storecove.URL()),
 		modtest.WithEnv("INVOICES_VIPPS_BASE_URL", vippsServer.URL()),
 		modtest.WithEnv("INVOICES_FOLIO_BASE_URL", folio.URL()),
+		modtest.WithEnv("INVOICES_EFAKTURA_ENABLED", "1"),
+		modtest.WithEnv("INVOICES_MPS_EFAKTURA_BASE_URL", mps.EfakturaURL()),
+		modtest.WithEnv("INVOICES_MPS_MANDATE_BASE_URL", mps.MandateURL()),
+		modtest.WithEnv("INVOICES_MPS_CLIENT_CERT_FILE", certFile),
+		modtest.WithEnv("INVOICES_MPS_CLIENT_KEY_FILE", keyFile),
+		modtest.WithEnv("INVOICES_MPS_PASSWORD_FILE", passwordFile),
+		modtest.WithEnv("INVOICES_MPS_USERNAME", "vantigo"),
 		modtest.WithTransport(hostTransport{
 			hostOf(t, storecove.URL()):   storecove.Transport(),
 			hostOf(t, vippsServer.URL()): wire,
 			hostOf(t, folio.URL()):       folio.Transport(),
+			hostOf(t, mps.EfakturaURL()): mps.ClientTransport(),
 		}),
 	}
 	if objects != nil {
 		base = append(base, modtest.WithObjectStore(objects))
 	}
 	before, beforeTx := lockedContractCalls.count(), lockedContractCalls.txCount()
-	h := &harness{Harness: modtest.New(t, append(base, opts...)...), customers: customers, objects: objects, storecove: storecove, vipps: vippsServer, vippsWire: wire, folio: folio}
+	h := &harness{Harness: modtest.New(t, append(base, opts...)...), customers: customers, objects: objects, storecove: storecove, vipps: vippsServer, vippsWire: wire, folio: folio, mps: mps}
 	t.Cleanup(func() {
 		if calls := lockedContractCalls.since(before); len(calls) > 0 {
 			t.Errorf("a call outside this module's own database was made from inside one of its transactions:\n%s",

@@ -162,6 +162,13 @@ kunde er i den. Reglene er
 **Kontakt og adresser** viser kundens egen **E-post**, **Telefon** og **Nettside**;
 **Rediger kontaktdetaljer** (`customers:update`) endrer dem.
 
+For en privatkunde viser kortet også **Fødselsdato**: *Brukes til å finne kunden for
+eFaktura. Skrives aldri ut.* **Endre** (`customers:update`) setter eller fjerner den — en
+dato tilbake i tid fra 1900 og senere. Bare en person har fødselsdato: endres kunden til
+en bedrift, fjernes den, og anonymiseres kunden, blankes den. Når eFaktura er satt opp,
+viser kundens fane **Fakturaer** om personen ble funnet for eFaktura, med **Sjekk
+eFaktura** ([Sende som eFaktura](/nb/user/invoices/#hvem-kan-få-efaktura)).
+
 Adressene listes under etter type — **Fakturaadresse**, **Postadresse**,
 **Leveringsadresse**, **Besøksadresse** — og den primære av hver type har merket
 **Primær**. **Legg til adresse** spør om **Adressetype**, en valgfri **Merkelapp**,

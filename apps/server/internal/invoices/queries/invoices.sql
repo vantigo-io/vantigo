@@ -152,6 +152,7 @@ UPDATE invoices.invoices SET
     buyer_peppol_id = @buyer_peppol_id,
     buyer_gln = @buyer_gln,
     buyer_language = @buyer_language,
+    buyer_avtalegiro_kid = sqlc.narg(buyer_avtalegiro_kid),
     seller_legal_name = @seller_legal_name,
     seller_organisation_number = @seller_organisation_number,
     seller_vat_registered = @seller_vat_registered,

@@ -18,6 +18,8 @@ sources:
   - apps/server/internal/db/migrations/00193_invoices_branding.sql
   - apps/server/internal/db/migrations/00197_invoices_credit.sql
   - apps/server/internal/db/migrations/00200_invoices_split.sql
+  - apps/server/internal/db/migrations/00201_invoices_efaktura.sql
+  - apps/server/internal/consumerinvoice
   - apps/server/internal/docmath
 ---
 The Invoices module issues the sales document of Norwegian bookkeeping: a draft
@@ -2460,7 +2462,9 @@ its charge payments and its standing overpayments (`LiveAppliedTo`) —
 `allocation_exceeds_transaction` when nothing is, `bank_transaction_not_applicable` when
 the invoice's open amount takes all of it. What is open is registered as the apply
 registers a payment, the deadline-met waiver with it, and the rest is an `overpayment`
-naming the line. The line becomes `resolved`, `applied`, with a `kept_as_credit` event. A
+naming the line. A line on a customer KID moves the invoice's live claim on it to `paid`,
+as a match does (plan reading 15). The line becomes `resolved`, `applied`, with a
+`kept_as_credit` event. A
 line keeps its arithmetic in NOK (I13): `unappliedOf`, the apply's
 `allocation_exceeds_transaction`, the reopen's `bank_transaction_applied` and the list's
 `unapplied` filter each count a payment's `amount_nok` and the line's standing
@@ -3454,6 +3458,233 @@ other failure to apply it — a lost connection, a lock timeout — and a read o
 acknowledgement that fails end the cycle unacknowledged, and the next one reads the same
 event again.
 
+## Sending as eFaktura
+
+Phase 6 delivery D
+([design](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-11-17-invoices-phase6-design.md)
+I29–I35, [plan](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/plans/2026-11-18-invoices-phase6-d-plan.md))
+sends an issued invoice to a person's online bank as eFaktura, and with it an
+AvtaleGiro claim when the person has a mandate, through Mastercard Payment Services
+(MPS), on migration `00201_invoices_efaktura.sql`.
+
+### The port and the adapter
+
+`internal/consumerinvoice` is a platform package beside `internal/payments`: values and
+one interface, no SQL, no module import (`purity_test.go`). `Provider` has `Lookup`
+(batched to 1 000), `Send`, `Status`, `Cancel`, `Mandates` (the delta queue, one page
+per request id), `Covers` (whether a mandate covers an amount — the payer's limit is
+never answered) and `Verify`. A consumer's key has phone, e-mail, date of birth, name and
+address, and **no field for a national identity number**. The errors are
+`ErrUnauthorized`, `ErrThrottled`, `ErrDuplicate` and `ErrRefused{Code, Text}`; any other
+is retryable. `consumerinvoice/mps` is MPS: the Kombo submitter service over SOAP with a
+WS-Security user, in the variant where MPS hosts the PDF Vantigo sends, and the creditor
+Mandate API over REST, both over mutual TLS with the operator's client certificate. A SOAP
+fault comes back as HTTP 500 and is read from the body. `mps/mpstest` is its fake, for
+tests only (depguard's `test-fakes`): a TLS listener that requires a client certificate,
+MPS's matching rule, shipments whose states advance by the test's clock, cancellation
+until 14:00 the day before the due date, the paged mandate queue with replay, coverage,
+and failures injected per operation with `FailOn` and `RefuseOn`.
+
+`contractscalls`' `consumerProvider` opens it from the stored settings and the operator's
+files (`INVOICES_MPS_*`), dialling through `Deps.HTTPTransport`; every call is reported as
+`ConsumerInvoice.<Method>`, and none is made inside a transaction.
+
+### The consumer provider's settings
+
+`invoices.consumer_provider_credentials` is one row: `provider` `mps`, `settings_json`
+(`efakturaAgreement` and `avtalegiroAgreement`, each `none`, `pending` or `active`;
+`creditorAccount`, 11 digits; `brandName`, at most 40; `abbreviatedName`, at most 10),
+`secret_ciphertext` — an optional Mandate API certificate and key, sealed under
+`invoices/consumer-provider-credential`, `''` for none — `rejected_at`, and the daily
+housekeeping's lease (`housekeeping_at`, `housekeeping_lease_until`). The issuer is the
+seller's organisation number; no MPS id is stored. The submitter's certificate, key, user
+and password are the operator's, read from files when the adapter is opened. A PUT keeps
+an omitted certificate by opening and sealing it again from a `FOR UPDATE` read; a
+DELETE is 409 `transmissions_active` while an eFaktura is queued, submitted or
+unconfirmed, or a claim is submitted, accepted or asked to cancel. `efakturaAvailable` is
+`INVOICES_EFAKTURA_ENABLED` on, the row stored and its eFaktura agreement `active`.
+
+### The consumer lookups
+
+`invoices.consumer_lookups`, keyed by `customer_id`: `status` `found`, `not_found`,
+`blocked` (found, and blocking this issuer) or `ambiguous`, `efaktura_identifier` (9
+digits, set only when found), `auto_accept`, `has_agreement`, `checked_at`,
+`next_check_at`. **Sendable** is `found` and `auto_accept OR has_agreement`. No name,
+phone or e-mail is copied: the key is read from the billing profile each time —
+`InvoiceEmail`, `Phone` (given `+47` when eight digits), `DateOfBirth`, the name split at
+its last word, the invoice address. Only a person is looked up; one whose keys do not
+satisfy MPS's matching rule (two of phone, e-mail and date of birth; or one with the
+name, address or postal code; or the name, address and postal code) is stored
+`not_found` with no call. Each answer is due again after seven days; a send refreshes one
+older than that, and the worker the due ones, up to 1 000 a day.
+
+### The send
+
+`POST /{id}/send-efaktura` (`invoices:issue`, 60 per client per 10 minutes), in order:
+
+1. 503 `efaktura_unavailable`, before anything is read.
+2. 404; 409 `invoice_draft`; 409 `efaktura_credit_note`; 409 `customer_anonymised`.
+3. 409 `currency_not_nok`; 409 `kid_missing`.
+4. The due date on the business day: 409 `efaktura_due_too_soon` before today + 3, 409
+   `efaktura_due_too_far` after today + 12 months.
+5. The lookup, refreshed outside any transaction when older than seven days (502
+   `efaktura_lookup_failed`); 409 `efaktura_not_found` with `efakturaReason` —
+   `not_found`, `blocked`, `no_agreement` or `ambiguous` — unless sendable.
+6. 409 `efaktura_already_sent` while an eFaktura is live.
+7. **The claim**: AvtaleGiro on, the customer's newest `active` mandate, the due date at
+   least the fourth calendar day after the next working day still before 14:00 in Oslo,
+   and `Covers(mandate KID, open amount)` true — asked outside any transaction. Otherwise
+   none, and the answer says why: `avtalegiro_off`, `avtalegiro_no_mandate`,
+   `avtalegiro_due_too_soon`, `avtalegiro_limit` or `avtalegiro_check_failed`.
+8. The stored PDF (503 `storage_unavailable`, 500 a stored object gone or altered).
+9. Under the document's `FOR UPDATE` and the settings' `FOR SHARE`: the anonymisation
+   and `efaktura_already_sent` judged again; the transmission inserted (`channel`
+   `efaktura`, provider `mps`, a fresh `shipment_id` and transaction id —
+   `idempotency_key` — the identifier, `payment_type` `efaktura` or `both`, the PDF's key
+   and hash); the claim inserted `submitted` with the open amount, the due date and the
+   mandate's KID; and their events.
+
+The answer is 200 with `invoice` — the document, its `efaktura` block — and
+`avtalegiro` (`included`, `reason`). The block's `canSend` and `blockedBy` judge steps 1
+to 6 without the network.
+
+**The transmission's channel** (reading 2): `invoices.transmissions` gains `channel`
+(`ehf` or `efaktura`, default `ehf`), `efaktura_identifier`, `shipment_id`,
+`payment_type`, `pdf_object_key` and the state column `provider_status`. The nine Peppol
+columns lose `NOT NULL` under `ck_transmissions_channel`: an `ehf` row has all nine and
+none of the four, an `efaktura` row the reverse. `ux_transmissions_active` is
+`(invoice_id, channel)`, so an EHF and an eFaktura of one document are different sends.
+`refuse_transmission_change` is 00036's with `provider_status` among the state columns.
+Every EHF query filters `channel = 'ehf'`; the list's `efakturaStatus` reads the same
+query on the other channel.
+
+### The claim
+
+A second live claim on one invoice is 409 `avtalegiro_claim_exists`. A credit note's issue
+cancels at once a claim whose eFaktura was never handed over, and the worker never asks
+MPS to cancel it; a cancellation MPS refuses puts the claim back as `accepted` only when the
+bank had accepted it, else `submitted`.
+
+`invoices.avtalegiro_claims`: `invoice_id`, `transmission_id`, `mandate_id`, `amount`,
+`due_date` and `kid` — what was claimed, frozen — and its state: `status`
+(`submitted`, `accepted`, `rejected`, `cancel_requested`, `cancelled`, `paid`),
+`attention` (the bank's flag that the amount is above the payer's limit),
+`rejection_code`, `rejection_text` (redacted, 500 characters), the worker's lease and a
+stamp for each state. `tr_avtalegiro_claims_immutable` refuses every DELETE and every
+change but the state's; a rejected, cancelled or paid claim is final.
+`ux_avtalegiro_claims_live` allows one submitted, accepted or cancel-requested claim
+per invoice. **A credit note's issue** moves its invoice's live claim to
+`cancel_requested` on the issue's transaction (reading 15); the worker carries it to MPS.
+A paid claim is left as it is.
+
+### The mandates and the customer KID
+
+`invoices.avtalegiro_mandates`: `kid` (unique), `customer_id` (NULL while unresolved),
+`status` (`active`, `inactive`, `pending`, from `ACTV`, `INAC`, `PEND`; a deleted mandate
+is `inactive`), `notify_by_mail`, `provider_seen_at`, `resolved_by_user_id`. No limit is
+stored. The worker drains the queue once a day; a mandate's customer is the newest issued
+document whose `buyer_customer_number` is the number its KID carries, followed through a
+merge — the directory reads by id only (reading 10). `GET /avtalegiro/mandates`
+(`unresolved=true` for those without a customer) and
+`POST /avtalegiro/mandates/{mandateId}/resolve` (`invoices:payments`, 409
+`mandate_resolved`) let a person assign one.
+
+`POST /avtalegiro/mandates/{mandateId}/resolve` refuses a business
+(`mandate_customer_not_person`), a merged-away customer (`customer_merged`) and an
+anonymised one (`customer_anonymised`), and a customer whose number the KID does not
+carry (`mandate_kid_mismatch`) unless `confirmMismatch` is true with a `reason`, kept as
+`resolution_note`. `POST /avtalegiro/mandates/{mandateId}/unassign` (`invoices:payments`)
+takes the customer away again — 409 `mandate_not_resolved`, or `mandate_has_live_claim`
+while a claim on it is live.
+
+**The customer KID** (`kid.CustomerKID`) is the digit 9, the customer number padded to
+the agreed length less two, then the check digit. **`PUT /settings/avtalegiro`**
+(`invoices:manage`) turns AvtaleGiro on — 409 `kid_agreement_missing`,
+`avtalegiro_agreement_missing`, or `avtalegiro_kid_space_taken` when the next number has
+more than length − 2 digits (`kid.FitsReserved`) or an issued KID begins with 9 — under
+the settings lock, and 503 `efaktura_unavailable` while `INVOICES_EFAKTURA_ENABLED` is off.
+Turning it on sets `settings.kid_space_reserved` for good: customer KIDs have been
+handed out, so from then on — AvtaleGiro on or off — the issue computes the KID with
+`kid.ComputeReserved`, and the settings' KID length check (`kidFitRefusal`) counts the
+reserved digit; so every invoice KID begins with 0 and `kid_length_exceeded`
+refuses at the lower cap; the settings warning `kid_headroom_low` counts the reserved
+digit. While AvtaleGiro and the live switch are both on, a person's invoice freezes
+`buyer_avtalegiro_kid` on its snapshot, and its PDF
+prints *AvtaleGiro: opprett avtale i nettbanken med KID {kid}* (in English: *set up an
+agreement in your online bank*) under the payment details; a document without it renders
+byte for byte as before, and a second hash pins the render with it.
+
+### The invoices-efaktura worker
+
+Registered only while `INVOICES_EFAKTURA_ENABLED` is on; every 30 seconds; the lease
+worker shape of `invoices-ehf` — a conditional UPDATE over a `SKIP LOCKED` pick, a
+60-second lease, the crash marker `submit_attempted_at`, each completion checked against
+the lease and the status the claim saw, every time `Deps.Clock()`'s. A completion and its
+events are one short transaction; no connection is held across a call (a pool-of-one
+test runs it).
+
+- **Submit** a queued row: the stored PDF checked against its hash, one shipment of one
+  transaction (`messageIdentifier` `vantigo-{id}`, the invoice's KID — or the claim's,
+  for both — its account, gross or the claim's amount, due date, identifier, the customer
+  number as eFaktura reference, the brand and short names). `ErrDuplicate` is the earlier
+  send that went. A refusal fails the row and cancels its claim; a refused submitter
+  flags `rejected_at` and waits an hour; a 48-hour age cap as EHF's.
+- **Poll** a submitted or unconfirmed row with `Status`, after 1, 5, 15 and 30 minutes,
+  then hourly: `ACCEPTED` or `PROCESSED` → `delivered`; `REJECTED`, `STOPPED` or
+  `NOT_FOUND` → `failed`; seven days without → `unconfirmed`, polled daily. The
+  AvtaleGiro half moves the claim (`PROCESSED` → accepted, with `attention`; `REJECTED`
+  → rejected; `CANCELLED` → cancelled). A delivered row is the evidence rule's (reading
+  3): while its claim is submitted, or accepted with its due date not past, it is polled
+  every six hours; then the last answer is stored as
+  `documents/{invoice}/{transmission}-efaktura-status.xml` and the row is final.
+- **Cancel** a `cancel_requested` claim with `Cancel` until 14:00 Oslo time the day
+  before its due date: `CANCELLATION_REQUESTED` → `cancelled`; `NOT_ALLOWED`, or past the
+  deadline → `accepted` with `cancel_refused_at` — the payment then comes, and its surplus
+  is credit; `TRY_LATER` → again in 15 minutes.
+- **Once a day**, under the lease on the settings row (long enough for 100 pages of 30
+  seconds and the lookups): the mandate queue drained, and the due lookups refreshed.
+  Each page's `X-Request-ID` is stored in `mandate_request_id` before it is asked for
+  and cleared only once the page is stored, so a lost answer or a failed store asks
+  again under the same id, which replays the same page. A mandate's `queue_position`
+  grows with the drain and the order in it; an older delivery never overwrites a newer
+  one.
+- **Unpaid**: an accepted claim no debit matched by five business days after its due
+  date becomes `unpaid` (`unpaid_at`); the reminder engine's wait ends with it, and a
+  late debit still pays it. A past-due accepted claim no longer counts in what holds the
+  settings (`EfakturaInFlight`).
+- A step that fails puts its row back with the back-off; the cycle goes on to the other
+  rows, the cancellations, the unpaid claims and the housekeeping.
+- **An unconfirmed eFaktura** is polled by its own `shipment_id` when it has no
+  reference, daily for 37 days after its queueing, then parked; MPS not knowing the
+  shipment fails it. `POST /{id}/transmissions/{transmissionId}/resolve` takes an
+  eFaktura too, and cancels its claim when the bank never accepted it.
+
+### Matching, reminders and the delivery fact
+
+**The mandate rule runs first** in classification, before step 5: a KID in the customer
+space (`kid.IsCustomerKID`) that is a mandate's resolves to that customer's claim
+`accepted` (or `cancel_requested`) with the line's amount, due on the booking day or on a
+weekend or holiday day the bank moved to it. One fits: the invoice is matched, and
+`registerMatch` marks the claim `paid` in the match's transaction; the claim's own
+account is the AvtaleGiro creditor account, so step 7's check of the account the invoice
+printed is not made on this path. Two: queued `kid_unknown`. None, and a 9 KID that is no
+mandate's, take today's path, `invoiceOfKid`, which finds an invoice issued before the
+space was reserved or queues `kid_unknown`. **The reminder engine** (reading 13): with an accepted claim
+(`reminderrules.Input.AvtaleGiroDue`, from `RuleAvtaleGiroClaims`) the first letter's
+earliest day is `max(EffectiveDue + first_reminder_days, NextBusinessDay(due + 1))`,
+and before it the outcome is `waiting` with the reason `avtalegiro_claim`.
+**The delivery fact** (reading 14): `RuleDeliveries` reads the transmission's `channel`
+as its kind, so a delivered eFaktura is a delivery as a delivered EHF is.
+
+### The customer slots
+
+A merge drops the from-customer's lookup, makes the into-customer's due now and re-points
+its mandates (`invoices.consumerLookups`, `invoices.avtalegiroMandates`). An erase
+deletes the lookup, cancels a claim whose eFaktura the erase cancelled unattempted
+(`invoices.avtalegiroClaims`), and keeps the mandates and the other claims — amounts and
+dates, no person. The customer's export carries `avtalegiroMandates` and
+`avtalegiroClaims`.
+
 ## Bank files and the exception queue
 
 Phase 4 reads the bank's own record of the money that arrived
@@ -4012,7 +4243,10 @@ classification, or `exceeds_open` by the judgement under the lock, its remittanc
 the pool (`referencesOf`, pure): the tokens of `remittance_refs`, of the remittance text
 and of the KID field — split at whitespace and `,;/:#+&()` — that are a valid KID under MOD10
 or MOD11, each then looked up as step 6 does, exactly; and every **invoice number of the
-series** (from `series_start` to the counter's next value) standing as a whole token.
+series** (from `series_start` to the counter's next value) standing as a whole token. A line whose KID is in the
+customer KIDs' space and an AvtaleGiro mandate's (`mandateHolds`) is never tried: it is a
+debit, which pays its claim's invoice by [the mandate rule](#the-mandates-and-the-customer-kid)
+or is queued for a person.
 
 **The token rule** (`wholeNumbers`, as delivery B-2's review settled it). Before any
 token is read, each anchored at a word's start: an amount the currency follows (`3000 kr`,
@@ -4409,8 +4643,9 @@ the due date counts as none. Three kinds count, each by its [business day](#the-
 - an **e-mail** that handed the invoice over (`invoices.deliveries`), by the business day
   of its `sent_at` — with the zone `Europe/Oslo`, 23:30 in Oslo on the due date counts,
   00:30 the day after does not;
-- an **EHF transmission** `delivered`, by the business day of its `delivered_at`; a queued,
-  failed, unconfirmed or cancelled one is not a delivery;
+- an **EHF or eFaktura transmission** `delivered`, by the business day of its `delivered_at`
+  (`RuleDeliveries` reads the channel as the kind); a queued, failed, unconfirmed or
+  cancelled one is not a delivery;
 - a **manual delivery** not removed, by its `delivered_on`.
 
 Without one, the invoice is not due: the reminder engine offers only fee-free reminders,
@@ -6401,6 +6636,16 @@ All under `/api/v1/invoices`, every one behind `invoices:access` but the pay pag
 | Operation | Also needs | Refusals |
 | --- | --- | --- |
 | `GET /meta` | | |
+| `GET /settings/consumer-provider` | `invoices:manage` | |
+| `PUT /settings/consumer-provider` | `invoices:manage` | 400 on the field; 503 `efaktura_unavailable`, a kept certificate that cannot be opened |
+| `DELETE /settings/consumer-provider` | `invoices:manage` | 409 `transmissions_active` |
+| `POST /settings/consumer-provider/verify` | `invoices:manage` | 409 `efaktura_unavailable`, nothing stored; 503 `efaktura_unavailable` |
+| `PUT /settings/avtalegiro` | `invoices:manage` | 409 `kid_agreement_missing`, `avtalegiro_agreement_missing`, `avtalegiro_kid_space_taken` |
+| `GET /customers/{customerId}/efaktura-lookup` | | |
+| `POST /customers/{customerId}/efaktura-lookup` | `invoices:issue` | 404; 409 `efaktura_person_only`; 502 `efaktura_lookup_failed`; 503 `efaktura_unavailable` |
+| `POST /{id}/send-efaktura` | `invoices:issue` | [Sending as eFaktura](#the-send) |
+| `GET /avtalegiro/mandates` | | |
+| `POST /avtalegiro/mandates/{mandateId}/resolve` | `invoices:payments` | 400; 404; 409 `mandate_resolved` |
 | `GET /settings` | | |
 | `PUT /settings` | `invoices:manage` | 400 on the field (both mod-11 checks, IBAN mod-97, BIC, "Only NOK in this phase", the Peppol id, the KID pair, a next number the KID length does not fit, any of the three required-nullable fields absent, `workVatCodes` absent, a work VAT code unknown, or changed to an inactive one, `timesheetDefault` or `timesheetPersonLabel` absent or null, a label other than `initials`, `number` or `name`, an `energyVatCodes` code unknown, or changed to an inactive one, a `phone` that breaks Customers' rule); 409 `series_locked`, or a stale revision (no code) |
 | `PUT /settings/logo` | `invoices:manage` | 400 `logo_unsupported_type`, `logo_too_large`, `logo_too_wide`, `logo_too_small` or `logo_invalid`; 503 `storage_unavailable` |
@@ -6539,7 +6784,12 @@ facts a ledger posts ([Customer credit](#customer-credit)), on migration
 Delivery B-2 is done too: one bank line matched across several invoices by the references
 it names ([The automatic split](#the-automatic-split)) and small differences rounded off
 under a tolerance ([Small differences](#small-differences)), on migration
-`00200_invoices_split.sql`. Still to come: C, foreign currency; D, eFaktura and AvtaleGiro; and E, sending in bulk, the
+`00200_invoices_split.sql`. Delivery D, eFaktura and AvtaleGiro through Mastercard
+Payment Services, is built and ships switched off
+([Sending as eFaktura](#sending-as-efaktura)), on migration `00201_invoices_efaktura.sql`
+and Customers' `00202_customers_date_of_birth.sql`; it goes live when Vantigo's
+submitter agreement is in place and the operator turns it on. Still to come: C, foreign
+currency; and E, sending in bulk, the
 2028 buyer rule and credit limits.
 
 **Phase 5 is complete.** Its delivery D
@@ -6653,6 +6903,8 @@ data: no buyer name, address or e-mail, and none of a payment's free text (`refe
 | `invoices.payment.removed` | A payment registration is removed, by a person or as a reversal the bank reported. Published **once for each payment** | `paymentId`, `invoiceId`, `number`, `customerId`, `amount`, `currency`, `paidOn`, `source`, `removedAt` (the moment; its business day is the removal fact's day) |
 | `invoices.customer_credit.changed` | A movement of a customer's credit is written, by any path, or a merge moved a balance — one for each of its two customers ([Customer credit](#customer-credit)) | `customerId`, `currency`, `balance` (after it) |
 | `invoices.document.issued` | An invoice or a credit note is issued, by any path | `documentId`, `number`, `kind` (`invoice`, `credit_note`), `customerId`, `issueDate`, `grossTotal` (positive on a credit note too), `currency` |
+| `invoices.efaktura.transmission_changed` | An eFaktura transmission is queued or moves (submitted, delivered, failed, unconfirmed), by the send or the `invoices-efaktura` worker, on the transaction that moved it | `transmissionId`, `invoiceId`, `status`, `paymentType` (`efaktura`, `both`) |
+| `invoices.avtalegiro.claim_changed` | An AvtaleGiro claim is made or moves (accepted, rejected, cancel_requested by a credit note's issue, cancelled, back to accepted when a cancellation is refused) | `claimId`, `invoiceId`, `status`, `amount`, `dueDate` |
 
 **`invoices-overdue-events`** (every 15 minutes) selects the issued invoices that are overdue on the business day and not yet
 in `invoices.overdue_announced`, `FOR UPDATE OF` the invoice row with `SKIP LOCKED` so replicas share the work, and for each writes
@@ -6693,6 +6945,9 @@ The Assistant can point at these controls in a guided tour ([the registry](/en/r
 | `invoices.invoice.issue` | `/invoices/{invoiceId}` | Issue |
 | `invoices.settings.logo` | `/invoices/settings` | Upload logo |
 | `invoices.send.message` | `/invoices/{invoiceId}` | Message (the Send dialog) |
+| `invoices.send.efaktura` | `/invoices/{invoiceId}` | Send as eFaktura |
+| `invoices.settings.efaktura` | `/invoices/settings` | eFaktura and AvtaleGiro |
+| `invoices.avtalegiro.mandates` | `/invoices/settings` | AvtaleGiro agreements without a customer |
 | `invoices.settings.tolerance` | `/invoices/settings` | Rounding tolerance |
 | `invoices.invoice.credit` | `/invoices/{invoiceId}` | Use credit |
 | `invoices.queue.keep-as-credit` | `/invoices/payments` | Keep the rest as credit |
@@ -6704,7 +6959,8 @@ The public pay page's operations (`postInvoicesPayRead`, `postInvoicesPayAttempt
 `getInvoicesPayAttemptsByReference`) are `x-vantigo-api: never`: they answer the customer
 who holds the page's token, not an application. So are the settings that decide where money
 goes or who sends for the business — the seller's settings with its bank account
-(`putInvoicesSettings`), Vipps, the access point, the bank feed and its accounts, and a bank
-account's file format — so a leaked key can never redirect a payment. See [integration
+(`putInvoicesSettings`), Vipps, the access point, the eFaktura and AvtaleGiro provider
+(`putInvoicesSettingsConsumerProvider`, which names the creditor account), the bank feed and
+its accounts, and a bank account's file format — so a leaked key can never redirect a payment. See [integration
 users](/en/admin/authentication/#integration-users), and the marks' rules in [module
 boundaries](/en/contributing/module-boundaries/#the-rules).

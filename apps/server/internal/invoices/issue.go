@@ -548,7 +548,15 @@ func (s *server) issueLocked(ctx context.Context, tx pgx.Tx, txq *store.Queries,
 	// longer fits refuses the issue, and the number rolls back with it.
 	var documentKid, kidAlgorithm *string
 	if locked.Kind == kindInvoice && settings.KidLength != nil && settings.KidAlgorithm != nil {
-		k, err := kid.Compute(number, int(*settings.KidLength), *settings.KidAlgorithm)
+		// Once AvtaleGiro has been on, the customer KIDs own the first
+		// digit for good (phase 6 reading 12): the number is capped one
+		// digit lower, AvtaleGiro on or off, so no invoice KID ever meets a
+		// customer KID handed out.
+		compute := kid.Compute
+		if settings.KidSpaceReserved {
+			compute = kid.ComputeReserved
+		}
+		k, err := compute(number, int(*settings.KidLength), *settings.KidAlgorithm)
 		if errors.Is(err, kid.ErrLengthExceeded) {
 			refusal = cannotIssue(codeKidLengthExceeded, fmt.Sprintf(
 				"Number %d does not fit the KID agreement's %d digits; the agreement was shortened. Change it in the settings.",
@@ -650,6 +658,14 @@ func (s *server) issueLocked(ctx context.Context, tx pgx.Tx, txq *store.Queries,
 		params.SellerLogoObjectKey, params.SellerLogoSha256 = nil, nil
 	}
 	params.Kid, params.KidAlgorithm = documentKid, kidAlgorithm
+	// A person's invoice while AvtaleGiro is on prints the customer KID the
+	// payer creates the mandate with (phase 6 reading 11), frozen here.
+	if documentKid != nil && settings.AvtalegiroEnabled && s.efakturaSwitchedOn() && params.BuyerType != nil && *params.BuyerType == "person" &&
+		params.BuyerCustomerNumber != nil {
+		if ck, err := kid.CustomerKID(*params.BuyerCustomerNumber, int(*settings.KidLength), *settings.KidAlgorithm); err == nil {
+			params.BuyerAvtalegiroKid = &ck
+		}
+	}
 	if params.NetTotal, params.VatTotal, params.GrossTotal, params.VatTotalNok, err = numerics(totals); err != nil {
 		return failed(err)
 	}
@@ -678,6 +694,21 @@ func (s *server) issueLocked(ctx context.Context, tx pgx.Tx, txq *store.Queries,
 	// 7. The pay link, on the document just issued (D15).
 	if err := s.payLinkAtIssue(ctx, tx, txq, issued, handedOver); err != nil {
 		return failed(err)
+	}
+	// A credit note asks its invoice's live AvtaleGiro claim to be
+	// cancelled (phase 6 reading 15), on this transaction; the
+	// invoices-efaktura worker carries it to the provider. A paid claim is
+	// left as it is.
+	if issued.Kind == kindCreditNote && issued.CreditsInvoiceID != nil {
+		asked, err := txq.RequestClaimCancel(ctx, store.RequestClaimCancelParams{Now: now, InvoiceID: *issued.CreditsInvoiceID})
+		if err != nil {
+			return failed(fmt.Errorf("invoices: ask credit note %d's claim to cancel: %w", issued.ID, err))
+		}
+		for _, c := range asked {
+			if err := publishClaimChanged(ctx, tx, c, c.Status, now); err != nil {
+				return failed(err)
+			}
+		}
 	}
 
 	return issued, nil, nil

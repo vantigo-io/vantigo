@@ -169,6 +169,9 @@ because a document still queued 48 hours after it was sent is taken out of the q
 **Failed** (or **Unconfirmed**, when Storecove may have it) and needs a person ([the
 states](#following-it-on-the-e-invoice-card)).
 
+**eFaktura and AvtaleGiro**, for private customers, are set up on a card of their own
+([Set up eFaktura and AvtaleGiro](#set-up-efaktura-and-avtalegiro)).
+
 ### Agree a KID with the bank
 
 A KID is the payment reference your bank matches an incoming payment by. To use one, ask
@@ -211,6 +214,19 @@ next number does not fit in is never saved (the red warning above). Issuing stop
 when the invoice numbers outgrow a length that fitted when it was saved — *The next
 invoice number no longer fits the KID agreement's length. Change the KID agreement in
 the settings.* The yellow headroom warning is there so that never comes as a surprise.
+
+### AvtaleGiro and the KID
+
+AvtaleGiro identifies the payer by a KID fixed in their agreement, so each customer has
+one of its own — the **customer KID**: the digit 9, the customer number padded to the
+length less two, then the check digit. So that no invoice's KID ever equals a customer's,
+turning AvtaleGiro on reserves the KID's first digit: from then on an invoice number may
+use the length less two digits, and every invoice KID begins with 0. The switch is
+refused — *The KID has no room for the AvtaleGiro customer KIDs. Agree a longer KID with
+the bank.* — when the next invoice number would not fit, or an issued invoice's KID
+already begins with 9; ask the bank for a longer KID first. The yellow warning about
+the KID's room counts the reserved digit while AvtaleGiro is on
+([Sending as eFaktura](#sending-as-efaktura)).
 
 ### VAT codes
 
@@ -1600,6 +1616,11 @@ batch. This is done under **Overdue** → **Paper letters**
 ([Printing and posting paper letters](#printing-and-posting-paper-letters); the
 reference's [paper and posting](/en/reference/invoices/#paper-and-posting)).
 
+An invoice whose AvtaleGiro debit the bank has accepted waits for it: its first letter
+is not sent until a business day after the due date has passed unpaid, and until then
+its next action is **Waiting** with the reason AvtaleGiro
+([Sending as eFaktura](#sending-as-efaktura)).
+
 ### Overdue invoices and reminders
 
 **Overdue** in the sidebar lists every overdue invoice to anyone with `invoices:access`,
@@ -1997,6 +2018,119 @@ e-invoicing duty.* Close it and use **Send as EHF** instead, unless you have agr
 otherwise with the customer. When the document is already on its way as EHF, or
 delivered, the e-mail dialog notes *This document is already on its way as EHF, or
 delivered*; an e-mail then sends the customer a second copy.
+
+## Sending as eFaktura
+
+eFaktura puts an invoice in a private customer's online bank, where they approve it with
+a click — and, when they have an **AvtaleGiro** agreement with you, the bank also
+debits it on the due date. Vantigo sends both through Mastercard Payment Services (MPS),
+with Vantigo as the submitter and your company as the issuer. It needs `invoices:issue`,
+an installation the operator has set up for it
+([eFaktura and AvtaleGiro](/en/admin/e-invoicing/#efaktura-and-avtalegiro-through-mastercard-payment-services)),
+and your own eFaktura agreement with your bank, entered under **eFaktura and
+AvtaleGiro** in the settings (below).
+
+### Who can get eFaktura
+
+eFaktura is for persons. Vantigo finds the person at MPS by the customer's phone,
+e-mail, date of birth, name and invoice address — never by a national identity number,
+which Vantigo does not hold. The more of these the customer has, the better the
+match: two of phone, e-mail and date of birth are enough on their own; with only one,
+the name or the address must match as well. The date of birth is set on the customer's
+**Contact & addresses** card (Customers).
+
+The answer is kept for seven days and asked again before a send when it is older. On
+the customer's **Invoices** tab the card **eFaktura** shows it — **Found**, **Not
+found**, **Blocked** (the person has blocked eFaktura from you) or **Ambiguous** (more
+than one person matches) — with when it was checked. **Check eFaktura** asks again now.
+A person found is sent to when they accept everything in their bank, or have an eFaktura
+agreement with you.
+
+### Set up eFaktura and AvtaleGiro
+
+In **Invoice settings**, the card **eFaktura and AvtaleGiro** (`invoices:manage`) holds
+your agreements as your bank registered them at MPS:
+
+- **eFaktura agreement** and **AvtaleGiro agreement**: **None**, **Pending** or
+  **Active**. Sending as eFaktura needs the first **Active**.
+- **Name in the online bank**, at most 40 characters, the name the bank shows the
+  invoice under.
+- **AvtaleGiro short name**, at most 10 characters, and **AvtaleGiro account**, the 11
+  digits the debits are paid into — both needed for AvtaleGiro.
+
+Click **Save**, then **Verify**: *Verified*, *Refused* or *Not reached*. When the card
+says *This installation is not set up to send eFaktura yet*, the operator has not turned
+it on. The card also shows how many eFaktura were sent each month — MPS and the bank
+charge per invoice, and those fees are your company's.
+
+**AvtaleGiro** is a switch on the same card. Turning it on needs the KID agreement
+([below](#avtalegiro-and-the-kid)) and an active AvtaleGiro agreement with its account,
+and is refused when your KID has no room for the customer KIDs. While it is on, every
+person's invoice prints a line under the payment details — *AvtaleGiro: opprett avtale i
+nettbanken med KID 9…* — the KID the customer creates their AvtaleGiro agreement with in
+their online bank. Vantigo reads the agreements from MPS once a day. One whose KID names
+no customer is listed under **AvtaleGiro agreements without a customer**: type the
+customer's id and click **Assign to customer** (`invoices:payments`). The agreement's KID
+carries the customer number it was made for; assigning it to a customer with another
+number needs **The KID names another customer number** ticked and a reason, which is
+kept. Only a person who is not merged away or anonymised can be assigned one.
+
+### Send an invoice as eFaktura
+
+Open the issued invoice and click **Send as eFaktura**, shown when the invoice can go.
+The dialog explains: *The invoice goes to the customer's online bank. When the customer
+has an AvtaleGiro agreement and the due date leaves the bank time, it is collected by
+AvtaleGiro too.* Click **Send as eFaktura**. The message says *Queued for sending as
+eFaktura.*, and either *AvtaleGiro goes with it.* or why not:
+
+- *the customer has no active AvtaleGiro agreement*;
+- *the due date is too close for the bank* — AvtaleGiro needs the due date at least
+  four days after the next working day, counted from 14:00;
+- *the amount is above the customer's AvtaleGiro limit*.
+
+The eFaktura then goes alone, and the customer pays it in their bank.
+
+A send can be refused, and the dialog says *Could not send as eFaktura* and why: the
+due date must be at least three days and at most twelve months ahead; the invoice must
+be in NOK and carry a KID; *The customer cannot be sent eFaktura*, with whether they were
+not found, block you, have no agreement with you or match more than one person; or the
+invoice is already sent as eFaktura.
+
+**Credit notes** cannot be sent as eFaktura — the network carries none. The dialog says
+*Credit notes cannot be sent as eFaktura. Send it by e-mail or post.* Issuing a credit
+note on an invoice with an AvtaleGiro debit asks for the debit to be stopped: until 14:00
+the day before the due date the bank stops it, and the card says **stopped**; after that
+it is too late — *It was too late to cancel the debit. A surplus becomes the customer's
+credit.*
+
+### Following it on the eFaktura card
+
+The card **eFaktura** beside **E-invoice (EHF)** shows the state — **Queued**,
+**Submitted**, **In the online bank**, **Failed**, **Awaiting confirmation** or
+**Cancelled** — every send with whether it went with AvtaleGiro, and the AvtaleGiro
+debit: *sent to the bank*, *will be debited*, *refused*, *being cancelled*, *stopped*,
+*paid* or *not paid*, with its amount and due date. *The bank notes that the amount is
+above the customer's limit* when the bank flags it. A debit is paid when the bank's file arrives
+and its KID — the customer's AvtaleGiro KID — matches the debit due that day with that
+amount; Vantigo then registers the payment and marks the debit **paid**. A debit with a
+customer KID that fits no debit waits in the exception queue as *No invoice has this KID*.
+
+A debit no bank file has paid five business days after its due date is *not paid*,
+and the invoice is then reminded of as any other; a debit that comes later still pays
+it.
+
+**Awaiting confirmation** means Vantigo handed the eFaktura over but never heard back,
+or MPS has given no outcome for seven days. Vantigo keeps asking MPS once a day, by the
+send's own reference, for 37 days, and settles it on its own when MPS answers — failed,
+if MPS never received it. A person can settle it sooner: check with your bank or MPS,
+then click **Resolve** on the row, choose **Delivered** or **Failed** and write what you
+learned. An AvtaleGiro debit the bank had not yet accepted is then stopped on Vantigo's
+side; if the bank does debit it after all, the payment waits in the exception queue for
+a person.
+
+An invoice with an AvtaleGiro debit the bank will make is not reminded of until a
+business day after the due date has passed unpaid; the reminder says *waiting* with the
+reason AvtaleGiro until then.
 
 ## Vipps and pay links
 

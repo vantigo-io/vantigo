@@ -97,6 +97,43 @@ func (PaymentRemoved) EventName() string     { return "invoices.payment.removed"
 func (PaymentRemoved) EventVersion() int     { return 1 }
 func (e PaymentRemoved) AggregateID() string { return strconv.FormatInt(e.PaymentID, 10) }
 
+// EfakturaTransmissionChanged is invoices.efaktura.transmission_changed v1
+// (invoices phase 6 design I31, §7): an invoice's eFaktura transmission was
+// queued or moved — Status is queued, submitted, delivered, failed,
+// unconfirmed or cancelled, and PaymentType efaktura or both. It carries no
+// eFaktura identifier and no name. Published on the transaction, or the
+// statement, that moved the row.
+type EfakturaTransmissionChanged struct {
+	TransmissionID int64  `json:"transmissionId"`
+	InvoiceID      int64  `json:"invoiceId"`
+	Status         string `json:"status"`
+	PaymentType    string `json:"paymentType"`
+}
+
+func (EfakturaTransmissionChanged) EventName() string {
+	return "invoices.efaktura.transmission_changed"
+}
+func (EfakturaTransmissionChanged) EventVersion() int { return 1 }
+func (e EfakturaTransmissionChanged) AggregateID() string {
+	return strconv.FormatInt(e.TransmissionID, 10)
+}
+
+// AvtaleGiroClaimChanged is invoices.avtalegiro.claim_changed v1 (I33, §7):
+// an AvtaleGiro claim was made or moved — Status is submitted, accepted,
+// rejected, cancel_requested, cancelled or paid; Amount the claim's exact
+// decimal text in NOK and DueDate its due date. No KID and no name.
+type AvtaleGiroClaimChanged struct {
+	ClaimID   int64  `json:"claimId"`
+	InvoiceID int64  `json:"invoiceId"`
+	Status    string `json:"status"`
+	Amount    string `json:"amount"`
+	DueDate   string `json:"dueDate"`
+}
+
+func (AvtaleGiroClaimChanged) EventName() string     { return "invoices.avtalegiro.claim_changed" }
+func (AvtaleGiroClaimChanged) EventVersion() int     { return 1 }
+func (e AvtaleGiroClaimChanged) AggregateID() string { return strconv.FormatInt(e.ClaimID, 10) }
+
 // CustomerCreditChanged is invoices.customer_credit.changed v1: a customer's
 // credit in a currency moved (invoices phase 6 design I8, §7) — an
 // overpayment kept, a credit note's surplus moved, credit applied or
