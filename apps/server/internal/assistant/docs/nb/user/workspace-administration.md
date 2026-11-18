@@ -515,7 +515,10 @@ og lager, sammen med **Lage fakturaer**, en hurtigfaktura; **Administrere faktur
 omfatter også Peppol-ID-en, KID-avtalen, aksesspunktet for e-faktura,
 purreinnstillingene, inkassosatsene, Vipps-nøklene og betalingsinnstillingene, og
 forlater en Vipps-betaling som står fast; og **Registrere betalinger** dekker hele
-kredittstyringen — bankimport og avvikskøen, purrekjøringer og brev, vent, overlevering
+kredittstyringen — bankimport og avvikskøen, en kundes kreditt (å beholde en
+overbetaling som kreditt, bruke kreditt på en faktura, og registrere og fjerne en
+tilbakebetaling av den, og å se en tilbakebetalings bankkonto og en banklinjes referanse
+på kundens kreditt), purrekjøringer og brev, vent, overlevering
 til inkasso, en kundes purreregel og å registrere en dags Vipps-betalinger som avstemt. I Ansatte er **Vise og slette
 personopplysninger** den eneste tillatelsen som viser et fødselsnummer eller en bankkonto
 — **Administrere ansatte** gjør det ikke, men holder kompetansekatalogen — og **Avgjøre

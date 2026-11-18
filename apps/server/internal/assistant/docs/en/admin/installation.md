@@ -113,7 +113,8 @@ The image is one binary with a dispatch table; the command is the first argument
 `seed` also exists for local development and demo environments (`APP_ENV=development`; it
 exits 2 outside it): it applies migrations and populates an idempotent Norwegian demo
 dataset across all modules (20 users across 9 permission roles, 200 companies with 400
-contacts, 62 products, 75 projects, time entries, expenses, invoices, energy metering
+contacts, 62 products, 75 projects, time entries, expenses, invoices — with a customer
+holding credit from an overpayment —, energy metering
 points, customer conversations, and a small workshop with its stock, bills of materials,
 manufacturing orders and sales orders) and, when `accounting` is enabled, books set up from 1
 January with the demo's sales and expenses posted, suppliers and their invoices, the VAT

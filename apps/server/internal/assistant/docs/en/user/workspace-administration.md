@@ -505,7 +505,9 @@ over, makes or revokes a Vipps pay link and takes a Vipps payment on site — an
 the KID agreement, the e-invoicing access point, the reminder settings, the collection
 rates, the Vipps keys and the payment settings, and abandons a stuck Vipps payment; and
 **Register payments** covers all of credit control — bank imports and the exception
-queue, reminder runs and letters, holds, hand-offs to collection, a customer's reminder
+queue, a customer's credit (keeping an overpayment as credit, applying credit to an
+invoice, and recording and removing a refund of it, and seeing a refund's bank account
+and a bank line's reference on the customer's credit), reminder runs and letters, holds, hand-offs to collection, a customer's reminder
 policy and marking a day's Vipps payments reconciled. In Staff,
 **Reveal and erase personal data** is the only permission that shows a national identity
 number or a bank account — **Manage staff** does not, though it keeps the competence
