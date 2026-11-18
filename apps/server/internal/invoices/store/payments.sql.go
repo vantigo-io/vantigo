@@ -14,7 +14,7 @@ import (
 )
 
 const getPayment = `-- name: GetPayment :one
-SELECT id, invoice_id, paid_on, amount, currency, reference, note, registered_by_user_id, registered_at, removed_at, removed_by_user_id, removal_reason, source, bank_transaction_id, payment_attempt_id, kind, write_off_id FROM invoices.payments WHERE id = $1 AND invoice_id = $2
+SELECT id, invoice_id, paid_on, amount, currency, reference, note, registered_by_user_id, registered_at, removed_at, removed_by_user_id, removal_reason, source, bank_transaction_id, payment_attempt_id, kind, write_off_id, amount_nok FROM invoices.payments WHERE id = $1 AND invoice_id = $2
 `
 
 type GetPaymentParams struct {
@@ -45,6 +45,66 @@ func (q *Queries) GetPayment(ctx context.Context, arg GetPaymentParams) (Invoice
 		&i.PaymentAttemptID,
 		&i.Kind,
 		&i.WriteOffID,
+		&i.AmountNok,
+	)
+	return i, err
+}
+
+const insertCreditPayment = `-- name: InsertCreditPayment :one
+INSERT INTO invoices.payments (
+    invoice_id, paid_on, amount, currency, reference, note, source, registered_by_user_id, registered_at
+) VALUES (
+    $1, $2, $3, $4, $5, $6, 'credit', $7::uuid, $8::timestamptz
+)
+RETURNING id, invoice_id, paid_on, amount, currency, reference, note, registered_by_user_id, registered_at, removed_at, removed_by_user_id, removal_reason, source, bank_transaction_id, payment_attempt_id, kind, write_off_id, amount_nok
+`
+
+type InsertCreditPaymentParams struct {
+	InvoiceID          int64
+	PaidOn             pgtype.Date
+	Amount             pgtype.Numeric
+	Currency           string
+	Reference          string
+	Note               string
+	RegisteredByUserID uuid.UUID
+	RegisteredAt       time.Time
+}
+
+// InsertCreditPayment registers credit applied to an invoice (I11): source
+// credit, no bank line and no attempt, the person who applied it. Its
+// applied movement names it, in the same transaction, under the customer's
+// credit lock and then the invoice's.
+func (q *Queries) InsertCreditPayment(ctx context.Context, arg InsertCreditPaymentParams) (InvoicesPayment, error) {
+	row := q.db.QueryRow(ctx, insertCreditPayment,
+		arg.InvoiceID,
+		arg.PaidOn,
+		arg.Amount,
+		arg.Currency,
+		arg.Reference,
+		arg.Note,
+		arg.RegisteredByUserID,
+		arg.RegisteredAt,
+	)
+	var i InvoicesPayment
+	err := row.Scan(
+		&i.ID,
+		&i.InvoiceID,
+		&i.PaidOn,
+		&i.Amount,
+		&i.Currency,
+		&i.Reference,
+		&i.Note,
+		&i.RegisteredByUserID,
+		&i.RegisteredAt,
+		&i.RemovedAt,
+		&i.RemovedByUserID,
+		&i.RemovalReason,
+		&i.Source,
+		&i.BankTransactionID,
+		&i.PaymentAttemptID,
+		&i.Kind,
+		&i.WriteOffID,
+		&i.AmountNok,
 	)
 	return i, err
 }
@@ -56,7 +116,7 @@ INSERT INTO invoices.payments (
     $1, $2, $3, $4, $5, $6, $7, $8::timestamptz,
     $9::text, $10::bigint
 )
-RETURNING id, invoice_id, paid_on, amount, currency, reference, note, registered_by_user_id, registered_at, removed_at, removed_by_user_id, removal_reason, source, bank_transaction_id, payment_attempt_id, kind, write_off_id
+RETURNING id, invoice_id, paid_on, amount, currency, reference, note, registered_by_user_id, registered_at, removed_at, removed_by_user_id, removal_reason, source, bank_transaction_id, payment_attempt_id, kind, write_off_id, amount_nok
 `
 
 type InsertPaymentParams struct {
@@ -108,6 +168,7 @@ func (q *Queries) InsertPayment(ctx context.Context, arg InsertPaymentParams) (I
 		&i.PaymentAttemptID,
 		&i.Kind,
 		&i.WriteOffID,
+		&i.AmountNok,
 	)
 	return i, err
 }
@@ -118,7 +179,7 @@ INSERT INTO invoices.payments (
 ) VALUES (
     $1, $2, $3, $4, $5, 'vipps', $6, $7::timestamptz
 )
-RETURNING id, invoice_id, paid_on, amount, currency, reference, note, registered_by_user_id, registered_at, removed_at, removed_by_user_id, removal_reason, source, bank_transaction_id, payment_attempt_id, kind, write_off_id
+RETURNING id, invoice_id, paid_on, amount, currency, reference, note, registered_by_user_id, registered_at, removed_at, removed_by_user_id, removal_reason, source, bank_transaction_id, payment_attempt_id, kind, write_off_id, amount_nok
 `
 
 type InsertVippsPaymentParams struct {
@@ -166,6 +227,7 @@ func (q *Queries) InsertVippsPayment(ctx context.Context, arg InsertVippsPayment
 		&i.PaymentAttemptID,
 		&i.Kind,
 		&i.WriteOffID,
+		&i.AmountNok,
 	)
 	return i, err
 }
@@ -173,7 +235,8 @@ func (q *Queries) InsertVippsPayment(ctx context.Context, arg InsertVippsPayment
 const livePaymentsSum = `-- name: LivePaymentsSum :one
 SELECT coalesce(sum(amount) FILTER (WHERE kind = 'payment'), 0)::numeric(14,2) AS paid,
     invoices.written_off_amount($1)::numeric(14,2) AS written_off,
-    coalesce(sum(amount) FILTER (WHERE kind = 'recovered'), 0)::numeric(14,2) AS recovered
+    coalesce(sum(amount) FILTER (WHERE kind = 'recovered'), 0)::numeric(14,2) AS recovered,
+    invoices.moved_amount($1)::numeric(14,2) AS moved
 FROM invoices.payments
 WHERE invoice_id = $1 AND removed_at IS NULL
 `
@@ -182,21 +245,29 @@ type LivePaymentsSumRow struct {
 	Paid       pgtype.Numeric
 	WrittenOff pgtype.Numeric
 	Recovered  pgtype.Numeric
+	Moved      pgtype.Numeric
 }
 
 // LivePaymentsSum is what an invoice's live registrations add up to — the
-// paid of the open amount (D2, D3) — beside its standing write-off and its
-// live recoveries (A16, R4). A removed registration counts for nothing; a
-// recovery is not part of the open amount, which the write-off closed.
+// paid of the open amount (D2, D3) — beside its standing write-off, its
+// live recoveries (A16, R4) and what its credit notes' surplus moved to the
+// customer (moved, I10), which the open amount adds back. A removed
+// registration counts for nothing; a recovery is not part of the open
+// amount, which the write-off closed.
 func (q *Queries) LivePaymentsSum(ctx context.Context, invoiceID int64) (LivePaymentsSumRow, error) {
 	row := q.db.QueryRow(ctx, livePaymentsSum, invoiceID)
 	var i LivePaymentsSumRow
-	err := row.Scan(&i.Paid, &i.WrittenOff, &i.Recovered)
+	err := row.Scan(
+		&i.Paid,
+		&i.WrittenOff,
+		&i.Recovered,
+		&i.Moved,
+	)
 	return i, err
 }
 
 const paymentsOf = `-- name: PaymentsOf :many
-SELECT id, invoice_id, paid_on, amount, currency, reference, note, registered_by_user_id, registered_at, removed_at, removed_by_user_id, removal_reason, source, bank_transaction_id, payment_attempt_id, kind, write_off_id FROM invoices.payments
+SELECT id, invoice_id, paid_on, amount, currency, reference, note, registered_by_user_id, registered_at, removed_at, removed_by_user_id, removal_reason, source, bank_transaction_id, payment_attempt_id, kind, write_off_id, amount_nok FROM invoices.payments
 WHERE invoice_id = $1
 ORDER BY paid_on, id
 `
@@ -230,6 +301,7 @@ func (q *Queries) PaymentsOf(ctx context.Context, invoiceID int64) ([]InvoicesPa
 			&i.PaymentAttemptID,
 			&i.Kind,
 			&i.WriteOffID,
+			&i.AmountNok,
 		); err != nil {
 			return nil, err
 		}

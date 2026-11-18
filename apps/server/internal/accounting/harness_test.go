@@ -209,14 +209,15 @@ func (d fakeDirectory) Customers(_ context.Context, ids []int32) ([]contracts.Cu
 // facts a test adds, in number and seq order. fail, when set, is every
 // Documents and Facts call's error.
 type fakeJournal struct {
-	mu    sync.Mutex
-	open  []contracts.OpenDocument
-	seqs  []int64
-	asked []time.Time
-	calls int
-	docs  []contracts.JournalDocument
-	facts []contracts.JournalFact
-	fail  error
+	mu      sync.Mutex
+	open    []contracts.OpenDocument
+	credits []contracts.CustomerCredit
+	seqs    []int64
+	asked   []time.Time
+	calls   int
+	docs    []contracts.JournalDocument
+	facts   []contracts.JournalFact
+	fail    error
 }
 
 // addDocument adds an issued document, numbered after the last.
@@ -306,6 +307,25 @@ func (j *fakeJournal) OpenAt(_ context.Context, day time.Time, afterNumber int64
 	for _, d := range j.open {
 		if d.Number > afterNumber && len(page.Documents) < size {
 			page.Documents = append(page.Documents, d)
+		}
+	}
+	return page, nil
+}
+
+// CreditsAt is the customers' credit a test sets, after afterCustomerID, in
+// customer order, with OpenAt's AsOfSeq rule.
+func (j *fakeJournal) CreditsAt(_ context.Context, _ time.Time, afterCustomerID int32, limit int) (contracts.CreditPage, error) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	page := contracts.CreditPage{Credits: []contracts.CustomerCredit{}}
+	if len(j.seqs) > 0 {
+		page.AsOfSeq = j.seqs[min(j.calls, len(j.seqs)-1)]
+	}
+	customers := map[int32]bool{}
+	for _, c := range j.credits {
+		if c.CustomerID > afterCustomerID && (customers[c.CustomerID] || len(customers) < min(limit, contracts.MaxJournalPage)) {
+			customers[c.CustomerID] = true
+			page.Credits = append(page.Credits, c)
 		}
 	}
 	return page, nil

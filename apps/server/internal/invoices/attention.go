@@ -147,37 +147,29 @@ func (s *server) attentionOverdue(ctx context.Context, q *store.Queries, today t
 	return items, nil
 }
 
-// attentionRefundDue is invoiceRefundDue: every issued invoice whose open
-// amount is below zero, or whose charges' refund due — D9's formula, the
-// charges block's — is above zero, uncapped (D12, M16; plan reading 29).
+// attentionRefundDue is invoiceRefundDue: every issued invoice whose
+// charges' refund due — D9's formula, the charges block's — is above zero,
+// uncapped (D12, M16; plan reading 29). An invoice's principal is never owed
+// back here: what a credit note credits beyond the open amount is the
+// customer's credit (invoices phase 6 design I10).
 func (s *server) attentionRefundDue(ctx context.Context, q *store.Queries, today time.Time, loc *time.Location) ([]gen.InvoicesStatsAttentionItem, error) {
 	rows, err := q.AttentionRefundDue(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("invoices: read the invoices with a refund due: %w", err)
 	}
-	var withCharges []int64
+	ids := make([]int64, 0, len(rows))
 	for _, r := range rows {
-		if r.HasChargePayments {
-			withCharges = append(withCharges, r.ID)
-		}
+		ids = append(ids, r.ID)
 	}
 	ins := map[int64]reminderrules.Input{}
-	if len(withCharges) > 0 {
-		if ins, err = s.ruleInputs(ctx, s.deps.Pool, withCharges, today, loc); err != nil {
+	if len(ids) > 0 {
+		if ins, err = s.ruleInputs(ctx, s.deps.Pool, ids, today, loc); err != nil {
 			return nil, err
 		}
 	}
 	items := []gen.InvoicesStatsAttentionItem{}
 	for _, r := range rows {
-		open, err := ratFromNumeric(r.OpenAmount)
-		if err != nil {
-			return nil, err
-		}
-		due := open.Sign() < 0
-		if in, ok := ins[r.ID]; ok && !due {
-			due = reminderrules.Charges(in.Letters, in.Waivers, in.ChargePayments).RefundDue.Sign() > 0
-		}
-		if due {
+		if in, ok := ins[r.ID]; ok && reminderrules.Charges(in.Letters, in.Waivers, in.ChargePayments).RefundDue.Sign() > 0 {
 			items = append(items, attentionItem(gen.InvoiceRefundDue, idString(r.ID), orEmpty(r.BuyerName), r.ChangedAt, 0))
 		}
 	}

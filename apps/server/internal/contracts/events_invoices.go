@@ -32,7 +32,10 @@ func (e InvoiceOverdue) AggregateID() string { return strconv.FormatInt(e.Invoic
 // against an issued invoice, by a person, a bank line or a Vipps capture. It is
 // published by a trigger on invoices.payments, on the transaction of the
 // registration and under the invoice's lock, because four write paths register
-// payments. Source is manual, ocr, camt054 or vipps.
+// payments. Source is manual, ocr, camt054, vipps, bank_feed or credit (credit
+// applied, invoices phase 6 design I11). AmountNOK is the NOK the payment
+// brought (I13): its amount on a NOK invoice. It was added in version 1, being
+// additive.
 type PaymentReceived struct {
 	PaymentID  int64     `json:"paymentId"`
 	InvoiceID  int64     `json:"invoiceId"`
@@ -40,6 +43,7 @@ type PaymentReceived struct {
 	CustomerID int32     `json:"customerId"`
 	Amount     string    `json:"amount"`
 	Currency   string    `json:"currency"`
+	AmountNOK  string    `json:"amountNok"`
 	PaidOn     string    `json:"paidOn"`
 	Source     string    `json:"source"`
 	Registered time.Time `json:"registeredAt"`
@@ -92,3 +96,23 @@ type PaymentRemoved struct {
 func (PaymentRemoved) EventName() string     { return "invoices.payment.removed" }
 func (PaymentRemoved) EventVersion() int     { return 1 }
 func (e PaymentRemoved) AggregateID() string { return strconv.FormatInt(e.PaymentID, 10) }
+
+// CustomerCreditChanged is invoices.customer_credit.changed v1: a customer's
+// credit in a currency moved (invoices phase 6 design I8, §7) — an
+// overpayment kept, a credit note's surplus moved, credit applied or
+// refunded, a removal reversed — or a merge moved it from one customer to
+// another, which publishes one for each. It is published by a trigger on the
+// movement, under the customer's credit lock. Balance is the credit after
+// it. contracts.SalesJournal's Facts is the source; this only makes a reader
+// prompt.
+type CustomerCreditChanged struct {
+	CustomerID int32  `json:"customerId"`
+	Currency   string `json:"currency"`
+	Balance    string `json:"balance"`
+}
+
+func (CustomerCreditChanged) EventName() string { return "invoices.customer_credit.changed" }
+func (CustomerCreditChanged) EventVersion() int { return 1 }
+func (e CustomerCreditChanged) AggregateID() string {
+	return strconv.FormatInt(int64(e.CustomerID), 10)
+}

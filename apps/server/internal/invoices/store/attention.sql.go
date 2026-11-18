@@ -345,17 +345,14 @@ func (q *Queries) AttentionOverdue(ctx context.Context, today pgtype.Date) ([]At
 
 const attentionRefundDue = `-- name: AttentionRefundDue :many
 SELECT i.id, i.number, i.buyer_name,
-    (i.gross_total - coalesce(cr.credited, 0) - coalesce(pd.paid, 0))::numeric(14,2) AS open_amount,
-    (coalesce(cp.live, 0) > 0)::boolean AS has_charge_payments,
     coalesce(greatest(cr.last_at, pd.last_at, cp.last_at, w.last_at), i.issued_at)::timestamptz AS changed_at
 FROM invoices.invoices i
 LEFT JOIN LATERAL (
-    SELECT coalesce(sum(c.gross_total), 0)::numeric(14,2) AS credited, max(c.issued_at) AS last_at
+    SELECT max(c.issued_at) AS last_at
     FROM invoices.invoices c WHERE c.credits_invoice_id = i.id AND c.status = 'issued'
 ) cr ON true
 LEFT JOIN LATERAL (
-    SELECT invoices.settled_amount(i.id)::numeric(14,2) AS paid,
-        greatest(max(p.registered_at), max(wo.registered_at), max(wo.undone_at)) AS last_at
+    SELECT greatest(max(p.registered_at), max(wo.registered_at), max(wo.undone_at)) AS last_at
     FROM (SELECT 1) one
     LEFT JOIN invoices.payments p ON p.invoice_id = i.id
     LEFT JOIN invoices.write_offs wo ON wo.invoice_id = i.id
@@ -367,26 +364,23 @@ LEFT JOIN LATERAL (
 LEFT JOIN LATERAL (
     SELECT max(w.waived_at) AS last_at FROM invoices.charge_waivers w WHERE w.invoice_id = i.id
 ) w ON true
-WHERE i.kind = 'invoice' AND i.status = 'issued'
-  AND (i.gross_total - coalesce(cr.credited, 0) - coalesce(pd.paid, 0) < 0 OR coalesce(cp.live, 0) > 0)
+WHERE i.kind = 'invoice' AND i.status = 'issued' AND coalesce(cp.live, 0) > 0
 ORDER BY i.id
 `
 
 type AttentionRefundDueRow struct {
-	ID                int64
-	Number            *int64
-	BuyerName         *string
-	OpenAmount        pgtype.Numeric
-	HasChargePayments bool
-	ChangedAt         time.Time
+	ID        int64
+	Number    *int64
+	BuyerName *string
+	ChangedAt time.Time
 }
 
 // AttentionRefundDue is every issued invoice that may owe the buyer money
-// back: its open amount — gross less the issued credit notes and the live
-// payments — below zero (a credit note after a payment, M16), or a live
-// charge payment, whose refund due the engine's charges formula then judges.
-// changed_at is when its money last moved: the latest credit note issued,
-// payment or charge payment registered, or waiver made.
+// back on its charges: one with a live charge payment, whose refund due the
+// engine's charges formula then judges. Its principal never does: a credit
+// note's surplus moves to the customer's credit (invoices phase 6 design
+// I10). changed_at is when its money last moved: the latest credit note
+// issued, payment or charge payment registered, or waiver made.
 func (q *Queries) AttentionRefundDue(ctx context.Context) ([]AttentionRefundDueRow, error) {
 	rows, err := q.db.Query(ctx, attentionRefundDue)
 	if err != nil {
@@ -400,8 +394,6 @@ func (q *Queries) AttentionRefundDue(ctx context.Context) ([]AttentionRefundDueR
 			&i.ID,
 			&i.Number,
 			&i.BuyerName,
-			&i.OpenAmount,
-			&i.HasChargePayments,
 			&i.ChangedAt,
 		); err != nil {
 			return nil, err

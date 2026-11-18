@@ -47,6 +47,11 @@ const (
 	// kindInvoicesPayLinks is the pay links an erase revokes (D19, 4C),
 	// reported after the bank lines and before the policy.
 	kindInvoicesPayLinks = "invoices.payLinks"
+	// The customer's credit (invoices phase 6 design I8, I12): its movements
+	// and its refunds, re-pointed by a merge and their notes blanked by an
+	// erase, reported last.
+	kindInvoicesCustomerCredits = "invoices.customerCredits"
+	kindInvoicesCreditRefunds   = "invoices.creditRefunds"
 )
 
 // customerReferenceHolder is this module's contracts.CustomerReferenceHolder:
@@ -74,14 +79,27 @@ func newCustomerReferenceHolder(d module.Deps) contracts.CustomerReferenceHolder
 // Then the reminder policies (invoices payments and reminders design D7,
 // D18): both rows by customer id ascending, after the documents — the order
 // a policy PUT takes, documents first — and from's row moved, or merged into
-// into's at the stricter mode with the notes joined (repointPolicy).
+// into's at the stricter mode with the notes joined (repointPolicy). Before
+// the documents, the two customers' credit locks in ascending id (invoices
+// phase 6 design I17a as the plan's reading 1 amends it: every path that
+// writes credit takes the customer before an invoice, so the merge does too);
+// after the policy, the credit: every movement and refund of from re-pointed
+// to into, so the balances add, and one credit_merges row per currency in
+// which from held credit, written after the re-point so its event reads the
+// merged balances (plan reading 4).
 func (h *customerReferenceHolder) RepointCustomer(ctx context.Context, tx pgx.Tx, from, into int32) ([]contracts.RepointedReferences, error) {
 	if from == into {
 		return []contracts.RepointedReferences{
 			{Kind: kindInvoicesInvoices, Count: 0}, {Kind: kindInvoicesReminderPolicies, Count: 0},
+			{Kind: kindInvoicesCustomerCredits, Count: 0}, {Kind: kindInvoicesCreditRefunds, Count: 0},
 		}, nil
 	}
 	q := store.New(tx)
+	for _, c := range []int32{min(from, into), max(from, into)} {
+		if err := lockCustomerCredit(ctx, q, c); err != nil {
+			return nil, err
+		}
+	}
 	if err := q.LockCustomerDocuments(ctx, store.LockCustomerDocumentsParams{FromCustomerID: from, IntoCustomerID: into}); err != nil {
 		return nil, fmt.Errorf("invoices: lock customer %d's and %d's documents: %w", from, into, err)
 	}
@@ -95,9 +113,47 @@ func (h *customerReferenceHolder) RepointCustomer(ctx context.Context, tx pgx.Tx
 	if err != nil {
 		return nil, err
 	}
+	credits, refunds, err := repointCredit(ctx, q, from, into, h.clock())
+	if err != nil {
+		return nil, err
+	}
 	return []contracts.RepointedReferences{
 		{Kind: kindInvoicesInvoices, Count: n}, {Kind: kindInvoicesReminderPolicies, Count: policies},
+		{Kind: kindInvoicesCustomerCredits, Count: credits}, {Kind: kindInvoicesCreditRefunds, Count: refunds},
 	}, nil
+}
+
+// repointCredit is the merge's credit, both customers' credit locks held:
+// from's balances read, its movements and refunds re-pointed to into, and
+// one credit_merges row per currency in which it held credit.
+func repointCredit(ctx context.Context, q *store.Queries, from, into int32, now time.Time) (int64, int64, error) {
+	balances, err := q.CreditBalances(ctx, from)
+	if err != nil {
+		return 0, 0, fmt.Errorf("invoices: read customer %d's credit: %w", from, err)
+	}
+	credits, err := q.RepointCustomerCredits(ctx, store.RepointCustomerCreditsParams{FromCustomerID: from, IntoCustomerID: into})
+	if err != nil {
+		return 0, 0, fmt.Errorf("invoices: re-point customer %d's credit to %d: %w", from, into, err)
+	}
+	refunds, err := q.RepointCreditRefunds(ctx, store.RepointCreditRefundsParams{FromCustomerID: from, IntoCustomerID: into})
+	if err != nil {
+		return 0, 0, fmt.Errorf("invoices: re-point customer %d's refunds to %d: %w", from, into, err)
+	}
+	for _, b := range balances {
+		r, err := ratFromNumeric(b.Balance)
+		if err != nil {
+			return 0, 0, err
+		}
+		if r.Sign() <= 0 {
+			continue
+		}
+		if err := q.InsertCreditMerge(ctx, store.InsertCreditMergeParams{
+			FromCustomerID: from, IntoCustomerID: into, Currency: b.Currency, Amount: b.Balance, AmountNok: b.BalanceNok, MergedAt: now,
+		}); err != nil {
+			return 0, 0, fmt.Errorf("invoices: record customer %d's %s credit merged into %d: %w", from, b.Currency, into, err)
+		}
+	}
+	return credits, refunds, nil
 }
 
 // customerPersonalData is this module's contracts.CustomerPersonalData: what
@@ -137,6 +193,40 @@ type invoicesSection struct {
 	// reminders design D7, D19) — staff's decision and note about them —
 	// absent when there is none.
 	ReminderPolicy *exportedReminderPolicy `json:"reminderPolicy,omitempty"`
+	// Credit is the customer's credit (invoices phase 6 design I8, I12) —
+	// every movement and every refund — absent when there is none.
+	Credit *exportedCredit `json:"credit,omitempty"`
+}
+
+// exportedCredit is the customer's credit as the export writes it.
+type exportedCredit struct {
+	Movements []exportedCreditMovement `json:"movements"`
+	Refunds   []exportedCreditRefund   `json:"refunds"`
+}
+
+// exportedCreditMovement is one movement of the customer's credit.
+type exportedCreditMovement struct {
+	Kind         string    `json:"kind"`
+	Day          string    `json:"day"`
+	Amount       string    `json:"amount"`
+	Currency     string    `json:"currency"`
+	Invoice      *int64    `json:"invoiceNumber,omitempty"`
+	CreditNote   *int64    `json:"creditNoteNumber,omitempty"`
+	Note         string    `json:"note,omitempty"`
+	RegisteredAt time.Time `json:"registeredAt"`
+}
+
+// exportedCreditRefund is one refund of the customer's credit.
+type exportedCreditRefund struct {
+	RefundedOn    string     `json:"refundedOn"`
+	Amount        string     `json:"amount"`
+	Currency      string     `json:"currency"`
+	BankAccount   string     `json:"bankAccount"`
+	Reference     string     `json:"reference,omitempty"`
+	Note          string     `json:"note,omitempty"`
+	RegisteredAt  time.Time  `json:"registeredAt"`
+	RemovedAt     *time.Time `json:"removedAt,omitempty"`
+	RemovalReason string     `json:"removalReason,omitempty"`
 }
 
 // exportedReminderPolicy is a customer's reminder policy as the export
@@ -585,7 +675,11 @@ func exportCustomerData(ctx context.Context, q *store.Queries, customerID int32)
 	default:
 		policy = &exportedReminderPolicy{Mode: row.Mode, Note: row.Note, UpdatedAt: row.UpdatedAt.UTC()}
 	}
-	if len(docs) == 0 && policy == nil {
+	credit, err := exportCredit(ctx, q, customerID)
+	if err != nil {
+		return nil, err
+	}
+	if len(docs) == 0 && policy == nil && credit == nil {
 		return nil, nil
 	}
 	ids := make([]int64, 0, len(docs))
@@ -675,7 +769,7 @@ func exportCustomerData(ctx context.Context, q *store.Queries, customerID int32)
 	for _, d := range docs {
 		byID[d.ID] = d
 	}
-	section := invoicesSection{Documents: []exportedDocument{}, Drafts: []exportedDocument{}, ReminderPolicy: policy}
+	section := invoicesSection{Documents: []exportedDocument{}, Drafts: []exportedDocument{}, ReminderPolicy: policy, Credit: credit}
 	for _, d := range docs {
 		e := exportedDocument{
 			Number: d.Number, Kind: d.Kind, IssueDate: dateText(d.IssueDate), DeliveryDate: dateText(d.DeliveryDate),
@@ -746,6 +840,53 @@ func exportCustomerData(ctx context.Context, q *store.Queries, customerID int32)
 		}
 	}
 	return section, nil
+}
+
+// exportCredit is the customer's credit as the export writes it, nil when
+// there is none: every movement, the newest first, and every refund.
+func exportCredit(ctx context.Context, q *store.Queries, customerID int32) (*exportedCredit, error) {
+	total, err := q.CountCustomerCredits(ctx, customerID)
+	if err != nil {
+		return nil, fmt.Errorf("invoices: count customer %d's credit movements: %w", customerID, err)
+	}
+	if total == 0 {
+		return nil, nil
+	}
+	rows, err := q.CustomerCredits(ctx, store.CustomerCreditsParams{CustomerID: customerID, PageSize: total, PageOffset: 0})
+	if err != nil {
+		return nil, fmt.Errorf("invoices: read customer %d's credit movements: %w", customerID, err)
+	}
+	out := &exportedCredit{Movements: []exportedCreditMovement{}, Refunds: []exportedCreditRefund{}}
+	for _, r := range rows {
+		c := r.InvoicesCustomerCredit
+		amount, err := decimalOf(c.Amount, 2)
+		if err != nil {
+			return nil, err
+		}
+		out.Movements = append(out.Movements, exportedCreditMovement{
+			Kind: c.Kind, Day: orEmpty(dateText(c.CreditDay)), Amount: amount, Currency: c.Currency,
+			Invoice: r.InvoiceNumber, CreditNote: r.DocumentNumber, Note: c.Note, RegisteredAt: c.RegisteredAt.UTC(),
+		})
+	}
+	refunds, err := q.CreditRefundsOf(ctx, customerID)
+	if err != nil {
+		return nil, fmt.Errorf("invoices: read customer %d's refunds: %w", customerID, err)
+	}
+	for _, r := range refunds {
+		amount, err := decimalOf(r.Amount, 2)
+		if err != nil {
+			return nil, err
+		}
+		e := exportedCreditRefund{
+			RefundedOn: orEmpty(dateText(r.RefundedOn)), Amount: amount, Currency: r.Currency, BankAccount: r.BankAccount,
+			Reference: r.Reference, Note: r.Note, RegisteredAt: r.RegisteredAt.UTC(), RemovalReason: orEmpty(r.RemovalReason),
+		}
+		if r.RemovedAt != nil {
+			e.RemovedAt = ptr(r.RemovedAt.UTC())
+		}
+		out.Refunds = append(out.Refunds, e)
+	}
+	return out, nil
 }
 
 // exportedReceivables is every receivable of a person's documents as the
@@ -893,7 +1034,8 @@ func readReceivables(ctx context.Context, q *store.Queries, ids []int64) (export
 }
 
 // EraseCustomerData anonymises the person in this module (payments and
-// delivery design D6), in this order: it locks their documents FOR UPDATE
+// delivery design D6), in this order: it takes their credit lock, then locks
+// their documents FOR UPDATE
 // newest first (the merge's statement, the issue's order), so a delivery
 // insert — whose trigger takes the document FOR SHARE — waits for this
 // transaction; writes the erased-customer marker, which that trigger reads
@@ -917,9 +1059,13 @@ func readReceivables(ctx context.Context, q *store.Queries, ids []int64) (export
 // skipped, never waited for); every live pay link of the documents revoked,
 // by nobody, the links locked after the documents in id order — the
 // revoke's order, the invoice and then the link — reported as
-// invoices.payLinks (D19, 4C); and last the customer's reminder policy
-// deleted (D7) — staff's decision and note about the person, which no
-// retention rule keeps, reported as invoices.customerReminderPolicies. The
+// invoices.payLinks (D19, 4C); the notes of the customer's credit movements
+// and refunds blanked, their amounts kept (invoices phase 6 design I8),
+// reported as invoices.customerCredits and invoices.creditRefunds — the
+// customer's credit lock taken first of all, before the documents (I17a);
+// and last the customer's reminder policy deleted (D7) — staff's decision
+// and note about the person, which no retention rule keeps, reported as
+// invoices.customerReminderPolicies. The
 // payment attempts are kept whole, in every state, and the erase writes
 // none: one created or authorized may still be paid, and one capturing or
 // of unknown outcome may hold money already taken, which the payments worker
@@ -956,6 +1102,10 @@ func readReceivables(ctx context.Context, q *store.Queries, ids []int64) (export
 func (p customerPersonalData) EraseCustomerData(ctx context.Context, tx pgx.Tx, customerID int32) ([]contracts.ErasedData, error) {
 	now := p.clock()
 	q := store.New(tx)
+	// The customer's credit lock before the documents (I17a, plan reading 1).
+	if err := lockCustomerCredit(ctx, q, customerID); err != nil {
+		return nil, err
+	}
 	if err := q.LockCustomerDocuments(ctx, store.LockCustomerDocumentsParams{FromCustomerID: customerID, IntoCustomerID: customerID}); err != nil {
 		return nil, fmt.Errorf("invoices: lock customer %d's documents: %w", customerID, err)
 	}
@@ -1033,9 +1183,22 @@ func (p customerPersonalData) EraseCustomerData(ctx context.Context, tx pgx.Tx, 
 	if err != nil {
 		return nil, fmt.Errorf("invoices: delete customer %d's reminder policy: %w", customerID, err)
 	}
+	// The credit (invoices phase 6 design I8, I12): the movements and the
+	// refunds keep their amounts and lose their notes, reported before the
+	// policy, which stays last.
+	creditNotes, err := q.BlankCustomerCreditNotes(ctx, customerID)
+	if err != nil {
+		return nil, fmt.Errorf("invoices: blank customer %d's credit notes: %w", customerID, err)
+	}
+	refundNotes, err := q.BlankCreditRefundNotes(ctx, customerID)
+	if err != nil {
+		return nil, fmt.Errorf("invoices: blank customer %d's refund notes: %w", customerID, err)
+	}
 	return append(erased,
 		contracts.ErasedData{Kind: kindInvoicesBankTransactions, Count: int64(len(touched))},
 		contracts.ErasedData{Kind: kindInvoicesPayLinks, Count: revoked},
+		contracts.ErasedData{Kind: kindInvoicesCustomerCredits, Count: creditNotes},
+		contracts.ErasedData{Kind: kindInvoicesCreditRefunds, Count: refundNotes},
 		contracts.ErasedData{Kind: kindInvoicesReminderPolicies, Count: policies},
 	), nil
 }

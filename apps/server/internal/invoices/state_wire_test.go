@@ -94,9 +94,12 @@ func TestDocument_CarriesItsState(t *testing.T) {
 	}
 	noMoney(t, "an issued credit note", credit)
 
+	// What the credit note credits beyond the open amount moves to the
+	// customer's credit (invoices phase 6 design I10): the invoice is not
+	// below zero open, and carries no refundDue.
 	after := getInvoice(t, h, inv.ID)
-	if after.State != "credited" || money(after.PaidAmount) != 12500.0 || money(after.OpenAmount) != -12500.0 || money(after.RefundDue) != 12500.0 {
-		t.Errorf("paid, then fully credited = %q paid %v open %v refund %v, want credited, 12500, -12500, 12500",
+	if after.State != "credited" || money(after.PaidAmount) != 12500.0 || money(after.OpenAmount) != 0.0 || after.RefundDue != nil {
+		t.Errorf("paid, then fully credited = %q paid %v open %v refund %v, want credited, 12500, 0, none",
 			after.State, money(after.PaidAmount), money(after.OpenAmount), money(after.RefundDue))
 	}
 }

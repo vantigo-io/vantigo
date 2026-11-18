@@ -23,7 +23,10 @@ import (
 // then takes one lock — the invoice, FOR UPDATE — and reads every figure it
 // decides on after it: a credit note's issue locks the same row (its
 // original, the last lock of the issue's order), so a registration and a
-// credit serialise on it and each sees the other's commit.
+// credit serialise on it and each sees the other's commit. A registration
+// that keeps the rest as credit, and a removal of a payment with credit, take
+// the customer's credit lock first (invoices phase 6 design I17a,
+// withCustomerAndInvoice).
 
 // The codes and titles of the payments' refusals.
 const (
@@ -141,19 +144,14 @@ func (s *server) PostInvoicesByIdPayments(ctx context.Context, req gen.PostInvoi
 		return nil, err
 	}
 	recovering := req.Body.Kind != nil && *req.Body.Kind == gen.InvoicesPaymentKindRecovered
+	keep := req.Body.KeepRestAsCredit != nil && *req.Body.KeepRestAsCredit
+	if keep && recovering {
+		return gen.PostInvoicesByIdPayments400ApplicationProblemPlusJSONResponse(invalid(invalidPaymentTitle,
+			fieldError("keepRestAsCredit", "Money recovered after a write-off is never kept as credit"))), nil
+	}
 
 	var refusal *gen.InvoicesConflictProblem
-	err = s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
-		// The invoice FOR UPDATE — the only row this takes — and every
-		// figure after it, so a credit note's issue or another registration
-		// that holds it has committed by the time they are read.
-		locked, err := txq.LockInvoice(ctx, inv.ID)
-		if errors.Is(err, pgx.ErrNoRows) {
-			return errDocumentGone
-		}
-		if err != nil {
-			return fmt.Errorf("invoices: lock document %d: %w", inv.ID, err)
-		}
+	register := func(ctx context.Context, txq *store.Queries, locked store.InvoicesInvoice) error {
 		if paymentAfterLock != nil {
 			paymentAfterLock(ctx, locked.ID)
 		}
@@ -193,8 +191,34 @@ func (s *server) PostInvoicesByIdPayments(ctx context.Context, req gen.PostInvoi
 			refusal = ptr(conflict(codeInvoiceSettled, cannotRegisterTitle,
 				"Nothing is open on this invoice: its credit notes and payments cover its total."))
 			return errRefused
+		case amt.Cmp(open) > 0 && keep:
+			// The rest is the customer's credit (I9): the payment takes what
+			// is open, an overpayment beside it the rest.
+			rest := new(big.Rat).Sub(amt, open)
+			if payment.Amount, err = numericFromRat(open, 2); err != nil {
+				return err
+			}
+			payment.InvoiceID, payment.Currency = locked.ID, locked.Currency
+			payment.RegisteredAt, payment.RegisteredByUserID = s.deps.Clock(), ptr(callerID(ctx))
+			registered, err := txq.InsertPayment(ctx, payment)
+			if err != nil {
+				return fmt.Errorf("invoices: register a payment against %d: %w", locked.ID, err)
+			}
+			nok, err := nokOfInvoice(locked, rest)
+			if err != nil {
+				return err
+			}
+			_, refusal, err = insertCredit(ctx, txq, store.InsertCustomerCreditParams{
+				CustomerID: locked.CustomerID, Currency: locked.Currency, Kind: creditOverpayment, CreditDay: payment.PaidOn,
+				Note: payment.Note, InvoiceID: &locked.ID, PaymentID: &registered.ID, RegisteredByUserID: payment.RegisteredByUserID,
+				RegisteredAt: payment.RegisteredAt, AmountNok: nok,
+			}, rest, cannotRegisterTitle)
+			if refusal != nil {
+				return errRefused
+			}
+			return err
 		case amt.Cmp(open) > 0:
-			detail := fmt.Sprintf("This payment is %s, and the invoice has %s open. An overpayment is not registered.", amt.FloatString(2), open.FloatString(2))
+			detail := fmt.Sprintf("This payment is %s, and the invoice has %s open. An overpayment is not registered unless the rest is kept as credit.", amt.FloatString(2), open.FloatString(2))
 			if reserved.Sign() > 0 {
 				detail += " " + vippsInProgress(reserved)
 			}
@@ -208,7 +232,26 @@ func (s *server) PostInvoicesByIdPayments(ctx context.Context, req gen.PostInvoi
 			return fmt.Errorf("invoices: register a payment against %d: %w", locked.ID, err)
 		}
 		return nil
-	})
+	}
+	if keep {
+		// The customer's credit lock, then the invoice (I17a).
+		err = s.withCustomerAndInvoice(ctx, inv.ID, register)
+	} else {
+		err = s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
+			// The invoice FOR UPDATE — the only row this takes — and every
+			// figure after it, so a credit note's issue or another
+			// registration that holds it has committed by the time they are
+			// read.
+			locked, err := txq.LockInvoice(ctx, inv.ID)
+			if errors.Is(err, pgx.ErrNoRows) {
+				return errDocumentGone
+			}
+			if err != nil {
+				return fmt.Errorf("invoices: lock document %d: %w", inv.ID, err)
+			}
+			return register(ctx, txq, locked)
+		})
+	}
 	if refusal != nil {
 		return gen.PostInvoicesByIdPayments409ApplicationProblemPlusJSONResponse(*refusal), nil
 	}
@@ -243,19 +286,21 @@ func (s *server) PostInvoicesByIdPaymentsByPaymentIdRemove(ctx context.Context, 
 		return nil, err
 	}
 
+	// A payment with credit — of source credit, or with an overpayment kept
+	// beside it — or of an invoice whose credit note's surplus moved to the
+	// customer writes credit: read on the pool, it takes the customer's
+	// credit lock before the invoice (I17a). One found so only under the
+	// invoice's lock runs again on that path.
+	q := store.New(s.deps.Pool)
+	withCredit, err := removalWritesCredit(ctx, q, req.Id, req.PaymentId)
+	if err != nil {
+		return nil, err
+	}
+	caller, now := callerID(ctx), s.deps.Clock()
 	var refusal *gen.InvoicesConflictProblem
 	var inv store.InvoicesInvoice
-	err = s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
-		// The invoice first, the payment after the lock: two removals of one
-		// payment queue here, and the second reads the first's removal.
-		var err error
-		inv, err = txq.LockInvoice(ctx, req.Id)
-		if errors.Is(err, pgx.ErrNoRows) {
-			return errDocumentGone
-		}
-		if err != nil {
-			return fmt.Errorf("invoices: lock document %d: %w", req.Id, err)
-		}
+	remove := func(ctx context.Context, txq *store.Queries, locked store.InvoicesInvoice) error {
+		inv = locked
 		if paymentAfterLock != nil {
 			paymentAfterLock(ctx, inv.ID)
 		}
@@ -271,8 +316,23 @@ func (s *server) PostInvoicesByIdPaymentsByPaymentIdRemove(ctx context.Context, 
 				"This payment registration is already removed. A removal is never undone; register the payment again."))
 			return errRefused
 		}
+		credits, err := txq.CreditsOfPayment(ctx, &payment.ID)
+		if err != nil {
+			return fmt.Errorf("invoices: read payment %d's credit: %w", payment.ID, err)
+		}
+		movedN, err := txq.MovedOf(ctx, inv.ID)
+		if err != nil {
+			return fmt.Errorf("invoices: read what moved off document %d: %w", inv.ID, err)
+		}
+		moved, err := ratFromNumeric(movedN)
+		if err != nil {
+			return err
+		}
+		if !withCredit && (len(credits) > 0 || payment.Source == paymentSourceCredit || moved.Sign() > 0) {
+			return errCreditPathNeeded
+		}
 		n, err := txq.RemovePayment(ctx, store.RemovePaymentParams{
-			RemovedAt: s.deps.Clock(), RemovedByUserID: callerID(ctx), RemovalReason: reason, ID: payment.ID, InvoiceID: inv.ID,
+			RemovedAt: now, RemovedByUserID: caller, RemovalReason: reason, ID: payment.ID, InvoiceID: inv.ID,
 		})
 		if err != nil {
 			return fmt.Errorf("invoices: remove payment %d of %d: %w", payment.ID, inv.ID, err)
@@ -280,8 +340,44 @@ func (s *server) PostInvoicesByIdPaymentsByPaymentIdRemove(ctx context.Context, 
 		if n != 1 {
 			return fmt.Errorf("invoices: remove payment %d of %d: %d rows, want 1", payment.ID, inv.ID, n)
 		}
-		return nil
-	})
+		if !withCredit {
+			return nil
+		}
+		day := holidays.DayIn(now, loc)
+		for _, c := range credits {
+			if _, refusal, err = reverseCredit(ctx, txq, c.InvoicesCustomerCredit, c.Reversed, nil, day, caller, now, cannotRemoveTitle); err != nil {
+				return err
+			}
+			if refusal != nil {
+				refusal.Detail = ptr(deref(refusal.Detail) + " The credit kept from this payment was used; remove what used it first.")
+				return errRefused
+			}
+		}
+		return returnMovedCredit(ctx, txq, inv, day, caller, now)
+	}
+	for attempt := 0; attempt < 2; attempt++ {
+		if withCredit {
+			err = s.withCustomerAndInvoice(ctx, req.Id, remove)
+		} else {
+			err = s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
+				// The invoice first, the payment after the lock: two
+				// removals of one payment queue here, and the second reads
+				// the first's removal.
+				locked, err := txq.LockInvoice(ctx, req.Id)
+				if errors.Is(err, pgx.ErrNoRows) {
+					return errDocumentGone
+				}
+				if err != nil {
+					return fmt.Errorf("invoices: lock document %d: %w", req.Id, err)
+				}
+				return remove(ctx, txq, locked)
+			})
+		}
+		if !errors.Is(err, errCreditPathNeeded) {
+			break
+		}
+		withCredit = true
+	}
 	if refusal != nil {
 		return gen.PostInvoicesByIdPaymentsByPaymentIdRemove409ApplicationProblemPlusJSONResponse(*refusal), nil
 	}
@@ -291,9 +387,47 @@ func (s *server) PostInvoicesByIdPaymentsByPaymentIdRemove(ctx context.Context, 
 	if err != nil {
 		return nil, err
 	}
-	resp, err := s.invoiceResponse(ctx, store.New(s.deps.Pool), inv, nil, loc)
+	resp, err := s.invoiceResponse(ctx, q, inv, nil, loc)
 	if err != nil {
 		return nil, err
 	}
 	return gen.PostInvoicesByIdPaymentsByPaymentIdRemove200JSONResponse(resp), nil
+}
+
+// errCreditPathNeeded is a removal that found, under the invoice's lock, a
+// payment or an invoice whose removal writes credit, which it had not read
+// on the pool: it runs again with the customer's credit lock first.
+var errCreditPathNeeded = errors.New("invoices: the removal writes credit")
+
+// removalWritesCredit reports, read on the pool, whether removing payment
+// paymentID of invoice id writes credit (I9-I11): one of source credit, one
+// with a movement naming it, or one of an invoice whose credit note's
+// surplus moved to the customer.
+func removalWritesCredit(ctx context.Context, q *store.Queries, id, paymentID int64) (bool, error) {
+	payment, err := q.GetPayment(ctx, store.GetPaymentParams{ID: paymentID, InvoiceID: id})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("invoices: read payment %d of %d: %w", paymentID, id, err)
+	}
+	if payment.Source == paymentSourceCredit {
+		return true, nil
+	}
+	credits, err := q.CreditsOfPayment(ctx, &payment.ID)
+	if err != nil {
+		return false, fmt.Errorf("invoices: read payment %d's credit: %w", payment.ID, err)
+	}
+	if len(credits) > 0 {
+		return true, nil
+	}
+	moved, err := q.MovedOf(ctx, id)
+	if err != nil {
+		return false, fmt.Errorf("invoices: read what moved off document %d: %w", id, err)
+	}
+	m, err := ratFromNumeric(moved)
+	if err != nil {
+		return false, err
+	}
+	return m.Sign() > 0, nil
 }

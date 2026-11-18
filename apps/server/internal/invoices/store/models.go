@@ -210,6 +210,52 @@ type InvoicesCounter struct {
 	NextValue   int64
 }
 
+type InvoicesCreditMerge struct {
+	ID             int64
+	FromCustomerID int32
+	IntoCustomerID int32
+	Currency       string
+	Amount         pgtype.Numeric
+	AmountNok      pgtype.Numeric
+	MergedAt       time.Time
+}
+
+type InvoicesCreditRefund struct {
+	ID                 int64
+	CustomerID         int32
+	RefundedOn         pgtype.Date
+	Amount             pgtype.Numeric
+	Currency           string
+	AmountNok          pgtype.Numeric
+	BankAccount        string
+	Reference          string
+	Note               string
+	RegisteredByUserID uuid.UUID
+	RegisteredAt       time.Time
+	RemovedAt          *time.Time
+	RemovedByUserID    *uuid.UUID
+	RemovalReason      *string
+}
+
+type InvoicesCustomerCredit struct {
+	ID                 int64
+	CustomerID         int32
+	Currency           string
+	Amount             pgtype.Numeric
+	AmountNok          pgtype.Numeric
+	Kind               string
+	CreditDay          pgtype.Date
+	Note               string
+	InvoiceID          *int64
+	PaymentID          *int64
+	BankTransactionID  *int64
+	DocumentID         *int64
+	RefundID           *int64
+	ReversesID         *int64
+	RegisteredByUserID *uuid.UUID
+	RegisteredAt       time.Time
+}
+
 type InvoicesCustomerReminderPolicy struct {
 	CustomerID      int32
 	Mode            string
@@ -328,10 +374,11 @@ type InvoicesJournalFact struct {
 	Seq          int64
 	Kind         string
 	SubjectID    int64
-	InvoiceID    int64
+	InvoiceID    *int64
 	BusinessDate pgtype.Date
 	RemovedAt    *time.Time
 	CreatedAt    time.Time
+	CustomerID   *int32
 }
 
 type InvoicesLine struct {
@@ -446,6 +493,7 @@ type InvoicesPayment struct {
 	PaymentAttemptID   *int64
 	Kind               string
 	WriteOffID         *int64
+	AmountNok          pgtype.Numeric
 }
 
 type InvoicesPaymentAttempt struct {
@@ -767,4 +815,5 @@ type InvoicesWriteOff struct {
 	UndoneAt           *time.Time
 	UndoneByUserID     *uuid.UUID
 	UndoReason         *string
+	AmountNok          pgtype.Numeric
 }

@@ -136,7 +136,23 @@ func TestInvoicesBankFeed_AppliesAndIsIdempotent(t *testing.T) {
 			}
 		}
 	}
-	expect("after up", want)
+	// After every migration the payments' two CHECKs are as 00197 (invoices
+	// phase 6, delivery B-1) leaves them: the source credit added.
+	latest := map[string][]string{}
+	for k, v := range want {
+		latest[k] = v
+	}
+	latest["constraints"] = make([]string, 0, len(bankFeedConstraints))
+	for _, c := range bankFeedConstraints {
+		switch {
+		case strings.HasPrefix(c, "invoices.payments:ck_payments_origin:"):
+			c = paymentsOriginWithCredit
+		case strings.HasPrefix(c, "invoices.payments:ck_payments_source:"):
+			c = paymentsSourceWithCredit
+		}
+		latest["constraints"] = append(latest["constraints"], c)
+	}
+	expect("after up", latest)
 
 	migrateTo(t, url, bankFeedVersion-1)
 	expect("after down", wantDown)
@@ -221,6 +237,13 @@ var bankFeedColumns = []string{
 
 // bankFeedConstraints is every constraint of the two tables and the eleven
 // CHECKs, as Postgres prints them after 00178.
+// paymentsOriginWithCredit and paymentsSourceWithCredit are the payments'
+// two CHECKs as 00197 leaves them.
+const (
+	paymentsOriginWithCredit = "invoices.payments:ck_payments_origin:CHECK (((((source)::text = 'manual'::text) AND (bank_transaction_id IS NULL) AND (registered_by_user_id IS NOT NULL) AND (payment_attempt_id IS NULL)) OR (((source)::text = ANY ((ARRAY['ocr'::character varying, 'camt054'::character varying])::text[])) AND (bank_transaction_id IS NOT NULL) AND (registered_by_user_id IS NOT NULL) AND (payment_attempt_id IS NULL)) OR (((source)::text = 'vipps'::text) AND (payment_attempt_id IS NOT NULL) AND (bank_transaction_id IS NULL) AND (registered_by_user_id IS NULL)) OR (((source)::text = 'bank_feed'::text) AND (bank_transaction_id IS NOT NULL) AND (payment_attempt_id IS NULL)) OR (((source)::text = 'credit'::text) AND (bank_transaction_id IS NULL) AND (payment_attempt_id IS NULL) AND (registered_by_user_id IS NOT NULL))))"
+	paymentsSourceWithCredit = "invoices.payments:ck_payments_source:CHECK (((source)::text = ANY ((ARRAY['manual'::character varying, 'ocr'::character varying, 'camt054'::character varying, 'vipps'::character varying, 'bank_feed'::character varying, 'credit'::character varying])::text[])))"
+)
+
 var bankFeedConstraints = []string{
 	"invoices.bank_feed_accounts:bank_feed_accounts_last_bank_file_id_fkey:FOREIGN KEY (last_bank_file_id) REFERENCES invoices.bank_files(id)",
 	"invoices.bank_feed_accounts:bank_feed_accounts_pkey:PRIMARY KEY (account)",

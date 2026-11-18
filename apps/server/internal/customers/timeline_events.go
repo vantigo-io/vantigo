@@ -664,6 +664,8 @@ var mergeKindNouns = map[string][2]string{
 	"projects.projects":                      {"project", "projects"},
 	"energy.supplyPeriods":                   {"supply period", "supply periods"},
 	"invoices.invoices":                      {"invoice document", "invoice documents"},
+	"invoices.customerCredits":               {"customer credit", "customer credits"},
+	"invoices.creditRefunds":                 {"credit refund", "credit refunds"},
 	"communications.conversations":           {"conversation", "conversations"},
 	"communications.conversationSuggestions": {"conversation suggestion", "conversation suggestions"},
 	"communications.conversationCandidates":  {"conversation candidate", "conversation candidates"},
