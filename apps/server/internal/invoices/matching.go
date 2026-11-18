@@ -557,8 +557,12 @@ func registerMatch(ctx context.Context, txq *store.Queries, line store.InvoicesB
 		if err != nil {
 			return fmt.Errorf("invoices: line %d's principal as numeric: %w", line.ID, err)
 		}
+		nok, err := amountNOKOf(inv, n)
+		if err != nil {
+			return err
+		}
 		if _, err := txq.InsertImportedPayment(ctx, store.InsertImportedPaymentParams{
-			InvoiceID: inv.ID, PaidOn: line.BookedOn, Amount: n, Currency: inv.Currency, Source: paymentSourceOf(line.Format),
+			InvoiceID: inv.ID, PaidOn: line.BookedOn, Amount: n, AmountNok: nok, Currency: inv.Currency, Source: paymentSourceOf(line.Format),
 			BankTransactionID: line.ID, Reference: reference, RegisteredByUserID: caller, RegisteredAt: now,
 		}); err != nil {
 			return fmt.Errorf("invoices: register line %d's payment against %d: %w", line.ID, inv.ID, err)

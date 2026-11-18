@@ -55,6 +55,13 @@ func TestInvoicesCredit_TheBackfill(t *testing.T) {
 	if got := f.text(`SELECT string_agg(amount_nok::text, ',') FROM invoices.payments`); got != "1.00" {
 		t.Errorf("amount_nok = %s, want the payment's amount", got)
 	}
+	// A payment in another currency without its amount_nok is refused in
+	// words (B-1 review m3), not by the NOT NULL.
+	if _, err := pool.Exec(ctx, `INSERT INTO invoices.payments (invoice_id, paid_on, amount, currency, source, reference, note,
+		registered_by_user_id, registered_at) VALUES ($1, DATE '2026-10-06', 1, 'EUR', 'manual', '', '', gen_random_uuid(), now())`,
+		untouched); !refusedWith(err, "invoices: a payments row in EUR needs its amount_nok") {
+		t.Errorf("a EUR payment without amount_nok: %v, want it refused", err)
+	}
 	if got := f.text(`SELECT count(*)::text FROM invoices.journal_facts WHERE kind = 'credit' AND customer_id = 7 AND invoice_id = $1`, invoice); got != "1" {
 		t.Errorf("credit facts = %s, want the backfilled one", got)
 	}

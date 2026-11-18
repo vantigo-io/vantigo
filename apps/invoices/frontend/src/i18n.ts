@@ -2348,6 +2348,7 @@ export const invoicesCatalog = {
     "credit.reversedPart": "taken back",
     "credit.refunds": "Refunds",
     "credit.refundLine": "{{date}}: {{amount}} from account {{account}}",
+    "credit.refundLineNoAccount": "{{date}}: {{amount}}",
     "credit.refundRemoved": "removed: {{reason}}",
     "credit.recordRefund": "Record refund",
     "credit.refundExplain":
@@ -2363,6 +2364,8 @@ export const invoicesCatalog = {
     "credit.couldNotRemoveRefund": "The refund was not removed",
     "refusal.credit_exceeds_balance": "That is more than the customer's credit, {{balance}}.",
     "refusal.credit_exceeds_open": "That is more than the invoice has open, {{openAmount}}.",
+    "refusal.idempotency_key_reused":
+      "This apply was sent before with other figures. Close the dialog and apply the credit again.",
     "refusal.refund_removed": "This refund is already removed.",
     "bank.action.keep": "Keep the rest as credit",
     "bank.keep.title": "Keep the rest of line {{ref}} as credit",
@@ -4739,6 +4742,7 @@ export const invoicesCatalog = {
     "credit.reversedPart": "tatt tilbake",
     "credit.refunds": "Tilbakebetalinger",
     "credit.refundLine": "{{date}}: {{amount}} fra konto {{account}}",
+    "credit.refundLineNoAccount": "{{date}}: {{amount}}",
     "credit.refundRemoved": "fjernet: {{reason}}",
     "credit.recordRefund": "Registrer tilbakebetaling",
     "credit.refundExplain":
@@ -4754,6 +4758,8 @@ export const invoicesCatalog = {
     "credit.couldNotRemoveRefund": "Tilbakebetalingen ble ikke fjernet",
     "refusal.credit_exceeds_balance": "Det er mer enn kundens kreditt, {{balance}}.",
     "refusal.credit_exceeds_open": "Det er mer enn det som står åpent på fakturaen, {{openAmount}}.",
+    "refusal.idempotency_key_reused":
+      "Denne bruken ble sendt før med andre tall. Lukk dialogen og bruk kreditten på nytt.",
     "refusal.refund_removed": "Denne tilbakebetalingen er allerede fjernet.",
     "bank.action.keep": "Hold resten som kreditt",
     "bank.keep.title": "Hold resten av linje {{ref}} som kreditt",

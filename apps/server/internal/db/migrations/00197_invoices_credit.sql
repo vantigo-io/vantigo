@@ -46,7 +46,8 @@ CREATE INDEX ix_credit_refunds_customer ON invoices.credit_refunds (customer_id)
 -- the counter-row of a removal, naming the row it reverses, with that row's
 -- invoice. registered_by_user_id is NULL only on a credit_note row, which the
 -- issue's follow-up writes. amount_nok is the NOK the movement is worth
--- (I13): the amount itself for NOK.
+-- (I13): the amount itself for NOK. idempotency_key is, on an applied row,
+-- the Idempotency-Key the apply was sent with (B-1 review m4).
 CREATE TABLE invoices.customer_credits (
     id                    bigint        GENERATED ALWAYS AS IDENTITY (START WITH 1001) PRIMARY KEY,
     customer_id           integer       NOT NULL,
@@ -64,7 +65,9 @@ CREATE TABLE invoices.customer_credits (
     reverses_id           bigint        REFERENCES invoices.customer_credits (id) ON DELETE RESTRICT,
     registered_by_user_id uuid,
     registered_at         timestamptz   NOT NULL,
+    idempotency_key       varchar(200),
     CONSTRAINT ck_customer_credits_amount CHECK (amount <> 0),
+    CONSTRAINT ck_customer_credits_idempotency CHECK (idempotency_key IS NULL OR (kind = 'applied' AND idempotency_key <> '')),
     CONSTRAINT ck_customer_credits_kind CHECK (kind IN ('overpayment', 'credit_note', 'applied', 'refunded', 'reversed')),
     CONSTRAINT ck_customer_credits_actor CHECK ((registered_by_user_id IS NULL) = (kind = 'credit_note')),
     CONSTRAINT ck_customer_credits_source CHECK (
@@ -84,6 +87,10 @@ CREATE TABLE invoices.customer_credits (
 CREATE UNIQUE INDEX ux_customer_credits_credit_note ON invoices.customer_credits (document_id) WHERE kind = 'credit_note';
 -- A payment of source credit has one applied row.
 CREATE UNIQUE INDEX ux_customer_credits_applied ON invoices.customer_credits (payment_id) WHERE kind = 'applied';
+-- A client's retry applies once: one applied row per person and key. The
+-- person, not the customer, so a merge's re-pointing never collides.
+CREATE UNIQUE INDEX ux_customer_credits_idempotency ON invoices.customer_credits (registered_by_user_id, idempotency_key)
+    WHERE idempotency_key IS NOT NULL;
 CREATE INDEX ix_customer_credits_balance ON invoices.customer_credits (customer_id, currency);
 CREATE INDEX ix_customer_credits_invoice ON invoices.customer_credits (invoice_id) WHERE invoice_id IS NOT NULL;
 CREATE INDEX ix_customer_credits_line ON invoices.customer_credits (bank_transaction_id) WHERE bank_transaction_id IS NOT NULL;
@@ -278,6 +285,18 @@ END;
 $function$;
 -- +goose StatementEnd
 
+-- The backfill is the amount: every payment is in NOK today, and the
+-- migration stops if one is not, rather than invent a rate.
+-- +goose StatementBegin
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM invoices.payments WHERE currency <> 'NOK')
+       OR EXISTS (SELECT 1 FROM invoices.write_offs WHERE currency <> 'NOK') THEN
+        RAISE EXCEPTION 'invoices: a payment or a write-off in another currency than NOK has no amount_nok to backfill';
+    END IF;
+END;
+$$;
+-- +goose StatementEnd
 UPDATE invoices.payments SET amount_nok = amount;
 ALTER TABLE invoices.payments ALTER COLUMN amount_nok SET NOT NULL;
 
@@ -304,14 +323,17 @@ END;
 $function$;
 -- +goose StatementEnd
 
--- A NOK payment written without amount_nok takes its amount (I13): every
--- insert this module made before B-1 keeps working.
+-- A NOK payment written without amount_nok takes its amount (I13); the
+-- module passes it on every insert, the amount at the invoice's rate. One in
+-- another currency without it is refused in words, not by the NOT NULL.
 -- +goose StatementBegin
 CREATE FUNCTION invoices.guard_payment_amount_nok()
 RETURNS trigger LANGUAGE plpgsql AS $function$
 BEGIN
     IF NEW.amount_nok IS NULL AND NEW.currency = 'NOK' THEN
         NEW.amount_nok := NEW.amount;
+    ELSIF NEW.amount_nok IS NULL THEN
+        RAISE EXCEPTION 'invoices: a % row in % needs its amount_nok', TG_TABLE_NAME, NEW.currency USING ERRCODE = 'P0001';
     END IF;
     RETURN NEW;
 END;

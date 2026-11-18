@@ -1207,7 +1207,8 @@ utstedt](#utstede).
 noen gang har hatt kreditt: *Kunden har NOK 300,00 til gode*, og hver bevegelse — en
 overbetaling på en faktura, en kreditnota utover det som stod åpent, kreditt brukt på en
 faktura, en tilbakebetaling, en tilbakeføring — hver med dato, beløp og hva den kom fra,
-den nyeste først.
+den nyeste først. Kontoen en tilbakebetaling gikk fra og banklinjen en bevegelse kom fra,
+vises bare for den som har `invoices:payments`.
 
 **Betal den tilbake.** Vantigo flytter ingen penger: betal kunden fra banken, og
 registrer det så. På kortet **Kundekreditt** klikker du **Registrer tilbakebetaling** (med
@@ -1486,7 +1487,11 @@ en linje holdt for kunden (*Kreditt holdt fra faktura 1001*) — eller velg **In
 fjernes; merknaden sier hvorfor** og skriv merknaden, og klikk **Behandle
 tilbakeføringen**. Hver valgt betaling fjernes med begrunnelsen «Reversed by the bank»,
 hver valgt kreditt tas tilbake — det avvises mens kunden har brukt den — og linjen den kom
-fra, føres aldri igjen. Uten en betaling eller en merknad avvises tilbakeføringen, med ord. En
+fra, føres aldri igjen. En betaling som fjernes her, går som den ville gått fra fakturaen:
+kreditten som ble holdt ved siden av den, tas tilbake (det avvises mens kunden har brukt
+den), og en faktura den gjenåpner, får tilbake det en kreditnota hadde flyttet til kundens
+kreditt. En betaling gjort med kundens kreditt er ingen banks å ta tilbake: fjern den på
+fakturaen. Uten en betaling eller en merknad avvises tilbakeføringen, med ord. En
 tilbakeføring som peker på feil betaling, kan ikke angres: registrer den betalingen på
 nytt for hånd.
 

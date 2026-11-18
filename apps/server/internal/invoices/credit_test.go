@@ -699,3 +699,191 @@ func TestSalesJournal_CreditFactsAndCreditsAt(t *testing.T) {
 		}
 	}
 }
+
+// reversalOf is a handle-reversal body removing the payments of each
+// invoice id → payment id pair.
+func reversalOf(pairs ...int64) map[string]any {
+	removals := []map[string]any{}
+	for i := 0; i+1 < len(pairs); i += 2 {
+		removals = append(removals, map[string]any{"invoiceId": pairs[i], "paymentId": pairs[i+1]})
+	}
+	return map[string]any{"removePayments": removals}
+}
+
+// A reversal removes a payment as a removal does (C1 of B-1's review): the
+// overpayment kept beside it goes with it — refused while it is used — a
+// payment of source credit is not the bank's to take back, and a credit
+// note's surplus that moved to the customer comes back to the reopened
+// invoice, which never duns what the customer holds.
+func TestCredit_AReversalRemovesAPaymentsCredit(t *testing.T) {
+	t.Parallel()
+	h, _ := matchHarness(t)
+	c := payer(t, h)
+	kept, other, moved := kidInvoice(t, h), kidInvoice(t, h), kidInvoice(t, h)
+	body := pay(1500, "2026-09-12")
+	body["keepRestAsCredit"] = true
+	keptPaid := registered(t, h, kept.ID, body)
+	movedPaid := registered(t, h, moved.ID, pay(1000, "2026-09-12"))
+	issued(t, h, creditUnits(t, h, moved.ID, 3).ID)
+	res := c.Do(http.MethodPost, applyCreditPath(other.ID), map[string]any{"amount": 200})
+	if res.Status != http.StatusOK {
+		t.Fatalf("apply = %d %s", res.Status, res.Body)
+	}
+	var applied invoiceJSON
+	res.JSON(&applied)
+	if applied.Payments[0].Source != "credit" {
+		t.Fatalf("the applied payment = %+v, want source credit", applied.Payments[0])
+	}
+	if b := balanceOf(t, h, customerAcme); b != 600 {
+		t.Fatalf("the credit = %v, want 500 kept, 300 moved, 200 applied", b)
+	}
+	toMatchDay(h)
+	c = importer(t, h)
+	_, ids := camtLines(t, h, c, "REV-CREDIT",
+		reversalEntry(7, 1500, "USED"), reversalEntry(7, 200, "CREDIT"), reversalEntry(7, 1000, "MOVED"), reversalEntry(7, 1500, "KEPT"))
+
+	// (2) A payment of source credit: no bank took it, so no reversal does.
+	queueRefused(t, "a payment of source credit", c.Do(http.MethodPost, queueActionPath(ids["CREDIT"], "handle-reversal"),
+		reversalOf(other.ID, applied.Payments[0].ID)), "bank_transaction_not_applicable")
+
+	// (3) The moved surplus comes back: open 700, and the 300 off the credit.
+	r := acted(t, c, ids["MOVED"], "handle-reversal", reversalOf(moved.ID, movedPaid.Payments[0].ID))
+	if r.Status != "resolved" {
+		t.Fatalf("the moved reversal = %s", r.Status)
+	}
+	if got := getInvoice(t, h, moved.ID); money(got.OpenAmount) != 700.0 {
+		t.Errorf("the reopened invoice = %v open, want 700", money(got.OpenAmount))
+	}
+	if b := balanceOf(t, h, customerAcme); b != 300 {
+		t.Errorf("after the moved reversal = %v, want 300", b)
+	}
+
+	// (1) 300 left, the overpayment's 500 cannot go: refused, nothing
+	// written; once what used it is removed, the reversal takes it all.
+	p := queueRefused(t, "the kept payment while its credit is used", c.Do(http.MethodPost, queueActionPath(ids["USED"], "handle-reversal"),
+		reversalOf(kept.ID, keptPaid.Payments[0].ID)), "credit_exceeds_balance")
+	if !strings.Contains(p.Detail, "remove what used it first") {
+		t.Errorf("the refusal's detail = %q, want it to say what to do", p.Detail)
+	}
+	if livePayments(t, h, kept.ID) != 1 {
+		t.Errorf("the refused reversal removed the payment")
+	}
+	if res := c.Do(http.MethodPost, removalPath(other.ID, applied.Payments[0].ID), map[string]any{"reason": "Feil"}); res.Status != http.StatusOK {
+		t.Fatalf("the credit payment's removal = %d %s", res.Status, res.Body)
+	}
+	r = acted(t, c, ids["KEPT"], "handle-reversal", reversalOf(kept.ID, keptPaid.Payments[0].ID))
+	if r.Status != "resolved" {
+		t.Fatalf("the kept reversal = %s", r.Status)
+	}
+	if got := getInvoice(t, h, kept.ID); money(got.OpenAmount) != 1000.0 {
+		t.Errorf("the reversed invoice = %v open, want 1000", money(got.OpenAmount))
+	}
+	if b := balanceOf(t, h, customerAcme); b != 0 {
+		t.Errorf("after the kept reversal = %v, want no phantom credit", b)
+	}
+}
+
+// The customer's credit reads with invoices:access, its bank details with
+// invoices:payments too (B-1 review M2): a refund's account and a bank
+// line's reference are the payments', so a reader without them gets neither.
+func TestCredit_TheBankDetailsNeedPayments(t *testing.T) {
+	t.Parallel()
+	h, _ := matchHarness(t)
+	over := kidInvoice(t, h)
+	toMatchDay(h)
+	c := importer(t, h)
+	_, ids := camtLines(t, h, c, "BANK-DETAILS", kidEntry(6, 1300, *over.Kid, "", "OVER"))
+	acted(t, c, ids["OVER"], "keep-as-credit", map[string]any{})
+	if res := c.Do(http.MethodPost, refundsPath(customerAcme), refund(20)); res.Status != http.StatusOK {
+		t.Fatalf("the refund = %d %s", res.Status, res.Body)
+	}
+	for _, w := range []struct {
+		who    string
+		client *modtest.Client
+		bank   bool
+	}{
+		{"a payer", c, true},
+		{"a reader", h.SignIn(t, "invoices:access"), false},
+	} {
+		res := w.client.Do(http.MethodGet, customerCreditPath(customerAcme), nil)
+		if res.Status != http.StatusOK {
+			t.Fatalf("%s's read = %d %s", w.who, res.Status, res.Body)
+		}
+		body := string(res.Body)
+		for _, field := range []string{`"bankAccount"`, `"lineRef"`, "15032080119"} {
+			if strings.Contains(body, field) != w.bank {
+				t.Errorf("%s's read holds %s = %v, want %v", w.who, field, !w.bank, w.bank)
+			}
+		}
+	}
+}
+
+// CreditsAt counts each movement for its fact's customer and each merge by
+// its day (B-1 review m2): a refund written after a merge, dated before it,
+// is the survivor's on every day — as Accounting posts its fact on the
+// survivor's credit item — and the merge moves what the absorbed customer
+// held when it merged, so each day's split is what the facts posted up to
+// it leave on each item, and from the merge's day on the absorbed customer
+// holds nothing.
+func TestSalesJournal_CreditsAtABackdatedMovementAfterAMerge(t *testing.T) {
+	t.Parallel()
+	h := readyToIssue(t)
+	ctx := context.Background()
+	overpaid(t, h) // Acme's 200, on 2026-09-12
+	h.Advance(48 * time.Hour)
+	merged(t, h, customerAcme, customerNoTerms) // on 2026-09-14
+	if res := payer(t, h).Do(http.MethodPost, refundsPath(customerNoTerms), refund(50)); res.Status != http.StatusOK {
+		t.Fatalf("the backdated refund = %d %s", res.Status, res.Body)
+	}
+	at := func(day string) map[int32]string {
+		t.Helper()
+		d, _ := time.Parse(time.DateOnly, day)
+		page, err := salesJournal(h).CreditsAt(ctx, d, 0, 10)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := map[int32]string{}
+		for _, c := range page.Credits {
+			out[c.CustomerID] = c.BalanceNOK
+		}
+		return out
+	}
+	if got := at("2026-09-13"); len(got) != 2 || got[customerAcme] != "200.00" || got[customerNoTerms] != "-50.00" {
+		t.Errorf("the day before the merge = %v, want Acme 200 and the survivor's refund -50", got)
+	}
+	if got := at("2026-09-14"); len(got) != 1 || got[customerNoTerms] != "150.00" {
+		t.Errorf("the merge's day = %v, want the survivor's 150 and nothing left on Acme", got)
+	}
+}
+
+// Apply-credit with an Idempotency-Key applies once (B-1 review m4): the
+// retry answers the invoice and writes nothing; the key for another amount
+// or invoice is idempotency_key_reused; a key too long is a 400; another
+// person's same key is theirs.
+func TestCredit_ApplyCreditIsIdempotentByKey(t *testing.T) {
+	t.Parallel()
+	h := readyToIssue(t)
+	overpaid(t, h) // 200 of credit
+	next, other := thousand(t, h), thousand(t, h)
+	c := payer(t, h)
+	key := modtest.Header("Idempotency-Key", "apply-1")
+	for range 2 {
+		if res := c.Do(http.MethodPost, applyCreditPath(next.ID), map[string]any{"amount": 50}, key); res.Status != http.StatusOK {
+			t.Fatalf("apply = %d %s", res.Status, res.Body)
+		}
+	}
+	if b := balanceOf(t, h, customerAcme); b != 150 {
+		t.Errorf("after the apply and its retry = %v, want 150: applied once", b)
+	}
+	refusedCredit(t, "the key for another amount", c.Do(http.MethodPost, applyCreditPath(next.ID), map[string]any{"amount": 60}, key), "idempotency_key_reused")
+	refusedCredit(t, "the key for another invoice", c.Do(http.MethodPost, applyCreditPath(other.ID), map[string]any{"amount": 50}, key), "idempotency_key_reused")
+	if res := c.Do(http.MethodPost, applyCreditPath(next.ID), map[string]any{"amount": 50}, modtest.Header("Idempotency-Key", strings.Repeat("k", 201))); res.Status != http.StatusBadRequest {
+		t.Errorf("a key of 201 characters = %d %s, want 400", res.Status, res.Body)
+	}
+	if res := payer(t, h).Do(http.MethodPost, applyCreditPath(next.ID), map[string]any{"amount": 50}, key); res.Status != http.StatusOK {
+		t.Fatalf("another person's apply with the same key = %d %s", res.Status, res.Body)
+	}
+	if b := balanceOf(t, h, customerAcme); b != 100 {
+		t.Errorf("after another person's apply = %v, want 100", b)
+	}
+}

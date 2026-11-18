@@ -31,13 +31,20 @@ export const ApplyCreditModal = ({ invoice, balance, today, onClose }: ApplyCred
   const queryClient = useQueryClient();
   const [amount, setAmount] = useState<number | string>(Math.min(balance, Math.max(invoice.openAmount ?? 0, 0)));
   const [paidOn, setPaidOn] = useState<string | null>(today);
+  // One key per amount and day (B-1 review m4): a retry of the same apply —
+  // a second click, a lost answer — applies once; a changed one is a new key.
+  const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID());
   const [errors, setErrors] = useState<Record<string, string>>({});
   const apply = useMutation({
     mutationFn: () =>
-      applyCredit(invoice.id, {
-        amount: typeof amount === "number" ? amount : Number(amount),
-        ...(paidOn ? { paidOn } : {}),
-      }),
+      applyCredit(
+        invoice.id,
+        {
+          amount: typeof amount === "number" ? amount : Number(amount),
+          ...(paidOn ? { paidOn } : {}),
+        },
+        idempotencyKey,
+      ),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: [INVOICES_QUERY_KEY] });
       notifications.show({ color: "green", message: t("credit.applied") });
@@ -75,6 +82,7 @@ export const ApplyCreditModal = ({ invoice, balance, today, onClose }: ApplyCred
           error={errors.amount}
           onChange={(v) => {
             setAmount(v);
+            setIdempotencyKey(crypto.randomUUID());
             setErrors({});
           }}
         />
@@ -87,6 +95,7 @@ export const ApplyCreditModal = ({ invoice, balance, today, onClose }: ApplyCred
           error={errors.paidOn}
           onChange={(d) => {
             setPaidOn(d);
+            setIdempotencyKey(crypto.randomUUID());
             setErrors({});
           }}
         />

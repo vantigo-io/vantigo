@@ -1044,7 +1044,9 @@ func TestBankQueue_LockOrder(t *testing.T) {
 	}{
 		{"an apply", ids["APPLY"], "apply", applyBody(allocate(a, 10), allocate(b, 10)), []string{bt(ids["APPLY"]), "invoice " + idKey(b.ID), "invoice " + idKey(a.ID)}},
 		{"a reversal", ids["REV"], "handle-reversal", map[string]any{"removePayments": []map[string]any{{"invoiceId": a.ID, "paymentId": pa}, {"invoiceId": b.ID, "paymentId": pb}}},
-			[]string{bt(ids["REV"]), "invoice " + idKey(b.ID), "invoice " + idKey(a.ID)}},
+			// The payments' customer before their invoices: a removal may write
+			// its credit (I17a).
+			[]string{bt(ids["REV"]), "customer " + idKey(int64(customerAcme)), "invoice " + idKey(b.ID), "invoice " + idKey(a.ID)}},
 		{"a dismissal", ids["DISMISS"], "dismiss", map[string]any{"note": "x"}, []string{bt(ids["DISMISS"])}},
 		{"a reopen", ids["DISMISS"], "reopen", nil, []string{bt(ids["DISMISS"])}},
 		{"a confirmation", dup, "confirm-duplicate", map[string]any{}, []string{bt(dup)}},

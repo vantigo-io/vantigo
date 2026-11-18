@@ -1731,8 +1731,8 @@ func seedInvoicesReceivables(ctx context.Context, tx pgx.Tx, now time.Time, user
 			paidOn := issueDate.AddDate(0, 0, 10)
 			if _, err := tx.Exec(ctx, `
 				INSERT INTO invoices.payments (
-					invoice_id, paid_on, amount, currency, source, reference, note, registered_by_user_id, registered_at
-				) VALUES ($1, $2::date, $3, 'NOK', 'manual', $4, 'Innbetalt via bank', $5, $2)
+					invoice_id, paid_on, amount, amount_nok, currency, source, reference, note, registered_by_user_id, registered_at
+				) VALUES ($1, $2::date, $3, $3, 'NOK', 'manual', $4, 'Innbetalt via bank', $5, $2)
 			`, invID, paidOn, gross, fmt.Sprintf("BET-%d", docNum), ownerID); err != nil {
 				return err
 			}
@@ -1740,8 +1740,8 @@ func seedInvoicesReceivables(ctx context.Context, tx pgx.Tx, now time.Time, user
 			paidOn := issueDate.AddDate(0, 0, 7)
 			if _, err := tx.Exec(ctx, `
 				INSERT INTO invoices.payments (
-					invoice_id, paid_on, amount, currency, source, reference, note, registered_by_user_id, registered_at
-				) VALUES ($1, $2::date, $3, 'NOK', 'manual', $4, 'Delbetaling mottatt', $5, $2)
+					invoice_id, paid_on, amount, amount_nok, currency, source, reference, note, registered_by_user_id, registered_at
+				) VALUES ($1, $2::date, $3, $3, 'NOK', 'manual', $4, 'Delbetaling mottatt', $5, $2)
 			`, invID, paidOn, gross*0.5, fmt.Sprintf("DEL-%d", docNum), ownerID); err != nil {
 				return err
 			}

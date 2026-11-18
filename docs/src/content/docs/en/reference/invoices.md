@@ -148,8 +148,8 @@ registration in the day's CSV — it is told in the business time zone too.
 | `invoices.line_releases` | A credit note's release of an original line's source: the credit note, its line and the source, a source released once. Frozen with the credit note at its issue. |
 | `invoices.timesheet_rows` | The timesheet as printed, a snapshot: the position, the time entry, the person's label, the date, the hours, the work type and the description — never the entry's note. Written whole while the document's `timesheet` flag is on, pruned by every save to the hours the draft still holds ([The timesheet](#the-timesheet)); frozen with its document at issue, deleted with a deleted draft. |
 | `invoices.vat_summaries` | An issued document's VAT per (category, rate) with its SAF-T code and reason. |
-| `invoices.payments` | Money received against an issued invoice: the day it arrived, the amount and the currency (the invoice's, copied), `source` (`manual`, `ocr`, `camt054`, `vipps`, `bank_feed` or `credit` — the customer's credit applied, with no bank line or attempt and a registering user, [Customer credit](#customer-credit)), `amount_nok`, the NOK it brought (NOT NULL; the amount itself for NOK, filled by `tr_payments_amount_nok` when an insert leaves it out) and the bank line of one a match took from a bank file or a bank feed batch, or the payment attempt (`payment_attempt_id`) of a Vipps capture (`ck_payments_origin`: a line exactly when the source is not `manual`, and a registering user either way), the bank's or the payer's reference, a note (`''` once the customer is anonymised, and on every registration made after), who registered it and when, and — once removed — when, by whom and why. Never deleted; never changed but by the removal, once, and that blanking. |
-| `invoices.customer_credits` | The customer's credit ledger ([Customer credit](#customer-credit)): one row per movement — `customer_id`, `currency`, a signed `amount` (never 0) and its `amount_nok`, `kind` (`overpayment`, `credit_note`, `applied`, `refunded`, `reversed`), `credit_day`, a `note` (`''` once the customer is anonymised), the sources by kind (`ck_customer_credits_source`: `invoice_id` with `payment_id` or `bank_transaction_id` for an overpayment, `invoice_id` with `document_id` — the credit note — for a credit note's surplus, `invoice_id` with `payment_id` for credit applied, `refund_id` for a refund, `reverses_id` with the reversed row's invoice for a reversal), who registered it (NULL only on a `credit_note` row, `ck_customer_credits_actor`) and when. One `credit_note` row per credit note (`ux_customer_credits_credit_note`), one `applied` row per payment (`ux_customer_credits_applied`). Never deleted; an UPDATE changes only `customer_id` (a merge) or `note` to `''`. `tr_customer_credits_guard` takes the customer's credit lock, fills `amount_nok` for NOK, blanks a marked customer's note, holds a reversal to the opposite sign of its row — all of it once, but a credit note's surplus, which goes back in parts — and refuses a balance below zero. |
+| `invoices.payments` | Money received against an issued invoice: the day it arrived, the amount and the currency (the invoice's, copied), `source` (`manual`, `ocr`, `camt054`, `vipps`, `bank_feed` or `credit` — the customer's credit applied, with no bank line or attempt and a registering user, [Customer credit](#customer-credit)), `amount_nok`, the NOK it brought (NOT NULL; every insert of the module passes it — the amount at the invoice's rate, to the øre, the amount itself for NOK; `tr_payments_amount_nok` fills a NOK row's that an insert leaves out and refuses one in another currency, in words; migration 00197 backfilled the amount and stops if a row is not NOK) and the bank line of one a match took from a bank file or a bank feed batch, or the payment attempt (`payment_attempt_id`) of a Vipps capture (`ck_payments_origin`: a line exactly when the source is not `manual`, and a registering user either way), the bank's or the payer's reference, a note (`''` once the customer is anonymised, and on every registration made after), who registered it and when, and — once removed — when, by whom and why. Never deleted; never changed but by the removal, once, and that blanking. |
+| `invoices.customer_credits` | The customer's credit ledger ([Customer credit](#customer-credit)): one row per movement — `customer_id`, `currency`, a signed `amount` (never 0) and its `amount_nok`, `kind` (`overpayment`, `credit_note`, `applied`, `refunded`, `reversed`), `credit_day`, a `note` (`''` once the customer is anonymised), the sources by kind (`ck_customer_credits_source`: `invoice_id` with `payment_id` or `bank_transaction_id` for an overpayment, `invoice_id` with `document_id` — the credit note — for a credit note's surplus, `invoice_id` with `payment_id` for credit applied, `refund_id` for a refund, `reverses_id` with the reversed row's invoice for a reversal), who registered it (NULL only on a `credit_note` row, `ck_customer_credits_actor`) and when, and on an `applied` row the `idempotency_key` it was sent with (`ck_customer_credits_idempotency`, `ux_customer_credits_idempotency` per person). One `credit_note` row per credit note (`ux_customer_credits_credit_note`), one `applied` row per payment (`ux_customer_credits_applied`). Never deleted; an UPDATE changes only `customer_id` (a merge) or `note` to `''`. `tr_customer_credits_guard` takes the customer's credit lock, fills `amount_nok` for NOK, blanks a marked customer's note, holds a reversal to the opposite sign of its row — all of it once, but a credit note's surplus, which goes back in parts — and refuses a balance below zero. |
 | `invoices.credit_refunds` | Money paid back to a customer outside Vantigo: `customer_id`, `refunded_on`, `amount` (above 0), `currency` (NOK in this version), `amount_nok`, `bank_account` (the 11 digits it left), `reference`, `note`, who and when, and the removal triple (`ck_credit_refunds_removal`). Never deleted; changed only by its removal, once, a merge's `customer_id` and the note to `''`. |
 | `invoices.credit_merges` | A balance a customer merge moved: `from_customer_id`, `into_customer_id`, `currency`, `amount` (above 0), `amount_nok`, `merged_at`. Written by the merge after it re-points the movements, never changed; the fact log hears from it that a balance moved customer. |
 | `invoices.bank_import_accounts` | One row per receiving account a bank file was imported for: the `format` its files come in (`ocr` or `camt054`), set by its first import, and — once a manager changed it — the `previous_format` with `cutover_through`, the latest booking day of the account's own lines in it; who set it and when. Never deleted; an update changes only those columns ([Bank files](#bank-files-and-the-exception-queue)). |
@@ -2469,7 +2469,13 @@ by itself: a surplus still queues.
 customer's lock, the invoice; 409 `credit_note_no_payments`, `invoice_draft`,
 `invoice_settled`, `credit_exceeds_open` (with `openAmount`) and `credit_exceeds_balance`
 (with `balance`); then a payment of `source = credit`, `kind = payment`, the caller as its
-user and no bank line, and the `applied` movement naming it. **On issue**,
+user and no bank line, and the `applied` movement naming it. An optional `Idempotency-Key`
+header (1 to 200 characters, no surrounding whitespace or control characters, else 400 on
+`Idempotency-Key`) is stored on the `applied` row, unique per person
+(`ux_customer_credits_idempotency`): read under the customer's lock, the same key for the
+same invoice and amount answers the invoice and applies nothing again, and for another
+invoice or amount is 409 `idempotency_key_reused`. The dialog sends one key per amount and
+day. **On issue**,
 `InvoicesIssueRequest.useCredit` runs that transaction after the issue's commit for the
 lesser of the balance and the open amount, as the issuer — who also needs
 `invoices:payments`, else nothing is applied — on the issue date; a failure, or an issuer
@@ -2485,7 +2491,9 @@ a valid MOD11 check digit, each a 400 on its field; the customer's lock alone; 4
 no such refund, 409 `refund_removed` the second time. Vantigo moves no money; a refund
 through Vipps is later. `GET /customers/{customerId}/credit` (`invoices:access`) answers the
 balance per currency, a page of movements — the newest first, each with the numbers of its
-invoice, credit note and bank line — and every refund.
+invoice, credit note and bank line — and every refund. A refund's `bankAccount` and a
+movement's `lineRef` are answered only to a caller who also holds `invoices:payments`, as
+the bank queue and the payments are; without it they are absent.
 
 **Removals reverse credit.** A payment's removal reads the payment on the pool first; one of
 source `credit`, or one an `overpayment` names, or of an invoice whose credit note's surplus
@@ -2499,7 +2507,13 @@ what the customer holds as credit. The write-off's undo does the same. A reversa
 queue takes back the overpayments a reversed line kept with `reverseCredits:
 [{creditId}]`: the line, the credits' customers in ascending id, the invoices; each must be
 an overpayment of a bank line (404), not taken back (409 `payment_removed`) and within the
-balance (409 `credit_exceeds_balance`); its line gets the `reversed` event.
+balance (409 `credit_exceeds_balance`); its line gets the `reversed` event. A payment the
+reversal names with `removePayments` is removed as a removal removes it: the named payments'
+invoices' customers join the credits' in that ascending lock order, before the invoices; the
+overpayment kept beside the payment is taken back (409 `credit_exceeds_balance`, nothing
+written, when it was used); and each invoice it reopens **returns moved credit**, after the
+credits the reversal names. A payment of source `credit` is refused, 409
+`bank_transaction_not_applicable`: no bank took it, so remove it on the invoice.
 
 **The worker.** `invoices.credit_moves`, on every installation, every five minutes: the
 issued credit notes whose original reads below zero open and that moved nothing
@@ -2534,8 +2548,8 @@ write locks the invoice `FOR UPDATE`, reads the open amount and the live Vipps
 reservations under the lock ([Payments and the state of an invoice](#payments-and-the-state-of-an-invoice)),
 refuses 409 `vipps_in_progress` while a reservation holds part of it and `invoice_settled`
 when nothing is open — a standing write-off included — and writes the whole open amount
-off: an `invoices.write_offs` row with the day, the amount and its `amount_nok` (the amount
-itself for NOK, migration 00197), the currency, the reason, the
+off: an `invoices.write_offs` row with the day, the amount and its `amount_nok` (passed as a
+payment's is, the amount itself for NOK, migration 00197), the currency, the reason, the
 flag and who and when. The invoice is then `written_off`.
 
 **The undo.** `POST /invoices/{id}/write-off/undo` takes a `reason` (1–200 characters
@@ -6343,7 +6357,7 @@ All under `/api/v1/invoices`, every one behind `invoices:access` but the pay pag
 | `GET /{id}/deductible` | `invoices:create` | 404; 409 `invoice_issued`, `credit_note_deducts_nothing` |
 | `POST /{id}/payments` | `invoices:payments` | 400 a body that does not decode; 404; 409 `credit_note_no_payments`, `invoice_draft`; 400 on the field, `keepRestAsCredit` on a recovered payment; 409 `invoice_settled`, `payment_exceeds_open` (with `openAmount`) |
 | `POST /{id}/payments/{paymentId}/remove` | `invoices:payments` | 400 on `reason`; 404 the document, or a payment not its own; 409 `payment_removed`, `credit_exceeds_balance` (with `balance`) |
-| `POST /{id}/apply-credit` | `invoices:payments` | 400 on `amount` or `paidOn`; 404; 409 `credit_note_no_payments`, `invoice_draft`, `invoice_settled`, `credit_exceeds_open` (with `openAmount`), `credit_exceeds_balance` (with `balance`) |
+| `POST /{id}/apply-credit` | `invoices:payments` | 400 on `amount`, `paidOn` or `Idempotency-Key`; 404; 409 `credit_note_no_payments`, `invoice_draft`, `invoice_settled`, `credit_exceeds_open` (with `openAmount`), `credit_exceeds_balance` (with `balance`), `idempotency_key_reused` |
 | `GET /customers/{customerId}/credit` | | 400 on `page` |
 | `POST /customers/{customerId}/credit/refunds` | `invoices:payments` | 400 on `refundedOn`, `amount`, `currency`, `bankAccount`, `reference` or `note`; 409 `credit_exceeds_balance` (with `balance`) |
 | `POST /customers/{customerId}/credit/refunds/{refundId}/remove` | `invoices:payments` | 400 on `reason`; 404 not the customer's refund; 409 `refund_removed` |

@@ -35,12 +35,12 @@ ORDER BY currency;
 -- blanks a marked customer's note.
 INSERT INTO invoices.customer_credits (
     customer_id, currency, amount, amount_nok, kind, credit_day, note, invoice_id, payment_id, bank_transaction_id,
-    document_id, refund_id, reverses_id, registered_by_user_id, registered_at
+    document_id, refund_id, reverses_id, registered_by_user_id, registered_at, idempotency_key
 ) VALUES (
     @customer_id, @currency, @amount, sqlc.narg(amount_nok)::numeric, @kind, @credit_day, @note,
     sqlc.narg(invoice_id)::bigint, sqlc.narg(payment_id)::bigint, sqlc.narg(bank_transaction_id)::bigint,
     sqlc.narg(document_id)::bigint, sqlc.narg(refund_id)::bigint, sqlc.narg(reverses_id)::bigint,
-    sqlc.narg(registered_by_user_id)::uuid, @registered_at::timestamptz
+    sqlc.narg(registered_by_user_id)::uuid, @registered_at::timestamptz, sqlc.narg(idempotency_key)::text
 )
 RETURNING *;
 
@@ -197,3 +197,9 @@ WHERE customer_id = ANY(sqlc.arg(customer_ids)::int[])
 GROUP BY customer_id, currency
 HAVING sum(amount) > 0
 ORDER BY customer_id, currency;
+
+-- name: AppliedByIdempotencyKey :many
+-- AppliedByIdempotencyKey is the applied movement a person sent with an
+-- Idempotency-Key (B-1 review m4): none, or one, by ux_customer_credits_idempotency.
+SELECT c.invoice_id, c.amount FROM invoices.customer_credits c
+WHERE c.registered_by_user_id = @registered_by_user_id::uuid AND c.idempotency_key = @idempotency_key::text;

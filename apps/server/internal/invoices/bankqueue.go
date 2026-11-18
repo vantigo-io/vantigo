@@ -820,8 +820,12 @@ func (s *server) applyLocked(ctx context.Context, txq *store.Queries, line store
 			return nil, fmt.Errorf("invoices: line %d is in NOK and invoice %d is in %s", line.ID, inv.ID, inv.Currency)
 		}
 		if a.amount.Sign() > 0 {
+			nok, err := amountNOKOf(inv, a.amountN)
+			if err != nil {
+				return nil, err
+			}
 			if _, err := txq.InsertImportedPayment(ctx, store.InsertImportedPaymentParams{
-				InvoiceID: inv.ID, PaidOn: line.BookedOn, Amount: a.amountN, Currency: inv.Currency, Source: paymentSourceOf(line.Format),
+				InvoiceID: inv.ID, PaidOn: line.BookedOn, Amount: a.amountN, AmountNok: nok, Currency: inv.Currency, Source: paymentSourceOf(line.Format),
 				BankTransactionID: line.ID, Reference: reference, RegisteredByUserID: &caller, RegisteredAt: now,
 			}); err != nil {
 				return nil, fmt.Errorf("invoices: apply line %d's payment to %d: %w", line.ID, inv.ID, err)
@@ -1084,10 +1088,13 @@ func (s *server) PostInvoicesBankTransactionsByIdHandleReversal(ctx context.Cont
 }
 
 // reversalLocked is a reversal's work, the line held (D5, I9): the credits it
-// takes back read, their customers' credit locks in ascending id, then the
-// invoices named and the line's FOR UPDATE in descending id; each payment
-// removed, each credit reversed — credit_exceeds_balance when it was used —
-// and every line they came from marked reversed; the line resolved.
+// takes back and the named payments' invoices read, their customers' credit
+// locks in ascending id, then the invoices named and the line's FOR UPDATE in
+// descending id; each payment removed as a removal removes it — the credit
+// kept beside it reversed, credit_exceeds_balance when it was used, and a
+// credit note's surplus that moved to the customer returned — a payment of
+// source credit refused, as no bank took it; each credit reversed; every
+// line they came from marked reversed; the line resolved.
 func (s *server) reversalLocked(ctx context.Context, txq *store.Queries, line store.InvoicesBankTransaction,
 	named []gen.InvoicesBankTransactionReversalPayment, creditIDs []int64, note string, caller uuid.UUID, now time.Time, loc *time.Location,
 ) (*gen.InvoicesConflictProblem, error) {
@@ -1095,6 +1102,27 @@ func (s *server) reversalLocked(ctx context.Context, txq *store.Queries, line st
 	if err != nil {
 		return nil, err
 	}
+	// The named payments' invoices' customers, read without a lock: removing
+	// a payment may write their credit (I9-I11), so their locks come before
+	// the invoices', and each is compared again under the invoice's lock.
+	paidBy := map[int64]int32{}
+	for _, p := range named {
+		if _, ok := paidBy[p.InvoiceId]; ok {
+			continue
+		}
+		inv, err := txq.GetInvoice(ctx, p.InvoiceId)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, errNoSuchPayment
+		}
+		if err != nil {
+			return nil, fmt.Errorf("invoices: read document %d: %w", p.InvoiceId, err)
+		}
+		paidBy[inv.ID] = inv.CustomerID
+		if !slices.Contains(customers, inv.CustomerID) {
+			customers = append(customers, inv.CustomerID)
+		}
+	}
+	slices.Sort(customers)
 	for _, c := range customers {
 		if err := lockCustomerCredit(ctx, txq, c); err != nil {
 			return nil, err
@@ -1112,10 +1140,23 @@ func (s *server) reversalLocked(ctx context.Context, txq *store.Queries, line st
 				ids = append(ids, id)
 			}
 		}
-		_, note, err := lockForNote(ctx, txq, line.ID, ids, note)
+		invs, note, err := lockForNote(ctx, txq, line.ID, ids, note)
 		if err != nil {
 			return nil, err
 		}
+		for _, inv := range invs {
+			if customer, ok := paidBy[inv.ID]; ok && inv.CustomerID != customer {
+				return nil, errCustomerMoved
+			}
+		}
+		if hook := creditAfterLocks; hook != nil {
+			for _, id := range ids {
+				if err := hook(ctx, id); err != nil {
+					return nil, err
+				}
+			}
+		}
+		day := holidays.DayIn(now, loc)
 		ordered := slices.Clone(named)
 		slices.SortFunc(ordered, func(a, b gen.InvoicesBankTransactionReversalPayment) int {
 			if c := compareInt64(b.InvoiceId, a.InvoiceId); c != 0 {
@@ -1137,6 +1178,10 @@ func (s *server) reversalLocked(ctx context.Context, txq *store.Queries, line st
 				return ptr(conflict(codePaymentRemoved, cannotHandleReversalTitle, fmt.Sprintf(
 					"Payment %d is already removed. A removal is never undone; name the payment the bank took back.", payment.ID))), nil
 			}
+			if payment.Source == paymentSourceCredit {
+				return notApplicable(cannotHandleReversalTitle, fmt.Sprintf(
+					"Payment %d was paid from the customer's credit, not by the bank: no bank line takes it back. Remove it on the invoice instead.", payment.ID)), nil
+			}
 			n, err := txq.RemovePayment(ctx, store.RemovePaymentParams{
 				RemovedAt: now, RemovedByUserID: caller, RemovalReason: reason, ID: payment.ID, InvoiceID: payment.InvoiceID,
 			})
@@ -1148,6 +1193,26 @@ func (s *server) reversalLocked(ctx context.Context, txq *store.Queries, line st
 			}
 			if payment.BankTransactionID != nil && !slices.Contains(reversedLines, *payment.BankTransactionID) {
 				reversedLines = append(reversedLines, *payment.BankTransactionID)
+			}
+			// The credit kept beside the payment goes with it, as a
+			// removal takes it (I9); one the reversal names is taken
+			// back below instead.
+			paid, err := txq.CreditsOfPayment(ctx, &payment.ID)
+			if err != nil {
+				return nil, fmt.Errorf("invoices: read payment %d's credit: %w", payment.ID, err)
+			}
+			for _, c := range paid {
+				if slices.Contains(creditIDs, c.InvoicesCustomerCredit.ID) {
+					continue
+				}
+				_, refusal, err := reverseCredit(ctx, txq, c.InvoicesCustomerCredit, c.Reversed, nil, day, caller, now, cannotHandleReversalTitle)
+				if err != nil {
+					return nil, err
+				}
+				if refusal != nil {
+					refusal.Detail = ptr(deref(refusal.Detail) + fmt.Sprintf(" The credit kept from payment %d was used; remove what used it first.", payment.ID))
+					return refusal, nil
+				}
 			}
 		}
 		// The credits, read again under their customers' locks: a merge
@@ -1169,11 +1234,23 @@ func (s *server) reversalLocked(ctx context.Context, txq *store.Queries, line st
 					"Credit %d is already taken back. A reversal is never undone; name the credit the bank took back.", again.InvoicesCustomerCredit.ID))), nil
 			}
 			if _, refusal, err := reverseCredit(ctx, txq, again.InvoicesCustomerCredit, again.Reversed, nil,
-				holidays.DayIn(now, loc), caller, now, cannotHandleReversalTitle); refusal != nil || err != nil {
+				day, caller, now, cannotHandleReversalTitle); refusal != nil || err != nil {
 				return refusal, err
 			}
 			if id := *again.InvoicesCustomerCredit.BankTransactionID; !slices.Contains(reversedLines, id) {
 				reversedLines = append(reversedLines, id)
+			}
+		}
+		// A credit note's surplus that moved to the customer comes back to
+		// each invoice the removals reopened, as a removal returns it
+		// (plan reading 8) — after the credits named, so the balance it reads
+		// is what they left — in descending id as the invoices were locked.
+		for _, inv := range invs {
+			if _, ok := paidBy[inv.ID]; !ok {
+				continue
+			}
+			if err := returnMovedCredit(ctx, txq, inv, day, caller, now); err != nil {
+				return nil, err
 			}
 		}
 		// The line each payment or credit came from is marked reversed, so

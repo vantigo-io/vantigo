@@ -240,3 +240,33 @@ func TestCreditRace_TheEraseAgainstARefundsNote(t *testing.T) {
 		t.Errorf("%d notes left after the erase, want none", n)
 	}
 }
+
+// A reversal of a payment with credit kept beside it against a refund of
+// that credit: the reversal takes the customer's lock before the invoice,
+// the refund waits on it and is judged on what the reversal left — nothing.
+func TestCreditRace_AReversalAgainstARefund(t *testing.T) {
+	h, _ := matchHarness(t)
+	kept := kidInvoice(t, h)
+	body := pay(1500, "2026-09-12")
+	body["keepRestAsCredit"] = true
+	paid := registered(t, h, kept.ID, body)
+	toMatchDay(h)
+	c := importer(t, h)
+	_, ids := camtLines(t, h, c, "RACE-REV", reversalEntry(7, 1500, "REV"))
+	var refundRes *modtest.Response
+	done := make(chan struct{})
+	restore, fired := holdCreditPath(t, h, kept.ID, func() {
+		defer close(done)
+		refundRes = c.Do(http.MethodPost, refundsPath(customerAcme), refund(100))
+	})
+	defer restore()
+	acted(t, c, ids["REV"], "handle-reversal", reversalOf(kept.ID, paid.Payments[0].ID))
+	if !fired.Load() {
+		t.Fatal("the seam never fired")
+	}
+	within(t, "the refund", done)
+	refusedCredit(t, "the refund behind the reversal", refundRes, "credit_exceeds_balance")
+	if b := balanceOf(t, h, customerAcme); b != 0 {
+		t.Errorf("the credit = %v, want 0", b)
+	}
+}

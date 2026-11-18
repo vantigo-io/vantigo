@@ -730,8 +730,12 @@ func (c *paymentClaim) register(ctx context.Context, capturedMinor int64) error 
 		if err != nil {
 			return err
 		}
+		nok, err := amountNOKOf(inv, amount)
+		if err != nil {
+			return err
+		}
 		if _, err := txq.InsertVippsPayment(ctx, store.InsertVippsPaymentParams{
-			InvoiceID: inv.ID, PaidOn: pgDate(paidOn), Amount: amount, Currency: inv.Currency,
+			InvoiceID: inv.ID, PaidOn: pgDate(paidOn), Amount: amount, AmountNok: nok, Currency: inv.Currency,
 			Reference: a.Reference, PaymentAttemptID: &a.ID, RegisteredAt: c.now,
 		}); err != nil {
 			return fmt.Errorf("invoices: register payment attempt %d's capture against %d: %w", a.ID, inv.ID, err)

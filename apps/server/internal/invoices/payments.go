@@ -200,6 +200,9 @@ func (s *server) PostInvoicesByIdPayments(ctx context.Context, req gen.PostInvoi
 			}
 			payment.InvoiceID, payment.Currency = locked.ID, locked.Currency
 			payment.RegisteredAt, payment.RegisteredByUserID = s.deps.Clock(), ptr(callerID(ctx))
+			if payment.AmountNok, err = amountNOKOf(locked, payment.Amount); err != nil {
+				return err
+			}
 			registered, err := txq.InsertPayment(ctx, payment)
 			if err != nil {
 				return fmt.Errorf("invoices: register a payment against %d: %w", locked.ID, err)
@@ -228,6 +231,9 @@ func (s *server) PostInvoicesByIdPayments(ctx context.Context, req gen.PostInvoi
 		}
 		payment.InvoiceID, payment.Currency = locked.ID, locked.Currency
 		payment.RegisteredAt, payment.RegisteredByUserID = s.deps.Clock(), ptr(callerID(ctx))
+		if payment.AmountNok, err = amountNOKOf(locked, payment.Amount); err != nil {
+			return err
+		}
 		if _, err := txq.InsertPayment(ctx, payment); err != nil {
 			return fmt.Errorf("invoices: register a payment against %d: %w", locked.ID, err)
 		}

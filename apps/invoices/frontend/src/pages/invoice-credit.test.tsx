@@ -37,6 +37,11 @@ describe("the customer's credit on an invoice", () => {
       amount: 30,
       paidOn: "2026-09-12",
     });
+    // A retry of the same apply applies once: it carries an Idempotency-Key.
+    const call = fetchMock.actualCalls.find(
+      ([input, init]) => String(input).endsWith("/api/v1/invoices/1001/apply-credit") && init?.method === "POST",
+    );
+    expect(new Headers(call?.[1]?.headers).get("Idempotency-Key")).toMatch(/^[0-9a-f-]{36}$/);
   });
 
   it("says nothing of the credit on a paid invoice", async () => {

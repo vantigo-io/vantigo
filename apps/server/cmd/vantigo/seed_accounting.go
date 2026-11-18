@@ -105,8 +105,8 @@ func seedAccountingSources(ctx context.Context, tx pgx.Tx, now time.Time, userID
 	writtenOff := now.AddDate(0, 0, -10)
 	if err := tx.QueryRow(ctx, `
 		INSERT INTO invoices.write_offs (
-			invoice_id, written_off_on, amount, currency, reason, vat_correction, registered_by_user_id, registered_at
-		) VALUES ($1, $2::date, $3, 'NOK', 'loss', true, $4, $5)
+			invoice_id, written_off_on, amount, amount_nok, currency, reason, vat_correction, registered_by_user_id, registered_at
+		) VALUES ($1, $2::date, $3, $3, 'NOK', 'loss', true, $4, $5)
 		RETURNING id
 	`, invoiceID, writtenOff.Format(time.DateOnly), gross, ownerID, writtenOff).Scan(&writeOffID); err != nil {
 		return err
@@ -114,9 +114,9 @@ func seedAccountingSources(ctx context.Context, tx pgx.Tx, now time.Time, userID
 	recovered := now.AddDate(0, 0, -3)
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO invoices.payments (
-			invoice_id, paid_on, amount, currency, source, reference, note, registered_by_user_id, registered_at,
+			invoice_id, paid_on, amount, amount_nok, currency, source, reference, note, registered_by_user_id, registered_at,
 			kind, write_off_id
-		) VALUES ($1, $2::date, round($3::numeric / 3, 2), 'NOK', 'manual', 'INKASSO-1', 'Delvis innfridd via inkasso', $4, $5,
+		) VALUES ($1, $2::date, round($3::numeric / 3, 2), round($3::numeric / 3, 2), 'NOK', 'manual', 'INKASSO-1', 'Delvis innfridd via inkasso', $4, $5,
 			'recovered', $6)
 	`, invoiceID, recovered.Format(time.DateOnly), gross, ownerID, recovered, writeOffID); err != nil {
 		return err

@@ -1248,7 +1248,7 @@ interface TotalsProps {
   net: number;
   vat: number;
   gross: number;
-  /** An issued invoice's figures (D3): what its live payments paid, what is open, and — below zero — the refund due. */
+  /** An issued invoice's figures (D3): what its live payments paid and what is open — never below zero once a credit note's surplus is the customer's credit. */
   paid?: number;
   open?: number;
 }

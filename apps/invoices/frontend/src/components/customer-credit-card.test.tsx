@@ -83,6 +83,18 @@ const renderPanel = (canAct: boolean) =>
   );
 
 describe("CustomerCreditCard", () => {
+  it("shows a refund without its account to a reader the server gives none", async () => {
+    const base = acmeCredit();
+    const refund = { ...base.refunds[0] };
+    delete refund.bankAccount;
+    server(() => ({ ...base, refunds: [refund] }));
+    renderPanel(false);
+
+    const row = await screen.findByTestId("credit-refund-1001");
+    expect(row).not.toHaveTextContent("account");
+    expect(row).toHaveTextContent(/NOK\s?50\.00/);
+  });
+
   it("shows the balance and every movement with what it came from, and nothing to change without invoices:payments", async () => {
     server();
     renderPanel(false);

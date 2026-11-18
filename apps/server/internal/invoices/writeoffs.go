@@ -128,8 +128,12 @@ func (s *server) PostInvoicesByIdWriteOff(ctx context.Context, req gen.PostInvoi
 		if err != nil {
 			return err
 		}
+		nok, err := amountNOKOf(locked, amount)
+		if err != nil {
+			return err
+		}
 		if _, err := txq.InsertWriteOff(ctx, store.InsertWriteOffParams{
-			InvoiceID: locked.ID, WrittenOffOn: pgDate(day), Amount: amount, Currency: locked.Currency, Reason: reason,
+			InvoiceID: locked.ID, WrittenOffOn: pgDate(day), Amount: amount, AmountNok: nok, Currency: locked.Currency, Reason: reason,
 			VatCorrection: vatCorrection, RegisteredByUserID: callerID(ctx), RegisteredAt: s.deps.Clock(),
 		}); err != nil {
 			return fmt.Errorf("invoices: write off %d: %w", locked.ID, err)

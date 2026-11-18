@@ -25,9 +25,9 @@ ORDER BY paid_on, id;
 -- that lock; tr_payments_parent refuses a draft's or a credit note's anyway.
 -- A recovery (kind recovered, A16) names the standing write-off it recovers.
 INSERT INTO invoices.payments (
-    invoice_id, paid_on, amount, currency, reference, note, registered_by_user_id, registered_at, kind, write_off_id
+    invoice_id, paid_on, amount, amount_nok, currency, reference, note, registered_by_user_id, registered_at, kind, write_off_id
 ) VALUES (
-    @invoice_id, @paid_on, @amount, @currency, @reference, @note, @registered_by_user_id, @registered_at::timestamptz,
+    @invoice_id, @paid_on, @amount, @amount_nok, @currency, @reference, @note, @registered_by_user_id, @registered_at::timestamptz,
     @kind::text, sqlc.narg(write_off_id)::bigint
 )
 RETURNING *;
@@ -40,9 +40,9 @@ RETURNING *;
 -- state in the same transaction, so the payment and the reservation never
 -- both count against the open amount.
 INSERT INTO invoices.payments (
-    invoice_id, paid_on, amount, currency, reference, source, payment_attempt_id, registered_at
+    invoice_id, paid_on, amount, amount_nok, currency, reference, source, payment_attempt_id, registered_at
 ) VALUES (
-    @invoice_id, @paid_on, @amount, @currency, @reference, 'vipps', @payment_attempt_id, @registered_at::timestamptz
+    @invoice_id, @paid_on, @amount, @amount_nok, @currency, @reference, 'vipps', @payment_attempt_id, @registered_at::timestamptz
 )
 RETURNING *;
 
@@ -65,8 +65,8 @@ WHERE id = @id AND invoice_id = @invoice_id AND removed_at IS NULL;
 -- applied movement names it, in the same transaction, under the customer's
 -- credit lock and then the invoice's.
 INSERT INTO invoices.payments (
-    invoice_id, paid_on, amount, currency, reference, note, source, registered_by_user_id, registered_at
+    invoice_id, paid_on, amount, amount_nok, currency, reference, note, source, registered_by_user_id, registered_at
 ) VALUES (
-    @invoice_id, @paid_on, @amount, @currency, @reference, @note, 'credit', @registered_by_user_id::uuid, @registered_at::timestamptz
+    @invoice_id, @paid_on, @amount, @amount_nok, @currency, @reference, @note, 'credit', @registered_by_user_id::uuid, @registered_at::timestamptz
 )
 RETURNING *;

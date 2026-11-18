@@ -15,9 +15,9 @@ import (
 
 const insertWriteOff = `-- name: InsertWriteOff :one
 INSERT INTO invoices.write_offs (
-    invoice_id, written_off_on, amount, currency, reason, vat_correction, registered_by_user_id, registered_at
+    invoice_id, written_off_on, amount, amount_nok, currency, reason, vat_correction, registered_by_user_id, registered_at
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8::timestamptz
+    $1, $2, $3, $4, $5, $6, $7, $8, $9::timestamptz
 )
 RETURNING id, invoice_id, written_off_on, amount, currency, reason, vat_correction, registered_by_user_id, registered_at, undone_at, undone_by_user_id, undo_reason, amount_nok
 `
@@ -26,6 +26,7 @@ type InsertWriteOffParams struct {
 	InvoiceID          int64
 	WrittenOffOn       pgtype.Date
 	Amount             pgtype.Numeric
+	AmountNok          pgtype.Numeric
 	Currency           string
 	Reason             string
 	VatCorrection      bool
@@ -41,6 +42,7 @@ func (q *Queries) InsertWriteOff(ctx context.Context, arg InsertWriteOffParams) 
 		arg.InvoiceID,
 		arg.WrittenOffOn,
 		arg.Amount,
+		arg.AmountNok,
 		arg.Currency,
 		arg.Reason,
 		arg.VatCorrection,

@@ -27,8 +27,13 @@ export const balanceIn = (credit: CustomerCredit | undefined, currency: string):
   credit?.balances.find((b) => b.currency === currency)?.balance ?? 0;
 
 /** Applies the customer's credit to an issued invoice (I11). The caller invalidates the document. */
-export const applyCredit = (id: number, input: ApplyCreditInput): Promise<InvoiceDocument> =>
-  request<InvoiceDocument>(`/api/v1/invoices/${id}/apply-credit`, json("POST", input));
+export const applyCredit = (id: number, input: ApplyCreditInput, idempotencyKey: string): Promise<InvoiceDocument> => {
+  const init = json("POST", input);
+  return request<InvoiceDocument>(`/api/v1/invoices/${id}/apply-credit`, {
+    ...init,
+    headers: { ...(init.headers as Record<string, string>), "Idempotency-Key": idempotencyKey },
+  });
+};
 
 /** Records money paid back outside Vantigo (I12); the answer is the customer's credit. */
 export const recordRefund = (customerId: number, input: CreditRefundInput): Promise<CustomerCredit> =>
