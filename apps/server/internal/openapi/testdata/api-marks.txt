@@ -181,6 +181,7 @@ identity never getIdentityAccountPin
 identity never getIdentityBootstrapStatus
 identity never getIdentityIntegrations
 identity never getIdentityIntegrationsById
+identity never getIdentityIntegrationsByIdRequests
 identity never getIdentityInvitationsValidate
 identity never getIdentityOidcCallback
 identity never getIdentityOidcChallenge

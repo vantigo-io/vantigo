@@ -76,6 +76,38 @@ type IdentityApiKey struct {
 	ExpiredRecordedAt *time.Time
 }
 
+type IdentityApiKeyNotice struct {
+	KeyID  uuid.UUID
+	Kind   string
+	SentAt time.Time
+}
+
+type IdentityApiRequest struct {
+	At            time.Time
+	KeyID         uuid.UUID
+	IntegrationID uuid.UUID
+	Method        string
+	OperationID   string
+	Status        int16
+	Reason        *string
+	DurationMs    int32
+	ClientIp      *string
+	TraceID       *string
+}
+
+type IdentityApiRequestsDefault struct {
+	At            time.Time
+	KeyID         uuid.UUID
+	IntegrationID uuid.UUID
+	Method        string
+	OperationID   string
+	Status        int16
+	Reason        *string
+	DurationMs    int32
+	ClientIp      *string
+	TraceID       *string
+}
+
 type IdentityAssistantGrant struct {
 	ID             uuid.UUID
 	UserID         uuid.UUID
