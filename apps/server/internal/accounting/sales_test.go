@@ -693,8 +693,8 @@ func TestCatchUp_Guarantees(t *testing.T) {
 
 	// A handler only asks; the claim takes the wake-up and runs at once.
 	handlers := accounting.Module().EventHandlers(h.Deps())
-	if len(handlers) != 4 {
-		t.Fatalf("%d handlers, want Invoices' three and Expenses' one", len(handlers))
+	if len(handlers) != 5 {
+		t.Fatalf("%d handlers, want Invoices' four — the customer's credit among them — and Expenses' one", len(handlers))
 	}
 	if err := db.WithTx(t.Context(), h.Pool(), pgx.TxOptions{}, func(tx pgx.Tx) error {
 		return handlers[0].Handle(t.Context(), tx, events.Delivered{ID: 1, Name: "invoices.document.issued", Version: 1})

@@ -92,6 +92,9 @@ const (
 	handlerDocumentIssued  = "accounting.catchup.document-issued"
 	handlerPaymentReceived = "accounting.catchup.payment-received"
 	handlerPaymentRemoved  = "accounting.catchup.payment-removed"
+	// handlerCustomerCredit wakes the facts stream on a movement of a
+	// customer's credit in Invoices (invoices phase 6 design I16).
+	handlerCustomerCredit = "accounting.catchup.customer-credit"
 	// handlerExpenses wakes the expenses stream on every event of
 	// Expenses' fact log (R2).
 	handlerExpenses = "accounting.catchup.expenses"
@@ -122,6 +125,8 @@ func eventHandlers(d module.Deps) []events.Handler {
 		{Name: handlerPaymentReceived, Events: []events.EventRef{{Name: contracts.PaymentReceived{}.EventName(), Version: 1}},
 			Handle: wake(streamFacts)},
 		{Name: handlerPaymentRemoved, Events: []events.EventRef{{Name: contracts.PaymentRemoved{}.EventName(), Version: 1}},
+			Handle: wake(streamFacts)},
+		{Name: handlerCustomerCredit, Events: []events.EventRef{{Name: contracts.CustomerCreditChanged{}.EventName(), Version: 1}},
 			Handle: wake(streamFacts)},
 		{Name: handlerExpenses, Events: expenseEvents(), Handle: wake(streamExpenses)},
 	}
@@ -480,6 +485,20 @@ func postSource(ctx context.Context, tx pgx.Tx, it sourceItem, now time.Time) (o
 				blocker.SourceKind, deref(blocker.DocumentNumber))
 			return outcomeUnposted, recordUnposted(ctx, q, it, reasonWaitingOn, detail, &blocker.ID, now)
 		}
+	} else if key := creditOrderKey(it); key != "" && !posted {
+		// A refund's and a merge's facts name no invoice: they wait behind
+		// the customer's credit instead (plan step B4).
+		blocker, err := q.UnpostedBlockerByKey(ctx, store.UnpostedBlockerByKeyParams{OrderKey: &key, SourceModule: src.Module,
+			SourceKind: src.Kind, SourceID: src.ID, SourcePart: src.Part})
+		switch {
+		case noRows(err):
+		case err != nil:
+			return outcomeSkipped, err
+		default:
+			detail := fmt.Sprintf("Waits for the %s of the customer's credit, which is under Needs attention: fix and retry that first.",
+				blocker.SourceKind)
+			return outcomeUnposted, recordUnposted(ctx, q, it, reasonWaitingOn, detail, &blocker.ID, now)
+		}
 	}
 	if why != nil {
 		return outcomeUnposted, recordUnposted(ctx, q, it, why.reason, why.detail, nil, now)
@@ -521,8 +540,23 @@ func readFactInputs(ctx context.Context, q *store.Queries, it sourceItem) (factI
 		if f.WriteOff != nil {
 			in.writeOff, err = readStoredVoucher(ctx, q, contracts.FactWriteOff, f.WriteOff.ID)
 		}
+	case contracts.FactCredit:
+		if f.Credit != nil && f.Credit.ReversesID != 0 {
+			in.original, err = readStoredVoucher(ctx, q, contracts.FactCredit, f.Credit.ReversesID)
+		}
 	}
 	return in, err
+}
+
+// creditOrderKey is what a credit fact with no invoice — a refund's, its
+// reversal's, a merge's — waits behind under Needs attention: the
+// customer's credit. "" for every other item.
+func creditOrderKey(it sourceItem) string {
+	if it.fact == nil || it.fact.InvoiceID != 0 ||
+		(it.fact.Kind != contracts.FactCredit && it.fact.Kind != contracts.FactCreditMerged) {
+		return ""
+	}
+	return fmt.Sprintf("invoices.customer_credit:%d", it.fact.CustomerID)
 }
 
 // readStoredVoucher is the voucher Invoices' source of that kind and id posted
@@ -589,8 +623,13 @@ func unpostedParams(it sourceItem, reason, detail string, waitingOn *int64, now 
 		p.DocumentNumber, p.Amount = ptr(fmt.Sprint(d.Number)), ptr(d.Gross)
 	case it.fact != nil:
 		f := it.fact
-		p.FactDate, p.DocumentID, p.CustomerID = &f.Date, &f.InvoiceID, &f.CustomerID
-		p.DocumentNumber, p.Amount = ptr(fmt.Sprint(f.InvoiceNumber)), ptr(f.AmountNOK)
+		p.FactDate, p.CustomerID, p.Amount = &f.Date, &f.CustomerID, ptr(f.AmountNOK)
+		if f.InvoiceID != 0 {
+			p.DocumentID, p.DocumentNumber = &f.InvoiceID, ptr(fmt.Sprint(f.InvoiceNumber))
+		}
+		if key := creditOrderKey(it); key != "" {
+			p.OrderKey = &key
+		}
 	case it.expense != nil:
 		f := it.expense
 		p.FactDate, p.OrderKey = &f.Date, ptr(expenseOrderKey(*f))

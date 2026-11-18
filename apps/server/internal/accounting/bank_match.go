@@ -930,6 +930,12 @@ func settleableItem(ctx context.Context, q *store.Queries, id int64, field strin
 		return conflict(codeSettlementSourceDoc, "The item is paid in Invoices",
 			"It stands for an invoice in Invoices: register the payment on the invoice there.")
 	}
+	if item.CustomerCredit {
+		// The customer's credit moves with Invoices' facts only (invoices
+		// phase 6 design I16): kept, applied and refunded there.
+		return conflict(codeSettlementSourceDoc, "The item is the customer's credit in Invoices",
+			"It is the customer's credit in Invoices: apply it to an invoice or record its refund there.")
+	}
 	if item.Kind == "supplier" {
 		if _, err := q.SupplierInvoiceOfItem(ctx, item.ID); err == nil {
 			return conflict(codeSettlementSupplierInv, "The item is a supplier invoice's",

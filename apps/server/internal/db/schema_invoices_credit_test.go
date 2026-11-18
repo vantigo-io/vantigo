@@ -10,9 +10,12 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/testdb"
 )
 
-// 00197_invoices_credit.sql (invoices phase 6 design I8-I16, plan delivery
-// B-1).
-const invoicesCreditVersion = 197
+// 00197_invoices_credit.sql and 00198_accounting_customer_credit.sql (invoices
+// phase 6 design I8-I16, plan delivery B-1).
+const (
+	invoicesCreditVersion   = 197
+	accountingCreditVersion = 198
+)
 
 // The backfill (I10): an issued invoice a credit note took below zero open
 // before the migration moves its surplus to its customer, unattributed,
@@ -60,9 +63,35 @@ func TestInvoicesCredit_TheBackfill(t *testing.T) {
 	}
 }
 
-// The migration applies on an empty database, rolls back and applies again.
+// Both migrations apply on an empty database, roll back and apply again.
 func TestInvoicesCredit_AppliesAndIsIdempotent(t *testing.T) {
 	t.Parallel()
 	url := testdb.MigratedURL(t)
 	applyUpDownUp(t, url, invoicesCreditVersion)
+	applyUpDownUp(t, url, accountingCreditVersion)
+}
+
+// The credit item (I16, plan reading 5): a flag on a customer item, at most
+// one per customer, never the unallocated item nor a document's, and it may
+// carry the opening's AsOfSeq.
+func TestAccountingCredit_TheItemsRules(t *testing.T) {
+	t.Parallel()
+	pool, _ := testdb.Migrated(t)
+	ctx := context.Background()
+	insert := func(cols, vals string) error {
+		_, err := pool.Exec(ctx, `INSERT INTO accounting.open_items (kind, customer_id, created_at`+cols+`) VALUES ('customer', 7, now()`+vals+`)`)
+		return err
+	}
+	if err := insert(", customer_credit, opening_as_of_seq", ", true, 4"); err != nil {
+		t.Fatalf("a credit item: %v", err)
+	}
+	if err := insert(", customer_credit", ", true"); err == nil {
+		t.Error("a second credit item of the customer was let through")
+	}
+	if err := insert(", customer_credit, unallocated", ", true, true"); err == nil {
+		t.Error("an unallocated credit item was let through")
+	}
+	if err := insert(", customer_credit, source_document_id", ", true, 99"); err == nil {
+		t.Error("a credit item standing for a document was let through")
+	}
 }

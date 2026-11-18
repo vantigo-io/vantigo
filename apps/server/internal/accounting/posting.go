@@ -135,11 +135,14 @@ func (l Line) field(i int) string {
 }
 
 // OpenItemSpec is a new open item's document: its number and dates. Its
-// original amount is the line's.
+// original amount is the line's. CustomerCredit names instead the customer's
+// credit item (invoices phase 6 design I16): one per customer, with no
+// document, found or made as the unallocated item is.
 type OpenItemSpec struct {
 	DocumentNumber string
 	DocumentDate   *time.Time
 	DueDate        *time.Time
+	CustomerCredit bool
 }
 
 // Posted is the voucher Post booked, or the one a repeated source already
@@ -526,6 +529,21 @@ func attachOpenItem(ctx context.Context, tx pgx.Tx, l *resolvedLine, documentDat
 		}
 		l.OpenItemID = &got.ID
 		return true, nil
+	}
+	if l.Item != nil && l.Item.CustomerCredit {
+		if kind != "customer" {
+			return invalidField("The voucher cannot be posted", field+".openItemId", codeOpenItemUnknown,
+				"A customer's credit is on receivables, with a customer.")
+		}
+		if err := q.EnsureCustomerCreditItem(ctx, store.EnsureCustomerCreditItemParams{CustomerID: l.CustomerID, Now: now}); err != nil {
+			return err
+		}
+		item, err := q.CustomerCreditItem(ctx, l.CustomerID)
+		if err != nil {
+			return err
+		}
+		l.OpenItemID = &item.ID
+		return nil
 	}
 	if l.SourceDocumentID != nil {
 		if found, err := bySource(); err != nil || found {

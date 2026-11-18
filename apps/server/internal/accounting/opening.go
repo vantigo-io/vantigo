@@ -4,7 +4,9 @@ package accounting
 // books_start, against the opening account. A receivables or payables line is
 // one open document, so the party ledgers start with real open items; for a
 // company already invoicing in Vantigo the form offers the invoices open at
-// the day before books_start, read from Invoices' journal. The opening can be
+// the day before books_start, read from Invoices' journal, and the
+// customers' credit then (invoices phase 6 design I16), each a credit line on
+// the customer's credit item. The opening can be
 // reversed and entered again until the first lock — the
 // first ever: lifting the lock does not open it again.
 
@@ -63,6 +65,45 @@ func (s *server) openAtSnapshot(ctx context.Context, day time.Time) ([]openInvoi
 	}
 }
 
+// openCredit is one customer's credit Invoices' CreditsAt answered, with the
+// AsOfSeq of the page it was read on (invoices phase 6 design I16).
+type openCredit struct {
+	contracts.CustomerCredit
+	asOfSeq int64
+}
+
+// creditsAtSnapshot is Invoices' customers' credit at the end of day, read
+// page by page until a short page, as openAtSnapshot reads the invoices; nil
+// without Invoices. The one call site of SalesJournal.CreditsAt, made with no
+// transaction open.
+func (s *server) creditsAtSnapshot(ctx context.Context, day time.Time) ([]openCredit, error) {
+	if s.deps.SalesJournal == nil {
+		return nil, nil
+	}
+	var out []openCredit
+	after := int32(0)
+	for {
+		page, err := s.deps.SalesJournal.CreditsAt(ctx, day, after, contracts.MaxJournalPage)
+		if err != nil {
+			return nil, err
+		}
+		customers := 0
+		for _, c := range page.Credits {
+			if c.CustomerID < after {
+				return nil, fmt.Errorf("accounting: CreditsAt answered customer %d after %d", c.CustomerID, after)
+			}
+			if c.CustomerID != after {
+				customers++
+			}
+			after = c.CustomerID
+			out = append(out, openCredit{CustomerCredit: c, asOfSeq: page.AsOfSeq})
+		}
+		if customers < contracts.MaxJournalPage {
+			return out, nil
+		}
+	}
+}
+
 // openingFinal reports whether the opening balances are final (A9): the
 // books are locked, or have been locked once, even if the lock was lifted
 // since.
@@ -86,7 +127,8 @@ func (s *server) GetAccountingOpening(ctx context.Context, _ gen.GetAccountingOp
 		return nil, err
 	}
 	out := gen.GetAccountingOpening200JSONResponse{BooksStart: apiDate(settings.BooksStart), Locked: final,
-		InvoicesAvailable: s.deps.SalesJournal != nil, OpenInvoices: []gen.AccountingOpenInvoice{}}
+		InvoicesAvailable: s.deps.SalesJournal != nil, OpenInvoices: []gen.AccountingOpenInvoice{},
+		OpenCredits: []gen.AccountingOpenCredit{}}
 	id, err := q.StandingOpening(ctx)
 	switch {
 	case noRows(err):
@@ -108,11 +150,24 @@ func (s *server) GetAccountingOpening(ctx context.Context, _ gen.GetAccountingOp
 		out.InvoicesAvailable = false
 		return out, nil
 	}
-	ids := make([]int32, 0, len(docs))
+	credits, err := s.creditsAtSnapshot(ctx, settings.BooksStart.AddDate(0, 0, -1))
+	if err != nil {
+		s.logger().WarnContext(ctx, "accounting: Invoices' customers' credit could not be read", "error", err.Error())
+		out.InvoicesAvailable = false
+		return out, nil
+	}
+	ids := make([]int32, 0, len(docs)+len(credits))
 	for _, d := range docs {
 		ids = append(ids, d.CustomerID)
 	}
+	for _, c := range credits {
+		ids = append(ids, c.CustomerID)
+	}
 	names := s.customerNames(ctx, ids)
+	for _, c := range credits {
+		out.OpenCredits = append(out.OpenCredits, gen.AccountingOpenCredit{CustomerId: c.CustomerID, CustomerName: names[c.CustomerID],
+			Currency: c.Currency, Amount: money(neg(mustRat(c.BalanceNOK)))})
+	}
 	for _, d := range docs {
 		out.OpenInvoices = append(out.OpenInvoices, gen.AccountingOpenInvoice{DocumentId: d.ID, Number: d.Number,
 			CustomerId: d.CustomerID, CustomerName: names[d.CustomerID], IssueDate: apiDate(d.IssueDate),
@@ -160,7 +215,13 @@ func (s *server) PostAccountingOpening(ctx context.Context, req gen.PostAccounti
 		total.Add(total, amount)
 		line := Line{AccountID: l.AccountId, Amount: amount, CustomerID: l.CustomerId, SupplierID: l.SupplierId,
 			SourceDocumentID: l.SourceDocumentId, Text: strings.TrimSpace(deref(l.Text)), origin: i + 1}
-		if l.DocumentNumber != nil || l.DocumentDate != nil || l.DueDate != nil || l.SourceDocumentId != nil {
+		if l.CustomerCredit != nil && *l.CustomerCredit {
+			if l.SourceDocumentId != nil || l.DocumentNumber != nil || l.SupplierId != nil {
+				f.addCoded("lines["+itoa(i)+"].customerCredit", codeOpenItemUnknown,
+					"A customer's credit stands for no document: name the customer and nothing else.")
+			}
+			line.Item = &OpenItemSpec{CustomerCredit: true}
+		} else if l.DocumentNumber != nil || l.DocumentDate != nil || l.DueDate != nil || l.SourceDocumentId != nil {
 			line.Item = &OpenItemSpec{DocumentNumber: strings.TrimSpace(deref(l.DocumentNumber)),
 				DocumentDate: datePtr(l.DocumentDate), DueDate: datePtr(l.DueDate)}
 		}
@@ -187,6 +248,40 @@ func (s *server) PostAccountingOpening(ctx context.Context, req gen.PostAccounti
 	byID := make(map[int64]openInvoice, len(open))
 	for _, d := range open {
 		byID[d.ID] = d
+	}
+	credits, err := s.creditsAtSnapshot(ctx, settings.BooksStart.AddDate(0, 0, -1))
+	if err != nil {
+		return nil, err
+	}
+	var creditCustomers []int32
+	var creditSeqs []int64
+	for i, l := range req.Body.Lines {
+		if l.CustomerCredit == nil || !*l.CustomerCredit {
+			continue
+		}
+		// The line is the customer's NOK credit, negated: its credit item
+		// starts where Invoices' credit stood (I16, R14).
+		field := "lines[" + itoa(i) + "].customerCredit"
+		amount, _ := parseAmount(l.Amount)
+		k := slices.IndexFunc(credits, func(c openCredit) bool { return l.CustomerId != nil && c.CustomerID == *l.CustomerId })
+		switch {
+		case l.CustomerId == nil || k < 0:
+			f.addCoded(field, codeOpenItemUnknown, "Not a customer with credit in Invoices at the day before the books start.")
+		case slices.Contains(creditCustomers, *l.CustomerId):
+			f.addCoded(field, codeOpenItemUnknown, "The customer's credit is on another line already.")
+		default:
+			want := new(big.Rat)
+			for _, c := range credits {
+				if c.CustomerID == *l.CustomerId {
+					want.Sub(want, mustRat(c.BalanceNOK))
+				}
+			}
+			if amount == nil || amount.Cmp(want) != 0 {
+				f.addCoded(field, codeOpenItemUnknown, "The customer's credit is "+money(want)+".")
+				continue
+			}
+			creditCustomers, creditSeqs = append(creditCustomers, *l.CustomerId), append(creditSeqs, credits[k].asOfSeq)
+		}
 	}
 	var documentIDs, documentSeqs []int64
 	for i, l := range req.Body.Lines {
@@ -247,6 +342,11 @@ func (s *server) PostAccountingOpening(ctx context.Context, req gen.PostAccounti
 		}
 		if err := q.SetOpeningAsOfSeq(ctx, store.SetOpeningAsOfSeqParams{Seq: asOfSeq, Now: s.now()}); err != nil {
 			return err
+		}
+		if len(creditCustomers) > 0 {
+			if err := q.SetCreditItemOpeningSeqs(ctx, store.SetCreditItemOpeningSeqsParams{CustomerIds: creditCustomers, Seqs: creditSeqs}); err != nil {
+				return err
+			}
 		}
 		if len(documentIDs) == 0 {
 			return nil

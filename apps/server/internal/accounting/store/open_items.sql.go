@@ -23,6 +23,44 @@ func (q *Queries) CountOpenCustomerItems(ctx context.Context) (int32, error) {
 	return column_1, err
 }
 
+const customerCreditItem = `-- name: CustomerCreditItem :one
+SELECT id, opening_as_of_seq FROM accounting.open_items
+WHERE customer_credit AND customer_id = $1
+`
+
+type CustomerCreditItemRow struct {
+	ID             int64
+	OpeningAsOfSeq *int64
+}
+
+// CustomerCreditItem is the customer's credit item, with the seq of the
+// opening's CreditsAt page it was read on.
+func (q *Queries) CustomerCreditItem(ctx context.Context, customerID *int32) (CustomerCreditItemRow, error) {
+	row := q.db.QueryRow(ctx, customerCreditItem, customerID)
+	var i CustomerCreditItemRow
+	err := row.Scan(&i.ID, &i.OpeningAsOfSeq)
+	return i, err
+}
+
+const ensureCustomerCreditItem = `-- name: EnsureCustomerCreditItem :exec
+INSERT INTO accounting.open_items (kind, customer_id, customer_credit, created_at)
+VALUES ('customer', $1, true, $2)
+ON CONFLICT DO NOTHING
+`
+
+type EnsureCustomerCreditItemParams struct {
+	CustomerID *int32
+	Now        time.Time
+}
+
+// EnsureCustomerCreditItem makes the customer's credit item (invoices phase 6
+// design I16) when it has none: one per customer, on receivables, with no
+// document; two posts at once both end up naming the one row.
+func (q *Queries) EnsureCustomerCreditItem(ctx context.Context, arg EnsureCustomerCreditItemParams) error {
+	_, err := q.db.Exec(ctx, ensureCustomerCreditItem, arg.CustomerID, arg.Now)
+	return err
+}
+
 const ensureUnallocatedItem = `-- name: EnsureUnallocatedItem :exec
 INSERT INTO accounting.open_items (kind, customer_id, supplier_id, unallocated, created_at)
 VALUES ($1, $2, $3, true, $4)
@@ -51,7 +89,8 @@ func (q *Queries) EnsureUnallocatedItem(ctx context.Context, arg EnsureUnallocat
 const getOpenItem = `-- name: GetOpenItem :one
 SELECT o.id, o.kind, o.customer_id, o.supplier_id, o.unallocated, o.document_number, o.document_date, o.due_date,
     o.original_amount::text AS original_amount, o.source_document_id,
-    coalesce((SELECT sum(p.amount) FROM accounting.postings p WHERE p.open_item_id = o.id), 0)::text AS balance
+    coalesce((SELECT sum(p.amount) FROM accounting.postings p WHERE p.open_item_id = o.id), 0)::text AS balance,
+    o.customer_credit
 FROM accounting.open_items o WHERE o.id = $1
 `
 
@@ -67,6 +106,7 @@ type GetOpenItemRow struct {
 	OriginalAmount   string
 	SourceDocumentID *int64
 	Balance          string
+	CustomerCredit   bool
 }
 
 func (q *Queries) GetOpenItem(ctx context.Context, id int64) (GetOpenItemRow, error) {
@@ -84,6 +124,7 @@ func (q *Queries) GetOpenItem(ctx context.Context, id int64) (GetOpenItemRow, er
 		&i.OriginalAmount,
 		&i.SourceDocumentID,
 		&i.Balance,
+		&i.CustomerCredit,
 	)
 	return i, err
 }
@@ -129,7 +170,7 @@ func (q *Queries) InsertOpenItem(ctx context.Context, arg InsertOpenItemParams) 
 const listOpenItems = `-- name: ListOpenItems :many
 SELECT o.id, o.kind, o.customer_id, o.supplier_id, o.unallocated, o.document_number, o.document_date, o.due_date,
     o.original_amount::text AS original_amount, o.source_document_id, b.balance::text AS balance,
-    count(*) OVER () AS total
+    count(*) OVER () AS total, o.customer_credit
 FROM accounting.open_items o
 CROSS JOIN LATERAL (SELECT coalesce(sum(p.amount), 0) AS balance FROM accounting.postings p
     WHERE p.open_item_id = o.id) b
@@ -163,6 +204,7 @@ type ListOpenItemsRow struct {
 	SourceDocumentID *int64
 	Balance          string
 	Total            int64
+	CustomerCredit   bool
 }
 
 // ListOpenItems is a page of the items matching the filters, with the count
@@ -196,6 +238,7 @@ func (q *Queries) ListOpenItems(ctx context.Context, arg ListOpenItemsParams) ([
 			&i.SourceDocumentID,
 			&i.Balance,
 			&i.Total,
+			&i.CustomerCredit,
 		); err != nil {
 			return nil, err
 		}
@@ -287,6 +330,24 @@ func (q *Queries) OpenItemsForPosting(ctx context.Context, ids []int64) ([]OpenI
 		return nil, err
 	}
 	return items, nil
+}
+
+const setCreditItemOpeningSeqs = `-- name: SetCreditItemOpeningSeqs :exec
+UPDATE accounting.open_items o SET opening_as_of_seq = s.seq
+FROM (SELECT unnest($1::int[]) AS customer_id, unnest($2::bigint[]) AS seq) s
+WHERE o.customer_credit AND o.customer_id = s.customer_id
+`
+
+type SetCreditItemOpeningSeqsParams struct {
+	CustomerIds []int32
+	Seqs        []int64
+}
+
+// SetCreditItemOpeningSeqs records, on each customer's credit item the
+// opening made, the AsOfSeq of the CreditsAt page it was read on (I16, R14).
+func (q *Queries) SetCreditItemOpeningSeqs(ctx context.Context, arg SetCreditItemOpeningSeqsParams) error {
+	_, err := q.db.Exec(ctx, setCreditItemOpeningSeqs, arg.CustomerIds, arg.Seqs)
+	return err
 }
 
 const setOpeningAsOfSeqs = `-- name: SetOpeningAsOfSeqs :exec
