@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"strings"
 	"testing"
@@ -242,7 +243,7 @@ var demoCustomRoles = []demoRoleSpec{
 	},
 }
 
-func seed(ctx context.Context, logger *slog.Logger, cfg *config.Config) int {
+func seed(ctx context.Context, logger *slog.Logger, cfg *config.Config, stdout io.Writer) int {
 	if code := migrate(logger, cfg); code != 0 {
 		return code
 	}
@@ -283,6 +284,12 @@ func seed(ctx context.Context, logger *slog.Logger, cfg *config.Config) int {
 	// Invoices and Expenses, the workshop's among them.
 	if err := seedDemoAccounting(ctx, pool, logger, cfg, seedClock().UTC().Truncate(time.Second)); err != nil {
 		logger.Error("development accounting seed failed", "error", err)
+		return 1
+	}
+	// The web shop's integration and its key (API access delivery A), once
+	// the catalogue and the orders it reaches exist.
+	if err := seedDemoIntegration(ctx, pool, logger, cfg, stdout, seedClock().UTC().Truncate(time.Second)); err != nil {
+		logger.Error("development integration seed failed", "error", err)
 		return 1
 	}
 	// Purchasing's invoice match once the books exist (delivery D): a
