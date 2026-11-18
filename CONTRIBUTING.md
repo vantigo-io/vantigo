@@ -397,13 +397,18 @@ Navigation — *one pattern per level*, so every page reads the same way:
 
 All endpoints are versioned by URL segment. Each module's own contract lives in
 `openapi/<module>.yaml`, and the running server serves the merged contract of the
-enabled modules at `GET /api/openapi.json` (session required). Module prefixes are
+enabled modules at `GET /api/openapi.json` to a session. The same path answers an API
+key (`Authorization: Bearer vtg_…`) with the integrator's document cut to what the key
+reaches, and a session asking `?view=api` with every operation a key can call;
+`go run ./cmd/vantigo openapi integrator` in `apps/server` writes that document too.
+Module prefixes are
 `/api/v1/identity`, `/api/v1/customers`, `/api/v1/products`, `/api/v1/energy`,
 `/api/v1/communications`, `/api/v1/projects`, `/api/v1/time`, `/api/v1/expenses`,
 `/api/v1/invoices`, `/api/v1/staff`, `/api/v1/planning`, `/api/v1/inventory`,
 `/api/v1/orders`, `/api/v1/manufacturing`, `/api/v1/accounting`, `/api/v1/purchasing`, `/api/v1/knowledge`, `/api/v1/calendar`, `/api/v1/entra`, `/api/v1/google` and
-`/api/v1/assistant`. Every other
-`/api` path answers the catch-all 404 problem.
+`/api/v1/assistant`. A browser opening `/api` itself gets the interactive API reference
+(`apps/apiref/frontend`, served from the binary with its files under `/api/reference/`);
+every other `/api` path, and `/api` for any other client, answers the catch-all 404 problem.
 
 Errors are RFC 7807 problem responses written by `internal/httpx`; validation errors
 carry keys matching the JSON field path:

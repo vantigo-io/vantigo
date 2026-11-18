@@ -32,7 +32,9 @@ const contracts = [
   "calendar",
   "entra",
   "google",
+  "meta",
   "assistant",
+  "agents",
 ];
 
 /**

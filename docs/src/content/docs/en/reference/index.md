@@ -19,6 +19,11 @@ per module, so it cannot drift from what the server serves. It is part of the pu
 site at <https://docs.vantigo.io> and left out of the copy a Vantigo installation
 serves under `/docs/`.
 
+An application calling the API with an integration's key starts at the
+[API introduction](/en/reference/api-introduction/): authentication, the document of what
+a key reaches, the error codes and the rate limit. What changes, and how, is the
+[API compatibility](/en/reference/api-compatibility/) policy.
+
 ## Modules
 
 | Module | What it holds |

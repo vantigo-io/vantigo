@@ -16,6 +16,8 @@ sources:
   - apps/host/frontend/src/routes/workspace/-api-access-integration.tsx
   - apps/host/frontend/src/routes/workspace/-api-key-dialog.tsx
   - apps/host/frontend/src/routes/workspace/-api-access-requests.tsx
+  - apps/server/internal/apiref
+  - apps/apiref/frontend/src
 ---
 
 En **integrasjon** er kontoen et annet program — en nettbutikk, et rapportverktøy, et
@@ -219,6 +221,33 @@ forespørsler til den hvert sekund, enten det kommer flere eller ikke, og en gan
 stenges ned, så den ligger høyst om lag ett sekund av sine egne forespørsler etter. Et
 arbeidsområde med flere replikaer kan derfor slippe gjennom opptil ett sekunds forespørsler mer
 enn grensen før alle avviser.
+
+## Prøv API-et på /api
+
+Vantigo serverer en interaktiv referanse for API-et sitt på `/api` på applikasjonens egen
+adresse, for eksempel `https://vantigo.example.com/api`. Åpne den i en nettleser:
+
+1. **Innlogget, uten nøkkel,** viser den alle operasjoner en API-nøkkel kan kalle, med
+   tillatelsen hver av dem krever. Et kall du prøver der med **Test Request**, går med din
+   egen økt og vurderes som ditt kall, slik siden sier over listen.
+2. **For å se hva en nøkkel når,** lim den inn i **API-nøkkel** og velg **Bruk nøkkel**.
+   Listen skjæres ned til operasjonene nøkkelen kan kalle — for en nøkkel for bare lesing
+   til lesingene — og **Test Request** sender nøkkelen, så kallet vurderes, avvises og
+   logges som nøkkelens.
+3. **Tøm** (eller å tømme feltet) setter siden tilbake til økten din.
+4. **Verken innlogget eller med nøkkel** forteller siden hvordan du får en nøkkel, og lenker
+   til [introduksjonen til API-et](/en/reference/api-introduction/).
+
+Nøkkelen blir i siden: den lagres ikke i nettleseren, sendes ikke noe annet sted enn til
+denne installasjonen, og er borte når du går herfra eller tømmer feltet. En nøkkel som
+avvises ved **Bruk nøkkel**, navngis med koden sin (se nedenfor), og en avvist nøkkel logger
+deg aldri ut. Ingenting på siden hentes utenfra installasjonen. Siden serveres ikke på den
+offentlige verten.
+
+Et program kan hente det samme dokumentet selv: `GET /api/openapi.json` med nøkkelen i
+`Authorization`-headeren svarer med OpenAPI-dokumentet for det nøkkelen når, klart for en
+klientgenerator; en økt som ber om `?view=api`, får alle operasjoner en nøkkel kan kalle
+([API-kontraktdokumentet](/nb/admin/transport-security/#api-kontraktdokumentet)).
 
 ## Svarene en nøkkel kan få
 
