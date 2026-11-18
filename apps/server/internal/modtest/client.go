@@ -29,6 +29,9 @@ type Client struct {
 	h    *Harness
 	http *http.Client
 	ip   string
+	// header is sent with every request, before each request's own options:
+	// an API key's Authorization (APIKeyClient).
+	header http.Header
 }
 
 // Client returns a new client for t with a unique synthetic address from
@@ -137,6 +140,9 @@ func (c *Client) Do(method, path string, body any, opts ...RequestOption) *Respo
 		c.t.Fatalf("%s %s: %v", method, path, err)
 	}
 	req.Header.Set("X-Forwarded-For", c.ip)
+	for k, v := range c.header {
+		req.Header[k] = v
+	}
 	if r.contentType != "" {
 		req.Header.Set("Content-Type", r.contentType)
 	}

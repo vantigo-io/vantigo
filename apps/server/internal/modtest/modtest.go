@@ -51,8 +51,12 @@ import (
 	"testing/fstest"
 	"time"
 
+	"github.com/exaring/otelpgx"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 
 	"github.com/vantigo-io/vantigo/server/internal/config"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
@@ -193,6 +197,7 @@ type setup struct {
 	objectStore       storage.ObjectStore
 	peppolLookup      func(ctx context.Context, participant string) (peppol.Result, error)
 	poolMaxConns      int32
+	spans             *tracetest.SpanRecorder
 	accounts          contracts.AccountProvisioning
 	aiModels          contracts.AIModels
 	noAccounts        bool
@@ -799,6 +804,15 @@ func WithPoolMaxConns(n int32) Option {
 	return func(s *setup) { s.poolMaxConns = n }
 }
 
+// WithSpanRecorder records every span the installation makes into rec: the
+// server span of each API request, as telemetry.HTTPHandler makes it, and a
+// span per query on a pool of the installation's own, as db.Open's tracer
+// makes them. It is for a test that asserts what spans never carry — an API
+// key (API access design K11) — under the attributes production records.
+func WithSpanRecorder(rec *tracetest.SpanRecorder) Option {
+	return func(s *setup) { s.spans = rec }
+}
+
 // WithEnv sets one additional environment variable a harness loads its
 // configuration from, merged over the harness's own defaults (APP_ENV,
 // DATABASE_URL, ...). For a setting modtest itself has no dedicated Option
@@ -953,11 +967,26 @@ func New(t *testing.T, opts ...Option) *Harness {
 		t.Fatal("modtest: no module under test; pass modtest.WithModule(m)")
 	}
 
-	if s.poolMaxConns > 0 {
+	var tracer *sdktrace.TracerProvider
+	if s.spans != nil {
+		tracer = sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(s.spans))
+		t.Cleanup(func() { _ = tracer.Shutdown(context.Background()) })
+	}
+	if s.poolMaxConns > 0 || tracer != nil {
 		pool.Close()
-		sized, err := db.Open(context.Background(), databaseURL, db.WithMaxConns(s.poolMaxConns))
+		size := s.poolMaxConns
+		if size == 0 {
+			size = testdb.PoolMaxConns
+		}
+		dbOpts := []db.Option{db.WithMaxConns(size)}
+		if tracer != nil {
+			dbOpts = append(dbOpts, func(cfg *pgxpool.Config) {
+				cfg.ConnConfig.Tracer = otelpgx.NewTracer(otelpgx.WithTracerProvider(tracer), otelpgx.WithQuerySpanNamePrefix())
+			})
+		}
+		sized, err := db.Open(context.Background(), databaseURL, dbOpts...)
 		if err != nil {
-			t.Fatalf("modtest: open a pool of %d: %v", s.poolMaxConns, err)
+			t.Fatalf("modtest: open a pool of %d: %v", size, err)
 		}
 		t.Cleanup(sized.Close)
 		pool = sized
@@ -1114,14 +1143,18 @@ func New(t *testing.T, opts ...Option) *Harness {
 	if err != nil {
 		t.Fatalf("modtest: %v", err)
 	}
-	srv := httptest.NewUnstartedServer(server.New(server.Options{
+	var handler http.Handler = server.New(server.Options{
 		Config: cfg,
 		Logger: logger,
 		Index:  index,
 		Assets: assets,
 		Health: health.Handler(logger, "test"),
 		API:    api,
-	}))
+	})
+	if tracer != nil {
+		handler = otelhttp.NewHandler(handler, "http.server", otelhttp.WithTracerProvider(tracer))
+	}
+	srv := httptest.NewUnstartedServer(handler)
 	srv.Start()
 	t.Cleanup(srv.Close)
 	h.srv = srv
