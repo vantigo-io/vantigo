@@ -138,7 +138,7 @@ func TestInvoicesBankFeed_AppliesAndIsIdempotent(t *testing.T) {
 	}
 	// After every migration the payments' two CHECKs are as 00197 (invoices
 	// phase 6, delivery B-1) leaves them: the source credit added; and an
-	// event by no user may also be 00199's auto_split (delivery B-2).
+	// event by no user may also be 00200's auto_split (delivery B-2).
 	latest := map[string][]string{}
 	for k, v := range want {
 		latest[k] = v
