@@ -188,8 +188,17 @@ alle nøklene til du velger **Aktiver**, og **Arkiver** tilbakekaller alle nøkl
 integrasjonen for det den har gjort — det kan ikke angres. Kan en nøkkel ha lekket, tilbakekaller
 du den med en gang.
 
-Detaljene — hva en nøkkel når, begrensning, nøkler for bare lesing, nettverk, svarene en klient
-får og hva du gjør når en nøkkel lekker — står under [API-tilgang](/nb/admin/api-access/).
+Fanen **Forespørsler** på integrasjonens side viser hva nøklene har kalt de siste 30 dagene:
+forespørslene per dag etter status, operasjonene som er kalt mest, og de 200 siste med nøkkelen,
+statusen og, for en avvist forespørsel, hvorfor. **Nøkkel**, **Status**, **Avvist fordi** og
+**Dag** snevrer den inn. En ny forespørsel vises der i løpet av noen sekunder.
+
+**Kontaktpersonen** og hver eier får en e-post 14 dager og 3 dager før en nøkkel utløper, og på
+dagen, med mindre den er rotert eller tilbakekalt. Roter nøkkelen før den tid.
+
+Detaljene — hva en nøkkel når, begrensning, nøkler for bare lesing, nettverk,
+hastighetsgrensen, svarene en klient får, forespørselsloggen og hva du gjør når en nøkkel
+lekker — står under [API-tilgang](/nb/admin/api-access/).
 
 ## Deaktiver, aktiver eller slett en bruker
 
