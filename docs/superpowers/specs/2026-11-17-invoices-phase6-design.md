@@ -1,6 +1,6 @@
 # Invoices phase 6 — branding, the customer's balance, foreign currency, eFaktura and AvtaleGiro, sending in bulk
 
-Revision 4, 2026-11-17: delivery A's plan corrected two facts (§15). This spec builds on the research
+Revision 5, 2026-11-18: delivery B's plan read the decisions against the code (§15). This spec builds on the research
 `docs/superpowers/research/2026-11-17-invoices-competitive-gaps.md` ("R"). It does not
 reopen R §6, and it takes the defaults R §7 took for the readings. §14 says what an
 overturn of each would change. Decisions are numbered I*n*. Earlier phases' decisions are
@@ -694,3 +694,20 @@ Each has the default this spec takes, and what an overturn changes.
   - The phone is validated by Customers' rule. There is no E.164 normalisation to
     reuse (I4).
   - The Cloudflare driver learns inline parts (I5).
+- **5, 2026-11-18:** delivery B's plan (`plans/2026-11-17-invoices-phase6-plan.md`,
+  *B: readings against the code*) amends I8–I17a. **The plan's readings win where they
+  differ.** In short:
+  - B lands as B-1 (credit) and B-2 (split and rounding).
+  - The merge and the erase take the customer locks first.
+  - A credit row also carries `reverses_id` and `invoice_id`, and refunds get their own
+    table.
+  - `journal_facts.invoice_id` becomes nullable for credit facts.
+  - A merge moves Accounting's credit item through a `FactCreditMerged` fact.
+  - The credit item is a flag on the customer's open item, not a new kind.
+  - Credit balances are read through a sibling of `OpenAt`, `CreditsAt`.
+  - A payment of source `credit` posts no voucher.
+  - I10's follow-up runs from a `credit_moves` worker. Removing a payment or undoing a
+    write-off also reverses moved credit.
+  - camt.054 keeps every remittance reference.
+  - A rounding write-off never queues a late residual as `invoice_written_off`.
+  - Each PR adds a line to the public site.
