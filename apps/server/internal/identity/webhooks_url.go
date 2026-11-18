@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/net/idna"
+
 	"github.com/vantigo-io/vantigo/server/internal/netguard"
 )
 
@@ -42,7 +44,14 @@ var (
 // IP literal, localhost or a name under .localhost, .local or .internal and
 // has at least one dot, no userinfo, no fragment, port empty or 443, at most
 // 2,048 characters. A query string is allowed (receivers carry tokens in
-// it). It answers the URL as given, trimmed.
+// it).
+//
+// The host is normalised first, with IDNA's lookup profile: lowered, a
+// trailing dot dropped, and an internationalised name written in its ASCII
+// (punycode) form, which also maps the full-width and ideographic dots to
+// "." — so foo．internal is the foo.internal it resolves as, and is refused.
+// Every check runs on that form, and the URL answered, which is the one
+// stored and dialled, carries it, with an explicit :443 dropped.
 func parseWebhookURL(raw string) (*url.URL, bool) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" || len(raw) > maxWebhookURLLength || strings.ContainsAny(raw, "#\\ \t\r\n") {
@@ -58,8 +67,15 @@ func parseWebhookURL(raw string) (*url.URL, bool) {
 	if port := u.Port(); port != "" && port != "443" {
 		return nil, false
 	}
-	host := strings.TrimSuffix(strings.ToLower(u.Hostname()), ".")
-	if host == "" || !strings.Contains(host, ".") || strings.HasPrefix(u.Host, "[") {
+	if strings.HasPrefix(u.Host, "[") {
+		return nil, false
+	}
+	host, err := idna.Lookup.ToASCII(strings.TrimSuffix(u.Hostname(), "."))
+	if err != nil {
+		return nil, false
+	}
+	host = strings.TrimSuffix(strings.ToLower(host), ".")
+	if host == "" || !strings.Contains(host, ".") {
 		return nil, false
 	}
 	if _, err := netip.ParseAddr(host); err == nil {
@@ -75,7 +91,11 @@ func parseWebhookURL(raw string) (*url.URL, bool) {
 			return nil, false
 		}
 	}
-	return u, true
+	normalized := &url.URL{Scheme: "https", Host: host, Path: u.Path, RawPath: u.RawPath, RawQuery: u.RawQuery, ForceQuery: u.ForceQuery}
+	if len(normalized.String()) > maxWebhookURLLength {
+		return nil, false
+	}
+	return normalized, true
 }
 
 // checkWebhookHost resolves u's host once and refuses it, as a save does:

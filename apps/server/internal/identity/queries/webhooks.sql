@@ -47,7 +47,9 @@ FOR UPDATE;
 
 -- name: LockIntegrationWebhookEndpoints :many
 -- LockIntegrationWebhookEndpoints holds every endpoint of an integration, in
--- id order, for its archive (W2, W31).
+-- id order, for its archive (W2, W31). Every statement that locks several
+-- endpoints locks them ORDER BY id, as this one does: the fan-out's FOR SHARE
+-- (delivery B) must too, or it and an archive can deadlock.
 SELECT * FROM identity.webhook_endpoints
 WHERE integration_id = @integration_id
 ORDER BY id
@@ -56,8 +58,11 @@ FOR UPDATE;
 -- name: UpdateWebhookEndpoint :one
 -- UpdateWebhookEndpoint replaces the URL, description and events (W10); the
 -- secret is not rolled.
+-- An overlap that has ended is cleared on the way (W9).
 UPDATE identity.webhook_endpoints
 SET url = sqlc.arg(url), description = sqlc.narg(description), events = sqlc.arg(events)::text[],
+    previous_secret_ciphertext = CASE WHEN previous_secret_expires_at > sqlc.arg(now)::timestamptz THEN previous_secret_ciphertext END,
+    previous_secret_expires_at = CASE WHEN previous_secret_expires_at > sqlc.arg(now)::timestamptz THEN previous_secret_expires_at END,
     updated_at = sqlc.arg(now)::timestamptz, version = sqlc.arg(version)
 WHERE id = sqlc.arg(id)
 RETURNING *;
@@ -66,6 +71,8 @@ RETURNING *;
 -- DisableWebhookEndpoint disables an enabled endpoint for reason.
 UPDATE identity.webhook_endpoints
 SET status = 'disabled', disabled_reason = sqlc.arg(reason), disabled_at = sqlc.arg(now)::timestamptz,
+    previous_secret_ciphertext = CASE WHEN previous_secret_expires_at > sqlc.arg(now)::timestamptz THEN previous_secret_ciphertext END,
+    previous_secret_expires_at = CASE WHEN previous_secret_expires_at > sqlc.arg(now)::timestamptz THEN previous_secret_expires_at END,
     updated_at = sqlc.arg(now)::timestamptz, version = sqlc.arg(version)
 WHERE id = sqlc.arg(id)
 RETURNING *;
@@ -75,6 +82,8 @@ RETURNING *;
 -- failure counted, and a later disabling sends its notice again (W18, W32).
 UPDATE identity.webhook_endpoints
 SET status = 'enabled', disabled_reason = NULL, disabled_at = NULL, failing_since = NULL,
+    previous_secret_ciphertext = CASE WHEN previous_secret_expires_at > sqlc.arg(now)::timestamptz THEN previous_secret_ciphertext END,
+    previous_secret_expires_at = CASE WHEN previous_secret_expires_at > sqlc.arg(now)::timestamptz THEN previous_secret_expires_at END,
     disabled_notice_sent_at = NULL, updated_at = sqlc.arg(now)::timestamptz, version = sqlc.arg(version)
 WHERE id = sqlc.arg(id)
 RETURNING *;

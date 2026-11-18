@@ -84,6 +84,8 @@ func (q *Queries) DeleteWebhookEndpoint(ctx context.Context, id uuid.UUID) error
 const disableWebhookEndpoint = `-- name: DisableWebhookEndpoint :one
 UPDATE identity.webhook_endpoints
 SET status = 'disabled', disabled_reason = $1, disabled_at = $2::timestamptz,
+    previous_secret_ciphertext = CASE WHEN previous_secret_expires_at > $2::timestamptz THEN previous_secret_ciphertext END,
+    previous_secret_expires_at = CASE WHEN previous_secret_expires_at > $2::timestamptz THEN previous_secret_expires_at END,
     updated_at = $2::timestamptz, version = $3
 WHERE id = $4
 RETURNING id, integration_id, url, description, events, secret_ciphertext, previous_secret_ciphertext, previous_secret_expires_at, status, disabled_reason, disabled_at, failing_since, last_success_at, disabled_notice_sent_at, created_by, created_at, updated_at, version
@@ -131,6 +133,8 @@ func (q *Queries) DisableWebhookEndpoint(ctx context.Context, arg DisableWebhook
 const enableWebhookEndpoint = `-- name: EnableWebhookEndpoint :one
 UPDATE identity.webhook_endpoints
 SET status = 'enabled', disabled_reason = NULL, disabled_at = NULL, failing_since = NULL,
+    previous_secret_ciphertext = CASE WHEN previous_secret_expires_at > $1::timestamptz THEN previous_secret_ciphertext END,
+    previous_secret_expires_at = CASE WHEN previous_secret_expires_at > $1::timestamptz THEN previous_secret_expires_at END,
     disabled_notice_sent_at = NULL, updated_at = $1::timestamptz, version = $2
 WHERE id = $3
 RETURNING id, integration_id, url, description, events, secret_ciphertext, previous_secret_ciphertext, previous_secret_expires_at, status, disabled_reason, disabled_at, failing_since, last_success_at, disabled_notice_sent_at, created_by, created_at, updated_at, version
@@ -331,7 +335,9 @@ FOR UPDATE
 `
 
 // LockIntegrationWebhookEndpoints holds every endpoint of an integration, in
-// id order, for its archive (W2, W31).
+// id order, for its archive (W2, W31). Every statement that locks several
+// endpoints locks them ORDER BY id, as this one does: the fan-out's FOR SHARE
+// (delivery B) must too, or it and an archive can deadlock.
 func (q *Queries) LockIntegrationWebhookEndpoints(ctx context.Context, integrationID uuid.UUID) ([]IdentityWebhookEndpoint, error) {
 	rows, err := q.db.Query(ctx, lockIntegrationWebhookEndpoints, integrationID)
 	if err != nil {
@@ -465,6 +471,8 @@ func (q *Queries) RollWebhookEndpointSecret(ctx context.Context, arg RollWebhook
 const updateWebhookEndpoint = `-- name: UpdateWebhookEndpoint :one
 UPDATE identity.webhook_endpoints
 SET url = $1, description = $2, events = $3::text[],
+    previous_secret_ciphertext = CASE WHEN previous_secret_expires_at > $4::timestamptz THEN previous_secret_ciphertext END,
+    previous_secret_expires_at = CASE WHEN previous_secret_expires_at > $4::timestamptz THEN previous_secret_expires_at END,
     updated_at = $4::timestamptz, version = $5
 WHERE id = $6
 RETURNING id, integration_id, url, description, events, secret_ciphertext, previous_secret_ciphertext, previous_secret_expires_at, status, disabled_reason, disabled_at, failing_since, last_success_at, disabled_notice_sent_at, created_by, created_at, updated_at, version
@@ -481,6 +489,7 @@ type UpdateWebhookEndpointParams struct {
 
 // UpdateWebhookEndpoint replaces the URL, description and events (W10); the
 // secret is not rolled.
+// An overlap that has ended is cleared on the way (W9).
 func (q *Queries) UpdateWebhookEndpoint(ctx context.Context, arg UpdateWebhookEndpointParams) (IdentityWebhookEndpoint, error) {
 	row := q.db.QueryRow(ctx, updateWebhookEndpoint,
 		arg.Url,

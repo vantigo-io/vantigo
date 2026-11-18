@@ -259,7 +259,7 @@ asymmetric signing (`v1a`/`v2a`); a replay-missing/backfill tool; receivers othe
 
 ## 7. Platform, registries and documentation
 
-- **Migration `00201`** (verify against `origin/main` and open PRs right before merging,
+- **Migration `00203`** (renumbered from `00201`, which main took; verify against `origin/main` and open PRs right before merging,
   `[[migration-number-collisions]]`) holds all tables, so B and C add none.
 - **Config:** `IDENTITY_WEBHOOKS_ENABLED`, `IDENTITY_WEBHOOKS_POLL` in `srv/config`,
   listed in `admin/configuration.md`. A worker switched off sends nothing and delivers
@@ -359,6 +359,37 @@ asymmetric signing (`v1a`/`v2a`); a replay-missing/backfill tool; receivers othe
   - The test, deliveries and resend operations are declared with B and C, not in A's
     contract: identity's operation-coverage gate fails on an operation no test exercises.
   - The pages say plainly that A sends nothing yet.
+- **4** (2026-11-18, delivery A's code and security reviews):
+  - The migration is `00203`: main took `00201` (invoices) and `00202` (customers).
+  - Checks: no NULL or empty event name; a pending delivery has a `next_attempt_at`;
+    `state_reason` is tied to its state (none for pending or succeeded,
+    `permission_not_held` for skipped, the dead reasons for dead). A partial index
+    `(endpoint_id, created_at, id) WHERE state = 'pending'` serves B's claim, so B adds no
+    migration. Every statement locking several endpoints locks them `ORDER BY id` (B's
+    fan-out `FOR SHARE` included).
+  - W8 binds a secret to its endpoint: the purpose is `identity/webhook-secret/<endpoint id>`,
+    which the box also uses as AEAD data, so a ciphertext moved to another row never opens.
+  - W11: the host is normalised with IDNA's lookup profile (lowered, trailing dot dropped,
+    punycode, full-width dots mapped) before every check, and that ASCII form, without an
+    explicit `:443`, is the URL stored. The contract carries the bounds: `url` 2,048,
+    `description` 500, `events` 1–50 of at most 100 characters, `overlapHours` 1–168.
+  - W20: the webhook client is always built on netguard's dialler. `Deps.HTTPTransport` never
+    replaces it; tests swap only the resolver, the dialler and the trusted roots
+    (`Access.webhookNet`). An attempt whose context the caller ended is `aborted` and is
+    recorded as nothing (W16, W38). `Retry-After` is parsed into a delay of at most an hour,
+    for 429/502/503/504 only, never kept as text. The excerpt also blanks format characters
+    (`Cf`: bidirectional overrides, zero-width joiners). `too_large` is told by net/http's
+    words, which have no sentinel; a test holds them.
+  - W24: the audit snapshot leaves out the description (free text may hold what the path held).
+  - W9: a previous secret whose overlap has ended is cleared by the endpoint's next write;
+    B's sender must sign with it only while `previous_secret_expires_at` is after the attempt.
+    The screen warns before a roll that would end a running overlap, and the server still
+    ends it at once.
+  - W7: the save-time permission check reads the roles unlocked; a role taken while a save
+    commits is caught by the fan-out and the claim (W33). Accepted.
+  - `contracts.WebhookEvent.Href(id)` fills the resource path's one parameter, whatever its name.
+  - The workspace limit is tested under concurrency across integrations (48 seeded, racing
+    creates on four integrations stop at exactly 50).
 
 ## 12. What overturning a default changes
 

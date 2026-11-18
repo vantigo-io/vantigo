@@ -391,12 +391,20 @@ export const IntegrationWebhooks = ({ integrationId, archived }: { integrationId
                   setForm({ ...form, draft: { ...form.draft, description: event.currentTarget.value } })
                 }
               />
-              <EventPicker
-                events={catalogue.data ?? []}
-                value={form.draft.events}
-                error={errors.events}
-                onChange={(events) => setForm({ ...form, draft: { ...form.draft, events } })}
-              />
+              {catalogue.isPending ? (
+                <ContentSkeleton rows={3} />
+              ) : catalogue.isError ? (
+                <Alert color="red" title={t("apiAccess.webhookEventsCouldNotLoad")} data-testid="webhook-events-error">
+                  {catalogue.error.message}
+                </Alert>
+              ) : (
+                <EventPicker
+                  events={catalogue.data}
+                  value={form.draft.events}
+                  error={errors.events}
+                  onChange={(events) => setForm({ ...form, draft: { ...form.draft, events } })}
+                />
+              )}
               <Button
                 type="submit"
                 loading={save.isPending}

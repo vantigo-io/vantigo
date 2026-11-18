@@ -58,7 +58,7 @@ func SetWebhookResolver(a *Access, r netguard.Resolver) { a.webhookResolver = r 
 
 // WebhookSecretPurpose is the secrets.Box purpose an endpoint's secret is
 // sealed under, for a test that opens the column.
-const WebhookSecretPurpose = webhookSecretPurpose
+var WebhookSecretPurpose = webhookSecretPurpose
 
 var (
 	CreateSession       = (*Access).createSession

@@ -195,6 +195,7 @@ const en = {
   "apiAccess.webhookEventsNone":
     "The integration's roles let it receive no event. Give it a role with access to Orders, Invoices, Purchasing, Manufacturing or Accounting.",
   "apiAccess.webhookEventNotPermitted": "No longer permitted",
+  "apiAccess.webhookEventsCouldNotLoad": "The events could not be loaded",
   "apiAccess.webhookMoreEvents": "+{{count}} more",
   "apiAccess.webhookStatus_enabled": "Enabled",
   "apiAccess.webhookStatus_disabled": "Disabled",
@@ -421,6 +422,7 @@ const nb: Record<keyof typeof en, string> = {
   "apiAccess.webhookEventsNone":
     "Integrasjonens roller lar den ikke motta noen hendelse. Gi den en rolle med tilgang til Ordre, Fakturaer, Innkjøp, Produksjon eller Regnskap.",
   "apiAccess.webhookEventNotPermitted": "Ikke lenger tillatt",
+  "apiAccess.webhookEventsCouldNotLoad": "Hendelsene kunne ikke lastes",
   "apiAccess.webhookMoreEvents": "+{{count}} til",
   "apiAccess.webhookStatus_enabled": "Aktivert",
   "apiAccess.webhookStatus_disabled": "Deaktivert",

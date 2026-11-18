@@ -118,7 +118,7 @@ func (h *harness) sealedSecrets(t testing.TB, id uuid.UUID) (current, previous s
 		if sealed == nil {
 			return ""
 		}
-		plain, err := h.deps.Secrets.Open(identity.WebhookSecretPurpose, sealed)
+		plain, err := h.deps.Secrets.Open(identity.WebhookSecretPurpose(id), sealed)
 		if err != nil {
 			t.Fatalf("open the secret: %v", err)
 		}
@@ -567,8 +567,9 @@ func TestWebhooks_CreationsRaceToTheLimit(t *testing.T) {
 	const n = 8
 	results := make(chan int, n)
 	for range n {
+		c := h.signIn(t, ownerID, false)
 		go func() {
-			r := h.signIn(t, ownerID, false).do(http.MethodPost, webhooksPath(integration),
+			r := c.do(http.MethodPost, webhooksPath(integration),
 				map[string]any{"url": "https://hooks.example.com/in", "events": []string{confirmed}}, skipContract("concurrent"))
 			results <- r.status
 		}()
@@ -588,5 +589,70 @@ func TestWebhooks_CreationsRaceToTheLimit(t *testing.T) {
 	}
 	if got := h.count(t, `SELECT count(*) FROM identity.webhook_endpoints WHERE integration_id = $1`, integration); got != 5 {
 		t.Errorf("%d rows, want 5", got)
+	}
+}
+
+// TestWebhooks_CreationsAcrossIntegrationsRaceToTheWorkspaceLimit holds W36's
+// advisory lock: with 48 endpoints in the workspace, creates racing on
+// several integrations — each locking only its own integration row — stop at
+// exactly 50.
+func TestWebhooks_CreationsAcrossIntegrationsRaceToTheWorkspaceLimit(t *testing.T) {
+	t.Parallel()
+	h, owner, ownerID, _ := webhookHarness(t)
+	role := h.insertRole(t, "Readers", "orders:access")
+	// 48 endpoints: nine integrations of five and one of three.
+	for i := range 10 {
+		seeded := createIntegration(t, owner, "Seeded "+string(rune('A'+i)), role).Integration.ID
+		per := 5
+		if i == 9 {
+			per = 3
+		}
+		for range per {
+			h.exec(t, `INSERT INTO identity.webhook_endpoints (id, integration_id, url, events, secret_ciphertext, created_at, updated_at, version)
+			           VALUES ($1, $2, 'https://hooks.example.com/x', '{orders.sales_order.confirmed}', '\x00', $3, $3, $4)`, uuid.New(), seeded, h.now(), uuid.New())
+		}
+	}
+	if got := h.count(t, `SELECT count(*) FROM identity.webhook_endpoints`); got != 48 {
+		t.Fatalf("%d seeded, want 48", got)
+	}
+	// Four fresh integrations, three creates each, all at once: none reaches
+	// its own limit of five, so only the workspace's can stop them.
+	type racer struct {
+		c           *client
+		integration uuid.UUID
+	}
+	var racers []racer
+	for i := range 4 {
+		target := createIntegration(t, owner, "Racer "+string(rune('A'+i)), role).Integration.ID
+		for range 3 {
+			racers = append(racers, racer{h.signIn(t, ownerID, false), target})
+		}
+	}
+	start := make(chan struct{})
+	results := make(chan *resp, len(racers))
+	for _, r := range racers {
+		go func() {
+			<-start
+			results <- r.c.do(http.MethodPost, webhooksPath(r.integration),
+				map[string]any{"url": "https://hooks.example.com/in", "events": []string{confirmed}}, skipContract("concurrent"))
+		}()
+	}
+	close(start)
+	created := 0
+	for range racers {
+		r := <-results
+		switch {
+		case r.status == http.StatusCreated:
+			created++
+		case r.status == http.StatusConflict && r.code() == "webhook_limit_reached":
+		default:
+			t.Errorf("status %d %s", r.status, r.body)
+		}
+	}
+	if created != 2 {
+		t.Errorf("%d created, want 2", created)
+	}
+	if got := h.count(t, `SELECT count(*) FROM identity.webhook_endpoints`); got != 50 {
+		t.Errorf("%d endpoints in the workspace, want exactly 50", got)
 	}
 }

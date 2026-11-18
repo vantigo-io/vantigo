@@ -181,6 +181,40 @@ describe("an integration's webhook endpoints", () => {
     expect(stored(secret)).toBe(false);
   });
 
+  it("waits for the catalogue before offering events, and says when it could not be read", async () => {
+    api.listWebhooks.mockResolvedValue([]);
+    let fail: (error: Error) => void = () => {};
+    api.listWebhookEvents.mockReturnValue(
+      new Promise((_, reject) => {
+        fail = reject;
+      }),
+    );
+    await renderTab();
+
+    fireEvent.click(await screen.findByRole("button", { name: "New endpoint" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).queryByRole("checkbox")).not.toBeInTheDocument();
+    expect(within(dialog).queryByTestId("webhook-no-events")).not.toBeInTheDocument();
+
+    fail(new Error("Service unavailable"));
+    expect(await within(dialog).findByTestId("webhook-events-error")).toHaveTextContent(
+      "The events could not be loaded",
+    );
+    expect(within(dialog).getByText("Service unavailable")).toBeInTheDocument();
+    expect(within(dialog).queryByTestId("webhook-no-events")).not.toBeInTheDocument();
+  });
+
+  it("rolls without the overlap warning when no overlap runs", async () => {
+    api.listWebhooks.mockResolvedValue([endpoint()]);
+    await renderTab();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Actions" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Roll secret" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(/A new secret is made/)).toBeInTheDocument();
+    expect(within(dialog).queryByText(/rolling again ends the older secret at once/)).not.toBeInTheDocument();
+  });
+
   it("asks before disabling an endpoint", async () => {
     api.listWebhooks.mockResolvedValue([endpoint()]);
     api.disableWebhook.mockResolvedValue(endpoint({ status: "disabled", disabledReason: "manual" }));

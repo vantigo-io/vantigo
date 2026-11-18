@@ -3209,14 +3209,19 @@ components:
             properties:
                 description:
                     description: Up to 500 characters.
+                    maxLength: 500
                     type: string
                 events:
                     description: 1 to 50 catalogue event names, each one the integration may receive.
                     items:
+                        maxLength: 100
                         type: string
+                    maxItems: 50
+                    minItems: 1
                     type: array
                 url:
                     description: https on port 443, a host name (not an address), no user name or password and no fragment, at most 2,048 characters; a query string is allowed.
+                    maxLength: 2048
                     type: string
             required:
                 - url
@@ -3247,14 +3252,19 @@ components:
             properties:
                 description:
                     description: Up to 500 characters; absent clears it.
+                    maxLength: 500
                     type: string
                 events:
                     description: 1 to 50 catalogue event names, each one the integration may receive.
                     items:
+                        maxLength: 100
                         type: string
+                    maxItems: 50
+                    minItems: 1
                     type: array
                 url:
                     description: As for creating one.
+                    maxLength: 2048
                     type: string
             required:
                 - url
@@ -3303,6 +3313,8 @@ components:
             properties:
                 overlapHours:
                     description: How long the secret replaced signs beside the new one, 1 to 168 hours; 24 when absent.
+                    maximum: 168
+                    minimum: 1
                     type: integer
             type: object
         WorkspaceSettings:
