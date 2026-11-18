@@ -2511,7 +2511,7 @@ export interface components {
             /** @enum {string} */
             outcome: "delivered" | "failed";
         };
-        /** @description PUT /settings' body, a full replace (D2). Every text field is trimmed; an empty string is "not set". organisationNumber is nine digits with a valid mod-11 check digit; bankAccount eleven digits with a valid mod-11 check digit (spaces and dots are dropped); iban passes mod-97 and bic is 8 or 11 characters, both optional; country is ISO 3166-1 alpha-2; defaultPaymentTermsDays is 0-365; defaultCurrency is NOK and only NOK in this phase; seriesStart is 1 to 9007199254740991 (2^53 − 1) and cannot change once anything is issued (409 series_locked). peppolId, kidLength and kidAlgorithm are required and nullable (EHF and KID design D2, D3): a body without them is a 400, so a client that predates them cannot clear them by leaving them out. kidLength and kidAlgorithm are a pair or both null; the next number to be issued — the counter's, or seriesStart before the first issue — must fit in kidLength less one digits, else a 400 on kidLength. workVatCodes is required too (invoices work design D6; a body without it is a 400 on workVatCodes): the VAT code the uninvoiced view's wizard pre-fills for each kind of work, each a code that exists and — when it differs from the stored one — is active, else a 400 on workVatCodes.hours, workVatCodes.expenses or workVatCodes.milestones. timesheetDefault and timesheetPersonLabel are required too (invoices work design D5; a body without either, or with null, is a 400 on it): whether a new draft — the wizard's or one created by hand — carries a timesheet unless its request says, and how the timesheet names each person — initials, number or name, anything else a 400 on timesheetPersonLabel. energyVatCodes is optional (energy consumption billing design D8): absent keeps the stored codes; given, each is a code that exists and — when it differs from the stored one — is active, else a 400 on energyVatCodes.energy or energyVatCodes.energyExempt. sendChannel is optional and nullable (integrations design T6): absent keeps the stored channel, null is Disabled, and a given id that differs from the stored one must be a channel that exists, else a 400 on sendChannel. phone is optional (invoices phase 6 design I4): absent keeps the stored phone, empty clears it. The logo is not part of this body: PUT and DELETE /settings/logo set and remove it. revision is the one the caller read: a stale one is a 409 naming both. */
+        /** @description PUT /settings' body, a full replace (D2). Every text field is trimmed; an empty string is "not set". organisationNumber is nine digits with a valid mod-11 check digit; bankAccount eleven digits with a valid mod-11 check digit (spaces and dots are dropped); iban passes mod-97 and bic is 8 or 11 characters, both optional; country is ISO 3166-1 alpha-2; defaultPaymentTermsDays is 0-365; defaultCurrency is NOK and only NOK in this phase; seriesStart is 1 to 9007199254740991 (2^53 − 1) and cannot change once anything is issued (409 series_locked). peppolId, kidLength and kidAlgorithm are required and nullable (EHF and KID design D2, D3): a body without them is a 400, so a client that predates them cannot clear them by leaving them out. kidLength and kidAlgorithm are a pair or both null; the next number to be issued — the counter's, or seriesStart before the first issue — must fit in kidLength less one digits, else a 400 on kidLength. workVatCodes is required too (invoices work design D6; a body without it is a 400 on workVatCodes): the VAT code the uninvoiced view's wizard pre-fills for each kind of work, each a code that exists and — when it differs from the stored one — is active, else a 400 on workVatCodes.hours, workVatCodes.expenses or workVatCodes.milestones. timesheetDefault and timesheetPersonLabel are required too (invoices work design D5; a body without either, or with null, is a 400 on it): whether a new draft — the wizard's or one created by hand — carries a timesheet unless its request says, and how the timesheet names each person — initials, number or name, anything else a 400 on timesheetPersonLabel. energyVatCodes is optional (energy consumption billing design D8): absent keeps the stored codes; given, each is a code that exists and — when it differs from the stored one — is active, else a 400 on energyVatCodes.energy or energyVatCodes.energyExempt. sendChannel is optional and nullable (integrations design T6): absent keeps the stored channel, null is Disabled, and a given id that differs from the stored one must be a channel that exists, else a 400 on sendChannel. phone is optional (invoices phase 6 design I4): absent keeps the stored phone, empty clears it. tolerance is optional (I15): absent keeps the stored tolerance. The logo is not part of this body: PUT and DELETE /settings/logo set and remove it. revision is the one the caller read: a stale one is a 409 naming both. */
         InvoicesSettingsRequest: {
             addressLine1: string;
             addressLine2?: string;
@@ -2554,6 +2554,11 @@ export interface components {
             timesheetDefault: boolean;
             /** @description How a timesheet names each person (invoices work design D5) — initials (the display name's initials, a second KN becoming KN2), number (Person 1, Person 2 in order of first appearance on the timesheet) or name (the display name). Required; anything else is a 400 on timesheetPersonLabel. */
             timesheetPersonLabel: string;
+            /**
+             * Format: double
+             * @description The rounding tolerance (invoices phase 6 design I15), in NOK, 0 to 100 with at most two decimals, else a 400 on tolerance. When a payment — by hand, from a bank file or from the bank feed, never a Vipps capture — leaves an invoice's principal open by more than 0 and at most this much, the same transaction writes a rounding write-off of what is left, with source auto. 0 rounds nothing off. Optional — absent keeps the stored tolerance.
+             */
+            tolerance?: number;
             vatRegistered: boolean;
             /** @description The VAT code each kind of work is invoiced at (invoices work design D6), each the id of an active code — a changed one; one kept as stored passes even if it has since become inactive. Required — a body without it is a 400 on workVatCodes, so a client that predates it cannot reset the codes by leaving it out. */
             workVatCodes: {
@@ -2635,6 +2640,11 @@ export interface components {
              * @enum {string}
              */
             timesheetPersonLabel: "initials" | "number" | "name";
+            /**
+             * Format: double
+             * @description The rounding tolerance in NOK (invoices phase 6 design I15), 0 to 100; 0, the default, rounds nothing off.
+             */
+            tolerance: number;
             /** Format: date-time */
             updatedAt: string;
             vatRegistered: boolean;
@@ -3541,6 +3551,8 @@ export interface components {
             orderedOn?: string;
             possibleDuplicateOf?: components["schemas"]["InvoicesBankTransactionTwin"];
             reason?: components["schemas"]["InvoicesBankTransactionReason"];
+            /** @description Every structured remittance reference of a camt.054 line (RmtInf/Strd/CdtrRefInf/Ref, of any type), in the file's order, at most 20 (invoices phase 6 design I14); empty for an OCR line, a bank-feed line and a line imported before they were kept, which are read by their text. */
+            references: string[];
             remittanceText: string;
             /**
              * @description How a resolved line was resolved — applied (to invoices), not_customer_payment (dismissed), reversal_handled or duplicate_confirmed. Absent unless the line is resolved.
@@ -3586,7 +3598,7 @@ export interface components {
         InvoicesBankTransactionDismissRequest: {
             note: string;
         };
-        /** @description What happened to a bank line (D5): event matched, queued, applied, dismissed, reversal_handled, reopened, duplicate_confirmed, treated_as_distinct, reversed (a reversal took back a payment or a credit of this line; the note names the reversal) or kept_as_credit (its surplus was kept as the customer's credit, invoices phase 6 design I9); the reason the line had or was given (absent on a match); the note given with it; who and when — by is absent on a matched or queued event the bank feed's sync wrote, which no person made (invoices bank feed design F6). Events are never changed; they keep a resolution a reopen cleared from the line. */
+        /** @description What happened to a bank line (D5): event matched, queued, applied, dismissed, reversal_handled, reopened, duplicate_confirmed, treated_as_distinct, reversed (a reversal took back a payment or a credit of this line; the note names the reversal), kept_as_credit (its surplus was kept as the customer's credit, invoices phase 6 design I9) or auto_split (matching applied it across several invoices of one customer, which its remittance named and whose open amounts add up to it exactly, I14); the reason the line had or was given (absent on a match); the note given with it; who and when — by is absent on a matched, queued or auto_split event the bank feed's sync wrote, which no person made (invoices bank feed design F6). Events are never changed; they keep a resolution a reopen cleared from the line. */
         InvoicesBankTransactionEvent: {
             /** Format: date-time */
             at: string;
@@ -3596,7 +3608,7 @@ export interface components {
              */
             by?: string;
             /** @enum {string} */
-            event: "matched" | "queued" | "applied" | "dismissed" | "reversal_handled" | "reopened" | "duplicate_confirmed" | "treated_as_distinct" | "reversed" | "kept_as_credit";
+            event: "matched" | "queued" | "applied" | "dismissed" | "reversal_handled" | "reopened" | "duplicate_confirmed" | "treated_as_distinct" | "reversed" | "kept_as_credit" | "auto_split";
             /** Format: int64 */
             id: number;
             note: string;
@@ -4144,7 +4156,7 @@ export interface components {
          * @enum {string}
          */
         InvoicesPaymentKind: "payment" | "recovered";
-        /** @description One write-off of an issued invoice (accounting design A16, R4): its whole open amount given up on writtenOffOn with a reason — loss (a loss that is konstatert), rounding (a small difference) or other — and, for a loss, whether its VAT is taken back (vatCorrection, mval. § 4-7). amount is the open amount it closed. An undone one keeps its row and carries undoneAt, undoneByUserId and undoReason; it counts for nothing. */
+        /** @description One write-off of an issued invoice (accounting design A16, R4): its whole open amount given up on writtenOffOn with a reason — loss (a loss that is konstatert), rounding (a small difference) or other — and, for a loss, whether its VAT is taken back (vatCorrection, mval. § 4-7). amount is the open amount it closed. source is manual, made by a person, or auto: the rounding write-off a payment that left at most the rounding tolerance open wrote by itself (invoices phase 6 design I15), which no one registered, so registeredByUserId is absent. A standing rounding write-off, manual or auto, leaves the invoice paid, not written off: a small difference is not a loss. An undone one keeps its row and carries undoneAt, undoneByUserId and undoReason; it counts for nothing. */
         InvoicesWriteOff: {
             /** Format: double */
             amount: number;
@@ -4159,8 +4171,13 @@ export interface components {
             recoveredAmount: number;
             /** Format: date-time */
             registeredAt: string;
-            /** Format: uuid */
-            registeredByUserId: string;
+            /**
+             * Format: uuid
+             * @description The person who made the write-off; absent on an automatic one (source auto).
+             */
+            registeredByUserId?: string;
+            /** @enum {string} */
+            source: "manual" | "auto";
             undoReason?: string;
             /** Format: date-time */
             undoneAt?: string;

@@ -23,6 +23,7 @@ const writtenOff = (overrides: Partial<InvoiceDocument> = {}): InvoiceDocument =
         reason: "loss",
         vatCorrection: true,
         recoveredAmount: 20,
+        source: "manual",
         registeredAt: "2026-09-12T09:00:00Z",
         registeredByUserId: "0b6e4c1a-5f7d-4d8e-9a3b-2c1d0e9f8a7b",
       },
@@ -140,5 +141,33 @@ describe("a written-off invoice", () => {
     expect(undone).toHaveAttribute("data-undone", "true");
     expect(undone).toHaveTextContent("Undone: Feil faktura");
     expect(screen.getByRole("button", { name: "Write off" })).toBeInTheDocument();
+  });
+});
+
+describe("a small difference rounded off", () => {
+  it("names the automatic rounding write-off of a paid invoice", async () => {
+    server(() =>
+      partlyPaid({
+        state: "paid",
+        openAmount: 0,
+        writtenOffAmount: 3,
+        writeOffs: [
+          {
+            id: 42,
+            writtenOffOn: "2026-09-12",
+            amount: 3,
+            currency: "NOK",
+            reason: "rounding",
+            vatCorrection: false,
+            recoveredAmount: 0,
+            source: "auto",
+            registeredAt: "2026-09-12T09:00:00Z",
+          },
+        ],
+      }),
+    );
+    renderRoute("/invoices/1001");
+
+    expect(await screen.findByTestId("write-off-42")).toHaveTextContent(/Rounded off automatically/);
   });
 });

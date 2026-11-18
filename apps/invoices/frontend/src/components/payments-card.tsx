@@ -97,6 +97,7 @@ export const PaymentsCard = ({ invoice, canRegister, today }: PaymentsCardProps)
                     reason: t(`writeOff.reason.${w.reason}`),
                   })}
                   {w.vatCorrection ? ` · ${t("writeOff.vatCorrected")}` : ""}
+                  {w.source === "auto" ? ` · ${t("writeOff.auto")}` : ""}
                 </Text>
                 {w.recoveredAmount > 0 && (
                   <Text size="sm">
