@@ -5,7 +5,8 @@ import type { CatalogResources } from "@vantigo/frontend-shell";
  * (routes/workspace/api-access.tsx), an integration's page
  * (routes/workspace/-api-access-integration.tsx) and the key dialogs
  * (routes/workspace/-api-key-dialog.tsx), and its request log
- * (routes/workspace/-api-access-requests.tsx).
+ * (routes/workspace/-api-access-requests.tsx), and its webhook endpoints
+ * (routes/workspace/-api-access-webhooks.tsx, -webhook-secret-dialog.tsx).
  */
 const en = {
   "apiAccess.title": "API access",
@@ -175,6 +176,62 @@ const en = {
   "apiAccess.requestDay": "Day",
   "apiAccess.deletedKey": "Deleted key",
   "apiAccess.durationMs": "{{ms}} ms",
+  "apiAccess.tabWebhooks": "Webhooks",
+  "apiAccess.webhooks": "Webhook endpoints",
+  "apiAccess.webhooksHint":
+    "When an event an endpoint lists happens, Vantigo posts a short signed message to it. The message names the resource; the application fetches it with its API key.",
+  "apiAccess.webhookNew": "New endpoint",
+  "apiAccess.webhookEdit": "Edit endpoint",
+  "apiAccess.webhookNone": "No endpoints yet",
+  "apiAccess.webhookNoneHint": "Add the HTTPS address of the application that is to be told when something happens.",
+  "apiAccess.webhookLimit": "An integration has at most 5 endpoints.",
+  "apiAccess.webhookCouldNotLoad": "The endpoints could not be loaded",
+  "apiAccess.webhookUrl": "URL",
+  "apiAccess.webhookUrlHint":
+    "An https:// address on port 443 with a host name. A query string is allowed; it is shown only here.",
+  "apiAccess.webhookDescription": "Description",
+  "apiAccess.webhookEvents": "Events",
+  "apiAccess.webhookEventsHint": "Only the events the integration's roles let it receive are offered.",
+  "apiAccess.webhookEventsNone":
+    "The integration's roles let it receive no event. Give it a role with access to Orders, Invoices, Purchasing, Manufacturing or Accounting.",
+  "apiAccess.webhookEventNotPermitted": "No longer permitted",
+  "apiAccess.webhookMoreEvents": "+{{count}} more",
+  "apiAccess.webhookStatus_enabled": "Enabled",
+  "apiAccess.webhookStatus_disabled": "Disabled",
+  "apiAccess.webhookReason_manual": "Disabled by an Owner",
+  "apiAccess.webhookReason_failing": "Disabled: it failed for 5 days",
+  "apiAccess.webhookReason_gone": "Disabled: it answered 410 Gone",
+  "apiAccess.webhookReason_integration_archived": "Disabled: the integration is archived",
+  "apiAccess.webhookPreviousSecret": "The previous secret signs too until {{when}}",
+  "apiAccess.webhookCreate": "Create endpoint",
+  "apiAccess.webhookSaved": "Endpoint saved",
+  "apiAccess.webhookChangedMeanwhile":
+    "Someone changed the endpoint since you opened it. The page now shows the latest; make your change again.",
+  "apiAccess.webhookEnable": "Enable",
+  "apiAccess.webhookDisable": "Disable",
+  "apiAccess.webhookDone_enable": "Endpoint enabled",
+  "apiAccess.webhookDone_disable": "Endpoint disabled",
+  "apiAccess.webhookDisableTitle": "Disable this endpoint?",
+  "apiAccess.webhookDisableBody":
+    "Nothing more is sent to it, and the messages waiting for it are dropped. Once enabled again it receives the events from then on.",
+  "apiAccess.webhookDelete": "Delete",
+  "apiAccess.webhookDeleteTitle": "Delete this endpoint?",
+  "apiAccess.webhookDeleteBody": "The endpoint and its deliveries are deleted. This cannot be undone.",
+  "apiAccess.webhookDeleted": "Endpoint deleted",
+  "apiAccess.webhookRoll": "Roll secret",
+  "apiAccess.webhookRollTitle": "Roll the signing secret",
+  "apiAccess.webhookRollBody":
+    "A new secret is made. The one it replaces signs every message too, beside it, for the overlap, so the application can switch without missing a message.",
+  "apiAccess.webhookRollRunning": "An overlap is still running: rolling again ends the older secret at once.",
+  "apiAccess.webhookOverlapHint": "How long the secret replaced keeps signing beside the new one.",
+  "apiAccess.webhookCouldNotRoll": "Could not roll the secret",
+  "apiAccess.webhookSecretTitle": "Copy the signing secret now",
+  "apiAccess.webhookSecretWarning":
+    "This is the only time the secret is shown. Store it where the application checks messages; if it is lost, roll the secret.",
+  "apiAccess.webhookSecret": "Signing secret",
+  "apiAccess.webhookSecretHint":
+    "The application checks each message's webhook-signature header with it, as Standard Webhooks describes.",
+  "apiAccess.webhookSecretDone": "I have copied the secret",
 };
 
 const nb: Record<keyof typeof en, string> = {
@@ -345,6 +402,63 @@ const nb: Record<keyof typeof en, string> = {
   "apiAccess.requestDay": "Dag",
   "apiAccess.deletedKey": "Slettet nøkkel",
   "apiAccess.durationMs": "{{ms}} ms",
+  "apiAccess.tabWebhooks": "Webhooks",
+  "apiAccess.webhooks": "Webhook-endepunkter",
+  "apiAccess.webhooksHint":
+    "Når en hendelse et endepunkt lytter etter skjer, sender Vantigo en kort, signert melding til det. Meldingen sier hvilken ressurs det gjelder; programmet henter den med API-nøkkelen sin.",
+  "apiAccess.webhookNew": "Nytt endepunkt",
+  "apiAccess.webhookEdit": "Rediger endepunkt",
+  "apiAccess.webhookNone": "Ingen endepunkter ennå",
+  "apiAccess.webhookNoneHint": "Legg til HTTPS-adressen til programmet som skal få beskjed når noe skjer.",
+  "apiAccess.webhookLimit": "En integrasjon kan ha høyst 5 endepunkter.",
+  "apiAccess.webhookCouldNotLoad": "Endepunktene kunne ikke lastes",
+  "apiAccess.webhookUrl": "URL",
+  "apiAccess.webhookUrlHint":
+    "En https://-adresse på port 443 med et vertsnavn. En spørrestreng er tillatt; den vises bare her.",
+  "apiAccess.webhookDescription": "Beskrivelse",
+  "apiAccess.webhookEvents": "Hendelser",
+  "apiAccess.webhookEventsHint": "Bare hendelsene integrasjonens roller lar den motta, tilbys.",
+  "apiAccess.webhookEventsNone":
+    "Integrasjonens roller lar den ikke motta noen hendelse. Gi den en rolle med tilgang til Ordre, Fakturaer, Innkjøp, Produksjon eller Regnskap.",
+  "apiAccess.webhookEventNotPermitted": "Ikke lenger tillatt",
+  "apiAccess.webhookMoreEvents": "+{{count}} til",
+  "apiAccess.webhookStatus_enabled": "Aktivert",
+  "apiAccess.webhookStatus_disabled": "Deaktivert",
+  "apiAccess.webhookReason_manual": "Deaktivert av en eier",
+  "apiAccess.webhookReason_failing": "Deaktivert: det har feilet i 5 dager",
+  "apiAccess.webhookReason_gone": "Deaktivert: det svarte 410 Gone",
+  "apiAccess.webhookReason_integration_archived": "Deaktivert: integrasjonen er arkivert",
+  "apiAccess.webhookPreviousSecret": "Den forrige hemmeligheten signerer også til {{when}}",
+  "apiAccess.webhookCreate": "Opprett endepunkt",
+  "apiAccess.webhookSaved": "Endepunktet er lagret",
+  "apiAccess.webhookChangedMeanwhile":
+    "Noen endret endepunktet etter at du åpnet det. Siden viser nå det siste; gjør endringen din på nytt.",
+  "apiAccess.webhookEnable": "Aktiver",
+  "apiAccess.webhookDisable": "Deaktiver",
+  "apiAccess.webhookDone_enable": "Endepunktet er aktivert",
+  "apiAccess.webhookDone_disable": "Endepunktet er deaktivert",
+  "apiAccess.webhookDisableTitle": "Deaktivere dette endepunktet?",
+  "apiAccess.webhookDisableBody":
+    "Ingenting mer sendes til det, og meldingene som venter på det, forkastes. Når det aktiveres igjen, mottar det hendelsene fra da av.",
+  "apiAccess.webhookDelete": "Slett",
+  "apiAccess.webhookDeleteTitle": "Slette dette endepunktet?",
+  "apiAccess.webhookDeleteBody": "Endepunktet og leveransene til det slettes. Dette kan ikke angres.",
+  "apiAccess.webhookDeleted": "Endepunktet er slettet",
+  "apiAccess.webhookRoll": "Roter hemmeligheten",
+  "apiAccess.webhookRollTitle": "Roter signeringshemmeligheten",
+  "apiAccess.webhookRollBody":
+    "En ny hemmelighet lages. Den den erstatter, signerer også hver melding ved siden av den i overlappet, så programmet kan bytte uten å gå glipp av en melding.",
+  "apiAccess.webhookRollRunning":
+    "Et overlapp pågår fortsatt: roterer du igjen, slutter den eldre hemmeligheten med en gang.",
+  "apiAccess.webhookOverlapHint": "Hvor lenge den erstattede hemmeligheten fortsetter å signere ved siden av den nye.",
+  "apiAccess.webhookCouldNotRoll": "Kunne ikke rotere hemmeligheten",
+  "apiAccess.webhookSecretTitle": "Kopier signeringshemmeligheten nå",
+  "apiAccess.webhookSecretWarning":
+    "Dette er den eneste gangen hemmeligheten vises. Lagre den der programmet kontrollerer meldingene; går den tapt, roterer du hemmeligheten.",
+  "apiAccess.webhookSecret": "Signeringshemmelighet",
+  "apiAccess.webhookSecretHint":
+    "Programmet kontrollerer hver meldings webhook-signature-header med den, slik Standard Webhooks beskriver.",
+  "apiAccess.webhookSecretDone": "Jeg har kopiert hemmeligheten",
 };
 
 export const apiAccessCatalog = { en, nb } as const satisfies CatalogResources;

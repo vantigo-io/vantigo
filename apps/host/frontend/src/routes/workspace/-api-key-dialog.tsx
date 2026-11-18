@@ -98,7 +98,7 @@ const ExpiryFields = ({
 };
 
 /** A value with a Copy button beside it. */
-const Copyable = ({ label, value, multiline }: { label: string; value: string; multiline?: boolean }) => {
+export const Copyable = ({ label, value, multiline }: { label: string; value: string; multiline?: boolean }) => {
   const { t } = useI18n("host");
   return (
     <Stack gap={4}>
