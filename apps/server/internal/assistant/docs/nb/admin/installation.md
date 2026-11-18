@@ -329,7 +329,8 @@ oppbevarer forbi periodene sine, og Assistentens `assistant-runs`, alltid, som f
 kjøring en omstart etterlot som pågående, og `assistant-retention`, alltid, som sletter samtaler
 som er eldre enn oppbevaringstiden én gang i døgnet, og identitys `identity.api-keys` med mindre
 `IDENTITY_API_KEYS_ENABLED=0`, som reviderer hver API-nøkkels utløp én gang og sletter en nøkkels rad
-90 dager etter at den utløp — og plattformens hendelsesutsender
+90 dager etter at den utløp, og `identity.webhook-sender` med mindre `IDENTITY_WEBHOOKS_ENABLED=0`,
+som sender integrasjonenes webhook-meldinger — og plattformens hendelsesutsender
 `events.dispatch`, alltid, uansett hva `MODULES` sier) inne i API-prosessen: `WORKERS_IN_PROCESS=1`, standardverdien. Utrullinger som
 skalerer API-et horisontalt bør flytte dem til én dedikert worker-container, slik at
 hver ekstra HTTP-replika ikke mangedobler pollerne:

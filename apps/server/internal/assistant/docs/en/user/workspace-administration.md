@@ -196,8 +196,11 @@ The **Webhooks** tab lists the integration's webhook endpoints: the HTTPS addres
 application that are to be told when something happens, such as a sales order confirmed.
 **New endpoint** asks for the **URL** and the **Events**, of those the integration's roles let
 it receive, and shows the **signing secret** once: choose **I have copied the secret** when it
-is stored. Each endpoint's **Actions** edit, disable, delete it or **Roll secret**. Vantigo
-does not send messages to the endpoints yet; that comes in a later release.
+is stored; a test event is sent to the new endpoint at once. Each endpoint's **Actions** are
+**Send test event**, edit, disable, delete and **Roll secret**. An endpoint whose
+messages keep failing is marked **Failing**; one Vantigo disabled — failing for 5 days, or
+answering `410 Gone` — gets a banner with the reason and **Enable**, and the integration's
+contact and the Owners are mailed.
 
 The details — what a key can reach, the narrowing, read-only keys, networks, the rate limit,
 the answers a client gets, the request log, webhook endpoints and what to do when a key

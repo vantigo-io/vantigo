@@ -323,7 +323,8 @@ fetches the files people sent from Meta's servers, and `meta-retention`, always,
 deletes what the module keeps past its periods every hour, and the Assistant's `assistant-runs`, always, which fails a run
 a restart left running, and `assistant-retention`, always, which deletes conversations past
 their retention once a day, and identity's `identity.api-keys` unless `IDENTITY_API_KEYS_ENABLED=0`, which audits
-each API key's expiry once and deletes a key's row 90 days after it expired — and the platform's events dispatcher `events.dispatch`,
+each API key's expiry once and deletes a key's row 90 days after it expired, and `identity.webhook-sender` unless
+`IDENTITY_WEBHOOKS_ENABLED=0`, which sends the integrations' webhook messages — and the platform's events dispatcher `events.dispatch`,
 always, whatever `MODULES` says) inside the
 API process: `WORKERS_IN_PROCESS=1`, the default. Deployments that scale the API
 horizontally should move them to one dedicated worker container, so that every extra

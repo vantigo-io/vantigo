@@ -199,10 +199,12 @@ dagen, med mindre den er rotert eller tilbakekalt. Roter nøkkelen før den tid.
 Fanen **Webhooks** viser integrasjonens webhook-endepunkter: HTTPS-adressene til programmet som
 skal få beskjed når noe skjer, for eksempel at en salgsordre er bekreftet. **Nytt endepunkt** ber
 om **URL** og **Hendelser**, blant dem integrasjonens roller lar den motta, og viser
-**signeringshemmeligheten** én gang: velg **Jeg har kopiert hemmeligheten** når den er lagret.
-Under hvert endepunkts **Handlinger** redigerer, deaktiverer eller sletter du det, eller velger
-**Roter hemmeligheten**. Vantigo sender ikke meldinger til endepunktene ennå; det kommer i en
-senere versjon.
+**signeringshemmeligheten** én gang: velg **Jeg har kopiert hemmeligheten** når den er lagret;
+det nye endepunktet får en testhendelse med en gang. Under hvert endepunkts **Handlinger**
+velger du **Send testhendelse**, redigerer, deaktiverer eller sletter det, eller velger **Roter
+hemmeligheten**. Et endepunkt der meldingene fortsetter å feile, merkes **Feiler**; et som
+Vantigo har deaktivert — fordi det har feilet i 5 dager eller svarte `410 Gone` — får et banner
+med årsaken og **Aktiver**, og integrasjonens kontaktperson og eierne får en e-post.
 
 Detaljene — hva en nøkkel når, begrensning, nøkler for bare lesing, nettverk,
 hastighetsgrensen, svarene en klient får, forespørselsloggen, webhook-endepunkter og hva du

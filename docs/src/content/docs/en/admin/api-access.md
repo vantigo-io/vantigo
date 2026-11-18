@@ -23,6 +23,8 @@ sources:
   - apps/server/internal/identity/webhooks_secret.go
   - apps/server/internal/identity/webhooks_signer.go
   - apps/server/internal/identity/webhooks_client.go
+  - apps/server/internal/identity/webhooks_handler.go
+  - apps/server/internal/identity/webhooks_worker.go
   - apps/server/internal/contracts/webhook_events.go
   - apps/server/internal/apiref
   - apps/apiref/frontend/src
@@ -344,8 +346,9 @@ The message names the resource and nothing else; the application fetches it with
 What the message holds, how it is signed and how the application checks it are in the
 reference, [Webhooks](/en/reference/webhooks/).
 
-**In this release** you add endpoints and get their secrets, but Vantigo does not send
-messages yet: sending, retries and the delivery log come in the next releases.
+Messages are sent by the `identity.webhook-sender` worker, within seconds of the event, and a
+failed one is retried for about two days ([Configuration](/en/admin/configuration/#workers)).
+The delivery log, with resend, comes in the next release.
 
 ### Add an endpoint
 
@@ -359,15 +362,25 @@ messages yet: sending, retries and the delivery log come in the next releases.
 4. Choose **Create endpoint**. The **signing secret** (`whsec_…`) appears **once**, with
    **Copy**. Put it where the application checks messages and choose **I have copied the
    secret**. Vantigo keeps it sealed and never shows it again; if it is lost, roll it.
+5. Vantigo sends the new endpoint a **test event** at once, a `webhook.ping` message. Check that
+   the application received it and accepted its signature.
 
 Vantigo looks the host name up when you save. An address that resolves to a private, loopback
 or otherwise reserved address is refused (*The address resolves to an address Vantigo never
-sends to.*), as is one that does not resolve (*The host name does not resolve.*). Messages will only ever go to public addresses,
+sends to.*), as is one that does not resolve (*The host name does not resolve.*). Messages only ever go to public addresses,
 checked again every time one is sent, so an application on your own network needs a public
 address or a tunnel.
 
 An integration has at most 5 endpoints, and the workspace 50. The tab shows each endpoint's
 full URL, query included — the only place it is shown — its events and its status.
+
+### Send a test event
+
+In an enabled endpoint's row, choose **Actions › Send test event**. *Test event queued* says a
+`webhook.ping` message is on its way; it is sent once, within seconds, with no retry, and it
+never counts toward disabling the endpoint. Use it to check the URL, the secret and the
+application's signature check. If the application answers `410 Gone`, the endpoint is
+disabled as for any message.
 
 ### Change, disable or delete an endpoint
 
@@ -378,12 +391,41 @@ In the endpoint's row, under **Actions**:
   refused and the tab shows the latest; make the change again.
 - **Disable** stops it, after you confirm: nothing more is sent to it, and the messages
   waiting for it are dropped. **Enable** starts it again with the events that happen from then
-  on.
+  on, and sends it a test event.
 - **Delete**, after you confirm, deletes the endpoint and its deliveries. It cannot be undone.
 
 The status says why an endpoint is disabled: by an Owner, because it kept failing for 5 days,
 because it answered `410 Gone`, or because the integration was archived. Archiving an
-integration disables its endpoints; they can then only be deleted.
+integration disables its endpoints; they can then only be deleted. Disabling the integration
+itself pauses its endpoints: nothing is sent while it is disabled, and when you enable it
+again what waited more than 24 hours is dropped and the rest is sent.
+
+### When Vantigo disables an endpoint
+
+A message that fails — any answer but `2xx`, no answer within 15 seconds, an address that
+cannot be reached — is tried again after 30 seconds, 5 minutes, 30 minutes, 2 hours, 6 hours,
+12 hours and 24 hours, then given up. While an enabled endpoint's messages fail, its status
+says **Failing**, with since when and when it last received one. Vantigo disables it:
+
+- when it has failed for **5 days** and at least **5 messages** were given up after every
+  retry — the status *Disabled: it failed for 5 days*;
+- at once, when it answers **`410 Gone`**, which says the address is no longer in use — the
+  status *Disabled: it answered 410 Gone*.
+
+The messages waiting for it are dropped, and the integration's contact and every Owner get
+**one mail**, in their own language, naming the endpoint by its address's host and saying
+why. The tab shows a banner, *Endpoint disabled: …*, with the reason.
+
+To start it again:
+
+1. Fix the application, or the endpoint's URL with **Edit endpoint**.
+2. Choose **Enable** in the banner, or **Actions › Enable**. The endpoint starts afresh with no
+   failure counted and is sent a test event at once.
+3. Check that the application received the test event. If it fails again, the endpoint is
+   disabled again and a new mail is sent.
+
+The events that happened while it was disabled are not sent: the application fetches what it
+missed through the API.
 
 ### Roll a secret
 
@@ -413,8 +455,9 @@ a key's row 90 days after it expired; the audit rows stay
 the networks and the expiry are recorded; a key's secret and its hash never are.
 
 For webhook endpoints it records `webhook.created`, `webhook.updated`, `webhook.deleted`,
-`webhook.enabled`, `webhook.disabled` (also once for each endpoint an archive disables) and
-`webhook.secret_rolled`. Of an endpoint's URL it keeps only the scheme and host, with a short
+`webhook.enabled`, `webhook.disabled` (also once for each endpoint an archive disables, and as
+`system:webhooks` when Vantigo disables one), `webhook.secret_rolled` and `webhook.test_sent`.
+Of an endpoint's URL it keeps only the scheme and host, with a short
 digest that shows when the rest changed: services such as Zapier and Slack carry their token
 in the path. The signing secret is never recorded.
 
@@ -441,3 +484,11 @@ in the path. The signing secret is never recorded.
 - **An event is not offered.** The integration's roles do not give the permission the event's
   resource is read with; the reference lists each event's permission.
 - **A webhook secret was lost.** It cannot be shown again: roll it.
+- **The application gets no messages.** Send a test event. If it does not arrive, check that the
+  URL is reachable from the internet and answers `2xx` within 15 seconds without a redirect,
+  and that the integration and the endpoint are enabled. An operator can check that the
+  `identity.webhook-sender` worker runs ([Configuration](/en/admin/configuration/#workers)).
+- **The application rejects the signature.** It must check the raw body before parsing it,
+  with the secret's bytes after `whsec_` decoded from base64; during a roll's overlap it gets
+  two signatures and should accept either.
+- **An endpoint was disabled.** See [When Vantigo disables an endpoint](#when-vantigo-disables-an-endpoint).
