@@ -140,6 +140,15 @@ var limits = map[string]ratelimit.Policy{
 	// mints a secret, limited per address as the Owner's user operations are.
 	"postIdentityIntegrationsByIdKeys":            policyUserManagement,
 	"postIdentityIntegrationsByIdKeysByKeyIdRoll": policyUserManagement,
+
+	// An integration's webhook endpoints (outgoing webhooks design W25):
+	// every write, the two that mint a secret among them, as the keys are.
+	"postIdentityIntegrationsByIdWebhooks":                      policyUserManagement,
+	"patchIdentityIntegrationsByIdWebhooksByWebhookId":          policyUserManagement,
+	"deleteIdentityIntegrationsByIdWebhooksByWebhookId":         policyUserManagement,
+	"postIdentityIntegrationsByIdWebhooksByWebhookIdDisable":    policyUserManagement,
+	"postIdentityIntegrationsByIdWebhooksByWebhookIdEnable":     policyUserManagement,
+	"postIdentityIntegrationsByIdWebhooksByWebhookIdRollSecret": policyUserManagement,
 }
 
 // Module is identity as a platform module: its contract mounted under
