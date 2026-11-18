@@ -23,6 +23,8 @@ sources:
   - apps/server/internal/identity/webhooks_secret.go
   - apps/server/internal/identity/webhooks_signer.go
   - apps/server/internal/identity/webhooks_client.go
+  - apps/server/internal/identity/webhooks_handler.go
+  - apps/server/internal/identity/webhooks_worker.go
   - apps/server/internal/contracts/webhook_events.go
   - apps/server/internal/apiref
   - apps/apiref/frontend/src
@@ -351,8 +353,9 @@ sier hvilken ressurs det gjelder og ingenting annet; programmet henter den med A
 sin. Hva meldingen inneholder, hvordan den signeres og hvordan programmet kontrollerer den,
 står i referansen, [Webhooks](/en/reference/webhooks/) (på engelsk).
 
-**I denne versjonen** legger du til endepunkter og får hemmelighetene deres, men Vantigo sender
-ikke meldinger ennå: sending, nye forsøk og leveringsloggen kommer i de neste versjonene.
+Meldingene sendes av arbeideren `identity.webhook-sender`, i løpet av sekunder etter hendelsen,
+og en som feiler, prøves på nytt i omtrent to døgn ([Konfigurasjon](/nb/admin/configuration/#arbeidere)).
+Leveringsloggen, med ny sending, kommer i neste versjon.
 
 ### Legg til et endepunkt
 
@@ -367,6 +370,8 @@ ikke meldinger ennå: sending, nye forsøk og leveringsloggen kommer i de neste 
    **Kopier**. Legg den der programmet kontrollerer meldingene, og velg **Jeg har kopiert
    hemmeligheten**. Vantigo oppbevarer den forseglet og viser den aldri igjen; går den tapt,
    roterer du den.
+5. Vantigo sender det nye endepunktet en **testhendelse** med en gang, en `webhook.ping`-melding.
+   Sjekk at programmet tok imot den og godtok signaturen.
 
 Vantigo slår opp vertsnavnet når du lagrer. En adresse som peker til en privat, lokal eller på
 annen måte reservert adresse, avvises (*The address resolves to an address Vantigo never sends
@@ -377,6 +382,14 @@ eget nettverk trenger en offentlig adresse eller en tunnel.
 En integrasjon kan ha høyst 5 endepunkter, og arbeidsområdet 50. Fanen viser hvert endepunkts
 fulle URL, spørrestrengen med — det eneste stedet den vises — hendelsene og statusen.
 
+### Send en testhendelse
+
+I raden til et aktivert endepunkt velger du **Handlinger › Send testhendelse**. *Testhendelsen er
+lagt i kø* sier at en `webhook.ping`-melding er på vei; den sendes én gang, i løpet av sekunder,
+uten nye forsøk, og teller aldri med når det avgjøres om endepunktet skal deaktiveres. Bruk den
+til å sjekke URL-en, hemmeligheten og programmets kontroll av signaturen. Svarer programmet
+`410 Gone`, deaktiveres endepunktet som for enhver melding.
+
 ### Endre, deaktiver eller slett et endepunkt
 
 I endepunktets rad, under **Handlinger**:
@@ -385,13 +398,43 @@ I endepunktets rad, under **Handlinger**:
   beholder hemmeligheten. Har noen andre endret endepunktet etter at du åpnet det, avvises
   lagringen og fanen viser det siste; gjør endringen på nytt.
 - **Deaktiver** stopper det når du har bekreftet: ingenting mer sendes til det, og meldingene
-  som venter på det, forkastes. **Aktiver** starter det igjen med hendelsene som skjer fra da av.
+  som venter på det, forkastes. **Aktiver** starter det igjen med hendelsene som skjer fra da av,
+  og sender det en testhendelse.
 - **Slett** sletter endepunktet og leveransene til det når du har bekreftet. Det kan ikke
   angres.
 
 Statusen sier hvorfor et endepunkt er deaktivert: av en eier, fordi det har feilet i 5 dager,
 fordi det svarte `410 Gone`, eller fordi integrasjonen ble arkivert. Arkiverer du en
-integrasjon, deaktiveres endepunktene; da kan de bare slettes.
+integrasjon, deaktiveres endepunktene; da kan de bare slettes. Deaktiverer du selve
+integrasjonen, settes endepunktene på pause: ingenting sendes mens den er deaktivert, og når du
+aktiverer den igjen, forkastes det som har ventet mer enn 24 timer, og resten sendes.
+
+### Når Vantigo deaktiverer et endepunkt
+
+En melding som feiler — ethvert svar unntatt `2xx`, ikke noe svar innen 15 sekunder, en adresse
+som ikke kan nås — prøves på nytt etter 30 sekunder, 5 minutter, 30 minutter, 2 timer, 6 timer,
+12 timer og 24 timer, og gis så opp. Mens meldingene til et aktivert endepunkt feiler, sier
+statusen **Feiler**, med siden når og når det sist fikk en. Vantigo deaktiverer det:
+
+- når det har feilet i **5 dager** og minst **5 meldinger** er gitt opp etter alle nye forsøk —
+  statusen *Deaktivert: det har feilet i 5 dager*;
+- med en gang når det svarer **`410 Gone`**, som sier at adressen ikke lenger er i bruk —
+  statusen *Deaktivert: det svarte 410 Gone*.
+
+Meldingene som venter på det, forkastes, og integrasjonens kontaktperson og alle eiere får
+**én e-post**, på sitt eget språk, som nevner endepunktet ved adressens vert og sier hvorfor.
+Fanen viser et banner, *Endepunktet er deaktivert: …*, med årsaken.
+
+Slik starter du det igjen:
+
+1. Rett opp programmet, eller endepunktets URL med **Rediger endepunkt**.
+2. Velg **Aktiver** i banneret, eller **Handlinger › Aktiver**. Endepunktet starter på nytt uten
+   feil talt med og får en testhendelse med en gang.
+3. Sjekk at programmet tok imot testhendelsen. Feiler det igjen, deaktiveres endepunktet igjen,
+   og en ny e-post sendes.
+
+Hendelsene som skjedde mens det var deaktivert, sendes ikke: programmet henter det det gikk glipp
+av, gjennom API-et.
 
 ### Roter en hemmelighet
 
@@ -424,7 +467,8 @@ lesing, nettverkene og utløpet registreres; en nøkkels hemmelighet og hash gj�
 
 For webhook-endepunkter registrerer det `webhook.created`, `webhook.updated`, `webhook.deleted`,
 `webhook.enabled`, `webhook.disabled` (også én gang for hvert endepunkt en arkivering
-deaktiverer) og `webhook.secret_rolled`. Av et endepunkts URL beholdes bare skjemaet og verten,
+deaktiverer, og som `system:webhooks` når Vantigo deaktiverer et), `webhook.secret_rolled` og
+`webhook.test_sent`. Av et endepunkts URL beholdes bare skjemaet og verten,
 med et kort sammendrag som viser når resten endret seg: tjenester som Zapier og Slack har
 tokenet sitt i stien. Signeringshemmeligheten registreres aldri.
 
@@ -451,3 +495,11 @@ tokenet sitt i stien. Signeringshemmeligheten registreres aldri.
 - **En hendelse tilbys ikke.** Integrasjonens roller gir ikke tillatelsen hendelsens ressurs
   leses med; referansen viser tillatelsen for hver hendelse.
 - **En webhook-hemmelighet er tapt.** Den kan ikke vises igjen: roter den.
+- **Programmet får ingen meldinger.** Send en testhendelse. Kommer den ikke fram, sjekker du at
+  URL-en kan nås fra internett og svarer `2xx` innen 15 sekunder uten videresending, og at
+  integrasjonen og endepunktet er aktivert. En driftsansvarlig kan sjekke at arbeideren
+  `identity.webhook-sender` kjører ([Konfigurasjon](/nb/admin/configuration/#arbeidere)).
+- **Programmet avviser signaturen.** Det må kontrollere den rå meldingskroppen før den tolkes,
+  med hemmelighetens byte etter `whsec_` dekodet fra base64; under et overlapp ved rotering får
+  det to signaturer og bør godta hvilken som helst av dem.
+- **Et endepunkt er deaktivert.** Se [Når Vantigo deaktiverer et endepunkt](#når-vantigo-deaktiverer-et-endepunkt).

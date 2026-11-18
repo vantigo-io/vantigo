@@ -390,6 +390,33 @@ asymmetric signing (`v1a`/`v2a`); a replay-missing/backfill tool; receivers othe
   - `contracts.WebhookEvent.Href(id)` fills the resource path's one parameter, whatever its name.
   - The workspace limit is tested under concurrency across integrations (48 seeded, racing
     creates on four integrations stop at exactly 50).
+- **5** (2026-11-18, as built in delivery B):
+  - **Worker-mode deps carry the catalog.** The fan-out and the claim decide W7 by the
+    composed permission catalog (`apiNeverIn`), which a worker-only process never had:
+    `module.EventHandlers` and `module.WorkerDeps` now set `Deps.Catalog` from the enabled
+    modules' permissions when the caller set none. Without it every event would have been
+    `skipped` in worker mode.
+  - **The claim is two statements in one transaction**, W29 (a) then (b-d): in READ COMMITTED
+    a single statement's snapshot predates its `FOR UPDATE` lock, so it could miss leases a
+    rival committed in between and pass the cap of 4. The second statement's fresh snapshot
+    sees them. Its round-robin is `ORDER BY rank, created_at, id` limited to the process's
+    free slots.
+  - **Lock order.** A result's transaction holds the endpoint `FOR UPDATE` first, then updates
+    the delivery under its lease (W38), as disable, archive and delete do; the reverse would
+    deadlock with a disable settling the same rows.
+  - A ping's result touches neither `failing_since` nor `last_success_at`; a 410 to it still
+    disables (W37). The endpoint's `version` is not bumped by the sender's writes, so an
+    Owner's `If-Match` is not invalidated by traffic.
+  - The auto-disable check (W18) runs after every pass; the expiry, the prune and the sweep of
+    notices still owed run at most once a minute, so a notice nobody could be mailed is not
+    retried every 2 s. A 410 and an auto-disable mail their notice at once.
+  - The integration-reenable dead-lettering (W30) uses `state_reason` `expired`.
+  - `POST …/test` answers `202 {deliveryId}`, refuses a disabled endpoint with 409
+    `webhook_endpoint_disabled`, and audits `webhook.test_sent` with the delivery's id; it is
+    in identity's `limits` at `policyUserManagement`.
+  - Tests reach a real `httptest` TLS server through `Access.webhookNet` (W20 rev 4), never
+    `Deps.HTTPTransport`; a test seam shortens the 15 s budget for the timeout case. No
+    migration was needed.
 
 ## 12. What overturning a default changes
 
