@@ -21,7 +21,8 @@ import (
 )
 
 // Compose mounts each module at /api/v1/<name>/, serves the combined
-// contract of the modules at GET /api/openapi.json (RuleSession), and
+// contract of the modules at GET /api/openapi.json (to a session; with
+// ?view=api, and to an API key, the integrator's document), and
 // answers every other /api path with httpx.NotFound. It fails on a
 // duplicate name, an invalid or duplicate permission, a Mount error, a path
 // two modules both declare, a component two modules declare differently
@@ -660,19 +661,14 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 		return nil, nil, err
 	}
 
-	sessionRule := contracts.Rule{Kind: contracts.RuleSession}
-	outer.HandleFunc("GET /api/openapi.json", func(w http.ResponseWriter, r *http.Request) {
-		if _, err := deps.Access.Check(r, sessionRule); err != nil {
-			if errors.Is(err, contracts.ErrUnauthenticated) || errors.Is(err, contracts.ErrForbidden) {
-				deps.Access.Reject(w, r, sessionRule, err)
-				return
-			}
-			httpx.WriteError(w, r, err)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write(body)
-	})
+	// A session gets the merged contract, or the integrator's document with
+	// ?view=api, and an API key the integrator's document cut to its scope
+	// (API access design K28).
+	server := ""
+	if deps.Config != nil { // only a test composes without one
+		server = deps.Config.AppOrigin + deps.Config.BasePath
+	}
+	outer.Handle("GET /api/openapi.json", newAPIDocuments(deps.Access, body, catalog, server))
 
 	// Both the subtree and the bare "/api". Without the bare pattern,
 	// http.ServeMux answers "/api" with its automatic redirect to "/api/" —

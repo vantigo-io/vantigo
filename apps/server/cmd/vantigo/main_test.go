@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -67,14 +68,42 @@ func TestParseArgs(t *testing.T) {
 		"healthcheck": modeHealthcheck,
 		"migrations":  modeUsage,
 		"API":         modeUsage,
+
+		"openapi integrator":   modeOpenAPIIntegrator,
+		"openapi":              modeUsage,
+		"openapi contract":     modeUsage,
+		"openapi integrator x": modeUsage,
 	} {
-		var argv []string
-		if args != "" {
-			argv = []string{args}
-		}
+		argv := strings.Fields(args)
 		if got, _ := parseArgs(argv); got != want {
 			t.Errorf("parseArgs(%q) = %v, want %v", args, got, want)
 		}
+	}
+}
+
+// The integrator's document is written with no environment at all (CI has
+// none), validates, and holds what a key can call and nothing it cannot.
+func TestOpenAPIIntegrator(t *testing.T) {
+	setEnv(t) // blanks DATABASE_URL and APP_URL: the command must not need them
+	code, stdout, stderr := runCapture("openapi", "integrator")
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, stderr)
+	}
+	doc, err := openapi3.NewLoader().LoadFromData([]byte(stdout))
+	if err != nil {
+		t.Fatalf("load the document: %v", err)
+	}
+	if err := doc.Validate(context.Background()); err != nil {
+		t.Errorf("the document does not validate: %v", err)
+	}
+	if strings.Contains(stdout, "x-vantigo-") {
+		t.Error("the document carries an x-vantigo-* extension")
+	}
+	if doc.Paths.Find("/api/v1/customers") == nil {
+		t.Error("the document lacks the customers listing")
+	}
+	if doc.Paths.Find("/api/v1/identity/account") != nil {
+		t.Error("the document holds identity's own account, which no key may call")
 	}
 }
 
