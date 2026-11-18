@@ -61,6 +61,7 @@ type CustomersCustomer struct {
 	MergedIntoCustomerID *int32
 	AnonymiseOn          pgtype.Date
 	AnonymisedAt         *time.Time
+	DateOfBirth          pgtype.Date
 }
 
 type CustomersCustomerAddress struct {

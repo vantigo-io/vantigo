@@ -152,6 +152,10 @@ func (s *server) GetInvoices(ctx context.Context, req gen.GetInvoicesRequestObje
 	if err != nil {
 		return nil, err
 	}
+	efaktura, err := channelStatuses(ctx, q, issuedIDs, channelEfaktura)
+	if err != nil {
+		return nil, err
+	}
 
 	data := make([]gen.InvoicesInvoiceListItem, 0, len(rows))
 	for _, row := range rows {
@@ -182,6 +186,9 @@ func (s *server) GetInvoices(ctx context.Context, req gen.GetInvoicesRequestObje
 		}
 		if status, ok := ehf[r.ID]; ok {
 			item.EhfStatus = &status
+		}
+		if status, ok := efaktura[r.ID]; ok && r.Kind == kindInvoice {
+			item.EfakturaStatus = &status
 		}
 		data = append(data, item)
 	}

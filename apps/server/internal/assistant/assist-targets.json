@@ -380,6 +380,11 @@
     "description": "The switch on a tracked variant's page that puts every lot a receipt makes or adds to in quarantine for inspection."
   },
   {
+    "key": "invoices.avtalegiro.mandates",
+    "route": "/invoices/settings",
+    "description": "The list of AvtaleGiro agreements whose KID names no customer, each with Assign to customer."
+  },
+  {
     "key": "invoices.customer.credit",
     "route": "/customers/{customerId}",
     "description": "The customer's credit on the customer's Invoices tab: the balance, every movement and Record refund."
@@ -425,9 +430,19 @@
     "description": "The button in the Keep the rest as credit dialog of a bank line queued as more than was open, or for a settled invoice: it applies what is open and keeps the rest as the customer's credit."
   },
   {
+    "key": "invoices.send.efaktura",
+    "route": "/invoices/{invoiceId}",
+    "description": "The button on an issued invoice that sends it to the customer's online bank as eFaktura, with AvtaleGiro when the customer has an agreement."
+  },
+  {
     "key": "invoices.send.message",
     "route": "/invoices/{invoiceId}",
     "description": "The optional personal message in the Send dialog, shown above the standard text in the e-mail."
+  },
+  {
+    "key": "invoices.settings.efaktura",
+    "route": "/invoices/settings",
+    "description": "The settings section with the agreements with the bank for eFaktura and AvtaleGiro, Verify and the AvtaleGiro switch."
   },
   {
     "key": "invoices.settings.logo",

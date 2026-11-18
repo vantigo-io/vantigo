@@ -306,6 +306,7 @@ invoices never putInvoicesBankFeed
 invoices never putInvoicesBankFeedAccountsByAccount
 invoices never putInvoicesSettings
 invoices never putInvoicesSettingsAccessPoint
+invoices never putInvoicesSettingsConsumerProvider
 invoices never putInvoicesSettingsVipps
 knowledge never emptyKnowledgeTrash
 knowledge read resolveKnowledgeLinks

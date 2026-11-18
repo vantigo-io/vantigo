@@ -12,8 +12,8 @@ import { useInvoiceFormat } from "../lib/format";
 
 export interface ResolveTransmissionModalProps {
   document: InvoiceDocument;
-  /** An unconfirmed transmission. */
-  transmission: Transmission;
+  /** An unconfirmed transmission, EHF or eFaktura: only its id is read. */
+  transmission: Pick<Transmission, "id">;
   onClose: () => void;
 }
 

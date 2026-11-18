@@ -1802,8 +1802,11 @@ paid. See
 VAT in NOK, payments with the exchange difference, Orders' currencies invoiced and
 Accounting posting in currency (after B).
 
-**Delivery D: eFaktura and AvtaleGiro** — through a consumer-delivery port and its first
-adapter.
+**Delivery D: eFaktura and AvtaleGiro** (built, ships switched off) — the
+`consumerinvoice` port and its Mastercard Payment Services adapter, the lookup without a
+fødselsnummer, send as eFaktura with its AvtaleGiro claim, the customer KID in a space of
+its own, the mandate rule in matching, and a person's date of birth in Customers. Live
+once Vantigo's submitter agreement with MPS is in place.
 
 **Delivery E: sending in bulk** — send all, the 2028 buyer org-number rule and credit
 limits.

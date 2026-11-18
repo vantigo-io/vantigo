@@ -1830,6 +1830,43 @@ func TestLoad_InvoicesEhfSettings(t *testing.T) {
 	}
 }
 
+// TestLoad_InvoicesEfakturaSettings: the eFaktura switch ships off (plan
+// D3); its base URLs default to MPS's production endpoints and must be
+// https; and on, it needs the submitter's user and its three files,
+// absolute and readable.
+func TestLoad_InvoicesEfakturaSettings(t *testing.T) {
+	cfg := mustLoad(t, validEnv())
+	if cfg.InvoicesEfakturaEnabled {
+		t.Error("INVOICES_EFAKTURA_ENABLED unset did not default to off")
+	}
+	if cfg.InvoicesMpsMandateBaseURL != "https://payments.mastercard.no/creditor-mandate" || !strings.HasPrefix(cfg.InvoicesMpsEfakturaBaseURL, "https://") {
+		t.Errorf("base URLs = %q, %q", cfg.InvoicesMpsEfakturaBaseURL, cfg.InvoicesMpsMandateBaseURL)
+	}
+	if msg := loadError(t, with(validEnv(), "INVOICES_MPS_MANDATE_BASE_URL", "http://mtf.payments.mastercard.no")); !strings.Contains(msg, "INVOICES_MPS_MANDATE_BASE_URL: must be an absolute https URL") {
+		t.Errorf("an http mandate URL: %q", msg)
+	}
+	msg := loadError(t, with(validEnv(), "INVOICES_EFAKTURA_ENABLED", "1"))
+	for _, key := range []string{"INVOICES_MPS_CLIENT_CERT_FILE", "INVOICES_MPS_CLIENT_KEY_FILE", "INVOICES_MPS_PASSWORD_FILE", "INVOICES_MPS_USERNAME"} {
+		if !strings.Contains(msg, key+": is required when INVOICES_EFAKTURA_ENABLED is on") {
+			t.Errorf("on without %s: %q", key, msg)
+		}
+	}
+	dir := t.TempDir()
+	file := filepath.Join(dir, "mps.pem")
+	if err := os.WriteFile(file, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if msg := loadError(t, with(validEnv(), "INVOICES_MPS_CLIENT_KEY_FILE", "relative/key.pem")); !strings.Contains(msg, "INVOICES_MPS_CLIENT_KEY_FILE: must be an absolute path") {
+		t.Errorf("a relative key path: %q", msg)
+	}
+	on := mustLoad(t, with(validEnv(), "INVOICES_EFAKTURA_ENABLED", "1", "INVOICES_MPS_USERNAME", "vantigo",
+		"INVOICES_MPS_CLIENT_CERT_FILE", file, "INVOICES_MPS_CLIENT_KEY_FILE", file, "INVOICES_MPS_PASSWORD_FILE", file,
+		"INVOICES_MPS_EFAKTURA_BASE_URL", "https://mps.example.test/efaktura/"))
+	if !on.InvoicesEfakturaEnabled || on.InvoicesMpsClientKeyFile != file || on.InvoicesMpsUsername != "vantigo" || on.InvoicesMpsEfakturaBaseURL != "https://mps.example.test/efaktura" {
+		t.Errorf("on = %v %q %q %q", on.InvoicesEfakturaEnabled, on.InvoicesMpsClientKeyFile, on.InvoicesMpsUsername, on.InvoicesMpsEfakturaBaseURL)
+	}
+}
+
 // STAFF_IMPORT_MAX_ROWS bounds the Staff register's import and its export
 // alike (staff records plan, Task 3): default 5000, and never under 5000 — a
 // lower bound would let an export written under an earlier, higher one fail

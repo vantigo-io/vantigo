@@ -115,7 +115,10 @@ RETURNING id, customer_number, name, status, legal_country, legal_id, legal_name
 -- foundation design D5) — the handler skips calling this entirely when the
 -- requested type is already the customer's own.
 UPDATE customers.customers
-SET type = @type,
+SET type = @type::varchar,
+    -- Only a person has a date of birth (00202's CHECK): a change to
+    -- business clears it in the same update.
+    date_of_birth = CASE WHEN @type::varchar = 'person' THEN date_of_birth ELSE NULL END,
     legal_country = @legal_country,
     legal_id = @legal_id,
     legal_name = @legal_name,
@@ -635,13 +638,34 @@ ORDER BY c.id;
 -- payment term, which resolveBillingProfile applies as the middle tier of
 -- PaymentTermsDays' resolution (customer groups design D4) — a LEFT JOIN
 -- rather than a second round trip, since the group is this module's own table
--- and a customer in no group must still answer a row.
+-- and a customer in no group must still answer a row. The phone and a
+-- person's date of birth are what Invoices finds the person for eFaktura by
+-- (invoices phase 6 reading 16), passed straight through.
 SELECT c.id, c.customer_number, c.name, c.type, c.status = 'archived' AS archived,
        c.status, c.merged_into_customer_id,
        c.legal_country, c.legal_id, c.legal_name, c.legal_source, c.legal_type, c.email,
        c.invoice_email, c.reminder_email, c.payment_terms_days, c.currency, c.language,
        c.invoice_delivery, c.reminder_delivery, c.peppol_id, c.gln, c.buyer_reference, c.default_bill_rate,
-       g.default_payment_terms_days AS group_default_payment_terms_days
+       g.default_payment_terms_days AS group_default_payment_terms_days,
+       c.phone, c.date_of_birth
 FROM customers.customers c
 LEFT JOIN customers.customer_groups g ON g.id = c.group_id
 WHERE c.id = @id;
+
+-- name: GetCustomerDateOfBirth :one
+-- GetCustomerDateOfBirth is GET /customers/{id}/date-of-birth's read
+-- (invoices phase 6 delivery D, design I30): a person's date of birth, with
+-- the type and the revision the PUT checks.
+SELECT id, type, date_of_birth, revision FROM customers.customers WHERE id = @id;
+
+-- name: SetCustomerDateOfBirth :one
+-- SetCustomerDateOfBirth is PUT /customers/{id}/date-of-birth's write: the
+-- date only, guarded and revision-bumping as UpdateCustomerContactInfo is.
+-- 00202's CHECK refuses one on a business; the handler refuses it first.
+UPDATE customers.customers
+SET date_of_birth = sqlc.narg(date_of_birth)::date,
+    updated_at = @updated_at::timestamptz,
+    revision = revision + 1
+WHERE id = @id
+  AND (sqlc.narg(expected_revision)::int IS NULL OR revision = sqlc.narg(expected_revision)::int)
+RETURNING id, type, date_of_birth, revision;

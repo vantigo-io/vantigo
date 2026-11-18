@@ -379,6 +379,31 @@ type Config struct {
 	// tenant's: an operator points it at the sandbox or a mock host, and an
 	// invoices:manage holder cannot aim the client anywhere.
 	InvoicesStorecoveBaseURL string
+	// InvoicesEfakturaEnabled is the live switch for eFaktura and AvtaleGiro
+	// through Mastercard Payment Services (INVOICES_EFAKTURA_ENABLED,
+	// invoices phase 6 design I29, plan D3). Default OFF: Vantigo must be an
+	// MPS submitter, with MPS's client certificate and user, before anything
+	// is sent. Off, the send answers 503 efaktura_unavailable and the
+	// invoices-efaktura worker is never handed to the runner.
+	InvoicesEfakturaEnabled bool
+	// InvoicesMpsEfakturaBaseURL is the Kombo submitter service's endpoint
+	// (INVOICES_MPS_EFAKTURA_BASE_URL) and InvoicesMpsMandateBaseURL the
+	// creditor Mandate API's base (INVOICES_MPS_MANDATE_BASE_URL), both
+	// https and the operator's, never the tenant's (plan reading 5): an
+	// operator points them at MPS's test environment.
+	InvoicesMpsEfakturaBaseURL string
+	InvoicesMpsMandateBaseURL  string
+	// InvoicesMpsClientCertFile and InvoicesMpsClientKeyFile are the PEM
+	// client certificate MPS issued Vantigo as submitter and its key;
+	// InvoicesMpsUsername and InvoicesMpsPasswordFile the WS-Security user
+	// MPS created and the file holding its password (plan reading 6).
+	// Absolute, readable paths, required while the switch is on. Only the
+	// paths are configuration: the key and the password are read from the
+	// files when the adapter is opened, and never held here.
+	InvoicesMpsClientCertFile string
+	InvoicesMpsClientKeyFile  string
+	InvoicesMpsUsername       string
+	InvoicesMpsPasswordFile   string
 	// InvoicesVippsEnabled is the on/off switch for Vipps MobilePay payments
 	// (INVOICES_VIPPS_ENABLED, payments port design D1). Default ON, like
 	// INVOICES_EHF_ENABLED: an installation still needs the sales unit's
@@ -738,6 +763,7 @@ func Load(env map[string]string) (*Config, error) {
 	energySpotPrices(&p, env, c)
 	energySpotPriceService(&p, env, c)
 	invoicesEhf(&p, env, c)
+	invoicesEfaktura(&p, env, c)
 	invoicesVipps(&p, env, c)
 	invoicesBankFeed(&p, env, c)
 	shippingCarriers(&p, env, c)
@@ -1212,6 +1238,46 @@ const defaultStorecoveBaseURL = "https://api.storecove.com/api/v2/"
 func invoicesEhf(p *problems, env map[string]string, c *Config) {
 	c.InvoicesEhfEnabled = boolean(p, env, "INVOICES_EHF_ENABLED", true)
 	c.InvoicesStorecoveBaseURL = httpBaseURL(p, env, "INVOICES_STORECOVE_BASE_URL", defaultStorecoveBaseURL)
+}
+
+// The MPS production endpoints (invoices phase 6 plan D3): the Kombo
+// submitter service as its WSDL names the host — the path is UNSURE until the
+// test environment confirms it — and the creditor Mandate API.
+const (
+	defaultMpsEfakturaBaseURL = "https://efaktura-services.nets.no/kombo-mastercard-submitter/v1"
+	defaultMpsMandateBaseURL  = "https://payments.mastercard.no/creditor-mandate"
+)
+
+// invoicesEfaktura loads the eFaktura settings (plan D3): the switch, off by
+// default; the two https base URLs; and, while the switch is on, the
+// submitter's certificate, key and password files, absolute and readable as
+// OIDC_WORKLOAD_IDENTITY_TOKEN_FILE is, and its user.
+func invoicesEfaktura(p *problems, env map[string]string, c *Config) {
+	c.InvoicesEfakturaEnabled = boolean(p, env, "INVOICES_EFAKTURA_ENABLED", false)
+	c.InvoicesMpsEfakturaBaseURL = httpsBaseURL(p, env, "INVOICES_MPS_EFAKTURA_BASE_URL", defaultMpsEfakturaBaseURL)
+	c.InvoicesMpsMandateBaseURL = httpsBaseURL(p, env, "INVOICES_MPS_MANDATE_BASE_URL", defaultMpsMandateBaseURL)
+	c.InvoicesMpsUsername = strings.TrimSpace(env["INVOICES_MPS_USERNAME"])
+	file := func(key string) string {
+		v := env[key]
+		switch {
+		case v == "" && c.InvoicesEfakturaEnabled:
+			p.add(key, "is required when INVOICES_EFAKTURA_ENABLED is on")
+		case v == "":
+		case !filepath.IsAbs(v):
+			p.add(key, "must be an absolute path")
+		case !readableFile(v):
+			p.add(key, "must be a readable file")
+		default:
+			return v
+		}
+		return ""
+	}
+	c.InvoicesMpsClientCertFile = file("INVOICES_MPS_CLIENT_CERT_FILE")
+	c.InvoicesMpsClientKeyFile = file("INVOICES_MPS_CLIENT_KEY_FILE")
+	c.InvoicesMpsPasswordFile = file("INVOICES_MPS_PASSWORD_FILE")
+	if c.InvoicesEfakturaEnabled && c.InvoicesMpsUsername == "" {
+		p.add("INVOICES_MPS_USERNAME", "is required when INVOICES_EFAKTURA_ENABLED is on")
+	}
 }
 
 // defaultVippsBaseURL is Vipps MobilePay's production API (payments port

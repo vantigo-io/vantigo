@@ -76,7 +76,10 @@ type pdfLabels struct {
 	payment, account, iban, bic, payWithNumber, orgNumber, foreignID, watermark         string
 	kid, payWithKid                                                                     string
 	// payWithVipps heads an invoice's pay link (D15).
-	payWithVipps          string
+	payWithVipps string
+	// avtaleGiro is the line a person's invoice prints while AvtaleGiro is
+	// on (invoices phase 6 reading 11), with the customer KID.
+	avtaleGiro            string
 	deducted, deductedRef string
 	// The timesheet block (invoices work design D5): its title, its columns
 	// but the description, a person's total and the whole's.
@@ -99,8 +102,8 @@ var labels = map[string]pdfLabels{
 		payWithNumber: "Vennligst oppgi fakturanummer ved betaling", orgNumber: "Org.nr.", foreignID: "VAT/Reg. no.",
 		watermark: "UTKAST — ikke et salgsdokument",
 		kid:       "KID", payWithKid: "Vennligst bruk KID ved betaling",
-		payWithVipps: "Betal med Vipps",
-		deducted:     "Fratrukket a konto", deductedRef: "Faktura %d av %s",
+		payWithVipps: "Betal med Vipps", avtaleGiro: "AvtaleGiro: opprett avtale i nettbanken med KID %s",
+		deducted: "Fratrukket a konto", deductedRef: "Faktura %d av %s",
 		timesheet: "Timeliste", sheetDate: "Dato", sheetPerson: "Person", sheetWorkType: "Arbeidstype", sheetHours: "Timer",
 		sheetTotalFor: "Sum %s", sheetTotal: "Sum timer",
 		pointID: "Målepunkt-ID", pointAddress: "Adresse", priceArea: "Prisområde", contract: "Avtale", period: "Periode",
@@ -119,8 +122,8 @@ var labels = map[string]pdfLabels{
 		payWithNumber: "Please state the invoice number with your payment", orgNumber: "Org. no.", foreignID: "VAT/Reg. no.",
 		watermark: "UTKAST — ikke et salgsdokument",
 		kid:       "KID", payWithKid: "Please use the KID with your payment",
-		payWithVipps: "Pay with Vipps",
-		deducted:     "Deducted on account", deductedRef: "Invoice %d of %s",
+		payWithVipps: "Pay with Vipps", avtaleGiro: "AvtaleGiro: set up an agreement in your online bank with KID %s",
+		deducted: "Deducted on account", deductedRef: "Invoice %d of %s",
 		timesheet: "Timesheet", sheetDate: "Date", sheetPerson: "Person", sheetWorkType: "Work type", sheetHours: "Hours",
 		sheetTotalFor: "Total %s", sheetTotal: "Total hours",
 		pointID: "Metering point ID", pointAddress: "Address", priceArea: "Price area", contract: "Contract", period: "Period",
@@ -165,6 +168,10 @@ type pdfDocument struct {
 	// kid is an issued invoice's KID, verified against its algorithm
 	// (pdfDocumentOf); empty without one (EHF and KID design D3).
 	kid string
+	// avtaleGiroKid is the customer KID a person's invoice printed while
+	// AvtaleGiro was on (invoices phase 6 reading 11), frozen on issue;
+	// empty for none, and the render is then byte for byte as before.
+	avtaleGiroKid string
 	// payLink is an issued invoice's live pay link when its PDF is first
 	// stored (D15, plan reading 13), empty for none.
 	payLink   string
@@ -236,6 +243,8 @@ type pdfModel struct {
 	totals      [][2]string
 	payment     [][2]string
 	paymentNote string
+	// avtaleGiroNote is the AvtaleGiro line, empty for none.
+	avtaleGiroNote string
 	// payLink is the pay link's heading and URL, printed beside a QR code of
 	// the URL under the payment block (D15); empty for none.
 	payLink      [2]string
@@ -519,6 +528,9 @@ func buildPDFModel(d pdfDocument) pdfModel {
 		if d.kid != "" {
 			m.paymentNote = l.payWithKid
 		}
+		if d.avtaleGiroKid != "" {
+			m.avtaleGiroNote = fmt.Sprintf(l.avtaleGiro, d.avtaleGiroKid)
+		}
 		if d.payLink != "" {
 			m.payLink = [2]string{l.payWithVipps, d.payLink}
 		}
@@ -718,6 +730,9 @@ func layoutPDF(m pdfModel) (core.Maroto, error) {
 			doc.AddRow(4.5, text.NewCol(3, kv[0], bold), text.NewCol(9, kv[1]))
 		}
 		doc.AddRows(text.NewRow(6, m.paymentNote, props.Text{Top: 1}))
+		if m.avtaleGiroNote != "" {
+			doc.AddRows(text.NewRow(6, m.avtaleGiroNote, props.Text{Top: 1}))
+		}
 	}
 	if m.payLink[1] != "" {
 		// The URL beside a QR of it, for the customer paying remotely.

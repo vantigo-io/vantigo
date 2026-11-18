@@ -228,6 +228,13 @@ func (d *directory) BillingProfile(ctx context.Context, id int32, opts contracts
 	// design D10): nothing to resolve, so they pass straight through.
 	resolved.Status = row.Status
 	resolved.MergedInto = row.MergedIntoCustomerID
+	// The phone and a person's date of birth (invoices phase 6 reading 16),
+	// what Invoices finds a person for eFaktura by: passed through too.
+	resolved.Phone = deref(row.Phone)
+	if row.DateOfBirth.Valid {
+		dob := row.DateOfBirth.Time
+		resolved.DateOfBirth = &dob
+	}
 
 	// The delivery addresses and the contacts, only for a caller that asks
 	// (orders design O10): an invoice pays nothing for them.

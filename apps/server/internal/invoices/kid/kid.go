@@ -122,6 +122,70 @@ func Fits(next int64, length int) (fits, headroomLow bool) {
 	return true, room < 2
 }
 
+// The customer KID (invoices phase 6 design I32): AvtaleGiro identifies the
+// payer by a KID fixed in their mandate, so each customer has one, in a
+// space of its own — the leading digit 9, the customer number padded to the
+// agreed length less two, then the check digit. While AvtaleGiro is on the
+// invoice numbers are capped one digit lower (ComputeReserved), so an
+// invoice KID always begins with 0 and never meets a customer KID.
+
+// customerSpace is the customer KIDs' leading digit.
+const customerSpace = '9'
+
+// CustomerKID is the customer number's KID of length characters under
+// algorithm. A number of more than length − 2 digits is ErrLengthExceeded.
+func CustomerKID(customerNumber int64, length int, algorithm string) (string, error) {
+	if customerNumber < 1 {
+		return "", fmt.Errorf("kid: %d is not a customer number", customerNumber)
+	}
+	digits := strconv.FormatInt(customerNumber, 10)
+	if len(digits) > length-2 {
+		return "", ErrLengthExceeded
+	}
+	body := string(customerSpace) + strings.Repeat("0", length-2-len(digits)) + digits
+	c, ok := check(body, algorithm)
+	if !ok {
+		return "", fmt.Errorf("kid: unknown algorithm %q", algorithm)
+	}
+	return body + string(c), nil
+}
+
+// ComputeReserved is Compute with the customer KIDs' digit reserved: a
+// number of more than length − 2 digits is ErrLengthExceeded, so the KID's
+// first digit is always 0.
+func ComputeReserved(number int64, length int, algorithm string) (string, error) {
+	if len(strconv.FormatInt(max(number, 1), 10)) > length-2 {
+		return "", ErrLengthExceeded
+	}
+	return Compute(number, length, algorithm)
+}
+
+// FitsReserved is Fits with the reserved digit: whether next fits in
+// length − 2 digits, and whether fewer than two digits of headroom are left.
+func FitsReserved(next int64, length int) (fits, headroomLow bool) {
+	return Fits(next, length-1)
+}
+
+// IsCustomerKID is whether s is in the customer KIDs' space: a KID Parse
+// reads whose first digit is 9.
+func IsCustomerKID(s string) bool {
+	body, _, _, ok := Parse(s)
+	return ok && len(body) >= 3 && body[0] == customerSpace
+}
+
+// CustomerNumberOf is the customer number a customer KID carries; ok is
+// false for anything else.
+func CustomerNumberOf(s string) (int64, bool) {
+	if !IsCustomerKID(s) {
+		return 0, false
+	}
+	n, err := strconv.ParseInt(s[1:len(s)-1], 10, 64)
+	if err != nil || n < 1 {
+		return 0, false
+	}
+	return n, true
+}
+
 // Parse reads a KID as a bank line carries it (payments and reminders design
 // D4): 2 to 25 characters, every one but the last a digit, the last a digit
 // or MOD11's '-'. body is the digits before the check character, as

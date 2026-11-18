@@ -163,6 +163,13 @@ filter creates a group with a **Group name** and an optional **Default payment t
 **Contact & addresses** shows the customer's own **Email**, **Phone** and **Website**;
 **Edit contact details** (`customers:update`) changes them.
 
+For a private customer the card also shows **Date of birth**: *Used to find the customer
+for eFaktura. Never printed.* **Edit** (`customers:update`) sets or clears it — a past
+date from 1900 on. Only a person has one: changing the customer to a business clears it,
+and anonymising the customer blanks it. With eFaktura set up, the customer's **Invoices**
+tab shows whether the person was found for eFaktura, with **Check eFaktura**
+([Sending as eFaktura](/en/user/invoices/#who-can-get-efaktura)).
+
 Addresses are listed below by type — **Invoice**, **Postal**, **Delivery**,
 **Visiting** — and the primary one of each type carries a **Primary** badge. **Add
 address** asks for **Address type**, an optional **Label**, **Address line 1** and

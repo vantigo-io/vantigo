@@ -106,7 +106,7 @@ const anonymiseCustomerRow = `-- name: AnonymiseCustomerRow :exec
 UPDATE customers.customers
 SET name = $1::text,
     legal_country = NULL, legal_id = NULL, legal_name = NULL, legal_source = NULL, legal_type = NULL,
-    email = NULL, phone = NULL, website = NULL,
+    email = NULL, phone = NULL, website = NULL, date_of_birth = NULL,
     invoice_email = NULL, reminder_email = NULL, peppol_id = NULL, gln = NULL, buyer_reference = NULL,
     group_id = NULL,
     anonymise_on = $2::date,
@@ -271,7 +271,7 @@ func (q *Queries) CustomerAnonymisedAt(ctx context.Context, id int32) (*time.Tim
 const customerForPersonalData = `-- name: CustomerForPersonalData :one
 SELECT id, customer_number, name, type, status, revision, merged_into_customer_id, anonymise_on, anonymised_at,
        legal_country, legal_id, legal_name, legal_source, legal_type,
-       email, phone, website, owner_user_id, group_id, created_at, updated_at,
+       email, phone, website, owner_user_id, group_id, created_at, updated_at, date_of_birth,
        invoice_email, reminder_email, payment_terms_days, currency, language,
        invoice_delivery, reminder_delivery, peppol_id, gln, buyer_reference, default_bill_rate
 FROM customers.customers
@@ -300,6 +300,7 @@ type CustomerForPersonalDataRow struct {
 	GroupID              *uuid.UUID
 	CreatedAt            time.Time
 	UpdatedAt            time.Time
+	DateOfBirth          pgtype.Date
 	InvoiceEmail         *string
 	ReminderEmail        *string
 	PaymentTermsDays     *int32
@@ -342,6 +343,7 @@ func (q *Queries) CustomerForPersonalData(ctx context.Context, id int32) (Custom
 		&i.GroupID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DateOfBirth,
 		&i.InvoiceEmail,
 		&i.ReminderEmail,
 		&i.PaymentTermsDays,

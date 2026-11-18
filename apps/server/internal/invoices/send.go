@@ -110,8 +110,10 @@ var beforeDeliveryWrite func(ctx context.Context, invoiceID int64)
 // may send as EHF on this installation (meta's capability) and the document's
 // ehf block names nothing blocking it: then a customer expecting EHF is told
 // ehf_preferred — send it as EHF instead — in place of
-// delivery_preference_ehf (EHF and KID design D10, reading 14).
-func sendWarnings(inv store.InvoicesInvoice, profile *contracts.CustomerBillingProfile, today time.Time, canSendEhf bool) []string {
+// delivery_preference_ehf (EHF and KID design D10, reading 14). canSendEfaktura
+// is the same for eFaktura (invoices phase 6 plan D6): a customer preferring
+// it is told efaktura_preferred in place of delivery_preference_other.
+func sendWarnings(inv store.InvoicesInvoice, profile *contracts.CustomerBillingProfile, today time.Time, canSendEhf, canSendEfaktura bool) []string {
 	warnings := []string{}
 	if profile != nil {
 		switch profile.InvoiceDelivery {
@@ -121,7 +123,13 @@ func sendWarnings(inv store.InvoicesInvoice, profile *contracts.CustomerBillingP
 			} else {
 				warnings = append(warnings, warningDeliveryPreferenceEHF)
 			}
-		case "efaktura", "paper":
+		case "efaktura":
+			if canSendEfaktura {
+				warnings = append(warnings, warningEfakturaPreferred)
+			} else {
+				warnings = append(warnings, warningDeliveryPreferenceOther)
+			}
+		case "paper":
 			warnings = append(warnings, warningDeliveryPreferenceOther)
 		}
 	}
@@ -214,7 +222,8 @@ func (s *server) withSendDefaults(ctx context.Context, q *store.Queries, inv sto
 	// Peppol id in its snapshot, no reference, already sent — keeps the
 	// warning that an e-mailed PDF does not meet the duty.
 	documentCanGo := canSendEhf && resp.Ehf != nil && resp.Ehf.BlockedBy == nil
-	defaults := gen.InvoicesSendDefaults{Warnings: sendWarnings(inv, profile, today, documentCanGo)}
+	efakturaCanGo := resp.Efaktura != nil && resp.Efaktura.CanSend
+	defaults := gen.InvoicesSendDefaults{Warnings: sendWarnings(inv, profile, today, documentCanGo, efakturaCanGo)}
 	if profile != nil && profile.InvoiceEmail != "" {
 		defaults.Recipient = ptr(profile.InvoiceEmail)
 	}

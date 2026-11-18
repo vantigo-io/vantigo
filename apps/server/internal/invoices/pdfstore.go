@@ -62,6 +62,9 @@ func pdfDocumentOf(inv store.InvoicesInvoice, lines []store.InvoicesLine, sums [
 		}
 		d.kid = *inv.Kid
 	}
+	if inv.BuyerAvtalegiroKid != nil {
+		d.avtaleGiroKid = *inv.BuyerAvtalegiroKid
+	}
 	if inv.IssuedAt != nil {
 		d.created = *inv.IssuedAt
 	}

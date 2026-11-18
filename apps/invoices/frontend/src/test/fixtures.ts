@@ -21,6 +21,9 @@ export const meta = (overrides: Partial<InvoicesMeta> = {}): InvoicesMeta => ({
   mailAvailable: true,
   ehfAvailable: false,
   accessPointCredentialsRejected: false,
+  efakturaAvailable: false,
+  avtalegiroEnabled: false,
+  consumerProviderCredentialsRejected: false,
   today: "2026-09-12",
   vatCodes: [
     { id: 1, code: "3", name: "Utgående mva 25 %", safTCode: "3", ehfCategory: "S", ratePercent: 25 },
@@ -46,6 +49,7 @@ export const meta = (overrides: Partial<InvoicesMeta> = {}): InvoicesMeta => ({
     canRunReminders: true,
     canSend: true,
     canSendEhf: false,
+    canSendEfaktura: false,
     canTakeOnSitePayment: false,
   },
   workAvailable: true,

@@ -10,6 +10,7 @@ import { refusalMessage } from "../lib/errors";
 import { useInvoiceFormat } from "../lib/format";
 import { NewInvoiceModal } from "../pages/invoices";
 import { CustomerCreditCard } from "./customer-credit-card";
+import { EfakturaLookupCard } from "./efaktura-lookup-card";
 import { InvoiceTable } from "./invoice-table";
 import { ReminderPolicyCard } from "./reminder-policy-card";
 
@@ -101,6 +102,9 @@ export const CustomerInvoicesPanel = ({
       {/* canChangeReminderPolicy is the caller's invoices:payments, which a refund needs too. */}
       <CustomerCreditCard customerId={customerId} canAct={canChangeReminderPolicy} />
       <ReminderPolicyCard customerId={customerId} canChange={canChangeReminderPolicy} currentUserId={currentUserId} />
+      {meta.data?.efakturaAvailable && (
+        <EfakturaLookupCard customerId={customerId} canCheck={meta.data.capabilities.canSendEfaktura} />
+      )}
     </>
   );
 };

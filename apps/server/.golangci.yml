@@ -2148,6 +2148,8 @@ linters:
           deny:
             - pkg: github.com/vantigo-io/vantigo/server/internal/payments/vipps/vippstest
               desc: "vippstest is a test fake: only _test.go files may import it"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/consumerinvoice/mps/mpstest
+              desc: "mpstest is a test fake: only _test.go files may import it"
             - pkg: github.com/vantigo-io/vantigo/server/internal/shipping/bring/bringtest
               desc: "bringtest is a test fake: only _test.go files may import it"
             - pkg: github.com/vantigo-io/vantigo/server/internal/entra/graphtest
@@ -2208,6 +2210,7 @@ linters:
             - "**/internal/buildinfo/**"
             - "**/internal/holidays/**"
             - "**/internal/config/**"
+            - "**/internal/consumerinvoice/**"
             - "**/internal/db/**"
             - "**/internal/docmath/**"
             - "**/internal/events/**"

@@ -67,7 +67,11 @@ lag, never what must refuse — go through the platform's domain-events outbox,
    `internal/payments` — the payments port, shared by Invoices and a later Point of
    sale, with its Vipps MobilePay adapter `internal/payments/vipps`; interfaces,
    values and the adapter only, no SQL, so each consumer keeps its own tables
-   (rule 4) — `internal/shipping` — the carrier port, Orders' and a later webshop's,
+   (rule 4) — `internal/consumerinvoice` — the consumer invoice port, eFaktura and
+   AvtaleGiro, Invoices' first, with its Mastercard Payment Services adapter
+   `internal/consumerinvoice/mps` and its fake `mps/mpstest`; values, one interface and
+   the adapter, no SQL, and no national identity number in any of them —
+   `internal/shipping` — the carrier port, Orders' and a later webshop's,
    with its Bring adapter `internal/shipping/bring`; interfaces, values and the adapter
    only, no SQL ([Shipping carriers](/en/contributing/shipping-carriers/)) —
    `internal/bankfeed` — the bank feed port, Invoices' and a later Expenses', with its

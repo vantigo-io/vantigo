@@ -24,7 +24,13 @@ import (
 // cancel and resolve are each one conditional UPDATE, refused by the rows it
 // matches.
 
-const invalidResolutionTitle = "Invalid resolution"
+const (
+	invalidResolutionTitle = "Invalid resolution"
+
+	// channelEhf and channelEfaktura are a transmission's channel.
+	channelEhf      = "ehf"
+	channelEfaktura = "efaktura"
+)
 
 // errNoSuchTransmission is a transmission that is not the document's.
 var errNoSuchTransmission = errors.New("invoices: no such transmission on the document")
@@ -35,7 +41,7 @@ var errNoSuchTransmission = errors.New("invoices: no such transmission on the do
 func transmissionResponse(t store.InvoicesTransmission, issuerFields bool) gen.InvoicesTransmission {
 	out := gen.InvoicesTransmission{
 		Id: t.ID, Status: t.Status, Provider: t.Provider, IdempotencyKey: t.IdempotencyKey,
-		ReceiverParticipant: t.ReceiverParticipant, UblSha256: t.UblSha256, QueuedAt: t.QueuedAt,
+		ReceiverParticipant: deref(t.ReceiverParticipant), UblSha256: deref(t.UblSha256), QueuedAt: t.QueuedAt,
 		SubmittedAt: t.SubmittedAt, DeliveredAt: t.DeliveredAt, FailedAt: t.FailedAt, CancelledAt: t.CancelledAt,
 		ResolvedByUserId: t.ResolvedByUserID, ResolutionNote: t.ResolutionNote, UblUrl: ublPath(t.InvoiceID, t.ID),
 	}
@@ -94,7 +100,7 @@ func (s *server) ehfBlockedBy(ctx context.Context, q *store.Queries, inv store.I
 // invoices:issue when the handler has asked already, nil to ask here — and
 // only when a transmission carries the provider's words to show.
 func (s *server) ehfState(ctx context.Context, q *store.Queries, inv store.InvoicesInvoice, lines []store.InvoicesLine, canIssue *bool) (gen.InvoicesEhfState, error) {
-	rows, err := q.TransmissionsOf(ctx, inv.ID)
+	rows, err := q.TransmissionsOf(ctx, store.TransmissionsOfParams{InvoiceID: inv.ID, Channel: channelEhf})
 	if err != nil {
 		return gen.InvoicesEhfState{}, fmt.Errorf("invoices: read document %d's transmissions: %w", inv.ID, err)
 	}
@@ -144,6 +150,12 @@ func ehfHeaded(inv store.InvoicesInvoice, profile *contracts.CustomerBillingProf
 // ehfStatuses is each issued document's latest EHF status on a page of the
 // list, in one query: its newest transmission's, or not_sent.
 func ehfStatuses(ctx context.Context, q *store.Queries, issued []int64) (map[int64]string, error) {
+	return channelStatuses(ctx, q, issued, channelEhf)
+}
+
+// channelStatuses is ehfStatuses on any channel: each document's newest
+// transmission's status on it, or not_sent.
+func channelStatuses(ctx context.Context, q *store.Queries, issued []int64, channel string) (map[int64]string, error) {
 	out := make(map[int64]string, len(issued))
 	if len(issued) == 0 {
 		return out, nil
@@ -151,7 +163,7 @@ func ehfStatuses(ctx context.Context, q *store.Queries, issued []int64) (map[int
 	for _, id := range issued {
 		out[id] = ehfNotSent
 	}
-	rows, err := q.TransmissionsOfDocuments(ctx, issued)
+	rows, err := q.TransmissionsOfDocuments(ctx, store.TransmissionsOfDocumentsParams{InvoiceIds: issued, Channel: channel})
 	if err != nil {
 		return nil, fmt.Errorf("invoices: read the page's transmissions: %w", err)
 	}
@@ -163,8 +175,9 @@ func ehfStatuses(ctx context.Context, q *store.Queries, issued []int64) (map[int
 
 // transmissionOf is a document and one of its transmissions, errDocumentGone
 // or errNoSuchTransmission when either is not there — a transmission of
-// another document is not this one's.
-func transmissionOf(ctx context.Context, q *store.Queries, invoiceID, transmissionID int64) (store.InvoicesInvoice, store.InvoicesTransmission, error) {
+// another document is not this one's, and an eFaktura is one only when
+// efaktura says the operation takes one (the resolve).
+func transmissionOf(ctx context.Context, q *store.Queries, invoiceID, transmissionID int64, efaktura bool) (store.InvoicesInvoice, store.InvoicesTransmission, error) {
 	inv, err := q.GetInvoice(ctx, invoiceID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return store.InvoicesInvoice{}, store.InvoicesTransmission{}, errDocumentGone
@@ -173,7 +186,7 @@ func transmissionOf(ctx context.Context, q *store.Queries, invoiceID, transmissi
 		return store.InvoicesInvoice{}, store.InvoicesTransmission{}, fmt.Errorf("invoices: read document %d: %w", invoiceID, err)
 	}
 	t, err := q.GetTransmission(ctx, transmissionID)
-	if errors.Is(err, pgx.ErrNoRows) || (err == nil && t.InvoiceID != inv.ID) {
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && (t.InvoiceID != inv.ID || (t.Channel != channelEhf && !efaktura))) {
 		return store.InvoicesInvoice{}, store.InvoicesTransmission{}, errNoSuchTransmission
 	}
 	if err != nil {
@@ -191,7 +204,7 @@ func missing(err error) bool {
 // (POST /api/v1/invoices/{id}/transmissions/{transmissionId}/cancel)
 func (s *server) PostInvoicesByIdTransmissionsByTransmissionIdCancel(ctx context.Context, req gen.PostInvoicesByIdTransmissionsByTransmissionIdCancelRequestObject) (gen.PostInvoicesByIdTransmissionsByTransmissionIdCancelResponseObject, error) {
 	q := store.New(s.deps.Pool)
-	inv, t, err := transmissionOf(ctx, q, req.Id, req.TransmissionId)
+	inv, t, err := transmissionOf(ctx, q, req.Id, req.TransmissionId, false)
 	switch {
 	case missing(err):
 		return gen.PostInvoicesByIdTransmissionsByTransmissionIdCancel404Response{}, nil
@@ -239,14 +252,14 @@ func (s *server) PostInvoicesByIdTransmissionsByTransmissionIdResolve(ctx contex
 		return gen.PostInvoicesByIdTransmissionsByTransmissionIdResolve400ApplicationProblemPlusJSONResponse(invalid(invalidResolutionTitle, errs)), nil
 	}
 	q := store.New(s.deps.Pool)
-	inv, t, err := transmissionOf(ctx, q, req.Id, req.TransmissionId)
+	inv, t, err := transmissionOf(ctx, q, req.Id, req.TransmissionId, true)
 	switch {
 	case missing(err):
 		return gen.PostInvoicesByIdTransmissionsByTransmissionIdResolve404Response{}, nil
 	case err != nil:
 		return nil, err
 	}
-	n, err := q.ResolveTransmission(ctx, store.ResolveTransmissionParams{
+	n, err := s.resolveTransmission(ctx, t, store.ResolveTransmissionParams{
 		Outcome: string(req.Body.Outcome), Now: s.deps.Clock(), ResolvedByUserID: ptr(callerID(ctx)), ResolutionNote: &note,
 		ID: t.ID, InvoiceID: inv.ID,
 	})
@@ -295,7 +308,7 @@ func (r ublDownload) VisitGetInvoicesByIdTransmissionsByTransmissionIdUblRespons
 // (GET /api/v1/invoices/{id}/transmissions/{transmissionId}/ubl)
 func (s *server) GetInvoicesByIdTransmissionsByTransmissionIdUbl(ctx context.Context, req gen.GetInvoicesByIdTransmissionsByTransmissionIdUblRequestObject) (gen.GetInvoicesByIdTransmissionsByTransmissionIdUblResponseObject, error) {
 	q := store.New(s.deps.Pool)
-	inv, t, err := transmissionOf(ctx, q, req.Id, req.TransmissionId)
+	inv, t, err := transmissionOf(ctx, q, req.Id, req.TransmissionId, false)
 	switch {
 	case missing(err):
 		return gen.GetInvoicesByIdTransmissionsByTransmissionIdUbl404Response{}, nil
@@ -318,4 +331,38 @@ func (s *server) GetInvoicesByIdTransmissionsByTransmissionIdUbl(ctx context.Con
 		body:        gen.GetInvoicesByIdTransmissionsByTransmissionIdUbl200ApplicationxmlResponse{Body: bytes.NewReader(body), ContentLength: int64(len(body))},
 		disposition: fmt.Sprintf("attachment; filename=%q", ublFileName(inv, t.ID)),
 	}, nil
+}
+
+// resolveTransmission is a person's verdict in one transaction: the row, and
+// for an eFaktura its event and its AvtaleGiro claim — one the bank never
+// accepted is cancelled, whatever the outcome, since whether the bank holds
+// it cannot be told; a debit that comes after all is queued for a person.
+func (s *server) resolveTransmission(ctx context.Context, t store.InvoicesTransmission, params store.ResolveTransmissionParams) (int64, error) {
+	if t.Channel != channelEfaktura {
+		return store.New(s.deps.Pool).ResolveTransmission(ctx, params)
+	}
+	var n int64
+	err := s.withLockedTx(ctx, func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error {
+		var err error
+		if n, err = txq.ResolveTransmission(ctx, params); err != nil || n == 0 {
+			return err
+		}
+		if err := publishTransmissionChanged(ctx, tx, t, params.Outcome, params.Now); err != nil {
+			return err
+		}
+		claim, err := txq.ClaimOfTransmission(ctx, t.ID)
+		switch {
+		case errors.Is(err, pgx.ErrNoRows):
+			return nil
+		case err != nil:
+			return err
+		case claim.Status != "submitted":
+			return nil
+		}
+		if m, err := txq.CancelClaim(ctx, store.CancelClaimParams{Now: params.Now, ID: claim.ID}); err != nil || m == 0 {
+			return err
+		}
+		return publishClaimChanged(ctx, tx, claim, "cancelled", params.Now)
+	})
+	return n, err
 }

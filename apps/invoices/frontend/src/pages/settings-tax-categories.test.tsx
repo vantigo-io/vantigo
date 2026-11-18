@@ -20,6 +20,7 @@ const manager = {
   canRunReminders: false,
   canSend: false,
   canSendEhf: false,
+  canSendEfaktura: false,
   canTakeOnSitePayment: false,
 };
 

@@ -20,6 +20,44 @@ type InvoicesAccessPointCredential struct {
 	UpdatedAt        time.Time
 }
 
+type InvoicesAvtalegiroClaim struct {
+	ID                int64
+	InvoiceID         int64
+	TransmissionID    int64
+	MandateID         int64
+	Amount            pgtype.Numeric
+	DueDate           pgtype.Date
+	Kid               string
+	Status            string
+	Attention         bool
+	RejectionCode     *string
+	RejectionText     *string
+	NextAttemptAt     *time.Time
+	LeaseID           *string
+	LeaseUntil        *time.Time
+	SubmittedAt       time.Time
+	AcceptedAt        *time.Time
+	RejectedAt        *time.Time
+	CancelRequestedAt *time.Time
+	CancelRefusedAt   *time.Time
+	CancelledAt       *time.Time
+	PaidAt            *time.Time
+	UnpaidAt          *time.Time
+}
+
+type InvoicesAvtalegiroMandate struct {
+	ID               int64
+	Kid              string
+	CustomerID       *int32
+	Status           string
+	NotifyByMail     bool
+	ProviderSeenAt   time.Time
+	ResolvedByUserID *uuid.UUID
+	ResolutionNote   *string
+	QueuePosition    int64
+	UpdatedAt        time.Time
+}
+
 type InvoicesBankFeedAccount struct {
 	Account          string
 	Enabled          bool
@@ -206,6 +244,28 @@ type InvoicesCollectionRate struct {
 	CreatedAt        time.Time
 }
 
+type InvoicesConsumerLookup struct {
+	CustomerID         int32
+	Status             string
+	EfakturaIdentifier *string
+	AutoAccept         bool
+	HasAgreement       bool
+	CheckedAt          time.Time
+	NextCheckAt        time.Time
+}
+
+type InvoicesConsumerProviderCredential struct {
+	ID                     int32
+	Provider               string
+	SettingsJson           string
+	SecretCiphertext       string
+	RejectedAt             *time.Time
+	UpdatedAt              time.Time
+	HousekeepingAt         *time.Time
+	HousekeepingLeaseUntil *time.Time
+	MandateRequestID       *uuid.UUID
+}
+
 type InvoicesCounter struct {
 	CounterName string
 	NextValue   int64
@@ -357,6 +417,7 @@ type InvoicesInvoice struct {
 	SellerLogoObjectKey        *string
 	SellerLogoSha256           *string
 	SellerPhone                *string
+	BuyerAvtalegiroKid         *string
 }
 
 type InvoicesInvoiceHold struct {
@@ -703,6 +764,8 @@ type InvoicesSetting struct {
 	LogoContentType         *string
 	Phone                   string
 	Tolerance               pgtype.Numeric
+	AvtalegiroEnabled       bool
+	KidSpaceReserved        bool
 }
 
 type InvoicesTaxCategoryVatCode struct {
@@ -729,12 +792,12 @@ type InvoicesTransmission struct {
 	InvoiceID           int64
 	Provider            string
 	IdempotencyKey      uuid.UUID
-	SenderParticipant   string
-	ReceiverParticipant string
-	DocumentType        string
-	ProcessID           string
-	UblObjectKey        string
-	UblSha256           string
+	SenderParticipant   *string
+	ReceiverParticipant *string
+	DocumentType        *string
+	ProcessID           *string
+	UblObjectKey        *string
+	UblSha256           *string
 	PdfSha256           string
 	Status              string
 	ProviderRef         *string
@@ -747,9 +810,9 @@ type InvoicesTransmission struct {
 	LeaseID             *string
 	LeaseUntil          *time.Time
 	LastError           *string
-	LookupRegistered    bool
-	LookupCanReceive    bool
-	LookupAt            time.Time
+	LookupRegistered    *bool
+	LookupCanReceive    *bool
+	LookupAt            *time.Time
 	QueuedAt            time.Time
 	SubmittedAt         *time.Time
 	DeliveredAt         *time.Time
@@ -758,6 +821,12 @@ type InvoicesTransmission struct {
 	ResolvedByUserID    *uuid.UUID
 	ResolutionNote      *string
 	CreatedByUserID     uuid.UUID
+	Channel             string
+	EfakturaIdentifier  *string
+	ShipmentID          *uuid.UUID
+	PaymentType         *string
+	PdfObjectKey        *string
+	ProviderStatus      *string
 }
 
 type InvoicesVatCode struct {

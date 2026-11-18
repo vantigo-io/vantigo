@@ -2473,10 +2473,11 @@ func TestInvoicesBaseline_AppliesAndIsIdempotent(t *testing.T) {
 	// line_sources and timesheet_rows 00040's, and the bank, rate, reminder,
 	// charge, hold and hand-off tables 00041's, and the payment credentials,
 	// settings, pay links, attempts and day reconciliations 00046's, and the
-	// billing runs and their items 00079's, and tax_category_vat_codes 00118's, and the bank feed's connection and accounts 00178's, and journal_facts 00180's, and write_offs 00182's, and the customer's credit 00197's; applyUpDownUp ends with every migration applied, so they stand here
+	// billing runs and their items 00079's, and tax_category_vat_codes 00118's, and the bank feed's connection and accounts 00178's, and journal_facts 00180's, and write_offs 00182's, and the customer's credit 00197's, and the consumer provider's credentials, lookups, mandates and claims 00201's; applyUpDownUp ends with every migration applied, so they stand here
 	// beside the seven this one creates.
-	if want := []string{"access_point_credentials", "bank_feed_accounts", "bank_feed_connections", "bank_files", "bank_import_accounts", "bank_transaction_events",
-		"bank_transactions", "billing_run_items", "billing_runs", "charge_payments", "charge_waivers", "collection_handoffs", "collection_rates", "counters",
+	if want := []string{"access_point_credentials", "avtalegiro_claims", "avtalegiro_mandates", "bank_feed_accounts", "bank_feed_connections", "bank_files", "bank_import_accounts", "bank_transaction_events",
+		"bank_transactions", "billing_run_items", "billing_runs", "charge_payments", "charge_waivers", "collection_handoffs", "collection_rates",
+		"consumer_lookups", "consumer_provider_credentials", "counters",
 		"credit_merges", "credit_refunds", "customer_credits", "customer_reminder_policies", "deliveries", "erased_customers", "invoice_holds", "invoices", "journal_facts", "line_releases",
 		"line_sources", "lines", "manual_deliveries", "order_allocations_taken", "overdue_announced", "pay_links", "payment_attempts", "payment_provider_credentials",
 		"payment_settings", "payments", "quick_requests", "reminder_print_batches", "reminder_runs",
@@ -2598,6 +2599,7 @@ func TestInvoicesBaseline_AppliesAndIsIdempotent(t *testing.T) {
 	// tr_payments_received is 00150's, the journal's five and
 	// tr_payments_removed 00180's, and the four on write_offs 00182's.
 	if want := []string{
+		"avtalegiro_claims:tr_avtalegiro_claims_immutable",
 		"bank_files:tr_bank_files_immutable", "bank_import_accounts:tr_bank_import_accounts_immutable",
 		"bank_transaction_events:tr_bank_transaction_events_immutable", "bank_transactions:tr_bank_transactions_immutable",
 		"charge_payments:tr_charge_payments_immutable", "charge_payments:tr_charge_payments_journal_registered",
@@ -3040,13 +3042,15 @@ func TestInvoicesEhfKid_AppliesAndIsIdempotent(t *testing.T) {
 	wantChecks := []string{
 		"ck_access_point_provider", "ck_access_point_single_row",
 		"ck_invoices_kid", "ck_invoices_kid_algorithm", "ck_invoices_kid_kind", "ck_settings_kid",
+		"ck_transmissions_channel", "ck_transmissions_channel_value",
 		"ck_transmissions_evidence", "ck_transmissions_provider", "ck_transmissions_resolution",
 		"ck_transmissions_stamps", "ck_transmissions_status",
 	}
 	wantFunctions := []string{"guard_transmission_insert:v:trigger", "refuse_transmission_change:v:trigger"}
 	wantIndexes := []string{
 		"ix_transmissions_due:CREATE INDEX ix_transmissions_due ON invoices.transmissions USING btree (status, next_attempt_at) WHERE (((status)::text = ANY ((ARRAY['queued'::character varying, 'submitted'::character varying, 'unconfirmed'::character varying])::text[])) OR (((status)::text = 'delivered'::text) AND (evidence_object_key IS NULL) AND (provider_ref IS NOT NULL)))",
-		"ux_transmissions_active:CREATE UNIQUE INDEX ux_transmissions_active ON invoices.transmissions USING btree (invoice_id) WHERE ((status)::text = ANY ((ARRAY['queued'::character varying, 'submitted'::character varying, 'delivered'::character varying, 'unconfirmed'::character varying])::text[]))",
+		// 00201 keys it by the channel as well.
+		"ux_transmissions_active:CREATE UNIQUE INDEX ux_transmissions_active ON invoices.transmissions USING btree (invoice_id, channel) WHERE ((status)::text = ANY ((ARRAY['queued'::character varying, 'submitted'::character varying, 'delivered'::character varying, 'unconfirmed'::character varying])::text[]))",
 	}
 	expectAll := func(when string) {
 		t.Helper()
@@ -3334,6 +3338,8 @@ func TestInvoicesEhfKid_AppliesAndIsIdempotent(t *testing.T) {
 			t.Errorf("organisation number %q: peppol_id %v, want %q", c.organisationNumber, got, c.want)
 		}
 	}
+	// Every later migration again, 00201's channel among them.
+	migrateTo(t, url, invoicesEfakturaVersion)
 	expectAll("after up again")
 }
 

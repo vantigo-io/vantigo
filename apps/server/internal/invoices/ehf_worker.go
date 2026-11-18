@@ -369,14 +369,14 @@ func (c *ehfClaim) submit(ctx context.Context) error {
 
 	// The receiver, asked again when the send's answer is a day old. A lookup
 	// is not a provider call; the submit below still is this claim's one.
-	if c.now.Sub(c.row.LookupAt) > ehfLookupMaxAge {
-		res, err := c.w.srv.lookupReceiver(ctx, c.row.ReceiverParticipant)
+	if c.row.LookupAt == nil || c.now.Sub(*c.row.LookupAt) > ehfLookupMaxAge {
+		res, err := c.w.srv.lookupReceiver(ctx, deref(c.row.ReceiverParticipant))
 		if err != nil {
 			attempts := c.row.SubmitAttempts + 1
 			return c.reschedule(ctx, c.now.Add(ehfBackoff(attempts)), 1, 0, "The Peppol network could not be asked about the receiver.", false)
 		}
 		receivable := res.CanReceiveInvoice
-		if c.row.DocumentType == peppol.CreditNoteDocumentType {
+		if deref(c.row.DocumentType) == peppol.CreditNoteDocumentType {
 			receivable = res.CanReceiveCreditNote
 		}
 		n, err := c.q().RefreshTransmissionLookup(ctx, store.RefreshTransmissionLookupParams{
@@ -423,8 +423,8 @@ func (c *ehfClaim) submit(ctx context.Context) error {
 
 	callCtx, cancel := callContext(ctx)
 	ref, err := ap.Submit(callCtx, accesspoint.Submission{
-		IdempotencyKey: c.row.IdempotencyKey, Sender: c.row.SenderParticipant, Receiver: c.row.ReceiverParticipant,
-		DocumentType: c.row.DocumentType, ProcessID: c.row.ProcessID, UBL: ubl,
+		IdempotencyKey: c.row.IdempotencyKey, Sender: deref(c.row.SenderParticipant), Receiver: deref(c.row.ReceiverParticipant),
+		DocumentType: deref(c.row.DocumentType), ProcessID: deref(c.row.ProcessID), UBL: ubl,
 	})
 	cancel()
 	c.afterCall(ctx)

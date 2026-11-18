@@ -45,6 +45,9 @@ const (
 	deliveryKindManual = "manual"
 	deliveryKindEmail  = "email"
 	deliveryKindEhf    = "ehf"
+	// deliveryKindEfaktura is a delivered eFaktura transmission (phase 6
+	// reading 14): its channel is its kind.
+	deliveryKindEfaktura = "efaktura"
 )
 
 // deliveriesOf is the engine's Deliveries (reminderrules.Input): the day of
@@ -80,7 +83,7 @@ func deliveryDay(invoiceID int64, kind string, at *time.Time, deliveredOn pgtype
 	switch {
 	case kind == deliveryKindManual && deliveredOn.Valid:
 		return utcDay(deliveredOn.Time), nil
-	case (kind == deliveryKindEmail || kind == deliveryKindEhf) && at != nil:
+	case (kind == deliveryKindEmail || kind == deliveryKindEhf || kind == deliveryKindEfaktura) && at != nil:
 		return holidays.DayIn(*at, loc), nil
 	default:
 		return time.Time{}, fmt.Errorf("invoices: document %d has a %s delivery without its day", invoiceID, kind)

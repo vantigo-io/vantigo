@@ -79,6 +79,7 @@ func TestCustomerReferences_RepointMovesDraftsAndIssuedDocuments(t *testing.T) {
 	})
 	if want := []contracts.RepointedReferences{
 		{Kind: "invoices.invoices", Count: 2}, {Kind: "invoices.customerReminderPolicies", Count: 0},
+		{Kind: "invoices.consumerLookups", Count: 0}, {Kind: "invoices.avtalegiroMandates", Count: 0},
 		{Kind: "invoices.customerCredits", Count: 0}, {Kind: "invoices.creditRefunds", Count: 0},
 	}; !slices.Equal(moved, want) {
 		t.Errorf("moved = %+v, want %+v", moved, want)
@@ -99,6 +100,7 @@ func TestCustomerReferences_RepointMovesDraftsAndIssuedDocuments(t *testing.T) {
 		same, err := holder.RepointCustomer(context.Background(), tx, customerPerson, customerPerson)
 		if err != nil || !slices.Equal(same, []contracts.RepointedReferences{
 			{Kind: "invoices.invoices", Count: 0}, {Kind: "invoices.customerReminderPolicies", Count: 0},
+			{Kind: "invoices.consumerLookups", Count: 0}, {Kind: "invoices.avtalegiroMandates", Count: 0},
 			{Kind: "invoices.customerCredits", Count: 0}, {Kind: "invoices.creditRefunds", Count: 0},
 		}) {
 			t.Errorf("from == into = %+v, %v; want a zero", same, err)
@@ -613,7 +615,7 @@ func TestCustomerSlots_ExportCarriesTransmissions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the wire's queuedAt %q: %v", first.QueuedAt, err)
 	}
-	if failed.ID != first.ID || failed.Status != "failed" || failed.DocumentType != txRow(t, h, first.ID).DocumentType || failed.Provider != "storecove" ||
+	if failed.ID != first.ID || failed.Status != "failed" || failed.DocumentType != *txRow(t, h, first.ID).DocumentType || failed.Provider != "storecove" ||
 		failed.IdempotencyKey != first.IdempotencyKey || failed.ReceiverParticipant != "0192:923609016" ||
 		failed.UblSha256 != first.UblSha256 || !sameInstant(t, failed.QueuedAt, queuedAt) ||
 		failed.FailedAt == nil || !sameInstant(t, *failed.FailedAt, failedAt) ||
@@ -828,6 +830,7 @@ func eraseReport(drafts, payments, deliveries, transmissions int64, more ...cont
 		{Kind: "invoices.reminders"}, {Kind: "invoices.chargePayments"}, {Kind: "invoices.chargeWaivers"},
 		{Kind: "invoices.manualDeliveries"}, {Kind: "invoices.invoiceHolds"}, {Kind: "invoices.collectionHandoffs"},
 		{Kind: "invoices.bankTransactions"}, {Kind: "invoices.payLinks"},
+		{Kind: "invoices.avtalegiroClaims"}, {Kind: "invoices.consumerLookups"},
 		{Kind: "invoices.customerCredits"}, {Kind: "invoices.creditRefunds"}, {Kind: "invoices.customerReminderPolicies"},
 	}
 	for _, m := range more {

@@ -404,6 +404,12 @@ type CustomerContactRoleRequest struct {
 	Role    string `json:"role"`
 }
 
+// CustomerDateOfBirth A person's date of birth (invoices phase 6 design I30): used to find the person for eFaktura, never printed, and blanked when the customer is anonymised. Absent when none is stored. revision is the customer's.
+type CustomerDateOfBirth struct {
+	DateOfBirth *openapi_types.Date `json:"dateOfBirth,omitempty"`
+	Revision    int32               `json:"revision"`
+}
+
 // CustomerFollowUp One row of the Follow-ups list (follow-ups design D3) — a manual timeline entry that carries a follow-up, with just enough of the entry and of its customer to show a line and link to it. note is the entry's own note cut to its first 200 UTF-16 code units (the same unit the entry's 500-character summary is cut in), absent when the entry has none. The customer is named here rather than fetched per row: the list is read across customers, so the one thing every row needs is whose follow-up it is.
 type CustomerFollowUp struct {
 	CustomerId   int32  `json:"customerId"`
@@ -767,6 +773,9 @@ type CustomerPersonalDataCustomer struct {
 	CreatedAt      time.Time           `json:"createdAt"`
 	CustomerNumber int64               `json:"customerNumber"`
 
+	// DateOfBirth A person's date of birth, when one is stored (invoices phase 6 design I30).
+	DateOfBirth *openapi_types.Date `json:"dateOfBirth,omitempty"`
+
 	// Group The group a customer belongs to (customer groups design D3): its id and its name, and nothing else — a client that needs the group's default payment term reads it from GET /customers/groups or from the billing profile's own groupDefault, where it is already resolved against the customer.
 	Group    *CustomerGroupRef      `json:"group,omitempty"`
 	Id       int32                  `json:"id"`
@@ -1052,6 +1061,12 @@ type PutCustomerContactInfoRequest struct {
 	// Revision The revision the caller read the customer at (customers foundation design D5). Optional — omitted, the change applies regardless; present and stale, a 409.
 	Revision *int32  `json:"revision,omitempty"`
 	Website  *string `json:"website,omitempty"`
+}
+
+// PutCustomerDateOfBirthRequest PUT /customers/{id}/date-of-birth's body: the date, or null to clear it. A past date after 1900-01-01, on a person only. revision is optional, as PUT /customers/{id}/contact-info's own is.
+type PutCustomerDateOfBirthRequest struct {
+	DateOfBirth *openapi_types.Date `json:"dateOfBirth,omitempty"`
+	Revision    *int32              `json:"revision,omitempty"`
 }
 
 // PutCustomerGroupRequest PUT /customers/{id}/group's own request body (customer groups design D3): the customer is put into groupId, or taken out of every group when it is absent or null. The group must exist; an unknown id is a field error on groupId. revision is optional, as PUT /customers/{id}/owner's own is — omitted, the customer is read again whenever it changes under the request and the change then applies, with a 409 only for a customer that never settles; present and stale, a 409. Only this sub-resource sets a customer's group: POST /customers and PUT /customers/{id} do not take one.
@@ -1404,6 +1419,9 @@ type PostCustomersByIdContactsJSONRequestBody = AttachCustomerContactRequest
 // PutCustomersByIdContactsByContactIdJSONRequestBody defines body for PutCustomersByIdContactsByContactId for application/json ContentType.
 type PutCustomersByIdContactsByContactIdJSONRequestBody = CustomerContactRequest
 
+// PutCustomersByIdDateOfBirthJSONRequestBody defines body for PutCustomersByIdDateOfBirth for application/json ContentType.
+type PutCustomersByIdDateOfBirthJSONRequestBody = PutCustomerDateOfBirthRequest
+
 // PutCustomersByIdGroupJSONRequestBody defines body for PutCustomersByIdGroup for application/json ContentType.
 type PutCustomersByIdGroupJSONRequestBody = PutCustomerGroupRequest
 
@@ -1598,6 +1616,12 @@ type ServerInterface interface {
 	// PutCustomersByIdContactsByContactId Update a customer's contact association
 	// (PUT /api/v1/customers/{id}/contacts/{contactId})
 	PutCustomersByIdContactsByContactId(w http.ResponseWriter, r *http.Request, id int32, contactId int32)
+	// GetCustomersByIdDateOfBirth Get a person's date of birth
+	// (GET /api/v1/customers/{id}/date-of-birth)
+	GetCustomersByIdDateOfBirth(w http.ResponseWriter, r *http.Request, id int32)
+	// PutCustomersByIdDateOfBirth Set a person's date of birth
+	// (PUT /api/v1/customers/{id}/date-of-birth)
+	PutCustomersByIdDateOfBirth(w http.ResponseWriter, r *http.Request, id int32)
 	// PutCustomersByIdGroup Put a customer in a group, or take it out of every group
 	// (PUT /api/v1/customers/{id}/group)
 	PutCustomersByIdGroup(w http.ResponseWriter, r *http.Request, id int32)
@@ -3583,6 +3607,58 @@ func (siw *ServerInterfaceWrapper) PutCustomersByIdContactsByContactId(w http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// GetCustomersByIdDateOfBirth operation middleware
+func (siw *ServerInterfaceWrapper) GetCustomersByIdDateOfBirth(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCustomersByIdDateOfBirth(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutCustomersByIdDateOfBirth operation middleware
+func (siw *ServerInterfaceWrapper) PutCustomersByIdDateOfBirth(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutCustomersByIdDateOfBirth(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // PutCustomersByIdGroup operation middleware
 func (siw *ServerInterfaceWrapper) PutCustomersByIdGroup(w http.ResponseWriter, r *http.Request) {
 
@@ -4418,6 +4494,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/{id}/billing-profile", wrapper.GetCustomersByIdBillingProfile)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/customers/{id}/billing-profile", wrapper.PutCustomersByIdBillingProfile)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/customers/{id}/contact-info", wrapper.PutCustomersByIdContactInfo)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/{id}/date-of-birth", wrapper.GetCustomersByIdDateOfBirth)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/customers/{id}/date-of-birth", wrapper.PutCustomersByIdDateOfBirth)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/{id}/contacts", wrapper.GetCustomersByIdContacts)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/customers/{id}/contacts", wrapper.PostCustomersByIdContacts)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/customers/{id}/contacts/{contactId}", wrapper.DeleteCustomersByIdContactsByContactId)
@@ -8445,6 +8523,151 @@ func (response PutCustomersByIdContactsByContactId409ApplicationProblemPlusJSONR
 	return err
 }
 
+type GetCustomersByIdDateOfBirthRequestObject struct {
+	Id int32 `json:"id"`
+}
+
+type GetCustomersByIdDateOfBirthResponseObject interface {
+	VisitGetCustomersByIdDateOfBirthResponse(w http.ResponseWriter) error
+}
+
+type GetCustomersByIdDateOfBirth200JSONResponse CustomerDateOfBirth
+
+func (response GetCustomersByIdDateOfBirth200JSONResponse) VisitGetCustomersByIdDateOfBirthResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomersByIdDateOfBirth401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetCustomersByIdDateOfBirth401JSONResponse) VisitGetCustomersByIdDateOfBirthResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomersByIdDateOfBirth403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetCustomersByIdDateOfBirth403JSONResponse) VisitGetCustomersByIdDateOfBirthResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomersByIdDateOfBirth404Response struct {
+}
+
+func (response GetCustomersByIdDateOfBirth404Response) VisitGetCustomersByIdDateOfBirthResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutCustomersByIdDateOfBirthRequestObject struct {
+	Id   int32 `json:"id"`
+	Body *PutCustomersByIdDateOfBirthJSONRequestBody
+}
+
+type PutCustomersByIdDateOfBirthResponseObject interface {
+	VisitPutCustomersByIdDateOfBirthResponse(w http.ResponseWriter) error
+}
+
+type PutCustomersByIdDateOfBirth200JSONResponse CustomerDateOfBirth
+
+func (response PutCustomersByIdDateOfBirth200JSONResponse) VisitPutCustomersByIdDateOfBirthResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCustomersByIdDateOfBirth400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PutCustomersByIdDateOfBirth400ApplicationProblemPlusJSONResponse) VisitPutCustomersByIdDateOfBirthResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCustomersByIdDateOfBirth401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutCustomersByIdDateOfBirth401JSONResponse) VisitPutCustomersByIdDateOfBirthResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCustomersByIdDateOfBirth403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutCustomersByIdDateOfBirth403JSONResponse) VisitPutCustomersByIdDateOfBirthResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCustomersByIdDateOfBirth404Response struct {
+}
+
+func (response PutCustomersByIdDateOfBirth404Response) VisitPutCustomersByIdDateOfBirthResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutCustomersByIdDateOfBirth409ApplicationProblemPlusJSONResponse CustomerConflictProblem
+
+func (response PutCustomersByIdDateOfBirth409ApplicationProblemPlusJSONResponse) VisitPutCustomersByIdDateOfBirthResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PutCustomersByIdGroupRequestObject struct {
 	Id   int32 `json:"id"`
 	Body *PutCustomersByIdGroupJSONRequestBody
@@ -10231,6 +10454,12 @@ type StrictServerInterface interface {
 	// PutCustomersByIdContactsByContactId Update a customer's contact association
 	// (PUT /api/v1/customers/{id}/contacts/{contactId})
 	PutCustomersByIdContactsByContactId(ctx context.Context, request PutCustomersByIdContactsByContactIdRequestObject) (PutCustomersByIdContactsByContactIdResponseObject, error)
+	// GetCustomersByIdDateOfBirth Get a person's date of birth
+	// (GET /api/v1/customers/{id}/date-of-birth)
+	GetCustomersByIdDateOfBirth(ctx context.Context, request GetCustomersByIdDateOfBirthRequestObject) (GetCustomersByIdDateOfBirthResponseObject, error)
+	// PutCustomersByIdDateOfBirth Set a person's date of birth
+	// (PUT /api/v1/customers/{id}/date-of-birth)
+	PutCustomersByIdDateOfBirth(ctx context.Context, request PutCustomersByIdDateOfBirthRequestObject) (PutCustomersByIdDateOfBirthResponseObject, error)
 	// PutCustomersByIdGroup Put a customer in a group, or take it out of every group
 	// (PUT /api/v1/customers/{id}/group)
 	PutCustomersByIdGroup(ctx context.Context, request PutCustomersByIdGroupRequestObject) (PutCustomersByIdGroupResponseObject, error)
@@ -11897,6 +12126,65 @@ func (sh *strictHandler) PutCustomersByIdContactsByContactId(w http.ResponseWrit
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutCustomersByIdContactsByContactIdResponseObject); ok {
 		if err := validResponse.VisitPutCustomersByIdContactsByContactIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetCustomersByIdDateOfBirth operation middleware
+func (sh *strictHandler) GetCustomersByIdDateOfBirth(w http.ResponseWriter, r *http.Request, id int32) {
+	var request GetCustomersByIdDateOfBirthRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetCustomersByIdDateOfBirth(ctx, request.(GetCustomersByIdDateOfBirthRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetCustomersByIdDateOfBirth")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetCustomersByIdDateOfBirthResponseObject); ok {
+		if err := validResponse.VisitGetCustomersByIdDateOfBirthResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutCustomersByIdDateOfBirth operation middleware
+func (sh *strictHandler) PutCustomersByIdDateOfBirth(w http.ResponseWriter, r *http.Request, id int32) {
+	var request PutCustomersByIdDateOfBirthRequestObject
+
+	request.Id = id
+
+	var body PutCustomersByIdDateOfBirthJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutCustomersByIdDateOfBirth(ctx, request.(PutCustomersByIdDateOfBirthRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutCustomersByIdDateOfBirth")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutCustomersByIdDateOfBirthResponseObject); ok {
+		if err := validResponse.VisitPutCustomersByIdDateOfBirthResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

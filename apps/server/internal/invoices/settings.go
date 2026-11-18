@@ -483,14 +483,19 @@ func nextNumber(ctx context.Context, q *store.Queries, seriesStart int64) (next 
 }
 
 // kidFitRefusal is D3's rule for saving an agreement: the next number must
-// fit in the length less one digit. The empty string is a fit.
-func kidFitRefusal(length *int16, next int64) string {
+// fit in the length less one digit — less two once the customer KIDs' space
+// is reserved (phase 6 reading 12). The empty string is a fit.
+func kidFitRefusal(length *int16, next int64, reserved bool) string {
 	if length == nil {
 		return ""
 	}
-	if fits, _ := kid.Fits(next, int(*length)); !fits {
+	fitsIn, room := kid.Fits, *length-1
+	if reserved {
+		fitsIn, room = kid.FitsReserved, *length-2
+	}
+	if fits, _ := fitsIn(next, int(*length)); !fits {
 		return fmt.Sprintf("The next number, %d, has %d digits; a KID of %d holds %d before its check digit",
-			next, len(strconv.FormatInt(next, 10)), *length, *length-1)
+			next, len(strconv.FormatInt(next, 10)), *length, room)
 	}
 	return ""
 }
@@ -501,7 +506,13 @@ func kidFitRefusal(length *int16, next int64) string {
 func settingsWarnings(row store.InvoicesSetting, next int64) []string {
 	warnings := []string{}
 	if row.KidLength != nil {
-		if fits, low := kid.Fits(next, int(*row.KidLength)); fits && low {
+		// Once AvtaleGiro was on, its customer KIDs hold one digit more
+		// (phase 6 reading 12).
+		fitsIn := kid.Fits
+		if row.KidSpaceReserved {
+			fitsIn = kid.FitsReserved
+		}
+		if fits, low := fitsIn(next, int(*row.KidLength)); fits && low {
 			warnings = append(warnings, warningKidHeadroomLow)
 		}
 	}
@@ -748,7 +759,7 @@ func (s *server) PutInvoicesSettings(ctx context.Context, req gen.PutInvoicesSet
 		if keepSendChannel {
 			parsed.SendChannel = current.SendChannel
 		}
-		if msg := kidFitRefusal(parsed.KidLength, next); msg != "" {
+		if msg := kidFitRefusal(parsed.KidLength, next, current.KidSpaceReserved); msg != "" {
 			unfit = withFieldError(nil, "kidLength", msg)
 			return errRefused
 		}

@@ -397,6 +397,15 @@ func (s *server) renderInvoice(ctx context.Context, q *store.Queries, inv store.
 			return gen.InvoicesInvoiceResponse{}, err
 		}
 		resp.Ehf = &ehfState
+		// And its eFaktura state (invoices phase 6 design I31): an invoice's
+		// only, since a credit note never goes as eFaktura.
+		if inv.Kind == kindInvoice {
+			efaktura, err := s.efakturaState(ctx, q, inv, canIssue, loc)
+			if err != nil {
+				return gen.InvoicesInvoiceResponse{}, err
+			}
+			resp.Efaktura = &efaktura
+		}
 		// § 5-2-2 is about when the document was issued, not the date it
 		// carries: one issued on the 14th dated the last of the previous
 		// month (§ 5-1-3) is judged on the 14th.

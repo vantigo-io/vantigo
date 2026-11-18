@@ -35,6 +35,11 @@ const (
 	// (invoices payments and reminders design D7): the one row keyed by
 	// customer, re-pointed by a merge and deleted by an erase.
 	kindInvoicesReminderPolicies = "invoices.customerReminderPolicies"
+	// kindInvoicesConsumerLookups and kindInvoicesAvtaleGiroMandates are the
+	// eFaktura lookup and the AvtaleGiro mandates (phase 6 plan D5).
+	kindInvoicesConsumerLookups    = "invoices.consumerLookups"
+	kindInvoicesAvtaleGiroMandates = "invoices.avtalegiroMandates"
+	kindInvoicesAvtaleGiroClaims   = "invoices.avtalegiroClaims"
 	// The receivables an erase changes (invoices payments and reminders
 	// design D19), reported after the five above, the policy last.
 	kindInvoicesReminders          = "invoices.reminders"
@@ -83,7 +88,8 @@ func newCustomerReferenceHolder(d module.Deps) contracts.CustomerReferenceHolder
 // the documents, the two customers' credit locks in ascending id (invoices
 // phase 6 design I17a as the plan's reading 1 amends it: every path that
 // writes credit takes the customer before an invoice, so the merge does too);
-// after the policy, the credit: every movement and refund of from re-pointed
+// after the policy, the eFaktura lookup and the AvtaleGiro mandates (phase 6
+// plan D5), which take no credit lock; then the credit: every movement and refund of from re-pointed
 // to into, so the balances add, and one credit_merges row per currency in
 // which from held credit, written after the re-point so its event reads the
 // merged balances (plan reading 4).
@@ -91,6 +97,7 @@ func (h *customerReferenceHolder) RepointCustomer(ctx context.Context, tx pgx.Tx
 	if from == into {
 		return []contracts.RepointedReferences{
 			{Kind: kindInvoicesInvoices, Count: 0}, {Kind: kindInvoicesReminderPolicies, Count: 0},
+			{Kind: kindInvoicesConsumerLookups, Count: 0}, {Kind: kindInvoicesAvtaleGiroMandates, Count: 0},
 			{Kind: kindInvoicesCustomerCredits, Count: 0}, {Kind: kindInvoicesCreditRefunds, Count: 0},
 		}, nil
 	}
@@ -113,12 +120,27 @@ func (h *customerReferenceHolder) RepointCustomer(ctx context.Context, tx pgx.Tx
 	if err != nil {
 		return nil, err
 	}
+	// The eFaktura lookup (phase 6 plan D5): from's goes, and into's is due
+	// now, since the merge may have given it another phone or e-mail. The
+	// mandates follow the customer; their KIDs still name from's number.
+	lookups, err := q.DeleteConsumerLookup(ctx, from)
+	if err != nil {
+		return nil, fmt.Errorf("invoices: drop customer %d's eFaktura lookup: %w", from, err)
+	}
+	if err := q.MarkConsumerLookupDue(ctx, store.MarkConsumerLookupDueParams{Now: h.clock(), CustomerID: into}); err != nil {
+		return nil, fmt.Errorf("invoices: make customer %d's eFaktura lookup due: %w", into, err)
+	}
+	mandates, err := q.RepointMandates(ctx, store.RepointMandatesParams{IntoID: &into, Now: h.clock(), FromID: &from})
+	if err != nil {
+		return nil, fmt.Errorf("invoices: re-point customer %d's mandates to %d: %w", from, into, err)
+	}
 	credits, refunds, err := repointCredit(ctx, q, from, into, h.clock())
 	if err != nil {
 		return nil, err
 	}
 	return []contracts.RepointedReferences{
 		{Kind: kindInvoicesInvoices, Count: n}, {Kind: kindInvoicesReminderPolicies, Count: policies},
+		{Kind: kindInvoicesConsumerLookups, Count: lookups}, {Kind: kindInvoicesAvtaleGiroMandates, Count: mandates},
 		{Kind: kindInvoicesCustomerCredits, Count: credits}, {Kind: kindInvoicesCreditRefunds, Count: refunds},
 	}, nil
 }
@@ -193,6 +215,10 @@ type invoicesSection struct {
 	// reminders design D7, D19) — staff's decision and note about them —
 	// absent when there is none.
 	ReminderPolicy *exportedReminderPolicy `json:"reminderPolicy,omitempty"`
+	// AvtaleGiroMandates and AvtaleGiroClaims are the customer's, absent when
+	// it has none (invoices phase 6 plan D5).
+	AvtaleGiroMandates []exportedMandate `json:"avtalegiroMandates,omitzero"`
+	AvtaleGiroClaims   []exportedClaim   `json:"avtalegiroClaims,omitzero"`
 	// Credit is the customer's credit (invoices phase 6 design I8, I12) —
 	// every movement and every refund — absent when there is none.
 	Credit *exportedCredit `json:"credit,omitempty"`
@@ -494,12 +520,13 @@ type exportedDelivery struct {
 // receiver's words redacted, never last_error as stored.
 type exportedTransmission struct {
 	ID                  int64      `json:"id"`
-	DocumentType        string     `json:"documentType"`
+	Channel             string     `json:"channel"`
+	DocumentType        string     `json:"documentType,omitempty"`
 	Status              string     `json:"status"`
 	Provider            string     `json:"provider"`
 	IdempotencyKey      string     `json:"idempotencyKey"`
-	ReceiverParticipant string     `json:"receiverParticipant"`
-	UblSha256           string     `json:"ublSha256"`
+	ReceiverParticipant string     `json:"receiverParticipant,omitempty"`
+	UblSha256           string     `json:"ublSha256,omitempty"`
 	QueuedAt            time.Time  `json:"queuedAt"`
 	SubmittedAt         *time.Time `json:"submittedAt,omitempty"`
 	DeliveredAt         *time.Time `json:"deliveredAt,omitempty"`
@@ -520,8 +547,8 @@ func utcOf(t *time.Time) *time.Time {
 // transmissionExported is one transmission row as the export writes it.
 func transmissionExported(t store.InvoicesTransmission) exportedTransmission {
 	e := exportedTransmission{
-		ID: t.ID, DocumentType: t.DocumentType, Status: t.Status, Provider: t.Provider,
-		IdempotencyKey: t.IdempotencyKey.String(), ReceiverParticipant: t.ReceiverParticipant, UblSha256: t.UblSha256,
+		ID: t.ID, Channel: t.Channel, DocumentType: deref(t.DocumentType), Status: t.Status, Provider: t.Provider,
+		IdempotencyKey: t.IdempotencyKey.String(), ReceiverParticipant: deref(t.ReceiverParticipant), UblSha256: deref(t.UblSha256),
 		QueuedAt: t.QueuedAt.UTC(), SubmittedAt: utcOf(t.SubmittedAt), DeliveredAt: utcOf(t.DeliveredAt),
 		FailedAt: utcOf(t.FailedAt), CancelledAt: utcOf(t.CancelledAt), ResolutionNote: orEmpty(t.ResolutionNote),
 	}
@@ -839,7 +866,47 @@ func exportCustomerData(ctx context.Context, q *store.Queries, customerID int32)
 			section.Drafts = append(section.Drafts, e)
 		}
 	}
+	// The AvtaleGiro mandates and claims (phase 6 plan D5): amounts, dates
+	// and states, kept after an erase and handed over with the rest.
+	mandates, err := q.MandatesOfCustomer(ctx, &customerID)
+	if err != nil {
+		return nil, fmt.Errorf("invoices: read customer %d's mandates: %w", customerID, err)
+	}
+	for _, m := range mandates {
+		section.AvtaleGiroMandates = append(section.AvtaleGiroMandates, exportedMandate{
+			KID: m.Kid, Status: m.Status, NotifyByMail: m.NotifyByMail, UpdatedAt: m.UpdatedAt.UTC(),
+		})
+	}
+	claims, err := q.ClaimsOfCustomer(ctx, customerID)
+	if err != nil {
+		return nil, fmt.Errorf("invoices: read customer %d's claims: %w", customerID, err)
+	}
+	for _, c := range claims {
+		amount, err := decimalOf(c.Amount, 2)
+		if err != nil {
+			return nil, err
+		}
+		section.AvtaleGiroClaims = append(section.AvtaleGiroClaims, exportedClaim{
+			InvoiceID: c.InvoiceID, Amount: amount, DueDate: c.DueDate.Time.Format(time.DateOnly), Status: c.Status,
+		})
+	}
 	return section, nil
+}
+
+// exportedMandate and exportedClaim are an AvtaleGiro mandate and claim as
+// the export writes them.
+type exportedMandate struct {
+	KID          string    `json:"kid"`
+	Status       string    `json:"status"`
+	NotifyByMail bool      `json:"notifyByMail"`
+	UpdatedAt    time.Time `json:"updatedAt"`
+}
+
+type exportedClaim struct {
+	InvoiceID int64  `json:"invoiceId"`
+	Amount    string `json:"amount"`
+	DueDate   string `json:"dueDate"`
+	Status    string `json:"status"`
 }
 
 // exportCredit is the customer's credit as the export writes it, nil when
@@ -1183,6 +1250,17 @@ func (p customerPersonalData) EraseCustomerData(ctx context.Context, tx pgx.Tx, 
 	if err != nil {
 		return nil, fmt.Errorf("invoices: delete customer %d's reminder policy: %w", customerID, err)
 	}
+	// eFaktura (phase 6 plan D5): the lookup goes; a claim whose eFaktura the
+	// erase cancelled above, never attempted, is cancelled with it. The
+	// mandates and the other claims stay — amounts and dates, no person.
+	claims, err := q.CancelCustomerUnsubmittedClaims(ctx, store.CancelCustomerUnsubmittedClaimsParams{Now: now, CustomerID: customerID})
+	if err != nil {
+		return nil, fmt.Errorf("invoices: cancel customer %d's unsent claims: %w", customerID, err)
+	}
+	lookups, err := q.DeleteConsumerLookup(ctx, customerID)
+	if err != nil {
+		return nil, fmt.Errorf("invoices: delete customer %d's eFaktura lookup: %w", customerID, err)
+	}
 	// The credit (invoices phase 6 design I8, I12): the movements and the
 	// refunds keep their amounts and lose their notes, reported before the
 	// policy, which stays last.
@@ -1197,6 +1275,8 @@ func (p customerPersonalData) EraseCustomerData(ctx context.Context, tx pgx.Tx, 
 	return append(erased,
 		contracts.ErasedData{Kind: kindInvoicesBankTransactions, Count: int64(len(touched))},
 		contracts.ErasedData{Kind: kindInvoicesPayLinks, Count: revoked},
+		contracts.ErasedData{Kind: kindInvoicesAvtaleGiroClaims, Count: claims},
+		contracts.ErasedData{Kind: kindInvoicesConsumerLookups, Count: lookups},
 		contracts.ErasedData{Kind: kindInvoicesCustomerCredits, Count: creditNotes},
 		contracts.ErasedData{Kind: kindInvoicesCreditRefunds, Count: refundNotes},
 		contracts.ErasedData{Kind: kindInvoicesReminderPolicies, Count: policies},

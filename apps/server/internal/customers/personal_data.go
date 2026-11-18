@@ -227,7 +227,7 @@ func (s *server) GetCustomersByIdPersonalData(ctx context.Context, req gen.GetCu
 			ExportedAt: s.deps.Clock().UTC(),
 			Customer: gen.CustomerPersonalDataCustomer{
 				Id: row.ID, CustomerNumber: row.CustomerNumber, Name: row.Name, Type: row.Type, Status: row.Status,
-				CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
+				CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt, DateOfBirth: exportedDateOfBirth(row.DateOfBirth),
 				Identity:    personalDataIdentity(row.LegalCountry, row.LegalID, row.LegalName, row.LegalSource, row.LegalType),
 				ContactInfo: gen.CustomerContactInfo{Email: row.Email, Phone: row.Phone, Website: row.Website},
 				Addresses:   exportedAddresses,

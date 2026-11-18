@@ -125,6 +125,7 @@ type invoiceJSON struct {
 	SendDefaults       *sendDefaultsJSON `json:"sendDefaults"`
 	CustomerAnonymised *bool             `json:"customerAnonymised"`
 	Ehf                *ehfJSON          `json:"ehf"`
+	Efaktura           *efakturaJSON     `json:"efaktura"`
 	PayLink            *payLinkJSON      `json:"payLink"`
 }
 
