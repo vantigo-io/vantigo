@@ -60,3 +60,31 @@ func TestSeedDemoIntegration_OnlyReusesItsOwnRole(t *testing.T) {
 		})
 	}
 }
+
+// TestSeedDemoIntegration_ADayOfRequestsOnce: the demo integration gets a
+// day of request log rows, naming its key, and a rerun adds none.
+func TestSeedDemoIntegration_ADayOfRequestsOnce(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	pool, _ := testdb.Migrated(t)
+	now := time.Date(2026, time.November, 18, 9, 0, 0, 0, time.UTC)
+	cfg := &config.Config{AppHostname: "localhost"}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	for range 2 {
+		if err := seedDemoIntegration(ctx, pool, logger, cfg, io.Discard, now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var rows, keyed, refused, oldest int
+	if err := pool.QueryRow(ctx, `SELECT count(*),
+			count(*) FILTER (WHERE r.key_id IN (SELECT id FROM identity.api_keys)),
+			count(*) FILTER (WHERE r.reason IS NOT NULL),
+			count(*) FILTER (WHERE r.at < $1)
+		FROM identity.api_requests r JOIN identity.integrations i ON i.user_id = r.integration_id WHERE i.name = $2`,
+		now.Add(-25*time.Hour), demoIntegrationName).Scan(&rows, &keyed, &refused, &oldest); err != nil {
+		t.Fatal(err)
+	}
+	if rows != 210 || keyed != rows || refused != 5 || oldest != 0 {
+		t.Errorf("%d rows, %d naming the key, %d refused, %d older than a day; want 210 of the day, all keyed, 5 refused", rows, keyed, refused, oldest)
+	}
+}

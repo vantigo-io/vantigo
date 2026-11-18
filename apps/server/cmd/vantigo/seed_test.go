@@ -95,6 +95,8 @@ func TestRun_SeedPopulatesDemoDatasetAndIsIdempotent(t *testing.T) {
 			WHERE r.name = 'Webshop' AND rp.permission_key IN ('customers:view', 'customers:create', 'customers:update',
 			'products:products-view', 'products:pricing-view', 'orders:access')`, 6},
 		{"identity.api_keys", "SELECT count(*) FROM identity.api_keys WHERE permissions IS NULL AND NOT read_only", 1},
+		// Its day of request log rows (delivery B), seeded once.
+		{"identity.api_requests", "SELECT count(*) FROM identity.api_requests", 210},
 		{"identity.profile_avatars", "SELECT count(*) FROM identity.profile_avatars WHERE content_type = 'image/jpeg'", demoUserCount},
 		{"staff.people", "SELECT count(*) FROM staff.people", demoUserCount},
 		{"customers.customers", "SELECT count(*) FROM customers.customers", demoCustomerCount},
