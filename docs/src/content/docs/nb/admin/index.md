@@ -24,6 +24,12 @@ applikasjonen.
   proxy-tillit og nøkkelmaterialet som utledes fra `APP_SECRET`.
   [SSO- og SCIM-drift](/nb/admin/sso-scim/) er produksjonsveiledningen for statisk OIDC og
   SCIM: konfigurasjon, rotasjon, migrering, livssyklus og gjenoppretting.
+- **API-tilgang.** [API-tilgang](/nb/admin/api-access/) lar et annet program bruke Vantigos API
+  uten en persons økt: en eier lager en integrasjon under **Administrer arbeidsområde ›
+  API-tilgang**, gir den egendefinerte roller og lager API-nøkler til den — hver med utløp, og
+  om ønskelig begrenset, bare for lesing eller avgrenset til nettverk — og roterer eller
+  tilbakekaller dem. Den trenger ingen egen innstilling; arbeideren `identity.api-keys`
+  reviderer nøklenes utløp.
 - **Sikkerhet.** [Transportsikkerhet og herding av nettleseren](/nb/admin/transport-security/)
   går gjennom https, PostgreSQL-TLS, SMTP-TLS, HSTS, vertsfiltrering og
   innholdssikkerhetspolicyen, og hva hvert valg koster.

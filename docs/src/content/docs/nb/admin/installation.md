@@ -126,7 +126,12 @@ når regnskapet er satt opp, leverandørfakturaen for malingsordren registrert f
 bokført, avstemt, og en faktura fra stålleverandøren skrevet inn i Regnskap for de 120 m
 stålrør til en dyrere meterpris, avstemt og latt stå som utkast med prisavviket — og
 bestillingspunkter på tre av verkstedets råvarer med en påfyllingskjøring etter ordrene og
-varemottakene, så innkjøpsforslagene har rader. Leverandørfakturaene, kontoutskriften og
+varemottakene, så innkjøpsforslagene har rader — og integrasjonen *Webshop sync*, med en
+egendefinert rolle *Webshop* med det en nettbutikk trenger av Kunder, Produkter og Ordre. Når
+`APP_URL` er denne maskinen (`localhost` eller en loopback-adresse), lager den første
+seedingen også én API-nøkkel på 90 dager til den og skriver nøkkelen én gang til standard
+utdata; den skrives ikke noe annet sted, og mot en driftet demo lages ingen nøkkel — eieren
+lager en under **Administrer arbeidsområde › API-tilgang**. Leverandørfakturaene, kontoutskriften og
 de sendte innkjøpsordrene lagrer filer og utelates, som seeden
 logger, når ingen objektlagring (`STORAGE_PROVIDER`) er satt opp. Ingen kommando, eller en ukjent en, skriver
 bruksanvisning til stderr og avslutter med 2, så en skrivefeil i en jobbdefinisjon
@@ -320,7 +325,9 @@ Metas lagrede webhook-hendelser opp i innboksen til Messenger-kanalene og henter
 folk sendte fra Metas tjenere, og `meta-retention`, alltid, som hver time sletter det modulen
 oppbevarer forbi periodene sine, og Assistentens `assistant-runs`, alltid, som feiler en
 kjøring en omstart etterlot som pågående, og `assistant-retention`, alltid, som sletter samtaler
-som er eldre enn oppbevaringstiden én gang i døgnet — og plattformens hendelsesutsender
+som er eldre enn oppbevaringstiden én gang i døgnet, og identitys `identity.api-keys` med mindre
+`IDENTITY_API_KEYS_ENABLED=0`, som reviderer hver API-nøkkels utløp én gang og sletter en nøkkels rad
+90 dager etter at den utløp — og plattformens hendelsesutsender
 `events.dispatch`, alltid, uansett hva `MODULES` sier) inne i API-prosessen: `WORKERS_IN_PROCESS=1`, standardverdien. Utrullinger som
 skalerer API-et horisontalt bør flytte dem til én dedikert worker-container, slik at
 hver ekstra HTTP-replika ikke mangedobler pollerne:
@@ -347,7 +354,7 @@ hver ekstra HTTP-replika ikke mangedobler pollerne:
 Replikaer som verken skal migrere eller kjøre bakgrunnsjobber kan kjøre kommandoen
 `server` i stedet for `api`; den serverer bare, uansett hva `WORKERS_IN_PROCESS` sier.
 Uansett topologi tar oppbevaringsoppryddingen, registerjobbene, EHF-hendelsesjobben,
-kalenderens avlysningsjobb, `entra-outlook-sweep` og `assistant-retention` en rådgivende lås (advisory lock) i PostgreSQL, så hver av dem kjører på nøyaktig én
+kalenderens avlysningsjobb, `entra-outlook-sweep`, `assistant-retention` og `identity.api-keys` en rådgivende lås (advisory lock) i PostgreSQL, så hver av dem kjører på nøyaktig én
 instans per syklus; utboksen, `invoices-ehf`-jobben, `invoices-reminders`-jobben,
 `invoices-billing`-jobben, `invoices-payments`-jobben, `invoices-bank-feed`-jobben, `communications-mailbox-sync`,
 `communications-messenger-sync`, kalenderens abonnements- og postboksjobb og `events.dispatch` tar i stedet én rad om gangen under en tidsbegrenset lås, så

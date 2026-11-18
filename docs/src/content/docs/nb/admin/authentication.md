@@ -1,6 +1,6 @@
 ---
 title: "Identitet, autentisering og utrulling"
-description: "Lokale kontoer, brukere Ansatte styrer, kontoene Ansatte kunngjør og rollene Ansatte kan gi, delte nettbrettstasjoner i verkstedet med tilkobling, PIN-koder, kort og ventetid, OIDC-leverandøren for arbeidsstyrken og SCIM, e-post, proxy-tillit, nøkkelmaterialet som utledes fra APP_SECRET og migreringer."
+description: "Lokale kontoer, brukere Ansatte styrer, kontoene Ansatte kunngjør og rollene Ansatte kan gi, integrasjoner og hvordan API-nøklene deres vurderes, delte nettbrettstasjoner i verkstedet med tilkobling, PIN-koder, kort og ventetid, OIDC-leverandøren for arbeidsstyrken og SCIM, e-post, proxy-tillit, nøkkelmaterialet som utledes fra APP_SECRET og migreringer."
 sidebar:
   order: 20
 sources:
@@ -966,10 +966,12 @@ slik en person har, og den handler bare med en API-nøkkel på forespørselen, a
   rolle, og aldri rollen **Owner** eller **SystemAdmin**. Identity avviser hver av dem, og
   databasen avviser dem igjen: agentenes vern gjelder alle brukere som ikke er en person
   (`00194_identity_integration_kind`). Den kan ikke være operatør på en delt stasjon.
-- **Rollene har én skriver.** En integrasjons roller endres bare på dens eget skjermbilde,
-  aldri under Roller og tilgang eller i en tilgangsgruppe, så den som forvalter en rolle,
-  kan ikke utvide hva et program får gjøre. Databasen avviser en rolle som skrives på annen
-  måte.
+- **Rollene har én skriver.** En integrasjons roller endres bare av en eier på dens egen side
+  under **API-tilgang**, aldri under Roller og tilgang eller i en tilgangsgruppe, og bare
+  egendefinerte roller godtas (`400 invalid_roles` for en innebygd). Databasen avviser en rolle
+  som skrives på annen måte. En delegert administrator som forvalter en rolle en integrasjon
+  har, kan ikke redigere den rollen (`403 role_edit_denied`): en tillatelse lagt til den ville
+  utvidet alle integrasjonens nøkler, og det kan bare en eier gjøre.
 - **Aldri en person.** Eierens brukeroperasjoner og Roller og tilgang svarer `404` for en
   integrasjon, og ingen av dem viser den. Brukerkatalogen andre moduler leser, foreslår den
   aldri i et søk eller en liste over hvem som har en tillatelse, og kobling av brukere til
@@ -984,8 +986,79 @@ slik en person har, og den handler bare med en API-nøkkel på forespørselen, a
   personen som startet det. Ingen nøkkel har en tillatelse under `identity:` eller
   `agents:`, eller en som ikke kan delegeres, uansett hva integrasjonens roller sier.
 
-Integrasjoner og API-nøklene deres lages på skjermbildet **API-tilgang**, som kommer med neste
-del av denne funksjonen; inntil da har en installasjon ingen bruker av typen `integration`.
+- **Ikke eier, ansvarlig eller medlem.** En modul som lagrer en person valgt på id, avviser en
+  integrasjon der slik den avviser en ukjent bruker: en kundes eier, ansvarlig for en
+  oppfølging eller en oppgave, ansvarlig for en samtale, deltaker i en avtale, en
+  prosjektrolle, en persons sats, en
+  utgifts eller et kravs eier, en kobling i Ansatte, en innkjøpsordres innkjøper, en
+  produksjonsordres ansvarlige, en timeføringslinjes person, et artikkelmedlem, en
+  assistentbryter og et tilbuds eller en ordres selger. Et tilbud eller en ordre en nøkkel
+  oppretter uten å navngi en selger, har ingen. Hver moduls referanse sier hva den svarer.
+
+Integrasjoner og API-nøklene deres lages under **Administrer arbeidsområde › API-tilgang**
+([API-tilgang](/nb/admin/api-access/)).
+
+### Hvordan en nøkkel leses
+
+En forespørsel med én `Authorization`-header som er `Bearer vtg_…` (ordningen med store eller
+små bokstaver), vurderes som nøkkelens alene: en øktkapsel den også har med, leses ikke, og en
+avvist nøkkel fjerner aldri kapselen, så en feil nøkkel logger aldri en person ut. Et
+`Bearer`-token uten prefikset `vtg_` er ingen nøkkel, og forespørselen vurderes som uten det. En
+forespørsel med flere `Authorization`-headere avvises med `401 unauthenticated` under alle
+regler unntatt SCIM. En nøkkel i en spørrestreng eller en informasjonskapsel leses aldri.
+
+Nøkkelen sjekkes først mot kontrollsummen, så en feilskrevet nøkkel avvises uten et
+databaseoppslag. Deretter finner ett indeksert oppslag den med integrasjonen; ingenting
+mellomlagres, så en tilbakekalt nøkkel, en deaktivert integrasjon eller en endret rolle virker
+fra neste forespørsel på alle replikaer. `last_used_at` og `last_used_ip` skrives høyst én gang
+i minuttet per nøkkel, utenfor forespørselens transaksjon, og ikke for en forespørsel utenfra
+nøkkelens nettverk.
+
+Før operasjonens regel sjekkes to merker: en operasjon merket `x-vantigo-api: never` svarer
+`403 api_not_available`, og en nøkkel for bare lesing på en operasjon som ikke er merket som
+lesing, svarer `403 api_key_read_only`. Så avgjør regelen:
+
+| Regel | En gyldig nøkkel |
+| --- | --- |
+| `permission:…` | Vurderes som integrasjonens bruker. Hver tillatelse som nevnes, må den ha gjennom rollene, den må ikke være en ingen nøkkel noen gang har (alle under `identity:` og `agents:`, og alle som ikke kan delegeres), og når nøkkelen er begrenset, må den være i begrensningen |
+| `anonymous` | Slippes inn, med integrasjonen som aktør, så en handler kan føre det på den |
+| `session` | `403 forbidden`: selvbetjening av en konto er en persons, også operasjonene som er åpne for agenter |
+| `policy:…` | `403 forbidden`: en nøkkel administrerer aldri brukere, roller, SSO, arbeidsområdet eller nøkler |
+| `scim` | Ingen nøkkelforespørsel: SCIM-tokenet leses som før, og et `vtg_`-token feiler med `401` |
+
+Aktøren i en nøkkelforespørsel er integrasjonens bruker, med rollene, uten økt, uten bekreftet
+MFA og med `Via` av typen `api_key` som navngir nøkkelen. Regelen som krever MFA av eiere,
+gjelder ikke, for en integrasjon er aldri eier.
+
+### Hva en avvist nøkkel får til svar
+
+Alle avvisninger skrives i API-ets vanlige JSON-feil, `{"error": {"code", "message"}}`.
+
+| Status | Kode | Når |
+| --- | --- | --- |
+| `401` | `unauthenticated` | En feilformet, ukjent eller tilbakekalt nøkkel; en deaktivert eller arkivert integrasjon; en forespørsel utenfra nøkkelens nettverk; flere `Authorization`-headere |
+| `401` | `api_key_expired` | Nøkkelen passet, men er utløpt |
+| `403` | `forbidden` | En regel av typen session eller policy, eller en tillatelse nøkkelen ikke når |
+| `403` | `api_not_available` | Operasjonen er `x-vantigo-api: never` |
+| `403` | `api_key_read_only` | En nøkkel for bare lesing på en operasjon som ikke er en lesing |
+| `409` | `api_key_already_rolled` | Rotering av en nøkkel som allerede er rotert |
+| `409` | `api_key_revoked` | Rotering av en nøkkel som er tilbakekalt eller utløpt |
+
+En nøkkels `401` har `WWW-Authenticate: Bearer realm="vantigo"`. En nøkkelforespørsel har ennå
+ingen hastighetsgrense av sin egen; å lage og rotere nøkler har det, under `UserManagement`
+(nedenfor).
+
+### Hva som revideres for integrasjoner
+
+`integration.created`, `integration.updated`, `integration.roles_changed`,
+`integration.disabled`, `integration.enabled`, `integration.archived`, `api_key.created`,
+`api_key.rolled` og `api_key.revoked`, hver i endringens egen transaksjon med eieren som
+handlet og om hen brukte MFA, og `api_key.expired`, som arbeideren `identity.api-keys` skriver
+én gang per nøkkel som `system:api-keys`. Før og etter har navn, roller, begrensningen, bare
+lesing, nettverkene og utløpet, aldri en nøkkels hash eller hemmelighet; målet er
+integrasjonens bruker. En nøkkels hemmelighet logges aldri, står aldri i en feil, en sporing
+eller revisjonssporet: den finnes bare i svaret som oppretter eller roterer den, og det sendes
+med `Cache-Control: no-store`.
 
 ## Hastighetsbegrensninger
 
@@ -1004,7 +1077,7 @@ tilgangskontrollen.
 | `PasswordRecovery` | 10 / 15 minutter | Forespørsel om gjenoppretting, tilbakestilling og endring av kontopassord |
 | `Invitations` | 30 / minutt | Eiers administrasjon av invitasjoner |
 | `InvitationAcceptance` | 20 / minutt | Validering og aksept av invitasjon |
-| `UserManagement` | 30 / minutt | Eiers brukeradministrasjon, å ta inn brukere under Ansatte og ansattrollene |
+| `UserManagement` | 30 / minutt | Eiers brukeradministrasjon, å ta inn brukere under Ansatte, ansattrollene og å lage eller rotere en API-nøkkel |
 | `OwnerAvatarRead` | 300 / minutt | Lesing av eieres avatarer |
 | `StationPairing` | 10 / 15 minutter | Tilkobling av en nettbrettstasjon med en kode |
 | `StationPairingGlobal` | 60 / time | Tilkoblingsforsøk i hele installasjonen, uansett adresse |

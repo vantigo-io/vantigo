@@ -1509,6 +1509,7 @@ The Assistant can point at these controls in a guided tour ([the registry](/en/r
 ## API keys
 
 `postExpensesClaimsByIdPerDiemSuggestion` writes nothing and is marked `x-vantigo-api:
-read`: a read-only API key may call it. See [integration
+read`: a read-only API key may call it. An integration has no expenses: an expense or a claim recorded for one as its `userId`
+answers `400` *Nobody active has that user id*. See [integration
 users](/en/admin/authentication/#integration-users), and the marks' rules in [module
 boundaries](/en/contributing/module-boundaries/#the-rules).

@@ -1587,10 +1587,37 @@ lag, never what must refuse — go through the platform's domain-events outbox,
     - **The refusals** are `contracts.ErrAPINotAvailable` and `ErrAPIKeyReadOnly`, which
       wrap `ErrForbidden`, and `ErrAPIKeyExpired`, which wraps `ErrUnauthenticated`, so
       every caller that tests the sentinels answers them as `403` or `401`.
+      `Access.Check` returns every refusal of a key identity found as a
+      `*contracts.APIKeyRefusal` — the key, its integration, the reason (`revoked`,
+      `disabled`, `archived`, `expired`, `network`, `not_available`, `read_only` or
+      `forbidden`) and the sentinel it unwraps to — so the router's `wrap`, `compose.go`
+      and the live handler answer it as the sentinel, and `Access.Reject` writes its code
+      without clearing the session cookie. A key that does not parse or is unknown is a
+      plain `ErrUnauthenticated`: there is nothing to attribute it to.
+    - **`contracts.APIKeyScope`** answers what a key reaches without importing identity:
+      `Scope(ctx, principal)` is the integration's effective permissions less `APINever`,
+      cut down to the key's narrowing, in ordinal order, and whether the key only reads.
+      Identity's `Access` implements it beside `contracts.Access`, and a caller finds it by
+      a type assertion on the `Access` it holds, as the live hub finds `StationAccess`.
+      A key's principal has `Via{Kind: contracts.ViaAPIKey, KeyID}`, the integration's user
+      as `UserID` and no `SessionID`.
     - **`UserEntry.Kind`** may be `integration` on a lookup by id, so a record an
       integration made can name it; `SearchUsers` and `PermissionHolders` never answer
       one, `IncludeAgents` included, and `UserHolds` is false for one. A check that means
       "a person" asks `Kind == contracts.UserKindPerson`, never `!= UserKindAgent`.
+    - **An integration takes no record-level assignment.** A module that stores a person
+      picked by id — an owner, an assignee, a member, an attendee, a responsible, a buyer,
+      a salesperson — and checks only that the directory knows the user must refuse a user
+      of kind `integration` as it refuses an unknown one, or a key could name its own or
+      another integration there (API access design K56). Ask
+      `Kind == contracts.UserKindPerson` where only a person may stand, or refuse
+      `UserKindIntegration` where an agent may too (a conversation's assignee, an article's
+      member). Where the caller is the default — an order's salesperson — a key's own
+      record gets none. Each module's reference page says what it answers.
+    - **A role an integration holds is an Owner's to edit.** A delegate who stewards it is
+      refused `role_edit_denied`, because a permission added to it widens every key of the
+      integration; an integration's roles are written only by identity's integrations
+      service, under the licence that names it (`vantigo.integration_roles`).
 
 ## The AI platform
 
@@ -1832,7 +1859,15 @@ The Assistant is the first caller ([The model loop](/en/reference/assistant/#the
   modules' background workers from `d` as worker mode does (`module.Workers`, which
   resolves `Users` and `Accounts` onto them — `Deps()` alone carries neither), so a
   worker test runs the worker production starts, on the harness's `Deps()` or on a pool
-  of its own.
+  of its own. For an API key's request, `Harness.Integration(t, name, permissions...)` seeds an
+  integration, with a custom role of its own holding the permissions when any are given,
+  `modtest.GrantIntegrationRoles` gives one roles under the licence the database asks for,
+  `Harness.APIKeyFor(t, integration, modtest.APIKey{…})` mints a key as identity does — its
+  narrowing, read-only flag, networks and expiry — `Harness.APIKeyClient(t, key)` is a client
+  that sends it as `Authorization: Bearer`, and `Harness.SignInAPIKey` does all three at once.
+  `modtest.WithSpanRecorder(rec)` records the spans the installation makes, the server span of
+  each request and one per query, for a test that asserts what never reaches them, such as a
+  key's secret.
 
 ## Turning a module off
 

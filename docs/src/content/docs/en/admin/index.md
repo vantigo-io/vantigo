@@ -24,6 +24,11 @@ application.
   and the key material derived from `APP_SECRET`. [SSO and SCIM operations](/en/admin/sso-scim/)
   is the production guide for static OIDC and SCIM: configuration, rotation, migration,
   lifecycle and recovery.
+- **API access.** [API access](/en/admin/api-access/) lets another application use Vantigo's
+  API without a person's session: an Owner makes an integration under **Workspace admin › API
+  access**, gives it custom roles and makes API keys for it — each with an expiry, and
+  optionally narrowed, read-only or limited to networks — then rolls or revokes them. It needs
+  no setting of its own; the `identity.api-keys` worker audits the keys' expiry.
 - **Security.** [Transport security and browser hardening](/en/admin/transport-security/)
   walks through https, PostgreSQL TLS, SMTP TLS, HSTS, host filtering and the content
   security policy, and what each choice costs.

@@ -1870,6 +1870,8 @@ customer reads neither.
 The anonymous public media operations (`getCommunicationsPublicMediaByToken`,
 `headCommunicationsPublicMediaByToken`) are `x-vantigo-api: never`. An integration cannot be
 mentioned in an internal note (`mentions` answers *Every mentioned user must be a known,
-active user.*), is never mailed about a mention, and is never offered as an assignee. See
+active user.*), is never mailed about a mention, and is never offered as an assignee: naming
+one as `assignedUserId` (`patchCommunicationsConversationsById`) answers `422 assignee_unknown`,
+as an unknown or disabled user does, while an agent may still be assigned. See
 [integration users](/en/admin/authentication/#integration-users), and the marks' rules in
 [module boundaries](/en/contributing/module-boundaries/#the-rules).

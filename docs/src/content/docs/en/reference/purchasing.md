@@ -1125,6 +1125,7 @@ the contract.
 ## API keys
 
 `purchasing:settings` cannot be delegated, so no API key holds it, and the settings
-(`getPurchasingSettings`, `putPurchasingSettings`) are `x-vantigo-api: never`. See
+(`getPurchasingSettings`, `putPurchasingSettings`) are `x-vantigo-api: never`. An integration is no buyer: a purchase order naming one as its `buyerId` answers `400` *No
+user has this id*. See
 [integration users](/en/admin/authentication/#integration-users), and the marks' rules in
 [module boundaries](/en/contributing/module-boundaries/#the-rules).

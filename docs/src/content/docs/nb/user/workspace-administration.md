@@ -1,6 +1,6 @@
 ---
 title: Administrasjon av arbeidsområdet
-description: Brukere, invitasjoner, roller og tilgang, delegert administrasjon, førstegangsoppsett og systemadministrasjon.
+description: Brukere, invitasjoner, roller og tilgang, delegert administrasjon, API-tilgang, førstegangsoppsett og systemadministrasjon.
 sidebar:
   order: 90
 sources:
@@ -12,7 +12,7 @@ sources:
 Administrasjon av arbeidsområdet er der en **Eier** styrer hvem som kan bruke
 Vantigo og hva de kan gjøre. Åpne avatar-menyen øverst til høyre og velg
 **Administrer arbeidsområde**; sidemenyen har **Oversikt**, **Brukere**,
-**Invitasjoner**, **Roller og tilgang** og, når Produksjon er på, **Nettbrettstasjoner**, og, under **Integrasjoner**, **Microsoft Entra ID**,
+**Invitasjoner**, **Roller og tilgang**, når Produksjon er på, **Nettbrettstasjoner**, **API-tilgang** og, under **Integrasjoner**, **Microsoft Entra ID**,
 **Google Workspace**, **Meta**, **Frakt**, **Bank** og, når Vantigo har satt opp KI for installasjonen, **KI-modeller** og **Assistent**.
 
 Alt her krever eierrollen, med ett unntak: den en eier har delegert
@@ -155,6 +155,41 @@ nettbrettstasjoner.
 
 Administratorens detaljer — tokenet, ventetiden og varslene — står under
 [Nettbrettstasjoner i verkstedet](/nb/admin/authentication/#nettbrettstasjoner-i-verkstedet).
+
+## API-tilgang
+
+**API-tilgang** er der du lar et annet program — en nettbutikk, et rapportverktøy, et skript —
+bruke Vantigos API. Hvert program får en **integrasjon**: en konto som har roller og handler med
+en API-nøkkel, aldri ved å logge inn. Det den lager og endrer, vises med navnet og et
+**API**-merke. Siden er bare eierens.
+
+Listen viser hver integrasjons **Status** (*Aktiv*, *Deaktivert* eller *Arkivert*), **Roller**,
+**Gyldige nøkler**, **Første utløp** blant dem og når en nøkkel ble **Sist brukt**.
+
+1. Lag en egendefinert rolle under **Roller og tilgang** med nøyaktig det programmet trenger.
+2. Velg **Ny integrasjon**, gi den et **Navn**, en **Beskrivelse** om det hjelper, en
+   **Kontaktperson** — personen som har ansvaret for den — og **Roller**, og velg **Opprett
+   integrasjon**. Siden dens åpnes.
+3. Sjekk **Hva rollene tillater**. En tillatelse merket **Aldri tilgjengelig for API-nøkler**
+   har ingen nøkkel noen gang, uansett hva rollene sier. En merket **Sensitiv** lar en nøkkel
+   lese eller endre disse dataene i store mengder.
+4. Under **API-nøkler** velger du **Ny API-nøkkel**. Gi den et **Navn** og et **Utløp** (30, 90,
+   180 eller 365 dager, eller en dato inntil et år fram). For å avgrense den mer slår du på
+   **Begrens nøkkelen** og krysser av tillatelsene den kan bruke, slår på **Bare lesing**, eller
+   fyller inn **Nettverk** den kan brukes fra.
+5. Velg **Opprett nøkkel**. Nøkkelen vises **én gang**: velg **Kopier**, legg den der programmet
+   oppbevarer hemmelighetene sine, og velg **Jeg har kopiert nøkkelen**. Dialogen viser også et
+   `curl`-eksempel du kan prøve den med. Når den er lukket, kan nøkkelen ikke vises igjen.
+
+I en nøkkels rad lager **Roter** en ny nøkkel i stedet for den, mens den gamle virker videre i
+**Overlapp** du velger, og **Tilbakekall** stopper den med en gang. Under **Handlinger** endrer
+**Rediger detaljer** navn, beskrivelse, kontaktperson og hastighetsgrense, **Deaktiver** stopper
+alle nøklene til du velger **Aktiver**, og **Arkiver** tilbakekaller alle nøklene og beholder
+integrasjonen for det den har gjort — det kan ikke angres. Kan en nøkkel ha lekket, tilbakekaller
+du den med en gang.
+
+Detaljene — hva en nøkkel når, begrensning, nøkler for bare lesing, nettverk, svarene en klient
+får og hva du gjør når en nøkkel lekker — står under [API-tilgang](/nb/admin/api-access/).
 
 ## Deaktiver, aktiver eller slett en bruker
 
