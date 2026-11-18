@@ -32,7 +32,7 @@ const (
 func (s *server) GetIdentityIntegrationsByIdRequests(ctx context.Context, req gen.GetIdentityIntegrationsByIdRequestsRequestObject) (gen.GetIdentityIntegrationsByIdRequestsResponseObject, error) {
 	now := s.deps.Clock()
 	today := utcDay(now)
-	oldest := today.AddDate(0, 0, -apiRequestRetentionDays+1)
+	oldest := apiRequestOldestDay(now)
 	from, to := oldest, now
 	p := req.Params
 	if p.Day != nil {

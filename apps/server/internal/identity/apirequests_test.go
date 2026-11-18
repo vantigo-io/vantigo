@@ -2,6 +2,7 @@ package identity_test
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"slices"
 	"strings"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/module"
 )
 
@@ -112,10 +114,10 @@ func TestAPIRequests_RefusalsAreRecordedWithTheirReasons(t *testing.T) {
 	use(expiringSecret, http.StatusUnauthorized)
 
 	got := h.loggedRequests(t, integration)
-	// The harness clock stands still, so they are ordered by reason.
+	// The router stamps each with the time it arrived, so they are in order.
 	want := []loggedRequest{
-		{network.ID, "getIdentityIntegrations", http.StatusUnauthorized, "network"},
 		{never.ID, "getIdentityIntegrations", http.StatusForbidden, "never"},
+		{network.ID, "getIdentityIntegrations", http.StatusUnauthorized, "network"},
 		{revoked.ID, "getIdentityIntegrations", http.StatusUnauthorized, "revoked"},
 		{expiring.ID, "getIdentityIntegrations", http.StatusUnauthorized, "expired"},
 	}
@@ -192,10 +194,11 @@ func TestAPIRequests_TheWorkerKeepsThePartitions(t *testing.T) {
 
 	h.advance(31 * 24 * time.Hour)
 	runCycle(t, w)
-	if h.partitionExists(t, "api_requests_20260911") || h.partitionExists(t, "api_requests_20260910") {
-		t.Error("a partition older than 30 days is kept")
+	// 31 days on, today is 12 October: the 30 days kept begin on 13 September.
+	if h.partitionExists(t, "api_requests_20260911") || h.partitionExists(t, "api_requests_20260912") {
+		t.Error("a partition older than the 30 days kept, today included, is kept")
 	}
-	if !h.partitionExists(t, "api_requests_20260912") || !h.partitionExists(t, "api_requests_20261018") {
+	if !h.partitionExists(t, "api_requests_20260913") || !h.partitionExists(t, "api_requests_20261018") {
 		t.Error("the 30 days and the next 7 are not all there")
 	}
 }
@@ -204,16 +207,17 @@ func TestAPIRequests_TheWorkerKeepsThePartitions(t *testing.T) {
 // and every row goes to DEFAULT.
 func TestAPIRequests_WithTheWorkerOffRowsLandInDefault(t *testing.T) {
 	t.Parallel()
-	h := newHarness(t, withEnv("IDENTITY_API_KEYS_ENABLED", "0"), withPermissions(customersView))
+	h := newHarness(t, withEnv("IDENTITY_API_KEYS_ENABLED", "0"))
 	if apiKeysWorker(h) != nil {
 		t.Fatal("the worker runs while switched off")
 	}
-	owner, _ := h.bootstrapOwner(t)
-	integration := createIntegration(t, owner, "Webshop sync").Integration.ID
-	_, secret := createKey(t, owner, integration, nil)
-	if r := h.client(t).do(http.MethodGet, integrationsPath, nil, header("Authorization", "Bearer "+secret)); r.status != http.StatusForbidden {
-		t.Fatalf("status %d", r.status)
-	}
+	// A day no partition was made for: the harness's, before the database's
+	// migration made its 7 days.
+	integration := uuid.New()
+	h.access.Record(context.Background(), contracts.APIRequest{
+		At: h.now(), KeyID: uuid.New(), IntegrationID: integration, Method: http.MethodGet,
+		OperationID: "getCustomers", Status: http.StatusOK, Duration: time.Millisecond,
+	})
 	if got := h.loggedRequests(t, integration); len(got) != 1 {
 		t.Fatalf("%d rows, want 1", len(got))
 	}
@@ -353,7 +357,7 @@ func TestAPIKeyNotices(t *testing.T) {
 		t.Errorf("a disabled contact got %d mails, want the first only", len(got))
 	}
 
-	h.advance(3 * 24 * time.Hour)
+	h.advance(3*24*time.Hour - time.Hour) // the day it expires, an hour before
 	runCycle(t, w)
 	runCycle(t, w)
 	if got := notices(ownerEmail); len(got) != 3 || got[2] != "An API key of Webshop sync expires today" {
@@ -366,5 +370,45 @@ func TestAPIKeyNotices(t *testing.T) {
 	}
 	if n := h.count(t, `SELECT count(*) FROM identity.api_key_notices`); n != 3 {
 		t.Errorf("%d notices recorded, want 3", n)
+	}
+}
+
+// TestAPIKeyNotices_ANoticeNoOneGotIsTriedAgain: when no recipient could be
+// mailed the claim is taken back, and the next cycle sends it; a key past
+// its expiry gets no notice of the day it expired.
+func TestAPIKeyNotices_ANoticeNoOneGotIsTriedAgain(t *testing.T) {
+	t.Parallel()
+	h, owner, integration := keyHarness(t)
+	w := apiKeysWorker(h)
+	createKey(t, owner, integration, map[string]any{"name": "Production", "expiresInDays": 30})
+	notices := func() int {
+		n := 0
+		for _, m := range h.mailTo(ownerEmail) {
+			if strings.Contains(m.Subject, "API key") {
+				n++
+			}
+		}
+		return n
+	}
+
+	h.advance(16 * 24 * time.Hour)
+	h.mail.FailNext(errors.New("the mail server is down"))
+	runCycle(t, w)
+	if n := notices(); n != 0 {
+		t.Fatalf("%d notices while mail failed", n)
+	}
+	if n := h.count(t, `SELECT count(*) FROM identity.api_key_notices`); n != 0 {
+		t.Fatalf("%d notices recorded although no one got one, want the claim taken back", n)
+	}
+	runCycle(t, w)
+	if n := notices(); n != 1 {
+		t.Errorf("%d notices after the mail came back, want 1", n)
+	}
+
+	// Past the expiry, even on its day, there is nothing left to warn of.
+	h.advance(14*24*time.Hour + time.Hour)
+	runCycle(t, w)
+	if n := notices(); n != 1 {
+		t.Errorf("%d notices once the key had expired, want still 1", n)
 	}
 }

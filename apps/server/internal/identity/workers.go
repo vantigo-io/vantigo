@@ -2,13 +2,14 @@ package identity
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/identity/store"
 	"github.com/vantigo-io/vantigo/server/internal/module"
 	"github.com/vantigo-io/vantigo/server/internal/worker"
@@ -21,7 +22,8 @@ import (
 //     expired; the audit rows stay.
 //   - It keeps the API request log's partitions: it moves what landed in the
 //     DEFAULT partition into a partition of its UTC day, makes today's and
-//     the next 6 days' partitions, and drops the days older than 30. With
+//     the next 6 days' partitions, and drops what is older than the 30 days
+//     kept, today included, which are the days the Requests screen shows. With
 //     the worker switched off, no partition is made and every row lands in
 //     DEFAULT, where it stays.
 //   - It mails the expiry notices (apikey_notices.go).
@@ -37,8 +39,8 @@ const (
 	// apiKeysSystem is the actor the worker's audit rows name.
 	apiKeysSystem = "system:api-keys"
 	// apiRequestDaysAhead is how many days' partitions the request log has
-	// ready, today's included; apiRequestRetentionDays how many days back it
-	// keeps (K23).
+	// ready, today's included; apiRequestRetentionDays how many days it keeps,
+	// today's included (K23).
 	apiRequestDaysAhead     = 7
 	apiRequestRetentionDays = 30
 )
@@ -48,14 +50,15 @@ func workers(a *Access, d module.Deps) []worker.Worker {
 	if d.Config == nil || !d.Config.IdentityIntegrationsWorkerEnabled {
 		return nil
 	}
-	return []worker.Worker{&apiKeysWorker{deps: d, users: newUserDirectory(a, d)}}
+	return []worker.Worker{&apiKeysWorker{deps: d, users: &userDirectory{q: store.New(d.Pool), sso: a.sso, mail: d.Mail}}}
 }
 
 // apiKeysWorker is identity.api-keys.
 type apiKeysWorker struct {
 	deps module.Deps
-	// users mails the expiry notices, as invitations are mailed.
-	users contracts.UserDirectory
+	// users mails the expiry notices, as invitations are mailed, and says
+	// whether each was sent.
+	users *userDirectory
 }
 
 func (*apiKeysWorker) Name() string              { return apiKeysWorkerName }
@@ -80,18 +83,19 @@ func (w *apiKeysWorker) Run(ctx context.Context) error {
 // own connection, so it never holds one connection while asking the pool for
 // another (assistant/workers.go's retentionWorker), it audits the expiries,
 // deletes the long-expired keys and keeps the request log's partitions; then,
-// with the lease let go, it mails the notices due. It answers how many
-// expiries it audited and how many rows it deleted, both zero, and nothing
-// done, when another replica holds the lease.
+// with the lease let go, it mails the notices due. A failure in one part is
+// logged and does not keep the next from running; the cycle answers them
+// joined. It answers how many expiries it audited and how many rows it
+// deleted, both zero, and nothing done, when another replica holds the lease.
 func (w *apiKeysWorker) RunCycle(ctx context.Context) (recorded, deleted int, err error) {
 	recorded, deleted, acquired, err := w.leasedCycle(ctx)
-	if err != nil || !acquired {
+	if !acquired || ctx.Err() != nil {
 		return recorded, deleted, err
 	}
-	if _, err := w.sendAPIKeyNotices(ctx, w.deps.Clock()); err != nil {
-		return recorded, deleted, err
+	if _, nerr := w.sendAPIKeyNotices(ctx, w.deps.Clock()); nerr != nil {
+		err = errors.Join(err, nerr)
 	}
-	return recorded, deleted, nil
+	return recorded, deleted, err
 }
 
 // leasedCycle is the part of a cycle that runs under the lease.
@@ -115,6 +119,21 @@ func (w *apiKeysWorker) leasedCycle(ctx context.Context) (recorded, deleted int,
 		}
 	}()
 	now := w.deps.Clock()
+	recorded, deleted, err = w.expireKeys(ctx, conn, now)
+	if err != nil {
+		w.deps.Logger.Error("identity: API key expiry failed", "worker", w.Name(), "error", err)
+	}
+	if ctx.Err() == nil {
+		if perr := w.keepAPIRequestPartitions(ctx, store.New(conn), now); perr != nil {
+			err = errors.Join(err, perr)
+		}
+	}
+	return recorded, deleted, true, err
+}
+
+// expireKeys audits each key that expired once and deletes the rows of keys
+// 90 days past their expiry, on the lease's connection.
+func (w *apiKeysWorker) expireKeys(ctx context.Context, conn *pgxpool.Conn, now time.Time) (recorded, deleted int, err error) {
 	for {
 		n := 0
 		err := pgx.BeginFunc(ctx, conn, func(tx pgx.Tx) error {
@@ -143,7 +162,7 @@ func (w *apiKeysWorker) leasedCycle(ctx context.Context) (recorded, deleted int,
 			return nil
 		})
 		if err != nil {
-			return recorded, deleted, true, err
+			return recorded, deleted, err
 		}
 		recorded += n
 		if n < apiKeysBatch || ctx.Err() != nil {
@@ -154,40 +173,57 @@ func (w *apiKeysWorker) leasedCycle(ctx context.Context) (recorded, deleted int,
 	for {
 		n, err := q.DeleteExpiredAPIKeys(ctx, store.DeleteExpiredAPIKeysParams{Cutoff: now.Add(-apiKeyRowRetention), BatchSize: apiKeysBatch})
 		if err != nil {
-			return recorded, deleted, true, fmt.Errorf("identity: delete the long-expired API keys: %w", err)
+			return recorded, deleted, fmt.Errorf("identity: delete the long-expired API keys: %w", err)
 		}
 		deleted += int(n)
 		if n < apiKeysBatch || ctx.Err() != nil {
-			break
+			return recorded, deleted, nil
 		}
 	}
-	return recorded, deleted, true, keepAPIRequestPartitions(ctx, q, now)
 }
 
 // keepAPIRequestPartitions keeps the request log's partitions at now (K23,
 // K39): each UTC day DEFAULT holds rows of, within the 30 days kept, and
 // today with the 6 days after it, get a partition, each in a transaction of
 // its own that moves the day's rows out of DEFAULT first; then the days
-// before the 30 are dropped, from DEFAULT too.
-func keepAPIRequestPartitions(ctx context.Context, q *store.Queries, now time.Time) error {
+// before the 30 are dropped, from DEFAULT too. A day that fails — its lock
+// not had within the function's lock_timeout, say — is logged and tried
+// again next cycle, and the other days go on; the failures are answered
+// joined.
+func (w *apiKeysWorker) keepAPIRequestPartitions(ctx context.Context, q *store.Queries, now time.Time) error {
 	today := utcDay(now)
-	oldest := today.AddDate(0, 0, -apiRequestRetentionDays)
+	oldest := apiRequestOldestDay(now)
 	days, err := q.ListDefaultAPIRequestDays(ctx, oldest)
 	if err != nil {
-		return fmt.Errorf("identity: read the request log's DEFAULT partition: %w", err)
+		err = fmt.Errorf("identity: read the request log's DEFAULT partition: %w", err)
+		w.deps.Logger.Error("identity: request log upkeep failed", "worker", w.Name(), "error", err)
+		days = nil
 	}
 	for i := range apiRequestDaysAhead {
 		days = append(days, pgDate(today.AddDate(0, 0, i)))
 	}
 	for _, day := range days {
-		if _, err := q.EnsureAPIRequestsPartition(ctx, day); err != nil {
-			return fmt.Errorf("identity: make the request log's partition of %s: %w", day.Time.Format(time.DateOnly), err)
+		if ctx.Err() != nil {
+			return errors.Join(err, ctx.Err())
+		}
+		if _, derr := q.EnsureAPIRequestsPartition(ctx, day); derr != nil {
+			derr = fmt.Errorf("identity: make the request log's partition of %s: %w", day.Time.Format(time.DateOnly), derr)
+			w.deps.Logger.Error("identity: request log upkeep failed", "worker", w.Name(), "error", derr)
+			err = errors.Join(err, derr)
 		}
 	}
-	if _, err := q.DropAPIRequestsBefore(ctx, pgDate(oldest)); err != nil {
-		return fmt.Errorf("identity: drop the request log's old partitions: %w", err)
+	if _, derr := q.DropAPIRequestsBefore(ctx, pgDate(oldest)); derr != nil {
+		derr = fmt.Errorf("identity: drop the request log's old partitions: %w", derr)
+		w.deps.Logger.Error("identity: request log upkeep failed", "worker", w.Name(), "error", derr)
+		err = errors.Join(err, derr)
 	}
-	return nil
+	return err
+}
+
+// apiRequestOldestDay is the first UTC day the request log keeps at now: 30
+// days, today included.
+func apiRequestOldestDay(now time.Time) time.Time {
+	return utcDay(now).AddDate(0, 0, -(apiRequestRetentionDays - 1))
 }
 
 // pgDate is day as a date column.
