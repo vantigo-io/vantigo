@@ -7,6 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/projects/gen"
 	"github.com/vantigo-io/vantigo/server/internal/projects/store"
@@ -93,7 +94,9 @@ func (s *server) currencyLocked(ctx context.Context, txq *store.Queries, project
 //
 // The creator becomes the project's manager (D6), which is what makes the
 // response's capabilities both true and its financials present: whoever
-// creates a project may always see its money. Insert, role, counter and
+// creates a project may always see its money. An integration is no manager
+// (API access design K56): its project has none, and its answer is what the
+// key's own permissions give it. Insert, role, counter and
 // timeline entry are one transaction, so a project never exists without its
 // manager or its first timeline entry.
 //
@@ -121,6 +124,9 @@ func (s *server) PostProjects(ctx context.Context, req gen.PostProjectsRequestOb
 		return nil, err
 	}
 
+	// An integration is no project's manager (API access design K56): its
+	// project has none until a person is given the role.
+	manager := !contracts.ViaAPIKeyFrom(ctx)
 	now := s.deps.Clock()
 	var created store.ProjectsProject
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
@@ -145,10 +151,12 @@ func (s *server) PostProjects(ctx context.Context, req gen.PostProjectsRequestOb
 		if err != nil {
 			return err
 		}
-		if err := txq.InsertProjectRole(ctx, store.InsertProjectRoleParams{
-			ProjectID: created.ID, UserID: by.UserID, Role: roleManager, Now: now,
-		}); err != nil {
-			return err
+		if manager {
+			if err := txq.InsertProjectRole(ctx, store.InsertProjectRoleParams{
+				ProjectID: created.ID, UserID: by.UserID, Role: roleManager, Now: now,
+			}); err != nil {
+				return err
+			}
 		}
 		if _, err := txq.NextCounterValue(ctx, counterProjectCode); err != nil {
 			return err
@@ -162,6 +170,18 @@ func (s *server) PostProjects(ctx context.Context, req gen.PostProjectsRequestOb
 		return nil, fmt.Errorf("projects: create project: %w", err)
 	}
 
+	if !manager {
+		q := store.New(s.deps.Pool)
+		a, err := s.authorize(ctx, q, created.ID)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := s.projectResponseFor(ctx, q, created, a)
+		if err != nil {
+			return nil, err
+		}
+		return gen.PostProjects201JSONResponse(resp), nil
+	}
 	a := access{}.widenBy(roleManager)
 	managers := []gen.ProjectPersonSummary{{UserId: by.UserID, DisplayName: by.Display}}
 	resp, err := projectResponse(created, a, parsed.CustomerName, managers, s.billingLinesAvailable())

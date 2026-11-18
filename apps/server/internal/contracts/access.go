@@ -88,6 +88,14 @@ func PrincipalFrom(ctx context.Context) (Principal, bool) {
 	return p, ok
 }
 
+// ViaAPIKeyFrom reports whether the context's principal is an integration
+// calling with an API key (Via.Kind ViaAPIKey): a caller that is no person, so
+// never the subject of a record a person is (API access design K56).
+func ViaAPIKeyFrom(ctx context.Context) bool {
+	p, ok := PrincipalFrom(ctx)
+	return ok && p.Via != nil && p.Via.Kind == ViaAPIKey
+}
+
 // UserID answers the user the context acts for: the Principal's UserID that
 // WithPrincipal (a request's session) or AsUser (a worker acting on a
 // person's behalf) attached, and false when there is none or it names no

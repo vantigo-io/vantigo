@@ -1043,6 +1043,7 @@ paths:
             tags:
                 - Time
             x-vantigo-access: permission:time:access
+            x-vantigo-api: never
     /api/v1/time/entries/approve:
         post:
             description: Approves submitted entries (D2), recording the approver and the time. Each must be submitted, on a project the caller approves for (its manager, or time:approve), and not dated before the lock date unless the caller holds time:manage.
@@ -1324,6 +1325,7 @@ paths:
             tags:
                 - Time
             x-vantigo-access: permission:time:access
+            x-vantigo-api: never
     /api/v1/time/people:
         get:
             description: The people overview — for every person with an entry or a week submission in the window, their hours, approved hours and rejected entries per week, and when they submitted each week. Ordered by display name.
@@ -1885,5 +1887,6 @@ paths:
             tags:
                 - Time
             x-vantigo-access: permission:time:access
+            x-vantigo-api: never
 servers:
     - url: /

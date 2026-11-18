@@ -108,10 +108,14 @@ func columnsOf(p parsedEntry, v entryValues) (entryColumns, error) {
 	return c, nil
 }
 
+// apiKeyOwnerMessage refuses a key's expense or claim that names nobody: an
+// integration records them only for a person.
+const apiKeyOwnerMessage = "An API key records expenses for a person; name them in userId"
+
 // resolveOwner is the person the expense concerns (design §5): the caller
 // unless userId names somebody else, which needs expenses:manage and a person
-// identity still has as active. It is asked of the user directory before any
-// transaction.
+// identity still has as active. An API key's caller is no person, so it must
+// name one. It is asked of the user directory before any transaction.
 //
 // A line inside a travel claim has no owner of its own: it is whoever the claim
 // concerns, whatever the body said. Naming somebody else is refused rather than
@@ -122,6 +126,11 @@ func (s *server) resolveOwner(ctx context.Context, c *caller, userID *openapi_ty
 ) (uuid.UUID, error) {
 	if claim != nil {
 		return claim.UserID, nil
+	}
+	if contracts.ViaAPIKeyFrom(ctx) && (userID == nil || *userID == c.UserID) {
+		// An integration has no expenses of its own (API access design K56).
+		add("userId", apiKeyOwnerMessage)
+		return c.UserID, nil
 	}
 	if userID == nil || *userID == c.UserID {
 		return c.UserID, nil
@@ -627,12 +636,12 @@ func (s *server) prepare(ctx context.Context, q *store.Queries, c *caller, body 
 	if err != nil {
 		return prepared{}, err
 	}
-	owner, err := s.resolveOwner(ctx, c, userID, claim, add)
-	if err != nil {
-		return prepared{}, err
-	}
+	// An update keeps the entry's owner; only a create resolves one.
+	var owner uuid.UUID
 	if current != nil {
 		owner = current.UserID
+	} else if owner, err = s.resolveOwner(ctx, c, userID, claim, add); err != nil {
+		return prepared{}, err
 	}
 	if claim != nil && len(errs) == 0 {
 		claimLineRules(&parsed, userID, *claim, c.zone(), add)
