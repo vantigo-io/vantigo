@@ -1606,8 +1606,11 @@ lag, never what must refuse — go through the platform's domain-events outbox,
       by the integration, with `Via.RateLimitPerMinute` as the limit (K24), writes the
       `RateLimit-*` headers with `ratelimit.WriteHeaders` and refuses the rest with
       `ratelimit.Reject`. A module's own `Limits` still run first, keyed by address.
-      `Count` is `Hit` for a hot key: it counts in process and adds to `platform.rate_limit`
-      once a second, so use it for a key hit many times a minute and `Hit` for the rest.
+      `Count` is `Hit` for a hot key: it seeds a window once per process and key, counts the
+      rest in process, and a flusher adds them to `platform.rate_limit` every second and on
+      `Limiter.Close`, so use it for a key hit many times a minute and `Hit` for the rest. A
+      process that builds a `Limiter` closes it at shutdown, before its pool, as `serve` and
+      the test harnesses do.
     - **`contracts.APIRequestRecorder`** is the request log's port (K23, K35):
       `Record(ctx, contracts.APIRequest)`, never blocking and never failing the request.
       Identity's `Access` implements it beside `contracts.Access`, and the router finds it
