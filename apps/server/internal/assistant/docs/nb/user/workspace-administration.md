@@ -12,7 +12,7 @@ sources:
 Administrasjon av arbeidsområdet er der en **Eier** styrer hvem som kan bruke
 Vantigo og hva de kan gjøre. Åpne avatar-menyen øverst til høyre og velg
 **Administrer arbeidsområde**; sidemenyen har **Oversikt**, **Brukere**,
-**Invitasjoner**, **Roller og tilgang**, når Produksjon er på, **Nettbrettstasjoner**, **API-tilgang** og, under **Integrasjoner**, **Microsoft Entra ID**,
+**Invitasjoner**, **Roller og tilgang**, **Nettbrettstasjoner** (når Produksjon er på), **API-tilgang** og, under **Integrasjoner**, **Microsoft Entra ID**,
 **Google Workspace**, **Meta**, **Frakt**, **Bank** og, når Vantigo har satt opp KI for installasjonen, **KI-modeller** og **Assistent**.
 
 Alt her krever eierrollen, med ett unntak: den en eier har delegert

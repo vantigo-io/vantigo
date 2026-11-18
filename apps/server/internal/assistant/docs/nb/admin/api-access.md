@@ -29,8 +29,8 @@ Hvordan en nøkkel vurderes ved hver forespørsel, står under
   MFA for eiere, avvises de til du har det. En administrator som har fått rolleadministrasjon
   delegert, ser ikke skjermbildet.
 - Rollene integrasjonen skal ha, finnes som **egendefinerte roller** under **Roller og
-  tilgang**. En integrasjon kan bare ha egendefinerte roller: aldri **Owner**, **SystemAdmin**
-  eller **User**. Lag en rolle for hvert program med nøyaktig det programmet trenger.
+  tilgang**. En integrasjon kan bare ha egendefinerte roller: aldri **Eier**, **SystemAdmin**
+  eller **Bruker**. Lag en rolle for hvert program med nøyaktig det programmet trenger.
 - Du vet hvor programmet skal oppbevare nøkkelen — et hemmelighetslager eller
   konfigurasjonen — fordi nøkkelen vises én gang.
 
@@ -46,8 +46,8 @@ Hvordan en nøkkel vurderes ved hver forespørsel, står under
 
 For å endre den senere velger du **Handlinger › Rediger detaljer**: navnet, beskrivelsen,
 kontaktpersonen og **Hastighetsgrense** (60 til 6 000 forespørsler i minuttet til sammen for
-nøklene; standard er 600). Hastighetsgrensen lagres med integrasjonen, men håndheves ikke ennå.
-Lagring erstatter beskrivelsen og kontaktpersonen med det skjemaet
+nøklene; standard er 600). Hastighetsgrensen lagres med integrasjonen, men håndheves ikke ennå:
+ingen forespørsel avvises for den ennå. Lagring erstatter beskrivelsen og kontaktpersonen med det skjemaet
 inneholder, så et felt du tømmer, blir tømt. Har noen andre endret integrasjonen etter at du
 åpnet den, avvises lagringen, og siden viser det siste; gjør endringen på nytt.
 
@@ -78,7 +78,7 @@ integrasjonens nøkler.
 2. Gi den et **Navn**, for eksempel *Produksjon*.
 3. Velg **Utløp**: 30, 90, 180 eller 365 dager, eller **På en dato** høyst 365 dager fram.
    Alle nøkler utløper; standard er 90 dager.
-4. Velg om du vil **Begrens nøkkelen** (nedenfor), slå på **Bare lesing** (nedenfor) og fyll
+4. Slå eventuelt på **Begrens nøkkelen** (nedenfor), slå på **Bare lesing** (nedenfor) og fyll
    inn **Nettverk** (nedenfor).
 5. Velg **Opprett nøkkel**. Nøkkelen vises **én gang**, med **Kopier** og et `curl`-eksempel
    mot denne installasjonens adresse. Kopier den inn i programmets hemmelighetslager og velg
@@ -112,8 +112,9 @@ bare lesing som kaller noe annet, avvises med `403 api_key_read_only`.
 
 **Nettverk** lister adressene eller CIDR-områdene nøkkelen kan brukes fra, én per linje —
 IPv4 eller IPv6, høyst 20. Tomt betyr hvor som helst. En forespørsel utenfra avvises med
-`401 unauthenticated`, som en ukjent nøkkel, så avsenderen får ikke vite noe om nøkkelen, og
-**Sist brukt** oppdateres ikke. Adressen er klientens slik serveren ser den gjennom
+`401 unauthenticated`, som en ukjent nøkkel, også når nøkkelen i tillegg er utløpt eller
+tilbakekalt, så avsenderen får ikke vite noe om nøkkelen. **Sist brukt** registrerer bare en
+forespørsel nøkkelen ble sluppet gjennom for, aldri en avvist. Adressen er klientens slik serveren ser den gjennom
 `TRUSTED_PROXY_HOPS` og `TRUSTED_PROXY_CIDRS`
 ([Videresendte headere og HTTPS](/nb/admin/authentication/#videresendte-headere-og-https)):
 bak en proxy som ikke er klarert, har alle forespørsler proxyens adresse.
@@ -130,9 +131,13 @@ Rotering bytter ut en nøkkel uten et øyeblikk der programmet står uten.
 4. Legg den nye nøkkelen inn i programmet før overlappet er over. Den gamle nøkkelen utløper
    da av seg selv; til da er den merket **Rotert**.
 
+En rotering lar den gamle nøkkelen virke gjennom overlappet. Har nøkkelen lekket, tilbakekaller
+du den i stedet ([Når en nøkkel lekker](#når-en-nøkkel-lekker)): det sier dialogen også.
+
 En nøkkel kan roteres én gang: å rotere den igjen avvises med `409 api_key_already_rolled`,
 og en tilbakekalt eller utløpt nøkkel kan ikke roteres (`409 api_key_revoked`). Å lage og
-rotere nøkler er begrenset til 30 i minuttet fra én adresse.
+rotere nøkler deler identitys grense for brukeradministrasjon (UserManagement) på 30
+forespørsler i minuttet fra én adresse med de andre operasjonene for brukeradministrasjon.
 
 ## Tilbakekall en nøkkel
 
@@ -181,14 +186,14 @@ curl -H "Authorization: Bearer vtg_…" https://vantigo.example.com/api/v1/custo
   kan kjenne den igjen, og en feilskrevet nøkkel avvises uten et databaseoppslag.
 - En nøkkel når bare operasjoner bak en tillatelse eller åpne for alle; aldri en persons egen
   konto, en eiers administrasjon, SSO, SCIM eller nøklene selv. Hver operasjon som aldri er
-  tilgjengelig for en nøkkel, sier det i den genererte API-referansen (`/en/reference/api/`).
+  tilgjengelig for en nøkkel, sier det i den genererte API-referansen (`/nb/reference/api/`).
 
 ## Svarene en nøkkel kan få
 
 | Status | Kode | Når |
 | --- | --- | --- |
 | `401` | `unauthenticated` | Nøkkelen er feilformet, ukjent eller tilbakekalt, eller integrasjonen er deaktivert eller arkivert; forespørselen kom utenfra nøkkelens nettverk; eller den hadde flere `Authorization`-headere |
-| `401` | `api_key_expired` | Nøkkelen passet, men er utløpt |
+| `401` | `api_key_expired` | Nøkkelen passet, innenfor nettverkene sine, men er utløpt |
 | `403` | `forbidden` | En persons eller en eiers operasjon, eller en tillatelse nøkkelen ikke når: ikke i rollene, aldri tilgjengelig for API-nøkler eller utenfor begrensningen |
 | `403` | `api_not_available` | Operasjonen er aldri tilgjengelig for API-nøkler |
 | `403` | `api_key_read_only` | En nøkkel for bare lesing på en operasjon som ikke er en lesing |

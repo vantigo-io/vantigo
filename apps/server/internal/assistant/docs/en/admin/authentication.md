@@ -957,7 +957,12 @@ session.
   an expense's or a claim's owner, a staff link, a purchase order's buyer, a manufacturing
   order's responsible, a time log's person, an article's member, an Assistant switch and a
   quote's or an order's salesperson. A quote or an order a key creates without naming a
-  salesperson has none. Each module's reference says what it answers.
+  salesperson has none.
+- **Not the subject of its own records.** Where a record is by default the caller's, a key
+  never makes its integration the subject. An expense or a travel claim a key records must
+  name the person in `userId`; a project a key creates has no manager; and logging time,
+  changing a time entry and submitting a week are never available to a key, since nothing in
+  them names another person. Each module's reference says what it answers.
 
 Integrations and their API keys are made under **Workspace admin › API access**
 ([API access](/en/admin/api-access/)).
