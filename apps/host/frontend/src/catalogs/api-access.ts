@@ -233,6 +233,19 @@ const en = {
   "apiAccess.webhookSecretHint":
     "The application checks each message's webhook-signature header with it, as Standard Webhooks describes.",
   "apiAccess.webhookSecretDone": "I have copied the secret",
+  "apiAccess.webhookTest": "Send test event",
+  "apiAccess.webhookTestSent": "Test event queued",
+  "apiAccess.webhookTestSentHint":
+    "A webhook.ping message is sent to the endpoint within seconds, once, with no retry.",
+  "apiAccess.webhookCouldNotTest": "Could not send the test event",
+  "apiAccess.webhookStatus_failing": "Failing",
+  "apiAccess.webhookFailingSince": "Failing since {{when}}",
+  "apiAccess.webhookLastSuccess": "Last delivered {{when}}",
+  "apiAccess.webhookBannerTitle": "Endpoint disabled: {{host}}",
+  "apiAccess.webhookBanner_failing":
+    "Its messages failed for 5 days, and at least 5 were given up after every retry. The messages waiting for it were dropped. When the application works again, enable the endpoint; a test event is sent to it at once.",
+  "apiAccess.webhookBanner_gone":
+    "It answered 410 Gone, which says the address is no longer in use. The messages waiting for it were dropped. When the address is right again, enable the endpoint; a test event is sent to it at once.",
 };
 
 const nb: Record<keyof typeof en, string> = {
@@ -461,6 +474,19 @@ const nb: Record<keyof typeof en, string> = {
   "apiAccess.webhookSecretHint":
     "Programmet kontrollerer hver meldings webhook-signature-header med den, slik Standard Webhooks beskriver.",
   "apiAccess.webhookSecretDone": "Jeg har kopiert hemmeligheten",
+  "apiAccess.webhookTest": "Send testhendelse",
+  "apiAccess.webhookTestSent": "Testhendelsen er lagt i kø",
+  "apiAccess.webhookTestSentHint":
+    "En webhook.ping-melding sendes til endepunktet i løpet av sekunder, én gang, uten nye forsøk.",
+  "apiAccess.webhookCouldNotTest": "Kunne ikke sende testhendelsen",
+  "apiAccess.webhookStatus_failing": "Feiler",
+  "apiAccess.webhookFailingSince": "Har feilet siden {{when}}",
+  "apiAccess.webhookLastSuccess": "Sist levert {{when}}",
+  "apiAccess.webhookBannerTitle": "Endepunktet er deaktivert: {{host}}",
+  "apiAccess.webhookBanner_failing":
+    "Meldingene til det feilet i 5 dager, og minst 5 ble gitt opp etter alle nye forsøk. Meldingene som ventet på det, er forkastet. Når programmet virker igjen, aktiverer du endepunktet; en testhendelse sendes til det med en gang.",
+  "apiAccess.webhookBanner_gone":
+    "Det svarte 410 Gone, som sier at adressen ikke lenger er i bruk. Meldingene som ventet på det, er forkastet. Når adressen er riktig igjen, aktiverer du endepunktet; en testhendelse sendes til det med en gang.",
 };
 
 export const apiAccessCatalog = { en, nb } as const satisfies CatalogResources;

@@ -13,6 +13,8 @@ const api = vi.hoisted(() => ({
   updateWebhook: vi.fn(),
   rollWebhookSecret: vi.fn(),
   disableWebhook: vi.fn(),
+  enableWebhook: vi.fn(),
+  testWebhook: vi.fn(),
 }));
 
 vi.mock("../../api/webhooks", async (importOriginal) => ({
@@ -234,5 +236,71 @@ describe("an integration's webhook endpoints", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Actions" }));
     const items = await screen.findAllByRole("menuitem");
     expect(items.map((item) => item.textContent)).toEqual(["Delete"]);
+  });
+
+  it("sends a test event to an enabled endpoint, and offers none to a disabled one", async () => {
+    api.listWebhooks.mockResolvedValue([
+      endpoint(),
+      endpoint({ id: "w-2", url: "https://off.example.com/in", status: "disabled", disabledReason: "manual" }),
+    ]);
+    api.testWebhook.mockResolvedValue({ deliveryId: "d-1" });
+    await renderTab();
+
+    const [enabled, disabled] = await screen.findAllByRole("button", { name: "Actions" });
+    fireEvent.click(enabled);
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Send test event" }));
+    await waitFor(() => expect(api.testWebhook).toHaveBeenCalledWith("i-1", "w-1"));
+    expect(await screen.findByText("Test event queued")).toBeInTheDocument();
+
+    fireEvent.click(disabled);
+    await screen.findByRole("menuitem", { name: "Enable" });
+    expect(screen.queryByRole("menuitem", { name: "Send test event" })).not.toBeInTheDocument();
+  });
+
+  it("marks a failing endpoint, and explains one the sender disabled with a way to enable it", async () => {
+    api.listWebhooks.mockResolvedValue([
+      endpoint({ failingSince: "2026-11-17T08:00:00Z", lastSuccessAt: "2026-11-16T08:00:00Z" }),
+      endpoint({
+        id: "w-2",
+        url: "https://gone.example.com/catch/secret-path",
+        status: "disabled",
+        disabledReason: "gone",
+        disabledAt: "2026-11-18T09:00:00Z",
+      }),
+      endpoint({
+        id: "w-3",
+        url: "https://failing.example.com/in",
+        status: "disabled",
+        disabledReason: "failing",
+        disabledAt: "2026-11-18T09:00:00Z",
+      }),
+      endpoint({ id: "w-4", url: "https://manual.example.com/in", status: "disabled", disabledReason: "manual" }),
+    ]);
+    api.enableWebhook.mockResolvedValue(endpoint({ id: "w-2" }));
+    await renderTab();
+
+    const table = await screen.findByTestId("webhook-endpoints");
+    const failing = table.querySelector('[data-endpoint="w-1"]') as HTMLElement;
+    expect(within(failing).getByText("Failing").closest("[data-status]")).toHaveAttribute("data-status", "failing");
+    expect(within(failing).getByText(/Failing since/)).toBeInTheDocument();
+    expect(within(failing).getByText(/Last delivered/)).toBeInTheDocument();
+
+    // A banner for each endpoint the sender disabled, none for an Owner's.
+    const banners = screen.getAllByTestId("webhook-disabled-banner");
+    expect(banners.map((banner) => banner.getAttribute("data-reason"))).toEqual(["gone", "failing"]);
+    expect(within(banners[0]).getByText("Endpoint disabled: gone.example.com")).toBeInTheDocument();
+    expect(within(banners[0]).queryByText(/secret-path/)).not.toBeInTheDocument();
+    expect(within(banners[0]).getByText(/answered 410 Gone/)).toBeInTheDocument();
+    expect(within(banners[1]).getByText(/failed for 5 days/)).toBeInTheDocument();
+
+    fireEvent.click(within(banners[0]).getByRole("button", { name: "Enable" }));
+    await waitFor(() => expect(api.enableWebhook).toHaveBeenCalledWith("i-1", "w-2"));
+  });
+
+  it("offers no way to enable from a banner on an archived integration", async () => {
+    api.listWebhooks.mockResolvedValue([endpoint({ status: "disabled", disabledReason: "gone" })]);
+    await renderTab(true);
+    const banner = await screen.findByTestId("webhook-disabled-banner");
+    expect(within(banner).queryByRole("button")).not.toBeInTheDocument();
   });
 });
