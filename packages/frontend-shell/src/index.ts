@@ -28,6 +28,14 @@ export {
   routeMatches,
 } from "./assist-targets";
 export {
+  AuthBrandMark,
+  DOMAIN_BRAND_FADE_MS,
+  DOMAIN_BRAND_IDLE_MS,
+  domainOfEmail,
+  looksLikeDomain,
+  useDomainBrand,
+} from "./brand/domain-brand";
+export {
   BRAND_REFETCH_JITTER_MS,
   BRAND_TOPIC,
   BrandLiveSync,

@@ -124,5 +124,10 @@
     "path": "packages/frontend-shell/src/app-shell-layout.tsx",
     "pattern": "bg=\\{mark\\.chip \\? \"white\"",
     "reason": "The chip a light-background brand mark rides on in dark mode is light on purpose"
+  },
+  {
+    "path": "packages/frontend-shell/src/brand/domain-brand.tsx",
+    "pattern": "bg=\\{chip \\? \"white\"",
+    "reason": "The chip a light-background brand mark rides on in dark mode is light on purpose"
   }
 ]

@@ -2,13 +2,14 @@ import { Alert, Button, Card, Center, PasswordInput, Stack, Title } from "@manti
 import { useForm } from "@mantine/form";
 import { useMutation } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { useI18n, vantigoTokens } from "@vantigo/frontend-shell";
+import { AuthBrandMark, useDomainBrand, useI18n, vantigoTokens } from "@vantigo/frontend-shell";
 import { resetPassword } from "../api/account-lifecycle";
 import { ApiValidationError } from "../api/request";
 import "../i18n";
 export const ResetPasswordPage = ({ email, token }: { email: string; token: string }) => {
   const { t } = useI18n("host");
   const form = useForm({ initialValues: { password: "" } });
+  useDomainBrand(email);
   const mutation = useMutation({
     mutationFn: () => resetPassword({ email, token, newPassword: form.values.password }),
   });
@@ -17,6 +18,7 @@ export const ResetPasswordPage = ({ email, token }: { email: string; token: stri
     <Center mih="100vh" bg={vantigoTokens.pageBg}>
       <Card withBorder p="xl" maw={440} w="100%">
         <Stack>
+          <AuthBrandMark />
           <Title order={2}>{t("auth.chooseNewPassword")}</Title>
           {mutation.error &&
             (validation ? (

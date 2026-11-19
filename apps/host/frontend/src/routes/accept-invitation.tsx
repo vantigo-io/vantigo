@@ -2,7 +2,7 @@ import { Alert, Button, Card, Center, PasswordInput, Stack, Text, TextInput, Tit
 import { useForm } from "@mantine/form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { appUrl, useBrand, useI18n, vantigoTokens } from "@vantigo/frontend-shell";
+import { AuthBrandMark, appUrl, useBrand, useDomainBrand, useI18n, vantigoTokens } from "@vantigo/frontend-shell";
 import { acceptInvitation, validateInvitation } from "../api/account-lifecycle";
 import { fetchSession, sessionQueryKey } from "../api/auth";
 import { mfaEnrolmentDestination } from "../lib/mfa-enrolment-gate";
@@ -18,6 +18,7 @@ export const AcceptInvitationPage = ({ token }: { token: string }) => {
     queryFn: () => validateInvitation(token),
     enabled: Boolean(token),
   });
+  useDomainBrand(invitation.data?.valid ? (invitation.data.email ?? "") : "");
   const form = useForm({ initialValues: { displayName: "", password: "" } });
   // An invitation that completes an account Staff prepared names no role: the
   // account keeps its own roles, and its name, so no display name is asked.
@@ -36,6 +37,7 @@ export const AcceptInvitationPage = ({ token }: { token: string }) => {
     <Center mih="100vh" bg={vantigoTokens.pageBg}>
       <Card withBorder p="xl" maw={440} w="100%">
         <Stack>
+          <AuthBrandMark />
           <Title order={2}>{t("auth.joinApp", { app: brand.title })}</Title>
           {!invitation.isPending && !invitation.data?.valid && <Alert color="red">{t("auth.invalidInvitation")}</Alert>}
           {invitation.data?.valid && (

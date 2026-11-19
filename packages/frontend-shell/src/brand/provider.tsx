@@ -1,5 +1,5 @@
 import { MantineProvider, type MantineProviderProps, useComputedColorScheme } from "@mantine/core";
-import { createContext, type ReactNode, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { appConfig, appUrl } from "../app-config";
 import { vantigoLogo, vantigoLogoDark } from "../logo";
 import { createVantigoTheme } from "../theme";
@@ -106,7 +106,7 @@ export function brandFromDocument(): BrandPayload | null {
 const initialPayload = (): BrandPayload => brandFromDocument() ?? fallbackPayload();
 
 /** A payload this client understands, or null. */
-function parsePayload(body: unknown): BrandPayload | null {
+export function parsePayload(body: unknown): BrandPayload | null {
   const p = body as Partial<BrandPayload> | null;
   if (!p || typeof p !== "object" || !understands(p.v, p.algorithm) || (p.v as number) > BRAND_PAYLOAD_VERSION)
     return null;
@@ -133,6 +133,18 @@ function applyFavicon(icon: string | undefined): void {
 }
 
 const BrandContext = createContext<Brand | null>(null);
+const DomainBrandContext = createContext<((payload: BrandPayload | null) => void) | null>(null);
+
+/**
+ * Shows another brand than the provider's for as long as the page asks (brands design B26): the sign-in
+ * page shows the brand of the typed address's domain. `null` goes back to the provider's own. It is
+ * never mirrored to local storage, and it is dropped when a person signs in.
+ */
+export function useSetDomainBrand(): (payload: BrandPayload | null) => void {
+  const set = useContext(DomainBrandContext);
+  return set ?? noDomainBrand;
+}
+const noDomainBrand = () => {};
 
 export interface BrandProviderProps {
   /**
@@ -160,7 +172,16 @@ async function fetchPayload(path: string): Promise<{ status: number; payload: Br
  * storage for the next offline load, clears the mirror on sign-out, and sets the tab's title and icon.
  */
 export function BrandProvider({ userId, sessionless = false, children }: BrandProviderProps) {
-  const [payload, setPayload] = useState<BrandPayload>(initialPayload);
+  const [fetched, setPayload] = useState<BrandPayload>(initialPayload);
+  const [domainBrand, setDomainBrandState] = useState<BrandPayload | null>(null);
+  const payload = domainBrand ?? fetched;
+  const setDomainBrand = useCallback((next: BrandPayload | null) => {
+    if (next) clearInlineBrand(); // the pre-paint mirror's inline variables would outrank the theme
+    setDomainBrandState(next);
+  }, []);
+  useEffect(() => {
+    if (userId) setDomainBrandState(null); // a person's own brand takes over
+  }, [userId]);
   const [previewTick, setPreviewTick] = useState(0);
 
   useEffect(() => {
@@ -217,7 +238,11 @@ export function BrandProvider({ userId, sessionless = false, children }: BrandPr
   }, [payload.logos.icon, payload.title]);
 
   const brand = useMemo(() => brandOf(payload), [payload]);
-  return <BrandContext.Provider value={brand}>{children}</BrandContext.Provider>;
+  return (
+    <DomainBrandContext.Provider value={setDomainBrand}>
+      <BrandContext.Provider value={brand}>{children}</BrandContext.Provider>
+    </DomainBrandContext.Provider>
+  );
 }
 
 /** The brand: the title, logos and support contacts the shell shows (B14). Vantigo's own outside a provider. */

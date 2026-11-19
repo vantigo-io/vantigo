@@ -81,6 +81,8 @@ export interface BrandPayload {
   candidates?: readonly { id: string; name: string }[];
   /** The person's earlier choice is no longer one of their candidates, so it is ignored. */
   choiceIgnored?: boolean;
+  /** On the public look by domain only (B25): the domain is attached to a published brand. */
+  matched?: boolean;
 }
 
 /** The payload version this client understands; a higher one is ignored (B36). */
