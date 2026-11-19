@@ -711,7 +711,7 @@ func TestWorkers_Efaktura(t *testing.T) {
 	for _, w := range invoices.Module().Workers(d) {
 		names = append(names, w.Name())
 	}
-	if want := []string{"invoices-reminders", "invoices-billing", "invoices.allocation_reconcile", "invoices-overdue-events", "invoices.credit_moves", "invoices-efaktura"}; !slices.Equal(names, want) {
+	if want := []string{"invoices-reminders", "invoices-billing", "invoices.allocation_reconcile", "invoices-overdue-events", "invoices.credit_moves", "invoices-send", "invoices-efaktura"}; !slices.Equal(names, want) {
 		t.Errorf("workers %v, want %v", names, want)
 	}
 }
@@ -728,11 +728,11 @@ func TestWorkers_PerSwitch(t *testing.T) {
 		ehf, vipps, feed bool
 		want             []string
 	}{
-		{false, false, false, []string{"invoices-reminders", "invoices-billing", "invoices.allocation_reconcile", "invoices-overdue-events", "invoices.credit_moves"}},
-		{true, false, false, []string{"invoices-ehf", "invoices-ehf-events", "invoices-reminders", "invoices-billing", "invoices.allocation_reconcile", "invoices-overdue-events", "invoices.credit_moves"}},
-		{false, true, false, []string{"invoices-reminders", "invoices-billing", "invoices.allocation_reconcile", "invoices-overdue-events", "invoices.credit_moves", "invoices-payments"}},
-		{false, false, true, []string{"invoices-reminders", "invoices-billing", "invoices.allocation_reconcile", "invoices-overdue-events", "invoices.credit_moves", "invoices-bank-feed"}},
-		{true, true, true, []string{"invoices-ehf", "invoices-ehf-events", "invoices-reminders", "invoices-billing", "invoices.allocation_reconcile", "invoices-overdue-events", "invoices.credit_moves", "invoices-payments", "invoices-bank-feed"}},
+		{false, false, false, []string{"invoices-reminders", "invoices-billing", "invoices.allocation_reconcile", "invoices-overdue-events", "invoices.credit_moves", "invoices-send"}},
+		{true, false, false, []string{"invoices-ehf", "invoices-ehf-events", "invoices-reminders", "invoices-billing", "invoices.allocation_reconcile", "invoices-overdue-events", "invoices.credit_moves", "invoices-send"}},
+		{false, true, false, []string{"invoices-reminders", "invoices-billing", "invoices.allocation_reconcile", "invoices-overdue-events", "invoices.credit_moves", "invoices-send", "invoices-payments"}},
+		{false, false, true, []string{"invoices-reminders", "invoices-billing", "invoices.allocation_reconcile", "invoices-overdue-events", "invoices.credit_moves", "invoices-send", "invoices-bank-feed"}},
+		{true, true, true, []string{"invoices-ehf", "invoices-ehf-events", "invoices-reminders", "invoices-billing", "invoices.allocation_reconcile", "invoices-overdue-events", "invoices.credit_moves", "invoices-send", "invoices-payments", "invoices-bank-feed"}},
 	} {
 		d := h.Deps()
 		cfg := *d.Config
@@ -759,7 +759,7 @@ func TestWorkers_PerSwitch(t *testing.T) {
 	for _, w := range invoices.Module().Workers(d) {
 		names = append(names, w.Name())
 	}
-	if want := []string{"invoices-reminders", "invoices-billing", "invoices.allocation_reconcile", "invoices-overdue-events", "invoices.credit_moves", "invoices-rates"}; !slices.Equal(names, want) {
+	if want := []string{"invoices-reminders", "invoices-billing", "invoices.allocation_reconcile", "invoices-overdue-events", "invoices.credit_moves", "invoices-send", "invoices-rates"}; !slices.Equal(names, want) {
 		t.Errorf("INVOICES_RATES_ENABLED: workers %v, want %v", names, want)
 	}
 }

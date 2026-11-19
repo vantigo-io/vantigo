@@ -495,6 +495,8 @@ migrations renumbered at merge (see the memory *migration number collisions*).
   - From 2028-01-01 the issue refuses `buyer_org_number_required` when the buyer is
     obligated and the snapshot has no organisation number. Before that day it warns.
   - The address alternative stays for buyers that are not obligated.
+  - From the same day § 5-2-1 fourth paragraph has a sales document sent to a
+    bookkeeping-obligated buyer: an attention item, not a refusal (revision 6, E9).
 - **I38 — Credit limits.**
   - Customers' billing profile gains `credit_limit` (NOK, optional).
   - The exposure is open receivables (NOK, Invoices' `contracts` slot) plus confirmed,
@@ -711,3 +713,37 @@ Each has the default this spec takes, and what an overturn changes.
   - camt.054 keeps every remittance reference.
   - A rounding write-off never queues a late residual as `invoice_written_off`.
   - Each PR adds a line to the public site.
+- **6, 2026-11-18:** delivery E's plan (`plans/2026-11-18-invoices-phase6-e-plan.md`,
+  *E: readings against the code*) amends I35–I38. **The plan's readings win where they
+  differ.** In short:
+  - E lands as E-1 (send all, Invoices only) and E-2 (the 2028 rule and credit limits,
+    across Customers, Orders and Invoices).
+  - Send all is idempotent per document, not per document and channel: a document
+    delivered on any channel — an e-mail, a live EHF or eFaktura transmission, a manual
+    delivery not removed — is skipped `already_delivered` (E2).
+  - The channel is chosen when the job runs, not at enqueue, so no lookup is made in the
+    request (E3).
+  - At most once for e-mail: a reclaimed e-mail job with no delivery logged since its
+    claim is `uncertain`, never mailed again by itself (E4).
+  - The 2027 B2B duty beats I35's "else e-mail": send all never e-mails a Norwegian
+    business from 2027-01-01, and skips it `buyer_norwegian_business_required` (E5).
+  - No per-document preview before Send all; the result page is the preview after the
+    fact (E6).
+  - A preferred channel that refuses fails the job with its code; there is no fallback
+    from a preference (E3, rule 1).
+  - Print is new: a ZIP of the stored PDFs and *Mark as posted*, not the reminder
+    letters' print batches (E13).
+  - Credit-limit exposure counts NOK only until C lands; other currencies are listed as
+    not counted (E7).
+  - The org number comes from the registry, not a new buyer field; the 2028 refusal
+    guards the override and broken data (E8).
+  - The 2028 rule's source is FOR-2026-09-29-1933: § 5-1-2's org number for a
+    bookkeeping-obligated buyer, and § 5-2-1 fourth paragraph's "sent to the buyer",
+    which is an attention item, not a refusal (E1, E9; I37 above).
+  - Foretaksregisteret is fetched by E-2; until a record is refreshed the VAT flag alone
+    decides (E11). Customers' first outbox event is `customers.credit_limit.changed` (E12).
+  - E-1's build adds, beside the plan: the job's `lease_id`, so every write of a claim is
+    lease-checked as the billing worker's are; no foreign key from a job to its document,
+    since a draft asked for may be deleted; `mail_failed` is final, not retried, since
+    the mail server may have taken it; and the job codes are a documented string, not an
+    enum, since every send core's refusal is one.

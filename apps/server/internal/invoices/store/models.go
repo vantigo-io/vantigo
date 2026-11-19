@@ -758,6 +758,33 @@ type InvoicesReminderSetting struct {
 	UpdatedByUserID        *uuid.UUID
 }
 
+type InvoicesSendBatch struct {
+	ID           int64
+	Source       string
+	BillingRunID *int64
+	RequestedBy  uuid.UUID
+	CreatedAt    time.Time
+	FinishedAt   *time.Time
+}
+
+type InvoicesSendJob struct {
+	ID             int64
+	BatchID        int64
+	InvoiceID      int64
+	Channel        *string
+	State          string
+	Code           *string
+	Detail         string
+	Attempts       int32
+	LeaseID        *string
+	LeaseUntil     *time.Time
+	StartedAt      *time.Time
+	TransmissionID *int64
+	DeliveryID     *int64
+	CreatedAt      time.Time
+	FinishedAt     *time.Time
+}
+
 type InvoicesSetting struct {
 	ID                      int16
 	LegalName               string

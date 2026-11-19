@@ -392,3 +392,19 @@ func TestMiddleware_FailsClosedWhenTheCounterCannotBeRecorded(t *testing.T) {
 		t.Error("handler was called despite database error")
 	}
 }
+
+// HitN counts n hits at once: two of a limit of 2 pass, the third is over,
+// and a count below one is refused.
+func TestHitN_CountsSeveralHitsAtOnce(t *testing.T) {
+	l, _ := newLimiter(t)
+	ctx := context.Background()
+	if d, err := l.HitN(ctx, login, "203.0.113.8", 2); err != nil || !d.Allowed || d.Remaining != 0 {
+		t.Fatalf("two at once = %+v %v, want allowed with none remaining", d, err)
+	}
+	if d, err := l.HitN(ctx, login, "203.0.113.8", 1); err != nil || d.Allowed {
+		t.Fatalf("one more = %+v %v, want rejected", d, err)
+	}
+	if _, err := l.HitN(ctx, login, "203.0.113.8", 0); err == nil {
+		t.Error("zero hits: no error")
+	}
+}

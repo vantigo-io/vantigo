@@ -2386,6 +2386,90 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/invoices/send-batches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a billing run's send batches
+         * @description A billing run's send batches (invoices phase 6 design I36), the newest first, each with its jobs counted by state. billingRunId is required.
+         */
+        get: operations["getInvoicesSendBatches"];
+        put?: never;
+        /**
+         * Send documents in one go
+         * @description Send all (invoices phase 6 design I36; plan E-1, readings E2–E6): enqueues one send job per document — the invoiceIds chosen (1 to 500, each once), or every document a billing run made, once the run is done or cancelled — in one transaction with the batch, and publishes batch.changed on invoices.send-batches. A document is not queued but recorded skipped at once when it is a draft (invoice_draft), no longer exists (invoice_not_found), is delivered already on any channel — an e-mail logged, an EHF or eFaktura queued, submitted, delivered or awaiting confirmation, a manual delivery not removed, or a send job of any batch awaiting print or printed (already_delivered) —, may have been mailed by another batch's job — uncertain, or failed mail_failed (send_uncertain_elsewhere) —, or is queued or being sent by another batch (send_in_progress); so the result lists every document asked for, and a document goes once. Counted against a rate limit of 500 documents per 10 minutes per principal (429 send_batch_rate_limited). The invoices-send worker then chooses each document's channel when it runs it, never here (reading E3): the customer's delivery preference first — EHF, eFaktura, e-mail or paper, and a preferred channel that refuses fails the job with its code, with no fallback —; without one, a person gets eFaktura if found, else e-mail when there is an invoice e-mail, else print, and a business EHF if its Peppol id receives the document, else e-mail; a credit note is never eFaktura; and from 2027-01-01 a Norwegian business is never e-mailed (skipped buyer_norwegian_business_required, reading E5). eFaktura is never chosen while it is switched off. 202 with the batch and its jobs.
+         */
+        post: operations["postInvoicesSendBatches"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/send-batches/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a send batch
+         * @description One send batch (I36), its jobs counted by state, and every job in the order asked for, with its document's number and customer, its channel, its state, its code and its detail.
+         */
+        get: operations["getInvoicesSendBatchesById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/send-batches/{id}/print.zip": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download a send batch's documents for printing
+         * @description The batch's documents left for printing (awaiting_print; plan reading E13) as one ZIP: each document's stored PDF — stored first when it never was, as the download does — verified against its hash and never rendered again, named <number>.pdf, in the order asked for — so what is posted is byte for byte what was issued. Named send-batch-<id>-print.zip, never cached.
+         */
+        get: operations["getInvoicesSendBatchesByIdPrintZip"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/send-batches/{id}/posted": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm a send batch's printed documents posted
+         * @description Confirms the batch's documents left for printing were posted on postedOn (plan E4): postedOn before the day the batch was made, or after today, is a 400. Then, for each job awaiting print, its document FOR UPDATE and then the job: an invoice gets a manual delivery of kind posted on postedOn, as POST /invoices/{id}/manual-deliveries records one, and the job becomes printed; a credit note, which records no delivery (credit_note_no_reminders), only becomes printed. 200 with the batch and its jobs.
+         */
+        post: operations["postInvoicesSendBatchesByIdPosted"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2610,7 +2694,7 @@ export interface components {
             invoiceId?: number;
             note?: string;
         };
-        /** @description ProblemDetails plus this module's refusal code (invoices foundation design D2-D8). code names the rule that refused — series_locked, vat_code_in_use, rate_change_in_past, rate_period_not_latest, rate_period_last, rate_period_in_use, invoice_issued, invoice_draft, customer_merged, customer_archived, customer_blocked, customer_missing, invoice_changed, seller_incomplete, no_lines, delivery_date_missing, issue_date_not_allowed, buyer_incomplete, vat_code_inactive, vat_code_not_valid, vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, credit_exceeds_line, credit_exceeds_invoice, credit_note_not_creditable, invoice_fully_credited, credit_note_no_payments, invoice_settled, payment_exceeds_open, payment_removed, customer_anonymised, no_invoice_email (invoices payments and delivery design D2, D4), kid_length_exceeded (EHF and KID design D3: the next number no longer fits the KID agreement, which was shortened), transmissions_active (EHF and KID design D7: the access-point credentials still serve a transmission in flight), ehf_unavailable (D7: no access-point credentials to verify — a 409 — or a stored key that cannot be opened — a 503; D8: an installation that cannot send as EHF — a 503), the send as EHF's no_peppol_id, buyer_reference_missing, ehf_already_sent, peppol_not_receivable (with peppolRegistered and peppolCanReceive) and ehf_invalid (with rules) (EHF and KID design D8), transmission_not_cancellable and transmission_not_resolvable (D9), source_held_elsewhere (invoices work design D2: a source a save or the wizard would hold is held by another live draft or invoiced by an unreleased issued line; heldBy, sourceKind and sourceId name the document and the source), the wizard's refusals (invoices work design D3, D4, D11; POST /invoices/from-work) — work_unavailable (no billable read is composed), too_many_sources (more than 5 000 sources on one document, an append target's held ones counted), source_not_for_customer (a source's project bills another customer or is gone), mixed_currency (the selection spans currencies), currency_not_nok (the selection is in another currency than NOK) and too_many_lines (the grouping would make more than 500 lines, with suggestedGrouping, the next coarser grouping that fits) — the issue's refusals about the work it bills (invoices work design D1, each with linePosition, sourceKind and sourceId) — source_not_invoiceable, source_changed and source_already_invoiced (a source's own module would not stamp it: no longer approved, ready or billable; changed since the draft took it; already invoiced), source_customer_changed (a source's project no longer bills the draft's customer, or is gone; judged before a number exists) and source_not_selectable (hours of a project now fixed-price or non-billable, or any work of a project now non-billable) — and projects_unavailable (the draft bills work and the projects module is switched off); a final settlement's (invoices work design D7) deduction_exceeds_invoice (with linePosition: a deduction line takes more than its a-konto has left at its VAT code, or deducts a document that is no longer an issued invoice of this customer, or deducted at a code where it deducts itself), deduction_duplicated (with linePosition: a second deduction line for one deducted invoice and VAT code) and invoice_total_not_positive (a settlement's, or an invoice with energy correction lines', gross is zero or less); a credit note's credit_total_negative (its gross is below zero) and invoice_deducted (it credits more of an a-konto at a VAT code than no issued settlement deducted there; the detail names the settlements); credit_note_deducts_nothing (GET /invoices/{id}/deductible on a credit-note draft), and invoice_changed also when the draft's work changed between the issue's reads and its lock; the bank import's (invoices payments and reminders design D3) bank_account_unknown (an account the file names is neither the seller's nor one an issued invoice printed; the detail names its last four digits), bank_file_duplicate (the same bytes or the same file identity imported before, with bankFileId, uploadedAt and uploadedBy of that import) and bank_import_format_mismatch (the account's files come in the other format; the detail names the account and its format); the collection rates' (invoices payments and reminders design D6) collection_rate_exists (a rate of that kind already takes effect on that day) and collection_rate_in_force (the rate came with a release, is in force or past, or a printed or sent letter relied on it, so it is not deleted); the charges' (invoices payments and reminders design D9) no_charges_outstanding (nothing is outstanding: no letter claimed a charge, or every charge is waived or paid), charge_payment_exceeds_outstanding (with chargesOutstanding), charge_not_claimed (the letter was not sent, claimed no such charge, it is waived already, or no interest is left unpaid) and credit_note_no_reminders (a credit note is never reminded of), and the manual deliveries' (D8) delivery_removed and delivery_relied_on (a letter's charge stands on the record and no other delivery on or before the due date would remain); the reminder runs' and the overdue list's (invoices payments and reminders design D10, D12) reminders_disabled (reminders are switched off in the reminder settings), collection_rates_outdated (a letter of the run needs a rate with no row for a half-year, with kind and halfYear), collection_regime_unreviewed (a letter of the run would carry a fee or be a collection notice past the regime review under the 1988 regime), bank_import_stale (the bank data is stale and a letter of the run would carry a charge, with lastBookedOn; acknowledgeStaleImport confirms it) and too_many_overdue (more than 5 000 overdue invoices to judge; narrow by customer or due date); the holds' and the hand-off's (invoices payments and reminders design D11) invoice_on_hold (a hold is live already), invoice_not_on_hold (no hold is live to lift), invoice_handed_off (a hand-off is live already), invoice_not_handed_off (no hand-off is live to withdraw) and invoice_not_delivered (no delivery on or before the due date; acknowledgeNotDelivered confirms the hand-off); the reminder letters' (invoices payments and reminders design D10) reminder_not_withdrawable (the letter is sent, withdrawn already, or being sent: queued with its facts written under a live lease), reminder_not_failed (only a failed letter is retried) and reminder_not_sent (the letter is neither printed nor sent, so it has no PDF); the paper letters' (D10, reading 39) reminder_not_awaiting_print (a letter named for a print batch is not awaiting print), reminder_posted_early and reminder_posted_late (a batch confirmed posted on another day than the one it was printed for, so it must be reprinted) and print_batch_closed (the batch was posted or reprinted already); the exception queue's (invoices payments and reminders design D5) bank_transaction_not_open (the line is not in the state the action takes — not an exception, for most), bank_transaction_not_applicable (the action is not for this line: an apply of a reversal or a negative line, a dismissal of a reversal, a reversal handled on a line that is none, a duplicate confirmed or kept that is none, a reopen of a line that is open), bank_transaction_applied (a live payment or charge payment still refers to the line), bank_transaction_reversed (a reversal took back a payment of the line, so it is never reopened, or of the line it was kept as a duplicate of, so it is never treated as distinct nor applied), reversal_payment_required (a reversal handled with no payment named and no note saying why), allocation_not_an_invoice (an allocation names no issued invoice), allocation_exceeds_transaction (the allocations add up to more than the line has left) and paid_before_issue (the line was booked before an allocation's invoice was issued), besides payment_exceeds_open with invoiceId and charge_payment_exceeds_outstanding on an allocation; the payments port's (invoices payments and reminders design D14–D17) payments_unavailable (no Vipps credentials are stored — a 409 — or Vipps is switched off on this installation or the stored credentials cannot be opened — a 503), payment_attempts_active (a change of the sales unit, or removing the keys, while a Vipps payment is in flight), attempt_not_abandonable (the payment is neither of unknown outcome nor stranded by the switch or another sales unit), public_url_missing (pay links or a webhook without PUBLIC_BASE_URL), pay_links_unavailable (pay links are off or not set up), pay_link_exists (the invoice has a live pay link already), too_many_attempts (five Vipps payments of the invoice are in flight already), amount_out_of_range (the open amount is below 1.00 or above what Vipps takes), payment_in_progress (Vipps payments being completed leave less than 1.00 open), on_site_payments_unavailable (on-site payment is not turned on), buyer_identity_missing (the buyer is not identified as a kontantfaktura requires), payment_request_active (an on-site payment request of the invoice is live already), day_already_reconciled (the day was reconciled before) and day_not_over (the day is not over yet), and provider_failed, which a 502 carries when Vipps refused or failed the call; the bank feed's (invoices bank feed design F3, F4, F8) bank_feed_disabled (the bank feed is switched off on this installation), bank_feed_not_connected (no bank key is stored), bank_feed_account_not_offered (the bank does not answer the account now, or it is a card account), bank_feed_enabled (a format change away from feed while the feed is switched on for the account), bank_feed_key_changed (another bank key was stored while an account was being switched on), bank_account_unknown as the bank import's, and bank_feed_credential_rejected, which a 422 carries when the bank refused the key, and bank_feed_unavailable, which a 503 carries when the bank could not be reached or the stored key cannot be opened; the quick invoice's (D17) request_id_reused (its requestId came before with another body, with invoiceId, the invoice it issued); the consumption wizard's (energy consumption billing design D7; GET /invoices/consumption, GET /invoices/consumption/settlements, POST /invoices/from-consumption) consumption_unavailable (the energy module is switched off), settlement_blocked (with sourceKind and sourceId: a named settlement Energy cannot bill; the detail names its blocker), cadence_not_allowed (with sourceKind and sourceId: a settlement of a yearly supply for a person, who is billed at least quarterly) and no_consumption_due (nothing is left to invoice through the date); the billing runs' (energy consumption billing design D10; POST /invoices/billing-runs and its cancel) billing_run_active (with runId: a run is queued or running already), billing_run_finished (the run is done or cancelled already) and too_many_customers (more than 5 000 supplies are due; name the customers); the From orders wizard's (orders design O39; GET /invoices/from-orders/due, POST /invoices/from-orders) orders_unavailable (the orders module is switched off), order_blocked (with orderLineId: an order is a draft or on hold), allocation_exceeds_open (with orderLineId: a quantity above what the line has left to invoice) and line_not_invoiceable (with orderLineId: a line Orders will not invoice, or one not of the order named), a save's line_holds_order_allocation (with linePosition, sourceKind and sourceId: a line holding an order allocation keeps its quantity, unit price, discount and VAT code), and the billing run's no_orders_due (no customer has order lines due through the date), and its items' orders_held_by_drafts (drafts of the customer hold what its orders have left) and currency_not_enabled (the customer's orders due are in a currency neither NOK nor turned on in the settings); the write-off's (accounting design A16, R4) vipps_in_progress (a Vipps payment is being completed, so the open amount is not settled yet), no_write_off (no write-off stands: nothing to undo or to recover), write_off_recovered (a recovered payment of the write-off stands; remove it before the undo), recovery_exceeds_written_off (with openAmount, the room left: a recovered payment above what is written off less what is already recovered) and invoice_written_off (accounting design R15: a credit note of an invoice a write-off stands on is neither created, saved nor issued; undo the write-off first); the logo's (invoices phase 6 design I1) logo_unsupported_type, logo_too_large, logo_too_wide, logo_too_small and logo_invalid, which a 400 carries in the same shape; the customer's credit's (invoices phase 6 design I8-I12) idempotency_key_reused (an apply-credit with an Idempotency-Key the caller applied credit with already, to another invoice or of another amount), credit_exceeds_balance (with balance: a movement would take the customer's credit in the currency below zero — credit applied or refunded beyond it, or a payment or a bank line whose overpayment was used removed or reversed), credit_exceeds_open (credit applied above what is open, with openAmount) and refund_removed (the refund is removed already); the foreign currency's (invoices phase 6 design I17-I25) exchange_rate_missing (with currency: no rate within 7 days — of today when turning a currency on, of the issue date at issue), iban_required (the seller's IBAN or BIC is empty, which a document in currency needs), currency_not_enabled (an order in a currency neither NOK nor turned on in the settings), exchange_rate_fetched (a fetched rate is never removed; only a manual one is) and currency_not_nok (a pay link, a Vipps payment or a charge payment of an invoice in another currency than NOK); the eFaktura's and AvtaleGiro's (invoices phase 6 design I29-I34) efaktura_unavailable (a 503, or a 409 on a verify with nothing stored), efaktura_credit_note, efaktura_due_too_soon, efaktura_due_too_far, efaktura_not_found (with efakturaReason, why the person cannot be sent to), efaktura_already_sent, kid_missing, efaktura_person_only, kid_agreement_missing, avtalegiro_agreement_missing, avtalegiro_kid_space_taken, avtalegiro_claim_exists, mandate_resolved, mandate_kid_mismatch, mandate_customer_not_person, mandate_not_resolved and mandate_has_live_claim, and efaktura_lookup_failed, which a 502 carries; and storage_unavailable and mail_unavailable, which a 503 carries in the same shape, and mail_failed and peppol_lookup_failed, which a 502 carries. A revision conflict carries no code; its detail names both revisions. */
+        /** @description ProblemDetails plus this module's refusal code (invoices foundation design D2-D8). code names the rule that refused — series_locked, vat_code_in_use, rate_change_in_past, rate_period_not_latest, rate_period_last, rate_period_in_use, invoice_issued, invoice_draft, customer_merged, customer_archived, customer_blocked, customer_missing, invoice_changed, seller_incomplete, no_lines, delivery_date_missing, issue_date_not_allowed, buyer_incomplete, vat_code_inactive, vat_code_not_valid, vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, credit_exceeds_line, credit_exceeds_invoice, credit_note_not_creditable, invoice_fully_credited, credit_note_no_payments, invoice_settled, payment_exceeds_open, payment_removed, customer_anonymised, no_invoice_email (invoices payments and delivery design D2, D4), kid_length_exceeded (EHF and KID design D3: the next number no longer fits the KID agreement, which was shortened), transmissions_active (EHF and KID design D7: the access-point credentials still serve a transmission in flight), ehf_unavailable (D7: no access-point credentials to verify — a 409 — or a stored key that cannot be opened — a 503; D8: an installation that cannot send as EHF — a 503), the send as EHF's no_peppol_id, buyer_reference_missing, ehf_already_sent, peppol_not_receivable (with peppolRegistered and peppolCanReceive) and ehf_invalid (with rules) (EHF and KID design D8), transmission_not_cancellable and transmission_not_resolvable (D9), source_held_elsewhere (invoices work design D2: a source a save or the wizard would hold is held by another live draft or invoiced by an unreleased issued line; heldBy, sourceKind and sourceId name the document and the source), the wizard's refusals (invoices work design D3, D4, D11; POST /invoices/from-work) — work_unavailable (no billable read is composed), too_many_sources (more than 5 000 sources on one document, an append target's held ones counted), source_not_for_customer (a source's project bills another customer or is gone), mixed_currency (the selection spans currencies), currency_not_nok (the selection is in another currency than NOK) and too_many_lines (the grouping would make more than 500 lines, with suggestedGrouping, the next coarser grouping that fits) — the issue's refusals about the work it bills (invoices work design D1, each with linePosition, sourceKind and sourceId) — source_not_invoiceable, source_changed and source_already_invoiced (a source's own module would not stamp it: no longer approved, ready or billable; changed since the draft took it; already invoiced), source_customer_changed (a source's project no longer bills the draft's customer, or is gone; judged before a number exists) and source_not_selectable (hours of a project now fixed-price or non-billable, or any work of a project now non-billable) — and projects_unavailable (the draft bills work and the projects module is switched off); a final settlement's (invoices work design D7) deduction_exceeds_invoice (with linePosition: a deduction line takes more than its a-konto has left at its VAT code, or deducts a document that is no longer an issued invoice of this customer, or deducted at a code where it deducts itself), deduction_duplicated (with linePosition: a second deduction line for one deducted invoice and VAT code) and invoice_total_not_positive (a settlement's, or an invoice with energy correction lines', gross is zero or less); a credit note's credit_total_negative (its gross is below zero) and invoice_deducted (it credits more of an a-konto at a VAT code than no issued settlement deducted there; the detail names the settlements); credit_note_deducts_nothing (GET /invoices/{id}/deductible on a credit-note draft), and invoice_changed also when the draft's work changed between the issue's reads and its lock; the bank import's (invoices payments and reminders design D3) bank_account_unknown (an account the file names is neither the seller's nor one an issued invoice printed; the detail names its last four digits), bank_file_duplicate (the same bytes or the same file identity imported before, with bankFileId, uploadedAt and uploadedBy of that import) and bank_import_format_mismatch (the account's files come in the other format; the detail names the account and its format); the collection rates' (invoices payments and reminders design D6) collection_rate_exists (a rate of that kind already takes effect on that day) and collection_rate_in_force (the rate came with a release, is in force or past, or a printed or sent letter relied on it, so it is not deleted); the charges' (invoices payments and reminders design D9) no_charges_outstanding (nothing is outstanding: no letter claimed a charge, or every charge is waived or paid), charge_payment_exceeds_outstanding (with chargesOutstanding), charge_not_claimed (the letter was not sent, claimed no such charge, it is waived already, or no interest is left unpaid) and credit_note_no_reminders (a credit note is never reminded of), and the manual deliveries' (D8) delivery_removed and delivery_relied_on (a letter's charge stands on the record and no other delivery on or before the due date would remain); the reminder runs' and the overdue list's (invoices payments and reminders design D10, D12) reminders_disabled (reminders are switched off in the reminder settings), collection_rates_outdated (a letter of the run needs a rate with no row for a half-year, with kind and halfYear), collection_regime_unreviewed (a letter of the run would carry a fee or be a collection notice past the regime review under the 1988 regime), bank_import_stale (the bank data is stale and a letter of the run would carry a charge, with lastBookedOn; acknowledgeStaleImport confirms it) and too_many_overdue (more than 5 000 overdue invoices to judge; narrow by customer or due date); the holds' and the hand-off's (invoices payments and reminders design D11) invoice_on_hold (a hold is live already), invoice_not_on_hold (no hold is live to lift), invoice_handed_off (a hand-off is live already), invoice_not_handed_off (no hand-off is live to withdraw) and invoice_not_delivered (no delivery on or before the due date; acknowledgeNotDelivered confirms the hand-off); the reminder letters' (invoices payments and reminders design D10) reminder_not_withdrawable (the letter is sent, withdrawn already, or being sent: queued with its facts written under a live lease), reminder_not_failed (only a failed letter is retried) and reminder_not_sent (the letter is neither printed nor sent, so it has no PDF); the paper letters' (D10, reading 39) reminder_not_awaiting_print (a letter named for a print batch is not awaiting print), reminder_posted_early and reminder_posted_late (a batch confirmed posted on another day than the one it was printed for, so it must be reprinted) and print_batch_closed (the batch was posted or reprinted already); the exception queue's (invoices payments and reminders design D5) bank_transaction_not_open (the line is not in the state the action takes — not an exception, for most), bank_transaction_not_applicable (the action is not for this line: an apply of a reversal or a negative line, a dismissal of a reversal, a reversal handled on a line that is none, a duplicate confirmed or kept that is none, a reopen of a line that is open), bank_transaction_applied (a live payment or charge payment still refers to the line), bank_transaction_reversed (a reversal took back a payment of the line, so it is never reopened, or of the line it was kept as a duplicate of, so it is never treated as distinct nor applied), reversal_payment_required (a reversal handled with no payment named and no note saying why), allocation_not_an_invoice (an allocation names no issued invoice), allocation_exceeds_transaction (the allocations add up to more than the line has left) and paid_before_issue (the line was booked before an allocation's invoice was issued), besides payment_exceeds_open with invoiceId and charge_payment_exceeds_outstanding on an allocation; the payments port's (invoices payments and reminders design D14–D17) payments_unavailable (no Vipps credentials are stored — a 409 — or Vipps is switched off on this installation or the stored credentials cannot be opened — a 503), payment_attempts_active (a change of the sales unit, or removing the keys, while a Vipps payment is in flight), attempt_not_abandonable (the payment is neither of unknown outcome nor stranded by the switch or another sales unit), public_url_missing (pay links or a webhook without PUBLIC_BASE_URL), pay_links_unavailable (pay links are off or not set up), pay_link_exists (the invoice has a live pay link already), too_many_attempts (five Vipps payments of the invoice are in flight already), amount_out_of_range (the open amount is below 1.00 or above what Vipps takes), payment_in_progress (Vipps payments being completed leave less than 1.00 open), on_site_payments_unavailable (on-site payment is not turned on), buyer_identity_missing (the buyer is not identified as a kontantfaktura requires), payment_request_active (an on-site payment request of the invoice is live already), day_already_reconciled (the day was reconciled before) and day_not_over (the day is not over yet), and provider_failed, which a 502 carries when Vipps refused or failed the call; the bank feed's (invoices bank feed design F3, F4, F8) bank_feed_disabled (the bank feed is switched off on this installation), bank_feed_not_connected (no bank key is stored), bank_feed_account_not_offered (the bank does not answer the account now, or it is a card account), bank_feed_enabled (a format change away from feed while the feed is switched on for the account), bank_feed_key_changed (another bank key was stored while an account was being switched on), bank_account_unknown as the bank import's, and bank_feed_credential_rejected, which a 422 carries when the bank refused the key, and bank_feed_unavailable, which a 503 carries when the bank could not be reached or the stored key cannot be opened; the quick invoice's (D17) request_id_reused (its requestId came before with another body, with invoiceId, the invoice it issued); the consumption wizard's (energy consumption billing design D7; GET /invoices/consumption, GET /invoices/consumption/settlements, POST /invoices/from-consumption) consumption_unavailable (the energy module is switched off), settlement_blocked (with sourceKind and sourceId: a named settlement Energy cannot bill; the detail names its blocker), cadence_not_allowed (with sourceKind and sourceId: a settlement of a yearly supply for a person, who is billed at least quarterly) and no_consumption_due (nothing is left to invoice through the date); the billing runs' (energy consumption billing design D10; POST /invoices/billing-runs and its cancel) billing_run_active (with runId: a run is queued or running already), billing_run_finished (the run is done or cancelled already) and too_many_customers (more than 5 000 supplies are due; name the customers); the From orders wizard's (orders design O39; GET /invoices/from-orders/due, POST /invoices/from-orders) orders_unavailable (the orders module is switched off), order_blocked (with orderLineId: an order is a draft or on hold), allocation_exceeds_open (with orderLineId: a quantity above what the line has left to invoice) and line_not_invoiceable (with orderLineId: a line Orders will not invoice, or one not of the order named), a save's line_holds_order_allocation (with linePosition, sourceKind and sourceId: a line holding an order allocation keeps its quantity, unit price, discount and VAT code), and the billing run's no_orders_due (no customer has order lines due through the date), and its items' orders_held_by_drafts (drafts of the customer hold what its orders have left) and currency_not_enabled (the customer's orders due are in a currency neither NOK nor turned on in the settings); the write-off's (accounting design A16, R4) vipps_in_progress (a Vipps payment is being completed, so the open amount is not settled yet), no_write_off (no write-off stands: nothing to undo or to recover), write_off_recovered (a recovered payment of the write-off stands; remove it before the undo), recovery_exceeds_written_off (with openAmount, the room left: a recovered payment above what is written off less what is already recovered) and invoice_written_off (accounting design R15: a credit note of an invoice a write-off stands on is neither created, saved nor issued; undo the write-off first); the logo's (invoices phase 6 design I1) logo_unsupported_type, logo_too_large, logo_too_wide, logo_too_small and logo_invalid, which a 400 carries in the same shape; the customer's credit's (invoices phase 6 design I8-I12) idempotency_key_reused (an apply-credit with an Idempotency-Key the caller applied credit with already, to another invoice or of another amount), credit_exceeds_balance (with balance: a movement would take the customer's credit in the currency below zero — credit applied or refunded beyond it, or a payment or a bank line whose overpayment was used removed or reversed), credit_exceeds_open (credit applied above what is open, with openAmount) and refund_removed (the refund is removed already); the foreign currency's (invoices phase 6 design I17-I25) exchange_rate_missing (with currency: no rate within 7 days — of today when turning a currency on, of the issue date at issue), iban_required (the seller's IBAN or BIC is empty, which a document in currency needs), currency_not_enabled (an order in a currency neither NOK nor turned on in the settings), exchange_rate_fetched (a fetched rate is never removed; only a manual one is) and currency_not_nok (a pay link, a Vipps payment or a charge payment of an invoice in another currency than NOK); the eFaktura's and AvtaleGiro's (invoices phase 6 design I29-I34) efaktura_unavailable (a 503, or a 409 on a verify with nothing stored), efaktura_credit_note, efaktura_due_too_soon, efaktura_due_too_far, efaktura_not_found (with efakturaReason, why the person cannot be sent to), efaktura_already_sent, kid_missing, efaktura_person_only, kid_agreement_missing, avtalegiro_agreement_missing, avtalegiro_kid_space_taken, avtalegiro_claim_exists, mandate_resolved, mandate_kid_mismatch, mandate_customer_not_person, mandate_not_resolved and mandate_has_live_claim, and efaktura_lookup_failed, which a 502 carries; send all's (invoices phase 6 design I36; POST /invoices/send-batches) send_batch_empty and send_batch_too_large, which a 400 carries in the same shape, send_batch_rate_limited, which a 429 carries, and billing_run_not_finished (the run is queued or running); and storage_unavailable and mail_unavailable, which a 503 carries in the same shape, and mail_failed and peppol_lookup_failed, which a 502 carries. A revision conflict carries no code; its detail names both revisions. */
         InvoicesConflictProblem: {
             /** @description On efaktura_not_found, why the person cannot be sent to — not_found, blocked, no_agreement or ambiguous. Absent otherwise. */
             efakturaReason?: string;
@@ -5426,6 +5510,8 @@ export interface components {
          *     `bankFeedFailing`: three syncs in a row or more failed — the bank could not be reached or answered as it should not; it clears at the next sync that succeeds.
          *
          *     `bankFeedRefused`: the bank answered a batch the sync refused whole — a booking day after today, an amount not in NOK, a transaction it cannot tell the direction of, the same transaction twice, a transaction it cannot read, or an account whose format is no longer feed; nothing of it was stored. It clears when a later sync stores the account's batch.
+         *
+         *     `sendBatchNotSent` (invoices phase 6 design I36), answered to a caller holding invoices:issue: one per send batch made in the last 7 days with jobs failed or uncertain; id 'sendBatchNotSent/<batchId>', entityId the batch id, title the batch id, occurredAt when the batch was made, count the documents not sent. It clears after 7 days; the batch page says what each needs.
          */
         InvoicesStatsAttentionItem: {
             /**
@@ -5439,7 +5525,7 @@ export interface components {
             occurredAt: string;
             title: string;
             /** @enum {string} */
-            type: "invoiceOverdue" | "invoiceRefundDue" | "bankTransactionsOpen" | "reminderFailed" | "remindersHeld" | "reminderBatchUnposted" | "paymentCaptureFailed" | "paymentCaptureUnknown" | "paymentReservationStranded" | "vippsRefundSeen" | "bankFeedUnauthorized" | "bankFeedFailing" | "bankFeedRefused";
+            type: "invoiceOverdue" | "invoiceRefundDue" | "bankTransactionsOpen" | "reminderFailed" | "remindersHeld" | "reminderBatchUnposted" | "paymentCaptureFailed" | "paymentCaptureUnknown" | "paymentReservationStranded" | "vippsRefundSeen" | "bankFeedUnauthorized" | "bankFeedFailing" | "bankFeedRefused" | "sendBatchNotSent";
         };
         /** @description The dashboard's invoices card over one period, in the envelope every module's /stats/summary shares (payments and delivery design D7). outstanding and overdue are now — the issued invoices with something open, at their open amounts, credit notes excluded, and of those the ones past their due date on today's business day. issued, credited and paid are in the period: the invoices and the credit notes whose issue date, and the live payments whose paid date, falls on a business day from the day of from up to and including the day of the last instant before to. issuedGrossTotalDelta is issuedGrossTotal less the previous period's, the period of the same length just before. All NOK. */
         InvoicesStatsSummaryResponse: {
@@ -5689,6 +5775,90 @@ export interface components {
             source?: "consumption" | "orders";
             /** Format: date */
             through?: string;
+        };
+        /** @description POST /invoices/send-batches' body (invoices phase 6 design I36): exactly one of invoiceIds — the documents chosen on the list, 1 to 500, each once (a repeat is dropped) — and billingRunId, a billing run done or cancelled, whose every document is asked for. */
+        InvoicesSendBatchInput: {
+            /** Format: int64 */
+            billingRunId?: number;
+            invoiceIds?: number[];
+        };
+        /** @description How many of a send batch's jobs are in each state, counted from the jobs on every read. */
+        InvoicesSendBatchCounts: {
+            /** Format: int32 */
+            awaitingPrint: number;
+            /** Format: int32 */
+            failed: number;
+            /** Format: int32 */
+            handedOver: number;
+            /** Format: int32 */
+            printed: number;
+            /** Format: int32 */
+            queued: number;
+            /** Format: int32 */
+            sending: number;
+            /** Format: int32 */
+            sent: number;
+            /** Format: int32 */
+            skipped: number;
+            /** Format: int32 */
+            uncertain: number;
+        };
+        /** @description One Send all (invoices phase 6 design I36): from a selection on the list or a billing run (billingRunId), who asked for it, when, its jobs counted by state, and when its last job ended (finishedAt, absent while one is queued or sending). */
+        InvoicesSendBatch: {
+            /** Format: int64 */
+            billingRunId?: number;
+            counts: components["schemas"]["InvoicesSendBatchCounts"];
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            finishedAt?: string;
+            /** Format: int64 */
+            id: number;
+            /** Format: uuid */
+            requestedBy: string;
+            /** @enum {string} */
+            source: "selection" | "billing_run";
+        };
+        /** @description One document of a send batch (I36; plan E-1, readings E2–E5). state: queued, sending — the invoices-send worker carries it —, sent (e-mailed, deliveryId the e-mail's log row), handed_over (an EHF or eFaktura queued for its worker, transmissionId the transmission), awaiting_print (left for the print ZIP), printed (confirmed posted), skipped (nothing was tried: invoice_draft, invoice_not_found, already_delivered — any delivery on any channel —, send_in_progress — another batch is sending it —, buyer_norwegian_business_required — from 2027-01-01 a buyer with an organisation number is never e-mailed —, send_uncertain_elsewhere — another job may have mailed it —, or requester_not_allowed — the requester is no longer active or no longer holds invoices:issue when the job runs), failed (the code of the refusal: a preferred channel that refuses fails, with no fallback) or uncertain (send_uncertain: a reclaimed e-mail with no delivery logged, or one the mail server took whose delivery could not be logged; it may have gone and is never mailed again by itself). channel is absent until the worker chose it: email, ehf, efaktura or print. number, kind and customerId are the document's, absent when it no longer exists; customerName the directory's, absent when it does not answer. */
+        InvoicesSendJob: {
+            /** Format: int32 */
+            attempts: number;
+            /** @enum {string} */
+            channel?: "email" | "ehf" | "efaktura" | "print";
+            code?: string;
+            /** Format: int32 */
+            customerId?: number;
+            customerName?: string;
+            /** Format: int64 */
+            deliveryId?: number;
+            detail: string;
+            /** Format: date-time */
+            finishedAt?: string;
+            /** Format: int64 */
+            id: number;
+            /** Format: int64 */
+            invoiceId: number;
+            kind?: string;
+            /** Format: int64 */
+            number?: number;
+            /** @enum {string} */
+            state: "queued" | "sending" | "sent" | "handed_over" | "awaiting_print" | "printed" | "skipped" | "failed" | "uncertain";
+            /** Format: int64 */
+            transmissionId?: number;
+        };
+        /** @description A send batch and every one of its jobs, in the order the documents were asked for. */
+        InvoicesSendBatchDetail: {
+            batch: components["schemas"]["InvoicesSendBatch"];
+            jobs: components["schemas"]["InvoicesSendJob"][];
+        };
+        /** @description A billing run's send batches, the newest first. */
+        InvoicesSendBatchList: {
+            data: components["schemas"]["InvoicesSendBatch"][];
+        };
+        /** @description POST /invoices/send-batches/{id}/posted' body: the day the printed documents were posted, from the batch's day to today. */
+        InvoicesSendBatchPosted: {
+            /** Format: date */
+            postedOn: string;
         };
         /** @description The From orders wizard's list (orders design O37, O39): the orders the query names with lines left to invoice now, as Orders' DueOrders answers them — each line's toInvoice is ordered − cancelled − invoiced − held by a draft allocation. A draft order or one on hold is listed with blocked set and is not invoiced. warnings carries orders_truncated when Orders had more than 5 000 lines to answer and the last orders are not listed. */
         InvoicesDueOrdersResponse: {
@@ -14169,6 +14339,294 @@ export interface operations {
                 content: {
                     "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
                 };
+            };
+        };
+    };
+    getInvoicesSendBatches: {
+        parameters: {
+            query: {
+                billingRunId: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesSendBatchList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postInvoicesSendBatches: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoicesSendBatchInput"];
+            };
+        };
+        responses: {
+            /** @description Accepted — the batch, its jobs queued or skipped. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesSendBatchDetail"];
+                };
+            };
+            /** @description Bad Request — send_batch_empty (no document named, neither or both of invoiceIds and billingRunId, or a run that made none) or send_batch_too_large (more than 500 documents). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no billing run has that id. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — billing_run_not_finished (the run is queued or running). Nothing is written. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+            /** @description Too Many Requests — send_batch_rate_limited, the caller asked for more than 500 documents within 10 minutes; counted in documents, per principal. Nothing is written. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
+    getInvoicesSendBatchesById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesSendBatchDetail"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no batch has that id. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getInvoicesSendBatchesByIdPrintZip: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — the ZIP, with a Content-Disposition naming it and Cache-Control private, no-store. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/zip": string;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no batch has that id, or none of its documents is awaiting print. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Internal Server Error — a document's stored PDF is gone or no longer matches its hash; it is not rendered again. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Service Unavailable — storage_unavailable, the object store could not be read; retry. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
+    postInvoicesSendBatchesByIdPosted: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoicesSendBatchPosted"];
+            };
+        };
+        responses: {
+            /** @description OK — the batch, its printed documents posted. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesSendBatchDetail"];
+                };
+            };
+            /** @description Bad Request — postedOn before the batch's day or after today. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no batch has that id. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

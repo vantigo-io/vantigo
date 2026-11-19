@@ -1,4 +1,4 @@
-import { Anchor, Table } from "@mantine/core";
+import { Anchor, Checkbox, Table } from "@mantine/core";
 import type { InvoiceList } from "../api/invoices";
 import "../i18n";
 import { useInvoiceFormat } from "../lib/format";
@@ -15,6 +15,14 @@ export interface InvoiceTableProps {
    * project reference is then a button. Without it the reference is text.
    */
   onProject?: (projectId: number, reference: string) => void;
+  /**
+   * Documents chosen for Send all (invoices phase 6 design I36): a checkbox per
+   * row and one for the page. Without it there is no checkbox column.
+   */
+  selection?: {
+    selected: ReadonlySet<number>;
+    onChange: (ids: number[], chosen: boolean) => void;
+  };
 }
 
 /**
@@ -25,13 +33,27 @@ export interface InvoiceTableProps {
  * design D9) has its own column, its reference a filter where the list offers
  * one.
  */
-export const InvoiceTable = ({ rows, showCustomer, onProject }: InvoiceTableProps) => {
+export const InvoiceTable = ({ rows, showCustomer, onProject, selection }: InvoiceTableProps) => {
   const { t, money, date } = useInvoiceFormat();
+  const pageIds = rows.map((row) => row.id);
+  const allChosen = selection !== undefined && pageIds.length > 0 && pageIds.every((id) => selection.selected.has(id));
+  const someChosen = selection !== undefined && pageIds.some((id) => selection.selected.has(id));
   return (
     <Table.ScrollContainer minWidth={640}>
       <Table highlightOnHover>
         <Table.Thead>
           <Table.Tr>
+            {selection && (
+              <Table.Th w={40}>
+                <Checkbox
+                  data-assist="invoices.invoices.select"
+                  aria-label={t("sendAll.choosePage")}
+                  checked={allChosen}
+                  indeterminate={someChosen && !allChosen}
+                  onChange={(e) => selection.onChange(pageIds, e.currentTarget.checked)}
+                />
+              </Table.Th>
+            )}
             <Table.Th>{t("number")}</Table.Th>
             <Table.Th>{t("kind")}</Table.Th>
             <Table.Th>{t("state")}</Table.Th>
@@ -47,6 +69,15 @@ export const InvoiceTable = ({ rows, showCustomer, onProject }: InvoiceTableProp
         <Table.Tbody>
           {rows.map((row) => (
             <Table.Tr key={row.id}>
+              {selection && (
+                <Table.Td>
+                  <Checkbox
+                    aria-label={t("sendAll.chooseRow", { number: row.number ?? t("draftNumber") })}
+                    checked={selection.selected.has(row.id)}
+                    onChange={(e) => selection.onChange([row.id], e.currentTarget.checked)}
+                  />
+                </Table.Td>
+              )}
               <Table.Td>
                 <DocumentLink invoiceId={row.id}>{row.number ?? t("draftNumber")}</DocumentLink>
               </Table.Td>

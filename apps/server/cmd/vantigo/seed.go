@@ -375,6 +375,10 @@ func seedDemoDataset(ctx context.Context, pool *pgxpool.Pool, logger *slog.Logge
 			return fmt.Errorf("seed eFaktura and AvtaleGiro: %w", err)
 		}
 
+		if err := seedInvoicesSendBatch(ctx, tx, now, userIDs[0]); err != nil {
+			return fmt.Errorf("seed send all: %w", err)
+		}
+
 		if err := seedAccountingSources(ctx, tx, now, userIDs); err != nil {
 			return fmt.Errorf("seed accounting's sources: %w", err)
 		}

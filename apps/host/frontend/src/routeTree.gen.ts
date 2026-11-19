@@ -195,6 +195,7 @@ import { Route as InvoicesPaymentsIndexRouteImport } from './routes/invoices/pay
 import { Route as InvoicesPaymentsVippsRouteImport } from './routes/invoices/payments.vipps'
 import { Route as InvoicesReminderRunsRunIdRouteImport } from './routes/invoices/reminder-runs.$runId'
 import { Route as InvoicesRemindersPrintRouteImport } from './routes/invoices/reminders.print'
+import { Route as InvoicesSendBatchesBatchIdRouteImport } from './routes/invoices/send-batches.$batchId'
 import { Route as KnowledgeArticlesArticleIdRouteImport } from './routes/knowledge/articles.$articleId'
 import { Route as ManufacturingBomsIndexRouteImport } from './routes/manufacturing/boms.index'
 import { Route as ManufacturingBomsNewRouteImport } from './routes/manufacturing/boms.new'
@@ -1223,6 +1224,12 @@ const InvoicesRemindersPrintRoute = InvoicesRemindersPrintRouteImport.update({
   path: '/reminders/print',
   getParentRoute: () => InvoicesRoute,
 } as any)
+const InvoicesSendBatchesBatchIdRoute =
+  InvoicesSendBatchesBatchIdRouteImport.update({
+    id: '/send-batches/$batchId',
+    path: '/send-batches/$batchId',
+    getParentRoute: () => InvoicesRoute,
+  } as any)
 const KnowledgeArticlesArticleIdRoute =
   KnowledgeArticlesArticleIdRouteImport.update({
     id: '/articles/$articleId',
@@ -1802,6 +1809,7 @@ export interface FileRoutesByFullPath {
   '/invoices/payments/vipps': typeof InvoicesPaymentsVippsRoute
   '/invoices/reminder-runs/$runId': typeof InvoicesReminderRunsRunIdRoute
   '/invoices/reminders/print': typeof InvoicesRemindersPrintRoute
+  '/invoices/send-batches/$batchId': typeof InvoicesSendBatchesBatchIdRoute
   '/knowledge/articles/$articleId': typeof KnowledgeArticlesArticleIdRoute
   '/manufacturing/boms/new': typeof ManufacturingBomsNewRoute
   '/manufacturing/deviations/$deviationId': typeof ManufacturingDeviationsDeviationIdRoute
@@ -2036,6 +2044,7 @@ export interface FileRoutesByTo {
   '/invoices/payments/vipps': typeof InvoicesPaymentsVippsRoute
   '/invoices/reminder-runs/$runId': typeof InvoicesReminderRunsRunIdRoute
   '/invoices/reminders/print': typeof InvoicesRemindersPrintRoute
+  '/invoices/send-batches/$batchId': typeof InvoicesSendBatchesBatchIdRoute
   '/knowledge/articles/$articleId': typeof KnowledgeArticlesArticleIdRoute
   '/manufacturing/boms/new': typeof ManufacturingBomsNewRoute
   '/manufacturing/deviations/$deviationId': typeof ManufacturingDeviationsDeviationIdRoute
@@ -2298,6 +2307,7 @@ export interface FileRoutesById {
   '/invoices/payments/vipps': typeof InvoicesPaymentsVippsRoute
   '/invoices/reminder-runs/$runId': typeof InvoicesReminderRunsRunIdRoute
   '/invoices/reminders/print': typeof InvoicesRemindersPrintRoute
+  '/invoices/send-batches/$batchId': typeof InvoicesSendBatchesBatchIdRoute
   '/knowledge/articles/$articleId': typeof KnowledgeArticlesArticleIdRoute
   '/manufacturing/boms/new': typeof ManufacturingBomsNewRoute
   '/manufacturing/deviations/$deviationId': typeof ManufacturingDeviationsDeviationIdRoute
@@ -2561,6 +2571,7 @@ export interface FileRouteTypes {
     | '/invoices/payments/vipps'
     | '/invoices/reminder-runs/$runId'
     | '/invoices/reminders/print'
+    | '/invoices/send-batches/$batchId'
     | '/knowledge/articles/$articleId'
     | '/manufacturing/boms/new'
     | '/manufacturing/deviations/$deviationId'
@@ -2795,6 +2806,7 @@ export interface FileRouteTypes {
     | '/invoices/payments/vipps'
     | '/invoices/reminder-runs/$runId'
     | '/invoices/reminders/print'
+    | '/invoices/send-batches/$batchId'
     | '/knowledge/articles/$articleId'
     | '/manufacturing/boms/new'
     | '/manufacturing/deviations/$deviationId'
@@ -3056,6 +3068,7 @@ export interface FileRouteTypes {
     | '/invoices/payments/vipps'
     | '/invoices/reminder-runs/$runId'
     | '/invoices/reminders/print'
+    | '/invoices/send-batches/$batchId'
     | '/knowledge/articles/$articleId'
     | '/manufacturing/boms/new'
     | '/manufacturing/deviations/$deviationId'
@@ -4491,6 +4504,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InvoicesRemindersPrintRouteImport
       parentRoute: typeof InvoicesRoute
     }
+    '/invoices/send-batches/$batchId': {
+      id: '/invoices/send-batches/$batchId'
+      path: '/send-batches/$batchId'
+      fullPath: '/invoices/send-batches/$batchId'
+      preLoaderRoute: typeof InvoicesSendBatchesBatchIdRouteImport
+      parentRoute: typeof InvoicesRoute
+    }
     '/knowledge/articles/$articleId': {
       id: '/knowledge/articles/$articleId'
       path: '/articles/$articleId'
@@ -5316,6 +5336,7 @@ interface InvoicesRouteChildren {
   InvoicesPaymentsVippsRoute: typeof InvoicesPaymentsVippsRoute
   InvoicesReminderRunsRunIdRoute: typeof InvoicesReminderRunsRunIdRoute
   InvoicesRemindersPrintRoute: typeof InvoicesRemindersPrintRoute
+  InvoicesSendBatchesBatchIdRoute: typeof InvoicesSendBatchesBatchIdRoute
   InvoicesBillingRunsIndexRoute: typeof InvoicesBillingRunsIndexRoute
   InvoicesPaymentsIndexRoute: typeof InvoicesPaymentsIndexRoute
   InvoicesPaymentsFilesBankFileIdRoute: typeof InvoicesPaymentsFilesBankFileIdRoute
@@ -5333,6 +5354,7 @@ const InvoicesRouteChildren: InvoicesRouteChildren = {
   InvoicesPaymentsVippsRoute: InvoicesPaymentsVippsRoute,
   InvoicesReminderRunsRunIdRoute: InvoicesReminderRunsRunIdRoute,
   InvoicesRemindersPrintRoute: InvoicesRemindersPrintRoute,
+  InvoicesSendBatchesBatchIdRoute: InvoicesSendBatchesBatchIdRoute,
   InvoicesBillingRunsIndexRoute: InvoicesBillingRunsIndexRoute,
   InvoicesPaymentsIndexRoute: InvoicesPaymentsIndexRoute,
   InvoicesPaymentsFilesBankFileIdRoute: InvoicesPaymentsFilesBankFileIdRoute,

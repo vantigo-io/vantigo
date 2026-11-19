@@ -1818,8 +1818,19 @@ fødselsnummer, send as eFaktura with its AvtaleGiro claim, the customer KID in 
 its own, the mandate rule in matching, and a person's date of birth in Customers. Live
 once Vantigo's submitter agreement with MPS is in place.
 
-**Delivery E: sending in bulk** — send all, the 2028 buyer org-number rule and credit
-limits.
+**Delivery E-1: send all (done)** — on `claude/invoices-send-all`, migration
+`00205_invoices_send_jobs.sql` ([plan](docs/superpowers/plans/2026-11-18-invoices-phase6-e-plan.md)).
+A selection on the invoices list, or every document of a finished billing run, sent in
+one action: one job per document, carried by the `invoices-send` lease worker through
+the send's own cores — e-mail, EHF, eFaktura — or left for printing as a ZIP of the
+stored PDFs and marked posted; the channel chosen when each job runs, the customer's
+preference first and never a fallback from it; a document delivered on any channel
+skipped; from 2027 no Norwegian business e-mailed; a reclaimed e-mail never mailed twice
+(`uncertain`); live progress and an attention item. Scheduled billing runs (design §13)
+are unblocked. See
+[`docs/src/content/docs/en/reference/invoices.md`](docs/src/content/docs/en/reference/invoices.md#send-all).
+
+**Delivery E-2** — the 2028 buyer org-number rule and credit limits.
 
 ### Later
 

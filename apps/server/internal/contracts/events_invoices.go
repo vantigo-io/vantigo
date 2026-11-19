@@ -134,6 +134,24 @@ func (AvtaleGiroClaimChanged) EventName() string     { return "invoices.avtalegi
 func (AvtaleGiroClaimChanged) EventVersion() int     { return 1 }
 func (e AvtaleGiroClaimChanged) AggregateID() string { return strconv.FormatInt(e.ClaimID, 10) }
 
+// SendJobFinished is invoices.send_job.finished v1 (invoices phase 6 design
+// I36, plan E3): the invoices-send worker ended one document of a send batch.
+// State is sent, handed_over, awaiting_print, skipped, failed or uncertain;
+// Channel the channel it went by, "" when none was tried; Code the skip's or
+// the refusal's, "" otherwise. No recipient and no name.
+type SendJobFinished struct {
+	JobID     int64  `json:"jobId"`
+	BatchID   int64  `json:"batchId"`
+	InvoiceID int64  `json:"invoiceId"`
+	Channel   string `json:"channel"`
+	State     string `json:"state"`
+	Code      string `json:"code"`
+}
+
+func (SendJobFinished) EventName() string     { return "invoices.send_job.finished" }
+func (SendJobFinished) EventVersion() int     { return 1 }
+func (e SendJobFinished) AggregateID() string { return strconv.FormatInt(e.JobID, 10) }
+
 // CustomerCreditChanged is invoices.customer_credit.changed v1: a customer's
 // credit in a currency moved (invoices phase 6 design I8, §7) — an
 // overpayment kept, a credit note's surplus moved, credit applied or

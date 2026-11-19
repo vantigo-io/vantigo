@@ -70,6 +70,18 @@ export const billingRunLinkOptions = (runId: number) => ({
 /** The same path as a plain URL, for a link's href. */
 export const billingRunHref = (runId: number): string => BILLING_RUN_ROUTE_PATH.replace("$runId", String(runId));
 
+/** One Send all and its documents' outcomes (invoices phase 6 design I36). */
+export const SEND_BATCH_ROUTE_PATH = "/invoices/send-batches/$batchId";
+
+/** What `navigate` and `Link` take to reach one send batch. */
+export const sendBatchLinkOptions = (batchId: number) => ({
+  to: SEND_BATCH_ROUTE_PATH,
+  params: { batchId: String(batchId) },
+});
+
+/** The same path as a plain URL, for a link's href. */
+export const sendBatchHref = (batchId: number): string => SEND_BATCH_ROUTE_PATH.replace("$batchId", String(batchId));
+
 /** New invoice → From orders: invoice order lines, by order or combined per customer (orders design O39). */
 export const FROM_ORDERS_ROUTE_PATH = "/invoices/new/from-orders";
 

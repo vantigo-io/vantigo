@@ -110,6 +110,9 @@ func TestRun_SeedPopulatesDemoDatasetAndIsIdempotent(t *testing.T) {
 		{"invoices.avtalegiro_mandates unresolved", "SELECT count(*) FROM invoices.avtalegiro_mandates WHERE customer_id IS NULL", 1},
 		{"invoices.avtalegiro_claims accepted", "SELECT count(*) FROM invoices.avtalegiro_claims WHERE status = 'accepted'", 1},
 		{"invoices.transmissions eFaktura delivered", "SELECT count(*) FROM invoices.transmissions WHERE channel = 'efaktura' AND status = 'delivered' AND evidence_object_key IS NOT NULL", 1},
+		// Send all's finished batch: one sent, one awaiting print, one failed (phase 6 plan E8).
+		{"invoices.send_batches finished", "SELECT count(*) FROM invoices.send_batches WHERE finished_at IS NOT NULL", 1},
+		{"invoices.send_jobs", "SELECT count(*) FROM invoices.send_jobs WHERE state IN ('sent', 'awaiting_print', 'failed')", 3},
 		{"inventory.sites", "SELECT count(*) FROM inventory.sites", 1},
 		{"inventory.lots", "SELECT count(*) FROM inventory.lots", 5},
 		{"manufacturing.work_centers", "SELECT count(*) FROM manufacturing.work_centers", 4},

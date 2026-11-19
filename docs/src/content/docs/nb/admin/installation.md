@@ -116,7 +116,7 @@ Imaget er én binær med en kommandotabell; kommandoen er det første argumentet
 avslutter med 2 utenfor det): den kjører migreringer og fyller inn et idempotent norsk
 demodatasett på tvers av alle moduler (20 brukere fordelt på 9 tilgangsroller, 200
 bedrifter med 400 kontakter, 62 produkter, 75 prosjekter, timeregistreringer, utlegg,
-fakturaer — med en kunde som har kreditt fra en overbetaling, en betaling fra bankfeeden fordelt på to fakturaer, en liten differanse avrundet, og eFaktura og AvtaleGiro satt opp som rader, uten at noen leverandør kalles: en person som har fått eFaktura levert med et godkjent AvtaleGiro-trekk, og én AvtaleGiro-avtale som venter på en kunde; og en faktura i euro — EUR slått på med 30 dagers kurser fra Norges Bank og én lagt inn for hånd, betalt i to overføringer i NOK med en agiogevinst og et agiotap —, målepunkter, kundesamtaler og et lite verksted med lager, stykklister,
+fakturaer — med en kunde som har kreditt fra en overbetaling, en betaling fra bankfeeden fordelt på to fakturaer, en liten differanse avrundet, og eFaktura og AvtaleGiro satt opp som rader, uten at noen leverandør kalles: en person som har fått eFaktura levert med et godkjent AvtaleGiro-trekk, og én AvtaleGiro-avtale som venter på en kunde; og en faktura i euro — EUR slått på med 30 dagers kurser fra Norges Bank og én lagt inn for hånd, betalt i to overføringer i NOK med en agiogevinst og et agiotap —; og en ferdig utsendelse av tre fakturaer, én sendt på e-post, én som venter på utskrift og én som feilet fordi faktura-e-posten mangler —, målepunkter, kundesamtaler og et lite verksted med lager, stykklister,
 produksjonsordrer og salgsordrer) og, når `accounting` er aktivert, et regnskap
 opprettet fra 1. januar med demoens salg og utlegg bokført, leverandører med fakturaene
 sine, mva-terminene som er over lukket og levert, og forrige måneds kontoutskrift halvveis
@@ -312,7 +312,7 @@ på nettverket selv: meldingsleverandørens egen modul holder forbindelsen —, 
 kundemodulens importjobb `customers-import`, energimodulens importjobb `energy-import`, energimodulens spotprisjobb
 `energy-spot-prices` når `ENERGY_SPOT_PRICE_SERVICE_URL` er satt eller `ENERGY_SPOT_PRICE_FEED_ENABLED=1`, fakturamodulens EHF-jobber `invoices-ehf` og `invoices-ehf-events` når
 `INVOICES_EHF_ENABLED` er på, fakturamodulens purrejobb `invoices-reminders`, alltid,
-fakturamodulens faktureringsjobb `invoices-billing`, alltid, fakturamodulens avstemming av
+fakturamodulens faktureringsjobb `invoices-billing`, alltid, fakturamodulens utsendingsjobb `invoices-send`, alltid, fakturamodulens avstemming av
 ordreallokeringer `invoices.allocation_reconcile`, alltid,
 fakturamodulens betalingsjobb `invoices-payments` når `INVOICES_VIPPS_ENABLED` er på,
 fakturamodulens bankintegrasjonsjobb `invoices-bank-feed` med mindre
@@ -359,7 +359,7 @@ Replikaer som verken skal migrere eller kjøre bakgrunnsjobber kan kjøre komman
 Uansett topologi tar oppbevaringsoppryddingen, registerjobbene, EHF-hendelsesjobben,
 kalenderens avlysningsjobb, `entra-outlook-sweep`, `assistant-retention` og `identity.api-keys` en rådgivende lås (advisory lock) i PostgreSQL, så hver av dem kjører på nøyaktig én
 instans per syklus; utboksen, `invoices-ehf`-jobben, `invoices-reminders`-jobben,
-`invoices-billing`-jobben, `invoices-payments`-jobben, `invoices-bank-feed`-jobben, `communications-mailbox-sync`,
+`invoices-billing`-jobben, `invoices-send`-jobben, `invoices-payments`-jobben, `invoices-bank-feed`-jobben, `communications-mailbox-sync`,
 `communications-messenger-sync`, kalenderens abonnements- og postboksjobb og `events.dispatch` tar i stedet én rad om gangen under en tidsbegrenset lås, så
 et hvilket som helst antall instanser deler arbeidet uten å sende noe to ganger.
 `meta-split` tar de lagrede hendelsene under en lease og `meta-retention` sletter i grupper,

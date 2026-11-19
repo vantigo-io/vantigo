@@ -25,6 +25,7 @@ import { invoicesMetaQueryOptions } from "../api/meta";
 import { INVOICES_QUERY_KEY } from "../api/request";
 import { CustomerPicker } from "../components/customer-picker";
 import { InvoiceTable } from "../components/invoice-table";
+import { SendAllButton } from "../components/send-all-button";
 import "../i18n";
 import { refusalMessage } from "../lib/errors";
 import { useInvoiceFormat } from "../lib/format";
@@ -64,6 +65,21 @@ export const InvoicesPage = ({ canViewCustomers, userDisplayName, canInvoiceOrde
     placeholderData: keepPreviousData,
   });
   const [creating, setCreating] = useState(false);
+  // The documents chosen for Send all (invoices phase 6 design I36), by id,
+  // with whether each is a draft: kept across pages and filters until sent
+  // or cleared.
+  const [chosen, setChosen] = useState<ReadonlyMap<number, boolean>>(new Map());
+  const canSend = Boolean(meta.data?.capabilities.canIssue);
+  const choose = (ids: number[], on: boolean) =>
+    setChosen((current) => {
+      const next = new Map(current);
+      for (const id of ids) {
+        if (on) next.set(id, list.data?.data.find((row) => row.id === id)?.status === "draft");
+        else next.delete(id);
+      }
+      return next;
+    });
+  const chosenDrafts = [...chosen.values()].filter(Boolean).length;
   // The project filter (invoices work design D9) is set from a row's project
   // reference, which is also what the chip names it by.
   const [projectReference, setProjectReference] = useState<string | null>(null);
@@ -205,11 +221,33 @@ export const InvoicesPage = ({ canViewCustomers, userDisplayName, canInvoiceOrde
           {list.data && list.data.data.length === 0 && (
             <EmptyState title={t("noInvoices")} description={t("noInvoicesDescription")} />
           )}
+          {canSend && chosen.size > 0 && (
+            <Group gap="sm" data-testid="selection-bar">
+              <Text size="sm">{t("sendAll.selected", { count: chosen.size })}</Text>
+              <SendAllButton
+                size="xs"
+                data-assist="invoices.invoices.send-all"
+                input={{ invoiceIds: [...chosen.keys()] }}
+                count={chosen.size}
+                drafts={chosenDrafts}
+                onSent={() => setChosen(new Map())}
+              />
+              <Button size="xs" variant="subtle" onClick={() => setChosen(new Map())}>
+                {t("sendAll.clear")}
+              </Button>
+              {chosenDrafts > 0 && (
+                <Text size="xs" c="dimmed">
+                  {t("sendAll.draftsSkipped", { count: chosenDrafts })}
+                </Text>
+              )}
+            </Group>
+          )}
           {list.data && list.data.data.length > 0 && (
             <>
               <InvoiceTable
                 rows={list.data.data}
                 showCustomer
+                selection={canSend ? { selected: new Set(chosen.keys()), onChange: choose } : undefined}
                 onProject={(projectId, reference) => {
                   setProjectReference(reference);
                   set({ projectId });

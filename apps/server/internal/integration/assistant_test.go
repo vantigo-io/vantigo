@@ -545,6 +545,7 @@ var filesOrRedirects = []string{
 	"getInvoicesCollectionExportCsv",
 	"getInvoicesExportCsv",
 	"getInvoicesReminderPrintBatchesByIdPdf",
+	"getInvoicesSendBatchesByIdPrintZip",
 	"getInvoicesSettingsLogo",
 	"getInvoicesRemindersByIdPdf",
 	"getInvoicesByIdPdf",

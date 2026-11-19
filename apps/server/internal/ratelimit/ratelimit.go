@@ -129,8 +129,18 @@ RETURNING hits, window_start`
 // Hit records one hit by client under p and reports whether it is within the
 // limit.
 func (l *Limiter) Hit(ctx context.Context, p Policy, client string) (Decision, error) {
+	return l.HitN(ctx, p, client, 1)
+}
+
+// HitN records n hits by client under p at once — a request that carries n
+// units of work, such as a batch of documents — and reports whether the
+// window's count is within the limit after them. n below 1 is refused.
+func (l *Limiter) HitN(ctx context.Context, p Policy, client string, n int) (Decision, error) {
 	if err := p.validate(); err != nil {
 		return Decision{}, err
+	}
+	if n < 1 {
+		return Decision{}, fmt.Errorf("ratelimit: %d hits; a hit counts at least one", n)
 	}
 	now := l.now().UTC()
 	windowStart := now.Truncate(p.Window)
@@ -138,7 +148,7 @@ func (l *Limiter) Hit(ctx context.Context, p Policy, client string) (Decision, e
 	var hits int
 	var effectiveStart time.Time
 	// Key construction: p.Name cannot contain ':' (validated above), so the first ':' is an unambiguous separator between policy and client.
-	if err := l.pool.QueryRow(ctx, hitSQL, p.Name+":"+client, windowStart, 1).Scan(&hits, &effectiveStart); err != nil {
+	if err := l.pool.QueryRow(ctx, hitSQL, p.Name+":"+client, windowStart, n).Scan(&hits, &effectiveStart); err != nil {
 		return Decision{}, fmt.Errorf("ratelimit: record hit: %w", err)
 	}
 	return decide(p, hits, effectiveStart, now), nil
