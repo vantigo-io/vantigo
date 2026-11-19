@@ -68,6 +68,7 @@ const (
 	codeIdempotencyUnknown     = "idempotency_outcome_unknown"
 	codeIdempotencyQuota       = "idempotency_quota"
 	idempotencyReplayedHeader  = "Idempotent-Replayed"
+	idempotencyIgnoredHeader   = "Idempotency-Key-Ignored"
 	idempotencyQuotaRetryAfter = "60"
 )
 
@@ -185,10 +186,14 @@ type idempotentRoute struct {
 }
 
 // newIdempotentRoute is the middleware for op mounted at segments under rule,
-// or nil when store is nil or op is out of scope.
-func newIdempotentRoute(store contracts.IdempotencyStore, known map[string]bool, never []string, method string, op *openapi3.Operation, rule contracts.Rule, segments []routeSegment) *idempotentRoute {
-	if store == nil || !idempotentOperation(method, op, rule, known, never) {
+// or nil when op is out of scope or there is no store. With off (a store
+// switched off) it is one that only marks a key it ignores.
+func newIdempotentRoute(store contracts.IdempotencyStore, off bool, known map[string]bool, never []string, method string, op *openapi3.Operation, rule contracts.Rule, segments []routeSegment) *idempotentRoute {
+	if (store == nil && !off) || !idempotentOperation(method, op, rule, known, never) {
 		return nil
+	}
+	if store == nil {
+		return &idempotentRoute{operation: op.OperationID}
 	}
 	var params []string
 	for _, seg := range segments {
@@ -220,6 +225,15 @@ func setAPIReason(ctx context.Context, reason string) {
 // key's rules; a request without the header runs next as it is.
 func (m *idempotentRoute) serve(w http.ResponseWriter, req *http.Request, p contracts.Principal, next func(http.ResponseWriter, *http.Request)) {
 	values := req.Header.Values(IdempotencyHeader)
+	if m.store == nil {
+		// IDEMPOTENCY_ENABLED is off: the key is not honoured, and the answer
+		// says so (security review S3).
+		if len(values) > 0 {
+			w.Header().Set(idempotencyIgnoredHeader, "true")
+		}
+		next(w, req)
+		return
+	}
 	if len(values) == 0 || p.UserID == uuid.Nil {
 		next(w, req)
 		return

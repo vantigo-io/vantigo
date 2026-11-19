@@ -52,7 +52,8 @@ Each operation's description ends with the permission it requires, for example
 operation that honours an `Idempotency-Key` ([Retrying safely](#retrying-safely)) declares it
 as an optional header, with the `409` and `422` it can answer: added to the operation's own
 `409` or `422` where it documents one — its description first, the error body offered beside
-its schema — and declared on their own where it does not. With `IDEMPOTENCY_ENABLED` off no
+its schema (`anyOf`) unless that schema already takes the error body, and with `Retry-After` on
+the `409` — and declared on their own where it does not. With `IDEMPOTENCY_ENABLED` off no
 operation declares it, since none honours it. `servers`
 is the installation's address, and the `bearerAuth` scheme is the key. The document follows
 the key: when its roles, narrowing or read-only switch change, so does the document. A person
@@ -132,9 +133,13 @@ curl -X POST -H "Authorization: Bearer vtg_…" -H "Idempotency-Key: 8e03978e-40
 - **Where it works.** On every `POST` a key can call that creates or changes something and takes
   and answers JSON: not on a read marked as one (a search, a preview), not on a file upload or a
   download, not on one that answers a secret once, and not on the staff retention run, which can
-  run longer than two minutes. Elsewhere the header is ignored. The document of what a key
-  reaches declares the header on exactly these operations. Three communications operations and
-  applying a credit note keep a key of their own, described on each. It is never required.
+  run longer than two minutes. Elsewhere the header is ignored. The header is honoured exactly
+  where the live document of what a key reaches (`/api/openapi.json` as the installation serves
+  it now) declares it; rely on that, not on a copy. An installation with `IDEMPOTENCY_ENABLED` off
+  declares and honours it nowhere, and answers a request to one of these operations that carries
+  a key with `Idempotency-Key-Ignored: true`, so a retry there runs again. Three communications
+  operations and applying a credit note keep a key of their own, described on each. It is never
+  required.
 - **The key** is 1–255 printable ASCII characters, optionally in double quotes; anything else is
   `400 idempotency_key_invalid`. A key belongs to the integration (across all its keys) and to the
   operation: the same key on another operation, or from another integration, is another key.
@@ -152,7 +157,9 @@ curl -X POST -H "Authorization: Bearer vtg_…" -H "Idempotency-Key: 8e03978e-40
   runs again, once you have resolved the conflict or fixed the body.
 - **A replay is the first answer as it was.** It is not checked again against the record: if the
   record has changed since, or the integration lost the permission, the retry still gets the
-  first answer, within the 24 hours.
+  first answer, within the 24 hours. It is the stored answer to the first call with the key,
+  whichever of the integration's keys made it: a retry from another of its keys must still be
+  allowed to call the operation, but the answer is not cut to that key's narrowing.
 - **Kept 24 hours.** After that the key is free again. The first answer — status, headers and
   body — is kept encrypted. When any customer is anonymised, the answers kept before are not given
   again: a retry gets `idempotency_outcome_unknown`.

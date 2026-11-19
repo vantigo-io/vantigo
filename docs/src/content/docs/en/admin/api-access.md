@@ -374,11 +374,11 @@ and a restart.
   takes effect at once, even in a client that listed `write` before.
 - **A change answers `409` (or `412`):** the record changed since the agent read it; the agent
   reads it again and retries with the new version, as a REST client would.
-- **A change did not answer in time:** it may or may not have been made. Where the operation
-  takes an `Idempotency-Key` the agent retries with the same key, and gets the first answer
-  again instead of a second change; where it takes none, the agent reads the record before it
-  retries. The tools tell the agent to make one key per action and never a new key for a retry
-  ([MCP server](/en/reference/mcp/#the-idempotency-key)).
+- **A change did not answer in time:** it may or may not have been made. Where the call sent
+  an `Idempotency-Key` the agent retries with the same key, and gets the first answer again
+  instead of a second change; where it sent none, the agent reads the record before it retries.
+  The tools tell the agent to make one random key per action, never a new key for a retry, and
+  never a key taken from the workspace's data ([MCP server](/en/reference/mcp/#the-idempotency-key)).
 - **A call answers that the key has too many calls running:** a key has at most four MCP
   calls in flight at once; the client retries shortly.
 - **A browser-based client** cannot connect: Vantigo refuses cross-site browser requests.
@@ -488,7 +488,9 @@ of them may name the customer: a retry gets `409 idempotency_outcome_unknown`, a
 when it expires. A backup holds the
 keys of the last 24 hours; restored, they expire as usual. `IDEMPOTENCY_ENABLED=0` switches it off
 for the whole installation: the header is then ignored, every retry runs again, and neither the
-document, the reference at `/api` nor MCP offers the header any more.
+document, the reference at `/api` nor MCP offers the header any more. An answer to a request that
+sent a key to one of those operations carries `Idempotency-Key-Ignored: true`, so an application
+can tell.
 
 ## Expiry notices
 

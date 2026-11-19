@@ -575,15 +575,20 @@ func TestIdempotency_TheKillSwitch(t *testing.T) {
 	t.Parallel()
 	rig := newIdemRig(t, withEnv("IDEMPOTENCY_ENABLED", "0"))
 	for range 2 {
-		if r := rig.do(t, idemCall{key: "k"}); r.Code != http.StatusCreated || r.Header().Get("Idempotent-Replayed") != "" {
+		// The answer says the key was ignored (security review S3).
+		if r := rig.do(t, idemCall{key: "k"}); r.Code != http.StatusCreated || r.Header().Get("Idempotent-Replayed") != "" ||
+			r.Header().Get("Idempotency-Key-Ignored") != "true" {
 			t.Errorf("%d %v", r.Code, r.Header())
 		}
+	}
+	if r := rig.do(t, idemCall{}); r.Header().Get("Idempotency-Key-Ignored") != "" {
+		t.Errorf("a request without a key is marked: %v", r.Header())
 	}
 	if r := rig.do(t, idemCall{key: "a\x01"}); r.Code != http.StatusCreated {
 		t.Errorf("a bad key with the switch off: %d, want the header ignored", r.Code)
 	}
-	if n := rig.runs.Load(); n != 3 {
-		t.Errorf("the handler ran %d times, want 3", n)
+	if n := rig.runs.Load(); n != 4 {
+		t.Errorf("the handler ran %d times, want 4", n)
 	}
 	var n int
 	if err := rig.h.pool.QueryRow(context.Background(), `SELECT count(*) FROM identity.idempotency_keys`).Scan(&n); err != nil || n != 0 {

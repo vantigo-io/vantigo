@@ -383,10 +383,11 @@ omstart.
   hvert kall, så en senkning virker straks, også i en klient som listet `write` før.
 - **En endring svarer `409` (eller `412`):** posten er endret siden agenten leste den; agenten
   leser den på nytt og prøver igjen med den nye versjonen, slik en REST-klient ville gjort.
-- **En endring svarte ikke i tide:** den kan ha blitt gjort, eller ikke. Der operasjonen tar en
+- **En endring svarte ikke i tide:** den kan ha blitt gjort, eller ikke. Der kallet sendte en
   `Idempotency-Key`, prøver agenten igjen med samme nøkkel og får det første svaret igjen i
-  stedet for en endring til; der den ikke tar noen, leser agenten posten før den prøver igjen.
-  Verktøyene ber agenten lage én nøkkel per handling og aldri en ny nøkkel for et nytt forsøk
+  stedet for en endring til; der det ikke sendte noen, leser agenten posten før den prøver igjen.
+  Verktøyene ber agenten lage én tilfeldig nøkkel per handling, aldri en ny nøkkel for et nytt
+  forsøk og aldri en nøkkel hentet fra dataene i arbeidsområdet
   ([MCP-server](/en/reference/mcp/#the-idempotency-key)).
 - **Et kall svarer at nøkkelen har for mange kall i gang:** en nøkkel har høyst fire
   MCP-kall i gang samtidig; klienten prøver igjen om litt.
@@ -499,7 +500,8 @@ noe svar lagret før det gis igjen, siden hvert av dem kan nevne kunden: et nytt
 `409 idempotency_outcome_unknown`, og raden forsvinner når den utløper. En sikkerhetskopi inneholder nøklene fra de siste 24 timene; gjenopprettet utløper de som
 vanlig. `IDEMPOTENCY_ENABLED=0` slår det av for hele installasjonen: headeren ignoreres da, hvert
 nytt forsøk kjøres igjen, og verken dokumentet, referansen på `/api` eller MCP tilbyr headeren
-lenger.
+lenger. Svaret på en forespørsel som sendte en nøkkel til en av disse operasjonene, har
+`Idempotency-Key-Ignored: true`, så et program kan se det.
 
 ## Varsler om utløp
 

@@ -290,7 +290,7 @@ func (h *mcpHandler) plan(w http.ResponseWriter, r *http.Request, p contracts.Pr
 		return result(map[string]any{
 			"supportedVersions": mcpSupportedVersions,
 			"capabilities":      map[string]any{"tools": map[string]any{}},
-			"instructions":      mcpInstructions,
+			"instructions":      mcpInstructions(h.catalogue.docs.idempotency),
 			"ttlMs":             mcpDiscoverTTLMs,
 			"cacheScope":        "public",
 		})
@@ -299,12 +299,12 @@ func (h *mcpHandler) plan(w http.ResponseWriter, r *http.Request, p contracts.Pr
 			"protocolVersion": req.version,
 			"capabilities":    map[string]any{"tools": map[string]any{}},
 			"serverInfo":      serverInfo(h.version),
-			"instructions":    mcpInstructions,
+			"instructions":    mcpInstructions(h.catalogue.docs.idempotency),
 		})
 	case mcpMethodPing:
 		return result(map[string]any{})
 	case mcpMethodToolsList:
-		fields := map[string]any{"tools": mcpTools(writes)}
+		fields := map[string]any{"tools": mcpTools(writes, h.catalogue.docs.idempotency)}
 		if req.era == mcpModern {
 			fields["ttlMs"], fields["cacheScope"] = mcpToolsTTLMs, "private"
 		}
@@ -367,6 +367,9 @@ func (h *mcpHandler) run(w http.ResponseWriter, r *http.Request, call *mcpCall) 
 	} else {
 		rec, panicked, ended := loopback(h.api, r, call.op, call.target, call.headers, call.body)
 		write := call.op.Kind == mcpKindWrite
+		// keyed is whether this call sent an Idempotency-Key: only then does a
+		// retry with it answer the first call's outcome.
+		keyed := call.headers.Get(IdempotencyHeader) != ""
 		// A call whose context ended — the deadline passed, or the client went
 		// away — may still have answered: what it answered is the result,
 		// unless it is a server error, which after an ended context says
@@ -380,7 +383,7 @@ func (h *mcpHandler) run(w http.ResponseWriter, r *http.Request, call *mcpCall) 
 				"you retry. Quote the trace id %s when reporting it.", call.op.ID, httpx.TraceID(r))
 		case panicked:
 			t = toolError("%s failed unexpectedly. Quote the trace id %s when reporting it.", call.op.ID, httpx.TraceID(r))
-		case ended && !answered && write && call.op.idempotencyKey:
+		case ended && !answered && write && keyed:
 			t = toolError("%s did not answer in time, and the change may or may not have been made: retry with the "+
 				"same Idempotency-Key, never a new one: the retry answers the first call's outcome, or says it is still "+
 				"running or cannot be told. Quote the trace id %s when reporting it.", call.op.ID, httpx.TraceID(r))
@@ -395,7 +398,7 @@ func (h *mcpHandler) run(w http.ResponseWriter, r *http.Request, call *mcpCall) 
 					w.Header().Set(name, v)
 				}
 			}
-			t = callResult(call.op, rec)
+			t = callResult(call.op, rec, keyed)
 		}
 	}
 	writeRPC(w, http.StatusOK, rpcResponse{ID: call.req.msg.ID, Result: call.req.result(t.fields(), h.version)})
