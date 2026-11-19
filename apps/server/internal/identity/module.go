@@ -207,6 +207,8 @@ func Module(a *Access) module.Module {
 			return newSSOConnections(a, d)
 		},
 		Workers: func(d module.Deps) []worker.Worker { return workers(a, d) },
+		// identity.brand, workspace-wide and per person (brands design B18).
+		LiveTopics: liveTopics,
 		// The webhooks' fan-out, on the outbox (outgoing webhooks design W14,
 		// W39).
 		EventHandlers: webhookEventHandlers,

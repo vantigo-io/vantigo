@@ -153,6 +153,7 @@ identity never deleteIdentityAccessRolesById
 identity never deleteIdentityAccountAvatar
 identity never deleteIdentityAccountPasskeysByCredentialId
 identity never deleteIdentityAccountPin
+identity never deleteIdentityBrandsById
 identity never deleteIdentityBrandsByIdLogosBySlot
 identity never deleteIdentityIntegrationsByIdWebhooksByWebhookId
 identity never deleteIdentityOwnerSsoOidc
@@ -185,9 +186,12 @@ identity never getIdentityBrand
 identity never getIdentityBrandAssetsByFile
 identity never getIdentityBrandCss
 identity never getIdentityBrandPublic
+identity never getIdentityBrandRuleTargets
+identity never getIdentityBrandRules
 identity never getIdentityBrands
 identity never getIdentityBrandsById
 identity never getIdentityBrandsByIdLogosBySlot
+identity never getIdentityBrandsResolution
 identity never getIdentityIntegrations
 identity never getIdentityIntegrationsById
 identity never getIdentityIntegrationsByIdRequests
@@ -248,8 +252,13 @@ identity never postIdentityAccountPasskeysComplete
 identity never postIdentityAccountPassword
 identity never postIdentityAccountSessionsRevoke
 identity never postIdentityBootstrap
+identity never postIdentityBrands
+identity never postIdentityBrandsByIdArchive
 identity never postIdentityBrandsByIdDiscardDraft
+identity never postIdentityBrandsByIdDuplicate
+identity never postIdentityBrandsByIdMakeDefault
 identity never postIdentityBrandsByIdPublish
+identity never postIdentityBrandsByIdRestore
 identity never postIdentityIntegrations
 identity never postIdentityIntegrationsByIdArchive
 identity never postIdentityIntegrationsByIdDisable
@@ -308,8 +317,10 @@ identity never putIdentityAccessRolesByIdPermissions
 identity never putIdentityAccessUsersByIdRoles
 identity never putIdentityAccount
 identity never putIdentityAccountAvatar
+identity never putIdentityAccountBrand
 identity never putIdentityAccountPin
 identity never putIdentityAccountProfile
+identity never putIdentityBrandRules
 identity never putIdentityBrandsById
 identity never putIdentityBrandsByIdLogosBySlot
 identity never putIdentityIntegrationsByIdMcp

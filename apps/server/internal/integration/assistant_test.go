@@ -84,6 +84,17 @@ var markedByHand = map[string]string{
 	"postIdentityBrandsByIdPublish":               "never",
 	"putIdentityBrandsById":                       "never",
 	"putIdentityBrandsByIdLogosBySlot":            "never",
+	"postIdentityBrands":                          "never",
+	"deleteIdentityBrandsById":                    "never",
+	"postIdentityBrandsByIdArchive":               "never",
+	"postIdentityBrandsByIdDuplicate":             "never",
+	"postIdentityBrandsByIdMakeDefault":           "never",
+	"postIdentityBrandsByIdRestore":               "never",
+	"getIdentityBrandRules":                       "never",
+	"putIdentityBrandRules":                       "never",
+	"getIdentityBrandRuleTargets":                 "never",
+	"getIdentityBrandsResolution":                 "never",
+	"putIdentityAccountBrand":                     "never",
 	"postIdentityAccountSessionsRevoke":           "never", // ends the session the assistant stands on
 	"getCalendarFeed":                             "never", // the address holds a bearer token
 	"postCalendarFeedByVariant":                   "never",

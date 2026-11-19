@@ -26,6 +26,7 @@ sql:
       - ../db/migrations/00206_identity_color_scheme.sql
       - ../db/migrations/00209_identity_brands.sql
       - ../db/migrations/00210_identity_mcp_access.sql
+      - ../db/migrations/00211_identity_brand_rules.sql
     queries: queries
     gen:
       go:

@@ -44,6 +44,8 @@ type server struct {
 	// brand counters (brand_metrics.go).
 	brandObjects brandObjects
 	metrics      *brandMetrics
+	// entities is what resolution asked Staff, kept for 30 s (brand_resolve.go).
+	entities entityCache
 }
 
 var _ gen.StrictServerInterface = (*server)(nil)

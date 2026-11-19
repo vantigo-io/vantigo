@@ -202,7 +202,7 @@ func (s *server) changeBrandWithLogo(ctx context.Context, id uuid.UUID, action, 
 		}
 		v.Logos = logos
 		return &v, nil, nil, nil
-	}, func(ctx context.Context, q *store.Queries, now time.Time) error {
+	}, func(ctx context.Context, _ pgx.Tx, q *store.Queries, now time.Time) error {
 		if logo == nil {
 			return nil
 		}

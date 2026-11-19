@@ -103,13 +103,20 @@ type harness struct {
 // loads its configuration from, the permissions of the catalogModule it
 // composes beside identity, and the fake OIDC provider it routes to.
 type harnessSetup struct {
-	env         map[string]string
-	permissions []contracts.Permission
-	aiTasks     []contracts.AITask
-	tracer      pgx.QueryTracer
-	oidc        *fakeOIDC
-	directories []contracts.DirectorySearch
-	meter       metric.MeterProvider
+	env          map[string]string
+	permissions  []contracts.Permission
+	aiTasks      []contracts.AITask
+	tracer       pgx.QueryTracer
+	oidc         *fakeOIDC
+	directories  []contracts.DirectorySearch
+	meter        metric.MeterProvider
+	brandTargets contracts.BrandTargets
+}
+
+// withBrandTargets presets Deps.BrandTargets, as Compose would wire Staff's
+// (brands design B9): the installation with Staff enabled.
+func withBrandTargets(b contracts.BrandTargets) harnessOption {
+	return func(s *harnessSetup) { s.brandTargets = b }
 }
 
 // withBrandMeter builds the brand counters on mp, to read them back.
@@ -248,6 +255,7 @@ func newHarness(t *testing.T, opts ...harnessOption) *harness {
 		Limiter: ratelimit.NewWithClock(installation, h.now),
 
 		DirectorySearches: setup.directories,
+		BrandTargets:      setup.brandTargets,
 	}
 	h.access = identity.NewAccess(h.deps)
 	h.deps.Access = h.access
