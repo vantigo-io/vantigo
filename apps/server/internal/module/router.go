@@ -271,11 +271,35 @@ func (r *Router) HandleFunc(pattern string, h func(http.ResponseWriter, *http.Re
 		}
 		rule.Agent = true
 	}
-	// An integration's API key may call an operation behind a permission or
-	// anonymous rule, the only rules a key meets, unless it is marked never; a
-	// GET is always a read, and a POST marked read is one too, which a
-	// read-only key may call (API access design K5). Any other rule refuses a
-	// key here already, as the lint refuses a mark that says otherwise.
+	if err := setAPIRule(method, op, &rule); err != nil {
+		r.problems = append(r.problems, fmt.Sprintf("module: %s (%s): %v", pattern, op.OperationID, err))
+		return
+	}
+	if rule.Kind == contracts.RulePermission {
+		for _, key := range rule.Names {
+			if _, ok := r.opts.Catalog[key]; !ok {
+				r.problems = append(r.problems, fmt.Sprintf("module: %s (%s): permission %q is not in the catalog", pattern, op.OperationID, key))
+				return
+			}
+		}
+	}
+
+	r.routes[method] = append(r.routes[method], &route{
+		segments: segments,
+		handler:  r.wrap(op, rule, r.bodyLimit(op.OperationID), h),
+	})
+	r.normalized[key] = pattern
+	r.registered[pattern] = true
+}
+
+// setAPIRule sets rule.API, what an integration's API key may do with the
+// operation op of method. A key may call an operation behind a permission or
+// anonymous rule, the only rules a key meets, unless it is marked never; a GET
+// is always a read, and a POST marked read is one too, which a read-only key
+// may call (API access design K5). Any other rule refuses a key here already,
+// as the lint refuses a mark that says otherwise. The MCP endpoint reads an
+// operation's kind with the same rule (MCP server design M24).
+func setAPIRule(method string, op *openapi3.Operation, rule *contracts.Rule) error {
 	keyable := rule.Kind == contracts.RulePermission || rule.Kind == contracts.RuleAnonymous
 	if keyable {
 		rule.API = contracts.APIAllowed
@@ -293,25 +317,10 @@ func (r *Router) HandleFunc(pattern string, h func(http.ResponseWriter, *http.Re
 				rule.API = contracts.APIRead
 			}
 		default:
-			r.problems = append(r.problems, fmt.Sprintf("module: %s (%s): %s %v must be %q, %q or %q", pattern, op.OperationID, contracts.APIExtension, v, contracts.APIExtensionAllowed, contracts.APIExtensionRead, contracts.APIExtensionNever))
-			return
+			return fmt.Errorf("%s %v must be %q, %q or %q", contracts.APIExtension, v, contracts.APIExtensionAllowed, contracts.APIExtensionRead, contracts.APIExtensionNever)
 		}
 	}
-	if rule.Kind == contracts.RulePermission {
-		for _, key := range rule.Names {
-			if _, ok := r.opts.Catalog[key]; !ok {
-				r.problems = append(r.problems, fmt.Sprintf("module: %s (%s): permission %q is not in the catalog", pattern, op.OperationID, key))
-				return
-			}
-		}
-	}
-
-	r.routes[method] = append(r.routes[method], &route{
-		segments: segments,
-		handler:  r.wrap(op, rule, r.bodyLimit(op.OperationID), h),
-	})
-	r.normalized[key] = pattern
-	r.registered[pattern] = true
+	return nil
 }
 
 // bodyLimit is the request-body cap for operationID: its BodyLimits entry,

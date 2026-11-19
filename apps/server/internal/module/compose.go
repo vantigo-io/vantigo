@@ -679,7 +679,19 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 	if deps.Config != nil { // only a test composes without one
 		server = deps.Config.AppOrigin + deps.Config.BasePath
 	}
-	outer.Handle("GET /api/openapi.json", newAPIDocuments(deps.Access, deps.Limiter, body, catalog, server))
+	documents := newAPIDocuments(deps.Access, deps.Limiter, body, catalog, server)
+	outer.Handle("GET /api/openapi.json", documents)
+
+	// The MCP endpoint (MCP server design M29): every method, so a GET or a
+	// DELETE is its 405 rather than the catch-all's 404, bound to the
+	// composed API below, which it loops tool calls back through. MCP_ENABLED
+	// off leaves the path to the catch-all; a composition with no Access has
+	// no key to serve it to.
+	var mcp *mcpHandler
+	if deps.Access != nil && (deps.Config == nil || deps.Config.MCPEnabled) {
+		mcp = newMCPHandler(documents, deps.Access, deps.Limiter)
+		outer.Handle(mcpPath, mcp)
+	}
 
 	// Both the subtree and the bare "/api". Without the bare pattern,
 	// http.ServeMux answers "/api" with its automatic redirect to "/api/" —
@@ -690,6 +702,9 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 	outer.HandleFunc("/api", httpx.NotFound)
 
 	api := dispatchModules(mounts, outer)
+	if mcp != nil {
+		mcp.bind(api)
+	}
 	if ops != nil {
 		origin := ""
 		if deps.Config != nil { // only a test composes without one

@@ -54,6 +54,18 @@ func (g keyGate) refuse(w http.ResponseWriter, req *http.Request, access contrac
 // limit with ratelimit.Reject instead, and records the answer once given —
 // a panic's as 500, before the panic goes on to the recovery further out.
 func (g keyGate) serve(w http.ResponseWriter, req *http.Request, p contracts.Principal, operationID string, start time.Time, next func(http.ResponseWriter)) {
+	g.run(w, req, p, operationID, start, true, next)
+}
+
+// recordOnly runs next for p as serve does, recording the answer, but counts
+// nothing against the integration's limit: the MCP endpoint's envelope of a
+// tool call whose looped-back request is counted itself (MCP server design
+// M22), so the call costs one request.
+func (g keyGate) recordOnly(w http.ResponseWriter, req *http.Request, p contracts.Principal, operationID string, start time.Time, next func(http.ResponseWriter)) {
+	g.run(w, req, p, operationID, start, false, next)
+}
+
+func (g keyGate) run(w http.ResponseWriter, req *http.Request, p contracts.Principal, operationID string, start time.Time, count bool, next func(http.ResponseWriter)) {
 	rec := httpx.NewStatusRecorder(w)
 	reason := ""
 	if g.recorder != nil {
@@ -65,7 +77,7 @@ func (g keyGate) serve(w http.ResponseWriter, req *http.Request, p contracts.Pri
 			g.record(req, operationID, p.Via.KeyID, p.UserID, rec.Status(), reason, start)
 		}()
 	}
-	if g.limiter != nil && p.Via.RateLimitPerMinute > 0 {
+	if count && g.limiter != nil && p.Via.RateLimitPerMinute > 0 {
 		policy := ratelimit.Policy{Name: apiPolicyName, Limit: p.Via.RateLimitPerMinute, Window: time.Minute}
 		d, err := g.limiter.Count(req.Context(), policy, p.UserID.String())
 		if err != nil {
