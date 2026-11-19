@@ -22,6 +22,7 @@ import { projectTasksQueryOptions, type Task } from "../api/tasks";
 import { DeliveryMilestoneBadge } from "../components/delivery-milestone-badge";
 import { TaskStatusBadge } from "../components/task-status-badge";
 import "../i18n";
+import "./task-timeline-view.css";
 import { useDayShiftLabel, useProjectDates } from "../lib/dates";
 import {
   type DragMode,
@@ -534,6 +535,7 @@ export const TaskTimelineView = ({ projectId, tasks, canContribute, onOpen }: Ta
               return (
                 <Box
                   key={task.id}
+                  className="timeline-task-row"
                   onClick={() => onOpen(task.id)}
                   style={{
                     height: ROW_HEIGHT,
@@ -543,9 +545,6 @@ export const TaskTimelineView = ({ projectId, tasks, canContribute, onOpen }: Ta
                     gap: 8,
                     cursor: "pointer",
                     borderBottom: "1px solid light-dark(var(--mantine-color-gray-2), var(--mantine-color-dark-5))",
-                    "&:hover": {
-                      backgroundColor: "light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-6))",
-                    },
                   }}
                 >
                   <TaskStatusBadge status={task.status} size="xs" />
