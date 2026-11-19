@@ -242,6 +242,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/customers/{id}/brand": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set a customer's default brand, or clear it */
+        put: operations["putCustomersByIdBrand"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/customers/{id}/group": {
         parameters: {
             query?: never;
@@ -616,6 +633,23 @@ export interface paths {
         };
         /** List the customers a contact is associated with */
         get: operations["getCustomersContactsByIdCustomers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/customers/brands": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the published brands a customer or group can be given as its default */
+        get: operations["getCustomersBrands"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1341,6 +1375,36 @@ export interface components {
             /** Format: date */
             occurredOn: string;
         };
+        /** @description A brand a customer or a group has chosen as its default (brands design B28, delivery E1): its id, its name as the brand's published version reads and its state. state is published (offered, and used), archived (still named, but skipped: the default falls back to the next in the order, and the customer's brand block says so in unavailable) or unknown (no published brand has this id; name is then absent). */
+        CustomerBrandChoice: {
+            /** Format: uuid */
+            id: string;
+            name?: string | null;
+            /** @enum {string} */
+            state: "published" | "archived" | "unknown";
+        };
+        /** @description A customer's default brand (brands design B28, delivery E1). own is the brand chosen on the customer and group the one chosen on its group, each null for none. effective is the brand a new document starts in: the customer's own, else the group's, else the workspace default brand; a choice that is archived or unknown is skipped, and unavailable names the choices that were (customer, group), so a client can say the default fell back. The order is resolved at read, never stored. A customer's brand changes the look and the name on its documents only: the seller's legal identity stays one (brands design B29a). */
+        CustomerBrandInfo: {
+            effective: components["schemas"]["CustomerEffectiveBrand"];
+            group: components["schemas"]["CustomerBrandChoice"] | null;
+            own: components["schemas"]["CustomerBrandChoice"] | null;
+            unavailable: ("customer" | "group")[];
+        };
+        /** @description A published brand a picker offers. */
+        CustomerBrandOption: {
+            /** Format: uuid */
+            id: string;
+            isDefault: boolean;
+            name: string;
+        };
+        /** @description The brand a customer's new documents start in and where it comes from: customer (the customer's own choice), group (its group's) or default (the workspace default brand). name is the brand's published name; it is absent only when the default brand itself cannot be read. */
+        CustomerEffectiveBrand: {
+            /** Format: uuid */
+            id: string;
+            name?: string | null;
+            /** @enum {string} */
+            source: "customer" | "group" | "default";
+        };
         /** @description The group a customer belongs to (customer groups design D3): its id and its name, and nothing else — a client that needs the group's default payment term reads it from GET /customers/groups or from the billing profile's own groupDefault, where it is already resolved against the customer. */
         CustomerGroupRef: {
             /** Format: uuid */
@@ -1349,12 +1413,19 @@ export interface components {
         };
         /** @description A customer group's name and default payment term (customer groups design D2). name is 1-100 characters, trimmed and NFC-normalised; a name another group already has, ignoring case, is a 409 with code group_exists. defaultPaymentTermsDays is 0-365 inclusive (the billing profile's own rule) and is the term every member inherits unless its own billing profile decides one. PUT is a FULL REPLACE of both fields: an omitted or null defaultPaymentTermsDays clears the group's default rather than leaving the one it had. */
         CustomerGroupRequest: {
+            /**
+             * Format: uuid
+             * @description The group's default brand (brands design B28): the brand its members without a brand of their own start their documents in. Must be a published brand, or the one the group already has; an unknown or archived id is a field error on brandId. Like defaultPaymentTermsDays, PUT is a full replace: an omitted or null brandId clears it.
+             */
+            brandId?: string | null;
             /** Format: int32 */
             defaultPaymentTermsDays?: number | null;
             name: string;
         };
         /** @description A group in the installation's vocabulary, with how many customers belong to it (customer groups design D2) — what the Manage groups modal needs in order to say why a delete is refused, on the same response that lists the groups. Every one of the vocabulary's three answering operations (list, create, update) answers this shape, so a client has one group type to hold. */
         CustomerGroupSummary: {
+            /** @description The group's default brand (brands design B28), absent when it has none. */
+            brand?: components["schemas"]["CustomerBrandChoice"] | null;
             /** Format: int32 */
             customerCount: number;
             /** Format: int32 */
@@ -1969,6 +2040,16 @@ export interface components {
             revision?: number | null;
             website?: string | null;
         };
+        /** @description PUT /customers/{id}/brand's own request body (brands design B28): the customer's default brand is set to brandId, or cleared when it is absent or null (it then takes its group's, then the workspace default). The brand must be published, or the one the customer already has; an unknown or archived id is a field error on brandId. revision is optional, as PUT /customers/{id}/owner's own is. */
+        PutCustomerBrandRequest: {
+            /** Format: uuid */
+            brandId?: string | null;
+            /**
+             * Format: int32
+             * @description The revision the caller read the customer at (customers foundation design D5). Optional — omitted, the change applies regardless; present and stale, a 409.
+             */
+            revision?: number | null;
+        };
         /** @description PUT /customers/{id}/group's own request body (customer groups design D3): the customer is put into groupId, or taken out of every group when it is absent or null. The group must exist; an unknown id is a field error on groupId. revision is optional, as PUT /customers/{id}/owner's own is — omitted, the customer is read again whenever it changes under the request and the change then applies, with a 409 only for a customer that never settles; present and stale, a 409. Only this sub-resource sets a customer's group: POST /customers and PUT /customers/{id} do not take one. */
         PutCustomerGroupRequest: {
             /** Format: uuid */
@@ -2033,6 +2114,8 @@ export interface components {
             anonymisation?: components["schemas"]["CustomerAnonymisation"];
             /** @description A customer's own contact details (invoice-ready customer design D2). Always present; optional here only because the recorded exchange corpus predates it. */
             contactInfo?: components["schemas"]["CustomerContactInfo"];
+            /** @description The customer's default brand and the brand a new document starts in (brands design B28). Always present on a response; needs nothing beyond customers:view to read. */
+            brand?: components["schemas"]["CustomerBrandInfo"];
             /** Format: date-time */
             createdAt: string;
             /** Format: int64 */
@@ -3659,6 +3742,75 @@ export interface operations {
                 content?: never;
             };
             /** @description Conflict: customer_merged (customers merge design D2) or customer_anonymised (customers GDPR design D4) when the customer is read-only: a merged-away customer takes no more changes, and the detail names the one its records went to; nor does an anonymised one, and the detail names the day. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["CustomerConflictProblem"];
+                };
+            };
+        };
+    };
+    putCustomersByIdBrand: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PutCustomerBrandRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SafeCustomerResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict: a stale revision, or customer_merged (customers merge design D2) or customer_anonymised (customers GDPR design D4) when the customer is read-only. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -5353,6 +5505,44 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    getCustomersBrands: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomerBrandOption"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
             };
         };
     };
