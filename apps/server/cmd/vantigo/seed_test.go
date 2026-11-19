@@ -107,6 +107,9 @@ func TestRun_SeedPopulatesDemoDatasetAndIsIdempotent(t *testing.T) {
 		{"staff.people", "SELECT count(*) FROM staff.people", demoUserCount},
 		// The companies, and the person the eFaktura demo bills (invoices phase 6 D10).
 		{"customers.customers", "SELECT count(*) FROM customers.customers", demoCustomerCount + 1},
+		// A default brand on three customers and two groups (brands delivery E1).
+		{"customers.customers brand", "SELECT count(*) FROM customers.customers WHERE brand_id IS NOT NULL", 3},
+		{"customers.customer_groups brand", "SELECT count(*) FROM customers.customer_groups WHERE brand_id IS NOT NULL", 2},
 		{"customers.contacts", "SELECT count(*) FROM customers.contacts", demoCustomerCount * demoContactsPerCustomer},
 		{"products.products", "SELECT count(*) FROM products.products", demoProductCount + demoWorkshopProductCount},
 		{"projects.projects", "SELECT count(*) FROM projects.projects", demoProjectCount},

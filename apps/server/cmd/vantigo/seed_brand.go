@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"image"
 	"image/color"
@@ -139,7 +140,52 @@ func seedDemoBrands(ctx context.Context, pool *pgxpool.Pool, logger *slog.Logger
 			logger.Info("development seed: a demo brand was added", "brand", b.Name)
 		}
 	}
-	return nil
+	return seedDemoCustomerBrands(ctx, pool, logger)
+}
+
+// seedDemoCustomerBrands gives two groups and three customers a default brand
+// (brands design B28, delivery E1): the Nordic Mid-Market group and two of the
+// first customers Nordlys, the Energy & Maritime group and one customer
+// Fjordkraft Demo, so the brand picker, the effective-brand display and the
+// fall-back to the group have something to show. It runs once: a database where
+// any customer or group already has a brand is left as it is.
+func seedDemoCustomerBrands(ctx context.Context, pool *pgxpool.Pool, logger *slog.Logger) error {
+	var nordlys, fjordkraft uuid.UUID
+	for name, id := range map[string]*uuid.UUID{"nordlys": &nordlys, "fjordkraft demo": &fjordkraft} {
+		if err := pool.QueryRow(ctx, `SELECT id FROM identity.brands WHERE name_key = $1`, name).Scan(id); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return nil // the brand was not seeded: nothing to assign
+			}
+			return fmt.Errorf("seed the demo customer brands: %w", err)
+		}
+	}
+	return db.WithTx(ctx, pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+		var assigned bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM customers.customers WHERE brand_id IS NOT NULL)
+			OR EXISTS (SELECT 1 FROM customers.customer_groups WHERE brand_id IS NOT NULL)`).Scan(&assigned); err != nil {
+			return err
+		}
+		if assigned {
+			return nil
+		}
+		for _, stmt := range []struct {
+			query string
+			brand uuid.UUID
+		}{
+			{`UPDATE customers.customer_groups SET brand_id = $1 WHERE lower(name) = 'nordic mid-market'`, nordlys},
+			{`UPDATE customers.customer_groups SET brand_id = $1 WHERE lower(name) = 'energy & maritime'`, fjordkraft},
+			{`UPDATE customers.customers SET brand_id = $1
+				WHERE id IN (SELECT id FROM customers.customers WHERE status <> 'archived' ORDER BY id LIMIT 2)`, nordlys},
+			{`UPDATE customers.customers SET brand_id = $1
+				WHERE id IN (SELECT id FROM customers.customers WHERE status <> 'archived' ORDER BY id OFFSET 2 LIMIT 1)`, fjordkraft},
+		} {
+			if _, err := tx.Exec(ctx, stmt.query, stmt.brand); err != nil {
+				return fmt.Errorf("seed the demo customer brands: %w", err)
+			}
+		}
+		logger.Info("development seed: demo customers and groups were given a default brand")
+		return nil
+	})
 }
 
 // seedDemoBrand names and publishes the default brand for the demo company.
