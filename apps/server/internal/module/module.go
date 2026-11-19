@@ -318,6 +318,13 @@ type Deps struct {
 	// Module.BrandTargets, after the business calendar; it is nil when Staff is
 	// disabled, which identity reads as "no legal-entity targets".
 	BrandTargets contracts.BrandTargets
+	// Brands is what a module reads of Identity's published brands (see
+	// contracts.Brands, brands design B29): the picker's list and a brand for a
+	// document. It performs no authorization: the consumer is gated on the
+	// permission to edit its own record. Compose and Workers set it, on every
+	// module's Deps copy, from whichever enabled module declares Module.Brands
+	// (identity), after the business calendar.
+	Brands contracts.Brands
 	// InvoicedWork is every given module's contracts.InvoicedWorkHolder
 	// (rule 10), enabled or not, in the order the modules were given — the
 	// third many-provider contract slot, collected the customer slots' way
@@ -834,6 +841,11 @@ type Module struct {
 	// Compose calls it before any Mount runs, after the business calendar, and
 	// puts the result on every module's Deps, identity's included.
 	BrandTargets func(Deps) contracts.BrandTargets
+	// Brands builds this module's contracts.Brands implementation, if it
+	// provides one (identity). At most one enabled module may set it; Compose
+	// and Workers call it beside BrandTargets, after the business calendar, and
+	// put the result on every module's Deps, the provider's own included.
+	Brands func(Deps) contracts.Brands
 	// InvoicedWork builds this module's contracts.InvoicedWorkHolder, if an
 	// invoice is built from its rows (rule 10). Like CustomerReferences, any
 	// number of modules may set it, and it is called for a module MODULES
