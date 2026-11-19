@@ -336,6 +336,12 @@ are libraries rendered inside the host.
   `brandscale.Algorithm`, which the server writes into the snippet. `brand/tokens.ts` is a port of
   `identity/brand_tokens.go`; both are tested against `brand-tokens.golden.json`, and a test
   mounts a `MantineProvider` to compare every variable it derives with the server's.
+- **The sign-in fade.** On the public pages `useDomainBrand(email)` (`brand/domain-brand.tsx`)
+  asks `GET /api/v1/identity/brand/public?domain=` once per distinct domain and hands the
+  matched brand to `BrandProvider` as an override that is never mirrored and is dropped on sign-in.
+  `theme.css` carries the fade: while the root has `data-vantigo-brand-fade`, colours, borders
+  and shadows transition over 300 ms, a new mark fades in, and under `prefers-reduced-motion`
+  nothing moves.
 - **The logo.** `logo-dark.png` is `logo.png` with its navy stroke lightened to read on
   the dark surface and the mint kept; the shell shows the brand's own mark for the scheme
   and falls back to the variant that matches the scheme. Regenerate it after a change to `logo.png`
