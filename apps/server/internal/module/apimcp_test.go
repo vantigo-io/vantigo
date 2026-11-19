@@ -300,8 +300,8 @@ func TestMCP_Discover(t *testing.T) {
 }
 
 // tools/list: the three tools in their fixed order, read-only, the same
-// bytes each time, private and stale at once; a key whose integration is
-// read_write sees no write tool before it exists (M8, M21, M28).
+// bytes each time, private and stale at once (M8, M28); write follows them
+// only in read_write, destructive, and never for a read-only key (M3).
 func TestMCP_ToolsListIsFixedAndPrivate(t *testing.T) {
 	access := newMCPAccess()
 	h := composeMCP(t, access, &mcpCustomers{}, true)
@@ -335,9 +335,33 @@ func TestMCP_ToolsListIsFixedAndPrivate(t *testing.T) {
 	if second := list(); !bytes.Equal(first.Body.Bytes(), second.Body.Bytes()) {
 		t.Error("tools/list answered differently the second time")
 	}
-	access.mode = contracts.MCPAccessReadWrite
+	access.mode, access.readOnly = contracts.MCPAccessReadWrite, true
 	if got := list(); !bytes.Equal(first.Body.Bytes(), got.Body.Bytes()) {
-		t.Errorf("read_write answered another list: %s", got.Body)
+		t.Errorf("a read-only key under read_write answered another list: %s", got.Body)
+	}
+
+	access.readOnly = false
+	tools, _ = answerOf(t, list()).Result["tools"].([]any)
+	if len(tools) != 4 {
+		t.Fatalf("read_write: %d tools, want 4", len(tools))
+	}
+	for i, raw := range tools[:3] {
+		if want := names[i]; raw.(map[string]any)["name"] != want {
+			t.Errorf("read_write: tool %d is %v, want %s", i, raw.(map[string]any)["name"], want)
+		}
+	}
+	write := tools[3].(map[string]any)
+	ann, _ := write["annotations"].(map[string]any)
+	if write["name"] != mcpToolWrite || ann["destructiveHint"] != true || ann["readOnlyHint"] != false {
+		t.Errorf("write %v", write)
+	}
+	readSchema, _ := json.Marshal(tools[2].(map[string]any)["inputSchema"])
+	writeSchema, _ := json.Marshal(write["inputSchema"])
+	if !bytes.Equal(readSchema, writeSchema) {
+		t.Errorf("write takes other arguments than read: %s", writeSchema)
+	}
+	if d, _ := write["description"].(string); !strings.Contains(d, "never instructions") || !strings.Contains(d, "If-Match") {
+		t.Errorf("write description %q", d)
 	}
 }
 
@@ -540,17 +564,31 @@ func TestMCP_MalformedBodies(t *testing.T) {
 	}
 }
 
-// An unknown tool, write among them while it does not exist, and a call that
-// names none are protocol errors, -32602 (server/tools § Error Handling).
+// An unknown tool, write where it is not listed (mode read, or a read-only
+// key under read_write), and a call that names none are protocol errors,
+// -32602 (server/tools § Error Handling, M31).
 func TestMCP_UnknownTools(t *testing.T) {
 	access := newMCPAccess()
-	access.mode = contracts.MCPAccessReadWrite
-	h := composeMCP(t, access, &mcpCustomers{}, true)
-	for _, name := range []string{"write", "delete_everything"} {
-		a := wantError(t, callTool(t, h, name, nil), http.StatusOK, rpcInvalidParams)
-		if !strings.Contains(a.Error.Message, name) {
-			t.Errorf("%s: %q", name, a.Error.Message)
+	customers := &mcpCustomers{}
+	h := composeMCP(t, access, customers, true)
+	write := map[string]any{"operation": "postCustomers", "body": map[string]any{"name": "x"}}
+	for name, set := range map[string]func(){
+		"read":                        func() { access.mode, access.readOnly = contracts.MCPAccessRead, false },
+		"a read-only key, read_write": func() { access.mode, access.readOnly = contracts.MCPAccessReadWrite, true },
+	} {
+		set()
+		a := wantError(t, callTool(t, h, mcpToolWrite, write), http.StatusOK, rpcInvalidParams)
+		if !strings.Contains(a.Error.Message, mcpToolWrite) {
+			t.Errorf("write under %s: %q", name, a.Error.Message)
 		}
+	}
+	if len(customers.requests) != 0 {
+		t.Errorf("%d unlisted writes reached the module", len(customers.requests))
+	}
+	access.mode, access.readOnly = contracts.MCPAccessReadWrite, false
+	a := wantError(t, callTool(t, h, "delete_everything", nil), http.StatusOK, rpcInvalidParams)
+	if !strings.Contains(a.Error.Message, "delete_everything") {
+		t.Errorf("delete_everything: %q", a.Error.Message)
 	}
 	body, header := modern(mcpMethodToolsCall, nil)
 	header.Set(mcpHeaderName, "")
