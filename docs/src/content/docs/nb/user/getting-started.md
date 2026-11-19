@@ -68,6 +68,13 @@ gang du logger inn.
   innloggingen, sier siden fra, og du kan prøve igjen eller bruke en annen metode.
 - **Glemt passordet?** fører til tilbakestillingen nedenfor.
 
+Siden kan endre utseende mens du skriver adressen din. Har organisasjonen din sin egen
+merkevare i Vantigo, toner fargene, logoen og navnet over i den når delen etter @ er
+gjenkjent, et øyeblikk etter at du slutter å skrive eller når du forlater feltet. Ingenting
+annet endres: det er samme side, og innloggingen fungerer likt enten den endres eller ikke.
+For dette sender siden bare delen etter @, aldri navnet eller passordet ditt. Har du redusert
+bevegelse slått på på datamaskinen, skjer endringen med en gang.
+
 Har kontoen din en autentiseringsapp aktivert, ber en side til, **Bekreft
 innloggingen**, om en **Sikkerhetskode**: den sekssifrede koden fra appen, eller en
 av gjenopprettingskodene dine. Velg **Bekreft**. **Bruk en annen innloggingsmetode**

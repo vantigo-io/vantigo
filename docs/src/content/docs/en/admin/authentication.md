@@ -1124,6 +1124,13 @@ It lets a person create and edit the brand, upload its logos, publish it and pre
 not gate reading one's own brand, which every signed-in person can do. How a brand is edited and
 what is checked, and the rules that assign brands to people, is in [Branding](/en/admin/branding/).
 
+The sign-in page can show the brand of an e-mail domain before anyone is signed in: the browser
+sends the domain (never the address) to `GET /api/v1/identity/brand/public?domain=`, which answers
+the brand an admin attached to it with an e-mail domain rule, else the default brand, whether or
+not any account exists on the domain. What that reveals, and its logs and limits, are in
+[Sign-in by e-mail domain](/en/admin/branding/#sign-in-by-e-mail-domain). The same domain table is
+what single sign-on discovery by e-mail domain would use later; nothing routes sign-in by it yet.
+
 A person's brand is the first of: their own choice, while it is one of the brands of the rules
 that match them; the brand of the first matching rule, in the list's order (an e-mail domain
 equal to the domain of their address, membership of an active access group counted as role mapping
@@ -1141,7 +1148,7 @@ archiving the brand clears it. Removing a user removes the row and the choice wi
 Every write is audited in the transaction that makes it, as `brand.created`, `brand.updated`,
 `brand.published`, `brand.draft_discarded`, `brand.archived`, `brand.restored`, `brand.deleted`, `brand.default_changed`,
 `brand.logo_set`, `brand.logo_removed` and `brand_rules.changed` (the list before and after), with
-names, versions and revisions and never the bytes of a logo. A person's own choice is not audited. What the brand endpoints send is cached carefully: an answer to a signed-in person (`brand`, and `brand.css` with a session cookie) is `private, no-store`, so a shared cache or a CDN that ignores `Vary` never keeps one person's brand; the anonymous `brand.css` and `brand/public` are public for 60 seconds, and a published logo is immutable and answers a repeated request that carries its `ETag` with `304` without a read from the object store.
+names, versions and revisions and never the bytes of a logo. A person's own choice is not audited. What the brand endpoints send is cached carefully: an answer to a signed-in person (`brand`, and `brand.css` with a session cookie) is `private, no-store`, so a shared cache or a CDN that ignores `Vary` never keeps one person's brand; the anonymous `brand.css` and `brand/public` are public for 60 seconds (`brand/public?domain=`, 300 seconds, 30 requests a minute per address), and a published logo is immutable and answers a repeated request that carries its `ETag` with `304` without a read from the object store.
 Counters `vantigo.identity.brand.css_requests`, `.public_lookups`, `.publishes`, `.imports`,
 `.rule_changes`, `.choices` and `.entity_reads` are exported with the other metrics.
 

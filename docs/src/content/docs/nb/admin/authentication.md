@@ -1165,6 +1165,14 @@ forhåndsvise den; den styrer ikke lesing av egen merkevare, som alle innloggede
 merkevare redigeres og hva som sjekkes, og reglene som tildeler merkevarer til folk, står i
 [Merkevare](/nb/admin/branding/).
 
+Påloggingssiden kan vise merkevaren til et e-postdomene før noen er innlogget: nettleseren sender
+domenet (aldri adressen) til `GET /api/v1/identity/brand/public?domain=`, som svarer med merkevaren
+en administrator har koblet til det med en e-postdomeneregel, ellers standardmerkevaren, enten det
+finnes kontoer på domenet eller ikke. Hva det avslører, og loggene og grensene, står i
+[Innlogging etter e-postdomene](/nb/admin/branding/#innlogging-etter-e-postdomene). Den samme
+domenetabellen er det SSO-oppdagelse etter e-postdomene senere ville bruke; ingenting ruter
+innlogging etter den ennå.
+
 En persons merkevare er den første av: deres eget valg, så lenge det er en av merkevarene til
 reglene som treffer dem; merkevaren til den første regelen som treffer, i listens rekkefølge (et
 e-postdomene lik domenet i adressen deres, medlemskap i en aktiv tilgangsgruppe regnet slik
@@ -1182,7 +1190,7 @@ slette eller arkivere merkevaren nullstiller det. Å fjerne en bruker fjerner ra
 Hver skriving revideres i transaksjonen som gjør den, som `brand.created`, `brand.updated`,
 `brand.published`, `brand.draft_discarded`, `brand.archived`, `brand.restored`, `brand.deleted`, `brand.default_changed`,
 `brand.logo_set`, `brand.logo_removed` og `brand_rules.changed` (listen før og etter), med navn,
-versjoner og revisjoner og aldri byte av en logo. En persons eget valg revideres ikke. Hva merkevare-endepunktene sender bufres med omhu: et svar til en innlogget person (`brand`, og `brand.css` med øktcookie) er `private, no-store`, så en delt hurtigbuffer eller et CDN som ignorerer `Vary` aldri beholder én persons merkevare; den anonyme `brand.css` og `brand/public` er offentlige i 60 sekunder, og en publisert logo er uforanderlig og svarer på en gjentatt forespørsel med `ETag` med `304`, uten lesing fra objektlageret. Tellerne
+versjoner og revisjoner og aldri byte av en logo. En persons eget valg revideres ikke. Hva merkevare-endepunktene sender bufres med omhu: et svar til en innlogget person (`brand`, og `brand.css` med øktcookie) er `private, no-store`, så en delt hurtigbuffer eller et CDN som ignorerer `Vary` aldri beholder én persons merkevare; den anonyme `brand.css` og `brand/public` er offentlige i 60 sekunder (`brand/public?domain=`, 300 sekunder, 30 forespørsler i minuttet per adresse), og en publisert logo er uforanderlig og svarer på en gjentatt forespørsel med `ETag` med `304`, uten lesing fra objektlageret. Tellerne
 `vantigo.identity.brand.css_requests`, `.public_lookups`, `.publishes`, `.imports`, `.rule_changes`,
 `.choices` og `.entity_reads` eksporteres sammen med de andre målingene.
 
