@@ -184,6 +184,20 @@ type IdentityBrandLogo struct {
 	CreatedAt   time.Time
 }
 
+type IdentityBrandRule struct {
+	ID        uuid.UUID
+	BrandID   uuid.UUID
+	Position  int32
+	Kind      string
+	TargetRef string
+	CreatedAt time.Time
+}
+
+type IdentityBrandRulesRevision struct {
+	Singleton bool
+	Revision  int32
+}
+
 type IdentityExpectedAccount struct {
 	EmployeeNumberKey string
 	EmployeeNumber    string
@@ -459,6 +473,7 @@ type IdentityUser struct {
 	ProvisioningRolesAt *time.Time
 	Kind                string
 	ColorScheme         *string
+	PreferredBrandID    *uuid.UUID
 }
 
 type IdentityUserBadge struct {

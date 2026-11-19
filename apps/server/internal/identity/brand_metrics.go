@@ -18,6 +18,9 @@ type brandMetrics struct {
 	cssRequests   metric.Int64Counter
 	publishes     metric.Int64Counter
 	imports       metric.Int64Counter
+	ruleChanges   metric.Int64Counter
+	choices       metric.Int64Counter
+	entityReads   metric.Int64Counter
 }
 
 // newBrandMetrics builds the counters on mp, or on the global provider.
@@ -38,6 +41,9 @@ func newBrandMetrics(mp metric.MeterProvider) *brandMetrics {
 		cssRequests:   counter("vantigo.identity.brand.css_requests", "Requests for the brand stylesheet, by result: rendered or not_modified."),
 		publishes:     counter("vantigo.identity.brand.publishes", "Brand publishes."),
 		imports:       counter("vantigo.identity.brand.imports", "The default brand's import of the environment's branding, by outcome: started, completed, logo_failed."),
+		ruleChanges:   counter("vantigo.identity.brand.rule_changes", "Replacements of the brand assignment rules."),
+		choices:       counter("vantigo.identity.brand.choices", "A person's own choice of brand, by result: chosen or cleared."),
+		entityReads:   counter("vantigo.identity.brand.entity_reads", "Reads of the legal entities a person works under, by result: cache or staff."),
 	}
 }
 
@@ -47,4 +53,8 @@ func cssResultAttr(result string) metric.AddOption {
 
 func importOutcomeAttr(outcome string) metric.AddOption {
 	return metric.WithAttributes(attribute.String("outcome", outcome))
+}
+
+func resultAttr(result string) metric.AddOption {
+	return metric.WithAttributes(attribute.String("result", result))
 }

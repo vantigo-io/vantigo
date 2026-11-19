@@ -34,6 +34,7 @@ const (
 // brandPublicTTL is how long an anonymous answer may be cached (B17).
 const brandPublicTTL = 60 * time.Second
 
+
 // loadBrand reads one brand, or reports that there is none.
 func (s *server) loadBrand(ctx context.Context, q *store.Queries, id uuid.UUID) (brandRow, bool, error) {
 	b, err := q.GetBrand(ctx, id)
@@ -67,21 +68,6 @@ func (s *server) defaultBrand(ctx context.Context) (brandRow, error) {
 // holdsBrands reports whether the person holds identity:brands (an Owner does).
 func (s *server) holdsBrands(ctx context.Context, userID uuid.UUID) (bool, error) {
 	return s.access.UserHolds(ctx, userID, permBrands)
-}
-
-// resolve is the brand a person sees (B7, B10). Before brands are assigned by
-// rules, everyone resolves to the default brand; this is the one function the
-// resolved brand, the stylesheet and the public look all go through, so the
-// rules of a later delivery land in one place.
-func (s *server) resolve(ctx context.Context, _ uuid.UUID) (brandRow, brandVersion, error) {
-	b, err := s.defaultBrand(ctx)
-	if err != nil {
-		return brandRow{}, brandVersion{}, err
-	}
-	if b.pub == nil {
-		return b, builtinBrand(), nil
-	}
-	return b, *b.pub, nil
 }
 
 // brandJSONResponse answers a resolved brand with its validators.
@@ -145,11 +131,11 @@ func (s *server) GetIdentityBrand(ctx context.Context, req gen.GetIdentityBrandR
 		}
 		payload = s.resolvedBrand(b, b.editing(), b.draft != nil)
 	} else {
-		b, v, err := s.resolve(ctx, p.UserID)
+		res, err := s.resolveUser(ctx, p.UserID)
 		if err != nil {
 			return nil, err
 		}
-		payload = s.resolvedBrand(b, v, false)
+		payload = s.resolvedFor(res)
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -225,7 +211,7 @@ type brandOutcome struct {
 // If-Match (when ifMatch is not 0) with the revision, lets change decide,
 // writes the draft or the publication, and audits it in the same transaction
 // (B34). action names the audit event.
-func (s *server) changeBrand(ctx context.Context, id uuid.UUID, ifMatch int32, action string, change brandChange, inTx ...func(ctx context.Context, q *store.Queries, now time.Time) error) (brandOutcome, error) {
+func (s *server) changeBrand(ctx context.Context, id uuid.UUID, ifMatch int32, action string, change brandChange, inTx ...func(ctx context.Context, tx pgx.Tx, q *store.Queries, now time.Time) error) (brandOutcome, error) {
 	p, err := callerFrom(ctx)
 	if err != nil {
 		return brandOutcome{}, err
@@ -265,7 +251,7 @@ func (s *server) changeBrand(ctx context.Context, id uuid.UUID, ifMatch int32, a
 		before := auditBrandState(b)
 		userID := &p.UserID
 		for _, f := range inTx {
-			if err := f(ctx, q, now); err != nil {
+			if err := f(ctx, tx, q, now); err != nil {
 				return err
 			}
 		}
@@ -309,6 +295,9 @@ func (s *server) changeBrand(ctx context.Context, id uuid.UUID, ifMatch int32, a
 			actor: &p.UserID, action: action, before: before, after: auditBrandState(out.brand), mfa: p.MFAVerified,
 		})
 	})
+	if db.IsUniqueViolation(err, "ux_brands_name_key") {
+		return brandOutcome{refusal: nameTaken}, nil
+	}
 	return out, err
 }
 
@@ -339,6 +328,25 @@ func slotNames(logos map[string]brandLogo) []string {
 var errIfMatch = refuseBrand(http.StatusBadRequest, "invalid_request",
 	"If-Match is the revision the brand was read at, such as 3.", map[string][]string{"If-Match": {"If-Match is the revision the brand was read at, such as 3."}})
 
+// extraMembers refuses a body that carries members the contract does not list:
+// tokens are never accepted (B37), shades and the derived set included.
+func extraMembers(extra map[string]interface{}) *brandRefusal {
+	if len(extra) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(extra))
+	for k := range extra {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+	fields := map[string][]string{}
+	for _, k := range names {
+		fields[k] = []string{"A brand is saved from its inputs only; this member is not accepted. Colours are generated on the server."}
+	}
+	return refuseBrand(http.StatusBadRequest, codeBrandNotAccepted,
+		"The request carries members a brand does not accept: "+strings.Join(names, ", ")+".", fields)
+}
+
 // PutIdentityBrandsById Save a brand's draft (PUT /api/v1/identity/brands/{id})
 func (s *server) PutIdentityBrandsById(ctx context.Context, req gen.PutIdentityBrandsByIdRequestObject) (gen.PutIdentityBrandsByIdResponseObject, error) {
 	reply := func(r *brandRefusal) (gen.PutIdentityBrandsByIdResponseObject, error) {
@@ -355,31 +363,9 @@ func (s *server) PutIdentityBrandsById(ctx context.Context, req gen.PutIdentityB
 	if !ok {
 		return reply(errIfMatch)
 	}
-	if req.Body == nil {
-		return reply(refuseBrand(http.StatusBadRequest, codeBrandNotAccepted, "The request needs a body.", nil))
-	}
-	body := req.Body
-	// Tokens are never accepted (B37): a member the contract does not list,
-	// shades and the derived set included, is refused, not ignored.
-	if len(body.AdditionalProperties) > 0 {
-		extra := make([]string, 0, len(body.AdditionalProperties))
-		for k := range body.AdditionalProperties {
-			extra = append(extra, k)
-		}
-		sort.Strings(extra)
-		fields := map[string][]string{}
-		for _, k := range extra {
-			fields[k] = []string{"A brand is saved from its inputs only; this member is not accepted. Colours are generated on the server."}
-		}
-		return reply(refuseBrand(http.StatusBadRequest, codeBrandNotAccepted,
-			"The request carries members a brand does not accept: "+strings.Join(extra, ", ")+".", fields))
-	}
-	in := brandInput{Name: body.Name, Primary: body.Primary, Radius: string(body.Radius)}
-	if body.Title != nil {
-		in.Title = *body.Title
-	}
-	if body.Support != nil {
-		in.Support = brandSupport{Email: deref(body.Support.Email), Phone: deref(body.Support.Phone), URL: deref(body.Support.Url)}
+	in, refusal := brandInputOf(req.Body)
+	if refusal != nil {
+		return reply(refusal)
 	}
 	out, err := s.changeBrand(ctx, uuid.UUID(req.Id), rev, auditBrandUpdated, func(b brandRow) (*brandVersion, *brandVersion, *brandRefusal, error) {
 		v, refusal := newBrandVersion(in, b.editing().Logos)
@@ -432,6 +418,8 @@ func (s *server) PostIdentityBrandsByIdPublish(ctx context.Context, req gen.Post
 		}
 		pub := *b.draft
 		return nil, &pub, nil, nil
+	}, func(ctx context.Context, tx pgx.Tx, _ *store.Queries, _ time.Time) error {
+		return notifyBrands(ctx, tx, eventBrandChanged) // B18: heard only if the publish commits
 	})
 	switch {
 	case err != nil:

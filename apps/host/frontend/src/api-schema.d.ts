@@ -322,6 +322,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/identity/account/brand": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Choose my brand
+         * @description Chooses, among the brands of the assignment rules that match the caller, the one they see (brands design B12), or null for "automatic" to follow the rules again. The choice beats the rules for as long as it is one of the candidates. A brand that is not a candidate is a 409 brand_not_candidate. The choice is a personal preference, like the colour scheme: it is not audited. It answers the brand now resolved. The caller's other open sessions are told on the keyed live topic identity.brand:{userId}.
+         */
+        put: operations["putIdentityAccountBrand"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/identity/account/mfa": {
         parameters: {
             query?: never;
@@ -630,6 +650,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/identity/brand-rule-targets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the targets a brand rule can name
+         * @description What the rule editor's pickers offer (brands design B8, B9): every access group, and the Staff legal entities while Staff is enabled (staffEnabled says so).
+         */
+        get: operations["getIdentityBrandRuleTargets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/identity/brand-rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the brand rules
+         * @description The whole ordered list of assignment rules, every brand's together (brands design B8): the first rule that matches a person decides their brand. Each rule carries a label for its target and says when the target no longer exists (stale). The revision is the If-Match of the next PUT.
+         */
+        get: operations["getIdentityBrandRules"];
+        /**
+         * Replace the brand rules
+         * @description Replaces the whole ordered list in one transaction (brands design B8): the order of items is the order of the rules. A domain is written in lower case and punycode and is attached to at most one brand. A rule must name an existing target and a brand that is not archived, except that a rule already in the list is kept while its target is gone. Audited brand_rules.changed. Open sessions are told on the live topic identity.brand.
+         */
+        put: operations["putIdentityBrandRules"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/identity/brand.css": {
         parameters: {
             query?: never;
@@ -683,6 +747,30 @@ export interface paths {
          */
         get: operations["getIdentityBrands"];
         put?: never;
+        /**
+         * Create a brand
+         * @description Creates a brand as a draft from its inputs (brands design B1, B21), the same as saving a draft: the name, the title, the primary colour, the radius and the support contacts; colours are generated on the server and a body that carries anything else is a 400. A brand never published matches no rule until it is published. Audited brand.created.
+         */
+        post: operations["postIdentityBrands"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/identity/brands/resolution": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Who sees which brand
+         * @description For one person, the brand they see, why (their own choice, the rule that matched, or the default) and the brands they may choose among (brands design B11). It names no employment detail: of the person's groups and legal entities only the rule that matched is shown. A caller who also holds the Staff permission staff:view, while Staff is enabled, gets the fuller explanation in details.
+         */
+        get: operations["getIdentityBrandsResolution"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -708,6 +796,30 @@ export interface paths {
          */
         put: operations["putIdentityBrandsById"];
         post?: never;
+        /**
+         * Delete a brand
+         * @description Deletes a brand that was never published (brands design B21); a published one is archived instead, because documents may name it. The default brand cannot be deleted. Its rules go with it and anyone whose choice it was is back to automatic. Audited brand.deleted.
+         */
+        delete: operations["deleteIdentityBrandsById"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/identity/brands/{id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Archive a brand
+         * @description Takes a brand out of use (brands design B21): it can no longer be edited, assigned or chosen, its rules are removed and the choice of anyone who had picked it is cleared. It can be restored. The default brand cannot be archived (brand_in_use). Audited brand.archived.
+         */
+        post: operations["postIdentityBrandsByIdArchive"];
         delete?: never;
         options?: never;
         head?: never;
@@ -728,6 +840,26 @@ export interface paths {
          * @description Drops the pending version; the published version is what is left (brands design B20). Audited brand.updated.
          */
         post: operations["postIdentityBrandsByIdDiscardDraft"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/identity/brands/{id}/duplicate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Duplicate a brand
+         * @description Creates a new draft brand from the version being edited, logos included, named after it with " (copy)" (brands design B21). Audited brand.created.
+         */
+        post: operations["postIdentityBrandsByIdDuplicate"];
         delete?: never;
         options?: never;
         head?: never;
@@ -762,6 +894,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/identity/brands/{id}/make-default": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Make a brand the default
+         * @description Makes a published brand the default, the one a person who matches no rule sees (brands design B5, B21); the previous default stays a brand of its own. Audited brand.default_changed.
+         */
+        post: operations["postIdentityBrandsByIdMakeDefault"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/identity/brands/{id}/publish": {
         parameters: {
             query?: never;
@@ -776,6 +928,26 @@ export interface paths {
          * @description Makes the draft the published version and bumps its version (brands design B20). Refused 422 brand_contrast, naming the failing pairs (B4), while any colour pair is below AA 4.5:1 in either colour scheme. Audited brand.published.
          */
         post: operations["postIdentityBrandsByIdPublish"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/identity/brands/{id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore a brand
+         * @description Brings an archived brand back as published, if it ever was, else as a draft (brands design B21). Its rules are not restored. Audited brand.restored.
+         */
+        post: operations["postIdentityBrandsByIdRestore"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4067,6 +4239,11 @@ export interface components {
             /** @description An IANA name such as Europe/Oslo, which this server and its database must read the same way; a name the two read differently (CET, an abbreviation to the database and a zone with summer time to the server) is refused. Changing it moves "today" and every day derived from an instant from the next request on; dates already written stay what they were. */
             businessTimeZone: string;
         };
+        BrandCandidate: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+        };
         BrandCheck: {
             background: string;
             foreground: string;
@@ -4077,6 +4254,13 @@ export interface components {
             ratio: number;
             /** @enum {string} */
             scheme: "light" | "dark";
+        };
+        BrandChoiceRequest: {
+            /**
+             * Format: uuid
+             * @description The brand to see, one of the candidates; null for automatic.
+             */
+            brandId: string | null;
         };
         BrandListResponse: {
             items: components["schemas"]["BrandSummary"][];
@@ -4099,6 +4283,44 @@ export interface components {
             mark_light?: components["schemas"]["BrandLogo"];
             wordmark?: components["schemas"]["BrandLogo"];
         };
+        BrandRef: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+        };
+        BrandResolution: {
+            brand: components["schemas"]["BrandRef"];
+            candidates: components["schemas"]["BrandCandidate"][];
+            /** @description The person has a choice that is no longer one of their candidates, so it is ignored. */
+            choiceIgnored: boolean;
+            details?: components["schemas"]["BrandResolutionDetails"];
+            displayName: string;
+            rule?: components["schemas"]["BrandResolutionRule"];
+            /** @enum {string} */
+            source: "choice" | "rule" | "default";
+            /** Format: uuid */
+            userId: string;
+        };
+        /** @description Only for a caller who also holds staff:view, with Staff enabled. */
+        BrandResolutionDetails: {
+            accessGroups: string[];
+            emailDomain: string;
+            legalEntities: string[];
+        };
+        /** @description The first rule that matches the person (the one that decides unless they chose). */
+        BrandResolutionRule: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            kind: "domain" | "legal_entity" | "access_group";
+            /**
+             * Format: int32
+             * @description Where the rule stands in the list, from 1.
+             */
+            position: number;
+            targetLabel: string;
+            targetRef: string;
+        };
         BrandResponse: {
             /** @description The contrast checks of the version being edited, light then dark. */
             checks: components["schemas"]["BrandCheck"][];
@@ -4119,6 +4341,51 @@ export interface components {
             state: "draft" | "published" | "archived";
             /** @description The nearest primary that passes every check, when the version being edited fails; absent otherwise. */
             suggestedPrimary?: string | null;
+        };
+        BrandRule: {
+            /** Format: uuid */
+            brandId: string;
+            brandName: string;
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            kind: "domain" | "legal_entity" | "access_group";
+            /** Format: int32 */
+            position: number;
+            /** @description The target no longer exists, is inactive or archived, or is a legal entity while Staff is off; the rule is kept and matches no one. */
+            stale: boolean;
+            /** @enum {string} */
+            staleReason?: "missing" | "inactive" | "archived" | "staff_disabled";
+            targetLabel: string;
+            targetRef: string;
+        };
+        BrandRuleInput: {
+            /** Format: uuid */
+            brandId: string;
+            /** @enum {string} */
+            kind: "domain" | "legal_entity" | "access_group";
+            /** @description A domain (written in any case, with any trailing dot), a Staff legal entity id or an access group id. */
+            targetRef: string;
+        };
+        BrandRuleTargetsResponse: {
+            accessGroups: components["schemas"]["BrandRuleTarget"][];
+            legalEntities: components["schemas"]["BrandRuleTarget"][];
+            staffEnabled: boolean;
+        };
+        BrandRuleTarget: {
+            /** @description False for a group that is inactive or a legal entity that is archived. */
+            available: boolean;
+            id: string;
+            name: string;
+        };
+        BrandRulesRequest: {
+            items: components["schemas"]["BrandRuleInput"][];
+        };
+        BrandRulesResponse: {
+            items: components["schemas"]["BrandRule"][];
+            /** Format: int32 */
+            revision: number;
+            staffEnabled: boolean;
         };
         BrandSchemeTokens: {
             /** @description The variables Mantine derives from the shades, as ready CSS variable values. */
@@ -4187,10 +4454,17 @@ export interface components {
             algorithm: number;
             /** Format: uuid */
             brandId: string;
+            /** @description The brands the person may choose among (B12); the switcher shows with more than one. Empty on the public look. */
+            candidates?: components["schemas"]["BrandCandidate"][];
+            /** @description The person has a choice that is no longer one of their candidates, so it is ignored. */
+            choiceIgnored?: boolean;
             logos: components["schemas"]["BrandLogoUrls"];
             name: string;
-            /** @enum {string} */
-            source: "default" | "preview";
+            /**
+             * @description Why the person sees this brand (B7).
+             * @enum {string}
+             */
+            source: "default" | "preview" | "choice" | "rule";
             support: components["schemas"]["BrandSupport"];
             title: string;
             tokens: components["schemas"]["BrandTokens"];
@@ -6019,6 +6293,66 @@ export interface operations {
             };
         };
     };
+    putIdentityAccountBrand: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BrandChoiceRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResolvedBrand"];
+                };
+            };
+            /** @description Bad Request - invalid_request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict - brand_not_candidate, the brand is not one the caller is assigned. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
     getIdentityAccountMfa: {
         parameters: {
             query?: never;
@@ -7194,6 +7528,154 @@ export interface operations {
             };
         };
     };
+    getIdentityBrandRuleTargets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandRuleTargetsResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getIdentityBrandRules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandRulesResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    putIdentityBrandRules: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The revision it was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 stale_revision. */
+                "If-Match": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BrandRulesRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandRulesResponse"];
+                };
+            };
+            /** @description Bad Request - invalid_request, or an If-Match that is not a revision. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict - stale_revision, the list has changed since If-Match. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity - rule_duplicate (a kind and target appear twice), domain_taken (the domain belongs to another brand), domain_invalid, rule_target_not_found (the group or legal entity does not exist), rule_brand_invalid (the brand does not exist or is archived), staff_disabled (a legal entity rule while Staff is off), too_many_rules; fields names the item. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
     getIdentityBrandCss: {
         parameters: {
             query?: never;
@@ -7289,6 +7771,134 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
+            };
+        };
+    };
+    postIdentityBrands: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BrandUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandResponse"];
+                };
+            };
+            /** @description Bad Request - invalid_request, or a field the body may not carry. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict - brand_name_taken, another brand has the name. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity - brand_primary_range or brand_support_invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getIdentityBrandsResolution: {
+        parameters: {
+            query?: {
+                /** @description The person's id. Exactly one of userId and email. */
+                userId?: string;
+                /** @description The person's e-mail address, as an alternative to userId. */
+                email?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandResolution"];
+                };
+            };
+            /** @description Bad Request - not exactly one of userId and email, or userId is not an id. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -7420,6 +8030,122 @@ export interface operations {
             };
         };
     };
+    deleteIdentityBrandsById: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The revision it was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 stale_revision. */
+                "If-Match": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict - stale_revision, or brand_in_use (the brand was published or is the default). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postIdentityBrandsByIdArchive: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The revision it was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 stale_revision. */
+                "If-Match": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict - stale_revision, or brand_in_use (the default brand). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
     postIdentityBrandsByIdDiscardDraft: {
         parameters: {
             query?: never;
@@ -7469,6 +8195,65 @@ export interface operations {
                 content?: never;
             };
             /** @description Conflict - stale_revision, or no_draft when there is nothing to discard. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postIdentityBrandsByIdDuplicate: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The revision it was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 stale_revision. */
+                "If-Match": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict - stale_revision, or brand_name_taken. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -7661,6 +8446,65 @@ export interface operations {
             };
         };
     };
+    postIdentityBrandsByIdMakeDefault: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The revision it was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 stale_revision. */
+                "If-Match": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict - stale_revision, or brand_not_published. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
     postIdentityBrandsByIdPublish: {
         parameters: {
             query?: never;
@@ -7720,6 +8564,65 @@ export interface operations {
             };
             /** @description Unprocessable Entity - brand_contrast (fields names the failing pairs) or brand_primary_range. */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postIdentityBrandsByIdRestore: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The revision it was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 stale_revision. */
+                "If-Match": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict - stale_revision, or not_archived. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -198,6 +198,48 @@ func (e BrandLogoContentType) Valid() bool {
 	}
 }
 
+// Defines values for BrandResolutionSource.
+const (
+	BrandResolutionSourceChoice  BrandResolutionSource = "choice"
+	BrandResolutionSourceDefault BrandResolutionSource = "default"
+	BrandResolutionSourceRule    BrandResolutionSource = "rule"
+)
+
+// Valid indicates whether the value is a known member of the BrandResolutionSource enum.
+func (e BrandResolutionSource) Valid() bool {
+	switch e {
+	case BrandResolutionSourceChoice:
+		return true
+	case BrandResolutionSourceDefault:
+		return true
+	case BrandResolutionSourceRule:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BrandResolutionRuleKind.
+const (
+	BrandResolutionRuleKindAccessGroup BrandResolutionRuleKind = "access_group"
+	BrandResolutionRuleKindDomain      BrandResolutionRuleKind = "domain"
+	BrandResolutionRuleKindLegalEntity BrandResolutionRuleKind = "legal_entity"
+)
+
+// Valid indicates whether the value is a known member of the BrandResolutionRuleKind enum.
+func (e BrandResolutionRuleKind) Valid() bool {
+	switch e {
+	case BrandResolutionRuleKindAccessGroup:
+		return true
+	case BrandResolutionRuleKindDomain:
+		return true
+	case BrandResolutionRuleKindLegalEntity:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for BrandResponseState.
 const (
 	BrandResponseStateArchived  BrandResponseState = "archived"
@@ -213,6 +255,72 @@ func (e BrandResponseState) Valid() bool {
 	case BrandResponseStateDraft:
 		return true
 	case BrandResponseStatePublished:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BrandRuleKind.
+const (
+	BrandRuleKindAccessGroup BrandRuleKind = "access_group"
+	BrandRuleKindDomain      BrandRuleKind = "domain"
+	BrandRuleKindLegalEntity BrandRuleKind = "legal_entity"
+)
+
+// Valid indicates whether the value is a known member of the BrandRuleKind enum.
+func (e BrandRuleKind) Valid() bool {
+	switch e {
+	case BrandRuleKindAccessGroup:
+		return true
+	case BrandRuleKindDomain:
+		return true
+	case BrandRuleKindLegalEntity:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BrandRuleStaleReason.
+const (
+	BrandRuleStaleReasonArchived      BrandRuleStaleReason = "archived"
+	BrandRuleStaleReasonInactive      BrandRuleStaleReason = "inactive"
+	BrandRuleStaleReasonMissing       BrandRuleStaleReason = "missing"
+	BrandRuleStaleReasonStaffDisabled BrandRuleStaleReason = "staff_disabled"
+)
+
+// Valid indicates whether the value is a known member of the BrandRuleStaleReason enum.
+func (e BrandRuleStaleReason) Valid() bool {
+	switch e {
+	case BrandRuleStaleReasonArchived:
+		return true
+	case BrandRuleStaleReasonInactive:
+		return true
+	case BrandRuleStaleReasonMissing:
+		return true
+	case BrandRuleStaleReasonStaffDisabled:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BrandRuleInputKind.
+const (
+	BrandRuleInputKindAccessGroup BrandRuleInputKind = "access_group"
+	BrandRuleInputKindDomain      BrandRuleInputKind = "domain"
+	BrandRuleInputKindLegalEntity BrandRuleInputKind = "legal_entity"
+)
+
+// Valid indicates whether the value is a known member of the BrandRuleInputKind enum.
+func (e BrandRuleInputKind) Valid() bool {
+	switch e {
+	case BrandRuleInputKindAccessGroup:
+		return true
+	case BrandRuleInputKindDomain:
+		return true
+	case BrandRuleInputKindLegalEntity:
 		return true
 	default:
 		return false
@@ -437,16 +545,22 @@ func (e OwnerUserResponseManagedBy) Valid() bool {
 
 // Defines values for ResolvedBrandSource.
 const (
+	ResolvedBrandSourceChoice  ResolvedBrandSource = "choice"
 	ResolvedBrandSourceDefault ResolvedBrandSource = "default"
 	ResolvedBrandSourcePreview ResolvedBrandSource = "preview"
+	ResolvedBrandSourceRule    ResolvedBrandSource = "rule"
 )
 
 // Valid indicates whether the value is a known member of the ResolvedBrandSource enum.
 func (e ResolvedBrandSource) Valid() bool {
 	switch e {
+	case ResolvedBrandSourceChoice:
+		return true
 	case ResolvedBrandSourceDefault:
 		return true
 	case ResolvedBrandSourcePreview:
+		return true
+	case ResolvedBrandSourceRule:
 		return true
 	default:
 		return false
@@ -1254,6 +1368,12 @@ type BootstrapStatusResponse struct {
 	Available bool `json:"available"`
 }
 
+// BrandCandidate defines model for BrandCandidate.
+type BrandCandidate struct {
+	Id   openapi_types.UUID `json:"id"`
+	Name string             `json:"name"`
+}
+
 // BrandCheck defines model for BrandCheck.
 type BrandCheck struct {
 	Background string           `json:"background"`
@@ -1269,6 +1389,12 @@ type BrandCheckPair string
 
 // BrandCheckScheme defines model for BrandCheck.Scheme.
 type BrandCheckScheme string
+
+// BrandChoiceRequest defines model for BrandChoiceRequest.
+type BrandChoiceRequest struct {
+	// BrandId The brand to see, one of the candidates; null for automatic.
+	BrandId *openapi_types.UUID `json:"brandId"`
+}
 
 // BrandListResponse defines model for BrandListResponse.
 type BrandListResponse struct {
@@ -1300,6 +1426,54 @@ type BrandLogos struct {
 	Wordmark  *BrandLogo `json:"wordmark,omitempty"`
 }
 
+// BrandRef defines model for BrandRef.
+type BrandRef struct {
+	Id   openapi_types.UUID `json:"id"`
+	Name string             `json:"name"`
+}
+
+// BrandResolution defines model for BrandResolution.
+type BrandResolution struct {
+	Brand      BrandRef         `json:"brand"`
+	Candidates []BrandCandidate `json:"candidates"`
+
+	// ChoiceIgnored The person has a choice that is no longer one of their candidates, so it is ignored.
+	ChoiceIgnored bool `json:"choiceIgnored"`
+
+	// Details Only for a caller who also holds staff:view, with Staff enabled.
+	Details     *BrandResolutionDetails `json:"details,omitempty"`
+	DisplayName string                  `json:"displayName"`
+
+	// Rule The first rule that matches the person (the one that decides unless they chose).
+	Rule   *BrandResolutionRule  `json:"rule,omitempty"`
+	Source BrandResolutionSource `json:"source"`
+	UserId openapi_types.UUID    `json:"userId"`
+}
+
+// BrandResolutionSource defines model for BrandResolution.Source.
+type BrandResolutionSource string
+
+// BrandResolutionDetails Only for a caller who also holds staff:view, with Staff enabled.
+type BrandResolutionDetails struct {
+	AccessGroups  []string `json:"accessGroups"`
+	EmailDomain   string   `json:"emailDomain"`
+	LegalEntities []string `json:"legalEntities"`
+}
+
+// BrandResolutionRule The first rule that matches the person (the one that decides unless they chose).
+type BrandResolutionRule struct {
+	Id   openapi_types.UUID      `json:"id"`
+	Kind BrandResolutionRuleKind `json:"kind"`
+
+	// Position Where the rule stands in the list, from 1.
+	Position    int32  `json:"position"`
+	TargetLabel string `json:"targetLabel"`
+	TargetRef   string `json:"targetRef"`
+}
+
+// BrandResolutionRuleKind defines model for BrandResolutionRule.Kind.
+type BrandResolutionRuleKind string
+
 // BrandResponse defines model for BrandResponse.
 type BrandResponse struct {
 	// Checks The contrast checks of the version being edited, light then dark.
@@ -1324,6 +1498,66 @@ type BrandResponse struct {
 
 // BrandResponseState defines model for BrandResponse.State.
 type BrandResponseState string
+
+// BrandRule defines model for BrandRule.
+type BrandRule struct {
+	BrandId   openapi_types.UUID `json:"brandId"`
+	BrandName string             `json:"brandName"`
+	Id        openapi_types.UUID `json:"id"`
+	Kind      BrandRuleKind      `json:"kind"`
+	Position  int32              `json:"position"`
+
+	// Stale The target no longer exists, is inactive or archived, or is a legal entity while Staff is off; the rule is kept and matches no one.
+	Stale       bool                  `json:"stale"`
+	StaleReason *BrandRuleStaleReason `json:"staleReason,omitempty"`
+	TargetLabel string                `json:"targetLabel"`
+	TargetRef   string                `json:"targetRef"`
+}
+
+// BrandRuleKind defines model for BrandRule.Kind.
+type BrandRuleKind string
+
+// BrandRuleStaleReason defines model for BrandRule.StaleReason.
+type BrandRuleStaleReason string
+
+// BrandRuleInput defines model for BrandRuleInput.
+type BrandRuleInput struct {
+	BrandId openapi_types.UUID `json:"brandId"`
+	Kind    BrandRuleInputKind `json:"kind"`
+
+	// TargetRef A domain (written in any case, with any trailing dot), a Staff legal entity id or an access group id.
+	TargetRef string `json:"targetRef"`
+}
+
+// BrandRuleInputKind defines model for BrandRuleInput.Kind.
+type BrandRuleInputKind string
+
+// BrandRuleTarget defines model for BrandRuleTarget.
+type BrandRuleTarget struct {
+	// Available False for a group that is inactive or a legal entity that is archived.
+	Available bool   `json:"available"`
+	Id        string `json:"id"`
+	Name      string `json:"name"`
+}
+
+// BrandRuleTargetsResponse defines model for BrandRuleTargetsResponse.
+type BrandRuleTargetsResponse struct {
+	AccessGroups  []BrandRuleTarget `json:"accessGroups"`
+	LegalEntities []BrandRuleTarget `json:"legalEntities"`
+	StaffEnabled  bool              `json:"staffEnabled"`
+}
+
+// BrandRulesRequest defines model for BrandRulesRequest.
+type BrandRulesRequest struct {
+	Items []BrandRuleInput `json:"items"`
+}
+
+// BrandRulesResponse defines model for BrandRulesResponse.
+type BrandRulesResponse struct {
+	Items        []BrandRule `json:"items"`
+	Revision     int32       `json:"revision"`
+	StaffEnabled bool        `json:"staffEnabled"`
+}
 
 // BrandSchemeTokens defines model for BrandSchemeTokens.
 type BrandSchemeTokens struct {
@@ -1972,9 +2206,17 @@ type ResolvedBrand struct {
 	Algorithm int32              `json:"algorithm"`
 	BrandId   openapi_types.UUID `json:"brandId"`
 
+	// Candidates The brands the person may choose among (B12); the switcher shows with more than one. Empty on the public look.
+	Candidates *[]BrandCandidate `json:"candidates,omitempty"`
+
+	// ChoiceIgnored The person has a choice that is no longer one of their candidates, so it is ignored.
+	ChoiceIgnored *bool `json:"choiceIgnored,omitempty"`
+
 	// Logos The URLs of a version's logos, by slot; a slot with no logo is absent.
-	Logos   BrandLogoUrls       `json:"logos"`
-	Name    string              `json:"name"`
+	Logos BrandLogoUrls `json:"logos"`
+	Name  string        `json:"name"`
+
+	// Source Why the person sees this brand (B7).
 	Source  ResolvedBrandSource `json:"source"`
 	Support BrandSupport        `json:"support"`
 	Title   string              `json:"title"`
@@ -1985,7 +2227,7 @@ type ResolvedBrand struct {
 	Version string `json:"version"`
 }
 
-// ResolvedBrandSource defines model for ResolvedBrand.Source.
+// ResolvedBrandSource Why the person sees this brand (B7).
 type ResolvedBrandSource string
 
 // RoleAssignmentRequest defines model for RoleAssignmentRequest.
@@ -3010,10 +3252,31 @@ type GetIdentityBrandAssetsByFileParams struct {
 	IfNoneMatch *string `json:"If-None-Match,omitempty"`
 }
 
+// PutIdentityBrandRulesParams defines parameters for PutIdentityBrandRules.
+type PutIdentityBrandRulesParams struct {
+	// IfMatch The revision it was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 stale_revision.
+	IfMatch string `json:"If-Match"`
+}
+
 // GetIdentityBrandCssParams defines parameters for GetIdentityBrandCss.
 type GetIdentityBrandCssParams struct {
 	// IfNoneMatch The ETag a client holds; when it is the current one the answer is a bare 304.
 	IfNoneMatch *string `json:"If-None-Match,omitempty"`
+}
+
+// GetIdentityBrandsResolutionParams defines parameters for GetIdentityBrandsResolution.
+type GetIdentityBrandsResolutionParams struct {
+	// UserId The person's id. Exactly one of userId and email.
+	UserId *openapi_types.UUID `form:"userId,omitempty" json:"userId,omitempty"`
+
+	// Email The person's e-mail address, as an alternative to userId.
+	Email *string `form:"email,omitempty" json:"email,omitempty"`
+}
+
+// DeleteIdentityBrandsByIdParams defines parameters for DeleteIdentityBrandsById.
+type DeleteIdentityBrandsByIdParams struct {
+	// IfMatch The revision it was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 stale_revision.
+	IfMatch string `json:"If-Match"`
 }
 
 // PutIdentityBrandsByIdJSONBody defines parameters for PutIdentityBrandsById.
@@ -3025,9 +3288,21 @@ type PutIdentityBrandsByIdParams struct {
 	IfMatch string `json:"If-Match"`
 }
 
+// PostIdentityBrandsByIdArchiveParams defines parameters for PostIdentityBrandsByIdArchive.
+type PostIdentityBrandsByIdArchiveParams struct {
+	// IfMatch The revision it was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 stale_revision.
+	IfMatch string `json:"If-Match"`
+}
+
 // PostIdentityBrandsByIdDiscardDraftParams defines parameters for PostIdentityBrandsByIdDiscardDraft.
 type PostIdentityBrandsByIdDiscardDraftParams struct {
 	// IfMatch The brand's revision it was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 stale_revision.
+	IfMatch string `json:"If-Match"`
+}
+
+// PostIdentityBrandsByIdDuplicateParams defines parameters for PostIdentityBrandsByIdDuplicate.
+type PostIdentityBrandsByIdDuplicateParams struct {
+	// IfMatch The revision it was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 stale_revision.
 	IfMatch string `json:"If-Match"`
 }
 
@@ -3051,9 +3326,21 @@ type PutIdentityBrandsByIdLogosBySlotMultipartBody struct {
 // PutIdentityBrandsByIdLogosBySlotParamsSlot defines parameters for PutIdentityBrandsByIdLogosBySlot.
 type PutIdentityBrandsByIdLogosBySlotParamsSlot string
 
+// PostIdentityBrandsByIdMakeDefaultParams defines parameters for PostIdentityBrandsByIdMakeDefault.
+type PostIdentityBrandsByIdMakeDefaultParams struct {
+	// IfMatch The revision it was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 stale_revision.
+	IfMatch string `json:"If-Match"`
+}
+
 // PostIdentityBrandsByIdPublishParams defines parameters for PostIdentityBrandsByIdPublish.
 type PostIdentityBrandsByIdPublishParams struct {
 	// IfMatch The brand's revision it was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 stale_revision.
+	IfMatch string `json:"If-Match"`
+}
+
+// PostIdentityBrandsByIdRestoreParams defines parameters for PostIdentityBrandsByIdRestore.
+type PostIdentityBrandsByIdRestoreParams struct {
+	// IfMatch The revision it was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 stale_revision.
 	IfMatch string `json:"If-Match"`
 }
 
@@ -3382,6 +3669,9 @@ type PostIdentityAccountAvatarMultipartRequestBody PostIdentityAccountAvatarMult
 // PutIdentityAccountAvatarMultipartRequestBody defines body for PutIdentityAccountAvatar for multipart/form-data ContentType.
 type PutIdentityAccountAvatarMultipartRequestBody PutIdentityAccountAvatarMultipartBody
 
+// PutIdentityAccountBrandJSONRequestBody defines body for PutIdentityAccountBrand for application/json ContentType.
+type PutIdentityAccountBrandJSONRequestBody = BrandChoiceRequest
+
 // PostIdentityAccountMfaDisableJSONRequestBody defines body for PostIdentityAccountMfaDisable for application/json ContentType.
 type PostIdentityAccountMfaDisableJSONRequestBody = PostIdentityAccountMfaDisableJSONBody
 
@@ -3417,6 +3707,12 @@ type PutIdentityAccountProfileJSONRequestBody = PutIdentityAccountProfileJSONBod
 
 // PostIdentityBootstrapJSONRequestBody defines body for PostIdentityBootstrap for application/json ContentType.
 type PostIdentityBootstrapJSONRequestBody = PostIdentityBootstrapJSONBody
+
+// PutIdentityBrandRulesJSONRequestBody defines body for PutIdentityBrandRules for application/json ContentType.
+type PutIdentityBrandRulesJSONRequestBody = BrandRulesRequest
+
+// PostIdentityBrandsJSONRequestBody defines body for PostIdentityBrands for application/json ContentType.
+type PostIdentityBrandsJSONRequestBody = BrandUpdateRequest
 
 // PutIdentityBrandsByIdJSONRequestBody defines body for PutIdentityBrandsById for application/json ContentType.
 type PutIdentityBrandsByIdJSONRequestBody = PutIdentityBrandsByIdJSONBody
@@ -4089,6 +4385,9 @@ type ServerInterface interface {
 	// PutIdentityAccountAvatar Upload the caller's avatar (same as POST)
 	// (PUT /api/v1/identity/account/avatar)
 	PutIdentityAccountAvatar(w http.ResponseWriter, r *http.Request)
+	// PutIdentityAccountBrand Choose my brand
+	// (PUT /api/v1/identity/account/brand)
+	PutIdentityAccountBrand(w http.ResponseWriter, r *http.Request)
 	// GetIdentityAccountMfa Get the caller's two-factor status
 	// (GET /api/v1/identity/account/mfa)
 	GetIdentityAccountMfa(w http.ResponseWriter, r *http.Request)
@@ -4152,6 +4451,15 @@ type ServerInterface interface {
 	// GetIdentityBrandAssetsByFile Get a published brand logo
 	// (GET /api/v1/identity/brand-assets/{file})
 	GetIdentityBrandAssetsByFile(w http.ResponseWriter, r *http.Request, file string, params GetIdentityBrandAssetsByFileParams)
+	// GetIdentityBrandRuleTargets List the targets a brand rule can name
+	// (GET /api/v1/identity/brand-rule-targets)
+	GetIdentityBrandRuleTargets(w http.ResponseWriter, r *http.Request)
+	// GetIdentityBrandRules List the brand rules
+	// (GET /api/v1/identity/brand-rules)
+	GetIdentityBrandRules(w http.ResponseWriter, r *http.Request)
+	// PutIdentityBrandRules Replace the brand rules
+	// (PUT /api/v1/identity/brand-rules)
+	PutIdentityBrandRules(w http.ResponseWriter, r *http.Request, params PutIdentityBrandRulesParams)
 	// GetIdentityBrandCss Get the brand stylesheet
 	// (GET /api/v1/identity/brand.css)
 	GetIdentityBrandCss(w http.ResponseWriter, r *http.Request, params GetIdentityBrandCssParams)
@@ -4161,15 +4469,30 @@ type ServerInterface interface {
 	// GetIdentityBrands List the brands
 	// (GET /api/v1/identity/brands)
 	GetIdentityBrands(w http.ResponseWriter, r *http.Request)
+	// PostIdentityBrands Create a brand
+	// (POST /api/v1/identity/brands)
+	PostIdentityBrands(w http.ResponseWriter, r *http.Request)
+	// GetIdentityBrandsResolution Who sees which brand
+	// (GET /api/v1/identity/brands/resolution)
+	GetIdentityBrandsResolution(w http.ResponseWriter, r *http.Request, params GetIdentityBrandsResolutionParams)
+	// DeleteIdentityBrandsById Delete a brand
+	// (DELETE /api/v1/identity/brands/{id})
+	DeleteIdentityBrandsById(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params DeleteIdentityBrandsByIdParams)
 	// GetIdentityBrandsById Get a brand
 	// (GET /api/v1/identity/brands/{id})
 	GetIdentityBrandsById(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 	// PutIdentityBrandsById Save a brand's draft
 	// (PUT /api/v1/identity/brands/{id})
 	PutIdentityBrandsById(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params PutIdentityBrandsByIdParams)
+	// PostIdentityBrandsByIdArchive Archive a brand
+	// (POST /api/v1/identity/brands/{id}/archive)
+	PostIdentityBrandsByIdArchive(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params PostIdentityBrandsByIdArchiveParams)
 	// PostIdentityBrandsByIdDiscardDraft Discard a brand's draft
 	// (POST /api/v1/identity/brands/{id}/discard-draft)
 	PostIdentityBrandsByIdDiscardDraft(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params PostIdentityBrandsByIdDiscardDraftParams)
+	// PostIdentityBrandsByIdDuplicate Duplicate a brand
+	// (POST /api/v1/identity/brands/{id}/duplicate)
+	PostIdentityBrandsByIdDuplicate(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params PostIdentityBrandsByIdDuplicateParams)
 	// DeleteIdentityBrandsByIdLogosBySlot Remove a brand logo from the draft
 	// (DELETE /api/v1/identity/brands/{id}/logos/{slot})
 	DeleteIdentityBrandsByIdLogosBySlot(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, slot DeleteIdentityBrandsByIdLogosBySlotParamsSlot)
@@ -4179,9 +4502,15 @@ type ServerInterface interface {
 	// PutIdentityBrandsByIdLogosBySlot Set a brand logo in the draft
 	// (PUT /api/v1/identity/brands/{id}/logos/{slot})
 	PutIdentityBrandsByIdLogosBySlot(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, slot PutIdentityBrandsByIdLogosBySlotParamsSlot)
+	// PostIdentityBrandsByIdMakeDefault Make a brand the default
+	// (POST /api/v1/identity/brands/{id}/make-default)
+	PostIdentityBrandsByIdMakeDefault(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params PostIdentityBrandsByIdMakeDefaultParams)
 	// PostIdentityBrandsByIdPublish Publish a brand's draft
 	// (POST /api/v1/identity/brands/{id}/publish)
 	PostIdentityBrandsByIdPublish(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params PostIdentityBrandsByIdPublishParams)
+	// PostIdentityBrandsByIdRestore Restore a brand
+	// (POST /api/v1/identity/brands/{id}/restore)
+	PostIdentityBrandsByIdRestore(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params PostIdentityBrandsByIdRestoreParams)
 	// GetIdentityIntegrations List the integrations
 	// (GET /api/v1/identity/integrations)
 	GetIdentityIntegrations(w http.ResponseWriter, r *http.Request)
@@ -5229,6 +5558,20 @@ func (siw *ServerInterfaceWrapper) PutIdentityAccountAvatar(w http.ResponseWrite
 	handler.ServeHTTP(w, r)
 }
 
+// PutIdentityAccountBrand operation middleware
+func (siw *ServerInterfaceWrapper) PutIdentityAccountBrand(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutIdentityAccountBrand(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetIdentityAccountMfa operation middleware
 func (siw *ServerInterfaceWrapper) GetIdentityAccountMfa(w http.ResponseWriter, r *http.Request) {
 
@@ -5611,6 +5954,79 @@ func (siw *ServerInterfaceWrapper) GetIdentityBrandAssetsByFile(w http.ResponseW
 	handler.ServeHTTP(w, r)
 }
 
+// GetIdentityBrandRuleTargets operation middleware
+func (siw *ServerInterfaceWrapper) GetIdentityBrandRuleTargets(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetIdentityBrandRuleTargets(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetIdentityBrandRules operation middleware
+func (siw *ServerInterfaceWrapper) GetIdentityBrandRules(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetIdentityBrandRules(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutIdentityBrandRules operation middleware
+func (siw *ServerInterfaceWrapper) PutIdentityBrandRules(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PutIdentityBrandRulesParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutIdentityBrandRules(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetIdentityBrandCss operation middleware
 func (siw *ServerInterfaceWrapper) GetIdentityBrandCss(w http.ResponseWriter, r *http.Request) {
 
@@ -5671,6 +6087,120 @@ func (siw *ServerInterfaceWrapper) GetIdentityBrands(w http.ResponseWriter, r *h
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetIdentityBrands(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostIdentityBrands operation middleware
+func (siw *ServerInterfaceWrapper) PostIdentityBrands(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostIdentityBrands(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetIdentityBrandsResolution operation middleware
+func (siw *ServerInterfaceWrapper) GetIdentityBrandsResolution(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetIdentityBrandsResolutionParams
+
+	// ------------- Optional query parameter "userId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "userId", r.URL.Query(), &params.UserId, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "userId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "userId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "email" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "email", r.URL.Query(), &params.Email, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "email"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "email", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetIdentityBrandsResolution(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteIdentityBrandsById operation middleware
+func (siw *ServerInterfaceWrapper) DeleteIdentityBrandsById(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DeleteIdentityBrandsByIdParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteIdentityBrandsById(w, r, id, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5760,6 +6290,60 @@ func (siw *ServerInterfaceWrapper) PutIdentityBrandsById(w http.ResponseWriter, 
 	handler.ServeHTTP(w, r)
 }
 
+// PostIdentityBrandsByIdArchive operation middleware
+func (siw *ServerInterfaceWrapper) PostIdentityBrandsByIdArchive(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PostIdentityBrandsByIdArchiveParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostIdentityBrandsByIdArchive(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // PostIdentityBrandsByIdDiscardDraft operation middleware
 func (siw *ServerInterfaceWrapper) PostIdentityBrandsByIdDiscardDraft(w http.ResponseWriter, r *http.Request) {
 
@@ -5805,6 +6389,60 @@ func (siw *ServerInterfaceWrapper) PostIdentityBrandsByIdDiscardDraft(w http.Res
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostIdentityBrandsByIdDiscardDraft(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostIdentityBrandsByIdDuplicate operation middleware
+func (siw *ServerInterfaceWrapper) PostIdentityBrandsByIdDuplicate(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PostIdentityBrandsByIdDuplicateParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostIdentityBrandsByIdDuplicate(w, r, id, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5935,6 +6573,60 @@ func (siw *ServerInterfaceWrapper) PutIdentityBrandsByIdLogosBySlot(w http.Respo
 	handler.ServeHTTP(w, r)
 }
 
+// PostIdentityBrandsByIdMakeDefault operation middleware
+func (siw *ServerInterfaceWrapper) PostIdentityBrandsByIdMakeDefault(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PostIdentityBrandsByIdMakeDefaultParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostIdentityBrandsByIdMakeDefault(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // PostIdentityBrandsByIdPublish operation middleware
 func (siw *ServerInterfaceWrapper) PostIdentityBrandsByIdPublish(w http.ResponseWriter, r *http.Request) {
 
@@ -5980,6 +6672,60 @@ func (siw *ServerInterfaceWrapper) PostIdentityBrandsByIdPublish(w http.Response
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostIdentityBrandsByIdPublish(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostIdentityBrandsByIdRestore operation middleware
+func (siw *ServerInterfaceWrapper) PostIdentityBrandsByIdRestore(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PostIdentityBrandsByIdRestoreParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostIdentityBrandsByIdRestore(w, r, id, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -9198,6 +9944,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/account/avatar", wrapper.GetIdentityAccountAvatar)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/account/avatar", wrapper.PostIdentityAccountAvatar)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/identity/account/avatar", wrapper.PutIdentityAccountAvatar)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/identity/account/brand", wrapper.PutIdentityAccountBrand)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/account/mfa", wrapper.GetIdentityAccountMfa)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/account/mfa/disable", wrapper.PostIdentityAccountMfaDisable)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/account/mfa/enable", wrapper.PostIdentityAccountMfaEnable)
@@ -9219,16 +9966,26 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/bootstrap-status", wrapper.GetIdentityBootstrapStatus)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/brand", wrapper.GetIdentityBrand)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/brand-assets/{file}", wrapper.GetIdentityBrandAssetsByFile)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/brand-rule-targets", wrapper.GetIdentityBrandRuleTargets)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/brand-rules", wrapper.GetIdentityBrandRules)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/identity/brand-rules", wrapper.PutIdentityBrandRules)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/brand.css", wrapper.GetIdentityBrandCss)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/brand/public", wrapper.GetIdentityBrandPublic)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/brands", wrapper.GetIdentityBrands)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/brands", wrapper.PostIdentityBrands)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/brands/resolution", wrapper.GetIdentityBrandsResolution)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/identity/brands/{id}", wrapper.DeleteIdentityBrandsById)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/brands/{id}", wrapper.GetIdentityBrandsById)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/identity/brands/{id}", wrapper.PutIdentityBrandsById)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/brands/{id}/archive", wrapper.PostIdentityBrandsByIdArchive)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/brands/{id}/discard-draft", wrapper.PostIdentityBrandsByIdDiscardDraft)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/brands/{id}/duplicate", wrapper.PostIdentityBrandsByIdDuplicate)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/identity/brands/{id}/logos/{slot}", wrapper.DeleteIdentityBrandsByIdLogosBySlot)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/brands/{id}/logos/{slot}", wrapper.GetIdentityBrandsByIdLogosBySlot)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/identity/brands/{id}/logos/{slot}", wrapper.PutIdentityBrandsByIdLogosBySlot)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/brands/{id}/make-default", wrapper.PostIdentityBrandsByIdMakeDefault)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/brands/{id}/publish", wrapper.PostIdentityBrandsByIdPublish)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/brands/{id}/restore", wrapper.PostIdentityBrandsByIdRestore)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/integrations", wrapper.GetIdentityIntegrations)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/integrations", wrapper.PostIdentityIntegrations)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/integrations/{id}", wrapper.GetIdentityIntegrationsById)
@@ -11635,6 +12392,84 @@ func (response PutIdentityAccountAvatar409JSONResponse) VisitPutIdentityAccountA
 	return err
 }
 
+type PutIdentityAccountBrandRequestObject struct {
+	Body *PutIdentityAccountBrandJSONRequestBody
+}
+
+type PutIdentityAccountBrandResponseObject interface {
+	VisitPutIdentityAccountBrandResponse(w http.ResponseWriter) error
+}
+
+type PutIdentityAccountBrand200JSONResponse ResolvedBrand
+
+func (response PutIdentityAccountBrand200JSONResponse) VisitPutIdentityAccountBrandResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityAccountBrand400JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutIdentityAccountBrand400JSONResponse) VisitPutIdentityAccountBrandResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityAccountBrand401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutIdentityAccountBrand401JSONResponse) VisitPutIdentityAccountBrandResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityAccountBrand403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutIdentityAccountBrand403JSONResponse) VisitPutIdentityAccountBrandResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityAccountBrand409JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutIdentityAccountBrand409JSONResponse) VisitPutIdentityAccountBrandResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetIdentityAccountMfaRequestObject struct {
 }
 
@@ -13284,6 +14119,197 @@ func (response GetIdentityBrandAssetsByFile429JSONResponse) VisitGetIdentityBran
 	return err
 }
 
+type GetIdentityBrandRuleTargetsRequestObject struct {
+}
+
+type GetIdentityBrandRuleTargetsResponseObject interface {
+	VisitGetIdentityBrandRuleTargetsResponse(w http.ResponseWriter) error
+}
+
+type GetIdentityBrandRuleTargets200JSONResponse BrandRuleTargetsResponse
+
+func (response GetIdentityBrandRuleTargets200JSONResponse) VisitGetIdentityBrandRuleTargetsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityBrandRuleTargets401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityBrandRuleTargets401JSONResponse) VisitGetIdentityBrandRuleTargetsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityBrandRuleTargets403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityBrandRuleTargets403JSONResponse) VisitGetIdentityBrandRuleTargetsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityBrandRulesRequestObject struct {
+}
+
+type GetIdentityBrandRulesResponseObject interface {
+	VisitGetIdentityBrandRulesResponse(w http.ResponseWriter) error
+}
+
+type GetIdentityBrandRules200JSONResponse BrandRulesResponse
+
+func (response GetIdentityBrandRules200JSONResponse) VisitGetIdentityBrandRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityBrandRules401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityBrandRules401JSONResponse) VisitGetIdentityBrandRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityBrandRules403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityBrandRules403JSONResponse) VisitGetIdentityBrandRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityBrandRulesRequestObject struct {
+	Params PutIdentityBrandRulesParams
+	Body   *PutIdentityBrandRulesJSONRequestBody
+}
+
+type PutIdentityBrandRulesResponseObject interface {
+	VisitPutIdentityBrandRulesResponse(w http.ResponseWriter) error
+}
+
+type PutIdentityBrandRules200JSONResponse BrandRulesResponse
+
+func (response PutIdentityBrandRules200JSONResponse) VisitPutIdentityBrandRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityBrandRules400JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutIdentityBrandRules400JSONResponse) VisitPutIdentityBrandRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityBrandRules401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutIdentityBrandRules401JSONResponse) VisitPutIdentityBrandRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityBrandRules403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutIdentityBrandRules403JSONResponse) VisitPutIdentityBrandRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityBrandRules409JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutIdentityBrandRules409JSONResponse) VisitPutIdentityBrandRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityBrandRules422JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutIdentityBrandRules422JSONResponse) VisitPutIdentityBrandRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetIdentityBrandCssRequestObject struct {
 	Params GetIdentityBrandCssParams
 }
@@ -13410,6 +14436,237 @@ func (response GetIdentityBrands403JSONResponse) VisitGetIdentityBrandsResponse(
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityBrandsRequestObject struct {
+	Body *PostIdentityBrandsJSONRequestBody
+}
+
+type PostIdentityBrandsResponseObject interface {
+	VisitPostIdentityBrandsResponse(w http.ResponseWriter) error
+}
+
+type PostIdentityBrands201JSONResponse BrandResponse
+
+func (response PostIdentityBrands201JSONResponse) VisitPostIdentityBrandsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityBrands400JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityBrands400JSONResponse) VisitPostIdentityBrandsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityBrands401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityBrands401JSONResponse) VisitPostIdentityBrandsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityBrands403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityBrands403JSONResponse) VisitPostIdentityBrandsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityBrands409JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityBrands409JSONResponse) VisitPostIdentityBrandsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityBrands422JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityBrands422JSONResponse) VisitPostIdentityBrandsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityBrandsResolutionRequestObject struct {
+	Params GetIdentityBrandsResolutionParams
+}
+
+type GetIdentityBrandsResolutionResponseObject interface {
+	VisitGetIdentityBrandsResolutionResponse(w http.ResponseWriter) error
+}
+
+type GetIdentityBrandsResolution200JSONResponse BrandResolution
+
+func (response GetIdentityBrandsResolution200JSONResponse) VisitGetIdentityBrandsResolutionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityBrandsResolution400JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityBrandsResolution400JSONResponse) VisitGetIdentityBrandsResolutionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityBrandsResolution401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityBrandsResolution401JSONResponse) VisitGetIdentityBrandsResolutionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityBrandsResolution403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityBrandsResolution403JSONResponse) VisitGetIdentityBrandsResolutionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityBrandsResolution404Response struct {
+}
+
+func (response GetIdentityBrandsResolution404Response) VisitGetIdentityBrandsResolutionResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type DeleteIdentityBrandsByIdRequestObject struct {
+	Id     openapi_types.UUID `json:"id"`
+	Params DeleteIdentityBrandsByIdParams
+}
+
+type DeleteIdentityBrandsByIdResponseObject interface {
+	VisitDeleteIdentityBrandsByIdResponse(w http.ResponseWriter) error
+}
+
+type DeleteIdentityBrandsById204Response struct {
+}
+
+func (response DeleteIdentityBrandsById204Response) VisitDeleteIdentityBrandsByIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteIdentityBrandsById401JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteIdentityBrandsById401JSONResponse) VisitDeleteIdentityBrandsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteIdentityBrandsById403JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteIdentityBrandsById403JSONResponse) VisitDeleteIdentityBrandsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteIdentityBrandsById404Response struct {
+}
+
+func (response DeleteIdentityBrandsById404Response) VisitDeleteIdentityBrandsByIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type DeleteIdentityBrandsById409JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteIdentityBrandsById409JSONResponse) VisitDeleteIdentityBrandsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -13574,6 +14831,79 @@ func (response PutIdentityBrandsById422JSONResponse) VisitPutIdentityBrandsByIdR
 	return err
 }
 
+type PostIdentityBrandsByIdArchiveRequestObject struct {
+	Id     openapi_types.UUID `json:"id"`
+	Params PostIdentityBrandsByIdArchiveParams
+}
+
+type PostIdentityBrandsByIdArchiveResponseObject interface {
+	VisitPostIdentityBrandsByIdArchiveResponse(w http.ResponseWriter) error
+}
+
+type PostIdentityBrandsByIdArchive200JSONResponse BrandResponse
+
+func (response PostIdentityBrandsByIdArchive200JSONResponse) VisitPostIdentityBrandsByIdArchiveResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityBrandsByIdArchive401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityBrandsByIdArchive401JSONResponse) VisitPostIdentityBrandsByIdArchiveResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityBrandsByIdArchive403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityBrandsByIdArchive403JSONResponse) VisitPostIdentityBrandsByIdArchiveResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityBrandsByIdArchive404Response struct {
+}
+
+func (response PostIdentityBrandsByIdArchive404Response) VisitPostIdentityBrandsByIdArchiveResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostIdentityBrandsByIdArchive409JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityBrandsByIdArchive409JSONResponse) VisitPostIdentityBrandsByIdArchiveResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PostIdentityBrandsByIdDiscardDraftRequestObject struct {
 	Id     openapi_types.UUID `json:"id"`
 	Params PostIdentityBrandsByIdDiscardDraftParams
@@ -13636,6 +14966,79 @@ func (response PostIdentityBrandsByIdDiscardDraft404Response) VisitPostIdentityB
 type PostIdentityBrandsByIdDiscardDraft409JSONResponse externalRef0.AuthErrorResponse
 
 func (response PostIdentityBrandsByIdDiscardDraft409JSONResponse) VisitPostIdentityBrandsByIdDiscardDraftResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityBrandsByIdDuplicateRequestObject struct {
+	Id     openapi_types.UUID `json:"id"`
+	Params PostIdentityBrandsByIdDuplicateParams
+}
+
+type PostIdentityBrandsByIdDuplicateResponseObject interface {
+	VisitPostIdentityBrandsByIdDuplicateResponse(w http.ResponseWriter) error
+}
+
+type PostIdentityBrandsByIdDuplicate201JSONResponse BrandResponse
+
+func (response PostIdentityBrandsByIdDuplicate201JSONResponse) VisitPostIdentityBrandsByIdDuplicateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityBrandsByIdDuplicate401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityBrandsByIdDuplicate401JSONResponse) VisitPostIdentityBrandsByIdDuplicateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityBrandsByIdDuplicate403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityBrandsByIdDuplicate403JSONResponse) VisitPostIdentityBrandsByIdDuplicateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityBrandsByIdDuplicate404Response struct {
+}
+
+func (response PostIdentityBrandsByIdDuplicate404Response) VisitPostIdentityBrandsByIdDuplicateResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostIdentityBrandsByIdDuplicate409JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityBrandsByIdDuplicate409JSONResponse) VisitPostIdentityBrandsByIdDuplicateResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -13894,6 +15297,79 @@ func (response PutIdentityBrandsByIdLogosBySlot503JSONResponse) VisitPutIdentity
 	return err
 }
 
+type PostIdentityBrandsByIdMakeDefaultRequestObject struct {
+	Id     openapi_types.UUID `json:"id"`
+	Params PostIdentityBrandsByIdMakeDefaultParams
+}
+
+type PostIdentityBrandsByIdMakeDefaultResponseObject interface {
+	VisitPostIdentityBrandsByIdMakeDefaultResponse(w http.ResponseWriter) error
+}
+
+type PostIdentityBrandsByIdMakeDefault200JSONResponse BrandResponse
+
+func (response PostIdentityBrandsByIdMakeDefault200JSONResponse) VisitPostIdentityBrandsByIdMakeDefaultResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityBrandsByIdMakeDefault401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityBrandsByIdMakeDefault401JSONResponse) VisitPostIdentityBrandsByIdMakeDefaultResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityBrandsByIdMakeDefault403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityBrandsByIdMakeDefault403JSONResponse) VisitPostIdentityBrandsByIdMakeDefaultResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityBrandsByIdMakeDefault404Response struct {
+}
+
+func (response PostIdentityBrandsByIdMakeDefault404Response) VisitPostIdentityBrandsByIdMakeDefaultResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostIdentityBrandsByIdMakeDefault409JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityBrandsByIdMakeDefault409JSONResponse) VisitPostIdentityBrandsByIdMakeDefaultResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PostIdentityBrandsByIdPublishRequestObject struct {
 	Id     openapi_types.UUID `json:"id"`
 	Params PostIdentityBrandsByIdPublishParams
@@ -13977,6 +15453,79 @@ func (response PostIdentityBrandsByIdPublish422JSONResponse) VisitPostIdentityBr
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityBrandsByIdRestoreRequestObject struct {
+	Id     openapi_types.UUID `json:"id"`
+	Params PostIdentityBrandsByIdRestoreParams
+}
+
+type PostIdentityBrandsByIdRestoreResponseObject interface {
+	VisitPostIdentityBrandsByIdRestoreResponse(w http.ResponseWriter) error
+}
+
+type PostIdentityBrandsByIdRestore200JSONResponse BrandResponse
+
+func (response PostIdentityBrandsByIdRestore200JSONResponse) VisitPostIdentityBrandsByIdRestoreResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityBrandsByIdRestore401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityBrandsByIdRestore401JSONResponse) VisitPostIdentityBrandsByIdRestoreResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityBrandsByIdRestore403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityBrandsByIdRestore403JSONResponse) VisitPostIdentityBrandsByIdRestoreResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityBrandsByIdRestore404Response struct {
+}
+
+func (response PostIdentityBrandsByIdRestore404Response) VisitPostIdentityBrandsByIdRestoreResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostIdentityBrandsByIdRestore409JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityBrandsByIdRestore409JSONResponse) VisitPostIdentityBrandsByIdRestoreResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -23488,6 +25037,9 @@ type StrictServerInterface interface {
 	// PutIdentityAccountAvatar Upload the caller's avatar (same as POST)
 	// (PUT /api/v1/identity/account/avatar)
 	PutIdentityAccountAvatar(ctx context.Context, request PutIdentityAccountAvatarRequestObject) (PutIdentityAccountAvatarResponseObject, error)
+	// PutIdentityAccountBrand Choose my brand
+	// (PUT /api/v1/identity/account/brand)
+	PutIdentityAccountBrand(ctx context.Context, request PutIdentityAccountBrandRequestObject) (PutIdentityAccountBrandResponseObject, error)
 	// GetIdentityAccountMfa Get the caller's two-factor status
 	// (GET /api/v1/identity/account/mfa)
 	GetIdentityAccountMfa(ctx context.Context, request GetIdentityAccountMfaRequestObject) (GetIdentityAccountMfaResponseObject, error)
@@ -23551,6 +25103,15 @@ type StrictServerInterface interface {
 	// GetIdentityBrandAssetsByFile Get a published brand logo
 	// (GET /api/v1/identity/brand-assets/{file})
 	GetIdentityBrandAssetsByFile(ctx context.Context, request GetIdentityBrandAssetsByFileRequestObject) (GetIdentityBrandAssetsByFileResponseObject, error)
+	// GetIdentityBrandRuleTargets List the targets a brand rule can name
+	// (GET /api/v1/identity/brand-rule-targets)
+	GetIdentityBrandRuleTargets(ctx context.Context, request GetIdentityBrandRuleTargetsRequestObject) (GetIdentityBrandRuleTargetsResponseObject, error)
+	// GetIdentityBrandRules List the brand rules
+	// (GET /api/v1/identity/brand-rules)
+	GetIdentityBrandRules(ctx context.Context, request GetIdentityBrandRulesRequestObject) (GetIdentityBrandRulesResponseObject, error)
+	// PutIdentityBrandRules Replace the brand rules
+	// (PUT /api/v1/identity/brand-rules)
+	PutIdentityBrandRules(ctx context.Context, request PutIdentityBrandRulesRequestObject) (PutIdentityBrandRulesResponseObject, error)
 	// GetIdentityBrandCss Get the brand stylesheet
 	// (GET /api/v1/identity/brand.css)
 	GetIdentityBrandCss(ctx context.Context, request GetIdentityBrandCssRequestObject) (GetIdentityBrandCssResponseObject, error)
@@ -23560,15 +25121,30 @@ type StrictServerInterface interface {
 	// GetIdentityBrands List the brands
 	// (GET /api/v1/identity/brands)
 	GetIdentityBrands(ctx context.Context, request GetIdentityBrandsRequestObject) (GetIdentityBrandsResponseObject, error)
+	// PostIdentityBrands Create a brand
+	// (POST /api/v1/identity/brands)
+	PostIdentityBrands(ctx context.Context, request PostIdentityBrandsRequestObject) (PostIdentityBrandsResponseObject, error)
+	// GetIdentityBrandsResolution Who sees which brand
+	// (GET /api/v1/identity/brands/resolution)
+	GetIdentityBrandsResolution(ctx context.Context, request GetIdentityBrandsResolutionRequestObject) (GetIdentityBrandsResolutionResponseObject, error)
+	// DeleteIdentityBrandsById Delete a brand
+	// (DELETE /api/v1/identity/brands/{id})
+	DeleteIdentityBrandsById(ctx context.Context, request DeleteIdentityBrandsByIdRequestObject) (DeleteIdentityBrandsByIdResponseObject, error)
 	// GetIdentityBrandsById Get a brand
 	// (GET /api/v1/identity/brands/{id})
 	GetIdentityBrandsById(ctx context.Context, request GetIdentityBrandsByIdRequestObject) (GetIdentityBrandsByIdResponseObject, error)
 	// PutIdentityBrandsById Save a brand's draft
 	// (PUT /api/v1/identity/brands/{id})
 	PutIdentityBrandsById(ctx context.Context, request PutIdentityBrandsByIdRequestObject) (PutIdentityBrandsByIdResponseObject, error)
+	// PostIdentityBrandsByIdArchive Archive a brand
+	// (POST /api/v1/identity/brands/{id}/archive)
+	PostIdentityBrandsByIdArchive(ctx context.Context, request PostIdentityBrandsByIdArchiveRequestObject) (PostIdentityBrandsByIdArchiveResponseObject, error)
 	// PostIdentityBrandsByIdDiscardDraft Discard a brand's draft
 	// (POST /api/v1/identity/brands/{id}/discard-draft)
 	PostIdentityBrandsByIdDiscardDraft(ctx context.Context, request PostIdentityBrandsByIdDiscardDraftRequestObject) (PostIdentityBrandsByIdDiscardDraftResponseObject, error)
+	// PostIdentityBrandsByIdDuplicate Duplicate a brand
+	// (POST /api/v1/identity/brands/{id}/duplicate)
+	PostIdentityBrandsByIdDuplicate(ctx context.Context, request PostIdentityBrandsByIdDuplicateRequestObject) (PostIdentityBrandsByIdDuplicateResponseObject, error)
 	// DeleteIdentityBrandsByIdLogosBySlot Remove a brand logo from the draft
 	// (DELETE /api/v1/identity/brands/{id}/logos/{slot})
 	DeleteIdentityBrandsByIdLogosBySlot(ctx context.Context, request DeleteIdentityBrandsByIdLogosBySlotRequestObject) (DeleteIdentityBrandsByIdLogosBySlotResponseObject, error)
@@ -23578,9 +25154,15 @@ type StrictServerInterface interface {
 	// PutIdentityBrandsByIdLogosBySlot Set a brand logo in the draft
 	// (PUT /api/v1/identity/brands/{id}/logos/{slot})
 	PutIdentityBrandsByIdLogosBySlot(ctx context.Context, request PutIdentityBrandsByIdLogosBySlotRequestObject) (PutIdentityBrandsByIdLogosBySlotResponseObject, error)
+	// PostIdentityBrandsByIdMakeDefault Make a brand the default
+	// (POST /api/v1/identity/brands/{id}/make-default)
+	PostIdentityBrandsByIdMakeDefault(ctx context.Context, request PostIdentityBrandsByIdMakeDefaultRequestObject) (PostIdentityBrandsByIdMakeDefaultResponseObject, error)
 	// PostIdentityBrandsByIdPublish Publish a brand's draft
 	// (POST /api/v1/identity/brands/{id}/publish)
 	PostIdentityBrandsByIdPublish(ctx context.Context, request PostIdentityBrandsByIdPublishRequestObject) (PostIdentityBrandsByIdPublishResponseObject, error)
+	// PostIdentityBrandsByIdRestore Restore a brand
+	// (POST /api/v1/identity/brands/{id}/restore)
+	PostIdentityBrandsByIdRestore(ctx context.Context, request PostIdentityBrandsByIdRestoreRequestObject) (PostIdentityBrandsByIdRestoreResponseObject, error)
 	// GetIdentityIntegrations List the integrations
 	// (GET /api/v1/identity/integrations)
 	GetIdentityIntegrations(ctx context.Context, request GetIdentityIntegrationsRequestObject) (GetIdentityIntegrationsResponseObject, error)
@@ -24964,6 +26546,37 @@ func (sh *strictHandler) PutIdentityAccountAvatar(w http.ResponseWriter, r *http
 	}
 }
 
+// PutIdentityAccountBrand operation middleware
+func (sh *strictHandler) PutIdentityAccountBrand(w http.ResponseWriter, r *http.Request) {
+	var request PutIdentityAccountBrandRequestObject
+
+	var body PutIdentityAccountBrandJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutIdentityAccountBrand(ctx, request.(PutIdentityAccountBrandRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutIdentityAccountBrand")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutIdentityAccountBrandResponseObject); ok {
+		if err := validResponse.VisitPutIdentityAccountBrandResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetIdentityAccountMfa operation middleware
 func (sh *strictHandler) GetIdentityAccountMfa(w http.ResponseWriter, r *http.Request) {
 	var request GetIdentityAccountMfaRequestObject
@@ -25595,6 +27208,87 @@ func (sh *strictHandler) GetIdentityBrandAssetsByFile(w http.ResponseWriter, r *
 	}
 }
 
+// GetIdentityBrandRuleTargets operation middleware
+func (sh *strictHandler) GetIdentityBrandRuleTargets(w http.ResponseWriter, r *http.Request) {
+	var request GetIdentityBrandRuleTargetsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetIdentityBrandRuleTargets(ctx, request.(GetIdentityBrandRuleTargetsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetIdentityBrandRuleTargets")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetIdentityBrandRuleTargetsResponseObject); ok {
+		if err := validResponse.VisitGetIdentityBrandRuleTargetsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetIdentityBrandRules operation middleware
+func (sh *strictHandler) GetIdentityBrandRules(w http.ResponseWriter, r *http.Request) {
+	var request GetIdentityBrandRulesRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetIdentityBrandRules(ctx, request.(GetIdentityBrandRulesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetIdentityBrandRules")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetIdentityBrandRulesResponseObject); ok {
+		if err := validResponse.VisitGetIdentityBrandRulesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutIdentityBrandRules operation middleware
+func (sh *strictHandler) PutIdentityBrandRules(w http.ResponseWriter, r *http.Request, params PutIdentityBrandRulesParams) {
+	var request PutIdentityBrandRulesRequestObject
+
+	request.Params = params
+
+	var body PutIdentityBrandRulesJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutIdentityBrandRules(ctx, request.(PutIdentityBrandRulesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutIdentityBrandRules")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutIdentityBrandRulesResponseObject); ok {
+		if err := validResponse.VisitPutIdentityBrandRulesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetIdentityBrandCss operation middleware
 func (sh *strictHandler) GetIdentityBrandCss(w http.ResponseWriter, r *http.Request, params GetIdentityBrandCssParams) {
 	var request GetIdentityBrandCssRequestObject
@@ -25669,6 +27363,90 @@ func (sh *strictHandler) GetIdentityBrands(w http.ResponseWriter, r *http.Reques
 	}
 }
 
+// PostIdentityBrands operation middleware
+func (sh *strictHandler) PostIdentityBrands(w http.ResponseWriter, r *http.Request) {
+	var request PostIdentityBrandsRequestObject
+
+	var body PostIdentityBrandsJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostIdentityBrands(ctx, request.(PostIdentityBrandsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostIdentityBrands")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostIdentityBrandsResponseObject); ok {
+		if err := validResponse.VisitPostIdentityBrandsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetIdentityBrandsResolution operation middleware
+func (sh *strictHandler) GetIdentityBrandsResolution(w http.ResponseWriter, r *http.Request, params GetIdentityBrandsResolutionParams) {
+	var request GetIdentityBrandsResolutionRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetIdentityBrandsResolution(ctx, request.(GetIdentityBrandsResolutionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetIdentityBrandsResolution")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetIdentityBrandsResolutionResponseObject); ok {
+		if err := validResponse.VisitGetIdentityBrandsResolutionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteIdentityBrandsById operation middleware
+func (sh *strictHandler) DeleteIdentityBrandsById(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params DeleteIdentityBrandsByIdParams) {
+	var request DeleteIdentityBrandsByIdRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteIdentityBrandsById(ctx, request.(DeleteIdentityBrandsByIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteIdentityBrandsById")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteIdentityBrandsByIdResponseObject); ok {
+		if err := validResponse.VisitDeleteIdentityBrandsByIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetIdentityBrandsById operation middleware
 func (sh *strictHandler) GetIdentityBrandsById(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
 	var request GetIdentityBrandsByIdRequestObject
@@ -25729,6 +27507,33 @@ func (sh *strictHandler) PutIdentityBrandsById(w http.ResponseWriter, r *http.Re
 	}
 }
 
+// PostIdentityBrandsByIdArchive operation middleware
+func (sh *strictHandler) PostIdentityBrandsByIdArchive(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params PostIdentityBrandsByIdArchiveParams) {
+	var request PostIdentityBrandsByIdArchiveRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostIdentityBrandsByIdArchive(ctx, request.(PostIdentityBrandsByIdArchiveRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostIdentityBrandsByIdArchive")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostIdentityBrandsByIdArchiveResponseObject); ok {
+		if err := validResponse.VisitPostIdentityBrandsByIdArchiveResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // PostIdentityBrandsByIdDiscardDraft operation middleware
 func (sh *strictHandler) PostIdentityBrandsByIdDiscardDraft(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params PostIdentityBrandsByIdDiscardDraftParams) {
 	var request PostIdentityBrandsByIdDiscardDraftRequestObject
@@ -25749,6 +27554,33 @@ func (sh *strictHandler) PostIdentityBrandsByIdDiscardDraft(w http.ResponseWrite
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PostIdentityBrandsByIdDiscardDraftResponseObject); ok {
 		if err := validResponse.VisitPostIdentityBrandsByIdDiscardDraftResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostIdentityBrandsByIdDuplicate operation middleware
+func (sh *strictHandler) PostIdentityBrandsByIdDuplicate(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params PostIdentityBrandsByIdDuplicateParams) {
+	var request PostIdentityBrandsByIdDuplicateRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostIdentityBrandsByIdDuplicate(ctx, request.(PostIdentityBrandsByIdDuplicateRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostIdentityBrandsByIdDuplicate")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostIdentityBrandsByIdDuplicateResponseObject); ok {
+		if err := validResponse.VisitPostIdentityBrandsByIdDuplicateResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -25845,6 +27677,33 @@ func (sh *strictHandler) PutIdentityBrandsByIdLogosBySlot(w http.ResponseWriter,
 	}
 }
 
+// PostIdentityBrandsByIdMakeDefault operation middleware
+func (sh *strictHandler) PostIdentityBrandsByIdMakeDefault(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params PostIdentityBrandsByIdMakeDefaultParams) {
+	var request PostIdentityBrandsByIdMakeDefaultRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostIdentityBrandsByIdMakeDefault(ctx, request.(PostIdentityBrandsByIdMakeDefaultRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostIdentityBrandsByIdMakeDefault")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostIdentityBrandsByIdMakeDefaultResponseObject); ok {
+		if err := validResponse.VisitPostIdentityBrandsByIdMakeDefaultResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // PostIdentityBrandsByIdPublish operation middleware
 func (sh *strictHandler) PostIdentityBrandsByIdPublish(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params PostIdentityBrandsByIdPublishParams) {
 	var request PostIdentityBrandsByIdPublishRequestObject
@@ -25865,6 +27724,33 @@ func (sh *strictHandler) PostIdentityBrandsByIdPublish(w http.ResponseWriter, r 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PostIdentityBrandsByIdPublishResponseObject); ok {
 		if err := validResponse.VisitPostIdentityBrandsByIdPublishResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostIdentityBrandsByIdRestore operation middleware
+func (sh *strictHandler) PostIdentityBrandsByIdRestore(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params PostIdentityBrandsByIdRestoreParams) {
+	var request PostIdentityBrandsByIdRestoreRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostIdentityBrandsByIdRestore(ctx, request.(PostIdentityBrandsByIdRestoreRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostIdentityBrandsByIdRestore")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostIdentityBrandsByIdRestoreResponseObject); ok {
+		if err := validResponse.VisitPostIdentityBrandsByIdRestoreResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

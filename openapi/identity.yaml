@@ -3554,6 +3554,18 @@ components:
             required:
                 - businessTimeZone
             type: object
+        BrandCandidate:
+            properties:
+                id:
+                    format: uuid
+                    type: string
+                name:
+                    type: string
+            required:
+                - id
+                - name
+            type: object
+            x-vantigo-source: Vantigo.Identity
         BrandCheck:
             properties:
                 background:
@@ -3585,6 +3597,17 @@ components:
                 - background
                 - ratio
                 - pass
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        BrandChoiceRequest:
+            properties:
+                brandId:
+                    description: The brand to see, one of the candidates; null for automatic.
+                    format: uuid
+                    nullable: true
+                    type: string
+            required:
+                - brandId
             type: object
             x-vantigo-source: Vantigo.Identity
         BrandListResponse:
@@ -3634,6 +3657,100 @@ components:
                     $ref: '#/components/schemas/BrandLogo'
                 wordmark:
                     $ref: '#/components/schemas/BrandLogo'
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        BrandRef:
+            properties:
+                id:
+                    format: uuid
+                    type: string
+                name:
+                    type: string
+            required:
+                - id
+                - name
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        BrandResolution:
+            properties:
+                brand:
+                    $ref: '#/components/schemas/BrandRef'
+                candidates:
+                    items:
+                        $ref: '#/components/schemas/BrandCandidate'
+                    type: array
+                choiceIgnored:
+                    description: The person has a choice that is no longer one of their candidates, so it is ignored.
+                    type: boolean
+                details:
+                    $ref: '#/components/schemas/BrandResolutionDetails'
+                displayName:
+                    type: string
+                rule:
+                    $ref: '#/components/schemas/BrandResolutionRule'
+                source:
+                    enum:
+                        - choice
+                        - rule
+                        - default
+                    type: string
+                userId:
+                    format: uuid
+                    type: string
+            required:
+                - userId
+                - displayName
+                - brand
+                - source
+                - candidates
+                - choiceIgnored
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        BrandResolutionDetails:
+            description: Only for a caller who also holds staff:view, with Staff enabled.
+            properties:
+                accessGroups:
+                    items:
+                        type: string
+                    type: array
+                emailDomain:
+                    type: string
+                legalEntities:
+                    items:
+                        type: string
+                    type: array
+            required:
+                - emailDomain
+                - accessGroups
+                - legalEntities
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        BrandResolutionRule:
+            description: The first rule that matches the person (the one that decides unless they chose).
+            properties:
+                id:
+                    format: uuid
+                    type: string
+                kind:
+                    enum:
+                        - domain
+                        - legal_entity
+                        - access_group
+                    type: string
+                position:
+                    description: Where the rule stands in the list, from 1.
+                    format: int32
+                    type: integer
+                targetLabel:
+                    type: string
+                targetRef:
+                    type: string
+            required:
+                - id
+                - kind
+                - targetRef
+                - targetLabel
+                - position
             type: object
             x-vantigo-source: Vantigo.Identity
         BrandResponse:
@@ -3689,6 +3806,133 @@ components:
                 - draft
                 - checks
                 - logoStorageAvailable
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        BrandRule:
+            properties:
+                brandId:
+                    format: uuid
+                    type: string
+                brandName:
+                    type: string
+                id:
+                    format: uuid
+                    type: string
+                kind:
+                    enum:
+                        - domain
+                        - legal_entity
+                        - access_group
+                    type: string
+                position:
+                    format: int32
+                    type: integer
+                stale:
+                    description: The target no longer exists, is inactive or archived, or is a legal entity while Staff is off; the rule is kept and matches no one.
+                    type: boolean
+                staleReason:
+                    enum:
+                        - missing
+                        - inactive
+                        - archived
+                        - staff_disabled
+                    type: string
+                targetLabel:
+                    type: string
+                targetRef:
+                    type: string
+            required:
+                - id
+                - brandId
+                - brandName
+                - position
+                - kind
+                - targetRef
+                - targetLabel
+                - stale
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        BrandRuleInput:
+            properties:
+                brandId:
+                    format: uuid
+                    type: string
+                kind:
+                    enum:
+                        - domain
+                        - legal_entity
+                        - access_group
+                    type: string
+                targetRef:
+                    description: A domain (written in any case, with any trailing dot), a Staff legal entity id or an access group id.
+                    maxLength: 255
+                    minLength: 1
+                    type: string
+            required:
+                - brandId
+                - kind
+                - targetRef
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        BrandRuleTargetsResponse:
+            properties:
+                accessGroups:
+                    items:
+                        $ref: '#/components/schemas/BrandRuleTarget'
+                    type: array
+                legalEntities:
+                    items:
+                        $ref: '#/components/schemas/BrandRuleTarget'
+                    type: array
+                staffEnabled:
+                    type: boolean
+            required:
+                - staffEnabled
+                - accessGroups
+                - legalEntities
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        BrandRuleTarget:
+            properties:
+                available:
+                    description: False for a group that is inactive or a legal entity that is archived.
+                    type: boolean
+                id:
+                    type: string
+                name:
+                    type: string
+            required:
+                - id
+                - name
+                - available
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        BrandRulesRequest:
+            properties:
+                items:
+                    items:
+                        $ref: '#/components/schemas/BrandRuleInput'
+                    maxItems: 200
+                    type: array
+            required:
+                - items
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        BrandRulesResponse:
+            properties:
+                items:
+                    items:
+                        $ref: '#/components/schemas/BrandRule'
+                    type: array
+                revision:
+                    format: int32
+                    type: integer
+                staffEnabled:
+                    type: boolean
+            required:
+                - revision
+                - staffEnabled
+                - items
             type: object
             x-vantigo-source: Vantigo.Identity
         BrandSchemeTokens:
@@ -3858,14 +4102,25 @@ components:
                 brandId:
                     format: uuid
                     type: string
+                candidates:
+                    description: The brands the person may choose among (B12); the switcher shows with more than one. Empty on the public look.
+                    items:
+                        $ref: '#/components/schemas/BrandCandidate'
+                    type: array
+                choiceIgnored:
+                    description: The person has a choice that is no longer one of their candidates, so it is ignored.
+                    type: boolean
                 logos:
                     $ref: '#/components/schemas/BrandLogoUrls'
                 name:
                     type: string
                 source:
+                    description: Why the person sees this brand (B7).
                     enum:
                         - default
                         - preview
+                        - choice
+                        - rule
                     type: string
                 support:
                     $ref: '#/components/schemas/BrandSupport'
@@ -5321,6 +5576,53 @@ paths:
                 - Personal account settings
             x-vantigo-access: policy:ActiveAccount
             x-vantigo-api: never
+    /api/v1/identity/account/brand:
+        put:
+            description: 'Chooses, among the brands of the assignment rules that match the caller, the one they see (brands design B12), or null for "automatic" to follow the rules again. The choice beats the rules for as long as it is one of the candidates. A brand that is not a candidate is a 409 brand_not_candidate. The choice is a personal preference, like the colour scheme: it is not audited. It answers the brand now resolved. The caller''s other open sessions are told on the keyed live topic identity.brand:{userId}.'
+            operationId: putIdentityAccountBrand
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/BrandChoiceRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ResolvedBrand'
+                    description: 'OK'
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Bad Request - invalid_request.'
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Unauthorized'
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Forbidden'
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Conflict - brand_not_candidate, the brand is not one the caller is assigned.'
+            summary: 'Choose my brand'
+            tags:
+                - Brands
+            x-vantigo-access: policy:ActiveAccount
+            x-vantigo-api: never
+            x-vantigo-assistant: never
     /api/v1/identity/account/mfa:
         get:
             operationId: getIdentityAccountMfa
@@ -6258,6 +6560,123 @@ paths:
                 - Brands
             x-vantigo-access: anonymous
             x-vantigo-api: never
+    /api/v1/identity/brand-rule-targets:
+        get:
+            description: 'What the rule editor''s pickers offer (brands design B8, B9): every access group, and the Staff legal entities while Staff is enabled (staffEnabled says so).'
+            operationId: getIdentityBrandRuleTargets
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/BrandRuleTargetsResponse'
+                    description: 'OK'
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Unauthorized'
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Forbidden'
+            summary: 'List the targets a brand rule can name'
+            tags:
+                - Brands
+            x-vantigo-access: permission:identity:brands
+            x-vantigo-api: never
+            x-vantigo-assistant: never
+    /api/v1/identity/brand-rules:
+        get:
+            description: 'The whole ordered list of assignment rules, every brand''s together (brands design B8): the first rule that matches a person decides their brand. Each rule carries a label for its target and says when the target no longer exists (stale). The revision is the If-Match of the next PUT.'
+            operationId: getIdentityBrandRules
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/BrandRulesResponse'
+                    description: 'OK'
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Unauthorized'
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Forbidden'
+            summary: 'List the brand rules'
+            tags:
+                - Brands
+            x-vantigo-access: permission:identity:brands
+            x-vantigo-api: never
+            x-vantigo-assistant: never
+        put:
+            description: 'Replaces the whole ordered list in one transaction (brands design B8): the order of items is the order of the rules. A domain is written in lower case and punycode and is attached to at most one brand. A rule must name an existing target and a brand that is not archived, except that a rule already in the list is kept while its target is gone. Audited brand_rules.changed. Open sessions are told on the live topic identity.brand.'
+            operationId: putIdentityBrandRules
+            parameters:
+                - description: The revision it was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 stale_revision.
+                  in: header
+                  name: If-Match
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/BrandRulesRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/BrandRulesResponse'
+                    description: 'OK'
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Bad Request - invalid_request, or an If-Match that is not a revision.'
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Unauthorized'
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Forbidden'
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Conflict - stale_revision, the list has changed since If-Match.'
+                "422":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Unprocessable Entity - rule_duplicate (a kind and target appear twice), domain_taken (the domain belongs to another brand), domain_invalid, rule_target_not_found (the group or legal entity does not exist), rule_brand_invalid (the brand does not exist or is archived), staff_disabled (a legal entity rule while Staff is off), too_many_rules; fields names the item.'
+            summary: 'Replace the brand rules'
+            tags:
+                - Brands
+            x-vantigo-access: permission:identity:brands
+            x-vantigo-api: never
+            x-vantigo-assistant: never
     /api/v1/identity/brand.css:
         get:
             description: 'The brand as CSS custom properties (brands design B16): the ten shades, the derived Mantine variables for both colour schemes and the radius, built only from generated values. It is linked render-blocking from the document so the first paint is right. Without a session it is the default brand; with a valid session cookie it is the person''s own brand. Answers carry an ETag and Vary: Cookie; with a session they are private, no-store, so no shared cache keeps one person''s brand, and without one public for 60 seconds.'
@@ -6337,7 +6756,154 @@ paths:
             x-vantigo-access: permission:identity:brands
             x-vantigo-api: never
             x-vantigo-assistant: never
+        post:
+            description: 'Creates a brand as a draft from its inputs (brands design B1, B21), the same as saving a draft: the name, the title, the primary colour, the radius and the support contacts; colours are generated on the server and a body that carries anything else is a 400. A brand never published matches no rule until it is published. Audited brand.created.'
+            operationId: postIdentityBrands
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/BrandUpdateRequest'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/BrandResponse'
+                    description: 'Created'
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Bad Request - invalid_request, or a field the body may not carry.'
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Unauthorized'
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Forbidden'
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Conflict - brand_name_taken, another brand has the name.'
+                "422":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Unprocessable Entity - brand_primary_range or brand_support_invalid.'
+            summary: 'Create a brand'
+            tags:
+                - Brands
+            x-vantigo-access: permission:identity:brands
+            x-vantigo-api: never
+            x-vantigo-assistant: never
+    /api/v1/identity/brands/resolution:
+        get:
+            description: 'For one person, the brand they see, why (their own choice, the rule that matched, or the default) and the brands they may choose among (brands design B11). It names no employment detail: of the person''s groups and legal entities only the rule that matched is shown. A caller who also holds the Staff permission staff:view, while Staff is enabled, gets the fuller explanation in details.'
+            operationId: getIdentityBrandsResolution
+            parameters:
+                - description: The person's id. Exactly one of userId and email.
+                  in: query
+                  name: userId
+                  schema:
+                    format: uuid
+                    type: string
+                - description: The person's e-mail address, as an alternative to userId.
+                  in: query
+                  name: email
+                  schema:
+                    maxLength: 320
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/BrandResolution'
+                    description: 'OK'
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Bad Request - not exactly one of userId and email, or userId is not an id.'
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Unauthorized'
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Forbidden'
+                "404":
+                    description: Not Found
+            summary: 'Who sees which brand'
+            tags:
+                - Brands
+            x-vantigo-access: permission:identity:brands
+            x-vantigo-api: never
+            x-vantigo-assistant: never
     /api/v1/identity/brands/{id}:
+        delete:
+            description: 'Deletes a brand that was never published (brands design B21); a published one is archived instead, because documents may name it. The default brand cannot be deleted. Its rules go with it and anyone whose choice it was is back to automatic. Audited brand.deleted.'
+            operationId: deleteIdentityBrandsById
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+                - description: The revision it was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 stale_revision.
+                  in: header
+                  name: If-Match
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "204":
+                    description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Unauthorized'
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Forbidden'
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Conflict - stale_revision, or brand_in_use (the brand was published or is the default).'
+            summary: 'Delete a brand'
+            tags:
+                - Brands
+            x-vantigo-access: permission:identity:brands
+            x-vantigo-api: never
+            x-vantigo-assistant: never
         get:
             description: 'One brand with its published version, its pending draft, and the contrast checks (brands design B4) and the nearest passing primary for the version being edited (the draft, else the published one).'
             operationId: getIdentityBrandsById
@@ -6444,6 +7010,56 @@ paths:
             x-vantigo-access: permission:identity:brands
             x-vantigo-api: never
             x-vantigo-assistant: never
+    /api/v1/identity/brands/{id}/archive:
+        post:
+            description: 'Takes a brand out of use (brands design B21): it can no longer be edited, assigned or chosen, its rules are removed and the choice of anyone who had picked it is cleared. It can be restored. The default brand cannot be archived (brand_in_use). Audited brand.archived.'
+            operationId: postIdentityBrandsByIdArchive
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+                - description: The revision it was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 stale_revision.
+                  in: header
+                  name: If-Match
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/BrandResponse'
+                    description: 'OK'
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Unauthorized'
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Forbidden'
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Conflict - stale_revision, or brand_in_use (the default brand).'
+            summary: 'Archive a brand'
+            tags:
+                - Brands
+            x-vantigo-access: permission:identity:brands
+            x-vantigo-api: never
+            x-vantigo-assistant: never
     /api/v1/identity/brands/{id}/discard-draft:
         post:
             description: 'Drops the pending version; the published version is what is left (brands design B20). Audited brand.updated.'
@@ -6489,6 +7105,56 @@ paths:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
                     description: Conflict - stale_revision, or no_draft when there is nothing to discard.
             summary: 'Discard a brand''s draft'
+            tags:
+                - Brands
+            x-vantigo-access: permission:identity:brands
+            x-vantigo-api: never
+            x-vantigo-assistant: never
+    /api/v1/identity/brands/{id}/duplicate:
+        post:
+            description: 'Creates a new draft brand from the version being edited, logos included, named after it with " (copy)" (brands design B21). Audited brand.created.'
+            operationId: postIdentityBrandsByIdDuplicate
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+                - description: The revision it was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 stale_revision.
+                  in: header
+                  name: If-Match
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/BrandResponse'
+                    description: 'Created'
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Unauthorized'
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Forbidden'
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Conflict - stale_revision, or brand_name_taken.'
+            summary: 'Duplicate a brand'
             tags:
                 - Brands
             x-vantigo-access: permission:identity:brands
@@ -6676,6 +7342,56 @@ paths:
             x-vantigo-access: permission:identity:brands
             x-vantigo-api: never
             x-vantigo-assistant: never
+    /api/v1/identity/brands/{id}/make-default:
+        post:
+            description: 'Makes a published brand the default, the one a person who matches no rule sees (brands design B5, B21); the previous default stays a brand of its own. Audited brand.default_changed.'
+            operationId: postIdentityBrandsByIdMakeDefault
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+                - description: The revision it was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 stale_revision.
+                  in: header
+                  name: If-Match
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/BrandResponse'
+                    description: 'OK'
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Unauthorized'
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Forbidden'
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Conflict - stale_revision, or brand_not_published.'
+            summary: 'Make a brand the default'
+            tags:
+                - Brands
+            x-vantigo-access: permission:identity:brands
+            x-vantigo-api: never
+            x-vantigo-assistant: never
     /api/v1/identity/brands/{id}/publish:
         post:
             description: 'Makes the draft the published version and bumps its version (brands design B20). Refused 422 brand_contrast, naming the failing pairs (B4), while any colour pair is below AA 4.5:1 in either colour scheme. Audited brand.published.'
@@ -6727,6 +7443,56 @@ paths:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
                     description: Unprocessable Entity - brand_contrast (fields names the failing pairs) or brand_primary_range.
             summary: 'Publish a brand''s draft'
+            tags:
+                - Brands
+            x-vantigo-access: permission:identity:brands
+            x-vantigo-api: never
+            x-vantigo-assistant: never
+    /api/v1/identity/brands/{id}/restore:
+        post:
+            description: 'Brings an archived brand back as published, if it ever was, else as a draft (brands design B21). Its rules are not restored. Audited brand.restored.'
+            operationId: postIdentityBrandsByIdRestore
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+                - description: The revision it was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 stale_revision.
+                  in: header
+                  name: If-Match
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/BrandResponse'
+                    description: 'OK'
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Unauthorized'
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Forbidden'
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Conflict - stale_revision, or not_archived.'
+            summary: 'Restore a brand'
             tags:
                 - Brands
             x-vantigo-access: permission:identity:brands
