@@ -239,6 +239,7 @@ var idempotencyExcluded = map[string]string{
 	"postIdentityAccountSessionsRevoke":                     "rule policy",
 	"postIdentityBootstrap":                                 "rule anonymous",
 	"postIdentityBrands":                                    "x-vantigo-api: never",
+	"postIdentityBrandsByIdCampaigns":                       "x-vantigo-api: never",
 	"postIdentityBrandsByIdArchive":                         "x-vantigo-api: never",
 	"postIdentityBrandsByIdDiscardDraft":                    "x-vantigo-api: never",
 	"postIdentityBrandsByIdDuplicate":                       "x-vantigo-api: never",
