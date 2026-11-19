@@ -639,7 +639,7 @@ export interface paths {
         };
         /**
          * Get the brand stylesheet
-         * @description The brand as CSS custom properties (brands design B16): the ten shades, the derived Mantine variables for both colour schemes and the radius, built only from generated values. It is linked render-blocking from the document so the first paint is right. Without a session it is the default brand; with a valid session cookie it is the person's own brand. Answers carry an ETag and Vary: Cookie; with a session they are private, no-cache.
+         * @description The brand as CSS custom properties (brands design B16): the ten shades, the derived Mantine variables for both colour schemes and the radius, built only from generated values. It is linked render-blocking from the document so the first paint is right. Without a session it is the default brand; with a valid session cookie it is the person's own brand. Answers carry an ETag and Vary: Cookie; with a session they are private, no-store, so no shared cache keeps one person's brand, and without one public for 60 seconds.
          */
         get: operations["getIdentityBrandCss"];
         put?: never;
@@ -7146,7 +7146,10 @@ export interface operations {
     getIdentityBrandAssetsByFile: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description The ETag a client holds; when it names the asset the answer is a bare 304, without reading the object store. */
+                "If-None-Match"?: string;
+            };
             path: {
                 /** @description The logo's SHA-256 in lower-case hex and its extension, png or jpg. */
                 file: string;
@@ -7164,6 +7167,13 @@ export interface operations {
                     "image/jpeg": string;
                     "image/png": string;
                 };
+            };
+            /** @description Not Modified - If-None-Match names this published asset. */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Not Found - no published brand names this asset. The body is empty. */
             404: {
