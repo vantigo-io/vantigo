@@ -327,27 +327,30 @@ const en = {
   "apiAccess.mcpMode_off": "Off",
   "apiAccess.mcpModeHint_off": "The integration's keys are refused at the MCP endpoint.",
   "apiAccess.mcpMode_read": "Read only",
-  "apiAccess.mcpModeHint_read": "An AI client may search the API and call operations that read. The safest choice.",
+  "apiAccess.mcpModeHint_read":
+    "An AI client may search the API and call operations that read. This limits MCP only: a key that is not read-only can still write over the REST API, so make the agent's key read-only too.",
   "apiAccess.mcpMode_read_write": "Read and write",
   "apiAccess.mcpModeHint_read_write":
-    "An AI client may also call operations that change data: create, change, delete and send. Most clients ask you before each one. A read-only key always only reads.",
+    "An AI client may also call operations that change data: create, change, delete and send. A client asks before it runs a tool unless you have allowed it: do not auto-approve write or delete. A read-only key always only reads.",
   "apiAccess.mcpWarning":
     "An AI client acts on what it reads, and a record can contain text written to mislead it. Give the integration only the roles the agent needs.",
-  "apiAccess.mcpWriteWarning": "A key with write access lets it change data: read only is safest.",
+  "apiAccess.mcpWriteWarning":
+    "A key with write access lets it change data. Only a read-only key guarantees that it only reads.",
   "apiAccess.mcpUrl": "MCP endpoint",
   "apiAccess.mcpClaudeCode": "Claude Code",
-  "apiAccess.mcpJson": "Cursor and other clients (mcp.json)",
+  "apiAccess.mcpJson": "Cursor (.cursor/mcp.json)",
   "apiAccess.mcpVsCode": "VS Code (.vscode/mcp.json)",
   "apiAccess.mcpSnippetHint":
-    "Replace vtg_… with one of the integration's keys. The key is shown only when it is made.",
+    "None of these holds the key. For Claude Code and Cursor, set {{variable}} to the key first (export {{variable}}=… in the shell you start them from); VS Code asks for the key once and keeps it. Never put a key in a file you commit. A key is shown only when it is made.",
   "apiAccess.mcpUnavailableTitle": "MCP is switched off",
   "apiAccess.mcpUnavailable":
     "MCP is switched off for this installation (MCP_ENABLED=0), so no key can connect whatever is chosen here.",
   "apiAccess.mcpKeyTitle": "Connect an AI client (MCP)",
-  "apiAccess.mcpKeyHint": "These carry the new key: keep them as secret as the key itself.",
   "apiAccess.mcpKeyReadOnly": "This key is read-only, so an AI client connected with it only reads.",
+  "apiAccess.mcpKeyNotReadOnly":
+    "This key is not read-only: whatever MCP allows, it can write over the REST API as far as the integration's roles go. For an agent that should only read, make a read-only key.",
   "apiAccess.mcpKeyOff":
-    "To connect an AI client over MCP with this key, turn MCP on under MCP on the integration's Overview first.",
+    "To connect an AI client over MCP with this key, turn MCP on in the MCP section of Overview first.",
 };
 
 const nb: Record<keyof typeof en, string> = {
@@ -669,27 +672,31 @@ const nb: Record<keyof typeof en, string> = {
   "apiAccess.mcpMode_off": "Av",
   "apiAccess.mcpModeHint_off": "Integrasjonens nøkler avvises ved MCP-endepunktet.",
   "apiAccess.mcpMode_read": "Bare lese",
-  "apiAccess.mcpModeHint_read": "En AI-klient kan søke i API-et og kalle operasjoner som leser. Det tryggeste valget.",
+  "apiAccess.mcpModeHint_read":
+    "En AI-klient kan søke i API-et og kalle operasjoner som leser. Dette begrenser bare MCP: en nøkkel som ikke er skrivebeskyttet, kan fortsatt skrive gjennom REST-API-et, så gjør også agentens nøkkel skrivebeskyttet.",
   "apiAccess.mcpMode_read_write": "Lese og skrive",
   "apiAccess.mcpModeHint_read_write":
-    "En AI-klient kan også kalle operasjoner som endrer data: opprette, endre, slette og sende. De fleste klienter spør deg før hver av dem. En skrivebeskyttet nøkkel leser alltid bare.",
+    "En AI-klient kan også kalle operasjoner som endrer data: opprette, endre, slette og sende. En klient spør før den kjører et verktøy med mindre du har tillatt det: ikke godkjenn write eller delete automatisk. En skrivebeskyttet nøkkel leser alltid bare.",
   "apiAccess.mcpWarning":
     "En AI-klient handler på det den leser, og en post kan inneholde tekst skrevet for å villede den. Gi integrasjonen bare rollene agenten trenger.",
-  "apiAccess.mcpWriteWarning": "En nøkkel med skrivetilgang lar den endre data: bare lese er tryggest.",
+  "apiAccess.mcpWriteWarning":
+    "En nøkkel med skrivetilgang lar den endre data. Bare en skrivebeskyttet nøkkel sikrer at den bare leser.",
   "apiAccess.mcpUrl": "MCP-endepunkt",
   "apiAccess.mcpClaudeCode": "Claude Code",
-  "apiAccess.mcpJson": "Cursor og andre klienter (mcp.json)",
+  "apiAccess.mcpJson": "Cursor (.cursor/mcp.json)",
   "apiAccess.mcpVsCode": "VS Code (.vscode/mcp.json)",
-  "apiAccess.mcpSnippetHint": "Bytt ut vtg_… med en av integrasjonens nøkler. Nøkkelen vises bare når den lages.",
+  "apiAccess.mcpSnippetHint":
+    "Ingen av disse inneholder nøkkelen. For Claude Code og Cursor setter du først {{variable}} til nøkkelen (export {{variable}}=… i skallet du starter dem fra); VS Code spør etter nøkkelen én gang og tar vare på den. Legg aldri en nøkkel i en fil du committer. En nøkkel vises bare når den lages.",
   "apiAccess.mcpUnavailableTitle": "MCP er slått av",
   "apiAccess.mcpUnavailable":
     "MCP er slått av for denne installasjonen (MCP_ENABLED=0), så ingen nøkkel kan koble seg til uansett hva som velges her.",
   "apiAccess.mcpKeyTitle": "Koble til en AI-klient (MCP)",
-  "apiAccess.mcpKeyHint": "Disse inneholder den nye nøkkelen: hold dem like hemmelige som selve nøkkelen.",
   "apiAccess.mcpKeyReadOnly":
     "Denne nøkkelen er skrivebeskyttet, så en AI-klient som kobler seg til med den, bare leser.",
+  "apiAccess.mcpKeyNotReadOnly":
+    "Denne nøkkelen er ikke skrivebeskyttet: uansett hva MCP tillater, kan den skrive gjennom REST-API-et så langt integrasjonens roller rekker. For en agent som bare skal lese, lag en skrivebeskyttet nøkkel.",
   "apiAccess.mcpKeyOff":
-    "For å koble en AI-klient til over MCP med denne nøkkelen slår du først på MCP under MCP på integrasjonens Oversikt.",
+    "For å koble en AI-klient til over MCP med denne nøkkelen slår du først på MCP i MCP-delen av Oversikt.",
 };
 
 export const apiAccessCatalog = { en, nb } as const satisfies CatalogResources;
