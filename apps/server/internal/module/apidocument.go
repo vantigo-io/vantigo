@@ -46,6 +46,10 @@ type apiDocuments struct {
 	full    []byte
 	catalog []contracts.Permission
 	server  string
+	// idempotency is whether the router honours an Idempotency-Key, which the
+	// documents then offer (idempotency design I25): Access is an enabled
+	// contracts.IdempotencyStore, as the router decides.
+	idempotency bool
 
 	contract   func() (*openapi3.T, error)
 	integrator func() ([]byte, error)
@@ -82,6 +86,9 @@ func newAPIDocuments(access contracts.Access, limiter *ratelimit.Limiter, full [
 		order:    list.New(),
 		filtered: map[string]*list.Element{},
 	}
+	if store, ok := access.(contracts.IdempotencyStore); ok && store.IdempotencyEnabled() {
+		d.idempotency = true
+	}
 	d.contract = sync.OnceValues(func() (*openapi3.T, error) {
 		doc, err := openapi3.NewLoader().LoadFromData(full)
 		if err != nil {
@@ -100,7 +107,7 @@ func (d *apiDocuments) build(filter *integrator.Filter) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	doc, err := integrator.Build(contract, d.catalog, filter)
+	doc, err := integrator.Build(contract, d.catalog, filter, d.options())
 	if err != nil {
 		return nil, err
 	}
@@ -114,9 +121,19 @@ func (d *apiDocuments) build(filter *integrator.Filter) ([]byte, error) {
 	return body, nil
 }
 
-// scoped answers the document for one key's scope, from the LRU when it is
-// there.
-func (d *apiDocuments) scoped(permissions []string, readOnly bool) ([]byte, error) {
+// options are integrator.Build's for this composition: module.Idempotent
+// when the router honours the header, nothing otherwise.
+func (d *apiDocuments) options() integrator.Options {
+	if !d.idempotency {
+		return integrator.Options{}
+	}
+	return integrator.Options{Idempotency: Idempotent}
+}
+
+// scopeKey is the LRU key of a scope, here and in the MCP catalogue — the
+// sorted permission set, the read-only flag and whether the Idempotency-Key is
+// offered — and the sorted permissions.
+func (d *apiDocuments) scopeKey(permissions []string, readOnly bool) (string, []string) {
 	permissions = slices.Clone(permissions)
 	slices.Sort(permissions)
 	permissions = slices.Compact(permissions)
@@ -124,6 +141,16 @@ func (d *apiDocuments) scoped(permissions []string, readOnly bool) ([]byte, erro
 	if readOnly {
 		key += " read-only"
 	}
+	if d.idempotency {
+		key += " idempotency"
+	}
+	return key, permissions
+}
+
+// scoped answers the document for one key's scope, from the LRU when it is
+// there.
+func (d *apiDocuments) scoped(permissions []string, readOnly bool) ([]byte, error) {
+	key, permissions := d.scopeKey(permissions, readOnly)
 
 	d.mu.Lock()
 	if el, ok := d.filtered[key]; ok {
@@ -252,5 +279,9 @@ func IntegratorDocument(mods ...Module) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return newAPIDocuments(nil, nil, full, catalog, "").integrator()
+	// No installation is named, so the document is the default's:
+	// IDEMPOTENCY_ENABLED is on and the Idempotency-Key offered.
+	d := newAPIDocuments(nil, nil, full, catalog, "")
+	d.idempotency = true
+	return d.integrator()
 }

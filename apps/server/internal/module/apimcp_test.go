@@ -936,7 +936,7 @@ func TestMCP_KindIsTheRoutersRule(t *testing.T) {
 		perms = append(perms, key)
 	}
 	ops := func(filter *integrator.Filter) map[string]bool {
-		doc, err := integrator.Build(contract, catalog, filter)
+		doc, err := integrator.Build(contract, catalog, filter, integrator.Options{})
 		if err != nil {
 			t.Fatal(err)
 		}

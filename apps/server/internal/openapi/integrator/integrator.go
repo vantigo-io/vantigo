@@ -37,7 +37,25 @@ type Filter struct {
 const (
 	CompatibilityURL = "https://docs.vantigo.io/en/reference/api-compatibility/"
 	APIAccessURL     = "https://docs.vantigo.io/en/admin/api-access/"
+	RetryingURL      = "https://docs.vantigo.io/en/reference/api-introduction/#retrying-safely"
 )
+
+// Options are what Build adds beyond what the access rules decide.
+type Options struct {
+	// Idempotency, when set, reports whether the router honours an
+	// Idempotency-Key on op, of method, under catalog: module.Idempotent
+	// (idempotency design I19, I25), passed in because this package may not
+	// import the router's. It is asked of every operation Build keeps, before
+	// Build changes it; to each it answers true for, Build adds the optional
+	// Idempotency-Key header and merges the middleware's 409 and 422 into the
+	// operation's own answers. Nil adds nothing: the callers leave it nil when
+	// IDEMPOTENCY_ENABLED is off, so the document never offers a header
+	// nothing honours.
+	Idempotency func(method string, op *openapi3.Operation, catalog []contracts.Permission) bool
+}
+
+// IdempotencyHeader is the header parameter Options.Idempotency adds.
+const IdempotencyHeader = "Idempotency-Key"
 
 // BearerScheme is the security scheme the document declares.
 const BearerScheme = "bearerAuth"
@@ -48,6 +66,27 @@ const (
 	forbiddenName       = "Forbidden"
 	rateLimitedName     = "RateLimited"
 	authErrorSchema     = "AuthErrorResponse"
+
+	idempotencyKeyName      = "IdempotencyKey"
+	idempotencyConflictName = "IdempotencyConflict"
+	idempotencyReusedName   = "IdempotencyKeyReused"
+)
+
+// The idempotency answers' texts: the description of an answer of their own,
+// after its title, and what is appended to an answer the operation documents.
+const (
+	idempotencyConflictText = "`error.code` is `idempotency_in_progress` when a request with the same " +
+		"Idempotency-Key is still running (retry after `Retry-After`, with the same key), and " +
+		"`idempotency_outcome_unknown` when the first request with it may or may not have been applied: " +
+		"read the record, then use a new key."
+	idempotencyReusedText = "`error.code` is `idempotency_key_reused` when the Idempotency-Key was sent " +
+		"before with a different request: use a new key for a new request."
+	idempotencyParameterText = "Optional. A value of your own (a UUID, say) that makes this request safe to " +
+		"retry: mint one key per intended action and send the same key with every retry of that action, " +
+		"never a new one. A retry with the same key and the same request is answered the first answer " +
+		"again, marked `Idempotent-Replayed: true`, instead of acting twice; a key is kept 24 hours. 1 to " +
+		"255 printable ASCII characters, else 400 `idempotency_key_invalid`; too many live keys is 429 " +
+		"`idempotency_quota`. [Retrying safely](" + RetryingURL + ")."
 )
 
 // Build answers the integrator's document for contract, the merged contract
@@ -71,7 +110,13 @@ const (
 // every schema, response, parameter, request body and header no kept
 // operation refers to, directly or through another component. servers is
 // the caller's: the composition sets APP_URL.
-func Build(contract *openapi3.T, catalog []contracts.Permission, filter *Filter) (*openapi3.T, error) {
+//
+// With opts.Idempotency, every operation it answers true for also gets the
+// optional Idempotency-Key header and the middleware's 409 and 422: appended
+// to the description, and offered beside the JSON schema as a oneOf, of an
+// answer the operation documents already, and as answers of their own where
+// it documents none.
+func Build(contract *openapi3.T, catalog []contracts.Permission, filter *Filter, opts Options) (*openapi3.T, error) {
 	doc, err := clone(contract)
 	if err != nil {
 		return nil, err
@@ -97,6 +142,9 @@ func Build(contract *openapi3.T, catalog []contracts.Permission, filter *Filter)
 				item.SetOperation(method, nil)
 				continue
 			}
+			if opts.Idempotency != nil && opts.Idempotency(method, op, catalog) {
+				addIdempotency(op)
+			}
 			decorate(op, *rule)
 		}
 		if len(item.Operations()) == 0 {
@@ -104,7 +152,7 @@ func Build(contract *openapi3.T, catalog []contracts.Permission, filter *Filter)
 		}
 	}
 
-	addComponents(doc)
+	addComponents(doc, opts.Idempotency != nil)
 	doc.Security = openapi3.SecurityRequirements{{BearerScheme: []string{}}}
 	if doc.Info == nil {
 		doc.Info = &openapi3.Info{Title: "Vantigo API", Version: "1"}
@@ -198,9 +246,60 @@ func decorate(op *openapi3.Operation, rule contracts.Rule) {
 	op.Responses.Set("429", &openapi3.ResponseRef{Ref: "#/components/responses/" + rateLimitedName})
 }
 
+// addIdempotency adds the Idempotency-Key header to op and merges the
+// middleware's 409 and 422 into its answers (idempotency design I25).
+func addIdempotency(op *openapi3.Operation) {
+	op.Parameters = append(op.Parameters, &openapi3.ParameterRef{Ref: "#/components/parameters/" + idempotencyKeyName})
+	if op.Responses == nil {
+		op.Responses = openapi3.NewResponses()
+	}
+	mergeResponse(op, "409", idempotencyConflictName, idempotencyConflictText)
+	mergeResponse(op, "422", idempotencyReusedName, idempotencyReusedText)
+}
+
+// mergeResponse makes op's answer code also say text. Where op documents no
+// such answer it refers to the component name; otherwise it is a copy of op's
+// own — never the shared component that may stand behind it — with text
+// appended to its description and the common error body offered beside its
+// JSON schema, as a oneOf, or as the JSON schema when it has none.
+func mergeResponse(op *openapi3.Operation, code, name, text string) {
+	ref := op.Responses.Value(code)
+	if ref == nil || ref.Value == nil {
+		op.Responses.Set(code, &openapi3.ResponseRef{Ref: "#/components/responses/" + name})
+		return
+	}
+	merged := *ref.Value
+	description := "With an Idempotency-Key, " + text
+	if merged.Description != nil && strings.TrimSpace(*merged.Description) != "" {
+		description = strings.TrimRight(*merged.Description, " \n") + " With an Idempotency-Key, " + text
+	}
+	merged.Description = &description
+
+	authError := &openapi3.SchemaRef{Ref: "#/components/schemas/" + authErrorSchema}
+	content := make(openapi3.Content, len(merged.Content)+1)
+	for contentType, media := range merged.Content {
+		content[contentType] = media
+	}
+	switch media := content["application/json"]; {
+	case media == nil:
+		content["application/json"] = &openapi3.MediaType{Schema: authError}
+	case media.Schema == nil:
+		copied := *media
+		copied.Schema = authError
+		content["application/json"] = &copied
+	case media.Schema.Ref != authError.Ref:
+		copied := *media
+		copied.Schema = &openapi3.SchemaRef{Value: &openapi3.Schema{OneOf: openapi3.SchemaRefs{media.Schema, authError}}}
+		content["application/json"] = &copied
+	}
+	merged.Content = content
+	op.Responses.Set(code, &openapi3.ResponseRef{Value: &merged})
+}
+
 // addComponents declares the bearer scheme, the error body and the three
-// answers decorate refers to.
-func addComponents(doc *openapi3.T) {
+// answers decorate refers to, and with idempotency the Idempotency-Key
+// parameter and the two answers addIdempotency may refer to.
+func addComponents(doc *openapi3.T, idempotency bool) {
 	if doc.Components == nil {
 		doc.Components = &openapi3.Components{}
 	}
@@ -257,6 +356,29 @@ func addComponents(doc *openapi3.T) {
 	c.Responses[unauthenticatedName] = &openapi3.ResponseRef{Value: unauthenticated}
 	c.Responses[forbiddenName] = &openapi3.ResponseRef{Value: forbidden}
 	c.Responses[rateLimitedName] = &openapi3.ResponseRef{Value: rateLimited}
+
+	if !idempotency {
+		return
+	}
+	conflict := body("Conflict. " + idempotencyConflictText)
+	conflict.Headers = openapi3.Headers{
+		"Retry-After": header("Seconds to wait before retrying with the same key, for idempotency_in_progress.", openapi3.NewIntegerSchema()),
+	}
+	c.Responses[idempotencyConflictName] = &openapi3.ResponseRef{Value: conflict}
+	c.Responses[idempotencyReusedName] = &openapi3.ResponseRef{Value: body("Unprocessable Entity. " + idempotencyReusedText)}
+	if c.Parameters == nil {
+		c.Parameters = openapi3.ParametersMap{}
+	}
+	key := openapi3.NewStringSchema()
+	key.MinLength = 1
+	maxLength := uint64(255)
+	key.MaxLength = &maxLength
+	c.Parameters[idempotencyKeyName] = &openapi3.ParameterRef{Value: &openapi3.Parameter{
+		Name:        IdempotencyHeader,
+		In:          openapi3.ParameterInHeader,
+		Description: idempotencyParameterText,
+		Schema:      &openapi3.SchemaRef{Value: key},
+	}}
 }
 
 // authError is common.yaml's AuthErrorResponse, for a contract that has none.

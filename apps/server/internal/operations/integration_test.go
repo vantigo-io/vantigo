@@ -279,6 +279,23 @@ func TestList_HidesWhatThePersonCannotCall(t *testing.T) {
 	}
 }
 
+// The Assistant sends an Idempotency-Key only where an operation declares one
+// of its own (idempotency design I16): the dispatcher describes the merged
+// contract, never the integrator's document that offers the router's general
+// key, so postProjects, which the router honours a key on with
+// IDEMPOTENCY_ENABLED on, as here, lists none.
+func TestDescribe_ListsNoGeneralIdempotencyKey(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	raw, err := h.Operations(t).Describe("postProjects")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "Idempotency-Key") {
+		t.Errorf("Describe(postProjects) offers an Idempotency-Key: %s", raw)
+	}
+}
+
 func TestSearchAndDescribe_OverTheRealContract(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)

@@ -53,7 +53,7 @@ func TestBuildGolden(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			contract := load(t)
 			before, _ := json.Marshal(contract)
-			doc, err := integrator.Build(contract, catalog, c.filter)
+			doc, err := integrator.Build(contract, catalog, c.filter, integrator.Options{})
 			if err != nil {
 				t.Fatalf("Build: %v", err)
 			}
@@ -102,7 +102,7 @@ func TestBuildGolden(t *testing.T) {
 func TestBuildRefusesAnInvalidRule(t *testing.T) {
 	contract := load(t)
 	contract.Paths.Value("/api/v1/widgets").Get.Extensions["x-vantigo-access"] = "permission:"
-	if _, err := integrator.Build(contract, catalog, nil); err == nil {
+	if _, err := integrator.Build(contract, catalog, nil, integrator.Options{}); err == nil {
 		t.Error("Build accepted an invalid access rule")
 	}
 }

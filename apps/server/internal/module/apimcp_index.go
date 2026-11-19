@@ -4,7 +4,6 @@ import (
 	"container/list"
 	"fmt"
 	"net/http"
-	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -56,6 +55,10 @@ type mcpOperation struct {
 	successStatus      string
 	successDescription string
 	success            *openapi3.SchemaRef
+	// idempotencyKey says the operation takes an Idempotency-Key: its own, or
+	// the one the integrator's document offers where the router honours it
+	// (idempotency design I15).
+	idempotencyKey bool
 
 	searchSummary, searchTag, searchPath, searchDescription string
 }
@@ -136,13 +139,7 @@ func operationKinds(contract *openapi3.T) (map[string]string, error) {
 // readOnly, only reads: the operations of the integrator's document for that
 // scope, from the LRU when it is there.
 func (c *mcpCatalogue) scoped(permissions []string, readOnly bool) (*mcpIndex, error) {
-	permissions = slices.Clone(permissions)
-	slices.Sort(permissions)
-	permissions = slices.Compact(permissions)
-	key := strings.Join(permissions, " ")
-	if readOnly {
-		key += " read-only"
-	}
+	key, permissions := c.docs.scopeKey(permissions, readOnly)
 
 	c.mu.Lock()
 	if el, ok := c.entries[key]; ok {
@@ -198,7 +195,7 @@ func (c *mcpCatalogue) build(filter *integrator.Filter) (*mcpIndex, error) {
 	if err != nil {
 		return nil, err
 	}
-	doc, err := integrator.Build(contract, c.docs.catalog, filter)
+	doc, err := integrator.Build(contract, c.docs.catalog, filter, c.docs.options())
 	if err != nil {
 		return nil, err
 	}
@@ -245,6 +242,11 @@ func newMCPOperation(path, method string, item *openapi3.PathItem, op *openapi3.
 		}
 		seen[key] = len(e.params)
 		e.params = append(e.params, p)
+	}
+	for _, p := range e.params {
+		if p.In == openapiInHeader && strings.EqualFold(p.Name, IdempotencyHeader) {
+			e.idempotencyKey = true
+		}
 	}
 
 	if op.RequestBody != nil && op.RequestBody.Value != nil {
