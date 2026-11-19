@@ -140,8 +140,8 @@ merkevare.
 
 ### Hvordan åpne økter følger med
 
-En publisering, en ny standard, en arkivering, en gjenoppretting, en sletting og en endring av
-reglene kunngjøres til åpne økter på sanntidsforbindelsen (`identity.brand`); en persons eget valg
+En publisering, en ny standard, en arkivering, en gjenoppretting, en sletting, en endring av
+reglene og en endring av en [kampanje](#kampanjer) kunngjøres til åpne økter på sanntidsforbindelsen (`identity.brand`); en persons eget valg
 kunngjøres til deres andre økter på `identity.brand:{userId}`, som bare de kan abonnere på. En økt
 henter merkevaren på nytt etter en tilfeldig ventetid på opptil fem sekunder, så en publisering
 til mange åpne økter ikke blir like mange forespørsler samtidig. Det Staff sier om en persons
@@ -234,6 +234,56 @@ fullt ut, uten logoer, og opplastingskontrollene sier hvorfor.
 Lagring og publisering bruker merkevarens revisjon (`If-Match`): to administratorer kan ikke
 overskrive hverandre; den andre får beskjed om å laste på nytt.
 
+## Kampanjer
+
+En **kampanje** er en datert variant av én merkevare, for eksempel Pride i juni eller et julepreg
+fra 1. desember til 6. januar. Den legges over merkevaren på datoene sine, og merkevaren kommer
+tilbake av seg selv etterpå. Kampanjer styres på fanen **Kampanjer** under **Arbeidsområde-admin ›
+Merkevare**, merkevare for merkevare, med samme tillatelse som selve merkevaren (`identity:brands`).
+
+| Del | Innhold |
+| --- | --- |
+| Navn | 1 til 100 tegn, for administrasjonen. |
+| Første dag, siste dag | Kalenderdatoer, begge med, leses i arbeidsområdets [forretningstidssone](/nb/user/workspace-administration/#innstillinger-for-arbeidsområdet): en kampanje slutter ved lokal midnatt, ikke ved midnatt UTC. |
+| Gjenta hvert år | Bare måned og dag teller; året til første dag er første året kampanjen vises. Et tidsrom som slutter før det begynner, for eksempel 1. desember til 6. januar, går over nyttår. 29. februar regnes som 28. februar i et år uten den. Et årlig tidsrom varer høyst 365 dager (`422 campaign_too_long`). |
+| På | En kampanje som er av, beholder innstillingene sine og vises aldri. |
+| Overlegg | Noe av: en annen hovedfarge, en annen tittel, andre logoer i de samme fire plassene. Det den utelater, er merkevarens. Hjørneradiusen og støttekontaktene endres aldri. |
+| Også i e-poster | Lagres. Systemets e-poster er ren tekst i dag, så det har **ingen virkning** før de bærer et merke. |
+
+**En kampanje har ikke noe utkast.** Den går i drift for alle så snart den lagres, så lenge den er
+på og på dagene den dekker; redigeringen sier det og viser overlegget i begge fargeskjemaene før du
+lagrer. En farge i overlegget behandles akkurat som merkevarens: du oppgir én hovedfarge, serveren
+bygger skalaen og tokenene (en forespørsel som bærer `tokens` eller `shades` avvises
+`400 invalid_request`), fargen må være en det kan bygges en skala av (`422 brand_primary_range`) og
+hvert par må kunne leses (`422 brand_contrast`, fordi en kampanje ikke har noe publiseringstrinn
+som kan stoppe det senere). Logoer følger [merkevarens logoregler](#logoer); en kampanjes logo
+serveres til alle uten innlogging bare mens kampanjen er på og gjelder.
+
+**Høyst én kampanje for en merkevare vises en gitt dag.** Når du lagrer, sammenligner serveren
+kampanjen med merkevarens andre kampanjer som er på, over to år fra den tidligste første dagen, så
+både et tidsrom over nyttår og en skuddagsdag prøves, og avviser en felles dag med
+`409 campaign_overlap`, som navngir den andre kampanjen og dagen. En kampanje som er av, tar ingen
+dager før den slås på.
+
+Hva folk ser: skallet, påloggingssiden for merkevarens domener og fanenes ikon får kampanjens
+farge, tittel og logoer på dagene, og `GET /api/v1/identity/brand`, `…/brand/public` og `brand.css`
+bærer den, med `campaign` (id og navn) og `validUntil`, starten på neste dag kampanjen som gjelder
+endres, i forretningstidssonen. En kampanje som opprettes, lagres, slås av eller slettes
+kunngjøres til åpne økter på `identity.brand`, og hver økt henter på nytt ved `validUntil`, eller
+etter seks timer hvis det er senere, eller når en fane våkner etter en grense; det finnes ingen
+bakgrunnsjobb.
+
+**Utstedte dokumenter endres aldri.** En faktura, et kreditnota, en purring, et sendt tilbud eller
+en bekreftet ordre bærer kundens eller ordrens vanlige merkevare, uansett hvilken kampanje som
+pågår.
+
+Hver skriving revideres, som `brand.campaign_created`, `brand.campaign_updated`,
+`brand.campaign_deleted`, `brand.campaign_logo_set` og `brand.campaign_logo_removed`. En merkevares
+kampanjer forsvinner med den hvis den slettes, og ignoreres mens den er arkivert. Utviklingsdataene
+legger inn to kampanjer, **Jul** (1. desember til 6. januar, hvert år) på standardmerkevaren og
+**Pride** (juni) på Nordlys, begge av slik at demoen ikke er sesongbasert; slå en på fra fanen
+Kampanjer.
+
 ## Hvordan siden får fargene uten blink
 
 Merkevaren når nettleseren som et stilark, `GET /api/v1/identity/brand.css`, lenket i sidens
@@ -301,6 +351,8 @@ tekst- og kantfargene forblir Vantigos i begge skjemaene.
 | `409 brand_archived` | Du prøvde å redigere, publisere eller forkaste utkastet til en arkivert merkevare; gjenopprett den først. |
 | `409 brand_in_use` | Du prøvde å arkivere standardmerkevaren, eller å slette en publisert merkevare eller standarden. |
 | `409 brand_not_candidate` | En person valgte en merkevare reglene deres ikke gir dem. |
+| `409 campaign_overlap` | En annen kampanje for merkevaren som er på, vises en av dagene; svaret navngir den og dagen. |
+| `422 campaign_too_long` | En kampanje som gjentas hvert år, spenner over mer enn 365 dager. |
 | `422 rule_duplicate`, `domain_taken`, `domain_invalid`, `rule_target_not_found`, `rule_brand_invalid`, `staff_disabled`, `too_many_rules` | En regelliste serveren avviste; `fields` navngir elementet. |
 | `400 logo_*` | Filen er ikke en akseptabel PNG eller JPEG: `logo_unsupported_type`, `logo_too_large`, `logo_too_wide`, `logo_too_small`, `logo_invalid`, `logo_not_square`. |
 | `503 storage_unavailable` | Ikke noe objektlager, eller det kunne ikke skrives til. |
