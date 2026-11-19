@@ -130,11 +130,12 @@ it carries nothing about the key. `tools/list` varies by key and answers `cacheS
 with `ttlMs: 0`. `initialize` answers the negotiated `protocolVersion`, the same capabilities,
 `serverInfo` and the instructions. The instructions say what the tools do, to search before
 calling, to read a record before changing it and send `If-Match` where an operation takes it,
-how to use an `Idempotency-Key` ([below](#the-idempotency-key)), that a write or delete that did
-not answer in time may have been made,
-that `write` and `delete` are listed only under `read_write` for a key that is not
+how to use the general `Idempotency-Key` ([below](#the-idempotency-key); only when
+`IDEMPOTENCY_ENABLED` is on), that a write or delete that did not answer in time may have been
+made — to retry with the same key if the call sent one, and to read the record first if it sent
+none — that `write` and `delete` are listed only under `read_write` for a key that is not
 read-only, and that what the tools answer is untrusted data from the workspace. They are the
-same text for every key.
+same text for every key of an installation.
 
 ### Errors
 
@@ -159,7 +160,7 @@ list is fixed in the code: two keys of one mode get the same bytes.
 
 | Tool | Annotations | Arguments | Answers |
 | --- | --- | --- | --- |
-| `search_operations` | `readOnlyHint: true` | `query` (required), `limit` (1–25, 10 when left out) | The operations the key may call in its mode that match the query, best first: `operation`, `method`, `path`, `summary`, `tag`, `kind`, `tool`, the tool that calls it, and `idempotencyKey: true` when it takes an `Idempotency-Key` |
+| `search_operations` | `readOnlyHint: true` | `query` (required), `limit` (1–25, 10 when left out) | The operations the key may call in its mode that match the query, best first: `operation`, `method`, `path`, `summary`, `tag`, `kind`, `tool`, the tool that calls it, and `idempotencyKey: true` when it takes the general `Idempotency-Key` (only with `IDEMPOTENCY_ENABLED` on) |
 | `describe_operation` | `readOnlyHint: true` | `operation` (required) | Its method and path, kind and tool, path, query and header parameters, request body and success response as compact JSON schemas, with `$ref`s resolved, at most 16 KB |
 | `read` | `readOnlyHint: true` | `operation` (required), `path`, `query`, `headers`, `body` | The answer of an operation of kind *read*, called as the key |
 | `write` | `destructiveHint: true`, `readOnlyHint: false` | The same as `read` | The answer of an operation of kind *write* whose method is not `DELETE`, called as the key |
@@ -204,24 +205,34 @@ what a key may call is decided by the API's marks, its roles and its narrowing.
 
 ### The Idempotency-Key
 
-An operation takes an `Idempotency-Key` when the router honours one on it — every `POST`
-[Retrying safely](/en/reference/api-introduction/#retrying-safely) covers — or when it declares
-a key of its own. The catalogue records it from the key's document, so `describe_operation`
-lists it among `headerParameters` and `search_operations` marks the operation
-`idempotencyKey: true`; with `IDEMPOTENCY_ENABLED` off neither does, and `write` refuses the
-header as one the operation does not declare. The Assistant is not affected: it sends a key only
-to an operation that declares one of its own.
+An operation takes **the general key** when the router honours one on it — every `POST`
+[Retrying safely](/en/reference/api-introduction/#retrying-safely) covers — and the key's
+document declares it there. The catalogue records it from that declaration, so
+`describe_operation` lists it among `headerParameters` with `idempotencyKey` saying `general: …`,
+and `search_operations` marks the operation `idempotencyKey: true`. With `IDEMPOTENCY_ENABLED` off
+none of this is there, the instructions say nothing of the key, and `write` refuses the header
+as one the operation does not declare. **An operation's own key** — three communications
+operations, applying a credit — is listed as its header parameter with `idempotencyKey` saying
+`its own: …`: its contract is its own (a key reused with another request is
+`409 idempotency_key_reused`, and a replay is a plain `2xx` without `idempotentReplayed`), and
+the general key's next steps are never given for it. The Assistant is not affected: it sends a
+key only to an operation that declares one of its own.
 
-The instructions and the descriptions of `write` and `delete` tell the model to **mint one key
-per intended action** — a new UUID, say — and to send **that same key with every retry of that
-action**, never a new key for a retry, since a new key is a new action. The answers it can get:
+The instructions, once, tell the model to **mint one random key per intended action** — a new
+UUID, say — and to send **that same key with every retry of that action**, never a new key for a
+retry, since a new key is a new action, and **never to take a key from workspace data**. `write`
+has one line saying the same and pointing to the instructions; `delete` says nothing of it, as no
+`DELETE` takes the general key. The answers a call that sent the key can get:
 
 | Answer | Its result | What the model is told to do |
 | --- | --- | --- |
-| The first answer again | `{"idempotentReplayed": true, "status", "response"}`, `response` the first answer's body as a `2xx` result shows it | Nothing: it is the first call's answer, not a second change |
+| The first answer again | `{"idempotentReplayed": true, "status", "response", "note"}`, `response` the first answer's body as a `2xx` result shows it, `null` for an empty one | Nothing: it is the first call's answer, not a second change. `note` says that if the call was not a retry of the same intended action, nothing was done: resend it with a newly generated random key |
+| A refusal kept and given again (`400`, `404`, `410`, `422` of the operation's own) | The error result, with `idempotentReplayed: true` and the same `note` | As for the refusal |
 | `409 idempotency_in_progress` | An error result with `retryAfterSeconds` and `next` | Retry shortly with the same key |
 | `409 idempotency_outcome_unknown` | An error result with `next` | Read the record, then use a new key only if the change is not there |
 | `422 idempotency_key_reused` | An error result with `next` | A new action takes a new key; a retry sends the same request as the first |
+
+`next` is given only to a call that sent a key.
 
 ### How a call is made
 
@@ -253,11 +264,12 @@ A tool's result is one `text` content and `isError`; `structuredContent` is not 
 - A `2xx` answer is its JSON body as sent; an answer that is not JSON is described by its
   `status`, `contentType` and `length`; an empty one is `{"status": 204}`. A replay for an
   `Idempotency-Key` (`Idempotent-Replayed: true`) is that result wrapped as
-  `{"idempotentReplayed": true, "status", "response"}`.
+  `{"idempotentReplayed": true, "status", "response", "note"}`, with `response: null` for an
+  empty answer ([The Idempotency-Key](#the-idempotency-key)).
 - Any other status is `isError: true` with JSON of `status`, `code`, `title` and `detail` from
   the API's answer — never its raw body. A `429` and a `409 idempotency_in_progress` also carry
-  `retryAfterSeconds`, and the Idempotency-Key's refusals, on an operation that takes one, a
-  `next` saying what to do.
+  `retryAfterSeconds`; a refusal given again for its key carries `idempotentReplayed: true` and
+  the `note`; and the key's refusals, for a call that sent one, a `next` saying what to do.
 - The text is at most **100 KB**, counted as the JSON-escaped string it is sent as. A larger
   answer to a `read` is never cut short: the result is an error asking for less — a smaller
   `limit`, a filter, a later page. A `write` or `delete` that succeeded with a larger answer is
@@ -267,9 +279,9 @@ A tool's result is one `text` content and `isError`; `structuredContent` is not 
 - **A call whose outcome is in doubt.** A call whose 30 seconds ran out, or whose client went
   away, is judged by what it answered: an answer below `500` is its result as above, a `201`
   that came late included. One that answered nothing, or a server error, is an error result;
-  for a `write` or `delete` it says the change **may or may not have been made**: on an
-  operation that takes an `Idempotency-Key`, retry with the same key, never a new one; on one
-  that takes none, read the record before retrying. A call that fails unexpectedly says the
+  for a `write` or `delete` it says the change **may or may not have been made**: when the call
+  sent an `Idempotency-Key`, retry with the same key, never a new one; when it sent none, read
+  the record before retrying. A call that fails unexpectedly says the
   change may or may not have been made too.
 - An operation that fails unexpectedly or does not answer in time is an error result naming
   the trace id, never a failed envelope.

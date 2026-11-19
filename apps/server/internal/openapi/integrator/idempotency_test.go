@@ -68,6 +68,19 @@ paths:
           content:
             application/json:
               schema: {$ref: '#/components/schemas/AuthErrorResponse'}
+  /api/v1/widgets/comms:
+    post:
+      operationId: postWidgetsComms
+      x-vantigo-access: permission:widgets:edit
+      responses:
+        "201": {description: Created}
+        "409":
+          description: Conflict — widget_taken.
+          headers:
+            retry-after: {schema: {type: integer}, description: Their own.}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CommsError'}
 components:
   responses:
     Locked:
@@ -84,6 +97,14 @@ components:
       type: object
       properties:
         error: {type: object}
+    CommsError:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code: {type: string}
+            message: {type: string}
 `
 
 func loadMerging(t *testing.T) *openapi3.T {
@@ -134,7 +155,7 @@ func TestBuild_TheIdempotencyOption(t *testing.T) {
 	if err := doc.Validate(context.Background()); err != nil {
 		t.Errorf("the document does not validate: %v", err)
 	}
-	if len(asked) != 5 {
+	if len(asked) != 6 {
 		t.Errorf("the predicate was asked of %v, want every kept operation", asked)
 	}
 	op := func(path string) *openapi3.Operation { return doc.Paths.Value(path).Post }
@@ -172,9 +193,20 @@ func TestBuild_TheIdempotencyOption(t *testing.T) {
 		!strings.Contains(d, "idempotency_key_reused") {
 		t.Errorf("422: %q", d)
 	}
-	one := unprocessable.Content["application/json"].Schema.Value.OneOf
-	if len(one) != 2 || one[0].Ref != "#/components/schemas/Problem" || one[1].Ref != "#/components/schemas/AuthErrorResponse" {
-		t.Errorf("422's JSON schema: %+v", unprocessable.Content["application/json"].Schema)
+	merged := unprocessable.Content["application/json"].Schema.Value
+	if len(merged.OneOf) != 0 || len(merged.AnyOf) != 2 || merged.AnyOf[0].Ref != "#/components/schemas/Problem" || merged.AnyOf[1].Ref != "#/components/schemas/AuthErrorResponse" {
+		t.Errorf("422's JSON schema: %+v", merged)
+	}
+	// A merged 409 declares Retry-After, and keeps a header of its own.
+	if conflict.Headers["Retry-After"] == nil {
+		t.Errorf("the merged 409 has no Retry-After: %+v", conflict.Headers)
+	}
+	comms := op("/api/v1/widgets/comms").Responses.Value("409").Value
+	if s := comms.Content["application/json"].Schema; s.Ref != "#/components/schemas/CommsError" {
+		t.Errorf("a schema that already takes the error body was changed: %+v", s)
+	}
+	if len(comms.Headers) != 1 || comms.Headers["retry-after"] == nil || comms.Headers["retry-after"].Value.Description != "Their own." {
+		t.Errorf("postWidgetsComms's headers: %+v", comms.Headers)
 	}
 	// Already the common body: not offered twice.
 	auth := op("/api/v1/widgets/auth").Responses.Value("422").Value

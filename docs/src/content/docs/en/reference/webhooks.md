@@ -232,10 +232,18 @@ queued, up to 4 at a time, and a failing message never holds another back, so a 
 message can arrive after a later one. Compare `sequence` only between messages about the same
 resource, fetch the resource for its state, and dedupe on `webhook-id`: a receiver keeps the
 ids it has handled and does nothing for one it has seen. Vantigo sends no `Idempotency-Key`; the
-`webhook-id` is the message's. When the receiver calls back into Vantigo to create something in
-answer, it can send an `Idempotency-Key` derived from the `webhook-id` — every operation that
-honours one declares it in the key's document — so a message handled twice creates it once
-([Retrying safely](/en/reference/api-introduction/#retrying-safely)).
+`webhook-id` is the message's.
+
+When the receiver calls back into Vantigo to create something in answer, it can also send an
+`Idempotency-Key` on the call, where the key's document declares one
+([Retrying safely](/en/reference/api-introduction/#retrying-safely)), so a message handled twice
+within 24 hours creates it once. Make **one key per message and action**, and make it
+unguessable: for example `HMAC-SHA256(receiver secret, webhook-id + ":" + step)`, where `step`
+names the action (`create-order`, `send-receipt`). A key is shared by every API key and every MCP
+agent of the integration, so a guessable one could be taken by another of its callers. The key
+does not replace the receiver's own dedupe on `webhook-id`: Vantigo keeps a key 24 hours, while
+a message is retried for about 45 hours and can be resent from the delivery log for 30 days, so
+a late attempt or a resend finds the key gone and the call runs again.
 
 ### When an endpoint is disabled
 

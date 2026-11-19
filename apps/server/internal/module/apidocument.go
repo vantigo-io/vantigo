@@ -131,8 +131,9 @@ func (d *apiDocuments) options() integrator.Options {
 }
 
 // scopeKey is the LRU key of a scope, here and in the MCP catalogue — the
-// sorted permission set, the read-only flag and whether the Idempotency-Key is
-// offered — and the sorted permissions.
+// sorted permission set and the read-only flag — and the sorted permissions.
+// Whether the Idempotency-Key is offered is no part of it: it is fixed for
+// the life of an apiDocuments, whose LRUs hold only documents built with it.
 func (d *apiDocuments) scopeKey(permissions []string, readOnly bool) (string, []string) {
 	permissions = slices.Clone(permissions)
 	slices.Sort(permissions)
@@ -140,9 +141,6 @@ func (d *apiDocuments) scopeKey(permissions []string, readOnly bool) (string, []
 	key := strings.Join(permissions, " ")
 	if readOnly {
 		key += " read-only"
-	}
-	if d.idempotency {
-		key += " idempotency"
 	}
 	return key, permissions
 }

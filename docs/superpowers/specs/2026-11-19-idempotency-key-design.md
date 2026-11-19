@@ -249,32 +249,53 @@ native mechanisms; `PATCH`/`DELETE`; server-minted keys for MCP; a per-integrati
     purpose stays far inside its bound at this volume (a key per installation, rows living 24 hours);
     should volume grow, revisit with XAES-256-GCM or a per-row subkey.
 
-- **2.3** (2026-11-19): delivery B as built, and where it departs from the text:
+- **2.3** (2026-11-19): delivery B as built, after its code review and security review, and where
+  it departs from the text:
   - *`Build`'s option* (I25) is `integrator.Options{Idempotency func(method, op, catalog) bool}`, a
     fourth parameter of `Build`, rather than a bool: depguard keeps `integrator` from the router's
     package, so the callers pass `module.Idempotent` in, and a nil predicate adds nothing. It is
     asked of every operation `Build` keeps, before `decorate`. The parameter is one component,
-    `components/parameters/IdempotencyKey` (string, 1–255, optional, its description linking
-    *Retrying safely*); where an operation documents no `409` or `422`, it refers to
+    `components/parameters/IdempotencyKey` (string, 1–255, optional; its description links
+    *Retrying safely* and says the header is honoured only where the live document declares it);
+    where an operation documents no `409` or `422`, it refers to
     `components/responses/IdempotencyConflict` (with `Retry-After`) or `IdempotencyKeyReused`;
     where it does, the operation gets a copy of its own answer — never the shared component it may
-    refer to — with "With an Idempotency-Key, …" appended to the description and
-    `AuthErrorResponse` beside its `application/json` schema as a `oneOf` (or as that schema, or as
-    a new `application/json`, beside a `problem+json` one). Over the composed contract 325
-    operations take the key: 266 answers merged, 384 of their own.
-  - *The switch* (I25): `apiDocuments` reads it once from the `contracts.IdempotencyStore` on
-    `Access`, as the router does, and both LRUs key on it (`scopeKey`). The offline document
-    (`vantigo openapi integrator`, `IntegratorDocument`) is the default installation's, so it
-    offers the key.
-  - *MCP* (I15): the catalogue records `idempotencyKey` from the document's parameter (a native one
-    counts too); `search_operations` answers `idempotencyKey: true`; `buildCall` needed no change.
-    The instructions, `write` and `delete` share one text (one key per intended action, the same
-    key for every retry, never a new key for one, and what each answer means). A replay's result is
-    `{"idempotentReplayed": true, "status", "response"}`; the three refusals carry a `next`, and
-    `idempotency_in_progress` its `retryAfterSeconds`. An unanswered write says to retry with the
-    same key where the operation takes one, and to read the record first where it takes none.
+    refer to — with "With an Idempotency-Key, …" appended to the description, `Retry-After` added
+    to a `409`'s headers unless it has one, and `AuthErrorResponse` beside its `application/json`
+    schema as an **`anyOf`** (review: a `oneOf` over the structurally identical
+    `CommunicationErrorResponse` could never match uniquely), left out where that schema already
+    takes `{"error": {code, message}}`, or as that schema, or as a new `application/json` beside a
+    `problem+json` one. The composed-contract test checks that the document's set equals the
+    router's (no hard-coded count; at 2026-11-19 about 325 operations, and 12 of the merged
+    schemas already took the error body).
+  - *The switch* (I25): `apiDocuments` reads it once, from the `contracts.IdempotencyStore` on
+    `Access`, as the router does; it is fixed for the life of the documents, so it is no part of
+    the LRU keys. The offline document (`vantigo openapi integrator`, `IntegratorDocument`) is the
+    default installation's, so it offers the key. With a store switched off, the router answers a
+    request that sent a key to an in-scope operation with `Idempotency-Key-Ignored: true` (security
+    review S3), from the same predicate and without a `RouterOptions` change.
+  - *MCP* (I15): the catalogue records two flags from the document — `routerIdempotent` (the
+    parameter is the shared component) and `ownKey` (an operation's own: communications' three,
+    applying a credit). `search_operations` answers `idempotencyKey: true` for the first;
+    `describe_operation` says which key (`general: …` or `its own: …`, review S4). The general
+    key's text is in the instructions once (one random key per intended action, the same key for
+    every retry, never a new key for one, never a key from the workspace's data, what each answer
+    means), `write` has one line, `delete` none, and with the switch off none of it is there
+    (review 7). A replay's result is `{"idempotentReplayed", "status", "response", "note"}` —
+    `response: null` for an empty answer, and `note` saying that if the call was not a retry of the
+    same action nothing was done, so resend with a new random key (review S1); a refusal replayed
+    carries `idempotentReplayed` and the note too (S5). `next` is given only to a call that sent a
+    key (review 2): the general key's for `routerIdempotent`, its own for an own key's reuse; so is
+    the "retry with the same key" text of an unanswered write.
   - *The Assistant* (I16) is unchanged; a test asserts the dispatcher's description of an in-scope
     operation lists no `Idempotency-Key`.
+  - *Accepted, Later* (security review S6): a key is the integration's, across its API keys; a
+    retry from a narrower key that may still call the operation gets the stored answer of the
+    first, not one cut to its own narrowing. Binding the fingerprint to the key's permission set
+    would need the scope read per request in A's middleware; the reference says so instead.
+  - *Webhooks* (review 4): a receiver derives one key per message and action, unguessable
+    (an HMAC of the `webhook-id` and the step under its own secret), and keeps its own dedupe on
+    `webhook-id`, since retries run about 45 hours and resends 30 days, beyond the key's 24.
   - *The landing clause* (I18) is not part of this delivery's pull request.
 
 ## 11. Amendments (revision 2, from the review)

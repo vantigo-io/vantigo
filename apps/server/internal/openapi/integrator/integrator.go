@@ -57,6 +57,10 @@ type Options struct {
 // IdempotencyHeader is the header parameter Options.Idempotency adds.
 const IdempotencyHeader = "Idempotency-Key"
 
+// IdempotencyParameterRef is how an operation refers to that parameter, which
+// tells the router's general key from an operation's own.
+const IdempotencyParameterRef = "#/components/parameters/IdempotencyKey"
+
 // BearerScheme is the security scheme the document declares.
 const BearerScheme = "bearerAuth"
 
@@ -86,7 +90,11 @@ const (
 		"never a new one. A retry with the same key and the same request is answered the first answer " +
 		"again, marked `Idempotent-Replayed: true`, instead of acting twice; a key is kept 24 hours. 1 to " +
 		"255 printable ASCII characters, else 400 `idempotency_key_invalid`; too many live keys is 429 " +
-		"`idempotency_quota`. [Retrying safely](" + RetryingURL + ")."
+		"`idempotency_quota`. Honoured only where this document, as /api/openapi.json serves it now, " +
+		"declares it: an installation with IDEMPOTENCY_ENABLED off declares and honours it nowhere. A " +
+		"replay is the stored answer to the first call with the key, within the integration. " +
+		"[Retrying safely](" + RetryingURL + ")."
+	idempotencyRetryAfterText = "Seconds to wait before retrying with the same key, for idempotency_in_progress."
 )
 
 // Build answers the integrator's document for contract, the merged contract
@@ -249,7 +257,7 @@ func decorate(op *openapi3.Operation, rule contracts.Rule) {
 // addIdempotency adds the Idempotency-Key header to op and merges the
 // middleware's 409 and 422 into its answers (idempotency design I25).
 func addIdempotency(op *openapi3.Operation) {
-	op.Parameters = append(op.Parameters, &openapi3.ParameterRef{Ref: "#/components/parameters/" + idempotencyKeyName})
+	op.Parameters = append(op.Parameters, &openapi3.ParameterRef{Ref: IdempotencyParameterRef})
 	if op.Responses == nil {
 		op.Responses = openapi3.NewResponses()
 	}
@@ -287,13 +295,56 @@ func mergeResponse(op *openapi3.Operation, code, name, text string) {
 		copied := *media
 		copied.Schema = authError
 		content["application/json"] = &copied
-	case media.Schema.Ref != authError.Ref:
+	case media.Schema.Ref != authError.Ref && !acceptsErrorBody(media.Schema):
+		// anyOf, not oneOf: the two may overlap, and a body both accept is
+		// valid, not ambiguous.
 		copied := *media
-		copied.Schema = &openapi3.SchemaRef{Value: &openapi3.Schema{OneOf: openapi3.SchemaRefs{media.Schema, authError}}}
+		copied.Schema = &openapi3.SchemaRef{Value: &openapi3.Schema{AnyOf: openapi3.SchemaRefs{media.Schema, authError}}}
 		content["application/json"] = &copied
 	}
 	merged.Content = content
+
+	// The middleware's 409 idempotency_in_progress carries Retry-After.
+	if code == "409" {
+		headers := make(openapi3.Headers, len(merged.Headers)+1)
+		for name, h := range merged.Headers {
+			headers[name] = h
+		}
+		present := false
+		for name := range headers {
+			present = present || strings.EqualFold(name, "Retry-After")
+		}
+		if !present {
+			headers["Retry-After"] = &openapi3.HeaderRef{Value: &openapi3.Header{Parameter: openapi3.Parameter{
+				Description: idempotencyRetryAfterText,
+				Schema:      &openapi3.SchemaRef{Value: openapi3.NewIntegerSchema()},
+			}}}
+		}
+		merged.Headers = headers
+	}
 	op.Responses.Set(code, &openapi3.ResponseRef{Value: &merged})
+}
+
+// acceptsErrorBody reports whether schema already describes the middleware's
+// body, {"error": {"code", "message"}}: an object whose error property is an
+// object with string code and message. Such a schema is left as it is.
+func acceptsErrorBody(schema *openapi3.SchemaRef) bool {
+	if schema == nil || schema.Value == nil {
+		return false
+	}
+	outer := schema.Value
+	if outer.Type != nil && !outer.Type.Is(openapi3.TypeObject) {
+		return false
+	}
+	errRef := outer.Properties["error"]
+	if errRef == nil || errRef.Value == nil {
+		return false
+	}
+	isString := func(ref *openapi3.SchemaRef) bool {
+		return ref != nil && ref.Value != nil && ref.Value.Type != nil && ref.Value.Type.Is(openapi3.TypeString)
+	}
+	inner := errRef.Value
+	return isString(inner.Properties["code"]) && isString(inner.Properties["message"])
 }
 
 // addComponents declares the bearer scheme, the error body and the three
@@ -362,7 +413,7 @@ func addComponents(doc *openapi3.T, idempotency bool) {
 	}
 	conflict := body("Conflict. " + idempotencyConflictText)
 	conflict.Headers = openapi3.Headers{
-		"Retry-After": header("Seconds to wait before retrying with the same key, for idempotency_in_progress.", openapi3.NewIntegerSchema()),
+		"Retry-After": header(idempotencyRetryAfterText, openapi3.NewIntegerSchema()),
 	}
 	c.Responses[idempotencyConflictName] = &openapi3.ResponseRef{Value: conflict}
 	c.Responses[idempotencyReusedName] = &openapi3.ResponseRef{Value: body("Unprocessable Entity. " + idempotencyReusedText)}

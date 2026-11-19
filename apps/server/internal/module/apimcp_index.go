@@ -55,10 +55,11 @@ type mcpOperation struct {
 	successStatus      string
 	successDescription string
 	success            *openapi3.SchemaRef
-	// idempotencyKey says the operation takes an Idempotency-Key: its own, or
-	// the one the integrator's document offers where the router honours it
-	// (idempotency design I15).
-	idempotencyKey bool
+	// routerIdempotent says the router honours its general Idempotency-Key on
+	// the operation, as the integrator's document declares it (idempotency
+	// design I15); ownKey that the operation declares a key of its own, with
+	// its own contract (communications' sends, applying a credit).
+	routerIdempotent, ownKey bool
 
 	searchSummary, searchTag, searchPath, searchDescription string
 }
@@ -243,9 +244,14 @@ func newMCPOperation(path, method string, item *openapi3.PathItem, op *openapi3.
 		seen[key] = len(e.params)
 		e.params = append(e.params, p)
 	}
-	for _, p := range e.params {
-		if p.In == openapiInHeader && strings.EqualFold(p.Name, IdempotencyHeader) {
-			e.idempotencyKey = true
+	for _, ref := range append(append(openapi3.Parameters{}, item.Parameters...), op.Parameters...) {
+		if ref == nil || ref.Value == nil || ref.Value.In != openapiInHeader || !strings.EqualFold(ref.Value.Name, IdempotencyHeader) {
+			continue
+		}
+		if ref.Ref == integrator.IdempotencyParameterRef {
+			e.routerIdempotent = true
+		} else {
+			e.ownKey = true
 		}
 	}
 

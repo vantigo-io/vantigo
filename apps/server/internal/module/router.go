@@ -51,10 +51,13 @@ type Router struct {
 	// contracts.IdempotencyStore (idempotency.go, design I12), found by a type
 	// assertion as keys finds the request log; nil installs no middleware.
 	// known and never are opts.Catalog's keys and contracts.APINever, which
-	// the predicate reads.
-	idempotency contracts.IdempotencyStore
-	known       map[string]bool
-	never       []string
+	// the predicate reads. idempotencyOff is a store switched off
+	// (IDEMPOTENCY_ENABLED=0): no middleware, but an in-scope operation sent a
+	// key answers Idempotency-Key-Ignored: true.
+	idempotency    contracts.IdempotencyStore
+	idempotencyOff bool
+	known          map[string]bool
+	never          []string
 
 	routes map[string][]*route // HTTP method → every route registered for it, each split into segments once, in registration order
 
@@ -221,8 +224,12 @@ func NewRouter(o RouterOptions) *Router {
 		normalized:   map[string]string{},
 	}
 	r.keys = newKeyGate(o.Access, o.Limiter)
-	if store, ok := o.Access.(contracts.IdempotencyStore); ok && store.IdempotencyEnabled() {
-		r.idempotency = store
+	if store, ok := o.Access.(contracts.IdempotencyStore); ok {
+		if store.IdempotencyEnabled() {
+			r.idempotency = store
+		} else {
+			r.idempotencyOff = true
+		}
 		catalog := make([]contracts.Permission, 0, len(o.Catalog))
 		for _, p := range o.Catalog {
 			catalog = append(catalog, p)
@@ -302,7 +309,7 @@ func (r *Router) HandleFunc(pattern string, h func(http.ResponseWriter, *http.Re
 
 	r.routes[method] = append(r.routes[method], &route{
 		segments: segments,
-		handler:  r.wrap(op, rule, r.bodyLimit(op.OperationID), newIdempotentRoute(r.idempotency, r.known, r.never, method, op, rule, segments), h),
+		handler:  r.wrap(op, rule, r.bodyLimit(op.OperationID), newIdempotentRoute(r.idempotency, r.idempotencyOff, r.known, r.never, method, op, rule, segments), h),
 	})
 	r.normalized[key] = pattern
 	r.registered[pattern] = true

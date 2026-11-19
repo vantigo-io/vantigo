@@ -79,7 +79,7 @@ func TestIdempotency_TheDocumentOffersTheKeyWhereTheRouterHonoursIt(t *testing.T
 	}
 
 	// Merged, never replaced.
-	merged, created := 0, 0
+	merged, created, untouched := 0, 0, 0
 	for id := range offered {
 		original, got := posts[id], kept[id]
 		for code, component := range map[string]string{"409": "IdempotencyConflict", "422": "IdempotencyKeyReused"} {
@@ -96,6 +96,9 @@ func TestIdempotency_TheDocumentOffersTheKeyWhereTheRouterHonoursIt(t *testing.T
 				continue
 			}
 			merged++
+			if code == "409" && mine.Value.Headers["Retry-After"] == nil && mine.Value.Headers["retry-after"] == nil {
+				t.Errorf("%s's merged 409 declares no Retry-After", id)
+			}
 			description := *mine.Value.Description
 			if want := strings.TrimRight(*theirs.Value.Description, " \n"); !strings.HasPrefix(description, want) ||
 				!strings.Contains(description, "With an Idempotency-Key, ") {
@@ -111,8 +114,21 @@ func TestIdempotency_TheDocumentOffersTheKeyWhereTheRouterHonoursIt(t *testing.T
 					continue
 				}
 				schema := gotMedia.Schema
-				if schema.Ref == "" && schema.Value != nil && len(schema.Value.OneOf) == 2 {
-					schema = schema.Value.OneOf[0]
+				if schema.Value != nil && len(schema.Value.OneOf) > 0 {
+					// oneOf over two shapes a body can match both of is never
+					// satisfiable (code review 1): the merge is anyOf.
+					t.Errorf("%s's %s %s merged as a oneOf", id, code, contentType)
+				}
+				if takesErrorBody(media.Schema) {
+					// Already the middleware's {"error": {code, message}}:
+					// left as it is, as communications' answers are.
+					untouched++
+					if schema.Ref == "" {
+						t.Errorf("%s's %s %s already takes the error body, yet was merged", id, code, contentType)
+					}
+				}
+				if schema.Ref == "" && schema.Value != nil && len(schema.Value.AnyOf) == 2 {
+					schema = schema.Value.AnyOf[0]
 				}
 				// The combined contract names common.yaml's schemas common_*.
 				if got, want := refName(schema.Ref), refName(media.Schema.Ref); got != want && got != "common_"+want {
@@ -124,7 +140,10 @@ func TestIdempotency_TheDocumentOffersTheKeyWhereTheRouterHonoursIt(t *testing.T
 			}
 		}
 	}
-	t.Logf("%d operations offer the key: %d answers merged into the operation's own, %d of their own", len(offered), merged, created)
+	t.Logf("%d operations offer the key: %d answers merged into the operation's own (%d schemas already the error body), %d of their own", len(offered), merged, untouched, created)
+	if untouched == 0 {
+		t.Error("no merged answer already takes the error body: communications' case is not exercised")
+	}
 	if merged == 0 {
 		t.Error("no operation documents a 409 or 422 of its own: the merge is not exercised")
 	}
@@ -142,4 +161,20 @@ func TestIdempotency_TheDocumentOffersTheKeyWhereTheRouterHonoursIt(t *testing.T
 	if d := *native.Responses.Value("409").Value.Description; strings.Contains(d, "With an Idempotency-Key") {
 		t.Errorf("postInvoicesByIdApplyCredit's 409 was merged: %q", d)
 	}
+}
+
+// takesErrorBody reports whether schema is already the middleware's body: an
+// object whose error is an object with string code and message.
+func takesErrorBody(schema *openapi3.SchemaRef) bool {
+	if schema == nil || schema.Value == nil {
+		return false
+	}
+	inner := schema.Value.Properties["error"]
+	if inner == nil || inner.Value == nil {
+		return false
+	}
+	str := func(s *openapi3.SchemaRef) bool {
+		return s != nil && s.Value != nil && s.Value.Type != nil && s.Value.Type.Is(openapi3.TypeString)
+	}
+	return str(inner.Value.Properties["code"]) && str(inner.Value.Properties["message"])
 }
