@@ -90,6 +90,9 @@ func Module() module.Module {
 		// Workforce is who holds which competence, for Staffing (staff
 		// competence design S15, workforce.go).
 		Workforce: newWorkforce,
+		// BrandTargets is the legal entities identity assigns brands to
+		// (brands design B9, brandtargets.go).
+		BrandTargets: newBrandTargets,
 	}
 }
 

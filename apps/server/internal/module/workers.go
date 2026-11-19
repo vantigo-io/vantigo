@@ -128,6 +128,10 @@ func WorkerDeps(deps Deps, mods ...Module) Deps {
 	if err != nil {
 		panic(err.Error())
 	}
+	deps, err = withBrandTargets(deps, enabled)
+	if err != nil {
+		panic(err.Error())
+	}
 	// The product catalog, resolved as Compose resolves it, after the
 	// accounts and before the stock: Manufacturing's make-to-order worker
 	// locks the variants of the orders it makes through it, and Inventory's
@@ -403,6 +407,21 @@ func withWorkforce(deps Deps, enabled []Module) (Deps, error) {
 	}
 	if provider != nil {
 		deps.Workforce = provider.Workforce(deps)
+	}
+	return deps, nil
+}
+
+// withBrandTargets resolves contracts.BrandTargets from the enabled modules —
+// at most one may declare it — keeping a preset value when none does (the seam
+// modtest.WithBrandTargets fills). Compose and Workers both call it, after the
+// business calendar, whose zone decides "today".
+func withBrandTargets(deps Deps, enabled []Module) (Deps, error) {
+	provider, err := soleProvider(enabled, "brand targets", func(m Module) bool { return m.BrandTargets != nil })
+	if err != nil {
+		return deps, err
+	}
+	if provider != nil {
+		deps.BrandTargets = provider.BrandTargets(deps)
 	}
 	return deps, nil
 }
