@@ -21,7 +21,7 @@ import (
 func newWriteAccess() *mcpFakeAccess {
 	a := newMCPAccess()
 	a.mode = contracts.MCPAccessReadWrite
-	a.permissions = []string{"customers:view", "customers:create", "customers:update"}
+	a.permissions = []string{"customers:view", "customers:create", "customers:update", "customers:delete"}
 	return a
 }
 
@@ -93,8 +93,25 @@ func TestMCP_EachToolCallsItsOwnKind(t *testing.T) {
 	if text, isError := toolText(t, callTool(t, h, mcpToolWrite, map[string]any{"operation": "getIdentityIntegrations"})); !isError || !strings.Contains(text, "not available") {
 		t.Errorf("write outside the catalogue: %v %s", isError, text)
 	}
+	// A DELETE is delete's alone, and delete calls nothing else (M36).
+	remove := map[string]any{"operation": "deleteCustomersById", "path": map[string]any{"id": "7"}}
+	if text, isError := toolText(t, callTool(t, h, mcpToolWrite, remove)); !isError || !strings.Contains(text, "delete tool") {
+		t.Errorf("write of a DELETE: %v %s", isError, text)
+	}
+	if text, isError := toolText(t, callTool(t, h, mcpToolDelete, map[string]any{"operation": "postCustomers", "body": map[string]any{"name": "x"}})); !isError || !strings.Contains(text, "write tool") {
+		t.Errorf("delete of a POST: %v %s", isError, text)
+	}
+	if text, isError := toolText(t, callTool(t, h, mcpToolDelete, map[string]any{"operation": "getCustomers"})); !isError || !strings.Contains(text, "read tool") {
+		t.Errorf("delete of a read: %v %s", isError, text)
+	}
 	if len(customers.requests) != 0 {
 		t.Errorf("%d refused calls reached the module", len(customers.requests))
+	}
+	if _, isError := toolText(t, callTool(t, h, mcpToolDelete, remove)); isError {
+		t.Error("delete of deleteCustomersById refused")
+	}
+	if r := customers.last(t); r.Method != http.MethodDelete || r.URL.Path != "/api/v1/customers/7" {
+		t.Errorf("looped back %s %s", r.Method, r.URL.Path)
 	}
 }
 
@@ -116,12 +133,13 @@ func TestMCP_TheModeIsJudgedAtTheCall(t *testing.T) {
 		t.Error("read_write: describe postCustomers refused")
 	}
 	body, header := modern(mcpMethodToolsList, nil)
-	if tools, _ := answerOf(t, postMCP(t, h, body, header)).Result["tools"].([]any); len(tools) != 4 {
+	if tools, _ := answerOf(t, postMCP(t, h, body, header)).Result["tools"].([]any); len(tools) != 5 {
 		t.Fatalf("read_write listed %d tools", len(tools))
 	}
 
 	access.mode = contracts.MCPAccessRead
 	wantError(t, callTool(t, h, mcpToolWrite, map[string]any{"operation": "postCustomers", "body": map[string]any{"name": "x"}}), http.StatusOK, rpcInvalidParams)
+	wantError(t, callTool(t, h, mcpToolDelete, map[string]any{"operation": "deleteCustomersById", "path": map[string]any{"id": "1"}}), http.StatusOK, rpcInvalidParams)
 	if text := found(); strings.Contains(text, `"kind":"write"`) {
 		t.Errorf("read search found a write: %s", text)
 	}
@@ -133,9 +151,10 @@ func TestMCP_TheModeIsJudgedAtTheCall(t *testing.T) {
 	}
 }
 
-// A refused write is an error result carrying the REST answer's status and
-// code: the permission's 403, If-Match's 412 (M13).
-func TestMCP_ARefusedWriteIsAnError(t *testing.T) {
+// A refused write's status passes through: an error result carrying the REST
+// answer's status and code, the permission's 403 or a stale version's 412
+// alike (M13).
+func TestMCP_ARefusedWritesStatusPassesThrough(t *testing.T) {
 	customers := &mcpCustomers{}
 	h := composeMCP(t, newWriteAccess(), customers, true)
 	for status, code := range map[int]string{http.StatusForbidden: "forbidden", http.StatusPreconditionFailed: "version_mismatch"} {

@@ -6,7 +6,10 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/vantigo-io/vantigo/server/internal/buildinfo"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
@@ -54,6 +57,7 @@ type mcpHandler struct {
 	keys      keyGate
 	limiter   *ratelimit.Limiter
 	catalogue *mcpCatalogue
+	inflight  *inFlight
 	// api is the composed API handler every tool call loops back through,
 	// bound once it exists (bind).
 	api     http.Handler
@@ -66,6 +70,7 @@ func newMCPHandler(docs *apiDocuments, access contracts.Access, limiter *ratelim
 		keys:      docs.keys,
 		limiter:   limiter,
 		catalogue: newMCPCatalogue(docs),
+		inflight:  &inFlight{limit: mcpInFlight, keys: map[uuid.UUID]int{}},
 		version:   buildinfo.Version,
 	}
 }
@@ -155,6 +160,16 @@ func (h *mcpHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	answer, call := h.plan(w, r, p)
 	if call != nil {
+		if !h.inflight.acquire(p.Via.KeyID) {
+			// A key with mcpInFlight calls running is told to wait (S7); the
+			// refusal is the envelope's, counted as one.
+			h.keys.serve(w, r, p, mcpOperationID, start, func(w http.ResponseWriter) {
+				t := toolError("This key has %d calls running already: wait for one to finish, and retry shortly.", mcpInFlight)
+				writeRPC(w, http.StatusOK, rpcResponse{ID: call.req.msg.ID, Result: call.req.result(t.fields(), h.version)})
+			})
+			return
+		}
+		defer h.inflight.release(p.Via.KeyID)
 		// A tool call that reaches the loopback is counted there, once, under
 		// its real operation; the envelope is only recorded (M22).
 		h.keys.recordOnly(w, r, p, mcpOperationID, start, func(w http.ResponseWriter) { h.run(w, r, call) })
@@ -163,7 +178,38 @@ func (h *mcpHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.keys.serve(w, r, p, mcpOperationID, start, answer)
 }
 
-// mcpCall is a tools/call of read or write that is ready to loop back.
+// mcpInFlight is how many tool calls one key may have looping back at once,
+// per process (S7): enough for a client's parallel reads, few enough that one
+// agent cannot hold the pool.
+const mcpInFlight = 4
+
+// inFlight counts the looped-back calls of each key.
+type inFlight struct {
+	mu    sync.Mutex
+	limit int
+	keys  map[uuid.UUID]int
+}
+
+// acquire takes one of key's places, and reports false when all are taken.
+func (f *inFlight) acquire(key uuid.UUID) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.keys[key] >= f.limit {
+		return false
+	}
+	f.keys[key]++
+	return true
+}
+
+func (f *inFlight) release(key uuid.UUID) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.keys[key]--; f.keys[key] <= 0 {
+		delete(f.keys, key)
+	}
+}
+
+// mcpCall is a tools/call of read, write or delete that is ready to loop back.
 type mcpCall struct {
 	req     mcpRequest
 	op      *mcpOperation
@@ -198,7 +244,8 @@ func (h *mcpHandler) plan(w http.ResponseWriter, r *http.Request, p contracts.Pr
 		}
 	}
 	needScope := readErr == nil && f == nil && !msg.notification() && msg.Method == mcpMethodToolsCall &&
-		params.Name != nil && (*params.Name == mcpToolSearch || *params.Name == mcpToolDescribe || *params.Name == mcpToolRead || *params.Name == mcpToolWrite)
+		params.Name != nil && (*params.Name == mcpToolSearch || *params.Name == mcpToolDescribe || *params.Name == mcpToolRead || *params.Name == mcpToolWrite ||
+		*params.Name == mcpToolDelete)
 	key, err := mcp.MCP(r.Context(), p, needScope)
 	if err != nil {
 		return fail(err)
@@ -274,10 +321,10 @@ func (h *mcpHandler) plan(w http.ResponseWriter, r *http.Request, p contracts.Pr
 	tool := func(t toolResult) (func(http.ResponseWriter), *mcpCall) { return result(t.fields()) }
 	switch {
 	case name == mcpToolSearch, name == mcpToolDescribe, name == mcpToolRead:
-	case name == mcpToolWrite && writes:
+	case (name == mcpToolWrite || name == mcpToolDelete) && writes:
 	default:
-		// An unknown tool, and write where it is not listed, is a protocol
-		// error (M31).
+		// An unknown tool, and write or delete where they are not listed, is
+		// a protocol error (M31).
 		return func(w http.ResponseWriter) {
 			writeFailure(w, msg.ID, failure(http.StatusOK, rpcInvalidParams, "Unknown tool: "+name))
 		}, nil
@@ -318,13 +365,26 @@ func (h *mcpHandler) run(w http.ResponseWriter, r *http.Request, call *mcpCall) 
 	if h.api == nil {
 		t = toolError("The call could not be made.")
 	} else {
-		rec, panicked, timedOut := loopback(h.api, r, call.op, call.target, call.headers, call.body)
+		rec, panicked, ended := loopback(h.api, r, call.op, call.target, call.headers, call.body)
+		write := call.op.Kind == mcpKindWrite
+		// A call whose context ended — the deadline passed, or the client went
+		// away — may still have answered: what it answered is the result,
+		// unless it is a server error, which after an ended context says
+		// nothing of whether a write was made (S1).
+		answered := rec != nil && rec.wrote && rec.status < 500
 		switch {
 		case rec == nil:
 			t = toolError("The call could not be made.")
+		case panicked && write:
+			t = toolError("%s failed unexpectedly, and the change may or may not have been made: read the record before "+
+				"you retry. Quote the trace id %s when reporting it.", call.op.ID, httpx.TraceID(r))
 		case panicked:
 			t = toolError("%s failed unexpectedly. Quote the trace id %s when reporting it.", call.op.ID, httpx.TraceID(r))
-		case timedOut:
+		case ended && !answered && write:
+			t = toolError("%s did not answer in time, and the change may or may not have been made: read the record "+
+				"before you retry, and resend with the same Idempotency-Key where the operation takes one. Quote the "+
+				"trace id %s when reporting it.", call.op.ID, httpx.TraceID(r))
+		case ended && !answered:
 			t = toolError("%s did not answer within %s. Quote the trace id %s when reporting it.", call.op.ID, mcpCallTimeout, httpx.TraceID(r))
 		default:
 			for _, name := range []string{"RateLimit-Limit", "RateLimit-Remaining", "RateLimit-Reset"} {
