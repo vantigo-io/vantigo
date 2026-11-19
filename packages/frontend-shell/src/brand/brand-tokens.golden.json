@@ -1,5 +1,5 @@
 {
-  "algorithm": 1,
+  "algorithm": 2,
   "brands": [
     {
       "name": "indigo",
@@ -271,7 +271,7 @@
             "#a4a4a4",
             "#929292",
             "#808080",
-            "#616161",
+            "#757474",
             "#454545",
             "#292929"
           ],
@@ -299,7 +299,7 @@
             "#a4a4a4",
             "#929292",
             "#808080",
-            "#616161",
+            "#757474",
             "#454545",
             "#292929"
           ],
@@ -335,7 +335,7 @@
             "#a1a4ac",
             "#8e929a",
             "#7c8088",
-            "#5e6269",
+            "#71757c",
             "#42454b",
             "#27292e"
           ],
@@ -363,7 +363,7 @@
             "#a1a4ac",
             "#8e929a",
             "#7c8088",
-            "#5e6269",
+            "#71757c",
             "#42454b",
             "#27292e"
           ],
@@ -399,7 +399,7 @@
             "#5cc475",
             "#34b55b",
             "#16a34a",
-            "#007c34",
+            "#17863d",
             "#005722",
             "#003311"
           ],
@@ -427,7 +427,7 @@
             "#5cc475",
             "#34b55b",
             "#16a34a",
-            "#007c34",
+            "#17863d",
             "#005722",
             "#003311"
           ],
@@ -591,7 +591,7 @@
             "#59b7ac",
             "#30a79a",
             "#0d9488",
-            "#007168",
+            "#218277",
             "#005049",
             "#00312c"
           ],
@@ -619,7 +619,7 @@
             "#59b7ac",
             "#30a79a",
             "#0d9488",
-            "#007168",
+            "#218277",
             "#005049",
             "#00312c"
           ],
@@ -655,7 +655,7 @@
             "#ff83fc",
             "#ff5cfd",
             "#ff00ff",
-            "#be00be",
+            "#c91dc9",
             "#810081",
             "#470047"
           ],
@@ -683,7 +683,7 @@
             "#ff83fc",
             "#ff5cfd",
             "#ff00ff",
-            "#be00be",
+            "#c91dc9",
             "#810081",
             "#470047"
           ],
@@ -783,7 +783,7 @@
             "#ff7f6e",
             "#ff5847",
             "#ff0000",
-            "#c30000",
+            "#dd2f23",
             "#8a0000",
             "#540000"
           ],
@@ -811,7 +811,7 @@
             "#ff7f6e",
             "#ff5847",
             "#ff0000",
-            "#c30000",
+            "#dd2f23",
             "#8a0000",
             "#540000"
           ],
@@ -975,7 +975,7 @@
             "#9d9d9d",
             "#898989",
             "#767676",
-            "#5b5b5b",
+            "#757474",
             "#414141",
             "#292929"
           ],
@@ -1003,7 +1003,7 @@
             "#9d9d9d",
             "#898989",
             "#767676",
-            "#5b5b5b",
+            "#757474",
             "#414141",
             "#292929"
           ],
@@ -1023,6 +1023,198 @@
           }
         },
         "radius": "calc(0.5rem * var(--mantine-scale))"
+      }
+    },
+    {
+      "name": "brand red",
+      "primary": "#ef4444",
+      "radius": "xs",
+      "tokens": {
+        "light": {
+          "shades": [
+            "#fff4f3",
+            "#ffdedb",
+            "#ffc2bb",
+            "#ffa39b",
+            "#ff8179",
+            "#ff5d58",
+            "#ef4444",
+            "#d83738",
+            "#8b0011",
+            "#540007"
+          ],
+          "filledText": "#000000",
+          "link": "#8b0011",
+          "subtleBg": "#fff4f3",
+          "derived": {
+            "--mantine-color-vantigo-filled": "var(--mantine-color-vantigo-6)",
+            "--mantine-color-vantigo-filled-hover": "var(--mantine-color-vantigo-7)",
+            "--mantine-color-vantigo-light": "var(--mantine-color-vantigo-1)",
+            "--mantine-color-vantigo-light-color": "var(--mantine-color-vantigo-9)",
+            "--mantine-color-vantigo-light-hover": "var(--mantine-color-vantigo-2)",
+            "--mantine-color-vantigo-outline": "var(--mantine-color-vantigo-6)",
+            "--mantine-color-vantigo-outline-hover": "rgba(239, 68, 68, 0.05)",
+            "--mantine-color-vantigo-text": "var(--mantine-color-vantigo-filled)",
+            "--mantine-primary-color-contrast": "var(--mantine-color-black)"
+          }
+        },
+        "dark": {
+          "shades": [
+            "#fff4f3",
+            "#ffdedb",
+            "#ffc2bb",
+            "#ffa39b",
+            "#ff8179",
+            "#ff5d58",
+            "#ef4444",
+            "#d83738",
+            "#8b0011",
+            "#540007"
+          ],
+          "filledText": "#000000",
+          "link": "#ffa39b",
+          "subtleBg": "#2a0004",
+          "derived": {
+            "--mantine-color-vantigo-filled": "var(--mantine-color-vantigo-6)",
+            "--mantine-color-vantigo-filled-hover": "var(--mantine-color-vantigo-7)",
+            "--mantine-color-vantigo-light": "rgba(42, 0, 4, 1)",
+            "--mantine-color-vantigo-light-color": "var(--mantine-color-vantigo-0)",
+            "--mantine-color-vantigo-light-hover": "rgba(59, 0, 5, 1)",
+            "--mantine-color-vantigo-outline": "var(--mantine-color-vantigo-2)",
+            "--mantine-color-vantigo-outline-hover": "rgba(255, 194, 187, 0.05)",
+            "--mantine-color-vantigo-text": "var(--mantine-color-vantigo-4)",
+            "--mantine-primary-color-contrast": "var(--mantine-color-black)"
+          }
+        },
+        "radius": "calc(0.125rem * var(--mantine-scale))"
+      }
+    },
+    {
+      "name": "brand orange",
+      "primary": "#f97316",
+      "radius": "sm",
+      "tokens": {
+        "light": {
+          "shades": [
+            "#fff4ef",
+            "#ffe4d7",
+            "#ffceb6",
+            "#ffb894",
+            "#ffa06e",
+            "#ff8846",
+            "#f97316",
+            "#bf5507",
+            "#7f3500",
+            "#461a00"
+          ],
+          "filledText": "#000000",
+          "link": "#7f3500",
+          "subtleBg": "#fff4ef",
+          "derived": {
+            "--mantine-color-vantigo-filled": "var(--mantine-color-vantigo-6)",
+            "--mantine-color-vantigo-filled-hover": "var(--mantine-color-vantigo-7)",
+            "--mantine-color-vantigo-light": "var(--mantine-color-vantigo-1)",
+            "--mantine-color-vantigo-light-color": "var(--mantine-color-vantigo-9)",
+            "--mantine-color-vantigo-light-hover": "var(--mantine-color-vantigo-2)",
+            "--mantine-color-vantigo-outline": "var(--mantine-color-vantigo-6)",
+            "--mantine-color-vantigo-outline-hover": "rgba(249, 115, 22, 0.05)",
+            "--mantine-color-vantigo-text": "var(--mantine-color-vantigo-filled)",
+            "--mantine-primary-color-contrast": "var(--mantine-color-black)"
+          }
+        },
+        "dark": {
+          "shades": [
+            "#fff4ef",
+            "#ffe4d7",
+            "#ffceb6",
+            "#ffb894",
+            "#ffa06e",
+            "#ff8846",
+            "#f97316",
+            "#bf5507",
+            "#7f3500",
+            "#461a00"
+          ],
+          "filledText": "#000000",
+          "link": "#ffb894",
+          "subtleBg": "#230d00",
+          "derived": {
+            "--mantine-color-vantigo-filled": "var(--mantine-color-vantigo-6)",
+            "--mantine-color-vantigo-filled-hover": "var(--mantine-color-vantigo-7)",
+            "--mantine-color-vantigo-light": "rgba(35, 13, 0, 1)",
+            "--mantine-color-vantigo-light-color": "var(--mantine-color-vantigo-0)",
+            "--mantine-color-vantigo-light-hover": "rgba(49, 18, 0, 1)",
+            "--mantine-color-vantigo-outline": "var(--mantine-color-vantigo-2)",
+            "--mantine-color-vantigo-outline-hover": "rgba(255, 206, 182, 0.05)",
+            "--mantine-color-vantigo-text": "var(--mantine-color-vantigo-4)",
+            "--mantine-primary-color-contrast": "var(--mantine-color-black)"
+          }
+        },
+        "radius": "calc(0.25rem * var(--mantine-scale))"
+      }
+    },
+    {
+      "name": "brand blue",
+      "primary": "#3b82f6",
+      "radius": "lg",
+      "tokens": {
+        "light": {
+          "shades": [
+            "#f2f7ff",
+            "#d9e8ff",
+            "#b8d3ff",
+            "#97bfff",
+            "#75a9ff",
+            "#5596ff",
+            "#3b82f6",
+            "#2e71dd",
+            "#003f9a",
+            "#00245f"
+          ],
+          "filledText": "#000000",
+          "link": "#003f9a",
+          "subtleBg": "#f2f7ff",
+          "derived": {
+            "--mantine-color-vantigo-filled": "var(--mantine-color-vantigo-6)",
+            "--mantine-color-vantigo-filled-hover": "var(--mantine-color-vantigo-7)",
+            "--mantine-color-vantigo-light": "var(--mantine-color-vantigo-1)",
+            "--mantine-color-vantigo-light-color": "var(--mantine-color-vantigo-9)",
+            "--mantine-color-vantigo-light-hover": "var(--mantine-color-vantigo-2)",
+            "--mantine-color-vantigo-outline": "var(--mantine-color-vantigo-6)",
+            "--mantine-color-vantigo-outline-hover": "rgba(59, 130, 246, 0.05)",
+            "--mantine-color-vantigo-text": "var(--mantine-color-vantigo-filled)",
+            "--mantine-primary-color-contrast": "var(--mantine-color-black)"
+          }
+        },
+        "dark": {
+          "shades": [
+            "#f2f7ff",
+            "#d9e8ff",
+            "#b8d3ff",
+            "#97bfff",
+            "#75a9ff",
+            "#5596ff",
+            "#3b82f6",
+            "#2e71dd",
+            "#003f9a",
+            "#00245f"
+          ],
+          "filledText": "#000000",
+          "link": "#97bfff",
+          "subtleBg": "#001230",
+          "derived": {
+            "--mantine-color-vantigo-filled": "var(--mantine-color-vantigo-6)",
+            "--mantine-color-vantigo-filled-hover": "var(--mantine-color-vantigo-7)",
+            "--mantine-color-vantigo-light": "rgba(0, 18, 48, 1)",
+            "--mantine-color-vantigo-light-color": "var(--mantine-color-vantigo-0)",
+            "--mantine-color-vantigo-light-hover": "rgba(0, 25, 67, 1)",
+            "--mantine-color-vantigo-outline": "var(--mantine-color-vantigo-2)",
+            "--mantine-color-vantigo-outline-hover": "rgba(184, 211, 255, 0.05)",
+            "--mantine-color-vantigo-text": "var(--mantine-color-vantigo-4)",
+            "--mantine-primary-color-contrast": "var(--mantine-color-black)"
+          }
+        },
+        "radius": "calc(1rem * var(--mantine-scale))"
       }
     }
   ]

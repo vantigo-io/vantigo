@@ -4,10 +4,12 @@ import (
 	"encoding/json"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"testing"
 	"testing/fstest"
 
+	"github.com/vantigo-io/vantigo/server/internal/brandscale"
 	"github.com/vantigo-io/vantigo/server/internal/config"
 )
 
@@ -50,7 +52,7 @@ func TestNewImportedIndex_DropsTheEnvironmentsBranding(t *testing.T) {
 
 func TestSnippet_StaysOneScriptAndNamesTheMirrorsContract(t *testing.T) {
 	for _, want := range []string{
-		`localStorage.getItem("vantigo-brand")`, `"--vantigo-brand-loaded"`, `m.v!==1`, `m.algorithm<=1`,
+		`localStorage.getItem("vantigo-brand")`, `"--vantigo-brand-loaded"`, `m.v!==1`, `m.algorithm<=` + strconv.Itoa(brandscale.Algorithm),
 		`typeof m.userId!=="string"`, `addEventListener("error"`, `addEventListener("DOMContentLoaded"`,
 	} {
 		if !strings.Contains(colorSchemeScript, want) {
@@ -112,7 +114,7 @@ func boolJS(b bool) string {
 
 func mirror(mod map[string]any) map[string]any {
 	m := map[string]any{
-		"v": 1, "algorithm": 1, "userId": "u-1", "title": "Acme",
+		"v": 1, "algorithm": brandscale.Algorithm, "userId": "u-1", "title": "Acme",
 		"light": map[string]any{"--mantine-color-vantigo-6": "#0f766e", "--vantigo-brand-loaded": "1"},
 		"dark":  map[string]any{"--mantine-color-vantigo-6": "#14b8a6"},
 	}
@@ -163,7 +165,7 @@ func TestSnippet_AppliesTheMirrorOnlyWhenTheStylesheetDidNotLoad(t *testing.T) {
 func TestSnippet_IgnoresAMirrorItDoesNotUnderstand(t *testing.T) {
 	for name, mod := range map[string]map[string]any{
 		"a higher v":                        {"v": 2},
-		"a newer algorithm":                 {"algorithm": 2},
+		"a newer algorithm":                 {"algorithm": brandscale.Algorithm + 1},
 		"no user id":                        {"userId": nil},
 		"an empty user id":                  {"userId": ""},
 		"values that are not css":           {"light": map[string]any{"--x": "url(javascript:alert(1))"}},

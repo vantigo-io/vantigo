@@ -7,6 +7,7 @@ import { vantigoLogo, vantigoLogoDark } from "../logo";
 import { BRAND_MIRROR_KEY, readBrandMirror } from "./mirror";
 import { BrandPreviewBanner } from "./preview-banner";
 import { BRAND_PREVIEW_KEY, BrandProvider, getBrandPreview, setBrandPreview, useBrand } from "./provider";
+import { BRAND_ALGORITHM } from "./scale";
 import { type BrandPayload, builtinPayload, computeTokens } from "./tokens";
 
 const teal = (over: Partial<BrandPayload> = {}): BrandPayload => ({
@@ -77,13 +78,16 @@ describe("the brand provider", () => {
     expect(String(fetchMock.mock.calls[0]?.[0])).toBe("/api/v1/identity/brand");
     expect(document.title).toBe("Acme Portal");
     const mirror = JSON.parse(window.localStorage.getItem(BRAND_MIRROR_KEY) as string);
-    expect(mirror).toMatchObject({ v: 1, algorithm: 1, userId: "user-1", title: "Acme Portal" });
+    expect(mirror).toMatchObject({ v: 1, algorithm: BRAND_ALGORITHM, userId: "user-1", title: "Acme Portal" });
     expect(mirror.light["--mantine-color-vantigo-6"]).toBe("#0f766e");
     expect(mirror.dark["--mantine-color-vantigo-light"]).toMatch(/^rgba\(/);
   });
 
   it("asks for the public brand when nobody is signed in, and clears the mirror", async () => {
-    window.localStorage.setItem(BRAND_MIRROR_KEY, JSON.stringify({ v: 1, algorithm: 1, userId: "user-1", title: "x" }));
+    window.localStorage.setItem(
+      BRAND_MIRROR_KEY,
+      JSON.stringify({ v: 1, algorithm: BRAND_ALGORITHM, userId: "user-1", title: "x" }),
+    );
     answers["/api/v1/identity/brand/public"] = () => json(teal({ title: "Public Acme" }));
     mount(null);
     await waitFor(() => expect(screen.getByTestId("title")).toHaveTextContent("Public Acme"));
@@ -109,7 +113,14 @@ describe("the brand provider", () => {
   it("ignores and removes the mirror of another person", () => {
     window.localStorage.setItem(
       BRAND_MIRROR_KEY,
-      JSON.stringify({ v: 1, algorithm: 1, userId: "someone-else", title: "Theirs", light: {}, dark: {} }),
+      JSON.stringify({
+        v: 1,
+        algorithm: BRAND_ALGORITHM,
+        userId: "someone-else",
+        title: "Theirs",
+        light: {},
+        dark: {},
+      }),
     );
     expect(readBrandMirror("user-1")).toBeNull();
     expect(window.localStorage.getItem(BRAND_MIRROR_KEY)).toBeNull();
@@ -117,9 +128,9 @@ describe("the brand provider", () => {
 
   it("ignores a mirror of a higher version or algorithm", () => {
     for (const bad of [
-      { v: 2, algorithm: 1 },
-      { v: 1, algorithm: 2 },
-      { v: "1", algorithm: 1 },
+      { v: 2, algorithm: BRAND_ALGORITHM },
+      { v: 1, algorithm: BRAND_ALGORITHM + 1 },
+      { v: "1", algorithm: BRAND_ALGORITHM },
     ]) {
       window.localStorage.setItem(BRAND_MIRROR_KEY, JSON.stringify({ ...bad, userId: "user-1", title: "x" }));
       expect(readBrandMirror("user-1")).toBeNull();

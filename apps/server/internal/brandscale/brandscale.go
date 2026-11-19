@@ -24,8 +24,9 @@ import (
 
 // Algorithm is the version of the constants below. It is stored with every
 // published token set; changing any constant is a new version, and old sets
-// are recomputed only by an explicit admin action (B3.8).
-const Algorithm = 1
+// are recomputed only by an explicit admin action (B3.8). Version 2 keeps the
+// filled text readable on the hover colour (shade 7, B3.9).
+const Algorithm = 2
 
 // The accepted lightness of the primary (B3.3) and the AA ratio for text.
 const (
@@ -247,7 +248,40 @@ func Generate(hex string) (Result, error) {
 	}
 	res.Scale[6] = formatHex(r, g, b)
 	res.FilledText = filledText(res.Scale[6])
+	if res.FilledText == Black {
+		res.Scale[7] = readableHover(base, res.Scale[7], res.Scale[6])
+	}
 	return res, nil
+}
+
+// readableHover is shade 7 for a primary whose filled text is black (B3.9).
+// Mantine paints one text colour on a filled button, chosen from shade 6, and
+// the same one on its hover (shade 7); the generated shade 7 is darker than
+// shade 6, so black text on it can fall below AA. When it does, shade 7 moves
+// toward shade 6's lightness (its own chroma and hue kept): 24 bisections of
+// the move in [0, 1], the smallest passing move kept, shade 6 itself if none
+// passes. A shade 7 that already passes is left as it is.
+func readableHover(base oklab, shade7, shade6 string) string {
+	if contrast(Black, shade7) >= MinContrast {
+		return shade7
+	}
+	c := shade(base, 7)
+	at := func(t float64) string {
+		return hexOf(fit(oklab{c.l + float64((base.l-c.l)*t), c.a, c.b}))
+	}
+	lo, hi := 0.0, 1.0
+	for range gamutSteps {
+		mid := (lo + hi) / 2
+		if contrast(Black, at(mid)) >= MinContrast {
+			hi = mid
+		} else {
+			lo = mid
+		}
+	}
+	if h := at(hi); contrast(Black, h) >= MinContrast {
+		return h
+	}
+	return shade6
 }
 
 // shade is shade i of the scale of base, in OKLab and fitted into sRGB.

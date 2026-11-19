@@ -24,7 +24,7 @@ describe("the golden file, which the Go package writes and tests too", () => {
   it("is the version this port implements, with the pairs in the order it checks them", () => {
     expect(golden.algorithm).toBe(BRAND_ALGORITHM);
     expect(golden.pairs).toEqual([...PAIRS]);
-    expect(golden.cases).toHaveLength(16);
+    expect(golden.cases).toHaveLength(19);
   });
 
   for (const c of golden.cases) {
@@ -133,11 +133,11 @@ describe("the filled text and the contrast", () => {
 describe("the suggested primary", () => {
   it("is the input when it passes, and otherwise a primary that does", () => {
     expect(suggestPrimary("#4f46e5")).toBe("#4f46e5");
-    const grey = suggestPrimary("#808080");
-    expect(grey).not.toBeNull();
-    expect(lightness(grey as string)).toBeLessThan(lightness("#808080"));
-    const green = suggestPrimary("#16a34a");
-    expect(lightness(green as string)).toBeGreaterThan(lightness("#16a34a"));
+    // Since algorithm 2 every accepted primary passes (B3.9): the common brand colours that used to
+    // fail the hover are their own suggestion.
+    for (const hex of ["#ef4444", "#f97316", "#3b82f6", "#808080", "#16a34a"]) {
+      expect(suggestPrimary(hex)).toBe(hex);
+    }
     expect(suggestPrimary("#ffffff")).toBeNull();
   });
 });

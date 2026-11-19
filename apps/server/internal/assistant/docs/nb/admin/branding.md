@@ -51,12 +51,12 @@ fargeskjemaene, mot WCAG AA (et forhold på minst 4,5 : 1 for tekst):
 Tekstfargen på en knapp velges, ikke antas: hvit på en mørk hovedfarge, svart på en lys. Et utkast
 kan **lagres** selv om det feiler; det kan bare **publiseres** når alle par består. Redigeringen
 viser hvert forhold og, når et par feiler, tilbyr den nærmeste hovedfargen som består med ett
-klikk. En veldig lys hovedfarge feiler typisk lenkene og hover-fargen, fordi de trenger en
-mørkere farge enn hovedfargen selv.
+klikk. En veldig lys hovedfarge kan feile lenkene, fordi de trenger en mørkere farge enn
+hovedfargen selv. Hover-fargen på en knapp med svart tekst holdes mørk nok til å leses, så en klar
+rød, oransje eller blå feiler den ikke.
 
 Å publisere et utkast som feiler gjennom API-et avvises med `422 brand_contrast` og navngir parene
-som feiler. Noen vanlige merkefarger, blant dem en klar rød eller oransje, feiler hover-paret; bruk
-den foreslåtte naboen eller velg en mørkere farge.
+som feiler; bruk den foreslåtte naboen eller velg en mørkere farge.
 
 Vantigos egen indigo (`#4f46e5`) beholder den håndjusterte skalaen produktet alltid har hatt, så
 en installasjon som aldri redigerer merkevaren ser ut akkurat som før.

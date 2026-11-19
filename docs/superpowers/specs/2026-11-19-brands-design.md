@@ -160,10 +160,20 @@ server (Go, the truth, which validates and stores) and in the editor's live prev
    chroma scale in `[0, 1]` and take the **lower bound** (the last in-gamut value). Never
    clip channels.
 7. Output `#rrggbb`: each sRGB channel rounded half-up to an integer.
-8. **Algorithm version.** The constants above are `algorithm: 1`. The version is stored
+8. **Algorithm version.** The constants above are `algorithm: 2` (see B3.9). The version is stored
    with every published token set (B5) and returned in the payload (B36); changing any
    constant is a new version, and old published sets are recomputed only by an explicit
    admin action, never silently on upgrade.
+9. **One filled-text colour, so the hover is clamped (algorithm 2).** Mantine renders one
+   text colour for a filled button and for its hover (shade 7), so `filledText` cannot
+   differ between the two. When `filledText` is black, shade 7 is darker than shade 6 and
+   can fall below 4.5 : 1 against black (a bright red, orange or blue did, and could not
+   be published). Rule: if `filledText` is black and `contrast(black, shade 7) < 4.5`,
+   replace shade 7 by the colour on the line from the lightness-derived shade 7 toward
+   the input's own lightness (`L7 + (L6 - L7) · t`, same chroma and hue, gamut rule 6)
+   with the smallest `t` in 24 bisection steps whose contrast with black is at least
+   4.5; if none passes, shade 7 is shade 6. A white-text brand keeps the generated
+   shade 7, which only gets darker. Algorithm 1 sets remain as published (B3.8).
 
 Tests (A0): shade 6 equals the input byte for byte; lightness strictly decreases; hue
 stays within 2° of the input except for near-grey inputs (`C6 < 0.02`); every shade is in
@@ -189,7 +199,7 @@ touch:
 test, not copied into it.) A draft may be saved failing; the editor shows each pair with
 its ratio and a pass or fail. **Publish is refused** with `422 brand_contrast` naming the
 failing pairs. Because `filledText` is chosen by B3, the failures that remain are the
-links and the hover: for each the editor offers the **nearest primary** (same hue and
+links (the hover is clamped by B3.9): for each the editor offers the **nearest primary** (same hue and
 chroma, lightness moved) that passes, one click to apply, and says in words when the
 cause is a very light primary (links and hover need a darker colour). The refusal is also
 in the server because the API can publish without the editor. Campaign overlays (B22)
@@ -706,7 +716,7 @@ server by a function that mirrors Mantine's `default-variant-colors-resolver` ru
 and a frontend test mounts a `MantineProvider` with `createVantigoTheme(brand)` and asserts
 every one of those variables equals the server's for the golden brands, so a Mantine
 upgrade that changes a rule fails the test instead of drifting. The payload and the
-localStorage mirror are `{v: 1, algorithm: 1, …}`; a client that sees a higher `v` than it
+localStorage mirror are `{v: 1, algorithm: <current>, …}`; a client that sees a higher `v` than it
 knows ignores the mirror and refetches.
 
 **B37 — Inputs are validated; tokens are never accepted.** The API accepts **inputs
