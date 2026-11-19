@@ -196,6 +196,9 @@ func Module(a *Access) module.Module {
 		Mount:    func(d module.Deps) (http.Handler, error) { return mount(a, d) },
 		Users:    func(d module.Deps) contracts.UserDirectory { return newUserDirectory(a, d) },
 		Calendar: newBusinessCalendar,
+		// The published brands another module lists and prints with (brands
+		// design B29).
+		Brands:   newBrandsContract,
 		AIModels: func(d module.Deps) contracts.AIModels { return a.aiModelsFor(d) },
 		AssistantGrants: func(d module.Deps) contracts.AssistantGrants {
 			return newAssistantGrants(a, d)

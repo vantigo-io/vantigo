@@ -391,6 +391,12 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 		return nil, nil, err
 	}
 
+	// The published brands (contracts.Brands, brands design B29) are
+	// identity's, and every module's Deps carries them.
+	if deps, err = withBrands(deps, mods); err != nil {
+		return nil, nil, err
+	}
+
 	// Customer reference holders are the first many-provider contract slot
 	// (contracts.CustomerReferenceHolder, customers merge design D1): every
 	// module given that declares one contributes it, in the order given, so

@@ -169,6 +169,7 @@ type setup struct {
 	provisioners      []contracts.IdentityProvisioner
 	workforce         contracts.Workforce
 	brandTargets      contracts.BrandTargets
+	brands            contracts.Brands
 	mailboxCalendars  []contracts.MailboxCalendar
 	channelMailboxes  []contracts.ChannelMailbox
 	channelMessengers []contracts.ChannelMessenger
@@ -588,6 +589,14 @@ func WithWorkforce(w contracts.Workforce) Option {
 // reads as "no legal-entity targets".
 func WithBrandTargets(b contracts.BrandTargets) Option {
 	return func(s *setup) { s.brandTargets = b }
+}
+
+// WithBrands sets Deps.Brands, for a module that offers a brand picker or
+// reads a brand (contracts.Brands, brands design B29) to be tested against a
+// FakeBrands without composing Identity beside it. module.Compose keeps a value
+// set here when no enabled module provides the slot.
+func WithBrands(b contracts.Brands) Option {
+	return func(s *setup) { s.brands = b }
 }
 
 // WithMailboxCalendar appends to Deps.MailboxCalendars, for the calendar to be
@@ -1077,6 +1086,7 @@ func New(t *testing.T, opts ...Option) *Harness {
 		IdentityProvisioners:     s.provisioners,
 		Workforce:                s.workforce,
 		BrandTargets:             s.brandTargets,
+		Brands:                   s.brands,
 		MailboxCalendars:         s.mailboxCalendars,
 		ChannelMailboxes:         s.channelMailboxes,
 		ChannelMessengers:        s.channelMessengers,
