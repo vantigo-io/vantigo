@@ -139,12 +139,20 @@ describe("allowlist", () => {
       { path: "tools/frontend/check-colours.ts", pattern: "x", reason: "used" },
       { path: "tools/frontend/check-colours.ts", pattern: "never", reason: "unused" },
       { path: "tools/frontend/missing.ts", reason: "gone" },
+      { path: "tools/frontend/not-merged-yet.ts", reason: "arrives with another branch", optional: true },
+      {
+        path: "tools/frontend/check-colours.ts",
+        pattern: "never-either",
+        reason: "optional but present",
+        optional: true,
+      },
     ]);
     allow[0].used = 1;
     const root = new URL("../..", import.meta.url).pathname;
     expect(staleEntries(root, allow)).toEqual([
       "tools/frontend/check-colours.ts /never/: suppresses nothing; remove it or fix its pattern",
       "tools/frontend/missing.ts: the path does not exist",
+      "tools/frontend/check-colours.ts /never-either/: suppresses nothing; remove it or fix its pattern",
     ]);
   });
 });

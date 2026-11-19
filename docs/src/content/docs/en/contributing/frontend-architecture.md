@@ -319,7 +319,9 @@ are libraries rendered inside the host.
   (or a directory ending in `/`), a line pattern and a reason in
   `tools/frontend/colour-allowlist.json`. Prefer a narrow line pattern to a whole file.
   The reason is mandatory, and a reviewer reads it. An entry whose path is gone or whose
-  pattern matches nothing fails the check, so the list is kept true.
+  pattern matches nothing fails the check, so the list is kept true; an entry marked
+  `"optional": true` may name a file that is not on this branch yet, and is checked once
+  the file exists.
   `bun run colours:test` tests the scanner.
 - **The logo.** `logo-dark.png` is `logo.png` with its navy stroke lightened to read on
   the dark surface and the mint kept; the shell shows the variant that matches the scheme
