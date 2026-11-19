@@ -106,9 +106,19 @@
   width: 100%;
   min-height: 80px;
   border: 0;
-  background: #fff;
-  border-radius: 4px;
-  box-shadow: 0 0 0 1px light-dark(transparent, var(--vantigo-border));
+  background: light-dark(transparent, #fff);
+  border-radius: light-dark(0, 4px);
+}
+/* An outline on the wrapper itself, drawn over the frame: the wrapper's overflow:hidden clips only its children. */
+.message-html-frame {
+  outline: 1px solid light-dark(transparent, var(--vantigo-border));
+  outline-offset: -1px;
+  border-radius: light-dark(0, 4px);
+}
+/* Dimmed text on the dark amber of an internal note. */
+:root[data-mantine-color-scheme="dark"] .message-card.internal_note,
+:root[data-mantine-color-scheme="dark"] .chat-bubble.internal_note {
+  --mantine-color-dimmed: var(--mantine-color-dark-1);
 }
 .composer {
   border-top: 1px solid var(--mantine-color-default-border);

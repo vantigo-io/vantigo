@@ -80,11 +80,12 @@ describe("inline images", () => {
 
 describe("safeHtmlSrcDoc", () => {
   // E-mail HTML is another sender's design, so it stays on a white paper card in dark mode too.
-  it("gives the e-mail document an explicit white background and dark text", () => {
+  // The paper itself is the iframe's own background (styles.css) plus the browser's opaque canvas.
+  it("pins the e-mail document to the light scheme with dark text and keeps the CSP", () => {
     const doc = safeHtmlSrcDoc("<p>Hello</p>");
-    expect(doc).toContain("background:#fff");
     expect(doc).toContain("color:#253248");
     expect(doc).toContain("color-scheme:light");
+    expect(doc).toContain("default-src 'none'; img-src data:; style-src 'unsafe-inline'");
     expect(doc.endsWith("<p>Hello</p>")).toBe(true);
   });
 });

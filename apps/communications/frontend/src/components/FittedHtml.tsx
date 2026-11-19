@@ -24,6 +24,7 @@ export function FittedHtml({ title, srcDoc }: { title: string; srcDoc: string })
   return (
     <div
       ref={ref}
+      className="message-html-frame"
       data-fit-scale={scale}
       style={{ width: "100%", overflow: "hidden", height: scale < 1 ? FIT_FRAME_HEIGHT * scale : undefined }}
     >
