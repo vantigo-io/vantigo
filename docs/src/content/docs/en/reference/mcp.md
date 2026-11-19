@@ -47,8 +47,9 @@ setting, a key revoked, disabled, expired or narrowed applies at the next reques
 
 An Owner changes it with `PUT /api/v1/identity/integrations/{id}/mcp` and
 `{"mcpAccess": "off" | "read" | "read_write"}`, with `If-Match` carrying the integration's
-`version`, which the change bumps. It is `policy:Owner+OwnerManagement`, never available to an
-API key or to the Assistant, and limited per address as the keys' operations are. It answers
+`version`, which the change bumps. It is `policy:Owner+OwnerManagement` and never available to an
+API key or to the Assistant; like the integration's other settings it mints no secret and has no
+limit of its own. It answers
 the integration's detail; `400 invalid_request` for another value or an `If-Match` that is not a
 version, `404 not_found`, `409 integration_archived`, `412 version_mismatch`. A change is
 audited `integration.mcp_changed` with the value before and after; the same value again
