@@ -103,13 +103,16 @@ func (q *Queries) ListWebhookAttempts(ctx context.Context, arg ListWebhookAttemp
 
 const listWebhookDeliveries = `-- name: ListWebhookDeliveries :many
 
-SELECT id, endpoint_id, event_id, event_name, kind, body, state, state_reason, run_attempts, max_run_attempts, total_attempts, next_attempt_at, lease_id, lease_until, last_status, last_error, resend_count, resend_window_start, created_at, completed_at FROM identity.webhook_deliveries
+SELECT id, event_id, event_name, kind, state, state_reason, run_attempts, max_run_attempts, total_attempts,
+       next_attempt_at, last_status, last_error, created_at, completed_at
+FROM identity.webhook_deliveries
 WHERE endpoint_id = $1
   AND ($2::text IS NULL OR state = $2::text)
   AND ($3::text IS NULL OR event_name = $3::text)
   AND ($4::timestamptz IS NULL
-       OR (created_at, id) < ($4::timestamptz, $5::uuid))
-ORDER BY created_at DESC, id DESC
+       OR created_at < $4::timestamptz
+       OR (created_at = $4::timestamptz AND id > $5::uuid))
+ORDER BY created_at DESC, id ASC
 LIMIT $6::int
 `
 
@@ -117,52 +120,64 @@ type ListWebhookDeliveriesParams struct {
 	EndpointID uuid.UUID
 	State      *string
 	EventName  *string
-	BeforeAt   *time.Time
-	BeforeID   *uuid.UUID
+	AfterAt    *time.Time
+	AfterID    *uuid.UUID
 	PageSize   int32
+}
+
+type ListWebhookDeliveriesRow struct {
+	ID             uuid.UUID
+	EventID        *int64
+	EventName      string
+	Kind           string
+	State          string
+	StateReason    *string
+	RunAttempts    int32
+	MaxRunAttempts int32
+	TotalAttempts  int32
+	NextAttemptAt  *time.Time
+	LastStatus     *int16
+	LastError      *string
+	CreatedAt      time.Time
+	CompletedAt    *time.Time
 }
 
 // The webhooks' delivery log and resend (outgoing webhooks design W22, W23,
 // W35).
-// ListWebhookDeliveries is a page of the endpoint's deliveries, newest first,
-// after the cursor (created_at, id) when there is one, under the log's
-// filters. ix_webhook_deliveries_endpoint serves it. The body is read too:
-// it is thin (W12), and the log answers without it.
-func (q *Queries) ListWebhookDeliveries(ctx context.Context, arg ListWebhookDeliveriesParams) ([]IdentityWebhookDelivery, error) {
+// ListWebhookDeliveries is a page of the endpoint's deliveries, newest
+// first and, among those queued at the same instant, by id, after the
+// cursor (created_at, id) when there is one, under the log's filters. The
+// order is ix_webhook_deliveries_endpoint's (endpoint_id, created_at DESC,
+// id). The body is left out: the log answers without it.
+func (q *Queries) ListWebhookDeliveries(ctx context.Context, arg ListWebhookDeliveriesParams) ([]ListWebhookDeliveriesRow, error) {
 	rows, err := q.db.Query(ctx, listWebhookDeliveries,
 		arg.EndpointID,
 		arg.State,
 		arg.EventName,
-		arg.BeforeAt,
-		arg.BeforeID,
+		arg.AfterAt,
+		arg.AfterID,
 		arg.PageSize,
 	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []IdentityWebhookDelivery
+	var items []ListWebhookDeliveriesRow
 	for rows.Next() {
-		var i IdentityWebhookDelivery
+		var i ListWebhookDeliveriesRow
 		if err := rows.Scan(
 			&i.ID,
-			&i.EndpointID,
 			&i.EventID,
 			&i.EventName,
 			&i.Kind,
-			&i.Body,
 			&i.State,
 			&i.StateReason,
 			&i.RunAttempts,
 			&i.MaxRunAttempts,
 			&i.TotalAttempts,
 			&i.NextAttemptAt,
-			&i.LeaseID,
-			&i.LeaseUntil,
 			&i.LastStatus,
 			&i.LastError,
-			&i.ResendCount,
-			&i.ResendWindowStart,
 			&i.CreatedAt,
 			&i.CompletedAt,
 		); err != nil {

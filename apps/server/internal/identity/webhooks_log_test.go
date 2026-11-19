@@ -319,8 +319,9 @@ func TestWebhookLog_ResendIsLimitedToThreeAMinutePerDelivery(t *testing.T) {
 		pass(t, s)
 	}
 	h.advance(10 * time.Second)
-	if r := owner.do(http.MethodPost, path, nil); r.status != http.StatusTooManyRequests || r.code() != "rate_limited" {
-		t.Errorf("a fourth resend within a minute: %d %s", r.status, r.body)
+	if r := owner.do(http.MethodPost, path, nil); r.status != http.StatusTooManyRequests || r.code() != "webhook_resend_limited" ||
+		r.header("Retry-After") != "30" {
+		t.Errorf("a fourth resend within the window: %d %s, Retry-After %q", r.status, r.body, r.header("Retry-After"))
 	}
 	// The limit is the delivery's: another one is resent.
 	if r := owner.do(http.MethodPost, resendPath(integration, e.ID, sibling), nil); r.status != http.StatusAccepted {
@@ -349,7 +350,13 @@ func TestWebhookLog_ResendIsRefusedWhenItCannotBeSent(t *testing.T) {
 	h.settle(t, skipped, "skipped", "permission_not_held")
 	old := h.insertDelivery(t, e.ID, 2)
 	h.settle(t, old, "succeeded", "")
-	h.exec(t, `UPDATE identity.webhook_deliveries SET created_at = $2 WHERE id = $1`, old, h.now().Add(-30*24*time.Hour))
+	h.exec(t, `UPDATE identity.webhook_deliveries SET created_at = $2 WHERE id = $1`, old, h.now().Add(-27*24*time.Hour))
+	worn := h.insertDelivery(t, e.ID, 4)
+	h.settle(t, worn, "dead", "attempts_exhausted")
+	h.exec(t, `UPDATE identity.webhook_deliveries SET total_attempts = 80 WHERE id = $1`, worn)
+	unlisted := h.insertDelivery(t, e.ID, 5)
+	h.settle(t, unlisted, "dead", "attempts_exhausted")
+	h.exec(t, `UPDATE identity.webhook_deliveries SET event_name = $2 WHERE id = $1`, unlisted, cancelled)
 	dead := h.insertDelivery(t, e.ID, 3)
 	h.settle(t, dead, "dead", "attempts_exhausted")
 
@@ -357,10 +364,12 @@ func TestWebhookLog_ResendIsRefusedWhenItCannotBeSent(t *testing.T) {
 		id   uuid.UUID
 		code string
 	}{
-		"a ping":           {ping, "webhook_delivery_not_resendable"},
-		"a skipped one":    {skipped, "webhook_delivery_not_resendable"},
-		"one 30 days old":  {old, "webhook_delivery_not_resendable"},
-		"no such delivery": {uuid.New(), "not_found"},
+		"a ping":                    {ping, "webhook_delivery_not_resendable"},
+		"a skipped one":             {skipped, "webhook_delivery_not_resendable"},
+		"one 27 days old":           {old, "webhook_delivery_not_resendable"},
+		"one tried 80 times":        {worn, "webhook_delivery_not_resendable"},
+		"an event no longer listed": {unlisted, "webhook_event_not_subscribed"},
+		"no such delivery":          {uuid.New(), "not_found"},
 	} {
 		r := owner.do(http.MethodPost, resendPath(integration, e.ID, c.id), nil)
 		if r.code() != c.code {
@@ -418,13 +427,18 @@ func TestWebhookLog_KeepsADeliveryThirtyDaysAndAResendRunsItsOwnThreeDays(t *tes
 	}
 	var page logPage
 	owner.do(http.MethodGet, deliveriesPath(integration, e.ID), nil).json(&page)
-	if len(page.Deliveries) != 1 || page.Deliveries[0].ID != kept || !page.Deliveries[0].Resendable {
+	if len(page.Deliveries) != 1 || page.Deliveries[0].ID != kept || page.Deliveries[0].Resendable { // 29 days old: kept, no longer resendable
 		t.Fatalf("after the prune: %+v", page.Deliveries)
 	}
 
-	// A delivery queued 29 days ago, resent now, is not expired as pending
-	// for 3 days: its run starts at the resend.
-	h.exec(t, `UPDATE identity.webhook_deliveries SET created_at = $2 WHERE id = $1`, kept, h.now().Add(-5*24*time.Hour))
+	// A delivery is resent only while its run can end before the prune: 29
+	// days old is refused, 26 days old is resent, and its run is neither
+	// pruned nor expired for its 3 days.
+	h.exec(t, `UPDATE identity.webhook_deliveries SET created_at = $2 WHERE id = $1`, kept, h.now().Add(-29*24*time.Hour))
+	if r := owner.do(http.MethodPost, resendPath(integration, e.ID, kept), nil); r.status != http.StatusConflict || r.code() != "webhook_delivery_not_resendable" {
+		t.Errorf("29 days old: %d %s", r.status, r.body)
+	}
+	h.exec(t, `UPDATE identity.webhook_deliveries SET created_at = $2 WHERE id = $1`, kept, h.now().Add(-26*24*time.Hour))
 	if r := owner.do(http.MethodPost, resendPath(integration, e.ID, kept), nil); r.status != http.StatusAccepted {
 		t.Fatalf("resend: %d %s", r.status, r.body)
 	}
@@ -435,11 +449,113 @@ func TestWebhookLog_KeepsADeliveryThirtyDaysAndAResendRunsItsOwnThreeDays(t *tes
 	if d := h.delivery(t, kept); d.State != "pending" {
 		t.Errorf("a resend expired at once: %+v", d)
 	}
-	h.advance(3*24*time.Hour + time.Minute)
+	h.advance(3*24*time.Hour - time.Minute)
+	if err := s.Housekeep(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if d := h.delivery(t, kept); d.State != "pending" {
+		t.Errorf("a resend's run cut short within its 3 days: %+v", d)
+	}
+	h.advance(2 * time.Minute)
 	if err := s.Housekeep(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if d := h.delivery(t, kept); d.State != "dead" || d.Reason != "expired" {
 		t.Errorf("a resend pending 3 days: %+v", d)
+	}
+
+	// The prune leaves a pending delivery resent since its cutoff to finish.
+	running := h.insertDelivery(t, e.ID, 9)
+	h.exec(t, `UPDATE identity.webhook_deliveries SET created_at = $2, resend_window_start = $3, next_attempt_at = $4 WHERE id = $1`,
+		running, h.now().Add(-30*24*time.Hour-time.Hour), h.now().Add(-time.Hour), h.now().Add(time.Hour))
+	if err := s.Housekeep(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if d := h.delivery(t, running); d.State != "pending" {
+		t.Errorf("a resent run was pruned: %+v", d)
+	}
+}
+
+func TestWebhookLog_PagesThroughDeliveriesQueuedAtTheSameInstant(t *testing.T) {
+	t.Parallel()
+	h, owner, _, integration := webhookHarness(t)
+	e, _ := createWebhook(t, owner, integration, map[string]any{})
+	h.dropPings(t)
+	want := map[uuid.UUID]bool{}
+	for i := range 5 {
+		want[h.insertDelivery(t, e.ID, int64(i+1))] = true
+	}
+	var seen []uuid.UUID
+	cursor := ""
+	for range 10 {
+		q := deliveriesPath(integration, e.ID) + "?limit=2"
+		if cursor != "" {
+			q += "&cursor=" + url.QueryEscape(cursor)
+		}
+		var page logPage
+		owner.do(http.MethodGet, q, nil).json(&page)
+		for _, d := range page.Deliveries {
+			seen = append(seen, d.ID)
+		}
+		if page.NextCursor == nil {
+			break
+		}
+		cursor = *page.NextCursor
+	}
+	if len(seen) != 5 {
+		t.Fatalf("%d deliveries over the pages, want 5: %v", len(seen), seen)
+	}
+	for i, id := range seen {
+		if !want[id] {
+			t.Errorf("%s twice or unknown", id)
+		}
+		delete(want, id)
+		if i > 0 && strings.Compare(seen[i-1].String(), id.String()) >= 0 {
+			t.Errorf("ties are not by id: %v", seen)
+		}
+	}
+}
+
+func TestWebhookSender_AnEventTheEndpointNoLongerListsIsSkipped(t *testing.T) {
+	t.Parallel()
+	h, owner, _, integration, rc := senderHarness(t)
+	e, _ := createWebhook(t, owner, integration, map[string]any{"events": []string{confirmed, cancelled}})
+	h.dropPings(t)
+	id := h.insertDelivery(t, e.ID, 1)
+	h.exec(t, `UPDATE identity.webhook_deliveries SET event_name = $2 WHERE id = $1`, id, cancelled)
+	r := owner.do(http.MethodPatch, webhooksPath(integration)+"/"+e.ID.String(),
+		map[string]any{"url": "https://hooks.example.com/in", "events": []string{confirmed}}, header("If-Match", e.Version))
+	if r.status != http.StatusOK {
+		t.Fatalf("edit: %d %s", r.status, r.body)
+	}
+	pass(t, h.webhookSender(t))
+	if d := h.delivery(t, id); d.State != "skipped" || d.Reason != "permission_not_held" || d.RunAttempts != 0 {
+		t.Errorf("an event taken off the endpoint: %+v", d)
+	}
+	if n := len(rc.requests("")); n != 0 {
+		t.Errorf("%d requests sent", n)
+	}
+}
+
+func TestWebhookLog_EnablingAnIntegrationKeepsARunResentMeanwhile(t *testing.T) {
+	t.Parallel()
+	h, owner, ownerID, integration := webhookHarness(t)
+	e, _ := createWebhook(t, owner, integration, map[string]any{})
+	h.dropPings(t)
+	if r := owner.do(http.MethodPost, integrationsPath+"/"+integration.String()+"/disable", nil); r.status != http.StatusOK {
+		t.Fatalf("disable: %d", r.status)
+	}
+	stale := h.insertDelivery(t, e.ID, 1)
+	resent := h.insertDelivery(t, e.ID, 2)
+	h.advance(25 * time.Hour)
+	h.exec(t, `UPDATE identity.webhook_deliveries SET resend_window_start = $2, resend_count = 1 WHERE id = $1`, resent, h.now().Add(-time.Hour))
+	if r := h.signIn(t, ownerID, false).do(http.MethodPost, integrationsPath+"/"+integration.String()+"/enable", nil); r.status != http.StatusOK {
+		t.Fatalf("enable: %d", r.status)
+	}
+	if d := h.delivery(t, stale); d.State != "dead" || d.Reason != "expired" {
+		t.Errorf("due 25 hours ago: %+v", d)
+	}
+	if d := h.delivery(t, resent); d.State != "pending" {
+		t.Errorf("resent an hour ago: %+v", d)
 	}
 }

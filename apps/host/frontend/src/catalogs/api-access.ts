@@ -271,7 +271,8 @@ const en = {
   "apiAccess.webhookDeliveryState_succeeded": "Delivered",
   "apiAccess.webhookDeliveryState_dead": "Failed",
   "apiAccess.webhookDeliveryState_skipped": "Skipped",
-  "apiAccess.webhookDeliveryReason_permission_not_held": "The integration's roles no longer let it receive the event",
+  "apiAccess.webhookDeliveryReason_permission_not_held":
+    "The integration's roles no longer let it receive the event, or the endpoint no longer lists it",
   "apiAccess.webhookDeliveryReason_attempts_exhausted": "Every attempt failed",
   "apiAccess.webhookDeliveryReason_gone": "The endpoint answered 410 Gone",
   "apiAccess.webhookDeliveryReason_endpoint_disabled": "The endpoint was disabled",
@@ -305,7 +306,14 @@ const en = {
   "apiAccess.webhookResent": "Delivery queued again",
   "apiAccess.webhookResentHint": "It is sent within seconds.",
   "apiAccess.webhookCouldNotResend": "Could not resend the delivery",
-  "apiAccess.webhookResendRefused_rate_limited": "A delivery is resent at most 3 times a minute. Try again shortly.",
+  "apiAccess.webhookResendRefused_rate_limited": "Too many requests. Try again shortly.",
+  "apiAccess.webhookResendRefused_webhook_resend_limited":
+    "A delivery is resent at most 3 times within a minute of the first. Try again in a minute.",
+  "apiAccess.webhookResendRefused_webhook_event_not_subscribed": "The endpoint no longer lists this event.",
+  "apiAccess.webhookResendRefused_webhook_delivery_not_resendable":
+    "This delivery can no longer be resent: it is pending, skipped or a test event, was queued 27 days ago or more, or has been tried 80 times.",
+  "apiAccess.webhookResendRefused_integration_archived": "The integration is archived.",
+  "apiAccess.webhookResendRefused_not_found": "The delivery or its endpoint no longer exists.",
   "apiAccess.webhookResendRefused_webhook_event_not_permitted":
     "The integration's roles no longer let it receive this event.",
   "apiAccess.webhookResendRefused_webhook_endpoint_disabled": "The endpoint is disabled; enable it first.",
@@ -576,7 +584,8 @@ const nb: Record<keyof typeof en, string> = {
   "apiAccess.webhookDeliveryState_succeeded": "Levert",
   "apiAccess.webhookDeliveryState_dead": "Mislyktes",
   "apiAccess.webhookDeliveryState_skipped": "Hoppet over",
-  "apiAccess.webhookDeliveryReason_permission_not_held": "Integrasjonens roller lar den ikke lenger motta hendelsen",
+  "apiAccess.webhookDeliveryReason_permission_not_held":
+    "Integrasjonens roller lar den ikke lenger motta hendelsen, eller endepunktet lytter ikke lenger etter den",
   "apiAccess.webhookDeliveryReason_attempts_exhausted": "Alle forsøkene feilet",
   "apiAccess.webhookDeliveryReason_gone": "Endepunktet svarte 410 Gone",
   "apiAccess.webhookDeliveryReason_endpoint_disabled": "Endepunktet ble deaktivert",
@@ -610,8 +619,15 @@ const nb: Record<keyof typeof en, string> = {
   "apiAccess.webhookResent": "Leveransen er lagt i kø igjen",
   "apiAccess.webhookResentHint": "Den sendes i løpet av sekunder.",
   "apiAccess.webhookCouldNotResend": "Kunne ikke sende leveransen på nytt",
-  "apiAccess.webhookResendRefused_rate_limited":
-    "En leveranse sendes på nytt høyst 3 ganger i minuttet. Prøv igjen om litt.",
+  "apiAccess.webhookResendRefused_rate_limited": "For mange forespørsler. Prøv igjen om litt.",
+  "apiAccess.webhookResendRefused_webhook_resend_limited":
+    "En leveranse sendes på nytt høyst 3 ganger innen et minutt etter den første. Prøv igjen om et minutt.",
+  "apiAccess.webhookResendRefused_webhook_event_not_subscribed":
+    "Endepunktet lytter ikke lenger etter denne hendelsen.",
+  "apiAccess.webhookResendRefused_webhook_delivery_not_resendable":
+    "Denne leveransen kan ikke lenger sendes på nytt: den venter, ble hoppet over eller er en testhendelse, ble lagt i kø for 27 dager siden eller mer, eller er forsøkt 80 ganger.",
+  "apiAccess.webhookResendRefused_integration_archived": "Integrasjonen er arkivert.",
+  "apiAccess.webhookResendRefused_not_found": "Leveransen eller endepunktet finnes ikke lenger.",
   "apiAccess.webhookResendRefused_webhook_event_not_permitted":
     "Integrasjonens roller lar den ikke lenger motta denne hendelsen.",
   "apiAccess.webhookResendRefused_webhook_endpoint_disabled": "Endepunktet er deaktivert; aktiver det først.",

@@ -2218,7 +2218,7 @@ type WebhookDelivery struct {
 	// NextAttemptAt When a pending delivery is next tried; null otherwise.
 	NextAttemptAt *time.Time `json:"nextAttemptAt"`
 
-	// Resendable Whether its kind, state and age let it be resent — an event that succeeded or is dead, created less than 30 days ago. A resend also needs the endpoint enabled, the integration not archived and still permitted the event.
+	// Resendable Whether its kind, state, age and attempts let it be resent — an event that succeeded or is dead, queued less than 27 days ago and tried fewer than 80 times. A resend also needs the endpoint enabled and still listing the event, and the integration not archived and still permitted the event.
 	Resendable bool `json:"resendable"`
 
 	// RunAttempts The attempts of its current run.

@@ -56,6 +56,7 @@ SET state = 'dead', state_reason = 'expired', completed_at = $1::timestamptz,
     next_attempt_at = NULL, lease_id = NULL, lease_until = NULL
 WHERE endpoint_id = ANY($2::uuid[]) AND state = 'pending'
   AND next_attempt_at < $3::timestamptz
+  AND (resend_window_start IS NULL OR resend_window_start < $3::timestamptz)
 `
 
 type DeadLetterStaleWebhookDeliveriesParams struct {
@@ -68,7 +69,7 @@ type DeadLetterStaleWebhookDeliveriesParams struct {
 // deliveries of the endpoints that have been due since before cutoff: what
 // waited, overdue, while their integration was disabled, too old to send
 // once it is enabled again (W30). A delivery queued long ago whose retry is
-// not yet that overdue keeps its run.
+// not yet that overdue keeps its run, as does one resent within that time.
 func (q *Queries) DeadLetterStaleWebhookDeliveries(ctx context.Context, arg DeadLetterStaleWebhookDeliveriesParams) (int64, error) {
 	result, err := q.db.Exec(ctx, deadLetterStaleWebhookDeliveries, arg.Now, arg.EndpointIds, arg.Cutoff)
 	if err != nil {
@@ -105,7 +106,9 @@ type ExpireWebhookDeliveriesParams struct {
 // the outer WHERE checks again what the subquery chose, so a row that was
 // leased or settled meanwhile is never expired. A resent delivery's 3 days
 // run from its resend: resend_window_start is within a minute of the last
-// one (W35), so its run is not expired the moment it starts.
+// one (W35, an approximation: the window opens at the first resend of a
+// minute, so a later one in it measures from up to a minute earlier), so
+// its run is not expired the moment it starts.
 func (q *Queries) ExpireWebhookDeliveries(ctx context.Context, arg ExpireWebhookDeliveriesParams) (int64, error) {
 	result, err := q.db.Exec(ctx, expireWebhookDeliveries, arg.Now, arg.Cutoff, arg.BatchSize)
 	if err != nil {
@@ -370,7 +373,7 @@ func (q *Queries) ListWebhookNoticesDue(ctx context.Context, arg ListWebhookNoti
 }
 
 const lockDueWebhookEndpoints = `-- name: LockDueWebhookEndpoints :many
-SELECT e.id, e.integration_id, e.url, e.secret_ciphertext, e.previous_secret_ciphertext, e.previous_secret_expires_at
+SELECT e.id, e.integration_id, e.url, e.events, e.secret_ciphertext, e.previous_secret_ciphertext, e.previous_secret_expires_at
 FROM identity.webhook_endpoints e
 JOIN identity.integrations i ON i.user_id = e.integration_id
 JOIN identity.users u ON u.id = e.integration_id
@@ -387,6 +390,7 @@ type LockDueWebhookEndpointsRow struct {
 	ID                       uuid.UUID
 	IntegrationID            uuid.UUID
 	Url                      string
+	Events                   []string
 	SecretCiphertext         []byte
 	PreviousSecretCiphertext []byte
 	PreviousSecretExpiresAt  *time.Time
@@ -411,6 +415,7 @@ func (q *Queries) LockDueWebhookEndpoints(ctx context.Context, now time.Time) ([
 			&i.ID,
 			&i.IntegrationID,
 			&i.Url,
+			&i.Events,
 			&i.SecretCiphertext,
 			&i.PreviousSecretCiphertext,
 			&i.PreviousSecretExpiresAt,
@@ -550,10 +555,12 @@ DELETE FROM identity.webhook_deliveries
 WHERE id IN (
     SELECT d.id FROM identity.webhook_deliveries d
     WHERE d.created_at < $1::timestamptz
+      AND NOT (d.state = 'pending' AND d.resend_window_start >= $1::timestamptz)
     ORDER BY d.created_at
     LIMIT $2::int
     FOR UPDATE SKIP LOCKED)
   AND created_at < $1::timestamptz
+  AND NOT (state = 'pending' AND resend_window_start >= $1::timestamptz)
 `
 
 type PruneWebhookDeliveriesParams struct {
@@ -563,7 +570,9 @@ type PruneWebhookDeliveriesParams struct {
 
 // PruneWebhookDeliveries deletes a batch of deliveries created before
 // cutoff, whatever their state, with their attempts (W23, W30), skipping a
-// row another transaction holds, which the next sweep takes.
+// row another transaction holds, which the next sweep takes. A pending
+// delivery resent since the cutoff is left to finish its run, which the
+// 3-day expiry bounds.
 func (q *Queries) PruneWebhookDeliveries(ctx context.Context, arg PruneWebhookDeliveriesParams) (int64, error) {
 	result, err := q.db.Exec(ctx, pruneWebhookDeliveries, arg.Cutoff, arg.BatchSize)
 	if err != nil {
@@ -709,8 +718,9 @@ type SkipWebhookDeliveriesParams struct {
 }
 
 // SkipWebhookDeliveries settles leased deliveries whose integration no
-// longer holds their event's permission as skipped instead of sending them
-// (W33).
+// longer holds their event's permission, or whose endpoint no longer lists
+// their event, as skipped instead of sending them (W33). The migration's
+// check ties skipped to permission_not_held, which covers both.
 func (q *Queries) SkipWebhookDeliveries(ctx context.Context, arg SkipWebhookDeliveriesParams) (int64, error) {
 	result, err := q.db.Exec(ctx, skipWebhookDeliveries, arg.Now, arg.Ids, arg.LeaseID)
 	if err != nil {

@@ -2,17 +2,21 @@
 -- W35).
 
 -- name: ListWebhookDeliveries :many
--- ListWebhookDeliveries is a page of the endpoint's deliveries, newest first,
--- after the cursor (created_at, id) when there is one, under the log's
--- filters. ix_webhook_deliveries_endpoint serves it. The body is read too:
--- it is thin (W12), and the log answers without it.
-SELECT * FROM identity.webhook_deliveries
+-- ListWebhookDeliveries is a page of the endpoint's deliveries, newest
+-- first and, among those queued at the same instant, by id, after the
+-- cursor (created_at, id) when there is one, under the log's filters. The
+-- order is ix_webhook_deliveries_endpoint's (endpoint_id, created_at DESC,
+-- id). The body is left out: the log answers without it.
+SELECT id, event_id, event_name, kind, state, state_reason, run_attempts, max_run_attempts, total_attempts,
+       next_attempt_at, last_status, last_error, created_at, completed_at
+FROM identity.webhook_deliveries
 WHERE endpoint_id = sqlc.arg(endpoint_id)
   AND (sqlc.narg(state)::text IS NULL OR state = sqlc.narg(state)::text)
   AND (sqlc.narg(event_name)::text IS NULL OR event_name = sqlc.narg(event_name)::text)
-  AND (sqlc.narg(before_at)::timestamptz IS NULL
-       OR (created_at, id) < (sqlc.narg(before_at)::timestamptz, sqlc.narg(before_id)::uuid))
-ORDER BY created_at DESC, id DESC
+  AND (sqlc.narg(after_at)::timestamptz IS NULL
+       OR created_at < sqlc.narg(after_at)::timestamptz
+       OR (created_at = sqlc.narg(after_at)::timestamptz AND id > sqlc.narg(after_id)::uuid))
+ORDER BY created_at DESC, id ASC
 LIMIT sqlc.arg(page_size)::int;
 
 -- name: GetWebhookDelivery :one

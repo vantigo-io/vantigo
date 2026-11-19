@@ -206,6 +206,9 @@ hemmeligheten**. Et endepunkt der meldingene fortsetter å feile, merkes **Feile
 Vantigo har deaktivert — fordi det har feilet i 5 dager og minst 5 meldinger er gitt opp etter alle nye
 forsøk, eller fordi det svarte `410 Gone` — får et banner
 med årsaken og **Aktiver**, og integrasjonens kontaktperson og eierne får en e-post.
+**Leveranser** på et endepunkt åpner **Leveranselogg**: meldingene de siste 30 dagene, nyeste
+først, filtrert etter **Status** og **Hendelse**, hver med forsøkene sine under **Vis**, og **Send
+på nytt** for en melding programmet aldri behandlet.
 
 Detaljene — hva en nøkkel når, begrensning, nøkler for bare lesing, nettverk,
 hastighetsgrensen, svarene en klient får, forespørselsloggen, webhook-endepunkter og hva du

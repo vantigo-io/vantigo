@@ -859,7 +859,7 @@ export interface paths {
         };
         /**
          * List a webhook endpoint's deliveries
-         * @description The delivery log of a webhook endpoint (outgoing webhooks design W23), newest first, by cursor: every event and test event (kind ping) queued to it in the last 30 days, with its state, its attempts and the last one's status and error word, never its body. state and event narrow it to one state or one event name (webhook.ping for the test events).
+         * @description The delivery log of a webhook endpoint (outgoing webhooks design W23), newest first (and by id among those queued at the same instant), by cursor: every event and test event (kind ping) queued to it in the last 30 days, with its state, its attempts and the last one's status and error word, never its body. state and event narrow it to one state or one event name (webhook.ping for the test events).
          */
         get: operations["getIdentityIntegrationsByIdWebhooksByWebhookIdDeliveries"];
         put?: never;
@@ -901,7 +901,7 @@ export interface paths {
         put?: never;
         /**
          * Resend a webhook delivery
-         * @description Sends a delivery again (outgoing webhooks design W22, W35): an event that succeeded or is dead, created less than 30 days ago, to an enabled endpoint of an integration that is not archived and still holds the event's permissions. It keeps its webhook-id and its body, is signed afresh at each attempt with a new timestamp, and starts a new run of 8 attempts. A delivery is resent at most 3 times a minute. A test event (ping) is not resent: send another. Audited webhook.resent.
+         * @description Sends a delivery again (outgoing webhooks design W22, W35), for a message the receiver never processed: receivers dedupe on webhook-id, so one it has handled is dropped. An event that succeeded or is dead, queued less than 27 days ago (so its run ends before the 30 days' retention) and tried fewer than 80 times, to an enabled endpoint that still lists the event, of an integration that is not archived and still holds the event's permissions. It keeps its webhook-id and its body, goes to the endpoint's URL as it is now, is signed afresh at each attempt with a new timestamp, and starts a new run of 8 attempts. A delivery is resent at most 3 times within a window of one minute that opens at the first. A test event (ping) is not resent: send another. Audited webhook.resent.
          */
         post: operations["postIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResend"];
         delete?: never;
@@ -3688,7 +3688,7 @@ export interface components {
              * @description When a pending delivery is next tried; null otherwise.
              */
             nextAttemptAt: string | null;
-            /** @description Whether its kind, state and age let it be resent — an event that succeeded or is dead, created less than 30 days ago. A resend also needs the endpoint enabled, the integration not archived and still permitted the event. */
+            /** @description Whether its kind, state, age and attempts let it be resent — an event that succeeded or is dead, queued less than 27 days ago and tried fewer than 80 times. A resend also needs the endpoint enabled and still listing the event, and the integration not archived and still permitted the event. */
             resendable: boolean;
             /** @description The attempts of its current run. */
             runAttempts: number;
@@ -8031,7 +8031,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
-            /** @description Conflict — integration_archived, the integration is archived; webhook_endpoint_disabled, the endpoint is disabled; webhook_event_not_permitted, the integration no longer holds the event's permissions; webhook_delivery_not_resendable, a test event, a delivery still pending or skipped, or one created 30 days ago or more. */
+            /** @description Conflict — integration_archived, the integration is archived; webhook_endpoint_disabled, the endpoint is disabled; webhook_event_not_permitted, the integration no longer holds the event's permissions; webhook_event_not_subscribed, the endpoint no longer lists the event; webhook_delivery_not_resendable, a test event, a delivery still pending or skipped, one queued 27 days ago or more, or one tried 80 times. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -8040,7 +8040,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
-            /** @description Too Many Requests — rate_limited, the delivery was resent 3 times in the last minute; or the address's limit. */
+            /** @description Too Many Requests — webhook_resend_limited, the delivery was resent 3 times within the window of one minute that opened at the first, Retry-After the seconds until it closes; or rate_limited, the address's limit. */
             429: {
                 headers: {
                     "Retry-After"?: string;

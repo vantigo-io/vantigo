@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -37,19 +39,39 @@ const (
 	// webhookResendWindow (W35).
 	webhookResendsPerWindow = 3
 	webhookResendWindow     = time.Minute
-	auditWebhookResent      = "webhook.resent"
+	// webhookResendBefore is how old a delivery may be and still be resent:
+	// the retention less the 3 days a run may stay pending, so a resend's
+	// run is never pruned before it can finish (W22, W30).
+	webhookResendBefore = webhookRetention - webhookPendingLimit
+	// webhookMaxAttempts caps a delivery's attempts over its life, about 10
+	// runs of 8, so resending one cannot become a stream of its own.
+	webhookMaxAttempts = 10 * webhookRunAttempts
+	auditWebhookResent = "webhook.resent"
 )
 
 var (
 	webhookDeliveryNotFound = refuse(http.StatusNotFound, "not_found", "No such delivery of this webhook endpoint.", nil)
 	// webhookNotResendable refuses a ping, a delivery still pending or
-	// skipped, and one past the log's retention (W22).
+	// skipped, one queued 27 days ago or more, and one that has had 80
+	// attempts (W22).
 	webhookNotResendable = refuse(http.StatusConflict, "webhook_delivery_not_resendable",
-		"Only an event that succeeded or is dead, created less than 30 days ago, is resent; send a test event again instead of resending one.", nil)
+		"Only an event that succeeded or is dead, queued less than 27 days ago and tried fewer than 80 times, is resent; send a test event again instead of resending one.", nil)
 	webhookResendNotPermitted = refuse(http.StatusConflict, "webhook_event_not_permitted",
 		"The integration's roles no longer let it receive this event.", nil)
-	webhookResendLimited = refuse(http.StatusTooManyRequests, "rate_limited", "A delivery is resent at most 3 times a minute.", nil)
+	// webhookResendNotSubscribed refuses an event the endpoint no longer
+	// lists: a resend goes to the endpoint as it is now.
+	webhookResendNotSubscribed = refuse(http.StatusConflict, "webhook_event_not_subscribed",
+		"The endpoint no longer lists this event.", nil)
 )
+
+// webhookResendLimited is the per-delivery limit's refusal (W35): three
+// resends within a window of one minute that opens at the first, and when
+// the window closes.
+type webhookResendLimited struct{ retryAfter time.Duration }
+
+func (webhookResendLimited) Error() string {
+	return "identity: refused with 429 webhook_resend_limited"
+}
 
 // webhookLogCursor is a page's last row, the next page's bound.
 type webhookLogCursor struct {
@@ -57,7 +79,7 @@ type webhookLogCursor struct {
 	ID uuid.UUID `json:"i"`
 }
 
-func formatWebhookLogCursor(d store.IdentityWebhookDelivery) string {
+func formatWebhookLogCursor(d store.ListWebhookDeliveriesRow) string {
 	raw, _ := json.Marshal(webhookLogCursor{At: d.CreatedAt, ID: d.ID}) // a time and a uuid: Marshal cannot fail
 	return base64.RawURLEncoding.EncodeToString(raw)
 }
@@ -74,16 +96,27 @@ func parseWebhookLogCursor(text string) (webhookLogCursor, bool) {
 	return c, true
 }
 
-// webhookResendable reports whether d's kind, state and age let it be
-// resent at now (W22): an event, not a ping, that succeeded or is dead, and
-// is still inside the log's retention.
-func webhookResendable(d store.IdentityWebhookDelivery, now time.Time) bool {
+// webhookResendable reports whether d's kind, state, age and attempts let
+// it be resent at now (W22): an event, not a ping, that succeeded or is
+// dead, queued less than 27 days ago, so its run ends before the 30 days'
+// prune, and tried fewer than 80 times.
+func webhookResendable(d store.ListWebhookDeliveriesRow, now time.Time) bool {
 	return d.Kind == webhookKindEvent && (d.State == webhookSucceeded || d.State == webhookDead) &&
-		now.Sub(d.CreatedAt) < webhookRetention
+		now.Sub(d.CreatedAt) < webhookResendBefore && d.TotalAttempts < webhookMaxAttempts
+}
+
+// webhookLogRow is a whole delivery as the log reads its rows.
+func webhookLogRow(d store.IdentityWebhookDelivery) store.ListWebhookDeliveriesRow {
+	return store.ListWebhookDeliveriesRow{
+		ID: d.ID, EventID: d.EventID, EventName: d.EventName, Kind: d.Kind, State: d.State, StateReason: d.StateReason,
+		RunAttempts: d.RunAttempts, MaxRunAttempts: d.MaxRunAttempts, TotalAttempts: d.TotalAttempts,
+		NextAttemptAt: d.NextAttemptAt, LastStatus: d.LastStatus, LastError: d.LastError,
+		CreatedAt: d.CreatedAt, CompletedAt: d.CompletedAt,
+	}
 }
 
 // webhookDeliveryBody is d as the log shows it, without its body.
-func webhookDeliveryBody(d store.IdentityWebhookDelivery, now time.Time) gen.WebhookDelivery {
+func webhookDeliveryBody(d store.ListWebhookDeliveriesRow, now time.Time) gen.WebhookDelivery {
 	out := gen.WebhookDelivery{
 		Id: d.ID, MessageId: webhookMessageID(d.ID), EventId: d.EventID, EventName: d.EventName,
 		Kind: gen.WebhookDeliveryKind(d.Kind), State: gen.WebhookDeliveryState(d.State),
@@ -150,7 +183,7 @@ func (s *server) GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveries(ctx co
 		if !ok {
 			fields["cursor"] = []string{"The cursor is not one this log gave."}
 		}
-		params.BeforeAt, params.BeforeID = &c.At, &c.ID
+		params.AfterAt, params.AfterID = &c.At, &c.ID
 	}
 	if len(fields) > 0 {
 		return refuse(http.StatusBadRequest, "invalid_request", invalidRequestMessage, fields), nil
@@ -195,7 +228,7 @@ func (s *server) GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliv
 		return nil, fmt.Errorf("identity: list the webhook attempts: %w", err)
 	}
 	out := gen.WebhookDeliveryDetail{
-		Delivery: webhookDeliveryBody(d, s.deps.Clock()), Body: d.Body,
+		Delivery: webhookDeliveryBody(webhookLogRow(d), s.deps.Clock()), Body: d.Body,
 		Attempts: make([]gen.WebhookDeliveryAttempt, 0, len(attempts)),
 	}
 	for _, a := range attempts {
@@ -217,12 +250,15 @@ func (s *server) GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliv
 
 // PostIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResend
 // sends a delivery again (W22, W35), audited webhook.resent: an event that
-// succeeded or is dead, inside the log's retention, of an enabled endpoint
-// of an integration that is not archived and still holds the event's
+// succeeded or is dead, queued less than 27 days ago and tried fewer than 80
+// times, of an enabled endpoint that still lists the event, of an
+// integration that is not archived and still holds the event's
 // permissions, checked again here. It keeps the delivery's id, so its
-// webhook-id, and its body; each attempt signs afresh at its own time; the
-// run is a new one of 8. A delivery is resent at most 3 times a minute, by a
-// counter on its row (W35), since identity's limits are per address.
+// webhook-id, and its body; it goes to the endpoint's URL as it is now;
+// each attempt signs afresh at its own time; the run is a new one of 8. A
+// delivery is resent at most 3 times within a window of one minute that
+// opens at the first, by a counter on its row (W35), since identity's
+// limits are per address.
 // (POST /api/v1/identity/integrations/{id}/webhooks/{webhookId}/deliveries/{deliveryId}/resend)
 func (s *server) PostIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResend(ctx context.Context, req gen.PostIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResendRequestObject) (gen.PostIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResendResponseObject, error) {
 	p, r, err := integrationCaller(ctx)
@@ -241,8 +277,11 @@ func (s *server) PostIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeli
 		if e.Status != webhookEnabled {
 			return webhookEndpointDisabled
 		}
-		if !webhookResendable(d, now) {
+		if !webhookResendable(webhookLogRow(d), now) {
 			return webhookNotResendable
+		}
+		if !slices.Contains(e.Events, d.EventName) {
+			return webhookResendNotSubscribed
 		}
 		entry, ok := contracts.LookupWebhookEvent(d.EventName)
 		if !ok {
@@ -258,7 +297,7 @@ func (s *server) PostIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeli
 		count, window := int32(1), now
 		if d.ResendWindowStart != nil && now.Sub(*d.ResendWindowStart) < webhookResendWindow {
 			if d.ResendCount >= webhookResendsPerWindow {
-				return webhookResendLimited
+				return webhookResendLimited{retryAfter: d.ResendWindowStart.Add(webhookResendWindow).Sub(now)}
 			}
 			count, window = d.ResendCount+1, *d.ResendWindowStart
 		}
@@ -281,10 +320,20 @@ func (s *server) PostIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeli
 			}{snapshot, d.ID, d.EventName}, mfa: p.MFAVerified,
 		})
 	})
+	var limited webhookResendLimited
+	if errors.As(err, &limited) {
+		// Retry-After is in whole seconds, at least one, until the window closes.
+		seconds := strconv.Itoa(max(1, int((limited.retryAfter+time.Second-1)/time.Second)))
+		return gen.PostIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResend429JSONResponse{
+			Body: authErrorBody("webhook_resend_limited",
+				"A delivery is resent at most 3 times within a window of one minute that opens at the first.", nil),
+			Headers: gen.PostIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResend429ResponseHeaders{RetryAfter: &seconds},
+		}, nil
+	}
 	if err != nil {
 		return refusalOr[gen.PostIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResendResponseObject](err)
 	}
-	return gen.PostIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResend202JSONResponse(webhookDeliveryBody(resent, s.deps.Clock())), nil
+	return gen.PostIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResend202JSONResponse(webhookDeliveryBody(webhookLogRow(resent), s.deps.Clock())), nil
 }
 
 func (r refusal) VisitGetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesResponse(w http.ResponseWriter) error {
