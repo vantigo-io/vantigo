@@ -1837,7 +1837,17 @@ func branding(p *problems, env map[string]string) Branding {
 // protocol-relative //host, or /\host, which a browser reads as //host) would
 // end up in a link the SPA renders. Brands' support contacts use the same rule
 // (brands design B37).
+//
+// A control character (a tab, a carriage return or a line feed among them) is
+// refused anywhere in the value: browsers strip some of them from a URL, which
+// turns "java\tscript:" or "/\t/host" into a different link than the one
+// validated.
 func ValidLink(v string) bool {
+	for _, r := range v {
+		if r < 0x20 || r == 0x7f {
+			return false
+		}
+	}
 	if strings.HasPrefix(v, "/") && !strings.HasPrefix(v, "//") && !strings.HasPrefix(v, `/\`) {
 		return true
 	}
@@ -1846,8 +1856,13 @@ func ValidLink(v string) bool {
 }
 
 // ValidPlainAddress reports whether v is a plain e-mail address: one that
-// equals its own parsed address, with no display name.
+// equals its own parsed address, with no display name. It is also refused when
+// it holds ?, & or %, which a quoted local part may legally carry but which
+// would add a header or an escape to the mailto: link it ends up in.
 func ValidPlainAddress(v string) bool {
+	if strings.ContainsAny(v, "?&%") {
+		return false
+	}
 	a, err := mail.ParseAddress(v)
 	return err == nil && a.Address == v
 }

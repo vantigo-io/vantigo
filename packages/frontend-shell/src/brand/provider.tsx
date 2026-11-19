@@ -163,7 +163,13 @@ export function BrandProvider({ userId, sessionless = false, children }: BrandPr
 
   useEffect(() => {
     void previewTick;
-    if (sessionless || userId === undefined) return;
+    if (sessionless) {
+      // An anonymous page (the pay page, a station) asks for no brand, but a mirror left by someone who
+      // used this browser must not be painted for whoever is here now if the stylesheet fails.
+      clearBrandMirror();
+      return;
+    }
+    if (userId === undefined) return;
     let cancelled = false;
     (async () => {
       let result: { status: number; payload: BrandPayload | null };

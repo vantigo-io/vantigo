@@ -2447,3 +2447,27 @@ func TestLoad_AccountingSaftRetention(t *testing.T) {
 		t.Errorf("error = %q", msg)
 	}
 }
+
+func TestValidLink_RefusesControlCharacters(t *testing.T) {
+	for _, v := range []string{"/help\tpage", "/help\rpage", "/help\npage", "https://example.com/a\nb", "java\tscript:alert(1)", "/\t/evil.example", "/a\x7fb"} {
+		if ValidLink(v) {
+			t.Errorf("ValidLink(%q) = true, want false", v)
+		}
+	}
+	for _, v := range []string{"/help", "https://example.com/a?b=c&d=e", "http://example.com"} {
+		if !ValidLink(v) {
+			t.Errorf("ValidLink(%q) = false, want true", v)
+		}
+	}
+}
+
+func TestValidPlainAddress_RefusesWhatBreaksAMailtoLink(t *testing.T) {
+	for _, v := range []string{`"a?cc=x@evil.example"@example.com`, `"a&b"@example.com`, `"a%40b"@example.com`, "Name <a@example.com>"} {
+		if ValidPlainAddress(v) {
+			t.Errorf("ValidPlainAddress(%q) = true, want false", v)
+		}
+	}
+	if !ValidPlainAddress("support@example.com") {
+		t.Error("a plain address was refused")
+	}
+}

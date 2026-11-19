@@ -95,6 +95,27 @@ describe("the brand provider", () => {
     expect(window.localStorage.getItem(BRAND_MIRROR_KEY)).toBeNull();
   });
 
+  it("clears the mirror on a page that asks for no session, and asks for nothing", () => {
+    window.localStorage.setItem(
+      BRAND_MIRROR_KEY,
+      JSON.stringify({ v: 1, algorithm: BRAND_ALGORITHM, userId: "user-1", title: "x" }),
+    );
+    mount(undefined, true);
+    expect(window.localStorage.getItem(BRAND_MIRROR_KEY)).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("clears the mirror when the public brand cannot be fetched", async () => {
+    window.localStorage.setItem(
+      BRAND_MIRROR_KEY,
+      JSON.stringify({ v: 1, algorithm: BRAND_ALGORITHM, userId: "user-1", title: "x" }),
+    );
+    answers["/api/v1/identity/brand/public"] = () => new Response("", { status: 503 });
+    mount(null);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(window.localStorage.getItem(BRAND_MIRROR_KEY)).toBeNull();
+  });
+
   it("clears the mirror when the person signs out", async () => {
     answers["/api/v1/identity/brand/public"] = () => json(teal({ title: "Public Acme" }));
     answers["/api/v1/identity/brand"] = () => json(teal());
