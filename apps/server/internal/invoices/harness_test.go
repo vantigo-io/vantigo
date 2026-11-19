@@ -524,6 +524,8 @@ type fakeObjectStore struct {
 	deletes int
 	putErr  error
 	getErr  error
+	// existsErr is what every Exists answers, nil to answer from the map.
+	existsErr error
 	// onGet, when set, is called with each key read, before the read and
 	// outside the store's lock.
 	onGet func(key string)
@@ -625,8 +627,18 @@ func (s *fakeObjectStore) Get(_ context.Context, key string) (io.ReadCloser, err
 func (s *fakeObjectStore) Exists(_ context.Context, key string) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.existsErr != nil {
+		return false, s.existsErr
+	}
 	_, ok := s.objects[key]
 	return ok, nil
+}
+
+// failExists makes every Exists fail with err, nil to stop.
+func (s *fakeObjectStore) failExists(err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.existsErr = err
 }
 
 func (s *fakeObjectStore) Delete(_ context.Context, key string) error {

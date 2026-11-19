@@ -15,13 +15,15 @@ import {
 } from "../api/billing-runs";
 import { invoicesMetaQueryOptions } from "../api/meta";
 import { INVOICES_QUERY_KEY } from "../api/request";
+import { runSendBatchesQueryOptions, useSendBatchesLive } from "../api/send-batches";
 import { BillingRunCountBadges } from "../components/billing-run-counts";
 import { DocumentLink, RouteLink } from "../components/document-link";
+import { SendAllButton } from "../components/send-all-button";
 import "../i18n";
 import { itemCodeWords, itemStatusColour, itemStatusWords, runStatusColour, runStatusWords } from "../lib/billing-runs";
 import { refusalMessage } from "../lib/errors";
 import { useInvoiceFormat } from "../lib/format";
-import { BILLING_RUNS_ROUTE_PATH } from "../lib/routes";
+import { BILLING_RUNS_ROUTE_PATH, sendBatchHref, sendBatchLinkOptions } from "../lib/routes";
 
 export interface BillingRunPageProps {
   runId: number;
@@ -76,6 +78,10 @@ export const BillingRunPage = ({ runId }: BillingRunPageProps) => {
 
   const run = detail.data?.run;
   const canCancel = run !== undefined && runIsLive(run) && (meta.data?.capabilities.canCreate ?? false);
+  // Send all (invoices phase 6 design I36): once the run is done or cancelled
+  // and has issued documents, for a caller who may send.
+  const canSendAll =
+    run !== undefined && !runIsLive(run) && run.counts.issued > 0 && (meta.data?.capabilities.canIssue ?? false);
 
   return (
     <Stack gap="lg">
@@ -92,6 +98,12 @@ export const BillingRunPage = ({ runId }: BillingRunPageProps) => {
             <Button color="red" variant="light" loading={cancel.isPending} onClick={confirmCancel}>
               {t("billingRun.cancel")}
             </Button>
+          ) : canSendAll && run ? (
+            <SendAllButton
+              data-assist="invoices.billing-run.send-all"
+              input={{ billingRunId: runId }}
+              count={run.counts.issued}
+            />
           ) : undefined
         }
       />
@@ -170,9 +182,35 @@ export const BillingRunPage = ({ runId }: BillingRunPageProps) => {
               )}
             </Stack>
           </PageSection>
+          {!runIsLive(run) && <SendingCard runId={runId} />}
         </>
       )}
     </Stack>
+  );
+};
+
+/** The run's Send alls, newest first, each linked to its page with its documents counted. */
+const SendingCard = ({ runId }: { runId: number }) => {
+  const { t, dateTime } = useInvoiceFormat();
+  const live = useSendBatchesLive();
+  const batches = useQuery(runSendBatchesQueryOptions(runId, live));
+  if (!batches.data) return null;
+  return (
+    <PageSection title={t("sendAll.runCard")}>
+      {batches.data.data.length === 0 ? (
+        <Text size="sm" c="dimmed">
+          {t("sendAll.runCardEmpty")}
+        </Text>
+      ) : (
+        <Stack gap={4} data-testid="billing-run-sending">
+          {batches.data.data.map((batch) => (
+            <RouteLink key={batch.id} href={sendBatchHref(batch.id)} to={sendBatchLinkOptions(batch.id)}>
+              {t("sendAll.runBatch", { id: batch.id, at: dateTime(batch.createdAt) })}
+            </RouteLink>
+          ))}
+        </Stack>
+      )}
+    </PageSection>
   );
 };
 

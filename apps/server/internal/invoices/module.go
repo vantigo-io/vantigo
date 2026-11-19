@@ -186,7 +186,9 @@ func Module() module.Module {
 // the order allocations this module took and no draft holds; with Orders off
 // its cycle does nothing. So is the invoices.credit_moves worker (invoices
 // phase 6 design I10), which moves a credit note's surplus to the customer's
-// credit when the issue's follow-up did not. The invoices-bank-feed worker, which reads the
+// credit when the issue's follow-up did not. So is the invoices-send worker
+// (invoices phase 6 design I36), which carries send all's jobs: without mail
+// it still fails its e-mail jobs honestly. The invoices-bank-feed worker, which reads the
 // accounts the bank feed is switched on for and matches their incoming
 // payments (invoices bank feed design F5), is handed over only when
 // INVOICES_BANK_FEED_ENABLED is on: off, no bank is called on a schedule and
@@ -201,7 +203,7 @@ func workers(d module.Deps) []worker.Worker {
 		ws = append(ws, NewEhfWorker(d), NewEhfEventsWorker(d))
 	}
 	ws = append(ws, NewReminderWorker(d), NewBillingWorker(d), NewAllocationReconcileWorker(d), NewOverdueEventsWorker(d),
-		NewCreditMovesWorker(d))
+		NewCreditMovesWorker(d), NewSendWorker(d))
 	if d.Config != nil && d.Config.InvoicesVippsEnabled {
 		ws = append(ws, NewPaymentWorker(d))
 	}

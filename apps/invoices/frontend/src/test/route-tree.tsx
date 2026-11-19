@@ -23,6 +23,7 @@ import {
   QUICK_INVOICE_ROUTE_PATH,
   REMINDER_PRINT_ROUTE_PATH,
   REMINDER_RUN_ROUTE_PATH,
+  SEND_BATCH_ROUTE_PATH,
   VIPPS_PAYMENTS_ROUTE_PATH,
 } from "../lib/routes";
 import { BillingRunsPage } from "../pages/billing-runs";
@@ -37,6 +38,7 @@ import { BillingRunRoute } from "./billing-run-route";
 import { CURRENT_USER_ID } from "./fixtures";
 import { InvoiceRoute } from "./invoice-route";
 import { ReminderRunRoute } from "./reminder-run-route";
+import { SendBatchRoute } from "./send-batch-route";
 
 /**
  * Stands in for the host routes this package's pages are mounted by: the
@@ -96,6 +98,11 @@ const makeRouteTree = (canViewCustomers: boolean, canCreateCustomers: boolean) =
       getParentRoute: () => rootRoute,
       path: BILLING_RUN_ROUTE_PATH,
       component: BillingRunRoute,
+    }),
+    createRoute({
+      getParentRoute: () => rootRoute,
+      path: SEND_BATCH_ROUTE_PATH,
+      component: SendBatchRoute,
     }),
     createRoute({
       getParentRoute: () => rootRoute,

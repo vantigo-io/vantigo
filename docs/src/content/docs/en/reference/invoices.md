@@ -20,6 +20,7 @@ sources:
   - apps/server/internal/db/migrations/00200_invoices_split.sql
   - apps/server/internal/db/migrations/00201_invoices_efaktura.sql
   - apps/server/internal/db/migrations/00203_invoices_currency.sql
+  - apps/server/internal/db/migrations/00205_invoices_send_jobs.sql
   - apps/server/internal/consumerinvoice
   - apps/server/internal/docmath
 ---
@@ -1660,8 +1661,8 @@ the issue's (`issueDraft`, [Issuing](#issuing)) — the handlers of `POST
 /from-consumption` and `POST /{id}/issue` map the same outcomes to their responses. A
 worker, `invoices-billing`, carries the customers one at a time
 ([The billing worker](#the-billing-worker)). **Sending is not part of a run**: the
-documents a run issued are sent afterwards by the usual paths
-([Sending a document](#sending-a-document), [Sending as EHF](#sending-as-ehf)). In the
+documents a run issued are sent afterwards, by the usual paths or all at once from the
+run's page ([Send all](#send-all)). In the
 app the pages are **Billing runs** (`/invoices/billing-runs`), under `invoices:create`
 ([the user guide](/en/user/invoices/#run-billing-for-every-customer)).
 
@@ -1864,17 +1865,23 @@ customer does it.
 
 ### Live updates
 
-The billing runs list and a run's page update by themselves through the platform's
-[live updates](/en/contributing/platform-packages/#live-updates). The module registers one
-topic through `Module.LiveTopics` (`internal/invoices/live.go`). Events carry the run's id
-only; a screen that hears one refetches through the ordinary endpoints, which check the
+The billing runs list and a run's page, and a Send all's page and a run's Sending card,
+update by themselves through the platform's
+[live updates](/en/contributing/platform-packages/#live-updates). The module registers two
+topics through `Module.LiveTopics` (`internal/invoices/live.go`). Events carry the run's or
+the batch's id only; a screen that hears one refetches through the ordinary endpoints, which check the
 permission as they always do.
 
 | Topic | Authorised by | Events | Presence |
 | --- | --- | --- | --- |
 | `invoices.billing-runs` | `invoices:access`, as both `GET`s of the runs | `run.changed`, with the run's id, or without one after the worker's sweeps | not allowed |
+| `invoices.send-batches` | `invoices:access`, as both `GET`s of the batches | `batch.changed`, with the batch's id ([Send all](#send-all)) | not allowed |
 
-The topic has no key: any key is `forbidden`. Where the module notifies:
+Neither topic has a key: any key is `forbidden`. `invoices.send-batches` is notified by
+the enqueue and by a posted confirmation, on the transaction that writes, and by the
+`invoices-send` worker on the pool: each job's outcome or retry at most once a second per
+batch, and always the batch's end, by the write that ended it or the sweep. Where the module
+notifies the billing runs' topic:
 
 - the API, on the transaction that writes: a run made with its items, and a cancel with its
   items;
@@ -3364,6 +3371,146 @@ committed during it — the inserting statement's own snapshot was taken before.
 trigger reads the document's current customer, so a merge in between is covered too. A
 delivery whose recipient is `''` is one whose customer was anonymised; its message is
 blanked with it, as a payment's note is.
+
+### Send all
+
+Phase 6 delivery E-1 (design I35, I36;
+[plan](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/plans/2026-11-18-invoices-phase6-e-plan.md),
+E1–E9 and readings E2–E6, E13) sends many issued documents in one action, on migration
+`00205_invoices_send_jobs.sql`. `POST /invoices/send-batches` (`invoices:issue`) takes
+exactly one of `invoiceIds` — 1 to 500, a repeat dropped — and `billingRunId`, a run
+`done` or `cancelled` (else 409 `billing_run_not_finished`; 404 for an unknown run),
+whose every document its items made is asked for. Neither, both, none or a run that
+made none is 400 `send_batch_empty`; past 500, 400 `send_batch_too_large`. The rate limit
+counts **documents, not calls**, per principal — a person or an API key's integration user:
+500 per 10 minutes (`sendAllPolicy`, through `ratelimit.Limiter.HitN`), else 429
+`send_batch_rate_limited` and nothing is written.
+
+**The batch and the job.** One transaction writes an `invoices.send_batches` row
+(`source` `selection` or `billing_run`, `billing_run_id` exactly with the second,
+`requested_by`) and one `invoices.send_jobs` row per document, then notifies the live
+topic. A document is not queued but written `skipped` at once, so the answer lists every
+document asked for:
+
+| Code | When |
+| --- | --- |
+| `invoice_draft` | the document is a draft |
+| `invoice_not_found` | no document has the id |
+| `already_delivered` | the document is delivered already, on **any** channel (reading E2): an e-mail in `invoices.deliveries`, a transmission EHF or eFaktura `queued`, `submitted`, `delivered` or `unconfirmed`, a manual delivery not removed, or a send job of any batch `awaiting_print` or `printed` (`DeliveredDocuments`) |
+| `send_uncertain_elsewhere` | a send job of any batch may have mailed it: `uncertain`, or `failed` `mail_failed` (`UncertainDocuments`). It is never sent again by send all |
+| `send_in_progress` | another batch's job for the document is `queued` or `sending`: `ux_send_jobs_live` allows one, and the insert's `ON CONFLICT DO NOTHING` waits for a racing enqueue's commit, so two batches at once end in one job and one skip |
+
+Per document, not per channel: a document mailed by hand and then sent as EHF by send all
+would be delivered twice, so any delivery skips it, and a second Send all over the same
+documents — a run sent again — sends none of them twice. A second channel is the document's
+own send. A job's states:
+
+| State | Meaning | Moves to |
+| --- | --- | --- |
+| `queued` | waiting, due at `lease_until` (null: at once) | `sending` |
+| `sending` | claimed: `lease_id`, `lease_until`, `started_at` | `sending` (a reclaim), `queued` (a retry or a release), or an end state |
+| `sent` | e-mailed; `delivery_id` the log row | — |
+| `handed_over` | an EHF or eFaktura queued for its worker; `transmission_id` | — |
+| `awaiting_print` | left for the print ZIP; its PDF stored | `printed` |
+| `printed` | confirmed posted | — |
+| `skipped` | nothing tried; `code` | — |
+| `failed` | a refusal, or the last attempt; `code` | — |
+| `uncertain` | `send_uncertain`: a reclaimed e-mail with no delivery logged | — |
+
+`tr_send_jobs_immutable` refuses a DELETE, a change of `id`, `batch_id`, `invoice_id` or
+`created_at`, and any state move but those; `tr_send_batches_immutable` refuses a DELETE
+and every change but `finished_at` set once. `invoice_id` carries no foreign key, as a
+billing run item's documents do not: a draft asked for may be deleted. Neither table
+holds personal data — the recipient stays in `invoices.deliveries`, and `detail` is the
+module's own sentence, never a provider's body — so an erasure blanks nothing here. A
+batch's `finished_at` is set by the write that ends its last live job, by the enqueue when
+nothing was queued, and by the worker's sweep for a batch whose last write was lost.
+
+**The channel**, chosen when the job runs and never at enqueue (reading E3): the
+lookups leave the process. `chooseSendChannel` (`send_channel.go`) is a pure function of
+the customer's billing profile (`Type`, `InvoiceDelivery`, the invoice e-mail), the
+document (a credit note, and an organisation number on its snapshot), today, and what
+the installation can send by (`mailAvailable`, `ehfAvailable`, `efakturaAvailable`):
+
+| Customer | Channels tried | When they run out |
+| --- | --- | --- |
+| prefers `ehf` | EHF | — (`failed ehf_unavailable` when EHF cannot send) |
+| prefers `efaktura` | eFaktura; a credit note as a person without a preference, eFaktura left out | — (`failed efaktura_unavailable` when eFaktura cannot send) |
+| prefers `email` | e-mail | — (`skipped buyer_norwegian_business_required` for a Norwegian business from 2027-01-01; `failed mail_unavailable` without mail) |
+| prefers `paper` | print | — |
+| a person, no preference | eFaktura (not for a credit note, and only while it can send), e-mail (with an invoice e-mail and mail), print | — (from 2027-01-01, when the snapshot has an organisation number: no e-mail and no print, `skipped buyer_norwegian_business_required`) |
+| a business, no preference | EHF (while it can send), e-mail | `skipped buyer_norwegian_business_required` instead of e-mail for a Norwegian business from 2027-01-01 (reading E5); `failed mail_unavailable` or `no_invoice_email` |
+
+A customer the directory does not know is a business when the snapshot has an
+organisation number, a person otherwise. **A preferred channel that refuses fails the job
+with its code**: nothing else is tried, and sending another way is a person's call. On the
+path without a preference, a refusal that means "not by this way" moves on to the next
+channel — eFaktura's `efaktura_not_found`, `efaktura_due_too_soon`,
+`efaktura_due_too_far`, `currency_not_nok` and `kid_missing`, EHF's `no_peppol_id` and
+`peppol_not_receivable` — and any other refusal fails the job. The duty's day is
+`b2bDutyFrom`, the single send's, judged on today's business day.
+
+**The worker `invoices-send`** (`send_worker.go`), always on, every 5 s, at most 50 jobs a
+cycle; SMTP's pacing is the mail driver's. It is the billing worker's shape: `ClaimSendJob`
+is one UPDATE over a `FOR UPDATE OF j SKIP LOCKED` pick of the oldest job `queued` or
+`sending` whose `lease_until` is null or past, setting `sending`, `attempts + 1`,
+`started_at` and a lease of 3 minutes, and answering the state and `started_at` the job
+had before; it commits before any send. The job runs on a context bounded by the lease
+less a margin of 60 s — the SMTP send's 30 s, the delivery row's 5 s and the outcome
+write's 10 s, which run uncancelled after it, with room to spare — under the batch's
+requester as the principal, so each core records the requester as the sender. In order:
+the requester still active and holding `invoices:access` and `invoices:issue`
+(`Access.UserHolds`; else `skipped requester_not_allowed`); the document, issued, not
+delivered meanwhile and not uncertain elsewhere (else `skipped`); the billing profile and the installation's channels, on the pool; the
+rule; then each channel, recorded on the row (`SetSendJobChannel`) before it is tried,
+through the send's own core — `sendEmailCore`, `sendEhfCore`, `sendEfakturaCore`, the
+handlers' cores with no request — or, for print, the stored PDF, stored now when it never
+was, and the job `awaiting_print`. No core calls out of the process under a lock. Called
+from the worker (`withSendAll`), each core re-checks `DeliveredDocuments` and
+`UncertainDocuments` on the document's lock — the EHF and eFaktura cores inside the
+transaction that queues the transmission, the e-mail core in a short one just before the
+SMTP call, which no lock may span — and refuses `already_delivered`, which the job records
+`skipped`: a delivery another way between the worker's reads and the send is seen. The
+outcome is written in a transaction of its own, the document's lock first and then the
+job (lease-checked), with `invoices.send_job.finished` and the batch's end.
+
+A refusal is final. An unavailability — a 502 or a 503: `mail_unavailable`,
+`peppol_lookup_failed`, `efaktura_lookup_failed`, `storage_unavailable`,
+`ehf_unavailable`, `efaktura_unavailable` — puts the job back `queued`, its channel cleared, due one minute per attempt later, five
+attempts in all, then `failed`. `mail_failed` is not retried: the
+mail server may have taken it. An error is the same as an unavailability, logged, its
+last `send_error`. A worker stopped mid-job releases it uncounted, its channel cleared too:
+a job whose channel is null is never judged a reclaim.
+
+**At most once for e-mail** (reading E4). SMTP has no idempotency key and the delivery
+row follows the send, so a job **reclaimed** in `sending` that chose e-mail is `sent` when
+a delivery of its document was logged at or after the lost claim's `started_at`, and
+`uncertain` (`send_uncertain`) otherwise — never mailed again by itself; a sent mail
+whose row could not be written is `uncertain` too. A reclaimed EHF or eFaktura job is
+`handed_over` when its live transmission exists, and runs again otherwise: the core's
+`ActiveTransmissionExists` under the document's lock makes that safe. An
+`ehf_already_sent` or `efaktura_already_sent` on a fresh job is `skipped
+already_delivered`.
+
+**Print** (reading E13): there was no print batch for invoices — reminder print batches
+are letters'. `GET /send-batches/{id}/print.zip` (`invoices:issue`) answers a ZIP
+(`archive/zip`, stored, not deflated) of the batch's `awaiting_print` jobs' **stored**
+PDFs, verified against their hashes and never rendered again, each `<number>.pdf`,
+**streamed** onto the response one document at a time; 404 when none awaits print. Before
+the first byte every document's object is checked to exist — 503 `storage_unavailable`
+when the store cannot be read, 500 when an object is gone; a failure after it cuts the ZIP
+short and is logged.
+`POST /send-batches/{id}/posted` (`invoices:issue`, `{postedOn}` from the batch's day to
+today, else 400) takes, for each job awaiting print, the document FOR UPDATE and then the
+job: an invoice gets a manual delivery of kind `posted` on `postedOn`, as
+`POST /{id}/manual-deliveries` records one, and the job becomes `printed`; a credit note,
+which records no delivery (`credit_note_no_reminders`), only becomes `printed`.
+
+`GET /send-batches/{id}` (`invoices:access`) answers the batch, its jobs counted by state
+and every job with its document's number, its customer's name from the directory, its
+channel, state, code and detail; `GET /send-batches?billingRunId=` lists a run's batches,
+newest first. A batch made in the last 7 days with jobs `failed` or `uncertain` is an
+attention item, `sendBatchNotSent` ([Attention](#attention)).
 
 ## Sending as EHF
 
@@ -6212,7 +6359,8 @@ item shape every module's `/stats/attention` shares — `id`, `type`, `title`,
 host translating the sentence from `type` (design D12, plan reading 29). It needs
 `invoices:access`. The first two types are answered to every caller; the other eight
 only to a caller who also holds `invoices:payments`, and a caller without it is answered
-the first two — never a 403. Every item is derived from the rows as they are, so nothing
+the first two — never a 403. `sendBatchNotSent` is answered to a caller holding
+`invoices:issue`. Every item is derived from the rows as they are, so nothing
 is dismissed: each clears when what it is about is done. One clock read: "today" is the
 request's business day.
 
@@ -6228,6 +6376,7 @@ request's business day.
 | `paymentCaptureFailed` | attempt `capture_failed` finished in the last **14 days** whose invoice is still open (gross less credited and paid above zero) and of which no later attempt captured | the attempt's invoice; the buyer's name; its end; — | 14 days pass, the invoice is settled, or a later attempt captures |
 | `paymentReservationStranded` | attempt the worker cannot carry: a reservation (`capturing`, `capture_unknown`) while `INVOICES_VIPPS_ENABLED=0` or made under a sales unit that is not the stored one (D1, I20), and an attempt **parked** for a person — a create given up after ten tries, a release Vipps refuses for good; never an attempt already a `paymentCaptureUnknown` item, so each attempt is one item | the attempt's invoice; the buyer's name; the authorization, or the creation; — | Vipps or the sales unit is back, the attempt is abandoned, or — a parked release — it is released in the portal and handed back by an abandon |
 | `vippsRefundSeen` | captured attempt with a refund stored by [the refund watch](#the-refund-watch) (`refunded_amount` above zero) whose payment is still live (I6) | the attempt's invoice; the buyer's name; the capture; — | the payment is removed |
+| `sendBatchNotSent` | send batch made in the last **7 days** with jobs `failed` or `uncertain` ([Send all](#send-all)) | the batch; its id; when it was made; the documents not sent | 7 days pass — its jobs are final, and the batch page says what each needs |
 
 `id` is `<type>/<entityId>` but for `reminderFailed` and the four Vipps types, whose id
 names the attempt: `<type>/<attemptId>`. A credited invoice whose letters'
@@ -6713,9 +6862,9 @@ administrator reads when building a role, say so.
 
 | Key | Sensitive | What it allows |
 | --- | --- | --- |
-| `invoices:access` | no | Use the app; read every invoice, credit note, PDF, payment and delivery, an invoice's charges, charge payments, waivers and manual deliveries, every document's EHF state and transmissions and download their UBL, the journal, the CSV export and the stats; read the collection rates, the reminder settings, the payment settings, the bank feed's connection and a customer's reminder policy; the overdue list, and an issued invoice's letters, next action, hold and hand-off, and a sent letter's PDF; an invoice's pay link (its id and when it was made, not its address) and its Vipps payment attempts; the day's Vipps payments, their CSV and whether the day is reconciled (marking it is `invoices:payments`; [The day's Vipps payments](#the-days-vipps-payments)); the attention items about overdue invoices and refunds due ([Attention](#attention)); the billing runs and their items ([Billing runs](#billing-runs)). |
+| `invoices:access` | no | Use the app; read every invoice, credit note, PDF, payment and delivery, an invoice's charges, charge payments, waivers and manual deliveries, every document's EHF state and transmissions and download their UBL, the journal, the CSV export and the stats; read the collection rates, the reminder settings, the payment settings, the bank feed's connection and a customer's reminder policy; the overdue list, and an issued invoice's letters, next action, hold and hand-off, and a sent letter's PDF; an invoice's pay link (its id and when it was made, not its address) and its Vipps payment attempts; the day's Vipps payments, their CSV and whether the day is reconciled (marking it is `invoices:payments`; [The day's Vipps payments](#the-days-vipps-payments)); the attention items about overdue invoices and refunds due ([Attention](#attention)); the billing runs and their items ([Billing runs](#billing-runs)); the send batches and their jobs ([Send all](#send-all)). |
 | `invoices:create` | no | Create, edit and delete drafts; preview a draft; list the uninvoiced work, with its people and rates, and make a draft of it, or add it to one; refresh a draft's work and see whether it is still fresh; turn a draft's timesheet on or off; list what earlier invoices have left to deduct ([Invoicing work](#invoicing-work)); list a customer's consumption due and its settlements, and make a draft of them, or add them to one ([Invoicing consumption](#invoicing-consumption)); make and cancel a billing run — one that issues also needs `invoices:issue` ([Billing runs](#billing-runs)). |
-| `invoices:issue` | yes | Issue a draft — and so mark the work it bills invoiced in its modules — and create a credit-note draft, whose issue releases the work it returns; send an issued document by e-mail, and see where each send went; send it as EHF, cancel a transmission never attempted and resolve an unconfirmed one; record that an invoice was handed over or posted, and remove such a record with a reason ([The delivery fact](#the-delivery-fact)); make an invoice's pay link on demand or revoke it, and read its address and QR code while payment on site is available ([Pay links](#pay-links)); ask for a Vipps payment on site, read the request and cancel it ([Paid on site — kontantsalg](#paid-on-site--kontantsalg)). |
+| `invoices:issue` | yes | Issue a draft — and so mark the work it bills invoiced in its modules — and create a credit-note draft, whose issue releases the work it returns; send an issued document by e-mail, and see where each send went; send it as EHF, cancel a transmission never attempted and resolve an unconfirmed one; record that an invoice was handed over or posted, and remove such a record with a reason ([The delivery fact](#the-delivery-fact)); make an invoice's pay link on demand or revoke it, and read its address and QR code while payment on site is available ([Pay links](#pay-links)); ask for a Vipps payment on site, read the request and cancel it ([Paid on site — kontantsalg](#paid-on-site--kontantsalg)); send many documents at once — chosen on the list, or a billing run's — download those left for printing and confirm them posted, and see the attention item of a Send all with documents not sent ([Send all](#send-all)). |
 | `invoices:manage` | yes | The seller record and its Peppol id, the series start, the KID agreement, the VAT code each kind of work is invoiced at, the two VAT codes energy lines take, the timesheet's default and person label, VAT codes and their rates, the VAT code each Products tax category maps to ([Tax categories and VAT codes](#tax-categories-and-vat-codes)), the access point's credentials, the Vipps credentials and the payment settings, abandoning a stuck Vipps payment attempt ([Abandon](#abandon)), the format a bank account's files are imported in, the bank feed — connecting the bank, listing its accounts, switching the feed on or off for one, disconnecting ([The bank feed](#the-bank-feed)), the collection rates (add one ahead of a release, delete one nothing has relied on) and the reminder settings, the regime's review among them. |
 | `invoices:payments` | yes | Register a payment against an issued invoice, and remove a registration with a reason; keep an overpayment as the customer's credit, by hand or from the queue, apply credit to an invoice, and record and remove a refund ([Customer credit](#customer-credit)); import bank files and read the imported files and their accounts; work the exception queue — apply, dismiss, handle a reversal, confirm a duplicate, treat one as distinct, reopen ([The exception queue](#the-exception-queue)); set a customer's reminder policy — whether, and with what charges, they are reminded; register a payment of an invoice's reminder charges and remove one, and waive charges ([Charges](#charges)); preview and make reminder runs and read them ([Runs](#runs)), see the address each letter goes to, print paper letters, confirm them posted or reprint them, and withdraw or retry a letter ([Letters](#letters)); hold a disputed invoice and lift the hold, record a hand-off to a collection agency and withdraw it, and export the collection file ([Holds and the hand-off to collection](#holds-and-the-hand-off-to-collection)); mark a day's Vipps payments reconciled ([The day's Vipps payments](#the-days-vipps-payments)); the attention items about the bank lines, the letters, the print batches and the Vipps payments ([Attention](#attention)). |
 
@@ -6868,6 +7017,11 @@ All under `/api/v1/invoices`, every one behind `invoices:access` but the pay pag
 | `GET /billing-runs` | | 400 paging |
 | `GET /billing-runs/{id}` | | 400 paging, an unknown `status`; 404 |
 | `POST /billing-runs/{id}/cancel` | `invoices:create` | 404; 409 `billing_run_finished` |
+| `POST /send-batches` | `invoices:issue` | 400 `send_batch_empty`, `send_batch_too_large`; 429 `send_batch_rate_limited` (500 documents per 10 minutes per principal); 404 an unknown run; 409 `billing_run_not_finished`; 202 with the batch and its jobs ([Send all](#send-all)) |
+| `GET /send-batches` | | `billingRunId` required: the run's batches |
+| `GET /send-batches/{id}` | | 404 |
+| `GET /send-batches/{id}/print.zip` | `invoices:issue` | 404 (none awaiting print); 500 a missing or altered stored PDF; 503 `storage_unavailable` |
+| `POST /send-batches/{id}/posted` | `invoices:issue` | 400 on `postedOn` (before the batch's day, after today); 404 |
 | `POST /quick` | `invoices:create` and `invoices:issue` | 400 on the field (`customerId`, `lines` — none, more than ten, or the document total too large — `lines[i].<field>`, `deliveryDate`, `paymentTermsDays`, `yourReference`, `note`); 409 the customer gates and every code under [Issuing](#issuing), nothing left behind; 409 `request_id_reused`, a `requestId` used before with another body, with `invoiceId`, the invoice it issued (the same body is 200 with the first's invoice); 503 `storage_unavailable` |
 | `GET /` | | 400 paging, status, kind, state, `from` after `to` (`projectId` filters on the document's project) |
 | `POST /` | `invoices:create` | 400 on the field (`sources` and `refreshSources` included; a deduction line's `quantity`, `unitPrice`, `discountPercent`, `deductsInvoiceId`, `vatCodeId`, `sources`); 409 the customer gates, `deduction_duplicated` (with `linePosition`) |
@@ -6959,7 +7113,11 @@ Payment Services, is built and ships switched off
 ([Sending as eFaktura](#sending-as-efaktura)), on migration `00201_invoices_efaktura.sql`
 and Customers' `00202_customers_date_of_birth.sql`; it goes live when Vantigo's
 submitter agreement is in place and the operator turns it on. eFaktura and AvtaleGiro
-are NOK only. Still to come: E, sending in bulk, the 2028 buyer rule and credit limits.
+are NOK only. Delivery E-1, send all, is done: a selection on the list or a billing run's
+documents sent in one go, each by its customer's channel, by the `invoices-send` worker
+([Send all](#send-all)), on migration `00205_invoices_send_jobs.sql`; scheduled billing
+runs (design §13) are unblocked by it. Still to come: E-2, the 2028 buyer rule and credit
+limits.
 Orders' NOK equivalent in its analysis through `contracts.ExchangeRates`, a charge
 payment in currency, a currency bank account and unrealised revaluation at year-end are
 later.
@@ -7077,6 +7235,7 @@ data: no buyer name, address or e-mail, and none of a payment's free text (`refe
 | `invoices.document.issued` | An invoice or a credit note is issued, by any path | `documentId`, `number`, `kind` (`invoice`, `credit_note`), `customerId`, `issueDate`, `grossTotal` (positive on a credit note too), `currency` |
 | `invoices.efaktura.transmission_changed` | An eFaktura transmission is queued or moves (submitted, delivered, failed, unconfirmed), by the send or the `invoices-efaktura` worker, on the transaction that moved it | `transmissionId`, `invoiceId`, `status`, `paymentType` (`efaktura`, `both`) |
 | `invoices.avtalegiro.claim_changed` | An AvtaleGiro claim is made or moves (accepted, rejected, cancel_requested by a credit note's issue, cancelled, back to accepted when a cancellation is refused) | `claimId`, `invoiceId`, `status`, `amount`, `dueDate` |
+| `invoices.send_job.finished` | The `invoices-send` worker ended one document of a Send all, on the transaction that wrote the outcome ([Send all](#send-all)) | `jobId`, `batchId`, `invoiceId`, `channel` (`email`, `ehf`, `efaktura`, `print`, or empty when none was tried), `state` (`sent`, `handed_over`, `awaiting_print`, `skipped`, `failed`, `uncertain`), `code` (empty when none) |
 
 **`invoices-overdue-events`** (every 15 minutes) selects the issued invoices that are overdue on the business day and not yet
 in `invoices.overdue_announced`, `FOR UPDATE OF` the invoice row with `SKIP LOCKED` so replicas share the work, and for each writes
@@ -7128,6 +7287,10 @@ The Assistant can point at these controls in a guided tour ([the registry](/en/r
 | `invoices.invoice.currency` | `/invoices/{invoiceId}` | Currency |
 | `invoices.invoice.rate` | `/invoices/{invoiceId}` | Use another rate |
 | `invoices.payment.amount-nok` | `/invoices/{invoiceId}` | Received in NOK (the Register payment dialog) |
+| `invoices.invoices.select` | `/invoices` | Choose documents (the list's checkboxes) |
+| `invoices.invoices.send-all` | `/invoices` | Send all (the selection bar) |
+| `invoices.billing-run.send-all` | `/invoices/billing-runs/{runId}` | Send all (a finished run) |
+| `invoices.send-batch.print` | `/invoices/send-batches/{batchId}` | Download for printing |
 
 ## API keys
 

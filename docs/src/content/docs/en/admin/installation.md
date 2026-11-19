@@ -116,7 +116,7 @@ The image is one binary with a dispatch table; the command is the first argument
 exits 2 outside it): it applies migrations and populates an idempotent Norwegian demo
 dataset across all modules (20 users across 9 permission roles, 200 companies with 400
 contacts, 62 products, 75 projects, time entries, expenses, invoices — with a customer
-holding credit from an overpayment, a bank-feed payment split across two invoices, a small difference rounded off, and eFaktura and AvtaleGiro set up as rows, with no provider called: a person whose eFaktura was delivered with an accepted AvtaleGiro claim, and one AvtaleGiro agreement waiting for a customer; and an invoice in euro — EUR turned on with 30 days of Norges Bank's rates and one entered by hand, paid in two NOK transfers with a currency gain and a loss —, energy metering
+holding credit from an overpayment, a bank-feed payment split across two invoices, a small difference rounded off, and eFaktura and AvtaleGiro set up as rows, with no provider called: a person whose eFaktura was delivered with an accepted AvtaleGiro claim, and one AvtaleGiro agreement waiting for a customer; and an invoice in euro — EUR turned on with 30 days of Norges Bank's rates and one entered by hand, paid in two NOK transfers with a currency gain and a loss —; and a finished send batch of three invoices, one e-mailed, one awaiting print and one failed for a missing invoice e-mail —, energy metering
 points, customer conversations, and a small workshop with its stock, bills of materials,
 manufacturing orders and sales orders) and, when `accounting` is enabled, books set up from 1
 January with the demo's sales and expenses posted, suppliers and their invoices, the VAT
@@ -308,7 +308,7 @@ network itself: the messaging provider's own module holds the connection —, th
 customers import worker `customers-import`, the energy import worker `energy-import`, the energy spot price worker
 `energy-spot-prices` when `ENERGY_SPOT_PRICE_SERVICE_URL` is set or `ENERGY_SPOT_PRICE_FEED_ENABLED=1`, the invoices EHF workers `invoices-ehf` and `invoices-ehf-events` when
 `INVOICES_EHF_ENABLED` is on, the invoices reminder worker `invoices-reminders`,
-always, the invoices billing worker `invoices-billing`, always, the invoices order allocations reconcile
+always, the invoices billing worker `invoices-billing`, always, the invoices send worker `invoices-send`, always, the invoices order allocations reconcile
 `invoices.allocation_reconcile`, always, the invoices payments worker `invoices-payments` when
 `INVOICES_VIPPS_ENABLED` is on, the invoices bank feed worker `invoices-bank-feed` unless
 `INVOICES_BANK_FEED_ENABLED=0`, the calendar cancellations worker
@@ -352,7 +352,7 @@ Replicas that should neither migrate nor run workers can run the `server` comman
 instead of `api`; it serves only, whatever `WORKERS_IN_PROCESS` says. Whichever topology
 you use, retention cleanup, the registry workers, the EHF events worker, the
 calendar cancellations worker, `entra-outlook-sweep`, `assistant-retention` and `identity.api-keys` take a PostgreSQL advisory lock, so each runs on exactly one instance per cycle; the outbox,
-the `invoices-ehf` worker, the `invoices-reminders` worker, the `invoices-billing` worker,
+the `invoices-ehf` worker, the `invoices-reminders` worker, the `invoices-billing` worker, the `invoices-send` worker,
 the `invoices-payments` worker, the `invoices-bank-feed` worker, `communications-mailbox-sync`, `communications-messenger-sync`, the calendar subscriptions and mailbox sync workers and `events.dispatch` instead take one row at a time under a time-limited lease, so any number of
 instances share the work without sending anything twice. `meta-split` takes the stored
 events under a lease and `meta-retention` deletes in batches, so both are safe on any

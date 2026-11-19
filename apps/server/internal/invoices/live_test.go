@@ -171,33 +171,35 @@ func TestLive_SweepIsHeardWithoutAnId(t *testing.T) {
 	l.expect(t, liveEvent{T: "invoices.billing-runs", K: "run.changed", ID: ""})
 }
 
-// The topic's Authorize (L9, K40): invoices:access, no key; every other key is
-// forbidden.
+// The topics' Authorize (L9, K40; phase 6 plan E4): the billing runs' and the
+// send batches', each invoices:access, no key; every other key is forbidden.
 func TestLive_TopicAuthorizesAsTheRunsGET(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	_, reader := h.SignInUser(t, "invoices:access")
 	_, outsider := h.SignInUser(t, "invoices:create")
 	topics := invoices.Module().LiveTopics(h.Deps())
-	if len(topics) != 1 || topics[0].Kind != "invoices.billing-runs" {
-		t.Fatalf("topics = %v, want invoices.billing-runs only", topics)
+	if len(topics) != 2 || topics[0].Kind != "invoices.billing-runs" || topics[1].Kind != "invoices.send-batches" {
+		t.Fatalf("topics = %v, want invoices.billing-runs and invoices.send-batches", topics)
 	}
 	access := h.Deps().Access
-	for name, tc := range map[string]struct {
-		user uuid.UUID
-		key  string
-		ok   bool
-	}{
-		"a reader":      {reader, "", true},
-		"no permission": {outsider, "", false},
-		"with a key":    {reader, "1", false},
-	} {
-		err := live.Authorize(context.Background(), access, tc.user, topics[0], tc.key)
-		if tc.ok && err != nil {
-			t.Errorf("%s: %v, want allowed", name, err)
-		}
-		if !tc.ok && !errors.Is(err, live.ErrForbidden) {
-			t.Errorf("%s: %v, want live.ErrForbidden", name, err)
+	for _, topic := range topics {
+		for name, tc := range map[string]struct {
+			user uuid.UUID
+			key  string
+			ok   bool
+		}{
+			"a reader":      {reader, "", true},
+			"no permission": {outsider, "", false},
+			"with a key":    {reader, "1", false},
+		} {
+			err := live.Authorize(context.Background(), access, tc.user, topic, tc.key)
+			if tc.ok && err != nil {
+				t.Errorf("%s, %s: %v, want allowed", topic.Kind, name, err)
+			}
+			if !tc.ok && !errors.Is(err, live.ErrForbidden) {
+				t.Errorf("%s, %s: %v, want live.ErrForbidden", topic.Kind, name, err)
+			}
 		}
 	}
 }

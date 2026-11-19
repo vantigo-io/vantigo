@@ -1381,7 +1381,9 @@ lag, never what must refuse — go through the platform's domain-events outbox,
     transaction open, and posts each fact in its own transaction. Its worker
     `accounting.bankfeed` likewise claims a bank account's lease, calls `contracts.BankFeed`
     — which calls the bank — with no transaction open, and writes the lines in its own
-    schema. Expenses publishes its
+    schema. Invoices' `invoices.send_job.finished` is published by the `invoices-send`
+    worker on the transaction that writes a send job's outcome, after the document's
+    lock; no handler reads it yet. Expenses publishes its
     events from the deferred trigger that writes the fact, so every write path does, under
     the row lock the change took. Accounting publishes three (purchasing design P5, A79):
     `accounting.supplier_invoice.posted` from Post, `accounting.supplier_invoice.reversed`

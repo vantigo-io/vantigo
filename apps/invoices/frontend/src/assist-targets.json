@@ -226,5 +226,53 @@
       "en": "The field of the Register payment dialog, on an invoice in another currency, for what arrived in NOK; the difference is booked as a currency gain or loss.",
       "nb": "Feltet i dialogen Registrer betaling, på en faktura i en annen valuta, for det som kom inn i NOK; forskjellen bokføres som agiogevinst eller agiotap."
     }
+  },
+  {
+    "key": "invoices.invoices.select",
+    "route": "/invoices",
+    "label": {
+      "en": "Choose documents",
+      "nb": "Velg dokumenter"
+    },
+    "description": {
+      "en": "The checkbox column of the invoice list that chooses documents for Send all; the one in the header chooses the whole page.",
+      "nb": "Avkryssingskolonnen i fakturalisten som velger dokumenter for Send alle; den i overskriften velger hele siden."
+    }
+  },
+  {
+    "key": "invoices.invoices.send-all",
+    "route": "/invoices",
+    "label": {
+      "en": "Send all",
+      "nb": "Send alle"
+    },
+    "description": {
+      "en": "The button in the selection bar above the invoice list that sends every chosen document, each by its customer's channel.",
+      "nb": "Knappen i valglinjen over fakturalisten som sender hvert valgte dokument, hvert med kundens kanal."
+    }
+  },
+  {
+    "key": "invoices.billing-run.send-all",
+    "route": "/invoices/billing-runs/{runId}",
+    "label": {
+      "en": "Send all",
+      "nb": "Send alle"
+    },
+    "description": {
+      "en": "The button on a finished billing run that sends every document the run issued.",
+      "nb": "Knappen på en ferdig faktureringskjøring som sender hvert dokument kjøringen utstedte."
+    }
+  },
+  {
+    "key": "invoices.send-batch.print",
+    "route": "/invoices/send-batches/{batchId}",
+    "label": {
+      "en": "Download for printing",
+      "nb": "Last ned for utskrift"
+    },
+    "description": {
+      "en": "The button on a Send all's page that downloads the documents left for printing as one ZIP of their PDFs.",
+      "nb": "Knappen på en Send alle-side som laster ned dokumentene som skal skrives ut, som én ZIP med PDF-ene."
+    }
   }
 ]

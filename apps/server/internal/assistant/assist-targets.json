@@ -385,6 +385,11 @@
     "description": "The list of AvtaleGiro agreements whose KID names no customer, each with Assign to customer."
   },
   {
+    "key": "invoices.billing-run.send-all",
+    "route": "/invoices/billing-runs/{runId}",
+    "description": "The button on a finished billing run that sends every document the run issued."
+  },
+  {
     "key": "invoices.customer.credit",
     "route": "/customers/{customerId}",
     "description": "The customer's credit on the customer's Invoices tab: the balance, every movement and Record refund."
@@ -435,6 +440,16 @@
     "description": "The button above the invoice list that starts a new invoice."
   },
   {
+    "key": "invoices.invoices.select",
+    "route": "/invoices",
+    "description": "The checkbox column of the invoice list that chooses documents for Send all; the one in the header chooses the whole page."
+  },
+  {
+    "key": "invoices.invoices.send-all",
+    "route": "/invoices",
+    "description": "The button in the selection bar above the invoice list that sends every chosen document, each by its customer's channel."
+  },
+  {
     "key": "invoices.payment.amount-nok",
     "route": "/invoices/{invoiceId}",
     "description": "The field of the Register payment dialog, on an invoice in another currency, for what arrived in NOK; the difference is booked as a currency gain or loss."
@@ -443,6 +458,11 @@
     "key": "invoices.queue.keep-as-credit",
     "route": "/invoices/payments",
     "description": "The button in the Keep the rest as credit dialog of a bank line queued as more than was open, or for a settled invoice: it applies what is open and keeps the rest as the customer's credit."
+  },
+  {
+    "key": "invoices.send-batch.print",
+    "route": "/invoices/send-batches/{batchId}",
+    "description": "The button on a Send all's page that downloads the documents left for printing as one ZIP of their PDFs."
   },
   {
     "key": "invoices.send.efaktura",

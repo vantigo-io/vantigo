@@ -706,9 +706,10 @@ other.
 **Cancel the run** stops a run that has not finished: the customers not yet reached are
 **Cancelled**, and the one being invoiced at that moment finishes. What was made stays.
 
-**Sending is not part of a run.** Send the issued invoices afterwards from each
-document, by e-mail or as EHF ([Sending a document by e-mail](#sending-a-document-by-e-mail),
-[Sending as EHF](#sending-as-ehf)).
+**Sending is not part of a run.** Once the run is done, **Send all** on its page sends
+every document it issued, each the way its customer gets invoices
+([Sending many documents at once](#sending-many-documents-at-once)). You can also send each
+from the document, by e-mail, as EHF or as eFaktura.
 
 ## Invoicing orders
 
@@ -830,6 +831,9 @@ nothing of theirs is left — *What the customer's orders have left to invoice i
 invoices already. Issue or delete those drafts.* when drafts hold it — or an order or a
 line cannot be invoiced. A customer the run retries after an interruption is invoiced
 in full: what the interrupted attempt had taken is given back first.
+
+Once the run is done, **Send all** on its page sends the invoices it issued
+([Sending many documents at once](#sending-many-documents-at-once)).
 
 ### When the orders wizard refuses
 
@@ -2210,6 +2214,98 @@ a person.
 An invoice with an AvtaleGiro debit the bank will make is not reminded of until a
 business day after the due date has passed unpaid; the reminder says *waiting* with the
 reason AvtaleGiro until then.
+
+## Sending many documents at once
+
+**Send all** sends many issued documents in one go, each the way its customer gets
+invoices ([how it works](/en/reference/invoices/#send-all)). It needs `invoices:issue`.
+
+### Choose documents on the list
+
+On **Invoices**, tick the box in front of each document to send, or the box in the
+header row to choose every document on the page. Your choice stays while you page and
+filter. A bar above the list says *N selected*, with **Send all** and **Clear**. A
+draft can be chosen, but it is not sent: the bar says *1 draft is not sent: it is listed
+as skipped.* At most 500 documents go in one Send all.
+
+Click **Send all**. The dialog asks *Send N documents?* and explains: *Each goes by the
+customer's chosen channel, or by eFaktura, EHF, e-mail or print as Vantigo picks. A
+document already delivered is skipped.* Click **Send N documents**, and the Send all's own
+page opens.
+
+### Send a whole billing run
+
+When a [billing run](#run-billing-for-every-customer) is **Done** or **Cancelled** and
+has issued invoices, its page has **Send all** at the top. It sends every document the
+run made. Below the customers, the card **Sending** lists the run's Send alls, each a
+link to its page.
+
+### How each document is sent
+
+Vantigo picks the way for each document when it sends it, not when you click:
+
+1. **The customer's chosen way first.** A customer whose billing profile says EHF,
+   eFaktura, e-mail or paper gets exactly that. If that way refuses — no Peppol address,
+   not found for eFaktura, no invoice e-mail — the document **Fails** with the reason,
+   and nothing else is tried. Sending it another way is your call, from the document.
+2. **A person without a choice** gets eFaktura if they are found for it, else e-mail
+   when they have an invoice e-mail, else the document is left for **printing**.
+3. **A business without a choice** gets EHF if its Peppol address takes the document,
+   else e-mail.
+4. **A credit note** never goes as eFaktura; it takes the next way.
+5. **From 1 January 2027 a Norwegian business is never e-mailed** — any buyer whose
+   organisation number is on the document, whatever the customer is registered as: an
+   e-mailed PDF is no longer a lawful invoice to it. Without EHF, its document is **Skipped** with
+   *A Norwegian business cannot receive EHF, and from 2027 an e-mailed PDF is not a lawful
+   invoice to it.* Send it from the document once it can receive EHF.
+
+eFaktura is never chosen while your installation cannot send it.
+
+A document already delivered — e-mailed, sent as EHF or eFaktura, recorded as handed
+over or posted, or left for printing or posted by an earlier Send all — is **Skipped** with
+*Already delivered*, and so is one another Send all is sending right now. A document an
+earlier Send all may have e-mailed — **Uncertain**, or **Failed** because the mail server
+did not confirm it — is skipped too, with *An earlier Send all may have e-mailed it*. So
+running Send all again, on a billing run or a selection, never sends a document twice. To
+send one a second way, use the document's own **Send** buttons.
+
+If the person who clicked **Send all** is no longer active, or no longer holds
+`invoices:issue`, by the time a document's turn comes, it is **Skipped** with *The person who
+asked for it is no longer active or no longer may send documents.* At most 500 documents
+are sent in 10 minutes by one person or one integration.
+
+### Follow a Send all
+
+Its page counts the documents by outcome, shows a progress bar while they go, and
+updates by itself. Each row names the document, the customer, the way it went and the
+outcome:
+
+- **Sent** — e-mailed;
+- **Handed over** — queued as EHF or eFaktura; the document's own card follows it from
+  there;
+- **Awaiting print** — left for you to print and post;
+- **Posted** — printed and marked posted;
+- **Skipped** or **Failed** — with the reason in words;
+- **Uncertain** — see below.
+
+A way that is down for a moment — the Peppol network or the eFaktura provider not
+answering, the document store unavailable — is tried again a few times by itself before
+the document fails.
+
+**Uncertain** means the server stopped while it was e-mailing the document, or the mail
+server took the e-mail but its delivery could not be recorded. The e-mail may or may not
+have gone. Vantigo never sends it again
+by itself. Check with the customer, and send it from the document if it did not arrive.
+A Send all with failed or uncertain documents is on the dashboard as *Send all N: M
+documents not sent* for seven days.
+
+### Print and post
+
+When documents are **Awaiting print**, the page has **Download for printing**: one ZIP
+with each document's PDF exactly as it was issued, named by its number. Print and post
+them, then click **Mark as posted** and choose the day they went in the post. Each
+invoice then has a delivery of kind *posted* on that day, as **Record a delivery** would
+record it, and the rows say **Posted**.
 
 ## Vipps and pay links
 

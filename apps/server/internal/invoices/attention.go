@@ -65,6 +65,13 @@ func (s *server) GetInvoicesStatsAttention(ctx context.Context, _ gen.GetInvoice
 		}
 		items = append(items, feed...)
 	}
+	if s.has(ctx, "invoices:issue") {
+		sending, err := attentionSendBatches(ctx, q, now)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, sending...)
+	}
 	if !s.has(ctx, "invoices:payments") {
 		return gen.GetInvoicesStatsAttention200JSONResponse(items), nil
 	}
@@ -108,6 +115,26 @@ func attentionBankFeed(ctx context.Context, q *store.Queries) ([]gen.InvoicesSta
 			title = title[len(title)-4:]
 		}
 		items = append(items, attentionItem(typ, r.Account, title, r.UpdatedAt, 0))
+	}
+	return items, nil
+}
+
+// sendBatchAttentionDays is how long a send batch with documents not sent
+// stays an attention item (invoices phase 6 plan E4).
+const sendBatchAttentionDays = 7
+
+// attentionSendBatches is one item per send batch made in the last seven
+// days with jobs failed or uncertain (plan E4): entityId and title the batch
+// id, occurredAt when it was made, count the documents not sent. It is a
+// sender's: invoices:issue.
+func attentionSendBatches(ctx context.Context, q *store.Queries, now time.Time) ([]gen.InvoicesStatsAttentionItem, error) {
+	rows, err := q.AttentionSendBatches(ctx, now.AddDate(0, 0, -sendBatchAttentionDays))
+	if err != nil {
+		return nil, fmt.Errorf("invoices: read the send batches for attention: %w", err)
+	}
+	items := make([]gen.InvoicesStatsAttentionItem, 0, len(rows))
+	for _, r := range rows {
+		items = append(items, attentionItem(gen.SendBatchNotSent, idString(r.ID), idString(r.ID), r.CreatedAt, r.NotSent))
 	}
 	return items, nil
 }

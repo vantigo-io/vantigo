@@ -28,6 +28,7 @@ sql:
       - ../db/migrations/00200_invoices_split.sql
       - ../db/migrations/00201_invoices_efaktura.sql
       - ../db/migrations/00203_invoices_currency.sql
+      - ../db/migrations/00205_invoices_send_jobs.sql
     queries: queries
     gen:
       go:

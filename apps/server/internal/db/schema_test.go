@@ -2473,7 +2473,7 @@ func TestInvoicesBaseline_AppliesAndIsIdempotent(t *testing.T) {
 	// line_sources and timesheet_rows 00040's, and the bank, rate, reminder,
 	// charge, hold and hand-off tables 00041's, and the payment credentials,
 	// settings, pay links, attempts and day reconciliations 00046's, and the
-	// billing runs and their items 00079's, and tax_category_vat_codes 00118's, and the bank feed's connection and accounts 00178's, and journal_facts 00180's, and write_offs 00182's, and the customer's credit 00197's, and the consumer provider's credentials, lookups, mandates and claims 00201's; applyUpDownUp ends with every migration applied, so they stand here
+	// billing runs and their items 00079's, and tax_category_vat_codes 00118's, and the bank feed's connection and accounts 00178's, and journal_facts 00180's, and write_offs 00182's, and the customer's credit 00197's, and the consumer provider's credentials, lookups, mandates and claims 00201's, and send all's batches and jobs 00205's; applyUpDownUp ends with every migration applied, so they stand here
 	// beside the seven this one creates.
 	if want := []string{"access_point_credentials", "avtalegiro_claims", "avtalegiro_mandates", "bank_feed_accounts", "bank_feed_connections", "bank_files", "bank_import_accounts", "bank_transaction_events",
 		"bank_transactions", "billing_run_items", "billing_runs", "charge_payments", "charge_waivers", "collection_handoffs", "collection_rates",
@@ -2481,7 +2481,7 @@ func TestInvoicesBaseline_AppliesAndIsIdempotent(t *testing.T) {
 		"credit_merges", "credit_refunds", "customer_credits", "customer_reminder_policies", "deliveries", "erased_customers", "exchange_differences", "exchange_rates", "invoice_holds", "invoices", "journal_facts", "line_releases",
 		"line_sources", "lines", "manual_deliveries", "order_allocations_taken", "overdue_announced", "pay_links", "payment_attempts", "payment_provider_credentials",
 		"payment_settings", "payments", "quick_requests", "rate_fetches", "reminder_print_batches", "reminder_runs",
-		"reminder_settings", "reminders", "settings", "tax_category_vat_codes", "timesheet_rows", "transmissions", "vat_code_rates", "vat_codes",
+		"reminder_settings", "reminders", "send_batches", "send_jobs", "settings", "tax_category_vat_codes", "timesheet_rows", "transmissions", "vat_code_rates", "vat_codes",
 		"vat_summaries", "vipps_day_reconciliations", "write_offs"}; !equalStrings(gotTables, want) {
 		t.Errorf("tables = %v, want %v", gotTables, want)
 	}
@@ -2597,7 +2597,7 @@ func TestInvoicesBaseline_AppliesAndIsIdempotent(t *testing.T) {
 	// timesheet_rows 00040's, the twenty on the receivables' tables 00041's,
 	// and the seven on the payments port's tables 00046's, as above;
 	// tr_payments_received is 00150's, the journal's five and
-	// tr_payments_removed 00180's, and the four on write_offs 00182's.
+	// tr_payments_removed 00180's, the four on write_offs 00182's, and send all's two 00205's.
 	if want := []string{
 		"avtalegiro_claims:tr_avtalegiro_claims_immutable",
 		"bank_files:tr_bank_files_immutable", "bank_import_accounts:tr_bank_import_accounts_immutable",
@@ -2627,6 +2627,7 @@ func TestInvoicesBaseline_AppliesAndIsIdempotent(t *testing.T) {
 		"reminder_print_batches:tr_reminder_print_batches_immutable", "reminder_runs:tr_reminder_runs_immutable",
 		"reminder_settings:tr_reminder_settings_kept",
 		"reminders:tr_reminders_immutable", "reminders:tr_reminders_parent",
+		"send_batches:tr_send_batches_immutable", "send_jobs:tr_send_jobs_immutable",
 		"timesheet_rows:tr_timesheet_rows_immutable",
 		"transmissions:tr_transmissions_immutable", "transmissions:tr_transmissions_parent",
 		"vat_summaries:tr_vat_summaries_immutable",

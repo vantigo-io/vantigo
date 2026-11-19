@@ -714,9 +714,10 @@ krediteres som enhver annen.
 ennå, blir **Avbrutt**, og den som faktureres akkurat da, gjøres ferdig. Det som er laget,
 blir stående.
 
-**Sending er ikke en del av kjøringen.** Send de utstedte fakturaene etterpå fra hvert
-dokument, på e-post eller som EHF ([Sende et dokument på e-post](#sende-et-dokument-på-e-post),
-[Sende som EHF](#sende-som-ehf)).
+**Sending er ikke en del av kjøringen.** Når kjøringen er ferdig, sender **Send alle** på
+siden hvert dokument den utstedte, hvert slik kunden får fakturaer
+([Sende mange dokumenter på en gang](#sende-mange-dokumenter-på-en-gang)). Du kan også sende
+hvert fra dokumentet, på e-post, som EHF eller som eFaktura.
 
 ## Fakturere ordre
 
@@ -839,6 +840,9 @@ har igjen å fakturere, ligger allerede på fakturautkast. Utsted eller slett de
 utkastene.* når utkast holder det — eller en ordre eller en linje ikke kan faktureres. En
 kunde som kjøringen prøver på nytt etter et avbrudd, faktureres fullt ut: det det
 avbrutte forsøket hadde tatt, gis tilbake først.
+
+Når kjøringen er ferdig, sender **Send alle** på siden fakturaene den utstedte
+([Sende mange dokumenter på en gang](#sende-mange-dokumenter-på-en-gang)).
 
 ### Når veiviseren for ordre avviser
 
@@ -2233,6 +2237,99 @@ trekker banken det likevel, venter betalingen i unntakskøen på en person.
 En faktura med et AvtaleGiro-trekk banken skal gjøre, purres ikke før en virkedag etter
 at forfallsdatoen har gått uten betaling; fram til da sier purringen *venter*, med
 AvtaleGiro som grunn.
+
+## Sende mange dokumenter på en gang
+
+**Send alle** sender mange utstedte dokumenter på en gang, hvert slik kunden får
+fakturaer ([slik virker det](/en/reference/invoices/#send-all)). Det krever
+`invoices:issue`.
+
+### Velg dokumenter i listen
+
+Under **Fakturaer** krysser du av foran hvert dokument som skal sendes, eller i
+overskriftsraden for å velge alle dokumentene på siden. Valget blir stående mens du blar og
+filtrerer. En linje over listen sier *N valgt*, med **Send alle** og **Fjern valget**. Et
+utkast kan velges, men det sendes ikke: linjen sier *1 utkast sendes ikke: det står som
+hoppet over.* Høyst 500 dokumenter går i én Send alle.
+
+Klikk **Send alle**. Dialogen spør *Sende N dokumenter?* og forklarer: *Hvert går med
+kanalen kunden har valgt, ellers med eFaktura, EHF, e-post eller utskrift slik Vantigo
+velger. Et dokument som alt er levert, hoppes over.* Klikk **Send N dokumenter**, og siden
+for utsendelsen åpnes.
+
+### Send en hel fakturakjøring
+
+Når en [fakturakjøring](#kjør-fakturering-for-alle-kunder) er **Ferdig** eller
+**Avbrutt** og har utstedte fakturaer, har siden **Send alle** øverst. Den sender hvert
+dokument kjøringen laget. Under kundene viser kortet **Utsending** kjøringens utsendelser,
+hver en lenke til sin side.
+
+### Slik sendes hvert dokument
+
+Vantigo velger måten for hvert dokument når det sendes, ikke når du klikker:
+
+1. **Kundens valgte måte først.** En kunde der faktureringsprofilen sier EHF, eFaktura,
+   e-post eller papir, får akkurat det. Avviser den måten — ingen Peppol-adresse, ikke
+   funnet for eFaktura, ingen faktura-e-post — **feiler** dokumentet med grunnen, og
+   ingenting annet prøves. Å sende det på en annen måte er ditt valg, fra dokumentet.
+2. **En person uten valg** får eFaktura hvis personen finnes for det, ellers e-post når
+   personen har en faktura-e-post, ellers blir dokumentet stående til **utskrift**.
+3. **En virksomhet uten valg** får EHF hvis Peppol-adressen tar imot dokumentet, ellers
+   e-post.
+4. **En kreditnota** går aldri som eFaktura; den tar neste måte.
+5. **Fra 1. januar 2027 sendes aldri e-post til en norsk virksomhet** — enhver kjøper med
+   organisasjonsnummer på dokumentet, uansett hva kunden er registrert som: en PDF på
+   e-post er ikke lenger en lovlig faktura til den. Uten EHF blir dokumentet **Hoppet over** med
+   *En norsk virksomhet kan ikke motta EHF, og fra 2027 er en PDF på e-post ikke en lovlig
+   faktura til den.* Send det fra dokumentet når virksomheten kan motta EHF.
+
+eFaktura velges aldri så lenge installasjonen ikke kan sende det.
+
+Et dokument som allerede er levert — sendt på e-post, som EHF eller eFaktura, registrert
+som overlevert eller postlagt, eller lagt til utskrift eller postlagt av en tidligere Send
+alle — blir **Hoppet over** med *Allerede levert*, og det samme gjør et dokument en annen
+Send alle sender akkurat nå. Et dokument en tidligere Send alle kan ha sendt på e-post —
+**Usikker**, eller **Feilet** fordi e-postserveren ikke bekreftet den — hoppes også over, med
+*En tidligere Send alle kan ha sendt det på e-post*. Å kjøre Send alle på nytt, på en
+fakturakjøring eller et utvalg, sender derfor aldri et dokument to ganger. For å sende det
+på en annen måte bruker du dokumentets egne **Send**-knapper.
+
+Er den som klikket **Send alle**, ikke lenger aktiv, eller har ikke lenger `invoices:issue`,
+når et dokument står for tur, blir det **Hoppet over** med *Den som ba om det, er ikke lenger
+aktiv eller kan ikke lenger sende dokumenter.* Høyst 500 dokumenter sendes på 10 minutter
+av én person eller én integrasjon.
+
+### Følg en utsendelse
+
+Siden teller dokumentene etter utfall, viser en framdriftslinje mens de går, og
+oppdaterer seg selv. Hver rad viser dokumentet, kunden, måten det gikk og utfallet:
+
+- **Sendt** — sendt på e-post;
+- **Overlevert** — lagt i kø som EHF eller eFaktura; dokumentets eget kort følger det
+  videre;
+- **Venter på utskrift** — står igjen for at du skal skrive ut og poste det;
+- **Postlagt** — skrevet ut og merket som postlagt;
+- **Hoppet over** eller **Feilet** — med grunnen i ord;
+- **Usikker** — se under.
+
+En måte som er nede et øyeblikk — Peppol-nettverket eller eFaktura-leverandøren svarer
+ikke, dokumentlageret er utilgjengelig — prøves igjen noen ganger av seg selv før
+dokumentet feiler.
+
+**Usikker** betyr at serveren stoppet mens den sendte dokumentet på e-post, eller at
+e-postserveren tok imot e-posten uten at leveringen kunne registreres. E-posten kan ha gått
+eller ikke. Vantigo sender den aldri på nytt
+av seg selv. Sjekk med kunden, og send det fra dokumentet hvis det ikke kom fram. En
+utsendelse med feilede eller usikre dokumenter står på dashbordet som *Send alle N: M
+dokumenter ble ikke sendt* i sju dager.
+
+### Skriv ut og post
+
+Når dokumenter **venter på utskrift**, har siden **Last ned for utskrift**: én ZIP med
+PDF-en til hvert dokument akkurat slik det ble utstedt, navngitt etter nummeret. Skriv ut
+og post dem, klikk så **Merk som postlagt** og velg dagen de ble postlagt. Hver faktura
+får da en levering av typen *postlagt* den dagen, slik **Registrer en levering** ville
+registrert den, og radene sier **Postlagt**.
 
 ## Vipps og betalingslenker
 

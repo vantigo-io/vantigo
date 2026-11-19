@@ -1154,6 +1154,10 @@ func readReceivables(ctx context.Context, q *store.Queries, ids []int64) (export
 // free text about the person, which no retention rule needs:
 // invoices.payments reports the notes blanked. A delivery is kept as the
 // record of when the claim was handed to the mail server, its address gone.
+// Send all's batches and jobs (invoices phase 6 plan E1) hold no personal
+// data — a job's recipient is its delivery's, and its detail the module's own
+// words — so the erase has nothing of theirs to blank, and a job of a person
+// erased meanwhile is refused customer_anonymised by the send's own core.
 // A transmission is kept whole — its UBL is the sales document as the PDF
 // is, and its receiver is an organisation's id or the snapshot's own —
 // except a queued one never attempted: it has sent nothing, so it is

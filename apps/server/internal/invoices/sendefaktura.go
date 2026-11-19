@@ -341,33 +341,35 @@ func notFoundReason(l *store.InvoicesConsumerLookup) string {
 	}
 }
 
-// PostInvoicesByIdSendEfaktura Send an issued invoice as eFaktura
-// (POST /api/v1/invoices/{id}/send-efaktura)
-func (s *server) PostInvoicesByIdSendEfaktura(ctx context.Context, req gen.PostInvoicesByIdSendEfakturaRequestObject) (gen.PostInvoicesByIdSendEfakturaResponseObject, error) {
-	refused := func(c gen.InvoicesConflictProblem) (gen.PostInvoicesByIdSendEfakturaResponseObject, error) {
-		return gen.PostInvoicesByIdSendEfaktura409ApplicationProblemPlusJSONResponse(c), nil
+// sendEfakturaCore is the send as eFaktura (plan D6) up to its queued
+// transmission and claim, callable without a request: the handler and the
+// invoices-send worker both run it. The lookup and the coverage check are
+// made before the lock; under it nothing leaves the process.
+func (s *server) sendEfakturaCore(ctx context.Context, invoiceID int64) (sendOutcome, error) {
+	refused := func(c gen.InvoicesConflictProblem) (sendOutcome, error) {
+		return refusedOutcome(refusedWith(http.StatusConflict, c)), nil
 	}
-	unavailable := func() (gen.PostInvoicesByIdSendEfakturaResponseObject, error) {
-		return gen.PostInvoicesByIdSendEfaktura503ApplicationProblemPlusJSONResponse(efakturaUnavailable()), nil
+	unavailable := func() (sendOutcome, error) {
+		return refusedOutcome(refusedWith(http.StatusServiceUnavailable, efakturaUnavailable())), nil
 	}
 
 	// 1. An installation that cannot send eFaktura reads no document.
 	q := store.New(s.deps.Pool)
 	available, _, _, err := s.efakturaAvailable(ctx, q)
 	if err != nil {
-		return nil, err
+		return sendOutcome{}, err
 	}
 	if !available {
 		return unavailable()
 	}
 
 	// 2. The document, issued, an invoice, its customer not anonymised.
-	inv, err := q.GetInvoice(ctx, req.Id)
+	inv, err := q.GetInvoice(ctx, invoiceID)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return gen.PostInvoicesByIdSendEfaktura404Response{}, nil
+		return refusedOutcome(&sendRefusal{status: http.StatusNotFound}), nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("invoices: read document %d: %w", req.Id, err)
+		return sendOutcome{}, fmt.Errorf("invoices: read document %d: %w", invoiceID, err)
 	}
 	if inv.Status != statusIssued {
 		return refused(conflict(codeInvoiceDraft, cannotSendEfakturaTitle, "A draft is not a sales document: issue it before sending it."))
@@ -378,7 +380,7 @@ func (s *server) PostInvoicesByIdSendEfaktura(ctx context.Context, req gen.PostI
 	}
 	erased, err := q.CustomerErased(ctx, inv.CustomerID)
 	if err != nil {
-		return nil, fmt.Errorf("invoices: read whether customer %d was erased: %w", inv.CustomerID, err)
+		return sendOutcome{}, fmt.Errorf("invoices: read whether customer %d was erased: %w", inv.CustomerID, err)
 	}
 	if erased {
 		return refused(efakturaRefused(codeCustomerAnonymised, "This invoice's customer has been anonymised, and is not sent to again."))
@@ -394,7 +396,7 @@ func (s *server) PostInvoicesByIdSendEfaktura(ctx context.Context, req gen.PostI
 	}
 	loc, err := s.businessZone(ctx)
 	if err != nil {
-		return nil, err
+		return sendOutcome{}, err
 	}
 	switch dueWindowRefusal(inv, holidays.DayIn(s.deps.Clock(), loc)) {
 	case codeEfakturaDueTooSoon:
@@ -410,7 +412,7 @@ func (s *server) PostInvoicesByIdSendEfaktura(ctx context.Context, req gen.PostI
 	case errors.Is(err, errNoConsumerProvider), errors.Is(err, errEfakturaOff), errors.Is(err, errSubmitterUnreadable):
 		return unavailable()
 	case err != nil:
-		return nil, err
+		return sendOutcome{}, err
 	}
 	lookup, err := s.lookupForSend(ctx, q, p, inv.CustomerID)
 	if err != nil {
@@ -418,7 +420,7 @@ func (s *server) PostInvoicesByIdSendEfaktura(ctx context.Context, req gen.PostI
 		c := conflict(codeEfakturaLookupFailed, "The eFaktura network could not be asked",
 			"The provider could not say whether the person receives eFaktura. Nothing was queued; try again.")
 		c.Status = ptr(int32(http.StatusBadGateway))
-		return gen.PostInvoicesByIdSendEfaktura502ApplicationProblemPlusJSONResponse(c), nil
+		return refusedOutcome(refusedWith(http.StatusBadGateway, c)), nil
 	}
 	if lookup == nil || !sendableLookup(*lookup) {
 		c := efakturaRefused(codeEfakturaNotFound,
@@ -430,7 +432,7 @@ func (s *server) PostInvoicesByIdSendEfaktura(ctx context.Context, req gen.PostI
 	// 6. No live eFaktura.
 	active, err := q.ActiveEfakturaTransmissionExists(ctx, inv.ID)
 	if err != nil {
-		return nil, fmt.Errorf("invoices: read document %d's eFaktura: %w", inv.ID, err)
+		return sendOutcome{}, fmt.Errorf("invoices: read document %d's eFaktura: %w", inv.ID, err)
 	}
 	if active {
 		return refused(efakturaRefused(codeEfakturaAlreadySent, "This invoice is already queued, submitted, delivered or awaiting confirmation as eFaktura."))
@@ -439,23 +441,18 @@ func (s *server) PostInvoicesByIdSendEfaktura(ctx context.Context, req gen.PostI
 	// 7. The claim, judged outside any transaction.
 	settings, err := q.GetSettings(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("invoices: read the settings: %w", err)
+		return sendOutcome{}, fmt.Errorf("invoices: read the settings: %w", err)
 	}
 	plan, err := s.planClaim(ctx, q, p, settings, inv)
 	if err != nil {
-		return nil, err
+		return sendOutcome{}, err
 	}
 
 	// The stored PDF the shipment carries.
 	pdf, problem := s.loadStoredPDF(ctx, q, inv)
-	switch {
-	case problem == nil:
-	case problem.unavailable != nil:
-		return gen.PostInvoicesByIdSendEfaktura503ApplicationProblemPlusJSONResponse(*problem.unavailable), nil
-	case problem.broken:
-		return gen.PostInvoicesByIdSendEfaktura500ApplicationProblemPlusJSONResponse(storedDocumentBroken()), nil
-	default:
-		return nil, problem.err
+	if problem != nil {
+		r, err := pdfRefusal(problem)
+		return refusedOutcome(r), err
 	}
 	_ = cpSettings
 
@@ -463,6 +460,7 @@ func (s *server) PostInvoicesByIdSendEfaktura(ctx context.Context, req gen.PostI
 	// transmission, its claim and their events.
 	var refusal *gen.InvoicesConflictProblem
 	var noSettings bool
+	var transmissionID int64
 	err = s.withLockedTx(ctx, func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error {
 		locked, err := txq.LockInvoice(ctx, inv.ID)
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -493,6 +491,10 @@ func (s *server) PostInvoicesByIdSendEfaktura(ctx context.Context, req gen.PostI
 			refusal = ptr(efakturaRefused(codeEfakturaAlreadySent, "This invoice is already queued, submitted, delivered or awaiting confirmation as eFaktura."))
 			return errRefused
 		}
+		if r, err := deliveredUnderLock(ctx, txq, locked.ID); err != nil || r != nil {
+			refusal = r
+			return cmpErr(err, errRefused)
+		}
 		now := s.deps.Clock()
 		paymentType := paymentTypeEfaktura
 		if plan.mandate != nil {
@@ -513,6 +515,7 @@ func (s *server) PostInvoicesByIdSendEfaktura(ctx context.Context, req gen.PostI
 		case err != nil:
 			return fmt.Errorf("invoices: queue document %d's eFaktura: %w", locked.ID, err)
 		}
+		transmissionID = t.ID
 		if err := publishTransmissionChanged(ctx, tx, t, t.Status, now); err != nil {
 			return err
 		}
@@ -543,21 +546,47 @@ func (s *server) PostInvoicesByIdSendEfaktura(ctx context.Context, req gen.PostI
 	case noSettings:
 		return unavailable()
 	case errors.Is(err, errDocumentGone):
-		return gen.PostInvoicesByIdSendEfaktura404Response{}, nil
+		return refusedOutcome(&sendRefusal{status: http.StatusNotFound}), nil
 	case err != nil:
-		return nil, err
+		return sendOutcome{}, err
 	}
 	s.deps.Logger.InfoContext(ctx, "invoices: an invoice is queued as eFaktura", "invoice_id", inv.ID, "avtalegiro", plan.mandate != nil)
+	return sendOutcome{inv: inv, loc: loc, transmissionID: transmissionID, claim: plan}, nil
+}
 
-	// 9. The document with its eFaktura state.
-	if inv, err = q.GetInvoice(ctx, inv.ID); err != nil {
-		return nil, fmt.Errorf("invoices: re-read document %d: %w", req.Id, err)
-	}
-	canIssue := true // the operation's own rule
-	resp, err := s.renderInvoice(ctx, q, inv, nil, nil, &canIssue, loc)
+// PostInvoicesByIdSendEfaktura Send an issued invoice as eFaktura
+// (POST /api/v1/invoices/{id}/send-efaktura)
+func (s *server) PostInvoicesByIdSendEfaktura(ctx context.Context, req gen.PostInvoicesByIdSendEfakturaRequestObject) (gen.PostInvoicesByIdSendEfakturaResponseObject, error) {
+	sent, err := s.sendEfakturaCore(ctx, req.Id)
 	if err != nil {
 		return nil, err
 	}
+	if r := sent.refusal; r != nil {
+		switch r.status {
+		case http.StatusNotFound:
+			return gen.PostInvoicesByIdSendEfaktura404Response{}, nil
+		case http.StatusInternalServerError:
+			return gen.PostInvoicesByIdSendEfaktura500ApplicationProblemPlusJSONResponse(storedDocumentBroken()), nil
+		case http.StatusBadGateway:
+			return gen.PostInvoicesByIdSendEfaktura502ApplicationProblemPlusJSONResponse(r.problem), nil
+		case http.StatusServiceUnavailable:
+			return gen.PostInvoicesByIdSendEfaktura503ApplicationProblemPlusJSONResponse(r.problem), nil
+		}
+		return gen.PostInvoicesByIdSendEfaktura409ApplicationProblemPlusJSONResponse(r.problem), nil
+	}
+
+	// 9. The document with its eFaktura state.
+	q := store.New(s.deps.Pool)
+	inv, err := q.GetInvoice(ctx, sent.inv.ID)
+	if err != nil {
+		return nil, fmt.Errorf("invoices: re-read document %d: %w", req.Id, err)
+	}
+	canIssue := true // the operation's own rule
+	resp, err := s.renderInvoice(ctx, q, inv, nil, nil, &canIssue, sent.loc)
+	if err != nil {
+		return nil, err
+	}
+	plan := sent.claim
 	out := gen.InvoicesSendEfakturaResponse{Invoice: resp, Avtalegiro: gen.InvoicesSendEfakturaAvtaleGiro{Included: plan.mandate != nil}}
 	if plan.reason != "" {
 		out.Avtalegiro.Reason = ptr(plan.reason)

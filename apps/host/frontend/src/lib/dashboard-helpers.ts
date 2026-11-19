@@ -443,6 +443,8 @@ export const attentionHref = (item: { module: ModuleKey; type: string; entityId:
     if (item.type === "bankTransactionsOpen") return `/invoices/payments/files/${encodeURIComponent(item.entityId)}`;
     if (item.type === "remindersHeld") return "/invoices/overdue";
     if (item.type === "reminderBatchUnposted") return "/invoices/reminders/print";
+    // A Send all with documents not sent opens its own page (invoices phase 6 design I36).
+    if (item.type === "sendBatchNotSent") return `/invoices/send-batches/${encodeURIComponent(item.entityId)}`;
     // The bank feed's three carry an account; each is fixed on Workspace
     // admin › Integrations › Bank (invoices bank feed design F7).
     if (["bankFeedUnauthorized", "bankFeedFailing", "bankFeedRefused"].includes(item.type)) return "/workspace/bank";
@@ -565,6 +567,7 @@ const invoicesAttentionTitleKeys: Record<string, string> = {
   bankFeedUnauthorized: "dashboard.invoiceBankFeedUnauthorized",
   bankFeedFailing: "dashboard.invoiceBankFeedFailing",
   bankFeedRefused: "dashboard.invoiceBankFeedRefused",
+  sendBatchNotSent: "dashboard.invoiceSendBatchNotSent",
 };
 
 const invoicesHeldTitleKeys: Record<string, string> = {

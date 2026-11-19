@@ -335,41 +335,43 @@ func (s *server) storeUBL(ctx context.Context, r renderedEHF) error {
 	return s.objectPut(ctx, r.key, bytes.NewReader(r.body), "application/xml")
 }
 
-// PostInvoicesByIdSendEhf Send an issued document as EHF
-// (POST /api/v1/invoices/{id}/send-ehf)
-func (s *server) PostInvoicesByIdSendEhf(ctx context.Context, req gen.PostInvoicesByIdSendEhfRequestObject) (gen.PostInvoicesByIdSendEhfResponseObject, error) {
-	refused := func(c gen.InvoicesConflictProblem) (gen.PostInvoicesByIdSendEhfResponseObject, error) {
-		return gen.PostInvoicesByIdSendEhf409ApplicationProblemPlusJSONResponse(c), nil
+// sendEhfCore is the send as EHF (D8) up to its queued transmission,
+// callable without a request: the handler and the invoices-send worker both
+// run it. The lookup and the object store are called before the lock; under
+// it nothing leaves the process (module boundaries, rule 10).
+func (s *server) sendEhfCore(ctx context.Context, invoiceID int64) (sendOutcome, error) {
+	refused := func(c gen.InvoicesConflictProblem) (sendOutcome, error) {
+		return refusedOutcome(refusedWith(http.StatusConflict, c)), nil
 	}
 
 	// 1. An installation that cannot send as EHF reads no document.
 	q := store.New(s.deps.Pool)
 	settings, err := q.GetSettings(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("invoices: read the settings: %w", err)
+		return sendOutcome{}, fmt.Errorf("invoices: read the settings: %w", err)
 	}
 	available, _, err := s.ehfAvailable(ctx, q, settings)
 	if err != nil {
-		return nil, err
+		return sendOutcome{}, err
 	}
 	if !available {
-		return gen.PostInvoicesByIdSendEhf503ApplicationProblemPlusJSONResponse(ehfUnavailable()), nil
+		return refusedOutcome(refusedWith(http.StatusServiceUnavailable, ehfUnavailable())), nil
 	}
 
 	// 2. The document, issued, its customer not anonymised.
-	inv, err := q.GetInvoice(ctx, req.Id)
+	inv, err := q.GetInvoice(ctx, invoiceID)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return gen.PostInvoicesByIdSendEhf404Response{}, nil
+		return refusedOutcome(&sendRefusal{status: http.StatusNotFound}), nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("invoices: read document %d: %w", req.Id, err)
+		return sendOutcome{}, fmt.Errorf("invoices: read document %d: %w", invoiceID, err)
 	}
 	if inv.Status != statusIssued {
 		return refused(conflict(codeInvoiceDraft, cannotSendEhfTitle, "A draft is not a sales document: issue it before sending it."))
 	}
 	erased, err := q.CustomerErased(ctx, inv.CustomerID)
 	if err != nil {
-		return nil, fmt.Errorf("invoices: read whether customer %d was erased: %w", inv.CustomerID, err)
+		return sendOutcome{}, fmt.Errorf("invoices: read whether customer %d was erased: %w", inv.CustomerID, err)
 	}
 	if erased {
 		return refused(customerAnonymisedEhf())
@@ -386,7 +388,7 @@ func (s *server) PostInvoicesByIdSendEhf(ctx context.Context, req gen.PostInvoic
 	}
 	active, err := q.ActiveTransmissionExists(ctx, inv.ID)
 	if err != nil {
-		return nil, fmt.Errorf("invoices: read document %d's transmissions: %w", inv.ID, err)
+		return sendOutcome{}, fmt.Errorf("invoices: read document %d's transmissions: %w", inv.ID, err)
 	}
 	if active {
 		return refused(ehfAlreadySent())
@@ -395,18 +397,13 @@ func (s *server) PostInvoicesByIdSendEhf(ctx context.Context, req gen.PostInvoic
 	// 6. The stored PDF, the render and the pre-check: cheap and local,
 	// before the network.
 	pdf, problem := s.loadStoredPDF(ctx, q, inv)
-	switch {
-	case problem == nil:
-	case problem.unavailable != nil:
-		return gen.PostInvoicesByIdSendEhf503ApplicationProblemPlusJSONResponse(*problem.unavailable), nil
-	case problem.broken:
-		return gen.PostInvoicesByIdSendEhf500ApplicationProblemPlusJSONResponse(storedDocumentBroken()), nil
-	default:
-		return nil, problem.err
+	if problem != nil {
+		r, err := pdfRefusal(problem)
+		return refusedOutcome(r), err
 	}
 	rendered, rules, err := s.renderEHF(ctx, q, inv, *settings.PeppolID, pdf)
 	if err != nil {
-		return nil, err
+		return sendOutcome{}, err
 	}
 	if len(rules) > 0 {
 		c := conflict(codeEhfInvalid, cannotSendEhfTitle, "The document's EHF does not pass the Peppol rules named in rules.")
@@ -425,7 +422,7 @@ func (s *server) PostInvoicesByIdSendEhf(ctx context.Context, req gen.PostInvoic
 		c := conflict(codePeppolLookupFailed, "The Peppol network could not be asked",
 			"The Peppol network could not say whether the receiver accepts this document. Nothing was queued; try again.")
 		c.Status = ptr(int32(http.StatusBadGateway))
-		return gen.PostInvoicesByIdSendEhf502ApplicationProblemPlusJSONResponse(c), nil
+		return refusedOutcome(refusedWith(http.StatusBadGateway, c)), nil
 	}
 	receivable := canReceive(lookup, inv.Kind)
 	if !lookup.Registered || !receivable {
@@ -439,23 +436,24 @@ func (s *server) PostInvoicesByIdSendEhf(ctx context.Context, req gen.PostInvoic
 	reused, ok, err := s.reusedEHF(ctx, q, inv.ID)
 	switch {
 	case errors.Is(err, errUBLBroken):
-		return gen.PostInvoicesByIdSendEhf500ApplicationProblemPlusJSONResponse(storedDocumentBroken()), nil
+		return refusedOutcome(&sendRefusal{status: http.StatusInternalServerError}), nil
 	case errors.Is(err, errObjectStore):
-		return gen.PostInvoicesByIdSendEhf503ApplicationProblemPlusJSONResponse(storageUnavailable("The document store could not be read. Try again.")), nil
+		return refusedOutcome(refusedWith(http.StatusServiceUnavailable, storageUnavailable("The document store could not be read. Try again."))), nil
 	case err != nil:
-		return nil, err
+		return sendOutcome{}, err
 	case ok:
 		rendered = reused
 	default:
 		if err := s.storeUBL(ctx, rendered); err != nil {
 			s.deps.Logger.WarnContext(ctx, "invoices: an EHF could not be stored", "invoice_id", inv.ID, "error", err.Error())
-			return gen.PostInvoicesByIdSendEhf503ApplicationProblemPlusJSONResponse(storageUnavailable("The document store could not be reached. Try again.")), nil
+			return refusedOutcome(refusedWith(http.StatusServiceUnavailable, storageUnavailable("The document store could not be reached. Try again."))), nil
 		}
 	}
 
 	// 9. The transmission, queued under the document's lock.
 	var refusal *gen.InvoicesConflictProblem
 	var noCredentials bool
+	var transmissionID int64
 	err = s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		read := txq.LockInvoice
 		if sendEhfWithoutLock {
@@ -492,11 +490,15 @@ func (s *server) PostInvoicesByIdSendEhf(ctx context.Context, req gen.PostInvoic
 			refusal = ptr(ehfAlreadySent())
 			return errRefused
 		}
+		if r, err := deliveredUnderLock(ctx, txq, locked.ID); err != nil || r != nil {
+			refusal = r
+			return cmpErr(err, errRefused)
+		}
 		if beforeTransmissionInsert != nil {
 			beforeTransmissionInsert(ctx, locked.ID)
 		}
 		now := s.deps.Clock()
-		_, err = txq.InsertTransmission(ctx, store.InsertTransmissionParams{
+		t, err := txq.InsertTransmission(ctx, store.InsertTransmissionParams{
 			InvoiceID: locked.ID, Provider: providerStorecove, IdempotencyKey: uuid.New(),
 			SenderParticipant: rendered.sender, ReceiverParticipant: participant,
 			DocumentType: documentTypeOf(locked.Kind), ProcessID: peppol.BillingProcessID,
@@ -514,22 +516,47 @@ func (s *server) PostInvoicesByIdSendEhf(ctx context.Context, req gen.PostInvoic
 		case err != nil:
 			return fmt.Errorf("invoices: queue document %d's transmission: %w", locked.ID, err)
 		}
+		transmissionID = t.ID
 		return nil
 	})
 	switch {
 	case refusal != nil:
 		return refused(*refusal)
 	case noCredentials:
-		return gen.PostInvoicesByIdSendEhf503ApplicationProblemPlusJSONResponse(ehfUnavailable()), nil
+		return refusedOutcome(refusedWith(http.StatusServiceUnavailable, ehfUnavailable())), nil
 	case errors.Is(err, errDocumentGone):
-		return gen.PostInvoicesByIdSendEhf404Response{}, nil
+		return refusedOutcome(&sendRefusal{status: http.StatusNotFound}), nil
 	case err != nil:
-		return nil, err
+		return sendOutcome{}, err
 	}
 	s.deps.Logger.InfoContext(ctx, "invoices: a document is queued as EHF", "invoice_id", inv.ID, "reused_ubl", rendered.reused)
+	return sendOutcome{inv: inv, transmissionID: transmissionID}, nil
+}
+
+// PostInvoicesByIdSendEhf Send an issued document as EHF
+// (POST /api/v1/invoices/{id}/send-ehf)
+func (s *server) PostInvoicesByIdSendEhf(ctx context.Context, req gen.PostInvoicesByIdSendEhfRequestObject) (gen.PostInvoicesByIdSendEhfResponseObject, error) {
+	sent, err := s.sendEhfCore(ctx, req.Id)
+	if err != nil {
+		return nil, err
+	}
+	if r := sent.refusal; r != nil {
+		switch r.status {
+		case http.StatusNotFound:
+			return gen.PostInvoicesByIdSendEhf404Response{}, nil
+		case http.StatusInternalServerError:
+			return gen.PostInvoicesByIdSendEhf500ApplicationProblemPlusJSONResponse(storedDocumentBroken()), nil
+		case http.StatusBadGateway:
+			return gen.PostInvoicesByIdSendEhf502ApplicationProblemPlusJSONResponse(r.problem), nil
+		case http.StatusServiceUnavailable:
+			return gen.PostInvoicesByIdSendEhf503ApplicationProblemPlusJSONResponse(r.problem), nil
+		}
+		return gen.PostInvoicesByIdSendEhf409ApplicationProblemPlusJSONResponse(r.problem), nil
+	}
 
 	// 10. The document with its EHF state, read again when step 6 stored its
 	// PDF, so it says so.
+	inv, q := sent.inv, store.New(s.deps.Pool)
 	if inv.PdfSha256 == nil {
 		if inv, err = q.GetInvoice(ctx, inv.ID); err != nil {
 			return nil, fmt.Errorf("invoices: re-read document %d: %w", req.Id, err)

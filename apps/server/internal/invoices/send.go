@@ -263,68 +263,203 @@ func mailUnavailable() gen.InvoicesConflictProblem {
 	return c
 }
 
-// PostInvoicesByIdSend Send an issued document by e-mail
-// (POST /api/v1/invoices/{id}/send)
-func (s *server) PostInvoicesByIdSend(ctx context.Context, req gen.PostInvoicesByIdSendRequestObject) (gen.PostInvoicesByIdSendResponseObject, error) {
+// sendRefusal is why a send's core sent nothing, in the terms its handler
+// answers with and the invoices-send worker records: status is the HTTP
+// status — 400 with fields, 404, 500 for a stored document broken, and 409,
+// 502 or 503 with problem, which carries the code.
+type sendRefusal struct {
+	status  int
+	problem gen.InvoicesConflictProblem
+	fields  map[string][]string
+}
+
+// The codes a send job records for the refusals that carry none.
+const (
+	codeSendDocumentGone = "invoice_not_found"
+	codeStoredPDFBroken  = "stored_document_broken"
+)
+
+// code is the refusal's code, as a send job records it.
+func (r sendRefusal) code() string {
+	switch r.status {
+	case http.StatusBadRequest:
+		return codeInvalidRequest
+	case http.StatusNotFound:
+		return codeSendDocumentGone
+	case http.StatusInternalServerError:
+		return codeStoredPDFBroken
+	}
+	return problemCode(r.problem)
+}
+
+// detail is the refusal's sentence, as a send job records it.
+func (r sendRefusal) detail() string {
+	switch r.status {
+	case http.StatusBadRequest:
+		return fieldErrorsDetail(r.fields)
+	case http.StatusNotFound:
+		return "The document no longer exists."
+	case http.StatusInternalServerError:
+		return "The document's stored PDF is missing or does not match what was stored; the operator has been told."
+	}
+	return problemDetail(r.problem)
+}
+
+func refusedWith(status int, problem gen.InvoicesConflictProblem) *sendRefusal {
+	return &sendRefusal{status: status, problem: problem}
+}
+
+// pdfRefusal is a loadStoredPDF problem as a send's refusal; err is anything
+// else, the server's.
+func pdfRefusal(problem *pdfProblem) (*sendRefusal, error) {
+	switch {
+	case problem.unavailable != nil:
+		return refusedWith(http.StatusServiceUnavailable, *problem.unavailable), nil
+	case problem.broken:
+		return &sendRefusal{status: http.StatusInternalServerError}, nil
+	}
+	return nil, problem.err
+}
+
+// sendOutcome is what a send's core did: refused, or sent — the document as
+// the core last read it, the business time zone it read, the billing profile
+// it read (nil when it read none), and the delivery or the transmission it
+// made. claim is the eFaktura's AvtaleGiro decision.
+type sendOutcome struct {
+	refusal        *sendRefusal
+	inv            store.InvoicesInvoice
+	loc            *time.Location
+	profile        *contracts.CustomerBillingProfile
+	pdfStored      bool
+	deliveryID     int64
+	transmissionID int64
+	claim          claimPlan
+}
+
+func refusedOutcome(r *sendRefusal) sendOutcome { return sendOutcome{refusal: r} }
+
+// sendAllKey marks a context the invoices-send worker runs a core under.
+type sendAllKey struct{}
+
+// withSendAll marks ctx as send all's: each core then refuses, under the
+// document's lock, a document delivered on any channel meanwhile.
+func withSendAll(ctx context.Context) context.Context {
+	return context.WithValue(ctx, sendAllKey{}, true)
+}
+
+// fromSendAll is whether ctx is send all's.
+func fromSendAll(ctx context.Context) bool {
+	v, _ := ctx.Value(sendAllKey{}).(bool)
+	return v
+}
+
+// deliveredUnderLock is send all's re-check inside a core's locked
+// transaction, on the document's lock: a delivery on any channel, a send
+// job left for print, or one that may have mailed it is a refusal
+// already_delivered. Outside send all it answers nil: a person may send a
+// document a second way.
+func deliveredUnderLock(ctx context.Context, txq *store.Queries, invoiceID int64) (*gen.InvoicesConflictProblem, error) {
+	if !fromSendAll(ctx) {
+		return nil, nil
+	}
+	delivered, err := txq.DeliveredDocuments(ctx, []int64{invoiceID})
+	if err != nil {
+		return nil, fmt.Errorf("invoices: read whether document %d is delivered: %w", invoiceID, err)
+	}
+	uncertain, err := txq.UncertainDocuments(ctx, []int64{invoiceID})
+	if err != nil {
+		return nil, fmt.Errorf("invoices: read whether document %d may have been mailed: %w", invoiceID, err)
+	}
+	if len(delivered) == 0 && len(uncertain) == 0 {
+		return nil, nil
+	}
+	return ptr(conflict(codeAlreadyDelivered, cannotSendTitle,
+		"The document was delivered another way meanwhile. Send it another way from the document itself.")), nil
+}
+
+// cmpErr is err when there is one, else fallback.
+func cmpErr(err, fallback error) error {
+	if err != nil {
+		return err
+	}
+	return fallback
+}
+
+// sendInput is the e-mail send's choices: an override of the recipient and a
+// personal message, nil for none.
+type sendInput struct {
+	recipient, message *string
+}
+
+// errMailedNotLogged is a send the mail server took whose delivery row could
+// not be written: the document went, and nothing says so. The invoices-send
+// worker records such a job uncertain, and never mails it again (plan reading
+// E4).
+var errMailedNotLogged = errors.New("invoices: the document was mailed but its delivery was not logged")
+
+// sendEmailCore is the send by e-mail (D4) up to its delivery row, callable
+// without a request: the handler and the invoices-send worker both run it,
+// the worker under the batch's requester as principal. Nothing here runs
+// under a lock.
+func (s *server) sendEmailCore(ctx context.Context, invoiceID int64, in sendInput) (sendOutcome, error) {
 	// 1. Sending that is disabled, or whose channel cannot send, reads
 	// nothing (integrations design T6). The channel is read once and is the
 	// one the send goes out on.
 	channel, ok := s.sendingChannel(ctx)
 	if !ok {
-		return gen.PostInvoicesByIdSend503ApplicationProblemPlusJSONResponse(mailUnavailable()), nil
+		return refusedOutcome(refusedWith(http.StatusServiceUnavailable, mailUnavailable())), nil
 	}
 
 	// 1a. The personal message, judged before anything is read (I6).
-	message, refusal := sendMessage(req.Body.Message)
+	message, refusal := sendMessage(in.message)
 	if refusal != "" {
-		return gen.PostInvoicesByIdSend400ApplicationProblemPlusJSONResponse(invalid(invalidSendTitle,
-			fieldError("message", refusal))), nil
+		return refusedOutcome(&sendRefusal{status: http.StatusBadRequest, fields: fieldError("message", refusal)}), nil
 	}
 
 	// 2. The document.
 	q := store.New(s.deps.Pool)
-	inv, err := q.GetInvoice(ctx, req.Id)
+	inv, err := q.GetInvoice(ctx, invoiceID)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return gen.PostInvoicesByIdSend404Response{}, nil
+		return refusedOutcome(&sendRefusal{status: http.StatusNotFound}), nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("invoices: read document %d: %w", req.Id, err)
+		return sendOutcome{}, fmt.Errorf("invoices: read document %d: %w", invoiceID, err)
 	}
 	if inv.Status != statusIssued {
-		return gen.PostInvoicesByIdSend409ApplicationProblemPlusJSONResponse(conflict(codeInvoiceDraft, cannotSendTitle,
-			"A draft is not a sales document: issue it before sending it.")), nil
+		return refusedOutcome(refusedWith(http.StatusConflict, conflict(codeInvoiceDraft, cannotSendTitle,
+			"A draft is not a sales document: issue it before sending it."))), nil
 	}
 
 	// 3. A person this module has anonymised is not written to again.
 	erased, err := q.CustomerErased(ctx, inv.CustomerID)
 	if err != nil {
-		return nil, fmt.Errorf("invoices: read whether customer %d was erased: %w", inv.CustomerID, err)
+		return sendOutcome{}, fmt.Errorf("invoices: read whether customer %d was erased: %w", inv.CustomerID, err)
 	}
 	if erased {
-		return gen.PostInvoicesByIdSend409ApplicationProblemPlusJSONResponse(conflict(codeCustomerAnonymised, cannotSendTitle,
-			"This document's customer has been anonymised, and is not written to again.")), nil
+		return refusedOutcome(refusedWith(http.StatusConflict, conflict(codeCustomerAnonymised, cannotSendTitle,
+			"This document's customer has been anonymised, and is not written to again."))), nil
 	}
 
 	// 4. The recipient: the override, else today's invoice e-mail — a credit
 	// note's too, for the person's address changes and the document does not.
 	var recipient string
 	var profile *contracts.CustomerBillingProfile
-	if req.Body.Recipient != nil {
+	if in.recipient != nil {
 		var ok bool
-		if recipient, ok = validRecipient(*req.Body.Recipient); !ok {
-			return gen.PostInvoicesByIdSend400ApplicationProblemPlusJSONResponse(invalid(invalidSendTitle,
-				fieldError("recipient", "This is not an e-mail address"))), nil
+		if recipient, ok = validRecipient(*in.recipient); !ok {
+			return refusedOutcome(&sendRefusal{status: http.StatusBadRequest,
+				fields: fieldError("recipient", "This is not an e-mail address")}), nil
 		}
 	} else {
 		if profile, err = s.customerProfile(ctx, inv.CustomerID); err != nil {
-			return nil, fmt.Errorf("invoices: read customer %d's billing profile: %w", inv.CustomerID, err)
+			return sendOutcome{}, fmt.Errorf("invoices: read customer %d's billing profile: %w", inv.CustomerID, err)
 		}
 		if profile != nil {
 			recipient = profile.InvoiceEmail
 		}
 		if recipient == "" {
-			return gen.PostInvoicesByIdSend409ApplicationProblemPlusJSONResponse(conflict(codeNoInvoiceEmail, cannotSendTitle,
-				"The customer has no invoice e-mail. Add one to the customer, or send to another address.")), nil
+			return refusedOutcome(refusedWith(http.StatusConflict, conflict(codeNoInvoiceEmail, cannotSendTitle,
+				"The customer has no invoice e-mail. Add one to the customer, or send to another address."))), nil
 		}
 	}
 
@@ -332,26 +467,21 @@ func (s *server) PostInvoicesByIdSend(ctx context.Context, req gen.PostInvoicesB
 	// and before any transaction of the send's.
 	loc, err := s.businessZone(ctx)
 	if err != nil {
-		return nil, err
+		return sendOutcome{}, err
 	}
 
 	// 4a. A pay link, made now in a transaction of its own when pay links
 	// are available and the invoice has none (D15, I5), so the cover text
 	// carries it — a quick invoice's, or one issued before pay links.
 	if err := s.payLinkOnDemand(ctx, q, inv); err != nil {
-		return nil, err
+		return sendOutcome{}, err
 	}
 
 	// 5. The stored PDF, stored first when it never was.
 	pdf, problem := s.loadStoredPDF(ctx, q, inv)
-	switch {
-	case problem == nil:
-	case problem.unavailable != nil:
-		return gen.PostInvoicesByIdSend503ApplicationProblemPlusJSONResponse(*problem.unavailable), nil
-	case problem.broken:
-		return gen.PostInvoicesByIdSend500ApplicationProblemPlusJSONResponse(storedDocumentBroken()), nil
-	default:
-		return nil, problem.err
+	if problem != nil {
+		r, err := pdfRefusal(problem)
+		return refusedOutcome(r), err
 	}
 
 	// 6. The envelope: the seller as the PDF names it, replies to today's
@@ -359,11 +489,34 @@ func (s *server) PostInvoicesByIdSend(ctx context.Context, req gen.PostInvoicesB
 	// document was issued with inline.
 	out, err := s.envelope(ctx, q, inv, recipient, pdf.body, message)
 	if errors.Is(err, errObjectStore) {
-		return gen.PostInvoicesByIdSend503ApplicationProblemPlusJSONResponse(storageUnavailable(
-			"The document's logo could not be read from the store. Nothing was sent; try again.")), nil
+		return refusedOutcome(refusedWith(http.StatusServiceUnavailable, storageUnavailable(
+			"The document's logo could not be read from the store. Nothing was sent; try again."))), nil
 	}
 	if err != nil {
-		return nil, err
+		return sendOutcome{}, err
+	}
+
+	// 6a. Send all's own re-check (plan E3, the review's cross-channel race):
+	// under the document's lock, no delivery on another channel since the
+	// worker judged it. The lock is not held across the send — nothing that
+	// leaves the process runs under one — so this narrows the window to the
+	// SMTP call; the transmission cores close it under their own lock.
+	if fromSendAll(ctx) {
+		var refusal *gen.InvoicesConflictProblem
+		err := s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
+			if _, err := lockInvoice(ctx, txq, inv.ID); err != nil {
+				return fmt.Errorf("invoices: lock document %d: %w", inv.ID, err)
+			}
+			r, err := deliveredUnderLock(ctx, txq, inv.ID)
+			refusal = r
+			return err
+		})
+		if err != nil {
+			return sendOutcome{}, err
+		}
+		if refusal != nil {
+			return refusedOutcome(refusedWith(http.StatusConflict, *refusal)), nil
+		}
 	}
 
 	// 7. The send, on a context the request's cancellation does not reach: a
@@ -379,7 +532,7 @@ func (s *server) PostInvoicesByIdSend(ctx context.Context, req gen.PostInvoicesB
 		// to anonymise — the log would keep it.
 		s.deps.Logger.WarnContext(ctx, "invoices: a document could not be sent", "invoice_id", inv.ID,
 			"error", withoutRecipient(err.Error(), recipient))
-		return gen.PostInvoicesByIdSend502ApplicationProblemPlusJSONResponse(mailFailed()), nil
+		return refusedOutcome(refusedWith(http.StatusBadGateway, mailFailed())), nil
 	}
 
 	// 8. The row that is the send's evidence, uncancellable too and on a
@@ -389,25 +542,52 @@ func (s *server) PostInvoicesByIdSend(ctx context.Context, req gen.PostInvoicesB
 	}
 	rowCtx, cancelRow := context.WithTimeout(uncancelled, deliveryRowTimeout)
 	defer cancelRow()
-	if _, err := q.InsertDelivery(rowCtx, store.InsertDeliveryParams{
+	row, err := q.InsertDelivery(rowCtx, store.InsertDeliveryParams{
 		InvoiceID: inv.ID, Recipient: recipient, Subject: out.Subject, MessageID: out.MessageID,
 		PdfSha256: pdf.sha256, SentAt: s.deps.Clock(), SentByUserID: callerID(ctx), Message: message,
-	}); err != nil {
+	})
+	if err != nil {
 		// The document id only, never the address: it may be a person's
 		// whom an erase is anonymising at this very moment.
 		s.deps.Logger.ErrorContext(ctx, "invoices: a document was sent but its delivery could not be logged",
 			"invoice_id", inv.ID, "error", err.Error())
-		return nil, fmt.Errorf("invoices: log the send of document %d: %w", inv.ID, err)
+		return sendOutcome{}, fmt.Errorf("invoices: log the send of document %d: %w: %w", inv.ID, errMailedNotLogged, err)
 	}
+	return sendOutcome{inv: inv, loc: loc, profile: profile, pdfStored: pdf.body != nil, deliveryID: row.ID}, nil
+}
+
+// PostInvoicesByIdSend Send an issued document by e-mail
+// (POST /api/v1/invoices/{id}/send)
+func (s *server) PostInvoicesByIdSend(ctx context.Context, req gen.PostInvoicesByIdSendRequestObject) (gen.PostInvoicesByIdSendResponseObject, error) {
+	sent, err := s.sendEmailCore(ctx, req.Id, sendInput{recipient: req.Body.Recipient, message: req.Body.Message})
+	if err != nil {
+		return nil, err
+	}
+	if r := sent.refusal; r != nil {
+		switch r.status {
+		case http.StatusBadRequest:
+			return gen.PostInvoicesByIdSend400ApplicationProblemPlusJSONResponse(invalid(invalidSendTitle, r.fields)), nil
+		case http.StatusNotFound:
+			return gen.PostInvoicesByIdSend404Response{}, nil
+		case http.StatusInternalServerError:
+			return gen.PostInvoicesByIdSend500ApplicationProblemPlusJSONResponse(storedDocumentBroken()), nil
+		case http.StatusBadGateway:
+			return gen.PostInvoicesByIdSend502ApplicationProblemPlusJSONResponse(r.problem), nil
+		case http.StatusServiceUnavailable:
+			return gen.PostInvoicesByIdSend503ApplicationProblemPlusJSONResponse(r.problem), nil
+		}
+		return gen.PostInvoicesByIdSend409ApplicationProblemPlusJSONResponse(r.problem), nil
+	}
+	inv, q := sent.inv, store.New(s.deps.Pool)
 
 	// 9. The document, its deliveries now holding the row — read again when
 	// step 5 stored its PDF, so it says so. Uncancellable as well, and on a
 	// short timeout of its own, so the re-read, the render and the
 	// best-effort directory read are bounded: a caller who went away is owed
 	// no error for a send that succeeded.
-	renderCtx, cancelRender := context.WithTimeout(uncancelled, deliveryRowTimeout)
+	renderCtx, cancelRender := context.WithTimeout(context.WithoutCancel(ctx), deliveryRowTimeout)
 	defer cancelRender()
-	if pdf.body != nil && inv.PdfSha256 == nil {
+	if sent.pdfStored && inv.PdfSha256 == nil {
 		if inv, err = q.GetInvoice(renderCtx, inv.ID); err != nil {
 			return nil, fmt.Errorf("invoices: re-read document %d: %w", req.Id, err)
 		}
@@ -416,11 +596,11 @@ func (s *server) PostInvoicesByIdSend(ctx context.Context, req gen.PostInvoicesB
 	// cancels: a caller who went away gets the response without sendDefaults
 	// and the deliveries' recipients — it fails closed, and nobody reads it.
 	canIssue := s.has(ctx, "invoices:issue")
-	resp, err := s.renderInvoice(renderCtx, q, inv, nil, nil, &canIssue, loc)
+	resp, err := s.renderInvoice(renderCtx, q, inv, nil, nil, &canIssue, sent.loc)
 	if err != nil {
 		return nil, err
 	}
-	if err := s.withSendDefaults(renderCtx, q, inv, profile, canIssue, false, holidays.DayIn(s.deps.Clock(), loc), &resp); err != nil {
+	if err := s.withSendDefaults(renderCtx, q, inv, sent.profile, canIssue, false, holidays.DayIn(s.deps.Clock(), sent.loc), &resp); err != nil {
 		return nil, err
 	}
 	return gen.PostInvoicesByIdSend200JSONResponse(resp), nil

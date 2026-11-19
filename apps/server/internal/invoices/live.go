@@ -20,23 +20,36 @@ const (
 
 	eventRunChanged = "run.changed"
 
+	// liveSendBatches is the send batches' topic (invoices phase 6 plan E4),
+	// keyless: batch.changed with the batch's id.
+	liveSendBatches   = "invoices.send-batches"
+	eventBatchChanged = "batch.changed"
+
 	// billingProgressEvery is the least time between two progress
 	// notifications of one run (K37): a state change always notifies, an
 	// item's outcome at most this often.
 	billingProgressEvery = time.Second
 )
 
-// liveTopics is the module's LiveTopics. The topic is authorised by the rule
-// both GETs of the runs apply: invoices:access.
+// liveTopics is the module's LiveTopics. Each topic is authorised by the
+// rule its screens' GETs apply: invoices:access.
 func liveTopics(module.Deps) []live.Topic {
-	return []live.Topic{
-		{Kind: liveBillingRuns, Authorize: func(ctx context.Context, key string) error {
-			if key != "" || !live.HasPermission(ctx, "invoices:access") {
-				return live.ErrForbidden
-			}
-			return nil
-		}},
+	keyless := func(ctx context.Context, key string) error {
+		if key != "" || !live.HasPermission(ctx, "invoices:access") {
+			return live.ErrForbidden
+		}
+		return nil
 	}
+	return []live.Topic{
+		{Kind: liveBillingRuns, Authorize: keyless},
+		{Kind: liveSendBatches, Authorize: keyless},
+	}
+}
+
+// notifySendBatch tells the send batch screens that batch id changed, on q,
+// the transaction that wrote — heard only if it commits.
+func notifySendBatch(ctx context.Context, q live.Execer, id int64) error {
+	return live.Notify(ctx, q, liveSendBatches, eventBatchChanged, strconv.FormatInt(id, 10))
 }
 
 // notifyRun tells the billing runs screens that run id changed. It runs on q,
