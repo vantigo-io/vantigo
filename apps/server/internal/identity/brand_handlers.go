@@ -34,7 +34,6 @@ const (
 // brandPublicTTL is how long an anonymous answer may be cached (B17).
 const brandPublicTTL = 60 * time.Second
 
-
 // loadBrand reads one brand, or reports that there is none.
 func (s *server) loadBrand(ctx context.Context, q *store.Queries, id uuid.UUID) (brandRow, bool, error) {
 	b, err := q.GetBrand(ctx, id)
