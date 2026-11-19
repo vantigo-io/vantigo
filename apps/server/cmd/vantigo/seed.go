@@ -1084,6 +1084,28 @@ func seedCustomersAndContacts(ctx context.Context, tx pgx.Tx, now time.Time, use
 		}
 	}
 
+	// Credit limits (invoices phase 6 design I38): customer 21's overdue
+	// invoice (seedInvoicesReceivables, invoice 20) puts it over its limit;
+	// customer 17's open one leaves it within. Customer 4 is not
+	// bookkeeping-obligated by a person's decision (I37), with the reason.
+	for _, c := range []struct {
+		index int
+		limit string
+	}{{20, "100000.00"}, {16, "250000.00"}} {
+		if _, err := tx.Exec(ctx, `UPDATE customers.customers SET credit_limit = $2::numeric WHERE id = $1`,
+			customerIDs[c.index], c.limit); err != nil {
+			return nil, nil, err
+		}
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE customers.customers
+		SET bookkeeping_obligated_override = false,
+		    bookkeeping_obligated_override_reason = 'Filial av utenlandsk foretak; bokfører i hjemlandet, bekreftet av kunden.'
+		WHERE id = $1
+	`, customerIDs[3]); err != nil {
+		return nil, nil, err
+	}
+
 	return customerIDs, contactIDs, nil
 }
 

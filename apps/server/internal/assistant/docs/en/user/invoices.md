@@ -980,6 +980,27 @@ date, the lines do not match the seller's VAT registration, a reverse-charge lin
 the buyer's organisation number, or the chosen date is not allowed that day. Each
 refusal is said in the dialog ([every refusal](/en/reference/invoices/#issuing)).
 
+**From 1 January 2028**, an invoice or a credit note to a buyer that is
+**bookkeeping-obligated** — as the customer's billing profile says, from the register or
+by decision ([Bookkeeping-obligated](/en/user/customers/#bookkeeping-obligated)) — must
+carry the buyer's organisation number (bokføringsforskriften § 5-1-2). Without it the
+issue is refused: *The buyer is bookkeeping-obligated, and from 1 January 2028 its
+organisation number must be on the invoice.* Before that day the draft and the issued
+invoice warn of it instead. Add the organisation number to the customer's legal identity,
+or correct the decision on the customer, and issue again
+([the 2028 buyer rule](/en/reference/invoices/#the-2028-buyer-rule)). A business the
+register has said nothing about is only warned of, from that day, never refused.
+
+A buyer in the VAT register is printed with *MVA* after its organisation number — *Org.nr.
+923 609 016 MVA* — and an EHF carries the same, as the regulation asks. It is taken from
+the register when the invoice is issued.
+
+**Over the credit limit.** When the customer has a [credit
+limit](/en/user/customers/#credit-limit) and its open invoices and confirmed orders, with
+this draft, are above it, the draft warns: *The customer's open invoices and confirmed
+orders, with this invoice, are above its credit limit. You can still issue it.* The issue
+is never refused for it, and the issued invoice warns the same way.
+
 **Use the customer's credit.** When the customer has [credit](#the-customers-credit) in
 the invoice's currency, the dialog offers **Use the customer's credit** — *The customer has
 NOK 500.00 in credit. It is applied to the invoice once it is issued* — unticked. Tick it
@@ -2611,7 +2632,12 @@ refunded in the Vipps portal*
 **Workspace admin** › **Integrations** › **Bank** — *The bank refused its API key: the
 account ending … is not read*, *The bank feed cannot read the account ending …* and *The
 bank feed refused a batch for the account ending …*
-([Payments fetched from the bank](#payments-fetched-from-the-bank)). An invoice a Vipps
+([Payments fetched from the bank](#payments-fetched-from-the-bank)). From 1 January 2028
+there is also *…'s invoice was issued more than 7 days ago and has not been sent*, for
+everyone with `invoices:access`: an invoice to a bookkeeping-obligated buyer must be sent
+to it (bokføringsforskriften § 5-2-1), and Vantigo lists one issued that day or later with
+no e-mail, no EHF and no recorded delivery a week on. Send it, or record how it was handed
+over, and it goes. An invoice a Vipps
 payment in progress covers in full is not listed as overdue
 ([attention](/en/reference/invoices/#stats)).
 

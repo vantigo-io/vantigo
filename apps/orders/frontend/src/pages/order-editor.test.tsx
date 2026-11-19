@@ -217,6 +217,51 @@ describe("the order editor", () => {
     expect(body.lines[0]).toMatchObject({ id: 5001, quantity: 4 });
   });
 
+  it("offers a settings holder the credit limit's override when a confirmed order's save is refused, and saves with it", async () => {
+    const fake = server(confirmed(), (call) => {
+      if (call.method !== "PUT") return undefined;
+      const body = call.body as { overrideWarnings?: boolean };
+      return body.overrideWarnings
+        ? jsonResponse(200, confirmed({ version: 4, updatedAt: "2026-11-05T09:00:00Z" }))
+        : refusal(409, "credit_limit_exceeded", { detail: "Credit limit of customer Acme AS: over NOK 100000.00." });
+    });
+    renderRoute("/orders/orders/2001");
+
+    const quantity = await screen.findByLabelText("Quantity of line 1");
+    await userEvent.clear(quantity);
+    await userEvent.type(quantity, "400");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    const alert = await screen.findByTestId("credit-save-refused");
+    expect(within(alert).getByText("Credit limit of customer Acme AS: over NOK 100000.00.")).toBeInTheDocument();
+    await userEvent.click(within(alert).getByRole("button", { name: "Override and save" }));
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.type(within(dialog).getByLabelText(/Reason/), "Bankgaranti");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Override and save" }));
+
+    await waitFor(() => expect(screen.queryByTestId("credit-save-refused")).not.toBeInTheDocument());
+    const sent = fake.calls.filter((call) => call.method === "PUT").at(-1)?.body;
+    expect(sent).toMatchObject({ overrideWarnings: true, overrideReason: "Bankgaranti" });
+  });
+
+  it("tells a caller without the settings that someone else may override the credit limit", async () => {
+    server(confirmed(), (call) => (call.method === "PUT" ? refusal(409, "credit_limit_exceeded") : undefined));
+    renderRoute("/orders/orders/2001", { canManageSettings: false });
+
+    const quantity = await screen.findByLabelText("Quantity of line 1");
+    await userEvent.clear(quantity);
+    await userEvent.type(quantity, "400");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    const alert = await screen.findByTestId("credit-save-refused");
+    expect(
+      within(alert).getByText(
+        "Someone who manages the Orders settings can override the credit limit and save the change.",
+      ),
+    ).toBeInTheDocument();
+    expect(within(alert).queryByRole("button", { name: "Override and save" })).not.toBeInTheDocument();
+  });
+
   it("links back to the quote it was accepted from, and sends to the invoice e-mail when there is no contact", async () => {
     server(
       confirmed({

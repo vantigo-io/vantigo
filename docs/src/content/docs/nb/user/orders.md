@@ -154,6 +154,32 @@ De ser også **Legg til kundeadvarsel** (eller **Endre kundeadvarsel**) der, for
 kundens advarsel uten å forlate dokumentet. Alle advarslene ligger under
 **Ordreinnstillinger** → **Salgsadvarsler** ([administrasjon](/nb/admin/orders/#hold-salgsadvarslene-ved-like)).
 
+### Kundens kredittgrense
+
+Når kunden har en **kredittgrense** — satt i faktureringsprofilen i Kunder
+([Fakturering](/nb/user/customers/#fakturering)) — viser en ordrekladd **Kredittgrense —
+kunden** i gult så snart ordren ville føre kunden over den: *Med denne ordren er kundens
+eksponering NOK 112 500,00, over kredittgrensen på NOK 100 000,00.* Eksponeringen er i
+NOK: det kunden skylder på utstedte fakturaer — en i euro til NOK-verdien — pluss det de
+bekreftede ordrene har som ikke er fakturert, pluss denne ordren, med mva., en ordre i en
+annen valuta til dagens kurs. Et beløp i en valuta uten kurs den siste uken regnes ikke
+med; advarselen nevner det (*Ikke medregnet: DKK 50,00*).
+
+Ved **Bekreft** — og når et tilbud aksepteres til en bekreftet ordre — blir advarselen rød
+og stopper bekreftelsen, slik en sperre gjør: appen sier *Kundens kredittgrense sperrer
+dette*. Den som håndterer innstillingene for Ordre, overstyrer den på samme måte, med en
+begrunnelse, og **Endringslogg** tar vare på den som **Advarsel overstyrt**. Kan ikke
+kundens åpne fakturaer leses, sier ordren *Kundens kreditt kunne ikke sjekkes*, og den kan
+bekreftes: et driftsavbrudd stopper aldri et salg.
+
+En **bekreftet** ordre der en endring hever totalen over grensen — flere linjer, høyere
+antall eller pris — stoppes når du lagrer: *Kundens kredittgrense stopper denne
+endringen*. Den som håndterer innstillingene for Ordre, velger **Overstyr og lagre**,
+skriver en **Begrunnelse**, og endringen lagres med overstyringen i **Endringslogg**;
+alle andre får beskjed om at en slik person kan gjøre det. En
+endring som holder eller senker totalen, stoppes aldri. Tallene krever `invoices:access`;
+uten den sier advarselen bare at kunden er over kredittgrensen.
+
 ## Send et tilbud
 
 **Send** åpner **Send tilbudet**: **Mottaker** (kontaktpersonens e-post, ellers kundens

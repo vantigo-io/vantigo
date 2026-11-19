@@ -436,6 +436,7 @@ export const attentionHref = (item: { module: ModuleKey; type: string; entityId:
         "paymentCaptureFailed",
         "paymentReservationStranded",
         "vippsRefundSeen",
+        "invoiceUndelivered",
       ].includes(item.type)
     ) {
       return `/invoices/${encodeURIComponent(item.entityId)}`;
@@ -558,6 +559,7 @@ const inventoryAttentionTitleKeys: Record<string, string> = {
 const invoicesAttentionTitleKeys: Record<string, string> = {
   invoiceOverdue: "dashboard.invoiceOverdue",
   invoiceRefundDue: "dashboard.invoiceRefundDue",
+  invoiceUndelivered: "dashboard.invoiceUndelivered",
   reminderFailed: "dashboard.invoiceReminderFailed",
   reminderBatchUnposted: "dashboard.invoiceBatchUnposted",
   paymentCaptureUnknown: "dashboard.invoicePaymentCaptureUnknown",

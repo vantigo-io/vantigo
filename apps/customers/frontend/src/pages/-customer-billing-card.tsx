@@ -296,6 +296,41 @@ const BillingFields = ({
       />
       <BillingRow label={t("billingGln")} value={value(profile.gln)} />
       <BillingRow label={t("billingBuyerReference")} value={value(profile.buyerReference)} />
+      <BillingRow
+        label={t("billingCreditLimit")}
+        value={
+          profile.creditLimit === null ? (
+            <Text size="sm" c="dimmed">
+              {t("billingCreditLimitNone")}
+            </Text>
+          ) : (
+            <Text size="sm">
+              {t("billingCreditLimitValue", {
+                amount: formatters.formatNumber(Number(profile.creditLimit), { minimumFractionDigits: 2 }),
+              })}
+            </Text>
+          )
+        }
+      />
+      <BillingRow
+        label={t("billingBookkeepingObligated")}
+        value={
+          profile.bookkeepingObligated === null ? (
+            <Text size="sm" c="dimmed">
+              {t("billingBookkeepingUnknown")}
+            </Text>
+          ) : (
+            <Text size="sm">
+              {profile.bookkeepingObligated ? t("billingBookkeepingYes") : t("billingBookkeepingNo")}
+              {" — "}
+              {profile.bookkeepingObligatedSource === "override"
+                ? t("billingBookkeepingSourceOverride", { reason: profile.bookkeepingObligatedOverrideReason ?? "" })
+                : t("billingBookkeepingSourceRegistry")}
+            </Text>
+          )
+        }
+        hint={profile.bookkeepingObligated ? t("billingBookkeepingHint") : undefined}
+      />
     </Stack>
   );
 };

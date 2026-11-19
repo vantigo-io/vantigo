@@ -514,7 +514,9 @@ badge counts the **managed custom** roles, which you create.
   Administration, Customers · Contacts, Time · Time, Invoices · Invoices, and so
   on), each with a short description of what it allows. A permission that reveals
   more than it seems — a person's cost rate, for example — carries a **Sensitive**
-  badge.
+  badge. **Manage billing profiles** (`customers:billing-manage`) is one: besides payment
+  terms and delivery it sets — and raises — a customer's credit limit, which Orders checks
+  a confirm against, and whether the customer is bookkeeping-obligated.
 
 Pick at least one permission and choose **Save role**. **Edit** on a custom role
 opens the same dialog; the delete button asks **Delete custom role?** — "Assignments

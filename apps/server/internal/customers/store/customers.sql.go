@@ -270,6 +270,47 @@ func (q *Queries) CustomerCreationBuckets(ctx context.Context, arg CustomerCreat
 	return items, nil
 }
 
+const customerCreditSettings = `-- name: CustomerCreditSettings :one
+SELECT c.credit_limit, c.bookkeeping_obligated_override, c.bookkeeping_obligated_override_reason,
+       r.vat_registered AS registry_vat_registered,
+       r.business_register_registered AS registry_business_register_registered,
+       (r.customer_id IS NOT NULL)::boolean AS has_registry_record
+FROM customers.customers c
+LEFT JOIN customers.customer_registry_records r
+       ON r.customer_id = c.id AND r.organisation_number = c.legal_id
+WHERE c.id = $1
+`
+
+type CustomerCreditSettingsRow struct {
+	CreditLimit                        pgtype.Numeric
+	BookkeepingObligatedOverride       *bool
+	BookkeepingObligatedOverrideReason string
+	RegistryVatRegistered              *bool
+	RegistryBusinessRegisterRegistered *bool
+	HasRegistryRecord                  bool
+}
+
+// CustomerCreditSettings is the billing profile's credit half (invoices phase
+// 6 design I37, I38): the credit limit, the bookkeeping override and its
+// reason, and the registry's two flags the derived fact is read from — from
+// the registry record only when it is of the customer's own legal id, as
+// DirectoryCustomersByLegalID joins it. has_registry_record says there is
+// one. Its own query, so the importer's and the export's billing columns
+// stay the eleven they were.
+func (q *Queries) CustomerCreditSettings(ctx context.Context, id int32) (CustomerCreditSettingsRow, error) {
+	row := q.db.QueryRow(ctx, customerCreditSettings, id)
+	var i CustomerCreditSettingsRow
+	err := row.Scan(
+		&i.CreditLimit,
+		&i.BookkeepingObligatedOverride,
+		&i.BookkeepingObligatedOverrideReason,
+		&i.RegistryVatRegistered,
+		&i.RegistryBusinessRegisterRegistered,
+		&i.HasRegistryRecord,
+	)
+	return i, err
+}
+
 const customerExists = `-- name: CustomerExists :one
 SELECT id FROM customers.customers WHERE id = $1
 `
@@ -765,7 +806,10 @@ func (q *Queries) DirectoryCustomer(ctx context.Context, id int32) (DirectoryCus
 
 const directoryCustomers = `-- name: DirectoryCustomers :many
 SELECT c.id, c.name, c.status = 'archived' AS archived, c.group_id, g.name AS group_name, c.merged_into_customer_id,
-       r.industry_code
+       r.industry_code, c.bookkeeping_obligated_override,
+       r.vat_registered AS registry_vat_registered,
+       r.business_register_registered AS registry_business_register_registered,
+       (r.customer_id IS NOT NULL)::boolean AS has_registry_record
 FROM customers.customers c
 LEFT JOIN customers.customer_groups g ON g.id = c.group_id
 LEFT JOIN customers.customer_registry_records r
@@ -775,13 +819,17 @@ ORDER BY c.id
 `
 
 type DirectoryCustomersRow struct {
-	ID                   int32
-	Name                 string
-	Archived             bool
-	GroupID              *uuid.UUID
-	GroupName            *string
-	MergedIntoCustomerID *int32
-	IndustryCode         *string
+	ID                                 int32
+	Name                               string
+	Archived                           bool
+	GroupID                            *uuid.UUID
+	GroupName                          *string
+	MergedIntoCustomerID               *int32
+	IndustryCode                       *string
+	BookkeepingObligatedOverride       *bool
+	RegistryVatRegistered              *bool
+	RegistryBusinessRegisterRegistered *bool
+	HasRegistryRecord                  bool
 }
 
 // DirectoryCustomers is contracts.CustomerDirectory.Customers' rows: every
@@ -792,7 +840,10 @@ type DirectoryCustomersRow struct {
 // only exists once, so the result never repeats a customer; an id nobody has
 // is simply absent, not an error. Ordered by id, not by @ids' own order, so
 // two callers asking for the same set always see it the same way. The group
-// and industry-code columns are DirectoryCustomer's own, joined the same way.
+// and industry-code columns are DirectoryCustomer's own, joined the same way;
+// the override and the registry's two flags are the bookkeeping obligation's
+// (invoices phase 6 design I37), so a caller judging a page of customers needs
+// no billing profile per row.
 func (q *Queries) DirectoryCustomers(ctx context.Context, ids []int32) ([]DirectoryCustomersRow, error) {
 	rows, err := q.db.Query(ctx, directoryCustomers, ids)
 	if err != nil {
@@ -810,6 +861,10 @@ func (q *Queries) DirectoryCustomers(ctx context.Context, ids []int32) ([]Direct
 			&i.GroupName,
 			&i.MergedIntoCustomerID,
 			&i.IndustryCode,
+			&i.BookkeepingObligatedOverride,
+			&i.RegistryVatRegistered,
+			&i.RegistryBusinessRegisterRegistered,
+			&i.HasRegistryRecord,
 		); err != nil {
 			return nil, err
 		}
@@ -1878,6 +1933,57 @@ func (q *Queries) UpdateCustomerContactInfo(ctx context.Context, arg UpdateCusto
 		&i.Phone,
 		&i.Website,
 		&i.OwnerUserID,
+	)
+	return i, err
+}
+
+const updateCustomerCreditSettings = `-- name: UpdateCustomerCreditSettings :one
+UPDATE customers.customers
+SET credit_limit = $1,
+    bookkeeping_obligated_override = $2,
+    bookkeeping_obligated_override_reason = $3::text,
+    updated_at = $4::timestamptz,
+    revision = revision + 1
+WHERE id = $5
+  AND ($6::int IS NULL OR revision = $6::int)
+RETURNING id, revision, type, email
+`
+
+type UpdateCustomerCreditSettingsParams struct {
+	CreditLimit                        pgtype.Numeric
+	BookkeepingObligatedOverride       *bool
+	BookkeepingObligatedOverrideReason string
+	UpdatedAt                          time.Time
+	ID                                 int32
+	ExpectedRevision                   *int32
+}
+
+type UpdateCustomerCreditSettingsRow struct {
+	ID       int32
+	Revision int32
+	Type     string
+	Email    *string
+}
+
+// UpdateCustomerCreditSettings is the PUT's write of the credit half, on the
+// transaction that holds the customer's lock. Guarded and revision-bumping as
+// UpdateCustomerBillingProfile is; the PUT passes no revision when that write
+// already ran on the same transaction.
+func (q *Queries) UpdateCustomerCreditSettings(ctx context.Context, arg UpdateCustomerCreditSettingsParams) (UpdateCustomerCreditSettingsRow, error) {
+	row := q.db.QueryRow(ctx, updateCustomerCreditSettings,
+		arg.CreditLimit,
+		arg.BookkeepingObligatedOverride,
+		arg.BookkeepingObligatedOverrideReason,
+		arg.UpdatedAt,
+		arg.ID,
+		arg.ExpectedRevision,
+	)
+	var i UpdateCustomerCreditSettingsRow
+	err := row.Scan(
+		&i.ID,
+		&i.Revision,
+		&i.Type,
+		&i.Email,
 	)
 	return i, err
 }

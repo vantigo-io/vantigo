@@ -40,7 +40,7 @@ the other's files except the docs' *What comes next* lines.
 | Piece | Branch | Migration |
 | --- | --- | --- |
 | E-1 | `claude/invoices-send-all` | next free when its PR opens. Main holds `00199` and `00200`, D holds `00201`–`00202`, C holds `00203` and identity's webhooks `00204`, so this is `00205_invoices_send_jobs` |
-| E-2 | `claude/invoices-credit-limits` | next free after E-1's, for example `00205_customers_credit_limit_bookkeeping` |
+| E-2 | `claude/invoices-credit-limits` | next free after E-1's, for example `00206_customers_credit_limit_bookkeeping` |
 
 Recheck both numbers against `main` right before merging (memory: *Migration number
 collisions*).
@@ -373,7 +373,7 @@ worker never holds a connection while it waits for another.
 
 ## E-2 — The 2028 rule and credit limits
 
-### E10. Migration `00205_customers_credit_limit_bookkeeping.sql`
+### E10. Migration `00206_customers_credit_limit_bookkeeping.sql`
 
 - **`customers.customer_registry_records`** (`mig/00021_customers_registry_records.sql:6`)
   gains `business_register_registered boolean NULL`, from Enhetsregisteret's
@@ -705,6 +705,18 @@ worker never holds a connection while it waits for another.
   (`cus/timeline_events.go:77`). `customers.credit_limit.changed` is its first
   `events.Publish`. The platform outbox needs no per-module table, but check that
   Customers' transaction helper exposes the `pgx.Tx` `Publish` needs.
+- **E14 — The exposure in NOK, after C (landing review).** Delivery C landed first, so E-2
+  counts every currency rather than NOK alone (amending E7):
+  - `contracts.CurrencyReceivables` gains `OutstandingNOK`, each outstanding invoice's
+    `invoices.open_nok()` summed per currency — the NOK at the rate it was issued at, less
+    what credit notes, payments, write-offs and exchange differences took in NOK. The
+    exposure adds it across currencies; it is NOK.
+  - An order backlog amount, and the document being judged, in another currency count at
+    today's rate through C's `contracts.ExchangeRates` (the business day, at most seven
+    days back), read before any transaction (`creditlimit.RatesFor`). A currency with no
+    rate is listed as uncounted, never guessed.
+  - The uncounted list therefore names only an order currency without a rate, and is
+    empty with every rate published.
 - **E13 — The print fallback is new.** No path puts an invoice into a print batch today,
   so E-1 adds the ZIP and *Mark as posted* (E4) rather than widen reminder print batches,
   whose rows, PDFs and lock order (`print_batches.go:39-44`) are letters'.

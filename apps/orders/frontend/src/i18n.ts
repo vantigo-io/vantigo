@@ -489,6 +489,19 @@ export const ordersCatalog = {
     customerWarning: "Customer warning",
     productWarning: "Product warning",
     warningOnCustomer: "Customer warning — {{name}}",
+    warningOnCredit: "Credit limit — {{name}}",
+    creditSaveRefusedTitle: "The customer's credit limit stops this change",
+    creditSaveOverride: "Override and save",
+    creditSaveOverrideHint:
+      "The change raises the order past the customer's credit limit. Give the reason it may be saved all the same; it is kept in the change log.",
+    creditSaveOverrideByOthers:
+      "Someone who manages the Orders settings can override the credit limit and save the change.",
+    creditLimitExceededText:
+      "With this order the customer's exposure is {{exposure}}, above its credit limit of {{limit}}.",
+    creditUncounted: "Not counted: {{amounts}}.",
+    creditInvoicesNotCounted: "Open invoices are not counted: invoicing is off.",
+    creditNotChecked:
+      "The customer's credit could not be checked: its open invoices could not be read. The order can be confirmed.",
     warningOnProduct: "Product warning — {{name}}",
     warningBlocks: "This warning blocks sending and confirming. Someone with Manage Orders settings can override it.",
     warningBlocksOverride: "This warning blocks sending and confirming until you override it with a reason.",
@@ -1464,6 +1477,17 @@ export const ordersCatalog = {
     customerWarning: "Kundeadvarsel",
     productWarning: "Produktadvarsel",
     warningOnCustomer: "Kundeadvarsel — {{name}}",
+    warningOnCredit: "Kredittgrense — {{name}}",
+    creditSaveRefusedTitle: "Kundens kredittgrense stopper denne endringen",
+    creditSaveOverride: "Overstyr og lagre",
+    creditSaveOverrideHint:
+      "Endringen hever ordren over kundens kredittgrense. Skriv hvorfor den likevel kan lagres; begrunnelsen lagres i endringsloggen.",
+    creditSaveOverrideByOthers:
+      "Den som håndterer innstillingene for Ordre, kan overstyre kredittgrensen og lagre endringen.",
+    creditLimitExceededText: "Med denne ordren er kundens eksponering {{exposure}}, over kredittgrensen på {{limit}}.",
+    creditUncounted: "Ikke medregnet: {{amounts}}.",
+    creditInvoicesNotCounted: "Åpne fakturaer er ikke medregnet: fakturering er slått av.",
+    creditNotChecked: "Kundens kreditt kunne ikke sjekkes: de åpne fakturaene kunne ikke leses. Ordren kan bekreftes.",
     warningOnProduct: "Produktadvarsel — {{name}}",
     warningBlocks:
       "Denne advarselen stopper sending og bekreftelse. Noen med Administrere Ordre-innstillinger kan overstyre den.",

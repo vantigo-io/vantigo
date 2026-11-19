@@ -44,6 +44,11 @@ export interface CustomerRegistryRecord {
   /** Null when the entity has not registered an employee count at all, which is not the same as zero. */
   employees: number | null;
   vatRegistered: boolean;
+  /**
+   * In the Register of Business Enterprises (Foretaksregisteret); null on a
+   * record not refreshed since the field was added (invoices phase 6 design I37).
+   */
+  businessRegisterRegistered: boolean | null;
   bankrupt: boolean;
   underLiquidation: boolean;
   underForcedLiquidation: boolean;
@@ -160,6 +165,7 @@ const normalizeRecord = (raw: RawCustomerRegistryRecord): CustomerRegistryRecord
   industry: raw.industry ?? null,
   employees: raw.employees ?? null,
   vatRegistered: raw.vatRegistered,
+  businessRegisterRegistered: raw.businessRegisterRegistered ?? null,
   bankrupt: raw.bankrupt,
   underLiquidation: raw.underLiquidation,
   underForcedLiquidation: raw.underForcedLiquidation,

@@ -97,6 +97,10 @@ type Buyer struct {
 	// one, neither for a person.
 	OrganisationNumber, ForeignID string
 	Person                        bool
+	// VATRegistered is a Norwegian buyer in the VAT register, as the issue
+	// snapshotted it: its PartyTaxScheme names "NO<org nr>MVA" under VAT
+	// (BT-48, bokføringsforskriften § 5-1-2).
+	VATRegistered bool
 }
 
 // Payment is the seller's payment details and an invoice's KID.

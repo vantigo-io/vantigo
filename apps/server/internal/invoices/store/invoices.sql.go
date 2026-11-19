@@ -85,7 +85,7 @@ func (q *Queries) DeleteDraft(ctx context.Context, id int64) (int64, error) {
 }
 
 const getInvoice = `-- name: GetInvoice :one
-SELECT id, kind, status, number, customer_id, credits_invoice_id, issue_date, delivery_date, delivery_from, delivery_to, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, payment_terms_days, due_date, currency, exchange_rate, exchange_rate_date, your_reference, our_reference, order_reference, note, internal_note, buyer_customer_number, buyer_type, buyer_name, buyer_organisation_number, buyer_foreign_id, buyer_address_line1, buyer_address_line2, buyer_postal_code, buyer_city, buyer_region, buyer_country, buyer_peppol_id, buyer_gln, buyer_language, seller_legal_name, seller_organisation_number, seller_vat_registered, seller_in_foretaksregisteret, seller_address_line1, seller_address_line2, seller_postal_code, seller_city, seller_country, seller_bank_account, seller_iban, seller_bic, seller_email, seller_footer_text, net_total, vat_total, gross_total, vat_total_nok, pdf_object_key, pdf_sha256, issued_at, issued_by_user_id, created_by_user_id, created_at, updated_at, revision, kid, kid_algorithm, project_id, project_reference, timesheet, seller_logo_object_key, seller_logo_sha256, seller_phone, buyer_avtalegiro_kid, exchange_rate_source FROM invoices.invoices WHERE id = $1
+SELECT id, kind, status, number, customer_id, credits_invoice_id, issue_date, delivery_date, delivery_from, delivery_to, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, payment_terms_days, due_date, currency, exchange_rate, exchange_rate_date, your_reference, our_reference, order_reference, note, internal_note, buyer_customer_number, buyer_type, buyer_name, buyer_organisation_number, buyer_foreign_id, buyer_address_line1, buyer_address_line2, buyer_postal_code, buyer_city, buyer_region, buyer_country, buyer_peppol_id, buyer_gln, buyer_language, seller_legal_name, seller_organisation_number, seller_vat_registered, seller_in_foretaksregisteret, seller_address_line1, seller_address_line2, seller_postal_code, seller_city, seller_country, seller_bank_account, seller_iban, seller_bic, seller_email, seller_footer_text, net_total, vat_total, gross_total, vat_total_nok, pdf_object_key, pdf_sha256, issued_at, issued_by_user_id, created_by_user_id, created_at, updated_at, revision, kid, kid_algorithm, project_id, project_reference, timesheet, seller_logo_object_key, seller_logo_sha256, seller_phone, buyer_avtalegiro_kid, exchange_rate_source, buyer_vat_registered FROM invoices.invoices WHERE id = $1
 `
 
 func (q *Queries) GetInvoice(ctx context.Context, id int64) (InvoicesInvoice, error) {
@@ -167,6 +167,7 @@ func (q *Queries) GetInvoice(ctx context.Context, id int64) (InvoicesInvoice, er
 		&i.SellerPhone,
 		&i.BuyerAvtalegiroKid,
 		&i.ExchangeRateSource,
+		&i.BuyerVatRegistered,
 	)
 	return i, err
 }
@@ -186,7 +187,7 @@ INSERT INTO invoices.invoices (
     coalesce($24::numeric, 1), $25::date,
     coalesce($26::text, 'nok')
 )
-RETURNING id, kind, status, number, customer_id, credits_invoice_id, issue_date, delivery_date, delivery_from, delivery_to, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, payment_terms_days, due_date, currency, exchange_rate, exchange_rate_date, your_reference, our_reference, order_reference, note, internal_note, buyer_customer_number, buyer_type, buyer_name, buyer_organisation_number, buyer_foreign_id, buyer_address_line1, buyer_address_line2, buyer_postal_code, buyer_city, buyer_region, buyer_country, buyer_peppol_id, buyer_gln, buyer_language, seller_legal_name, seller_organisation_number, seller_vat_registered, seller_in_foretaksregisteret, seller_address_line1, seller_address_line2, seller_postal_code, seller_city, seller_country, seller_bank_account, seller_iban, seller_bic, seller_email, seller_footer_text, net_total, vat_total, gross_total, vat_total_nok, pdf_object_key, pdf_sha256, issued_at, issued_by_user_id, created_by_user_id, created_at, updated_at, revision, kid, kid_algorithm, project_id, project_reference, timesheet, seller_logo_object_key, seller_logo_sha256, seller_phone, buyer_avtalegiro_kid, exchange_rate_source
+RETURNING id, kind, status, number, customer_id, credits_invoice_id, issue_date, delivery_date, delivery_from, delivery_to, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, payment_terms_days, due_date, currency, exchange_rate, exchange_rate_date, your_reference, our_reference, order_reference, note, internal_note, buyer_customer_number, buyer_type, buyer_name, buyer_organisation_number, buyer_foreign_id, buyer_address_line1, buyer_address_line2, buyer_postal_code, buyer_city, buyer_region, buyer_country, buyer_peppol_id, buyer_gln, buyer_language, seller_legal_name, seller_organisation_number, seller_vat_registered, seller_in_foretaksregisteret, seller_address_line1, seller_address_line2, seller_postal_code, seller_city, seller_country, seller_bank_account, seller_iban, seller_bic, seller_email, seller_footer_text, net_total, vat_total, gross_total, vat_total_nok, pdf_object_key, pdf_sha256, issued_at, issued_by_user_id, created_by_user_id, created_at, updated_at, revision, kid, kid_algorithm, project_id, project_reference, timesheet, seller_logo_object_key, seller_logo_sha256, seller_phone, buyer_avtalegiro_kid, exchange_rate_source, buyer_vat_registered
 `
 
 type InsertInvoiceDraftParams struct {
@@ -330,6 +331,7 @@ func (q *Queries) InsertInvoiceDraft(ctx context.Context, arg InsertInvoiceDraft
 		&i.SellerPhone,
 		&i.BuyerAvtalegiroKid,
 		&i.ExchangeRateSource,
+		&i.BuyerVatRegistered,
 	)
 	return i, err
 }
@@ -350,49 +352,50 @@ UPDATE invoices.invoices SET
     buyer_type = $8,
     buyer_name = $9,
     buyer_organisation_number = $10,
-    buyer_foreign_id = $11,
-    buyer_address_line1 = $12,
-    buyer_address_line2 = $13,
-    buyer_postal_code = $14,
-    buyer_city = $15,
-    buyer_region = $16,
-    buyer_country = $17,
-    buyer_peppol_id = $18,
-    buyer_gln = $19,
-    buyer_language = $20,
-    buyer_avtalegiro_kid = $21,
-    seller_legal_name = $22,
-    seller_organisation_number = $23,
-    seller_vat_registered = $24,
-    seller_in_foretaksregisteret = $25,
-    seller_address_line1 = $26,
-    seller_address_line2 = $27,
-    seller_postal_code = $28,
-    seller_city = $29,
-    seller_country = $30,
-    seller_bank_account = $31,
-    seller_iban = $32,
-    seller_bic = $33,
-    seller_email = $34,
-    seller_footer_text = $35,
+    buyer_vat_registered = $11::boolean,
+    buyer_foreign_id = $12,
+    buyer_address_line1 = $13,
+    buyer_address_line2 = $14,
+    buyer_postal_code = $15,
+    buyer_city = $16,
+    buyer_region = $17,
+    buyer_country = $18,
+    buyer_peppol_id = $19,
+    buyer_gln = $20,
+    buyer_language = $21,
+    buyer_avtalegiro_kid = $22,
+    seller_legal_name = $23,
+    seller_organisation_number = $24,
+    seller_vat_registered = $25,
+    seller_in_foretaksregisteret = $26,
+    seller_address_line1 = $27,
+    seller_address_line2 = $28,
+    seller_postal_code = $29,
+    seller_city = $30,
+    seller_country = $31,
+    seller_bank_account = $32,
+    seller_iban = $33,
+    seller_bic = $34,
+    seller_email = $35,
+    seller_footer_text = $36,
     -- The phone and the logo (invoices phase 6 design I2, I4), NULL for none.
-    seller_phone = $36,
-    seller_logo_object_key = $37,
-    seller_logo_sha256 = $38,
-    net_total = $39,
-    vat_total = $40,
-    gross_total = $41,
-    vat_total_nok = $42,
+    seller_phone = $37,
+    seller_logo_object_key = $38,
+    seller_logo_sha256 = $39,
+    net_total = $40,
+    vat_total = $41,
+    gross_total = $42,
+    vat_total_nok = $43,
     -- An invoice's KID under the agreement in force (EHF and KID design D3),
     -- NULL without one and on a credit note.
-    kid = $43,
-    kid_algorithm = $44,
-    issued_at = $45::timestamptz,
-    issued_by_user_id = $46,
-    updated_at = $45::timestamptz,
+    kid = $44,
+    kid_algorithm = $45,
+    issued_at = $46::timestamptz,
+    issued_by_user_id = $47,
+    updated_at = $46::timestamptz,
     revision = revision + 1
-WHERE id = $47 AND status = 'draft'
-RETURNING id, kind, status, number, customer_id, credits_invoice_id, issue_date, delivery_date, delivery_from, delivery_to, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, payment_terms_days, due_date, currency, exchange_rate, exchange_rate_date, your_reference, our_reference, order_reference, note, internal_note, buyer_customer_number, buyer_type, buyer_name, buyer_organisation_number, buyer_foreign_id, buyer_address_line1, buyer_address_line2, buyer_postal_code, buyer_city, buyer_region, buyer_country, buyer_peppol_id, buyer_gln, buyer_language, seller_legal_name, seller_organisation_number, seller_vat_registered, seller_in_foretaksregisteret, seller_address_line1, seller_address_line2, seller_postal_code, seller_city, seller_country, seller_bank_account, seller_iban, seller_bic, seller_email, seller_footer_text, net_total, vat_total, gross_total, vat_total_nok, pdf_object_key, pdf_sha256, issued_at, issued_by_user_id, created_by_user_id, created_at, updated_at, revision, kid, kid_algorithm, project_id, project_reference, timesheet, seller_logo_object_key, seller_logo_sha256, seller_phone, buyer_avtalegiro_kid, exchange_rate_source
+WHERE id = $48 AND status = 'draft'
+RETURNING id, kind, status, number, customer_id, credits_invoice_id, issue_date, delivery_date, delivery_from, delivery_to, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, payment_terms_days, due_date, currency, exchange_rate, exchange_rate_date, your_reference, our_reference, order_reference, note, internal_note, buyer_customer_number, buyer_type, buyer_name, buyer_organisation_number, buyer_foreign_id, buyer_address_line1, buyer_address_line2, buyer_postal_code, buyer_city, buyer_region, buyer_country, buyer_peppol_id, buyer_gln, buyer_language, seller_legal_name, seller_organisation_number, seller_vat_registered, seller_in_foretaksregisteret, seller_address_line1, seller_address_line2, seller_postal_code, seller_city, seller_country, seller_bank_account, seller_iban, seller_bic, seller_email, seller_footer_text, net_total, vat_total, gross_total, vat_total_nok, pdf_object_key, pdf_sha256, issued_at, issued_by_user_id, created_by_user_id, created_at, updated_at, revision, kid, kid_algorithm, project_id, project_reference, timesheet, seller_logo_object_key, seller_logo_sha256, seller_phone, buyer_avtalegiro_kid, exchange_rate_source, buyer_vat_registered
 `
 
 type IssueDocumentParams struct {
@@ -406,6 +409,7 @@ type IssueDocumentParams struct {
 	BuyerType                  *string
 	BuyerName                  *string
 	BuyerOrganisationNumber    *string
+	BuyerVatRegistered         bool
 	BuyerForeignID             *string
 	BuyerAddressLine1          *string
 	BuyerAddressLine2          *string
@@ -461,6 +465,7 @@ func (q *Queries) IssueDocument(ctx context.Context, arg IssueDocumentParams) (I
 		arg.BuyerType,
 		arg.BuyerName,
 		arg.BuyerOrganisationNumber,
+		arg.BuyerVatRegistered,
 		arg.BuyerForeignID,
 		arg.BuyerAddressLine1,
 		arg.BuyerAddressLine2,
@@ -576,12 +581,13 @@ func (q *Queries) IssueDocument(ctx context.Context, arg IssueDocumentParams) (I
 		&i.SellerPhone,
 		&i.BuyerAvtalegiroKid,
 		&i.ExchangeRateSource,
+		&i.BuyerVatRegistered,
 	)
 	return i, err
 }
 
 const listInvoices = `-- name: ListInvoices :many
-SELECT i.id, i.kind, i.status, i.number, i.customer_id, i.credits_invoice_id, i.issue_date, i.delivery_date, i.delivery_from, i.delivery_to, i.delivery_address_line1, i.delivery_address_line2, i.delivery_postal_code, i.delivery_city, i.delivery_country, i.payment_terms_days, i.due_date, i.currency, i.exchange_rate, i.exchange_rate_date, i.your_reference, i.our_reference, i.order_reference, i.note, i.internal_note, i.buyer_customer_number, i.buyer_type, i.buyer_name, i.buyer_organisation_number, i.buyer_foreign_id, i.buyer_address_line1, i.buyer_address_line2, i.buyer_postal_code, i.buyer_city, i.buyer_region, i.buyer_country, i.buyer_peppol_id, i.buyer_gln, i.buyer_language, i.seller_legal_name, i.seller_organisation_number, i.seller_vat_registered, i.seller_in_foretaksregisteret, i.seller_address_line1, i.seller_address_line2, i.seller_postal_code, i.seller_city, i.seller_country, i.seller_bank_account, i.seller_iban, i.seller_bic, i.seller_email, i.seller_footer_text, i.net_total, i.vat_total, i.gross_total, i.vat_total_nok, i.pdf_object_key, i.pdf_sha256, i.issued_at, i.issued_by_user_id, i.created_by_user_id, i.created_at, i.updated_at, i.revision, i.kid, i.kid_algorithm, i.project_id, i.project_reference, i.timesheet, i.seller_logo_object_key, i.seller_logo_sha256, i.seller_phone, i.buyer_avtalegiro_kid, i.exchange_rate_source,
+SELECT i.id, i.kind, i.status, i.number, i.customer_id, i.credits_invoice_id, i.issue_date, i.delivery_date, i.delivery_from, i.delivery_to, i.delivery_address_line1, i.delivery_address_line2, i.delivery_postal_code, i.delivery_city, i.delivery_country, i.payment_terms_days, i.due_date, i.currency, i.exchange_rate, i.exchange_rate_date, i.your_reference, i.our_reference, i.order_reference, i.note, i.internal_note, i.buyer_customer_number, i.buyer_type, i.buyer_name, i.buyer_organisation_number, i.buyer_foreign_id, i.buyer_address_line1, i.buyer_address_line2, i.buyer_postal_code, i.buyer_city, i.buyer_region, i.buyer_country, i.buyer_peppol_id, i.buyer_gln, i.buyer_language, i.seller_legal_name, i.seller_organisation_number, i.seller_vat_registered, i.seller_in_foretaksregisteret, i.seller_address_line1, i.seller_address_line2, i.seller_postal_code, i.seller_city, i.seller_country, i.seller_bank_account, i.seller_iban, i.seller_bic, i.seller_email, i.seller_footer_text, i.net_total, i.vat_total, i.gross_total, i.vat_total_nok, i.pdf_object_key, i.pdf_sha256, i.issued_at, i.issued_by_user_id, i.created_by_user_id, i.created_at, i.updated_at, i.revision, i.kid, i.kid_algorithm, i.project_id, i.project_reference, i.timesheet, i.seller_logo_object_key, i.seller_logo_sha256, i.seller_phone, i.buyer_avtalegiro_kid, i.exchange_rate_source, i.buyer_vat_registered,
        (i.gross_total - coalesce(cr.credited, 0) - coalesce(pd.paid, 0))::numeric(14,2) AS open_amount,
        invoices.invoice_state(i.kind, i.status, i.gross_total, coalesce(cr.credited, 0), coalesce(pd.paid, 0), coalesce(pd.written_off, 0), i.due_date, $1::date)::text AS state
 FROM invoices.invoices i
@@ -741,6 +747,7 @@ func (q *Queries) ListInvoices(ctx context.Context, arg ListInvoicesParams) ([]L
 			&i.InvoicesInvoice.SellerPhone,
 			&i.InvoicesInvoice.BuyerAvtalegiroKid,
 			&i.InvoicesInvoice.ExchangeRateSource,
+			&i.InvoicesInvoice.BuyerVatRegistered,
 			&i.OpenAmount,
 			&i.State,
 		); err != nil {
@@ -755,7 +762,7 @@ func (q *Queries) ListInvoices(ctx context.Context, arg ListInvoicesParams) ([]L
 }
 
 const lockInvoice = `-- name: LockInvoice :one
-SELECT id, kind, status, number, customer_id, credits_invoice_id, issue_date, delivery_date, delivery_from, delivery_to, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, payment_terms_days, due_date, currency, exchange_rate, exchange_rate_date, your_reference, our_reference, order_reference, note, internal_note, buyer_customer_number, buyer_type, buyer_name, buyer_organisation_number, buyer_foreign_id, buyer_address_line1, buyer_address_line2, buyer_postal_code, buyer_city, buyer_region, buyer_country, buyer_peppol_id, buyer_gln, buyer_language, seller_legal_name, seller_organisation_number, seller_vat_registered, seller_in_foretaksregisteret, seller_address_line1, seller_address_line2, seller_postal_code, seller_city, seller_country, seller_bank_account, seller_iban, seller_bic, seller_email, seller_footer_text, net_total, vat_total, gross_total, vat_total_nok, pdf_object_key, pdf_sha256, issued_at, issued_by_user_id, created_by_user_id, created_at, updated_at, revision, kid, kid_algorithm, project_id, project_reference, timesheet, seller_logo_object_key, seller_logo_sha256, seller_phone, buyer_avtalegiro_kid, exchange_rate_source FROM invoices.invoices WHERE id = $1 FOR UPDATE
+SELECT id, kind, status, number, customer_id, credits_invoice_id, issue_date, delivery_date, delivery_from, delivery_to, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, payment_terms_days, due_date, currency, exchange_rate, exchange_rate_date, your_reference, our_reference, order_reference, note, internal_note, buyer_customer_number, buyer_type, buyer_name, buyer_organisation_number, buyer_foreign_id, buyer_address_line1, buyer_address_line2, buyer_postal_code, buyer_city, buyer_region, buyer_country, buyer_peppol_id, buyer_gln, buyer_language, seller_legal_name, seller_organisation_number, seller_vat_registered, seller_in_foretaksregisteret, seller_address_line1, seller_address_line2, seller_postal_code, seller_city, seller_country, seller_bank_account, seller_iban, seller_bic, seller_email, seller_footer_text, net_total, vat_total, gross_total, vat_total_nok, pdf_object_key, pdf_sha256, issued_at, issued_by_user_id, created_by_user_id, created_at, updated_at, revision, kid, kid_algorithm, project_id, project_reference, timesheet, seller_logo_object_key, seller_logo_sha256, seller_phone, buyer_avtalegiro_kid, exchange_rate_source, buyer_vat_registered FROM invoices.invoices WHERE id = $1 FOR UPDATE
 `
 
 // LockInvoice takes a document FOR UPDATE: a draft save, a delete and an issue
@@ -839,6 +846,7 @@ func (q *Queries) LockInvoice(ctx context.Context, id int64) (InvoicesInvoice, e
 		&i.SellerPhone,
 		&i.BuyerAvtalegiroKid,
 		&i.ExchangeRateSource,
+		&i.BuyerVatRegistered,
 	)
 	return i, err
 }
@@ -884,7 +892,7 @@ UPDATE invoices.invoices SET
     currency = $1, exchange_rate = $2, exchange_rate_date = $3::date,
     exchange_rate_source = $4
 WHERE id = $5 AND status = 'draft'
-RETURNING id, kind, status, number, customer_id, credits_invoice_id, issue_date, delivery_date, delivery_from, delivery_to, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, payment_terms_days, due_date, currency, exchange_rate, exchange_rate_date, your_reference, our_reference, order_reference, note, internal_note, buyer_customer_number, buyer_type, buyer_name, buyer_organisation_number, buyer_foreign_id, buyer_address_line1, buyer_address_line2, buyer_postal_code, buyer_city, buyer_region, buyer_country, buyer_peppol_id, buyer_gln, buyer_language, seller_legal_name, seller_organisation_number, seller_vat_registered, seller_in_foretaksregisteret, seller_address_line1, seller_address_line2, seller_postal_code, seller_city, seller_country, seller_bank_account, seller_iban, seller_bic, seller_email, seller_footer_text, net_total, vat_total, gross_total, vat_total_nok, pdf_object_key, pdf_sha256, issued_at, issued_by_user_id, created_by_user_id, created_at, updated_at, revision, kid, kid_algorithm, project_id, project_reference, timesheet, seller_logo_object_key, seller_logo_sha256, seller_phone, buyer_avtalegiro_kid, exchange_rate_source
+RETURNING id, kind, status, number, customer_id, credits_invoice_id, issue_date, delivery_date, delivery_from, delivery_to, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, payment_terms_days, due_date, currency, exchange_rate, exchange_rate_date, your_reference, our_reference, order_reference, note, internal_note, buyer_customer_number, buyer_type, buyer_name, buyer_organisation_number, buyer_foreign_id, buyer_address_line1, buyer_address_line2, buyer_postal_code, buyer_city, buyer_region, buyer_country, buyer_peppol_id, buyer_gln, buyer_language, seller_legal_name, seller_organisation_number, seller_vat_registered, seller_in_foretaksregisteret, seller_address_line1, seller_address_line2, seller_postal_code, seller_city, seller_country, seller_bank_account, seller_iban, seller_bic, seller_email, seller_footer_text, net_total, vat_total, gross_total, vat_total_nok, pdf_object_key, pdf_sha256, issued_at, issued_by_user_id, created_by_user_id, created_at, updated_at, revision, kid, kid_algorithm, project_id, project_reference, timesheet, seller_logo_object_key, seller_logo_sha256, seller_phone, buyer_avtalegiro_kid, exchange_rate_source, buyer_vat_registered
 `
 
 type SetDraftRateParams struct {
@@ -983,6 +991,7 @@ func (q *Queries) SetDraftRate(ctx context.Context, arg SetDraftRateParams) (Inv
 		&i.SellerPhone,
 		&i.BuyerAvtalegiroKid,
 		&i.ExchangeRateSource,
+		&i.BuyerVatRegistered,
 	)
 	return i, err
 }
@@ -1012,7 +1021,7 @@ UPDATE invoices.invoices SET
     updated_at = $21::timestamptz,
     revision = revision + 1
 WHERE id = $22 AND status = 'draft'
-RETURNING id, kind, status, number, customer_id, credits_invoice_id, issue_date, delivery_date, delivery_from, delivery_to, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, payment_terms_days, due_date, currency, exchange_rate, exchange_rate_date, your_reference, our_reference, order_reference, note, internal_note, buyer_customer_number, buyer_type, buyer_name, buyer_organisation_number, buyer_foreign_id, buyer_address_line1, buyer_address_line2, buyer_postal_code, buyer_city, buyer_region, buyer_country, buyer_peppol_id, buyer_gln, buyer_language, seller_legal_name, seller_organisation_number, seller_vat_registered, seller_in_foretaksregisteret, seller_address_line1, seller_address_line2, seller_postal_code, seller_city, seller_country, seller_bank_account, seller_iban, seller_bic, seller_email, seller_footer_text, net_total, vat_total, gross_total, vat_total_nok, pdf_object_key, pdf_sha256, issued_at, issued_by_user_id, created_by_user_id, created_at, updated_at, revision, kid, kid_algorithm, project_id, project_reference, timesheet, seller_logo_object_key, seller_logo_sha256, seller_phone, buyer_avtalegiro_kid, exchange_rate_source
+RETURNING id, kind, status, number, customer_id, credits_invoice_id, issue_date, delivery_date, delivery_from, delivery_to, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, payment_terms_days, due_date, currency, exchange_rate, exchange_rate_date, your_reference, our_reference, order_reference, note, internal_note, buyer_customer_number, buyer_type, buyer_name, buyer_organisation_number, buyer_foreign_id, buyer_address_line1, buyer_address_line2, buyer_postal_code, buyer_city, buyer_region, buyer_country, buyer_peppol_id, buyer_gln, buyer_language, seller_legal_name, seller_organisation_number, seller_vat_registered, seller_in_foretaksregisteret, seller_address_line1, seller_address_line2, seller_postal_code, seller_city, seller_country, seller_bank_account, seller_iban, seller_bic, seller_email, seller_footer_text, net_total, vat_total, gross_total, vat_total_nok, pdf_object_key, pdf_sha256, issued_at, issued_by_user_id, created_by_user_id, created_at, updated_at, revision, kid, kid_algorithm, project_id, project_reference, timesheet, seller_logo_object_key, seller_logo_sha256, seller_phone, buyer_avtalegiro_kid, exchange_rate_source, buyer_vat_registered
 `
 
 type UpdateDraftParams struct {
@@ -1145,6 +1154,7 @@ func (q *Queries) UpdateDraft(ctx context.Context, arg UpdateDraftParams) (Invoi
 		&i.SellerPhone,
 		&i.BuyerAvtalegiroKid,
 		&i.ExchangeRateSource,
+		&i.BuyerVatRegistered,
 	)
 	return i, err
 }

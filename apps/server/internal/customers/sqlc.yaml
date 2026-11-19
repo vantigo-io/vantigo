@@ -29,6 +29,7 @@ sql:
       - ../db/migrations/00048_customers_import_skipped.sql
       - ../db/migrations/00080_customers_import_preview.sql
       - ../db/migrations/00202_customers_date_of_birth.sql
+      - ../db/migrations/00206_customers_credit_limit_bookkeeping.sql
     queries: queries
     gen:
       go:

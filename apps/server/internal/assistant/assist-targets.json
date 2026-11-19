@@ -165,6 +165,16 @@
     "description": "The filters on the vouchers list: period, kind and text or number."
   },
   {
+    "key": "customers.billing.bookkeeping-obligated",
+    "route": "/customers/{customerId}",
+    "description": "The choice in the billing profile dialog that follows the register on whether the customer is bookkeeping-obligated, or overrides it with a reason."
+  },
+  {
+    "key": "customers.billing.credit-limit",
+    "route": "/customers/{customerId}",
+    "description": "The field in the billing profile dialog that sets the customer's credit limit in NOK. Orders warns at confirm when the customer's open invoices and confirmed orders would pass it."
+  },
+  {
     "key": "customers.customer.add-contact",
     "route": "/customers/{customerId}",
     "description": "The button on a customer's Contacts card that links a contact to the customer."
@@ -913,6 +923,11 @@
     "key": "orders.analysis.views",
     "route": "/orders/analysis",
     "description": "The tabs of the analysis: quote hit rate, order intake and backlog."
+  },
+  {
+    "key": "orders.confirm.credit-override",
+    "route": "/orders/orders/{orderId}",
+    "description": "The choice in the confirm dialog that confirms an order a block warning or the customer's credit limit stops, with a reason. Only a holder of Manage Orders settings may."
   },
   {
     "key": "orders.customer.new-order",

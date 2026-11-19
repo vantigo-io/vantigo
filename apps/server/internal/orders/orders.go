@@ -163,11 +163,13 @@ func readOrder(ctx context.Context, q *store.Queries, id int64) (store.OrdersOrd
 // getOrderView reads an order and answers it, in one snapshot.
 func (s *server) getOrderView(ctx context.Context, id int64) (gen.OrdersOrder, error) {
 	var out gen.OrdersOrder
+	var order store.OrdersOrder
 	err := s.withReadTx(ctx, func(ctx context.Context, q *store.Queries) error {
 		o, lines, err := readOrder(ctx, q, id)
 		if err != nil {
 			return err
 		}
+		order = o
 		warnings, err := documentWarnings(ctx, q, o.CustomerID, lines)
 		if err != nil {
 			return err
@@ -182,6 +184,10 @@ func (s *server) getOrderView(ctx context.Context, id int64) (gen.OrdersOrder, e
 	if err != nil {
 		return out, err
 	}
+	// A draft shows the credit warning its confirm would judge, at info
+	// (invoices phase 6 design I38): read after the snapshot, since it calls
+	// out of the module.
+	out.Warnings = append(out.Warnings, s.draftCreditWarnings(ctx, store.New(s.deps.Pool), order)...)
 	return out, s.withStockFigures(ctx, &out)
 }
 

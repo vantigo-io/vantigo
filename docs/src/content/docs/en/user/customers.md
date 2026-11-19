@@ -104,7 +104,12 @@ on issued invoices, with how many invoices that is, how many are overdue and the
 oldest due date, and any on hold or at collection; **Invoiced this year** is this
 calendar year's invoices less its credit notes, with last year's figure beneath. Both
 need the Invoices module and `invoices:access`, and come with a **See invoices** link
-to the customer's Invoices tab. The rule is
+to the customer's Invoices tab. A customer with a [credit limit](#billing) also gets
+the tile **Credit limit** — its exposure against the limit, *NOK 112 500 of NOK
+100 000*, with **Over the limit** or **Within the limit**, and any order amount in a
+currency with no exchange rate (*Not counted: DKK 50*), under the same Invoices module and
+`invoices:access`.
+The rule is
 [Customer 360](/en/reference/customers/#customer-360). Under it come the cards of
 the next sections: **Relationship**, **Contact & addresses**, **Registry**,
 **Billing**, **Contacts**, **Attachments** and **Timeline**.
@@ -189,7 +194,8 @@ nothing is saved without a click. See [Addresses](/en/reference/customers/#addre
 For a business customer whose legal identity is a Norwegian organisation number, and
 with `customers:legal-identity-view`, the **Registry** card shows what
 Brønnøysundregistrene says: **Organisation form**, **Industry**, **Employees**, **VAT
-registered**, **Founded**, contact details, **Parent organisation**, **Business
+registered**, **Registered in the Register of Business Enterprises** (once the record
+has been read since that line was added), **Founded**, contact details, **Parent organisation**, **Business
 address** and **Postal address**, and when the record was fetched. Red badges flag a
 company that is **Bankrupt**, **Under liquidation**, **Under compulsory liquidation**
 or **Deleted**.
@@ -217,6 +223,41 @@ the customer can receive EHF invoices and keeps the answer with its date; when i
 and EHF is not yet chosen, **This customer can receive EHF invoices** offers **Use
 EHF**. See [Billing profile](/en/reference/customers/#billing-profile) and
 [Peppol lookup](/en/reference/customers/#peppol-lookup).
+
+### Credit limit
+
+**Credit limit (NOK)** in the billing profile is what Orders checks a customer against: an
+order that would take the customer past it is stopped at **Confirm**, and so is a change
+that raises a confirmed order past it, until someone who manages the Orders settings
+overrides it. Nothing else is stopped by it — invoices only warn. Write it in NOK as digits,
+with at most two decimals (*100000* or *100 000,50*); *1,000* or *1.000* is refused as
+unclear. Leave it empty for no limit. Setting or raising it needs
+`customers:billing-manage`. The card shows it, and the customer's **Credit limit** tile on
+**Overview** compares it with the **exposure**, in NOK: what the customer owes on issued
+invoices — an invoice in euro at its NOK value — plus what its confirmed orders hold that
+is not yet invoiced, VAT included, an order in another currency at today's exchange rate.
+An order in a currency with no rate in the last week is not guessed: it is named beside
+the figure as *Not counted*. Equal to the limit is within it.
+
+Orders warns on a draft order that would pass it and stops the confirm until someone who
+manages the Orders settings overrides it with a reason ([the customer's credit
+limit](/en/user/orders/#the-customers-credit-limit)). Invoices only warns, on a draft and
+when it is issued: an invoice is never refused for it.
+
+### Bookkeeping-obligated
+
+**Bookkeeping-obligated** says whether the customer must keep accounts under the
+Bookkeeping Act (*bokføringspliktig*). Vantigo reads it from the register: a business
+that is in the VAT register or in the Register of Business Enterprises is obligated. A
+customer the register knows nothing about — a private person, a foreign business — is
+*unknown*, which counts as not obligated. The card says which, *from the register* or *by
+decision*.
+
+When the register is wrong for this customer, choose **Yes, whatever the register says**
+or **No, whatever the register says** and give the **Reason for the decision**; **As the
+register says** goes back. It matters from **1 January 2028**: an invoice to a
+bookkeeping-obligated buyer must then carry the buyer's organisation number, and Invoices
+refuses one without it ([Issuing](/en/user/invoices/#issuing)). Before that day it warns.
 
 ## Contacts and their roles
 
@@ -525,4 +566,4 @@ The full list, with what each key guards on the server, is
 
 ## Show me how
 
-The [Assistant](/en/user/assistant/#show-me-how) can walk you through two things here. Ask "how do I create a customer?" and press **Show me**: the tour points at **Create new customer**, the customer type, the name and **Create customer**. Ask "how do I add a contact?" while you are on a customer and it points at **Add contact**, the search field of the dialog and the button that adds the contact.
+The [Assistant](/en/user/assistant/#show-me-how) can walk you through two things here. Ask "how do I create a customer?" and press **Show me**: the tour points at **Create new customer**, the customer type, the name and **Create customer**. Ask "how do I add a contact?" while you are on a customer and it points at **Add contact**, the search field of the dialog and the button that adds the contact. Ask "how do I set a credit limit?" and it points at **Credit limit (NOK)** and **Bookkeeping-obligated** in the billing profile.

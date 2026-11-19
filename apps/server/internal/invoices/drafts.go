@@ -1148,6 +1148,11 @@ func (s *server) GetInvoicesById(ctx context.Context, req gen.GetInvoicesByIdReq
 	if inv.Status == statusDraft && inv.Kind == kindInvoice && s.has(ctx, "invoices:create") {
 		s.withDraftFreshness(ctx, q, inv.ID, loc, &resp)
 	}
+	// The customer's credit limit against its exposure with this draft
+	// (invoices phase 6 design I38): a warning, read on the pool.
+	if inv.Status == statusDraft && inv.Kind == kindInvoice {
+		s.withDraftCredit(ctx, inv, profile, &resp)
+	}
 	// The one read besides the send that answers what a send would open with
 	// (payments and delivery design D4) — by e-mail and as EHF (EHF and KID
 	// design D10): no write adds a directory call.

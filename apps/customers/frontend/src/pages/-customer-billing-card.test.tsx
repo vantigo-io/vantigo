@@ -38,6 +38,11 @@ const emptyProfile = {
   gln: null,
   buyerReference: null,
   defaultBillRate: null,
+  creditLimit: null,
+  bookkeepingObligated: null,
+  bookkeepingObligatedSource: "unknown",
+  bookkeepingObligatedOverride: null,
+  bookkeepingObligatedOverrideReason: null,
   revision: 3,
   warnings: [],
 };
@@ -151,6 +156,11 @@ describe("CustomerBillingCard", () => {
       gln: null,
       buyerReference: null,
       defaultBillRate: null,
+      creditLimit: null,
+      bookkeepingObligatedOverride: null,
+      bookkeepingObligatedOverrideReason: null,
+      clearCreditLimit: true,
+      clearBookkeepingOverride: true,
       revision: 3,
     });
   });

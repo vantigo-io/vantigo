@@ -98,4 +98,12 @@ type CurrencyReceivables struct {
 	// fees, compensation and interest are never in either: the owning module
 	// keeps its charges apart from the principal.
 	Outstanding, Overdue string
+	// OutstandingNOK is Outstanding in NOK: each outstanding invoice's open
+	// NOK receivable (invoices.open_nok — its NOK at the rate it was issued
+	// at, less what credit notes, payments, write-offs and exchange
+	// differences took in NOK), summed. It is the one figure in another
+	// currency that may be added across currencies, since it is NOK; a credit
+	// limit counts a customer's foreign invoices at it (invoices phase 6
+	// design I38).
+	OutstandingNOK string
 }

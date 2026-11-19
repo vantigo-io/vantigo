@@ -64,9 +64,14 @@ func (d *directory) Customers(ctx context.Context, ids []int32) ([]contracts.Cus
 	}
 	entries := make([]contracts.CustomerEntry, 0, len(rows))
 	for _, row := range rows {
+		obligated, _ := bookkeepingObligated(creditFacts{
+			settings:  creditSettings{BookkeepingObligatedOverride: row.BookkeepingObligatedOverride},
+			hasRecord: row.HasRegistryRecord, vatRegistered: row.RegistryVatRegistered,
+			businessRegistered: row.RegistryBusinessRegisterRegistered,
+		})
 		entries = append(entries, contracts.CustomerEntry{ID: row.ID, Name: row.Name, Archived: row.Archived,
 			Group: groupEntry(row.GroupID, row.GroupName), MergedInto: row.MergedIntoCustomerID,
-			IndustryCode: deref(row.IndustryCode)})
+			IndustryCode: deref(row.IndustryCode), BookkeepingObligated: obligated})
 	}
 	return entries, nil
 }
@@ -235,6 +240,18 @@ func (d *directory) BillingProfile(ctx context.Context, id int32, opts contracts
 		dob := row.DateOfBirth.Time
 		resolved.DateOfBirth = &dob
 	}
+	// The credit half (invoices phase 6 design I37, I38): the derived
+	// bookkeeping obligation and the credit limit, a third read.
+	facts, err := readCreditFacts(ctx, d.q, id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	resolved.BookkeepingObligated, resolved.BookkeepingObligatedSource = bookkeepingObligated(facts)
+	resolved.CreditLimit = facts.settings.CreditLimit
+	resolved.VATRegistered = facts.vatRegistered != nil && *facts.vatRegistered
 
 	// The delivery addresses and the contacts, only for a caller that asks
 	// (orders design O10): an invoice pays nothing for them.

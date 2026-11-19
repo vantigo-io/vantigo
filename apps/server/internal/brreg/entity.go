@@ -95,9 +95,13 @@ type Entity struct {
 	OrganisationNumber, Name, OrganisationFormCode, OrganisationForm, IndustryCode, Industry string
 	Employees                                                                                *int32
 	VATRegistered, Bankrupt, UnderLiquidation, UnderForcedLiquidation                        bool
-	DeletedOn, FoundedOn, BankruptOn, LiquidationOn                                          *time.Time
-	Website, Email, Phone, Mobile, ParentOrganisationNumber                                  string
-	BusinessAddress, PostalAddress                                                           *Address
+	// BusinessRegisterRegistered is registrertIForetaksregisteret: whether
+	// the entity is in the Register of Business Enterprises. Customers
+	// derives bookkeeping obligation from it and VATRegistered.
+	BusinessRegisterRegistered                              bool
+	DeletedOn, FoundedOn, BankruptOn, LiquidationOn         *time.Time
+	Website, Email, Phone, Mobile, ParentOrganisationNumber string
+	BusinessAddress, PostalAddress                          *Address
 }
 
 // Outcome is entity's answer about which of the registry's three
@@ -170,6 +174,7 @@ type entityWire struct {
 	HarRegistrertAntallAnsatte                bool         `json:"harRegistrertAntallAnsatte"`
 	AntallAnsatte                             *int32       `json:"antallAnsatte"`
 	RegistrertIMvaregisteret                  bool         `json:"registrertIMvaregisteret"`
+	RegistrertIForetaksregisteret             bool         `json:"registrertIForetaksregisteret"`
 	Konkurs                                   bool         `json:"konkurs"`
 	Konkursdato                               string       `json:"konkursdato"`
 	UnderAvvikling                            bool         `json:"underAvvikling"`
@@ -275,28 +280,29 @@ func entityFrom(wire entityWire) (Entity, error) {
 	}
 
 	return Entity{
-		OrganisationNumber:       strings.TrimSpace(wire.OrganisationNumber),
-		Name:                     strings.TrimSpace(wire.Name),
-		OrganisationFormCode:     formCode,
-		OrganisationForm:         form,
-		IndustryCode:             industryCode,
-		Industry:                 industry,
-		Employees:                employees,
-		VATRegistered:            wire.RegistrertIMvaregisteret,
-		Bankrupt:                 wire.Konkurs,
-		UnderLiquidation:         wire.UnderAvvikling,
-		UnderForcedLiquidation:   wire.UnderTvangsavviklingEllerTvangsopplosning,
-		DeletedOn:                deletedOn,
-		FoundedOn:                foundedOn,
-		BankruptOn:               bankruptOn,
-		LiquidationOn:            liquidationOn,
-		Website:                  strings.TrimSpace(wire.Hjemmeside),
-		Email:                    strings.TrimSpace(wire.Epostadresse),
-		Phone:                    strings.TrimSpace(wire.Telefon),
-		Mobile:                   strings.TrimSpace(wire.Mobil),
-		ParentOrganisationNumber: strings.TrimSpace(wire.OverordnetEnhet),
-		BusinessAddress:          addressFrom(wire.Forretningsadresse),
-		PostalAddress:            addressFrom(wire.Postadresse),
+		OrganisationNumber:         strings.TrimSpace(wire.OrganisationNumber),
+		Name:                       strings.TrimSpace(wire.Name),
+		OrganisationFormCode:       formCode,
+		OrganisationForm:           form,
+		IndustryCode:               industryCode,
+		Industry:                   industry,
+		Employees:                  employees,
+		VATRegistered:              wire.RegistrertIMvaregisteret,
+		BusinessRegisterRegistered: wire.RegistrertIForetaksregisteret,
+		Bankrupt:                   wire.Konkurs,
+		UnderLiquidation:           wire.UnderAvvikling,
+		UnderForcedLiquidation:     wire.UnderTvangsavviklingEllerTvangsopplosning,
+		DeletedOn:                  deletedOn,
+		FoundedOn:                  foundedOn,
+		BankruptOn:                 bankruptOn,
+		LiquidationOn:              liquidationOn,
+		Website:                    strings.TrimSpace(wire.Hjemmeside),
+		Email:                      strings.TrimSpace(wire.Epostadresse),
+		Phone:                      strings.TrimSpace(wire.Telefon),
+		Mobile:                     strings.TrimSpace(wire.Mobil),
+		ParentOrganisationNumber:   strings.TrimSpace(wire.OverordnetEnhet),
+		BusinessAddress:            addressFrom(wire.Forretningsadresse),
+		PostalAddress:              addressFrom(wire.Postadresse),
 	}, nil
 }
 

@@ -284,6 +284,12 @@ func TestEHF_BuyerParty(t *testing.T) {
 	person := render(t, fixture(t, "invoice-person")).First("cac:AccountingCustomerParty", "cac:Party")
 	expect(t, person, "Kari Nordmann", "cac:PartyLegalEntity", "cbc:RegistrationName")
 	absent(t, person, "cac:PartyLegalEntity", "cbc:CompanyID")
+	absent(t, person, "cac:PartyTaxScheme")
+
+	// A buyer in the VAT register: NO<org nr>MVA under VAT (BT-48).
+	vat := render(t, fixture(t, "invoice-buyer-vat-registered")).First("cac:AccountingCustomerParty", "cac:Party")
+	expect(t, vat, "NO"+buyerOrg+"MVA", "cac:PartyTaxScheme", "cbc:CompanyID")
+	expect(t, vat, "VAT", "cac:PartyTaxScheme", "cac:TaxScheme", "cbc:ID")
 }
 
 // One payment means, code 30, on an invoice: the domestic account for a

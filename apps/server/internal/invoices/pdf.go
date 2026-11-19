@@ -416,7 +416,13 @@ func buyerLines(p pdfParty, l pdfLabels) []string {
 	out := partyLines(p)
 	switch {
 	case p.organisationNumber != "":
-		out = append(out, l.orgNumber+" "+organisationNumber(p.organisationNumber))
+		// § 5-1-2: a buyer in the VAT register is named with MVA, as the
+		// seller is.
+		orgLine := l.orgNumber + " " + organisationNumber(p.organisationNumber)
+		if p.vatRegistered {
+			orgLine += " MVA"
+		}
+		out = append(out, orgLine)
 	case p.foreignID != "":
 		out = append(out, l.foreignID+" "+p.foreignID)
 	}

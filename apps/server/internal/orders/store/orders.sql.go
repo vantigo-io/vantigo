@@ -1299,6 +1299,69 @@ func (q *Queries) SetOrderSite(ctx context.Context, arg SetOrderSiteParams) (Ord
 	return i, err
 }
 
+const uninvoicedGrossSums = `-- name: UninvoicedGrossSums :many
+SELECT t.currency::text AS currency, coalesce(sum(t.amount), 0)::numeric(14,2) AS amount
+FROM (
+    SELECT o.currency,
+           round(l.line_net * (1 + coalesce(l.vat_rate_percent, 0) / 100)
+                 * (l.quantity - l.qty_cancelled - l.qty_invoiced - coalesce(a.allocated, 0)) / l.quantity, 2) AS amount
+    FROM orders.orders o
+    JOIN orders.lines l ON l.owner_kind = 'order' AND l.owner_id = o.id
+    LEFT JOIN (
+        SELECT line_id, sum(quantity) AS allocated
+        FROM orders.invoice_allocations
+        WHERE state = 'draft'
+        GROUP BY line_id
+    ) a ON a.line_id = l.id
+    WHERE o.customer_id = $1 AND o.status = 'confirmed'
+      AND ($2::bigint IS NULL OR o.id <> $2::bigint)
+      AND l.kind IN ('product', 'shipping') AND l.parent_line_id IS NULL
+      AND l.quantity > 0 AND l.quantity > l.qty_cancelled + l.qty_invoiced + coalesce(a.allocated, 0)
+) t
+GROUP BY t.currency
+ORDER BY t.currency
+`
+
+type UninvoicedGrossSumsParams struct {
+	CustomerID     int32
+	ExcludeOrderID *int64
+}
+
+type UninvoicedGrossSumsRow struct {
+	Currency string
+	Amount   pgtype.Numeric
+}
+
+// UninvoicedGrossSums is a customer's confirmed orders' gross, VAT included,
+// that is neither cancelled nor invoiced, per currency (invoices phase 6
+// design I38): each line's open quantity (ordered less cancelled less
+// invoiced less what draft invoices' allocations hold, as DueOrderLines
+// subtracts them — a draft invoice counts its own gross, so the order must not
+// count it again) at its net unit price with its VAT rate added, rounded to
+// øre per line. A kit's child line is invoiced as its kit (manufacturing
+// phase 2 M145) and is left out. exclude_order_id leaves out the order being
+// confirmed, which the caller adds at its own gross. contracts.OrderBacklog
+// and the confirm's credit check both read it: one definition.
+func (q *Queries) UninvoicedGrossSums(ctx context.Context, arg UninvoicedGrossSumsParams) ([]UninvoicedGrossSumsRow, error) {
+	rows, err := q.db.Query(ctx, uninvoicedGrossSums, arg.CustomerID, arg.ExcludeOrderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []UninvoicedGrossSumsRow
+	for rows.Next() {
+		var i UninvoicedGrossSumsRow
+		if err := rows.Scan(&i.Currency, &i.Amount); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updateOrderHeader = `-- name: UpdateOrderHeader :one
 UPDATE orders.orders SET
     customer_id = $1, customer_number = $2,

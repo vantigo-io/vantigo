@@ -155,6 +155,8 @@ type setup struct {
 	timesheets        contracts.Timesheets
 	expenses          contracts.ProjectExpenses
 	receivables       contracts.CustomerReceivables
+	orderBacklog      contracts.OrderBacklog
+	exchangeRates     contracts.ExchangeRates
 	salesTax          contracts.SalesTax
 	salesJournal      contracts.SalesJournal
 	expenseJournal    contracts.ExpenseJournal
@@ -438,6 +440,23 @@ func WithExpenses(p contracts.ProjectExpenses) Option {
 // than as zeroes.
 func WithReceivables(p contracts.CustomerReceivables) Option {
 	return func(s *setup) { s.receivables = p }
+}
+
+// WithOrderBacklog sets Deps.OrderBacklog directly to p, for a module under
+// test that reads what a customer's confirmed orders hold uninvoiced
+// (contracts.OrderBacklog) without composing orders beside it. Compose only
+// overwrites it when a composed module declares Module.OrderBacklog, so a
+// value set here survives. Leaving it out is the installation without orders.
+func WithOrderBacklog(p contracts.OrderBacklog) Option {
+	return func(s *setup) { s.orderBacklog = p }
+}
+
+// WithExchangeRates sets Deps.ExchangeRates directly to p, for a module under
+// test that reads Invoices' rates (contracts.ExchangeRates) without composing
+// invoices. Compose only overwrites it when a composed module declares
+// Module.ExchangeRates.
+func WithExchangeRates(p contracts.ExchangeRates) Option {
+	return func(s *setup) { s.exchangeRates = p }
 }
 
 // WithSalesTax sets Deps.SalesTax directly to p, for a module under test that
@@ -1033,6 +1052,8 @@ func New(t *testing.T, opts ...Option) *Harness {
 		Timesheets:               s.timesheets,
 		Expenses:                 s.expenses,
 		Receivables:              s.receivables,
+		OrderBacklog:             s.orderBacklog,
+		ExchangeRates:            s.exchangeRates,
 		SalesTax:                 s.salesTax,
 		SalesJournal:             s.salesJournal,
 		ExpenseJournal:           s.expenseJournal,

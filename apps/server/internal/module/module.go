@@ -139,6 +139,13 @@ type Deps struct {
 	// Module.Receivables; it is nil when invoices is disabled, which a caller
 	// reads as "invoicing is off".
 	Receivables contracts.CustomerReceivables
+	// OrderBacklog is what a customer's confirmed orders hold that is not yet
+	// invoiced, the one sanctioned way a module reads another's record of
+	// orders for a credit limit (see contracts.OrderBacklog, invoices phase 6
+	// design I38). Compose and Workers set it, on every module's Deps copy,
+	// from whichever enabled module declares Module.OrderBacklog; it is nil
+	// when orders is disabled, which a caller reads as "there are no orders".
+	OrderBacklog contracts.OrderBacklog
 	// SalesTax is Invoices' VAT codes, the mapping from Products' tax
 	// categories to them, and the seller (contracts.SalesTax, orders design
 	// O8). Compose sets it, on every module's Deps copy, from whichever
@@ -634,6 +641,12 @@ type Module struct {
 	// has resolved Directory — and puts the result on every module's Deps,
 	// including the provider's own, the same way it resolves Expenses.
 	Receivables func(Deps) contracts.CustomerReceivables
+	// OrderBacklog builds this module's contracts.OrderBacklog
+	// implementation, if it provides one (orders). At most one enabled module
+	// may set it; Compose and Workers call it right after Receivables and put
+	// the result on every module's Deps, including the provider's own. Its
+	// provider reads its own tables only.
+	OrderBacklog func(Deps) contracts.OrderBacklog
 	// SalesTax builds this module's contracts.SalesTax implementation, if it
 	// provides one (invoices, orders design O8). At most one enabled module
 	// may set it; Compose calls it before any Mount runs, right after

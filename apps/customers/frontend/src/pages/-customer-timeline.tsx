@@ -315,6 +315,9 @@ const MergedAbsorbedDetails = ({ payload }: { payload: unknown }) => {
     [t("billingPeppolId"), text(billing.peppolId)],
     [t("billingGln"), text(billing.gln)],
     [t("billingBuyerReference"), text(billing.buyerReference)],
+    // The merged-away customer's credit limit, dropped by the merge: the
+    // survivor keeps its own.
+    [t("mergedCreditLimitDropped"), text(absorbed.creditLimit) && `NOK ${absorbed.creditLimit}`],
     // Ids, not names: the snapshot records what the row held, and the owner or
     // group may since have been renamed or removed.
     [t("owner"), text(absorbed.ownerUserId)],

@@ -566,10 +566,8 @@ expensive the longer it waits.
 Parent company (`parentId`, seedable from Brreg's `overordnetEnhet`) · customer-is-also-supplier
 (once purchasing and a supplier register arrive — a supplier invoice today names
 its supplier in free text) · custom fields · credit check integration
-(Proff/Creditsafe) · credit limit and credit hold (its prerequisite, receivables per
-customer, landed with phase 5's delivery C) · whether a buyer is bokføringspliktig,
-the fact the 2028 buyer org-number rule needs (bokføringsforskriften § 5-1-2 from
-2028-01-01; scheduled under [Invoices](#invoices), which reads it from here) · a
+(Proff/Creditsafe) · a credit hold that stops invoicing (the credit limit and whether a
+buyer is bokføringspliktig landed with Invoices phase 6's delivery E-2) · a
 customer portal (after Invoices) · saved list views. A customer's reminder policy —
 the per-customer dunning setting once listed here — landed in Invoices phase 4B, on
 the customer page's Invoices tab.
@@ -1830,16 +1828,17 @@ skipped; from 2027 no Norwegian business e-mailed; a reclaimed e-mail never mail
 are unblocked. See
 [`docs/src/content/docs/en/reference/invoices.md`](docs/src/content/docs/en/reference/invoices.md#send-all).
 
-**Delivery E-2** — the 2028 buyer org-number rule and credit limits.
+**Delivery E-2: the 2028 buyer rule and credit limits (done)** — the 2028 buyer
+org-number rule and its § 5-2-1 attention item, the buyer's MVA suffix, the
+bookkeeping-obligated fact and the credit limit on the customer, Orders' confirm and
+raise warning and Invoices' draft and issue warning, the exposure in NOK across
+currencies.
 
 ### Later
 
 Orders' NOK equivalent in its analysis, read through `contracts.ExchangeRates` · a charge
 payment in another currency · a bank account in another currency ·
 Recurring invoices and retainers (a subscription may be invoiced up to a year ahead) ·
-the 2028 buyer org-number rule (bokføringsforskriften § 5-1-2 from 2028-01-01: a
-bokføringspliktig buyer's organisation number always stated — the customers directory
-knows no such fact yet, and the issue still accepts a complete address instead) ·
 utlegg outside the VAT base (merverdiavgiftsloven § 4-1 (2) a; phase 3 bills every
 re-billed cost as a sale) · several EHF attachments — a separate timesheet file,
 forwarded receipts · construction's § 8-1-2a progress invoicing and retention money ·

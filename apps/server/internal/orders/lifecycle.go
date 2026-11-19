@@ -66,8 +66,11 @@ func customerConfirmable(p *contracts.CustomerBillingProfile) error {
 // (blocked_by_warning) unless o overrides it; an override is logged on the
 // order's change log at the confirmed version (O33). The warnings are read
 // without a lock, so the check is best effort against a concurrent change.
+// The customer's credit limit joins them as a computed block warning
+// (credit_limit_exceeded, invoices phase 6 design I38), judged on credit, read
+// before the transaction, and the order backlog read here.
 func confirmTx(ctx context.Context, s *server, tx pgx.Tx, txq *store.Queries, order store.OrdersOrder, lines []store.OrdersLine, o warningOverride,
-	by actor, customer *contracts.CustomerBillingProfile, reserve bool, today time.Time) (store.OrdersOrder, error) {
+	by actor, customer *contracts.CustomerBillingProfile, credit *creditRead, reserve bool, today time.Time) (store.OrdersOrder, error) {
 	if order.Status != orderDraft {
 		return order, conflict(codeOrderNotDraft, "The order is not a draft",
 			fmt.Sprintf("Order %d is %s; only a draft is confirmed.", order.Number, order.Status))
@@ -91,7 +94,15 @@ func confirmTx(ctx context.Context, s *server, tx pgx.Tx, txq *store.Queries, or
 	// best effort. A warning set or raised to block by a commit that lands
 	// after this read and before the confirm commits does not refuse it; the
 	// next confirm or send judges it.
-	overridden, err := judgeWarnings(ctx, txq, order.CustomerID, lines, o)
+	creditW, err := creditWarning(ctx, txq, credit, order, gen.OrdersWarningLevelBlock, s.deps.Clock())
+	if err != nil {
+		return order, err
+	}
+	var computed []gen.OrdersWarning
+	if creditW != nil {
+		computed = append(computed, *creditW)
+	}
+	overridden, err := judgeWarnings(ctx, txq, order.CustomerID, lines, o, computed...)
 	if err != nil {
 		return order, err
 	}
@@ -172,6 +183,12 @@ func (s *server) ConfirmSalesOrder(ctx context.Context, req gen.ConfirmSalesOrde
 	if err != nil {
 		return nil, err
 	}
+	// The customer's credit, read before the transaction (invoices phase 6
+	// design I38): contract calls never run inside one.
+	credit, err := s.readCredit(ctx, customer, cur.Currency)
+	if err != nil {
+		return nil, err
+	}
 	by, err := s.actorFor(ctx)
 	if err != nil {
 		return nil, err
@@ -203,7 +220,7 @@ func (s *server) ConfirmSalesOrder(ctx context.Context, req gen.ConfirmSalesOrde
 		if err != nil {
 			return err
 		}
-		if confirmed, err = confirmTx(ctx, s, tx, txq, o, locked, override, by, customer, req.Body.Reserve == nil || *req.Body.Reserve, today); err != nil {
+		if confirmed, err = confirmTx(ctx, s, tx, txq, o, locked, override, by, customer, credit, req.Body.Reserve == nil || *req.Body.Reserve, today); err != nil {
 			return err
 		}
 		if printed, err = p.confirmation(confirmed, locked, s.deps.Clock()); err != nil {

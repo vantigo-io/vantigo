@@ -9,7 +9,7 @@ INSERT INTO invoices.invoices (
     kind, customer_id, credits_invoice_id, delivery_date, delivery_from, delivery_to,
     delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country,
     currency, exchange_rate, exchange_rate_date, exchange_rate_source, your_reference, our_reference, order_reference,
-    buyer_customer_number, buyer_type, buyer_name, buyer_organisation_number, buyer_foreign_id,
+    buyer_customer_number, buyer_type, buyer_name, buyer_organisation_number, buyer_vat_registered, buyer_foreign_id,
     buyer_address_line1, buyer_address_line2, buyer_postal_code, buyer_city, buyer_region, buyer_country,
     buyer_peppol_id, buyer_gln, buyer_language, project_id, project_reference,
     net_total, vat_total, gross_total, vat_total_nok, created_by_user_id, created_at, updated_at
@@ -18,7 +18,7 @@ SELECT
     'credit_note', o.customer_id, o.id, o.delivery_date, o.delivery_from, o.delivery_to,
     o.delivery_address_line1, o.delivery_address_line2, o.delivery_postal_code, o.delivery_city, o.delivery_country,
     o.currency, o.exchange_rate, o.exchange_rate_date, o.exchange_rate_source, o.your_reference, o.our_reference, o.order_reference,
-    o.buyer_customer_number, o.buyer_type, o.buyer_name, o.buyer_organisation_number, o.buyer_foreign_id,
+    o.buyer_customer_number, o.buyer_type, o.buyer_name, o.buyer_organisation_number, o.buyer_vat_registered, o.buyer_foreign_id,
     o.buyer_address_line1, o.buyer_address_line2, o.buyer_postal_code, o.buyer_city, o.buyer_region, o.buyer_country,
     o.buyer_peppol_id, o.buyer_gln, o.buyer_language, o.project_id, o.project_reference,
     o.net_total, o.vat_total, o.gross_total, o.vat_total_nok, @created_by_user_id, @now::timestamptz, @now::timestamptz

@@ -165,6 +165,7 @@ UPDATE invoices.invoices SET
     buyer_type = @buyer_type,
     buyer_name = @buyer_name,
     buyer_organisation_number = @buyer_organisation_number,
+    buyer_vat_registered = @buyer_vat_registered::boolean,
     buyer_foreign_id = @buyer_foreign_id,
     buyer_address_line1 = @buyer_address_line1,
     buyer_address_line2 = @buyer_address_line2,

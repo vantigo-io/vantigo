@@ -138,6 +138,9 @@ func buyerSnapshot(p *contracts.CustomerBillingProfile) *store.IssueDocumentPara
 		country := strings.ToUpper(p.LegalCountry)
 		if country == "NO" {
 			b.BuyerOrganisationNumber = &p.LegalID
+			// § 5-1-2: a VAT-registered buyer's organisation number is
+			// followed by MVA, on the PDF and in the EHF's PartyTaxScheme.
+			b.BuyerVatRegistered = p.VATRegistered
 		} else if country != "" {
 			b.BuyerForeignID = ptr(country + p.LegalID)
 		}
@@ -197,6 +200,11 @@ func invoiceIssueChecks(ctx context.Context, txq *store.Queries, profile *contra
 	if !buyerComplete(plan.buyer) {
 		return issuePlan{}, cannotIssue(codeBuyerIncomplete,
 			"The buyer has neither a complete address nor an organisation number (§ 5-1-2)."), nil
+	}
+	// § 5-1-2 as amended (FOR-2026-09-29-1933): from 2028 an obligated buyer's
+	// organisation number, whatever its address (buyer_rule.go).
+	if refusal, _ := buyerOrgNumberRule(profile, plan.buyer.BuyerOrganisationNumber, issueDate); refusal != nil {
+		return issuePlan{}, refusal, nil
 	}
 	codes, err := vatCodesOn(ctx, txq, pgDate(issueDate))
 	if err != nil {
@@ -287,6 +295,7 @@ func (s *server) PostInvoicesByIdIssue(ctx context.Context, req gen.PostInvoices
 	if len(warnings) > 0 {
 		resp.Warnings = append(resp.Warnings, warnings...)
 	}
+	s.withIssueWarnings(ctx, out, &resp)
 	return gen.PostInvoicesByIdIssue200JSONResponse(resp), nil
 }
 
@@ -297,6 +306,7 @@ func (s *server) PostInvoicesByIdIssue(ctx context.Context, req gen.PostInvoices
 type issueOutcome struct {
 	doc         store.InvoicesInvoice
 	loc         *time.Location
+	profile     *contracts.CustomerBillingProfile
 	refusal     *gen.InvoicesConflictProblem
 	unavailable *gen.InvoicesConflictProblem
 	notFound    bool
@@ -349,6 +359,15 @@ func (s *server) issueDraft(ctx context.Context, id int64, issueDate *openapi_ty
 		// issuer's name, read now when its original bills any (D8).
 		if work, err = s.readReleaseWork(ctx, q, draft); err != nil {
 			return issueOutcome{}, err
+		}
+		// Whether its buyer is bookkeeping-obligated, for the 2028 rule
+		// (buyer_rule.go): read for nothing else, and only when the buyer
+		// snapshot it carries has no organisation number — the rule cannot
+		// refuse one that has.
+		if draft.BuyerOrganisationNumber == nil || *draft.BuyerOrganisationNumber == "" {
+			if profile, err = s.customerProfile(ctx, draft.CustomerID); err != nil {
+				return issueOutcome{}, err
+			}
 		}
 	}
 	// The business time zone the issue and due dates are taken in, read
@@ -403,7 +422,7 @@ func (s *server) issueDraft(ctx context.Context, id int64, issueDate *openapi_ty
 	// issue's own is untouched — and a failure there is logged too.
 	doc := s.storeAfterIssue(ctx, q, issued)
 	s.moveAfterIssue(ctx, doc)
-	return issueOutcome{doc: doc, loc: loc}, nil
+	return issueOutcome{doc: doc, loc: loc, profile: profile}, nil
 }
 
 // issueLocked runs the issue's steps 2–6 on a document the transaction tx
@@ -500,6 +519,11 @@ func (s *server) issueLocked(ctx context.Context, tx pgx.Tx, txq *store.Queries,
 		plan, refusal, err = invoiceIssueChecks(ctx, txq, profile, settings, issueDate, locked, lines)
 	case kindCreditNote:
 		plan, refusal, err = creditIssueChecks(ctx, txq, locked, lines)
+		// A credit note is a sales document too: the 2028 buyer rule on its
+		// buyer snapshot, the original's (buyer_rule.go).
+		if err == nil && refusal == nil {
+			refusal, _ = buyerOrgNumberRule(profile, locked.BuyerOrganisationNumber, issueDate)
+		}
 	default:
 		return failed(fmt.Errorf("invoices: document %d is a %s, which this module cannot issue", locked.ID, locked.Kind))
 	}
@@ -774,6 +798,7 @@ func sellerSnapshot(p *store.IssueDocumentParams, s store.InvoicesSetting) {
 func keepBuyer(p *store.IssueDocumentParams, inv store.InvoicesInvoice) {
 	p.BuyerCustomerNumber, p.BuyerType, p.BuyerName = inv.BuyerCustomerNumber, inv.BuyerType, inv.BuyerName
 	p.BuyerOrganisationNumber, p.BuyerForeignID = inv.BuyerOrganisationNumber, inv.BuyerForeignID
+	p.BuyerVatRegistered = inv.BuyerVatRegistered
 	p.BuyerAddressLine1, p.BuyerAddressLine2 = inv.BuyerAddressLine1, inv.BuyerAddressLine2
 	p.BuyerPostalCode, p.BuyerCity, p.BuyerRegion, p.BuyerCountry = inv.BuyerPostalCode, inv.BuyerCity, inv.BuyerRegion, inv.BuyerCountry
 	p.BuyerPeppolID, p.BuyerGln, p.BuyerLanguage = inv.BuyerPeppolID, inv.BuyerGln, inv.BuyerLanguage

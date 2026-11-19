@@ -77,6 +77,12 @@ type harnessOptions struct {
 	// kits composes Manufacturing's kit structure (manufacturing phase 2
 	// M145); nil leaves the slot empty, Manufacturing off.
 	kits contracts.KitStructure
+	// receivables composes Invoices' receivables read (contracts.
+	// CustomerReceivables) for the credit limit; nil leaves it out.
+	receivables contracts.CustomerReceivables
+	// rates composes Invoices' exchange rates (contracts.ExchangeRates);
+	// nil leaves it out.
+	rates contracts.ExchangeRates
 }
 
 // newHarness is an orders installation with the seeded catalog, VAT codes
@@ -113,6 +119,12 @@ func newHarness(t *testing.T, o harnessOptions) *harness {
 	}
 	if o.kits != nil {
 		opts = append(opts, modtest.WithKitStructure(o.kits))
+	}
+	if o.receivables != nil {
+		opts = append(opts, modtest.WithReceivables(o.receivables))
+	}
+	if o.rates != nil {
+		opts = append(opts, modtest.WithExchangeRates(o.rates))
 	}
 	if o.bring {
 		h.bring = bringtest.New(t)

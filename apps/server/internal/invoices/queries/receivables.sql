@@ -13,10 +13,13 @@
 -- document of the customer is in, by ISO code: what was issued and credited
 -- in the calendar year [@this_year_from, @next_year_from) and in the year
 -- before it, [@last_year_from, @this_year_from), and what stands open of the
--- outstanding and the overdue invoices. A currency whose figures are all
+-- outstanding and the overdue invoices, and the outstanding ones' NOK as
+-- invoices.open_nok() has it for a document in another currency, and its open
+-- amount for one in NOK (invoices phase 6 design I24, I38) — the NOK a
+-- credit limit counts them at. A currency whose figures are all
 -- zero — only paid invoices from years ago, say — is still a row.
 WITH d AS (
-    SELECT i.kind, i.currency, i.gross_total, i.issue_date,
+    SELECT i.id, i.kind, i.currency, i.gross_total, i.issue_date,
            (i.gross_total - coalesce(cr.credited, 0) - coalesce(pd.paid, 0))::numeric(14,2) AS open_amount,
            invoices.invoice_state(i.kind, i.status, i.gross_total, coalesce(cr.credited, 0), coalesce(pd.paid, 0), coalesce(pd.written_off, 0), i.due_date, @today::date)::text AS state
     FROM invoices.invoices i
@@ -36,7 +39,9 @@ SELECT currency::text AS currency,
        coalesce(sum(gross_total) FILTER (WHERE kind = 'invoice' AND issue_date >= @last_year_from::date AND issue_date < @this_year_from::date), 0)::numeric(14,2) AS issued_last_year,
        coalesce(sum(gross_total) FILTER (WHERE kind = 'credit_note' AND issue_date >= @last_year_from::date AND issue_date < @this_year_from::date), 0)::numeric(14,2) AS credited_last_year,
        coalesce(sum(open_amount) FILTER (WHERE state IN ('open', 'partially_paid', 'overdue')), 0)::numeric(14,2) AS outstanding,
-       coalesce(sum(open_amount) FILTER (WHERE state = 'overdue'), 0)::numeric(14,2) AS overdue
+       coalesce(sum(open_amount) FILTER (WHERE state = 'overdue'), 0)::numeric(14,2) AS overdue,
+       coalesce(sum(CASE WHEN currency = 'NOK' THEN open_amount ELSE invoices.open_nok(id) END)
+                FILTER (WHERE state IN ('open', 'partially_paid', 'overdue')), 0)::numeric(14,2) AS outstanding_nok
 FROM d
 GROUP BY currency
 ORDER BY currency;

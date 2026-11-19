@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"time"
 
@@ -58,6 +59,11 @@ func (s *server) GetInvoicesStatsAttention(ctx context.Context, _ gen.GetInvoice
 		return nil, err
 	}
 	items = append(items, refunds...)
+	undelivered, err := s.attentionUndelivered(ctx, q, now)
+	if err != nil {
+		return nil, err
+	}
+	items = append(items, undelivered...)
 	if s.has(ctx, "invoices:manage") {
 		feed, err := attentionBankFeed(ctx, q)
 		if err != nil {
@@ -115,6 +121,66 @@ func attentionBankFeed(ctx context.Context, q *store.Queries) ([]gen.InvoicesSta
 			title = title[len(title)-4:]
 		}
 		items = append(items, attentionItem(typ, r.Account, title, r.UpdatedAt, 0))
+	}
+	return items, nil
+}
+
+// The invoiceUndelivered item's bounds: how long an invoice may stand issued
+// and not delivered, how many items it names, and how many candidates it reads
+// to find them among the obligated buyers — a var so a test, run alone, can
+// make it small.
+const (
+	undeliveredAfter    = 7 * 24 * time.Hour
+	attentionUndelivCap = 20
+)
+
+var undeliveredCandidates int32 = 200
+
+// attentionUndelivered is invoiceUndelivered (invoices phase 6 design I37;
+// plan reading E9): from buyerOrgNumberFrom, bokføringsforskriften § 5-2-1
+// fourth paragraph has a sales document sent to a bookkeeping-obligated
+// buyer. The 20 oldest invoices issued since then, seven days on with no
+// delivery the module knows of, to a buyer the customer directory says is
+// obligated — asked once per customer, on the pool. An attention item, never
+// a refusal: a hand-over outside the module is recorded as a manual delivery.
+func (s *server) attentionUndelivered(ctx context.Context, q *store.Queries, now time.Time) ([]gen.InvoicesStatsAttentionItem, error) {
+	if now.Before(buyerOrgNumberFrom) {
+		return nil, nil
+	}
+	rows, err := q.AttentionUndelivered(ctx, store.AttentionUndeliveredParams{
+		FromDay: pgDate(buyerOrgNumberFrom), Before: now.Add(-undeliveredAfter), MaxRows: undeliveredCandidates,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("invoices: read the undelivered invoices: %w", err)
+	}
+	// One directory read for every candidate's customer, never one per row.
+	var ids []int32
+	for _, r := range rows {
+		if !slices.Contains(ids, r.CustomerID) {
+			ids = append(ids, r.CustomerID)
+		}
+	}
+	entries, err := s.customerEntries(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	obligated := map[int32]bool{}
+	for _, e := range entries {
+		obligated[e.ID] = e.BookkeepingObligated != nil && *e.BookkeepingObligated
+	}
+	items := []gen.InvoicesStatsAttentionItem{}
+	for _, r := range rows {
+		if !obligated[r.CustomerID] {
+			continue
+		}
+		title := ""
+		if r.BuyerName != nil {
+			title = *r.BuyerName
+		}
+		items = append(items, attentionItem(gen.InvoiceUndelivered, idString(r.ID), title, r.IssuedAt.Add(undeliveredAfter), 0))
+		if len(items) == attentionUndelivCap {
+			break
+		}
 	}
 	return items, nil
 }

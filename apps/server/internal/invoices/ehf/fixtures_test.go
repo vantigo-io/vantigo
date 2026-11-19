@@ -169,6 +169,15 @@ func fixtures(t *testing.T) map[string]ehf.Document {
 	person.NetTotal, person.VATTotal, person.GrossTotal = rat("2000.00"), rat("500.00"), rat("2500.00")
 	out["invoice-person"] = person
 
+	// A buyer in the VAT register: its PartyTaxScheme names NO<org nr>MVA
+	// under VAT (BT-48, bokføringsforskriften § 5-1-2).
+	vatBuyer := baseInvoice("10050")
+	vatBuyer.Buyer.VATRegistered = true
+	vatBuyer.Lines = []ehf.Line{line("1", "Konsulenttimer", "timer", "5", "1200", "0", "S", "25")}
+	vatBuyer.VAT = []ehf.VATRow{vat("S", "25", "6000.00", "1500.00", "")}
+	vatBuyer.NetTotal, vatBuyer.VATTotal, vatBuyer.GrossTotal = rat("6000.00"), rat("1500.00"), rat("7500.00")
+	out["invoice-buyer-vat-registered"] = vatBuyer
+
 	// A credit note: the original's number and date, positive amounts, the
 	// credit sentence for terms, no payment means.
 	credit := baseInvoice("10049")

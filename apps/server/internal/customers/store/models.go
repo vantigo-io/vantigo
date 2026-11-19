@@ -29,39 +29,42 @@ type CustomersCounter struct {
 }
 
 type CustomersCustomer struct {
-	ID                   int32
-	CustomerNumber       int64
-	Name                 string
-	Status               string
-	LegalCountry         *string
-	LegalID              *string
-	LegalName            *string
-	LegalSource          *string
-	LegalType            *string
-	CreatedAt            time.Time
-	UpdatedAt            time.Time
-	Type                 string
-	Revision             int32
-	Email                *string
-	Phone                *string
-	Website              *string
-	InvoiceEmail         *string
-	ReminderEmail        *string
-	PaymentTermsDays     *int32
-	Currency             *string
-	Language             *string
-	InvoiceDelivery      *string
-	ReminderDelivery     *string
-	PeppolID             *string
-	Gln                  *string
-	BuyerReference       *string
-	OwnerUserID          *uuid.UUID
-	GroupID              *uuid.UUID
-	DefaultBillRate      pgtype.Numeric
-	MergedIntoCustomerID *int32
-	AnonymiseOn          pgtype.Date
-	AnonymisedAt         *time.Time
-	DateOfBirth          pgtype.Date
+	ID                                 int32
+	CustomerNumber                     int64
+	Name                               string
+	Status                             string
+	LegalCountry                       *string
+	LegalID                            *string
+	LegalName                          *string
+	LegalSource                        *string
+	LegalType                          *string
+	CreatedAt                          time.Time
+	UpdatedAt                          time.Time
+	Type                               string
+	Revision                           int32
+	Email                              *string
+	Phone                              *string
+	Website                            *string
+	InvoiceEmail                       *string
+	ReminderEmail                      *string
+	PaymentTermsDays                   *int32
+	Currency                           *string
+	Language                           *string
+	InvoiceDelivery                    *string
+	ReminderDelivery                   *string
+	PeppolID                           *string
+	Gln                                *string
+	BuyerReference                     *string
+	OwnerUserID                        *uuid.UUID
+	GroupID                            *uuid.UUID
+	DefaultBillRate                    pgtype.Numeric
+	MergedIntoCustomerID               *int32
+	AnonymiseOn                        pgtype.Date
+	AnonymisedAt                       *time.Time
+	DateOfBirth                        pgtype.Date
+	BookkeepingObligatedOverride       *bool
+	BookkeepingObligatedOverrideReason string
+	CreditLimit                        pgtype.Numeric
 }
 
 type CustomersCustomerAddress struct {
@@ -119,31 +122,32 @@ type CustomersCustomerPeppolLookup struct {
 }
 
 type CustomersCustomerRegistryRecord struct {
-	CustomerID               int32
-	OrganisationNumber       string
-	Name                     string
-	OrganisationFormCode     *string
-	OrganisationForm         *string
-	IndustryCode             *string
-	Industry                 *string
-	Employees                *int32
-	VatRegistered            bool
-	Bankrupt                 bool
-	UnderLiquidation         bool
-	UnderForcedLiquidation   bool
-	DeletedOn                pgtype.Date
-	FoundedOn                pgtype.Date
-	Website                  *string
-	Email                    *string
-	Phone                    *string
-	Mobile                   *string
-	ParentOrganisationNumber *string
-	BusinessAddress          []byte
-	PostalAddress            []byte
-	FetchedAt                time.Time
-	RegistryUpdatedHint      *time.Time
-	BankruptOn               pgtype.Date
-	LiquidationOn            pgtype.Date
+	CustomerID                 int32
+	OrganisationNumber         string
+	Name                       string
+	OrganisationFormCode       *string
+	OrganisationForm           *string
+	IndustryCode               *string
+	Industry                   *string
+	Employees                  *int32
+	VatRegistered              bool
+	Bankrupt                   bool
+	UnderLiquidation           bool
+	UnderForcedLiquidation     bool
+	DeletedOn                  pgtype.Date
+	FoundedOn                  pgtype.Date
+	Website                    *string
+	Email                      *string
+	Phone                      *string
+	Mobile                     *string
+	ParentOrganisationNumber   *string
+	BusinessAddress            []byte
+	PostalAddress              []byte
+	FetchedAt                  time.Time
+	RegistryUpdatedHint        *time.Time
+	BankruptOn                 pgtype.Date
+	LiquidationOn              pgtype.Date
+	BusinessRegisterRegistered *bool
 }
 
 type CustomersCustomerTag struct {

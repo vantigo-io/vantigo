@@ -452,6 +452,11 @@ func (f *fakeCustomers) Customers(ctx context.Context, ids []int32) ([]contracts
 	for _, id := range slices.Compact(sorted) {
 		entry, _ := f.Customer(ctx, id)
 		if entry != nil {
+			// The batch read answers the bookkeeping obligation, as Customers'
+			// own does.
+			f.mu.Lock()
+			entry.BookkeepingObligated = f.profiles[id].BookkeepingObligated
+			f.mu.Unlock()
 			out = append(out, *entry)
 		}
 	}

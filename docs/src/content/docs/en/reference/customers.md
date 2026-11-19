@@ -7,6 +7,8 @@ sources:
   - openapi/customers.yaml
   - apps/server/internal/contracts/directory.go
   - apps/server/internal/db/migrations/00202_customers_date_of_birth.sql
+  - apps/server/internal/contracts/events_customers.go
+  - apps/server/internal/db/migrations/00206_customers_credit_limit_bookkeeping.sql
   - apps/server/internal/contracts/agent_memory.go
 ---
 The Customers module is where every other module finds out who the work is for: a
@@ -602,6 +604,46 @@ simple (a caller with plain `customers:view` never has eleven billing columns ha
 to it through the list or GET-by-id endpoints; only the dedicated sub-resource
 does, and that sub-resource's own GET needs nothing more than `customers:view`
 either).
+
+### Credit limit and bookkeeping obligation
+
+Migration `00206` adds three columns beside the profile's eleven (invoices phase 6 design
+I37, I38): `credit_limit numeric(14,2)` (NOK, `CHECK >= 0`), and
+`bookkeeping_obligated_override boolean` with `bookkeeping_obligated_override_reason
+varchar(500) NOT NULL DEFAULT ''` (`ck_customers_bookkeeping_override_reason`: no reason
+without an override). They ride on `GET`/`PUT .../billing-profile` under the same
+permissions but are their own columns and their own write
+(`UpdateCustomerCreditSettings`, on the PUT's transaction after the profile's own write,
+which then takes the revision guard), so the CSV import and the export, which speak the
+eleven, never touch them.
+
+| Field | Rule |
+| --- | --- |
+| `creditLimit` | NOK, decimal text — up to twelve whole digits and two decimals, zero or more, no thousands separators (`^[0-9]{1,12}(\.[0-9]{1,2})?$`), answered with two decimals (`"50000.00"`); otherwise a 400 on `creditLimit`. **Not a full replace**, unlike the rest of the PUT: absent or null keeps the stored limit, so a client written before it never wipes it; `clearCreditLimit: true` removes it, and both at once are a 400. |
+| `bookkeepingObligatedOverride` | `true` or `false` overrules the registry; absent or null keeps the stored override, and `clearBookkeepingOverride: true` removes it with its reason (both at once, a 400). Set, it needs `bookkeepingObligatedOverrideReason` (trimmed, 1–500 characters), or a 400 on that field. |
+| `bookkeepingObligated`, `bookkeepingObligatedSource` | Read only. The override when set (`override`); else, with a [registry record](#registry-record) of the customer's own `legal_id`: obligated when `vat_registered`, or when `business_register_registered`; not obligated when neither — but when the record is not VAT-registered and `business_register_registered` is still NULL (not read since `00206`) the answer is absent (`unknown`), never a "no" the register did not give; else absent (`unknown`): a person or a foreign business has no record, and unknown is never obligated. The directory's batch read `Customers` answers it too (`CustomerEntry.BookkeepingObligated`), and `BillingProfile` adds `VATRegistered`, the record's VAT flag, which Invoices prints as the buyer's MVA suffix. |
+
+**`customers.credit_limit.changed` v1** is the module's first [outbox
+event](/en/contributing/platform-packages/#the-domain-events-outbox), published with `events.Publish` on the
+PUT's transaction when the limit changes — set, changed or removed — and never on an
+unchanged PUT or a change of the override alone: `{customerId, creditLimit, changedAt}`,
+the limit `null` when removed, no name. The timeline records the change as a
+`customer.billing_profile_updated` entry whose `before`/`after` are the three stored
+fields and whose `changes` name `creditLimit` and `bookkeepingObligatedOverride`.
+
+**Anonymisation** keeps the limit and the override, which say how the customer was
+invoiced, and blanks the reason, which is free text. **A merge** leaves the survivor's own
+values; nothing is summed or carried over, and the `customer.merged` entry's `absorbed`
+snapshot names the merged-away customer's `creditLimit` the merge dropped.
+
+**Who sets it.** `customers:billing-manage` sets, raises and removes the limit and the
+override, as it does the rest of the profile; the permission's description says so. The
+limit gates Orders' confirm and a raise of a confirmed order; nothing in this module.
+
+The 2028 rule the obligation serves is Invoices' ([the issue's
+checks](/en/reference/invoices/#issuing)); the limit is judged by Orders at confirm ([the
+credit limit](/en/reference/orders/#the-credit-limit)) and by Invoices on a draft and at
+the issue, with the one exposure definition in `internal/creditlimit`.
 
 ## Owner and tags
 
@@ -2159,7 +2201,15 @@ exist so an attention item is dated the day the thing happened, below),
 `website`/`email`/`phone`/`mobile`, `parent_organisation_number`,
 `business_address`/`postal_address` (each
 `jsonb`, shaped `{lines[], postalCode, city, municipality, countryCode}`, or SQL
-`NULL` — never a JSON `null` — when the registry has none), and `fetched_at`. A
+`NULL` — never a JSON `null` — when the registry has none), `fetched_at`, and
+`business_register_registered` (migration `00206`: the registry's
+`registrertIForetaksregisteret`, the Register of Business Enterprises; NULL until the
+record's next refresh — there is no backfill, and **the feed worker re-reads only an
+entity Brønnøysund's update feed reports changed**, so a company that has not changed
+keeps NULL until someone clicks **Refresh** or the register next reports it — and answered
+as `businessRegisterRegistered`, absent while NULL). A first value after NULL
+is not a change and writes no `registry.change`; a later flip is diffed as
+`businessRegisterRegistered`. A
 `registry_updated_hint` column already exists on the table but is untouched by
 anything in delivery A: it is delivery B's, filled from Brreg's update feed and read
 by nothing here.
@@ -2867,6 +2917,7 @@ which — the panel simply shows fewer tiles:
 | `work` | `projects` is present and the time module is on | `unbilledHoursHundredths`, `approvedHoursHundredths`, `submittedHoursHundredths`, `draftHoursHundredths`, `unpricedHoursHundredths`, `lastWorkOn`, and `unbilledAmounts` **only for** `projects:view-financials` or `projects:manage-all` |
 | `expenses` | `projects` is present, the expenses module is on, **and** the caller holds `projects:view-financials` or `projects:manage-all` | `readyCount`, `readyAmounts`, `lastExpenseOn` |
 | `invoices` | the invoices module is on and the caller holds `invoices:access` — its own gate, with or without `projects` | `outstandingCount`, `overdueCount`, `onHoldCount`, `atCollectionCount`, `outstandingAmounts`, `overdueAmounts`, `invoicedThisYearAmounts`, `invoicedLastYearAmounts`, `oldestOverdueDueOn`, `lastIssuedOn`, `lastPaymentOn`, `asOf` |
+| `credit` | as `invoices`, and the customer has a credit limit ([credit limit](#credit-limit-and-bookkeeping-obligation)) | `limit`, `exposureNok` — the open invoices of every currency at their NOK (`OutstandingNOK`) plus, with Orders on, `contracts.OrderBacklog`'s gross, another currency at today's rate (`contracts.ExchangeRates`), `internal/creditlimit`'s one definition — `exceeded` (above, not equal), `uncounted` (an order currency with no rate within seven days, never added), `ordersCounted` |
 | `lastActivity` | always | `timelineOn`, `workOn`, `expenseOn`, `invoicedOn`, `paymentOn` — each absent when unknown, or when its section is |
 
 **Which projects.** For `projects:view-all` or `projects:manage-all`, every one of
@@ -2995,7 +3046,7 @@ Seventeen keys, category-grouped, every one delegable. Only `view`, `create` and
 | `customers:timeline-view` | Timeline | View customer timeline entries, notes, provenance, revisions, and the customer's attachments. | yes |
 | `customers:timeline-manage` | Timeline | Create, update, and delete customer timeline entries; attach and remove the customer's files. | yes |
 | `customers:lookup-view` | Lookup | Search the external business registry for legal identities. | yes |
-| `customers:billing-manage` | Billing | Set a customer's payment terms, invoice delivery and billing addresses for documents. | yes |
+| `customers:billing-manage` | Billing | Set a customer's payment terms, invoice delivery and billing addresses for documents, its credit limit — and raise it — and whether it is bookkeeping-obligated. | yes |
 | `customers:merge` | Customers | Merge a duplicate customer into another, moving its contacts, addresses, timeline, tags, attachments and other modules' references, and archiving it. | yes |
 | `customers:personal-data` | Customers | Hand a private person all the data held about them, and schedule the anonymisation of an archived private person. | yes |
 | `customers:import` | Customers | Upload a file of customers, map its columns, check it and import it; each field written needs the permission it needs by hand. | yes |
@@ -3204,6 +3255,8 @@ invoice email, a reminder email or a Peppol id for itself.
 | `PaymentTermsDays` | The billing profile's own `paymentTermsDays`, else the customer's **group's** `defaultPaymentTermsDays` ([Groups](#groups)), else `nil`. The only field here with three levels, and the only one that inherits from a group: a nil check, not a zero one, so a profile (or a group) that decided `0` days — due on receipt — is not overridden by the next tier. |
 | `DefaultBillRate` | The billing profile's own `defaultBillRate`, else `nil`, quoted in `Currency` (never `""` when a rate is set). **Own value only** — no group tier; a group default bill rate would slot in beside `defaultPaymentTermsDays` if it is ever wanted. [Time's rate chain](/en/reference/time/#the-rate-chain) reads it: the customer step, between the project default and the person card. |
 | `Currency`, `Language`, `InvoiceDelivery`, `ReminderDelivery`, `GLN`, `BuyerReference` | The billing profile's own value, `nil`/`""` if never set — no further resolution. |
+| `BookkeepingObligated`, `BookkeepingObligatedSource` | The derived fact of [the credit half](#credit-limit-and-bookkeeping-obligation): the override, else the registry record's VAT or Register of Business Enterprises flag, else `nil` with `"unknown"`. A consumer reads `nil` as "not known to be obligated". Invoices' 2028 buyer rule reads it. |
+| `CreditLimit` | The credit limit in NOK as decimal text with two decimals, `nil` for none. Orders' confirm and Invoices' draft and issue read it. |
 | `DeliveryAddresses` | Only with `opts.WithDelivery`, else `nil`: every address of the customer a delivery may go to: the `delivery` addresses first, the primary one first, then the `visiting`, `postal` and `invoice` ones, each type's primary first, then by id (`DirectoryDeliveryAddresses`), each a `CustomerAddressEntry` **with its `ID` and `Type`**, so a document's chosen delivery address is found again on a refresh and the caller can fall back to the primary one when its id has gone; empty, not nil, when the customer has none. `InvoiceAddress` carries `ID` 0: a consumer never asks for it again. |
 | `Contacts` | Only with `opts.WithContacts`, else `nil`: every contact associated with the customer, by last name, then first name, then id (`DirectoryBillingContacts`), as `CustomerContactEntry{ID, Name, Email, Phone, Roles}` — `Name` the first, the middle when there is one, and the last name; `Email` and `Phone` the association's own when it has one, else the contact's, else `""`; `Roles` the contact's typed roles on this customer, sorted, empty when none. Contacts have no archived state, so none is left out. |
 
@@ -3821,6 +3874,8 @@ The Assistant can point at these controls in a guided tour ([the registry](/en/r
 | `customers.customer.add-contact` | `/customers/{customerId}` | Add contact |
 | `customers.customer.contact-search` | `/customers/{customerId}` | Search for a contact |
 | `customers.customer.contact-save` | `/customers/{customerId}` | Add contact |
+| `customers.billing.credit-limit` | `/customers/{customerId}` | Credit limit (NOK), in the billing profile dialog |
+| `customers.billing.bookkeeping-obligated` | `/customers/{customerId}` | Bookkeeping-obligated, in the billing profile dialog |
 
 ## API keys
 
