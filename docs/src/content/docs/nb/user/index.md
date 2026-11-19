@@ -105,7 +105,10 @@ import](/nb/user/customers/#eksport-og-import)), og **Importer målepunkter** fr
 **Importer** i målepunktlisten ([Importer
 målepunkter](/nb/user/energy/#importer-målepunkter)), og **Fakturer fra ordre** fra **Fra
 ordre** i fakturalisten eller **Fakturer** på en bekreftet ordre ([Fakturere
-ordre](/nb/user/invoices/#fakturere-ordre)).
+ordre](/nb/user/invoices/#fakturere-ordre)), og siden for en **Send alle**, som åpnes når
+du klikker **Send alle** i fakturalisten eller på en ferdig fakturakjøring, og fra
+kjøringens kort **Utsending** ([Sende mange dokumenter på en
+gang](/nb/user/invoices/#sende-mange-dokumenter-på-en-gang)).
 
 ## Søk
 
