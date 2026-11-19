@@ -81,6 +81,19 @@ gjenoppretter du merkevaren, tar fallbacken slutt. En merkevare endrer utseendet
 dokument, aldri hvem selgeren er: juridisk navn, organisasjonsnummer, mva-registrering og
 bankkonto er fortsatt de felles fakturainnstillingene.
 
+### Merkevarer på fakturaer
+
+En faktura skrives ut i en merkevare: utkastet starter i kundens standardmerkevare, deretter
+gruppens, deretter standardmerkevaren, og den som skriver fakturaen kan bytte merkevare for akkurat
+det dokumentet ([Fakturaer: merkevaren til et dokument](/nb/user/invoices/#merkevaren-til-et-dokument)).
+Når fakturaen utstedes, kopieres merkevarens navn og logo over på den: **ordmerket** hvis merkevaren
+har et, ellers **merket for lyse bakgrunner**; en merkevare uten noen av dem skriver ut logoen som er
+lastet opp i fakturainnstillingene. Etter det endrer ikke en endring, en arkivering eller en
+kampanje i merkevaren noen utstedt faktura, PDF-en, påminnelsesbrevene eller e-postene, og en
+kampanjes utseende kommer aldri på et dokument. Arkiverer du en merkevare et utkast skulle brukt,
+sier editoren fra, og fakturaen utstedes i neste merkevare i rekkefølgen. De nøyaktige reglene står i
+[Fakturaer: merkevaren til et dokument](/en/reference/invoices/#the-brand-of-a-document).
+
 ## Hvem som ser hvilken merkevare
 
 En person ser én merkevare: sitt eget valg hvis de har ett og fortsatt kan ha det, ellers den første

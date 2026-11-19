@@ -76,6 +76,19 @@ brand ends the fall-back. A brand changes the look and the name on a document, n
 seller is: the legal name, organisation number, VAT registration and bank account stay the single
 invoice settings.
 
+### Brands on invoices
+
+An invoice is printed in a brand: its draft starts in the customer's default brand, then the
+group's, then the default brand, and the person writing it can switch the brand for that one
+document ([Invoices: the brand of a document](/en/user/invoices/#the-brand-of-a-document)). When the
+invoice is issued, the brand's name and its logo are copied onto it, the **wordmark** if the brand
+has one and otherwise its **mark for light backgrounds**; a brand with neither prints the logo
+uploaded in the invoice settings. After that, changing, archiving or running a campaign in the
+brand never changes an issued invoice, its PDF, its reminder letters or its e-mails, and a
+campaign's look never reaches a document. Archiving a brand a draft was going to use makes the
+editor say so and the invoice is issued in the next brand in the order. For the exact rules, see
+[Invoices: the brand of a document](/en/reference/invoices/#the-brand-of-a-document).
+
 ## Who sees which brand
 
 A person sees one brand: their own choice if they have one and still may, otherwise the first

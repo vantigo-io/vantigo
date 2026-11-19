@@ -405,6 +405,36 @@ i tillegg **MVA i NOK** og **Sum i NOK**. Et utkast med ordrelinjer, arbeid elle
 a konto-fradrag beholder valutaen det ble laget i. Arbeid, forbruk og hurtigfakturaen er
 alltid i NOK.
 
+### Merkevaren til et dokument
+
+Hver faktura skrives ut i en merkevare ([Merkevare](/nb/admin/branding/#hvor-ellers-en-merkevare-gjelder)):
+logoen, og merkevarens navn som ligger på dokumentets post. Et nytt utkast starter i kundens
+**standardmerkevare**; en kunde uten egen merkevare får gruppens, og en kunde med ingen av delene
+arbeidsområdets standardmerkevare ([Kunder: Merkevare](/nb/user/customers/#merkevare)). Fakturaen
+som en faktureringskjøring, hurtigfakturaen eller en veiviser lager, starter på samme måte.
+
+Vil du skrive ut ett dokument i en annen merkevare, velg den i **Merkevare** i editoren. Feltet
+tilbyr de publiserte merkevarene, standard først, og valget gjelder bare dette dokumentet; det
+endrer ikke kunden. Å lagre uten å røre feltet lar merkevaren stå, og å bytte kunde flytter en
+merkevare du ikke selv valgte til den nye kundens standard. Under feltet står det at selgerens
+juridiske navn, organisasjonsnummer og bankkonto er de samme i alle merkevarer: en merkevare
+endrer dokumentets utseende, aldri hvem som sender det.
+
+Er merkevaren utkastet ville brukt arkivert i mellomtiden, sier et gult varsel fra — *Merkevaren
+som er valgt for denne kunden er arkivert eller ikke lenger publisert* — og fakturaen utstedes i
+neste merkevare i rekkefølgen, med mindre du velger en annen her. Forhåndsvisningen av et utkast
+viser merkevarens logo slik den er nå.
+
+Når du utsteder fakturaen, kopieres merkevarens navn og logo over på den. PDF-en,
+påminnelsesbrevene og e-postene skriver deretter ut den kopien for godt: å gi merkevaren nytt
+navn, arkivere den, bytte logo eller kjøre en kampanje i den endrer ikke noe som allerede er
+utstedt, og en kampanjes utseende vises aldri på et dokument. En kreditnota beholder fakturaens
+merkevare. Åpner du en utstedt faktura, står det *Merkevare: …* i detaljene.
+
+Logoen er merkevarens **ordmerke** når den har et, ellers merket for lyse bakgrunner. En merkevare
+uten noen av dem skriver ut selgerens logo fra fakturainnstillingene ([logoen](#logoen)); det
+gjør også en faktura som ble utstedt da merkevarens logo ikke kunne leses.
+
 ## Fakturere arbeid
 
 Timene som er godkjent i Timer, utleggene som er klare til fakturering i Utlegg og
