@@ -90,10 +90,11 @@ type IdentityApiRequest struct {
 	Method        string
 	OperationID   string
 	Status        int16
-	Reason        *string
-	DurationMs    int32
-	ClientIp      *string
-	TraceID       *string
+	// Why the request was refused (revoked, disabled, archived, expired, network, never, read_only, forbidden, rate_limited), or idempotent_replay for an answer replayed for an Idempotency-Key.
+	Reason     *string
+	DurationMs int32
+	ClientIp   *string
+	TraceID    *string
 }
 
 type IdentityApiRequestsDefault struct {
@@ -103,10 +104,11 @@ type IdentityApiRequestsDefault struct {
 	Method        string
 	OperationID   string
 	Status        int16
-	Reason        *string
-	DurationMs    int32
-	ClientIp      *string
-	TraceID       *string
+	// Why the request was refused (revoked, disabled, archived, expired, network, never, read_only, forbidden, rate_limited), or idempotent_replay for an answer replayed for an Idempotency-Key.
+	Reason     *string
+	DurationMs int32
+	ClientIp   *string
+	TraceID    *string
 }
 
 type IdentityAssistantGrant struct {
@@ -236,6 +238,26 @@ type IdentityExpectedLink struct {
 	UserPrincipalName *string
 	CreatedAt         time.Time
 	CreatedByUserID   uuid.UUID
+}
+
+type IdentityIdempotencyErasure struct {
+	Singleton    bool
+	ErasedBefore time.Time
+}
+
+type IdentityIdempotencyKey struct {
+	PrincipalID uuid.UUID
+	Via         string
+	OperationID string
+	Key         string
+	Fingerprint []byte
+	State       string
+	LeaseID     uuid.UUID
+	LeaseUntil  time.Time
+	Answer      []byte
+	CustomerID  *int32
+	CreatedAt   time.Time
+	ExpiresAt   time.Time
 }
 
 type IdentityIntegration struct {

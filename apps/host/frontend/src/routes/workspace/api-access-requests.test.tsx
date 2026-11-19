@@ -109,7 +109,7 @@ describe("an integration's request log", () => {
     await renderTab();
     await screen.findByTestId("request-latest");
 
-    fireEvent.click(screen.getByRole("combobox", { name: "Refused because" }));
+    fireEvent.click(screen.getByRole("combobox", { name: "Reason" }));
     fireEvent.click(await screen.findByRole("option", { name: "Over the rate limit" }));
     await waitFor(() => expect(api.getIntegrationRequests).toHaveBeenLastCalledWith("i-1", { reason: "rate_limited" }));
 

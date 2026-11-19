@@ -186,7 +186,7 @@ func (d *apiDocuments) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if p.Via != nil && p.Via.Kind == contracts.ViaAPIKey {
-		d.keys.serve(w, r, p, documentOperationID, start, func(w http.ResponseWriter) { d.serveKey(w, r, p) })
+		d.keys.serve(w, r, p, documentOperationID, start, func(w http.ResponseWriter, _ *http.Request) { d.serveKey(w, r, p) })
 		return
 	}
 	body := d.full

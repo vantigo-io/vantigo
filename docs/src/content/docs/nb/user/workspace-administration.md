@@ -293,8 +293,10 @@ du den med en gang.
 
 Fanen **Forespørsler** på integrasjonens side viser hva nøklene har kalt de siste 30 dagene:
 forespørslene per dag etter status, operasjonene som er kalt mest, og de 200 siste med nøkkelen,
-statusen og, for en avvist forespørsel, hvorfor. **Nøkkel**, **Status**, **Avvist fordi** og
-**Dag** snevrer den inn. En ny forespørsel vises der i løpet av noen sekunder.
+statusen og, for en avvist forespørsel, hvorfor. En forespørsel som gjentok en tidligere med samme
+`Idempotency-Key`, og fikk svaret på den igjen uten å kjøres to ganger, er merket *Gjentatt svar
+for Idempotency-Key*. **Nøkkel**, **Status**, **Årsak** og **Dag** snevrer den inn. En ny
+forespørsel vises der i løpet av noen sekunder.
 
 **Kontaktpersonen** og hver eier får en e-post 14 dager og 3 dager før en nøkkel utløper, og på
 dagen, med mindre den er rotert eller tilbakekalt. Roter nøkkelen før den tid.

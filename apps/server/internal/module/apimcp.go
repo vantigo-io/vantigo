@@ -163,7 +163,7 @@ func (h *mcpHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if !h.inflight.acquire(p.Via.KeyID) {
 			// A key with mcpInFlight calls running is told to wait (S7); the
 			// refusal is the envelope's, counted as one.
-			h.keys.serve(w, r, p, mcpOperationID, start, func(w http.ResponseWriter) {
+			h.keys.serve(w, r, p, mcpOperationID, start, func(w http.ResponseWriter, _ *http.Request) {
 				t := toolError("This key has %d calls running already: wait for one to finish, and retry shortly.", mcpInFlight)
 				writeRPC(w, http.StatusOK, rpcResponse{ID: call.req.msg.ID, Result: call.req.result(t.fields(), h.version)})
 			})
@@ -172,10 +172,10 @@ func (h *mcpHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		defer h.inflight.release(p.Via.KeyID)
 		// A tool call that reaches the loopback is counted there, once, under
 		// its real operation; the envelope is only recorded (M22).
-		h.keys.recordOnly(w, r, p, mcpOperationID, start, func(w http.ResponseWriter) { h.run(w, r, call) })
+		h.keys.recordOnly(w, r, p, mcpOperationID, start, func(w http.ResponseWriter, _ *http.Request) { h.run(w, r, call) })
 		return
 	}
-	h.keys.serve(w, r, p, mcpOperationID, start, answer)
+	h.keys.serve(w, r, p, mcpOperationID, start, func(w http.ResponseWriter, _ *http.Request) { answer(w) })
 }
 
 // mcpInFlight is how many tool calls one key may have looping back at once,

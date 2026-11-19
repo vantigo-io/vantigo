@@ -153,6 +153,36 @@ func (b *Box) aeadFor(purpose string) (cipher.AEAD, error) {
 // plaintext above maxPlaintextBytes is ErrTooLarge, checked before any key
 // is derived or any buffer allocated.
 func (b *Box) Seal(purpose string, plaintext []byte) ([]byte, error) {
+	return b.seal(purpose, []byte(purpose), plaintext)
+}
+
+// SealBound is Seal with the ciphertext also bound to bound, a value the
+// caller keeps beside it (a row's key, say): purpose derives the key as Seal's
+// does, and purpose, a NUL and bound are AES-GCM's additional data, so the
+// result opens only under the same purpose and the same bound, with
+// OpenBound, and never with Open. It is for a purpose whose values are many
+// and each tied to its own row, where a purpose per row would derive and cache
+// a key per row.
+func (b *Box) SealBound(purpose string, bound, plaintext []byte) ([]byte, error) {
+	return b.seal(purpose, boundAAD(purpose, bound), plaintext)
+}
+
+// OpenBound decrypts what SealBound sealed under purpose and bound. It fails
+// as Open does, with ErrInvalid, whatever the reason.
+func (b *Box) OpenBound(purpose string, bound, sealed []byte) ([]byte, error) {
+	return b.open(purpose, boundAAD(purpose, bound), sealed)
+}
+
+// boundAAD is SealBound's additional data: purpose, a NUL, bound. No purpose
+// contains a NUL, so it never equals Seal's, which is purpose alone.
+func boundAAD(purpose string, bound []byte) []byte {
+	aad := make([]byte, 0, len(purpose)+1+len(bound))
+	aad = append(aad, purpose...)
+	aad = append(aad, 0)
+	return append(aad, bound...)
+}
+
+func (b *Box) seal(purpose string, aad, plaintext []byte) ([]byte, error) {
 	if len(plaintext) > maxPlaintextBytes {
 		return nil, fmt.Errorf("%w: %d bytes, maximum %d", ErrTooLarge, len(plaintext), maxPlaintextBytes)
 	}
@@ -170,7 +200,7 @@ func (b *Box) Seal(purpose string, plaintext []byte) ([]byte, error) {
 	out := make([]byte, 0, 1+nonceSize+len(plaintext)+gcm.Overhead())
 	out = append(out, currentKeyID)
 	out = append(out, nonce...)
-	out = gcm.Seal(out, nonce, plaintext, []byte(purpose))
+	out = gcm.Seal(out, nonce, plaintext, aad)
 	return out, nil
 }
 
@@ -180,6 +210,10 @@ func (b *Box) Seal(purpose string, plaintext []byte) ([]byte, error) {
 // a key derived from a different APP_SECRET) — returns ErrInvalid without
 // saying which.
 func (b *Box) Open(purpose string, sealed []byte) ([]byte, error) {
+	return b.open(purpose, []byte(purpose), sealed)
+}
+
+func (b *Box) open(purpose string, aad, sealed []byte) ([]byte, error) {
 	if len(sealed) < 1+nonceSize {
 		return nil, ErrInvalid
 	}
@@ -195,7 +229,7 @@ func (b *Box) Open(purpose string, sealed []byte) ([]byte, error) {
 	nonce := sealed[1 : 1+nonceSize]
 	ciphertext := sealed[1+nonceSize:]
 
-	plaintext, err := gcm.Open(nil, nonce, ciphertext, []byte(purpose))
+	plaintext, err := gcm.Open(nil, nonce, ciphertext, aad)
 	if err != nil {
 		return nil, ErrInvalid
 	}

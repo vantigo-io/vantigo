@@ -304,6 +304,20 @@ func TestLoad_FlagsAreStrict(t *testing.T) {
 	}
 }
 
+// TestLoad_Idempotency proves IDEMPOTENCY_ENABLED defaults on and is a strict
+// "0"/"1" switch (idempotency design I9).
+func TestLoad_Idempotency(t *testing.T) {
+	if !mustLoad(t, validEnv()).IdempotencyEnabled {
+		t.Error("IDEMPOTENCY_ENABLED unset did not default to on")
+	}
+	if mustLoad(t, with(validEnv(), "IDEMPOTENCY_ENABLED", "0")).IdempotencyEnabled {
+		t.Error("IDEMPOTENCY_ENABLED=0 did not switch it off")
+	}
+	if msg := loadError(t, with(validEnv(), "IDEMPOTENCY_ENABLED", "yes")); !strings.Contains(msg, `IDEMPOTENCY_ENABLED: must be "0" or "1"`) {
+		t.Errorf("error = %q", msg)
+	}
+}
+
 // TestLoad_MCP proves MCP_ENABLED defaults on and is a strict "0"/"1" switch
 // (MCP server design M4).
 func TestLoad_MCP(t *testing.T) {

@@ -1,6 +1,6 @@
 ---
 title: "API introduction"
-description: "Calling Vantigo's API as an integration: authenticating with an API key, the document of what a key reaches, the error codes a refusal carries, the rate limit and its headers, the interactive reference at /api, connecting an AI client over MCP, and the compatibility promise."
+description: "Calling Vantigo's API as an integration: authenticating with an API key, the document of what a key reaches, the error codes a refusal carries, the rate limit and its headers, retrying safely with an Idempotency-Key, the interactive reference at /api, connecting an AI client over MCP, and the compatibility promise."
 sidebar:
   order: 1
 sources:
@@ -10,6 +10,7 @@ sources:
   - apps/server/internal/module/apidocument.go
   - apps/server/internal/module/apikeygate.go
   - apps/server/internal/module/apimcp.go
+  - apps/server/internal/module/idempotency.go
 ---
 
 Vantigo's API is the same HTTP API its own screens use: JSON over HTTPS, one set of paths per
@@ -110,6 +111,58 @@ key does not raise it. Every answer to a request the key is let through for — 
 Past the limit the answer is `429 rate_limited` with `Retry-After`, in seconds. Wait that long
 before sending again rather than retrying at once. A few operations also keep a limit of their
 own, per address.
+
+## Retrying safely
+
+A request that creates something — an invoice, a mail, a shipment — and times out may or may not
+have been carried out. Send it with an `Idempotency-Key` header, a value you make up once for that
+one action (a UUID will do), and send **the same key with every retry of that action**. Vantigo
+then carries the action out once, and answers every retry with the first answer.
+
+```sh
+curl -X POST -H "Authorization: Bearer vtg_…" -H "Idempotency-Key: 8e03978e-40d5-43e8-bc93-6894a57f9324" \
+  -H "Content-Type: application/json" -d '{"name":"Nordvik AS"}' https://vantigo.example.com/api/v1/customers
+```
+
+- **Where it works.** On every `POST` a key can call that creates or changes something and takes
+  and answers JSON: not on a read marked as one (a search, a preview), not on a file upload or a
+  download, not on one that answers a secret once, and not on the staff retention run, which can
+  run longer than two minutes. Elsewhere the header is ignored. Three communications operations and applying a credit note keep a key of their own,
+  described on each. It is never required.
+- **The key** is 1–255 printable ASCII characters, optionally in double quotes; anything else is
+  `400 idempotency_key_invalid`. A key belongs to the integration (across all its keys) and to the
+  operation: the same key on another operation, or from another integration, is another key.
+- **The same request** is the same path, query, `Content-Type` (its media type and charset, so
+  `application/json` and `application/json; charset=utf-8` are one), `If-Match`, `If-None-Match`
+  and body. A JSON body of up to 64 KiB is compared by its content, so another key order or other
+  spacing is the same; a larger body, or one that is not valid UTF-8, is compared byte for byte,
+  so a reformatted large body is a different request.
+- **The replay** answers the first answer's status, its `Content-Type`, `Location`, `ETag` and
+  `Content-Language`, and its body, with `Idempotent-Replayed: true`. A replay is counted against
+  the rate limit and is in the request log with the reason *Replayed for its Idempotency-Key*.
+  Successes (`2xx`) and the refusals `400`, `404`, `410` and `422` the operation answers as its
+  own are replayed. A `409` is not kept, nor is a refusal that is not the operation's to keep (a
+  malformed body, an answer marked `Cache-Control: no-store`): the same request with the same key
+  runs again, once you have resolved the conflict or fixed the body.
+- **A replay is the first answer as it was.** It is not checked again against the record: if the
+  record has changed since, or the integration lost the permission, the retry still gets the
+  first answer, within the 24 hours.
+- **Kept 24 hours.** After that the key is free again. The first answer — status, headers and
+  body — is kept encrypted. When any customer is anonymised, the answers kept before are not given
+  again: a retry gets `idempotency_outcome_unknown`.
+
+| Status | Code | When |
+| --- | --- | --- |
+| `400` | `idempotency_key_invalid` | The header is not one valid key |
+| `409` | `idempotency_in_progress` | The first request with the key is still running; `Retry-After: 1` |
+| `409` | `idempotency_outcome_unknown` | The first request ended without an answer that can be given again (a `5xx`, a timeout, a lost connection, an answer that is not kept): it may or may not have been carried out. Read the record, then use a new key |
+| `422` | `idempotency_key_reused` | The key was used for a different request |
+| `429` | `idempotency_quota` | A new key, while the integration keeps 2,000 live keys or 16 MB of answers already (a request still running counts as 256 KB); `Retry-After: 60`. A key it already has is still answered |
+
+Vantigo never runs a request again for a key whose first request reached the operation: when it
+cannot tell what happened, it says so with `idempotency_outcome_unknown` instead. A first request
+still running two minutes after it began is answered that way too; should it then finish, later
+retries get its answer.
 
 ## What changes, and how you hear of it
 

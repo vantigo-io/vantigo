@@ -17,7 +17,9 @@ This is the promise Vantigo makes to an application that calls its API with an A
 A release may, without notice beyond its release notes:
 
 - add an operation;
-- add an optional field to a request, or an optional query parameter;
+- add an optional field to a request, an optional query parameter, or an optional request header
+  (such as `Idempotency-Key` on the operations that create, see
+  [Retrying safely](/en/reference/api-introduction/#retrying-safely)), with the answers it brings;
 - add a field to a response;
 - add a value to an enum in a response.
 
