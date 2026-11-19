@@ -162,6 +162,59 @@ describe("an integration's page", () => {
     expect(within(never).queryByText("Not granted by the roles")).not.toBeInTheDocument();
   });
 
+  const makeKey = async (made: ApiKey, secret: string) => {
+    api.createApiKey.mockResolvedValue({ key: made, secret });
+    await renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "New API key" }));
+    fireEvent.change(await screen.findByRole("textbox", { name: /^Name/ }), { target: { value: "Agent" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create key" }));
+    await screen.findByText(secret);
+  };
+  const secret = "vtg_0123456789abcdefghijABCDEFGHIJ0123456789abc000001";
+
+  it("shows how an MCP client connects with a new key when the integration's MCP is on", async () => {
+    api.getIntegration.mockResolvedValue({ ...detail(), mcpAccess: "read" });
+    await makeKey(key(), secret);
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText("Connect an AI client (MCP)")).toBeInTheDocument();
+    expect(within(dialog).getByText(/claude mcp add --transport http/).textContent).toBe(
+      `claude mcp add --transport http webshop-sync ${window.location.origin}/api/mcp --header "Authorization: Bearer ${secret}"`,
+    );
+    expect(JSON.parse(within(dialog).getByText(/"mcpServers"/).textContent ?? "")).toEqual({
+      mcpServers: {
+        "webshop-sync": {
+          type: "http",
+          url: `${window.location.origin}/api/mcp`,
+          headers: { Authorization: `Bearer ${secret}` },
+        },
+      },
+    });
+    expect(within(dialog).getByText(/"servers"/).textContent).toContain(`Bearer ${secret}`);
+    expect(within(dialog).queryByText(/only reads/)).not.toBeInTheDocument();
+  });
+
+  it("says a read-only key only reads under read and write", async () => {
+    api.getIntegration.mockResolvedValue({ ...detail(), mcpAccess: "read_write" });
+    await makeKey(key({ readOnly: true }), secret);
+    expect(screen.getByText(/This key is read-only, so an AI client connected with it only reads/)).toBeInTheDocument();
+  });
+
+  it("claims no MCP connection while the integration's MCP is off, and says where to turn it on", async () => {
+    api.getIntegration.mockResolvedValue(detail());
+    await makeKey(key(), secret);
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText(/turn MCP on under MCP on the integration's Overview/)).toBeInTheDocument();
+    expect(within(dialog).queryByText(/claude mcp add/)).not.toBeInTheDocument();
+  });
+
+  it("says nothing of MCP when the installation has switched it off", async () => {
+    api.getIntegration.mockResolvedValue({ ...detail(), mcpAccess: "read", mcpAvailable: false });
+    await makeKey(key(), secret);
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).queryByText(/claude mcp add/)).not.toBeInTheDocument();
+    expect(within(dialog).queryByText(/MCP/)).not.toBeInTheDocument();
+  });
+
   it("shows a new key's secret once, with a curl example, and forgets it when the dialog closes", async () => {
     api.getIntegration.mockResolvedValue(detail());
     const secret = "vtg_0123456789abcdefghijABCDEFGHIJ0123456789abc000000";

@@ -1,3 +1,4 @@
+import { appUrl } from "@vantigo/frontend-shell";
 import type { AuthorizationUser } from "../../api/authorization";
 import type { ApiKey, Integration } from "../../api/integrations";
 
@@ -36,3 +37,34 @@ export const contactOptions = (users: AuthorizationUser[], current: string | nul
   users
     .filter((user) => (user.kind === "person" && !user.isDisabled) || user.id === current)
     .map((user) => ({ value: user.id, label: user.displayName || user.email || user.id }));
+
+/** The MCP endpoint's address on this installation, as the curl hint builds it (MCP server design M33). */
+export const mcpEndpoint = () => `${window.location.origin}${appUrl("/api/mcp")}`;
+
+/**
+ * How a client connects (M16): the Claude Code command, the mcpServers block
+ * Cursor and most clients read, and the servers block VS Code reads, carrying
+ * key — the placeholder vtg_… on the Overview, the new secret in the key
+ * dialog, which is the one place it is shown.
+ */
+export const mcpSnippets = (url: string, name: string, key = "vtg_…") => {
+  const server =
+    name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "vantigo";
+  const authorization = `Bearer ${key}`;
+  return {
+    claude: `claude mcp add --transport http ${server} ${url} --header "Authorization: ${authorization}"`,
+    json: JSON.stringify(
+      { mcpServers: { [server]: { type: "http", url, headers: { Authorization: authorization } } } },
+      null,
+      2,
+    ),
+    vscode: JSON.stringify(
+      { servers: { [server]: { type: "http", url, headers: { Authorization: authorization } } } },
+      null,
+      2,
+    ),
+  };
+};

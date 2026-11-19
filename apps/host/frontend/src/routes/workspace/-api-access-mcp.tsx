@@ -2,7 +2,7 @@ import { Alert, Radio, Stack, Text } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconAlertTriangle } from "@tabler/icons-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { appUrl, PageSection, useI18n } from "@vantigo/frontend-shell";
+import { PageSection, useI18n } from "@vantigo/frontend-shell";
 import {
   type IntegrationDetail,
   type IntegrationMcpAccess,
@@ -10,46 +10,17 @@ import {
   integrationsQueryKey,
   setIntegrationMcpAccess,
 } from "../../api/integrations";
-import { codeOf } from "./-api-access-shared";
-import { Copyable } from "./-api-key-dialog";
+import { codeOf, mcpEndpoint } from "./-api-access-shared";
+import { Copyable, McpSnippets } from "./-api-key-dialog";
 
 const modes: IntegrationMcpAccess[] = ["off", "read", "read_write"];
 
-/** The MCP endpoint's address on this installation, as the curl hint builds it (M33). */
-export const mcpEndpoint = () => `${window.location.origin}${appUrl("/api/mcp")}`;
-
 /**
- * How a client connects (M16): the Claude Code command, the mcpServers block
- * Cursor and most clients read, and the servers block VS Code reads. The key is
- * a placeholder: its secret is shown once, when it is made.
- */
-export const mcpSnippets = (url: string, name: string) => {
-  const server =
-    name
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "") || "vantigo";
-  const header = "Authorization: Bearer vtg_…";
-  return {
-    claude: `claude mcp add --transport http ${server} ${url} --header "${header}"`,
-    json: JSON.stringify(
-      { mcpServers: { [server]: { type: "http", url, headers: { Authorization: "Bearer vtg_…" } } } },
-      null,
-      2,
-    ),
-    vscode: JSON.stringify(
-      { servers: { [server]: { type: "http", url, headers: { Authorization: "Bearer vtg_…" } } } },
-      null,
-      2,
-    ),
-  };
-};
-
-/**
- * An integration's MCP section on its Overview (MCP server design M16, M21,
- * M33): what its keys may do at /api/mcp, saved under If-Match, the endpoint's
- * address and, once it is on, how a client connects. When the installation has
- * switched MCP off the section says so, whatever the setting.
+ * An integration's MCP section on its Overview (MCP server design M16, M33):
+ * what its keys may do at /api/mcp, saved under If-Match, the endpoint's
+ * address and, once it is on, how a client connects, with a placeholder for
+ * the key. When the installation has switched MCP off the section says so,
+ * whatever the setting.
  */
 export const IntegrationMcp = ({ detail, archived }: { detail: IntegrationDetail; archived: boolean }) => {
   const { t } = useI18n("host");
@@ -72,7 +43,6 @@ export const IntegrationMcp = ({ detail, archived }: { detail: IntegrationDetail
     },
   });
   const url = mcpEndpoint();
-  const snippets = mcpSnippets(url, integration.name);
 
   return (
     <PageSection title={t("apiAccess.mcpTitle")}>
@@ -109,9 +79,7 @@ export const IntegrationMcp = ({ detail, archived }: { detail: IntegrationDetail
         <Copyable label={t("apiAccess.mcpUrl")} value={url} />
         {mcpAccess !== "off" && mcpAvailable && (
           <>
-            <Copyable label={t("apiAccess.mcpClaudeCode")} value={snippets.claude} multiline />
-            <Copyable label={t("apiAccess.mcpJson")} value={snippets.json} multiline />
-            <Copyable label={t("apiAccess.mcpVsCode")} value={snippets.vscode} multiline />
+            <McpSnippets url={url} name={integration.name} />
             <Text size="sm" c="dimmed">
               {t("apiAccess.mcpSnippetHint")}
             </Text>
