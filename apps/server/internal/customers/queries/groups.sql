@@ -9,7 +9,7 @@
 -- ux_customers_groups_name_lower already makes two equal names impossible, so
 -- it never decides an order today, and it is there so the order stays total if
 -- that index ever changes.
-SELECT g.id, g.name, g.default_payment_terms_days,
+SELECT g.id, g.name, g.default_payment_terms_days, g.brand_id,
        (SELECT count(*) FROM customers.customers c WHERE c.group_id = g.id) AS customer_count
 FROM customers.customer_groups g
 ORDER BY g.name, g.id;
@@ -22,9 +22,9 @@ ORDER BY g.name, g.id;
 -- it. The handler matches that constraint BY NAME (db.IsUniqueViolation), never
 -- "some unique violation", so a uuid collision on the primary key stays a 500
 -- the caller must hear about.
-INSERT INTO customers.customer_groups (id, name, default_payment_terms_days, created_at, updated_at)
-VALUES (@id, @name, @default_payment_terms_days, @now::timestamptz, @now::timestamptz)
-RETURNING id, name, default_payment_terms_days;
+INSERT INTO customers.customer_groups (id, name, default_payment_terms_days, brand_id, created_at, updated_at)
+VALUES (@id, @name, @default_payment_terms_days, @brand_id, @now::timestamptz, @now::timestamptz)
+RETURNING id, name, default_payment_terms_days, brand_id;
 
 -- name: UpdateCustomerGroupRow :one
 -- UpdateCustomerGroupRow is PUT /customers/groups/{groupId}: a FULL REPLACE of
@@ -47,9 +47,9 @@ RETURNING id, name, default_payment_terms_days;
 -- deleted just after the update turned a successful write into a 404.
 -- pgx.ErrNoRows means the group does not exist.
 UPDATE customers.customer_groups
-SET name = @name, default_payment_terms_days = @default_payment_terms_days, updated_at = @now::timestamptz
+SET name = @name, default_payment_terms_days = @default_payment_terms_days, brand_id = @brand_id, updated_at = @now::timestamptz
 WHERE customers.customer_groups.id = @id
-RETURNING customers.customer_groups.id, name, default_payment_terms_days,
+RETURNING customers.customer_groups.id, name, default_payment_terms_days, brand_id,
           (SELECT count(*) FROM customers.customers c WHERE c.group_id = customers.customer_groups.id) AS customer_count;
 
 -- name: CountCustomerGroupMembers :one
@@ -77,7 +77,7 @@ DELETE FROM customers.customer_groups WHERE id = @id;
 -- does for tags, in the singular because this body names exactly one group and
 -- never a set. It also supplies the name the event's `after` snapshot stores.
 -- pgx.ErrNoRows means no such group.
-SELECT id, name, default_payment_terms_days FROM customers.customer_groups WHERE id = @id;
+SELECT id, name, default_payment_terms_days, brand_id FROM customers.customer_groups WHERE id = @id;
 
 -- name: CustomerGroupsForCustomers :many
 -- CustomerGroupsForCustomers is the group of a whole page of customers in ONE
@@ -163,6 +163,43 @@ WHERE c.id = @id;
 -- tags', so this list stays the one shape customerRowFrom knows.
 UPDATE customers.customers
 SET group_id = @group_id,
+    updated_at = @updated_at::timestamptz,
+    revision = revision + 1
+WHERE id = @id
+  AND (sqlc.narg(expected_revision)::int IS NULL OR revision = sqlc.narg(expected_revision)::int)
+RETURNING id, customer_number, name, status, legal_country, legal_id, legal_name, legal_source, legal_type,
+          created_at, updated_at, type, revision, email, phone, website, owner_user_id;
+
+-- name: CustomerBrandsForCustomers :many
+-- CustomerBrandsForCustomers is the default brand of a whole page of customers
+-- in ONE query (brands design B28, delivery E1): the customer's own brand_id and
+-- its group's, both NULL for "decides nothing". Like CustomerGroupsForCustomers
+-- it serves the list and every single-customer response, so there is one shape
+-- of brand-on-a-response; the LEFT JOIN keeps a customer in no group in the
+-- result, with a NULL group brand. Which of the two applies, and whether it is
+-- still published, is decided in Go against contracts.Brands.
+SELECT c.id AS customer_id, c.brand_id, g.brand_id AS group_brand_id
+FROM customers.customers c
+LEFT JOIN customers.customer_groups g ON g.id = c.group_id
+WHERE c.id = ANY(@customer_ids::int[])
+ORDER BY c.id;
+
+-- name: CustomerBrand :one
+-- CustomerBrand is one customer's own brand_id, for PUT /customers/{id}/brand's
+-- no-op check. pgx.ErrNoRows means the customer does not exist.
+SELECT brand_id FROM customers.customers WHERE id = @id;
+
+-- name: SetCustomerBrand :one
+-- SetCustomerBrand is PUT /customers/{id}/brand's write (brands design B28): the
+-- brand_id column only. Guarded and revision-bumping exactly like
+-- SetCustomerGroup: sqlc.narg(expected_revision) is the caller's revision when
+-- the request carried one, and the handler skips calling this entirely when the
+-- brand did not change, so a resubmit writes nothing and bumps nothing.
+-- @brand_id is NULL to clear the customer's own brand. The RETURNING list is
+-- SetCustomerGroup's, column for column, so the response is built from the same
+-- customerRow shape; the brand itself is decorated onto the response afterwards.
+UPDATE customers.customers
+SET brand_id = @brand_id,
     updated_at = @updated_at::timestamptz,
     revision = revision + 1
 WHERE id = @id

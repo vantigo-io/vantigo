@@ -84,6 +84,7 @@ type customerDecoration struct {
 	owners     map[uuid.UUID]contracts.UserEntry
 	tags       map[int32][]gen.CustomerTag
 	groups     map[int32]gen.CustomerGroupRef
+	brands     map[int32]gen.CustomerBrandInfo
 	mergedInto map[int32]gen.CustomerReference
 	// anonymisations is each customer's anonymisation, scheduled or done
 	// (customers GDPR design D4); a customer never scheduled has no entry.
@@ -120,6 +121,7 @@ func (s *server) decorateKnowing(ctx context.Context, q *store.Queries, known *c
 		owners:         map[uuid.UUID]contracts.UserEntry{},
 		tags:           map[int32][]gen.CustomerTag{},
 		groups:         map[int32]gen.CustomerGroupRef{},
+		brands:         map[int32]gen.CustomerBrandInfo{},
 		mergedInto:     map[int32]gen.CustomerReference{},
 		anonymisations: map[int32]gen.CustomerAnonymisation{},
 	}
@@ -168,6 +170,13 @@ func (s *server) decorateKnowing(ctx context.Context, q *store.Queries, known *c
 	}
 	for _, g := range groups {
 		dec.groups[g.CustomerID] = gen.CustomerGroupRef{Id: g.ID, Name: g.Name}
+	}
+
+	// The default brand is one more batched query over the same ids (brands
+	// design B28) plus the brands the contract reads, resolved to the brand a
+	// new document starts in.
+	if err := s.decorateBrands(ctx, q, customerIDs, &dec); err != nil {
+		return customerDecoration{}, err
 	}
 
 	// The merge marker is one more batched query over the same ids (customers

@@ -54,9 +54,9 @@ import (
 // vocabulary with two billion members of one group is not a case worth a wider
 // type, and the narrowing is here, once, rather than at each call site
 // (tagSummaryOf's own reasoning).
-func groupSummaryOf(id uuid.UUID, name string, defaultPaymentTermsDays *int32, customerCount int64) gen.CustomerGroupSummary {
+func groupSummaryOf(id uuid.UUID, name string, defaultPaymentTermsDays *int32, brand *gen.CustomerBrandChoice, customerCount int64) gen.CustomerGroupSummary {
 	return gen.CustomerGroupSummary{
-		Id: id, Name: name, DefaultPaymentTermsDays: defaultPaymentTermsDays, CustomerCount: int32(customerCount),
+		Id: id, Name: name, DefaultPaymentTermsDays: defaultPaymentTermsDays, Brand: brand, CustomerCount: int32(customerCount),
 	}
 }
 
@@ -139,9 +139,19 @@ func (s *server) GetCustomersGroups(ctx context.Context, _ gen.GetCustomersGroup
 	if err != nil {
 		return nil, fmt.Errorf("customers: list customer groups: %w", err)
 	}
+	var brandIDs []uuid.UUID
+	for _, row := range rows {
+		if row.BrandID != nil {
+			brandIDs = append(brandIDs, *row.BrandID)
+		}
+	}
+	brands, err := s.loadBrands(ctx, brandIDs)
+	if err != nil {
+		return nil, err
+	}
 	data := make([]gen.CustomerGroupSummary, 0, len(rows))
 	for _, row := range rows {
-		data = append(data, groupSummaryOf(row.ID, row.Name, row.DefaultPaymentTermsDays, row.CustomerCount))
+		data = append(data, groupSummaryOf(row.ID, row.Name, row.DefaultPaymentTermsDays, brandChoicePtr(row.BrandID, brands), row.CustomerCount))
 	}
 	return gen.GetCustomersGroups200JSONResponse(data), nil
 }
@@ -165,9 +175,15 @@ func (s *server) PostCustomersGroups(ctx context.Context, req gen.PostCustomersG
 		return gen.PostCustomersGroups400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid customer group", errs)), nil
 	}
 
+	if msg, err := s.validateBrandChange(ctx, nil, body.BrandId); err != nil {
+		return nil, err
+	} else if msg != "" {
+		return gen.PostCustomersGroups400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid customer group", map[string][]string{"brandId": {msg}})), nil
+	}
+
 	q := store.New(s.deps.Pool)
 	group, err := q.InsertCustomerGroup(ctx, store.InsertCustomerGroupParams{
-		ID: uuid.New(), Name: name, DefaultPaymentTermsDays: days, Now: s.deps.Clock(),
+		ID: uuid.New(), Name: name, DefaultPaymentTermsDays: days, BrandID: body.BrandId, Now: s.deps.Clock(),
 	})
 	if err != nil {
 		if db.IsUniqueViolation(err, "ux_customers_groups_name_lower") {
@@ -177,7 +193,11 @@ func (s *server) PostCustomersGroups(ctx context.Context, req gen.PostCustomersG
 	}
 	// A group nobody belongs to yet: the count is 0 by construction, so this
 	// needs no second read.
-	return gen.PostCustomersGroups201JSONResponse(groupSummaryOf(group.ID, group.Name, group.DefaultPaymentTermsDays, 0)), nil
+	brands, err := s.loadBrands(ctx, uuidPtrs(group.BrandID))
+	if err != nil {
+		return nil, err
+	}
+	return gen.PostCustomersGroups201JSONResponse(groupSummaryOf(group.ID, group.Name, group.DefaultPaymentTermsDays, brandChoicePtr(group.BrandID, brands), 0)), nil
 }
 
 // PutCustomersGroupsByGroupId Rename a customer group or change its default payment term
@@ -211,8 +231,26 @@ func (s *server) PutCustomersGroupsByGroupId(ctx context.Context, req gen.PutCus
 	}
 
 	q := store.New(s.deps.Pool)
+	// A brand is checked only when it changes, so a group renamed while its
+	// brand has been archived since is not refused for the state it is in.
+	if body.BrandId != nil {
+		current, err := q.GetCustomerGroup(ctx, req.GroupId)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return gen.PutCustomersGroupsByGroupId404Response{}, nil
+		}
+		if err != nil {
+			return nil, fmt.Errorf("customers: read customer group: %w", err)
+		}
+		msg, err := s.validateBrandChange(ctx, current.BrandID, body.BrandId)
+		if err != nil {
+			return nil, err
+		}
+		if msg != "" {
+			return gen.PutCustomersGroupsByGroupId400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid customer group", map[string][]string{"brandId": {msg}})), nil
+		}
+	}
 	updated, err := q.UpdateCustomerGroupRow(ctx, store.UpdateCustomerGroupRowParams{
-		ID: req.GroupId, Name: name, DefaultPaymentTermsDays: days, Now: s.deps.Clock(),
+		ID: req.GroupId, Name: name, DefaultPaymentTermsDays: days, BrandID: body.BrandId, Now: s.deps.Clock(),
 	})
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
@@ -222,8 +260,12 @@ func (s *server) PutCustomersGroupsByGroupId(ctx context.Context, req gen.PutCus
 	case err != nil:
 		return nil, fmt.Errorf("customers: update customer group: %w", err)
 	}
+	brands, err := s.loadBrands(ctx, uuidPtrs(updated.BrandID))
+	if err != nil {
+		return nil, err
+	}
 	return gen.PutCustomersGroupsByGroupId200JSONResponse(
-		groupSummaryOf(updated.ID, updated.Name, updated.DefaultPaymentTermsDays, updated.CustomerCount)), nil
+		groupSummaryOf(updated.ID, updated.Name, updated.DefaultPaymentTermsDays, brandChoicePtr(updated.BrandID, brands), updated.CustomerCount)), nil
 }
 
 // DeleteCustomersGroupsByGroupId Delete a customer group

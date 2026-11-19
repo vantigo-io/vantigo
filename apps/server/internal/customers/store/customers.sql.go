@@ -755,7 +755,7 @@ func (q *Queries) DirectoryContactsByEmail(ctx context.Context, email string) ([
 }
 
 const directoryCustomer = `-- name: DirectoryCustomer :one
-SELECT c.id, c.name, c.status = 'archived' AS archived, c.group_id, g.name AS group_name, c.merged_into_customer_id,
+SELECT c.id, c.name, c.status = 'archived' AS archived, c.group_id, g.name AS group_name, c.brand_id, g.brand_id AS group_brand_id, c.merged_into_customer_id,
        r.industry_code
 FROM customers.customers c
 LEFT JOIN customers.customer_groups g ON g.id = c.group_id
@@ -770,6 +770,8 @@ type DirectoryCustomerRow struct {
 	Archived             bool
 	GroupID              *uuid.UUID
 	GroupName            *string
+	BrandID              *uuid.UUID
+	GroupBrandID         *uuid.UUID
 	MergedIntoCustomerID *int32
 	IndustryCode         *string
 }
@@ -798,6 +800,8 @@ func (q *Queries) DirectoryCustomer(ctx context.Context, id int32) (DirectoryCus
 		&i.Archived,
 		&i.GroupID,
 		&i.GroupName,
+		&i.BrandID,
+		&i.GroupBrandID,
 		&i.MergedIntoCustomerID,
 		&i.IndustryCode,
 	)
@@ -805,7 +809,7 @@ func (q *Queries) DirectoryCustomer(ctx context.Context, id int32) (DirectoryCus
 }
 
 const directoryCustomers = `-- name: DirectoryCustomers :many
-SELECT c.id, c.name, c.status = 'archived' AS archived, c.group_id, g.name AS group_name, c.merged_into_customer_id,
+SELECT c.id, c.name, c.status = 'archived' AS archived, c.group_id, g.name AS group_name, c.brand_id, g.brand_id AS group_brand_id, c.merged_into_customer_id,
        r.industry_code, c.bookkeeping_obligated_override,
        r.vat_registered AS registry_vat_registered,
        r.business_register_registered AS registry_business_register_registered,
@@ -824,6 +828,8 @@ type DirectoryCustomersRow struct {
 	Archived                           bool
 	GroupID                            *uuid.UUID
 	GroupName                          *string
+	BrandID                            *uuid.UUID
+	GroupBrandID                       *uuid.UUID
 	MergedIntoCustomerID               *int32
 	IndustryCode                       *string
 	BookkeepingObligatedOverride       *bool
@@ -859,6 +865,8 @@ func (q *Queries) DirectoryCustomers(ctx context.Context, ids []int32) ([]Direct
 			&i.Archived,
 			&i.GroupID,
 			&i.GroupName,
+			&i.BrandID,
+			&i.GroupBrandID,
 			&i.MergedIntoCustomerID,
 			&i.IndustryCode,
 			&i.BookkeepingObligatedOverride,
@@ -877,7 +885,7 @@ func (q *Queries) DirectoryCustomers(ctx context.Context, ids []int32) ([]Direct
 }
 
 const directoryCustomersByLegalID = `-- name: DirectoryCustomersByLegalID :many
-SELECT c.id, c.legal_id, c.name, c.status = 'archived' AS archived, c.group_id, g.name AS group_name, c.merged_into_customer_id,
+SELECT c.id, c.legal_id, c.name, c.status = 'archived' AS archived, c.group_id, g.name AS group_name, c.brand_id, g.brand_id AS group_brand_id, c.merged_into_customer_id,
        r.industry_code
 FROM customers.customers c
 LEFT JOIN customers.customer_groups g ON g.id = c.group_id
@@ -899,6 +907,8 @@ type DirectoryCustomersByLegalIDRow struct {
 	Archived             bool
 	GroupID              *uuid.UUID
 	GroupName            *string
+	BrandID              *uuid.UUID
+	GroupBrandID         *uuid.UUID
 	MergedIntoCustomerID *int32
 	IndustryCode         *string
 }
@@ -930,6 +940,8 @@ func (q *Queries) DirectoryCustomersByLegalID(ctx context.Context, arg Directory
 			&i.Archived,
 			&i.GroupID,
 			&i.GroupName,
+			&i.BrandID,
+			&i.GroupBrandID,
 			&i.MergedIntoCustomerID,
 			&i.IndustryCode,
 		); err != nil {

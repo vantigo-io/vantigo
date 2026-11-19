@@ -558,7 +558,7 @@ ORDER BY day;
 -- record counts only while it is still the company the legal identity names
 -- (registry fix round 2, C2), so one left behind by a changed organisation
 -- number answers no code rather than another company's.
-SELECT c.id, c.name, c.status = 'archived' AS archived, c.group_id, g.name AS group_name, c.merged_into_customer_id,
+SELECT c.id, c.name, c.status = 'archived' AS archived, c.group_id, g.name AS group_name, c.brand_id, g.brand_id AS group_brand_id, c.merged_into_customer_id,
        r.industry_code
 FROM customers.customers c
 LEFT JOIN customers.customer_groups g ON g.id = c.group_id
@@ -625,7 +625,7 @@ ORDER BY m.id;
 -- the override and the registry's two flags are the bookkeeping obligation's
 -- (invoices phase 6 design I37), so a caller judging a page of customers needs
 -- no billing profile per row.
-SELECT c.id, c.name, c.status = 'archived' AS archived, c.group_id, g.name AS group_name, c.merged_into_customer_id,
+SELECT c.id, c.name, c.status = 'archived' AS archived, c.group_id, g.name AS group_name, c.brand_id, g.brand_id AS group_brand_id, c.merged_into_customer_id,
        r.industry_code, c.bookkeeping_obligated_override,
        r.vat_registered AS registry_vat_registered,
        r.business_register_registered AS registry_business_register_registered,
@@ -649,7 +649,7 @@ ORDER BY c.id;
 -- returned, with the columns that say so: the caller decides what a merged-away
 -- holder means. The other columns are DirectoryCustomer's own, joined the same
 -- way, ordered by id.
-SELECT c.id, c.legal_id, c.name, c.status = 'archived' AS archived, c.group_id, g.name AS group_name, c.merged_into_customer_id,
+SELECT c.id, c.legal_id, c.name, c.status = 'archived' AS archived, c.group_id, g.name AS group_name, c.brand_id, g.brand_id AS group_brand_id, c.merged_into_customer_id,
        r.industry_code
 FROM customers.customers c
 LEFT JOIN customers.customer_groups g ON g.id = c.group_id
