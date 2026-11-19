@@ -737,6 +737,18 @@ func (s *server) renderPreview(ctx context.Context, q *store.Queries, inv store.
 	if doc.logo, doc.logoType, err = s.logoOf(ctx, draft.SellerLogoObjectKey, draft.SellerLogoSha256); err != nil {
 		return nil, err
 	}
+	// The draft's brand logo, as an issue today would print it (brands design
+	// B27); the preview copies nothing.
+	switch {
+	case inv.BrandLogoObjectKey != nil:
+		if doc.logo, doc.logoType, err = s.logoOf(ctx, inv.BrandLogoObjectKey, inv.BrandLogoSha256); err != nil {
+			return nil, err
+		}
+	case inv.Kind == kindInvoice && inv.BrandID != nil:
+		if b, ct, err := s.brandLogoBytes(ctx, *inv.BrandID); err == nil && b != nil {
+			doc.logo, doc.logoType = b, ct
+		}
+	}
 	if doc.timesheet, err = timesheetOf(ctx, q, inv); err != nil {
 		return nil, err
 	}

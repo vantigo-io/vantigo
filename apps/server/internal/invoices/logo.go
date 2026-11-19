@@ -350,8 +350,12 @@ func (s *server) logoOf(ctx context.Context, key, sha *string) ([]byte, string, 
 	return data, contentType, nil
 }
 
-// documentLogo is an issued document's logo, from its snapshot.
+// documentLogo is an issued document's logo, from its snapshot: its brand's
+// when the issue copied one (brands design B27), else the seller's.
 func (s *server) documentLogo(ctx context.Context, inv store.InvoicesInvoice) ([]byte, string, error) {
+	if inv.BrandLogoObjectKey != nil {
+		return s.logoOf(ctx, inv.BrandLogoObjectKey, inv.BrandLogoSha256)
+	}
 	return s.logoOf(ctx, inv.SellerLogoObjectKey, inv.SellerLogoSha256)
 }
 

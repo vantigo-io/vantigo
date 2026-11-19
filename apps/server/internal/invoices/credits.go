@@ -803,6 +803,9 @@ func (s *server) putCreditDraft(ctx context.Context, q *store.Queries, current s
 	if in.paymentTermsDays != nil {
 		add("paymentTermsDays", "A credit note has no payment terms")
 	}
+	if body.BrandId != nil && (current.BrandID == nil || *body.BrandId != *current.BrandID) {
+		add("brandId", "A credit note keeps its invoice's brand")
+	}
 	if !sameDate(in.deliveryDate, current.DeliveryDate) || !sameDate(in.deliveryFrom, current.DeliveryFrom) || !sameDate(in.deliveryTo, current.DeliveryTo) {
 		add("deliveryDate", "A credit note keeps its original's delivery")
 	}

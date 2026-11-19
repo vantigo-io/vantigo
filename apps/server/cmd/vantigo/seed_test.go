@@ -117,6 +117,11 @@ func TestRun_SeedPopulatesDemoDatasetAndIsIdempotent(t *testing.T) {
 		{"projects.projects", "SELECT count(*) FROM projects.projects", demoProjectCount},
 		// Those of main and one in EUR (seedInvoicesCurrency).
 		{"invoices.invoices", "SELECT count(*) FROM invoices.invoices", 32},
+		// The demo customers' brands on their invoices (brands delivery E2): the
+		// issued ones carry the snapshot's name (no object store is configured
+		// here, so no logo), the drafts only the brand.
+		{"invoices.invoices brand", "SELECT count(*) FROM invoices.invoices WHERE brand_id IS NOT NULL", 16},
+		{"invoices.invoices brand snapshot", "SELECT count(*) FROM invoices.invoices WHERE status = 'issued' AND brand_name IS NOT NULL", 14},
 		{"invoices.consumer_lookups found", "SELECT count(*) FROM invoices.consumer_lookups WHERE status = 'found' AND auto_accept", 1},
 		{"invoices.avtalegiro_mandates unresolved", "SELECT count(*) FROM invoices.avtalegiro_mandates WHERE customer_id IS NULL", 1},
 		{"invoices.avtalegiro_claims accepted", "SELECT count(*) FROM invoices.avtalegiro_claims WHERE status = 'accepted'", 1},

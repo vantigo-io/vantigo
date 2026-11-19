@@ -18,14 +18,15 @@ INSERT INTO invoices.invoices (
     delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country,
     payment_terms_days, currency, your_reference, our_reference, order_reference, note, internal_note,
     net_total, vat_total, gross_total, vat_total_nok, timesheet, created_by_user_id, created_at, updated_at,
-    exchange_rate, exchange_rate_date, exchange_rate_source
+    exchange_rate, exchange_rate_date, exchange_rate_source, brand_id, brand_source, brand_skipped
 ) VALUES (
     'invoice', @customer_id, @delivery_date, @delivery_from, @delivery_to,
     @delivery_address_line1, @delivery_address_line2, @delivery_postal_code, @delivery_city, @delivery_country,
     @payment_terms_days, @currency, @your_reference, @our_reference, @order_reference, @note, @internal_note,
     @net_total, @vat_total, @gross_total, @vat_total_nok, @timesheet, @created_by_user_id, @now::timestamptz, @now::timestamptz,
     coalesce(sqlc.narg(exchange_rate)::numeric, 1), sqlc.narg(exchange_rate_date)::date,
-    coalesce(sqlc.narg(exchange_rate_source)::text, 'nok')
+    coalesce(sqlc.narg(exchange_rate_source)::text, 'nok'),
+    sqlc.narg(brand_id)::uuid, sqlc.narg(brand_source)::text, @brand_skipped::boolean
 )
 RETURNING *;
 
@@ -56,6 +57,18 @@ UPDATE invoices.invoices SET
     timesheet = @timesheet,
     updated_at = @now::timestamptz,
     revision = revision + 1
+WHERE id = @id AND status = 'draft'
+RETURNING *;
+
+-- name: SetDraftBrand :one
+-- SetDraftBrand sets a draft's brand (brands design B28, delivery E2): the
+-- brand, where it came from, and whether a brand higher in the order was
+-- skipped. The revision is the save's own (UpdateDraft moved it). The caller
+-- holds the row and has checked it is a draft.
+UPDATE invoices.invoices SET
+    brand_id = sqlc.narg(brand_id)::uuid,
+    brand_source = sqlc.narg(brand_source)::text,
+    brand_skipped = @brand_skipped::boolean
 WHERE id = @id AND status = 'draft'
 RETURNING *;
 
@@ -195,6 +208,14 @@ UPDATE invoices.invoices SET
     seller_phone = @seller_phone,
     seller_logo_object_key = @seller_logo_object_key,
     seller_logo_sha256 = @seller_logo_sha256,
+    -- The brand's snapshot (brands design B27): its id, name and logo, copied
+    -- into this module's own scope; a credit note's are its invoice's.
+    brand_id = sqlc.narg(brand_id)::uuid,
+    brand_source = sqlc.narg(brand_source)::text,
+    brand_skipped = false,
+    brand_name = sqlc.narg(brand_name)::text,
+    brand_logo_object_key = sqlc.narg(brand_logo_object_key)::text,
+    brand_logo_sha256 = sqlc.narg(brand_logo_sha256)::text,
     net_total = @net_total,
     vat_total = @vat_total,
     gross_total = @gross_total,

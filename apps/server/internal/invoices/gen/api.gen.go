@@ -234,6 +234,30 @@ func (e InvoicesBillingRunRequestSource) Valid() bool {
 	}
 }
 
+// Defines values for InvoicesBrandSource.
+const (
+	Chosen   InvoicesBrandSource = "chosen"
+	Customer InvoicesBrandSource = "customer"
+	Default  InvoicesBrandSource = "default"
+	Group    InvoicesBrandSource = "group"
+)
+
+// Valid indicates whether the value is a known member of the InvoicesBrandSource enum.
+func (e InvoicesBrandSource) Valid() bool {
+	switch e {
+	case Chosen:
+		return true
+	case Customer:
+		return true
+	case Default:
+		return true
+	case Group:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for InvoicesChargePaymentSource.
 const (
 	InvoicesChargePaymentSourceBankFeed InvoicesChargePaymentSource = "bank_feed"
@@ -2412,6 +2436,26 @@ type InvoicesBillingRunRequest struct {
 // InvoicesBillingRunRequestSource defines model for InvoicesBillingRunRequest.Source.
 type InvoicesBillingRunRequestSource string
 
+// InvoicesBrand The brand a document is printed in (brands design B27, B28, delivery E2). On a draft it is the brand the draft carries and where it came from: chosen (the person switched it for this document), customer, group or default (B28). unavailable is true when the draft's choice is archived or unknown now, or when a brand higher in the order was skipped when the draft picked its brand: the editor says so, and the issue falls back to the next brand in the order. On an issued document it is the snapshot: id and name as they were at the issue, never read again, and unavailable is false. The brand changes the logo (and the name kept in the snapshot) of a document, never the seller's legal identity (B29a).
+type InvoicesBrand struct {
+	Id openapi_types.UUID `json:"id"`
+
+	// Name The brand's published name; absent on a draft whose brand cannot be read now.
+	Name        *string             `json:"name,omitempty"`
+	Source      InvoicesBrandSource `json:"source"`
+	Unavailable bool                `json:"unavailable"`
+}
+
+// InvoicesBrandSource defines model for InvoicesBrand.Source.
+type InvoicesBrandSource string
+
+// InvoicesBrandOption A published brand the draft editor's Brand select offers.
+type InvoicesBrandOption struct {
+	Id        openapi_types.UUID `json:"id"`
+	IsDefault bool               `json:"isDefault"`
+	Name      string             `json:"name"`
+}
+
 // InvoicesBuyer The buyer snapshot (D4), written at issue from the customer's billing profile and printed from, never re-read. A credit note carries its original's.
 type InvoicesBuyer struct {
 	AddressLine1   *string `json:"addressLine1,omitempty"`
@@ -3245,8 +3289,10 @@ type InvoicesInvoiceListItem struct {
 
 // InvoicesInvoiceRequest A draft, created (POST) or replaced whole (PUT, with revision) (D4). customerId is the buyer. currency, when given, is NOK or a currency turned on in the settings (invoices phase 6 design I17, I19; else a 400 on currency); on create, absent is the billing profile's currency when it is turned on, else NOK. A draft holding order lines, work or deduction lines keeps its currency (400 on currency). exchangeRate and exchangeRateDate set an agreed rate on a draft in another currency. Delivery is deliveryDate alone, deliveryFrom with deliveryTo (from on or before to), or none — none only on a draft; the issue refuses it. references are at most 100 characters each, note and internalNote 1000. lines are at most 500. On create, an omitted yourReference is the billing profile's buyerReference and an omitted paymentTermsDays the profile's terms, else the settings' default; on PUT an invoice's paymentTermsDays is required and an omitted reference is cleared. On a credit-note draft only what D8 allows may change: lines may be removed, a quantity or a unit price lowered, and a description, the note and the internal note edited. A line's sources name the work it bills (invoices work design D2): never on a create or a credit note; on a PUT of a draft that holds work, required on every line ([] for none), each source one the draft already holds, named once — a save moves work between lines or drops it, and never adds any. At most 5000 sources on one document.
 type InvoicesInvoiceRequest struct {
-	Currency   *string `json:"currency,omitempty"`
-	CustomerId int32   `json:"customerId"`
+	// BrandId The brand this one document is printed in (brands design B28, delivery E2). Must be a published brand, or the one the draft already carries; an unknown or archived id is a field error on brandId. On a create, absent takes the customer's default brand, then its group's, then the workspace default. On a PUT, absent keeps the draft's brand, unless the customer changed and the brand was not chosen: it is then taken from the new customer's defaults again. Not accepted on a credit-note draft, which carries its invoice's brand.
+	BrandId    *openapi_types.UUID `json:"brandId,omitempty"`
+	Currency   *string             `json:"currency,omitempty"`
+	CustomerId int32               `json:"customerId"`
 
 	// DeliveryAddress The place of delivery (§ 5-1-1 nr. 4), when it is not the buyer's address. line1, city and country are required; country is ISO 3166-1 alpha-2.
 	DeliveryAddress *InvoicesDeliveryAddress `json:"deliveryAddress,omitempty"`
@@ -3283,6 +3329,9 @@ type InvoicesInvoiceRequest struct {
 // InvoicesInvoiceResponse One document (D4): every column in camelCase, its lines and its VAT summaries. On a draft the VAT summaries and totals are computed afresh — an invoice draft's with the rates in force today, which the issue resolves again for the issue date; a credit-note draft's at its original lines' snapshot rates, with each line's and the invoice's remainder squared as its issue will — and allowedIssueDates lists the dates it may be issued with today. warnings are never refusals: customer_currency_differs (the billing profile's currency is not the draft's), exchange_rate_missing (invoices phase 6 design I19: a draft in currency without a rate within 7 days; the issue refuses it), issued_late (never on a credit note, which keeps its original's delivery), vat_code_not_valid (a line's code has no rate period covering today; the issue would refuse it), credit_exceeds_invoice, credit_exceeds_line, ehf_buyer_reference_missing (EHF and KID design D8: a draft whose customer's billing profile prefers EHF or whose customer has a Peppol id — or, on a credit-note draft, whose buyer snapshot has a Peppol id — with neither yourReference nor orderReference set — Peppol needs one, and neither can change after the issue), buyer_org_number_missing (invoices phase 6 design I37: the customer directory says the buyer is bookkeeping-obligated and the document has no organisation number; before 1 January 2028 a warning, on an invoice draft and on the issue's answer), buyer_org_number_required (on an invoice draft from that day: the issue would refuse it), credit_limit_exceeded (invoices phase 6 design I38: on an invoice draft, read by GET, and on the issue's answer, the customer's exposure passes its credit limit; creditLimit holds the figures — never a refusal), and for a document that bills work (invoices work design D2) line_differs_from_sources (on a draft, a line's net differs from its sources' amounts summed and rounded to øre), sources_released (on a save's answer, work the save dropped — named in releasedSources), source_changed and source_not_invoiceable (on GET of an invoice draft, for a caller holding invoices:create: a source's billing facts changed since the draft took them, or it is no longer invoiceable — the issue would refuse either); each of the last three also on the line's own warnings; on an invoice draft that is a final settlement (invoices work design D7) deduction_exceeds_invoice (a deduction line takes more than its a-konto has left at its VAT code) and invoice_total_not_positive (its gross is zero or less) — the issue refuses either. A deduction line is totalled at its a-konto line's snapshot (category and rate), never at today's rate of its code. A document that bills work carries sources, its count by state, and each of its lines its sources[]. An invoice carries creditedAmount (its issued credit notes' gross), uncreditedAmount and creditNotes; a credit note carries credits. Every document carries state (D3); an issued invoice also carries paidAmount, openAmount and payments, none of which a draft or a credit note carries; what a credit note credits beyond the open amount moves to the customer's credit (invoices phase 6 design I10). An issued invoice also carries charges, chargePayments, waivers and manualDeliveries (invoices payments and reminders design D8, D9), and its reminders and nextAction — what the reminder engine says to do next today (D8, D10). An issued invoice also carries hold and handoff, its latest hold and hand-off, live or ended (D11); each is absent when the invoice was never held or handed off. Every issued document carries deliveries (D4) and its EHF state, ehf (EHF and KID design D10); sendDefaults is answered only by GET /invoices/{id} and the send, for a caller who may send — and in its place customerAnonymised when the customer is anonymised. An issued invoice with a live pay link carries payLink (invoices payments and reminders design D15), and every issued invoice its Vipps payment attempts, paymentAttempts (D16).
 type InvoicesInvoiceResponse struct {
 	AllowedIssueDates *[]openapi_types.Date `json:"allowedIssueDates,omitempty"`
+
+	// Brand The brand a document is printed in (brands design B27, B28, delivery E2). On a draft it is the brand the draft carries and where it came from: chosen (the person switched it for this document), customer, group or default (B28). unavailable is true when the draft's choice is archived or unknown now, or when a brand higher in the order was skipped when the draft picked its brand: the editor says so, and the issue falls back to the next brand in the order. On an issued document it is the snapshot: id and name as they were at the issue, never read again, and unavailable is false. The brand changes the logo (and the name kept in the snapshot) of a document, never the seller's legal identity (B29a).
+	Brand *InvoicesBrand `json:"brand,omitempty"`
 
 	// Buyer The buyer snapshot (D4), written at issue from the customer's billing profile and printed from, never re-read. A credit note carries its original's.
 	Buyer *InvoicesBuyer `json:"buyer,omitempty"`
@@ -5777,6 +5826,9 @@ type ServerInterface interface {
 	// PostInvoicesBillingRunsByIdCancel Cancel a billing run
 	// (POST /api/v1/invoices/billing-runs/{id}/cancel)
 	PostInvoicesBillingRunsByIdCancel(w http.ResponseWriter, r *http.Request, id int64)
+	// GetInvoicesBrands List the brands a draft can be printed in
+	// (GET /api/v1/invoices/brands)
+	GetInvoicesBrands(w http.ResponseWriter, r *http.Request)
 	// GetInvoicesCollectionExportCsv Export invoices for a collection agency as CSV
 	// (GET /api/v1/invoices/collection-export.csv)
 	GetInvoicesCollectionExportCsv(w http.ResponseWriter, r *http.Request, params GetInvoicesCollectionExportCsvParams)
@@ -7123,6 +7175,20 @@ func (siw *ServerInterfaceWrapper) PostInvoicesBillingRunsByIdCancel(w http.Resp
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostInvoicesBillingRunsByIdCancel(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetInvoicesBrands operation middleware
+func (siw *ServerInterfaceWrapper) GetInvoicesBrands(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetInvoicesBrands(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -10517,6 +10583,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/settings/vipps", wrapper.GetInvoicesSettingsVipps)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/invoices/settings/vipps", wrapper.PutInvoicesSettingsVipps)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/settings/vipps/verify", wrapper.PostInvoicesSettingsVippsVerify)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/brands", wrapper.GetInvoicesBrands)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/invoices/settings/logo", wrapper.DeleteInvoicesSettingsLogo)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/settings/logo", wrapper.GetInvoicesSettingsLogo)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/invoices/settings/logo", wrapper.PutInvoicesSettingsLogo)
@@ -12914,6 +12981,55 @@ func (response PostInvoicesBillingRunsByIdCancel409ApplicationProblemPlusJSONRes
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesBrandsRequestObject struct {
+}
+
+type GetInvoicesBrandsResponseObject interface {
+	VisitGetInvoicesBrandsResponse(w http.ResponseWriter) error
+}
+
+type GetInvoicesBrands200JSONResponse []InvoicesBrandOption
+
+func (response GetInvoicesBrands200JSONResponse) VisitGetInvoicesBrandsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesBrands401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetInvoicesBrands401JSONResponse) VisitGetInvoicesBrandsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesBrands403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetInvoicesBrands403JSONResponse) VisitGetInvoicesBrandsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -21921,6 +22037,9 @@ type StrictServerInterface interface {
 	// PostInvoicesBillingRunsByIdCancel Cancel a billing run
 	// (POST /api/v1/invoices/billing-runs/{id}/cancel)
 	PostInvoicesBillingRunsByIdCancel(ctx context.Context, request PostInvoicesBillingRunsByIdCancelRequestObject) (PostInvoicesBillingRunsByIdCancelResponseObject, error)
+	// GetInvoicesBrands List the brands a draft can be printed in
+	// (GET /api/v1/invoices/brands)
+	GetInvoicesBrands(ctx context.Context, request GetInvoicesBrandsRequestObject) (GetInvoicesBrandsResponseObject, error)
 	// GetInvoicesCollectionExportCsv Export invoices for a collection agency as CSV
 	// (GET /api/v1/invoices/collection-export.csv)
 	GetInvoicesCollectionExportCsv(ctx context.Context, request GetInvoicesCollectionExportCsvRequestObject) (GetInvoicesCollectionExportCsvResponseObject, error)
@@ -23131,6 +23250,30 @@ func (sh *strictHandler) PostInvoicesBillingRunsByIdCancel(w http.ResponseWriter
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PostInvoicesBillingRunsByIdCancelResponseObject); ok {
 		if err := validResponse.VisitPostInvoicesBillingRunsByIdCancelResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetInvoicesBrands operation middleware
+func (sh *strictHandler) GetInvoicesBrands(w http.ResponseWriter, r *http.Request) {
+	var request GetInvoicesBrandsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetInvoicesBrands(ctx, request.(GetInvoicesBrandsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetInvoicesBrands")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetInvoicesBrandsResponseObject); ok {
+		if err := validResponse.VisitGetInvoicesBrandsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -439,6 +439,12 @@ type InvoicesInvoice struct {
 	BuyerAvtalegiroKid         *string
 	ExchangeRateSource         string
 	BuyerVatRegistered         bool
+	BrandID                    *uuid.UUID
+	BrandSource                *string
+	BrandSkipped               bool
+	BrandName                  *string
+	BrandLogoObjectKey         *string
+	BrandLogoSha256            *string
 }
 
 type InvoicesInvoiceHold struct {

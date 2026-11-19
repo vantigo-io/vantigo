@@ -301,6 +301,9 @@ func (s *server) renderInvoice(ctx context.Context, q *store.Queries, inv store.
 		ProjectId: inv.ProjectID, ProjectReference: inv.ProjectReference,
 		Lines: make([]gen.InvoicesLine, 0, len(stored)), VatSummaries: []gen.InvoicesVatSummary{}, Warnings: []string{},
 	}
+	if resp.Brand, err = s.brandResponse(ctx, inv); err != nil {
+		return gen.InvoicesInvoiceResponse{}, err
+	}
 	if inv.DeliveryAddressLine1 != nil {
 		resp.DeliveryAddress = &gen.InvoicesDeliveryAddress{
 			Line1: *inv.DeliveryAddressLine1, Line2: inv.DeliveryAddressLine2, PostalCode: inv.DeliveryPostalCode,

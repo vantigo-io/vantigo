@@ -715,6 +715,14 @@ func (s *server) fromConsumption(ctx context.Context, body gen.InvoicesFromConsu
 		}
 	}
 
+	// The brand a new draft starts in (brands design B28), read before the lock.
+	var brand brandPick
+	if target == nil {
+		if brand, err = s.defaultBrand(ctx, body.CustomerId); err != nil {
+			return consumptionOutcome{}, err
+		}
+	}
+	brandID, brandSource, brandSkipped := brand.params()
 	var out fromWorkResult
 	var rows []heldSource
 	var invoiceID int64
@@ -739,6 +747,7 @@ func (s *server) fromConsumption(ctx context.Context, body gen.InvoicesFromConsu
 				CustomerID: body.CustomerId, DeliveryFrom: from, DeliveryTo: to, PaymentTermsDays: terms,
 				Currency: settings.DefaultCurrency, YourReference: profile.BuyerReference, Note: note,
 				NetTotal: net, VatTotal: vatTotal, GrossTotal: gross, VatTotalNok: vatNOK, Timesheet: false,
+				BrandID: brandID, BrandSource: brandSource, BrandSkipped: brandSkipped,
 				CreatedByUserID: callerID(ctx), Now: s.deps.Clock(),
 			})
 			if err != nil {

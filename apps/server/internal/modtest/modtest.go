@@ -593,8 +593,10 @@ func WithBrandTargets(b contracts.BrandTargets) Option {
 
 // WithBrands sets Deps.Brands, for a module that offers a brand picker or
 // reads a brand (contracts.Brands, brands design B29) to be tested against a
-// FakeBrands without composing Identity beside it. module.Compose keeps a value
-// set here when no enabled module provides the slot.
+// FakeBrands. Identity provides the slot and Compose would overwrite a preset
+// Deps.Brands, so the option replaces identity's Module.Brands in the
+// composition instead: b is what Compose resolves the slot to, for every
+// module. Unset, the slot is identity's real provider.
 func WithBrands(b contracts.Brands) Option {
 	return func(s *setup) { s.brands = b }
 }
@@ -1141,6 +1143,9 @@ func New(t *testing.T, opts ...Option) *Harness {
 	}
 	if s.aiModels != nil {
 		identityModule.AIModels = func(module.Deps) contracts.AIModels { return s.aiModels }
+	}
+	if s.brands != nil {
+		identityModule.Brands = func(module.Deps) contracts.Brands { return s.brands }
 	}
 	if s.wrapUsers != nil && identityModule.Users != nil {
 		users := identityModule.Users
