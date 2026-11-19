@@ -19,8 +19,13 @@ export const NotFoundIllustration = (props: Props) => (
       strokeLinecap="round"
       strokeLinejoin="round"
     />
-    <circle cx="70" cy="64" r="8" fill="var(--mantine-color-gray-3)" />
-    <path d="M142 42v20m-10-10h20" stroke="var(--mantine-color-gray-6)" strokeWidth="4" strokeLinecap="round" />
+    <circle cx="70" cy="64" r="8" fill="light-dark(var(--mantine-color-gray-3), var(--mantine-color-dark-3))" />
+    <path
+      d="M142 42v20m-10-10h20"
+      stroke="light-dark(var(--mantine-color-gray-6), var(--mantine-color-dark-2))"
+      strokeWidth="4"
+      strokeLinecap="round"
+    />
   </Line>
 );
 export const ForbiddenIllustration = (props: Props) => (
@@ -31,13 +36,13 @@ export const ForbiddenIllustration = (props: Props) => (
       width="90"
       height="62"
       rx="10"
-      fill="var(--mantine-color-gray-1)"
+      fill="light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-5))"
       stroke="var(--mantine-color-blue-5)"
       strokeWidth="5"
     />
     <path
       d="M75 70V54a25 25 0 0 1 50 0v16M100 94v16"
-      stroke="var(--mantine-color-gray-6)"
+      stroke="light-dark(var(--mantine-color-gray-6), var(--mantine-color-dark-2))"
       strokeWidth="6"
       strokeLinecap="round"
     />
@@ -48,7 +53,7 @@ export const CrashIllustration = (props: Props) => (
   <Line {...props}>
     <path
       d="M100 24l12 30 32-5-20 26 24 22-34 2-14 34-13-34-35-2 24-22-20-26 32 5 12-30z"
-      fill="var(--mantine-color-orange-0)"
+      fill="light-dark(var(--mantine-color-orange-0), var(--mantine-color-orange-light))"
       stroke="var(--mantine-color-orange-6)"
       strokeWidth="5"
       strokeLinejoin="round"
@@ -64,8 +69,13 @@ export const OfflineIllustration = (props: Props) => (
       strokeWidth="6"
       strokeLinecap="round"
     />
-    <path d="M42 38l116 96" stroke="var(--mantine-color-gray-6)" strokeWidth="7" strokeLinecap="round" />
-    <circle cx="100" cy="127" r="4" fill="var(--mantine-color-gray-6)" />
+    <path
+      d="M42 38l116 96"
+      stroke="light-dark(var(--mantine-color-gray-6), var(--mantine-color-dark-2))"
+      strokeWidth="7"
+      strokeLinecap="round"
+    />
+    <circle cx="100" cy="127" r="4" fill="light-dark(var(--mantine-color-gray-6), var(--mantine-color-dark-2))" />
   </Line>
 );
 export const SessionIllustration = (props: Props) => (
@@ -78,7 +88,7 @@ export const SessionIllustration = (props: Props) => (
     />
     <path
       d="M141 77l8 8-8 8m-9-8h17"
-      stroke="var(--mantine-color-gray-6)"
+      stroke="light-dark(var(--mantine-color-gray-6), var(--mantine-color-dark-2))"
       strokeWidth="4"
       strokeLinecap="round"
       strokeLinejoin="round"
@@ -89,11 +99,11 @@ export const MaintenanceIllustration = (props: Props) => (
   <Line {...props}>
     <path
       d="M124 42a25 25 0 0 0-31 31l-38 38a12 12 0 1 0 17 17l38-38a25 25 0 0 0 31-31l-17 17-14-4-4-14 18-16z"
-      fill="var(--mantine-color-gray-1)"
+      fill="light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-5))"
       stroke="var(--mantine-color-blue-5)"
       strokeWidth="5"
       strokeLinejoin="round"
     />
-    <circle cx="62" cy="119" r="3" fill="var(--mantine-color-gray-6)" />
+    <circle cx="62" cy="119" r="3" fill="light-dark(var(--mantine-color-gray-6), var(--mantine-color-dark-2))" />
   </Line>
 );

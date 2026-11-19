@@ -14,7 +14,7 @@ export const ResetPasswordPage = ({ email, token }: { email: string; token: stri
   });
   const validation = mutation.error instanceof ApiValidationError ? mutation.error : null;
   return (
-    <Center mih="100vh" bg="gray.0">
+    <Center mih="100vh" bg="light-dark(var(--mantine-color-gray-0), var(--vantigo-body-bg))">
       <Card withBorder p="xl" maw={440} w="100%">
         <Stack>
           <Title order={2}>{t("auth.chooseNewPassword")}</Title>

@@ -32,7 +32,7 @@ export const AcceptInvitationPage = ({ token }: { token: string }) => {
     },
   });
   return (
-    <Center mih="100vh" bg="gray.0">
+    <Center mih="100vh" bg="light-dark(var(--mantine-color-gray-0), var(--vantigo-body-bg))">
       <Card withBorder p="xl" maw={440} w="100%">
         <Stack>
           <Title order={2}>{t("auth.joinApp", { app: appConfig().title })}</Title>
