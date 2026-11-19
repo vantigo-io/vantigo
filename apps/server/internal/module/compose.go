@@ -385,6 +385,12 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 		return nil, nil, err
 	}
 
+	// The legal entities identity assigns brands to (contracts.BrandTargets,
+	// brands design B9) resolve beside it, for the same reason.
+	if deps, err = withBrandTargets(deps, mods); err != nil {
+		return nil, nil, err
+	}
+
 	// Customer reference holders are the first many-provider contract slot
 	// (contracts.CustomerReferenceHolder, customers merge design D1): every
 	// module given that declares one contributes it, in the order given, so

@@ -168,6 +168,7 @@ type setup struct {
 	calendarSources   []contracts.CalendarSource
 	provisioners      []contracts.IdentityProvisioner
 	workforce         contracts.Workforce
+	brandTargets      contracts.BrandTargets
 	mailboxCalendars  []contracts.MailboxCalendar
 	channelMailboxes  []contracts.ChannelMailbox
 	channelMessengers []contracts.ChannelMessenger
@@ -577,6 +578,16 @@ func WithIdentityProvisioners(providers ...contracts.IdentityProvisioner) Option
 // "staff", and the fake is what stands in for it here.
 func WithWorkforce(w contracts.Workforce) Option {
 	return func(s *setup) { s.workforce = w }
+}
+
+// WithBrandTargets sets Deps.BrandTargets, for a module that reads the legal
+// entities a person works under (contracts.BrandTargets, brands design B9) to
+// be tested against a fake without composing Staff beside it. module.Compose
+// keeps a value set here when no enabled module provides the slot. Leaving it
+// out is the installation without Staff: the slot stays nil, which identity
+// reads as "no legal-entity targets".
+func WithBrandTargets(b contracts.BrandTargets) Option {
+	return func(s *setup) { s.brandTargets = b }
 }
 
 // WithMailboxCalendar appends to Deps.MailboxCalendars, for the calendar to be
@@ -1065,6 +1076,7 @@ func New(t *testing.T, opts ...Option) *Harness {
 		CalendarSources:          s.calendarSources,
 		IdentityProvisioners:     s.provisioners,
 		Workforce:                s.workforce,
+		BrandTargets:             s.brandTargets,
 		MailboxCalendars:         s.mailboxCalendars,
 		ChannelMailboxes:         s.channelMailboxes,
 		ChannelMessengers:        s.channelMessengers,
