@@ -47,7 +47,7 @@ var (
 	// review an Owner opens, not a list they refresh.
 	// The brand's anonymous operations (brands design B15, B16, B17): the
 	// public look, the stylesheet every page load links, and the logo files.
-	policyBrandPublic = ratelimit.Policy{Name: "BrandPublic", Limit: 60, Window: time.Minute, Message: authRateLimitMessage}
+	policyBrandPublic = ratelimit.Policy{Name: "BrandPublic", Limit: 30, Window: time.Minute, Message: authRateLimitMessage}
 	policyBrandCSS    = ratelimit.Policy{Name: "BrandCSS", Limit: 300, Window: time.Minute, Message: authRateLimitMessage}
 	policyBrandAssets = ratelimit.Policy{Name: "BrandAssets", Limit: 600, Window: time.Minute, Message: authRateLimitMessage}
 
@@ -286,5 +286,5 @@ func mount(a *Access, d module.Deps) (http.Handler, error) {
 	if err := router.Err(); err != nil {
 		return nil, err
 	}
-	return srv.scimIngress(scimRoutes(d), handler), nil
+	return srv.scimIngress(scimRoutes(d), srv.observeBrandLookup(handler)), nil
 }

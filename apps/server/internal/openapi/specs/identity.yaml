@@ -4112,6 +4112,9 @@ components:
                     type: boolean
                 logos:
                     $ref: '#/components/schemas/BrandLogoUrls'
+                matched:
+                    description: On the public look only (B25) - true when the domain asked about is attached to a published brand by a rule, false for the default brand.
+                    type: boolean
                 name:
                     type: string
                 source:
@@ -6703,8 +6706,15 @@ paths:
             x-vantigo-api: never
     /api/v1/identity/brand/public:
         get:
-            description: 'The look of the default brand for the pages shown before sign-in (brands design B17): setup, sign-in, password recovery, accepting an invitation and the signed-out screen. Anonymous, cached for 60 seconds, rate-limited per address. It never carries more than the brand''s public look.'
+            description: 'The look of a brand for the pages shown before sign-in (brands design B17, B25): setup, sign-in, password recovery, accepting an invitation and the signed-out screen. Without domain it is the default brand, cached for 60 seconds. With domain (the part after the @ of an address typed, never the whole address) it is the brand of a published brand''s e-mail-domain rule for that domain, else the default brand with matched false; the answer is the same whether or not anyone has an account on the domain, and is cached for 300 seconds. Anonymous, rate-limited per address (30 a minute). It never carries more than the brand''s public look.'
             operationId: getIdentityBrandPublic
+            parameters:
+                - description: 'A domain such as acme.no: dotted labels of letters, digits and hyphens, the last of 2 or more letters. Never an address; a value with an @ is refused.'
+                  in: query
+                  name: domain
+                  schema:
+                    maxLength: 253
+                    type: string
             responses:
                 "200":
                     content:
@@ -6712,6 +6722,12 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/ResolvedBrand'
                     description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Bad Request - domain_invalid
                 "429":
                     content:
                         application/json:

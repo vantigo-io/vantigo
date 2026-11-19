@@ -69,6 +69,13 @@ Choose **Sign in**.
   page says so and you can try again or use another method.
 - **Forgot your password?** leads to the reset flow below.
 
+The page may change its look as you type your address. If your organisation has its own
+brand in Vantigo, the colours, logo and name fade into it once the part after the @ is
+recognised, a moment after you stop typing or when you leave the field. Nothing else
+changes: it is the same page, and signing in works the same whether or not it changes. The
+page sends only the part after the @, never your name or password, for this. With reduced
+motion switched on in your computer, the change is instant.
+
 When your account has an authenticator app enabled, a second page, **Verify your
 sign-in**, asks for a **Security code**: the six-digit code from the app, or one of
 your recovery codes. Choose **Verify**. **Use another sign-in method** takes you back

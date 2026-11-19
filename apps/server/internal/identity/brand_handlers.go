@@ -80,7 +80,10 @@ type brandJSONResponse struct {
 func (r brandJSONResponse) set(w http.ResponseWriter) {
 	w.Header().Set("Cache-Control", r.cacheControl)
 	w.Header().Set("ETag", r.etag)
-	w.Header().Add("Vary", "Cookie")
+	// The public look reads no cookie: a shared cache may key it by URL alone.
+	if !r.public {
+		w.Header().Add("Vary", "Cookie")
+	}
 }
 
 func (r brandJSONResponse) VisitGetIdentityBrandResponse(w http.ResponseWriter) error {
@@ -151,18 +154,48 @@ func (s *server) GetIdentityBrand(ctx context.Context, req gen.GetIdentityBrandR
 }
 
 // GetIdentityBrandPublic Get the public brand (GET /api/v1/identity/brand/public)
-func (s *server) GetIdentityBrandPublic(ctx context.Context, _ gen.GetIdentityBrandPublicRequestObject) (gen.GetIdentityBrandPublicResponseObject, error) {
-	b, v, err := s.resolve(ctx, uuid.Nil)
+//
+// Without domain it is the default brand. With one it is the brand of the
+// domain rule of a published brand, else the default brand, in the same shape
+// and status (B25): see brand_lookup.go.
+func (s *server) GetIdentityBrandPublic(ctx context.Context, req gen.GetIdentityBrandPublicRequestObject) (gen.GetIdentityBrandPublicResponseObject, error) {
+	ttl, result := brandPublicTTL, lookupDefault
+	var (
+		b       brandRow
+		v       brandVersion
+		matched bool
+		err     error
+	)
+	if req.Params.Domain == nil {
+		b, v, err = s.resolve(ctx, uuid.Nil)
+	} else {
+		domain, ok := lookupDomain(*req.Params.Domain)
+		if !ok {
+			s.metrics.publicLookups.Add(ctx, 1, resultAttr(lookupInvalid))
+			return gen.GetIdentityBrandPublic400JSONResponse(authErrorBody(codeDomainInvalid,
+				"Give a domain such as acme.no, without the part before the @.", map[string][]string{"domain": {"Not a domain."}})), nil
+		}
+		b, v, matched, err = s.brandForDomain(ctx, domain)
+		ttl, result = brandLookupTTL, lookupUnmatched
+		if matched {
+			result = lookupMatched
+		}
+		s.deps.Logger.InfoContext(ctx, "identity: a brand was looked up by domain", "domain_hash", domainHash(domain), "matched", matched)
+	}
 	if err != nil {
 		return nil, err
 	}
 	payload := s.resolvedBrand(b, v, false)
+	payload.Matched = &matched
+	if matched {
+		payload.Source = gen.ResolvedBrandSourceRule
+	}
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return nil, fmt.Errorf("identity: marshal a brand: %w", err)
 	}
-	s.metrics.publicLookups.Add(ctx, 1)
-	return brandJSONResponse{payload: payload, etag: etagOf(body), cacheControl: fmt.Sprintf("public, max-age=%d", int(brandPublicTTL.Seconds())), public: true}, nil
+	s.metrics.publicLookups.Add(ctx, 1, resultAttr(result))
+	return brandJSONResponse{payload: payload, etag: etagOf(body), cacheControl: fmt.Sprintf("public, max-age=%d", int(ttl.Seconds())), public: true}, nil
 }
 
 // GetIdentityBrands List the brands (GET /api/v1/identity/brands)

@@ -2214,7 +2214,10 @@ type ResolvedBrand struct {
 
 	// Logos The URLs of a version's logos, by slot; a slot with no logo is absent.
 	Logos BrandLogoUrls `json:"logos"`
-	Name  string        `json:"name"`
+
+	// Matched On the public look only (B25) - true when the domain asked about is attached to a published brand by a rule, false for the default brand.
+	Matched *bool  `json:"matched,omitempty"`
+	Name    string `json:"name"`
 
 	// Source Why the person sees this brand (B7).
 	Source  ResolvedBrandSource `json:"source"`
@@ -3262,6 +3265,12 @@ type PutIdentityBrandRulesParams struct {
 type GetIdentityBrandCssParams struct {
 	// IfNoneMatch The ETag a client holds; when it is the current one the answer is a bare 304.
 	IfNoneMatch *string `json:"If-None-Match,omitempty"`
+}
+
+// GetIdentityBrandPublicParams defines parameters for GetIdentityBrandPublic.
+type GetIdentityBrandPublicParams struct {
+	// Domain A domain such as acme.no: dotted labels of letters, digits and hyphens, the last of 2 or more letters. Never an address; a value with an @ is refused.
+	Domain *string `form:"domain,omitempty" json:"domain,omitempty"`
 }
 
 // GetIdentityBrandsResolutionParams defines parameters for GetIdentityBrandsResolution.
@@ -4465,7 +4474,7 @@ type ServerInterface interface {
 	GetIdentityBrandCss(w http.ResponseWriter, r *http.Request, params GetIdentityBrandCssParams)
 	// GetIdentityBrandPublic Get the public brand
 	// (GET /api/v1/identity/brand/public)
-	GetIdentityBrandPublic(w http.ResponseWriter, r *http.Request)
+	GetIdentityBrandPublic(w http.ResponseWriter, r *http.Request, params GetIdentityBrandPublicParams)
 	// GetIdentityBrands List the brands
 	// (GET /api/v1/identity/brands)
 	GetIdentityBrands(w http.ResponseWriter, r *http.Request)
@@ -6071,8 +6080,27 @@ func (siw *ServerInterfaceWrapper) GetIdentityBrandCss(w http.ResponseWriter, r 
 // GetIdentityBrandPublic operation middleware
 func (siw *ServerInterfaceWrapper) GetIdentityBrandPublic(w http.ResponseWriter, r *http.Request) {
 
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetIdentityBrandPublicParams
+
+	// ------------- Optional query parameter "domain" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "domain", r.URL.Query(), &params.Domain, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "domain"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "domain", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetIdentityBrandPublic(w, r)
+		siw.Handler.GetIdentityBrandPublic(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -14347,6 +14375,7 @@ func (response GetIdentityBrandCss304Response) VisitGetIdentityBrandCssResponse(
 }
 
 type GetIdentityBrandPublicRequestObject struct {
+	Params GetIdentityBrandPublicParams
 }
 
 type GetIdentityBrandPublicResponseObject interface {
@@ -14363,6 +14392,20 @@ func (response GetIdentityBrandPublic200JSONResponse) VisitGetIdentityBrandPubli
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityBrandPublic400JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityBrandPublic400JSONResponse) VisitGetIdentityBrandPublicResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -27316,8 +27359,10 @@ func (sh *strictHandler) GetIdentityBrandCss(w http.ResponseWriter, r *http.Requ
 }
 
 // GetIdentityBrandPublic operation middleware
-func (sh *strictHandler) GetIdentityBrandPublic(w http.ResponseWriter, r *http.Request) {
+func (sh *strictHandler) GetIdentityBrandPublic(w http.ResponseWriter, r *http.Request, params GetIdentityBrandPublicParams) {
 	var request GetIdentityBrandPublicRequestObject
+
+	request.Params = params
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.GetIdentityBrandPublic(ctx, request.(GetIdentityBrandPublicRequestObject))
