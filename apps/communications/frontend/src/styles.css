@@ -48,7 +48,7 @@
 }
 .conversation-row:hover,
 .conversation-row.selected {
-  background: color-mix(in srgb, var(--mantine-color-vantigo-0) 55%, transparent);
+  background: color-mix(in srgb, var(--vantigo-subtle-bg) 55%, transparent);
 }
 .conversation-row.unread {
   border-left: 3px solid var(--mantine-color-vantigo-6);
@@ -94,17 +94,21 @@
 }
 .message-card.outbound {
   margin-left: auto;
-  background: var(--mantine-color-vantigo-0);
+  background: var(--vantigo-subtle-bg);
 }
 .message-card.internal_note {
-  background: #fff8df;
-  border-color: #f1d888;
+  background: light-dark(#fff8df, #3a3320);
+  border-color: light-dark(#f1d888, #6b5d2a);
 }
+/* E-mail HTML is another sender's design: it stays a white paper card in both schemes. */
 .message-html {
   display: block;
   width: 100%;
   min-height: 80px;
   border: 0;
+  background: #fff;
+  border-radius: 4px;
+  box-shadow: 0 0 0 1px light-dark(transparent, var(--vantigo-border));
 }
 .composer {
   border-top: 1px solid var(--mantine-color-default-border);
@@ -152,11 +156,11 @@
 }
 .chat-bubble.outbound {
   border-bottom-right-radius: 4px;
-  background: var(--mantine-color-vantigo-0);
+  background: var(--vantigo-subtle-bg);
 }
 .chat-bubble.internal_note {
-  background: #fff8df;
-  border-color: #f1d888;
+  background: light-dark(#fff8df, #3a3320);
+  border-color: light-dark(#f1d888, #6b5d2a);
 }
 .chat-image {
   display: block;
@@ -168,7 +172,7 @@
 .chat-image.placeholder {
   width: 160px;
   height: 100px;
-  background: var(--mantine-color-gray-1);
+  background: light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-6));
 }
 .chat-carousel {
   max-width: 100%;
@@ -185,7 +189,7 @@
   border-radius: 6px;
 }
 .chat-card-image.placeholder {
-  background: var(--mantine-color-gray-1);
+  background: light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-6));
 }
 .thread-presence {
   min-height: 22px;

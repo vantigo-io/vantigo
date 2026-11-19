@@ -395,7 +395,7 @@ export const suggestConversationCustomerWithAi = (id: string) =>
 
 /** Only use when the API has supplied sanitized HTML. The sandbox prevents scripts, forms, popups and network access. */
 export const safeHtmlSrcDoc = (html: string) =>
-  `<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'"><style>body{font:14px system-ui;color:#253248;margin:0;line-height:1.55}img{max-width:100%}</style>${html}`;
+  `<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'"><style>:root{color-scheme:light}body{font:14px system-ui;color:#253248;background:#fff;margin:0;line-height:1.55}img{max-width:100%}</style>${html}`;
 
 /** The image types an inline image is shown as, and the largest one, in bytes. */
 export const inlineImageTypes = ["image/png", "image/gif", "image/jpeg", "image/webp"];

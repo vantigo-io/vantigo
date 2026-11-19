@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { type Attachment, fetchInlineImage, inlineImageMaxBytes, inlineImages } from "./conversations";
+import { type Attachment, fetchInlineImage, inlineImageMaxBytes, inlineImages, safeHtmlSrcDoc } from "./conversations";
 
 const image = (overrides: Partial<Attachment> = {}): Attachment => ({
   id: "img-1",
@@ -75,5 +75,16 @@ describe("inline images", () => {
   it("leaves an image the fetch could not turn into data: as it was", async () => {
     const html = '<img src="/api/v1/communications/attachments/img-1/download">';
     await expect(inlineImages(html, [image()], vi.fn().mockRejectedValue(new Error("offline")))).resolves.toBe(html);
+  });
+});
+
+describe("safeHtmlSrcDoc", () => {
+  // E-mail HTML is another sender's design, so it stays on a white paper card in dark mode too.
+  it("gives the e-mail document an explicit white background and dark text", () => {
+    const doc = safeHtmlSrcDoc("<p>Hello</p>");
+    expect(doc).toContain("background:#fff");
+    expect(doc).toContain("color:#253248");
+    expect(doc).toContain("color-scheme:light");
+    expect(doc.endsWith("<p>Hello</p>")).toBe(true);
   });
 });
