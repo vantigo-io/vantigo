@@ -2,7 +2,7 @@ import { Alert, Button, Card, Center, Stack, Text, TextInput, Title } from "@man
 import { useForm } from "@mantine/form";
 import { useMutation } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { useI18n } from "@vantigo/frontend-shell";
+import { useI18n, vantigoTokens } from "@vantigo/frontend-shell";
 import { requestPasswordRecovery } from "../api/account-lifecycle";
 import "../i18n";
 
@@ -11,7 +11,7 @@ const ForgotPasswordPage = () => {
   const form = useForm({ initialValues: { email: "" } });
   const mutation = useMutation({ mutationFn: () => requestPasswordRecovery(form.values.email) });
   return (
-    <Center mih="100vh" bg="light-dark(var(--mantine-color-gray-0), var(--vantigo-body-bg))">
+    <Center mih="100vh" bg={vantigoTokens.pageBg}>
       <Card withBorder p="xl" maw={440} w="100%">
         <Stack>
           <Title order={2}>{t("auth.resetTitle")}</Title>

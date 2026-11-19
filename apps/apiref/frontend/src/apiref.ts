@@ -36,6 +36,16 @@ export function isDarkScheme(stored: string | null, prefersDark: boolean): boole
 export const DOCUMENT_URL = "api/openapi.json";
 export const SESSION_DOCUMENT_URL = "api/openapi.json?view=api";
 
+/** The scheme Vantigo stored, or null when none is or storage is blocked. */
+export function readStoredScheme(storage: Pick<Storage, "getItem">): string | null {
+  try {
+    return storage.getItem("vantigo-color-scheme");
+  } catch {
+    // Storage is blocked: the caller follows the browser.
+    return null;
+  }
+}
+
 /**
  * Scalar's configuration: the document as content, and nothing that leaves
  * the installation — no default fonts (fonts.scalar.com), no proxy (none is

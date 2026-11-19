@@ -2,7 +2,7 @@ import { Alert, Anchor, Button, Card, Center, PasswordInput, Stack, Text, TextIn
 import { useForm } from "@mantine/form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { appConfig, appUrl, SupportContactLine, useI18n } from "@vantigo/frontend-shell";
+import { appConfig, appUrl, SupportContactLine, useI18n, vantigoTokens } from "@vantigo/frontend-shell";
 import { bootstrapAccount, fetchBootstrapStatus } from "../api/account-lifecycle";
 import { fetchSession, sessionQueryKey } from "../api/auth";
 import { showLifecycleFormError } from "../lib/lifecycle-form-errors";
@@ -40,7 +40,7 @@ const SetupPage = () => {
     );
   if (!status.data?.available)
     return (
-      <Center mih="100vh" bg="light-dark(var(--mantine-color-gray-0), var(--vantigo-body-bg))">
+      <Center mih="100vh" bg={vantigoTokens.pageBg}>
         <Card withBorder p="xl" maw={440} w="100%">
           <Stack>
             <Title order={2}>{t("auth.setupUnavailable")}</Title>
@@ -53,7 +53,7 @@ const SetupPage = () => {
       </Center>
     );
   return (
-    <Center mih="100vh" bg="light-dark(var(--mantine-color-gray-0), var(--vantigo-body-bg))" p="md">
+    <Center mih="100vh" bg={vantigoTokens.pageBg} p="md">
       <Stack maw={460} w="100%" align="center">
         <Card withBorder shadow="sm" p="xl" w="100%">
           <Stack>

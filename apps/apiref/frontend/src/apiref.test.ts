@@ -3,6 +3,7 @@ import {
   DOCUMENT_URL,
   type Environment,
   isDarkScheme,
+  readStoredScheme,
   type ScalarGlobal,
   SESSION_DOCUMENT_URL,
   scalarConfiguration,
@@ -238,5 +239,27 @@ describe("the colour scheme", () => {
       hideDarkModeToggle: true,
     });
     expect(scalarConfiguration({}, null)).toMatchObject({ darkMode: false, forceDarkModeState: "light" });
+  });
+});
+
+describe("the stored colour scheme", () => {
+  it("reads the Vantigo key, and is null when storage throws", () => {
+    const getItem = vi.fn(() => "dark");
+    expect(readStoredScheme({ getItem })).toBe("dark");
+    expect(getItem).toHaveBeenCalledWith("vantigo-color-scheme");
+    expect(
+      readStoredScheme({
+        getItem: () => {
+          throw new DOMException("blocked", "SecurityError");
+        },
+      }),
+    ).toBeNull();
+  });
+
+  it("start() sets the document's colour scheme and passes dark to Scalar", async () => {
+    const { env, root, mounted } = setup({ session: true });
+    await start(root, { ...env, dark: true });
+    expect(document.documentElement.style.colorScheme).toBe("dark");
+    expect(mounted[0]?.configuration).toMatchObject({ darkMode: true, forceDarkModeState: "dark" });
   });
 });

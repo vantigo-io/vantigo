@@ -3,13 +3,13 @@ body {
   margin: 0;
   font-family: system-ui, sans-serif;
   /* The page sets color-scheme from the visitor's choice (apiref.ts). */
-  background: light-dark(#fff, #0f0f0f);
-  color: light-dark(#1a1a1a, #e6e6e6);
+  background: light-dark(#fff, #15182a);
+  color: light-dark(#000, #dde1ef);
 }
 
 .apiref-header {
   padding: 0.75rem 1rem;
-  border-bottom: 1px solid light-dark(#d0d4da, #2e2e2e);
+  border-bottom: 1px solid light-dark(#d0d4da, #3d4361);
 }
 
 .apiref-header h1 {
@@ -33,7 +33,7 @@ body {
 
 .apiref-key small {
   flex-basis: 100%;
-  color: light-dark(#555b65, #a3a3a3);
+  color: light-dark(#555b65, #8c93ad);
 }
 
 .apiref-notice {

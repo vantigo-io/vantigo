@@ -61,6 +61,8 @@ export const vantigoTokens = {
   border: "var(--vantigo-border)",
   link: "var(--vantigo-link)",
   subtleBg: "var(--vantigo-subtle-bg)",
+  /** The full-page backdrop of the public pages: Mantine gray-0 in light, the body background in dark. */
+  pageBg: "light-dark(var(--mantine-color-gray-0), var(--vantigo-body-bg))",
 } as const;
 
 /**
