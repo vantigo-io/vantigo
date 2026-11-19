@@ -222,6 +222,36 @@ the hand-rolled core for the official SDK if the specification outgrows it.
 
 - **1** (2026-11-19): first draft from R.
 - **2** (2026-11-19): the review's 19 findings, §11; the deliveries are now two.
+- **3** (2026-11-19, delivery A built): the specification pages re-read
+  (2026-07-28 `basic/transports/streamable-http`, `basic/versioning`, `basic/index`,
+  `server/discover`, `server/tools`, `server/utilities/caching`; 2025-11-25 `basic/lifecycle`,
+  `basic/transports`). Where they say more than M7/M28, the pages win:
+  - `supportedVersions` (and `-32022`'s `data.supported`) lists `2026-07-28`, `2025-11-25` and
+    `2025-06-18`: the endpoint is dual-era, as the versioning page's example server is. A
+    request whose `_meta` names a legacy version is served with the legacy method set (the
+    header must equal it), a row M28's table lacked.
+  - A modern request whose `_meta` lacks `io.modelcontextprotocol/clientCapabilities` is
+    `400`/`-32602` (`basic/index`, per-request fields).
+  - A modern request (it has `_meta`) without `MCP-Protocol-Version` is `-32020`: the transport
+    page lists a missing required header as a header-validation failure. M28's "header missing
+    → 400" rule applies to a request with no `_meta`: `-32022` for `server/discover`, `-32600`
+    otherwise.
+  - A notification is `202` after the version checks, with no `Mcp-Method` check: the
+    revision defines no header rule for notification POSTs.
+  - `-32601` is `404` for a modern request, `200` for a legacy one: under 2025-11-25 a `404`
+    tells the client its session is gone. `-32602` for an unknown tool is `200` (a JSON-RPC
+    error answer; no page gives it a status).
+  - Every modern result carries `serverInfo` in its `_meta` (`basic/index`, SHOULD), not only
+    `server/discover`'s. `server/discover`'s `ttlMs` is an hour.
+  Choices the spec left open: the per-IP policy of M22 is 1,200 a minute; `read` takes a
+  `headers` argument for M31's three headers; the read tools' annotations also say
+  `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`; an empty `2xx` is
+  `{"status": N}`; the envelope of a looped-back `read` is recorded (`postApiMcp`, record-only)
+  beside the counted row of the operation it called. The kind is read with the router's own
+  rule, factored out of `Router.HandleFunc` as `setAPIRule`; the dispatcher's tokenizer,
+  `Describe` compactor and JSON checks are exported from `internal/operations` (`shared.go`).
+  `IntegrationDetail` carries both `mcpAccess` and `mcpAvailable`; `Integration` (the list)
+  does not.
 
 ## 10. What overturning a default changes
 

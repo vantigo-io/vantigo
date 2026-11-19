@@ -1,6 +1,6 @@
 ---
 title: API-tilgang
-description: La et annet program bruke Vantigos API uten en persons økt — integrasjoner, rollene deres, API-nøkler med utløp, begrensning, bryter for bare lesing og nettverk, rotering og tilbakekalling av en nøkkel, hva en nøkkel aldri får, hvordan en klient sender den, hastighetsgrensen og hodene dens, svarene den kan få, forespørselsloggen, varslene om utløp, webhook-endepunkter, signeringshemmelighetene deres og leveranseloggen med ny sending, og hva du gjør når en nøkkel lekker.
+description: La et annet program bruke Vantigos API uten en persons økt — integrasjoner, rollene deres, API-nøkler med utløp, begrensning, bryter for bare lesing og nettverk, rotering og tilbakekalling av en nøkkel, hva en nøkkel aldri får, hvordan en klient sender den, hastighetsgrensen og hodene dens, svarene den kan få, forespørselsloggen, varslene om utløp, webhook-endepunkter, signeringshemmelighetene deres og leveranseloggen med ny sending, å koble til en AI-klient med MCP, og hva du gjør når en nøkkel lekker.
 sidebar:
   order: 22
 sources:
@@ -28,6 +28,12 @@ sources:
   - apps/server/internal/identity/webhooks_worker.go
   - apps/server/internal/identity/webhooks_log.go
   - apps/server/internal/contracts/webhook_events.go
+  - apps/server/internal/identity/integrations_mcp.go
+  - apps/host/frontend/src/routes/workspace/-api-access-mcp.tsx
+  - apps/server/internal/module/apimcp.go
+  - apps/server/internal/module/apimcp_protocol.go
+  - apps/server/internal/module/apimcp_index.go
+  - apps/server/internal/module/apimcp_tools.go
   - apps/server/internal/apiref
   - apps/apiref/frontend/src
 ---
@@ -265,6 +271,69 @@ klientgenerator; en økt som ber om `?view=api`, får alle operasjoner en nøkke
 ([API-kontraktdokumentet](/nb/admin/transport-security/#api-kontraktdokumentet)).
 Å hente det med en nøkkel teller mot integrasjonens hastighetsgrense og vises i
 forespørselsloggen, som ethvert annet kall.
+
+## MCP
+
+En AI-klient — Claude Code, Cursor, VS Code, n8n eller en egen agent — kan koble seg til
+Vantigo med [Model Context Protocol](https://modelcontextprotocol.io/) og en av en integrasjons
+nøkler. Den finner, beskriver og kaller da operasjonene den nøkkelen kan kalle, og ingenting
+mer: hvert kall går gjennom de samme kontrollene som en REST-forespørsel med nøkkelen, teller
+mot integrasjonens hastighetsgrense og vises i forespørselsloggen. Endepunktet er `/api/mcp` på
+applikasjonens egen adresse; kontrakten står i
+[referansen for MCP-serveren](/en/reference/mcp/) (på engelsk).
+
+En agent handler på det den leser, og en post — et notat på en kunde, en e-post, en artikkel —
+kan inneholde tekst skrevet for å villede den. Gi en agent en egen integrasjon, med bare de
+rollene den trenger, og la den bare lese.
+
+**Før du begynner:** en integrasjon med rollene agenten trenger og en nøkkel
+([Lag en nøkkel](#lag-en-nøkkel)); en nøkkel med bare lesing er tryggest. MCP er av for hver
+integrasjon til en eier slår det på.
+
+1. Åpne integrasjonen under **Administrer arbeidsområde › API-tilgang** og bli på **Oversikt**.
+2. Under **MCP** velger du **MCP-tilgang**:
+   - **Av** — integrasjonens nøkler avvises ved MCP-endepunktet. Standardvalget.
+   - **Bare lese** — en AI-klient kan søke i API-et og kalle operasjoner som leser.
+   - **Lese og skrive** — skriving er ikke tilgjengelig gjennom MCP ennå; til det er det,
+     virker dette som **Bare lese**. En nøkkel med bare lesing leser alltid bare, uansett valg.
+3. Kopier **MCP-endepunkt** og tilkoblingen for klienten din. For Claude Code:
+
+   ```sh
+   claude mcp add --transport http vantigo https://vantigo.example.com/api/mcp \
+     --header "Authorization: Bearer vtg_…"
+   ```
+
+   En klient som tar en URL og headere, får JSON-blokken seksjonen viser. Bytt ut `vtg_…` med
+   nøkkelen: hemmeligheten vises bare når den lages.
+
+**Slik kontrollerer du:** be klienten liste verktøyene sine. Den viser `search_operations`,
+`describe_operation` og `read`, og et kall vises i integrasjonens fane **Forespørsler** som
+operasjonen den kalte og som `postApiMcp` for selve MCP-forespørselen.
+
+Endringen revideres som `integration.mcp_changed`, og hvis noen andre har endret integrasjonen
+i mellomtiden, avvises den med beskjed om å laste inn på nytt, som for detaljene.
+
+### Slå av MCP for installasjonen
+
+`MCP_ENABLED=0` ([Konfigurasjon](/nb/admin/configuration/)) slår av endepunktet for hele
+installasjonen: `/api/mcp` svarer `404` for hver nøkkel, uansett hva integrasjonen er satt
+til, og seksjonen **MCP** sier fra. Slå det på igjen med `MCP_ENABLED=1` (standard) og en
+omstart.
+
+### Når en klient ikke kommer inn
+
+- **`401 api_key_required`:** klienten sender ingen nøkkel, eller en nøkkel Vantigo ikke
+  kjenner. Kontroller headeren `Authorization` i klientens oppsett: `Bearer` og hele nøkkelen.
+- **`401 unauthenticated`:** nøkkelen er tilbakekalt, utløpt, deaktivert eller arkivert, eller
+  brukt utenfor nettverkene sine; fanen **Forespørsler** viser hvilket, under `postApiMcp`.
+- **`403 mcp_not_enabled`:** integrasjonens MCP-tilgang er **Av**.
+- **`404`:** MCP er slått av for installasjonen, eller adressen er ikke applikasjonens egen
+  (`APP_URL`, med basestien).
+- **Et verktøy svarer at en operasjon ikke er tilgjengelig for denne nøkkelen:**
+  integrasjonens roller, nøkkelens begrensning eller bryteren for bare lesing når den ikke,
+  eller den endrer data, noe MCP ikke gjør ennå.
+- **En klient som kjører i nettleseren** kommer ikke inn: Vantigo avviser forespørsler fra
+  andre nettsteder i nettleseren.
 
 ## Svarene en nøkkel kan få
 
@@ -529,7 +598,8 @@ overlappet.
 Identitys revisjonsspor for autorisasjon registrerer, med eieren som gjorde det og om hen brukte
 MFA: `integration.created`, `integration.updated`, `integration.roles_changed`,
 `integration.disabled`, `integration.enabled`, `integration.archived`, `api_key.created`,
-`api_key.rolled` og `api_key.revoked`. Arbeideren `identity.api-keys` registrerer
+`api_key.rolled`, `api_key.revoked` og `integration.mcp_changed`, med MCP-tilgangen før og
+etter. Arbeideren `identity.api-keys` registrerer
 `api_key.expired` én gang for hver nøkkel som passerer utløpet, som `system:api-keys`, og
 sletter en nøkkels rad 90 dager etter at den utløp; revisjonsradene blir værende
 ([Konfigurasjon](/nb/admin/configuration/#arbeidere)). Navn, roller, begrensningen, bare

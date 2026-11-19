@@ -1,6 +1,6 @@
 ---
 title: API access
-description: Letting another application use Vantigo's API without a person's session — integrations, their roles, API keys with an expiry, a narrowing, a read-only switch and networks, rolling and revoking a key, what is never available to a key, how a client sends it, the rate limit and its headers, the answers it can get, the request log, the expiry notices, webhook endpoints, their signing secrets and their delivery log with resend, and what to do when a key leaks.
+description: Letting another application use Vantigo's API without a person's session — integrations, their roles, API keys with an expiry, a narrowing, a read-only switch and networks, rolling and revoking a key, what is never available to a key, how a client sends it, the rate limit and its headers, the answers it can get, the request log, the expiry notices, webhook endpoints, their signing secrets and their delivery log with resend, connecting an AI client over MCP, and what to do when a key leaks.
 sidebar:
   order: 22
 sources:
@@ -28,6 +28,12 @@ sources:
   - apps/server/internal/identity/webhooks_worker.go
   - apps/server/internal/identity/webhooks_log.go
   - apps/server/internal/contracts/webhook_events.go
+  - apps/server/internal/identity/integrations_mcp.go
+  - apps/host/frontend/src/routes/workspace/-api-access-mcp.tsx
+  - apps/server/internal/module/apimcp.go
+  - apps/server/internal/module/apimcp_protocol.go
+  - apps/server/internal/module/apimcp_index.go
+  - apps/server/internal/module/apimcp_tools.go
   - apps/server/internal/apiref
   - apps/apiref/frontend/src
 ---
@@ -260,6 +266,68 @@ client generator; a session asking `?view=api` gets every operation a key can ca
 ([The API contract document](/en/admin/transport-security/#the-api-contract-document)).
 Loading it with a key counts against the integration's rate limit and shows in its request
 log, as any other call does.
+
+## MCP
+
+An AI client — Claude Code, Cursor, VS Code, n8n or an agent of your own — can connect to
+Vantigo over the [Model Context Protocol](https://modelcontextprotocol.io/) with one of an
+integration's keys. It then finds, describes and calls the operations that key may call, and
+nothing more: every call runs through the same checks as a REST request with the key, counts
+against the integration's rate limit and shows in its request log. The endpoint is
+`/api/mcp` on the application's own address; the contract is the
+[MCP server reference](/en/reference/mcp/).
+
+An agent acts on what it reads, and a record — a customer's note, an email, an article — can
+carry text written to mislead it. Give an agent its own integration, with only the roles it
+needs, and leave it read only.
+
+**Before you start:** an integration with the roles the agent needs and a key
+([Make a key](#make-a-key)); a read-only key is the safest. MCP is off for every integration
+until an Owner turns it on.
+
+1. Open the integration under **Workspace admin › API access** and stay on **Overview**.
+2. Under **MCP**, choose the **MCP access**:
+   - **Off** — the integration's keys are refused at the MCP endpoint. The default.
+   - **Read only** — an AI client may search the API and call operations that read.
+   - **Read and write** — writing is not available through MCP yet; until it is, this works
+     as **Read only**. A read-only key always only reads, whatever is chosen.
+3. Copy the **MCP endpoint**, and the connection for your client. For Claude Code:
+
+   ```sh
+   claude mcp add --transport http vantigo https://vantigo.example.com/api/mcp \
+     --header "Authorization: Bearer vtg_…"
+   ```
+
+   A client that takes a URL and headers gets the JSON block the section shows. Replace
+   `vtg_…` with the key: its secret is shown only when it is made.
+
+**To verify:** ask the client to list its tools. It shows `search_operations`,
+`describe_operation` and `read`, and a call shows in the integration's **Requests** tab as the
+operation it called and as `postApiMcp` for the MCP request itself.
+
+The change is audited `integration.mcp_changed`, and an integration being changed by someone
+else meanwhile is refused with a message to reload, as its details are.
+
+### Switching MCP off for the installation
+
+`MCP_ENABLED=0` ([Configuration](/en/admin/configuration/)) switches the endpoint off for the
+whole installation: `/api/mcp` answers `404` for every key, whatever an integration's setting
+says, and the **MCP** section says so. Switch it on again with `MCP_ENABLED=1` (the default)
+and a restart.
+
+### When a client cannot connect
+
+- **`401 api_key_required`:** the client sends no key, or a key Vantigo does not know. Check
+  the `Authorization` header in the client's configuration: `Bearer` and the whole key.
+- **`401 unauthenticated`:** the key is revoked, expired, disabled or archived, or used from
+  outside its networks; the **Requests** tab shows which, under `postApiMcp`.
+- **`403 mcp_not_enabled`:** the integration's MCP access is **Off**.
+- **`404`:** MCP is switched off for the installation, or the address is not the
+  application's own (`APP_URL`, with its base path).
+- **A tool answers that an operation is not available to this key:** the integration's roles,
+  the key's narrowing or its read-only switch do not reach it, or it changes data, which MCP
+  does not do yet.
+- **A browser-based client** cannot connect: Vantigo refuses cross-site browser requests.
 
 ## The answers a key can get
 
@@ -516,7 +584,8 @@ If a secret may have leaked, roll it with the shortest overlap.
 Identity's authorization audit trail records, with the Owner who did it and whether they used MFA:
 `integration.created`, `integration.updated`, `integration.roles_changed`,
 `integration.disabled`, `integration.enabled`, `integration.archived`, `api_key.created`,
-`api_key.rolled` and `api_key.revoked`. The `identity.api-keys` worker records
+`api_key.rolled`, `api_key.revoked` and `integration.mcp_changed`, with the MCP access
+before and after. The `identity.api-keys` worker records
 `api_key.expired` once for each key that passes its expiry, as `system:api-keys`, and deletes
 a key's row 90 days after it expired; the audit rows stay
 ([Configuration](/en/admin/configuration/#workers)). Names, roles, the narrowing, read-only,
