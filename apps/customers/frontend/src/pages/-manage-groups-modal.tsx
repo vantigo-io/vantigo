@@ -13,6 +13,7 @@ import {
   updateGroup,
 } from "../api/groups";
 import { ApiConflictError, ApiValidationError } from "../api/request";
+import { BrandSelect } from "../components/brand-select";
 import "../i18n";
 
 /**
@@ -98,6 +99,11 @@ export const ManageGroupsModal = ({
                   </Table.Td>
                   <Table.Td>
                     <Text size="sm" c="dimmed">
+                      {group.brand ? (group.brand.name ?? t("brandUnavailable")) : t("groupNoBrand")}
+                    </Text>
+                  </Table.Td>
+                  <Table.Td>
+                    <Text size="sm" c="dimmed">
                       {group.customerCount === 0
                         ? t("groupOnNoCustomers")
                         : t("groupOnCustomers", { count: group.customerCount })}
@@ -175,6 +181,8 @@ interface GroupFormValues {
   name: string;
   /** A string, not a number: "" is unambiguously "no default", which `null` on the wire is. */
   days: string;
+  /** The group's default brand id; null is "the workspace default" (brands design B28). */
+  brandId: string | null;
 }
 
 /**
@@ -193,7 +201,11 @@ const GroupForm = ({ group, onDone }: { group: CustomerGroupSummary | null; onDo
   const { t } = useI18n("customers");
   const queryClient = useQueryClient();
   const form = useForm<GroupFormValues>({
-    initialValues: { name: group?.name ?? "", days: group?.defaultPaymentTermsDays?.toString() ?? "" },
+    initialValues: {
+      name: group?.name ?? "",
+      days: group?.defaultPaymentTermsDays?.toString() ?? "",
+      brandId: group?.brand?.id ?? null,
+    },
   });
 
   const mutation = useMutation({
@@ -203,6 +215,8 @@ const GroupForm = ({ group, onDone }: { group: CustomerGroupSummary | null; onDo
         // Both fields, always: PUT is a full replace, so an emptied default has
         // to arrive as null rather than be left out and kept (design D2).
         defaultPaymentTermsDays: values.days.trim() === "" ? null : Number(values.days),
+        // The brand too: a cleared brand arrives as null and clears it.
+        brandId: values.brandId,
       };
       return group ? updateGroup(group.id, input) : createGroup(input);
     },
@@ -256,6 +270,19 @@ const GroupForm = ({ group, onDone }: { group: CustomerGroupSummary | null; onDo
           label={t("groupDefaultPaymentTerms")}
           placeholder={t("groupNoDefault")}
           {...form.getInputProps("days")}
+        />
+        <BrandSelect
+          label={t("groupBrand")}
+          emptyLabel={t("brandUseWorkspaceDefault")}
+          current={
+            form.values.brandId
+              ? group?.brand?.id === form.values.brandId
+                ? group.brand
+                : { id: form.values.brandId, state: "published" }
+              : null
+          }
+          error={typeof form.errors.brandId === "string" ? form.errors.brandId : undefined}
+          onChange={(value) => form.setFieldValue("brandId", value)}
         />
         <Group justify="flex-end">
           {group && (

@@ -1,5 +1,6 @@
 import { hashKey, keepPreviousData, type QueryClient, type QueryKey, queryOptions } from "@tanstack/react-query";
 import { type CustomerBillingProfile, customerBillingProfileQueryOptions } from "./billing-profile";
+import type { CustomerBrandInfo } from "./brands";
 import type { ApiConflictError } from "./request";
 import { NotFoundError, request } from "./request";
 import { type CustomerTag, normalizeTag } from "./tags";
@@ -108,6 +109,8 @@ export interface CustomerResponse {
   mergedInto: CustomerMergedInto | null;
   /** GDPR design D4. Null unless an anonymisation is scheduled or done; the wire omits the field then. */
   anonymisation: CustomerAnonymisation | null;
+  /** Brands design B28. Present on every response from this version on; absent only for corpus responses that predate it. */
+  brand?: CustomerBrandInfo;
 }
 
 export interface CustomerStatsResponse {
