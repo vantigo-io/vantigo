@@ -77,6 +77,7 @@ const stubFetch = (rows: unknown[] = [defaultRow]) => {
         }),
       );
     }
+    if (url === "/api/v1/customers/brands") return Promise.resolve(jsonResponse([]));
     if (url.startsWith("/api/v1/customers/tags")) return Promise.resolve(jsonResponse(tagRows));
     if (url.startsWith("/api/v1/customers/groups")) return Promise.resolve(jsonResponse(groupRows));
     if (url.startsWith("/api/v1/customers/lookup")) {
