@@ -112,6 +112,14 @@ func fromSetCustomerGroupRow(c store.SetCustomerGroupRow, ts store.CustomerTimel
 	return customerRowFrom(c.ID, c.CustomerNumber, c.Name, c.Status, c.Type, c.LegalCountry, c.LegalID, c.LegalName, c.LegalSource, c.LegalType, c.CreatedAt, c.UpdatedAt, c.Revision, c.Email, c.Phone, c.Website, c.OwnerUserID, ts)
 }
 
+// fromSetCustomerBrandRow is store.SetCustomerBrandRow's customerRow
+// (PutCustomersByIdBrand's write, brands.go). Its column list is
+// SetCustomerGroupRow's, and the brand itself is decorated onto the response
+// afterwards, not read from this row.
+func fromSetCustomerBrandRow(c store.SetCustomerBrandRow, ts store.CustomerTimelineSummaryRow) customerRow {
+	return customerRowFrom(c.ID, c.CustomerNumber, c.Name, c.Status, c.Type, c.LegalCountry, c.LegalID, c.LegalName, c.LegalSource, c.LegalType, c.CreatedAt, c.UpdatedAt, c.Revision, c.Email, c.Phone, c.Website, c.OwnerUserID, ts)
+}
+
 // fromListRow is store.ListCustomersRow's customerRow, the one list-query
 // shape now that ListCustomersByID/ListCustomersByName (one per sortBy
 // value) are a single ListCustomers with sort_by as a query parameter
@@ -188,6 +196,7 @@ func safeCustomerResponse(row customerRow, includeIdentity bool, dec customerDec
 		ContactInfo:    &gen.CustomerContactInfo{Email: row.Email, Phone: row.Phone, Website: row.Website},
 		Owner:          dec.owner(row.OwnerUserID),
 		Group:          dec.group(row.ID),
+		Brand:          dec.brand(row.ID),
 		MergedInto:     dec.merged(row.ID),
 		Anonymisation:  dec.anonymisationOf(row.ID),
 		Tags:           &tags,

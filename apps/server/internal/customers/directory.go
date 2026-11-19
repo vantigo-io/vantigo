@@ -45,6 +45,7 @@ func (d *directory) Customer(ctx context.Context, id int32) (*contracts.Customer
 	}
 	return &contracts.CustomerEntry{ID: row.ID, Name: row.Name, Archived: row.Archived,
 		Group: groupEntry(row.GroupID, row.GroupName), MergedInto: row.MergedIntoCustomerID,
+		BrandID: row.BrandID, GroupBrandID: row.GroupBrandID,
 		IndustryCode: deref(row.IndustryCode)}, nil
 }
 
@@ -71,6 +72,7 @@ func (d *directory) Customers(ctx context.Context, ids []int32) ([]contracts.Cus
 		})
 		entries = append(entries, contracts.CustomerEntry{ID: row.ID, Name: row.Name, Archived: row.Archived,
 			Group: groupEntry(row.GroupID, row.GroupName), MergedInto: row.MergedIntoCustomerID,
+			BrandID: row.BrandID, GroupBrandID: row.GroupBrandID,
 			IndustryCode: deref(row.IndustryCode), BookkeepingObligated: obligated})
 	}
 	return entries, nil
@@ -113,6 +115,7 @@ func (d *directory) CustomersByLegalID(ctx context.Context, country string, ids 
 	for _, row := range rows {
 		entry := contracts.CustomerEntry{ID: row.ID, Name: row.Name, Archived: row.Archived,
 			Group: groupEntry(row.GroupID, row.GroupName), MergedInto: row.MergedIntoCustomerID,
+			BrandID: row.BrandID, GroupBrandID: row.GroupBrandID,
 			IndustryCode: deref(row.IndustryCode)}
 		for _, id := range given[deref(row.LegalID)] {
 			result[id] = append(result[id], entry)

@@ -23,19 +23,79 @@ import (
 
 // Defines values for CustomerBillingProfileBookkeepingObligatedSource.
 const (
-	Override CustomerBillingProfileBookkeepingObligatedSource = "override"
-	Registry CustomerBillingProfileBookkeepingObligatedSource = "registry"
-	Unknown  CustomerBillingProfileBookkeepingObligatedSource = "unknown"
+	CustomerBillingProfileBookkeepingObligatedSourceOverride CustomerBillingProfileBookkeepingObligatedSource = "override"
+	CustomerBillingProfileBookkeepingObligatedSourceRegistry CustomerBillingProfileBookkeepingObligatedSource = "registry"
+	CustomerBillingProfileBookkeepingObligatedSourceUnknown  CustomerBillingProfileBookkeepingObligatedSource = "unknown"
 )
 
 // Valid indicates whether the value is a known member of the CustomerBillingProfileBookkeepingObligatedSource enum.
 func (e CustomerBillingProfileBookkeepingObligatedSource) Valid() bool {
 	switch e {
-	case Override:
+	case CustomerBillingProfileBookkeepingObligatedSourceOverride:
 		return true
-	case Registry:
+	case CustomerBillingProfileBookkeepingObligatedSourceRegistry:
 		return true
-	case Unknown:
+	case CustomerBillingProfileBookkeepingObligatedSourceUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CustomerBrandChoiceState.
+const (
+	CustomerBrandChoiceStateArchived  CustomerBrandChoiceState = "archived"
+	CustomerBrandChoiceStatePublished CustomerBrandChoiceState = "published"
+	CustomerBrandChoiceStateUnknown   CustomerBrandChoiceState = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the CustomerBrandChoiceState enum.
+func (e CustomerBrandChoiceState) Valid() bool {
+	switch e {
+	case CustomerBrandChoiceStateArchived:
+		return true
+	case CustomerBrandChoiceStatePublished:
+		return true
+	case CustomerBrandChoiceStateUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CustomerBrandInfoUnavailable.
+const (
+	CustomerBrandInfoUnavailableCustomer CustomerBrandInfoUnavailable = "customer"
+	CustomerBrandInfoUnavailableGroup    CustomerBrandInfoUnavailable = "group"
+)
+
+// Valid indicates whether the value is a known member of the CustomerBrandInfoUnavailable enum.
+func (e CustomerBrandInfoUnavailable) Valid() bool {
+	switch e {
+	case CustomerBrandInfoUnavailableCustomer:
+		return true
+	case CustomerBrandInfoUnavailableGroup:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CustomerEffectiveBrandSource.
+const (
+	CustomerEffectiveBrandSourceCustomer CustomerEffectiveBrandSource = "customer"
+	CustomerEffectiveBrandSourceDefault  CustomerEffectiveBrandSource = "default"
+	CustomerEffectiveBrandSourceGroup    CustomerEffectiveBrandSource = "group"
+)
+
+// Valid indicates whether the value is a known member of the CustomerEffectiveBrandSource enum.
+func (e CustomerEffectiveBrandSource) Valid() bool {
+	switch e {
+	case CustomerEffectiveBrandSourceCustomer:
+		return true
+	case CustomerEffectiveBrandSourceDefault:
+		return true
+	case CustomerEffectiveBrandSourceGroup:
 		return true
 	default:
 		return false
@@ -347,6 +407,35 @@ type CustomerBillingProfile struct {
 // CustomerBillingProfileBookkeepingObligatedSource Where bookkeepingObligated came from.
 type CustomerBillingProfileBookkeepingObligatedSource string
 
+// CustomerBrandChoice A brand a customer or a group has chosen as its default (brands design B28, delivery E1): its id, its name as the brand's published version reads and its state. state is published (offered, and used), archived (still named, but skipped: the default falls back to the next in the order, and the customer's brand block says so in unavailable) or unknown (no published brand has this id; name is then absent).
+type CustomerBrandChoice struct {
+	Id    openapi_types.UUID       `json:"id"`
+	Name  *string                  `json:"name,omitempty"`
+	State CustomerBrandChoiceState `json:"state"`
+}
+
+// CustomerBrandChoiceState defines model for CustomerBrandChoice.State.
+type CustomerBrandChoiceState string
+
+// CustomerBrandInfo A customer's default brand (brands design B28, delivery E1). own is the brand chosen on the customer and group the one chosen on its group, each null for none. effective is the brand a new document starts in: the customer's own, else the group's, else the workspace default brand; a choice that is archived or unknown is skipped, and unavailable names the choices that were (customer, group), so a client can say the default fell back. The order is resolved at read, never stored. A customer's brand changes the look and the name on its documents only: the seller's legal identity stays one (brands design B29a).
+type CustomerBrandInfo struct {
+	// Effective The brand a customer's new documents start in and where it comes from: customer (the customer's own choice), group (its group's) or default (the workspace default brand). name is the brand's published name; it is absent only when the default brand itself cannot be read.
+	Effective   CustomerEffectiveBrand         `json:"effective"`
+	Group       *CustomerBrandChoice           `json:"group"`
+	Own         *CustomerBrandChoice           `json:"own"`
+	Unavailable []CustomerBrandInfoUnavailable `json:"unavailable"`
+}
+
+// CustomerBrandInfoUnavailable defines model for CustomerBrandInfo.Unavailable.
+type CustomerBrandInfoUnavailable string
+
+// CustomerBrandOption A published brand a picker offers.
+type CustomerBrandOption struct {
+	Id        openapi_types.UUID `json:"id"`
+	IsDefault bool               `json:"isDefault"`
+	Name      string             `json:"name"`
+}
+
 // CustomerConflictDuplicate defines model for CustomerConflictDuplicate.
 type CustomerConflictDuplicate struct {
 	CustomerNumber int64  `json:"customerNumber"`
@@ -448,6 +537,16 @@ type CustomerDateOfBirth struct {
 	Revision    int32               `json:"revision"`
 }
 
+// CustomerEffectiveBrand The brand a customer's new documents start in and where it comes from: customer (the customer's own choice), group (its group's) or default (the workspace default brand). name is the brand's published name; it is absent only when the default brand itself cannot be read.
+type CustomerEffectiveBrand struct {
+	Id     openapi_types.UUID           `json:"id"`
+	Name   *string                      `json:"name,omitempty"`
+	Source CustomerEffectiveBrandSource `json:"source"`
+}
+
+// CustomerEffectiveBrandSource defines model for CustomerEffectiveBrand.Source.
+type CustomerEffectiveBrandSource string
+
 // CustomerFollowUp One row of the Follow-ups list (follow-ups design D3) — a manual timeline entry that carries a follow-up, with just enough of the entry and of its customer to show a line and link to it. note is the entry's own note cut to its first 200 UTF-16 code units (the same unit the entry's 500-character summary is cut in), absent when the entry has none. The customer is named here rather than fetched per row: the list is read across customers, so the one thing every row needs is whose follow-up it is.
 type CustomerFollowUp struct {
 	CustomerId   int32  `json:"customerId"`
@@ -469,16 +568,20 @@ type CustomerGroupRef struct {
 
 // CustomerGroupRequest A customer group's name and default payment term (customer groups design D2). name is 1-100 characters, trimmed and NFC-normalised; a name another group already has, ignoring case, is a 409 with code group_exists. defaultPaymentTermsDays is 0-365 inclusive (the billing profile's own rule) and is the term every member inherits unless its own billing profile decides one. PUT is a FULL REPLACE of both fields: an omitted or null defaultPaymentTermsDays clears the group's default rather than leaving the one it had.
 type CustomerGroupRequest struct {
-	DefaultPaymentTermsDays *int32 `json:"defaultPaymentTermsDays,omitempty"`
-	Name                    string `json:"name"`
+	// BrandId The group's default brand (brands design B28): the brand its members without a brand of their own start their documents in. Must be a published brand, or the one the group already has; an unknown or archived id is a field error on brandId. Like defaultPaymentTermsDays, PUT is a full replace: an omitted or null brandId clears it.
+	BrandId                 *openapi_types.UUID `json:"brandId,omitempty"`
+	DefaultPaymentTermsDays *int32              `json:"defaultPaymentTermsDays,omitempty"`
+	Name                    string              `json:"name"`
 }
 
 // CustomerGroupSummary A group in the installation's vocabulary, with how many customers belong to it (customer groups design D2) — what the Manage groups modal needs in order to say why a delete is refused, on the same response that lists the groups. Every one of the vocabulary's three answering operations (list, create, update) answers this shape, so a client has one group type to hold.
 type CustomerGroupSummary struct {
-	CustomerCount           int32              `json:"customerCount"`
-	DefaultPaymentTermsDays *int32             `json:"defaultPaymentTermsDays,omitempty"`
-	Id                      openapi_types.UUID `json:"id"`
-	Name                    string             `json:"name"`
+	// Brand The group's default brand (brands design B28), absent when it has none.
+	Brand                   *CustomerBrandChoice `json:"brand,omitempty"`
+	CustomerCount           int32                `json:"customerCount"`
+	DefaultPaymentTermsDays *int32               `json:"defaultPaymentTermsDays,omitempty"`
+	Id                      openapi_types.UUID   `json:"id"`
+	Name                    string               `json:"name"`
 }
 
 // CustomerImport An import of customers from a file (customers import wizard design D1, D5, D7). state is draft (uploaded, mapping being made), checking (the worker runs the dry run), checked (the dry run finished; the counts and the failed rows are on the import), importing (the worker runs the real run) or done (final; finishedAt set — and, when it was stopped, processed short of rows and the rest never attempted). encoding is utf-8 or windows-1252, separator the one character the header was split on. header is the file's header row as written, a nameless column an empty string; sample the first twenty rows, each with the errors its cells get under the saved mapping (none when there is no mapping yet). mapping is absent until PUT …/mapping saved one; suggested is the mapping the server proposes, answered on every read. processed, created, updated, failed and skipped are the worker's progress while it runs and the recounted totals once it has finished; skipped counts the rows that repeat an earlier row's legal identity with every mapped cell equal to that row's — the same customer listed again, neither written nor failed. error is a whole-run failure the worker met and will retry next cycle, with the run where it stood. createdByName is the uploader's display name through the user directory, absent when the account is gone. requestedAt is when the check or the run was asked for, startedAt when the worker took it up.
@@ -1129,6 +1232,14 @@ type PutCustomerBillingProfileRequest struct {
 	Revision *int32 `json:"revision,omitempty"`
 }
 
+// PutCustomerBrandRequest PUT /customers/{id}/brand's own request body (brands design B28): the customer's default brand is set to brandId, or cleared when it is absent or null (it then takes its group's, then the workspace default). The brand must be published, or the one the customer already has; an unknown or archived id is a field error on brandId. revision is optional, as PUT /customers/{id}/owner's own is.
+type PutCustomerBrandRequest struct {
+	BrandId *openapi_types.UUID `json:"brandId,omitempty"`
+
+	// Revision The revision the caller read the customer at (customers foundation design D5). Optional — omitted, the change applies regardless; present and stale, a 409.
+	Revision *int32 `json:"revision,omitempty"`
+}
+
 // PutCustomerContactInfoRequest PUT /customers/{id}/contact-info's own request body (invoice-ready customer design D1): a full replace of the customer's contact info — every field present or null, absent and null both meaning the field is cleared. revision is optional, as PUT /customers/{id}'s own is.
 type PutCustomerContactInfoRequest struct {
 	Email *string `json:"email,omitempty"`
@@ -1188,6 +1299,9 @@ type SafeCustomerIdentity struct {
 type SafeCustomerResponse struct {
 	// Anonymisation A private person's anonymisation, scheduled or done (customers GDPR design D4). Absent unless one is scheduled — omitted, never null, like owner. Once anonymisedAt is set the customer is read-only, and its name, identity and contact info are gone.
 	Anonymisation *CustomerAnonymisation `json:"anonymisation,omitempty"`
+
+	// Brand The customer's default brand and the brand a new document starts in (brands design B28). Always present on a response; needs nothing beyond customers:view to read.
+	Brand *CustomerBrandInfo `json:"brand,omitempty"`
 
 	// ContactInfo A customer's own contact details (invoice-ready customer design D2). Always present; optional here only because the recorded exchange corpus predates it.
 	ContactInfo    *CustomerContactInfo `json:"contactInfo,omitempty"`
@@ -1486,6 +1600,9 @@ type PostCustomersByIdAttachmentsMultipartRequestBody PostCustomersByIdAttachmen
 // PutCustomersByIdBillingProfileJSONRequestBody defines body for PutCustomersByIdBillingProfile for application/json ContentType.
 type PutCustomersByIdBillingProfileJSONRequestBody = PutCustomerBillingProfileRequest
 
+// PutCustomersByIdBrandJSONRequestBody defines body for PutCustomersByIdBrand for application/json ContentType.
+type PutCustomersByIdBrandJSONRequestBody = PutCustomerBrandRequest
+
 // PutCustomersByIdContactInfoJSONRequestBody defines body for PutCustomersByIdContactInfo for application/json ContentType.
 type PutCustomersByIdContactInfoJSONRequestBody = PutCustomerContactInfoRequest
 
@@ -1533,6 +1650,9 @@ type ServerInterface interface {
 	// GetCustomersAssignableUsers Search users assignable as a customer's owner
 	// (GET /api/v1/customers/assignable-users)
 	GetCustomersAssignableUsers(w http.ResponseWriter, r *http.Request, params GetCustomersAssignableUsersParams)
+	// GetCustomersBrands List the published brands a customer or group can be given as its default
+	// (GET /api/v1/customers/brands)
+	GetCustomersBrands(w http.ResponseWriter, r *http.Request)
 	// GetCustomersContacts List all contacts
 	// (GET /api/v1/customers/contacts)
 	GetCustomersContacts(w http.ResponseWriter, r *http.Request, params GetCustomersContactsParams)
@@ -1677,6 +1797,9 @@ type ServerInterface interface {
 	// PutCustomersByIdBillingProfile Replace a customer's billing profile
 	// (PUT /api/v1/customers/{id}/billing-profile)
 	PutCustomersByIdBillingProfile(w http.ResponseWriter, r *http.Request, id int32)
+	// PutCustomersByIdBrand Set a customer's default brand, or clear it
+	// (PUT /api/v1/customers/{id}/brand)
+	PutCustomersByIdBrand(w http.ResponseWriter, r *http.Request, id int32)
 	// PutCustomersByIdContactInfo Replace a customer's contact info
 	// (PUT /api/v1/customers/{id}/contact-info)
 	PutCustomersByIdContactInfo(w http.ResponseWriter, r *http.Request, id int32)
@@ -1986,6 +2109,20 @@ func (siw *ServerInterfaceWrapper) GetCustomersAssignableUsers(w http.ResponseWr
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetCustomersAssignableUsers(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetCustomersBrands operation middleware
+func (siw *ServerInterfaceWrapper) GetCustomersBrands(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCustomersBrands(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3535,6 +3672,32 @@ func (siw *ServerInterfaceWrapper) PutCustomersByIdBillingProfile(w http.Respons
 	handler.ServeHTTP(w, r)
 }
 
+// PutCustomersByIdBrand operation middleware
+func (siw *ServerInterfaceWrapper) PutCustomersByIdBrand(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutCustomersByIdBrand(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // PutCustomersByIdContactInfo operation middleware
 func (siw *ServerInterfaceWrapper) PutCustomersByIdContactInfo(w http.ResponseWriter, r *http.Request) {
 
@@ -4576,6 +4739,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/customers/{id}/contacts", wrapper.PostCustomersByIdContacts)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/customers/{id}/contacts/{contactId}", wrapper.DeleteCustomersByIdContactsByContactId)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/customers/{id}/contacts/{contactId}", wrapper.PutCustomersByIdContactsByContactId)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/customers/{id}/brand", wrapper.PutCustomersByIdBrand)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/customers/{id}/group", wrapper.PutCustomersByIdGroup)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/customers/{id}/legal-identity", wrapper.DeleteCustomersByIdLegalIdentity)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/{id}/legal-identity", wrapper.GetCustomersByIdLegalIdentity)
@@ -4605,6 +4769,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/contacts/{id}", wrapper.GetContact)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/customers/contacts/{id}", wrapper.PutCustomersContactsById)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/contacts/{id}/customers", wrapper.GetCustomersContactsByIdCustomers)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/brands", wrapper.GetCustomersBrands)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/export", wrapper.GetCustomersExport)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/follow-ups", wrapper.GetCustomersFollowUps)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/groups", wrapper.GetCustomersGroups)
@@ -4854,6 +5019,55 @@ func (response GetCustomersAssignableUsers401JSONResponse) VisitGetCustomersAssi
 type GetCustomersAssignableUsers403JSONResponse externalRef0.AuthErrorResponse
 
 func (response GetCustomersAssignableUsers403JSONResponse) VisitGetCustomersAssignableUsersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomersBrandsRequestObject struct {
+}
+
+type GetCustomersBrandsResponseObject interface {
+	VisitGetCustomersBrandsResponse(w http.ResponseWriter) error
+}
+
+type GetCustomersBrands200JSONResponse []CustomerBrandOption
+
+func (response GetCustomersBrands200JSONResponse) VisitGetCustomersBrandsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomersBrands401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetCustomersBrands401JSONResponse) VisitGetCustomersBrandsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomersBrands403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetCustomersBrands403JSONResponse) VisitGetCustomersBrandsResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -8212,6 +8426,93 @@ func (response PutCustomersByIdBillingProfile409ApplicationProblemPlusJSONRespon
 	return err
 }
 
+type PutCustomersByIdBrandRequestObject struct {
+	Id   int32 `json:"id"`
+	Body *PutCustomersByIdBrandJSONRequestBody
+}
+
+type PutCustomersByIdBrandResponseObject interface {
+	VisitPutCustomersByIdBrandResponse(w http.ResponseWriter) error
+}
+
+type PutCustomersByIdBrand200JSONResponse SafeCustomerResponse
+
+func (response PutCustomersByIdBrand200JSONResponse) VisitPutCustomersByIdBrandResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCustomersByIdBrand400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PutCustomersByIdBrand400ApplicationProblemPlusJSONResponse) VisitPutCustomersByIdBrandResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCustomersByIdBrand401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutCustomersByIdBrand401JSONResponse) VisitPutCustomersByIdBrandResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCustomersByIdBrand403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutCustomersByIdBrand403JSONResponse) VisitPutCustomersByIdBrandResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCustomersByIdBrand404Response struct {
+}
+
+func (response PutCustomersByIdBrand404Response) VisitPutCustomersByIdBrandResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutCustomersByIdBrand409ApplicationProblemPlusJSONResponse CustomerConflictProblem
+
+func (response PutCustomersByIdBrand409ApplicationProblemPlusJSONResponse) VisitPutCustomersByIdBrandResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PutCustomersByIdContactInfoRequestObject struct {
 	Id   int32 `json:"id"`
 	Body *PutCustomersByIdContactInfoJSONRequestBody
@@ -10371,6 +10672,9 @@ type StrictServerInterface interface {
 	// GetCustomersAssignableUsers Search users assignable as a customer's owner
 	// (GET /api/v1/customers/assignable-users)
 	GetCustomersAssignableUsers(ctx context.Context, request GetCustomersAssignableUsersRequestObject) (GetCustomersAssignableUsersResponseObject, error)
+	// GetCustomersBrands List the published brands a customer or group can be given as its default
+	// (GET /api/v1/customers/brands)
+	GetCustomersBrands(ctx context.Context, request GetCustomersBrandsRequestObject) (GetCustomersBrandsResponseObject, error)
 	// GetCustomersContacts List all contacts
 	// (GET /api/v1/customers/contacts)
 	GetCustomersContacts(ctx context.Context, request GetCustomersContactsRequestObject) (GetCustomersContactsResponseObject, error)
@@ -10515,6 +10819,9 @@ type StrictServerInterface interface {
 	// PutCustomersByIdBillingProfile Replace a customer's billing profile
 	// (PUT /api/v1/customers/{id}/billing-profile)
 	PutCustomersByIdBillingProfile(ctx context.Context, request PutCustomersByIdBillingProfileRequestObject) (PutCustomersByIdBillingProfileResponseObject, error)
+	// PutCustomersByIdBrand Set a customer's default brand, or clear it
+	// (PUT /api/v1/customers/{id}/brand)
+	PutCustomersByIdBrand(ctx context.Context, request PutCustomersByIdBrandRequestObject) (PutCustomersByIdBrandResponseObject, error)
 	// PutCustomersByIdContactInfo Replace a customer's contact info
 	// (PUT /api/v1/customers/{id}/contact-info)
 	PutCustomersByIdContactInfo(ctx context.Context, request PutCustomersByIdContactInfoRequestObject) (PutCustomersByIdContactInfoResponseObject, error)
@@ -10716,6 +11023,30 @@ func (sh *strictHandler) GetCustomersAssignableUsers(w http.ResponseWriter, r *h
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetCustomersAssignableUsersResponseObject); ok {
 		if err := validResponse.VisitGetCustomersAssignableUsersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetCustomersBrands operation middleware
+func (sh *strictHandler) GetCustomersBrands(w http.ResponseWriter, r *http.Request) {
+	var request GetCustomersBrandsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetCustomersBrands(ctx, request.(GetCustomersBrandsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetCustomersBrands")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetCustomersBrandsResponseObject); ok {
+		if err := validResponse.VisitGetCustomersBrandsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -12049,6 +12380,39 @@ func (sh *strictHandler) PutCustomersByIdBillingProfile(w http.ResponseWriter, r
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutCustomersByIdBillingProfileResponseObject); ok {
 		if err := validResponse.VisitPutCustomersByIdBillingProfileResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutCustomersByIdBrand operation middleware
+func (sh *strictHandler) PutCustomersByIdBrand(w http.ResponseWriter, r *http.Request, id int32) {
+	var request PutCustomersByIdBrandRequestObject
+
+	request.Id = id
+
+	var body PutCustomersByIdBrandJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutCustomersByIdBrand(ctx, request.(PutCustomersByIdBrandRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutCustomersByIdBrand")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutCustomersByIdBrandResponseObject); ok {
+		if err := validResponse.VisitPutCustomersByIdBrandResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

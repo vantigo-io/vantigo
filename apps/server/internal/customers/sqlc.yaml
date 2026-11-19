@@ -30,6 +30,7 @@ sql:
       - ../db/migrations/00080_customers_import_preview.sql
       - ../db/migrations/00202_customers_date_of_birth.sql
       - ../db/migrations/00207_customers_credit_limit_bookkeeping.sql
+      - ../db/migrations/00212_customers_brand.sql
     queries: queries
     gen:
       go:

@@ -29,6 +29,60 @@ func (q *Queries) CountCustomerGroupMembers(ctx context.Context, groupID *uuid.U
 	return count, err
 }
 
+const customerBrand = `-- name: CustomerBrand :one
+SELECT brand_id FROM customers.customers WHERE id = $1
+`
+
+// CustomerBrand is one customer's own brand_id, for PUT /customers/{id}/brand's
+// no-op check. pgx.ErrNoRows means the customer does not exist.
+func (q *Queries) CustomerBrand(ctx context.Context, id int32) (*uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, customerBrand, id)
+	var brand_id *uuid.UUID
+	err := row.Scan(&brand_id)
+	return brand_id, err
+}
+
+const customerBrandsForCustomers = `-- name: CustomerBrandsForCustomers :many
+SELECT c.id AS customer_id, c.brand_id, g.brand_id AS group_brand_id
+FROM customers.customers c
+LEFT JOIN customers.customer_groups g ON g.id = c.group_id
+WHERE c.id = ANY($1::int[])
+ORDER BY c.id
+`
+
+type CustomerBrandsForCustomersRow struct {
+	CustomerID   int32
+	BrandID      *uuid.UUID
+	GroupBrandID *uuid.UUID
+}
+
+// CustomerBrandsForCustomers is the default brand of a whole page of customers
+// in ONE query (brands design B28, delivery E1): the customer's own brand_id and
+// its group's, both NULL for "decides nothing". Like CustomerGroupsForCustomers
+// it serves the list and every single-customer response, so there is one shape
+// of brand-on-a-response; the LEFT JOIN keeps a customer in no group in the
+// result, with a NULL group brand. Which of the two applies, and whether it is
+// still published, is decided in Go against contracts.Brands.
+func (q *Queries) CustomerBrandsForCustomers(ctx context.Context, customerIds []int32) ([]CustomerBrandsForCustomersRow, error) {
+	rows, err := q.db.Query(ctx, customerBrandsForCustomers, customerIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CustomerBrandsForCustomersRow
+	for rows.Next() {
+		var i CustomerBrandsForCustomersRow
+		if err := rows.Scan(&i.CustomerID, &i.BrandID, &i.GroupBrandID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const customerGroupMembership = `-- name: CustomerGroupMembership :one
 SELECT c.group_id, g.name AS group_name, g.default_payment_terms_days, c.revision
 FROM customers.customers c
@@ -155,13 +209,14 @@ func (q *Queries) DeleteCustomerGroup(ctx context.Context, id uuid.UUID) (int64,
 }
 
 const getCustomerGroup = `-- name: GetCustomerGroup :one
-SELECT id, name, default_payment_terms_days FROM customers.customer_groups WHERE id = $1
+SELECT id, name, default_payment_terms_days, brand_id FROM customers.customer_groups WHERE id = $1
 `
 
 type GetCustomerGroupRow struct {
 	ID                      uuid.UUID
 	Name                    string
 	DefaultPaymentTermsDays *int32
+	BrandID                 *uuid.UUID
 }
 
 // GetCustomerGroup resolves the one groupId PUT /customers/{id}/group was
@@ -173,20 +228,26 @@ type GetCustomerGroupRow struct {
 func (q *Queries) GetCustomerGroup(ctx context.Context, id uuid.UUID) (GetCustomerGroupRow, error) {
 	row := q.db.QueryRow(ctx, getCustomerGroup, id)
 	var i GetCustomerGroupRow
-	err := row.Scan(&i.ID, &i.Name, &i.DefaultPaymentTermsDays)
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.DefaultPaymentTermsDays,
+		&i.BrandID,
+	)
 	return i, err
 }
 
 const insertCustomerGroup = `-- name: InsertCustomerGroup :one
-INSERT INTO customers.customer_groups (id, name, default_payment_terms_days, created_at, updated_at)
-VALUES ($1, $2, $3, $4::timestamptz, $4::timestamptz)
-RETURNING id, name, default_payment_terms_days
+INSERT INTO customers.customer_groups (id, name, default_payment_terms_days, brand_id, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5::timestamptz, $5::timestamptz)
+RETURNING id, name, default_payment_terms_days, brand_id
 `
 
 type InsertCustomerGroupParams struct {
 	ID                      uuid.UUID
 	Name                    string
 	DefaultPaymentTermsDays *int32
+	BrandID                 *uuid.UUID
 	Now                     time.Time
 }
 
@@ -194,6 +255,7 @@ type InsertCustomerGroupRow struct {
 	ID                      uuid.UUID
 	Name                    string
 	DefaultPaymentTermsDays *int32
+	BrandID                 *uuid.UUID
 }
 
 // InsertCustomerGroup is POST /customers/groups. The duplicate check is this
@@ -208,15 +270,21 @@ func (q *Queries) InsertCustomerGroup(ctx context.Context, arg InsertCustomerGro
 		arg.ID,
 		arg.Name,
 		arg.DefaultPaymentTermsDays,
+		arg.BrandID,
 		arg.Now,
 	)
 	var i InsertCustomerGroupRow
-	err := row.Scan(&i.ID, &i.Name, &i.DefaultPaymentTermsDays)
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.DefaultPaymentTermsDays,
+		&i.BrandID,
+	)
 	return i, err
 }
 
 const listCustomerGroups = `-- name: ListCustomerGroups :many
-SELECT g.id, g.name, g.default_payment_terms_days,
+SELECT g.id, g.name, g.default_payment_terms_days, g.brand_id,
        (SELECT count(*) FROM customers.customers c WHERE c.group_id = g.id) AS customer_count
 FROM customers.customer_groups g
 ORDER BY g.name, g.id
@@ -226,6 +294,7 @@ type ListCustomerGroupsRow struct {
 	ID                      uuid.UUID
 	Name                    string
 	DefaultPaymentTermsDays *int32
+	BrandID                 *uuid.UUID
 	CustomerCount           int64
 }
 
@@ -252,6 +321,7 @@ func (q *Queries) ListCustomerGroups(ctx context.Context) ([]ListCustomerGroupsR
 			&i.ID,
 			&i.Name,
 			&i.DefaultPaymentTermsDays,
+			&i.BrandID,
 			&i.CustomerCount,
 		); err != nil {
 			return nil, err
@@ -262,6 +332,82 @@ func (q *Queries) ListCustomerGroups(ctx context.Context) ([]ListCustomerGroupsR
 		return nil, err
 	}
 	return items, nil
+}
+
+const setCustomerBrand = `-- name: SetCustomerBrand :one
+UPDATE customers.customers
+SET brand_id = $1,
+    updated_at = $2::timestamptz,
+    revision = revision + 1
+WHERE id = $3
+  AND ($4::int IS NULL OR revision = $4::int)
+RETURNING id, customer_number, name, status, legal_country, legal_id, legal_name, legal_source, legal_type,
+          created_at, updated_at, type, revision, email, phone, website, owner_user_id
+`
+
+type SetCustomerBrandParams struct {
+	BrandID          *uuid.UUID
+	UpdatedAt        time.Time
+	ID               int32
+	ExpectedRevision *int32
+}
+
+type SetCustomerBrandRow struct {
+	ID             int32
+	CustomerNumber int64
+	Name           string
+	Status         string
+	LegalCountry   *string
+	LegalID        *string
+	LegalName      *string
+	LegalSource    *string
+	LegalType      *string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+	Type           string
+	Revision       int32
+	Email          *string
+	Phone          *string
+	Website        *string
+	OwnerUserID    *uuid.UUID
+}
+
+// SetCustomerBrand is PUT /customers/{id}/brand's write (brands design B28): the
+// brand_id column only. Guarded and revision-bumping exactly like
+// SetCustomerGroup: sqlc.narg(expected_revision) is the caller's revision when
+// the request carried one, and the handler skips calling this entirely when the
+// brand did not change, so a resubmit writes nothing and bumps nothing.
+// @brand_id is NULL to clear the customer's own brand. The RETURNING list is
+// SetCustomerGroup's, column for column, so the response is built from the same
+// customerRow shape; the brand itself is decorated onto the response afterwards.
+func (q *Queries) SetCustomerBrand(ctx context.Context, arg SetCustomerBrandParams) (SetCustomerBrandRow, error) {
+	row := q.db.QueryRow(ctx, setCustomerBrand,
+		arg.BrandID,
+		arg.UpdatedAt,
+		arg.ID,
+		arg.ExpectedRevision,
+	)
+	var i SetCustomerBrandRow
+	err := row.Scan(
+		&i.ID,
+		&i.CustomerNumber,
+		&i.Name,
+		&i.Status,
+		&i.LegalCountry,
+		&i.LegalID,
+		&i.LegalName,
+		&i.LegalSource,
+		&i.LegalType,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Type,
+		&i.Revision,
+		&i.Email,
+		&i.Phone,
+		&i.Website,
+		&i.OwnerUserID,
+	)
+	return i, err
 }
 
 const setCustomerGroup = `-- name: SetCustomerGroup :one
@@ -355,15 +501,16 @@ func (q *Queries) SetCustomerGroup(ctx context.Context, arg SetCustomerGroupPara
 
 const updateCustomerGroupRow = `-- name: UpdateCustomerGroupRow :one
 UPDATE customers.customer_groups
-SET name = $1, default_payment_terms_days = $2, updated_at = $3::timestamptz
-WHERE customers.customer_groups.id = $4
-RETURNING customers.customer_groups.id, name, default_payment_terms_days,
+SET name = $1, default_payment_terms_days = $2, brand_id = $3, updated_at = $4::timestamptz
+WHERE customers.customer_groups.id = $5
+RETURNING customers.customer_groups.id, name, default_payment_terms_days, brand_id,
           (SELECT count(*) FROM customers.customers c WHERE c.group_id = customers.customer_groups.id) AS customer_count
 `
 
 type UpdateCustomerGroupRowParams struct {
 	Name                    string
 	DefaultPaymentTermsDays *int32
+	BrandID                 *uuid.UUID
 	Now                     time.Time
 	ID                      uuid.UUID
 }
@@ -372,6 +519,7 @@ type UpdateCustomerGroupRowRow struct {
 	ID                      uuid.UUID
 	Name                    string
 	DefaultPaymentTermsDays *int32
+	BrandID                 *uuid.UUID
 	CustomerCount           int64
 }
 
@@ -398,6 +546,7 @@ func (q *Queries) UpdateCustomerGroupRow(ctx context.Context, arg UpdateCustomer
 	row := q.db.QueryRow(ctx, updateCustomerGroupRow,
 		arg.Name,
 		arg.DefaultPaymentTermsDays,
+		arg.BrandID,
 		arg.Now,
 		arg.ID,
 	)
@@ -406,6 +555,7 @@ func (q *Queries) UpdateCustomerGroupRow(ctx context.Context, arg UpdateCustomer
 		&i.ID,
 		&i.Name,
 		&i.DefaultPaymentTermsDays,
+		&i.BrandID,
 		&i.CustomerCount,
 	)
 	return i, err

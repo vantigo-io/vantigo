@@ -26,6 +26,17 @@ type CustomerEntry struct {
 	// merge ran; one written for this id afterwards (or committed while the
 	// merge ran) is what this field is the backstop for.
 	MergedInto *int32
+	// BrandID is the customer's own default brand and GroupBrandID its group's
+	// (brands design B28), nil for "decides nothing" and always nil for
+	// GroupBrandID when the customer belongs to no group. Neither is checked
+	// against contracts.Brands: an id may name a brand archived since, and the
+	// caller applies the order the design gives — the person's choice, the
+	// customer's, the group's, the workspace default — skipping an archived one
+	// (Brands.Get says which). CustomerDirectory fills both on Customer,
+	// Customers and CustomersByLegalID, so a module that already reads a
+	// customer needs no second call to pick the brand of a document.
+	BrandID      *uuid.UUID
+	GroupBrandID *uuid.UUID
 	// IndustryCode is the customer's NACE industry code as its registry record
 	// (Brønnøysund) holds it, such as "24.420"; empty when the customer has no
 	// registry record or the record no code. Energy reads it to suggest a

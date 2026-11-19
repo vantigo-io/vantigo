@@ -65,6 +65,7 @@ type CustomersCustomer struct {
 	BookkeepingObligatedOverride       *bool
 	BookkeepingObligatedOverrideReason string
 	CreditLimit                        pgtype.Numeric
+	BrandID                            *uuid.UUID
 }
 
 type CustomersCustomerAddress struct {
@@ -109,6 +110,7 @@ type CustomersCustomerGroup struct {
 	DefaultPaymentTermsDays *int32
 	CreatedAt               time.Time
 	UpdatedAt               time.Time
+	BrandID                 *uuid.UUID
 }
 
 type CustomersCustomerPeppolLookup struct {
