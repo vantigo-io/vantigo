@@ -723,7 +723,7 @@ export interface paths {
         };
         /**
          * Get the public brand
-         * @description The look of the default brand for the pages shown before sign-in (brands design B17): setup, sign-in, password recovery, accepting an invitation and the signed-out screen. Anonymous, cached for 60 seconds, rate-limited per address. It never carries more than the brand's public look.
+         * @description The look of a brand for the pages shown before sign-in (brands design B17, B25): setup, sign-in, password recovery, accepting an invitation and the signed-out screen. Without domain it is the default brand, cached for 60 seconds. With domain (the part after the @ of an address typed, never the whole address) it is the brand of a published brand's e-mail-domain rule for that domain, else the default brand with matched false; the answer is the same whether or not anyone has an account on the domain, and is cached for 300 seconds. Anonymous, rate-limited per address (30 a minute). It never carries more than the brand's public look.
          */
         get: operations["getIdentityBrandPublic"];
         put?: never;
@@ -4459,6 +4459,8 @@ export interface components {
             /** @description The person has a choice that is no longer one of their candidates, so it is ignored. */
             choiceIgnored?: boolean;
             logos: components["schemas"]["BrandLogoUrls"];
+            /** @description On the public look only (B25) - true when the domain asked about is attached to a published brand by a rule, false for the default brand. */
+            matched?: boolean;
             name: string;
             /**
              * @description Why the person sees this brand (B7).
@@ -7708,7 +7710,10 @@ export interface operations {
     };
     getIdentityBrandPublic: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description A domain such as acme.no: dotted labels of letters, digits and hyphens, the last of 2 or more letters. Never an address; a value with an @ is refused. */
+                domain?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -7722,6 +7727,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ResolvedBrand"];
+                };
+            };
+            /** @description Bad Request - domain_invalid */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
             /** @description Too Many Requests */

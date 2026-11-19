@@ -141,6 +141,41 @@ asks for its brand again after a random wait of up to five seconds, so a publish
 sessions is not that many requests at once. What Staff says about a person's employment is kept for
 30 seconds, and shared between requests that ask at once; everything else is read afresh.
 
+## Sign-in by e-mail domain
+
+The sign-in page starts in the default brand. When a person types an e-mail address whose domain
+you attached to a brand with an [e-mail domain rule](#the-rules), the page fades into that brand's
+colours, logo and title over about a third of a second, so a customer's staff sees their own
+company when they sign in. Forgot password, reset password and accepting an invitation do the same
+for the address they know. If the domain is changed to one that is not attached, or the field is
+emptied, the page fades back. People who prefer reduced motion get the change at once, with no
+fade. The fade is only a look: it never decides whether anyone can sign in, and SSO buttons are
+unaffected. Once someone has signed in, their own brand, as [assigned above](#who-sees-which-brand),
+takes over.
+
+To use it, attach the customer's domain on the **Assignment** tab and publish the brand. A brand
+that is only a draft, or is archived, is never shown here.
+
+**What becomes public.** The brand's name, title, colours and logos are readable by anyone who
+types or requests an attached domain; they are public brands. Do not attach a domain whose brand
+is confidential. The lookup reveals that a domain is attached, and nothing about the people on it:
+it answers the same for a domain with accounts and one without, and an unattached domain gets the
+default brand in the same shape.
+
+**What reaches the server.** The browser sends only what follows the `@`, in
+`GET /api/v1/identity/brand/public?domain=acme.no`, once the text looks like a domain (a dot, and a
+last part of two or more letters) and has been still for 400 ms or the field is left. The part
+before the `@` is never sent, and the server refuses a value that holds an `@` with
+`400 domain_invalid`. The typed domain is a query parameter, so it appears in the access logs of
+the server and of any proxy or CDN in front of it, which are yours to protect and rotate; Vantigo's
+own logs and counters record only a hash of the domain. Answers may be cached for five minutes, so
+a change of the rules or a publish reaches the sign-in page within that time.
+
+**Rate limit.** The lookup allows 30 requests a minute per client address; past that the answer is
+`429` with `Retry-After`, and the page keeps the brand it has. A rising count of
+`vantigo.identity.brand.public_lookups` with `result=limited` is the sign of someone probing for
+domains. The counter also has the results `matched`, `unmatched`, `invalid` and `default`.
+
 ## The colour and why it is checked
 
 The primary colour has to be one a scale can be built from: its lightness must lie between 35 %
@@ -206,7 +241,8 @@ removed when the person signs out.
 
 The sign-in page, the setup page, password recovery, accepting an invitation and the signed-out
 page show the default brand's title, favicon and colours, from `GET /api/v1/identity/brand/public`
-(anonymous, rate limited per address, cached for a minute). The pay page, the RSVP page and
+(anonymous, rate limited per address, cached for a minute), until a typed address names another
+brand ([Sign-in by e-mail domain](#sign-in-by-e-mail-domain)). The pay page, the RSVP page and
 stations ask for no brand at all and keep the default brand until invoices carry their own.
 
 ## The one-time import of `APP_TITLE`, `APP_LOGO_URL` and `APP_SUPPORT_*`
@@ -252,6 +288,7 @@ the page, card, text and border colours stay Vantigo's in both schemes.
 | `422 brand_primary_range` | The colour is nearly white or nearly black. |
 | `422 brand_contrast` | A pair is below 4.5 : 1; the response names the pairs. |
 | `422 brand_support_invalid` | The e-mail has a display name or holds `?`, `&` or `%`, the phone has other characters than digits, spaces and `+ - ( ) .` or is over 30 long, or the link is not `http(s)` or a path starting with a single `/`, or holds a control character such as a tab or a line break. The same rule applies to `APP_SUPPORT_URL` and `APP_LOGO_URL` at start. |
+| `400 domain_invalid` | A lookup by domain held something that is not a domain, such as an address with an `@`. |
 | `409 stale_revision` | Someone else saved the brand, or the rule list, since you opened it. |
 | `409 brand_name_taken` | Another brand has the name. |
 | `409 brand_archived` | You tried to edit, publish or discard the draft of an archived brand; restore it first. |
