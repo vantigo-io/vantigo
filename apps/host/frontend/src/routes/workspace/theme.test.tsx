@@ -8,6 +8,20 @@ import { renderRoute } from "../../test/render-route";
 import { Route } from "./theme";
 import "../../i18n";
 
+// Since algorithm 2 no real primary fails a pair (the hover is clamped, B3.9), so the editor's
+// failing-pair path is exercised with a primary the stand-in rules refuse.
+vi.mock("@vantigo/frontend-shell", async (importActual) => {
+  const actual = await importActual<typeof import("@vantigo/frontend-shell")>();
+  return {
+    ...actual,
+    contrastChecks: (result: Parameters<typeof actual.contrastChecks>[0]) =>
+      actual
+        .contrastChecks(result)
+        .map((c) => (result.scale[6] === "#ef4444" && c.pair === "filledHover" ? { ...c, pass: false } : c)),
+    suggestPrimary: (hex: string) => (hex === "#ef4444" ? "#dc2626" : actual.suggestPrimary(hex)),
+  };
+});
+
 const ID = "22222222-2222-2222-2222-222222222222";
 
 const json = (body: unknown, status = 200) =>
