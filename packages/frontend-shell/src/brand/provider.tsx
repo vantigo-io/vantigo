@@ -4,6 +4,7 @@ import { appConfig, appUrl } from "../app-config";
 import { vantigoLogo, vantigoLogoDark } from "../logo";
 import { createVantigoTheme } from "../theme";
 import { clearBrandMirror, readBrandMirror, understands, writeBrandMirror } from "./mirror";
+import { brandRefetchDelay } from "./refetch";
 import { WHITE } from "./scale";
 import { BRAND_PAYLOAD_VERSION, type BrandPayload, type BrandTokens, builtinPayload, RADIUS_VALUES } from "./tokens";
 
@@ -231,6 +232,36 @@ export function BrandProvider({ userId, sessionless = false, children }: BrandPr
       cancelled = true;
     };
   }, [userId, sessionless, previewTick]);
+
+  // A campaign starts or ends at a date the server named (B24): ask again then, at the latest in six
+  // hours, so no timer is longer than a browser keeps, and ask when a tab wakes after the boundary
+  // (a laptop that slept) instead of waiting for a timer that never ran.
+  useEffect(() => {
+    if (sessionless || userId === undefined) return;
+    const validUntil = fetched.validUntil;
+    if (!validUntil) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const arm = () => {
+      clearTimeout(timer);
+      const delay = brandRefetchDelay(validUntil, Date.now());
+      if (delay === null) return;
+      timer = setTimeout(() => {
+        refreshBrand();
+        arm();
+      }, delay);
+    };
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      if (Date.parse(validUntil) <= Date.now()) refreshBrand();
+      arm();
+    };
+    arm();
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [fetched, userId, sessionless]);
 
   useEffect(() => {
     applyFavicon(payload.logos.icon);

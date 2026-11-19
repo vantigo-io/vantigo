@@ -83,6 +83,10 @@ export interface BrandPayload {
   choiceIgnored?: boolean;
   /** On the public look by domain only (B25): the domain is attached to a published brand. */
   matched?: boolean;
+  /** The campaign in force, whose overlay is folded into this brand (B22), if any. */
+  campaign?: { id: string; name: string };
+  /** The next time the campaign in force changes (B24), an ISO instant; the client asks again then, at the latest in six hours. */
+  validUntil?: string | null;
 }
 
 /** The payload version this client understands; a higher one is ignored (B36). */

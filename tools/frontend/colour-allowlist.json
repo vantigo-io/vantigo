@@ -121,6 +121,11 @@
     "reason": "A logo well shows the mark on the background it is made for, whatever scheme the admin is in"
   },
   {
+    "path": "apps/host/frontend/src/routes/workspace/-brand-campaigns.tsx",
+    "pattern": "background: slot === \"mark_dark\"",
+    "reason": "A logo well shows the mark on the background it is made for, whatever scheme the admin is in"
+  },
+  {
     "path": "packages/frontend-shell/src/app-shell-layout.tsx",
     "pattern": "bg=\\{mark\\.chip \\? \"white\"",
     "reason": "The chip a light-background brand mark rides on in dark mode is light on purpose"

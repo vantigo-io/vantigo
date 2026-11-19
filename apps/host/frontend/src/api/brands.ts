@@ -113,3 +113,47 @@ export const exportInputsOf = (brand: Brand): BrandInputs => {
     support: v?.support ?? {},
   };
 };
+
+// --- Campaigns (brands design B-D) ---
+
+export type BrandCampaign = Schemas["BrandCampaign"];
+export type BrandCampaignStatus = BrandCampaign["status"];
+/** A campaign's inputs: dates are `YYYY-MM-DD`, the overlay's colour and title optional; logos have their own calls. */
+export interface BrandCampaignInputs {
+  name: string;
+  startsOn: string;
+  endsOn: string;
+  yearly: boolean;
+  enabled: boolean;
+  affectsEmail: boolean;
+  overlay: { primary?: string; title?: string };
+}
+
+export const brandCampaignsQueryKey = (brandId: string) => ["brand-campaigns", brandId] as const;
+
+const campaigns = (brandId: string) => `${base}/${brandId}/campaigns`;
+
+export const listBrandCampaigns = (brandId: string) => request<Schemas["BrandCampaignsResponse"]>(campaigns(brandId));
+
+/** Creates a campaign; it is live on save when enabled (no draft). 409 campaign_overlap, 422 campaign_too_long. */
+export const createBrandCampaign = (brandId: string, body: BrandCampaignInputs) =>
+  request<BrandCampaign>(campaigns(brandId), { method: "POST", headers: json, body: JSON.stringify(body) });
+
+export const saveBrandCampaign = (brandId: string, id: string, body: BrandCampaignInputs) =>
+  request<BrandCampaign>(`${campaigns(brandId)}/${id}`, { method: "PUT", headers: json, body: JSON.stringify(body) });
+
+export const deleteBrandCampaign = (brandId: string, id: string) =>
+  request<void>(`${campaigns(brandId)}/${id}`, { method: "DELETE" });
+
+export const uploadCampaignLogo = (brandId: string, id: string, slot: LogoSlot, file: File) => {
+  const form = new FormData();
+  form.append("file", file);
+  return request<BrandCampaign>(`${campaigns(brandId)}/${id}/logos/${slot}`, { method: "PUT", body: form });
+};
+
+export const removeCampaignLogo = (brandId: string, id: string, slot: LogoSlot) =>
+  request<BrandCampaign>(`${campaigns(brandId)}/${id}/logos/${slot}`, { method: "DELETE" });
+
+/** Where a campaign's logo can be shown from, for holders of identity:brands; the hash busts the cache. */
+export const campaignLogoPath = (brandId: string, id: string, slot: LogoSlot, sha256: string) =>
+  `${campaigns(brandId)}/${id}/logos/${slot}?v=${sha256.slice(0, 12)}`;
