@@ -280,7 +280,7 @@ const ShipmentPanel = ({ shipment, canManage }: { shipment: Shipment; canManage:
           </Alert>
         )}
         {bookable && shipment.test && (
-          <Text size="xs" c="yellow">
+          <Text size="xs" c="light-dark(var(--mantine-color-yellow-8), var(--mantine-color-yellow-4))">
             {t("testBookingWarning")}
           </Text>
         )}

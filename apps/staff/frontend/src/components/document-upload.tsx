@@ -171,6 +171,7 @@ const UploadForm = ({
           aria-label={t("documentFile")}
           p="sm"
           invalid={Boolean(form.errors.file)}
+          disabled={upload.isPending}
           onDropFiles={drop}
         >
           <Stack gap="xs">

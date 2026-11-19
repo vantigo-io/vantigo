@@ -190,7 +190,7 @@ describe("ProductImages", () => {
     const fetchMock = stubImages([], () => jsonResponse(201, first));
     renderImages();
 
-    const zone = (await screen.findByText(/Drop JPEG or PNG images here/)).closest("div")?.parentElement as HTMLElement;
+    const zone = await screen.findByRole("group", { name: /Drop JPEG or PNG images here/ });
     const file = new File(["a"], "front.jpg", { type: "image/jpeg" });
     fireEvent.drop(zone, { dataTransfer: { files: [file] } });
 

@@ -24,12 +24,12 @@
   user-select: none;
 }
 
-/* A 1 px caret is hard to follow on a dark page, so it is drawn at 2 px there. */
+/* On a dark page the caret is one 2 px line: the left border carries it and the right one goes. */
 :root[data-mantine-color-scheme="dark"] .collaboration-carets__caret {
   margin-left: -2px;
-  margin-right: -2px;
+  margin-right: 0;
   border-left-width: 2px;
-  border-right-width: 2px;
+  border-right-width: 0;
 }
 
 :root[data-mantine-color-scheme="dark"] .collaboration-carets__label {

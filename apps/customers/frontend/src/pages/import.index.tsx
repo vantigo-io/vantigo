@@ -122,7 +122,7 @@ export const ImportStartPage = () => {
       />
       <PageSection>
         <Stack gap="md">
-          <DropZone p="lg" onDropFiles={drop}>
+          <DropZone p="lg" disabled={upload.isPending} onDropFiles={drop}>
             <Stack gap="xs" align="flex-start">
               <Text id={dropTextId} size="sm">
                 {t("importDropFile")}
