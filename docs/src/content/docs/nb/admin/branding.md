@@ -146,7 +146,7 @@ tekst- og kantfargene forblir Vantigos i begge skjemaene.
 | --- | --- |
 | `422 brand_primary_range` | Fargen er nesten hvit eller nesten svart. |
 | `422 brand_contrast` | Et par er under 4,5 : 1; svaret navngir parene. |
-| `422 brand_support_invalid` | E-posten har et visningsnavn, telefonen har andre tegn enn sifre, mellomrom og `+ - ( ) .` eller er over 30 lang, eller lenken er ikke `http(s)` eller en sti som begynner med én enkelt `/`. |
+| `422 brand_support_invalid` | E-posten har et visningsnavn eller inneholder `?`, `&` eller `%`, telefonen har andre tegn enn sifre, mellomrom og `+ - ( ) .` eller er over 30 lang, eller lenken er ikke `http(s)` eller en sti som begynner med én enkelt `/`, eller inneholder et kontrolltegn som tabulator eller linjeskift. Samme regel gjelder `APP_SUPPORT_URL` og `APP_LOGO_URL` ved oppstart. |
 | `409 stale_revision` | Noen andre lagret merkevaren siden du åpnet den. |
 | `400 logo_*` | Filen er ikke en akseptabel PNG eller JPEG: `logo_unsupported_type`, `logo_too_large`, `logo_too_wide`, `logo_too_small`, `logo_invalid`, `logo_not_square`. |
 | `503 storage_unavailable` | Ikke noe objektlager, eller det kunne ikke skrives til. |

@@ -2,6 +2,7 @@ import { Anchor, AppShell, Box, Burger, Divider, Group, Image, Text, Title } fro
 import { useDisclosure } from "@mantine/hooks";
 import type { ReactNode } from "react";
 import { useBrand, useBrandMark } from "./brand/provider";
+import { safeSupportUrl, supportMailto } from "./brand/support";
 import { registerCatalog, useI18n } from "./i18n";
 import { shellCatalog } from "./i18n/catalogs/shell";
 import { type ShellLinkComponent, ShellLinkProvider } from "./link-context";
@@ -36,11 +37,13 @@ export interface AppShellLayoutProps {
 export const SupportContactLine = () => {
   const { support } = useBrand();
   const { t } = useI18n("shell");
-  if (!support.email && !support.phone && !support.url) return null;
+  const mailto = support.email ? supportMailto(support.email) : null;
+  const helpUrl = support.url ? safeSupportUrl(support.url) : null;
+  if (!mailto && !support.phone && !helpUrl) return null;
   const items: ReactNode[] = [];
-  if (support.email)
+  if (mailto)
     items.push(
-      <Anchor key="email" href={`mailto:${support.email}`} size="xs" c="dimmed">
+      <Anchor key="email" href={mailto} size="xs" c="dimmed">
         {support.email}
       </Anchor>,
     );
@@ -50,9 +53,9 @@ export const SupportContactLine = () => {
         {support.phone}
       </Anchor>,
     );
-  if (support.url)
+  if (helpUrl)
     items.push(
-      <Anchor key="url" href={support.url} target="_blank" rel="noreferrer" size="xs" c="dimmed">
+      <Anchor key="url" href={helpUrl} target="_blank" rel="noreferrer" size="xs" c="dimmed">
         {t("helpCenter")}
       </Anchor>,
     );

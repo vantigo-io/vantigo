@@ -146,7 +146,7 @@ the page, card, text and border colours stay Vantigo's in both schemes.
 | --- | --- |
 | `422 brand_primary_range` | The colour is nearly white or nearly black. |
 | `422 brand_contrast` | A pair is below 4.5 : 1; the response names the pairs. |
-| `422 brand_support_invalid` | The e-mail has a display name, the phone has other characters than digits, spaces and `+ - ( ) .` or is over 30 long, or the link is not `http(s)` or a path starting with a single `/`. |
+| `422 brand_support_invalid` | The e-mail has a display name or holds `?`, `&` or `%`, the phone has other characters than digits, spaces and `+ - ( ) .` or is over 30 long, or the link is not `http(s)` or a path starting with a single `/`, or holds a control character such as a tab or a line break. The same rule applies to `APP_SUPPORT_URL` and `APP_LOGO_URL` at start. |
 | `409 stale_revision` | Someone else saved the brand since you opened it. |
 | `400 logo_*` | The file is not an acceptable PNG or JPEG: `logo_unsupported_type`, `logo_too_large`, `logo_too_wide`, `logo_too_small`, `logo_invalid`, `logo_not_square`. |
 | `503 storage_unavailable` | No object store, or it could not be written. |
