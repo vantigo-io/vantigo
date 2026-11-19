@@ -2207,7 +2207,7 @@ components:
                 brand:
                     allOf:
                         - $ref: '#/components/schemas/CustomerBrandInfo'
-                    description: "The customer's default brand and the brand a new document starts in (brands design B28). Always present on a response; needs nothing beyond customers:view to read."
+                    description: "The customer's default brand and the brand a new document starts in (brands design B28). Present on every single-customer response (GET, and the writes that answer the customer) and omitted from list pages and the CSV export; needs nothing beyond customers:view to read."
                 createdAt:
                     format: date-time
                     type: string

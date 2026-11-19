@@ -939,7 +939,7 @@ the brand ends the fall-back, because nothing was rewritten.
 
 ### Reading
 
-`SafeCustomerResponse.brand` is present on every response: `own` and `group` are the choices
+`SafeCustomerResponse.brand` is present on every single-customer response (not on list pages or the CSV export): `own` and `group` are the choices
 as made (`{id, name?, state}`, `state` being `published`, `archived` or `unknown`, null for none),
 `effective` is `{id, name?, source}` with `source` one of `customer`, `group` and `default`, and
 `unavailable` names the choices skipped (`customer`, `group`). `CustomerGroupSummary.brand` is
