@@ -31,7 +31,9 @@ ignorert siden
 `COMMUNICATIONS_AI_MODEL` leses én gang, inn i modellen som er valgt for hver av
 Kommunikasjons KI-oppgaver, og blir ignorert siden ([importen](#importen-av-communications_ai_model)).
 `APP_TITLE`, `APP_LOGO_URL` og `APP_SUPPORT_*` leses én gang, inn i standardmerkevaren, og blir
-ignorert siden ([Merkevare](/nb/admin/branding/)).
+ignorert siden ([Merkevare](/nb/admin/branding/)). Kan logoen ikke importeres, forblir importen ufullført og variablene
+gjelder til en logo er publisert
+([importen](/nb/admin/branding/#engangsimporten-av-app_title-app_logo_url-og-app_support_)).
 
 ## Installasjonens innstillinger
 

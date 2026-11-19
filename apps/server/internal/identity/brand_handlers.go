@@ -271,6 +271,14 @@ func (s *server) changeBrand(ctx context.Context, id uuid.UUID, ifMatch int32, a
 			err = q.PublishBrand(ctx, store.PublishBrandParams{
 				Published: publish.marshal(), NameKey: nameKey(publish.Name), Now: now, UserID: userID, ID: id,
 			})
+			if err == nil && b.IsDefault {
+				// An admin who publishes a logo of their own settles a logo
+				// import that failed: the variables are ignored from the next
+				// start (B30). A no-op when the import is already complete.
+				if _, has := publish.Logos[logoSlotLight]; has {
+					err = q.CompleteBrandImport(ctx, store.CompleteBrandImportParams{ID: id, Now: now})
+				}
+			}
 		case draft != nil:
 			err = q.SaveBrandDraft(ctx, store.SaveBrandDraftParams{
 				Draft: draft.marshal(), NameKey: nameKey(draft.Name), Now: now, UserID: userID, ID: id,

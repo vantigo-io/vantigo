@@ -106,6 +106,25 @@ func (q *Queries) DiscardBrandDraft(ctx context.Context, arg DiscardBrandDraftPa
 	return err
 }
 
+const failBrandImport = `-- name: FailBrandImport :exec
+UPDATE identity.brands SET import_notice = $1::text
+WHERE id = $2 AND imported_env_at IS NULL
+`
+
+type FailBrandImportParams struct {
+	Notice string
+	ID     uuid.UUID
+}
+
+// FailBrandImport records why the logo could not be imported and leaves the
+// import incomplete (imported_env_at stays NULL): the environment's title and
+// logo stay honoured until an admin publishes a logo of their own
+// (CompleteBrandImport), and the next start tries the fetch again.
+func (q *Queries) FailBrandImport(ctx context.Context, arg FailBrandImportParams) error {
+	_, err := q.db.Exec(ctx, failBrandImport, arg.Notice, arg.ID)
+	return err
+}
+
 const getBrand = `-- name: GetBrand :one
 SELECT id, is_default, state, published, published_version, draft, revision, name_key,
        import_started_at, imported_env_at, import_notice, created_at, updated_at, updated_by_user_id
@@ -364,20 +383,6 @@ func (q *Queries) SaveBrandDraft(ctx context.Context, arg SaveBrandDraftParams) 
 		arg.UserID,
 		arg.ID,
 	)
-	return err
-}
-
-const setBrandImportNotice = `-- name: SetBrandImportNotice :exec
-UPDATE identity.brands SET import_notice = $1 WHERE id = $2
-`
-
-type SetBrandImportNoticeParams struct {
-	Notice *string
-	ID     uuid.UUID
-}
-
-func (q *Queries) SetBrandImportNotice(ctx context.Context, arg SetBrandImportNoticeParams) error {
-	_, err := q.db.Exec(ctx, setBrandImportNotice, arg.Notice, arg.ID)
 	return err
 }
 

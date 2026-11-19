@@ -28,7 +28,9 @@ were read once, into the workspace's single sign-on settings, and are ignored si
 ([Workforce OIDC and SCIM](/en/admin/authentication/#workforce-oidc-and-scim)).
 `COMMUNICATIONS_AI_MODEL` is read once, into the model chosen for each of Communications'
 AI tasks, and is ignored since ([the import](#the-import-of-communications_ai_model)). `APP_TITLE`, `APP_LOGO_URL` and `APP_SUPPORT_*`
-are read once, into the default brand, and are ignored since ([Branding](/en/admin/branding/)).
+are read once, into the default brand, and are ignored since ([Branding](/en/admin/branding/)). If the logo cannot be
+imported, the import stays incomplete and the variables stay in effect until a logo is published
+([the import](/en/admin/branding/#the-one-time-import-of-app_title-app_logo_url-and-app_support_)).
 
 ## The instance's settings
 

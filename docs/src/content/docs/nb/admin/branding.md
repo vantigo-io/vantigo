@@ -114,18 +114,25 @@ standardmerkevaren**, slik `OIDC_*` ble kortet for enkel pålogging:
   supportkontaktene. Samme validering som i redigeringen gjelder; en kontakt som ikke er gyldig
   utelates og navngis i loggen.
 - `APP_LOGO_URL` **hentes etter at programmet er oppe**, aldri mens det starter. Adressen må være
-  `http` eller `https` (en sti som begynner med `/` leses fra installasjonens egen offentlige
-  adresse); ingen omdirigering følges; den må svare innen 15 sekunder med høyst 2 MiB; og den kan
-  ikke peke på en privat adresse, loopback-adresse, lenkelokal adresse eller skyleverandørens
-  metadataadresse. Bildet må bestå logoreglene over og blir merket for lyse bakgrunner.
-- Kan logoen ikke importeres (utilgjengelig, avvist adresse, ikke et bilde, over grensen, ikke noe
-  objektlager) importeres alt det andre likevel, en advarsel logges og **Merkevare**-skjermen viser
-  en melding om at du må laste opp logoen. Hentingen forsøkes ikke på nytt.
+  `http` eller `https`; ingen omdirigering følges; den må svare innen 15 sekunder med høyst 2 MiB;
+  og den kan ikke peke på en privat adresse, loopback-adresse, lenkelokal adresse eller
+  skyleverandørens metadataadresse. En sti som begynner med `/` (som `/logo.png`) navngir en av
+  programmets egne filer og leses direkte fra dem, uten et kall til installasjonens adresse;
+  basestien kan tas med eller utelates. Hele importen, objektlageret medregnet, må være ferdig
+  innen 90 sekunder. Bildet må bestå logoreglene over og blir merket for lyse bakgrunner. En SVG
+  godtas ikke.
+- Kan logoen ikke importeres (utilgjengelig, avvist adresse, ikke et bilde, over grensen, ingen
+  slik fil, ikke noe objektlager, for treg) ligger tittelen og supportkontaktene likevel i
+  merkevaren, en advarsel logges og **Merkevare**-skjermen viser en melding om at du må laste opp
+  logoen. Importen er da **ikke fullført**: `APP_TITLE` og `APP_LOGO_URL` gjelder som før til du
+  laster opp en logo og publiserer merkevaren, og ved neste oppstart hentes logoen på nytt.
 - Flere replikaer som starter samtidig oppretter **én** standardmerkevare, og bare én av dem
   henter logoen; en replika som stopper midt i hentingen erstattes etter to minutter.
 - **Til importen er fullført** gjelder variablene akkurat som før, så en tilbakerulling til en
-  eldre utgave mister ingenting. Etter den ignorerer programmet dem og logger en linje så lenge de
-  fortsatt er satt. Du kan fjerne dem fra miljøet ditt.
+  eldre utgave mister ingenting. Den fullføres når logoen er importert, eller når en administrator
+  publiserer standardmerkevaren med en egen logo. Etter den ignorerer programmet variablene fra
+  neste oppstart og logger en linje så lenge de fortsatt er satt. Du kan fjerne dem fra miljøet
+  ditt.
 
 ## Det som forblir Vantigos
 
@@ -143,4 +150,4 @@ tekst- og kantfargene forblir Vantigos i begge skjemaene.
 | `409 stale_revision` | Noen andre lagret merkevaren siden du åpnet den. |
 | `400 logo_*` | Filen er ikke en akseptabel PNG eller JPEG: `logo_unsupported_type`, `logo_too_large`, `logo_too_wide`, `logo_too_small`, `logo_invalid`, `logo_not_square`. |
 | `503 storage_unavailable` | Ikke noe objektlager, eller det kunne ikke skrives til. |
-| En melding om logoen fra `APP_LOGO_URL` | Importen kunne ikke hente den; last opp logoen. |
+| En melding om logoen fra `APP_LOGO_URL` | Importen kunne ikke hente den; last opp logoen og publiser. Til da gjelder variablene fortsatt. |

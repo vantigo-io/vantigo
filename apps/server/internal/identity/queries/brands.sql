@@ -74,8 +74,13 @@ UPDATE identity.brands
 SET imported_env_at = @now::timestamptz, import_notice = sqlc.narg('notice')
 WHERE id = @id AND imported_env_at IS NULL;
 
--- name: SetBrandImportNotice :exec
-UPDATE identity.brands SET import_notice = sqlc.narg('notice') WHERE id = @id;
+-- name: FailBrandImport :exec
+-- FailBrandImport records why the logo could not be imported and leaves the
+-- import incomplete (imported_env_at stays NULL): the environment's title and
+-- logo stay honoured until an admin publishes a logo of their own
+-- (CompleteBrandImport), and the next start tries the fetch again.
+UPDATE identity.brands SET import_notice = @notice::text
+WHERE id = @id AND imported_env_at IS NULL;
 
 -- name: BrandingImported :one
 -- BrandingImported is whether the default brand exists and its import of the
