@@ -535,7 +535,7 @@ func (s *server) createSubscriptionRow(ctx context.Context, txq *store.Queries, 
 		NetTotal: numeric(t.net, amountPlaces), VatTotal: numeric(t.vat, amountPlaces), GrossTotal: numeric(t.gross, amountPlaces),
 		Channel: origin.Channel, SourceModule: origin.SourceModule, SourceKind: origin.SourceKind, SourceID: origin.SourceID,
 		ExternalID: origin.ExternalID, ExternalNumber: origin.ExternalNumber, ClientRequestID: origin.ClientRequestID,
-		CreatedByUserID: by.id, CreatedByDisplay: by.display, Now: s.deps.Clock(),
+		CreatedByUserID: by.id, CreatedByDisplay: by.display, Now: s.deps.Clock(), BrandID: hp.BrandID,
 	})
 	if err != nil {
 		return store.OrdersSubscription{}, nil, fmt.Errorf("orders: insert subscription: %w", err)

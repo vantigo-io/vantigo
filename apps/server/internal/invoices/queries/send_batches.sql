@@ -121,6 +121,15 @@ WHERE id = @id AND lease_id = @lease_id::text AND state = 'sending';
 -- LockSendJob takes a job FOR UPDATE, after its document's lock.
 SELECT * FROM invoices.send_jobs WHERE id = @id FOR UPDATE;
 
+-- name: LockSendBatch :exec
+-- LockSendBatch serializes the workers that end the jobs of one batch. Each
+-- of them ends its job and asks FinishSendBatch whether any job is still
+-- live, in its own transaction: without this lock the last two to end, at the
+-- same time, each still see the other's job as sending (neither commit is
+-- visible) and neither finishes the batch. FOR NO KEY UPDATE does not
+-- hold up a job being queued for the batch (its foreign key takes FOR KEY SHARE).
+SELECT 1 FROM invoices.send_batches WHERE id = @id FOR NO KEY UPDATE;
+
 -- name: CompleteSendJob :execrows
 -- CompleteSendJob ends the claimed job with its outcome.
 UPDATE invoices.send_jobs

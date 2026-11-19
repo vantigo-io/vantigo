@@ -413,6 +413,12 @@ logoen, og merkevarens navn som ligger på dokumentets post. Et nytt utkast star
 arbeidsområdets standardmerkevare ([Kunder: Merkevare](/nb/user/customers/#merkevare)). Fakturaen
 som en faktureringskjøring, hurtigfakturaen eller en veiviser lager, starter på samme måte.
 
+En faktura som lages fra ordrer starter i ordrenes merkevare
+([Ordre: merkevaren til et tilbud eller en ordre](/nb/user/orders/#merkevaren-til-et-tilbud-eller-en-ordre)),
+når alle ordrene på den ble bekreftet i den samme og merkevaren fortsatt er publisert; ordrer med
+ulike merkevarer, eller en ordre hvis merkevare er arkivert i mellomtiden, overlater valget til
+kundens vanlige rekkefølge, og det arkiverte tilfellet sier fra i varselet under.
+
 Vil du skrive ut ett dokument i en annen merkevare, velg den i **Merkevare** i editoren. Feltet
 tilbyr de publiserte merkevarene, standard først, og valget gjelder bare dette dokumentet; det
 endrer ikke kunden. Å lagre uten å røre feltet lar merkevaren stå, og å bytte kunde flytter en

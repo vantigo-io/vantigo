@@ -472,6 +472,9 @@ func (c *sendClaim) complete(ctx context.Context, out jobOutcome) error {
 		if _, err := lockInvoice(ctx, txq, c.row.InvoiceID); err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return fmt.Errorf("invoices: lock document %d: %w", c.row.InvoiceID, err)
 		}
+		if err := txq.LockSendBatch(ctx, c.row.BatchID); err != nil {
+			return fmt.Errorf("invoices: lock send batch %d: %w", c.row.BatchID, err)
+		}
 		now := c.w.now()
 		n, err := txq.CompleteSendJob(ctx, store.CompleteSendJobParams{
 			State: out.state, Channel: nonEmpty(out.channel), Code: nonEmpty(out.code), Detail: out.detail,

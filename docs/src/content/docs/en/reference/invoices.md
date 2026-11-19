@@ -4,6 +4,7 @@ description: "The sales document: the seller record, gap-free numbering, VAT, is
 sources:
   - apps/server/internal/invoices
   - apps/server/internal/db/migrations/00214_invoices_brand.sql
+  - apps/server/internal/db/migrations/00215_invoices_brand_source_order.sql
   - apps/invoices/frontend
   - openapi/invoices.yaml
   - apps/server/internal/db/migrations/00078_invoices_energy.sql
@@ -445,7 +446,7 @@ key it has already seen — the same answer — 401 and 403 are the key, a 429 c
 Brands on invoices (brands design [B27–B29a](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-11-19-brands-design.md),
 delivery E2; migration `00214_invoices_brand.sql`). A document carries `brand_id` (no foreign
 key: the brand is Identity's row, read through `contracts.Brands`, which this module never
-bypasses), `brand_source` (`chosen`, `customer`, `group` or `default`), `brand_skipped` and,
+bypasses), `brand_source` (`chosen`, `customer`, `group`, `default` or `order`, the last added by `00215_invoices_brand_source_order.sql`), `brand_skipped` and,
 once issued, the snapshot `brand_name`, `brand_logo_object_key` and `brand_logo_sha256`
 (the pair is both or neither, `ck_invoices_brand_logo`). Nothing is read from `contracts.Brands`
 under a lock. `contracts.Brands` answers a brand's **published version** only: no draft and no
@@ -457,12 +458,20 @@ default brand of `Brands.List` (`default`). A candidate that is not among the pu
 non-archived brands is skipped and `brand_skipped` is set; no default published is no brand
 (NULL). The same order serves every path that makes an invoice without a person choosing: the
 quick invoice, invoices from work, consumption and orders, and the billing worker's drafts
-(`DueOrder` carries no brand yet; delivery E3 adds it). A `brandId` that is not published is a
+(an order's own brand is handled below). A `brandId` that is not published is a
 400 on `brandId`, except the one the draft already carries. `PUT /invoices/{id}` with `brandId`
 sets it (`chosen`); without it the draft keeps its brand, unless `customerId` changed and the
 brand was not `chosen`, when it is picked again from the new customer. A credit-note draft refuses
 a `brandId` other than its invoice's (400 on `brandId`). `GET /invoices/brands`
 (`invoices:access` + `invoices:create`) lists the published brands for the editor's select.
+
+**A draft made from orders (delivery E3).** `contracts.DueOrder.BrandID` is the brand the order
+was confirmed in (a draft order's, its current choice; a subscription made from a quote keeps the
+quote's). When every order on a draft carries the same non-nil `BrandID` and it is among the
+published brands, the draft starts in it with `brand_source` `order`. Orders that disagree or carry
+none hand on none, and the customer's order of choice above applies; an order brand that is not
+published is skipped, `brand_skipped` is set and the same order applies. Orders are not grouped by
+brand. The issue snapshots whatever brand the draft carries, as for any other invoice.
 
 **The response's `brand {id, name, source, unavailable}`.** A draft's is read now: `name` is the
 published name, and `unavailable` is true when the brand is archived or unknown now or when

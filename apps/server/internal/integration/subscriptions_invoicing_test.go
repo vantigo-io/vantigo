@@ -61,7 +61,7 @@ func (o ordersInstallation) duePeriods(t *testing.T, id int64) []string {
 	okJSON(t, o.c, http.MethodGet, fmt.Sprintf("%s/due?customerId=%d", fromOrdersPath, o.customer), nil, &due)
 	var out []string
 	for _, d := range due.Orders {
-		if d.Kind != invgen.Subscription || d.Id != id {
+		if d.Kind != invgen.InvoicesDueOrderKindSubscription || d.Id != id {
 			continue
 		}
 		for _, l := range d.Lines {

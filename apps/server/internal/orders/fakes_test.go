@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
@@ -248,6 +249,19 @@ func (f *fakeSalesTax) Seller(ctx context.Context) (contracts.SellerProfile, err
 type fakeDirectory struct {
 	mu       sync.Mutex
 	profiles map[int32]contracts.CustomerBillingProfile
+	// brands is a customer's own default brand and its group's (brands design
+	// B28), as Customer answers them.
+	brands map[int32][2]*uuid.UUID
+}
+
+// setBrands sets a customer's own default brand and its group's, nil for none.
+func (d *fakeDirectory) setBrands(id int32, own, group *uuid.UUID) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.brands == nil {
+		d.brands = map[int32][2]*uuid.UUID{}
+	}
+	d.brands[id] = [2]*uuid.UUID{own, group}
 }
 
 var _ contracts.CustomerDirectory = (*fakeDirectory)(nil)
@@ -274,7 +288,14 @@ func (d *fakeDirectory) update(id int32, fn func(*contracts.CustomerBillingProfi
 
 func (d *fakeDirectory) Customer(ctx context.Context, id int32) (*contracts.CustomerEntry, error) {
 	lockedContractCalls.note(ctx, "fake Directory.Customer")
-	return nil, nil
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	p, ok := d.profiles[id]
+	if !ok {
+		return nil, nil
+	}
+	b := d.brands[id]
+	return &contracts.CustomerEntry{ID: p.ID, Name: p.Name, BrandID: b[0], GroupBrandID: b[1]}, nil
 }
 
 func (d *fakeDirectory) Customers(ctx context.Context, _ []int32) ([]contracts.CustomerEntry, error) {
@@ -366,6 +387,13 @@ func (s *fakeObjectStore) Delete(ctx context.Context, key string) error {
 	defer s.mu.Unlock()
 	delete(s.objects, key)
 	return nil
+}
+
+// object is the bytes stored under key, nil for none.
+func (s *fakeObjectStore) object(key string) []byte {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slices.Clone(s.objects[key])
 }
 
 // keys is every stored key.

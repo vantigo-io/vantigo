@@ -55,6 +55,39 @@ VAT**), **Payment terms**, **Document language**, **Valid until**, **Delivery da
 text** and an **Internal note**, which is never printed. A draft follows the customer: if
 the customer's address or name changes in Customers, the next save takes it in.
 
+### The brand of a quote or an order
+
+Every quote and order is printed in a brand ([Branding](/en/admin/branding/#brands-on-quotes-and-orders)):
+its logo, and the brand's name kept on the document's record. A new draft starts in the
+customer's **default brand**; a customer without one takes its group's, and a customer with
+neither the workspace's default brand ([Customers: Brand](/en/user/customers/#brand)). An
+order made from a quote starts in the quote's brand.
+
+To print one document in another brand, pick it in **Brand** under the header. The field
+offers the published brands, the default first, and the choice applies to this document only;
+it does not change the customer. A save without touching the field leaves the brand as it is,
+and changing the customer moves a brand you did not pick to the new customer's default. Under
+the field it says that the seller's legal name, organisation number and bank account stay the
+same in every brand: a brand changes the logo on the document, never who sends it. The brand's
+name is not printed.
+
+When the brand the draft would use has been archived since, a yellow notice says so — *The brand
+chosen for this customer is archived or no longer published* — and the quote is sent, or the
+order confirmed, in the next brand in the order, unless you pick another here. A draft's PDF and
+pro forma show the brand's logo as it is now.
+
+When you send a quote or mark it as sent, and when you confirm an order, the brand's name and
+logo are copied onto the document. The PDF, the pro forma and the e-mail print that copy for
+good: renaming the brand, archiving it, changing its logo or running a campaign in it changes
+nothing already sent or confirmed, and a campaign's look never appears on a document. **Brand**
+is then read-only. Revising a quote opens it again: the revision is a draft, and the copy is made
+afresh when you send it. An order accepted from a quote carries the quote's copy when it is
+confirmed at once.
+
+The logo is the brand's **wordmark** when it has one, otherwise its mark for light backgrounds.
+A brand with neither prints no logo, and so does a document whose brand has no logo or whose logo
+could not be read when it was sent or confirmed; the quote or order is still sent or confirmed.
+
 ### Add lines
 
 Under **Lines**, add:
@@ -557,7 +590,10 @@ invoice.
    line to invoice — all that is left, or less to invoice part of a line — and choose
    **Create the drafts**
    ([Invoice from orders](/en/user/invoices/#invoicing-orders)).
-3. Check the draft in Invoices and issue it. Until then the draft **holds** the quantities
+3. The draft starts in the order's brand, when every order on it was confirmed in the same one
+   and the brand is still published; otherwise in the customer's default
+   ([Invoices: the brand of a document](/en/user/invoices/#the-brand-of-a-document)).
+   Check the draft in Invoices and issue it. Until then the draft **holds** the quantities
    it bills: each line's progress shows "2 on draft invoices", and they are not offered
    to invoice again.
 

@@ -658,6 +658,7 @@ const OrderEditor = ({ order, access }: { order: Order; access: OrdersAccess }) 
         onChange={editor.patchHeader}
         snapshot={order.customer}
         salesperson={order.salesperson}
+        brand={order.brand}
         editable={{ draft: manage && draft, delivery: editable }}
         access={access}
         errors={editor.fieldErrors}

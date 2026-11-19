@@ -63,6 +63,11 @@ type header struct {
 	ClosingText                string
 	InternalNote               string
 	DeliveryDate               pgtype.Date
+	// BrandID, BrandSource and BrandSkipped are the brand the document is
+	// printed in while it is a draft (brands design B28); brand.go.
+	BrandID      *uuid.UUID
+	BrandSource  *string
+	BrandSkipped bool
 }
 
 // headerOfQuote and headerOfOrder are a stored document's header.
@@ -79,7 +84,7 @@ func headerOfQuote(q store.OrdersQuote) header {
 		SalespersonDisplay: q.SalespersonDisplay, ProjectID: q.ProjectID, Currency: q.Currency,
 		PricesIncludeVat: q.PricesIncludeVat, PaymentTermsDays: q.PaymentTermsDays, DiscountVisible: q.DiscountVisible,
 		Language: q.Language, IntroText: q.IntroText, ClosingText: q.ClosingText, InternalNote: q.InternalNote,
-		DeliveryDate: q.DeliveryDate,
+		DeliveryDate: q.DeliveryDate, BrandID: q.BrandID, BrandSource: q.BrandSource, BrandSkipped: q.BrandSkipped,
 	}
 }
 
@@ -96,7 +101,7 @@ func headerOfOrder(o store.OrdersOrder) header {
 		SalespersonDisplay: o.SalespersonDisplay, ProjectID: o.ProjectID, Currency: o.Currency,
 		PricesIncludeVat: o.PricesIncludeVat, PaymentTermsDays: o.PaymentTermsDays, DiscountVisible: o.DiscountVisible,
 		Language: o.Language, IntroText: o.IntroText, ClosingText: o.ClosingText, InternalNote: o.InternalNote,
-		DeliveryDate: o.DeliveryDate,
+		DeliveryDate: o.DeliveryDate, BrandID: o.BrandID, BrandSource: o.BrandSource, BrandSkipped: o.BrandSkipped,
 	}
 }
 

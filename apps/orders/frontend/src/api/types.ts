@@ -32,6 +32,10 @@ export type Totals = Schemas["OrdersTotals"];
 export type CustomerSnapshot = Schemas["OrdersCustomerSnapshot"];
 export type Address = Schemas["OrdersAddress"];
 export type Person = Schemas["OrdersPerson"];
+/** The brand a quote or an order is printed in (brands design B27, B28). */
+export type Brand = Schemas["OrdersBrand"];
+/** A published brand the editor's Brand select offers; the workspace default comes first. */
+export type BrandOption = Schemas["OrdersBrandOption"];
 export type SendInput = Schemas["OrdersSendInput"];
 export type Mailing = Schemas["OrdersMailing"];
 export type StoredDocument = Schemas["OrdersStoredDocument"];

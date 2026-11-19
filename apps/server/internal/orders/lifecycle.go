@@ -70,7 +70,7 @@ func customerConfirmable(p *contracts.CustomerBillingProfile) error {
 // (credit_limit_exceeded, invoices phase 6 design I38), judged on credit, read
 // before the transaction, and the order backlog read here.
 func confirmTx(ctx context.Context, s *server, tx pgx.Tx, txq *store.Queries, order store.OrdersOrder, lines []store.OrdersLine, o warningOverride,
-	by actor, customer *contracts.CustomerBillingProfile, credit *creditRead, reserve bool, today time.Time) (store.OrdersOrder, error) {
+	by actor, customer *contracts.CustomerBillingProfile, credit *creditRead, reserve bool, today time.Time, brand *brandSnap) (store.OrdersOrder, error) {
 	if order.Status != orderDraft {
 		return order, conflict(codeOrderNotDraft, "The order is not a draft",
 			fmt.Sprintf("Order %d is %s; only a draft is confirmed.", order.Number, order.Status))
@@ -107,7 +107,12 @@ func confirmTx(ctx context.Context, s *server, tx pgx.Tx, txq *store.Queries, or
 		return order, err
 	}
 	now := s.deps.Clock()
-	row, err := txq.ConfirmOrderRow(ctx, store.ConfirmOrderRowParams{ID: order.ID, Now: &now, ByUserID: by.id, ByDisplay: by.display})
+	confirm := store.ConfirmOrderRowParams{ID: order.ID, Now: &now, ByUserID: by.id, ByDisplay: by.display}
+	if brand != nil {
+		confirm.BrandID, confirm.BrandSource, confirm.BrandName = &brand.id, &brand.source, &brand.name
+		confirm.BrandLogoObjectKey, confirm.BrandLogoSha256 = brand.key, brand.sha
+	}
+	row, err := txq.ConfirmOrderRow(ctx, confirm)
 	if err != nil {
 		return order, fmt.Errorf("orders: confirm order %d: %w", order.ID, err)
 	}
@@ -197,6 +202,12 @@ func (s *server) ConfirmSalesOrder(ctx context.Context, req gen.ConfirmSalesOrde
 	if err != nil {
 		return nil, err
 	}
+	// The brand the order is confirmed in, its logo copied into this module's
+	// scope (brands design B27), read before any transaction.
+	snap, err := s.snapshotBrand(ctx, cur.BrandID, cur.BrandSource, cur.CustomerID)
+	if err != nil {
+		return nil, err
+	}
 	// The day the ledger judges a lot's expiry on, read on the pool (rule 24).
 	today, err := s.todayOf(ctx)
 	if err != nil {
@@ -220,10 +231,10 @@ func (s *server) ConfirmSalesOrder(ctx context.Context, req gen.ConfirmSalesOrde
 		if err != nil {
 			return err
 		}
-		if confirmed, err = confirmTx(ctx, s, tx, txq, o, locked, override, by, customer, credit, req.Body.Reserve == nil || *req.Body.Reserve, today); err != nil {
+		if confirmed, err = confirmTx(ctx, s, tx, txq, o, locked, override, by, customer, credit, req.Body.Reserve == nil || *req.Body.Reserve, today, snap); err != nil {
 			return err
 		}
-		if printed, err = p.confirmation(confirmed, locked, s.deps.Clock()); err != nil {
+		if printed, err = p.confirmation(confirmed, locked, s.deps.Clock(), snap.logoOf()); err != nil {
 			return err
 		}
 		warnings, err := documentWarnings(ctx, txq, confirmed.CustomerID, locked)

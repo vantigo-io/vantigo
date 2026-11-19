@@ -36,6 +36,10 @@ type PDFModel struct {
 	VATRows                    [][]string
 	Totals                     [][2]string
 	Meta                       [][2]string
+	// Logo is the image printed beside the title, nil for none.
+	Logo []byte
+	// Seller is the seller block's lines.
+	Seller []string
 }
 
 // SetPDFModelHook installs fn to hear every PDF model rendered, with the bytes
@@ -43,7 +47,7 @@ type PDFModel struct {
 func SetPDFModelHook(fn func(PDFModel, []byte)) {
 	pdfRendered = func(m pdfModel, pdf []byte) {
 		out := PDFModel{Watermark: m.watermark, Title: m.title, Subtitle: m.subtitle, Header: m.header,
-			VATRows: m.vatRows, Totals: m.totals, Meta: m.meta}
+			VATRows: m.vatRows, Totals: m.totals, Meta: m.meta, Logo: m.logo, Seller: m.seller}
 		for _, r := range m.rows {
 			out.Rows = append(out.Rows, r.cells)
 		}
@@ -85,7 +89,7 @@ func StoreOrderConfirmation(ctx context.Context, d module.Deps, orderID int64) (
 	if err != nil {
 		return 0, err
 	}
-	body, err := renderOrderConfirmation(o, lines, seller, d.Clock(), false)
+	body, err := renderOrderConfirmation(o, lines, seller, d.Clock(), false, docLogo{})
 	if err != nil {
 		return 0, err
 	}

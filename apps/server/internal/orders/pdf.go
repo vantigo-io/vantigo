@@ -9,10 +9,13 @@ import (
 
 	"github.com/johnfercher/maroto/v2"
 	"github.com/johnfercher/maroto/v2/pkg/components/col"
+	"github.com/johnfercher/maroto/v2/pkg/components/image"
 	"github.com/johnfercher/maroto/v2/pkg/components/line"
+	"github.com/johnfercher/maroto/v2/pkg/components/row"
 	"github.com/johnfercher/maroto/v2/pkg/components/text"
 	"github.com/johnfercher/maroto/v2/pkg/config"
 	"github.com/johnfercher/maroto/v2/pkg/consts/align"
+	"github.com/johnfercher/maroto/v2/pkg/consts/extension"
 	"github.com/johnfercher/maroto/v2/pkg/consts/fontstyle"
 	"github.com/johnfercher/maroto/v2/pkg/core"
 	"github.com/johnfercher/maroto/v2/pkg/fontrepository"
@@ -113,15 +116,19 @@ type printable struct {
 	lines    []store.OrdersLine
 	seller   contracts.SellerProfile
 	language string
+	// logo is the brand's logo (brands design B27): the snapshot's once the
+	// document was sent or confirmed, the brand as it is now on a draft. The
+	// zero value prints none.
+	logo docLogo
 }
 
 // printableOfQuote and printableOfOrder are a stored document as its PDF
 // prints it. date is the document's date: when it was sent or confirmed, or
 // now for a draft.
-func printableOfQuote(q store.OrdersQuote, lines []store.OrdersLine, seller contracts.SellerProfile, date time.Time) printable {
+func printableOfQuote(q store.OrdersQuote, lines []store.OrdersLine, seller contracts.SellerProfile, date time.Time, logo docLogo) printable {
 	p := printable{
 		kind: docQuote, draft: q.Status == quoteDraft, number: q.Number, version: q.Revision, date: date,
-		header: headerOfQuote(q), lines: lines, seller: seller, language: q.Language,
+		header: headerOfQuote(q), lines: lines, seller: seller, language: q.Language, logo: logo,
 	}
 	if q.ValidUntil.Valid {
 		v := q.ValidUntil.Time
@@ -130,11 +137,11 @@ func printableOfQuote(q store.OrdersQuote, lines []store.OrdersLine, seller cont
 	return p
 }
 
-func printableOfOrder(o store.OrdersOrder, lines []store.OrdersLine, seller contracts.SellerProfile, date time.Time) printable {
+func printableOfOrder(o store.OrdersOrder, lines []store.OrdersLine, seller contracts.SellerProfile, date time.Time, logo docLogo) printable {
 	return printable{
 		kind: docConfirmation, draft: o.Status == orderDraft, revised: o.Version > 1 && o.Status != orderDraft,
 		number: o.Number, version: o.Version, date: date, header: headerOfOrder(o), lines: lines, seller: seller,
-		language: o.Language,
+		language: o.Language, logo: logo,
 	}
 }
 
@@ -164,6 +171,10 @@ type pdfModel struct {
 	closing       string
 	footer        string
 	created       time.Time
+	// logo is the image printed beside the title, of type logoType; nil for
+	// none, and then the title row is as it was.
+	logo     []byte
+	logoType string
 	// codes are a packing slip's shipments (O52): each consignment number
 	// printed as Code 128 beside its tracking URL as a QR code.
 	codes []pdfCode
@@ -263,7 +274,7 @@ func buildPDFModel(d printable) pdfModel {
 	}
 	l := pdfLabelSets[lang]
 	h := d.header
-	m := pdfModel{created: d.date}
+	m := pdfModel{created: d.date, logo: d.logo.data, logoType: d.logo.contentType}
 
 	switch {
 	case d.proforma:
@@ -485,7 +496,7 @@ func renderPDF(m pdfModel) ([]byte, error) {
 		doc.AddRows(text.NewRow(10, m.watermark, props.Text{Style: fontstyle.Bold, Size: 14, Align: align.Center,
 			Color: &props.Color{Red: 200, Green: 30, Blue: 30}}))
 	}
-	doc.AddRows(text.NewRow(12, m.title, props.Text{Style: fontstyle.Bold, Size: 18}))
+	addTitleRow(doc, m.title, m.logo, m.logoType)
 	doc.AddRows(text.NewRow(7, m.subtitle, props.Text{Style: fontstyle.Bold, Size: 11}))
 
 	for i := range max(len(m.seller), len(m.buyer)) {
@@ -577,6 +588,34 @@ func renderPDF(m pdfModel) ([]byte, error) {
 	return b, nil
 }
 
+// logoBox is the logo's place, as on an invoice: the first three of the page's
+// twelve columns and logoHeight high, the image fitted inside with its
+// proportions kept.
+const (
+	logoColumns = 3
+	logoHeight  = 20
+)
+
+// addTitleRow lays out the title row: the title alone, as it always was,
+// without a logo; with one, the logo fitted in its box at the top left and the
+// title beside it.
+func addTitleRow(doc core.Maroto, title string, logo []byte, logoType string) {
+	style := props.Text{Style: fontstyle.Bold, Size: 18}
+	if logo == nil {
+		doc.AddRows(text.NewRow(12, title, style))
+		return
+	}
+	ext := extension.Png
+	if logoType == "image/jpeg" {
+		ext = extension.Jpg
+	}
+	style.Left, style.Top = 4, 1
+	doc.AddRow(logoHeight,
+		image.NewFromBytesCol(logoColumns, logo, ext, props.Rect{Percent: 100}),
+		text.NewCol(12-logoColumns, title, style))
+	doc.AddRows(row.New(3))
+}
+
 // renderPrintable renders a document's PDF.
 func renderPrintable(d printable) ([]byte, error) { return renderPDF(buildPDFModel(d)) }
 
@@ -585,15 +624,15 @@ func renderPrintable(d printable) ([]byte, error) { return renderPDF(buildPDFMod
 // forma print when proforma is set. date is the confirmation's date — when it
 // was confirmed — and seller the seller block read before (s.seller). The
 // orders lane stores it on confirm and on send (storeDocument).
-func renderOrderConfirmation(o store.OrdersOrder, lines []store.OrdersLine, seller contracts.SellerProfile, date time.Time, proforma bool) ([]byte, error) {
-	p := printableOfOrder(o, lines, seller, date)
+func renderOrderConfirmation(o store.OrdersOrder, lines []store.OrdersLine, seller contracts.SellerProfile, date time.Time, proforma bool, logo docLogo) ([]byte, error) {
+	p := printableOfOrder(o, lines, seller, date, logo)
 	p.proforma = proforma
 	return renderPrintable(p)
 }
 
 // renderQuote is a quote's PDF, or its pro forma print.
-func renderQuote(q store.OrdersQuote, lines []store.OrdersLine, seller contracts.SellerProfile, date time.Time, proforma bool) ([]byte, error) {
-	p := printableOfQuote(q, lines, seller, date)
+func renderQuote(q store.OrdersQuote, lines []store.OrdersLine, seller contracts.SellerProfile, date time.Time, proforma bool, logo docLogo) ([]byte, error) {
+	p := printableOfQuote(q, lines, seller, date, logo)
 	p.proforma = proforma
 	return renderPrintable(p)
 }

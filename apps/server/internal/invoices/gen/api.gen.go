@@ -236,22 +236,25 @@ func (e InvoicesBillingRunRequestSource) Valid() bool {
 
 // Defines values for InvoicesBrandSource.
 const (
-	Chosen   InvoicesBrandSource = "chosen"
-	Customer InvoicesBrandSource = "customer"
-	Default  InvoicesBrandSource = "default"
-	Group    InvoicesBrandSource = "group"
+	InvoicesBrandSourceChosen   InvoicesBrandSource = "chosen"
+	InvoicesBrandSourceCustomer InvoicesBrandSource = "customer"
+	InvoicesBrandSourceDefault  InvoicesBrandSource = "default"
+	InvoicesBrandSourceGroup    InvoicesBrandSource = "group"
+	InvoicesBrandSourceOrder    InvoicesBrandSource = "order"
 )
 
 // Valid indicates whether the value is a known member of the InvoicesBrandSource enum.
 func (e InvoicesBrandSource) Valid() bool {
 	switch e {
-	case Chosen:
+	case InvoicesBrandSourceChosen:
 		return true
-	case Customer:
+	case InvoicesBrandSourceCustomer:
 		return true
-	case Default:
+	case InvoicesBrandSourceDefault:
 		return true
-	case Group:
+	case InvoicesBrandSourceGroup:
+		return true
+	case InvoicesBrandSourceOrder:
 		return true
 	default:
 		return false
@@ -455,16 +458,16 @@ func (e InvoicesCreditMovementKind) Valid() bool {
 
 // Defines values for InvoicesDueOrderKind.
 const (
-	Order        InvoicesDueOrderKind = "order"
-	Subscription InvoicesDueOrderKind = "subscription"
+	InvoicesDueOrderKindOrder        InvoicesDueOrderKind = "order"
+	InvoicesDueOrderKindSubscription InvoicesDueOrderKind = "subscription"
 )
 
 // Valid indicates whether the value is a known member of the InvoicesDueOrderKind enum.
 func (e InvoicesDueOrderKind) Valid() bool {
 	switch e {
-	case Order:
+	case InvoicesDueOrderKindOrder:
 		return true
-	case Subscription:
+	case InvoicesDueOrderKindSubscription:
 		return true
 	default:
 		return false
@@ -2436,7 +2439,7 @@ type InvoicesBillingRunRequest struct {
 // InvoicesBillingRunRequestSource defines model for InvoicesBillingRunRequest.Source.
 type InvoicesBillingRunRequestSource string
 
-// InvoicesBrand The brand a document is printed in (brands design B27, B28, delivery E2). On a draft it is the brand the draft carries and where it came from: chosen (the person switched it for this document), customer, group or default (B28). unavailable is true when the draft's choice is archived or unknown now, or when a brand higher in the order was skipped when the draft picked its brand: the editor says so, and the issue falls back to the next brand in the order. On an issued document it is the snapshot: id and name as they were at the issue, never read again, and unavailable is false. The brand changes the logo (and the name kept in the snapshot) of a document, never the seller's legal identity (B29a).
+// InvoicesBrand The brand a document is printed in (brands design B27, B28, delivery E2). On a draft it is the brand the draft carries and where it came from: chosen (the person switched it for this document), customer, group or default (B28), or order when the draft was made from an order, which starts in the order's brand (delivery E3). unavailable is true when the draft's choice is archived or unknown now, or when a brand higher in the order was skipped when the draft picked its brand: the editor says so, and the issue falls back to the next brand in the order. On an issued document it is the snapshot: id and name as they were at the issue, never read again, and unavailable is false. The brand changes the logo (and the name kept in the snapshot) of a document, never the seller's legal identity (B29a).
 type InvoicesBrand struct {
 	Id openapi_types.UUID `json:"id"`
 
@@ -3330,7 +3333,7 @@ type InvoicesInvoiceRequest struct {
 type InvoicesInvoiceResponse struct {
 	AllowedIssueDates *[]openapi_types.Date `json:"allowedIssueDates,omitempty"`
 
-	// Brand The brand a document is printed in (brands design B27, B28, delivery E2). On a draft it is the brand the draft carries and where it came from: chosen (the person switched it for this document), customer, group or default (B28). unavailable is true when the draft's choice is archived or unknown now, or when a brand higher in the order was skipped when the draft picked its brand: the editor says so, and the issue falls back to the next brand in the order. On an issued document it is the snapshot: id and name as they were at the issue, never read again, and unavailable is false. The brand changes the logo (and the name kept in the snapshot) of a document, never the seller's legal identity (B29a).
+	// Brand The brand a document is printed in (brands design B27, B28, delivery E2). On a draft it is the brand the draft carries and where it came from: chosen (the person switched it for this document), customer, group or default (B28), or order when the draft was made from an order, which starts in the order's brand (delivery E3). unavailable is true when the draft's choice is archived or unknown now, or when a brand higher in the order was skipped when the draft picked its brand: the editor says so, and the issue falls back to the next brand in the order. On an issued document it is the snapshot: id and name as they were at the issue, never read again, and unavailable is false. The brand changes the logo (and the name kept in the snapshot) of a document, never the seller's legal identity (B29a).
 	Brand *InvoicesBrand `json:"brand,omitempty"`
 
 	// Buyer The buyer snapshot (D4), written at issue from the customer's billing profile and printed from, never re-read. A credit note carries its original's.

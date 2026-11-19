@@ -161,6 +161,12 @@ export const ordersCatalog = {
     validUntil: "Valid until",
     deliveryDate: "Delivery date",
     discountVisible: "Show the discount on the PDF",
+    brand: "Brand",
+    brandHint:
+      "The logo this one document is printed with. The seller's legal name, organisation number and bank account stay the same in every brand. A quote's brand is fixed when it is sent, an order's when it is confirmed.",
+    brandNotice:
+      "The brand chosen for this customer is archived or no longer published. The document is sent or confirmed in the next brand in the order (the customer's, its group's, then the default) unless you pick another here.",
+    brandArchivedOption: "{{name}} (archived)",
     texts: "Texts",
     introText: "Intro text",
     closingText: "Closing text",
@@ -1158,6 +1164,12 @@ export const ordersCatalog = {
     validUntil: "Gyldig til",
     deliveryDate: "Leveringsdato",
     discountVisible: "Vis rabatten på PDF-en",
+    brand: "Merkevare",
+    brandHint:
+      "Logoen dette dokumentet skrives ut med. Selgerens juridiske navn, organisasjonsnummer og bankkonto er de samme i alle merkevarer. Et tilbuds merkevare ligger fast når det sendes, en ordres når den bekreftes.",
+    brandNotice:
+      "Merkevaren som er valgt for denne kunden, er arkivert eller ikke lenger publisert. Dokumentet sendes eller bekreftes i neste merkevare i rekkefølgen (kundens, gruppens, så standarden) med mindre du velger en annen her.",
+    brandArchivedOption: "{{name}} (arkivert)",
     texts: "Tekster",
     introText: "Innledning",
     closingText: "Avslutning",

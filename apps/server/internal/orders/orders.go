@@ -188,6 +188,9 @@ func (s *server) getOrderView(ctx context.Context, id int64) (gen.OrdersOrder, e
 	// (invoices phase 6 design I38): read after the snapshot, since it calls
 	// out of the module.
 	out.Warnings = append(out.Warnings, s.draftCreditWarnings(ctx, store.New(s.deps.Pool), order)...)
+	if err := s.fillBrand(ctx, out.Brand); err != nil {
+		return out, err
+	}
 	return out, s.withStockFigures(ctx, &out)
 }
 

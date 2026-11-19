@@ -89,6 +89,18 @@ campaign's look never reaches a document. Archiving a brand a draft was going to
 editor say so and the invoice is issued in the next brand in the order. For the exact rules, see
 [Invoices: the brand of a document](/en/reference/invoices/#the-brand-of-a-document).
 
+### Brands on quotes and orders
+
+Quotes and orders are printed in a brand the same way: a draft starts in the customer's default
+brand, then its group's, then the workspace default, and whoever writes it can switch the brand for
+that one document ([Orders: the brand of a quote or an order](/en/user/orders/#the-brand-of-a-quote-or-an-order)).
+When a quote is sent or an order is confirmed, the brand's name and its logo (the wordmark, else
+the mark for light backgrounds) are copied into the Orders app's own storage, so the document prints
+the same later whatever happens to the brand, and a campaign's look never reaches it. The seller's
+legal identity is single in this release: a brand changes the logo, never the name, organisation
+number or bank account on a document. An invoice made from orders starts in the orders' brand. For
+the exact rules, see [Orders: the brand of a document](/en/reference/orders/#the-brand-of-a-document).
+
 ## Who sees which brand
 
 A person sees one brand: their own choice if they have one and still may, otherwise the first

@@ -40,6 +40,7 @@ UPDATE orders.orders SET
     language = sqlc.arg(language), intro_text = sqlc.arg(intro_text), closing_text = sqlc.arg(closing_text),
     internal_note = sqlc.arg(internal_note), delivery_date = sqlc.narg(delivery_date),
     net_total = sqlc.arg(net_total), vat_total = sqlc.arg(vat_total), gross_total = sqlc.arg(gross_total),
+    brand_id = sqlc.narg(brand_id), brand_source = sqlc.narg(brand_source), brand_skipped = sqlc.arg(brand_skipped),
     delivery_status = sqlc.arg(delivery_status), invoice_status = sqlc.arg(invoice_status),
     version = sqlc.arg(version), updated_at = sqlc.arg(now)
 WHERE id = sqlc.arg(id)
@@ -47,10 +48,14 @@ RETURNING *;
 
 -- name: ConfirmOrderRow :one
 -- ConfirmOrderRow confirms a draft (O18): who and when. The snapshot and the
--- prices freeze because nothing but a confirmed edit writes them after.
+-- prices freeze because nothing but a confirmed edit writes them after. The
+-- brand it is confirmed in is snapshotted with it (brands design B27).
 UPDATE orders.orders
 SET status = 'confirmed', confirmed_at = sqlc.arg(now), confirmed_by_user_id = sqlc.narg(by_user_id),
-    confirmed_by_display = sqlc.narg(by_display), updated_at = sqlc.arg(now)
+    confirmed_by_display = sqlc.narg(by_display),
+    brand_id = sqlc.narg(brand_id), brand_source = sqlc.narg(brand_source), brand_skipped = false,
+    brand_name = sqlc.narg(brand_name), brand_logo_object_key = sqlc.narg(brand_logo_object_key),
+    brand_logo_sha256 = sqlc.narg(brand_logo_sha256), updated_at = sqlc.arg(now)
 WHERE id = sqlc.arg(id) AND status = 'draft'
 RETURNING *;
 

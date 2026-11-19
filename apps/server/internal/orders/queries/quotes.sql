@@ -11,6 +11,7 @@ INSERT INTO orders.quotes (
     salesperson_id, salesperson_display, project_id, currency, prices_include_vat,
     payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note,
     delivery_date, net_total, vat_total, gross_total,
+    brand_id, brand_source, brand_skipped,
     channel, source_module, source_kind, source_id, client_request_id,
     created_by_user_id, created_by_display, created_at, updated_at
 ) VALUES (
@@ -26,6 +27,7 @@ INSERT INTO orders.quotes (
     sqlc.arg(prices_include_vat), sqlc.arg(payment_terms_days), sqlc.arg(discount_visible), sqlc.arg(language),
     sqlc.arg(intro_text), sqlc.arg(closing_text), sqlc.arg(internal_note), sqlc.narg(delivery_date),
     sqlc.arg(net_total), sqlc.arg(vat_total), sqlc.arg(gross_total),
+    sqlc.narg(brand_id), sqlc.narg(brand_source), sqlc.arg(brand_skipped),
     sqlc.arg(channel), sqlc.narg(source_module), sqlc.narg(source_kind), sqlc.narg(source_id),
     sqlc.narg(client_request_id), sqlc.narg(created_by_user_id), sqlc.narg(created_by_display),
     sqlc.arg(now), sqlc.arg(now)
@@ -71,21 +73,27 @@ UPDATE orders.quotes SET
     language = sqlc.arg(language), intro_text = sqlc.arg(intro_text), closing_text = sqlc.arg(closing_text),
     internal_note = sqlc.arg(internal_note), delivery_date = sqlc.narg(delivery_date),
     net_total = sqlc.arg(net_total), vat_total = sqlc.arg(vat_total), gross_total = sqlc.arg(gross_total),
+    brand_id = sqlc.narg(brand_id), brand_source = sqlc.narg(brand_source), brand_skipped = sqlc.arg(brand_skipped),
     updated_at = sqlc.arg(now)
 WHERE id = sqlc.arg(id)
 RETURNING *;
 
 -- name: SetQuoteSent :one
--- SetQuoteSent freezes a draft as sent (O20): its valid-until and the moment.
+-- SetQuoteSent freezes a draft as sent (O20): its valid-until and the moment,
+-- and the brand it is sent in with its snapshot (brands design B27).
 UPDATE orders.quotes
-SET status = 'sent', sent_at = sqlc.arg(now), valid_until = sqlc.arg(valid_until), updated_at = sqlc.arg(now)
+SET status = 'sent', sent_at = sqlc.arg(now), valid_until = sqlc.arg(valid_until),
+    brand_id = sqlc.narg(brand_id), brand_source = sqlc.narg(brand_source), brand_skipped = false,
+    brand_name = sqlc.narg(brand_name), brand_logo_object_key = sqlc.narg(brand_logo_object_key),
+    brand_logo_sha256 = sqlc.narg(brand_logo_sha256), updated_at = sqlc.arg(now)
 WHERE id = sqlc.arg(id) AND status = 'draft'
 RETURNING *;
 
 -- name: ReviseQuoteRow :one
 -- ReviseQuoteRow moves a sent quote back to draft at the next revision (O20).
 UPDATE orders.quotes
-SET status = 'draft', revision = revision + 1, updated_at = sqlc.arg(now)
+SET status = 'draft', revision = revision + 1, brand_name = NULL, brand_logo_object_key = NULL,
+    brand_logo_sha256 = NULL, updated_at = sqlc.arg(now)
 WHERE id = sqlc.arg(id)
 RETURNING *;
 
