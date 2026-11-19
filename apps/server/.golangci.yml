@@ -2209,6 +2209,8 @@ linters:
             - "**/internal/brreg/**"
             - "**/internal/buildinfo/**"
             - "**/internal/holidays/**"
+            - "**/internal/brandscale/**"
+            - "**/internal/logoimage/**"
             - "**/internal/config/**"
             - "**/internal/consumerinvoice/**"
             - "**/internal/creditlimit/**"
