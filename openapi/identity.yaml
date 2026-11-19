@@ -162,6 +162,12 @@ components:
             type: object
         AccountProfileRequest:
             properties:
+                colorScheme:
+                    description: The colour scheme the person chose, 'light' or 'dark'; null, or 'automatic', follows the computer. Omitted, on any of the three operations, leaves it as it is, so a client that predates it does not clear it. Any other value is a 400 invalid_request on colorScheme.
+                    nullable: true
+                    type: string
+                    x-go-type: json.RawMessage
+                    x-go-type-skip-optional-pointer: true
                 displayName:
                     nullable: true
                     type: string
@@ -191,6 +197,11 @@ components:
                 avatarUrl:
                     nullable: true
                     type: string
+                colorScheme:
+                    description: The colour scheme the person chose, 'light' or 'dark', or null when they follow the computer. Always answered; optional in the schema only because the recorded exchanges predate it.
+                    nullable: true
+                    type: string
+                    x-omitempty: false
                 displayName:
                     type: string
                 email:

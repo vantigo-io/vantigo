@@ -5,15 +5,18 @@ SELECT (EXISTS (SELECT 1 FROM identity.profile_avatars WHERE user_id = @user_id)
 -- UpdateAccountProfile is the self-service profile edit
 -- (EA/AccountSettingsEndpoints.cs:93-131): display name, preferred
 -- language and, when set_time_zone says the request named it, the user's
--- own time zone (time zones design D5; NULL follows the workspace's). Unlike
+-- own time zone (time zones design D5; NULL follows the workspace's) and, when
+-- set_color_scheme says the request named it, the user's colour scheme (NULL
+-- follows the computer). Unlike
 -- .NET's UpdateSecurityStampAsync, it deliberately does not touch version or
 -- any session (spec *Sessions*, a divergence).
 UPDATE identity.users
 SET display_name = @display_name, preferred_language = @preferred_language,
     time_zone = CASE WHEN @set_time_zone::boolean THEN sqlc.narg(time_zone)::text ELSE time_zone END,
+    color_scheme = CASE WHEN @set_color_scheme::boolean THEN sqlc.narg(color_scheme)::text ELSE color_scheme END,
     updated_at = @now::timestamptz
 WHERE id = @id
-RETURNING id, display_name, email, preferred_language, time_zone;
+RETURNING id, display_name, email, preferred_language, time_zone, color_scheme;
 
 -- name: UpdateAccountPassword :execrows
 -- UpdateAccountPassword stores the new hash and bumps version, the

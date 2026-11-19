@@ -73,6 +73,7 @@ func PayRoutes() []Route {
 		{Methods: getHead, Path: "/pay"},
 		{Methods: getHead, Path: "/assets/", Prefix: true},
 		{Methods: getHead, Path: "/favicon.png"},
+		{Methods: getHead, Path: "/favicon-dark.png"},
 		{Methods: post, Path: "/api/v1/invoices/pay/read"},
 		{Methods: post, Path: "/api/v1/invoices/pay/attempts"},
 		{Methods: get, Path: "/api/v1/invoices/pay/attempts/", OneSegment: true},

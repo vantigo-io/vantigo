@@ -30,6 +30,8 @@ var publicHostAllowed = []gateRequest{
 	{http.MethodGet, "/assets/fonts/inter.woff2"},
 	{http.MethodGet, "/favicon.png"},
 	{http.MethodHead, "/favicon.png"},
+	{http.MethodGet, "/favicon-dark.png"},
+	{http.MethodHead, "/favicon-dark.png"},
 	{http.MethodPost, "/api/v1/invoices/pay/read"},
 	{http.MethodPost, "/api/v1/invoices/pay/attempts"},
 	{http.MethodGet, "/api/v1/invoices/pay/attempts/abc"},

@@ -148,6 +148,8 @@ const en = {
   "navigation.systemSection": "System",
   "navigation.systemAdmin": "System admin",
   "navigation.notEnabled": "Not enabled",
+  "navigation.colorSchemeNotSaved": "Your light or dark choice could not be saved",
+  "navigation.colorSchemeNotSavedBody": "It applies on this screen, but not on your other devices. Try again.",
   "navigation.open": "Open {{label}}",
   "navigation.search": "Search customers, contacts...",
   "navigation.navigation": "Navigation",
@@ -307,6 +309,9 @@ const nb: { [Key in keyof typeof en]: string } = {
   "navigation.systemSection": "System",
   "navigation.systemAdmin": "Systemadministrasjon",
   "navigation.notEnabled": "Ikke aktivert",
+  "navigation.colorSchemeNotSaved": "Valget ditt av lys eller mørk modus kunne ikke lagres",
+  "navigation.colorSchemeNotSavedBody":
+    "Det gjelder på denne skjermen, men ikke på de andre enhetene dine. Prøv igjen.",
   "navigation.open": "Åpne {{label}}",
   "navigation.search": "Søk etter kunder, kontakter...",
   "navigation.navigation": "Navigasjon",

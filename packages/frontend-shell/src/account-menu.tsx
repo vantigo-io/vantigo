@@ -1,5 +1,5 @@
-import { Avatar, Box, Menu, Text, UnstyledButton } from "@mantine/core";
-import { IconLogout } from "@tabler/icons-react";
+import { Avatar, Box, Menu, Text, UnstyledButton, useComputedColorScheme, useMantineColorScheme } from "@mantine/core";
+import { IconLogout, IconMoon, IconSun } from "@tabler/icons-react";
 import { type ComponentType, Fragment } from "react";
 import { registerCatalog, useI18n } from "./i18n";
 import { shellCatalog } from "./i18n/catalogs/shell";
@@ -32,6 +32,12 @@ export interface AccountMenuProps {
   sections: readonly AccountMenuSection[];
   onSignOut: () => void;
   signOutDisabled?: boolean;
+  /**
+   * Called with the scheme the person switched to from the menu, so the host can
+   * save it to their account. The menu applies it at once itself. Omit to show no
+   * switch.
+   */
+  onColorSchemeChange?: (scheme: "light" | "dark") => void;
 }
 
 const initials = (name: string) =>
@@ -44,10 +50,14 @@ const initials = (name: string) =>
 
 /**
  * The avatar menu in the header: who is signed in, the personal and
- * administrative destinations grouped under headings, and sign out.
+ * administrative destinations grouped under headings, a light/dark switch when
+ * the host wants one, and sign out.
  */
-export const AccountMenu = ({ user, sections, onSignOut, signOutDisabled }: AccountMenuProps) => {
+export const AccountMenu = ({ user, sections, onSignOut, signOutDisabled, onColorSchemeChange }: AccountMenuProps) => {
   const { t } = useI18n("shell");
+  const { setColorScheme } = useMantineColorScheme();
+  const scheme = useComputedColorScheme("light");
+  const next = scheme === "dark" ? "light" : "dark";
   return (
     <Menu position="bottom-end" withArrow width={260}>
       <Menu.Target>
@@ -78,6 +88,17 @@ export const AccountMenu = ({ user, sections, onSignOut, signOutDisabled }: Acco
           </Fragment>
         ))}
         <Menu.Divider />
+        {onColorSchemeChange && (
+          <Menu.Item
+            leftSection={next === "dark" ? <IconMoon size={14} /> : <IconSun size={14} />}
+            onClick={() => {
+              setColorScheme(next);
+              onColorSchemeChange(next);
+            }}
+          >
+            {t(next === "dark" ? "switchToDark" : "switchToLight")}
+          </Menu.Item>
+        )}
         <Menu.Item color="red" leftSection={<IconLogout size={14} />} onClick={onSignOut} disabled={signOutDisabled}>
           {t("signOut")}
         </Menu.Item>

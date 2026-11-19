@@ -100,4 +100,25 @@ describe("AppShellLayout", () => {
     );
     expect(screen.getByRole("link", { name: "Go to the dashboard" })).toHaveAttribute("href", "/dashboard");
   });
+
+  it("shows the Vantigo logo in the variant for the scheme, and a custom logo as it is", () => {
+    const view = (scheme: "light" | "dark") => (
+      <MantineProvider env="test" forceColorScheme={scheme}>
+        <AppShellLayout>
+          <div>content</div>
+        </AppShellLayout>
+      </MantineProvider>
+    );
+    const logo = () => screen.getByRole("img", { name: /.+/ }).getAttribute("src");
+    const light = render(view("light"));
+    expect(logo()).toMatch(/logo\.png/);
+    light.unmount();
+    const dark = render(view("dark"));
+    expect(logo()).toMatch(/logo-dark\.png/);
+    dark.unmount();
+
+    window.__VANTIGO_APP__ = { basePath: "/", title: "Acme", logoUrl: "https://acme.test/logo.svg", support: {} };
+    render(view("dark"));
+    expect(logo()).toBe("https://acme.test/logo.svg");
+  });
 });

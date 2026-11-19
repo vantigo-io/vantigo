@@ -1,4 +1,15 @@
-import { Alert, Avatar, Button, FileInput, Group, Select, Stack, Text, TextInput } from "@mantine/core";
+import {
+  Alert,
+  Avatar,
+  Button,
+  FileInput,
+  Group,
+  Select,
+  Stack,
+  Text,
+  TextInput,
+  useMantineColorScheme,
+} from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { notifications } from "@mantine/notifications";
 import { IconUser } from "@tabler/icons-react";
@@ -13,7 +24,14 @@ import {
 } from "@vantigo/frontend-shell";
 import { useEffect, useState } from "react";
 import "../../i18n";
-import { getProfile, profileQueryKey, removeProfilePhoto, updateProfile, uploadProfilePhoto } from "../../api/account";
+import {
+  type ColorScheme,
+  getProfile,
+  profileQueryKey,
+  removeProfilePhoto,
+  updateProfile,
+  uploadProfilePhoto,
+} from "../../api/account";
 import { fetchSession, sessionQueryKey } from "../../api/auth";
 import { timeZoneOptions } from "../../api/workspace";
 import { message, notify } from "./-helpers";
@@ -24,12 +42,18 @@ const followWorkspace = "workspace";
 function ProfileForm() {
   const { t } = useTranslation("settings");
   const qc = useQueryClient();
+  const { setColorScheme } = useMantineColorScheme();
   const session = useQuery({ queryKey: sessionQueryKey, queryFn: fetchSession });
   const userId = session.data?.user.id;
   const query = useQuery({ queryKey: profileQueryKey(userId ?? "unknown"), queryFn: getProfile, enabled: !!userId });
   const [file, setFile] = useState<File | null>(null);
-  const form = useForm<{ displayName: string; preferredLanguage: "auto" | "en" | "nb"; timeZone: string }>({
-    initialValues: { displayName: "", preferredLanguage: "auto", timeZone: followWorkspace },
+  const form = useForm<{
+    displayName: string;
+    preferredLanguage: "auto" | "en" | "nb";
+    timeZone: string;
+    colorScheme: ColorScheme;
+  }>({
+    initialValues: { displayName: "", preferredLanguage: "auto", timeZone: followWorkspace, colorScheme: "auto" },
     validate: { displayName: (v) => (v.trim() ? null : t("enterYourName")) },
   });
   useEffect(() => {
@@ -38,6 +62,7 @@ function ProfileForm() {
         displayName: query.data.displayName,
         preferredLanguage: query.data.preferredLanguage,
         timeZone: query.data.timeZone ?? followWorkspace,
+        colorScheme: query.data.colorScheme,
       });
   }, [query.data]); // eslint-disable-line react-hooks/exhaustive-deps
   const save = useMutation({
@@ -48,6 +73,7 @@ function ProfileForm() {
       // The session answers the zone in effect, which every formatter reads.
       void qc.invalidateQueries({ queryKey: sessionQueryKey });
       setLanguagePreference(v.preferredLanguage);
+      setColorScheme(v.colorScheme);
       notifications.show({ title: t("saved"), message: t("profileUpdated"), color: "teal" });
     },
     onError: (e) => {
@@ -157,6 +183,17 @@ function ProfileForm() {
               ]}
               {...form.getInputProps("preferredLanguage")}
               description={t("languageDescription")}
+            />
+            <Select
+              label={t("appearance")}
+              description={t("appearanceDescription")}
+              allowDeselect={false}
+              data={[
+                { value: "auto", label: t("automatic") },
+                { value: "light", label: t("light") },
+                { value: "dark", label: t("dark") },
+              ]}
+              {...form.getInputProps("colorScheme")}
             />
             <Select
               label={t("timeZone")}
