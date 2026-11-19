@@ -11,7 +11,7 @@
 }
 .message-link {
   font-weight: 700;
-  color: var(--mantine-color-vantigo-8);
+  color: var(--vantigo-link);
   text-decoration: none;
 }
 .message-link:hover {

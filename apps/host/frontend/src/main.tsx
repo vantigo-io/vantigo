@@ -12,10 +12,17 @@ import { Notifications } from "@mantine/notifications";
 import { NavigationProgress } from "@mantine/nprogress";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRouter, RouterProvider } from "@tanstack/react-router";
-import { appConfig, I18nProvider, initAppConfig, vantigoTheme } from "@vantigo/frontend-shell";
+import {
+  appConfig,
+  I18nProvider,
+  initAppConfig,
+  vantigoColorSchemeManager,
+  vantigoTheme,
+} from "@vantigo/frontend-shell";
 import { StrictMode } from "react";
 import ReactDOM from "react-dom/client";
 import { setSessionHandlers } from "./api/session-handlers";
+import { AccountColorSchemePreference } from "./components/account-color-scheme-preference";
 import { AccountLanguagePreference } from "./components/account-language-preference";
 import { AppErrorBoundary, NotFoundPage, RouterError } from "./components/errors";
 import { LocaleDatesProvider } from "./components/locale-dates-provider";
@@ -54,13 +61,14 @@ if (!root) throw new Error("Vantigo app root element is missing");
 ReactDOM.createRoot(root).render(
   <StrictMode>
     <AppErrorBoundary>
-      <MantineProvider theme={vantigoTheme}>
+      <MantineProvider theme={vantigoTheme} defaultColorScheme="auto" colorSchemeManager={vantigoColorSchemeManager}>
         <NavigationProgress />
         <Notifications />
         <QueryClientProvider client={queryClient}>
           <I18nProvider>
             <LocaleDatesProvider>
               <AccountLanguagePreference />
+              <AccountColorSchemePreference />
               <ModalsProvider>
                 <RouterProvider router={router} />
               </ModalsProvider>

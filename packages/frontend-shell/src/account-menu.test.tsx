@@ -1,7 +1,7 @@
 import { MantineProvider } from "@mantine/core";
 import { IconSettings, IconShield } from "@tabler/icons-react";
-import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { AccountMenu } from "./account-menu";
 
 const user = { displayName: "Ada Lovelace", email: "ada@acme.test" };
@@ -10,6 +10,11 @@ const open = async () => {
   fireEvent.click(screen.getByRole("button", { name: "Open account menu" }));
   return screen.findByRole("menu");
 };
+
+afterEach(() => {
+  window.localStorage.clear();
+  document.documentElement.removeAttribute("data-mantine-color-scheme");
+});
 
 describe("AccountMenu", () => {
   it("shows the user, the given sections in order, and sign out last", async () => {
@@ -73,5 +78,33 @@ describe("AccountMenu", () => {
       </MantineProvider>,
     );
     expect(screen.getByRole("button", { name: "Open account menu" })).toBeInTheDocument();
+  });
+
+  it("shows no colour scheme switch unless the host asks for one", async () => {
+    render(
+      <MantineProvider env="test">
+        <AccountMenu user={user} sections={[]} onSignOut={vi.fn()} />
+      </MantineProvider>,
+    );
+    const menu = await open();
+    expect(within(menu).queryByRole("menuitem", { name: /mode/ })).not.toBeInTheDocument();
+  });
+
+  it("switches the scheme at once, tells the host, and offers the way back", async () => {
+    const onColorSchemeChange = vi.fn();
+    render(
+      <MantineProvider env="test" defaultColorScheme="light">
+        <AccountMenu user={user} sections={[]} onSignOut={vi.fn()} onColorSchemeChange={onColorSchemeChange} />
+      </MantineProvider>,
+    );
+    let menu = await open();
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Switch to dark mode" }));
+    expect(onColorSchemeChange).toHaveBeenLastCalledWith("dark");
+    await waitFor(() => expect(document.documentElement).toHaveAttribute("data-mantine-color-scheme", "dark"));
+
+    menu = await open();
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Switch to light mode" }));
+    expect(onColorSchemeChange).toHaveBeenLastCalledWith("light");
+    await waitFor(() => expect(document.documentElement).toHaveAttribute("data-mantine-color-scheme", "light"));
   });
 });

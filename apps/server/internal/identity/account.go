@@ -91,7 +91,7 @@ func (s *server) GetIdentityAccount(ctx context.Context, _ gen.GetIdentityAccoun
 	if err != nil {
 		return nil, fmt.Errorf("identity: account: %w", err)
 	}
-	return gen.GetIdentityAccount200JSONResponse(s.accountResponse(u.ID, u.DisplayName, u.Email, u.PreferredLanguage, u.TimeZone, avatar)), nil
+	return gen.GetIdentityAccount200JSONResponse(s.accountResponse(u.ID, u.DisplayName, u.Email, u.PreferredLanguage, u.TimeZone, u.ColorScheme, avatar)), nil
 }
 
 // PutIdentityAccount, PutIdentityAccountProfile and PatchIdentityAccountProfile
@@ -165,13 +165,21 @@ type profileUpdateResult struct {
 func (s *server) updateProfile(ctx context.Context, body *gen.AccountProfileRequest) (profileUpdateResult, error) {
 	now := s.deps.Clock()
 	fields := validateProfile(body)
-	var rawZone json.RawMessage
+	var rawZone, rawScheme json.RawMessage
 	if body != nil {
 		rawZone = body.TimeZone
+		rawScheme = body.ColorScheme
 	}
 	setZone, zone, zoneMsg, err := s.profileTimeZone(ctx, rawZone, now)
 	if err != nil {
 		return profileUpdateResult{}, err
+	}
+	setScheme, scheme, schemeMsg := profileColorScheme(rawScheme)
+	if schemeMsg != "" {
+		if fields == nil {
+			fields = map[string][]string{}
+		}
+		fields["colorScheme"] = []string{schemeMsg}
 	}
 	if zoneMsg != "" {
 		if fields == nil {
@@ -192,6 +200,8 @@ func (s *server) updateProfile(ctx context.Context, body *gen.AccountProfileRequ
 		PreferredLanguage: normalizePreferredLanguage(body.PreferredLanguage),
 		SetTimeZone:       setZone,
 		TimeZone:          zone,
+		SetColorScheme:    setScheme,
+		ColorScheme:       scheme,
 		Now:               now,
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -206,7 +216,7 @@ func (s *server) updateProfile(ctx context.Context, body *gen.AccountProfileRequ
 	}
 	return profileUpdateResult{
 		status:  http.StatusOK,
-		account: s.accountResponse(row.ID, row.DisplayName, row.Email, row.PreferredLanguage, row.TimeZone, avatar),
+		account: s.accountResponse(row.ID, row.DisplayName, row.Email, row.PreferredLanguage, row.TimeZone, row.ColorScheme, avatar),
 	}, nil
 }
 
@@ -239,6 +249,34 @@ func (s *server) profileTimeZone(ctx context.Context, raw json.RawMessage, now t
 		return false, nil, msg, err
 	}
 	return true, &name, "", nil
+}
+
+// profileColorScheme reads a profile request's colorScheme (dark theme design
+// D-A). set is false when the request left it out, which keeps the stored
+// choice on PUT as on PATCH, so a client that predates the field never clears
+// it. Null, a blank value and "automatic" (case-insensitively) set it to nil:
+// the person follows the computer again. "light" and "dark" are stored
+// lowercased, the only values identity.users.color_scheme's CHECK allows;
+// anything else is refused with msg.
+func profileColorScheme(raw json.RawMessage) (set bool, scheme *string, msg string) {
+	if len(raw) == 0 {
+		return false, nil, ""
+	}
+	var value *string
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return false, nil, "Colour scheme must be automatic, light or dark."
+	}
+	if value == nil {
+		return true, nil, ""
+	}
+	v := strings.ToLower(strings.TrimSpace(*value))
+	switch v {
+	case "", "automatic":
+		return true, nil, ""
+	case "light", "dark":
+		return true, &v, ""
+	}
+	return false, nil, "Colour scheme must be automatic, light or dark."
 }
 
 // profileInvalidMessage is .NET's UpdateProfile validation-failure message
@@ -291,7 +329,7 @@ func normalizePreferredLanguage(v *string) *string {
 // The zone in effect is the session's (effectiveTimeZone). The avatar URL is
 // the effective avatar's, and avatarManagedBy says Staff keeps it (staff
 // photo sync design §4).
-func (s *server) accountResponse(id uuid.UUID, displayName, email string, preferredLanguage, timeZone *string, avatar accountAvatar) gen.AccountResponse {
+func (s *server) accountResponse(id uuid.UUID, displayName, email string, preferredLanguage, timeZone, colorScheme *string, avatar accountAvatar) gen.AccountResponse {
 	var avatarURL *string
 	if avatar.has {
 		u := s.deps.Config.BasePath + accountAvatarPath
@@ -310,6 +348,7 @@ func (s *server) accountResponse(id uuid.UUID, displayName, email string, prefer
 		AvatarUrl:         avatarURL,
 		AvatarManagedBy:   managedBy,
 		TimeZone:          timeZone,
+		ColorScheme:       colorScheme,
 	}
 }
 

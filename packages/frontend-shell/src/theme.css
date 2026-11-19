@@ -1,10 +1,32 @@
 /*
  * Global Vantigo branding shared by every frontend app.
  * Import after the Mantine core styles: `import "@vantigo/frontend-shell/theme.css";`
+ *
+ * The semantic tokens below are the one place a page, surface, text or link
+ * colour is decided for each colour scheme. Styles use them (or a Mantine
+ * variable) instead of colour literals. The dark values match the `dark` scale
+ * in theme.ts. Dimmed text, borders and the dark tint come from Mantine's own
+ * variables, which switch with the scheme, so they cannot drift from its
+ * components.
  */
 :root {
   --vantigo-body-bg: #f7f8fc;
+  --vantigo-surface: #ffffff;
   --vantigo-text: #182033;
+  --vantigo-text-dimmed: var(--mantine-color-dimmed);
+  --vantigo-border: var(--mantine-color-default-border);
+  --vantigo-link: #3730a3;
+  --vantigo-subtle-bg: #eef2ff;
+  color-scheme: light;
+}
+
+:root[data-mantine-color-scheme="dark"] {
+  --vantigo-body-bg: #15182a;
+  --vantigo-surface: #1c1f32;
+  --vantigo-text: #dde1ef;
+  --vantigo-link: #a5b4fc;
+  --vantigo-subtle-bg: var(--mantine-color-vantigo-light);
+  color-scheme: dark;
 }
 
 body {

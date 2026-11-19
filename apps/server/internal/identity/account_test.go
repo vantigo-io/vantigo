@@ -27,6 +27,7 @@ type account struct {
 	PreferredLanguage *string   `json:"preferredLanguage"`
 	AvatarUrl         *string   `json:"avatarUrl"`
 	TimeZone          *string   `json:"timeZone"`
+	ColorScheme       *string   `json:"colorScheme"`
 }
 
 func getAccount(t *testing.T, c *client) account {

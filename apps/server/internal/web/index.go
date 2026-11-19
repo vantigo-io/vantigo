@@ -94,8 +94,21 @@ func runtimeConfigScript(basePath string, b config.Branding, modules []string) s
 	if err != nil {
 		panic("web: marshal runtime config: " + err.Error()) // impossible for this type
 	}
-	return "window.__VANTIGO_APP__=" + string(data) + ";"
+	return "window.__VANTIGO_APP__=" + string(data) + ";" + colorSchemeScript
 }
+
+// colorSchemeScript runs before the first paint, so the page never flashes
+// light for someone who uses dark. It reads the scheme the SPA mirrors to
+// local storage (Mantine's localStorageColorSchemeManager, the key set in
+// packages/frontend-shell/src/theme.ts: "light", "dark" or "auto") and falls
+// back to the computer's setting, then sets the attribute Mantine's
+// stylesheet and the shell's tokens switch on. It is part of the one injected
+// script, so the CSP hash covers it; it is wrapped in try/catch because local
+// storage throws when a browser blocks it, and a failure must leave the page
+// readable, not blank.
+const colorSchemeScript = `try{var s=localStorage.getItem("vantigo-color-scheme");` +
+	`if(s!=="light"&&s!=="dark"){s=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"}` +
+	`document.documentElement.setAttribute("data-mantine-color-scheme",s)}catch(e){}`
 
 func title(b config.Branding) string {
 	if t := strings.TrimSpace(b.Title); t != "" {

@@ -3,6 +3,8 @@ import { request } from "./request";
 import { creationOptions, credentialJson, requestOptions, webAuthnAvailable } from "./webauthn";
 
 export type Language = "auto" | "en" | "nb";
+/** "auto" follows the computer; the server stores null for it. */
+export type ColorScheme = "auto" | "light" | "dark";
 export interface PersonalProfile {
   displayName: string;
   email: string | null;
@@ -12,6 +14,8 @@ export interface PersonalProfile {
   avatarManagedBy: "staff" | null;
   /** The user's own time zone, an IANA name; null follows the workspace's business time zone. */
   timeZone: string | null;
+  /** The person's colour scheme: light, dark, or auto to follow the computer. */
+  colorScheme: ColorScheme;
 }
 interface AccountResponse {
   displayName: string;
@@ -20,6 +24,7 @@ interface AccountResponse {
   avatarUrl: string | null;
   avatarManagedBy?: "staff" | null;
   timeZone?: string | null;
+  colorScheme?: string | null;
 }
 export interface PersonalMfaStatus {
   twoFactorEnabled: boolean;
@@ -85,10 +90,19 @@ const toProfile = (value: AccountResponse): PersonalProfile => ({
         : "auto",
   avatarManagedBy: value.avatarManagedBy ?? null,
   timeZone: value.timeZone ?? null,
+  colorScheme: value.colorScheme === "light" || value.colorScheme === "dark" ? value.colorScheme : "auto",
 });
 const account = "/api/v1/identity/account";
 export const getProfile = async () => toProfile(await request<AccountResponse>(account));
-export const updateProfile = async (body: Pick<PersonalProfile, "displayName" | "preferredLanguage" | "timeZone">) =>
+/**
+ * Saves the profile. The server keeps a time zone or a colour scheme the request
+ * leaves out, so a caller that changes one need not send the other; the language
+ * is always sent, because the server clears it when it is left out.
+ */
+export const updateProfile = async (
+  body: Pick<PersonalProfile, "displayName" | "preferredLanguage"> &
+    Partial<Pick<PersonalProfile, "timeZone" | "colorScheme">>,
+) =>
   toProfile(
     await request<AccountResponse>(
       `${account}/profile`,
@@ -96,6 +110,7 @@ export const updateProfile = async (body: Pick<PersonalProfile, "displayName" | 
         displayName: body.displayName,
         preferredLanguage: body.preferredLanguage === "auto" ? "automatic" : body.preferredLanguage,
         timeZone: body.timeZone,
+        colorScheme: body.colorScheme === "auto" ? "automatic" : body.colorScheme,
       }),
     ),
   );

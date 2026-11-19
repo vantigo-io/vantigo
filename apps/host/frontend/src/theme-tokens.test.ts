@@ -1,0 +1,70 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { describe, expect, it } from "vitest";
+
+// The semantic colour tokens live in packages/frontend-shell/src/theme.css, as
+// literal values, because they must be in the stylesheet before any script runs
+// (no flash of the wrong scheme on load). The dark scale lives in theme.ts.
+// This keeps the two equal. It reads the files, so it lives here, in the
+// workspace whose tests run under Node's types.
+const shellSrc = join(dirname(fileURLToPath(import.meta.url)), "../../../../packages/frontend-shell/src");
+const css = readFileSync(join(shellSrc, "theme.css"), "utf8");
+const themeTs = readFileSync(join(shellSrc, "theme.ts"), "utf8");
+
+/** The ten hex values of `vantigoDark` in theme.ts. */
+const darkScale = [...(/vantigoDark[^=]*=\s*\[([^\]]+)\]/.exec(themeTs)?.[1] ?? "").matchAll(/"(#[0-9a-f]{6})"/g)].map(
+  (m) => m[1],
+);
+
+/** The declarations of one rule in theme.css, by its selector. */
+const rule = (selector: string): Record<string, string> => {
+  const start = css.indexOf(`${selector} {`);
+  expect(start, `theme.css has no ${selector} rule`).toBeGreaterThan(-1);
+  const body = css.slice(css.indexOf("{", start) + 1, css.indexOf("}", start));
+  return Object.fromEntries(
+    [...body.matchAll(/(--[\w-]+|color-scheme)\s*:\s*([^;]+);/g)].map((m) => [m[1], m[2].trim()]),
+  );
+};
+
+describe("theme.css", () => {
+  const light = rule(":root");
+  const dark = rule(':root[data-mantine-color-scheme="dark"]');
+
+  it("defines every token the shell exports as vantigoTokens, for light", () => {
+    const exported = [...themeTs.matchAll(/"var\((--vantigo-[\w-]+)\)"/g)].map((m) => m[1]);
+    expect(exported).toHaveLength(7);
+    for (const name of exported) expect(light, `${name} in light`).toHaveProperty([name]);
+  });
+
+  it("restates the tokens that differ for dark; dimmed text and borders follow Mantine's own variables", () => {
+    for (const name of [
+      "--vantigo-body-bg",
+      "--vantigo-surface",
+      "--vantigo-text",
+      "--vantigo-link",
+      "--vantigo-subtle-bg",
+    ]) {
+      expect(dark, `${name} in dark`).toHaveProperty([name]);
+    }
+    expect(light["--vantigo-text-dimmed"]).toBe("var(--mantine-color-dimmed)");
+    expect(light["--vantigo-border"]).toBe("var(--mantine-color-default-border)");
+  });
+
+  it("keeps light as it was and tells the browser which scheme is which", () => {
+    expect(light["--vantigo-body-bg"]).toBe("#f7f8fc");
+    expect(light["--vantigo-surface"]).toBe("#ffffff");
+    expect(light["--vantigo-text"]).toBe("#182033");
+    expect(light["color-scheme"]).toBe("light");
+    expect(dark["color-scheme"]).toBe("dark");
+  });
+
+  it("restates the dark scale's page, surface and text values", () => {
+    expect(darkScale).toHaveLength(10);
+    expect(dark["--vantigo-body-bg"]).toBe(darkScale[8]);
+    expect(dark["--vantigo-surface"]).toBe(darkScale[7]);
+    expect(dark["--vantigo-text"]).toBe(darkScale[0]);
+    // vantigo-3 of the indigo scale: shade 8 is too dark for a link on dark.
+    expect(dark["--vantigo-link"]).toBe("#a5b4fc");
+  });
+});
