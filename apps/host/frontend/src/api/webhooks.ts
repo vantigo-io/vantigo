@@ -59,3 +59,36 @@ export const testWebhook = (integrationId: string, webhookId: string) =>
 /** A new secret, shown once; the one it replaces signs beside it for overlapHours. */
 export const rollWebhookSecret = (integrationId: string, webhookId: string, overlapHours: number) =>
   post<WebhookEndpointSecret>(`${base(integrationId)}/${webhookId}/roll-secret`, { overlapHours });
+
+/**
+ * An endpoint's delivery log (W22, W23): every event and test event queued
+ * to it in the last 30 days, newest first, by cursor; one delivery with its
+ * body and attempts; and resending one that succeeded or is dead.
+ */
+export type WebhookDelivery = components["schemas"]["WebhookDelivery"];
+export type WebhookDeliveryDetail = components["schemas"]["WebhookDeliveryDetail"];
+export type WebhookDeliveryPage = components["schemas"]["WebhookDeliveryPage"];
+export type WebhookDeliveryState = WebhookDelivery["state"];
+export type WebhookDeliveryFilters = { state?: WebhookDeliveryState; event?: string };
+
+export const webhookDeliveriesQueryKey = (integrationId: string, webhookId: string) =>
+  [...webhooksQueryKey(integrationId), webhookId, "deliveries"] as const;
+
+export const listWebhookDeliveries = (
+  integrationId: string,
+  webhookId: string,
+  filters: WebhookDeliveryFilters,
+  cursor?: string,
+) => {
+  const query = new URLSearchParams();
+  if (filters.state) query.set("state", filters.state);
+  if (filters.event) query.set("event", filters.event);
+  if (cursor) query.set("cursor", cursor);
+  const text = query.toString();
+  return request<WebhookDeliveryPage>(`${base(integrationId)}/${webhookId}/deliveries${text ? `?${text}` : ""}`);
+};
+export const getWebhookDelivery = (integrationId: string, webhookId: string, deliveryId: string) =>
+  request<WebhookDeliveryDetail>(`${base(integrationId)}/${webhookId}/deliveries/${deliveryId}`);
+/** Sends a delivery again with its webhook-id and body, a fresh run of 8 attempts (W22). */
+export const resendWebhookDelivery = (integrationId: string, webhookId: string, deliveryId: string) =>
+  post<WebhookDelivery>(`${base(integrationId)}/${webhookId}/deliveries/${deliveryId}/resend`);

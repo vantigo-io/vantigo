@@ -6,7 +6,8 @@ import type { CatalogResources } from "@vantigo/frontend-shell";
  * (routes/workspace/-api-access-integration.tsx) and the key dialogs
  * (routes/workspace/-api-key-dialog.tsx), and its request log
  * (routes/workspace/-api-access-requests.tsx), and its webhook endpoints
- * (routes/workspace/-api-access-webhooks.tsx, -webhook-secret-dialog.tsx).
+ * (routes/workspace/-api-access-webhooks.tsx, -webhook-secret-dialog.tsx)
+ * with their delivery log (routes/workspace/-api-access-webhook-deliveries.tsx).
  */
 const en = {
   "apiAccess.title": "API access",
@@ -246,6 +247,70 @@ const en = {
     "Its messages failed for 5 days, and at least 5 were given up after every retry. The messages waiting for it were dropped. When the application works again, enable the endpoint; a test event is sent to it at once.",
   "apiAccess.webhookBanner_gone":
     "It answered 410 Gone, which says the address is no longer in use. The messages waiting for it were dropped. When the address is right again, enable the endpoint; a test event is sent to it at once.",
+  "apiAccess.webhookDeliveriesOpen": "Deliveries",
+  "apiAccess.webhookDeliveries": "Delivery log",
+  "apiAccess.webhookDeliveriesBack": "Back to the endpoints",
+  "apiAccess.webhookDeliveriesHint":
+    "Every event and test event queued to this endpoint in the last 30 days, newest first. Older deliveries are deleted.",
+  "apiAccess.webhookDeliveriesNone": "No deliveries yet",
+  "apiAccess.webhookDeliveriesNoneHint":
+    "A delivery appears here when an event the endpoint lists happens, or when a test event is sent.",
+  "apiAccess.webhookDeliveriesNoneFiltered": "No deliveries match the filters",
+  "apiAccess.webhookDeliveriesCouldNotLoad": "The deliveries could not be loaded",
+  "apiAccess.webhookDeliveriesMore": "Load more",
+  "apiAccess.webhookFilterAllEvents": "All events",
+  "apiAccess.webhookDeliveryCreated": "Queued",
+  "apiAccess.webhookDeliveryEvent": "Event",
+  "apiAccess.webhookDeliveryAttempts": "Attempts",
+  "apiAccess.webhookDeliveryLast": "Last answer",
+  "apiAccess.webhookDeliveryCompleted": "Finished",
+  "apiAccess.webhookDeliveryPing": "Test",
+  "apiAccess.webhookDeliveryRun": "{{run}} of {{max}} ({{total}} in all)",
+  "apiAccess.webhookDeliveryNext": "Next attempt {{when}}",
+  "apiAccess.webhookDeliveryState_pending": "Pending",
+  "apiAccess.webhookDeliveryState_succeeded": "Delivered",
+  "apiAccess.webhookDeliveryState_dead": "Failed",
+  "apiAccess.webhookDeliveryState_skipped": "Skipped",
+  "apiAccess.webhookDeliveryReason_permission_not_held": "The integration's roles no longer let it receive the event",
+  "apiAccess.webhookDeliveryReason_attempts_exhausted": "Every attempt failed",
+  "apiAccess.webhookDeliveryReason_gone": "The endpoint answered 410 Gone",
+  "apiAccess.webhookDeliveryReason_endpoint_disabled": "The endpoint was disabled",
+  "apiAccess.webhookDeliveryReason_integration_archived": "The integration was archived",
+  "apiAccess.webhookDeliveryReason_expired": "Still not delivered after 3 days",
+  "apiAccess.webhookError_timeout": "Timed out",
+  "apiAccess.webhookError_connection_refused": "Connection refused",
+  "apiAccess.webhookError_dns": "Host not found",
+  "apiAccess.webhookError_tls": "TLS failed",
+  "apiAccess.webhookError_blocked_address": "Blocked address",
+  "apiAccess.webhookError_redirect": "Redirect",
+  "apiAccess.webhookError_http_status": "Error status",
+  "apiAccess.webhookError_too_large": "Answer too large",
+  "apiAccess.webhookError_other": "Other error",
+  "apiAccess.webhookDeliveryView": "View",
+  "apiAccess.webhookDelivery": "Delivery",
+  "apiAccess.webhookDeliveryCouldNotLoad": "The delivery could not be loaded",
+  "apiAccess.webhookDeliveryMessageId": "webhook-id",
+  "apiAccess.webhookDeliveryMessageIdHint":
+    "Every attempt and every resend carries this id, so the application can recognise a message it already has.",
+  "apiAccess.webhookDeliveryBody": "Body",
+  "apiAccess.webhookDeliveryAttemptsTitle": "Attempts, newest first",
+  "apiAccess.webhookDeliveryNoAttempts": "Not tried yet.",
+  "apiAccess.webhookDeliveryExcerpt": "What the application answered (start of it)",
+  "apiAccess.webhookSecretUsed_current": "Signed with the current secret",
+  "apiAccess.webhookSecretUsed_both": "Signed with the current and the previous secret",
+  "apiAccess.webhookResend": "Resend",
+  "apiAccess.webhookResendTitle": "Resend this delivery?",
+  "apiAccess.webhookResendBody":
+    "The same message, with the same webhook-id, is sent again with a fresh signature and up to 8 attempts. The application should ignore it if it has it already.",
+  "apiAccess.webhookResent": "Delivery queued again",
+  "apiAccess.webhookResentHint": "It is sent within seconds.",
+  "apiAccess.webhookCouldNotResend": "Could not resend the delivery",
+  "apiAccess.webhookResendRefused_rate_limited": "A delivery is resent at most 3 times a minute. Try again shortly.",
+  "apiAccess.webhookResendRefused_webhook_event_not_permitted":
+    "The integration's roles no longer let it receive this event.",
+  "apiAccess.webhookResendRefused_webhook_endpoint_disabled": "The endpoint is disabled; enable it first.",
+  "apiAccess.webhookResendDisabled": "The endpoint is disabled: enable it to resend a delivery.",
+  "apiAccess.webhookResendArchived": "The integration is archived: its deliveries are shown, and none is resent.",
 };
 
 const nb: Record<keyof typeof en, string> = {
@@ -487,6 +552,71 @@ const nb: Record<keyof typeof en, string> = {
     "Meldingene til det feilet i 5 dager, og minst 5 ble gitt opp etter alle nye forsøk. Meldingene som ventet på det, er forkastet. Når programmet virker igjen, aktiverer du endepunktet; en testhendelse sendes til det med en gang.",
   "apiAccess.webhookBanner_gone":
     "Det svarte 410 Gone, som sier at adressen ikke lenger er i bruk. Meldingene som ventet på det, er forkastet. Når adressen er riktig igjen, aktiverer du endepunktet; en testhendelse sendes til det med en gang.",
+  "apiAccess.webhookDeliveriesOpen": "Leveranser",
+  "apiAccess.webhookDeliveries": "Leveranselogg",
+  "apiAccess.webhookDeliveriesBack": "Tilbake til endepunktene",
+  "apiAccess.webhookDeliveriesHint":
+    "Alle hendelser og testhendelser som er lagt i kø til dette endepunktet de siste 30 dagene, nyeste først. Eldre leveranser slettes.",
+  "apiAccess.webhookDeliveriesNone": "Ingen leveranser ennå",
+  "apiAccess.webhookDeliveriesNoneHint":
+    "En leveranse vises her når en hendelse endepunktet lytter etter skjer, eller når en testhendelse sendes.",
+  "apiAccess.webhookDeliveriesNoneFiltered": "Ingen leveranser passer med filtrene",
+  "apiAccess.webhookDeliveriesCouldNotLoad": "Leveransene kunne ikke lastes",
+  "apiAccess.webhookDeliveriesMore": "Last flere",
+  "apiAccess.webhookFilterAllEvents": "Alle hendelser",
+  "apiAccess.webhookDeliveryCreated": "Lagt i kø",
+  "apiAccess.webhookDeliveryEvent": "Hendelse",
+  "apiAccess.webhookDeliveryAttempts": "Forsøk",
+  "apiAccess.webhookDeliveryLast": "Siste svar",
+  "apiAccess.webhookDeliveryCompleted": "Ferdig",
+  "apiAccess.webhookDeliveryPing": "Test",
+  "apiAccess.webhookDeliveryRun": "{{run}} av {{max}} ({{total}} i alt)",
+  "apiAccess.webhookDeliveryNext": "Neste forsøk {{when}}",
+  "apiAccess.webhookDeliveryState_pending": "Venter",
+  "apiAccess.webhookDeliveryState_succeeded": "Levert",
+  "apiAccess.webhookDeliveryState_dead": "Mislyktes",
+  "apiAccess.webhookDeliveryState_skipped": "Hoppet over",
+  "apiAccess.webhookDeliveryReason_permission_not_held": "Integrasjonens roller lar den ikke lenger motta hendelsen",
+  "apiAccess.webhookDeliveryReason_attempts_exhausted": "Alle forsøkene feilet",
+  "apiAccess.webhookDeliveryReason_gone": "Endepunktet svarte 410 Gone",
+  "apiAccess.webhookDeliveryReason_endpoint_disabled": "Endepunktet ble deaktivert",
+  "apiAccess.webhookDeliveryReason_integration_archived": "Integrasjonen ble arkivert",
+  "apiAccess.webhookDeliveryReason_expired": "Fortsatt ikke levert etter 3 dager",
+  "apiAccess.webhookError_timeout": "Tidsavbrudd",
+  "apiAccess.webhookError_connection_refused": "Tilkoblingen ble avvist",
+  "apiAccess.webhookError_dns": "Fant ikke verten",
+  "apiAccess.webhookError_tls": "TLS feilet",
+  "apiAccess.webhookError_blocked_address": "Blokkert adresse",
+  "apiAccess.webhookError_redirect": "Videresending",
+  "apiAccess.webhookError_http_status": "Feilstatus",
+  "apiAccess.webhookError_too_large": "For stort svar",
+  "apiAccess.webhookError_other": "Annen feil",
+  "apiAccess.webhookDeliveryView": "Vis",
+  "apiAccess.webhookDelivery": "Leveranse",
+  "apiAccess.webhookDeliveryCouldNotLoad": "Leveransen kunne ikke lastes",
+  "apiAccess.webhookDeliveryMessageId": "webhook-id",
+  "apiAccess.webhookDeliveryMessageIdHint":
+    "Hvert forsøk og hver ny sending har denne id-en, så programmet kan kjenne igjen en melding det allerede har.",
+  "apiAccess.webhookDeliveryBody": "Innhold",
+  "apiAccess.webhookDeliveryAttemptsTitle": "Forsøk, nyeste først",
+  "apiAccess.webhookDeliveryNoAttempts": "Ikke forsøkt ennå.",
+  "apiAccess.webhookDeliveryExcerpt": "Det programmet svarte (begynnelsen)",
+  "apiAccess.webhookSecretUsed_current": "Signert med den gjeldende hemmeligheten",
+  "apiAccess.webhookSecretUsed_both": "Signert med den gjeldende og den forrige hemmeligheten",
+  "apiAccess.webhookResend": "Send på nytt",
+  "apiAccess.webhookResendTitle": "Sende denne leveransen på nytt?",
+  "apiAccess.webhookResendBody":
+    "Den samme meldingen, med samme webhook-id, sendes igjen med ny signatur og opptil 8 forsøk. Programmet bør se bort fra den hvis det allerede har den.",
+  "apiAccess.webhookResent": "Leveransen er lagt i kø igjen",
+  "apiAccess.webhookResentHint": "Den sendes i løpet av sekunder.",
+  "apiAccess.webhookCouldNotResend": "Kunne ikke sende leveransen på nytt",
+  "apiAccess.webhookResendRefused_rate_limited":
+    "En leveranse sendes på nytt høyst 3 ganger i minuttet. Prøv igjen om litt.",
+  "apiAccess.webhookResendRefused_webhook_event_not_permitted":
+    "Integrasjonens roller lar den ikke lenger motta denne hendelsen.",
+  "apiAccess.webhookResendRefused_webhook_endpoint_disabled": "Endepunktet er deaktivert; aktiver det først.",
+  "apiAccess.webhookResendDisabled": "Endepunktet er deaktivert: aktiver det for å sende en leveranse på nytt.",
+  "apiAccess.webhookResendArchived": "Integrasjonen er arkivert: leveransene vises, og ingen sendes på nytt.",
 };
 
 export const apiAccessCatalog = { en, nb } as const satisfies CatalogResources;

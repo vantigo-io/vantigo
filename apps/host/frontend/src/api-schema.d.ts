@@ -850,6 +850,66 @@ export interface paths {
         patch: operations["patchIdentityIntegrationsByIdWebhooksByWebhookId"];
         trace?: never;
     };
+    "/api/v1/identity/integrations/{id}/webhooks/{webhookId}/deliveries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a webhook endpoint's deliveries
+         * @description The delivery log of a webhook endpoint (outgoing webhooks design W23), newest first, by cursor: every event and test event (kind ping) queued to it in the last 30 days, with its state, its attempts and the last one's status and error word, never its body. state and event narrow it to one state or one event name (webhook.ping for the test events).
+         */
+        get: operations["getIdentityIntegrationsByIdWebhooksByWebhookIdDeliveries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/identity/integrations/{id}/webhooks/{webhookId}/deliveries/{deliveryId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a webhook delivery with its attempts
+         * @description A delivery of a webhook endpoint with the body every attempt sends and its latest 100 attempts, newest first: each one's time, status, duration, error word, which secrets signed it and, for a non-2xx answer, an excerpt of what the receiver answered. The excerpt is the receiver's text: show it as plain text only. A delivery of another endpoint or integration is not found.
+         */
+        get: operations["getIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryId"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/identity/integrations/{id}/webhooks/{webhookId}/deliveries/{deliveryId}/resend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resend a webhook delivery
+         * @description Sends a delivery again (outgoing webhooks design W22, W35): an event that succeeded or is dead, created less than 30 days ago, to an enabled endpoint of an integration that is not archived and still holds the event's permissions. It keeps its webhook-id and its body, is signed afresh at each attempt with a new timestamp, and starts a new run of 8 attempts. A delivery is resent at most 3 times a minute. A test event (ping) is not resent: send another. Audited webhook.resent.
+         */
+        post: operations["postIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResend"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/identity/integrations/{id}/webhooks/{webhookId}/disable": {
         parameters: {
             query?: never;
@@ -3588,6 +3648,93 @@ export interface components {
             code: string | null;
             /** @default false */
             rememberMe: boolean;
+        };
+        /** @description One message to one endpoint, as the delivery log shows it (outgoing webhooks design W23), without its body. */
+        WebhookDelivery: {
+            /**
+             * Format: date-time
+             * @description When it left pending — succeeded, dead or skipped; null while pending.
+             */
+            completedAt: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /**
+             * Format: int64
+             * @description The outbox event's id, the body's sequence; null for a ping.
+             */
+            eventId: number | null;
+            /** @description The catalogue event's name, or webhook.ping for a test event. */
+            eventName: string;
+            /** Format: uuid */
+            id: string;
+            /**
+             * @description event, or ping for a test event.
+             * @enum {string}
+             */
+            kind: "event" | "ping";
+            /**
+             * @description The last attempt's error word, from a closed set; null when it had none (a 2xx, or no attempt yet).
+             * @enum {string|null}
+             */
+            lastError: "timeout" | "connection_refused" | "dns" | "tls" | "blocked_address" | "redirect" | "http_status" | "too_large" | "other" | null;
+            /** @description The HTTP status the last attempt was answered with; null when no answer came. */
+            lastStatus: number | null;
+            /** @description The attempts of a run, 8 for an event and 1 for a ping. */
+            maxRunAttempts: number;
+            /** @description The webhook-id header every attempt carries, msg_ and the delivery's id without dashes; the same across retries and resends. */
+            messageId: string;
+            /**
+             * Format: date-time
+             * @description When a pending delivery is next tried; null otherwise.
+             */
+            nextAttemptAt: string | null;
+            /** @description Whether its kind, state and age let it be resent — an event that succeeded or is dead, created less than 30 days ago. A resend also needs the endpoint enabled, the integration not archived and still permitted the event. */
+            resendable: boolean;
+            /** @description The attempts of its current run. */
+            runAttempts: number;
+            /** @enum {string} */
+            state: "pending" | "succeeded" | "dead" | "skipped";
+            /**
+             * @description Why it is skipped (permission_not_held) or dead (attempts_exhausted, gone, endpoint_disabled, integration_archived, expired); null while pending or once succeeded.
+             * @enum {string|null}
+             */
+            stateReason: "permission_not_held" | "attempts_exhausted" | "gone" | "endpoint_disabled" | "integration_archived" | "expired" | null;
+            /** @description Its attempts in all, every run counted. */
+            totalAttempts: number;
+        };
+        /** @description One attempt to send a delivery (outgoing webhooks design W16, W23). */
+        WebhookDeliveryAttempt: {
+            /** Format: date-time */
+            at: string;
+            durationMs: number;
+            /**
+             * @description The attempt's error word, from the closed set of lastError; null for a 2xx.
+             * @enum {string|null}
+             */
+            error: "timeout" | "connection_refused" | "dns" | "tls" | "blocked_address" | "redirect" | "http_status" | "too_large" | "other" | null;
+            /** @description At most 512 bytes of a non-2xx answer's body, control and format characters blanked. It is the receiver's text, to be shown as plain text only. */
+            excerpt: string | null;
+            /**
+             * @description current when the current secret signed alone, both when the previous one signed beside it during a roll's overlap.
+             * @enum {string}
+             */
+            secretUsed: "current" | "both";
+            /** @description The HTTP status it was answered with; null when no answer came. */
+            statusCode: number | null;
+        };
+        /** @description A delivery with the body it sends and its latest attempts. */
+        WebhookDeliveryDetail: {
+            /** @description Its attempts, newest first, at most the latest 100. */
+            attempts: components["schemas"]["WebhookDeliveryAttempt"][];
+            /** @description The JSON body every attempt sends, byte for byte. */
+            body: string;
+            delivery: components["schemas"]["WebhookDelivery"];
+        };
+        WebhookDeliveryPage: {
+            /** @description Newest first. */
+            deliveries: components["schemas"]["WebhookDelivery"][];
+            /** @description Pass as cursor for the next page; absent on the last. */
+            nextCursor?: string;
         };
         /** @description A webhook endpoint of an integration (outgoing webhooks design W1), never its secret. */
         WebhookEndpoint: {
@@ -7697,6 +7844,203 @@ export interface operations {
                 };
             };
             /** @description Too Many Requests */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getIdentityIntegrationsByIdWebhooksByWebhookIdDeliveries: {
+        parameters: {
+            query?: {
+                /** @description Only deliveries in this state. */
+                state?: "pending" | "succeeded" | "dead" | "skipped";
+                /** @description Only deliveries of this event name, as orders.sales_order.confirmed or webhook.ping. */
+                event?: string;
+                /** @description The previous page's nextCursor. */
+                cursor?: string;
+                /** @description How many deliveries a page holds, 1 to 100. */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                /** @description The integration (its user's id). */
+                id: string;
+                /** @description The endpoint. */
+                webhookId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookDeliveryPage"];
+                };
+            };
+            /** @description Bad Request — invalid_request with field errors: a state, limit or cursor that does not read. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — not_found, no such integration or endpoint. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The integration (its user's id). */
+                id: string;
+                /** @description The endpoint. */
+                webhookId: string;
+                /** @description The delivery. */
+                deliveryId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookDeliveryDetail"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — not_found, no such integration, endpoint or delivery of that endpoint. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResend: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The integration (its user's id). */
+                id: string;
+                /** @description The endpoint. */
+                webhookId: string;
+                /** @description The delivery. */
+                deliveryId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Accepted — the delivery, pending again. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookDelivery"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — not_found, no such integration, endpoint or delivery of that endpoint. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — integration_archived, the integration is archived; webhook_endpoint_disabled, the endpoint is disabled; webhook_event_not_permitted, the integration no longer holds the event's permissions; webhook_delivery_not_resendable, a test event, a delivery still pending or skipped, or one created 30 days ago or more. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests — rate_limited, the delivery was resent 3 times in the last minute; or the address's limit. */
             429: {
                 headers: {
                     "Retry-After"?: string;

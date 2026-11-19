@@ -37,6 +37,7 @@ import {
 } from "../../api/webhooks";
 import { translateHostPermissionModule } from "../../i18n";
 import { codeOf, fieldErrorsOf } from "./-api-access-shared";
+import { WebhookDeliveries } from "./-api-access-webhook-deliveries";
 import { RollWebhookSecretDialog, WebhookSecretDialog } from "./-webhook-secret-dialog";
 
 /** The most endpoints an integration may have (outgoing webhooks design W1). */
@@ -159,6 +160,8 @@ export const IntegrationWebhooks = ({ integrationId, archived }: { integrationId
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [secret, setSecret] = useState<WebhookEndpointSecret | null>(null);
   const [rolling, setRolling] = useState<WebhookEndpoint | null>(null);
+  // The endpoint whose delivery log is shown in place of the list (W23).
+  const [logOf, setLogOf] = useState<string | null>(null);
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: webhooksQueryKey(integrationId) });
   const failed = (title: string) => (error: unknown) =>
@@ -237,6 +240,16 @@ export const IntegrationWebhooks = ({ integrationId, archived }: { integrationId
     );
 
   const list = endpoints.data;
+  const logged = list.find((endpoint) => endpoint.id === logOf);
+  if (logged)
+    return (
+      <WebhookDeliveries
+        integrationId={integrationId}
+        endpoint={logged}
+        archived={archived}
+        onBack={() => setLogOf(null)}
+      />
+    );
   const full = list.length >= maxEndpoints;
   const when = (value: string) => formatters.formatDate(value, { dateStyle: "medium", timeStyle: "short" });
   const confirmDisable = (endpoint: WebhookEndpoint) =>
@@ -377,7 +390,10 @@ export const IntegrationWebhooks = ({ integrationId, archived }: { integrationId
                       </Stack>
                     </Table.Td>
                     <Table.Td>
-                      <Group justify="flex-end">
+                      <Group justify="flex-end" gap="xs" wrap="nowrap">
+                        <Button size="compact-sm" variant="light" onClick={() => setLogOf(endpoint.id)}>
+                          {t("apiAccess.webhookDeliveriesOpen")}
+                        </Button>
                         <Menu position="bottom-end">
                           <Menu.Target>
                             <Button
