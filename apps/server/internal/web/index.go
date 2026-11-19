@@ -8,8 +8,10 @@ import (
 	"html"
 	"io/fs"
 	"regexp"
+	"strconv"
 	"strings"
 
+	"github.com/vantigo-io/vantigo/server/internal/brandscale"
 	"github.com/vantigo-io/vantigo/server/internal/config"
 )
 
@@ -142,16 +144,16 @@ func runtimeConfigScript(basePath string, b *config.Branding, modules []string) 
 // link's error event, caught on the way down because it does not bubble, or
 // the marker still missing once the document is parsed) does the script paint
 // what the browser last mirrored to localStorage["vantigo-brand"], and only a
-// mirror of a version it understands: v 1, algorithm 1 or older, with a user
+// mirror of a version it understands: v 1, the server's algorithm or older, with a user
 // id. The mirror is the SPA's to write and to clear on sign-out; the variables
 // it sets here are removed again when the SPA has the brand from the server.
-const colorSchemeScript = `try{var s=localStorage.getItem("vantigo-color-scheme");` +
+var colorSchemeScript = `try{var s=localStorage.getItem("vantigo-color-scheme");` +
 	`if(s!=="light"&&s!=="dark"){s=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"}` +
 	`document.documentElement.setAttribute("data-mantine-color-scheme",s)}catch(e){}` +
 	`var vb=function(){try{var r=document.documentElement;` +
 	`if(getComputedStyle(r).getPropertyValue("--vantigo-brand-loaded"))return;` +
 	`var m=JSON.parse(localStorage.getItem("vantigo-brand")),v=m&&m[s];` +
-	`if(!v||m.v!==1||!(m.algorithm<=1)||typeof m.userId!=="string"||!m.userId)return;` +
+	`if(!v||m.v!==1||!(m.algorithm<=` + strconv.Itoa(brandscale.Algorithm) + `)||typeof m.userId!=="string"||!m.userId)return;` +
 	`for(var k in v){if(k.slice(0,2)==="--"&&/^[#a-z0-9(),.% *-]+$/i.test(v[k]))r.style.setProperty(k,v[k])}` +
 	`if(typeof m.title==="string")document.title=m.title}catch(e){}};` +
 	`document.addEventListener("error",function(e){var t=e.target;if(t&&t.tagName==="LINK"&&/brand\.css/.test(t.href))vb()},true);` +

@@ -386,47 +386,35 @@ func TestBrand_InputsAreValidatedAndTokensAreNeverAccepted(t *testing.T) {
 	}
 }
 
-func TestBrand_PublishIsRefusedOnAFailingContrastPair(t *testing.T) {
+// B3.9: common brand colours whose black filled text used to fail on the hover
+// shade (algorithm 1) save with every check passing and publish.
+func TestBrand_CommonBrandColoursPublish(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	owner, _ := h.bootstrapOwner(t)
 	b := getBrand(t, owner)
-
-	var failing string
-	for _, candidate := range []string{"#ef4444", "#f97316", "#3b82f6"} {
-		if !identity.BrandChecksPass(candidate) {
-			failing = candidate
-			break
+	for _, colour := range []string{"#ef4444", "#f97316", "#3b82f6"} {
+		r := saveDraft(owner, b, inputs("Bright", colour))
+		var saved brandBody
+		r.json(&saved)
+		if r.status != http.StatusOK {
+			t.Fatalf("%s: save: status %d body %s", colour, r.status, r.body)
 		}
-	}
-	if failing == "" {
-		t.Fatal("none of the candidate colours fails a contrast check")
-	}
-	r := saveDraft(owner, b, inputs("Bright", failing))
-	var saved brandBody
-	r.json(&saved)
-	if r.status != http.StatusOK {
-		t.Fatalf("a failing draft may be saved: status %d body %s", r.status, r.body)
-	}
-	failed := 0
-	for _, c := range saved.Checks {
-		if !c.Pass {
-			failed++
+		for _, c := range saved.Checks {
+			if !c.Pass {
+				t.Errorf("%s: check %+v fails", colour, c)
+			}
 		}
-	}
-	if failed == 0 || saved.SuggestedPrimary == nil || !identity.BrandChecksPass(*saved.SuggestedPrimary) {
-		t.Fatalf("checks = %+v, suggestion = %v", saved.Checks, saved.SuggestedPrimary)
-	}
-	pr := publish(owner, saved)
-	if pr.status != http.StatusUnprocessableEntity || pr.code() != "brand_contrast" {
-		t.Fatalf("publish: status %d code %q body %s, want 422 brand_contrast", pr.status, pr.code(), pr.body)
-	}
-	// The suggested primary can be saved and published.
-	r = saveDraft(owner, saved, inputs("Bright", *saved.SuggestedPrimary))
-	var fixed brandBody
-	r.json(&fixed)
-	if pr := publish(owner, fixed); pr.status != http.StatusOK {
-		t.Errorf("publish the suggestion: status %d body %s", pr.status, pr.body)
+		if !identity.BrandChecksPass(colour) {
+			t.Errorf("%s: BrandChecksPass is false", colour)
+		}
+		pr := publish(owner, saved)
+		if pr.status != http.StatusOK {
+			t.Fatalf("%s: publish: status %d body %s", colour, pr.status, pr.body)
+		}
+		var published brandBody
+		pr.json(&published)
+		b = published
 	}
 }
 

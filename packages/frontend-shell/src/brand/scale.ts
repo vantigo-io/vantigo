@@ -9,7 +9,7 @@
  */
 
 /** The version of the constants below, stored with every published token set. */
-export const BRAND_ALGORITHM = 1;
+export const BRAND_ALGORITHM = 2;
 
 export const MIN_LIGHTNESS = 0.35;
 export const MAX_LIGHTNESS = 0.85;
@@ -206,19 +206,56 @@ export function generateScale(hex: string): BrandScale {
   }
   const scale: string[] = [];
   for (let i = 0; i < 10; i++) {
-    let l: number;
-    if (i < 6) {
-      l = base.l + (LIGHT_END - base.l) * (LIGHT_STEPS[i] as number);
-    } else if (i === 6) {
-      l = base.l;
-    } else {
-      l = base.l - (base.l - DARK_END) * (DARK_STEPS[i - 7] as number);
-    }
-    const k = CHROMA_K[i] as number;
-    scale.push(hexOf(fit({ l, a: base.a * k, b: base.b * k })));
+    scale.push(hexOf(shade(base, i)));
   }
   scale[6] = formatHex(r, g, b);
-  return { algorithm: BRAND_ALGORITHM, scale: scale as unknown as Shades, filledText: filledText(scale[6] as string) };
+  const text = filledText(scale[6] as string);
+  if (text === BLACK) {
+    scale[7] = readableHover(base, scale[7] as string, scale[6] as string);
+  }
+  return { algorithm: BRAND_ALGORITHM, scale: scale as unknown as Shades, filledText: text };
+}
+
+/** Shade `i` of the scale of `base`, in OKLab and fitted into sRGB. */
+function shade(base: Lab, i: number): Lab {
+  let l: number;
+  if (i < 6) {
+    l = base.l + (LIGHT_END - base.l) * (LIGHT_STEPS[i] as number);
+  } else if (i === 6) {
+    l = base.l;
+  } else {
+    l = base.l - (base.l - DARK_END) * (DARK_STEPS[i - 7] as number);
+  }
+  const k = CHROMA_K[i] as number;
+  return fit({ l, a: base.a * k, b: base.b * k });
+}
+
+/**
+ * Shade 7 for a primary whose filled text is black (brands design B3.9). Mantine paints one text
+ * colour on a filled button, chosen from shade 6, and the same one on its hover (shade 7); the
+ * generated shade 7 is darker than shade 6, so black text on it can fall below AA. When it does,
+ * shade 7 moves toward shade 6's lightness (its own chroma and hue kept): 24 bisections of the
+ * move in [0, 1], the smallest passing move kept, shade 6 itself if none passes. A shade 7 that
+ * already passes is left as it is.
+ */
+function readableHover(base: Lab, shade7: string, shade6: string): string {
+  if (contrast(BLACK, shade7) >= MIN_CONTRAST) {
+    return shade7;
+  }
+  const c = shade(base, 7);
+  const at = (t: number) => hexOf(fit({ l: c.l + (base.l - c.l) * t, a: c.a, b: c.b }));
+  let lo = 0;
+  let hi = 1;
+  for (let i = 0; i < GAMUT_STEPS; i++) {
+    const mid = (lo + hi) / 2;
+    if (contrast(BLACK, at(mid)) >= MIN_CONTRAST) {
+      hi = mid;
+    } else {
+      lo = mid;
+    }
+  }
+  const h = at(hi);
+  return contrast(BLACK, h) >= MIN_CONTRAST ? h : shade6;
 }
 
 /** WCAG 2.x relative luminance. */

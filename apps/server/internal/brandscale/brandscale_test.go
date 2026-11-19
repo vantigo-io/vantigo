@@ -47,6 +47,11 @@ var goldenInputs = []struct{ name, hex string }{
 	{"upper case", "#4F46E5"},
 	{"just white text", "#757575"},
 	{"just black text", "#767676"},
+	// Common brand colours whose black filled text sat on a darker hover that
+	// failed AA before algorithm 2 (B3.9).
+	{"brand red", "#ef4444"},
+	{"brand orange", "#f97316"},
+	{"brand blue", "#3b82f6"},
 }
 
 // goldenRefused are inputs outside the accepted range, and the error code.
@@ -278,7 +283,7 @@ func TestGenerate_Properties(t *testing.T) {
 	t.Parallel()
 	for _, in := range goldenInputs {
 		res := mustGenerate(t, in.hex)
-		if res.Algorithm != 1 {
+		if res.Algorithm != 2 {
 			t.Errorf("%s: algorithm %d", in.name, res.Algorithm)
 		}
 		if res.Scale[6] != strings.ToLower(in.hex) {
@@ -469,18 +474,11 @@ func TestSuggest(t *testing.T) {
 			t.Errorf("%s: the suggestion %s moved lightness %.2f", in.name, got, l1-l0)
 		}
 	}
-	// Grey fails a pair that a darker grey passes, and the green one that a
-	// lighter green does: the suggestion goes whichever way the nearest
-	// passing lightness lies.
-	for _, c := range []struct {
-		hex    string
-		darker bool
-	}{{"#808080", true}, {"#16a34a", false}} {
-		got, ok = brandscale.Suggest(c.hex)
-		l0, _, _ := brandscale.OKLab(c.hex)
-		l1, _, _ := brandscale.OKLab(got)
-		if !ok || (l1 < l0) != c.darker || got == c.hex {
-			t.Errorf("%s suggests %s (%v), want a primary %v than it", c.hex, got, ok, map[bool]string{true: "darker", false: "lighter"}[c.darker])
+	// Since algorithm 2 every accepted primary passes (B3.9), so a suggestion is
+	// the input itself: the common brand colours that used to fail the hover.
+	for _, hex := range []string{"#ef4444", "#f97316", "#3b82f6", "#808080", "#16a34a"} {
+		if got, ok := brandscale.Suggest(hex); !ok || got != hex {
+			t.Errorf("%s suggests %s (%v), want itself", hex, got, ok)
 		}
 	}
 	if _, ok := brandscale.Suggest("#ffffff"); ok {
@@ -520,5 +518,38 @@ func TestTokens_MatchThemeCSS(t *testing.T) {
 		if got := value(css[dark:], name); got != want {
 			t.Errorf("dark --vantigo-%s = %s in theme.css, %s in brandscale", name, got, want)
 		}
+	}
+}
+
+// B3.9: the filled text passes on shade 6 and on the hover (shade 7) in every
+// golden input, and the three common brand colours are accepted for publish.
+func TestGenerate_HoverKeepsTheFilledTextReadable(t *testing.T) {
+	t.Parallel()
+	for _, in := range goldenInputs {
+		res := mustGenerate(t, in.hex)
+		for _, i := range []int{6, 7} {
+			ratio, err := brandscale.Contrast(res.FilledText, res.Scale[i])
+			if err != nil || ratio < brandscale.MinContrast {
+				t.Errorf("%s: %s on shade %d = %.2f, want at least 4.5", in.name, res.FilledText, i, ratio)
+			}
+		}
+	}
+	for _, hex := range []string{"#ef4444", "#f97316", "#3b82f6"} {
+		res := mustGenerate(t, hex)
+		if !brandscale.Passes(brandscale.Checks(res)) {
+			t.Errorf("%s: a common brand colour fails publish: %+v", hex, brandscale.Checks(res))
+		}
+		if res.FilledText != brandscale.Black {
+			t.Errorf("%s: filled text %s, want black", hex, res.FilledText)
+		}
+	}
+}
+
+// A white-text brand keeps the generated shade 7, which only gets darker.
+func TestGenerate_WhiteTextBrandsKeepTheirHover(t *testing.T) {
+	t.Parallel()
+	res := mustGenerate(t, "#4f46e5")
+	if res.FilledText != brandscale.White || res.Scale[7] != "#3e2ec4" {
+		t.Errorf("shade 7 of Vantigo's indigo = %s with %s text", res.Scale[7], res.FilledText)
 	}
 }

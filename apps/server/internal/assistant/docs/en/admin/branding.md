@@ -51,12 +51,12 @@ schemes, against WCAG AA (a ratio of at least 4.5 : 1 for text):
 The text colour on a button is chosen, not assumed: white on a dark primary, black on a light one.
 A draft may be **saved** while it fails; it can only be **published** when every pair passes. The
 editor shows each ratio and, when a pair fails, offers the nearest primary that passes with one
-click. A very light primary typically fails the links and the hover colour, because they need a
-darker colour than the primary itself.
+click. A very light primary can fail the links, because they need a darker colour than the primary
+itself. The hover colour of a button with black text is kept dark enough to read, so a bright red,
+orange or blue does not fail it.
 
 Publishing a failing draft through the API is refused `422 brand_contrast` and names the failing
-pairs. Some everyday brand colours, a bright red or orange among them, fail the hover pair; use
-the suggested neighbour or choose a darker colour.
+pairs; use the suggested neighbour or choose a darker colour.
 
 Vantigo's own indigo (`#4f46e5`) keeps the hand-tuned scale the product has always had, so an
 installation that never edits its brand looks exactly as before.
