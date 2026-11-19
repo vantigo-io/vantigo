@@ -240,6 +240,7 @@ the page, card, text and border colours stay Vantigo's in both schemes.
 | `422 brand_support_invalid` | The e-mail has a display name or holds `?`, `&` or `%`, the phone has other characters than digits, spaces and `+ - ( ) .` or is over 30 long, or the link is not `http(s)` or a path starting with a single `/`, or holds a control character such as a tab or a line break. The same rule applies to `APP_SUPPORT_URL` and `APP_LOGO_URL` at start. |
 | `409 stale_revision` | Someone else saved the brand, or the rule list, since you opened it. |
 | `409 brand_name_taken` | Another brand has the name. |
+| `409 brand_archived` | You tried to edit, publish or discard the draft of an archived brand; restore it first. |
 | `409 brand_in_use` | You tried to archive the default brand, or to delete a published brand or the default. |
 | `409 brand_not_candidate` | A person chose a brand their rules do not give them. |
 | `422 rule_duplicate`, `domain_taken`, `domain_invalid`, `rule_target_not_found`, `rule_brand_invalid`, `staff_disabled`, `too_many_rules` | A rule list the server refused; `fields` names the item. |
