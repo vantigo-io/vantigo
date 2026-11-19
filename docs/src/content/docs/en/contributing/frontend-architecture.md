@@ -294,16 +294,33 @@ are libraries rendered inside the host.
   values in its stylesheet.
 - **The colour lint.** `bun run colours:check` (`tools/frontend/check-colours.ts`, part of
   `mise run frontend:check` and of the frontend job in CI) scans the TypeScript and CSS
-  source of every app and package, tests and generated files excepted, and fails on a
-  hex, `rgb()`, `rgba()` or `hsl()` literal, on `bg="white"`, `bg="gray.0"`, `bg="gray.1"`,
-  `c="dark"` or `c="black"`, on `var(--mantine-color-gray-0)` to `-2`, `var(--mantine-color-white)`
-  and the `vantigo-0` background. Nothing inside a `light-dark(...)` call is flagged, so a
-  pair that must differ per scheme is written `light-dark(light, dark)`. A legitimate
-  exception (white text on a filled colour, a canvas filled white behind a JPEG, the
-  token definitions) is either a line comment `// colour-lint-ignore: <reason>` (a CSS
-  comment works the same) on the line or the line above, or an entry with a path, an
-  optional line pattern and a reason in `tools/frontend/colour-allowlist.json`. The reason
-  is mandatory; a reviewer reads it. `bun run colours:test` tests the scanner.
+  source of every app and package, tests and generated files excepted. It is a line-based
+  scan, not a parser, and it fails on:
+  - a hex colour (three, four, six or eight digits), except an `href="#anchor"` and an
+    `#id {` selector, and an `rgb()`, `rgba()`, `hsl()`, `hsla()`, `oklch()`, `oklab()`,
+    `lab()`, `lch()` or `hwb()` literal in any case; `color-mix()` is not flagged;
+  - a Mantine prop that pins a light shade, plain or in braces with a ternary or a
+    template literal in them: `bg` or `bgc` set to `white` or `gray.0` to `gray.2`, `c`
+    or `color` set to `dark` or `black`;
+  - `color`, `background`, `background-color` or a `border` declaration with a bare
+    `white` or `black` in it, in a stylesheet or in a style object;
+  - `var(--mantine-color-gray-0)` to `-2`, `var(--mantine-color-white)` and the
+    `vantigo-0` background.
+
+  What it does not see: a colour built at run time, a named colour other than `white` and
+  `black`, a shade such as `dark.8` or `gray.3`, a custom property set to `white`, and a
+  colour imported from another file. Review those by hand. Nothing inside a
+  `light-dark(...)` call is flagged, so a pair that must differ per scheme is written
+  `light-dark(light, dark)`; an unclosed call hides nothing.
+
+  A legitimate exception (white text on a filled colour, a canvas filled white behind a
+  JPEG, the token definitions) is either a line comment `// colour-lint-ignore: <reason>`
+  (a CSS comment works the same) on the line or the line above, or an entry with a path
+  (or a directory ending in `/`), a line pattern and a reason in
+  `tools/frontend/colour-allowlist.json`. Prefer a narrow line pattern to a whole file.
+  The reason is mandatory, and a reviewer reads it. An entry whose path is gone or whose
+  pattern matches nothing fails the check, so the list is kept true.
+  `bun run colours:test` tests the scanner.
 - **The logo.** `logo-dark.png` is `logo.png` with its navy stroke lightened to read on
   the dark surface and the mint kept; the shell shows the variant that matches the scheme
   unless the instance sets its own `logoUrl`. Regenerate it after a change to `logo.png`

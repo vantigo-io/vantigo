@@ -1,14 +1,17 @@
 [
   {
     "path": "packages/frontend-shell/src/theme.ts",
+    "pattern": "^\\s*(?:\"#[0-9a-fA-F]{6}\",|\\*.*#[0-9a-fA-F]{6})",
     "reason": "The token definitions: the brand and dark scales are where raw hex values are decided"
   },
   {
     "path": "packages/frontend-shell/src/theme.css",
+    "pattern": "^\\s*--vantigo-[a-z-]+:\\s*#[0-9a-fA-F]{6};",
     "reason": "The token definitions for both schemes, where raw values are decided"
   },
   {
     "path": "apps/knowledge/frontend/src/editor/collab/user.ts",
+    "pattern": "^\\s*\"#[0-9a-fA-F]{6}\",\\s*$",
     "reason": "CURSOR_COLOURS: per-person caret colours, chosen to read on both surfaces"
   },
   {
@@ -23,15 +26,22 @@
   },
   {
     "path": "apps/host/frontend/src/components/errors/app-crash-fallback.css",
-    "reason": "The crash page renders outside the provider and carries its own light and dark blocks"
+    "pattern": "^\\s*--crash-[a-z-]+:\\s*#[0-9a-fA-F]{6};",
+    "reason": "The crash page renders outside the provider; its own --crash-* variables carry a light and a dark value"
   },
   {
     "path": "apps/calendar/frontend/src/styles/fullcalendar.css",
-    "reason": "FullCalendar's variables are set per scheme in this file, whose dark block overrides them"
+    "pattern": "^\\s*--fc-[a-z-]+:",
+    "reason": "FullCalendar's --fc-* variables are assigned per scheme in this file, whose dark block overrides them"
+  },
+  {
+    "path": "apps/calendar/frontend/src/styles/fullcalendar.css",
+    "pattern": "rgba\\(127, 127, 127,",
+    "reason": "Mid-grey stripes read the same on both surfaces"
   },
   {
     "path": "apps/calendar/frontend/src/pages/settings.tsx",
-    "pattern": "mantine-color-white",
+    "pattern": "color: \"var\\(--mantine-color-white\\)\"",
     "reason": "White check mark on a filled colour swatch"
   },
   {
@@ -45,18 +55,23 @@
     "reason": "White glyph on the filled brand-colour icon"
   },
   {
+    "path": "apps/manufacturing/frontend/src/pages/schedule.tsx",
+    "pattern": "color: \"white\"",
+    "reason": "White label on a filled schedule bar"
+  },
+  {
     "path": "apps/projects/frontend/src/pages/-task-timeline-view.tsx",
-    "pattern": "rgba\\(",
+    "pattern": "rgba\\(0,0,0,0\\.[12]\\)|rgba\\(34, 139, 230, ",
     "reason": "Black-alpha shadows and a blue tint over a bar read in both schemes"
   },
   {
     "path": "apps/projects/frontend/src/pages/-task-timeline-view.tsx",
-    "pattern": "mantine-color-white",
+    "pattern": "color: \"var\\(--mantine-color-white\\)\"",
     "reason": "White text on a filled dark chip (its background is light-dark() already)"
   },
   {
     "path": "apps/staff/frontend/src/components/person-avatar.tsx",
-    "pattern": "fillStyle",
+    "pattern": "fillStyle = \"#fff\"",
     "reason": "Canvas fills white behind a JPEG, which has no transparency"
   }
 ]
