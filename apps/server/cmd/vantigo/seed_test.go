@@ -84,7 +84,13 @@ func TestRun_SeedPopulatesDemoDatasetAndIsIdempotent(t *testing.T) {
 		query string
 		want  int
 	}{
-		{"identity.users", "SELECT count(*) FROM identity.users WHERE kind = 'person'", demoUserCount},
+		// The staff, and Kari of the Nordlys demo brand (seedDemoBrands), who has no person in Staff.
+		{"identity.users", "SELECT count(*) FROM identity.users WHERE kind = 'person'", demoUserCount + 1},
+		// The default brand and the two demo brands, with a rule each; Kari matches both.
+		{"identity.brands", "SELECT count(*) FROM identity.brands WHERE state = 'published'", 3},
+		{"identity.brand_rules", "SELECT count(*) FROM identity.brand_rules", 2},
+		{"identity.brand_rules group members", `SELECT count(*) FROM identity.brand_rules r
+			JOIN identity.access_group_memberships m ON m.group_id::text = r.target_ref WHERE r.kind = 'access_group'`, 2},
 		// The web shop's integration, its Webshop role and one key (API access
 		// delivery A); the key itself is never asserted, only printed.
 		{"identity.integrations", "SELECT count(*) FROM identity.integrations WHERE name = 'Webshop sync' AND archived_at IS NULL", 1},

@@ -406,6 +406,9 @@ func seedDemoDataset(ctx context.Context, pool *pgxpool.Pool, logger *slog.Logge
 	if err := seedDemoBrand(ctx, pool, logger, cfg); err != nil {
 		return fmt.Errorf("seed the demo brand: %w", err)
 	}
+	if err := seedDemoBrands(ctx, pool, logger, cfg); err != nil {
+		return fmt.Errorf("seed the demo brands: %w", err)
+	}
 
 	if skipped {
 		logger.Info("development seed already applied; skipping")
