@@ -338,6 +338,49 @@ type APIKeyScope interface {
 	Scope(ctx context.Context, p Principal) (permissions []string, readOnly bool, err error)
 }
 
+// The values of an integration's MCP setting (MCP server design M1): what its
+// keys may do at /api/mcp.
+const (
+	MCPAccessOff       = "off"
+	MCPAccessRead      = "read"
+	MCPAccessReadWrite = "read_write"
+)
+
+// MCPKeyAccess is what the MCP endpoint needs of an API key, read at once
+// (MCP server design M22): its integration's MCP setting, and the scope
+// APIKeyScope answers.
+type MCPKeyAccess struct {
+	// Mode is the integration's mcp_access: MCPAccessOff, MCPAccessRead or
+	// MCPAccessReadWrite.
+	Mode string
+	// Permissions and ReadOnly are APIKeyScope.Scope's answer for the key.
+	Permissions []string
+	ReadOnly    bool
+}
+
+// Effective is the narrower of the integration's setting and the key (M3): a
+// read-only key is MCPAccessRead under MCPAccessReadWrite.
+func (m MCPKeyAccess) Effective() string {
+	if m.Mode == MCPAccessReadWrite && m.ReadOnly {
+		return MCPAccessRead
+	}
+	switch m.Mode {
+	case MCPAccessRead, MCPAccessReadWrite:
+		return m.Mode
+	}
+	return MCPAccessOff
+}
+
+// MCPAccess is how the MCP endpoint reads an API key's MCP setting and scope
+// without importing identity (MCP server design M6, M22). identity's Access
+// implements it beside APIKeyScope; the endpoint finds it by a type assertion.
+type MCPAccess interface {
+	// MCP answers, for the key of p (Via.Kind ViaAPIKey), its integration's
+	// MCP setting and the key's scope as Scope answers it. A principal that is
+	// not an API key's, or a key that no longer exists, is an error.
+	MCP(ctx context.Context, p Principal) (MCPKeyAccess, error)
+}
+
 // StationAccess is what the live hub asks of identity for a shared station's
 // socket (manufacturing phase 2 §17), which carries the station cookie and no
 // operator: a browser WebSocket cannot set Authorization. identity's Access

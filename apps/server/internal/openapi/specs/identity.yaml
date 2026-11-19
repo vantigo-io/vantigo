@@ -984,10 +984,17 @@ components:
                     items:
                         $ref: '#/components/schemas/ApiKey'
                     type: array
+                mcpAccess:
+                    $ref: '#/components/schemas/IntegrationMcpAccess'
+                mcpAvailable:
+                    description: False when the installation has switched the MCP endpoint off (MCP_ENABLED=0), whatever mcpAccess says.
+                    type: boolean
             required:
                 - integration
                 - keys
                 - effectivePermissions
+                - mcpAccess
+                - mcpAvailable
             type: object
         IntegrationList:
             properties:
@@ -997,6 +1004,20 @@ components:
                     type: array
             required:
                 - integrations
+            type: object
+        IntegrationMcpAccess:
+            description: 'What the integration''s API keys may do at the MCP endpoint (MCP server design M1): off, read, or read_write. A read-only key reads whatever this says.'
+            enum:
+                - "off"
+                - read
+                - read_write
+            type: string
+        IntegrationMcpRequest:
+            properties:
+                mcpAccess:
+                    $ref: '#/components/schemas/IntegrationMcpAccess'
+            required:
+                - mcpAccess
             type: object
         IntegrationPermission:
             properties:
@@ -7249,6 +7270,79 @@ paths:
                             schema:
                                 type: string
             summary: Roll an API key
+            tags:
+                - API access
+            x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
+            x-vantigo-assistant: never
+    /api/v1/identity/integrations/{id}/mcp:
+        put:
+            description: 'Sets what the integration''s API keys may do at the MCP endpoint, POST /api/mcp (MCP server design M1-M3): off refuses them there, read lets an AI client search, describe and call read operations, and read_write lets it write as well. A read-only key reads whatever the setting. Until the write tool exists read_write behaves as read. Every integration starts off. Audited integration.mcp_changed.'
+            operationId: putIdentityIntegrationsByIdMcp
+            parameters:
+                - description: The integration (its user's id).
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+                - description: The integration's version as it was read, bare or quoted. A version that has moved on is a 412 version_mismatch.
+                  in: header
+                  name: If-Match
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/IntegrationMcpRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/IntegrationDetail'
+                    description: 'OK'
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Bad Request — invalid_request: an mcpAccess that is not off, read or read_write, or an If-Match that is not a version.'
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Unauthorized'
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Forbidden'
+                "404":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Not Found — not_found, no such integration.'
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Conflict — integration_archived, the integration is archived.'
+                "412":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Precondition Failed — version_mismatch, the integration has been changed since the If-Match version.'
+            summary: Set an integration's MCP access
             tags:
                 - API access
             x-vantigo-access: policy:Owner+OwnerManagement

@@ -154,6 +154,9 @@ var limits = map[string]ratelimit.Policy{
 	// mints a secret, limited per address as the Owner's user operations are.
 	"postIdentityIntegrationsByIdKeys":            policyUserManagement,
 	"postIdentityIntegrationsByIdKeysByKeyIdRoll": policyUserManagement,
+	// What its keys may do at the MCP endpoint (MCP server design M2): a
+	// change of what an agent may reach, limited as the keys are.
+	"putIdentityIntegrationsByIdMcp": policyUserManagement,
 
 	// An integration's webhook endpoints (outgoing webhooks design W25):
 	// every write, the two that mint a secret among them, as the keys are.

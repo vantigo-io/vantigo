@@ -218,6 +218,7 @@ type IdentityIntegration struct {
 	ArchivedAt         *time.Time
 	ArchivedBy         *uuid.UUID
 	Version            uuid.UUID
+	McpAccess          string
 }
 
 type IdentityInvitation struct {

@@ -100,23 +100,31 @@ func (q *Queries) GetAPIKeyByTokenHash(ctx context.Context, tokenHash []byte) (G
 }
 
 const getAPIKeyScope = `-- name: GetAPIKeyScope :one
-SELECT integration_id, permissions, read_only
-FROM identity.api_keys
-WHERE id = $1
+SELECT k.integration_id, k.permissions, k.read_only, i.mcp_access
+FROM identity.api_keys k
+JOIN identity.integrations i ON i.user_id = k.integration_id
+WHERE k.id = $1
 `
 
 type GetAPIKeyScopeRow struct {
 	IntegrationID uuid.UUID
 	Permissions   []string
 	ReadOnly      bool
+	McpAccess     string
 }
 
 // GetAPIKeyScope is what a key's scope needs of it: its integration, its
-// narrowing and whether it only reads.
+// narrowing, whether it only reads, and its integration's MCP setting (MCP
+// server design M22), read together so the MCP endpoint asks once.
 func (q *Queries) GetAPIKeyScope(ctx context.Context, id uuid.UUID) (GetAPIKeyScopeRow, error) {
 	row := q.db.QueryRow(ctx, getAPIKeyScope, id)
 	var i GetAPIKeyScopeRow
-	err := row.Scan(&i.IntegrationID, &i.Permissions, &i.ReadOnly)
+	err := row.Scan(
+		&i.IntegrationID,
+		&i.Permissions,
+		&i.ReadOnly,
+		&i.McpAccess,
+	)
 	return i, err
 }
 
