@@ -330,8 +330,10 @@ are libraries rendered inside the host.
   a `BrandedMantineProvider` inside a `BrandProvider` (`packages/frontend-shell/src/brand`):
   the theme is `createVantigoTheme(brand)`, `useBrand()` gives the title, logos and support,
   the stylesheet `GET /api/v1/identity/brand.css` (linked in `index.html`) paints the first
-  frame, and `localStorage["vantigo-brand"]` (`{v, algorithm, userId}`, cleared on sign-out)
-  is only a fallback for when it cannot load. `brand/tokens.ts` is a port of
+  frame, and `localStorage["vantigo-brand"]` (`{v, algorithm, userId}`, cleared on sign-out
+  and on any page that asks for no session) is only a fallback for when it cannot load; the
+  first-paint snippet in `internal/web/index.go` applies a mirror whose `algorithm` is at most
+  `brandscale.Algorithm`, which the server writes into the snippet. `brand/tokens.ts` is a port of
   `identity/brand_tokens.go`; both are tested against `brand-tokens.golden.json`, and a test
   mounts a `MantineProvider` to compare every variable it derives with the server's.
 - **The logo.** `logo-dark.png` is `logo.png` with its navy stroke lightened to read on

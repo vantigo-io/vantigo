@@ -1081,7 +1081,7 @@ and the TypeScript test only reads, so the two cannot drift.
 | `Contrast(a, b)` | the WCAG 2.x contrast ratio. |
 | `Checks(result)` | the ten pairs of B4, light then dark: the filled text on shades 6 and 7, and shade 8 (light) or 3 (dark) on the page, the card and a tinted cell. The page and card colours are `PageLight`, `CardLight`, `PageDark` and `CardDark`; a test reads `theme.css` and fails when they differ. |
 | `Suggest(hex)` | the nearest primary that passes every check: the same hue and chroma with the lightness moved, 0.005 at a time, darker before lighter. |
-| `Algorithm` | the version of the constants, stored with every published token set. Changing any constant is a new version. |
+| `Algorithm` | the version of the constants, stored with every published token set. Changing any constant is a new version. It is 2: Mantine renders one text colour for a filled button and its hover, so when `FilledText` is black, shade 7 is clamped (toward the input's lightness, 24 bisections) until black on it passes AA, which lets a bright red, orange or blue publish. The first-paint snippet in `internal/web` accepts mirrors up to this version. |
 
 The package imports the standard library only. Shades, the text colour and the suggestions agree to the byte between the two languages; contrast ratios agree to two decimals. The arithmetic is written in one fixed
 order with every product rounded before it is added, and chroma is scaled on the OKLab
