@@ -246,6 +246,7 @@ tekst- og kantfargene forblir Vantigos i begge skjemaene.
 | `422 brand_support_invalid` | E-posten har et visningsnavn eller inneholder `?`, `&` eller `%`, telefonen har andre tegn enn sifre, mellomrom og `+ - ( ) .` eller er over 30 lang, eller lenken er ikke `http(s)` eller en sti som begynner med én enkelt `/`, eller inneholder et kontrolltegn som tabulator eller linjeskift. Samme regel gjelder `APP_SUPPORT_URL` og `APP_LOGO_URL` ved oppstart. |
 | `409 stale_revision` | Noen andre lagret merkevaren, eller regellisten, siden du åpnet den. |
 | `409 brand_name_taken` | En annen merkevare har navnet. |
+| `409 brand_archived` | Du prøvde å redigere, publisere eller forkaste utkastet til en arkivert merkevare; gjenopprett den først. |
 | `409 brand_in_use` | Du prøvde å arkivere standardmerkevaren, eller å slette en publisert merkevare eller standarden. |
 | `409 brand_not_candidate` | En person valgte en merkevare reglene deres ikke gir dem. |
 | `422 rule_duplicate`, `domain_taken`, `domain_invalid`, `rule_target_not_found`, `rule_brand_invalid`, `staff_disabled`, `too_many_rules` | En regelliste serveren avviste; `fields` navngir elementet. |
