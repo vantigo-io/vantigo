@@ -1,4 +1,5 @@
 export { ContentSkeleton, type ContentSkeletonProps } from "./content-skeleton";
+export { DropZone, type DropZoneProps } from "./drop-zone";
 export { EmptyState, type EmptyStateProps } from "./empty-state";
 export { KpiCard, type KpiCardDelta, type KpiCardProps } from "./kpi-card";
 export { PageSection, type PageSectionProps } from "./page-section";
