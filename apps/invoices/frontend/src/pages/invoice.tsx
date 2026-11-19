@@ -57,6 +57,7 @@ import { ApiConflictError, ApiValidationError, INVOICES_QUERY_KEY } from "../api
 import { invoiceSettingsQueryOptions } from "../api/settings";
 import { vatCodesQueryOptions } from "../api/vat-codes";
 import { AttemptsCard } from "../components/attempts-card";
+import { BrandField } from "../components/brand-field";
 import { ChargesCard } from "../components/charges-card";
 import { CustomerPicker } from "../components/customer-picker";
 import { DeliveriesCard } from "../components/deliveries-card";
@@ -226,7 +227,7 @@ const MAX_UNIT_PRICE = 9999999999.9999;
  * currency, a delivery day while a period is chosen — is a notification.
  */
 const editorInputs =
-  /^(customerId|deliveryDate|deliveryFrom|deliveryTo|deliveryAddress\.(line1|line2|postalCode|city|country)|yourReference|ourReference|orderReference|paymentTermsDays|note|internalNote|lines\[\d+\]\.(description|quantity|unit|unitPrice|discountPercent|vatCodeId))$/;
+  /^(customerId|deliveryDate|deliveryFrom|deliveryTo|deliveryAddress\.(line1|line2|postalCode|city|country)|yourReference|ourReference|orderReference|paymentTermsDays|brandId|note|internalNote|lines\[\d+\]\.(description|quantity|unit|unitPrice|discountPercent|vatCodeId))$/;
 
 let lineKeys = 0;
 const nextKey = () => `line-${++lineKeys}`;
@@ -307,6 +308,9 @@ const DraftEditor = ({
     city: draft.deliveryAddress?.city ?? "",
     country: draft.deliveryAddress?.country ?? "NO",
   });
+  // The brand the person picked in this session, null while untouched: a save
+  // sends brandId only for a real choice (brands design B28).
+  const [brandId, setBrandId] = useState<string | null>(null);
   const [yourReference, setYourReference] = useState(draft.yourReference);
   const [ourReference, setOurReference] = useState(draft.ourReference);
   const [orderReference, setOrderReference] = useState(draft.orderReference);
@@ -490,6 +494,7 @@ const DraftEditor = ({
     orderReference,
     ...(credit || terms === "" ? {} : { paymentTermsDays: numberOf(terms) }),
     ...(credit ? {} : { currency }),
+    ...(!credit && brandId ? { brandId } : {}),
     ...(!credit && currency !== "NOK" && agreedRate !== ""
       ? { exchangeRate: numberOf(agreedRate), ...(agreedDay ? { exchangeRateDate: agreedDay } : {}) }
       : {}),
@@ -840,6 +845,14 @@ const DraftEditor = ({
                 value={terms}
                 error={fieldError("paymentTermsDays")}
                 onChange={touch(setTerms, "paymentTermsDays")}
+              />
+            )}
+            {!credit && (
+              <BrandField
+                current={draft.brand}
+                chosen={brandId}
+                disabled={!editable}
+                onChange={touch(setBrandId, "brandId")}
               />
             )}
             {!credit && (currencies.length > 0 || draft.currency !== "NOK") && (
@@ -1537,6 +1550,7 @@ const IssuedDocument = ({
             {doc.yourReference && <Text size="sm">{t("yourReferenceIs", { reference: doc.yourReference })}</Text>}
             {doc.ourReference && <Text size="sm">{t("ourReferenceIs", { reference: doc.ourReference })}</Text>}
             {doc.orderReference && <Text size="sm">{t("orderReferenceIs", { reference: doc.orderReference })}</Text>}
+            {doc.brand?.name && <Text size="sm">{t("brand.is", { name: doc.brand.name })}</Text>}
           </Stack>
         </SimpleGrid>
       </PageSection>

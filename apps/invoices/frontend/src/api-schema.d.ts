@@ -334,6 +334,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/invoices/brands": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the brands a draft can be printed in
+         * @description The published brands the draft editor's Brand select offers, the workspace default first (brands design B28, delivery E2), read from contracts.Brands. It needs the permission to write a draft and nothing from identity. A deployment without identity's brands offers none.
+         */
+        get: operations["getInvoicesBrands"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/invoices/settings/logo": {
         parameters: {
             query?: never;
@@ -4236,6 +4256,23 @@ export interface components {
             data: components["schemas"]["InvoicesBankTransaction"][];
             pagination: components["schemas"]["PaginationMetadata"];
         };
+        /** @description The brand a document is printed in (brands design B27, B28, delivery E2). On a draft it is the brand the draft carries and where it came from: chosen (the person switched it for this document), customer, group or default (B28). unavailable is true when the draft's choice is archived or unknown now, or when a brand higher in the order was skipped when the draft picked its brand: the editor says so, and the issue falls back to the next brand in the order. On an issued document it is the snapshot: id and name as they were at the issue, never read again, and unavailable is false. The brand changes the logo (and the name kept in the snapshot) of a document, never the seller's legal identity (B29a). */
+        InvoicesBrand: {
+            /** Format: uuid */
+            id: string;
+            /** @description The brand's published name; absent on a draft whose brand cannot be read now. */
+            name?: string;
+            /** @enum {string} */
+            source: "chosen" | "customer" | "group" | "default";
+            unavailable: boolean;
+        };
+        /** @description A published brand the draft editor's Brand select offers. */
+        InvoicesBrandOption: {
+            /** Format: uuid */
+            id: string;
+            isDefault: boolean;
+            name: string;
+        };
         /** @description The buyer snapshot (D4), written at issue from the customer's billing profile and printed from, never re-read. A credit note carries its original's. */
         InvoicesBuyer: {
             addressLine1?: string;
@@ -4358,6 +4395,11 @@ export interface components {
         };
         /** @description A draft, created (POST) or replaced whole (PUT, with revision) (D4). customerId is the buyer. currency, when given, is NOK or a currency turned on in the settings (invoices phase 6 design I17, I19; else a 400 on currency); on create, absent is the billing profile's currency when it is turned on, else NOK. A draft holding order lines, work or deduction lines keeps its currency (400 on currency). exchangeRate and exchangeRateDate set an agreed rate on a draft in another currency. Delivery is deliveryDate alone, deliveryFrom with deliveryTo (from on or before to), or none — none only on a draft; the issue refuses it. references are at most 100 characters each, note and internalNote 1000. lines are at most 500. On create, an omitted yourReference is the billing profile's buyerReference and an omitted paymentTermsDays the profile's terms, else the settings' default; on PUT an invoice's paymentTermsDays is required and an omitted reference is cleared. On a credit-note draft only what D8 allows may change: lines may be removed, a quantity or a unit price lowered, and a description, the note and the internal note edited. A line's sources name the work it bills (invoices work design D2): never on a create or a credit note; on a PUT of a draft that holds work, required on every line ([] for none), each source one the draft already holds, named once — a save moves work between lines or drops it, and never adds any. At most 5000 sources on one document. */
         InvoicesInvoiceRequest: {
+            /**
+             * Format: uuid
+             * @description The brand this one document is printed in (brands design B28, delivery E2). Must be a published brand, or the one the draft already carries; an unknown or archived id is a field error on brandId. On a create, absent takes the customer's default brand, then its group's, then the workspace default. On a PUT, absent keeps the draft's brand, unless the customer changed and the brand was not chosen: it is then taken from the new customer's defaults again. Not accepted on a credit-note draft, which carries its invoice's brand.
+             */
+            brandId?: string;
             currency?: string;
             /** Format: int32 */
             customerId: number;
@@ -4416,6 +4458,7 @@ export interface components {
         /** @description One document (D4): every column in camelCase, its lines and its VAT summaries. On a draft the VAT summaries and totals are computed afresh — an invoice draft's with the rates in force today, which the issue resolves again for the issue date; a credit-note draft's at its original lines' snapshot rates, with each line's and the invoice's remainder squared as its issue will — and allowedIssueDates lists the dates it may be issued with today. warnings are never refusals: customer_currency_differs (the billing profile's currency is not the draft's), exchange_rate_missing (invoices phase 6 design I19: a draft in currency without a rate within 7 days; the issue refuses it), issued_late (never on a credit note, which keeps its original's delivery), vat_code_not_valid (a line's code has no rate period covering today; the issue would refuse it), credit_exceeds_invoice, credit_exceeds_line, ehf_buyer_reference_missing (EHF and KID design D8: a draft whose customer's billing profile prefers EHF or whose customer has a Peppol id — or, on a credit-note draft, whose buyer snapshot has a Peppol id — with neither yourReference nor orderReference set — Peppol needs one, and neither can change after the issue), buyer_org_number_missing (invoices phase 6 design I37: the customer directory says the buyer is bookkeeping-obligated and the document has no organisation number; before 1 January 2028 a warning, on an invoice draft and on the issue's answer), buyer_org_number_required (on an invoice draft from that day: the issue would refuse it), credit_limit_exceeded (invoices phase 6 design I38: on an invoice draft, read by GET, and on the issue's answer, the customer's exposure passes its credit limit; creditLimit holds the figures — never a refusal), and for a document that bills work (invoices work design D2) line_differs_from_sources (on a draft, a line's net differs from its sources' amounts summed and rounded to øre), sources_released (on a save's answer, work the save dropped — named in releasedSources), source_changed and source_not_invoiceable (on GET of an invoice draft, for a caller holding invoices:create: a source's billing facts changed since the draft took them, or it is no longer invoiceable — the issue would refuse either); each of the last three also on the line's own warnings; on an invoice draft that is a final settlement (invoices work design D7) deduction_exceeds_invoice (a deduction line takes more than its a-konto has left at its VAT code) and invoice_total_not_positive (its gross is zero or less) — the issue refuses either. A deduction line is totalled at its a-konto line's snapshot (category and rate), never at today's rate of its code. A document that bills work carries sources, its count by state, and each of its lines its sources[]. An invoice carries creditedAmount (its issued credit notes' gross), uncreditedAmount and creditNotes; a credit note carries credits. Every document carries state (D3); an issued invoice also carries paidAmount, openAmount and payments, none of which a draft or a credit note carries; what a credit note credits beyond the open amount moves to the customer's credit (invoices phase 6 design I10). An issued invoice also carries charges, chargePayments, waivers and manualDeliveries (invoices payments and reminders design D8, D9), and its reminders and nextAction — what the reminder engine says to do next today (D8, D10). An issued invoice also carries hold and handoff, its latest hold and hand-off, live or ended (D11); each is absent when the invoice was never held or handed off. Every issued document carries deliveries (D4) and its EHF state, ehf (EHF and KID design D10); sendDefaults is answered only by GET /invoices/{id} and the send, for a caller who may send — and in its place customerAnonymised when the customer is anonymised. An issued invoice with a live pay link carries payLink (invoices payments and reminders design D15), and every issued invoice its Vipps payment attempts, paymentAttempts (D16). */
         InvoicesInvoiceResponse: {
             allowedIssueDates?: string[];
+            brand?: components["schemas"]["InvoicesBrand"];
             buyer?: components["schemas"]["InvoicesBuyer"];
             creditLimit?: components["schemas"]["InvoicesCreditExposure"];
             /** @description On an issued invoice, every payment of its charges (invoices payments and reminders design D9), removed ones included with their removal, in the order the money arrived. */
@@ -7192,6 +7235,44 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
+    getInvoicesBrands: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesBrandOption"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
         };
