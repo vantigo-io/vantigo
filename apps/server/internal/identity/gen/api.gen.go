@@ -3004,6 +3004,12 @@ type GetIdentityBrandParams struct {
 	IfNoneMatch *string `json:"If-None-Match,omitempty"`
 }
 
+// GetIdentityBrandAssetsByFileParams defines parameters for GetIdentityBrandAssetsByFile.
+type GetIdentityBrandAssetsByFileParams struct {
+	// IfNoneMatch The ETag a client holds; when it names the asset the answer is a bare 304, without reading the object store.
+	IfNoneMatch *string `json:"If-None-Match,omitempty"`
+}
+
 // GetIdentityBrandCssParams defines parameters for GetIdentityBrandCss.
 type GetIdentityBrandCssParams struct {
 	// IfNoneMatch The ETag a client holds; when it is the current one the answer is a bare 304.
@@ -4145,7 +4151,7 @@ type ServerInterface interface {
 	GetIdentityBrand(w http.ResponseWriter, r *http.Request, params GetIdentityBrandParams)
 	// GetIdentityBrandAssetsByFile Get a published brand logo
 	// (GET /api/v1/identity/brand-assets/{file})
-	GetIdentityBrandAssetsByFile(w http.ResponseWriter, r *http.Request, file string)
+	GetIdentityBrandAssetsByFile(w http.ResponseWriter, r *http.Request, file string, params GetIdentityBrandAssetsByFileParams)
 	// GetIdentityBrandCss Get the brand stylesheet
 	// (GET /api/v1/identity/brand.css)
 	GetIdentityBrandCss(w http.ResponseWriter, r *http.Request, params GetIdentityBrandCssParams)
@@ -5570,8 +5576,32 @@ func (siw *ServerInterfaceWrapper) GetIdentityBrandAssetsByFile(w http.ResponseW
 		return
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetIdentityBrandAssetsByFileParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-None-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-None-Match")]; found {
+		var IfNoneMatch string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-None-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-None-Match", valueList[0], &IfNoneMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-None-Match", Err: err})
+			return
+		}
+
+		params.IfNoneMatch = &IfNoneMatch
+
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetIdentityBrandAssetsByFile(w, r, file)
+		siw.Handler.GetIdentityBrandAssetsByFile(w, r, file, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -13166,7 +13196,8 @@ func (response GetIdentityBrand404JSONResponse) VisitGetIdentityBrandResponse(w 
 }
 
 type GetIdentityBrandAssetsByFileRequestObject struct {
-	File string `json:"file"`
+	File   string `json:"file"`
+	Params GetIdentityBrandAssetsByFileParams
 }
 
 type GetIdentityBrandAssetsByFileResponseObject interface {
@@ -13211,6 +13242,14 @@ func (response GetIdentityBrandAssetsByFile200ImagepngResponse) VisitGetIdentity
 	}
 	_, err := io.Copy(w, response.Body)
 	return err
+}
+
+type GetIdentityBrandAssetsByFile304Response struct {
+}
+
+func (response GetIdentityBrandAssetsByFile304Response) VisitGetIdentityBrandAssetsByFileResponse(w http.ResponseWriter) error {
+	w.WriteHeader(304)
+	return nil
 }
 
 type GetIdentityBrandAssetsByFile404Response struct {
@@ -25530,10 +25569,11 @@ func (sh *strictHandler) GetIdentityBrand(w http.ResponseWriter, r *http.Request
 }
 
 // GetIdentityBrandAssetsByFile operation middleware
-func (sh *strictHandler) GetIdentityBrandAssetsByFile(w http.ResponseWriter, r *http.Request, file string) {
+func (sh *strictHandler) GetIdentityBrandAssetsByFile(w http.ResponseWriter, r *http.Request, file string, params GetIdentityBrandAssetsByFileParams) {
 	var request GetIdentityBrandAssetsByFileRequestObject
 
 	request.File = file
+	request.Params = params
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.GetIdentityBrandAssetsByFile(ctx, request.(GetIdentityBrandAssetsByFileRequestObject))

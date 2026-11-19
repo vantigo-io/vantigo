@@ -1169,8 +1169,12 @@ merkevare redigeres og hva som sjekkes står i [Merkevare](/nb/admin/branding/).
 | `GET /brands`, `GET`/`PUT /brands/{id}`, `POST /brands/{id}/publish`, `POST /brands/{id}/discard-draft`, `PUT`/`DELETE`/`GET /brands/{id}/logos/{slot}` | `identity:brands` |
 
 Hver skriving revideres i transaksjonen som gjør den, som `brand.updated`, `brand.published`,
-`brand.logo_set` og `brand.logo_removed`, med navn, versjoner og revisjoner og aldri byte av en
-logo. Tellerne `vantigo.identity.brand.css_requests`, `.public_lookups`, `.publishes` og
+`brand.draft_discarded`, `brand.logo_set` og `brand.logo_removed`, med navn, versjoner og revisjoner og aldri byte av en
+logo. Hva merkevare-endepunktene sender bufres med omhu: et svar til en innlogget person (`brand`,
+og `brand.css` med øktcookie) er `private, no-store`, så en delt hurtigbuffer eller et CDN som
+ignorerer `Vary` aldri beholder én persons merkevare; den anonyme `brand.css` og `brand/public` er
+offentlige i 60 sekunder, og en publisert logo er uforanderlig og svarer på en gjentatt
+forespørsel med `ETag` med `304`, uten lesing fra objektlageret. Tellerne `vantigo.identity.brand.css_requests`, `.public_lookups`, `.publishes` og
 `.imports` eksporteres sammen med de andre målingene.
 
 ## Nettbrettstasjoner i verkstedet

@@ -6222,6 +6222,11 @@ paths:
                   schema:
                     pattern: ^[0-9a-f]{64}\.(png|jpg)$
                     type: string
+                - description: The ETag a client holds; when it names the asset the answer is a bare 304, without reading the object store.
+                  in: header
+                  name: If-None-Match
+                  schema:
+                    type: string
             responses:
                 "200":
                     content:
@@ -6234,6 +6239,8 @@ paths:
                                 format: binary
                                 type: string
                     description: OK
+                "304":
+                    description: Not Modified - If-None-Match names this published asset.
                 "404":
                     description: Not Found - no published brand names this asset. The body is empty.
                 "429":
@@ -6253,7 +6260,7 @@ paths:
             x-vantigo-api: never
     /api/v1/identity/brand.css:
         get:
-            description: 'The brand as CSS custom properties (brands design B16): the ten shades, the derived Mantine variables for both colour schemes and the radius, built only from generated values. It is linked render-blocking from the document so the first paint is right. Without a session it is the default brand; with a valid session cookie it is the person''s own brand. Answers carry an ETag and Vary: Cookie; with a session they are private, no-cache.'
+            description: 'The brand as CSS custom properties (brands design B16): the ten shades, the derived Mantine variables for both colour schemes and the radius, built only from generated values. It is linked render-blocking from the document so the first paint is right. Without a session it is the default brand; with a valid session cookie it is the person''s own brand. Answers carry an ETag and Vary: Cookie; with a session they are private, no-store, so no shared cache keeps one person''s brand, and without one public for 60 seconds.'
             operationId: getIdentityBrandCss
             parameters:
                 - description: The ETag a client holds; when it is the current one the answer is a bare 304.

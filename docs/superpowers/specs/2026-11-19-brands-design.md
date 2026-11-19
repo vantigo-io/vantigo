@@ -357,9 +357,10 @@ href="/api/v1/identity/brand.css">`, rewritten under the base path like the othe
   cookie** returns the session user's resolved brand (B10), so the first paint is the
   person's own brand on a new device too;
 - is same-origin, so `style-src 'self'` allows it (no CSP change, no new hash);
-- is `Cache-Control: private, no-cache` with an `ETag` of the payload version and
-  `Vary: Cookie` (a shared cache must never serve one person's brand to another); an
-  anonymous answer for the default brand may be `public, max-age=60`;
+- is `Cache-Control: private, no-store` with an `ETag` of the payload version and
+  `Vary: Cookie` (a shared cache must never serve one person's brand to another, and a
+  CDN may ignore `Vary`, so a session's answer is not stored at the edge at all); an
+  anonymous answer for the default brand is `public, max-age=60`;
 - is `x-vantigo-access: anonymous` whose handler **reads the session cookie itself if one
   is present** and never fails for want of one. If the router has no such mode, B-A adds
   the smallest one (`optional-session`) rather than making the route a 401.
@@ -697,7 +698,7 @@ invoices upload's body bound (it stays under the router's 1 MiB default).
 
 **B34 — Audit.** Each write goes through identity's `writeAudit`, in the changing
 transaction: `brand.created`, `.updated`, `.published`, `.archived`, `.restored`,
-`.deleted`, `.default_changed`, `.logo_set`, `.logo_removed`, `brand_rules.changed`
+`.deleted`, `.draft_discarded`, `.default_changed`, `.logo_set`, `.logo_removed`, `brand_rules.changed`
 (before and after, as ordered ids), `brand_campaign.created|updated|deleted`. Details
 carry names, versions and kinds, never the logo bytes. A person's own choice of brand is
 not audited (it is personal preference, like the colour scheme).
