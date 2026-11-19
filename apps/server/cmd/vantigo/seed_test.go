@@ -89,6 +89,8 @@ func TestRun_SeedPopulatesDemoDatasetAndIsIdempotent(t *testing.T) {
 		// The default brand and the two demo brands, with a rule each; Kari matches both.
 		{"identity.brands", "SELECT count(*) FROM identity.brands WHERE state = 'published'", 3},
 		{"identity.brand_rules", "SELECT count(*) FROM identity.brand_rules", 2},
+		// Jul on the default brand and Pride on Nordlys, both disabled.
+		{"identity.brand_campaigns", "SELECT count(*) FROM identity.brand_campaigns WHERE NOT enabled AND yearly", 2},
 		{"identity.brand_rules group members", `SELECT count(*) FROM identity.brand_rules r
 			JOIN identity.access_group_memberships m ON m.group_id::text = r.target_ref WHERE r.kind = 'access_group'`, 2},
 		// The web shop's integration, its Webshop role and one key (API access

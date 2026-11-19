@@ -60,6 +60,10 @@ type resolution struct {
 	// facts of the person, for the lookup.
 	displayName string
 	emailDomain string
+	// campaign is the brand's campaign in force, whose overlay resolveLook has
+	// folded into version, and validUntil the next time that changes (B24).
+	campaign   *campaignRow
+	validUntil *time.Time
 }
 
 // entityCache remembers, per person, the legal entities Staff says they work
@@ -268,7 +272,7 @@ func publishedOrBuiltin(b brandRow) brandVersion {
 // resolve is the brand a person sees. The stylesheet and the public look go
 // through it; uuid.Nil is no one, and sees the default.
 func (s *server) resolve(ctx context.Context, userID uuid.UUID) (brandRow, brandVersion, error) {
-	res, err := s.resolveUser(ctx, userID)
+	res, err := s.resolveLook(ctx, userID)
 	if err != nil {
 		return brandRow{}, brandVersion{}, err
 	}

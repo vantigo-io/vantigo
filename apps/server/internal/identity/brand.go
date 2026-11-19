@@ -270,23 +270,9 @@ func genVersion(v *brandVersion) *gen.BrandVersion {
 	if v == nil {
 		return nil
 	}
-	logos := gen.BrandLogos{}
-	for slot, l := range v.Logos {
-		ref := &gen.BrandLogo{Sha256: l.SHA256, ContentType: gen.BrandLogoContentType(l.ContentType)}
-		switch slot {
-		case "mark_light":
-			logos.MarkLight = ref
-		case "mark_dark":
-			logos.MarkDark = ref
-		case "icon":
-			logos.Icon = ref
-		case "wordmark":
-			logos.Wordmark = ref
-		}
-	}
 	return &gen.BrandVersion{
 		Name: v.Name, Title: v.Title, Primary: v.Primary, Radius: gen.BrandVersionRadius(v.Radius),
-		Support: genSupport(v.Support), Logos: logos, Algorithm: int32(v.Algorithm), Tokens: genTokens(v.Tokens),
+		Support: genSupport(v.Support), Logos: genLogosOf(v.Logos), Algorithm: int32(v.Algorithm), Tokens: genTokens(v.Tokens),
 	}
 }
 

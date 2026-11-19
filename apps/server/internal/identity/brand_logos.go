@@ -348,6 +348,12 @@ func (s *server) GetIdentityBrandAssetsByFile(ctx context.Context, req gen.GetId
 		return nil, fmt.Errorf("identity: is a brand logo published: %w", err)
 	}
 	if !published {
+		// A campaign's logo is served while the campaign is in force (B22).
+		if published, err = s.campaignLogoInForce(ctx, sha); err != nil {
+			return nil, err
+		}
+	}
+	if !published {
 		return gen.GetIdentityBrandAssetsByFile404Response{}, nil
 	}
 	row, err := s.q.GetBrandLogo(ctx, sha)

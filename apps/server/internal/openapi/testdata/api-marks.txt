@@ -154,6 +154,8 @@ identity never deleteIdentityAccountAvatar
 identity never deleteIdentityAccountPasskeysByCredentialId
 identity never deleteIdentityAccountPin
 identity never deleteIdentityBrandsById
+identity never deleteIdentityBrandsByIdCampaignsByCampaignId
+identity never deleteIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot
 identity never deleteIdentityBrandsByIdLogosBySlot
 identity never deleteIdentityIntegrationsByIdWebhooksByWebhookId
 identity never deleteIdentityOwnerSsoOidc
@@ -190,6 +192,8 @@ identity never getIdentityBrandRuleTargets
 identity never getIdentityBrandRules
 identity never getIdentityBrands
 identity never getIdentityBrandsById
+identity never getIdentityBrandsByIdCampaigns
+identity never getIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot
 identity never getIdentityBrandsByIdLogosBySlot
 identity never getIdentityBrandsResolution
 identity never getIdentityIntegrations
@@ -254,6 +258,7 @@ identity never postIdentityAccountSessionsRevoke
 identity never postIdentityBootstrap
 identity never postIdentityBrands
 identity never postIdentityBrandsByIdArchive
+identity never postIdentityBrandsByIdCampaigns
 identity never postIdentityBrandsByIdDiscardDraft
 identity never postIdentityBrandsByIdDuplicate
 identity never postIdentityBrandsByIdMakeDefault
@@ -322,6 +327,8 @@ identity never putIdentityAccountPin
 identity never putIdentityAccountProfile
 identity never putIdentityBrandRules
 identity never putIdentityBrandsById
+identity never putIdentityBrandsByIdCampaignsByCampaignId
+identity never putIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot
 identity never putIdentityBrandsByIdLogosBySlot
 identity never putIdentityIntegrationsByIdMcp
 identity never putIdentityIntegrationsByIdRoles
