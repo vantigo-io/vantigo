@@ -4,6 +4,7 @@ import { IconUserStar } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { PageSection, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
+import { brandOptionsQueryOptions, type CustomerBrandInfo, setCustomerBrand } from "../api/brands";
 import {
   ApiConflictError,
   ApiValidationError,
@@ -16,6 +17,7 @@ import {
 import { customerGroupsQueryOptions, setCustomerGroup } from "../api/groups";
 import { setCustomerOwner } from "../api/owner";
 import { type CustomerTag, createTag, customerTagsQueryOptions, setCustomerTags } from "../api/tags";
+import { BrandSelect } from "../components/brand-select";
 import { OwnerPicker } from "../components/owner-picker";
 import { TagBadge } from "../components/tag-badge";
 import { customerWriteErrorMessage } from "../lib/customer-write-error";
@@ -151,11 +153,52 @@ export const CustomerRelationshipCard = ({ customerId, canEdit }: { customerId: 
     },
   });
 
-  // The owner and the group both send the revision read off the query, so a
-  // second save sent while the first is in flight carries the revision the
-  // first is about to replace — and earns a 409 nobody else caused. Both
-  // controls hold until either save has answered.
-  const rowSavePending = ownerMutation.isPending || groupMutation.isPending;
+  // The brand's save is the group's: a column on the same row, so it carries
+  // the revision read off the query, answers the whole customer and a 409 raises
+  // the same conflict-and-Reload alert. An unknown or archived brand arrives as
+  // a field error on brandId (brands design B28), shown as the notification.
+  const brandMutation = useMutation({
+    mutationFn: (brandId: string | null) => setCustomerBrand(customerId, brandId, customer.revision),
+    onMutate: () => {
+      setConflict(false);
+      reload.forget();
+    },
+    onSuccess: (saved) => {
+      queryClient.setQueryData(customerKey, saved);
+      syncCustomerRevision(queryClient, customerId, saved.revision);
+      invalidateCustomersExcept(queryClient, customerKey);
+      notifications.show({ color: "teal", title: t("brandUpdated"), message: t("brandUpdatedMessage") });
+    },
+    onError: (error) => {
+      if (error instanceof ApiConflictError && !error.code) {
+        setConflict(true);
+        return;
+      }
+      if (error instanceof ApiValidationError) {
+        // The brand was archived between the picker's read and the save: the
+        // options are read again so it stops being offered.
+        notifications.show({
+          color: "red",
+          title: t("brandCouldNotBeSaved"),
+          message: error.fieldErrors.brandId ?? error.message,
+        });
+        queryClient.invalidateQueries({ queryKey: brandOptionsQueryOptions().queryKey });
+        return;
+      }
+      notifications.show({
+        color: "red",
+        title: t("brandCouldNotBeSaved"),
+        message: customerWriteErrorMessage(error, t),
+      });
+    },
+  });
+
+  // The owner, the group and the brand all send the revision read off the
+  // query, so a second save sent while the first is in flight carries the
+  // revision the first is about to replace — and earns a 409 nobody else
+  // caused. All controls hold until any save has answered.
+  const rowSavePending = ownerMutation.isPending || groupMutation.isPending || brandMutation.isPending;
+  const brand = customer.brand;
 
   return (
     <PageSection>
@@ -224,6 +267,37 @@ export const CustomerRelationshipCard = ({ customerId, canEdit }: { customerId: 
             onChange={(value) => groupMutation.mutate(value)}
           />
         )}
+        {brand && (
+          <>
+            <Stack gap={2}>
+              <Group gap="xs" wrap="nowrap" align="center">
+                <Text size="sm" c="dimmed" miw={64}>
+                  {t("brand")}
+                </Text>
+                <Text size="sm">{effectiveBrandSentence(brand, customer.group?.name, t)}</Text>
+              </Group>
+              {brand.unavailable.map((who) => (
+                <Text key={who} size="xs" c="orange" ml={72}>
+                  {t(who === "customer" ? "brandFellBackCustomer" : "brandFellBackGroup", {
+                    name: (who === "customer" ? brand.own : brand.group)?.name ?? t("brandUnavailable"),
+                  })}
+                </Text>
+              ))}
+            </Stack>
+            {canEdit && (
+              <BrandSelect
+                label={t("brandOfCustomer")}
+                emptyLabel={t("brandUseNextDefault")}
+                current={brand.own}
+                disabled={rowSavePending}
+                onChange={(value) => brandMutation.mutate(value)}
+              />
+            )}
+            <Text size="xs" c="dimmed">
+              {t("brandSellerNote")}
+            </Text>
+          </>
+        )}
 
         <Divider />
 
@@ -240,6 +314,27 @@ export const CustomerRelationshipCard = ({ customerId, canEdit }: { customerId: 
       </Stack>
     </PageSection>
   );
+};
+
+/**
+ * The sentence that names the brand a new document starts in and why: the
+ * customer's own choice, its group's, or the workspace default. The server
+ * resolves it on every read, so this only words it.
+ */
+const effectiveBrandSentence = (
+  brand: CustomerBrandInfo,
+  groupName: string | undefined,
+  t: (key: string, options?: Record<string, unknown>) => string,
+): string => {
+  const name = brand.effective.name ?? t("brandUnavailable");
+  switch (brand.effective.source) {
+    case "customer":
+      return t("brandFromCustomer", { name });
+    case "group":
+      return t("brandFromGroup", { name, group: groupName ?? "" });
+    default:
+      return t("brandFromDefault", { name });
+  }
 };
 
 /**

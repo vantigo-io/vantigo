@@ -1,4 +1,5 @@
 import { queryOptions } from "@tanstack/react-query";
+import type { BrandChoice } from "./brands";
 import { type CustomerResponse, normalizeCustomer } from "./customers";
 import { request } from "./request";
 
@@ -12,6 +13,8 @@ export interface CustomerGroup {
   id: string;
   name: string;
   defaultPaymentTermsDays: number | null;
+  /** The group's default brand (brands design B28); null when it has none, and the wire omits the field then. */
+  brand: BrandChoice | null;
 }
 
 /** A group with how many customers belong to it — what the vocabulary list answers. */
@@ -19,14 +22,16 @@ export interface CustomerGroupSummary extends CustomerGroup {
   customerCount: number;
 }
 
-type RawCustomerGroupSummary = Omit<CustomerGroupSummary, "defaultPaymentTermsDays"> & {
+type RawCustomerGroupSummary = Omit<CustomerGroupSummary, "defaultPaymentTermsDays" | "brand"> & {
   defaultPaymentTermsDays?: number | null;
+  brand?: BrandChoice | null;
 };
 
 const normalizeGroupSummary = (raw: RawCustomerGroupSummary): CustomerGroupSummary => ({
   id: raw.id,
   name: raw.name,
   defaultPaymentTermsDays: raw.defaultPaymentTermsDays ?? null,
+  brand: raw.brand ?? null,
   customerCount: raw.customerCount,
 });
 
@@ -51,6 +56,8 @@ export const customerGroupsQueryOptions = () =>
 export interface GroupInput {
   name: string;
   defaultPaymentTermsDays: number | null;
+  /** The group's default brand, or null for none (brands design B28); also a full replace. */
+  brandId: string | null;
 }
 
 export const createGroup = async (input: GroupInput): Promise<CustomerGroupSummary> =>

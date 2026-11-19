@@ -1,6 +1,6 @@
 import { MantineProvider } from "@mantine/core";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -15,14 +15,34 @@ const jsonResponse = (body: unknown, status = 200) =>
 // Literally the wire shapes: Key accounts has no defaultPaymentTermsDays key at
 // all, because the server omits an unset optional field rather than sending null.
 const groupRows = [
-  { id: "g1", name: "Retail", defaultPaymentTermsDays: 30, customerCount: 2 },
+  {
+    id: "g1",
+    name: "Retail",
+    defaultPaymentTermsDays: 30,
+    customerCount: 2,
+    brand: { id: "b1", name: "Nordlys", state: "published" },
+  },
   { id: "g2", name: "Key accounts", customerCount: 0 },
+  {
+    id: "g4",
+    name: "Archived brand group",
+    customerCount: 0,
+    brand: { id: "b9", name: "Old brand", state: "archived" },
+  },
+];
+
+// The published brands the picker offers (GET /customers/brands).
+const brandRows = [
+  { id: "b0", name: "Vantigo Demo AS", isDefault: true },
+  { id: "b1", name: "Nordlys", isDefault: false },
+  { id: "b2", name: "Fjordkraft Demo", isDefault: false },
 ];
 
 const stubFetch = (
   options: { createConflict?: boolean; createInvalid?: boolean; deleteInUse?: boolean; list?: "hang" | "fail" } = {},
 ) => {
-  const fetchMock = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
+  const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+    if (!init?.method && String(input) === "/api/v1/customers/brands") return Promise.resolve(jsonResponse(brandRows));
     if (init?.method === "DELETE")
       return Promise.resolve(
         options.deleteInUse
@@ -83,8 +103,8 @@ describe("ManageGroupsModal", () => {
     expect(screen.getByText("30 days")).toBeInTheDocument();
     expect(screen.getByText("2 customers")).toBeInTheDocument();
     // A group with no default of its own says so rather than showing a 0.
-    expect(screen.getByText("No default")).toBeInTheDocument();
-    expect(screen.getByText("No customers")).toBeInTheDocument();
+    expect(screen.getAllByText("No default")).toHaveLength(2);
+    expect(screen.getAllByText("No customers")).toHaveLength(2);
   });
 
   it("creates a group through its own POST", async () => {
@@ -101,6 +121,7 @@ describe("ManageGroupsModal", () => {
       expect(JSON.parse(String((posts[0][1] as RequestInit).body))).toEqual({
         name: "Public sector",
         defaultPaymentTermsDays: 45,
+        brandId: null,
       });
     });
   });
@@ -131,7 +152,55 @@ describe("ManageGroupsModal", () => {
       expect(JSON.parse(String((puts[0][1] as RequestInit).body))).toEqual({
         name: "Retail chains",
         defaultPaymentTermsDays: null,
+        // Edited with its brand untouched, so the brand is sent back as it was.
+        brandId: "b1",
       });
+    });
+  });
+
+  it("shows each group's default brand, or the workspace default", async () => {
+    stubFetch();
+    renderModal();
+    await screen.findByText("Retail");
+    const row = (name: string) => within(screen.getByText(name).closest("tr") as HTMLElement);
+    expect(row("Retail").getByText("Nordlys")).toBeInTheDocument();
+    expect(row("Key accounts").getByText("Workspace default")).toBeInTheDocument();
+    expect(row("Archived brand group").getByText("Old brand")).toBeInTheDocument();
+  });
+
+  it("offers the published brands and sends the chosen one with the group", async () => {
+    const fetchMock = stubFetch();
+    renderModal();
+    await screen.findByText("Retail");
+    await userEvent.type(screen.getByRole("textbox", { name: "Group name" }), "Energy");
+    await userEvent.click(screen.getByRole("combobox", { name: "Default brand" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Fjordkraft Demo" }));
+    await userEvent.click(screen.getByRole("button", { name: "Create group" }));
+
+    await waitFor(() => {
+      const posts = fetchMock.mock.calls.filter(([, init]) => (init as RequestInit)?.method === "POST");
+      expect(posts).toHaveLength(1);
+      expect(JSON.parse(String((posts[0][1] as RequestInit).body))).toEqual({
+        name: "Energy",
+        defaultPaymentTermsDays: null,
+        brandId: "b2",
+      });
+    });
+  });
+
+  it("keeps an archived brand on the edit form, named as archived, and clears it on request", async () => {
+    const fetchMock = stubFetch();
+    renderModal();
+    await userEvent.click(await screen.findByRole("button", { name: "Edit Archived brand group" }));
+    expect(screen.getByRole("combobox", { name: "Default brand" })).toHaveValue("Old brand (archived)");
+    await userEvent.click(screen.getByRole("combobox", { name: "Default brand" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Use the workspace default brand" }));
+    await userEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() => {
+      const puts = fetchMock.mock.calls.filter(([, init]) => (init as RequestInit)?.method === "PUT");
+      expect(puts).toHaveLength(1);
+      expect(JSON.parse(String((puts[0][1] as RequestInit).body))).toMatchObject({ brandId: null });
     });
   });
 
