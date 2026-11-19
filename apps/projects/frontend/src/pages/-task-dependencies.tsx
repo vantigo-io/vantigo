@@ -298,7 +298,13 @@ export const TaskDependencies = ({ projectId, task, canContribute }: TaskDepende
 
       {/* Downstream Cascade Reschedule Section */}
       {canContribute && successors.length > 0 && (
-        <Card withBorder padding="sm" radius="sm" mt="xs" bg="var(--mantine-color-gray-0)">
+        <Card
+          withBorder
+          padding="sm"
+          radius="sm"
+          mt="xs"
+          bg="light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-6))"
+        >
           <Stack gap="xs">
             <Text fw={600} size="xs">
               {t("rescheduleDownstream")}

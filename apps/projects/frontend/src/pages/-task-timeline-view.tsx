@@ -508,7 +508,7 @@ export const TaskTimelineView = ({ projectId, tasks, canContribute, onOpen }: Ta
             style={{
               width: 280,
               flexShrink: 0,
-              borderRight: "1px solid var(--mantine-color-gray-3)",
+              borderRight: "1px solid light-dark(var(--mantine-color-gray-3), var(--mantine-color-dark-4))",
               backgroundColor: "var(--mantine-color-body)",
               zIndex: 3,
             }}
@@ -517,7 +517,7 @@ export const TaskTimelineView = ({ projectId, tasks, canContribute, onOpen }: Ta
             <Box
               style={{
                 height: HEADER_HEIGHT,
-                borderBottom: "1px solid var(--mantine-color-gray-3)",
+                borderBottom: "1px solid light-dark(var(--mantine-color-gray-3), var(--mantine-color-dark-4))",
                 padding: "10px 14px",
                 display: "flex",
                 alignItems: "center",
@@ -542,8 +542,10 @@ export const TaskTimelineView = ({ projectId, tasks, canContribute, onOpen }: Ta
                     alignItems: "center",
                     gap: 8,
                     cursor: "pointer",
-                    borderBottom: "1px solid var(--mantine-color-gray-2)",
-                    "&:hover": { backgroundColor: "var(--mantine-color-gray-0)" },
+                    borderBottom: "1px solid light-dark(var(--mantine-color-gray-2), var(--mantine-color-dark-5))",
+                    "&:hover": {
+                      backgroundColor: "light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-6))",
+                    },
                   }}
                 >
                   <TaskStatusBadge status={task.status} size="xs" />
@@ -570,8 +572,8 @@ export const TaskTimelineView = ({ projectId, tasks, canContribute, onOpen }: Ta
                 style={{
                   height: HEADER_HEIGHT,
                   display: "flex",
-                  borderBottom: "1px solid var(--mantine-color-gray-3)",
-                  backgroundColor: "var(--mantine-color-gray-0)",
+                  borderBottom: "1px solid light-dark(var(--mantine-color-gray-3), var(--mantine-color-dark-4))",
+                  backgroundColor: "light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-6))",
                   position: "sticky",
                   top: 0,
                   zIndex: 2,
@@ -583,13 +585,15 @@ export const TaskTimelineView = ({ projectId, tasks, canContribute, onOpen }: Ta
                     style={{
                       width: segment.length * dayWidth,
                       flexShrink: 0,
-                      borderRight: "1px solid var(--mantine-color-gray-2)",
+                      borderRight: "1px solid light-dark(var(--mantine-color-gray-2), var(--mantine-color-dark-5))",
                       display: "flex",
                       flexDirection: "column",
                       alignItems: "center",
                       justifyContent: "center",
                       overflow: "hidden",
-                      backgroundColor: segment.isToday ? "var(--mantine-color-blue-0)" : undefined,
+                      backgroundColor: segment.isToday
+                        ? "light-dark(var(--mantine-color-blue-0), var(--mantine-color-blue-light))"
+                        : undefined,
                     }}
                   >
                     <Text
@@ -659,8 +663,10 @@ export const TaskTimelineView = ({ projectId, tasks, canContribute, onOpen }: Ta
                       top: 0,
                       width: segment.length * dayWidth,
                       height: "100%",
-                      borderRight: "1px solid var(--mantine-color-gray-1)",
-                      backgroundColor: segment.isToday ? "rgba(34, 139, 230, 0.04)" : "transparent",
+                      borderRight: "1px solid light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-6))",
+                      backgroundColor: segment.isToday
+                        ? "light-dark(rgba(34, 139, 230, 0.04), rgba(34, 139, 230, 0.1))"
+                        : "transparent",
                     }}
                   />
                 ))}
@@ -742,7 +748,7 @@ export const TaskTimelineView = ({ projectId, tasks, canContribute, onOpen }: Ta
                 const isDone = task.status === "done";
                 const isInProgress = task.status === "in-progress";
 
-                let barBg = "var(--mantine-color-gray-4)";
+                let barBg = "light-dark(var(--mantine-color-gray-4), var(--mantine-color-dark-3))";
                 if (isDone) barBg = "var(--mantine-color-teal-5)";
                 else if (isInProgress) barBg = "var(--mantine-color-blue-5)";
 
@@ -765,7 +771,7 @@ export const TaskTimelineView = ({ projectId, tasks, canContribute, onOpen }: Ta
                       left: 0,
                       width: timelineWidth,
                       height: ROW_HEIGHT,
-                      borderBottom: "1px solid var(--mantine-color-gray-2)",
+                      borderBottom: "1px solid light-dark(var(--mantine-color-gray-2), var(--mantine-color-dark-5))",
                     }}
                   >
                     {coords ? (
@@ -874,7 +880,7 @@ export const TaskTimelineView = ({ projectId, tasks, canContribute, onOpen }: Ta
                                 padding: "2px 6px",
                                 borderRadius: 4,
                                 whiteSpace: "nowrap",
-                                backgroundColor: "var(--mantine-color-dark-6)",
+                                backgroundColor: "light-dark(var(--mantine-color-dark-6), var(--mantine-color-dark-4))",
                                 color: "var(--mantine-color-white)",
                                 fontSize: 11,
                                 pointerEvents: "none",
