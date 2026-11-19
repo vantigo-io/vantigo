@@ -72,13 +72,20 @@ func newReceiver(t *testing.T) *receiver {
 		}
 		rc.mu.Unlock()
 		if hold {
+			var abandoned bool
 			select {
 			case <-rc.released:
 			case <-r.Context().Done():
+				abandoned = true
 			}
 			rc.mu.Lock()
 			rc.held[host]--
 			rc.mu.Unlock()
+			if abandoned {
+				// The sender gave up on this request: answer nothing, so no
+				// status can reach a client that has not yet noticed.
+				panic(http.ErrAbortHandler)
+			}
 		}
 		if rule != nil {
 			rule(w)
