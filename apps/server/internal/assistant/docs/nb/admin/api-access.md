@@ -383,8 +383,11 @@ omstart.
   hvert kall, så en senkning virker straks, også i en klient som listet `write` før.
 - **En endring svarer `409` (eller `412`):** posten er endret siden agenten leste den; agenten
   leser den på nytt og prøver igjen med den nye versjonen, slik en REST-klient ville gjort.
-- **En endring svarte ikke i tide:** den kan ha blitt gjort, eller ikke. Agenten leser posten
-  før den prøver igjen, og prøver igjen med samme `Idempotency-Key` der operasjonen tar en.
+- **En endring svarte ikke i tide:** den kan ha blitt gjort, eller ikke. Der operasjonen tar en
+  `Idempotency-Key`, prøver agenten igjen med samme nøkkel og får det første svaret igjen i
+  stedet for en endring til; der den ikke tar noen, leser agenten posten før den prøver igjen.
+  Verktøyene ber agenten lage én nøkkel per handling og aldri en ny nøkkel for et nytt forsøk
+  ([MCP-server](/en/reference/mcp/#the-idempotency-key)).
 - **Et kall svarer at nøkkelen har for mange kall i gang:** en nøkkel har høyst fire
   MCP-kall i gang samtidig; klienten prøver igjen om litt.
 - **En klient som kjører i nettleseren** kommer ikke inn: Vantigo avviser forespørsler fra
@@ -466,7 +469,9 @@ en verdi det finner på én gang for den ene handlingen, og samme nøkkel ved hv
 utfører Vantigo handlingen én gang og svarer hvert nytt forsøk med det første svaret, merket
 `Idempotent-Replayed: true`. Det virker på hver `POST` en nøkkel kan kalle som oppretter eller
 endrer noe i JSON, uten noe å slå på per integrasjon; [API-introduksjonen](/en/reference/api-introduction/#retrying-safely)
-sier nøyaktig hvor, og hva hvert svar betyr.
+sier nøyaktig hvor, og hva hvert svar betyr. Dokumentet en nøkkel får på `/api/openapi.json`, og
+referansen på `/api`, viser den valgfrie `Idempotency-Key`-headeren på hver av disse operasjonene,
+og en agent koblet til over MCP får beskjed om å bruke den.
 
 - Et gjentatt svar er en forespørsel: det teller mot integrasjonens **Hastighetsgrense** og står i
   fanen **Forespørsler** med årsaken *Gjentatt svar for Idempotency-Key*. Operasjonen ble ikke
@@ -492,8 +497,9 @@ fingeravtrykk. Arbeideren `identity.api-keys` sletter utløpte nøkler hver sykl
 sendte. Å anonymisere en kunde sletter nøklene til agentkjøringer for den kunden, og hindrer at
 noe svar lagret før det gis igjen, siden hvert av dem kan nevne kunden: et nytt forsøk får
 `409 idempotency_outcome_unknown`, og raden forsvinner når den utløper. En sikkerhetskopi inneholder nøklene fra de siste 24 timene; gjenopprettet utløper de som
-vanlig. `IDEMPOTENCY_ENABLED=0` slår det av for hele installasjonen: headeren ignoreres da, og hvert
-nytt forsøk kjøres igjen.
+vanlig. `IDEMPOTENCY_ENABLED=0` slår det av for hele installasjonen: headeren ignoreres da, hvert
+nytt forsøk kjøres igjen, og verken dokumentet, referansen på `/api` eller MCP tilbyr headeren
+lenger.
 
 ## Varsler om utløp
 

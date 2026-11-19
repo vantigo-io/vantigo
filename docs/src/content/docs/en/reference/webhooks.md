@@ -230,9 +230,11 @@ that answers `410 Gone` is `dead` (`gone`) at once, and the endpoint is
 **No order is promised.** Messages for one endpoint are sent roughly in the order they were
 queued, up to 4 at a time, and a failing message never holds another back, so a retried
 message can arrive after a later one. Compare `sequence` only between messages about the same
-resource, fetch the resource for its state, and dedupe on `webhook-id`. When the receiver
-calls back into Vantigo to create something in answer, it can send an `Idempotency-Key`
-derived from the `webhook-id`, so a message handled twice creates it once
+resource, fetch the resource for its state, and dedupe on `webhook-id`: a receiver keeps the
+ids it has handled and does nothing for one it has seen. Vantigo sends no `Idempotency-Key`; the
+`webhook-id` is the message's. When the receiver calls back into Vantigo to create something in
+answer, it can send an `Idempotency-Key` derived from the `webhook-id` — every operation that
+honours one declares it in the key's document — so a message handled twice creates it once
 ([Retrying safely](/en/reference/api-introduction/#retrying-safely)).
 
 ### When an endpoint is disabled
