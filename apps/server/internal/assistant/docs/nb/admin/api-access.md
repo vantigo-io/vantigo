@@ -1,6 +1,6 @@
 ---
 title: API-tilgang
-description: La et annet program bruke Vantigos API uten en persons økt — integrasjoner, rollene deres, API-nøkler med utløp, begrensning, bryter for bare lesing og nettverk, rotering og tilbakekalling av en nøkkel, hva en nøkkel aldri får, hvordan en klient sender den, hastighetsgrensen og hodene dens, svarene den kan få, forespørselsloggen, varslene om utløp, webhook-endepunkter og signeringshemmelighetene deres, og hva du gjør når en nøkkel lekker.
+description: La et annet program bruke Vantigos API uten en persons økt — integrasjoner, rollene deres, API-nøkler med utløp, begrensning, bryter for bare lesing og nettverk, rotering og tilbakekalling av en nøkkel, hva en nøkkel aldri får, hvordan en klient sender den, hastighetsgrensen og hodene dens, svarene den kan få, forespørselsloggen, varslene om utløp, webhook-endepunkter, signeringshemmelighetene deres og leveranseloggen med ny sending, og hva du gjør når en nøkkel lekker.
 sidebar:
   order: 22
 sources:
@@ -18,6 +18,7 @@ sources:
   - apps/host/frontend/src/routes/workspace/-api-access-requests.tsx
   - apps/host/frontend/src/routes/workspace/-api-access-webhooks.tsx
   - apps/host/frontend/src/routes/workspace/-webhook-secret-dialog.tsx
+  - apps/host/frontend/src/routes/workspace/-api-access-webhook-deliveries.tsx
   - apps/server/internal/identity/webhooks.go
   - apps/server/internal/identity/webhooks_url.go
   - apps/server/internal/identity/webhooks_secret.go
@@ -25,6 +26,7 @@ sources:
   - apps/server/internal/identity/webhooks_client.go
   - apps/server/internal/identity/webhooks_handler.go
   - apps/server/internal/identity/webhooks_worker.go
+  - apps/server/internal/identity/webhooks_log.go
   - apps/server/internal/contracts/webhook_events.go
   - apps/server/internal/apiref
   - apps/apiref/frontend/src
@@ -355,7 +357,8 @@ står i referansen, [Webhooks](/en/reference/webhooks/) (på engelsk).
 
 Meldingene sendes av arbeideren `identity.webhook-sender`, i løpet av sekunder etter hendelsen,
 og en som feiler, prøves på nytt i omtrent to døgn ([Konfigurasjon](/nb/admin/configuration/#arbeidere)).
-Leveringsloggen, med ny sending, kommer i neste versjon.
+Hvert endepunkts **leveranselogg** viser hver melding og hvert forsøk de siste 30 dagene, og en
+melding kan sendes på nytt derfra.
 
 ### Legg til et endepunkt
 
@@ -388,7 +391,64 @@ I raden til et aktivert endepunkt velger du **Handlinger › Send testhendelse**
 lagt i kø* sier at en `webhook.ping`-melding er på vei; den sendes én gang, i løpet av sekunder,
 uten nye forsøk, og teller aldri med når det avgjøres om endepunktet skal deaktiveres. Bruk den
 til å sjekke URL-en, hemmeligheten og programmets kontroll av signaturen. Svarer programmet
-`410 Gone`, deaktiveres endepunktet som for enhver melding.
+`410 Gone`, deaktiveres endepunktet som for enhver melding. Testhendelsen vises i endepunktets
+leveranselogg, merket **Test**.
+
+### Les leveranseloggen
+
+1. I endepunktets rad velger du **Leveranser**. **Leveranselogg** viser meldingene som er lagt i
+   kø til endepunktet de siste **30 dagene**, nyeste først; eldre slettes. Velg **Last flere**
+   for eldre sider, og **Tilbake til endepunktene** for å gå ut.
+2. Snevre den inn med **Status** og **Hendelse**; hendelsen `webhook.ping` viser testhendelsene.
+3. Hver rad har når meldingen ble lagt i kø, hendelsen, statusen, forsøkene — *3 av 8 (3 i alt)*
+   er det tredje forsøket i en runde på 8 — siste svars statuskode og feil, og når den ble
+   ferdig.
+4. Velg **Vis** for å åpne en melding: **webhook-id**-en, **Innhold** den sender, og hvert forsøk,
+   nyeste først, med når, statuskoden, hvor lang tid det tok, feilen, hvilke hemmeligheter som
+   signerte, og, for et svar som ikke var `2xx`, begynnelsen av det programmet svarte. Den teksten
+   er programmets, vist slik den kom, som ren tekst.
+
+| Status | Hva den betyr |
+| --- | --- |
+| **Venter** | Venter på neste forsøk; raden sier når. |
+| **Levert** | Programmet svarte `2xx`. |
+| **Mislyktes** | Gitt opp: alle forsøkene feilet, endepunktet svarte `410 Gone`, det ble deaktivert eller integrasjonen arkivert mens meldingen ventet, eller den var fortsatt ikke levert etter 3 dager. Raden sier hvilken. |
+| **Hoppet over** | Ikke sendt, fordi integrasjonens roller ikke lenger lar den motta hendelsen. Gi den rollen igjen for å motta de neste. |
+
+Feilen sier med et ord hvorfor et forsøk feilet:
+
+| Feil | Hva du sjekker |
+| --- | --- |
+| **Tidsavbrudd** | Programmet svarte ikke innen 15 sekunder: svar med en gang og gjør arbeidet etterpå. |
+| **Tilkoblingen ble avvist** | Ingenting lytter på adressen på port 443. |
+| **Fant ikke verten** | Vertsnavnet finnes ikke i DNS. |
+| **TLS feilet** | Sertifikatet gjelder ikke verten, er utløpt eller er ikke signert av en kjent utsteder. |
+| **Blokkert adresse** | Verten peker nå til en privat eller reservert adresse, som Vantigo aldri sender til. |
+| **Videresending** | Programmet svarte `3xx`; videresendinger følges ikke, så oppgi den endelige URL-en. |
+| **Feilstatus** | Ethvert annet svar som ikke er `2xx`; koden og begynnelsen av svaret sier mer. |
+| **For stort svar** | Hodene i svaret var for store. |
+| **Annen feil** | Alt annet. Sier hvert forsøk dette, roterer du endepunktets hemmelighet. |
+
+### Send en leveranse på nytt
+
+Når programmet gikk glipp av en melding eller mistet det det gjorde med en, sender du den igjen:
+
+1. Finn meldingen i leveranseloggen — **Levert** eller **Mislyktes**, lagt i kø de siste 30
+   dagene — og velg **Send på nytt**.
+2. Bekreft. *Leveransen er lagt i kø igjen*: den sendes i løpet av sekunder med samme
+   **webhook-id** og innhold og en ny signatur, og prøves på nytt etter den vanlige planen, opptil
+   8 forsøk, hvis den feiler.
+3. Raden sier **Venter**, så **Levert**; **Vis** viser de nye forsøkene over de gamle.
+
+Programmet bør se bort fra en melding med en webhook-id det allerede har behandlet, så det er
+trygt å sende på nytt. **Send på nytt** tilbys bare mens endepunktet er aktivert og integrasjonen
+ikke er arkivert; en testhendelse sendes ikke på nytt — send en ny. Vantigo avviser å sende på
+nytt:
+
+- den samme meldingen mer enn **3 ganger i minuttet** — *En leveranse sendes på nytt høyst 3
+  ganger i minuttet*; vent litt;
+- når integrasjonens roller ikke lenger lar den motta hendelsen — gi den rollen igjen;
+- når endepunktet er deaktivert i mellomtiden — aktiver det først.
 
 ### Endre, deaktiver eller slett et endepunkt
 
@@ -468,8 +528,8 @@ lesing, nettverkene og utløpet registreres; en nøkkels hemmelighet og hash gj�
 
 For webhook-endepunkter registrerer det `webhook.created`, `webhook.updated`, `webhook.deleted`,
 `webhook.enabled`, `webhook.disabled` (også én gang for hvert endepunkt en arkivering
-deaktiverer, og som `system:webhooks` når Vantigo deaktiverer et), `webhook.secret_rolled` og
-`webhook.test_sent`. Av et endepunkts URL beholdes bare skjemaet og verten,
+deaktiverer, og som `system:webhooks` når Vantigo deaktiverer et), `webhook.secret_rolled`,
+`webhook.test_sent` og `webhook.resent`, med meldingens id og hendelse. Av et endepunkts URL beholdes bare skjemaet og verten,
 med et kort sammendrag som viser når resten endret seg: tjenester som Zapier og Slack har
 tokenet sitt i stien. Signeringshemmeligheten registreres aldri.
 
@@ -500,7 +560,14 @@ tokenet sitt i stien. Signeringshemmeligheten registreres aldri.
   URL-en kan nås fra internett og svarer `2xx` innen 15 sekunder uten videresending, og at
   integrasjonen og endepunktet er aktivert. En driftsansvarlig kan sjekke at arbeideren
   `identity.webhook-sender` kjører ([Konfigurasjon](/nb/admin/configuration/#arbeidere)).
+  Velg **Leveranser** på endepunktet: hvert forsøks feil og begynnelsen av programmets svar sier
+  hva som gikk galt.
 - **Programmet avviser signaturen.** Det må kontrollere den rå meldingskroppen før den tolkes,
   med hemmelighetens byte etter `whsec_` dekodet fra base64; under et overlapp ved rotering får
   det to signaturer og bør godta hvilken som helst av dem.
 - **Et endepunkt er deaktivert.** Se [Når Vantigo deaktiverer et endepunkt](#når-vantigo-deaktiverer-et-endepunkt).
+- **En melding står ikke i leveranseloggen.** Den slettes 30 dager etter at den ble lagt i kø;
+  en hendelse som skjedde mens endepunktet var deaktivert, ble aldri lagt i kø.
+- **Det finnes ingen Send på nytt.** Meldingen venter fortsatt eller ble hoppet over, er en
+  testhendelse eller er 30 dager gammel; eller endepunktet er deaktivert eller integrasjonen
+  arkivert.

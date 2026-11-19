@@ -1,6 +1,6 @@
 ---
 title: API access
-description: Letting another application use Vantigo's API without a person's session — integrations, their roles, API keys with an expiry, a narrowing, a read-only switch and networks, rolling and revoking a key, what is never available to a key, how a client sends it, the rate limit and its headers, the answers it can get, the request log, the expiry notices, webhook endpoints and their signing secrets, and what to do when a key leaks.
+description: Letting another application use Vantigo's API without a person's session — integrations, their roles, API keys with an expiry, a narrowing, a read-only switch and networks, rolling and revoking a key, what is never available to a key, how a client sends it, the rate limit and its headers, the answers it can get, the request log, the expiry notices, webhook endpoints, their signing secrets and their delivery log with resend, and what to do when a key leaks.
 sidebar:
   order: 22
 sources:
@@ -18,6 +18,7 @@ sources:
   - apps/host/frontend/src/routes/workspace/-api-access-requests.tsx
   - apps/host/frontend/src/routes/workspace/-api-access-webhooks.tsx
   - apps/host/frontend/src/routes/workspace/-webhook-secret-dialog.tsx
+  - apps/host/frontend/src/routes/workspace/-api-access-webhook-deliveries.tsx
   - apps/server/internal/identity/webhooks.go
   - apps/server/internal/identity/webhooks_url.go
   - apps/server/internal/identity/webhooks_secret.go
@@ -25,6 +26,7 @@ sources:
   - apps/server/internal/identity/webhooks_client.go
   - apps/server/internal/identity/webhooks_handler.go
   - apps/server/internal/identity/webhooks_worker.go
+  - apps/server/internal/identity/webhooks_log.go
   - apps/server/internal/contracts/webhook_events.go
   - apps/server/internal/apiref
   - apps/apiref/frontend/src
@@ -348,7 +350,8 @@ reference, [Webhooks](/en/reference/webhooks/).
 
 Messages are sent by the `identity.webhook-sender` worker, within seconds of the event, and a
 failed one is retried for about two days ([Configuration](/en/admin/configuration/#workers)).
-The delivery log, with resend, comes in the next release.
+Each endpoint's **delivery log** shows every message and every attempt of the last 30 days,
+and a message can be sent again from it.
 
 ### Add an endpoint
 
@@ -380,7 +383,63 @@ In an enabled endpoint's row, choose **Actions › Send test event**. *Test even
 `webhook.ping` message is on its way; it is sent once, within seconds, with no retry, and it
 never counts toward disabling the endpoint. Use it to check the URL, the secret and the
 application's signature check. If the application answers `410 Gone`, the endpoint is
-disabled as for any message.
+disabled as for any message. The test event appears in the endpoint's delivery log, marked
+**Test**.
+
+### Read the delivery log
+
+1. In the endpoint's row, choose **Deliveries**. The **Delivery log** shows the messages queued
+   to the endpoint in the last **30 days**, newest first; older ones are deleted. Choose
+   **Load more** for older pages, and **Back to the endpoints** to leave.
+2. Narrow it with **Status** and **Event**; the event `webhook.ping` shows the test events.
+3. Each row has when the message was queued, its event, its status, its attempts — *3 of 8
+   (3 in all)* is the third attempt of a run of 8 — the last answer's status code and error,
+   and when it finished.
+4. Choose **View** to open a message: its **webhook-id**, the **Body** it sends, and every
+   attempt, newest first, with when, the status code, how long it took, the error, which
+   secrets signed it and, for an answer that was not `2xx`, the start of what the application
+   answered. That text is the application's, shown as it came, as plain text.
+
+| Status | What it means |
+| --- | --- |
+| **Pending** | Waiting for its next attempt; the row says when. |
+| **Delivered** | The application answered `2xx`. |
+| **Failed** | Given up: every attempt failed, the endpoint answered `410 Gone`, it was disabled or its integration archived while the message waited, or it was still not delivered after 3 days. The row says which. |
+| **Skipped** | Not sent, because the integration's roles no longer let it receive the event. Give it the role again to receive the next ones. |
+
+The error says, in a word, why an attempt failed:
+
+| Error | What to check |
+| --- | --- |
+| **Timed out** | The application did not answer within 15 seconds: answer at once and do the work afterwards. |
+| **Connection refused** | Nothing listens at the address on port 443. |
+| **Host not found** | The host name does not resolve. |
+| **TLS failed** | The certificate is not valid for the host, has expired or is not signed by a known authority. |
+| **Blocked address** | The host now resolves to a private or reserved address, which Vantigo never sends to. |
+| **Redirect** | The application answered `3xx`; redirects are not followed, so give the final URL. |
+| **Error status** | Any other answer that is not `2xx`; the code and the start of the answer say more. |
+| **Answer too large** | The answer's headers were too large. |
+| **Other error** | Anything else. If every attempt says it, roll the endpoint's secret. |
+
+### Resend a delivery
+
+When the application missed a message or lost what it did with one, send it again:
+
+1. In the delivery log, find the message — **Delivered** or **Failed**, queued in the last 30
+   days — and choose **Resend**.
+2. Confirm. *Delivery queued again*: it is sent within seconds with the same **webhook-id** and
+   body and a fresh signature, and retried on the usual schedule, up to 8 attempts, if it fails.
+3. Its row says **Pending**, then **Delivered**; **View** shows the new attempts above the old
+   ones.
+
+The application should drop a message whose webhook-id it has handled already, so a resend is
+safe. **Resend** is offered only while the endpoint is enabled and the integration is not
+archived; a test event is not resent — send another. Vantigo refuses a resend:
+
+- of the same message more than **3 times a minute** — *A delivery is resent at most 3 times a
+  minute*; wait a moment;
+- when the integration's roles no longer let it receive the event — give it the role again;
+- when the endpoint was disabled meanwhile — enable it first.
 
 ### Change, disable or delete an endpoint
 
@@ -456,7 +515,8 @@ the networks and the expiry are recorded; a key's secret and its hash never are.
 
 For webhook endpoints it records `webhook.created`, `webhook.updated`, `webhook.deleted`,
 `webhook.enabled`, `webhook.disabled` (also once for each endpoint an archive disables, and as
-`system:webhooks` when Vantigo disables one), `webhook.secret_rolled` and `webhook.test_sent`.
+`system:webhooks` when Vantigo disables one), `webhook.secret_rolled`, `webhook.test_sent` and
+`webhook.resent`, with the message's id and event.
 Of an endpoint's URL it keeps only the scheme and host, with a short
 digest that shows when the rest changed: services such as Zapier and Slack carry their token
 in the path. The signing secret is never recorded.
@@ -488,7 +548,13 @@ in the path. The signing secret is never recorded.
   URL is reachable from the internet and answers `2xx` within 15 seconds without a redirect,
   and that the integration and the endpoint are enabled. An operator can check that the
   `identity.webhook-sender` worker runs ([Configuration](/en/admin/configuration/#workers)).
+  Choose **Deliveries** on the endpoint: each attempt's error and the start of the application's
+  answer say what went wrong.
 - **The application rejects the signature.** It must check the raw body before parsing it,
   with the secret's bytes after `whsec_` decoded from base64; during a roll's overlap it gets
   two signatures and should accept either.
 - **An endpoint was disabled.** See [When Vantigo disables an endpoint](#when-vantigo-disables-an-endpoint).
+- **A message is not in the delivery log.** It is deleted 30 days after it was queued; an event
+  that happened while the endpoint was disabled was never queued.
+- **There is no Resend.** The message is still pending or was skipped, is a test event, or is 30
+  days old; or the endpoint is disabled or the integration archived.

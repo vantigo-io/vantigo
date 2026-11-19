@@ -1,6 +1,6 @@
 ---
 title: "Webhooks"
-description: "Outgoing webhooks of an integration: the endpoint and its rules, the events an endpoint may subscribe to and the permission each needs, the thin signed message, Standard Webhooks signing and how a receiver verifies it, the fan-out and the sender, retries, ordering, when an endpoint is disabled and who is told, the test event, expiry, the secret and its roll, the endpoints API with its refusals, the limits, the audit and the tables."
+description: "Outgoing webhooks of an integration: the endpoint and its rules, the events an endpoint may subscribe to and the permission each needs, the thin signed message, Standard Webhooks signing and how a receiver verifies it, the fan-out and the sender, retries, ordering, when an endpoint is disabled and who is told, the test event, expiry, the delivery log and resend, the secret and its roll, the endpoints API with its refusals, the limits, the audit and the tables."
 sidebar:
   order: 3
 sources:
@@ -14,10 +14,13 @@ sources:
   - apps/server/internal/identity/queries/webhooks_sender.sql
   - apps/server/internal/identity/webhooks_handler.go
   - apps/server/internal/identity/webhooks_worker.go
+  - apps/server/internal/identity/webhooks_log.go
+  - apps/server/internal/identity/queries/webhooks_log.sql
   - apps/server/internal/db/migrations/00204_identity_webhooks.sql
   - apps/server/internal/integration/webhook_events_test.go
   - apps/host/frontend/src/routes/workspace/-api-access-webhooks.tsx
   - apps/host/frontend/src/routes/workspace/-webhook-secret-dialog.tsx
+  - apps/host/frontend/src/routes/workspace/-api-access-webhook-deliveries.tsx
   - openapi/identity.yaml
 ---
 
@@ -32,7 +35,8 @@ managed by an Owner under *Workspace admin › API access* (see
 
 An event reaches an endpoint in two steps: the **fan-out** queues one message per endpoint
 when the event is published, and the **sender** posts what was queued, retrying a failure for
-about two days. The delivery log, with resend, arrives in the next release.
+about two days. Every message and every attempt is kept for 30 days in the endpoint's
+[delivery log](#the-delivery-log), from which an Owner can resend one.
 
 ## The endpoint
 
@@ -263,12 +267,73 @@ it `dead` with no retry — and never counts toward disabling the endpoint, exce
 ### Expiry and retention
 
 Once a minute the sender settles as `dead` (`expired`) every message still `pending` 3 days
-after it was queued, and deletes every message queued more than **30 days** ago, with its
+after it was queued — or, for a [resent](#resend) one, 3 days after its resend — and deletes every message queued more than **30 days** ago, with its
 attempts, whatever its state, a thousand at a time; a row another transaction holds is left
 for the next sweep. While an integration is disabled its endpoints get nothing new and
 nothing waiting is sent; when it is enabled again, what has been due for more than 24 hours
 — overdue because it was disabled — is settled `expired`, and the rest is sent. With the sender
 switched off, messages queue and expire the same way once it runs again.
+
+## The delivery log
+
+Each endpoint has a log of the messages queued to it: every event and every test event
+(`kind` `ping`) of the last **30 days**, newest first, a page of up to 100 at a time by an
+opaque cursor, filtered by `state` and by event name (`webhook.ping` for the test events).
+A row has the delivery's id and its `messageId` — the `webhook-id` header it is sent with —
+the event's name and outbox id, its `kind`, its `state` and `stateReason`, the attempts of its
+current run out of the run's length and in all, when it is next tried, the last attempt's
+status and error word, when it was queued and when it finished. The log never answers a
+body.
+
+| State | Reason | Means |
+| --- | --- | --- |
+| `pending` | — | Waiting for its next attempt, at `nextAttemptAt` |
+| `succeeded` | — | An attempt was answered `2xx` |
+| `dead` | `attempts_exhausted` | Every attempt of its run failed (one, for a test event) |
+| `dead` | `gone` | The endpoint answered `410 Gone`, and was disabled |
+| `dead` | `endpoint_disabled` | The endpoint was disabled while it waited |
+| `dead` | `integration_archived` | The integration was archived while it waited |
+| `dead` | `expired` | Still pending 3 days after it was queued or resent, or overdue for more than 24 hours when a disabled integration was enabled again |
+| `skipped` | `permission_not_held` | The integration's roles no longer let it receive the event, at the fan-out or at the claim; nothing was sent |
+
+One delivery reads with the **body** every attempt sends, byte for byte, and its latest 100
+attempts, newest first: when, the status code (none when no answer came), how long it took,
+the error word, whether the current secret signed alone (`current`) or with the previous one
+during a roll's overlap (`both`), and, for a non-`2xx` answer, an **excerpt** — at most 512
+bytes of what the receiver answered, control and format characters blanked. The excerpt is
+the receiver's text, not Vantigo's: it is answered as a JSON string and the screen shows it
+as plain text, never as HTML, Markdown or a link.
+
+The error word is one of a closed set, never the network stack's own words:
+
+| Error | Means |
+| --- | --- |
+| `timeout` | No answer within the attempt's 15 seconds |
+| `connection_refused` | The receiver's address refused the connection |
+| `dns` | The host name did not resolve |
+| `tls` | The TLS handshake or the certificate failed |
+| `blocked_address` | The host resolved to an address Vantigo never sends to |
+| `redirect` | A `3xx` answer, which is never followed |
+| `http_status` | Any other answer that is not `2xx` |
+| `too_large` | The answer's headers were too large |
+| `other` | Anything else, an endpoint secret that could not be opened included |
+
+A delivery belongs to its endpoint and its integration: one asked for under another endpoint
+or another integration is `404 not_found`, as if it did not exist.
+
+### Resend
+
+An Owner can **resend** a delivery that `succeeded` or is `dead`, queued less than 30 days ago,
+while its endpoint is enabled, its integration is not archived and the integration's roles
+still hold the event's permissions — checked again at the resend. The message keeps its
+`webhook-id` and its body, so a receiver that deduplicates on `webhook-id` recognises it;
+each attempt takes a new `webhook-timestamp` and so a new signature. It is `pending` again
+with a fresh run of **8 attempts** on the [retry schedule](#retries), due at once; the attempts
+of its earlier runs stay in its log, and `totalAttempts` counts them all. Its 3 days of
+[expiry](#expiry-and-retention) run from the resend; it is still deleted 30 days after it was
+first queued. A test event is not resent: send another one. One delivery is resent at most
+**3 times a minute** (`429 rate_limited`), counted on its own row, and every resend is audited
+`webhook.resent` with the delivery's id and event name.
 
 ## Signing
 
@@ -329,7 +394,8 @@ secret stops signing. Changing an endpoint's URL does not roll its secret.
 
 The audit trail (`identity.authorization_audit_events`) records, with the Owner who did it:
 `webhook.created`, `webhook.updated`, `webhook.deleted`, `webhook.enabled`, `webhook.disabled`,
-`webhook.secret_rolled` and `webhook.test_sent`, with the queued delivery's id. When the sender
+`webhook.secret_rolled`, `webhook.test_sent`, with the queued delivery's id, and `webhook.resent`,
+with the resent delivery's id and event name. When the sender
 disables an endpoint it records `webhook.disabled` with the actor `system:webhooks`. A snapshot holds the endpoint's id, its integration, its events
 and its status — not its description, which is free text — and of the URL **only the scheme and host** with a short keyed
 digest of the whole, so a change shows: services such as Zapier, Slack and Make carry their
@@ -340,7 +406,9 @@ A log line about an attempt carries the scheme and host too.
 
 Every operation is an Owner's (`policy:Owner+OwnerManagement`), never available to an API key
 (`403 api_not_available`) or the Assistant. The writes share identity's user-management limit
-of 30 requests a minute from one address (`429 rate_limited`).
+of 30 requests a minute from one address (`429 rate_limited`); resends have a limit of 30 a
+minute from one address of their own, beside the 3 a minute of each delivery. The reads are
+not limited.
 
 | Operation | Path | Answers |
 | --- | --- | --- |
@@ -353,22 +421,28 @@ of 30 requests a minute from one address (`429 rate_limited`).
 | Enable | `POST …/webhooks/{webhookId}/enable` | The endpoint, with no failure counted; a test event is queued |
 | Roll the secret | `POST …/webhooks/{webhookId}/roll-secret` with `overlapHours` | `201` the endpoint and its new secret |
 | Send a test event | `POST …/webhooks/{webhookId}/test` | `202` the queued delivery's `deliveryId` |
+| The delivery log | `GET …/webhooks/{webhookId}/deliveries` with `state`, `event`, `cursor`, `limit` (1–100, 50 by default) | The deliveries, newest first, and `nextCursor` while there are more |
+| A delivery | `GET …/webhooks/{webhookId}/deliveries/{deliveryId}` | The delivery, its body and its latest 100 attempts |
+| Resend | `POST …/webhooks/{webhookId}/deliveries/{deliveryId}/resend` | `202` the delivery, pending again |
 | The catalogue | `GET /api/v1/identity/webhook-events?integrationId=` | Every event with its resource, path, permissions and whether the integration may receive it |
 
 ### Refusals
 
 | Status | Code | When |
 | --- | --- | --- |
-| `400` | `invalid_request` | A URL outside its rules, a description over 500 characters, not 1 to 50 events, an overlap outside 1 to 168 hours, or an `If-Match` that is not a version |
-| `404` | `not_found` | No such integration or endpoint |
+| `400` | `invalid_request` | A URL outside its rules, a description over 500 characters, not 1 to 50 events, an overlap outside 1 to 168 hours, an `If-Match` that is not a version, or a log's `state`, `limit` or `cursor` that does not read |
+| `404` | `not_found` | No such integration or endpoint, or no such delivery of that endpoint |
 | `409` | `webhook_limit_reached` | The integration has 5 endpoints or the workspace 50 |
-| `409` | `integration_archived` | Creating, changing, enabling, rolling or sending a test event on an archived integration |
-| `409` | `webhook_endpoint_disabled` | Sending a test event to a disabled endpoint |
+| `409` | `integration_archived` | Creating, changing, enabling, rolling, sending a test event or resending on an archived integration |
+| `409` | `webhook_endpoint_disabled` | Sending a test event or resending to a disabled endpoint |
+| `409` | `webhook_event_not_permitted` | Resending an event the integration's roles no longer let it receive |
+| `409` | `webhook_delivery_not_resendable` | Resending a test event, a delivery still `pending` or `skipped`, or one queued 30 days ago or more |
 | `412` | `version_mismatch` | The endpoint changed since the `If-Match` version |
 | `422` | `webhook_event_unknown` | A name the catalogue does not have |
 | `422` | `webhook_event_not_permitted` | An event the integration's roles do not let it receive |
 | `422` | `webhook_url_blocked` | The host resolves to an address Vantigo never sends to |
 | `422` | `webhook_url_unresolvable` | The host does not resolve |
+| `429` | `rate_limited` | Over the address's limit, or a fourth resend of one delivery within a minute |
 
 ## Tables
 
@@ -383,7 +457,8 @@ Migration `00204` holds every table of the feature in the `identity` schema.
   since the outbox prunes on its own; none for a ping), its name, `kind` `event` or `ping`, the
   body, `state` `pending`, `succeeded`, `dead` or `skipped` with `state_reason`, the attempts of
   this run and in all, the next attempt, the sender's lease, the last status and error, the
-  resend counter, and when it was made and completed. `(endpoint_id, event_id)` is unique, so an
+  resend counter (`resend_count` in the window that opened at `resend_window_start`), and when it
+  was made and completed. `(endpoint_id, event_id)` is unique, so an
   event fanned out twice makes one delivery. Deleting an endpoint deletes its deliveries.
 - **`webhook_attempts`** — one attempt: when, the status code, the duration, an error from a
   closed set (`timeout`, `connection_refused`, `dns`, `tls`, `blocked_address`, `redirect`,
