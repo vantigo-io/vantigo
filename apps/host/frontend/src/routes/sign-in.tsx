@@ -3,7 +3,7 @@ import { useForm } from "@mantine/form";
 import { IconAlertCircle } from "@tabler/icons-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
-import { appConfig, appUrl, SupportContactLine, useI18n } from "@vantigo/frontend-shell";
+import { appConfig, appUrl, SupportContactLine, useI18n, vantigoTokens } from "@vantigo/frontend-shell";
 import { useEffect, useState } from "react";
 import { isPasskeyClientError, loginWithPasskey } from "../api/account";
 import { completeTwoFactor, fetchOidcProvider } from "../api/account-lifecycle";
@@ -68,7 +68,7 @@ const SignInPage = () => {
     },
   });
   return (
-    <Center mih="100vh" bg="light-dark(var(--mantine-color-gray-0), var(--vantigo-body-bg))" p="md">
+    <Center mih="100vh" bg={vantigoTokens.pageBg} p="md">
       <Stack maw={440} w="100%" align="center">
         <Card withBorder shadow="sm" p="xl" w="100%">
           <Stack>

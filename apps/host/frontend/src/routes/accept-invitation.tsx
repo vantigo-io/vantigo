@@ -2,7 +2,7 @@ import { Alert, Button, Card, Center, PasswordInput, Stack, Text, TextInput, Tit
 import { useForm } from "@mantine/form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { appConfig, appUrl, useI18n } from "@vantigo/frontend-shell";
+import { appConfig, appUrl, useI18n, vantigoTokens } from "@vantigo/frontend-shell";
 import { acceptInvitation, validateInvitation } from "../api/account-lifecycle";
 import { fetchSession, sessionQueryKey } from "../api/auth";
 import { mfaEnrolmentDestination } from "../lib/mfa-enrolment-gate";
@@ -32,7 +32,7 @@ export const AcceptInvitationPage = ({ token }: { token: string }) => {
     },
   });
   return (
-    <Center mih="100vh" bg="light-dark(var(--mantine-color-gray-0), var(--vantigo-body-bg))">
+    <Center mih="100vh" bg={vantigoTokens.pageBg}>
       <Card withBorder p="xl" maw={440} w="100%">
         <Stack>
           <Title order={2}>{t("auth.joinApp", { app: appConfig().title })}</Title>
