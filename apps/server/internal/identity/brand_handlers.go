@@ -368,6 +368,9 @@ func (s *server) PutIdentityBrandsById(ctx context.Context, req gen.PutIdentityB
 		return reply(refusal)
 	}
 	out, err := s.changeBrand(ctx, uuid.UUID(req.Id), rev, auditBrandUpdated, func(b brandRow) (*brandVersion, *brandVersion, *brandRefusal, error) {
+		if b.State == "archived" {
+			return nil, nil, errArchived, nil
+		}
 		v, refusal := newBrandVersion(in, b.editing().Logos)
 		if refusal != nil {
 			return nil, nil, refusal, nil
@@ -401,6 +404,9 @@ func (s *server) PostIdentityBrandsByIdPublish(ctx context.Context, req gen.Post
 		return gen.PostIdentityBrandsByIdPublish409JSONResponse(staleRevision.body()), nil
 	}
 	out, err := s.changeBrand(ctx, uuid.UUID(req.Id), rev, auditBrandPublished, func(b brandRow) (*brandVersion, *brandVersion, *brandRefusal, error) {
+		if b.State == "archived" {
+			return nil, nil, errArchived, nil
+		}
 		if b.draft == nil {
 			return nil, nil, refuseBrand(http.StatusConflict, codeBrandNoDraft, "There is no pending draft to publish.", nil), nil
 		}
@@ -442,6 +448,9 @@ func (s *server) PostIdentityBrandsByIdDiscardDraft(ctx context.Context, req gen
 		return gen.PostIdentityBrandsByIdDiscardDraft409JSONResponse(staleRevision.body()), nil
 	}
 	out, err := s.changeBrand(ctx, uuid.UUID(req.Id), rev, auditBrandDraftDiscarded, func(b brandRow) (*brandVersion, *brandVersion, *brandRefusal, error) {
+		if b.State == "archived" {
+			return nil, nil, errArchived, nil
+		}
 		if b.draft == nil {
 			return nil, nil, refuseBrand(http.StatusConflict, codeBrandNoDraft, "There is no pending draft to discard.", nil), nil
 		}
