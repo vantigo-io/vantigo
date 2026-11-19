@@ -1,0 +1,62 @@
+[
+  {
+    "path": "packages/frontend-shell/src/theme.ts",
+    "reason": "The token definitions: the brand and dark scales are where raw hex values are decided"
+  },
+  {
+    "path": "packages/frontend-shell/src/theme.css",
+    "reason": "The token definitions for both schemes, where raw values are decided"
+  },
+  {
+    "path": "apps/knowledge/frontend/src/editor/collab/user.ts",
+    "reason": "CURSOR_COLOURS: per-person caret colours, chosen to read on both surfaces"
+  },
+  {
+    "path": "apps/knowledge/frontend/src/editor/collab/carets.css",
+    "pattern": "color: #fff",
+    "reason": "White caret label text on the person's filled colour"
+  },
+  {
+    "path": "apps/communications/frontend/src/api/conversations.ts",
+    "pattern": "color:#253248",
+    "reason": "E-mail srcdoc: white paper on purpose, mail is authored for a light background"
+  },
+  {
+    "path": "apps/host/frontend/src/components/errors/app-crash-fallback.css",
+    "reason": "The crash page renders outside the provider and carries its own light and dark blocks"
+  },
+  {
+    "path": "apps/calendar/frontend/src/styles/fullcalendar.css",
+    "reason": "FullCalendar's variables are set per scheme in this file, whose dark block overrides them"
+  },
+  {
+    "path": "apps/calendar/frontend/src/pages/settings.tsx",
+    "pattern": "mantine-color-white",
+    "reason": "White check mark on a filled colour swatch"
+  },
+  {
+    "path": "apps/communications/frontend/src/styles.css",
+    "pattern": "color: #fff",
+    "reason": "White glyph on the filled brand-colour icon"
+  },
+  {
+    "path": "apps/host/frontend/src/styles.css",
+    "pattern": "color: #fff",
+    "reason": "White glyph on the filled brand-colour icon"
+  },
+  {
+    "path": "apps/projects/frontend/src/pages/-task-timeline-view.tsx",
+    "pattern": "rgba\\(",
+    "reason": "Black-alpha shadows and a blue tint over a bar read in both schemes"
+  },
+  {
+    "path": "apps/projects/frontend/src/pages/-task-timeline-view.tsx",
+    "pattern": "mantine-color-white",
+    "reason": "White text on a filled dark chip (its background is light-dark() already)"
+  },
+  {
+    "path": "apps/staff/frontend/src/components/person-avatar.tsx",
+    "pattern": "fillStyle",
+    "reason": "Canvas fills white behind a JPEG, which has no transparency"
+  }
+]

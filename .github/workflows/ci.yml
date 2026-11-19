@@ -155,6 +155,11 @@ jobs:
       - name: 🔍 Check formatting
         run: bun run format:check
 
+      - name: 🎨 Check colours (no hard-coded light-only colours)
+        run: |
+          bun run colours:test
+          bun run colours:check
+
       - name: 🔍 Lint frontends
         run: bun run frontend:lint
 
