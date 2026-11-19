@@ -34,6 +34,7 @@ sources:
   - apps/server/internal/module/apimcp_protocol.go
   - apps/server/internal/module/apimcp_index.go
   - apps/server/internal/module/apimcp_tools.go
+  - apps/host/frontend/src/routes/workspace/-api-access-shared.ts
   - apps/server/internal/apiref
   - apps/apiref/frontend/src
 ---
@@ -104,9 +105,10 @@ key of the integration.
 4. Optionally **Narrow the key** (below), turn on **Read only** (below) and list its
    **Networks** (below).
 5. Choose **Create key**. The key appears **once**, with **Copy** and a `curl` example
-   against this installation's address. Copy it into the application's secret store and
-   choose **I have copied the key**. Vantigo keeps only a hash: the key cannot be shown
-   again, and closing the dialog forgets it. If it is lost, roll the key.
+   against this installation's address — and, when the integration's MCP is on, the connection
+   for an AI client ([Connect a client](#connect-a-client)). Copy it into the application's
+   secret store and choose **I have copied the key**. Vantigo keeps only a hash: the key
+   cannot be shown again, and closing the dialog forgets it. If it is lost, roll the key.
 
 The keys table shows each key's **Name**, its recognisable form (`vtg_4f2a…9XyZ`), its
 status (*Active*, *Expired* or *Revoked*), its **Expiry**, its **Narrowing**, whether it is
@@ -279,34 +281,56 @@ against the integration's rate limit and shows in its request log. The endpoint 
 
 An agent acts on what it reads, and a record — a customer's note, an email, an article — can
 carry text written to mislead it. Give an agent its own integration, with only the roles it
-needs, and leave it read only.
+needs, and leave it read only unless it must change data.
 
-**Before you start:** an integration with the roles the agent needs and a key
-([Make a key](#make-a-key)); a read-only key is the safest. MCP is off for every integration
-until an Owner turns it on.
+**Before you start:** an integration with the roles the agent needs. MCP is off for every
+integration until an Owner turns it on.
+
+### Choose what the agent may do
 
 1. Open the integration under **Workspace admin › API access** and stay on **Overview**.
 2. Under **MCP**, choose the **MCP access**:
    - **Off** — the integration's keys are refused at the MCP endpoint. The default.
    - **Read only** — an AI client may search the API and call operations that read.
-   - **Read and write** — writing is not available through MCP yet; until it is, this works
-     as **Read only**. A read-only key always only reads, whatever is chosen.
-3. Copy the **MCP endpoint**, and the connection for your client. For Claude Code:
+   - **Read and write** — an AI client may also call operations that change data: create,
+     change, delete, and send, such as an invoice by email. A read-only key always only reads,
+     whatever is chosen.
 
-   ```sh
-   claude mcp add --transport http vantigo https://vantigo.example.com/api/mcp \
-     --header "Authorization: Bearer vtg_…"
-   ```
+**Write access.** Under **Read and write** an agent can change anything the integration's roles
+allow, and a record it reads can try to talk it into a change. Give the integration only the
+roles the change needs, and use a client that asks you before each write: Claude Code, Cursor
+and VS Code do, because Vantigo marks the `write` tool as destructive. For an agent that only
+looks things up, choose **Read only**, or make its key read-only.
 
-   The section also shows the `mcp.json` block Cursor and most other clients read, and the one
-   VS Code reads (`.vscode/mcp.json`). Replace `vtg_…` with the key: its secret is shown only
-   when it is made.
+### Connect a client
+
+1. Make a key for the agent under **API keys** ([Make a key](#make-a-key)). Turn on **Read only**
+   unless it must write. When the integration's MCP is on, the new key's dialog shows, below the
+   `curl` example, **Connect an AI client (MCP)**: the Claude Code command and the blocks for
+   Cursor and VS Code, with the new key already in them. While MCP is **Off** it says to turn it
+   on first, and shows no connection.
+2. Copy the connection for your client, before you choose **I have copied the key** — the key is
+   not shown again:
+   - **Claude Code:** run the command in a terminal, in the project the agent works in:
+
+     ```sh
+     claude mcp add --transport http vantigo https://vantigo.example.com/api/mcp \
+       --header "Authorization: Bearer vtg_…"
+     ```
+
+   - **Cursor and most other clients:** add the `mcpServers` block to the client's `mcp.json`
+     (in Cursor, `.cursor/mcp.json` in the project or `~/.cursor/mcp.json`).
+   - **VS Code:** add the `servers` block to `.vscode/mcp.json`.
+
+   The **MCP** section on **Overview** shows the same command and blocks, with `vtg_…` in place
+   of the key, for a key made earlier.
+3. Restart or reload the client so it reads the new server.
 
 **To verify:** ask the client to list its tools. It shows `search_operations`,
-`describe_operation` and `read`. Each `read` shows twice in the integration's **Requests** tab:
-as the operation it called, which counts against the rate limit, and as `postApiMcp` for the MCP
-request around it, which does not. Every other MCP request is one `postApiMcp` row and counts
-once.
+`describe_operation` and `read`, and `write` under **Read and write** for a key that is not
+read-only. Each `read` or `write` shows twice in the integration's **Requests** tab: as the
+operation it called, which counts against the rate limit, and as `postApiMcp` for the MCP request
+around it, which does not. Every other MCP request is one `postApiMcp` row and counts once.
 
 The change is audited `integration.mcp_changed`, and an integration being changed by someone
 else meanwhile is refused with a message to reload, as its details are.
@@ -328,8 +352,13 @@ and a restart.
 - **`404`:** MCP is switched off for the installation, or the address is not the
   application's own (`APP_URL`, with its base path).
 - **A tool answers that an operation is not available to this key:** the integration's roles,
-  the key's narrowing or its read-only switch do not reach it, or it changes data, which MCP
-  does not do yet.
+  the key's narrowing or its read-only switch do not reach it, or it changes data and the MCP
+  access is **Read only**.
+- **The client has no `write` tool, or it is refused as unknown:** the MCP access is **Read
+  only**, or the key is read-only. The mode is checked at every call, so lowering it takes
+  effect at once, even in a client that listed `write` before.
+- **A write answers `409` or `412`:** the record changed since the agent read it; the agent
+  reads it again and retries with the new version, as a REST client would.
 - **A browser-based client** cannot connect: Vantigo refuses cross-site browser requests.
 
 ## The answers a key can get
@@ -351,8 +380,8 @@ the API answers people with: `{"error": {"code": "…", "message": "…"}}`.
 The integration's page has a **Requests** tab: what its keys called over the last 30 days.
 Every request a key made that Vantigo could tell was the key's is there, the refused ones too;
 a request with a key that matched no key is not, because there is nothing to tie it to. An AI
-client's request at the MCP endpoint is the operation `postApiMcp`, and each `read` it makes
-is a second row, the operation it called ([MCP](#mcp)).
+client's request at the MCP endpoint is the operation `postApiMcp`, and each `read` or `write`
+it makes is a second row, the operation it called ([MCP](#mcp)).
 
 - **Requests per day** counts them per day and status class — *2xx success*, *3xx redirect*,
   *4xx refused* and *5xx server error* — as a chart and a table. Days are UTC days.

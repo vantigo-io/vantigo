@@ -46,7 +46,7 @@ Code:
 
 Docs (en and nb where the section is bilingual): new `reference/mcp.md` (English: the setting, the
 endpoint, protocol, headers, the three tools, results and limits, errors, security;
-`read_write` equals `read` until B), `reference/index.md`, `reference/api-introduction.md`,
+`read_write` equalled `read` until B, which removed the statement), `reference/index.md`, `reference/api-introduction.md`,
 `admin/api-access.md` en+nb (the section, modes, kill switch, connecting a client),
 `admin/configuration.md` en+nb. `sources` per M21. `go generate`.
 

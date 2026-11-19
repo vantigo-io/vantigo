@@ -243,8 +243,11 @@ på nytt** for en melding programmet aldri behandlet.
 
 Seksjonen **MCP** på integrasjonens **Oversikt** lar en AI-klient som Claude Code koble seg til
 med en av nøklene. Velg **MCP-tilgang** — **Av** (standard), **Bare lese** eller **Lese og
-skrive**, som bare leser foreløpig — og kopier **MCP-endepunkt** og tilkoblingen den viser, med
-nøkkelen der det står `vtg_…`. Bare lese er tryggest: en AI-klient handler på det den leser.
+skrive**, som også lar klienten opprette, endre, slette og sende — og kopier **MCP-endepunkt** og
+tilkoblingen den viser, med nøkkelen der det står `vtg_…`. En nøkkel som lages mens MCP er på,
+viser tilkoblingen med nøkkelen allerede i, under **Koble til en AI-klient (MCP)**. Bare lese er
+tryggest: en AI-klient handler på det den leser, og de fleste klienter spør deg før hver
+endring.
 
 Detaljene — hva en nøkkel når, begrensning, nøkler for bare lesing, nettverk,
 hastighetsgrensen, svarene en klient får, forespørselsloggen, webhook-endepunkter, MCP og hva du
