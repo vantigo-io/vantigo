@@ -113,6 +113,7 @@ func (s *server) createOrder(ctx context.Context, _ pgx.Tx, txq *store.Queries, 
 		Channel: c.Origin.Channel, SourceModule: c.Origin.SourceModule, SourceKind: c.Origin.SourceKind, SourceID: c.Origin.SourceID,
 		ExternalID: c.Origin.ExternalID, ExternalNumber: c.Origin.ExternalNumber, ClientRequestID: c.Origin.ClientRequestID,
 		CreatedByUserID: c.CreatedBy.id, CreatedByDisplay: c.CreatedBy.display, Now: s.deps.Clock(), SiteID: site,
+		BrandID: h.BrandID, BrandSource: h.BrandSource, BrandSkipped: h.BrandSkipped,
 	})
 	if err != nil {
 		return store.OrdersOrder{}, nil, fmt.Errorf("orders: insert order: %w", err)
@@ -135,10 +136,11 @@ func (s *server) createOrder(ctx context.Context, _ pgx.Tx, txq *store.Queries, 
 // before the transaction and rides in as customer, and today — the day the
 // ledger judges a lot's expiry on (manufacturing phase 2 M63) — as today.
 // credit is the customer's credit read before the transaction too (readCredit,
-// invoices phase 6 design I38), nil when it has no limit.
-// lifecycle.go sets it.
+// invoices phase 6 design I38), nil when it has no limit. brand is the brand
+// snapshot the confirm writes (brands design B27), read before it too; nil for
+// none. lifecycle.go sets it.
 var confirmOrderTx func(ctx context.Context, s *server, tx pgx.Tx, txq *store.Queries, order store.OrdersOrder, lines []store.OrdersLine, o warningOverride,
-	by actor, customer *contracts.CustomerBillingProfile, credit *creditRead, reserve bool, today time.Time) (store.OrdersOrder, error)
+	by actor, customer *contracts.CustomerBillingProfile, credit *creditRead, reserve bool, today time.Time, brand *brandSnap) (store.OrdersOrder, error)
 
 // afterOrderConfirmed is what follows a confirmation's commit, outside any
 // transaction: storing the confirmation's PDF (O24), printed as body inside
@@ -172,6 +174,7 @@ func orderView(o store.OrdersOrder, lines []store.OrdersLine, warnings []gen.Ord
 		ConfirmedAt: o.ConfirmedAt, ConfirmedBy: personOut(o.ConfirmedByUserID, o.ConfirmedByDisplay), CancelledAt: o.CancelledAt,
 		SourceQuoteId: sourceQuoteID(o), Warnings: warningsOrEmpty(warnings), SiteId: o.SiteID,
 		Invoices: orderInvoicesOut(allocations, o.Currency),
+		Brand:    brandOut(o.BrandID, o.BrandSource, o.BrandSkipped, o.BrandName),
 	}
 	drafts := allocationsByLine(allocations)
 	for i := range out.Lines {

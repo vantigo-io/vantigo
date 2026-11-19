@@ -23,6 +23,8 @@ export interface HeaderState {
   validUntil: string | null;
   /** An order's only: the Inventory site it is fulfilled from (O46). */
   siteId: number | null;
+  /** A quote's and an order's: the brand the person picked in this session, null while untouched, so a save sends brandId only for a real choice (brands design B28). */
+  brandId: string | null;
 }
 
 /** A quote's, an order's or a subscription's header as the editor holds it; a subscription has no delivery date. */
@@ -45,6 +47,7 @@ export const headerOf = (document: Quote | Order | Subscription): HeaderState =>
   deliveryDate: "deliveryDate" in document ? (document.deliveryDate ?? null) : null,
   validUntil: "validUntil" in document ? (document.validUntil ?? null) : null,
   siteId: "siteId" in document ? (document.siteId ?? null) : null,
+  brandId: null,
 });
 
 /** The header fields of a save (OrdersQuoteUpdate, OrdersOrderUpdate) — every one but the version and the lines. */
@@ -64,6 +67,7 @@ export const headerInput = (header: HeaderState) => ({
   closingText: header.closingText,
   internalNote: header.internalNote,
   deliveryDate: header.deliveryDate,
+  ...(header.brandId ? { brandId: header.brandId } : {}),
 });
 
 /** The currencies the picker offers; the document's own is added when it is another. */

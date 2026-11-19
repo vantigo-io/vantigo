@@ -198,7 +198,7 @@ func (q *Queries) CustomerHasDocuments(ctx context.Context, customerID int32) (b
 }
 
 const customerOrders = `-- name: CustomerOrders :many
-SELECT id, number, status, on_hold, hold_reason, locked, version, delivery_status, invoice_status, confirmed_at, confirmed_by_user_id, confirmed_by_display, cancelled_at, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, delivery_date, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at, site_id FROM orders.orders WHERE customer_id = $1 ORDER BY id
+SELECT id, number, status, on_hold, hold_reason, locked, version, delivery_status, invoice_status, confirmed_at, confirmed_by_user_id, confirmed_by_display, cancelled_at, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, delivery_date, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at, site_id, brand_id, brand_source, brand_skipped, brand_name, brand_logo_object_key, brand_logo_sha256 FROM orders.orders WHERE customer_id = $1 ORDER BY id
 `
 
 func (q *Queries) CustomerOrders(ctx context.Context, customerID int32) ([]OrdersOrder, error) {
@@ -279,6 +279,12 @@ func (q *Queries) CustomerOrders(ctx context.Context, customerID int32) ([]Order
 			&i.UpdatedAt,
 			&i.AnonymisedAt,
 			&i.SiteID,
+			&i.BrandID,
+			&i.BrandSource,
+			&i.BrandSkipped,
+			&i.BrandName,
+			&i.BrandLogoObjectKey,
+			&i.BrandLogoSha256,
 		); err != nil {
 			return nil, err
 		}
@@ -291,7 +297,7 @@ func (q *Queries) CustomerOrders(ctx context.Context, customerID int32) ([]Order
 }
 
 const customerQuotes = `-- name: CustomerQuotes :many
-SELECT id, number, status, revision, valid_until, sent_at, accepted_at, accepted_into_kind, accepted_into_id, declined_at, decline_reason, cancelled_at, template_id, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, delivery_date, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at FROM orders.quotes WHERE customer_id = $1 ORDER BY id
+SELECT id, number, status, revision, valid_until, sent_at, accepted_at, accepted_into_kind, accepted_into_id, declined_at, decline_reason, cancelled_at, template_id, customer_id, customer_number, customer_name, customer_type, customer_organisation_number, customer_foreign_id, customer_country, invoice_address_line1, invoice_address_line2, invoice_postal_code, invoice_city, invoice_country, delivery_address_id, delivery_name, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, contact_id, contact_name, contact_email, contact_phone, customer_invoice_email, your_reference, salesperson_id, salesperson_display, project_id, currency, prices_include_vat, payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note, delivery_date, net_total, vat_total, gross_total, channel, source_module, source_kind, source_id, external_id, external_number, client_request_id, payment_reference, prepaid_amount, created_by_user_id, created_by_display, created_at, updated_at, anonymised_at, brand_id, brand_source, brand_skipped, brand_name, brand_logo_object_key, brand_logo_sha256 FROM orders.quotes WHERE customer_id = $1 ORDER BY id
 `
 
 // CustomerQuotes is every quote of a customer, oldest first, for the export.
@@ -372,6 +378,12 @@ func (q *Queries) CustomerQuotes(ctx context.Context, customerID int32) ([]Order
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.AnonymisedAt,
+			&i.BrandID,
+			&i.BrandSource,
+			&i.BrandSkipped,
+			&i.BrandName,
+			&i.BrandLogoObjectKey,
+			&i.BrandLogoSha256,
 		); err != nil {
 			return nil, err
 		}

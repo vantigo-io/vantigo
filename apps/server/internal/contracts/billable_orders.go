@@ -7,6 +7,8 @@ import (
 	"math/big"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // WorkSourceOrderAllocation is an order line's invoice allocation as an
@@ -172,6 +174,13 @@ type DueOrder struct {
 	// date.
 	DeliveryAddress  *CustomerAddressEntry
 	PaymentTermsDays *int32
+	// BrandID is the brand the order was confirmed in, or the brand a draft
+	// order carries (brands design B27, B28), nil when it has none. A
+	// subscription made from a quote carries the quote's. The caller starts the
+	// invoice in it when it is still published, else in the customer's default
+	// order; it is never read back as a snapshot, which the invoice takes at
+	// issue.
+	BrandID *uuid.UUID
 	// Blocked is "" or why the order cannot be invoiced now
 	// (DueOrderBlockedDraft, DueOrderBlockedOnHold); a subscription is
 	// listed only with periods it can bill.

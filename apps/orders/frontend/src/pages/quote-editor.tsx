@@ -508,6 +508,7 @@ const QuoteEditor = ({ quote, access }: { quote: Quote; access: OrdersAccess }) 
         onChange={editor.patchHeader}
         snapshot={quote.customer}
         salesperson={quote.salesperson}
+        brand={quote.brand}
         editable={{ draft: editable, delivery: editable }}
         access={access}
         errors={editor.fieldErrors}

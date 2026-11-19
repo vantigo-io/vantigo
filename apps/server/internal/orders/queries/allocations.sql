@@ -14,7 +14,7 @@
 SELECT o.id AS order_id, o.number AS order_number, o.customer_id, o.currency::text AS currency, o.project_id,
        o.your_reference, o.delivery_date, o.delivery_address_id, o.delivery_name, o.delivery_address_line1,
        o.delivery_address_line2, o.delivery_postal_code, o.delivery_city, o.delivery_country,
-       o.payment_terms_days, o.status AS order_status, o.on_hold,
+       o.payment_terms_days, o.status AS order_status, o.on_hold, o.brand_id,
        l.id AS line_id, l.position, l.description, l.unit, l.unit_price, l.discount_percent,
        l.vat_code_id, l.invoice_policy,
        ((CASE WHEN l.invoice_policy = 'delivery' THEN l.qty_delivered ELSE l.quantity - l.qty_cancelled END)

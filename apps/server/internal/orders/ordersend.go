@@ -61,7 +61,11 @@ func (s *server) ensureConfirmation(ctx context.Context, orderID int64) (store.O
 	if err != nil {
 		return doc, nil, err
 	}
-	body, err := p.confirmation(o, lines, s.deps.Clock())
+	logo, err := s.orderLogo(ctx, o)
+	if err != nil {
+		return doc, nil, err
+	}
+	body, err := p.confirmation(o, lines, s.deps.Clock(), logo)
 	if err != nil {
 		return doc, nil, err
 	}
@@ -88,9 +92,10 @@ func (s *server) readPrinter(ctx context.Context) (printer, error) {
 	return printer{seller: seller, zone: zone}, nil
 }
 
-// confirmation prints o with lines, as they are, dated at's day.
-func (p printer) confirmation(o store.OrdersOrder, lines []store.OrdersLine, at time.Time) ([]byte, error) {
-	return renderOrderConfirmation(o, lines, p.seller, dayOf(at, p.zone), false)
+// confirmation prints o with lines, as they are, dated at's day, with the logo
+// its brand snapshot names (orderLogo; the confirm's own, which it holds).
+func (p printer) confirmation(o store.OrdersOrder, lines []store.OrdersLine, at time.Time, logo docLogo) ([]byte, error) {
+	return renderOrderConfirmation(o, lines, p.seller, dayOf(at, p.zone), false, logo)
 }
 
 // storeConfirmation stores body as the confirmation of o at o's version and
@@ -151,7 +156,11 @@ func (s *server) renderOrderNow(ctx context.Context, o store.OrdersOrder, lines 
 	if err != nil {
 		return nil, err
 	}
-	return renderOrderConfirmation(o, lines, seller, dayOf(s.deps.Clock(), zone), proforma)
+	logo, err := s.orderLogo(ctx, o)
+	if err != nil {
+		return nil, err
+	}
+	return renderOrderConfirmation(o, lines, seller, dayOf(s.deps.Clock(), zone), proforma, logo)
 }
 
 // GetSalesOrderPdf Download an order confirmation
@@ -202,7 +211,11 @@ func (s *server) GetSalesOrderPdf(ctx context.Context, req gen.GetSalesOrderPdfR
 		if err != nil {
 			return nil, err
 		}
-		if body, err = p.confirmation(o, lines, s.deps.Clock()); err != nil {
+		logo, err := s.orderLogo(ctx, o)
+		if err != nil {
+			return nil, err
+		}
+		if body, err = p.confirmation(o, lines, s.deps.Clock(), logo); err != nil {
 			return nil, err
 		}
 		if _, body, err = s.storeConfirmation(ctx, o, body); err != nil {

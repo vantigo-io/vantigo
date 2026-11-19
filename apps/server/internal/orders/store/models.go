@@ -278,6 +278,12 @@ type OrdersOrder struct {
 	UpdatedAt                  time.Time
 	AnonymisedAt               *time.Time
 	SiteID                     *int64
+	BrandID                    *uuid.UUID
+	BrandSource                *string
+	BrandSkipped               bool
+	BrandName                  *string
+	BrandLogoObjectKey         *string
+	BrandLogoSha256            *string
 }
 
 type OrdersOrderChange struct {
@@ -371,6 +377,12 @@ type OrdersQuote struct {
 	CreatedAt                  time.Time
 	UpdatedAt                  time.Time
 	AnonymisedAt               *time.Time
+	BrandID                    *uuid.UUID
+	BrandSource                *string
+	BrandSkipped               bool
+	BrandName                  *string
+	BrandLogoObjectKey         *string
+	BrandLogoSha256            *string
 }
 
 type OrdersSetting struct {
@@ -542,6 +554,7 @@ type OrdersSubscription struct {
 	CreatedAt                  time.Time
 	UpdatedAt                  time.Time
 	AnonymisedAt               *time.Time
+	BrandID                    *uuid.UUID
 }
 
 type OrdersSubscriptionSkip struct {

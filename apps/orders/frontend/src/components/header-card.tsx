@@ -24,10 +24,11 @@ import { sitesQueryOptions } from "../api/deliveries";
 import { metaQueryOptions } from "../api/meta";
 import { customerProjectsQueryOptions } from "../api/projects";
 import { salespeopleQueryOptions } from "../api/salespeople";
-import type { CustomerSnapshot, Person } from "../api/types";
+import type { Brand, CustomerSnapshot, Person } from "../api/types";
 import type { OrdersAccess } from "../lib/access";
 import { useOrdersFormat } from "../lib/format";
 import { addressLine, CURRENCIES, type HeaderState } from "../lib/header";
+import { BrandField } from "./brand-field";
 import { CustomerPicker } from "./customer-picker";
 
 /** Which parts of the header take edits now (O14, O26). */
@@ -46,6 +47,8 @@ export interface HeaderCardProps {
   /** The document's customer as the server holds it; absent on a new document. */
   snapshot?: CustomerSnapshot;
   salesperson?: Person;
+  /** The brand the quote or order carries; a subscription has none. */
+  brand?: Brand;
   editable: HeaderEditable;
   access: OrdersAccess;
   errors?: Record<string, string>;
@@ -74,6 +77,7 @@ export const HeaderCard = ({
   onChange,
   snapshot,
   salesperson,
+  brand,
   editable,
   access,
   errors = {},
@@ -364,6 +368,15 @@ export const HeaderCard = ({
             mb={8}
           />
         </Group>
+
+        {kind !== "subscription" && (
+          <BrandField
+            current={brand}
+            chosen={header.brandId}
+            disabled={!editable.draft}
+            onChange={(brandId) => onChange({ brandId })}
+          />
+        )}
 
         <Stack gap="xs">
           <UnstyledButton onClick={() => setTextsOpen((open) => !open)} aria-expanded={textsOpen}>

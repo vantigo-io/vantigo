@@ -45,6 +45,7 @@ func updateOrderParams(id int64, h header, t docTotals, delivery, invoice string
 		PricesIncludeVat: p.PricesIncludeVat, PaymentTermsDays: p.PaymentTermsDays, DiscountVisible: p.DiscountVisible,
 		Language: p.Language, IntroText: p.IntroText, ClosingText: p.ClosingText, InternalNote: p.InternalNote,
 		DeliveryDate: p.DeliveryDate, NetTotal: p.NetTotal, VatTotal: p.VatTotal, GrossTotal: p.GrossTotal,
+		BrandID: p.BrandID, BrandSource: p.BrandSource, BrandSkipped: p.BrandSkipped,
 	}
 }
 
@@ -105,6 +106,11 @@ func (s *server) saveDraftOrder(ctx context.Context, cur store.OrdersOrder, curL
 	h := resolveHeader(&f, in, &base, reads)
 	if in.CustomerID != cur.CustomerID {
 		customerUsable(&f, reads.profile)
+	}
+	if reads.profile != nil {
+		if err := s.brandOfHeader(ctx, &f, &h, body.BrandId, &base); err != nil {
+			return gen.OrdersOrder{}, err
+		}
 	}
 	if f.failed() {
 		return gen.OrdersOrder{}, refuseInvalid(invalidOrderTitle, f)
@@ -171,7 +177,10 @@ func (s *server) saveDraftOrder(ctx context.Context, cur store.OrdersOrder, curL
 	})
 	// A refused line is named by the request's row, a kit's child by its
 	// kit's (M145).
-	return out, atInputs(err, priced)
+	if err := atInputs(err, priced); err != nil {
+		return out, err
+	}
+	return out, s.fillBrand(ctx, out.Brand)
 }
 
 // frozenHeader judges a confirmed order's header in body against base: the
@@ -195,6 +204,7 @@ func (s *server) frozenHeader(ctx context.Context, f *fieldErrors, base header, 
 	frozen("introText", body.IntroText != nil && *body.IntroText != base.IntroText)
 	frozen("closingText", body.ClosingText != nil && *body.ClosingText != base.ClosingText)
 	frozen("projectId", body.ProjectId != nil && (base.ProjectID == nil || *body.ProjectId != *base.ProjectID))
+	frozen("brandId", body.BrandId != nil && (base.BrandID == nil || *body.BrandId != *base.BrandID))
 	frozen("salespersonId", body.SalespersonId != nil && (base.SalespersonID == nil || *body.SalespersonId != *base.SalespersonID))
 	if f.failed() {
 		return h, nil

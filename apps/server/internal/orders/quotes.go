@@ -69,6 +69,7 @@ func quoteView(q store.OrdersQuote, lines []store.OrdersLine, acceptedNumber *in
 		Salesperson: personOut(q.SalespersonID, q.SalespersonDisplay), DeliveryDate: dateOut(q.DeliveryDate),
 		ValidUntil: dateOut(q.ValidUntil), SentAt: q.SentAt, AcceptedAt: q.AcceptedAt, DeclinedAt: q.DeclinedAt,
 		DeclineReason: q.DeclineReason, CancelledAt: q.CancelledAt, Warnings: warningsOrEmpty(warnings),
+		Brand: brandOut(q.BrandID, q.BrandSource, q.BrandSkipped, q.BrandName),
 	}
 	if q.AcceptedIntoKind != nil && q.AcceptedIntoID != nil && acceptedNumber != nil {
 		out.AcceptedInto = &gen.OrdersDocumentRef{Kind: gen.OrdersDocumentRefKind(*q.AcceptedIntoKind), Id: *q.AcceptedIntoID, Number: *acceptedNumber}
@@ -123,7 +124,10 @@ func (s *server) getQuoteView(ctx context.Context, id int64) (gen.OrdersQuote, e
 		out, err = readQuoteView(ctx, q, row)
 		return err
 	})
-	return out, err
+	if err != nil {
+		return out, err
+	}
+	return out, s.fillBrand(ctx, out.Brand)
 }
 
 // quoteParams are a quote's header as InsertQuote and UpdateQuoteDraft take
@@ -143,6 +147,7 @@ func insertQuoteParams(h header, t docTotals) store.InsertQuoteParams {
 		Language: h.Language, IntroText: h.IntroText, ClosingText: h.ClosingText, InternalNote: h.InternalNote,
 		DeliveryDate: h.DeliveryDate, NetTotal: numeric(t.net, amountPlaces), VatTotal: numeric(t.vat, amountPlaces),
 		GrossTotal: numeric(t.gross, amountPlaces),
+		BrandID:    h.BrandID, BrandSource: h.BrandSource, BrandSkipped: h.BrandSkipped,
 	}
 }
 
@@ -162,6 +167,7 @@ func updateQuoteParams(id int64, h header, t docTotals, validUntil pgtype.Date, 
 		PricesIncludeVat: p.PricesIncludeVat, PaymentTermsDays: p.PaymentTermsDays, DiscountVisible: p.DiscountVisible,
 		Language: p.Language, IntroText: p.IntroText, ClosingText: p.ClosingText, InternalNote: p.InternalNote,
 		DeliveryDate: p.DeliveryDate, NetTotal: p.NetTotal, VatTotal: p.VatTotal, GrossTotal: p.GrossTotal,
+		BrandID: p.BrandID, BrandSource: p.BrandSource, BrandSkipped: p.BrandSkipped,
 	}
 }
 
@@ -348,6 +354,11 @@ func (s *server) CreateQuote(ctx context.Context, req gen.CreateQuoteRequestObje
 	}
 	h := resolveHeader(&f, in, nil, reads)
 	customerUsable(&f, reads.profile)
+	if reads.profile != nil {
+		if err := s.brandOfHeader(ctx, &f, &h, body.BrandId, nil); err != nil {
+			return nil, err
+		}
+	}
 	var inputs []lineInput
 	if body.Lines != nil {
 		inputs = lineInputsOf(*body.Lines)
@@ -404,6 +415,9 @@ func (s *server) CreateQuote(ctx context.Context, req gen.CreateQuoteRequestObje
 	}
 	if err != nil {
 		return answer(err, resp)
+	}
+	if err := s.fillBrand(ctx, out.Brand); err != nil {
+		return nil, err
 	}
 	return gen.CreateQuote201JSONResponse(out), nil
 }
@@ -490,6 +504,11 @@ func (s *server) UpdateQuote(ctx context.Context, req gen.UpdateQuoteRequestObje
 	if in.CustomerID != cur.CustomerID {
 		customerUsable(&f, reads.profile)
 	}
+	if reads.profile != nil {
+		if err := s.brandOfHeader(ctx, &f, &h, body.BrandId, &base); err != nil {
+			return nil, err
+		}
+	}
 	if f.failed() {
 		return gen.UpdateQuote400ApplicationProblemPlusJSONResponse(invalid(invalidQuoteTitle, f)), nil
 	}
@@ -521,6 +540,9 @@ func (s *server) UpdateQuote(ctx context.Context, req gen.UpdateQuoteRequestObje
 	})
 	if err != nil {
 		return answer(err, resp)
+	}
+	if err := s.fillBrand(ctx, out.Brand); err != nil {
+		return nil, err
 	}
 	return gen.UpdateQuote200JSONResponse(out), nil
 }

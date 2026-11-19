@@ -4256,14 +4256,14 @@ export interface components {
             data: components["schemas"]["InvoicesBankTransaction"][];
             pagination: components["schemas"]["PaginationMetadata"];
         };
-        /** @description The brand a document is printed in (brands design B27, B28, delivery E2). On a draft it is the brand the draft carries and where it came from: chosen (the person switched it for this document), customer, group or default (B28). unavailable is true when the draft's choice is archived or unknown now, or when a brand higher in the order was skipped when the draft picked its brand: the editor says so, and the issue falls back to the next brand in the order. On an issued document it is the snapshot: id and name as they were at the issue, never read again, and unavailable is false. The brand changes the logo (and the name kept in the snapshot) of a document, never the seller's legal identity (B29a). */
+        /** @description The brand a document is printed in (brands design B27, B28, delivery E2). On a draft it is the brand the draft carries and where it came from: chosen (the person switched it for this document), customer, group or default (B28), or order when the draft was made from an order, which starts in the order's brand (delivery E3). unavailable is true when the draft's choice is archived or unknown now, or when a brand higher in the order was skipped when the draft picked its brand: the editor says so, and the issue falls back to the next brand in the order. On an issued document it is the snapshot: id and name as they were at the issue, never read again, and unavailable is false. The brand changes the logo (and the name kept in the snapshot) of a document, never the seller's legal identity (B29a). */
         InvoicesBrand: {
             /** Format: uuid */
             id: string;
             /** @description The brand's published name; absent on a draft whose brand cannot be read now. */
             name?: string;
             /** @enum {string} */
-            source: "chosen" | "customer" | "group" | "default";
+            source: "chosen" | "customer" | "group" | "default" | "order";
             unavailable: boolean;
         };
         /** @description A published brand the draft editor's Brand select offers. */

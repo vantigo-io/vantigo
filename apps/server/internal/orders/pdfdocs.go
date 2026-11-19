@@ -195,7 +195,11 @@ func (s *server) GetQuotePdf(ctx context.Context, req gen.GetQuotePdfRequestObje
 		if err != nil {
 			return nil, err
 		}
-		if body, err = renderQuote(quote, lines, seller, date, false); err != nil {
+		logo, err := s.quoteLogo(ctx, quote)
+		if err != nil {
+			return nil, err
+		}
+		if body, err = renderQuote(quote, lines, seller, date, false, logo); err != nil {
 			return nil, err
 		}
 	} else {
@@ -242,7 +246,11 @@ func (s *server) GetQuoteProforma(ctx context.Context, req gen.GetQuoteProformaR
 	if err != nil {
 		return nil, err
 	}
-	body, err := renderQuote(quote, lines, seller, date, true)
+	logo, err := s.quoteLogo(ctx, quote)
+	if err != nil {
+		return nil, err
+	}
+	body, err := renderQuote(quote, lines, seller, date, true, logo)
 	if err != nil {
 		return nil, err
 	}

@@ -41,6 +41,30 @@ func (e OrdersAcceptInputInto) Valid() bool {
 	}
 }
 
+// Defines values for OrdersBrandSource.
+const (
+	OrdersBrandSourceChosen   OrdersBrandSource = "chosen"
+	OrdersBrandSourceCustomer OrdersBrandSource = "customer"
+	OrdersBrandSourceDefault  OrdersBrandSource = "default"
+	OrdersBrandSourceGroup    OrdersBrandSource = "group"
+)
+
+// Valid indicates whether the value is a known member of the OrdersBrandSource enum.
+func (e OrdersBrandSource) Valid() bool {
+	switch e {
+	case OrdersBrandSourceChosen:
+		return true
+	case OrdersBrandSourceCustomer:
+		return true
+	case OrdersBrandSourceDefault:
+		return true
+	case OrdersBrandSourceGroup:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for OrdersCarrierAccountCarrier.
 const (
 	OrdersCarrierAccountCarrierBring OrdersCarrierAccountCarrier = "bring"
@@ -1746,6 +1770,26 @@ type OrdersBacklogAged struct {
 	Over30Days float64 `json:"over30Days"`
 }
 
+// OrdersBrand The brand a quote or an order is printed in (brands design B27, B28, delivery E3). On a draft it is the brand the draft carries and where it came from: chosen (the person switched it for this one document), customer, group or default (B28); name is the published brand's name and unavailable is true when the draft's choice is archived or unknown now, or when a brand higher in the order was skipped when the draft picked its brand: the editor says so, and the send or confirm falls back to the next brand in the order. On a sent quote or a confirmed order it is the snapshot: id and name as they were then, never read again, and unavailable is false. A brand changes the logo of a document, never the seller's legal identity (B29a).
+type OrdersBrand struct {
+	Id openapi_types.UUID `json:"id"`
+
+	// Name The brand's published name; absent on a draft whose brand cannot be read now.
+	Name        *string           `json:"name,omitempty"`
+	Source      OrdersBrandSource `json:"source"`
+	Unavailable bool              `json:"unavailable"`
+}
+
+// OrdersBrandSource defines model for OrdersBrand.Source.
+type OrdersBrandSource string
+
+// OrdersBrandOption A published brand the editor's Brand select offers.
+type OrdersBrandOption struct {
+	Id        openapi_types.UUID `json:"id"`
+	IsDefault bool               `json:"isDefault"`
+	Name      string             `json:"name"`
+}
+
 // OrdersCarrierAccount A carrier account under Integrations (O51). The credentials are never answered: hasCredentials says whether they are stored. carrierAllowed is false when SHIPPING_CARRIERS withholds the carrier on this installation.
 type OrdersCarrierAccount struct {
 	Carrier         OrdersCarrierAccountCarrier `json:"carrier"`
@@ -2538,9 +2582,11 @@ type OrdersMeta struct {
 
 // OrdersOrder A sales order (O13, O18). version is the order's optimistic-concurrency token and the version its confirmation prints: a draft stays at 1 through its saves, and after confirmation every edit that changes it and every cancel-remaining bumps it, so a confirmation sent at version 2 or later prints as revised (O26). Hold, release, lock, unlock and delivery marking are logged at the version they found. done is derived: confirmed, delivered and invoiced.
 type OrdersOrder struct {
-	CancelledAt *time.Time `json:"cancelledAt,omitempty"`
-	ClosingText string     `json:"closingText"`
-	ConfirmedAt *time.Time `json:"confirmedAt,omitempty"`
+	// Brand The brand a quote or an order is printed in (brands design B27, B28, delivery E3). On a draft it is the brand the draft carries and where it came from: chosen (the person switched it for this one document), customer, group or default (B28); name is the published brand's name and unavailable is true when the draft's choice is archived or unknown now, or when a brand higher in the order was skipped when the draft picked its brand: the editor says so, and the send or confirm falls back to the next brand in the order. On a sent quote or a confirmed order it is the snapshot: id and name as they were then, never read again, and unavailable is false. A brand changes the logo of a document, never the seller's legal identity (B29a).
+	Brand       *OrdersBrand `json:"brand,omitempty"`
+	CancelledAt *time.Time   `json:"cancelledAt,omitempty"`
+	ClosingText string       `json:"closingText"`
+	ConfirmedAt *time.Time   `json:"confirmedAt,omitempty"`
 
 	// ConfirmedBy A user as snapshotted on the document: the salesperson or an actor (O13, O29).
 	ConfirmedBy *OrdersPerson `json:"confirmedBy,omitempty"`
@@ -2614,6 +2660,8 @@ type OrdersOrderStatus string
 
 // OrdersOrderInput A new draft order. clientRequestId makes the create idempotent (O27): a repeat answers the first order with 200.
 type OrdersOrderInput struct {
+	// BrandId The brand this one document is printed in (brands design B28, delivery E3). Must be a published brand, or the one the draft already carries; an unknown or archived id is a field error on brandId. On a create, absent takes the customer's default brand, then its group's, then the workspace default. On a save, absent keeps the draft's brand, unless the customer changed and the brand was not chosen: it is then taken from the new customer's defaults again. A confirmed order snapshots the brand's name and logo. A confirmed order's brand cannot be changed: brandId on its save is a field error unless it is the order's own.
+	BrandId           *openapi_types.UUID       `json:"brandId,omitempty"`
 	ClientRequestId   openapi_types.UUID        `json:"clientRequestId"`
 	ClosingText       *string                   `json:"closingText,omitempty"`
 	ContactId         *int32                    `json:"contactId,omitempty"`
@@ -2695,6 +2743,8 @@ type OrdersOrderSummaryStatus string
 
 // OrdersOrderUpdate An order's save: the header and every line, replaced whole, lines naming their ids kept (O15); a kept line's kind never changes (line_kind_changed) — remove it and add a new one. A confirmed order takes only what O26 allows, and its kept lines keep their frozen item, name, unit and VAT. version is the one the editor read (version_conflict otherwise).
 type OrdersOrderUpdate struct {
+	// BrandId The brand this one document is printed in (brands design B28, delivery E3). Must be a published brand, or the one the draft already carries; an unknown or archived id is a field error on brandId. On a create, absent takes the customer's default brand, then its group's, then the workspace default. On a save, absent keeps the draft's brand, unless the customer changed and the brand was not chosen: it is then taken from the new customer's defaults again. A confirmed order snapshots the brand's name and logo. A confirmed order's brand cannot be changed: brandId on its save is a field error unless it is the order's own.
+	BrandId           *openapi_types.UUID `json:"brandId,omitempty"`
 	ClosingText       *string             `json:"closingText,omitempty"`
 	ContactId         *int32              `json:"contactId,omitempty"`
 	Currency          *string             `json:"currency,omitempty"`
@@ -2811,10 +2861,13 @@ type OrdersQuote struct {
 
 	// AcceptedInto A document Orders made from another.
 	AcceptedInto *OrdersDocumentRef `json:"acceptedInto,omitempty"`
-	CancelledAt  *time.Time         `json:"cancelledAt,omitempty"`
-	ClosingText  string             `json:"closingText"`
-	CreatedAt    time.Time          `json:"createdAt"`
-	Currency     string             `json:"currency"`
+
+	// Brand The brand a quote or an order is printed in (brands design B27, B28, delivery E3). On a draft it is the brand the draft carries and where it came from: chosen (the person switched it for this one document), customer, group or default (B28); name is the published brand's name and unavailable is true when the draft's choice is archived or unknown now, or when a brand higher in the order was skipped when the draft picked its brand: the editor says so, and the send or confirm falls back to the next brand in the order. On a sent quote or a confirmed order it is the snapshot: id and name as they were then, never read again, and unavailable is false. A brand changes the logo of a document, never the seller's legal identity (B29a).
+	Brand       *OrdersBrand `json:"brand,omitempty"`
+	CancelledAt *time.Time   `json:"cancelledAt,omitempty"`
+	ClosingText string       `json:"closingText"`
+	CreatedAt   time.Time    `json:"createdAt"`
+	Currency    string       `json:"currency"`
 
 	// Customer The customer as the document holds it (O13, O14): refreshed on every save of a draft, frozen once a quote is sent or an order confirmed, after which only the delivery address and the contact change.
 	Customer      OrdersCustomerSnapshot `json:"customer"`
@@ -2864,6 +2917,8 @@ type OrdersQuoteStatus string
 
 // OrdersQuoteInput A new draft quote. clientRequestId makes the create idempotent (O27): a repeat answers the first quote with 200.
 type OrdersQuoteInput struct {
+	// BrandId The brand this one document is printed in (brands design B28, delivery E3). Must be a published brand, or the one the draft already carries; an unknown or archived id is a field error on brandId. On a create, absent takes the customer's default brand, then its group's, then the workspace default. On a save, absent keeps the draft's brand, unless the customer changed and the brand was not chosen: it is then taken from the new customer's defaults again. A sent quote snapshots the brand's name and logo.
+	BrandId           *openapi_types.UUID       `json:"brandId,omitempty"`
 	ClientRequestId   openapi_types.UUID        `json:"clientRequestId"`
 	ClosingText       *string                   `json:"closingText,omitempty"`
 	ContactId         *int32                    `json:"contactId,omitempty"`
@@ -2917,6 +2972,8 @@ type OrdersQuoteSummaryStatus string
 
 // OrdersQuoteUpdate A draft quote's save: the header and every line, replaced whole (O15). revision is the one the editor read.
 type OrdersQuoteUpdate struct {
+	// BrandId The brand this one document is printed in (brands design B28, delivery E3). Must be a published brand, or the one the draft already carries; an unknown or archived id is a field error on brandId. On a create, absent takes the customer's default brand, then its group's, then the workspace default. On a save, absent keeps the draft's brand, unless the customer changed and the brand was not chosen: it is then taken from the new customer's defaults again. A sent quote snapshots the brand's name and logo.
+	BrandId           *openapi_types.UUID `json:"brandId,omitempty"`
 	ClosingText       *string             `json:"closingText,omitempty"`
 	ContactId         *int32              `json:"contactId,omitempty"`
 	Currency          *string             `json:"currency,omitempty"`
@@ -4123,6 +4180,9 @@ type ServerInterface interface {
 	// GetOrdersIntake Get the order intake
 	// (GET /api/v1/orders/analysis/intake)
 	GetOrdersIntake(w http.ResponseWriter, r *http.Request, params GetOrdersIntakeParams)
+	// GetOrdersBrands List the brands a quote or an order can be printed in
+	// (GET /api/v1/orders/brands)
+	GetOrdersBrands(w http.ResponseWriter, r *http.Request)
 	// ListCarrierAccounts List carrier accounts
 	// (GET /api/v1/orders/carrier-accounts)
 	ListCarrierAccounts(w http.ResponseWriter, r *http.Request)
@@ -4593,6 +4653,20 @@ func (siw *ServerInterfaceWrapper) GetOrdersIntake(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetOrdersIntake(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetOrdersBrands operation middleware
+func (siw *ServerInterfaceWrapper) GetOrdersBrands(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetOrdersBrands(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -7627,6 +7701,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/analysis/backlog", wrapper.GetOrdersBacklog)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/analysis/hit-rate", wrapper.GetOrdersHitRate)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/analysis/intake", wrapper.GetOrdersIntake)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/brands", wrapper.GetOrdersBrands)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/carrier-accounts", wrapper.ListCarrierAccounts)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/orders/carrier-accounts", wrapper.CreateCarrierAccount)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/orders/carrier-accounts/{id}", wrapper.GetCarrierAccount)
@@ -7976,6 +8051,55 @@ func (response GetOrdersIntake503ApplicationProblemPlusJSONResponse) VisitGetOrd
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOrdersBrandsRequestObject struct {
+}
+
+type GetOrdersBrandsResponseObject interface {
+	VisitGetOrdersBrandsResponse(w http.ResponseWriter) error
+}
+
+type GetOrdersBrands200JSONResponse []OrdersBrandOption
+
+func (response GetOrdersBrands200JSONResponse) VisitGetOrdersBrandsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOrdersBrands401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetOrdersBrands401JSONResponse) VisitGetOrdersBrandsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOrdersBrands403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetOrdersBrands403JSONResponse) VisitGetOrdersBrandsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -15244,6 +15368,9 @@ type StrictServerInterface interface {
 	// GetOrdersIntake Get the order intake
 	// (GET /api/v1/orders/analysis/intake)
 	GetOrdersIntake(ctx context.Context, request GetOrdersIntakeRequestObject) (GetOrdersIntakeResponseObject, error)
+	// GetOrdersBrands List the brands a quote or an order can be printed in
+	// (GET /api/v1/orders/brands)
+	GetOrdersBrands(ctx context.Context, request GetOrdersBrandsRequestObject) (GetOrdersBrandsResponseObject, error)
 	// ListCarrierAccounts List carrier accounts
 	// (GET /api/v1/orders/carrier-accounts)
 	ListCarrierAccounts(ctx context.Context, request ListCarrierAccountsRequestObject) (ListCarrierAccountsResponseObject, error)
@@ -15647,6 +15774,30 @@ func (sh *strictHandler) GetOrdersIntake(w http.ResponseWriter, r *http.Request,
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetOrdersIntakeResponseObject); ok {
 		if err := validResponse.VisitGetOrdersIntakeResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetOrdersBrands operation middleware
+func (sh *strictHandler) GetOrdersBrands(w http.ResponseWriter, r *http.Request) {
+	var request GetOrdersBrandsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetOrdersBrands(ctx, request.(GetOrdersBrandsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetOrdersBrands")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetOrdersBrandsResponseObject); ok {
+		if err := validResponse.VisitGetOrdersBrandsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

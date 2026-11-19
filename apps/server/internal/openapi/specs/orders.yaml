@@ -101,6 +101,46 @@ components:
                 - templateId
                 - expectedUpdatedAt
             type: object
+        OrdersBrand:
+            additionalProperties: false
+            description: "The brand a quote or an order is printed in (brands design B27, B28, delivery E3). On a draft it is the brand the draft carries and where it came from: chosen (the person switched it for this one document), customer, group or default (B28); name is the published brand's name and unavailable is true when the draft's choice is archived or unknown now, or when a brand higher in the order was skipped when the draft picked its brand: the editor says so, and the send or confirm falls back to the next brand in the order. On a sent quote or a confirmed order it is the snapshot: id and name as they were then, never read again, and unavailable is false. A brand changes the logo of a document, never the seller's legal identity (B29a)."
+            properties:
+                id:
+                    format: uuid
+                    type: string
+                name:
+                    description: "The brand's published name; absent on a draft whose brand cannot be read now."
+                    type: string
+                source:
+                    enum:
+                        - chosen
+                        - customer
+                        - group
+                        - default
+                    type: string
+                unavailable:
+                    type: boolean
+            required:
+                - id
+                - source
+                - unavailable
+            type: object
+        OrdersBrandOption:
+            additionalProperties: false
+            description: "A published brand the editor's Brand select offers."
+            properties:
+                id:
+                    format: uuid
+                    type: string
+                isDefault:
+                    type: boolean
+                name:
+                    type: string
+            required:
+                - id
+                - name
+                - isDefault
+            type: object
         OrdersCarrierAccount:
             additionalProperties: false
             description: "A carrier account under Integrations (O51). The credentials are never answered: hasCredentials says whether they are stored. carrierAllowed is false when SHIPPING_CARRIERS withholds the carrier on this installation."
@@ -1824,6 +1864,8 @@ components:
             additionalProperties: false
             description: "A sales order (O13, O18). version is the order's optimistic-concurrency token and the version its confirmation prints: a draft stays at 1 through its saves, and after confirmation every edit that changes it and every cancel-remaining bumps it, so a confirmation sent at version 2 or later prints as revised (O26). Hold, release, lock, unlock and delivery marking are logged at the version they found. done is derived: confirmed, delivered and invoiced."
             properties:
+                brand:
+                    $ref: "#/components/schemas/OrdersBrand"
                 cancelledAt:
                     format: date-time
                     nullable: true
@@ -1983,6 +2025,10 @@ components:
             additionalProperties: false
             description: "A new draft order. clientRequestId makes the create idempotent (O27): a repeat answers the first order with 200."
             properties:
+                brandId:
+                    description: "The brand this one document is printed in (brands design B28, delivery E3). Must be a published brand, or the one the draft already carries; an unknown or archived id is a field error on brandId. On a create, absent takes the customer's default brand, then its group's, then the workspace default. On a save, absent keeps the draft's brand, unless the customer changed and the brand was not chosen: it is then taken from the new customer's defaults again. A confirmed order snapshots the brand's name and logo. A confirmed order's brand cannot be changed: brandId on its save is a field error unless it is the order's own."
+                    format: uuid
+                    type: string
                 clientRequestId:
                     format: uuid
                     type: string
@@ -2184,6 +2230,10 @@ components:
             additionalProperties: false
             description: "An order's save: the header and every line, replaced whole, lines naming their ids kept (O15); a kept line's kind never changes (line_kind_changed) — remove it and add a new one. A confirmed order takes only what O26 allows, and its kept lines keep their frozen item, name, unit and VAT. version is the one the editor read (version_conflict otherwise)."
             properties:
+                brandId:
+                    description: "The brand this one document is printed in (brands design B28, delivery E3). Must be a published brand, or the one the draft already carries; an unknown or archived id is a field error on brandId. On a create, absent takes the customer's default brand, then its group's, then the workspace default. On a save, absent keeps the draft's brand, unless the customer changed and the brand was not chosen: it is then taken from the new customer's defaults again. A confirmed order snapshots the brand's name and logo. A confirmed order's brand cannot be changed: brandId on its save is a field error unless it is the order's own."
+                    format: uuid
+                    type: string
                 closingText:
                     maxLength: 4000
                     type: string
@@ -2447,6 +2497,8 @@ components:
                     type: string
                 acceptedInto:
                     $ref: "#/components/schemas/OrdersDocumentRef"
+                brand:
+                    $ref: "#/components/schemas/OrdersBrand"
                 cancelledAt:
                     format: date-time
                     nullable: true
@@ -2575,6 +2627,10 @@ components:
             additionalProperties: false
             description: "A new draft quote. clientRequestId makes the create idempotent (O27): a repeat answers the first quote with 200."
             properties:
+                brandId:
+                    description: "The brand this one document is printed in (brands design B28, delivery E3). Must be a published brand, or the one the draft already carries; an unknown or archived id is a field error on brandId. On a create, absent takes the customer's default brand, then its group's, then the workspace default. On a save, absent keeps the draft's brand, unless the customer changed and the brand was not chosen: it is then taken from the new customer's defaults again. A sent quote snapshots the brand's name and logo."
+                    format: uuid
+                    type: string
                 clientRequestId:
                     format: uuid
                     type: string
@@ -2725,6 +2781,10 @@ components:
             additionalProperties: false
             description: "A draft quote's save: the header and every line, replaced whole (O15). revision is the one the editor read."
             properties:
+                brandId:
+                    description: "The brand this one document is printed in (brands design B28, delivery E3). Must be a published brand, or the one the draft already carries; an unknown or archived id is a field error on brandId. On a create, absent takes the customer's default brand, then its group's, then the workspace default. On a save, absent keeps the draft's brand, unless the customer changed and the brand was not chosen: it is then taken from the new customer's defaults again. A sent quote snapshots the brand's name and logo."
+                    format: uuid
+                    type: string
                 closingText:
                     maxLength: 4000
                     type: string
@@ -4989,6 +5049,35 @@ paths:
             tags:
                 - Orders
             x-vantigo-access: permission:orders:access+orders:analysis-view
+    /api/v1/orders/brands:
+        get:
+            description: "The published brands the editor's Brand select offers, the workspace default first (brands design B28, delivery E3), read from contracts.Brands. It needs access to Orders and nothing from identity. A deployment without identity's brands offers none."
+            operationId: getOrdersBrands
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: "#/components/schemas/OrdersBrandOption"
+                                type: array
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "common.yaml#/components/schemas/AuthErrorResponse"
+                    description: Forbidden
+            summary: List the brands a quote or an order can be printed in
+            tags:
+                - Orders
+            x-vantigo-access: permission:orders:access
     /api/v1/orders/carrier-accounts:
         get:
             description: "The carrier accounts (O51), never their credentials. Every Orders user may read them, to choose one for a shipment."

@@ -62,6 +62,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/orders/brands": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the brands a quote or an order can be printed in
+         * @description The published brands the editor's Brand select offers, the workspace default first (brands design B28, delivery E3), read from contracts.Brands. It needs access to Orders and nothing from identity. A deployment without identity's brands offers none.
+         */
+        get: operations["getOrdersBrands"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/orders/carrier-accounts": {
         parameters: {
             query?: never;
@@ -1688,6 +1708,23 @@ export interface components {
             /** Format: int64 */
             templateId: number;
         };
+        /** @description The brand a quote or an order is printed in (brands design B27, B28, delivery E3). On a draft it is the brand the draft carries and where it came from: chosen (the person switched it for this one document), customer, group or default (B28); name is the published brand's name and unavailable is true when the draft's choice is archived or unknown now, or when a brand higher in the order was skipped when the draft picked its brand: the editor says so, and the send or confirm falls back to the next brand in the order. On a sent quote or a confirmed order it is the snapshot: id and name as they were then, never read again, and unavailable is false. A brand changes the logo of a document, never the seller's legal identity (B29a). */
+        OrdersBrand: {
+            /** Format: uuid */
+            id: string;
+            /** @description The brand's published name; absent on a draft whose brand cannot be read now. */
+            name?: string;
+            /** @enum {string} */
+            source: "chosen" | "customer" | "group" | "default";
+            unavailable: boolean;
+        };
+        /** @description A published brand the editor's Brand select offers. */
+        OrdersBrandOption: {
+            /** Format: uuid */
+            id: string;
+            isDefault: boolean;
+            name: string;
+        };
         /** @description A carrier account under Integrations (O51). The credentials are never answered: hasCredentials says whether they are stored. carrierAllowed is false when SHIPPING_CARRIERS withholds the carrier on this installation. */
         OrdersCarrierAccount: {
             /** @enum {string} */
@@ -2518,6 +2555,7 @@ export interface components {
         };
         /** @description A sales order (O13, O18). version is the order's optimistic-concurrency token and the version its confirmation prints: a draft stays at 1 through its saves, and after confirmation every edit that changes it and every cancel-remaining bumps it, so a confirmation sent at version 2 or later prints as revised (O26). Hold, release, lock, unlock and delivery marking are logged at the version they found. done is derived: confirmed, delivered and invoiced. */
         OrdersOrder: {
+            brand?: components["schemas"]["OrdersBrand"];
             /** Format: date-time */
             cancelledAt?: string | null;
             closingText: string;
@@ -2586,6 +2624,11 @@ export interface components {
         };
         /** @description A new draft order. clientRequestId makes the create idempotent (O27): a repeat answers the first order with 200. */
         OrdersOrderInput: {
+            /**
+             * Format: uuid
+             * @description The brand this one document is printed in (brands design B28, delivery E3). Must be a published brand, or the one the draft already carries; an unknown or archived id is a field error on brandId. On a create, absent takes the customer's default brand, then its group's, then the workspace default. On a save, absent keeps the draft's brand, unless the customer changed and the brand was not chosen: it is then taken from the new customer's defaults again. A confirmed order snapshots the brand's name and logo. A confirmed order's brand cannot be changed: brandId on its save is a field error unless it is the order's own.
+             */
+            brandId?: string;
             /** Format: uuid */
             clientRequestId: string;
             closingText?: string;
@@ -2677,6 +2720,11 @@ export interface components {
         };
         /** @description An order's save: the header and every line, replaced whole, lines naming their ids kept (O15); a kept line's kind never changes (line_kind_changed) — remove it and add a new one. A confirmed order takes only what O26 allows, and its kept lines keep their frozen item, name, unit and VAT. version is the one the editor read (version_conflict otherwise). */
         OrdersOrderUpdate: {
+            /**
+             * Format: uuid
+             * @description The brand this one document is printed in (brands design B28, delivery E3). Must be a published brand, or the one the draft already carries; an unknown or archived id is a field error on brandId. On a create, absent takes the customer's default brand, then its group's, then the workspace default. On a save, absent keeps the draft's brand, unless the customer changed and the brand was not chosen: it is then taken from the new customer's defaults again. A confirmed order snapshots the brand's name and logo. A confirmed order's brand cannot be changed: brandId on its save is a field error unless it is the order's own.
+             */
+            brandId?: string;
             closingText?: string;
             /** Format: int32 */
             contactId?: number | null;
@@ -2805,6 +2853,7 @@ export interface components {
             /** Format: date-time */
             acceptedAt?: string | null;
             acceptedInto?: components["schemas"]["OrdersDocumentRef"];
+            brand?: components["schemas"]["OrdersBrand"];
             /** Format: date-time */
             cancelledAt?: string | null;
             closingText: string;
@@ -2856,6 +2905,11 @@ export interface components {
         };
         /** @description A new draft quote. clientRequestId makes the create idempotent (O27): a repeat answers the first quote with 200. */
         OrdersQuoteInput: {
+            /**
+             * Format: uuid
+             * @description The brand this one document is printed in (brands design B28, delivery E3). Must be a published brand, or the one the draft already carries; an unknown or archived id is a field error on brandId. On a create, absent takes the customer's default brand, then its group's, then the workspace default. On a save, absent keeps the draft's brand, unless the customer changed and the brand was not chosen: it is then taken from the new customer's defaults again. A sent quote snapshots the brand's name and logo.
+             */
+            brandId?: string;
             /** Format: uuid */
             clientRequestId: string;
             closingText?: string;
@@ -2919,6 +2973,11 @@ export interface components {
         };
         /** @description A draft quote's save: the header and every line, replaced whole (O15). revision is the one the editor read. */
         OrdersQuoteUpdate: {
+            /**
+             * Format: uuid
+             * @description The brand this one document is printed in (brands design B28, delivery E3). Must be a published brand, or the one the draft already carries; an unknown or archived id is a field error on brandId. On a create, absent takes the customer's default brand, then its group's, then the workspace default. On a save, absent keeps the draft's brand, unless the customer changed and the brand was not chosen: it is then taken from the new customer's defaults again. A sent quote snapshots the brand's name and logo.
+             */
+            brandId?: string;
             closingText?: string;
             /** Format: int32 */
             contactId?: number | null;
@@ -4034,6 +4093,44 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["OrdersProblem"];
+                };
+            };
+        };
+    };
+    getOrdersBrands: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrdersBrandOption"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
         };

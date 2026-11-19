@@ -12,7 +12,7 @@ INSERT INTO orders.subscriptions (
     payment_terms_days, discount_visible, language, intro_text, closing_text, internal_note,
     net_total, vat_total, gross_total,
     channel, source_module, source_kind, source_id, external_id, external_number, client_request_id,
-    created_by_user_id, created_by_display, created_at, updated_at
+    created_by_user_id, created_by_display, created_at, updated_at, brand_id
 ) VALUES (
     sqlc.arg(number), 'draft', sqlc.arg(billing_interval), sqlc.arg(billing), sqlc.arg(start_date),
     sqlc.narg(end_date), sqlc.arg(notice_months), sqlc.narg(invoice_day), sqlc.arg(final_period),
@@ -29,7 +29,8 @@ INSERT INTO orders.subscriptions (
     sqlc.arg(net_total), sqlc.arg(vat_total), sqlc.arg(gross_total),
     sqlc.arg(channel), sqlc.narg(source_module), sqlc.narg(source_kind), sqlc.narg(source_id),
     sqlc.narg(external_id), sqlc.narg(external_number), sqlc.narg(client_request_id),
-    sqlc.narg(created_by_user_id), sqlc.narg(created_by_display), sqlc.arg(now), sqlc.arg(now)
+    sqlc.narg(created_by_user_id), sqlc.narg(created_by_display), sqlc.arg(now), sqlc.arg(now),
+    sqlc.narg(brand_id)
 )
 RETURNING *;
 
