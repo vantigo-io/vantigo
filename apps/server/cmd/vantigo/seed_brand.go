@@ -140,6 +140,21 @@ func seedDemoBrands(ctx context.Context, pool *pgxpool.Pool, logger *slog.Logger
 			logger.Info("development seed: a demo brand was added", "brand", b.Name)
 		}
 	}
+	// Two campaigns, both off so the demo is not seasonal: Jul on the default
+	// brand (1 December to 6 January, every year) and Pride on Nordlys (June).
+	// Switch one on in Workspace, Theme, Campaigns.
+	for _, c := range []identity.DemoCampaign{
+		{Name: "Jul", StartsOn: "2026-12-01", EndsOn: "2027-01-06", Yearly: true, Primary: "#b91c1c", Title: demoBrandTitle + " - God jul"},
+		{Brand: "Nordlys", Name: "Pride", StartsOn: "2026-06-01", EndsOn: "2026-06-30", Yearly: true, Primary: "#7c3aed", Title: "Nordlys Pride"},
+	} {
+		applied, err := identity.SeedDemoCampaign(ctx, d, c)
+		if err != nil {
+			return err
+		}
+		if applied {
+			logger.Info("development seed: a demo campaign was added, disabled", "campaign", c.Name)
+		}
+	}
 	return seedDemoCustomerBrands(ctx, pool, logger)
 }
 

@@ -181,9 +181,9 @@ func (s *server) PutIdentityAccountBrand(ctx context.Context, req gen.PutIdentit
 		result = "chosen"
 	}
 	s.metrics.choices.Add(ctx, 1, resultAttr(result))
-	res, err = s.resolveUser(ctx, p.UserID)
+	res, err = s.resolveLook(ctx, p.UserID)
 	if err != nil {
 		return nil, err
 	}
-	return gen.PutIdentityAccountBrand200JSONResponse(s.resolvedFor(res)), nil
+	return gen.PutIdentityAccountBrand200JSONResponse(withCampaign(s.resolvedFor(res), res)), nil
 }

@@ -3554,6 +3554,141 @@ components:
             required:
                 - businessTimeZone
             type: object
+        BrandCampaign:
+            description: A dated overlay on one brand (brands design B22), live on save while enabled.
+            properties:
+                affectsEmail:
+                    description: Also apply the overlay's mark in the e-mails the system sends in this brand. Stored; it has no effect until system e-mail is HTML.
+                    type: boolean
+                brandId:
+                    format: uuid
+                    type: string
+                enabled:
+                    type: boolean
+                endsOn:
+                    description: The last day, inclusive, in the workspace's business time zone. For a yearly campaign only its month and day count.
+                    format: date
+                    type: string
+                id:
+                    format: uuid
+                    type: string
+                name:
+                    type: string
+                overlay:
+                    $ref: '#/components/schemas/BrandCampaignOverlay'
+                revision:
+                    format: int32
+                    type: integer
+                startsOn:
+                    description: The first day, inclusive. For a yearly campaign its year is the first year it is active.
+                    format: date
+                    type: string
+                status:
+                    description: 'Where the campaign stands today in the business time zone: active now, upcoming, ended (a dated campaign that is over) or disabled.'
+                    enum:
+                        - active
+                        - upcoming
+                        - ended
+                        - disabled
+                    type: string
+                yearly:
+                    type: boolean
+            required:
+                - id
+                - brandId
+                - name
+                - startsOn
+                - endsOn
+                - yearly
+                - enabled
+                - affectsEmail
+                - overlay
+                - revision
+                - status
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        BrandCampaignInput:
+            additionalProperties: true
+            description: A campaign's inputs. Any other member, tokens and shades included, is refused 400.
+            properties:
+                affectsEmail:
+                    type: boolean
+                enabled:
+                    type: boolean
+                endsOn:
+                    format: date
+                    type: string
+                name:
+                    maxLength: 100
+                    minLength: 1
+                    type: string
+                overlay:
+                    $ref: '#/components/schemas/BrandCampaignOverlayInput'
+                startsOn:
+                    format: date
+                    type: string
+                yearly:
+                    type: boolean
+            required:
+                - name
+                - startsOn
+                - endsOn
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        BrandCampaignOverlay:
+            description: What a campaign changes of the brand. Every member is optional; one it omits is the brand's. The radius and the support contacts are never changed.
+            properties:
+                logos:
+                    $ref: '#/components/schemas/BrandLogos'
+                primary:
+                    description: 'The primary colour, as #rrggbb. Its scale and tokens are generated on the server.'
+                    type: string
+                title:
+                    type: string
+            required:
+                - logos
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        BrandCampaignOverlayInput:
+            additionalProperties: true
+            description: The overlay's inputs. Logos are set through their own operations.
+            properties:
+                primary:
+                    description: 'The primary colour, as #rrggbb.'
+                    type: string
+                title:
+                    maxLength: 60
+                    type: string
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        BrandCampaignRef:
+            description: The campaign in force, when the brand shown has one.
+            properties:
+                id:
+                    format: uuid
+                    type: string
+                name:
+                    type: string
+            required:
+                - id
+                - name
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        BrandCampaignsResponse:
+            properties:
+                items:
+                    items:
+                        $ref: '#/components/schemas/BrandCampaign'
+                    type: array
+                today:
+                    description: The business calendar day the statuses are read at.
+                    format: date
+                    type: string
+            required:
+                - items
+                - today
+            type: object
+            x-vantigo-source: Vantigo.Identity
         BrandCandidate:
             properties:
                 id:
@@ -4102,6 +4237,8 @@ components:
                 brandId:
                     format: uuid
                     type: string
+                campaign:
+                    $ref: '#/components/schemas/BrandCampaignRef'
                 candidates:
                     description: The brands the person may choose among (B12); the switcher shows with more than one. Empty on the public look.
                     items:
@@ -4134,6 +4271,10 @@ components:
                 v:
                     format: int32
                     type: integer
+                validUntil:
+                    description: 'The next time the campaign in force changes (B24): the start of the day a campaign starts or the day after one ends, in the business time zone. Absent when nothing is scheduled. The client refetches at the nearer of this and six hours.'
+                    format: date-time
+                    type: string
                 version:
                     description: The cache key of the payload.
                     type: string
@@ -7071,6 +7212,407 @@ paths:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
                     description: 'Conflict - stale_revision, or brand_in_use (the default brand).'
             summary: 'Archive a brand'
+            tags:
+                - Brands
+            x-vantigo-access: permission:identity:brands
+            x-vantigo-api: never
+            x-vantigo-assistant: never
+    /api/v1/identity/brands/{id}/campaigns:
+        get:
+            description: 'The campaigns of a brand, a dated overlay each (brands design B22), with where each stands today in the business time zone.'
+            operationId: getIdentityBrandsByIdCampaigns
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/BrandCampaignsResponse'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+            summary: 'List a brand''s campaigns'
+            tags:
+                - Brands
+            x-vantigo-access: permission:identity:brands
+            x-vantigo-api: never
+            x-vantigo-assistant: never
+        post:
+            description: 'Creates a campaign on a brand (brands design B22). It is live on save when enabled: there is no draft. Two campaigns of a brand may not be active on the same date (B23), evaluated over a two-year window. The overlay''s primary is recomputed into tokens on the server and must read (B4, B38); tokens in the request are refused. Open sessions are told on the live topic identity.brand. Audited brand.campaign_created.'
+            operationId: postIdentityBrandsByIdCampaigns
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/BrandCampaignInput'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/BrandCampaign'
+                    description: Created
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Bad Request - invalid_request (a member the contract does not list, a date out of order or out of range).
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Conflict - campaign_overlap (another enabled campaign of the brand shares a date) or brand_archived.
+                "422":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unprocessable Entity - campaign_too_long (a yearly range over 365 days), brand_contrast or brand_primary_range (the overlay's colour).
+            summary: 'Create a campaign'
+            tags:
+                - Brands
+            x-vantigo-access: permission:identity:brands
+            x-vantigo-api: never
+            x-vantigo-assistant: never
+    /api/v1/identity/brands/{id}/campaigns/{campaignId}:
+        delete:
+            description: 'Deletes a campaign; what it changed reverts for everyone at once. The stored logo objects are kept. Audited brand.campaign_deleted.'
+            operationId: deleteIdentityBrandsByIdCampaignsByCampaignId
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+                - in: path
+                  name: campaignId
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            responses:
+                "204":
+                    description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+            summary: 'Delete a campaign'
+            tags:
+                - Brands
+            x-vantigo-access: permission:identity:brands
+            x-vantigo-api: never
+            x-vantigo-assistant: never
+        put:
+            description: 'Replaces a campaign''s inputs (brands design B22); its logos are kept. Live on save when enabled, and the overlap, length and colour rules of the create apply. Audited brand.campaign_updated.'
+            operationId: putIdentityBrandsByIdCampaignsByCampaignId
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+                - in: path
+                  name: campaignId
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/BrandCampaignInput'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/BrandCampaign'
+                    description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Bad Request - invalid_request.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Conflict - campaign_overlap or brand_archived.
+                "422":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unprocessable Entity - campaign_too_long, brand_contrast or brand_primary_range.
+            summary: 'Save a campaign'
+            tags:
+                - Brands
+            x-vantigo-access: permission:identity:brands
+            x-vantigo-api: never
+            x-vantigo-assistant: never
+    /api/v1/identity/brands/{id}/campaigns/{campaignId}/logos/{slot}:
+        delete:
+            description: 'Clears one logo slot of the campaign''s overlay; the stored object is kept. Live at once. Audited brand.campaign_logo_removed.'
+            operationId: deleteIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+                - in: path
+                  name: campaignId
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+                - in: path
+                  name: slot
+                  required: true
+                  schema:
+                    enum:
+                        - mark_light
+                        - mark_dark
+                        - icon
+                        - wordmark
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/BrandCampaign'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+            summary: 'Remove a campaign logo'
+            tags:
+                - Brands
+            x-vantigo-access: permission:identity:brands
+            x-vantigo-api: never
+            x-vantigo-assistant: never
+        get:
+            description: 'A campaign''s logo as stored, streamed to a holder of identity:brands so the editor can show it. Never sniffed; private, revalidated.'
+            operationId: getIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+                - in: path
+                  name: campaignId
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+                - in: path
+                  name: slot
+                  required: true
+                  schema:
+                    enum:
+                        - mark_light
+                        - mark_dark
+                        - icon
+                        - wordmark
+                    type: string
+            responses:
+                "200":
+                    content:
+                        image/jpeg:
+                            schema:
+                                format: binary
+                                type: string
+                        image/png:
+                            schema:
+                                format: binary
+                                type: string
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found - no such campaign or no logo in the slot. The body is empty.
+                "503":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Service Unavailable - storage_unavailable.
+            summary: 'Get a campaign logo'
+            tags:
+                - Brands
+            x-vantigo-access: permission:identity:brands
+            x-vantigo-api: never
+            x-vantigo-assistant: never
+        put:
+            description: 'Sets one logo slot of the campaign''s overlay (brands design B6, B38): a PNG or JPEG in the multipart field file, judged exactly as a brand logo is. Live at once while the campaign is enabled. Audited brand.campaign_logo_set.'
+            operationId: putIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+                - in: path
+                  name: campaignId
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+                - in: path
+                  name: slot
+                  required: true
+                  schema:
+                    enum:
+                        - mark_light
+                        - mark_dark
+                        - icon
+                        - wordmark
+                    type: string
+            requestBody:
+                content:
+                    multipart/form-data:
+                        schema:
+                            properties:
+                                file:
+                                    format: binary
+                                    type: string
+                            required:
+                                - file
+                            type: object
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/BrandCampaign'
+                    description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Bad Request - logo_unsupported_type, logo_too_large, logo_too_wide, logo_too_small, logo_invalid or logo_not_square.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "503":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Service Unavailable - storage_unavailable.
+            summary: 'Set a campaign logo'
             tags:
                 - Brands
             x-vantigo-access: permission:identity:brands

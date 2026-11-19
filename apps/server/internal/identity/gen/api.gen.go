@@ -135,6 +135,30 @@ func (e AuthSessionResponseTimeZoneSource) Valid() bool {
 	}
 }
 
+// Defines values for BrandCampaignStatus.
+const (
+	BrandCampaignStatusActive   BrandCampaignStatus = "active"
+	BrandCampaignStatusDisabled BrandCampaignStatus = "disabled"
+	BrandCampaignStatusEnded    BrandCampaignStatus = "ended"
+	BrandCampaignStatusUpcoming BrandCampaignStatus = "upcoming"
+)
+
+// Valid indicates whether the value is a known member of the BrandCampaignStatus enum.
+func (e BrandCampaignStatus) Valid() bool {
+	switch e {
+	case BrandCampaignStatusActive:
+		return true
+	case BrandCampaignStatusDisabled:
+		return true
+	case BrandCampaignStatusEnded:
+		return true
+	case BrandCampaignStatusUpcoming:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for BrandCheckPair.
 const (
 	Filled      BrandCheckPair = "filled"
@@ -882,6 +906,78 @@ func (e WebhookEndpointStatus) Valid() bool {
 	}
 }
 
+// Defines values for DeleteIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlot.
+const (
+	DeleteIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlotIcon      DeleteIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlot = "icon"
+	DeleteIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlotMarkDark  DeleteIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlot = "mark_dark"
+	DeleteIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlotMarkLight DeleteIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlot = "mark_light"
+	DeleteIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlotWordmark  DeleteIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlot = "wordmark"
+)
+
+// Valid indicates whether the value is a known member of the DeleteIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlot enum.
+func (e DeleteIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlot) Valid() bool {
+	switch e {
+	case DeleteIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlotIcon:
+		return true
+	case DeleteIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlotMarkDark:
+		return true
+	case DeleteIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlotMarkLight:
+		return true
+	case DeleteIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlotWordmark:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlot.
+const (
+	GetIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlotIcon      GetIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlot = "icon"
+	GetIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlotMarkDark  GetIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlot = "mark_dark"
+	GetIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlotMarkLight GetIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlot = "mark_light"
+	GetIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlotWordmark  GetIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlot = "wordmark"
+)
+
+// Valid indicates whether the value is a known member of the GetIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlot enum.
+func (e GetIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlot) Valid() bool {
+	switch e {
+	case GetIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlotIcon:
+		return true
+	case GetIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlotMarkDark:
+		return true
+	case GetIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlotMarkLight:
+		return true
+	case GetIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlotWordmark:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlot.
+const (
+	PutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlotIcon      PutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlot = "icon"
+	PutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlotMarkDark  PutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlot = "mark_dark"
+	PutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlotMarkLight PutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlot = "mark_light"
+	PutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlotWordmark  PutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlot = "wordmark"
+)
+
+// Valid indicates whether the value is a known member of the PutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlot enum.
+func (e PutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlot) Valid() bool {
+	switch e {
+	case PutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlotIcon:
+		return true
+	case PutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlotMarkDark:
+		return true
+	case PutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlotMarkLight:
+		return true
+	case PutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlotWordmark:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for DeleteIdentityBrandsByIdLogosBySlotParamsSlot.
 const (
 	DeleteIdentityBrandsByIdLogosBySlotParamsSlotIcon      DeleteIdentityBrandsByIdLogosBySlotParamsSlot = "icon"
@@ -1366,6 +1462,78 @@ type BootstrapResponse struct {
 // BootstrapStatusResponse defines model for BootstrapStatusResponse.
 type BootstrapStatusResponse struct {
 	Available bool `json:"available"`
+}
+
+// BrandCampaign A dated overlay on one brand (brands design B22), live on save while enabled.
+type BrandCampaign struct {
+	// AffectsEmail Also apply the overlay's mark in the e-mails the system sends in this brand. Stored; it has no effect until system e-mail is HTML.
+	AffectsEmail bool               `json:"affectsEmail"`
+	BrandId      openapi_types.UUID `json:"brandId"`
+	Enabled      bool               `json:"enabled"`
+
+	// EndsOn The last day, inclusive, in the workspace's business time zone. For a yearly campaign only its month and day count.
+	EndsOn openapi_types.Date `json:"endsOn"`
+	Id     openapi_types.UUID `json:"id"`
+	Name   string             `json:"name"`
+
+	// Overlay What a campaign changes of the brand. Every member is optional; one it omits is the brand's. The radius and the support contacts are never changed.
+	Overlay  BrandCampaignOverlay `json:"overlay"`
+	Revision int32                `json:"revision"`
+
+	// StartsOn The first day, inclusive. For a yearly campaign its year is the first year it is active.
+	StartsOn openapi_types.Date `json:"startsOn"`
+
+	// Status Where the campaign stands today in the business time zone: active now, upcoming, ended (a dated campaign that is over) or disabled.
+	Status BrandCampaignStatus `json:"status"`
+	Yearly bool                `json:"yearly"`
+}
+
+// BrandCampaignStatus Where the campaign stands today in the business time zone: active now, upcoming, ended (a dated campaign that is over) or disabled.
+type BrandCampaignStatus string
+
+// BrandCampaignInput A campaign's inputs. Any other member, tokens and shades included, is refused 400.
+type BrandCampaignInput struct {
+	AffectsEmail *bool              `json:"affectsEmail,omitempty"`
+	Enabled      *bool              `json:"enabled,omitempty"`
+	EndsOn       openapi_types.Date `json:"endsOn"`
+	Name         string             `json:"name"`
+
+	// Overlay The overlay's inputs. Logos are set through their own operations.
+	Overlay              *BrandCampaignOverlayInput `json:"overlay,omitempty"`
+	StartsOn             openapi_types.Date         `json:"startsOn"`
+	Yearly               *bool                      `json:"yearly,omitempty"`
+	AdditionalProperties map[string]interface{}     `json:"-"`
+}
+
+// BrandCampaignOverlay What a campaign changes of the brand. Every member is optional; one it omits is the brand's. The radius and the support contacts are never changed.
+type BrandCampaignOverlay struct {
+	Logos BrandLogos `json:"logos"`
+
+	// Primary The primary colour, as #rrggbb. Its scale and tokens are generated on the server.
+	Primary *string `json:"primary,omitempty"`
+	Title   *string `json:"title,omitempty"`
+}
+
+// BrandCampaignOverlayInput The overlay's inputs. Logos are set through their own operations.
+type BrandCampaignOverlayInput struct {
+	// Primary The primary colour, as #rrggbb.
+	Primary              *string                `json:"primary,omitempty"`
+	Title                *string                `json:"title,omitempty"`
+	AdditionalProperties map[string]interface{} `json:"-"`
+}
+
+// BrandCampaignRef The campaign in force, when the brand shown has one.
+type BrandCampaignRef struct {
+	Id   openapi_types.UUID `json:"id"`
+	Name string             `json:"name"`
+}
+
+// BrandCampaignsResponse defines model for BrandCampaignsResponse.
+type BrandCampaignsResponse struct {
+	Items []BrandCampaign `json:"items"`
+
+	// Today The business calendar day the statuses are read at.
+	Today openapi_types.Date `json:"today"`
 }
 
 // BrandCandidate defines model for BrandCandidate.
@@ -2206,6 +2374,9 @@ type ResolvedBrand struct {
 	Algorithm int32              `json:"algorithm"`
 	BrandId   openapi_types.UUID `json:"brandId"`
 
+	// Campaign The campaign in force, when the brand shown has one.
+	Campaign *BrandCampaignRef `json:"campaign,omitempty"`
+
 	// Candidates The brands the person may choose among (B12); the switcher shows with more than one. Empty on the public look.
 	Candidates *[]BrandCandidate `json:"candidates,omitempty"`
 
@@ -2225,6 +2396,9 @@ type ResolvedBrand struct {
 	Title   string              `json:"title"`
 	Tokens  BrandTokens         `json:"tokens"`
 	V       int32               `json:"v"`
+
+	// ValidUntil The next time the campaign in force changes (B24): the start of the day a campaign starts or the day after one ends, in the business time zone. Absent when nothing is scheduled. The client refetches at the nearer of this and six hours.
+	ValidUntil *time.Time `json:"validUntil,omitempty"`
 
 	// Version The cache key of the payload.
 	Version string `json:"version"`
@@ -3303,6 +3477,20 @@ type PostIdentityBrandsByIdArchiveParams struct {
 	IfMatch string `json:"If-Match"`
 }
 
+// DeleteIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlot defines parameters for DeleteIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot.
+type DeleteIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlot string
+
+// GetIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlot defines parameters for GetIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot.
+type GetIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlot string
+
+// PutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotMultipartBody defines parameters for PutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot.
+type PutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotMultipartBody struct {
+	File openapi_types.File `json:"file"`
+}
+
+// PutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlot defines parameters for PutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot.
+type PutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlot string
+
 // PostIdentityBrandsByIdDiscardDraftParams defines parameters for PostIdentityBrandsByIdDiscardDraft.
 type PostIdentityBrandsByIdDiscardDraftParams struct {
 	// IfMatch The brand's revision it was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 stale_revision.
@@ -3726,6 +3914,15 @@ type PostIdentityBrandsJSONRequestBody = BrandUpdateRequest
 // PutIdentityBrandsByIdJSONRequestBody defines body for PutIdentityBrandsById for application/json ContentType.
 type PutIdentityBrandsByIdJSONRequestBody = PutIdentityBrandsByIdJSONBody
 
+// PostIdentityBrandsByIdCampaignsJSONRequestBody defines body for PostIdentityBrandsByIdCampaigns for application/json ContentType.
+type PostIdentityBrandsByIdCampaignsJSONRequestBody = BrandCampaignInput
+
+// PutIdentityBrandsByIdCampaignsByCampaignIdJSONRequestBody defines body for PutIdentityBrandsByIdCampaignsByCampaignId for application/json ContentType.
+type PutIdentityBrandsByIdCampaignsByCampaignIdJSONRequestBody = BrandCampaignInput
+
+// PutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotMultipartRequestBody defines body for PutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot for multipart/form-data ContentType.
+type PutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotMultipartRequestBody PutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotMultipartBody
+
 // PutIdentityBrandsByIdLogosBySlotMultipartRequestBody defines body for PutIdentityBrandsByIdLogosBySlot for multipart/form-data ContentType.
 type PutIdentityBrandsByIdLogosBySlotMultipartRequestBody PutIdentityBrandsByIdLogosBySlotMultipartBody
 
@@ -3863,6 +4060,241 @@ type PutIdentitySystemMaintenanceJSONRequestBody = PutIdentitySystemMaintenanceJ
 
 // PutIdentityUsersByIdBadgeJSONRequestBody defines body for PutIdentityUsersByIdBadge for application/json ContentType.
 type PutIdentityUsersByIdBadgeJSONRequestBody = PutIdentityUsersByIdBadgeJSONBody
+
+// Getter for additional properties for BrandCampaignInput. Returns the specified
+// element and whether it was found
+func (a BrandCampaignInput) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for BrandCampaignInput
+func (a *BrandCampaignInput) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for BrandCampaignInput to handle AdditionalProperties
+func (a *BrandCampaignInput) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["affectsEmail"]; found {
+		err = json.Unmarshal(raw, &a.AffectsEmail)
+		if err != nil {
+			return fmt.Errorf("error reading 'affectsEmail': %w", err)
+		}
+		delete(object, "affectsEmail")
+	}
+
+	if raw, found := object["enabled"]; found {
+		err = json.Unmarshal(raw, &a.Enabled)
+		if err != nil {
+			return fmt.Errorf("error reading 'enabled': %w", err)
+		}
+		delete(object, "enabled")
+	}
+
+	if raw, found := object["endsOn"]; found {
+		err = json.Unmarshal(raw, &a.EndsOn)
+		if err != nil {
+			return fmt.Errorf("error reading 'endsOn': %w", err)
+		}
+		delete(object, "endsOn")
+	}
+
+	if raw, found := object["name"]; found {
+		err = json.Unmarshal(raw, &a.Name)
+		if err != nil {
+			return fmt.Errorf("error reading 'name': %w", err)
+		}
+		delete(object, "name")
+	}
+
+	if raw, found := object["overlay"]; found {
+		err = json.Unmarshal(raw, &a.Overlay)
+		if err != nil {
+			return fmt.Errorf("error reading 'overlay': %w", err)
+		}
+		delete(object, "overlay")
+	}
+
+	if raw, found := object["startsOn"]; found {
+		err = json.Unmarshal(raw, &a.StartsOn)
+		if err != nil {
+			return fmt.Errorf("error reading 'startsOn': %w", err)
+		}
+		delete(object, "startsOn")
+	}
+
+	if raw, found := object["yearly"]; found {
+		err = json.Unmarshal(raw, &a.Yearly)
+		if err != nil {
+			return fmt.Errorf("error reading 'yearly': %w", err)
+		}
+		delete(object, "yearly")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for BrandCampaignInput to handle AdditionalProperties
+func (a BrandCampaignInput) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	if a.AffectsEmail != nil {
+		object["affectsEmail"], err = json.Marshal(a.AffectsEmail)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'affectsEmail': %w", err)
+		}
+	}
+
+	if a.Enabled != nil {
+		object["enabled"], err = json.Marshal(a.Enabled)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'enabled': %w", err)
+		}
+	}
+
+	object["endsOn"], err = json.Marshal(a.EndsOn)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'endsOn': %w", err)
+	}
+
+	object["name"], err = json.Marshal(a.Name)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'name': %w", err)
+	}
+
+	if a.Overlay != nil {
+		object["overlay"], err = json.Marshal(a.Overlay)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'overlay': %w", err)
+		}
+	}
+
+	object["startsOn"], err = json.Marshal(a.StartsOn)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'startsOn': %w", err)
+	}
+
+	if a.Yearly != nil {
+		object["yearly"], err = json.Marshal(a.Yearly)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'yearly': %w", err)
+		}
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
+
+// Getter for additional properties for BrandCampaignOverlayInput. Returns the specified
+// element and whether it was found
+func (a BrandCampaignOverlayInput) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for BrandCampaignOverlayInput
+func (a *BrandCampaignOverlayInput) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for BrandCampaignOverlayInput to handle AdditionalProperties
+func (a *BrandCampaignOverlayInput) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["primary"]; found {
+		err = json.Unmarshal(raw, &a.Primary)
+		if err != nil {
+			return fmt.Errorf("error reading 'primary': %w", err)
+		}
+		delete(object, "primary")
+	}
+
+	if raw, found := object["title"]; found {
+		err = json.Unmarshal(raw, &a.Title)
+		if err != nil {
+			return fmt.Errorf("error reading 'title': %w", err)
+		}
+		delete(object, "title")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for BrandCampaignOverlayInput to handle AdditionalProperties
+func (a BrandCampaignOverlayInput) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	if a.Primary != nil {
+		object["primary"], err = json.Marshal(a.Primary)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'primary': %w", err)
+		}
+	}
+
+	if a.Title != nil {
+		object["title"], err = json.Marshal(a.Title)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'title': %w", err)
+		}
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
 
 // Getter for additional properties for BrandUpdateRequest. Returns the specified
 // element and whether it was found
@@ -4496,6 +4928,27 @@ type ServerInterface interface {
 	// PostIdentityBrandsByIdArchive Archive a brand
 	// (POST /api/v1/identity/brands/{id}/archive)
 	PostIdentityBrandsByIdArchive(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params PostIdentityBrandsByIdArchiveParams)
+	// GetIdentityBrandsByIdCampaigns List a brand's campaigns
+	// (GET /api/v1/identity/brands/{id}/campaigns)
+	GetIdentityBrandsByIdCampaigns(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// PostIdentityBrandsByIdCampaigns Create a campaign
+	// (POST /api/v1/identity/brands/{id}/campaigns)
+	PostIdentityBrandsByIdCampaigns(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// DeleteIdentityBrandsByIdCampaignsByCampaignId Delete a campaign
+	// (DELETE /api/v1/identity/brands/{id}/campaigns/{campaignId})
+	DeleteIdentityBrandsByIdCampaignsByCampaignId(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, campaignId openapi_types.UUID)
+	// PutIdentityBrandsByIdCampaignsByCampaignId Save a campaign
+	// (PUT /api/v1/identity/brands/{id}/campaigns/{campaignId})
+	PutIdentityBrandsByIdCampaignsByCampaignId(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, campaignId openapi_types.UUID)
+	// DeleteIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot Remove a campaign logo
+	// (DELETE /api/v1/identity/brands/{id}/campaigns/{campaignId}/logos/{slot})
+	DeleteIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, campaignId openapi_types.UUID, slot DeleteIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlot)
+	// GetIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot Get a campaign logo
+	// (GET /api/v1/identity/brands/{id}/campaigns/{campaignId}/logos/{slot})
+	GetIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, campaignId openapi_types.UUID, slot GetIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlot)
+	// PutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot Set a campaign logo
+	// (PUT /api/v1/identity/brands/{id}/campaigns/{campaignId}/logos/{slot})
+	PutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, campaignId openapi_types.UUID, slot PutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlot)
 	// PostIdentityBrandsByIdDiscardDraft Discard a brand's draft
 	// (POST /api/v1/identity/brands/{id}/discard-draft)
 	PostIdentityBrandsByIdDiscardDraft(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params PostIdentityBrandsByIdDiscardDraftParams)
@@ -6363,6 +6816,260 @@ func (siw *ServerInterfaceWrapper) PostIdentityBrandsByIdArchive(w http.Response
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostIdentityBrandsByIdArchive(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetIdentityBrandsByIdCampaigns operation middleware
+func (siw *ServerInterfaceWrapper) GetIdentityBrandsByIdCampaigns(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetIdentityBrandsByIdCampaigns(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostIdentityBrandsByIdCampaigns operation middleware
+func (siw *ServerInterfaceWrapper) PostIdentityBrandsByIdCampaigns(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostIdentityBrandsByIdCampaigns(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteIdentityBrandsByIdCampaignsByCampaignId operation middleware
+func (siw *ServerInterfaceWrapper) DeleteIdentityBrandsByIdCampaignsByCampaignId(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "campaignId" -------------
+	var campaignId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "campaignId", r.PathValue("campaignId"), &campaignId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "campaignId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteIdentityBrandsByIdCampaignsByCampaignId(w, r, id, campaignId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutIdentityBrandsByIdCampaignsByCampaignId operation middleware
+func (siw *ServerInterfaceWrapper) PutIdentityBrandsByIdCampaignsByCampaignId(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "campaignId" -------------
+	var campaignId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "campaignId", r.PathValue("campaignId"), &campaignId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "campaignId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutIdentityBrandsByIdCampaignsByCampaignId(w, r, id, campaignId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot operation middleware
+func (siw *ServerInterfaceWrapper) DeleteIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "campaignId" -------------
+	var campaignId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "campaignId", r.PathValue("campaignId"), &campaignId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "campaignId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "slot" -------------
+	var slot DeleteIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlot
+
+	err = runtime.BindStyledParameterWithOptions("simple", "slot", r.PathValue("slot"), &slot, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "slot", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot(w, r, id, campaignId, slot)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot operation middleware
+func (siw *ServerInterfaceWrapper) GetIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "campaignId" -------------
+	var campaignId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "campaignId", r.PathValue("campaignId"), &campaignId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "campaignId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "slot" -------------
+	var slot GetIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlot
+
+	err = runtime.BindStyledParameterWithOptions("simple", "slot", r.PathValue("slot"), &slot, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "slot", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot(w, r, id, campaignId, slot)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot operation middleware
+func (siw *ServerInterfaceWrapper) PutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "campaignId" -------------
+	var campaignId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "campaignId", r.PathValue("campaignId"), &campaignId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "campaignId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "slot" -------------
+	var slot PutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlot
+
+	err = runtime.BindStyledParameterWithOptions("simple", "slot", r.PathValue("slot"), &slot, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "slot", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot(w, r, id, campaignId, slot)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -10006,6 +10713,13 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/brands/{id}", wrapper.GetIdentityBrandsById)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/identity/brands/{id}", wrapper.PutIdentityBrandsById)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/brands/{id}/archive", wrapper.PostIdentityBrandsByIdArchive)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/brands/{id}/campaigns", wrapper.GetIdentityBrandsByIdCampaigns)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/brands/{id}/campaigns", wrapper.PostIdentityBrandsByIdCampaigns)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/identity/brands/{id}/campaigns/{campaignId}", wrapper.DeleteIdentityBrandsByIdCampaignsByCampaignId)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/identity/brands/{id}/campaigns/{campaignId}", wrapper.PutIdentityBrandsByIdCampaignsByCampaignId)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/identity/brands/{id}/campaigns/{campaignId}/logos/{slot}", wrapper.DeleteIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/brands/{id}/campaigns/{campaignId}/logos/{slot}", wrapper.GetIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/identity/brands/{id}/campaigns/{campaignId}/logos/{slot}", wrapper.PutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/brands/{id}/discard-draft", wrapper.PostIdentityBrandsByIdDiscardDraft)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/brands/{id}/duplicate", wrapper.PostIdentityBrandsByIdDuplicate)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/identity/brands/{id}/logos/{slot}", wrapper.DeleteIdentityBrandsByIdLogosBySlot)
@@ -14943,6 +15657,569 @@ func (response PostIdentityBrandsByIdArchive409JSONResponse) VisitPostIdentityBr
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityBrandsByIdCampaignsRequestObject struct {
+	Id openapi_types.UUID `json:"id"`
+}
+
+type GetIdentityBrandsByIdCampaignsResponseObject interface {
+	VisitGetIdentityBrandsByIdCampaignsResponse(w http.ResponseWriter) error
+}
+
+type GetIdentityBrandsByIdCampaigns200JSONResponse BrandCampaignsResponse
+
+func (response GetIdentityBrandsByIdCampaigns200JSONResponse) VisitGetIdentityBrandsByIdCampaignsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityBrandsByIdCampaigns401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityBrandsByIdCampaigns401JSONResponse) VisitGetIdentityBrandsByIdCampaignsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityBrandsByIdCampaigns403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityBrandsByIdCampaigns403JSONResponse) VisitGetIdentityBrandsByIdCampaignsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityBrandsByIdCampaigns404Response struct {
+}
+
+func (response GetIdentityBrandsByIdCampaigns404Response) VisitGetIdentityBrandsByIdCampaignsResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostIdentityBrandsByIdCampaignsRequestObject struct {
+	Id   openapi_types.UUID `json:"id"`
+	Body *PostIdentityBrandsByIdCampaignsJSONRequestBody
+}
+
+type PostIdentityBrandsByIdCampaignsResponseObject interface {
+	VisitPostIdentityBrandsByIdCampaignsResponse(w http.ResponseWriter) error
+}
+
+type PostIdentityBrandsByIdCampaigns201JSONResponse BrandCampaign
+
+func (response PostIdentityBrandsByIdCampaigns201JSONResponse) VisitPostIdentityBrandsByIdCampaignsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityBrandsByIdCampaigns400JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityBrandsByIdCampaigns400JSONResponse) VisitPostIdentityBrandsByIdCampaignsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityBrandsByIdCampaigns401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityBrandsByIdCampaigns401JSONResponse) VisitPostIdentityBrandsByIdCampaignsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityBrandsByIdCampaigns403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityBrandsByIdCampaigns403JSONResponse) VisitPostIdentityBrandsByIdCampaignsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityBrandsByIdCampaigns404Response struct {
+}
+
+func (response PostIdentityBrandsByIdCampaigns404Response) VisitPostIdentityBrandsByIdCampaignsResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostIdentityBrandsByIdCampaigns409JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityBrandsByIdCampaigns409JSONResponse) VisitPostIdentityBrandsByIdCampaignsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityBrandsByIdCampaigns422JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityBrandsByIdCampaigns422JSONResponse) VisitPostIdentityBrandsByIdCampaignsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteIdentityBrandsByIdCampaignsByCampaignIdRequestObject struct {
+	Id         openapi_types.UUID `json:"id"`
+	CampaignId openapi_types.UUID `json:"campaignId"`
+}
+
+type DeleteIdentityBrandsByIdCampaignsByCampaignIdResponseObject interface {
+	VisitDeleteIdentityBrandsByIdCampaignsByCampaignIdResponse(w http.ResponseWriter) error
+}
+
+type DeleteIdentityBrandsByIdCampaignsByCampaignId204Response struct {
+}
+
+func (response DeleteIdentityBrandsByIdCampaignsByCampaignId204Response) VisitDeleteIdentityBrandsByIdCampaignsByCampaignIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteIdentityBrandsByIdCampaignsByCampaignId401JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteIdentityBrandsByIdCampaignsByCampaignId401JSONResponse) VisitDeleteIdentityBrandsByIdCampaignsByCampaignIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteIdentityBrandsByIdCampaignsByCampaignId403JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteIdentityBrandsByIdCampaignsByCampaignId403JSONResponse) VisitDeleteIdentityBrandsByIdCampaignsByCampaignIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteIdentityBrandsByIdCampaignsByCampaignId404Response struct {
+}
+
+func (response DeleteIdentityBrandsByIdCampaignsByCampaignId404Response) VisitDeleteIdentityBrandsByIdCampaignsByCampaignIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutIdentityBrandsByIdCampaignsByCampaignIdRequestObject struct {
+	Id         openapi_types.UUID `json:"id"`
+	CampaignId openapi_types.UUID `json:"campaignId"`
+	Body       *PutIdentityBrandsByIdCampaignsByCampaignIdJSONRequestBody
+}
+
+type PutIdentityBrandsByIdCampaignsByCampaignIdResponseObject interface {
+	VisitPutIdentityBrandsByIdCampaignsByCampaignIdResponse(w http.ResponseWriter) error
+}
+
+type PutIdentityBrandsByIdCampaignsByCampaignId200JSONResponse BrandCampaign
+
+func (response PutIdentityBrandsByIdCampaignsByCampaignId200JSONResponse) VisitPutIdentityBrandsByIdCampaignsByCampaignIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityBrandsByIdCampaignsByCampaignId400JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutIdentityBrandsByIdCampaignsByCampaignId400JSONResponse) VisitPutIdentityBrandsByIdCampaignsByCampaignIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityBrandsByIdCampaignsByCampaignId401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutIdentityBrandsByIdCampaignsByCampaignId401JSONResponse) VisitPutIdentityBrandsByIdCampaignsByCampaignIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityBrandsByIdCampaignsByCampaignId403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutIdentityBrandsByIdCampaignsByCampaignId403JSONResponse) VisitPutIdentityBrandsByIdCampaignsByCampaignIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityBrandsByIdCampaignsByCampaignId404Response struct {
+}
+
+func (response PutIdentityBrandsByIdCampaignsByCampaignId404Response) VisitPutIdentityBrandsByIdCampaignsByCampaignIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutIdentityBrandsByIdCampaignsByCampaignId409JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutIdentityBrandsByIdCampaignsByCampaignId409JSONResponse) VisitPutIdentityBrandsByIdCampaignsByCampaignIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityBrandsByIdCampaignsByCampaignId422JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutIdentityBrandsByIdCampaignsByCampaignId422JSONResponse) VisitPutIdentityBrandsByIdCampaignsByCampaignIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotRequestObject struct {
+	Id         openapi_types.UUID                                                 `json:"id"`
+	CampaignId openapi_types.UUID                                                 `json:"campaignId"`
+	Slot       DeleteIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlot `json:"slot"`
+}
+
+type DeleteIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotResponseObject interface {
+	VisitDeleteIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotResponse(w http.ResponseWriter) error
+}
+
+type DeleteIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot200JSONResponse BrandCampaign
+
+func (response DeleteIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot200JSONResponse) VisitDeleteIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot401JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot401JSONResponse) VisitDeleteIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot403JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot403JSONResponse) VisitDeleteIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot404Response struct {
+}
+
+func (response DeleteIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot404Response) VisitDeleteIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type GetIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotRequestObject struct {
+	Id         openapi_types.UUID                                              `json:"id"`
+	CampaignId openapi_types.UUID                                              `json:"campaignId"`
+	Slot       GetIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlot `json:"slot"`
+}
+
+type GetIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotResponseObject interface {
+	VisitGetIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotResponse(w http.ResponseWriter) error
+}
+
+type GetIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot200ImagejpegResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response GetIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot200ImagejpegResponse) VisitGetIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "image/jpeg")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot200ImagepngResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response GetIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot200ImagepngResponse) VisitGetIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "image/png")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot401JSONResponse) VisitGetIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot403JSONResponse) VisitGetIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot404Response struct {
+}
+
+func (response GetIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot404Response) VisitGetIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type GetIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot503JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot503JSONResponse) VisitGetIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotRequestObject struct {
+	Id         openapi_types.UUID                                              `json:"id"`
+	CampaignId openapi_types.UUID                                              `json:"campaignId"`
+	Slot       PutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlot `json:"slot"`
+	Body       *multipart.Reader
+}
+
+type PutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotResponseObject interface {
+	VisitPutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotResponse(w http.ResponseWriter) error
+}
+
+type PutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot200JSONResponse BrandCampaign
+
+func (response PutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot200JSONResponse) VisitPutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot400JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot400JSONResponse) VisitPutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot401JSONResponse) VisitPutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot403JSONResponse) VisitPutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot404Response struct {
+}
+
+func (response PutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot404Response) VisitPutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot503JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot503JSONResponse) VisitPutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -25182,6 +26459,27 @@ type StrictServerInterface interface {
 	// PostIdentityBrandsByIdArchive Archive a brand
 	// (POST /api/v1/identity/brands/{id}/archive)
 	PostIdentityBrandsByIdArchive(ctx context.Context, request PostIdentityBrandsByIdArchiveRequestObject) (PostIdentityBrandsByIdArchiveResponseObject, error)
+	// GetIdentityBrandsByIdCampaigns List a brand's campaigns
+	// (GET /api/v1/identity/brands/{id}/campaigns)
+	GetIdentityBrandsByIdCampaigns(ctx context.Context, request GetIdentityBrandsByIdCampaignsRequestObject) (GetIdentityBrandsByIdCampaignsResponseObject, error)
+	// PostIdentityBrandsByIdCampaigns Create a campaign
+	// (POST /api/v1/identity/brands/{id}/campaigns)
+	PostIdentityBrandsByIdCampaigns(ctx context.Context, request PostIdentityBrandsByIdCampaignsRequestObject) (PostIdentityBrandsByIdCampaignsResponseObject, error)
+	// DeleteIdentityBrandsByIdCampaignsByCampaignId Delete a campaign
+	// (DELETE /api/v1/identity/brands/{id}/campaigns/{campaignId})
+	DeleteIdentityBrandsByIdCampaignsByCampaignId(ctx context.Context, request DeleteIdentityBrandsByIdCampaignsByCampaignIdRequestObject) (DeleteIdentityBrandsByIdCampaignsByCampaignIdResponseObject, error)
+	// PutIdentityBrandsByIdCampaignsByCampaignId Save a campaign
+	// (PUT /api/v1/identity/brands/{id}/campaigns/{campaignId})
+	PutIdentityBrandsByIdCampaignsByCampaignId(ctx context.Context, request PutIdentityBrandsByIdCampaignsByCampaignIdRequestObject) (PutIdentityBrandsByIdCampaignsByCampaignIdResponseObject, error)
+	// DeleteIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot Remove a campaign logo
+	// (DELETE /api/v1/identity/brands/{id}/campaigns/{campaignId}/logos/{slot})
+	DeleteIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot(ctx context.Context, request DeleteIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotRequestObject) (DeleteIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotResponseObject, error)
+	// GetIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot Get a campaign logo
+	// (GET /api/v1/identity/brands/{id}/campaigns/{campaignId}/logos/{slot})
+	GetIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot(ctx context.Context, request GetIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotRequestObject) (GetIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotResponseObject, error)
+	// PutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot Set a campaign logo
+	// (PUT /api/v1/identity/brands/{id}/campaigns/{campaignId}/logos/{slot})
+	PutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot(ctx context.Context, request PutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotRequestObject) (PutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotResponseObject, error)
 	// PostIdentityBrandsByIdDiscardDraft Discard a brand's draft
 	// (POST /api/v1/identity/brands/{id}/discard-draft)
 	PostIdentityBrandsByIdDiscardDraft(ctx context.Context, request PostIdentityBrandsByIdDiscardDraftRequestObject) (PostIdentityBrandsByIdDiscardDraftResponseObject, error)
@@ -27572,6 +28870,217 @@ func (sh *strictHandler) PostIdentityBrandsByIdArchive(w http.ResponseWriter, r 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PostIdentityBrandsByIdArchiveResponseObject); ok {
 		if err := validResponse.VisitPostIdentityBrandsByIdArchiveResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetIdentityBrandsByIdCampaigns operation middleware
+func (sh *strictHandler) GetIdentityBrandsByIdCampaigns(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request GetIdentityBrandsByIdCampaignsRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetIdentityBrandsByIdCampaigns(ctx, request.(GetIdentityBrandsByIdCampaignsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetIdentityBrandsByIdCampaigns")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetIdentityBrandsByIdCampaignsResponseObject); ok {
+		if err := validResponse.VisitGetIdentityBrandsByIdCampaignsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostIdentityBrandsByIdCampaigns operation middleware
+func (sh *strictHandler) PostIdentityBrandsByIdCampaigns(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request PostIdentityBrandsByIdCampaignsRequestObject
+
+	request.Id = id
+
+	var body PostIdentityBrandsByIdCampaignsJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostIdentityBrandsByIdCampaigns(ctx, request.(PostIdentityBrandsByIdCampaignsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostIdentityBrandsByIdCampaigns")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostIdentityBrandsByIdCampaignsResponseObject); ok {
+		if err := validResponse.VisitPostIdentityBrandsByIdCampaignsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteIdentityBrandsByIdCampaignsByCampaignId operation middleware
+func (sh *strictHandler) DeleteIdentityBrandsByIdCampaignsByCampaignId(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, campaignId openapi_types.UUID) {
+	var request DeleteIdentityBrandsByIdCampaignsByCampaignIdRequestObject
+
+	request.Id = id
+	request.CampaignId = campaignId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteIdentityBrandsByIdCampaignsByCampaignId(ctx, request.(DeleteIdentityBrandsByIdCampaignsByCampaignIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteIdentityBrandsByIdCampaignsByCampaignId")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteIdentityBrandsByIdCampaignsByCampaignIdResponseObject); ok {
+		if err := validResponse.VisitDeleteIdentityBrandsByIdCampaignsByCampaignIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutIdentityBrandsByIdCampaignsByCampaignId operation middleware
+func (sh *strictHandler) PutIdentityBrandsByIdCampaignsByCampaignId(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, campaignId openapi_types.UUID) {
+	var request PutIdentityBrandsByIdCampaignsByCampaignIdRequestObject
+
+	request.Id = id
+	request.CampaignId = campaignId
+
+	var body PutIdentityBrandsByIdCampaignsByCampaignIdJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutIdentityBrandsByIdCampaignsByCampaignId(ctx, request.(PutIdentityBrandsByIdCampaignsByCampaignIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutIdentityBrandsByIdCampaignsByCampaignId")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutIdentityBrandsByIdCampaignsByCampaignIdResponseObject); ok {
+		if err := validResponse.VisitPutIdentityBrandsByIdCampaignsByCampaignIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot operation middleware
+func (sh *strictHandler) DeleteIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, campaignId openapi_types.UUID, slot DeleteIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlot) {
+	var request DeleteIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotRequestObject
+
+	request.Id = id
+	request.CampaignId = campaignId
+	request.Slot = slot
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot(ctx, request.(DeleteIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotResponseObject); ok {
+		if err := validResponse.VisitDeleteIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot operation middleware
+func (sh *strictHandler) GetIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, campaignId openapi_types.UUID, slot GetIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlot) {
+	var request GetIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotRequestObject
+
+	request.Id = id
+	request.CampaignId = campaignId
+	request.Slot = slot
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot(ctx, request.(GetIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotResponseObject); ok {
+		if err := validResponse.VisitGetIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot operation middleware
+func (sh *strictHandler) PutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, campaignId openapi_types.UUID, slot PutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotParamsSlot) {
+	var request PutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotRequestObject
+
+	request.Id = id
+	request.CampaignId = campaignId
+	request.Slot = slot
+
+	if reader, err := r.MultipartReader(); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode multipart body: %w", err))
+		return
+	} else {
+		request.Body = reader
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot(ctx, request.(PutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotResponseObject); ok {
+		if err := validResponse.VisitPutIdentityBrandsByIdCampaignsByCampaignIdLogosBySlotResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
