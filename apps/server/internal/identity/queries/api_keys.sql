@@ -21,10 +21,12 @@ WHERE ak.token_hash = @token_hash;
 
 -- name: GetAPIKeyScope :one
 -- GetAPIKeyScope is what a key's scope needs of it: its integration, its
--- narrowing and whether it only reads.
-SELECT integration_id, permissions, read_only
-FROM identity.api_keys
-WHERE id = @id;
+-- narrowing, whether it only reads, and its integration's MCP setting (MCP
+-- server design M22), read together so the MCP endpoint asks once.
+SELECT k.integration_id, k.permissions, k.read_only, i.mcp_access
+FROM identity.api_keys k
+JOIN identity.integrations i ON i.user_id = k.integration_id
+WHERE k.id = @id;
 
 -- name: TouchAPIKey :exec
 -- TouchAPIKey records a key's use at most once a minute (K17).

@@ -312,6 +312,7 @@ identity never putIdentityAccountPin
 identity never putIdentityAccountProfile
 identity never putIdentityBrandsById
 identity never putIdentityBrandsByIdLogosBySlot
+identity never putIdentityIntegrationsByIdMcp
 identity never putIdentityIntegrationsByIdRoles
 identity never putIdentityOwnerAiTasksByKey
 identity never putIdentityOwnerProvisioningRoles

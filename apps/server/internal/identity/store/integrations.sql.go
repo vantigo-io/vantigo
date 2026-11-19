@@ -169,7 +169,7 @@ func (q *Queries) IntegrationNameTaken(ctx context.Context, arg IntegrationNameT
 const listIntegrations = `-- name: ListIntegrations :many
 SELECT i.user_id, i.name, i.description, i.contact_user_id, c.display_name AS contact_display_name,
        i.rate_limit_per_minute, i.created_by, i.created_at, i.archived_at, i.archived_by, i.version,
-       u.is_disabled, r.role_ids, r.role_names, r.role_display_names,
+       i.mcp_access, u.is_disabled, r.role_ids, r.role_names, r.role_display_names,
        k.live_keys, k.nearest_expiry, k.last_used_at
 FROM identity.integrations i
 JOIN identity.users u ON u.id = i.user_id
@@ -210,6 +210,7 @@ type ListIntegrationsRow struct {
 	ArchivedAt         *time.Time
 	ArchivedBy         *uuid.UUID
 	Version            uuid.UUID
+	McpAccess          string
 	IsDisabled         bool
 	RoleIds            []uuid.UUID
 	RoleNames          []string
@@ -243,6 +244,7 @@ func (q *Queries) ListIntegrations(ctx context.Context, arg ListIntegrationsPara
 			&i.ArchivedAt,
 			&i.ArchivedBy,
 			&i.Version,
+			&i.McpAccess,
 			&i.IsDisabled,
 			&i.RoleIds,
 			&i.RoleNames,
@@ -263,7 +265,7 @@ func (q *Queries) ListIntegrations(ctx context.Context, arg ListIntegrationsPara
 
 const lockIntegration = `-- name: LockIntegration :one
 SELECT i.user_id, i.name, i.description, i.contact_user_id, i.rate_limit_per_minute,
-       i.archived_at, i.version, u.is_disabled
+       i.archived_at, i.version, i.mcp_access, u.is_disabled
 FROM identity.integrations i
 JOIN identity.users u ON u.id = i.user_id
 WHERE i.user_id = $1
@@ -278,6 +280,7 @@ type LockIntegrationRow struct {
 	RateLimitPerMinute int32
 	ArchivedAt         *time.Time
 	Version            uuid.UUID
+	McpAccess          string
 	IsDisabled         bool
 }
 
@@ -293,6 +296,7 @@ func (q *Queries) LockIntegration(ctx context.Context, userID uuid.UUID) (LockIn
 		&i.RateLimitPerMinute,
 		&i.ArchivedAt,
 		&i.Version,
+		&i.McpAccess,
 		&i.IsDisabled,
 	)
 	return i, err
@@ -314,6 +318,23 @@ func (q *Queries) RoleHeldByIntegration(ctx context.Context, roleID uuid.UUID) (
 	var held bool
 	err := row.Scan(&held)
 	return held, err
+}
+
+const setIntegrationMCPAccess = `-- name: SetIntegrationMCPAccess :exec
+UPDATE identity.integrations SET mcp_access = $1, version = $2 WHERE user_id = $3
+`
+
+type SetIntegrationMCPAccessParams struct {
+	McpAccess string
+	Version   uuid.UUID
+	UserID    uuid.UUID
+}
+
+// SetIntegrationMCPAccess changes what the integration's keys may do at the
+// MCP endpoint (MCP server design M2) and bumps its version.
+func (q *Queries) SetIntegrationMCPAccess(ctx context.Context, arg SetIntegrationMCPAccessParams) error {
+	_, err := q.db.Exec(ctx, setIntegrationMCPAccess, arg.McpAccess, arg.Version, arg.UserID)
+	return err
 }
 
 const setIntegrationRolesLicence = `-- name: SetIntegrationRolesLicence :exec

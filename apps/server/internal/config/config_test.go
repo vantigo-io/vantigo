@@ -304,6 +304,20 @@ func TestLoad_FlagsAreStrict(t *testing.T) {
 	}
 }
 
+// TestLoad_MCP proves MCP_ENABLED defaults on and is a strict "0"/"1" switch
+// (MCP server design M4).
+func TestLoad_MCP(t *testing.T) {
+	if !mustLoad(t, validEnv()).MCPEnabled {
+		t.Error("MCP_ENABLED unset did not default to on")
+	}
+	if mustLoad(t, with(validEnv(), "MCP_ENABLED", "0")).MCPEnabled {
+		t.Error("MCP_ENABLED=0 did not switch it off")
+	}
+	if msg := loadError(t, with(validEnv(), "MCP_ENABLED", "yes")); !strings.Contains(msg, `MCP_ENABLED: must be "0" or "1"`) {
+		t.Errorf("error = %q", msg)
+	}
+}
+
 // TestLoad_Live proves LIVE_ENABLED defaults on and is a strict "0"/"1"
 // switch, and that LIVE_DATABASE_URL is optional, validated as a connection
 // string, and left empty (the hub then uses DATABASE_URL) when unset.

@@ -21,7 +21,7 @@ INSERT INTO identity.integrations (
 -- expiry among them and the last time any of its keys was used.
 SELECT i.user_id, i.name, i.description, i.contact_user_id, c.display_name AS contact_display_name,
        i.rate_limit_per_minute, i.created_by, i.created_at, i.archived_at, i.archived_by, i.version,
-       u.is_disabled, r.role_ids, r.role_names, r.role_display_names,
+       i.mcp_access, u.is_disabled, r.role_ids, r.role_names, r.role_display_names,
        k.live_keys, k.nearest_expiry, k.last_used_at
 FROM identity.integrations i
 JOIN identity.users u ON u.id = i.user_id
@@ -47,7 +47,7 @@ ORDER BY i.archived_at IS NOT NULL, lower(i.name), i.user_id;
 -- name: LockIntegration :one
 -- LockIntegration holds an integration's row, and its user's, for a write.
 SELECT i.user_id, i.name, i.description, i.contact_user_id, i.rate_limit_per_minute,
-       i.archived_at, i.version, u.is_disabled
+       i.archived_at, i.version, i.mcp_access, u.is_disabled
 FROM identity.integrations i
 JOIN identity.users u ON u.id = i.user_id
 WHERE i.user_id = @user_id
@@ -61,6 +61,11 @@ SET name = sqlc.arg(name),
     rate_limit_per_minute = sqlc.arg(rate_limit_per_minute),
     version = sqlc.arg(version)
 WHERE user_id = sqlc.arg(user_id);
+
+-- name: SetIntegrationMCPAccess :exec
+-- SetIntegrationMCPAccess changes what the integration's keys may do at the
+-- MCP endpoint (MCP server design M2) and bumps its version.
+UPDATE identity.integrations SET mcp_access = @mcp_access, version = @version WHERE user_id = @user_id;
 
 -- name: TouchIntegrationVersion :exec
 UPDATE identity.integrations SET version = @version WHERE user_id = @user_id;

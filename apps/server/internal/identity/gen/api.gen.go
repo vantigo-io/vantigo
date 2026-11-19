@@ -315,6 +315,27 @@ func (e IntegrationStatus) Valid() bool {
 	}
 }
 
+// Defines values for IntegrationMcpAccess.
+const (
+	Off       IntegrationMcpAccess = "off"
+	Read      IntegrationMcpAccess = "read"
+	ReadWrite IntegrationMcpAccess = "read_write"
+)
+
+// Valid indicates whether the value is a known member of the IntegrationMcpAccess enum.
+func (e IntegrationMcpAccess) Valid() bool {
+	switch e {
+	case Off:
+		return true
+	case Read:
+		return true
+	case ReadWrite:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for InvitationResponseRevokedReason.
 const (
 	InvitationResponseRevokedReasonDeactivated    InvitationResponseRevokedReason = "deactivated"
@@ -1512,11 +1533,26 @@ type IntegrationDetail struct {
 
 	// Keys Its keys, newest first.
 	Keys []ApiKey `json:"keys"`
+
+	// McpAccess What the integration's API keys may do at the MCP endpoint (MCP server design M1): off, read, or read_write. A read-only key reads whatever this says.
+	McpAccess IntegrationMcpAccess `json:"mcpAccess"`
+
+	// McpAvailable False when the installation has switched the MCP endpoint off (MCP_ENABLED=0), whatever mcpAccess says.
+	McpAvailable bool `json:"mcpAvailable"`
 }
 
 // IntegrationList defines model for IntegrationList.
 type IntegrationList struct {
 	Integrations []Integration `json:"integrations"`
+}
+
+// IntegrationMcpAccess What the integration's API keys may do at the MCP endpoint (MCP server design M1): off, read, or read_write. A read-only key reads whatever this says.
+type IntegrationMcpAccess string
+
+// IntegrationMcpRequest defines model for IntegrationMcpRequest.
+type IntegrationMcpRequest struct {
+	// McpAccess What the integration's API keys may do at the MCP endpoint (MCP server design M1): off, read, or read_write. A read-only key reads whatever this says.
+	McpAccess IntegrationMcpAccess `json:"mcpAccess"`
 }
 
 // IntegrationPermission defines model for IntegrationPermission.
@@ -3033,6 +3069,12 @@ type PostIdentityIntegrationsByIdKeysJSONBody = ApiKeyCreateRequest
 // PostIdentityIntegrationsByIdKeysByKeyIdRollJSONBody defines parameters for PostIdentityIntegrationsByIdKeysByKeyIdRoll.
 type PostIdentityIntegrationsByIdKeysByKeyIdRollJSONBody = ApiKeyRollRequest
 
+// PutIdentityIntegrationsByIdMcpParams defines parameters for PutIdentityIntegrationsByIdMcp.
+type PutIdentityIntegrationsByIdMcpParams struct {
+	// IfMatch The integration's version as it was read, bare or quoted. A version that has moved on is a 412 version_mismatch.
+	IfMatch string `json:"If-Match"`
+}
+
 // GetIdentityIntegrationsByIdRequestsParams defines parameters for GetIdentityIntegrationsByIdRequests.
 type GetIdentityIntegrationsByIdRequestsParams struct {
 	// Key Only the requests of this key.
@@ -3387,6 +3429,9 @@ type PostIdentityIntegrationsByIdKeysJSONRequestBody = PostIdentityIntegrationsB
 
 // PostIdentityIntegrationsByIdKeysByKeyIdRollJSONRequestBody defines body for PostIdentityIntegrationsByIdKeysByKeyIdRoll for application/json ContentType.
 type PostIdentityIntegrationsByIdKeysByKeyIdRollJSONRequestBody = PostIdentityIntegrationsByIdKeysByKeyIdRollJSONBody
+
+// PutIdentityIntegrationsByIdMcpJSONRequestBody defines body for PutIdentityIntegrationsByIdMcp for application/json ContentType.
+type PutIdentityIntegrationsByIdMcpJSONRequestBody = IntegrationMcpRequest
 
 // PutIdentityIntegrationsByIdRolesJSONRequestBody defines body for PutIdentityIntegrationsByIdRoles for application/json ContentType.
 type PutIdentityIntegrationsByIdRolesJSONRequestBody = PutIdentityIntegrationsByIdRolesJSONBody
@@ -4161,6 +4206,9 @@ type ServerInterface interface {
 	// PostIdentityIntegrationsByIdKeysByKeyIdRoll Roll an API key
 	// (POST /api/v1/identity/integrations/{id}/keys/{keyId}/roll)
 	PostIdentityIntegrationsByIdKeysByKeyIdRoll(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, keyId openapi_types.UUID)
+	// PutIdentityIntegrationsByIdMcp Set an integration's MCP access
+	// (PUT /api/v1/identity/integrations/{id}/mcp)
+	PutIdentityIntegrationsByIdMcp(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params PutIdentityIntegrationsByIdMcpParams)
 	// GetIdentityIntegrationsByIdRequests Read an integration's request log
 	// (GET /api/v1/identity/integrations/{id}/requests)
 	GetIdentityIntegrationsByIdRequests(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params GetIdentityIntegrationsByIdRequestsParams)
@@ -6184,6 +6232,60 @@ func (siw *ServerInterfaceWrapper) PostIdentityIntegrationsByIdKeysByKeyIdRoll(w
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostIdentityIntegrationsByIdKeysByKeyIdRoll(w, r, id, keyId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutIdentityIntegrationsByIdMcp operation middleware
+func (siw *ServerInterfaceWrapper) PutIdentityIntegrationsByIdMcp(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PutIdentityIntegrationsByIdMcpParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutIdentityIntegrationsByIdMcp(w, r, id, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -9107,6 +9209,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/integrations/{id}/keys", wrapper.PostIdentityIntegrationsByIdKeys)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/integrations/{id}/keys/{keyId}/revoke", wrapper.PostIdentityIntegrationsByIdKeysByKeyIdRevoke)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/integrations/{id}/keys/{keyId}/roll", wrapper.PostIdentityIntegrationsByIdKeysByKeyIdRoll)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/identity/integrations/{id}/mcp", wrapper.PutIdentityIntegrationsByIdMcp)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/integrations/{id}/requests", wrapper.GetIdentityIntegrationsByIdRequests)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/identity/integrations/{id}/roles", wrapper.PutIdentityIntegrationsByIdRoles)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/integrations/{id}/webhooks", wrapper.GetIdentityIntegrationsByIdWebhooks)
@@ -14688,6 +14791,114 @@ func (response PostIdentityIntegrationsByIdKeysByKeyIdRoll429JSONResponse) Visit
 		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
 	}
 	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityIntegrationsByIdMcpRequestObject struct {
+	Id     openapi_types.UUID `json:"id"`
+	Params PutIdentityIntegrationsByIdMcpParams
+	Body   *PutIdentityIntegrationsByIdMcpJSONRequestBody
+}
+
+type PutIdentityIntegrationsByIdMcpResponseObject interface {
+	VisitPutIdentityIntegrationsByIdMcpResponse(w http.ResponseWriter) error
+}
+
+type PutIdentityIntegrationsByIdMcp200JSONResponse IntegrationDetail
+
+func (response PutIdentityIntegrationsByIdMcp200JSONResponse) VisitPutIdentityIntegrationsByIdMcpResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityIntegrationsByIdMcp400JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutIdentityIntegrationsByIdMcp400JSONResponse) VisitPutIdentityIntegrationsByIdMcpResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityIntegrationsByIdMcp401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutIdentityIntegrationsByIdMcp401JSONResponse) VisitPutIdentityIntegrationsByIdMcpResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityIntegrationsByIdMcp403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutIdentityIntegrationsByIdMcp403JSONResponse) VisitPutIdentityIntegrationsByIdMcpResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityIntegrationsByIdMcp404JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutIdentityIntegrationsByIdMcp404JSONResponse) VisitPutIdentityIntegrationsByIdMcpResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityIntegrationsByIdMcp409JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutIdentityIntegrationsByIdMcp409JSONResponse) VisitPutIdentityIntegrationsByIdMcpResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityIntegrationsByIdMcp412JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutIdentityIntegrationsByIdMcp412JSONResponse) VisitPutIdentityIntegrationsByIdMcpResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(412)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -23361,6 +23572,9 @@ type StrictServerInterface interface {
 	// PostIdentityIntegrationsByIdKeysByKeyIdRoll Roll an API key
 	// (POST /api/v1/identity/integrations/{id}/keys/{keyId}/roll)
 	PostIdentityIntegrationsByIdKeysByKeyIdRoll(ctx context.Context, request PostIdentityIntegrationsByIdKeysByKeyIdRollRequestObject) (PostIdentityIntegrationsByIdKeysByKeyIdRollResponseObject, error)
+	// PutIdentityIntegrationsByIdMcp Set an integration's MCP access
+	// (PUT /api/v1/identity/integrations/{id}/mcp)
+	PutIdentityIntegrationsByIdMcp(ctx context.Context, request PutIdentityIntegrationsByIdMcpRequestObject) (PutIdentityIntegrationsByIdMcpResponseObject, error)
 	// GetIdentityIntegrationsByIdRequests Read an integration's request log
 	// (GET /api/v1/identity/integrations/{id}/requests)
 	GetIdentityIntegrationsByIdRequests(ctx context.Context, request GetIdentityIntegrationsByIdRequestsRequestObject) (GetIdentityIntegrationsByIdRequestsResponseObject, error)
@@ -25910,6 +26124,40 @@ func (sh *strictHandler) PostIdentityIntegrationsByIdKeysByKeyIdRoll(w http.Resp
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PostIdentityIntegrationsByIdKeysByKeyIdRollResponseObject); ok {
 		if err := validResponse.VisitPostIdentityIntegrationsByIdKeysByKeyIdRollResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutIdentityIntegrationsByIdMcp operation middleware
+func (sh *strictHandler) PutIdentityIntegrationsByIdMcp(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params PutIdentityIntegrationsByIdMcpParams) {
+	var request PutIdentityIntegrationsByIdMcpRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	var body PutIdentityIntegrationsByIdMcpJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutIdentityIntegrationsByIdMcp(ctx, request.(PutIdentityIntegrationsByIdMcpRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutIdentityIntegrationsByIdMcp")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutIdentityIntegrationsByIdMcpResponseObject); ok {
+		if err := validResponse.VisitPutIdentityIntegrationsByIdMcpResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

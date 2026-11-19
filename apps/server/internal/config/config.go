@@ -196,6 +196,11 @@ type Config struct {
 	// mode serve the live endpoint, GET /api/v1/live. Defaults on; off, the
 	// endpoint answers 404 and every screen keeps its fallback polling.
 	LiveEnabled bool
+	// MCPEnabled is MCP_ENABLED (MCP server design M4): whether api and server
+	// mode serve the MCP endpoint, POST /api/mcp. Defaults on; off, the path
+	// answers the 404 every unknown API path does, whatever an integration's
+	// MCP setting says.
+	MCPEnabled bool
 	// LiveDatabaseURL is LIVE_DATABASE_URL (live design L7): the connection
 	// the live hub's two dedicated connections (the listener and the presence
 	// publisher) open, for a deployment whose DATABASE_URL goes through a
@@ -774,6 +779,7 @@ func Load(env map[string]string) (*Config, error) {
 	c.Modules = modules(&p, env)
 	c.WorkersInProcess = workersInProcess(&p, env)
 	c.LiveEnabled = boolean(&p, env, "LIVE_ENABLED", true)
+	c.MCPEnabled = boolean(&p, env, "MCP_ENABLED", true)
 	c.LiveDatabaseURL = databaseURL(&p, env, "LIVE_DATABASE_URL", false)
 
 	c.BrregBaseURL = httpBaseURL(&p, env, "BRREG_BASE_URL", defaultBrregBaseURL)

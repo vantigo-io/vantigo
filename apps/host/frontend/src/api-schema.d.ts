@@ -950,6 +950,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/identity/integrations/{id}/mcp": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set an integration's MCP access
+         * @description Sets what the integration's API keys may do at the MCP endpoint, POST /api/mcp (MCP server design M1-M3): off refuses them there, read lets an AI client search, describe and call read operations, and read_write lets it write as well. A read-only key reads whatever the setting. Until the write tool exists read_write behaves as read. Every integration starts off. Audited integration.mcp_changed.
+         */
+        put: operations["putIdentityIntegrationsByIdMcp"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/identity/integrations/{id}/requests": {
         parameters: {
             query?: never;
@@ -2923,9 +2943,20 @@ export interface components {
             integration: components["schemas"]["Integration"];
             /** @description Its keys, newest first. */
             keys: components["schemas"]["ApiKey"][];
+            mcpAccess: components["schemas"]["IntegrationMcpAccess"];
+            /** @description False when the installation has switched the MCP endpoint off (MCP_ENABLED=0), whatever mcpAccess says. */
+            mcpAvailable: boolean;
         };
         IntegrationList: {
             integrations: components["schemas"]["Integration"][];
+        };
+        /**
+         * @description What the integration's API keys may do at the MCP endpoint (MCP server design M1): off, read, or read_write. A read-only key reads whatever this says.
+         * @enum {string}
+         */
+        IntegrationMcpAccess: "off" | "read" | "read_write";
+        IntegrationMcpRequest: {
+            mcpAccess: components["schemas"]["IntegrationMcpAccess"];
         };
         IntegrationPermission: {
             /** @description True for a permission no API key ever holds, whatever the roles grant (K7). */
@@ -8311,6 +8342,90 @@ export interface operations {
             429: {
                 headers: {
                     "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    putIdentityIntegrationsByIdMcp: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The integration's version as it was read, bare or quoted. A version that has moved on is a 412 version_mismatch. */
+                "If-Match": string;
+            };
+            path: {
+                /** @description The integration (its user's id). */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IntegrationMcpRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationDetail"];
+                };
+            };
+            /** @description Bad Request — invalid_request: an mcpAccess that is not off, read or read_write, or an If-Match that is not a version. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — not_found, no such integration. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — integration_archived, the integration is archived. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Precondition Failed — version_mismatch, the integration has been changed since the If-Match version. */
+            412: {
+                headers: {
                     [name: string]: unknown;
                 };
                 content: {

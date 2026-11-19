@@ -218,12 +218,15 @@ var markedByHand = map[string]string{
 	"getManufacturingCheckPhoto":             "never",
 	// Integrations and their API keys (API access design K21): the Assistant
 	// never creates a credential, and who reaches the API is an Owner's.
-	"getIdentityIntegrations":                       "never",
-	"postIdentityIntegrations":                      "never",
-	"getIdentityIntegrationsById":                   "never",
-	"getIdentityIntegrationsByIdRequests":           "never",
-	"patchIdentityIntegrationsById":                 "never",
-	"putIdentityIntegrationsByIdRoles":              "never",
+	"getIdentityIntegrations":             "never",
+	"postIdentityIntegrations":            "never",
+	"getIdentityIntegrationsById":         "never",
+	"getIdentityIntegrationsByIdRequests": "never",
+	"patchIdentityIntegrationsById":       "never",
+	"putIdentityIntegrationsByIdRoles":    "never",
+	// What its keys may do at the MCP endpoint (MCP server design M2): what an
+	// agent may reach is an Owner's to decide.
+	"putIdentityIntegrationsByIdMcp":                "never",
 	"postIdentityIntegrationsByIdDisable":           "never",
 	"postIdentityIntegrationsByIdEnable":            "never",
 	"postIdentityIntegrationsByIdArchive":           "never",
