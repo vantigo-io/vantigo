@@ -330,7 +330,7 @@ const en = {
   "apiAccess.mcpModeHint_read": "An AI client may search the API and call operations that read. The safest choice.",
   "apiAccess.mcpMode_read_write": "Read and write",
   "apiAccess.mcpModeHint_read_write":
-    "Writing is not available through MCP yet: until it is, this works as Read only. A read-only key always only reads.",
+    "An AI client may also call operations that change data: create, change, delete and send. Most clients ask you before each one. A read-only key always only reads.",
   "apiAccess.mcpWarning":
     "An AI client acts on what it reads, and a record can contain text written to mislead it. Give the integration only the roles the agent needs.",
   "apiAccess.mcpWriteWarning": "A key with write access lets it change data: read only is safest.",
@@ -343,6 +343,11 @@ const en = {
   "apiAccess.mcpUnavailableTitle": "MCP is switched off",
   "apiAccess.mcpUnavailable":
     "MCP is switched off for this installation (MCP_ENABLED=0), so no key can connect whatever is chosen here.",
+  "apiAccess.mcpKeyTitle": "Connect an AI client (MCP)",
+  "apiAccess.mcpKeyHint": "These carry the new key: keep them as secret as the key itself.",
+  "apiAccess.mcpKeyReadOnly": "This key is read-only, so an AI client connected with it only reads.",
+  "apiAccess.mcpKeyOff":
+    "To connect an AI client over MCP with this key, turn MCP on under MCP on the integration's Overview first.",
 };
 
 const nb: Record<keyof typeof en, string> = {
@@ -667,7 +672,7 @@ const nb: Record<keyof typeof en, string> = {
   "apiAccess.mcpModeHint_read": "En AI-klient kan søke i API-et og kalle operasjoner som leser. Det tryggeste valget.",
   "apiAccess.mcpMode_read_write": "Lese og skrive",
   "apiAccess.mcpModeHint_read_write":
-    "Skriving er ikke tilgjengelig gjennom MCP ennå: til det er det, virker dette som Bare lese. En skrivebeskyttet nøkkel leser alltid bare.",
+    "En AI-klient kan også kalle operasjoner som endrer data: opprette, endre, slette og sende. De fleste klienter spør deg før hver av dem. En skrivebeskyttet nøkkel leser alltid bare.",
   "apiAccess.mcpWarning":
     "En AI-klient handler på det den leser, og en post kan inneholde tekst skrevet for å villede den. Gi integrasjonen bare rollene agenten trenger.",
   "apiAccess.mcpWriteWarning": "En nøkkel med skrivetilgang lar den endre data: bare lese er tryggest.",
@@ -679,6 +684,12 @@ const nb: Record<keyof typeof en, string> = {
   "apiAccess.mcpUnavailableTitle": "MCP er slått av",
   "apiAccess.mcpUnavailable":
     "MCP er slått av for denne installasjonen (MCP_ENABLED=0), så ingen nøkkel kan koble seg til uansett hva som velges her.",
+  "apiAccess.mcpKeyTitle": "Koble til en AI-klient (MCP)",
+  "apiAccess.mcpKeyHint": "Disse inneholder den nye nøkkelen: hold dem like hemmelige som selve nøkkelen.",
+  "apiAccess.mcpKeyReadOnly":
+    "Denne nøkkelen er skrivebeskyttet, så en AI-klient som kobler seg til med den, bare leser.",
+  "apiAccess.mcpKeyOff":
+    "For å koble en AI-klient til over MCP med denne nøkkelen slår du først på MCP under MCP på integrasjonens Oversikt.",
 };
 
 export const apiAccessCatalog = { en, nb } as const satisfies CatalogResources;

@@ -5,7 +5,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { IntegrationDetail, IntegrationMcpAccess } from "../../api/integrations";
 import { apiAccessCatalog } from "../../catalogs/api-access";
 import { renderRoute } from "../../test/render-route";
-import { IntegrationMcp, mcpSnippets } from "./-api-access-mcp";
+import { IntegrationMcp } from "./-api-access-mcp";
+import { mcpSnippets } from "./-api-access-shared";
 import "../../i18n";
 
 const api = vi.hoisted(() => ({ setIntegrationMcpAccess: vi.fn() }));
@@ -81,9 +82,11 @@ describe("an integration's MCP section", () => {
     expect(screen.queryByText(/write access/)).not.toBeInTheDocument();
   });
 
-  it("warns of writes only under read and write", async () => {
+  it("warns of writes only under read and write, and says what writing allows", async () => {
     await renderSection(detail("read_write"));
     expect(screen.getByText(/A key with write access lets it change data/)).toBeInTheDocument();
+    expect(screen.getByText(/also call operations that change data/)).toBeInTheDocument();
+    expect(screen.queryByText(/not available through MCP yet/)).not.toBeInTheDocument();
   });
 
   it("tells of a change made meanwhile and reads the integration again", async () => {
@@ -143,6 +146,15 @@ describe("the connection snippets", () => {
     expect(JSON.parse(json)).toEqual({ mcpServers: { "st-webshop-2": server } });
     expect(JSON.parse(vscode)).toEqual({ servers: { "st-webshop-2": server } });
     expect(mcpSnippets("https://x/api/mcp", "???").claude).toContain(" vantigo ");
+  });
+
+  it("carry the key they are given in place of the placeholder", () => {
+    const { claude, json, vscode } = mcpSnippets("https://x/api/mcp", "Agent", "vtg_secret");
+    expect(claude).toBe(
+      'claude mcp add --transport http agent https://x/api/mcp --header "Authorization: Bearer vtg_secret"',
+    );
+    expect(JSON.parse(json).mcpServers.agent.headers).toEqual({ Authorization: "Bearer vtg_secret" });
+    expect(JSON.parse(vscode).servers.agent.headers).toEqual({ Authorization: "Bearer vtg_secret" });
   });
 });
 

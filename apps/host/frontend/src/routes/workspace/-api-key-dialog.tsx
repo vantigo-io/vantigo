@@ -33,7 +33,7 @@ import {
   rollApiKey,
 } from "../../api/integrations";
 import { translateHostPermissionKey, translateHostPermissionModule } from "../../i18n";
-import { fieldErrorsOf } from "./-api-access-shared";
+import { fieldErrorsOf, mcpEndpoint, mcpSnippets } from "./-api-access-shared";
 
 /** The expiries a key may be given (API access design K12): days, or a date at most 365 days ahead. */
 type ExpiryChoice = "30" | "90" | "180" | "365" | "date";
@@ -129,11 +129,65 @@ export const Copyable = ({ label, value, multiline }: { label: string; value: st
 };
 
 /**
+ * How an MCP client connects (MCP server design M16): the Claude Code command
+ * and the Cursor and VS Code blocks for the endpoint at url, named after the
+ * integration, carrying apiKey or the vtg_… placeholder.
+ */
+export const McpSnippets = ({ url, name, apiKey }: { url: string; name: string; apiKey?: string }) => {
+  const { t } = useI18n("host");
+  const snippets = mcpSnippets(url, name, apiKey);
+  return (
+    <>
+      <Copyable label={t("apiAccess.mcpClaudeCode")} value={snippets.claude} multiline />
+      <Copyable label={t("apiAccess.mcpJson")} value={snippets.json} multiline />
+      <Copyable label={t("apiAccess.mcpVsCode")} value={snippets.vscode} multiline />
+    </>
+  );
+};
+
+/**
+ * The MCP connection of a key just made, beside the curl hint (M16): the
+ * snippets with its secret when the integration's MCP is on, a hint to turn it
+ * on when it is off, and nothing when the installation has switched MCP off.
+ */
+const SecretMcp = ({ secret, detail }: { secret: ApiKeySecret; detail: IntegrationDetail }) => {
+  const { t } = useI18n("host");
+  if (!detail.mcpAvailable) return null;
+  if (detail.mcpAccess === "off") {
+    return (
+      <Text size="sm" c="dimmed">
+        {t("apiAccess.mcpKeyOff")}
+      </Text>
+    );
+  }
+  return (
+    <Stack gap="sm">
+      <Text fw={600}>{t("apiAccess.mcpKeyTitle")}</Text>
+      <McpSnippets url={mcpEndpoint()} name={detail.integration.name} apiKey={secret.secret} />
+      <Text size="sm" c="dimmed">
+        {secret.key.readOnly && detail.mcpAccess === "read_write"
+          ? `${t("apiAccess.mcpKeyHint")} ${t("apiAccess.mcpKeyReadOnly")}`
+          : t("apiAccess.mcpKeyHint")}
+      </Text>
+    </Stack>
+  );
+};
+
+/**
  * The secret of a key just made or rolled (K11, K22): shown this once, with
  * Copy, the warning that it cannot be shown again and a curl example against
- * this installation's own address.
+ * this installation's own address; for a key just made, also how an MCP
+ * client connects with it (detail given).
  */
-const SecretPanel = ({ secret, onDone }: { secret: ApiKeySecret; onDone: () => void }) => {
+const SecretPanel = ({
+  secret,
+  detail,
+  onDone,
+}: {
+  secret: ApiKeySecret;
+  detail?: IntegrationDetail;
+  onDone: () => void;
+}) => {
   const { t } = useI18n("host");
   const example = `curl -H "Authorization: Bearer ${secret.secret}" ${window.location.origin}${appUrl("/api/v1/customers")}`;
   return (
@@ -146,6 +200,7 @@ const SecretPanel = ({ secret, onDone }: { secret: ApiKeySecret; onDone: () => v
       <Text size="sm" c="dimmed">
         {t("apiAccess.curlHint")}
       </Text>
+      {detail && <SecretMcp secret={secret} detail={detail} />}
       <Button onClick={onDone}>{t("apiAccess.secretDone")}</Button>
     </Stack>
   );
@@ -336,7 +391,7 @@ export const NewKeyDialog = ({
       centered
     >
       {secret ? (
-        <SecretPanel secret={secret} onDone={close} />
+        <SecretPanel secret={secret} detail={detail} onDone={close} />
       ) : (
         <form
           onSubmit={(event) => {
