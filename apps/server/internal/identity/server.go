@@ -40,6 +40,10 @@ type server struct {
 	oidc        *oidcRelyingParty
 	oidcVersion int32
 	oidcBuilt   bool
+	// brandObjects is where brand logos live (brand_logos.go); metrics are the
+	// brand counters (brand_metrics.go).
+	brandObjects brandObjects
+	metrics      *brandMetrics
 }
 
 var _ gen.StrictServerInterface = (*server)(nil)
@@ -66,7 +70,13 @@ func newServer(a *Access, d module.Deps) (*server, error) {
 			"app_host", d.Config.AppHostname, "error", err.Error())
 		rp = nil
 	}
+	objects, err := newBrandObjects(d)
+	if err != nil {
+		return nil, err
+	}
 	return &server{
+		brandObjects:      objects,
+		metrics:           a.brandMetricsFor(),
 		access:            a,
 		deps:              d,
 		q:                 store.New(d.Pool),

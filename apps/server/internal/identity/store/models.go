@@ -160,6 +160,30 @@ type IdentityBootstrapState struct {
 	CompletedAt time.Time
 }
 
+type IdentityBrand struct {
+	ID               uuid.UUID
+	IsDefault        bool
+	State            string
+	Published        []byte
+	PublishedVersion int32
+	Draft            []byte
+	Revision         int32
+	NameKey          string
+	ImportStartedAt  *time.Time
+	ImportedEnvAt    *time.Time
+	ImportNotice     *string
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+	UpdatedByUserID  *uuid.UUID
+}
+
+type IdentityBrandLogo struct {
+	Sha256      string
+	ContentType string
+	ObjectKey   string
+	CreatedAt   time.Time
+}
+
 type IdentityExpectedAccount struct {
 	EmployeeNumberKey string
 	EmployeeNumber    string

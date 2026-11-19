@@ -33,6 +33,10 @@ applikasjonen.
 - **Sikkerhet.** [Transportsikkerhet og herding av nettleseren](/nb/admin/transport-security/)
   går gjennom https, PostgreSQL-TLS, SMTP-TLS, HSTS, vertsfiltrering og
   innholdssikkerhetspolicyen, og hva hvert valg koster.
+- **Merkevare.** [Merkevare](/nb/admin/branding/) er arbeidsområdets navn, farge og logoer,
+  redigert under **Administrer arbeidsområde › Merkevare** med et utkast du kan forhåndsvise og
+  et publiseringstrinn, og engangsimporten av `APP_TITLE`, `APP_LOGO_URL` og `APP_SUPPORT_*`
+  inn i den.
 - **Drift.** [Management-lytteren](/nb/admin/management-listener/) er det private
   statusendepunktet et kontrollplan spør, og måten den første eieren settes inn ved
   invitasjon. [Objektlagring](/nb/admin/object-storage/) beskriver hvor kvitteringer,

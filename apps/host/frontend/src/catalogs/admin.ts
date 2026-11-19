@@ -27,6 +27,12 @@ export const hostPermissionTranslationKeys = {
     displayNameKey: "admin.permission.identityManage",
     descriptionKey: "admin.permission.identityManageDescription",
   },
+  "identity:brands": {
+    moduleKey: "admin.permission.module.identity",
+    categoryKey: "admin.permission.category.administration",
+    displayNameKey: "admin.permission.identityBrands",
+    descriptionKey: "admin.permission.identityBrandsDescription",
+  },
   "customers:view": {
     moduleKey: "admin.permission.module.customers",
     categoryKey: "admin.permission.category.customers",

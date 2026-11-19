@@ -2,7 +2,7 @@ import { Alert, Button, Card, Center, PasswordInput, Stack, Text, TextInput, Tit
 import { useForm } from "@mantine/form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { appConfig, appUrl, useI18n, vantigoTokens } from "@vantigo/frontend-shell";
+import { appUrl, useBrand, useI18n, vantigoTokens } from "@vantigo/frontend-shell";
 import { acceptInvitation, validateInvitation } from "../api/account-lifecycle";
 import { fetchSession, sessionQueryKey } from "../api/auth";
 import { mfaEnrolmentDestination } from "../lib/mfa-enrolment-gate";
@@ -10,6 +10,7 @@ import "../i18n";
 
 export const AcceptInvitationPage = ({ token }: { token: string }) => {
   const { t } = useI18n("host");
+  const brand = useBrand();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const invitation = useQuery({
@@ -35,7 +36,7 @@ export const AcceptInvitationPage = ({ token }: { token: string }) => {
     <Center mih="100vh" bg={vantigoTokens.pageBg}>
       <Card withBorder p="xl" maw={440} w="100%">
         <Stack>
-          <Title order={2}>{t("auth.joinApp", { app: appConfig().title })}</Title>
+          <Title order={2}>{t("auth.joinApp", { app: brand.title })}</Title>
           {!invitation.isPending && !invitation.data?.valid && <Alert color="red">{t("auth.invalidInvitation")}</Alert>}
           {invitation.data?.valid && (
             <>

@@ -79,5 +79,50 @@
     "path": "apps/staff/frontend/src/components/person-avatar.tsx",
     "pattern": "fillStyle = \"#fff\"",
     "reason": "Canvas fills white behind a JPEG, which has no transparency"
+  },
+  {
+    "path": "packages/frontend-shell/src/brand/tokens.ts",
+    "pattern": "^(?:export const BUILTIN_PRIMARY = |\\s*)\"#[0-9a-f]{6}\",?;?$",
+    "reason": "Vantigo's own indigo and its hand-tuned scale: the default brand's values, decided here and in identity/brand_tokens.go"
+  },
+  {
+    "path": "packages/frontend-shell/src/brand/tokens.ts",
+    "pattern": "rgba\\(",
+    "reason": "The token generator: Mantine's alpha() and darken() rules rebuilt for the brand's derived variables (B36), compared with Mantine's by a test"
+  },
+  {
+    "path": "packages/frontend-shell/src/brand/tokens.ts",
+    "pattern": "var\\(--mantine-color-(?:black|white)\\)",
+    "reason": "--mantine-primary-color-contrast: the filled text colour the brand chose, white or black"
+  },
+  {
+    "path": "packages/frontend-shell/src/brand/tokens.ts",
+    "pattern": "\"--mantine-color-vantigo-light-color\": \"var\\(--mantine-color-vantigo-0\\)\"",
+    "reason": "Mantine's own dark 'light-color' variable (shade 0), mirrored so the stylesheet paints it before the theme mounts"
+  },
+  {
+    "path": "packages/frontend-shell/src/theme.css",
+    "pattern": "^\\s*--vantigo-subtle-bg: var\\(--mantine-color-vantigo-0\\);",
+    "reason": "The light value of the tinted background; the dark block defines its own (the brand's 'light' variant)"
+  },
+  {
+    "path": "apps/host/frontend/src/routes/workspace/-brand-preview.tsx",
+    "pattern": "^\\s*(?:light|dark): \\{ page: ",
+    "reason": "The preview paints the other scheme than the page shows, so it carries the token layer's literal values for both"
+  },
+  {
+    "path": "apps/host/frontend/src/routes/workspace/-brand-preview.tsx",
+    "pattern": "background: light \\? \"#e8eaf0\"",
+    "reason": "The preview's browser tab strip in a light and in a dark browser, shown side by side"
+  },
+  {
+    "path": "apps/host/frontend/src/routes/workspace/-brand-editor.tsx",
+    "pattern": "background: slot === \"mark_dark\"",
+    "reason": "A logo well shows the mark on the background it is made for, whatever scheme the admin is in"
+  },
+  {
+    "path": "packages/frontend-shell/src/app-shell-layout.tsx",
+    "pattern": "bg=\\{mark\\.chip \\? \"white\"",
+    "reason": "The chip a light-background brand mark rides on in dark mode is light on purpose"
   }
 ]

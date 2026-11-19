@@ -172,7 +172,10 @@ den autoritative referansen, og oppsummert i
 [Identitet, autentisering og utrulling](/nb/admin/authentication/). OIDC for
 arbeidsstyrken og SCIM-provisjonering er ikke blant dem: en Owner setter begge på
 kortet **Single sign-on**, og [SSO- og SCIM-drift](/nb/admin/sso-scim/) har
-prosedyrene og gjenopprettingen.
+prosedyrene og gjenopprettingen. Det er heller ikke programmets navn, farge og logoer:
+`APP_TITLE`, `APP_LOGO_URL` og `APP_SUPPORT_*` importeres én gang inn i standardmerkevaren og
+redigeres under **Administrer arbeidsområde › Merkevare** fra da av
+([Merkevare](/nb/admin/branding/)); fjern dem fra `vantigo.env` når importen er gjort.
 
 ### Innstillingene du må ta stilling til
 

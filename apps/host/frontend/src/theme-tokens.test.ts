@@ -64,7 +64,9 @@ describe("theme.css", () => {
     expect(dark["--vantigo-body-bg"]).toBe(darkScale[8]);
     expect(dark["--vantigo-surface"]).toBe(darkScale[7]);
     expect(dark["--vantigo-text"]).toBe(darkScale[0]);
-    // vantigo-3 of the indigo scale: shade 8 is too dark for a link on dark.
-    expect(dark["--vantigo-link"]).toBe("#a5b4fc");
+    // The brand's shade 3: shade 8 is too dark for a link on dark. A brand changes it (brands design B2).
+    expect(dark["--vantigo-link"]).toBe("var(--mantine-color-vantigo-3)");
+    expect(light["--vantigo-link"]).toBe("var(--mantine-color-vantigo-8)");
+    expect(light["--vantigo-subtle-bg"]).toBe("var(--mantine-color-vantigo-0)");
   });
 });

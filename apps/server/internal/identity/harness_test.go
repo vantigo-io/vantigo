@@ -30,6 +30,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"go.opentelemetry.io/otel/metric"
 
 	"github.com/vantigo-io/vantigo/server/internal/config"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
@@ -108,6 +109,12 @@ type harnessSetup struct {
 	tracer      pgx.QueryTracer
 	oidc        *fakeOIDC
 	directories []contracts.DirectorySearch
+	meter       metric.MeterProvider
+}
+
+// withBrandMeter builds the brand counters on mp, to read them back.
+func withBrandMeter(mp metric.MeterProvider) harnessOption {
+	return func(s *harnessSetup) { s.meter = mp }
 }
 
 // withDirectorySearch presets d on Deps.DirectorySearches, as Compose would
@@ -244,6 +251,9 @@ func newHarness(t *testing.T, opts ...harnessOption) *harness {
 	}
 	h.access = identity.NewAccess(h.deps)
 	h.deps.Access = h.access
+	if setup.meter != nil {
+		identity.SetBrandMeterProvider(h.access, setup.meter)
+	}
 	// No test resolves a webhook host through DNS (outgoing webhooks design
 	// W11): every name is a public address unless a test says otherwise.
 	identity.SetWebhookResolver(h.access, webhookHosts)

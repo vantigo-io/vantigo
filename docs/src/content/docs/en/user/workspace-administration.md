@@ -12,12 +12,12 @@ sources:
 Workspace administration is where an **Owner** manages who can use Vantigo and what
 they may do. Open the avatar menu at the top right and choose **Workspace admin**;
 its sidebar has **Overview**, **Users**, **Invitations**, **Roles & access**,
-**Stations** (while Manufacturing is on), **API access** and, under **Integrations**, **Microsoft Entra ID**, **Google Workspace**, **Meta**, **Shipping**, **Bank** and, once Vantigo has set up AI for the
+**Brand**, **Stations** (while Manufacturing is on), **API access** and, under **Integrations**, **Microsoft Entra ID**, **Google Workspace**, **Meta**, **Shipping**, **Bank** and, once Vantigo has set up AI for the
 installation, **AI models** and **Assistant**.
 
 Everything here needs the Owner role, with one exception: a person to whom an Owner
 has delegated role administration sees **Roles & access** alone, both in the avatar
-menu and in the sidebar; someone who holds `entra:manage`, `google:manage`, `orders:carriers-manage` or `invoices:manage` without being an Owner
+menu and in the sidebar; someone who holds `identity:brands` without being an Owner sees **Brand** ([below](#brand)); someone who holds `entra:manage`, `google:manage`, `orders:carriers-manage` or `invoices:manage` without being an Owner
 sees **Integrations** alone ([below](#integrations)); and someone who holds `identity:manage`
 sees **Stations** ([below](#shop-floor-stations)). The last active Owner can never be
 demoted, disabled or deleted, so the workspace always has one.
@@ -110,6 +110,39 @@ already enrolled for someone else is refused.
 
 Resetting another administrator's two-factor authentication is not offered on this
 screen; it exists in the API for an Owner whose own session is MFA-verified.
+
+## Brand
+
+**Brand** is where the workspace gets its name, its colour and its logos. It needs the Owner
+role or the **Manage brands** permission (`identity:brands`), which you can give a custom role
+under **Roles & access**. How it works for the person running the installation, with the rules
+behind it, is in [Branding](/en/admin/branding/).
+
+1. Open **Workspace admin › Brand**. The page shows the workspace's brand, version and whether
+   there are **Unpublished changes**.
+2. Under **Name and title** change what the administration calls the brand and the product name
+   shown in the browser tab, the header and the sign-in page. The title is the name when you leave
+   it empty.
+3. Under **Colour** type or pick the **Primary colour** and choose a **Corner radius**. The ten
+   generated shades appear below it, and the **Contrast** table says for each pair of colours, in
+   light and in dark, its ratio and whether it passes. If a pair fails, choose
+   **Use #…** to take the nearest colour that passes. A very light colour fails links and hover
+   colours, which need a darker one.
+4. Under **Logos** upload a mark for light backgrounds, a mark for dark backgrounds, a square icon
+   and, if you like, a wordmark: a PNG or JPEG of at most 512 KiB, between 16 and 2,000 pixels. The
+   page tells you what is wrong with a file it refuses. If your installation has no object store
+   the page says so and the colours still work.
+5. Under **Support contacts** fill in an e-mail address, a phone number and a link, each optional.
+   They show in the footer and on the sign-in page.
+6. **Preview** shows a small version of the application in light and in dark side by side, with the
+   logo, a button, a table, a badge, a link and the tab icon, as you edit.
+7. **Save draft** keeps your changes where only administrators see them. **Preview as me** puts the
+   whole application in the draft's look, for you, in this tab only; a banner at the top has
+   **Stop previewing**. **Publish** makes the draft the brand everyone sees, and is only possible
+   while every colour pair passes. **Discard draft** drops the pending changes.
+
+If the installation used the old `APP_LOGO_URL` setting and its picture could not be imported, a
+notice at the top of the page asks you to upload the logo here.
 
 ## Shop-floor stations
 
