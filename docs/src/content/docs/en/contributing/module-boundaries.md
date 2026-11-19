@@ -185,6 +185,11 @@ lag, never what must refuse — go through the platform's domain-events outbox,
    valid on a date, the people in employment and their capacity over a window, the
    caller's own person, its own account in an external directory, and how a proposed
    booking fits what each person wants; rule 12),
+   `BrandTargets` (`contracts.BrandTargets`, staff — the legal entities and, for a user, the
+   entities of the employments in force today, which identity's brand rules match; ungated,
+   rule 12; optional, nil when Staff is off, which identity reads as "no legal-entity
+   targets", never as "no entity"; resolved right after `Workforce` by `withBrandTargets`,
+   `modtest.WithBrandTargets` presets it),
    `OutboundMail` (`contracts.OutboundMail`, communications — its channels as Invoices and
    Calendar send customer mail through them; rule 17; optional for its consumers, nil when
    Communications is off, which they read as "sending is disabled"),

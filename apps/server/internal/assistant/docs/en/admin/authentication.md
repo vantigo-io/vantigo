@@ -1115,27 +1115,38 @@ wrong and every request shares one bucket, or a client picks its own.
 
 ## Brands
 
-Identity stores the workspace's brand (the default brand, today): the tables `identity.brands`
-and `identity.brand_logos`, and the permission `identity:brands` ("Manage brands", in the
+Identity stores the workspace's brands: the tables `identity.brands`, `identity.brand_logos` and
+`identity.brand_rules` (with the revision of the rule list), a person's own choice as
+`identity.users.preferred_brand_id`, and the permission `identity:brands` ("Manage brands", in the
 Administration category, **delegable**; an Owner holds it implicitly and no API key ever does).
 It lets a person create and edit the brand, upload its logos, publish it and preview it; it does
 not gate reading one's own brand, which every signed-in person can do. How a brand is edited and
-what is checked is in [Branding](/en/admin/branding/).
+what is checked, and the rules that assign brands to people, is in [Branding](/en/admin/branding/).
+
+A person's brand is the first of: their own choice, while it is one of the brands of the rules
+that match them; the brand of the first matching rule, in the list's order (an e-mail domain
+equal to the domain of their address, membership of an active access group counted as role mapping
+counts it, or an employment in force today under a Staff legal entity); the default brand. A
+choice is a preference like the colour scheme and survives a change of profile; deleting or
+archiving the brand clears it. Removing a user removes the row and the choice with it.
 
 | Operation | Access |
 | --- | --- |
-| `GET /api/v1/identity/brand` (the signed-in person's brand, `?preview={brandId}` for a draft) | a session; a preview needs `identity:brands` |
+| `GET /api/v1/identity/brand` (the signed-in person's brand with the brands they may choose among, `?preview={brandId}` for a draft), `PUT /api/v1/identity/account/brand` (their own choice, `409 brand_not_candidate`) | a session; a preview needs `identity:brands` |
 | `GET /api/v1/identity/brand/public`, `GET /api/v1/identity/brand.css`, `GET /api/v1/identity/brand-assets/{sha256}.{png\|jpg}` | anonymous (`brand.css` reads the session cookie when there is one); rate limited per address |
-| `GET /brands`, `GET`/`PUT /brands/{id}`, `POST /brands/{id}/publish`, `POST /brands/{id}/discard-draft`, `PUT`/`DELETE`/`GET /brands/{id}/logos/{slot}` | `identity:brands` |
+| `GET`/`POST /brands`, `GET`/`PUT`/`DELETE /brands/{id}`, `POST /brands/{id}/publish`, `/discard-draft`, `/duplicate`, `/archive`, `/restore`, `/make-default`, `PUT`/`DELETE`/`GET /brands/{id}/logos/{slot}` | `identity:brands` |
+| `GET`/`PUT /brand-rules` (the whole ordered list, `If-Match`), `GET /brand-rule-targets`, `GET /brands/resolution?userId=` or `?email=` | `identity:brands`; the lookup adds a person's groups and legal entities only for a caller who also holds `staff:view` while Staff is enabled |
 
-Every write is audited in the transaction that makes it, as `brand.updated`, `brand.published`,
-`brand.draft_discarded`, `brand.logo_set` and `brand.logo_removed`, with names, versions and revisions and never the bytes
-of a logo. What the brand endpoints send is cached carefully: an answer to a signed-in person
-(`brand`, and `brand.css` with a session cookie) is `private, no-store`, so a shared cache or a
-CDN that ignores `Vary` never keeps one person's brand; the anonymous `brand.css` and `brand/public`
-are public for 60 seconds, and a published logo is immutable and answers a repeated request that
-carries its `ETag` with `304` without a read from the object store. Counters `vantigo.identity.brand.css_requests`, `.public_lookups`, `.publishes` and
-`.imports` are exported with the other metrics.
+Every write is audited in the transaction that makes it, as `brand.created`, `brand.updated`,
+`brand.published`, `brand.draft_discarded`, `brand.archived`, `brand.restored`, `brand.deleted`, `brand.default_changed`,
+`brand.logo_set`, `brand.logo_removed` and `brand_rules.changed` (the list before and after), with
+names, versions and revisions and never the bytes of a logo. A person's own choice is not audited. What the brand endpoints send is cached carefully: an answer to a signed-in person (`brand`, and `brand.css` with a session cookie) is `private, no-store`, so a shared cache or a CDN that ignores `Vary` never keeps one person's brand; the anonymous `brand.css` and `brand/public` are public for 60 seconds, and a published logo is immutable and answers a repeated request that carries its `ETag` with `304` without a read from the object store.
+Counters `vantigo.identity.brand.css_requests`, `.public_lookups`, `.publishes`, `.imports`,
+`.rule_changes`, `.choices` and `.entity_reads` are exported with the other metrics.
+
+The live topics `identity.brand` (every signed-in person) and `identity.brand:{userId}` (that
+person only) tell open sessions to ask for their brand again; their events carry no data. What
+Staff answers about a person's legal entities is kept in memory for 30 seconds per process.
 
 ## Shop-floor stations
 
