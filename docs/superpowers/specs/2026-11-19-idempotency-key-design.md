@@ -209,7 +209,7 @@ native mechanisms; `PATCH`/`DELETE`; server-minted keys for MCP; a per-integrati
   - *`00199`'s description* (I22): its comment line, and a `COMMENT ON COLUMN` in the new migration.
 - **2.2** (2026-11-19): delivery A after its code review and security review; where it differs from 2.1,
   2.2 wins.
-  - *The migration* is `00215_identity_idempotency.sql` (#408 holds 00213).
+  - *The migration* is `00217_identity_idempotency.sql` (#408 holds 00213).
   - *No answer written* (code review, blocker): a handler that wrote no status — a caller gone, whose
     error `httpx.WriteError` answers with nothing — is `unknown`, never a stored empty `200`.
   - *The quota is part of the claim* (I21; review): `ClaimIdempotencyKey` runs in one transaction under
