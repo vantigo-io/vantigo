@@ -186,7 +186,12 @@ export const HeaderCard = ({
                 error={errors.deliveryAddressId ? t("deliveryAddressUnknown") : undefined}
               />
               {notADeliveryAddress && !errors.deliveryAddressId && (
-                <Text size="xs" c="yellow" mt={4} data-testid="delivery-address-warning">
+                <Text
+                  size="xs"
+                  c="light-dark(var(--mantine-color-yellow-8), var(--mantine-color-yellow-4))"
+                  mt={4}
+                  data-testid="delivery-address-warning"
+                >
                   {t("deliveryAddressNotDelivery")}
                 </Text>
               )}

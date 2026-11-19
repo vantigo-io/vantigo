@@ -278,6 +278,16 @@ describe("Documents tab — filing a document", () => {
     expect(await within(await region("Certificate")).findByText("first-aid.pdf")).toBeInTheDocument();
   });
 
+  it("takes a file dropped on the file area", async () => {
+    stubStaffApi({ role: "manage" });
+    renderRoute("/staff/people/101?tab=documents");
+
+    const dialog = await openUpload();
+    fireEvent.drop(within(dialog).getByRole("group", { name: "File" }), { dataTransfer: { files: [pdf()] } });
+
+    expect(await within(dialog).findByText("first-aid.pdf")).toBeInTheDocument();
+  });
+
   it("refuses a file over 10 MiB before sending anything", async () => {
     const fetchMock = stubStaffApi({ role: "manage" });
     renderRoute("/staff/people/101?tab=documents");

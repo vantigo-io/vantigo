@@ -85,7 +85,12 @@ export const SuggestionsPanel = ({ agentId, role }: { agentId: string; role: Age
                   <Text size="xs" c="dimmed">
                     {t("suggestionReplace")}
                   </Text>
-                  <Text size="sm" td="line-through" c="red" style={{ whiteSpace: "pre-wrap" }}>
+                  <Text
+                    size="sm"
+                    td="line-through"
+                    c="light-dark(var(--mantine-color-red-8), var(--mantine-color-red-4))"
+                    style={{ whiteSpace: "pre-wrap" }}
+                  >
                     {suggestion.oldText}
                   </Text>
                 </Stack>
@@ -94,7 +99,12 @@ export const SuggestionsPanel = ({ agentId, role }: { agentId: string; role: Age
                   {t("suggestionAdd")}
                 </Text>
               )}
-              <Text size="sm" c="teal" style={{ whiteSpace: "pre-wrap" }} data-testid="suggestion-new-text">
+              <Text
+                size="sm"
+                c="light-dark(var(--mantine-color-teal-9), var(--mantine-color-teal-4))"
+                style={{ whiteSpace: "pre-wrap" }}
+                data-testid="suggestion-new-text"
+              >
                 {suggestion.newText}
               </Text>
               <Group gap="xs" wrap="wrap">

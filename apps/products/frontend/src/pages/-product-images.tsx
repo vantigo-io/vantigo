@@ -122,7 +122,13 @@ export const ProductImages = ({ productId }: ProductImagesProps) => {
         <Text size="sm" c="dimmed">
           {t("images.description")}
         </Text>
-        <DropZone p="sm" onDropFiles={drop}>
+        <DropZone
+          role="group"
+          aria-label={t("images.dropHere")}
+          p="sm"
+          disabled={uploading !== null}
+          onDropFiles={drop}
+        >
           <Stack gap="xs">
             <Text size="sm" c="dimmed">
               {t("images.dropHere")}

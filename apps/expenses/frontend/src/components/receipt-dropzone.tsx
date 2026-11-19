@@ -106,7 +106,7 @@ export const ReceiptDropzone = ({ entryId, attachmentCount, onUploaded, supplier
 
   return (
     <Stack gap="xs">
-      <DropZone p="sm" onDropFiles={drop}>
+      <DropZone p="sm" disabled={busy} onDropFiles={drop}>
         <Stack gap="xs">
           <Text size="sm" c="dimmed">
             {supplierInvoice ? t("dropSupplierInvoiceHere") : t("dropReceiptsHere")}
