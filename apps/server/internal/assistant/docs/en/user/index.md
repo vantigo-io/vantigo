@@ -101,7 +101,10 @@ import](/en/user/customers/#export-and-import)), and **Import metering points** 
 **Import** on the metering-point list ([Import metering
 points](/en/user/energy/#import-metering-points)), and **Invoice from orders** from **From
 orders** on the invoice list or **Invoice** on a confirmed order ([Invoicing
-orders](/en/user/invoices/#invoicing-orders)).
+orders](/en/user/invoices/#invoicing-orders)), and a **Send all**'s own page, which opens
+when you click **Send all** on the invoice list or on a finished billing run, and from
+the run's **Sending** card ([Sending many documents at
+once](/en/user/invoices/#sending-many-documents-at-once)).
 
 ## Search
 
