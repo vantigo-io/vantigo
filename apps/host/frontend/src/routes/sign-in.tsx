@@ -3,7 +3,15 @@ import { useForm } from "@mantine/form";
 import { IconAlertCircle } from "@tabler/icons-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
-import { appUrl, SupportContactLine, useBrand, useI18n, vantigoTokens } from "@vantigo/frontend-shell";
+import {
+  AuthBrandMark,
+  appUrl,
+  SupportContactLine,
+  useBrand,
+  useDomainBrand,
+  useI18n,
+  vantigoTokens,
+} from "@vantigo/frontend-shell";
 import { useEffect, useState } from "react";
 import { isPasskeyClientError, loginWithPasskey } from "../api/account";
 import { completeTwoFactor, fetchOidcProvider } from "../api/account-lifecycle";
@@ -32,6 +40,8 @@ const SignInPage = () => {
       .finally(() => setOidcProviderLoading(false));
   }, [t]);
   const form = useForm({ initialValues: { email: "", password: "" } });
+  // The page starts in the default brand and fades into the one attached to the typed address's domain.
+  const domainBrand = useDomainBrand(form.values.email);
   const errorMessage = (error: unknown) => {
     if (isPasskeyClientError(error)) {
       if (error.code === "unsupported") return t("auth.passkeyUnsupported");
@@ -73,6 +83,7 @@ const SignInPage = () => {
       <Stack maw={440} w="100%" align="center">
         <Card withBorder shadow="sm" p="xl" w="100%">
           <Stack>
+            <AuthBrandMark />
             <Title order={2}>{showingMfa ? t("auth.verifySignIn") : t("auth.welcomeBack")}</Title>
             <Text c="dimmed">
               {showingMfa ? t("auth.authenticatorRecoveryCode") : t("auth.signInContinue", { app: brand.title })}
@@ -116,7 +127,15 @@ const SignInPage = () => {
             ) : (
               <form onSubmit={form.onSubmit((values) => login.mutate(values))}>
                 <Stack>
-                  <TextInput label={t("common.email")} autoComplete="email" {...form.getInputProps("email")} />
+                  <TextInput
+                    label={t("common.email")}
+                    autoComplete="email"
+                    {...form.getInputProps("email")}
+                    onBlur={(event) => {
+                      form.getInputProps("email").onBlur(event);
+                      domainBrand.onBlur();
+                    }}
+                  />
                   <PasswordInput
                     label={t("common.password")}
                     autoComplete="current-password"

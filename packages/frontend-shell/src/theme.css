@@ -35,3 +35,33 @@ body {
   background: var(--vantigo-body-bg);
   color: var(--vantigo-text);
 }
+
+/* The sign-in page changing brand as an e-mail address is typed (brands design B26): colours, borders and
+   shadows move over the same 300 ms as DOMAIN_BRAND_FADE_MS while the root carries the attribute, and a
+   new logo fades in. Nothing moves with reduced motion: the change is instant. */
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-vantigo-brand-fade] *,
+  :root[data-vantigo-brand-fade] *::before,
+  :root[data-vantigo-brand-fade] *::after {
+    transition:
+      background-color 300ms ease,
+      color 300ms ease,
+      border-color 300ms ease,
+      fill 300ms ease,
+      stroke 300ms ease,
+      box-shadow 300ms ease;
+  }
+
+  .vantigo-brand-mark {
+    animation: vantigo-brand-mark-in 300ms ease both;
+  }
+
+  @keyframes vantigo-brand-mark-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+}
