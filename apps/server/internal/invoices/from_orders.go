@@ -574,8 +574,9 @@ func (s *server) fromOrders(ctx context.Context, lines []orderLineInput, subs []
 			terms = &settings.DefaultPaymentTermsDays
 		}
 		// The brand a worker's draft starts in (brands design B28): the
-		// customer's default, the group's, the workspace's.
-		brand, err := s.defaultBrand(ctx, g.customerID)
+		// orders' own, when they agree on one, else the customer's default,
+		// the group's, the workspace's.
+		brand, err := s.orderBrand(ctx, g.customerID, g.orders)
 		if err != nil {
 			return ordersOutcome{}, err
 		}

@@ -143,6 +143,12 @@ func TestRun_SeedPopulatesDemoDatasetAndIsIdempotent(t *testing.T) {
 		// purchase proposals' demo places (purchasing delivery C).
 		{"manufacturing.suggestions open", "SELECT count(*) FROM manufacturing.suggestions WHERE status = 'open'", 5},
 		{"orders.orders", "SELECT count(*) FROM orders.orders", 3},
+		// The demo customers' brands on their orders (brands delivery E3): a
+		// confirmed one carries the snapshot's name (no object store is
+		// configured here, so no logo), a draft only the brand. The seed makes
+		// no quotes.
+		{"orders.orders brand", "SELECT count(*) FROM orders.orders WHERE brand_id IS NOT NULL", 3},
+		{"orders.orders brand snapshot", "SELECT count(*) FROM orders.orders WHERE status <> 'draft' AND brand_name IS NOT NULL", 2},
 		{"orders.lines kit children", "SELECT count(*) FROM orders.lines WHERE parent_line_id IS NOT NULL", 3},
 		{"identity.sessions", "SELECT count(*) FROM identity.sessions", 0},
 	} {

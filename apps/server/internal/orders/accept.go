@@ -108,6 +108,7 @@ func (s *server) AcceptQuote(ctx context.Context, req gen.AcceptQuoteRequestObje
 	var customer *contracts.CustomerBillingProfile
 	var credit *creditRead
 	var p printer
+	var snap *brandSnap
 	var today time.Time
 	if confirm {
 		if customer, err = s.billingProfile(ctx, quote.CustomerID); err != nil {
@@ -117,6 +118,11 @@ func (s *server) AcceptQuote(ctx context.Context, req gen.AcceptQuoteRequestObje
 			return nil, err
 		}
 		if p, err = s.readPrinter(ctx); err != nil {
+			return nil, err
+		}
+		// The order carries the quote's brand as it was sent, so its
+		// confirmation prints as the quote did (brands design B27).
+		if snap, err = s.snapshotOfQuote(ctx, quote); err != nil {
 			return nil, err
 		}
 		// The day the ledger judges a lot's expiry on, read on the pool
@@ -151,10 +157,10 @@ func (s *server) AcceptQuote(ctx context.Context, req gen.AcceptQuoteRequestObje
 			return err
 		}
 		if confirm {
-			if order, err = confirmOrderTx(ctx, s, tx, txq, order, orderLines, override, by, customer, credit, true, today); err != nil {
+			if order, err = confirmOrderTx(ctx, s, tx, txq, order, orderLines, override, by, customer, credit, true, today, snap); err != nil {
 				return err
 			}
-			if printed, err = p.confirmation(order, orderLines, s.deps.Clock()); err != nil {
+			if printed, err = p.confirmation(order, orderLines, s.deps.Clock(), snap.logoOf()); err != nil {
 				return err
 			}
 			confirmed = &order

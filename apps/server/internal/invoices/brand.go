@@ -33,6 +33,7 @@ const (
 	brandCustomer = "customer"
 	brandGroup    = "group"
 	brandDefault  = "default"
+	brandOrder    = "order"
 )
 
 // The logo slots a document prints, in order (B6, B27): the wordmark (wide,
@@ -138,6 +139,44 @@ func (s *server) defaultBrand(ctx context.Context, customerID int32) (brandPick,
 		own, group = c.BrandID, c.GroupBrandID
 	}
 	return pickBrand(published, own, group), nil
+}
+
+// orderBrand is the brand a draft made from orders starts in (brands design
+// B28, delivery E3): the brand the orders were confirmed in, when they all
+// carry the same one and it is still published, with source "order"; else the
+// customer's default order. Orders that carry different brands, or none, have
+// no brand to hand on, and a brand that is archived or unknown by now is
+// skipped, which the draft says. It reads the brands and the directory, so
+// never under a lock.
+func (s *server) orderBrand(ctx context.Context, customerID int32, orders []contracts.DueOrder) (brandPick, error) {
+	pick, err := s.defaultBrand(ctx, customerID)
+	if err != nil || s.deps.Brands == nil {
+		return pick, err
+	}
+	var shared *uuid.UUID
+	for _, o := range orders {
+		switch {
+		case o.BrandID == nil:
+		case shared == nil:
+			shared = o.BrandID
+		case *shared != *o.BrandID:
+			return pick, nil
+		}
+	}
+	if shared == nil {
+		return pick, nil
+	}
+	published, err := s.publishedBrands(ctx)
+	if err != nil {
+		return brandPick{}, err
+	}
+	for _, b := range published {
+		if b.ID == *shared {
+			return brandPick{id: shared, source: brandOrder, skipped: pick.skipped}, nil
+		}
+	}
+	pick.skipped = true
+	return pick, nil
 }
 
 // chosenBrand is the pick for a brand a person chose: it must be published, or

@@ -15,6 +15,7 @@ sql:
       - ../db/migrations/00161_orders_mto_ready.sql
       - ../db/migrations/00166_orders_delivery_lots.sql
       - ../db/migrations/00177_orders_kits.sql
+      - ../db/migrations/00216_orders_brand.sql
     queries: queries
     gen:
       go:

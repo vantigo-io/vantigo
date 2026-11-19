@@ -189,7 +189,7 @@ func dueSubscriptionOf(sub store.OrdersSubscription) contracts.DueOrder {
 	terms := sub.PaymentTermsDays
 	d := contracts.DueOrder{
 		Kind: contracts.DueKindSubscription, ID: sub.ID, Number: sub.Number, CustomerID: sub.CustomerID, Currency: sub.Currency,
-		ProjectID: sub.ProjectID, YourReference: sub.YourReference, PaymentTermsDays: &terms,
+		ProjectID: sub.ProjectID, YourReference: sub.YourReference, PaymentTermsDays: &terms, BrandID: sub.BrandID,
 	}
 	if sub.DeliveryAddressLine1 != nil {
 		d.DeliveryAddress = &contracts.CustomerAddressEntry{
@@ -249,7 +249,7 @@ func dueOrderOf(r store.DueOrderLinesRow) contracts.DueOrder {
 	terms := r.PaymentTermsDays
 	o := contracts.DueOrder{
 		Kind: contracts.DueKindOrder, ID: r.OrderID, Number: r.OrderNumber, CustomerID: r.CustomerID, Currency: r.Currency,
-		ProjectID: r.ProjectID, YourReference: r.YourReference, PaymentTermsDays: &terms,
+		ProjectID: r.ProjectID, YourReference: r.YourReference, PaymentTermsDays: &terms, BrandID: r.BrandID,
 	}
 	if r.DeliveryDate.Valid {
 		d := r.DeliveryDate.Time

@@ -398,3 +398,59 @@ func TestBrand_NoBrandsNoBlock(t *testing.T) {
 		t.Errorf("brand = %+v, want none without a brands provider", inv.Brand)
 	}
 }
+
+// An invoice made from orders starts in the orders' brand (brands design B28,
+// delivery E3): the brand they were confirmed in, with source "order", when
+// every order of the draft carries the same one and it is still published.
+// Orders with different brands, or none, hand on none; a brand archived by now
+// is skipped and the draft says so, falling to the customer's default order.
+func TestBrand_AnInvoiceFromOrdersTakesTheOrdersBrand(t *testing.T) {
+	t.Parallel()
+	orders, holders := newFakeOrders(), newFakeHolders()
+	h, fb, _ := withBrands(t, append(orders.options(), holders.options()...)...)
+	branded := func(o contracts.DueOrder, brand *uuid.UUID) contracts.DueOrder {
+		o.BrandID = brand
+		return o
+	}
+	line1 := orderLine{id: 1, description: "Hylle", unit: "stk", quantity: "5", price: "1200.00000000", discount: "0.00", vatCode: vat25}
+	line2 := orderLine{id: 2, description: "Bok", unit: "stk", quantity: "2", price: "399.00000000", discount: "0.00", vatCode: vat25}
+	line3 := orderLine{id: 3, description: "Lampe", unit: "stk", quantity: "1", price: "99.00000000", discount: "0.00", vatCode: vat25}
+	orders.put(branded(acmeOrder(order2210, 2210, "PO-1", "2026-09-01"), &brandNordlys), line1)
+	orders.put(branded(acmeOrder(order2211, 2211, "PO-1", "2026-09-05"), &brandNordlys), line2)
+	orders.put(branded(acmeOrder(order2212, 2212, "PO-1", "2026-09-06"), &brandFjord), line3)
+
+	// The customer's own default is Fjordkraft; the orders were confirmed in
+	// Nordlys, which wins.
+	h.customers.setBrands(customerAcme, &brandFjord, nil)
+	drafts := fromOrders(t, h, true, pick(order2210, 1, 5), pick(order2211, 2, 2))
+	if len(drafts) != 1 {
+		t.Fatalf("drafts %+v, want one", drafts)
+	}
+	if b := brandOf(t, getInvoice(t, h, drafts[0].InvoiceID)); b.ID != brandNordlys.String() || b.Source != "order" || b.Unavailable {
+		t.Errorf("the draft's brand = %+v, want the orders' Nordlys, source order", b)
+	}
+	// Issued, the invoice carries the order's brand, name and logo.
+	inv := issued(t, h, drafts[0].InvoiceID)
+	if got := snapshotOf(t, h, inv.ID); !strings.HasPrefix(got, brandNordlys.String()+"|Nordlys|branding/logo-") {
+		t.Errorf("snapshot = %s, want Nordlys with its logo", got)
+	}
+
+	// Orders of two brands hand on none: the customer's default order applies.
+	orders.put(branded(acmeOrder(5213, 2213, "PO-1", "2026-09-01"), &brandNordlys), orderLine{id: 4, description: "Hylle", unit: "stk", quantity: "5", price: "1200.00000000", discount: "0.00", vatCode: vat25})
+	drafts = fromOrders(t, h, true, pick(order2212, 3, 1), pick(5213, 4, 5))
+	if b := brandOf(t, getInvoice(t, h, drafts[0].InvoiceID)); b.ID != brandFjord.String() || b.Source != "customer" {
+		t.Errorf("mixed orders' brand = %+v, want the customer's default", b)
+	}
+
+	// An order's brand archived since: skipped, said so, the default order.
+	fb.Set(
+		contracts.BrandEntry{ID: brandWorkspace, Name: "Kraft-Verket", Default: true},
+		contracts.BrandEntry{ID: brandNordlys, Name: "Nordlys", State: contracts.BrandStateArchived},
+		contracts.BrandEntry{ID: brandFjord, Name: "Fjordkraft Demo"},
+	)
+	orders.put(branded(acmeOrder(5214, 2214, "PO-1", "2026-09-05"), &brandNordlys), orderLine{id: 5, description: "Bok", unit: "stk", quantity: "2", price: "399.00000000", discount: "0.00", vatCode: vat25})
+	drafts = fromOrders(t, h, false, pick(5214, 5, 2))
+	if b := brandOf(t, getInvoice(t, h, drafts[0].InvoiceID)); b.ID != brandFjord.String() || b.Source != "customer" || !b.Unavailable {
+		t.Errorf("an archived order brand = %+v, want the customer's default, marked unavailable", b)
+	}
+}

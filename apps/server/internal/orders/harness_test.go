@@ -83,6 +83,9 @@ type harnessOptions struct {
 	// rates composes Invoices' exchange rates (contracts.ExchangeRates);
 	// nil leaves it out.
 	rates contracts.ExchangeRates
+	// brands composes the published brands (contracts.Brands, brands design
+	// B29) in place of identity's; nil leaves identity's own.
+	brands contracts.Brands
 }
 
 // newHarness is an orders installation with the seeded catalog, VAT codes
@@ -125,6 +128,9 @@ func newHarness(t *testing.T, o harnessOptions) *harness {
 	}
 	if o.rates != nil {
 		opts = append(opts, modtest.WithExchangeRates(o.rates))
+	}
+	if o.brands != nil {
+		opts = append(opts, modtest.WithBrands(o.brands))
 	}
 	if o.bring {
 		h.bring = bringtest.New(t)

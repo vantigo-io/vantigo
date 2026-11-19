@@ -311,11 +311,22 @@ func (s *server) freezeQuote(ctx context.Context, id int64, revision int32, expe
 	if err != nil {
 		return gen.OrdersQuote{}, err
 	}
+	// The brand the quote is sent in, its logo copied into this module's scope
+	// (brands design B27): read before any transaction, and what the PDF
+	// prints and the row keeps whatever becomes of the brand later.
+	snap, err := s.snapshotBrand(ctx, quote.BrandID, quote.BrandSource, quote.CustomerID)
+	if err != nil {
+		return gen.OrdersQuote{}, err
+	}
 
 	// The PDF of this revision, as the quote will be once sent.
 	printed := quote
 	printed.Status, printed.SentAt, printed.ValidUntil = quoteSent, &now, pgtype.Date{Time: validUntil, Valid: true}
-	body, err := renderQuote(printed, lines, seller, today, false)
+	var logo docLogo
+	if snap != nil {
+		logo = snap.logo
+	}
+	body, err := renderQuote(printed, lines, seller, today, false, logo)
 	if err != nil {
 		return gen.OrdersQuote{}, err
 	}
@@ -396,7 +407,12 @@ func (s *server) freezeQuote(ctx context.Context, id int64, revision int32, expe
 				return fmt.Errorf("orders: note quote %d's override: %w", id, err)
 			}
 		}
-		row, err := txq.SetQuoteSent(ctx, store.SetQuoteSentParams{ID: id, Now: &now, ValidUntil: pgtype.Date{Time: validUntil, Valid: true}})
+		sentParams := store.SetQuoteSentParams{ID: id, Now: &now, ValidUntil: pgtype.Date{Time: validUntil, Valid: true}}
+		if snap != nil {
+			sentParams.BrandID, sentParams.BrandSource, sentParams.BrandName = &snap.id, &snap.source, &snap.name
+			sentParams.BrandLogoObjectKey, sentParams.BrandLogoSha256 = snap.key, snap.sha
+		}
+		row, err := txq.SetQuoteSent(ctx, sentParams)
 		if err != nil {
 			return fmt.Errorf("orders: mark quote %d sent: %w", id, err)
 		}

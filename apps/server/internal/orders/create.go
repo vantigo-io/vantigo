@@ -130,6 +130,11 @@ func (s *server) CreateSalesOrder(ctx context.Context, req gen.CreateSalesOrderR
 	}
 	h := resolveHeader(&f, in, nil, reads)
 	customerUsable(&f, reads.profile)
+	if reads.profile != nil {
+		if err := s.brandOfHeader(ctx, &f, &h, body.BrandId, nil); err != nil {
+			return nil, err
+		}
+	}
 	if body.SiteId != nil {
 		if err := s.judgeSite(ctx, &f, "siteId", *body.SiteId); err != nil {
 			return nil, err
@@ -170,7 +175,11 @@ func (s *server) CreateSalesOrder(ctx context.Context, req gen.CreateSalesOrderR
 	if err != nil {
 		return nil, err
 	}
-	return gen.CreateSalesOrder201JSONResponse(orderView(o, lines, warnings, nil)), nil
+	view := orderView(o, lines, warnings, nil)
+	if err := s.fillBrand(ctx, view.Brand); err != nil {
+		return nil, err
+	}
+	return gen.CreateSalesOrder201JSONResponse(view), nil
 }
 
 // repeatedOrder is the order an earlier create with requestID made, nil when
