@@ -75,7 +75,12 @@ export interface BrandPayload {
   tokens: BrandTokens;
   logos: Partial<Record<LogoSlot, string>>;
   support: BrandSupport;
-  source: "default" | "preview";
+  /** Why the person sees this brand (B7): the default, a rule, their own choice, or an admin's preview. */
+  source: "default" | "preview" | "choice" | "rule";
+  /** The brands the person may choose among (B12); the switcher shows with more than one. */
+  candidates?: readonly { id: string; name: string }[];
+  /** The person's earlier choice is no longer one of their candidates, so it is ignored. */
+  choiceIgnored?: boolean;
 }
 
 /** The payload version this client understands; a higher one is ignored (B36). */

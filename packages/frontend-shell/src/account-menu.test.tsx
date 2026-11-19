@@ -107,4 +107,56 @@ describe("AccountMenu", () => {
     expect(onColorSchemeChange).toHaveBeenLastCalledWith("light");
     await waitFor(() => expect(document.documentElement).toHaveAttribute("data-mantine-color-scheme", "light"));
   });
+
+  describe("the brand switcher (brands design B12)", () => {
+    const candidates = [
+      { id: "a", name: "Nordlys" },
+      { id: "b", name: "Fjordkraft" },
+    ];
+    const mount = (switcher: Parameters<typeof AccountMenu>[0]["brandSwitcher"]) =>
+      render(
+        <MantineProvider env="test">
+          <AccountMenu user={user} sections={[]} onSignOut={vi.fn()} brandSwitcher={switcher} />
+        </MantineProvider>,
+      );
+
+    it("shows with more than one candidate: automatic first, the chosen one marked, a pick saved", async () => {
+      const onChoose = vi.fn();
+      mount({ candidates, chosenId: "b", onChoose });
+      const menu = await open();
+      expect(within(menu).getByText("Brand")).toBeInTheDocument();
+      expect(
+        within(menu)
+          .getAllByRole("menuitem")
+          .map((item) => item.textContent),
+      ).toEqual(["Automatic", "Nordlys", "Fjordkraft", "Sign out"]);
+      expect(within(menu).getByRole("menuitem", { name: "Fjordkraft" }).querySelector("svg")).not.toBeNull();
+      expect(within(menu).getByRole("menuitem", { name: "Nordlys" }).querySelector("svg")).toBeNull();
+      fireEvent.click(within(menu).getByRole("menuitem", { name: "Nordlys" }));
+      expect(onChoose).toHaveBeenLastCalledWith("a");
+      fireEvent.click(within(menu).getByRole("menuitem", { name: "Automatic" }));
+      expect(onChoose).toHaveBeenLastCalledWith(null);
+    });
+
+    it("marks automatic when nothing is chosen, and says when an earlier choice no longer applies", async () => {
+      mount({ candidates, chosenId: null, choiceIgnored: true, onChoose: vi.fn() });
+      const menu = await open();
+      expect(within(menu).getByRole("menuitem", { name: "Automatic" }).querySelector("svg")).not.toBeNull();
+      expect(within(menu).getByText(/earlier choice no longer applies/)).toBeInTheDocument();
+    });
+
+    it("is not shown with one candidate, none, or no switcher", async () => {
+      for (const switcher of [
+        { candidates: [candidates[0] as (typeof candidates)[number]], chosenId: null, onChoose: vi.fn() },
+        { candidates: [], chosenId: null, onChoose: vi.fn() },
+        undefined,
+      ]) {
+        const view = mount(switcher);
+        const menu = await open();
+        expect(within(menu).queryByText("Brand")).not.toBeInTheDocument();
+        expect(within(menu).queryByRole("menuitem", { name: "Automatic" })).not.toBeInTheDocument();
+        view.unmount();
+      }
+    });
+  });
 });

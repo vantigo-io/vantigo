@@ -1,5 +1,5 @@
 import { Avatar, Box, Menu, Text, UnstyledButton, useComputedColorScheme, useMantineColorScheme } from "@mantine/core";
-import { IconLogout, IconMoon, IconSun } from "@tabler/icons-react";
+import { IconCheck, IconLogout, IconMoon, IconSun } from "@tabler/icons-react";
 import { type ComponentType, Fragment } from "react";
 import { registerCatalog, useI18n } from "./i18n";
 import { shellCatalog } from "./i18n/catalogs/shell";
@@ -25,6 +25,18 @@ export interface AccountMenuSection {
   items: readonly AccountMenuItem[];
 }
 
+/** The brands a person may choose among, shown in the account menu only when there is more than one (brands design B12). */
+export interface BrandSwitcher {
+  candidates: readonly { id: string; name: string }[];
+  /** The brand the person chose, or null for automatic: the assignment's. */
+  chosenId: string | null;
+  /** The person's earlier choice no longer applies. */
+  choiceIgnored?: boolean;
+  /** A brand's id, or null for automatic. */
+  onChoose: (brandId: string | null) => void;
+  disabled?: boolean;
+}
+
 export interface AccountMenuProps {
   /** The signed-in user; undefined while loading. */
   user: ShellUser | undefined;
@@ -38,6 +50,8 @@ export interface AccountMenuProps {
    * switch.
    */
   onColorSchemeChange?: (scheme: "light" | "dark") => void;
+  /** Lists the person's brands to choose among. Omit, or give one candidate or none, to show no switcher. */
+  brandSwitcher?: BrandSwitcher;
 }
 
 const initials = (name: string) =>
@@ -53,7 +67,14 @@ const initials = (name: string) =>
  * administrative destinations grouped under headings, a light/dark switch when
  * the host wants one, and sign out.
  */
-export const AccountMenu = ({ user, sections, onSignOut, signOutDisabled, onColorSchemeChange }: AccountMenuProps) => {
+export const AccountMenu = ({
+  user,
+  sections,
+  onSignOut,
+  signOutDisabled,
+  onColorSchemeChange,
+  brandSwitcher,
+}: AccountMenuProps) => {
   const { t } = useI18n("shell");
   const { setColorScheme } = useMantineColorScheme();
   const scheme = useComputedColorScheme("light");
@@ -88,6 +109,36 @@ export const AccountMenu = ({ user, sections, onSignOut, signOutDisabled, onColo
           </Fragment>
         ))}
         <Menu.Divider />
+        {brandSwitcher && brandSwitcher.candidates.length > 1 && (
+          <>
+            <Menu.Label>{t("brandSwitcher")}</Menu.Label>
+            <Menu.Item
+              closeMenuOnClick={false}
+              disabled={brandSwitcher.disabled}
+              rightSection={brandSwitcher.chosenId === null ? <IconCheck size={14} /> : null}
+              onClick={() => brandSwitcher.onChoose(null)}
+            >
+              {t("brandAutomatic")}
+            </Menu.Item>
+            {brandSwitcher.candidates.map((candidate) => (
+              <Menu.Item
+                key={candidate.id}
+                closeMenuOnClick={false}
+                disabled={brandSwitcher.disabled}
+                rightSection={brandSwitcher.chosenId === candidate.id ? <IconCheck size={14} /> : null}
+                onClick={() => brandSwitcher.onChoose(candidate.id)}
+              >
+                {candidate.name}
+              </Menu.Item>
+            ))}
+            {brandSwitcher.choiceIgnored && (
+              <Text size="xs" c="dimmed" px="sm" pb="xs">
+                {t("brandChoiceIgnored")}
+              </Text>
+            )}
+            <Menu.Divider />
+          </>
+        )}
         {onColorSchemeChange && (
           <Menu.Item
             leftSection={next === "dark" ? <IconMoon size={14} /> : <IconSun size={14} />}

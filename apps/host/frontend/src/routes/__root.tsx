@@ -20,10 +20,13 @@ import {
   AppShellLayout,
   AppSwitcher,
   appUrl,
+  BrandLiveSync,
   LiveProvider,
+  refreshBrand,
   type ShellLinkComponent,
   SpotlightSearchBox,
   SpotlightSearchButton,
+  useBrand,
   useI18n,
   useSidePanelController,
 } from "@vantigo/frontend-shell";
@@ -35,6 +38,7 @@ import { fetchBootstrapStatus } from "../api/account-lifecycle";
 import { aiSettingsQueryKey, fetchAiSettings } from "../api/ai";
 import { fetchSession, sessionQueryKey, signOut } from "../api/auth";
 import { getAuthorizationMe } from "../api/authorization";
+import { chooseMyBrand } from "../api/brands";
 import { fetchSystemStatus, shouldShowMaintenance, systemStatusQueryKey } from "../api/system-status";
 import { activeAppKey, appNavSections, appTitleLabel, areaForKey, switcherTiles } from "../apps";
 import { AppSpotlight } from "../components/app-spotlight";
@@ -217,6 +221,14 @@ const RootLayout = () => {
         });
     },
   });
+  // The person's own choice among the brands their assignment gives them (brands design B12): saved, then
+  // the provider asks for the brand again, which is the one now chosen.
+  const brand = useBrand();
+  const chooseBrand = useMutation({
+    mutationFn: chooseMyBrand,
+    onSuccess: () => refreshBrand(),
+    onError: () => notifications.show({ color: "red", message: t("brands.error.generic") }),
+  });
   const logout = useMutation({
     mutationFn: signOut,
     onSuccess: () => {
@@ -269,6 +281,7 @@ const RootLayout = () => {
   }
   return (
     <LiveProvider userId={session.user.id}>
+      <BrandLiveSync />
       <AppShellLayout
         title={titleLabel ? t(titleLabel) : undefined}
         headerCenter={gated ? undefined : <SpotlightSearchBox />}
@@ -309,6 +322,13 @@ const RootLayout = () => {
               onSignOut={() => logout.mutate()}
               signOutDisabled={logout.isPending}
               onColorSchemeChange={profile.data ? (colorScheme) => saveColorScheme.mutate(colorScheme) : undefined}
+              brandSwitcher={{
+                candidates: brand.candidates ?? [],
+                chosenId: brand.source === "choice" ? brand.brandId : null,
+                choiceIgnored: brand.choiceIgnored,
+                onChoose: (brandId) => chooseBrand.mutate(brandId),
+                disabled: chooseBrand.isPending,
+              }}
             />
           </>
         }
