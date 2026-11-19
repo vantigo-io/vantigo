@@ -451,6 +451,38 @@ asymmetric signing (`v1a`/`v2a`); a replay-missing/backfill tool; receivers othe
     as React text only, never as HTML or Markdown.
   - `module.Workers`' comment and `contributing/module-boundaries.md` say that worker-mode deps
     carry the enabled modules' catalog.
+- **7** (2026-11-19, as built in delivery C):
+  - **The log** (`identity/webhooks_log.go`, `queries/webhooks_log.sql`): `GET …/deliveries`
+    newest first by an opaque cursor on `(created_at, id)`, `limit` 1–100 (50), filters `state`
+    and `event` (an event name; `webhook.ping` selects the pings, so no `kind` filter). A row
+    carries `messageId` (the `webhook-id`), never the body, and a computed `resendable` (kind,
+    state, age only). `GET …/deliveries/{deliveryId}` answers the body and the latest **100**
+    attempts, newest first: resends are unbounded over 30 days, so the attempts are capped.
+    Every read and the resend look the delivery up by `(id, endpoint_id)` under an endpoint
+    looked up by `(id, integration_id)`, so another endpoint's delivery is 404.
+  - **Resend (W22, W35).** Lock order integration → endpoint → delivery, as the sender's result
+    write. Refusals in that order: 409 `integration_archived`, 404, 409 `webhook_endpoint_disabled`,
+    409 **`webhook_delivery_not_resendable`** (new: a ping, a delivery `pending` or `skipped`, or one
+    whose `created_at` is 30 days old or more), 409 `webhook_event_not_permitted` (the permission
+    re-read, W7's rule; an event the catalogue no longer has is not permitted), 429 `rate_limited`
+    (the row's counter: a window of a minute opened by `resend_window_start`, 3 resends in it).
+    A ping is refused rather than resent since it is a one-attempt probe: send another test
+    event. The delivery keeps its id, body, `total_attempts` and last status/error; `run_attempts`
+    0, `max_run_attempts` 8, due now. Audited `webhook.resent` with the endpoint's snapshot, the
+    delivery's id and event name.
+  - **Expiry of a resend.** W30's 3-day pending limit read `created_at` alone, so a delivery
+    resent after day 3 would have been expired at the next housekeeping. `ExpireWebhookDeliveries`
+    now also requires `resend_window_start` (within a minute of the latest resend) to be before
+    the cutoff. No migration. Pruning still reads `created_at`: a resend is deleted 30 days after
+    the delivery was first queued.
+  - **Limits.** Resend has its own per-address bucket `WebhookResend` (30/min): identity's
+    `UserManagement` bucket is shared across its operations, and a 31st member made the
+    integration tests that walk the whole contract from one address hit 429. The reads are not
+    limited.
+  - **Screen.** A **Deliveries** button on each endpoint row (outside the Actions menu, which an
+    archived integration reduces to Delete) shows the log in place of the list; a drawer shows a
+    delivery's webhook-id, body and attempts; the excerpt and the body are React text in a
+    `Code` block only (S7), held by a test with `<script>` and `<img onerror>` text.
 
 ## 12. What overturning a default changes
 
