@@ -5,6 +5,7 @@ sidebar:
   order: 42
 sources:
   - apps/server/internal/identity
+  - openapi/identity.yaml
   - packages/frontend-shell/src/brand
   - apps/host/frontend/src/routes/workspace
 ---
