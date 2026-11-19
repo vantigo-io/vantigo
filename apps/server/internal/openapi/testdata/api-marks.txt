@@ -153,6 +153,7 @@ identity never deleteIdentityAccessRolesById
 identity never deleteIdentityAccountAvatar
 identity never deleteIdentityAccountPasskeysByCredentialId
 identity never deleteIdentityAccountPin
+identity never deleteIdentityBrandsByIdLogosBySlot
 identity never deleteIdentityIntegrationsByIdWebhooksByWebhookId
 identity never deleteIdentityOwnerSsoOidc
 identity never deleteIdentityOwnerSsoScim
@@ -180,6 +181,13 @@ identity never getIdentityAccountMfaSetup
 identity never getIdentityAccountPasskeys
 identity never getIdentityAccountPin
 identity never getIdentityBootstrapStatus
+identity never getIdentityBrand
+identity never getIdentityBrandAssetsByFile
+identity never getIdentityBrandCss
+identity never getIdentityBrandPublic
+identity never getIdentityBrands
+identity never getIdentityBrandsById
+identity never getIdentityBrandsByIdLogosBySlot
 identity never getIdentityIntegrations
 identity never getIdentityIntegrationsById
 identity never getIdentityIntegrationsByIdRequests
@@ -238,6 +246,8 @@ identity never postIdentityAccountPasskeysComplete
 identity never postIdentityAccountPassword
 identity never postIdentityAccountSessionsRevoke
 identity never postIdentityBootstrap
+identity never postIdentityBrandsByIdDiscardDraft
+identity never postIdentityBrandsByIdPublish
 identity never postIdentityIntegrations
 identity never postIdentityIntegrationsByIdArchive
 identity never postIdentityIntegrationsByIdDisable
@@ -297,6 +307,8 @@ identity never putIdentityAccount
 identity never putIdentityAccountAvatar
 identity never putIdentityAccountPin
 identity never putIdentityAccountProfile
+identity never putIdentityBrandsById
+identity never putIdentityBrandsByIdLogosBySlot
 identity never putIdentityIntegrationsByIdRoles
 identity never putIdentityOwnerAiTasksByKey
 identity never putIdentityOwnerProvisioningRoles

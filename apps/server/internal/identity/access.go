@@ -17,6 +17,8 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"go.opentelemetry.io/otel/metric"
+
 	"github.com/vantigo-io/vantigo/server/internal/config"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/db"
@@ -82,6 +84,20 @@ type Access struct {
 	// before it starts and after it stops, when Record keeps nothing.
 	dbPool   *pgxpool.Pool
 	requests atomic.Pointer[apiRequestLog]
+	// brandNet is what the brand logo import resolves and dials with; nil
+	// means the process's guarded transport. Only a test sets it.
+	brandNet *webhookNetwork
+	// brandMP is the meter provider the brand counters are built on; nil
+	// means the global one. Only a test sets it.
+	brandMP   metric.MeterProvider
+	brandOnce sync.Once
+	brandMtr  *brandMetrics
+}
+
+// brandMetricsFor is the one set of brand counters of this Access.
+func (a *Access) brandMetricsFor() *brandMetrics {
+	a.brandOnce.Do(func() { a.brandMtr = newBrandMetrics(a.brandMP) })
+	return a.brandMtr
 }
 
 // aiModelsFor is the one resolver of this Access, built over d the first time.
