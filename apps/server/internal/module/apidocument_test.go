@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"regexp"
 	"testing"
+	"time"
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/google/uuid"
@@ -248,7 +249,11 @@ func (a *scopedRecordingAccess) Scope(context.Context, contracts.Principal) ([]s
 func composeLimitedDocuments(t *testing.T, access contracts.Access) http.Handler {
 	t.Helper()
 	pool, _ := testdb.Migrated(t)
-	handler, err := Compose(Deps{Access: access, Limiter: ratelimit.New(pool), Config: &config.Config{
+	// A frozen clock: the limiter's window never rolls over mid-test, however
+	// slowly the requests run (under -race, say).
+	frozen := time.Date(2026, 1, 1, 12, 0, 30, 0, time.UTC)
+	limiter := ratelimit.NewWithClock(pool, func() time.Time { return frozen })
+	handler, err := Compose(Deps{Access: access, Limiter: limiter, Config: &config.Config{
 		Modules: []string{"customers"}, AppOrigin: "https://vantigo.example.com", BasePath: "/erp",
 	}}, customersModules()...)
 	if err != nil {
