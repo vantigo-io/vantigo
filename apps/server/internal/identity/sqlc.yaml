@@ -24,6 +24,7 @@ sql:
       - ../db/migrations/00199_identity_api_requests.sql
       - ../db/migrations/00204_identity_webhooks.sql
       - ../db/migrations/00206_identity_color_scheme.sql
+      - ../db/migrations/00209_identity_brands.sql
     queries: queries
     gen:
       go:
