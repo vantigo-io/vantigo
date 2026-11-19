@@ -40,7 +40,7 @@ const SetupPage = () => {
     );
   if (!status.data?.available)
     return (
-      <Center mih="100vh" bg="gray.0">
+      <Center mih="100vh" bg="light-dark(var(--mantine-color-gray-0), var(--vantigo-body-bg))">
         <Card withBorder p="xl" maw={440} w="100%">
           <Stack>
             <Title order={2}>{t("auth.setupUnavailable")}</Title>
@@ -53,7 +53,7 @@ const SetupPage = () => {
       </Center>
     );
   return (
-    <Center mih="100vh" bg="gray.0" p="md">
+    <Center mih="100vh" bg="light-dark(var(--mantine-color-gray-0), var(--vantigo-body-bg))" p="md">
       <Stack maw={460} w="100%" align="center">
         <Card withBorder shadow="sm" p="xl" w="100%">
           <Stack>

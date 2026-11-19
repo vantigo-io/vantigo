@@ -20,7 +20,12 @@ export interface EmptyStateProps {
  */
 export const EmptyState = ({ icon: Icon, title, description, action, size = "md" }: EmptyStateProps) => (
   <Stack align="center" gap="xs" py={size === "md" ? "xl" : "md"} ta="center" data-testid="empty-state">
-    {Icon && <Icon size={size === "md" ? 38 : 28} color="var(--mantine-color-gray-5)" />}
+    {Icon && (
+      <Icon
+        size={size === "md" ? 38 : 28}
+        color="light-dark(var(--mantine-color-gray-5), var(--mantine-color-dark-3))"
+      />
+    )}
     <Text c="dimmed" fw={500} size={size === "md" ? "md" : "sm"}>
       {title}
     </Text>

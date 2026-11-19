@@ -1,5 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { DOCUMENT_URL, type Environment, type ScalarGlobal, SESSION_DOCUMENT_URL, start } from "./apiref";
+import {
+  DOCUMENT_URL,
+  type Environment,
+  isDarkScheme,
+  type ScalarGlobal,
+  SESSION_DOCUMENT_URL,
+  scalarConfiguration,
+  start,
+} from "./apiref";
 
 const KEY = "vtg_abcdEFGHijklMNOPqrstUVWXyz0123456789ABCDEFG000000";
 const keyDocument = { openapi: "3.0.3", info: { title: "key" }, paths: {} };
@@ -210,5 +218,25 @@ describe("the API reference page", () => {
 
     expect(mounted.every((m) => m.destroyed)).toBe(true);
     expect(root.querySelector("[role=status]")?.textContent).toContain("could not be loaded");
+  });
+});
+
+describe("the colour scheme", () => {
+  it("follows the stored choice, and the browser for auto or none", () => {
+    expect(isDarkScheme("dark", false)).toBe(true);
+    expect(isDarkScheme("light", true)).toBe(false);
+    expect(isDarkScheme("auto", true)).toBe(true);
+    expect(isDarkScheme("auto", false)).toBe(false);
+    expect(isDarkScheme(null, true)).toBe(true);
+    expect(isDarkScheme("unknown", false)).toBe(false);
+  });
+
+  it("tells Scalar to hold that scheme", () => {
+    expect(scalarConfiguration({}, null, true)).toMatchObject({
+      darkMode: true,
+      forceDarkModeState: "dark",
+      hideDarkModeToggle: true,
+    });
+    expect(scalarConfiguration({}, null)).toMatchObject({ darkMode: false, forceDarkModeState: "light" });
   });
 });

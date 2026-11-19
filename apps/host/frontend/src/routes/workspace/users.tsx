@@ -649,7 +649,7 @@ const UsersPage = () => {
             styles={{
               root: {
                 borderColor: metricFilter === key ? "var(--mantine-color-vantigo-6)" : undefined,
-                backgroundColor: metricFilter === key ? "var(--mantine-color-vantigo-0)" : undefined,
+                backgroundColor: metricFilter === key ? "var(--vantigo-subtle-bg)" : undefined,
               },
             }}
           >

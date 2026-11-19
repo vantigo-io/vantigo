@@ -17,7 +17,20 @@ export type Environment = {
   fetch: typeof fetch;
   scalar: ScalarGlobal;
   language: string | undefined;
+  /** Whether the page is dark; see isDarkScheme. Light when absent. */
+  dark?: boolean;
 };
+
+/**
+ * Whether the page is dark: the colour scheme the visitor chose in Vantigo
+ * (localStorage "vantigo-color-scheme": light, dark or auto), where auto, or
+ * anything else, follows the browser's prefers-color-scheme.
+ */
+export function isDarkScheme(stored: string | null, prefersDark: boolean): boolean {
+  if (stored === "dark") return true;
+  if (stored === "light") return false;
+  return prefersDark;
+}
 
 // Both are relative to the page, which is /api under any base path.
 export const DOCUMENT_URL = "api/openapi.json";
@@ -29,11 +42,15 @@ export const SESSION_DOCUMENT_URL = "api/openapi.json?view=api";
  * named, so requests go to the document's own server), no telemetry, no
  * agent or MCP chat (api.scalar.com) and no developer tools. The client
  * button is hidden as well: each operation's own "Test Request" is the client.
+ * The colour scheme is Vantigo's, so Scalar's own toggle is hidden.
  */
-export function scalarConfiguration(content: unknown, key: string | null): Record<string, unknown> {
+export function scalarConfiguration(content: unknown, key: string | null, dark = false): Record<string, unknown> {
   const configuration: Record<string, unknown> = {
     content,
     persistAuth: false,
+    darkMode: dark,
+    forceDarkModeState: dark ? "dark" : "light",
+    hideDarkModeToggle: true,
     withDefaultFonts: false,
     telemetry: false,
     hideClientButton: true,
@@ -105,6 +122,7 @@ export async function start(root: HTMLElement, env: Environment): Promise<void> 
   const { copy, lang } = copyFor(env.language);
   root.ownerDocument.documentElement.lang = lang;
   root.ownerDocument.title = copy.title;
+  root.ownerDocument.documentElement.style.colorScheme = env.dark ? "dark" : "light";
   const el = render(root, copy);
 
   let instance: ScalarInstance | null = null;
@@ -137,7 +155,7 @@ export async function start(root: HTMLElement, env: Environment): Promise<void> 
 
   const mount = (content: unknown, key: string | null) => {
     unmount();
-    instance = env.scalar.createApiReference(el.reference, scalarConfiguration(content, key));
+    instance = env.scalar.createApiReference(el.reference, scalarConfiguration(content, key, env.dark ?? false));
     mountedKey = key;
   };
 

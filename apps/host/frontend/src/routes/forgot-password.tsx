@@ -11,7 +11,7 @@ const ForgotPasswordPage = () => {
   const form = useForm({ initialValues: { email: "" } });
   const mutation = useMutation({ mutationFn: () => requestPasswordRecovery(form.values.email) });
   return (
-    <Center mih="100vh" bg="gray.0">
+    <Center mih="100vh" bg="light-dark(var(--mantine-color-gray-0), var(--vantigo-body-bg))">
       <Card withBorder p="xl" maw={440} w="100%">
         <Stack>
           <Title order={2}>{t("auth.resetTitle")}</Title>

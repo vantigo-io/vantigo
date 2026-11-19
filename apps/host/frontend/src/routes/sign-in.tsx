@@ -68,7 +68,7 @@ const SignInPage = () => {
     },
   });
   return (
-    <Center mih="100vh" bg="gray.0" p="md">
+    <Center mih="100vh" bg="light-dark(var(--mantine-color-gray-0), var(--vantigo-body-bg))" p="md">
       <Stack maw={440} w="100%" align="center">
         <Card withBorder shadow="sm" p="xl" w="100%">
           <Stack>
