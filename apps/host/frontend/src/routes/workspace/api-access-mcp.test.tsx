@@ -1,3 +1,4 @@
+import { notifications } from "@mantine/notifications";
 import { QueryClient } from "@tanstack/react-query";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -44,7 +45,13 @@ const renderSection = async (d: IntegrationDetail, archived = false) => {
   await screen.findByRole("heading", { name: "MCP" });
 };
 
-beforeEach(() => api.setIntegrationMcpAccess.mockReset());
+// A spy of each test's own: the setup restores every mock after a test.
+const notify = { show: vi.spyOn(notifications, "show") };
+
+beforeEach(() => {
+  api.setIntegrationMcpAccess.mockReset();
+  notify.show = vi.spyOn(notifications, "show");
+});
 
 describe("an integration's MCP section", () => {
   it("is off by default, shows the endpoint and no snippet", async () => {
@@ -69,7 +76,45 @@ describe("an integration's MCP section", () => {
       `claude mcp add --transport http claude-agent ${window.location.origin}/api/mcp --header "Authorization: Bearer vtg_…"`,
     );
     expect(screen.getByText(/"mcpServers"/).textContent).toContain(`"url": "${window.location.origin}/api/mcp"`);
+    expect(screen.getByText(/"servers"/).textContent).toContain('"type": "http"');
+    expect(screen.getByText(/text written to mislead it/)).toBeInTheDocument();
+    expect(screen.queryByText(/write access/)).not.toBeInTheDocument();
+  });
+
+  it("warns of writes only under read and write", async () => {
+    await renderSection(detail("read_write"));
     expect(screen.getByText(/A key with write access lets it change data/)).toBeInTheDocument();
+  });
+
+  it("tells of a change made meanwhile and reads the integration again", async () => {
+    api.setIntegrationMcpAccess.mockRejectedValue(
+      Object.assign(new Error("The integration has been changed since it was read."), { code: "version_mismatch" }),
+    );
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+    await renderRoute(
+      "/workspace/api-access/i-1",
+      () => <IntegrationMcp detail={detail()} archived={false} />,
+      queryClient,
+    );
+    fireEvent.click(await screen.findByRole("radio", { name: /^Read only/ }));
+    await waitFor(() =>
+      expect(notify.show).toHaveBeenCalledWith(
+        expect.objectContaining({ color: "orange", message: expect.stringMatching(/Someone changed the integration/) }),
+      ),
+    );
+    await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ["identity", "integrations", "i-1"] }));
+  });
+
+  it("shows a plain save error", async () => {
+    api.setIntegrationMcpAccess.mockRejectedValue(new Error("The server is unavailable."));
+    await renderSection(detail());
+    fireEvent.click(screen.getByRole("radio", { name: /^Read only/ }));
+    await waitFor(() =>
+      expect(notify.show).toHaveBeenCalledWith(
+        expect.objectContaining({ color: "red", message: "The server is unavailable." }),
+      ),
+    );
   });
 
   it("says when the installation has switched MCP off", async () => {
@@ -86,15 +131,17 @@ describe("an integration's MCP section", () => {
 
 describe("the connection snippets", () => {
   it("name the server after the integration and carry url and headers", () => {
-    const { claude, json } = mcpSnippets("https://erp.example.com/base/api/mcp", "Øst Webshop / 2");
+    const { claude, json, vscode } = mcpSnippets("https://erp.example.com/base/api/mcp", "Øst Webshop / 2");
     expect(claude).toBe(
       'claude mcp add --transport http st-webshop-2 https://erp.example.com/base/api/mcp --header "Authorization: Bearer vtg_…"',
     );
-    expect(JSON.parse(json)).toEqual({
-      mcpServers: {
-        "st-webshop-2": { url: "https://erp.example.com/base/api/mcp", headers: { Authorization: "Bearer vtg_…" } },
-      },
-    });
+    const server = {
+      type: "http",
+      url: "https://erp.example.com/base/api/mcp",
+      headers: { Authorization: "Bearer vtg_…" },
+    };
+    expect(JSON.parse(json)).toEqual({ mcpServers: { "st-webshop-2": server } });
+    expect(JSON.parse(vscode)).toEqual({ servers: { "st-webshop-2": server } });
     expect(mcpSnippets("https://x/api/mcp", "???").claude).toContain(" vantigo ");
   });
 });

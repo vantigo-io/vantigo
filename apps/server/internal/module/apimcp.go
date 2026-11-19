@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/buildinfo"
@@ -79,6 +80,19 @@ func writeAuthError(w http.ResponseWriter, status int, code, message string) {
 	_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]any{"code": code, "message": message}})
 }
 
+// presentsKey reports whether r carries an Authorization: Bearer vtg_… header,
+// the only credential the endpoint takes; Check judges it, and every other
+// header beside it.
+func presentsKey(r *http.Request) bool {
+	for _, v := range r.Header.Values("Authorization") {
+		scheme, token, ok := strings.Cut(strings.TrimSpace(v), " ")
+		if ok && strings.EqualFold(scheme, "Bearer") && strings.HasPrefix(strings.TrimSpace(token), "vtg_") {
+			return true
+		}
+	}
+	return false
+}
+
 // keyRequired is the endpoint's 401 for a request with no key, or with a
 // session (M27). It is written here, never by Access.Reject, which would
 // clear a signed-in browser's session cookie.
@@ -94,6 +108,16 @@ func (h *mcpHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// No GET stream and no session to DELETE (M5).
 		w.Header().Set("Allow", http.MethodPost)
 		httpx.WriteProblem(w, r, http.StatusMethodNotAllowed, "")
+		return
+	}
+	// What is no key at all, or a body over the cap by its own account, is
+	// answered before anything is counted or looked up (M27, M5).
+	if !presentsKey(r) {
+		keyRequired(w)
+		return
+	}
+	if r.ContentLength > mcpMaxBodyBytes {
+		httpx.WriteProblem(w, r, http.StatusRequestEntityTooLarge, httpx.TooLargeDetail)
 		return
 	}
 	if h.limiter != nil {
@@ -157,7 +181,24 @@ func (h *mcpHandler) plan(w http.ResponseWriter, r *http.Request, p contracts.Pr
 	if !ok {
 		return fail(errors.New("module: an API key was admitted by an Access that has no MCPAccess"))
 	}
-	key, err := mcp.MCP(r.Context(), p)
+
+	// The body is read and judged first, so the key is read once, with its
+	// scope only when a tool needs the catalogue (M22).
+	body, readErr := io.ReadAll(http.MaxBytesReader(w, r.Body, mcpMaxBodyBytes))
+	var (
+		msg    rpcMessage
+		params rpcParams
+		req    mcpRequest
+		f      *rpcFailure
+	)
+	if readErr == nil {
+		if msg, params, f = parseMCP(body); f == nil {
+			req, f = classify(r, msg, params)
+		}
+	}
+	needScope := readErr == nil && f == nil && !msg.notification() && msg.Method == mcpMethodToolsCall &&
+		params.Name != nil && (*params.Name == mcpToolSearch || *params.Name == mcpToolDescribe || *params.Name == mcpToolRead)
+	key, err := mcp.MCP(r.Context(), p, needScope)
 	if err != nil {
 		return fail(err)
 	}
@@ -166,16 +207,9 @@ func (h *mcpHandler) plan(w http.ResponseWriter, r *http.Request, p contracts.Pr
 			writeAuthError(w, http.StatusForbidden, "mcp_not_enabled", mcpNotEnabledMessage)
 		}, nil
 	}
-
-	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, mcpMaxBodyBytes))
-	if err != nil {
-		return fail(err)
+	if readErr != nil {
+		return fail(readErr)
 	}
-	msg, params, f := parseMCP(body)
-	if f != nil {
-		return func(w http.ResponseWriter) { writeFailure(w, msg.ID, f) }, nil
-	}
-	req, f := classify(r, msg, params)
 	if f != nil {
 		return func(w http.ResponseWriter) { writeFailure(w, msg.ID, f) }, nil
 	}
@@ -281,7 +315,7 @@ func (h *mcpHandler) run(w http.ResponseWriter, r *http.Request, call *mcpCall) 
 		case panicked:
 			t = toolError("%s failed unexpectedly. Quote the trace id %s when reporting it.", call.op.ID, httpx.TraceID(r))
 		case timedOut:
-			t = toolError("%s did not answer within %s.", call.op.ID, mcpCallTimeout)
+			t = toolError("%s did not answer within %s. Quote the trace id %s when reporting it.", call.op.ID, mcpCallTimeout, httpx.TraceID(r))
 		default:
 			for _, name := range []string{"RateLimit-Limit", "RateLimit-Remaining", "RateLimit-Reset"} {
 				if v := rec.header.Get(name); v != "" {

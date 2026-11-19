@@ -3,12 +3,14 @@ package module
 import (
 	"container/list"
 	"fmt"
+	"net/http"
 	"slices"
 	"sort"
 	"strings"
 	"sync"
 
 	"github.com/getkin/kin-openapi/openapi3"
+	"golang.org/x/sync/singleflight"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/openapi/integrator"
@@ -28,6 +30,20 @@ const (
 	mcpKindRead  = "read"
 	mcpKindWrite = "write"
 )
+
+// mcpReadPosts are the POST operations marked x-vantigo-api: read that MCP's
+// read tool may call (MCP server design M35): each reviewed to change nothing,
+// call nothing outside Vantigo and answer only what the caller may already
+// read. Every other POST marked read is a write to MCP — estimateShipping
+// asks Bring, printInventoryLabels renders a label run, and
+// postStaffPeopleSimilarErased matches against erased people — so a new one
+// is not reachable in read mode until it is reviewed and listed here.
+var mcpReadPosts = map[string]bool{
+	"previewAccountingVoucher":                true, // expands a journal; writes nothing
+	"previewAccountingBankCsv":                true, // parses an uploaded statement; writes nothing (multipart, so not in the catalogue)
+	"postExpensesClaimsByIdPerDiemSuggestion": true, // prices a visible claim's days; writes nothing
+	"resolveKnowledgeLinks":                   true, // titles of articles the caller may read
+}
 
 // mcpOperation is one operation of a catalogue.
 type mcpOperation struct {
@@ -60,6 +76,10 @@ type mcpCatalogue struct {
 	mu      sync.Mutex
 	order   *list.List // of *mcpCatalogueEntry, the most recently used first
 	entries map[string]*list.Element
+	// building lets one caller build a scope's catalogue while every other
+	// asking for the same scope waits for it, so a burst of first requests
+	// costs one build, not one each.
+	building singleflight.Group
 }
 
 type mcpCatalogueEntry struct {
@@ -98,10 +118,13 @@ func operationKinds(contract *openapi3.T) (map[string]string, error) {
 			if err := setAPIRule(method, op, &rule); err != nil {
 				return nil, fmt.Errorf("module: %s %s: %w", method, path, err)
 			}
-			switch rule.API {
-			case contracts.APIRead:
+			switch {
+			case rule.API == contracts.APIRead && (method == http.MethodGet || method == http.MethodHead || mcpReadPosts[op.OperationID]):
 				kinds[op.OperationID] = mcpKindRead
-			case contracts.APIAllowed:
+			case rule.API == contracts.APIRead, rule.API == contracts.APIAllowed:
+				// A POST marked read for keys that is not in mcpReadPosts is a
+				// write to MCP: it may act outside Vantigo or reveal more than
+				// an agent should reach by reading.
 				kinds[op.OperationID] = mcpKindWrite
 			}
 		}
@@ -130,25 +153,30 @@ func (c *mcpCatalogue) scoped(permissions []string, readOnly bool) (*mcpIndex, e
 	}
 	c.mu.Unlock()
 
-	// Built outside the lock, as apiDocuments.scoped builds its document.
-	index, err := c.build(&integrator.Filter{Permissions: permissions, ReadOnly: readOnly})
+	// Built outside the lock, once per scope however many ask at once.
+	v, err, _ := c.building.Do(key, func() (any, error) {
+		index, err := c.build(&integrator.Filter{Permissions: permissions, ReadOnly: readOnly})
+		if err != nil {
+			return nil, err
+		}
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		if el, ok := c.entries[key]; ok {
+			c.order.MoveToFront(el)
+			return el.Value.(*mcpCatalogueEntry).index, nil
+		}
+		c.entries[key] = c.order.PushFront(&mcpCatalogueEntry{key: key, index: index})
+		for c.order.Len() > mcpIndexes {
+			oldest := c.order.Back()
+			c.order.Remove(oldest)
+			delete(c.entries, oldest.Value.(*mcpCatalogueEntry).key)
+		}
+		return index, nil
+	})
 	if err != nil {
 		return nil, err
 	}
-
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if el, ok := c.entries[key]; ok {
-		c.order.MoveToFront(el)
-		return el.Value.(*mcpCatalogueEntry).index, nil
-	}
-	c.entries[key] = c.order.PushFront(&mcpCatalogueEntry{key: key, index: index})
-	for c.order.Len() > mcpIndexes {
-		oldest := c.order.Back()
-		c.order.Remove(oldest)
-		delete(c.entries, oldest.Value.(*mcpCatalogueEntry).key)
-	}
-	return index, nil
+	return v.(*mcpIndex), nil
 }
 
 // cached reports how many catalogues are kept, for the tests.

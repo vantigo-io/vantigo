@@ -296,7 +296,7 @@ func (s *server) integrationDetail(ctx context.Context, q *store.Queries, id uui
 	}
 	out := gen.IntegrationDetail{
 		Integration: integrationBody(rows[0]), Keys: make([]gen.ApiKey, 0, len(keys)), EffectivePermissions: effective,
-		McpAccess: gen.IntegrationMcpAccess(rows[0].McpAccess), McpAvailable: s.deps.Config == nil || s.deps.Config.MCPEnabled,
+		McpAccess: gen.IntegrationMcpAccess(rows[0].McpAccess), McpAvailable: s.deps.Config != nil && s.deps.Config.MCPEnabled,
 	}
 	for _, k := range keys {
 		out.Keys = append(out.Keys, s.apiKeyBody(k, held, now))

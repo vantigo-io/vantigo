@@ -303,12 +303,15 @@ integrasjon til en eier slår det på.
      --header "Authorization: Bearer vtg_…"
    ```
 
-   En klient som tar en URL og headere, får JSON-blokken seksjonen viser. Bytt ut `vtg_…` med
-   nøkkelen: hemmeligheten vises bare når den lages.
+   Seksjonen viser også `mcp.json`-blokken Cursor og de fleste andre klienter leser, og den
+   VS Code leser (`.vscode/mcp.json`). Bytt ut `vtg_…` med nøkkelen: hemmeligheten vises bare når
+   den lages.
 
 **Slik kontrollerer du:** be klienten liste verktøyene sine. Den viser `search_operations`,
-`describe_operation` og `read`, og et kall vises i integrasjonens fane **Forespørsler** som
-operasjonen den kalte og som `postApiMcp` for selve MCP-forespørselen.
+`describe_operation` og `read`. Hvert `read` vises to ganger i integrasjonens fane
+**Forespørsler**: som operasjonen den kalte, som teller mot hastighetsgrensen, og som `postApiMcp`
+for MCP-forespørselen rundt, som ikke gjør det. Alle andre MCP-forespørsler er én rad
+`postApiMcp` og teller én gang.
 
 Endringen revideres som `integration.mcp_changed`, og hvis noen andre har endret integrasjonen
 i mellomtiden, avvises den med beskjed om å laste inn på nytt, som for detaljene.
@@ -354,7 +357,8 @@ svarer personer med: `{"error": {"code": "…", "message": "…"}}`.
 Integrasjonens side har fanen **Forespørsler**: hva nøklene har kalt de siste 30 dagene. Hver
 forespørsel en nøkkel gjorde som Vantigo kunne knytte til nøkkelen, står der, også de som ble
 avvist; en forespørsel med en nøkkel som ikke passet noen nøkkel, står ikke der, fordi det ikke
-er noe å knytte den til.
+er noe å knytte den til. En AI-klients forespørsel ved MCP-endepunktet er operasjonen
+`postApiMcp`, og hvert `read` den gjør, er en rad til, operasjonen den kalte ([MCP](#mcp)).
 
 - **Forespørsler per dag** teller dem per dag og statusklasse — *2xx vellykket*, *3xx
   videresending*, *4xx avvist* og *5xx serverfeil* — som et diagram og en tabell. Dagene er
