@@ -360,24 +360,192 @@ func (e StationState) Valid() bool {
 	}
 }
 
+// Defines values for WebhookDeliveryKind.
+const (
+	Event WebhookDeliveryKind = "event"
+	Ping  WebhookDeliveryKind = "ping"
+)
+
+// Valid indicates whether the value is a known member of the WebhookDeliveryKind enum.
+func (e WebhookDeliveryKind) Valid() bool {
+	switch e {
+	case Event:
+		return true
+	case Ping:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WebhookDeliveryLastError.
+const (
+	WebhookDeliveryLastErrorBlockedAddress    WebhookDeliveryLastError = "blocked_address"
+	WebhookDeliveryLastErrorConnectionRefused WebhookDeliveryLastError = "connection_refused"
+	WebhookDeliveryLastErrorDns               WebhookDeliveryLastError = "dns"
+	WebhookDeliveryLastErrorHttpStatus        WebhookDeliveryLastError = "http_status"
+	WebhookDeliveryLastErrorOther             WebhookDeliveryLastError = "other"
+	WebhookDeliveryLastErrorRedirect          WebhookDeliveryLastError = "redirect"
+	WebhookDeliveryLastErrorTimeout           WebhookDeliveryLastError = "timeout"
+	WebhookDeliveryLastErrorTls               WebhookDeliveryLastError = "tls"
+	WebhookDeliveryLastErrorTooLarge          WebhookDeliveryLastError = "too_large"
+)
+
+// Valid indicates whether the value is a known member of the WebhookDeliveryLastError enum.
+func (e WebhookDeliveryLastError) Valid() bool {
+	switch e {
+	case WebhookDeliveryLastErrorBlockedAddress:
+		return true
+	case WebhookDeliveryLastErrorConnectionRefused:
+		return true
+	case WebhookDeliveryLastErrorDns:
+		return true
+	case WebhookDeliveryLastErrorHttpStatus:
+		return true
+	case WebhookDeliveryLastErrorOther:
+		return true
+	case WebhookDeliveryLastErrorRedirect:
+		return true
+	case WebhookDeliveryLastErrorTimeout:
+		return true
+	case WebhookDeliveryLastErrorTls:
+		return true
+	case WebhookDeliveryLastErrorTooLarge:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WebhookDeliveryState.
+const (
+	WebhookDeliveryStateDead      WebhookDeliveryState = "dead"
+	WebhookDeliveryStatePending   WebhookDeliveryState = "pending"
+	WebhookDeliveryStateSkipped   WebhookDeliveryState = "skipped"
+	WebhookDeliveryStateSucceeded WebhookDeliveryState = "succeeded"
+)
+
+// Valid indicates whether the value is a known member of the WebhookDeliveryState enum.
+func (e WebhookDeliveryState) Valid() bool {
+	switch e {
+	case WebhookDeliveryStateDead:
+		return true
+	case WebhookDeliveryStatePending:
+		return true
+	case WebhookDeliveryStateSkipped:
+		return true
+	case WebhookDeliveryStateSucceeded:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WebhookDeliveryStateReason.
+const (
+	WebhookDeliveryStateReasonAttemptsExhausted   WebhookDeliveryStateReason = "attempts_exhausted"
+	WebhookDeliveryStateReasonEndpointDisabled    WebhookDeliveryStateReason = "endpoint_disabled"
+	WebhookDeliveryStateReasonExpired             WebhookDeliveryStateReason = "expired"
+	WebhookDeliveryStateReasonGone                WebhookDeliveryStateReason = "gone"
+	WebhookDeliveryStateReasonIntegrationArchived WebhookDeliveryStateReason = "integration_archived"
+	WebhookDeliveryStateReasonPermissionNotHeld   WebhookDeliveryStateReason = "permission_not_held"
+)
+
+// Valid indicates whether the value is a known member of the WebhookDeliveryStateReason enum.
+func (e WebhookDeliveryStateReason) Valid() bool {
+	switch e {
+	case WebhookDeliveryStateReasonAttemptsExhausted:
+		return true
+	case WebhookDeliveryStateReasonEndpointDisabled:
+		return true
+	case WebhookDeliveryStateReasonExpired:
+		return true
+	case WebhookDeliveryStateReasonGone:
+		return true
+	case WebhookDeliveryStateReasonIntegrationArchived:
+		return true
+	case WebhookDeliveryStateReasonPermissionNotHeld:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WebhookDeliveryAttemptError.
+const (
+	WebhookDeliveryAttemptErrorBlockedAddress    WebhookDeliveryAttemptError = "blocked_address"
+	WebhookDeliveryAttemptErrorConnectionRefused WebhookDeliveryAttemptError = "connection_refused"
+	WebhookDeliveryAttemptErrorDns               WebhookDeliveryAttemptError = "dns"
+	WebhookDeliveryAttemptErrorHttpStatus        WebhookDeliveryAttemptError = "http_status"
+	WebhookDeliveryAttemptErrorOther             WebhookDeliveryAttemptError = "other"
+	WebhookDeliveryAttemptErrorRedirect          WebhookDeliveryAttemptError = "redirect"
+	WebhookDeliveryAttemptErrorTimeout           WebhookDeliveryAttemptError = "timeout"
+	WebhookDeliveryAttemptErrorTls               WebhookDeliveryAttemptError = "tls"
+	WebhookDeliveryAttemptErrorTooLarge          WebhookDeliveryAttemptError = "too_large"
+)
+
+// Valid indicates whether the value is a known member of the WebhookDeliveryAttemptError enum.
+func (e WebhookDeliveryAttemptError) Valid() bool {
+	switch e {
+	case WebhookDeliveryAttemptErrorBlockedAddress:
+		return true
+	case WebhookDeliveryAttemptErrorConnectionRefused:
+		return true
+	case WebhookDeliveryAttemptErrorDns:
+		return true
+	case WebhookDeliveryAttemptErrorHttpStatus:
+		return true
+	case WebhookDeliveryAttemptErrorOther:
+		return true
+	case WebhookDeliveryAttemptErrorRedirect:
+		return true
+	case WebhookDeliveryAttemptErrorTimeout:
+		return true
+	case WebhookDeliveryAttemptErrorTls:
+		return true
+	case WebhookDeliveryAttemptErrorTooLarge:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WebhookDeliveryAttemptSecretUsed.
+const (
+	Both    WebhookDeliveryAttemptSecretUsed = "both"
+	Current WebhookDeliveryAttemptSecretUsed = "current"
+)
+
+// Valid indicates whether the value is a known member of the WebhookDeliveryAttemptSecretUsed enum.
+func (e WebhookDeliveryAttemptSecretUsed) Valid() bool {
+	switch e {
+	case Both:
+		return true
+	case Current:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for WebhookEndpointDisabledReason.
 const (
-	Failing             WebhookEndpointDisabledReason = "failing"
-	Gone                WebhookEndpointDisabledReason = "gone"
-	IntegrationArchived WebhookEndpointDisabledReason = "integration_archived"
-	Manual              WebhookEndpointDisabledReason = "manual"
+	WebhookEndpointDisabledReasonFailing             WebhookEndpointDisabledReason = "failing"
+	WebhookEndpointDisabledReasonGone                WebhookEndpointDisabledReason = "gone"
+	WebhookEndpointDisabledReasonIntegrationArchived WebhookEndpointDisabledReason = "integration_archived"
+	WebhookEndpointDisabledReasonManual              WebhookEndpointDisabledReason = "manual"
 )
 
 // Valid indicates whether the value is a known member of the WebhookEndpointDisabledReason enum.
 func (e WebhookEndpointDisabledReason) Valid() bool {
 	switch e {
-	case Failing:
+	case WebhookEndpointDisabledReasonFailing:
 		return true
-	case Gone:
+	case WebhookEndpointDisabledReasonGone:
 		return true
-	case IntegrationArchived:
+	case WebhookEndpointDisabledReasonIntegrationArchived:
 		return true
-	case Manual:
+	case WebhookEndpointDisabledReasonManual:
 		return true
 	default:
 		return false
@@ -435,6 +603,30 @@ func (e GetIdentityIntegrationsByIdRequestsParamsReason) Valid() bool {
 	case GetIdentityIntegrationsByIdRequestsParamsReasonReadOnly:
 		return true
 	case GetIdentityIntegrationsByIdRequestsParamsReasonRevoked:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesParamsState.
+const (
+	GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesParamsStateDead      GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesParamsState = "dead"
+	GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesParamsStatePending   GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesParamsState = "pending"
+	GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesParamsStateSkipped   GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesParamsState = "skipped"
+	GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesParamsStateSucceeded GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesParamsState = "succeeded"
+)
+
+// Valid indicates whether the value is a known member of the GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesParamsState enum.
+func (e GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesParamsState) Valid() bool {
+	switch e {
+	case GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesParamsStateDead:
+		return true
+	case GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesParamsStatePending:
+		return true
+	case GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesParamsStateSkipped:
+		return true
+	case GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesParamsStateSucceeded:
 		return true
 	default:
 		return false
@@ -1995,6 +2187,108 @@ type TwoFactorRequest struct {
 	RememberMe *bool   `json:"rememberMe,omitempty"`
 }
 
+// WebhookDelivery One message to one endpoint, as the delivery log shows it (outgoing webhooks design W23), without its body.
+type WebhookDelivery struct {
+	// CompletedAt When it left pending — succeeded, dead or skipped; null while pending.
+	CompletedAt *time.Time `json:"completedAt"`
+	CreatedAt   time.Time  `json:"createdAt"`
+
+	// EventId The outbox event's id, the body's sequence; null for a ping.
+	EventId *int64 `json:"eventId"`
+
+	// EventName The catalogue event's name, or webhook.ping for a test event.
+	EventName string             `json:"eventName"`
+	Id        openapi_types.UUID `json:"id"`
+
+	// Kind event, or ping for a test event.
+	Kind WebhookDeliveryKind `json:"kind"`
+
+	// LastError The last attempt's error word, from a closed set; null when it had none (a 2xx, or no attempt yet).
+	LastError *WebhookDeliveryLastError `json:"lastError"`
+
+	// LastStatus The HTTP status the last attempt was answered with; null when no answer came.
+	LastStatus *int `json:"lastStatus"`
+
+	// MaxRunAttempts The attempts of a run, 8 for an event and 1 for a ping.
+	MaxRunAttempts int `json:"maxRunAttempts"`
+
+	// MessageId The webhook-id header every attempt carries, msg_ and the delivery's id without dashes; the same across retries and resends.
+	MessageId string `json:"messageId"`
+
+	// NextAttemptAt When a pending delivery is next tried; null otherwise.
+	NextAttemptAt *time.Time `json:"nextAttemptAt"`
+
+	// Resendable Whether its kind, state and age let it be resent — an event that succeeded or is dead, created less than 30 days ago. A resend also needs the endpoint enabled, the integration not archived and still permitted the event.
+	Resendable bool `json:"resendable"`
+
+	// RunAttempts The attempts of its current run.
+	RunAttempts int                  `json:"runAttempts"`
+	State       WebhookDeliveryState `json:"state"`
+
+	// StateReason Why it is skipped (permission_not_held) or dead (attempts_exhausted, gone, endpoint_disabled, integration_archived, expired); null while pending or once succeeded.
+	StateReason *WebhookDeliveryStateReason `json:"stateReason"`
+
+	// TotalAttempts Its attempts in all, every run counted.
+	TotalAttempts int `json:"totalAttempts"`
+}
+
+// WebhookDeliveryKind event, or ping for a test event.
+type WebhookDeliveryKind string
+
+// WebhookDeliveryLastError The last attempt's error word, from a closed set; null when it had none (a 2xx, or no attempt yet).
+type WebhookDeliveryLastError string
+
+// WebhookDeliveryState defines model for WebhookDelivery.State.
+type WebhookDeliveryState string
+
+// WebhookDeliveryStateReason Why it is skipped (permission_not_held) or dead (attempts_exhausted, gone, endpoint_disabled, integration_archived, expired); null while pending or once succeeded.
+type WebhookDeliveryStateReason string
+
+// WebhookDeliveryAttempt One attempt to send a delivery (outgoing webhooks design W16, W23).
+type WebhookDeliveryAttempt struct {
+	At         time.Time `json:"at"`
+	DurationMs int       `json:"durationMs"`
+
+	// Error The attempt's error word, from the closed set of lastError; null for a 2xx.
+	Error *WebhookDeliveryAttemptError `json:"error"`
+
+	// Excerpt At most 512 bytes of a non-2xx answer's body, control and format characters blanked. It is the receiver's text, to be shown as plain text only.
+	Excerpt *string `json:"excerpt"`
+
+	// SecretUsed current when the current secret signed alone, both when the previous one signed beside it during a roll's overlap.
+	SecretUsed WebhookDeliveryAttemptSecretUsed `json:"secretUsed"`
+
+	// StatusCode The HTTP status it was answered with; null when no answer came.
+	StatusCode *int `json:"statusCode"`
+}
+
+// WebhookDeliveryAttemptError The attempt's error word, from the closed set of lastError; null for a 2xx.
+type WebhookDeliveryAttemptError string
+
+// WebhookDeliveryAttemptSecretUsed current when the current secret signed alone, both when the previous one signed beside it during a roll's overlap.
+type WebhookDeliveryAttemptSecretUsed string
+
+// WebhookDeliveryDetail A delivery with the body it sends and its latest attempts.
+type WebhookDeliveryDetail struct {
+	// Attempts Its attempts, newest first, at most the latest 100.
+	Attempts []WebhookDeliveryAttempt `json:"attempts"`
+
+	// Body The JSON body every attempt sends, byte for byte.
+	Body string `json:"body"`
+
+	// Delivery One message to one endpoint, as the delivery log shows it (outgoing webhooks design W23), without its body.
+	Delivery WebhookDelivery `json:"delivery"`
+}
+
+// WebhookDeliveryPage defines model for WebhookDeliveryPage.
+type WebhookDeliveryPage struct {
+	// Deliveries Newest first.
+	Deliveries []WebhookDelivery `json:"deliveries"`
+
+	// NextCursor Pass as cursor for the next page; absent on the last.
+	NextCursor *string `json:"nextCursor,omitempty"`
+}
+
 // WebhookEndpoint A webhook endpoint of an integration (outgoing webhooks design W1), never its secret.
 type WebhookEndpoint struct {
 	CreatedAt   time.Time           `json:"createdAt"`
@@ -2295,6 +2589,24 @@ type PatchIdentityIntegrationsByIdWebhooksByWebhookIdParams struct {
 	// IfMatch The endpoint's version as it was read, bare or quoted. A version that has moved on is a 412 version_mismatch.
 	IfMatch string `json:"If-Match"`
 }
+
+// GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesParams defines parameters for GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveries.
+type GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesParams struct {
+	// State Only deliveries in this state.
+	State *GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesParamsState `form:"state,omitempty" json:"state,omitempty"`
+
+	// Event Only deliveries of this event name, as orders.sales_order.confirmed or webhook.ping.
+	Event *string `form:"event,omitempty" json:"event,omitempty"`
+
+	// Cursor The previous page's nextCursor.
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit How many deliveries a page holds, 1 to 100.
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesParamsState defines parameters for GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveries.
+type GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesParamsState string
 
 // PostIdentityIntegrationsByIdWebhooksByWebhookIdRollSecretJSONBody defines parameters for PostIdentityIntegrationsByIdWebhooksByWebhookIdRollSecret.
 type PostIdentityIntegrationsByIdWebhooksByWebhookIdRollSecretJSONBody = WebhookSecretRollRequest
@@ -3230,6 +3542,15 @@ type ServerInterface interface {
 	// PatchIdentityIntegrationsByIdWebhooksByWebhookId Change a webhook endpoint
 	// (PATCH /api/v1/identity/integrations/{id}/webhooks/{webhookId})
 	PatchIdentityIntegrationsByIdWebhooksByWebhookId(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, webhookId openapi_types.UUID, params PatchIdentityIntegrationsByIdWebhooksByWebhookIdParams)
+	// GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveries List a webhook endpoint's deliveries
+	// (GET /api/v1/identity/integrations/{id}/webhooks/{webhookId}/deliveries)
+	GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveries(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, webhookId openapi_types.UUID, params GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesParams)
+	// GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryId Get a webhook delivery with its attempts
+	// (GET /api/v1/identity/integrations/{id}/webhooks/{webhookId}/deliveries/{deliveryId})
+	GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryId(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, webhookId openapi_types.UUID, deliveryId openapi_types.UUID)
+	// PostIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResend Resend a webhook delivery
+	// (POST /api/v1/identity/integrations/{id}/webhooks/{webhookId}/deliveries/{deliveryId}/resend)
+	PostIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResend(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, webhookId openapi_types.UUID, deliveryId openapi_types.UUID)
 	// PostIdentityIntegrationsByIdWebhooksByWebhookIdDisable Disable a webhook endpoint
 	// (POST /api/v1/identity/integrations/{id}/webhooks/{webhookId}/disable)
 	PostIdentityIntegrationsByIdWebhooksByWebhookIdDisable(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, webhookId openapi_types.UUID)
@@ -5057,6 +5378,184 @@ func (siw *ServerInterfaceWrapper) PatchIdentityIntegrationsByIdWebhooksByWebhoo
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PatchIdentityIntegrationsByIdWebhooksByWebhookId(w, r, id, webhookId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveries operation middleware
+func (siw *ServerInterfaceWrapper) GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveries(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "webhookId" -------------
+	var webhookId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "webhookId", r.PathValue("webhookId"), &webhookId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "webhookId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesParams
+
+	// ------------- Optional query parameter "state" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "state", r.URL.Query(), &params.State, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "state"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "state", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "event" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "event", r.URL.Query(), &params.Event, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "event"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "event", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveries(w, r, id, webhookId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryId operation middleware
+func (siw *ServerInterfaceWrapper) GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryId(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "webhookId" -------------
+	var webhookId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "webhookId", r.PathValue("webhookId"), &webhookId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "webhookId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "deliveryId" -------------
+	var deliveryId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "deliveryId", r.PathValue("deliveryId"), &deliveryId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "deliveryId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryId(w, r, id, webhookId, deliveryId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResend operation middleware
+func (siw *ServerInterfaceWrapper) PostIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResend(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "webhookId" -------------
+	var webhookId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "webhookId", r.PathValue("webhookId"), &webhookId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "webhookId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "deliveryId" -------------
+	var deliveryId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "deliveryId", r.PathValue("deliveryId"), &deliveryId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "deliveryId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResend(w, r, id, webhookId, deliveryId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -7505,6 +8004,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/identity/integrations/{id}/webhooks/{webhookId}", wrapper.DeleteIdentityIntegrationsByIdWebhooksByWebhookId)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/integrations/{id}/webhooks/{webhookId}", wrapper.GetIdentityIntegrationsByIdWebhooksByWebhookId)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/v1/identity/integrations/{id}/webhooks/{webhookId}", wrapper.PatchIdentityIntegrationsByIdWebhooksByWebhookId)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/integrations/{id}/webhooks/{webhookId}/deliveries", wrapper.GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveries)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/integrations/{id}/webhooks/{webhookId}/deliveries/{deliveryId}", wrapper.GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryId)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/integrations/{id}/webhooks/{webhookId}/deliveries/{deliveryId}/resend", wrapper.PostIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResend)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/integrations/{id}/webhooks/{webhookId}/disable", wrapper.PostIdentityIntegrationsByIdWebhooksByWebhookIdDisable)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/integrations/{id}/webhooks/{webhookId}/enable", wrapper.PostIdentityIntegrationsByIdWebhooksByWebhookIdEnable)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/integrations/{id}/webhooks/{webhookId}/roll-secret", wrapper.PostIdentityIntegrationsByIdWebhooksByWebhookIdRollSecret)
@@ -12889,6 +13391,256 @@ type PatchIdentityIntegrationsByIdWebhooksByWebhookId429JSONResponse struct {
 }
 
 func (response PatchIdentityIntegrationsByIdWebhooksByWebhookId429JSONResponse) VisitPatchIdentityIntegrationsByIdWebhooksByWebhookIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesRequestObject struct {
+	Id        openapi_types.UUID `json:"id"`
+	WebhookId openapi_types.UUID `json:"webhookId"`
+	Params    GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesParams
+}
+
+type GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesResponseObject interface {
+	VisitGetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesResponse(w http.ResponseWriter) error
+}
+
+type GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveries200JSONResponse WebhookDeliveryPage
+
+func (response GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveries200JSONResponse) VisitGetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveries400JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveries400JSONResponse) VisitGetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveries401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveries401JSONResponse) VisitGetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveries403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveries403JSONResponse) VisitGetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveries404JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveries404JSONResponse) VisitGetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdRequestObject struct {
+	Id         openapi_types.UUID `json:"id"`
+	WebhookId  openapi_types.UUID `json:"webhookId"`
+	DeliveryId openapi_types.UUID `json:"deliveryId"`
+}
+
+type GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResponseObject interface {
+	VisitGetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResponse(w http.ResponseWriter) error
+}
+
+type GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryId200JSONResponse WebhookDeliveryDetail
+
+func (response GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryId200JSONResponse) VisitGetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryId401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryId401JSONResponse) VisitGetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryId403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryId403JSONResponse) VisitGetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryId404JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryId404JSONResponse) VisitGetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResendRequestObject struct {
+	Id         openapi_types.UUID `json:"id"`
+	WebhookId  openapi_types.UUID `json:"webhookId"`
+	DeliveryId openapi_types.UUID `json:"deliveryId"`
+}
+
+type PostIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResendResponseObject interface {
+	VisitPostIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResendResponse(w http.ResponseWriter) error
+}
+
+type PostIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResend202JSONResponse WebhookDelivery
+
+func (response PostIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResend202JSONResponse) VisitPostIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResendResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(202)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResend401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResend401JSONResponse) VisitPostIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResendResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResend403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResend403JSONResponse) VisitPostIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResendResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResend404JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResend404JSONResponse) VisitPostIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResendResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResend409JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResend409JSONResponse) VisitPostIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResendResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResend429ResponseHeaders struct {
+	RetryAfter *string
+}
+
+type PostIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResend429JSONResponse struct {
+	Body    externalRef0.AuthErrorResponse
+	Headers PostIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResend429ResponseHeaders
+}
+
+func (response PostIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResend429JSONResponse) VisitPostIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResendResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -20635,6 +21387,15 @@ type StrictServerInterface interface {
 	// PatchIdentityIntegrationsByIdWebhooksByWebhookId Change a webhook endpoint
 	// (PATCH /api/v1/identity/integrations/{id}/webhooks/{webhookId})
 	PatchIdentityIntegrationsByIdWebhooksByWebhookId(ctx context.Context, request PatchIdentityIntegrationsByIdWebhooksByWebhookIdRequestObject) (PatchIdentityIntegrationsByIdWebhooksByWebhookIdResponseObject, error)
+	// GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveries List a webhook endpoint's deliveries
+	// (GET /api/v1/identity/integrations/{id}/webhooks/{webhookId}/deliveries)
+	GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveries(ctx context.Context, request GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesRequestObject) (GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesResponseObject, error)
+	// GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryId Get a webhook delivery with its attempts
+	// (GET /api/v1/identity/integrations/{id}/webhooks/{webhookId}/deliveries/{deliveryId})
+	GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryId(ctx context.Context, request GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdRequestObject) (GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResponseObject, error)
+	// PostIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResend Resend a webhook delivery
+	// (POST /api/v1/identity/integrations/{id}/webhooks/{webhookId}/deliveries/{deliveryId}/resend)
+	PostIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResend(ctx context.Context, request PostIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResendRequestObject) (PostIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResendResponseObject, error)
 	// PostIdentityIntegrationsByIdWebhooksByWebhookIdDisable Disable a webhook endpoint
 	// (POST /api/v1/identity/integrations/{id}/webhooks/{webhookId}/disable)
 	PostIdentityIntegrationsByIdWebhooksByWebhookIdDisable(ctx context.Context, request PostIdentityIntegrationsByIdWebhooksByWebhookIdDisableRequestObject) (PostIdentityIntegrationsByIdWebhooksByWebhookIdDisableResponseObject, error)
@@ -23042,6 +23803,90 @@ func (sh *strictHandler) PatchIdentityIntegrationsByIdWebhooksByWebhookId(w http
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PatchIdentityIntegrationsByIdWebhooksByWebhookIdResponseObject); ok {
 		if err := validResponse.VisitPatchIdentityIntegrationsByIdWebhooksByWebhookIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveries operation middleware
+func (sh *strictHandler) GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveries(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, webhookId openapi_types.UUID, params GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesParams) {
+	var request GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesRequestObject
+
+	request.Id = id
+	request.WebhookId = webhookId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveries(ctx, request.(GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveries")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesResponseObject); ok {
+		if err := validResponse.VisitGetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryId operation middleware
+func (sh *strictHandler) GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryId(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, webhookId openapi_types.UUID, deliveryId openapi_types.UUID) {
+	var request GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdRequestObject
+
+	request.Id = id
+	request.WebhookId = webhookId
+	request.DeliveryId = deliveryId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryId(ctx, request.(GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryId")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResponseObject); ok {
+		if err := validResponse.VisitGetIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResend operation middleware
+func (sh *strictHandler) PostIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResend(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, webhookId openapi_types.UUID, deliveryId openapi_types.UUID) {
+	var request PostIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResendRequestObject
+
+	request.Id = id
+	request.WebhookId = webhookId
+	request.DeliveryId = deliveryId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResend(ctx, request.(PostIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResendRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResend")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResendResponseObject); ok {
+		if err := validResponse.VisitPostIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResendResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

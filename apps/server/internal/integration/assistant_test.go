@@ -224,16 +224,19 @@ var markedByHand = map[string]string{
 	"postIdentityIntegrationsByIdKeysByKeyIdRevoke": "never",
 	// Their webhook endpoints (outgoing webhooks design W34): a signing
 	// secret is a credential, and where the stream goes is an Owner's.
-	"getIdentityIntegrationsByIdWebhooks":                       "never",
-	"postIdentityIntegrationsByIdWebhooks":                      "never",
-	"getIdentityIntegrationsByIdWebhooksByWebhookId":            "never",
-	"patchIdentityIntegrationsByIdWebhooksByWebhookId":          "never",
-	"deleteIdentityIntegrationsByIdWebhooksByWebhookId":         "never",
-	"postIdentityIntegrationsByIdWebhooksByWebhookIdDisable":    "never",
-	"postIdentityIntegrationsByIdWebhooksByWebhookIdEnable":     "never",
-	"postIdentityIntegrationsByIdWebhooksByWebhookIdRollSecret": "never",
-	"postIdentityIntegrationsByIdWebhooksByWebhookIdTest":       "never",
-	"getIdentityWebhookEvents":                                  "never",
+	"getIdentityIntegrationsByIdWebhooks":                                         "never",
+	"postIdentityIntegrationsByIdWebhooks":                                        "never",
+	"getIdentityIntegrationsByIdWebhooksByWebhookId":                              "never",
+	"patchIdentityIntegrationsByIdWebhooksByWebhookId":                            "never",
+	"deleteIdentityIntegrationsByIdWebhooksByWebhookId":                           "never",
+	"postIdentityIntegrationsByIdWebhooksByWebhookIdDisable":                      "never",
+	"postIdentityIntegrationsByIdWebhooksByWebhookIdEnable":                       "never",
+	"postIdentityIntegrationsByIdWebhooksByWebhookIdRollSecret":                   "never",
+	"postIdentityIntegrationsByIdWebhooksByWebhookIdTest":                         "never",
+	"getIdentityIntegrationsByIdWebhooksByWebhookIdDeliveries":                    "never",
+	"getIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryId":        "never",
+	"postIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResend": "never",
+	"getIdentityWebhookEvents":                                                    "never",
 
 	// Shared shop-floor stations (manufacturing phase 2 M129–M143): a station
 	// is a device and its operators people at it; a pairing code, a PIN and a
