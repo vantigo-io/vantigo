@@ -40,6 +40,10 @@ const (
 	codeBrandAlreadyStored = "already_archived"
 )
 
+// errArchived refuses a change to an archived brand (B21): it is restored first.
+var errArchived = refuseBrand(http.StatusConflict, "brand_archived",
+	"An archived brand cannot be edited; restore it first.", nil)
+
 var nameTaken = refuseBrand(http.StatusConflict, codeBrandNameTaken,
 	"Another brand already has that name.", map[string][]string{"name": {"Another brand already has that name."}})
 

@@ -310,6 +310,16 @@ func TestBrandLifecycle_CreateDuplicateMakeDefaultArchiveRestoreDeleteAreAudited
 	if r := arch(archived); r.status != http.StatusConflict {
 		t.Errorf("archiving an archived brand: %d, want 409", r.status)
 	}
+	// An archived brand cannot be edited until it is restored.
+	if r := saveDraft(owner, archived, inputs("Revived", tealPrimary)); r.status != http.StatusConflict || r.code() != "brand_archived" {
+		t.Errorf("saving a draft of an archived brand: status %d code %q, want 409 brand_archived", r.status, r.code())
+	}
+	if r := publish(owner, archived); r.status != http.StatusConflict || r.code() != "brand_archived" {
+		t.Errorf("publishing an archived brand: status %d code %q, want 409 brand_archived", r.status, r.code())
+	}
+	if r := putLogo(t, owner, archived, "icon", pngOf(t, 64, 64)); r.status == http.StatusOK {
+		t.Errorf("a logo for an archived brand was accepted")
+	}
 	rr := owner.do(http.MethodPost, fmt.Sprintf("%s/%s/restore", brandsPath, archived.ID), nil, header("If-Match", fmt.Sprint(archived.Revision)))
 	var restored brandBody
 	rr.json(&restored)

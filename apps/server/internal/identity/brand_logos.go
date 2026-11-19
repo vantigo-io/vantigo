@@ -164,6 +164,8 @@ func (s *server) PutIdentityBrandsByIdLogosBySlot(ctx context.Context, req gen.P
 		return nil, err
 	case out.notFound:
 		return gen.PutIdentityBrandsByIdLogosBySlot404Response{}, nil
+	case out.refusal != nil:
+		return reply(out.refusal)
 	}
 	return gen.PutIdentityBrandsByIdLogosBySlot200JSONResponse(s.brandResponse(out.brand)), nil
 }
@@ -179,7 +181,7 @@ func (s *server) DeleteIdentityBrandsByIdLogosBySlot(ctx context.Context, req ge
 	switch {
 	case err != nil:
 		return nil, err
-	case out.notFound:
+	case out.notFound, out.refusal != nil: // an archived brand's logos are not edited
 		return gen.DeleteIdentityBrandsByIdLogosBySlot404Response{}, nil
 	}
 	return gen.DeleteIdentityBrandsByIdLogosBySlot200JSONResponse(s.brandResponse(out.brand)), nil
@@ -190,6 +192,9 @@ func (s *server) DeleteIdentityBrandsByIdLogosBySlot(ctx context.Context, req ge
 // touched (B6).
 func (s *server) changeBrandWithLogo(ctx context.Context, id uuid.UUID, action, slot string, logo *brandLogo) (brandOutcome, error) {
 	return s.changeBrand(ctx, id, 0, action, func(b brandRow) (*brandVersion, *brandVersion, *brandRefusal, error) {
+		if b.State == "archived" {
+			return nil, nil, errArchived, nil
+		}
 		v := b.editing()
 		logos := make(map[string]brandLogo, len(v.Logos)+1)
 		for k, l := range v.Logos {
