@@ -41,6 +41,12 @@ var goldenInputs = []struct{ name, hex string }{
 	{"red", "#dc2626"},
 	{"yellow", "#eab308"},
 	{"teal", "#0d9488"},
+	{"magenta", "#ff00ff"},
+	{"pure blue", "#0000ff"},
+	{"pure red", "#ff0000"},
+	{"upper case", "#4F46E5"},
+	{"just white text", "#757575"},
+	{"just black text", "#767676"},
 }
 
 // goldenRefused are inputs outside the accepted range, and the error code.
@@ -50,6 +56,11 @@ var goldenRefused = []struct{ hex, code string }{
 	{"#fde047", "brand_primary_range"},
 	{"#1e1b4b", "brand_primary_range"},
 	{"4f46e5", "brand_hex"},
+	{"#fff", "brand_hex"},
+	{"#000", "brand_hex"},
+	{"#4f46e5ff", "brand_hex"},
+	{"#ggg000", "brand_hex"},
+	{"#4f46e5 ", "brand_hex"},
 }
 
 func errCode(err error) string {
@@ -198,6 +209,52 @@ func TestGolden(t *testing.T) {
 	}
 }
 
+func mustFilled(t *testing.T, bg string) string {
+	t.Helper()
+	got, err := brandscale.FilledText(bg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return got
+}
+
+func mustContrast(t *testing.T, a, b string) float64 {
+	t.Helper()
+	got, err := brandscale.Contrast(a, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return got
+}
+
+func mustTint(t *testing.T, shade9 string) string {
+	t.Helper()
+	got, err := brandscale.DarkTint(shade9)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return got
+}
+
+// The helpers refuse what is not #rrggbb, as the TypeScript port throws.
+func TestHelpers_RefuseInvalidHex(t *testing.T) {
+	t.Parallel()
+	for _, bad := range []string{"", "#fff", "4f46e5", "#4f46e5 ", "#ggg000", "#4f46e5ff"} {
+		if _, err := brandscale.FilledText(bad); !errors.Is(err, brandscale.ErrInvalidHex) {
+			t.Errorf("FilledText(%q) = %v", bad, err)
+		}
+		if _, err := brandscale.Contrast(bad, "#ffffff"); !errors.Is(err, brandscale.ErrInvalidHex) {
+			t.Errorf("Contrast(%q, white) = %v", bad, err)
+		}
+		if _, err := brandscale.Contrast("#ffffff", bad); !errors.Is(err, brandscale.ErrInvalidHex) {
+			t.Errorf("Contrast(white, %q) = %v", bad, err)
+		}
+		if _, err := brandscale.DarkTint(bad); !errors.Is(err, brandscale.ErrInvalidHex) {
+			t.Errorf("DarkTint(%q) = %v", bad, err)
+		}
+	}
+}
+
 func mustGenerate(t *testing.T, hex string) brandscale.Result {
 	t.Helper()
 	res, err := brandscale.Generate(hex)
@@ -224,10 +281,19 @@ func TestGenerate_Properties(t *testing.T) {
 		if res.Algorithm != 1 {
 			t.Errorf("%s: algorithm %d", in.name, res.Algorithm)
 		}
-		if res.Scale[6] != in.hex {
+		if res.Scale[6] != strings.ToLower(in.hex) {
 			t.Errorf("%s: shade 6 = %s, want the input byte for byte", in.name, res.Scale[6])
 		}
 		hue6, chroma6 := hueChroma(t, in.hex)
+		// Every shade is in gamut before rounding: no channel is outside
+		// [0, 1] by more than the 1e-6 tolerance.
+		for i, rgb := range brandscale.ShadeLinear(in.hex) {
+			for _, v := range rgb {
+				if v < -1e-6 || v > 1+1e-6 {
+					t.Errorf("%s: shade %d has a linear channel %v out of gamut", in.name, i, v)
+				}
+			}
+		}
 		prev := 2.0
 		for i, shade := range res.Scale {
 			if !regexp.MustCompile(`^#[0-9a-f]{6}$`).MatchString(shade) {
@@ -305,17 +371,17 @@ func TestFilledText_FlipsAtTheThreshold(t *testing.T) {
 		{"#ffffff", brandscale.Black},
 		{"#eab308", brandscale.Black},
 	} {
-		if got := brandscale.FilledText(c.bg); got != c.want {
+		if got := mustFilled(t, c.bg); got != c.want {
 			t.Errorf("FilledText(%s) = %s, want %s", c.bg, got, c.want)
 		}
-		if brandscale.Contrast(brandscale.FilledText(c.bg), c.bg) < brandscale.MinContrast {
+		if mustContrast(t, mustFilled(t, c.bg), c.bg) < brandscale.MinContrast {
 			t.Errorf("the filled text on %s fails AA", c.bg)
 		}
 	}
 	// Every grey passes, so no shade 6 of any lightness can fail its own text.
 	for v := 0; v < 256; v++ {
 		bg := fmt.Sprintf("#%02x%02x%02x", v, v, v)
-		if brandscale.Contrast(brandscale.FilledText(bg), bg) < brandscale.MinContrast {
+		if mustContrast(t, mustFilled(t, bg), bg) < brandscale.MinContrast {
 			t.Errorf("the filled text on %s fails AA", bg)
 		}
 	}
@@ -324,13 +390,13 @@ func TestFilledText_FlipsAtTheThreshold(t *testing.T) {
 // WCAG's own anchors: 21:1 for black on white, 1:1 for a colour on itself.
 func TestContrast_Anchors(t *testing.T) {
 	t.Parallel()
-	if got := brandscale.Contrast("#000000", "#ffffff"); math.Abs(got-21) > 1e-9 {
+	if got := mustContrast(t, "#000000", "#ffffff"); math.Abs(got-21) > 1e-9 {
 		t.Errorf("black on white = %v", got)
 	}
-	if got := brandscale.Contrast("#4f46e5", "#4f46e5"); got != 1 {
+	if got := mustContrast(t, "#4f46e5", "#4f46e5"); got != 1 {
 		t.Errorf("a colour on itself = %v", got)
 	}
-	if a, b := brandscale.Contrast("#4f46e5", "#ffffff"), brandscale.Contrast("#ffffff", "#4f46e5"); a != b {
+	if a, b := mustContrast(t, "#4f46e5", "#ffffff"), mustContrast(t, "#ffffff", "#4f46e5"); a != b {
 		t.Errorf("contrast is not symmetric: %v %v", a, b)
 	}
 }
@@ -356,14 +422,14 @@ func TestChecks_ThePairs(t *testing.T) {
 		{brandscale.Dark, brandscale.PairFilledHover, "#ffffff", res.Scale[7]},
 		{brandscale.Dark, brandscale.PairLinkPage, res.Scale[3], "#15182a"},
 		{brandscale.Dark, brandscale.PairLinkCard, res.Scale[3], "#1c1f32"},
-		{brandscale.Dark, brandscale.PairLinkTint, res.Scale[3], brandscale.DarkTint(res.Scale[9])},
+		{brandscale.Dark, brandscale.PairLinkTint, res.Scale[3], mustTint(t, res.Scale[9])},
 	}
 	for i, w := range want {
 		c := checks[i]
 		if c.Scheme != w.scheme || c.Pair != w.pair || c.Foreground != w.fg || c.Background != w.bg {
 			t.Errorf("check %d = %+v, want %+v", i, c, w)
 		}
-		if c.Pass != (c.Ratio >= 4.5) || c.Ratio != brandscale.Contrast(w.fg, w.bg) {
+		if c.Pass != (c.Ratio >= 4.5) || c.Ratio != mustContrast(t, w.fg, w.bg) {
 			t.Errorf("check %d ratio %v pass %v", i, c.Ratio, c.Pass)
 		}
 	}
@@ -373,7 +439,7 @@ func TestChecks_ThePairs(t *testing.T) {
 func TestDarkTint(t *testing.T) {
 	t.Parallel()
 	for in, want := range map[string]string{"#000000": "#000000", "#ffffff": "#808080", "#0102ff": "#010180", "#4f46e5": "#282373"} {
-		if got := brandscale.DarkTint(in); got != want {
+		if got := mustTint(t, in); got != want {
 			t.Errorf("DarkTint(%s) = %s, want %s", in, got, want)
 		}
 	}

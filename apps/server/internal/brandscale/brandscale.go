@@ -243,24 +243,29 @@ func Generate(hex string) (Result, error) {
 	}
 	res := Result{Algorithm: Algorithm}
 	for i := range res.Scale {
-		var l float64
-		switch {
-		case i < 6:
-			l = base.l + float64((lightEnd-base.l)*lightSteps[i])
-		case i == 6:
-			l = base.l
-		default:
-			l = base.l - float64((base.l-darkEnd)*darkSteps[i-7])
-		}
-		k := chromaK[i]
-		res.Scale[i] = hexOf(fit(oklab{l, float64(base.a * k), float64(base.b * k)}))
+		res.Scale[i] = hexOf(shade(base, i))
 	}
 	res.Scale[6] = formatHex(r, g, b)
-	res.FilledText = FilledText(res.Scale[6])
+	res.FilledText = filledText(res.Scale[6])
 	return res, nil
 }
 
-// luminance is WCAG 2.x relative luminance.
+// shade is shade i of the scale of base, in OKLab and fitted into sRGB.
+func shade(base oklab, i int) oklab {
+	var l float64
+	switch {
+	case i < 6:
+		l = base.l + float64((lightEnd-base.l)*lightSteps[i])
+	case i == 6:
+		l = base.l
+	default:
+		l = base.l - float64((base.l-darkEnd)*darkSteps[i-7])
+	}
+	k := chromaK[i]
+	return fit(oklab{l, float64(base.a * k), float64(base.b * k)})
+}
+
+// luminance is WCAG 2.x relative luminance of a colour parseHex accepts.
 func luminance(hex string) float64 {
 	r, g, b, _ := parseHex(hex)
 	return float64(0.2126*decode(float64(r)/255)) + float64(0.7152*decode(float64(g)/255)) + float64(0.0722*decode(float64(b)/255))
@@ -268,16 +273,34 @@ func luminance(hex string) float64 {
 
 // FilledText is the text colour on a filled background, as Mantine's
 // autoContrast chooses it with LuminanceThreshold: White at or below the
-// threshold, Black above it (B3.3). An unparsable colour gets White.
-func FilledText(background string) string {
+// threshold, Black above it (B3.3). A colour that is not #rrggbb is
+// ErrInvalidHex.
+func FilledText(background string) (string, error) {
+	if _, _, _, err := parseHex(background); err != nil {
+		return "", err
+	}
+	return filledText(background), nil
+}
+
+func filledText(background string) string {
 	if luminance(background) > LuminanceThreshold {
 		return Black
 	}
 	return White
 }
 
-// Contrast is the WCAG 2.x contrast ratio of two colours, from 1 to 21.
-func Contrast(a, b string) float64 {
+// Contrast is the WCAG 2.x contrast ratio of two colours, from 1 to 21. A
+// colour that is not #rrggbb is ErrInvalidHex.
+func Contrast(a, b string) (float64, error) {
+	for _, c := range [2]string{a, b} {
+		if _, _, _, err := parseHex(c); err != nil {
+			return 0, err
+		}
+	}
+	return contrast(a, b), nil
+}
+
+func contrast(a, b string) float64 {
 	la, lb := luminance(a), luminance(b)
 	return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
 }

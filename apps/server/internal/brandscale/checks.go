@@ -52,8 +52,17 @@ type Check struct {
 // DarkTint is Mantine's `light` variant of a colour in the dark scheme, which
 // Mantine 9 makes the colour's shade 9 darkened by half: each channel halved
 // and rounded half-up. It is opaque, so compositing it over the card changes
-// nothing. The dark scheme's tinted cell (--vantigo-subtle-bg) is this.
-func DarkTint(shade9 string) string {
+// nothing. The dark scheme's tinted cell (--vantigo-subtle-bg) is this. A
+// colour that is not #rrggbb is ErrInvalidHex.
+func DarkTint(shade9 string) (string, error) {
+	r, g, b, err := parseHex(shade9)
+	if err != nil {
+		return "", err
+	}
+	return formatHex((r+1)/2, (g+1)/2, (b+1)/2), nil
+}
+
+func darkTint(shade9 string) string {
 	r, g, b, _ := parseHex(shade9)
 	return formatHex((r+1)/2, (g+1)/2, (b+1)/2)
 }
@@ -76,11 +85,11 @@ func Checks(res Result) []Check {
 		{Dark, PairFilledHover, res.FilledText, s[7]},
 		{Dark, PairLinkPage, s[3], PageDark},
 		{Dark, PairLinkCard, s[3], CardDark},
-		{Dark, PairLinkTint, s[3], DarkTint(s[9])},
+		{Dark, PairLinkTint, s[3], darkTint(s[9])},
 	}
 	out := make([]Check, len(rows))
 	for i, r := range rows {
-		ratio := Contrast(r.foreground, r.background)
+		ratio := contrast(r.foreground, r.background)
 		out[i] = Check{r.pair, r.scheme, r.foreground, r.background, ratio, ratio >= MinContrast}
 	}
 	return out

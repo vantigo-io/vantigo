@@ -1063,10 +1063,11 @@ and the TypeScript test only reads, so the two cannot drift.
 | `Suggest(hex)` | the nearest primary that passes every check: the same hue and chroma with the lightness moved, 0.005 at a time, darker before lighter. |
 | `Algorithm` | the version of the constants, stored with every published token set. Changing any constant is a new version. |
 
-The package imports the standard library only. The arithmetic is written in one fixed
+The package imports the standard library only. Shades, the text colour and the suggestions agree to the byte between the two languages; contrast ratios agree to two decimals. The arithmetic is written in one fixed
 order with every product rounded before it is added, and chroma is scaled on the OKLab
-`a` and `b` components rather than through an angle, so the two languages agree to the
-byte.
+`a` and `b` components rather than through an angle. `FilledText`, `Contrast` and
+`DarkTint` return `ErrInvalidHex` for anything that is not `#rrggbb`, where the
+TypeScript port throws.
 
 ## The logo image rules
 

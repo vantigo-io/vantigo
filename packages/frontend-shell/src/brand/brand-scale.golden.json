@@ -191,6 +191,120 @@
       "filledText": "#000000",
       "contrast": { "light": [5.61, 3.56, 8.82, 9.36, 8.76], "dark": [5.61, 3.56, 9.28, 8.6, 9.65] },
       "suggested": "#008479"
+    },
+    {
+      "name": "magenta",
+      "input": "#ff00ff",
+      "scale": [
+        "#fff2fe",
+        "#ffdefd",
+        "#ffc3fb",
+        "#ffa5fb",
+        "#ff83fc",
+        "#ff5cfd",
+        "#ff00ff",
+        "#be00be",
+        "#810081",
+        "#470047"
+      ],
+      "filledText": "#000000",
+      "contrast": { "light": [6.7, 3.93, 8.79, 9.33, 8.61], "dark": [6.7, 3.93, 10.06, 9.31, 10.93] },
+      "suggested": "#ff5dfd"
+    },
+    {
+      "name": "pure blue",
+      "input": "#0000ff",
+      "scale": [
+        "#f3f7ff",
+        "#cfdfff",
+        "#a1c0ff",
+        "#739fff",
+        "#447bff",
+        "#1855ff",
+        "#0000ff",
+        "#0027c0",
+        "#001e9c",
+        "#001478"
+      ],
+      "filledText": "#ffffff",
+      "contrast": { "light": [8.59, 10.24, 11.88, 12.61, 11.74], "dark": [8.59, 10.24, 6.8, 6.3, 7.34] },
+      "suggested": "#0000ff"
+    },
+    {
+      "name": "pure red",
+      "input": "#ff0000",
+      "scale": [
+        "#fff4f2",
+        "#ffded8",
+        "#ffc1b7",
+        "#ffa293",
+        "#ff7f6e",
+        "#ff5847",
+        "#ff0000",
+        "#c30000",
+        "#8a0000",
+        "#540000"
+      ],
+      "filledText": "#000000",
+      "contrast": { "light": [5.25, 3.32, 9.51, 10.09, 9.36], "dark": [5.25, 3.32, 9.06, 8.39, 9.87] },
+      "suggested": "#ec0000"
+    },
+    {
+      "name": "upper case",
+      "input": "#4F46E5",
+      "scale": [
+        "#f4f6ff",
+        "#d9dfff",
+        "#b7c2ff",
+        "#97a3ff",
+        "#7882ff",
+        "#6160ff",
+        "#4f46e5",
+        "#3e2ec4",
+        "#2e1a9f",
+        "#1f0677"
+      ],
+      "filledText": "#ffffff",
+      "contrast": { "light": [6.29, 8.78, 11.21, 11.9, 11.04], "dark": [6.29, 8.78, 7.52, 6.97, 8.18] },
+      "suggested": "#4f46e5"
+    },
+    {
+      "name": "just white text",
+      "input": "#757575",
+      "scale": [
+        "#f7f7f7",
+        "#e3e3e3",
+        "#cbcbcb",
+        "#b4b4b4",
+        "#9d9d9d",
+        "#888888",
+        "#757575",
+        "#5a5a5a",
+        "#414141",
+        "#292929"
+      ],
+      "filledText": "#ffffff",
+      "contrast": { "light": [4.61, 6.9, 9.62, 10.21, 9.53], "dark": [4.61, 6.9, 8.47, 7.84, 8.81] },
+      "suggested": "#757575"
+    },
+    {
+      "name": "just black text",
+      "input": "#767676",
+      "scale": [
+        "#f7f7f7",
+        "#e4e4e4",
+        "#cccccc",
+        "#b4b4b4",
+        "#9d9d9d",
+        "#898989",
+        "#767676",
+        "#5b5b5b",
+        "#414141",
+        "#292929"
+      ],
+      "filledText": "#000000",
+      "contrast": { "light": [4.62, 3.09, 9.62, 10.21, 9.53], "dark": [4.62, 3.09, 8.47, 7.84, 8.81] },
+      "suggested": "#757575"
     }
   ],
   "refused": [
@@ -198,6 +312,11 @@
     { "input": "#000000", "error": "brand_primary_range" },
     { "input": "#fde047", "error": "brand_primary_range" },
     { "input": "#1e1b4b", "error": "brand_primary_range" },
-    { "input": "4f46e5", "error": "brand_hex" }
+    { "input": "4f46e5", "error": "brand_hex" },
+    { "input": "#fff", "error": "brand_hex" },
+    { "input": "#000", "error": "brand_hex" },
+    { "input": "#4f46e5ff", "error": "brand_hex" },
+    { "input": "#ggg000", "error": "brand_hex" },
+    { "input": "#4f46e5 ", "error": "brand_hex" }
   ]
 }

@@ -24,7 +24,7 @@ describe("the golden file, which the Go package writes and tests too", () => {
   it("is the version this port implements, with the pairs in the order it checks them", () => {
     expect(golden.algorithm).toBe(BRAND_ALGORITHM);
     expect(golden.pairs).toEqual([...PAIRS]);
-    expect(golden.cases).toHaveLength(10);
+    expect(golden.cases).toHaveLength(16);
   });
 
   for (const c of golden.cases) {
@@ -55,7 +55,7 @@ describe("the properties of the scale", () => {
   for (const c of golden.cases) {
     it(`holds for ${c.name}`, () => {
       const { scale } = generateScale(c.input);
-      expect(scale[6]).toBe(c.input);
+      expect(scale[6]).toBe(c.input.toLowerCase());
       let previous = 2;
       for (const shade of scale) {
         expect(shade).toMatch(/^#[0-9a-f]{6}$/);
@@ -78,6 +78,8 @@ describe("the properties of the scale", () => {
       ["4f46e5", "brand_hex"],
       ["#4f46eg", "brand_hex"],
       ["", "brand_hex"],
+      ["#fff", "brand_hex"],
+      ["#4f46e5 ", "brand_hex"],
     ] as const) {
       expect(() => generateScale(hex)).toThrow(expect.objectContaining({ code }));
     }
