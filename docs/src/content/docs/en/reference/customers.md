@@ -8,7 +8,7 @@ sources:
   - apps/server/internal/contracts/directory.go
   - apps/server/internal/db/migrations/00202_customers_date_of_birth.sql
   - apps/server/internal/contracts/events_customers.go
-  - apps/server/internal/db/migrations/00206_customers_credit_limit_bookkeeping.sql
+  - apps/server/internal/db/migrations/00207_customers_credit_limit_bookkeeping.sql
   - apps/server/internal/contracts/agent_memory.go
 ---
 The Customers module is where every other module finds out who the work is for: a
@@ -607,7 +607,7 @@ either).
 
 ### Credit limit and bookkeeping obligation
 
-Migration `00206` adds three columns beside the profile's eleven (invoices phase 6 design
+Migration `00207` adds three columns beside the profile's eleven (invoices phase 6 design
 I37, I38): `credit_limit numeric(14,2)` (NOK, `CHECK >= 0`), and
 `bookkeeping_obligated_override boolean` with `bookkeeping_obligated_override_reason
 varchar(500) NOT NULL DEFAULT ''` (`ck_customers_bookkeeping_override_reason`: no reason
@@ -621,7 +621,7 @@ eleven, never touch them.
 | --- | --- |
 | `creditLimit` | NOK, decimal text — up to twelve whole digits and two decimals, zero or more, no thousands separators (`^[0-9]{1,12}(\.[0-9]{1,2})?$`), answered with two decimals (`"50000.00"`); otherwise a 400 on `creditLimit`. **Not a full replace**, unlike the rest of the PUT: absent or null keeps the stored limit, so a client written before it never wipes it; `clearCreditLimit: true` removes it, and both at once are a 400. |
 | `bookkeepingObligatedOverride` | `true` or `false` overrules the registry; absent or null keeps the stored override, and `clearBookkeepingOverride: true` removes it with its reason (both at once, a 400). Set, it needs `bookkeepingObligatedOverrideReason` (trimmed, 1–500 characters), or a 400 on that field. |
-| `bookkeepingObligated`, `bookkeepingObligatedSource` | Read only. The override when set (`override`); else, with a [registry record](#registry-record) of the customer's own `legal_id`: obligated when `vat_registered`, or when `business_register_registered`; not obligated when neither — but when the record is not VAT-registered and `business_register_registered` is still NULL (not read since `00206`) the answer is absent (`unknown`), never a "no" the register did not give; else absent (`unknown`): a person or a foreign business has no record, and unknown is never obligated. The directory's batch read `Customers` answers it too (`CustomerEntry.BookkeepingObligated`), and `BillingProfile` adds `VATRegistered`, the record's VAT flag, which Invoices prints as the buyer's MVA suffix. |
+| `bookkeepingObligated`, `bookkeepingObligatedSource` | Read only. The override when set (`override`); else, with a [registry record](#registry-record) of the customer's own `legal_id`: obligated when `vat_registered`, or when `business_register_registered`; not obligated when neither — but when the record is not VAT-registered and `business_register_registered` is still NULL (not read since `00207`) the answer is absent (`unknown`), never a "no" the register did not give; else absent (`unknown`): a person or a foreign business has no record, and unknown is never obligated. The directory's batch read `Customers` answers it too (`CustomerEntry.BookkeepingObligated`), and `BillingProfile` adds `VATRegistered`, the record's VAT flag, which Invoices prints as the buyer's MVA suffix. |
 
 **`customers.credit_limit.changed` v1** is the module's first [outbox
 event](/en/contributing/platform-packages/#the-domain-events-outbox), published with `events.Publish` on the
@@ -2202,7 +2202,7 @@ exist so an attention item is dated the day the thing happened, below),
 `business_address`/`postal_address` (each
 `jsonb`, shaped `{lines[], postalCode, city, municipality, countryCode}`, or SQL
 `NULL` — never a JSON `null` — when the registry has none), `fetched_at`, and
-`business_register_registered` (migration `00206`: the registry's
+`business_register_registered` (migration `00207`: the registry's
 `registrertIForetaksregisteret`, the Register of Business Enterprises; NULL until the
 record's next refresh — there is no backfill, and **the feed worker re-reads only an
 entity Brønnøysund's update feed reports changed**, so a company that has not changed

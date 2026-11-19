@@ -115,7 +115,7 @@ type registryRecord struct {
 
 	// BusinessRegisterRegistered is registrertIForetaksregisteret: in the
 	// Register of Business Enterprises. nil on a record not refreshed since
-	// the column was added (migration 00206), which a refresh fills; the
+	// the column was added (migration 00207), which a refresh fills; the
 	// bookkeeping obligation then reads the VAT flag alone (plan reading E11).
 	BusinessRegisterRegistered *bool
 

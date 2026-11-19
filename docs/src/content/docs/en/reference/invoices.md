@@ -22,7 +22,7 @@ sources:
   - apps/server/internal/db/migrations/00203_invoices_currency.sql
   - apps/server/internal/db/migrations/00205_invoices_send_jobs.sql
   - apps/server/internal/consumerinvoice
-  - apps/server/internal/db/migrations/00207_invoices_buyer_vat_registered.sql
+  - apps/server/internal/db/migrations/00208_invoices_buyer_vat_registered.sql
   - apps/server/internal/docmath
 ---
 The Invoices module issues the sales document of Norwegian bookkeeping: a draft
@@ -6392,7 +6392,7 @@ serves it.
 **The MVA suffix.** § 5-1-2's last sentence has a VAT-registered buyer's organisation
 number followed by *MVA*. The issue snapshots the buyer's VAT registration
 (`CustomerBillingProfile.VATRegistered`, the registry record's VAT flag) as
-`buyer_vat_registered` (migration `00207_invoices_buyer_vat_registered.sql`, false for
+`buyer_vat_registered` (migration `00208_invoices_buyer_vat_registered.sql`, false for
 every document issued before it); a credit note keeps its original's. The PDF then prints
 the buyer's *Org.nr. 923 609 016 MVA*, and the EHF writes the buyer's
 `cac:PartyTaxScheme` — `cbc:CompanyID` `NO923609016MVA` under `cac:TaxScheme/cbc:ID`
@@ -7209,7 +7209,7 @@ documents sent in one go, each by its customer's channel, by the `invoices-send`
 runs (design §13) are unblocked by it. Delivery E-2 is done: [the 2028 buyer rule](#the-2028-buyer-rule) with the buyer's
 MVA suffix, and [the credit limit's warning](#the-credit-limits-warning), with the
 attention item `invoiceUndelivered`, on Customers' migration
-`00206_customers_credit_limit_bookkeeping.sql` and `00207_invoices_buyer_vat_registered.sql`.
+`00207_customers_credit_limit_bookkeeping.sql` and `00208_invoices_buyer_vat_registered.sql`.
 Orders' NOK equivalent in its analysis through `contracts.ExchangeRates`, a charge
 payment in currency, a currency bank account and unrealised revaluation at year-end are
 later.
