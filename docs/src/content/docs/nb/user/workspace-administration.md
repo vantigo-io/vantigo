@@ -241,8 +241,13 @@ med årsaken og **Aktiver**, og integrasjonens kontaktperson og eierne får en e
 først, filtrert etter **Status** og **Hendelse**, hver med forsøkene sine under **Vis**, og **Send
 på nytt** for en melding programmet aldri behandlet.
 
+Seksjonen **MCP** på integrasjonens **Oversikt** lar en AI-klient som Claude Code koble seg til
+med en av nøklene. Velg **MCP-tilgang** — **Av** (standard), **Bare lese** eller **Lese og
+skrive**, som bare leser foreløpig — og kopier **MCP-endepunkt** og tilkoblingen den viser, med
+nøkkelen der det står `vtg_…`. Bare lese er tryggest: en AI-klient handler på det den leser.
+
 Detaljene — hva en nøkkel når, begrensning, nøkler for bare lesing, nettverk,
-hastighetsgrensen, svarene en klient får, forespørselsloggen, webhook-endepunkter og hva du
+hastighetsgrensen, svarene en klient får, forespørselsloggen, webhook-endepunkter, MCP og hva du
 gjør når en nøkkel lekker — står under [API-tilgang](/nb/admin/api-access/).
 
 ## Deaktiver, aktiver eller slett en bruker

@@ -237,8 +237,14 @@ contact and the Owners are mailed. **Deliveries** on an endpoint opens its **Del
 messages of the last 30 days, newest first, filtered by **Status** and **Event**, each with its
 attempts under **View**, and **Resend** for a message the application never processed.
 
+The **MCP** section on an integration's **Overview** lets an AI client such as Claude Code
+connect with one of its keys. Choose the **MCP access** — **Off** (the default), **Read only**,
+or **Read and write**, which reads only for now — and copy the **MCP endpoint** and the
+connection it shows, putting the key where it says `vtg_…`. Read only is the safest: an AI
+client acts on what it reads.
+
 The details — what a key can reach, the narrowing, read-only keys, networks, the rate limit,
-the answers a client gets, the request log, webhook endpoints and what to do when a key
+the answers a client gets, the request log, webhook endpoints, MCP and what to do when a key
 leaks — are under [API access](/en/admin/api-access/).
 
 ## Disable, enable or delete a user
