@@ -8,6 +8,11 @@ sources:
   - apps/communications/frontend/src/hooks/useConversationsShell.tsx
   - packages/frontend-shell/src/ui
   - packages/frontend-shell/src/live
+  - packages/frontend-shell/src/theme.ts
+  - packages/frontend-shell/src/theme.css
+  - packages/frontend-shell/scripts
+  - apps/host/frontend/src/components/account-color-scheme-preference.tsx
+  - apps/server/internal/web/index.go
   - apps/host/frontend/src/lib/assist-targets.ts
   - apps/host/frontend/src/api/session-handlers.ts
   - apps/host/frontend/vite.config.ts
@@ -245,6 +250,54 @@ step ever has to point into an open `Select` or `Menu` (a portal), raise that dr
 tour's 10000 as [Mantine documents](https://mantine.dev/core/tour/). The test in each package
 (`assistTargetProblems`) keeps keys and markers in step; renaming a control means renaming its key everywhere.
 
+## Colour scheme and tokens
+
+Vantigo has a light and a dark colour scheme, and one `MantineProvider`, in
+`apps/host/frontend/src/main.tsx`, switches both for every app, because the business apps
+are libraries rendered inside the host.
+
+- **The mechanism.** The provider has `defaultColorScheme="auto"` and
+  `vantigoColorSchemeManager`, which mirrors the choice in local storage under
+  `vantigo-color-scheme` (`light`, `dark` or `auto`). Mantine sets
+  `data-mantine-color-scheme` on `<html>`, and every Mantine variable switches with it.
+- **The personal preference.** `identity.users.color_scheme` (null is automatic) follows
+  the path of `preferred_language`: `GET` and `PATCH /api/v1/identity/account`, the
+  **Appearance** field on the profile page, and `AccountColorSchemePreference`, which
+  applies the account's value through `useMantineColorScheme`. The server's value is the
+  truth; local storage is the mirror that makes the first paint right. A request that
+  leaves `colorScheme` out keeps it, as `timeZone` does. The account menu's switch applies
+  at once and saves through the same endpoint. The public pages (`/sign-in`, `/pay`,
+  `/rsvp`, `/station` and the rest) have no account, so they follow the mirror, else the
+  computer, and `/pay`, `/rsvp` and `/station` still never ask for `/account`.
+- **No flash of the wrong scheme.** `runtimeConfigScript()` in
+  `apps/server/internal/web/index.go` ends with a small snippet that reads the mirror,
+  falls back to `matchMedia("(prefers-color-scheme: dark)")` and sets the attribute before
+  the first paint. It is part of the one injected script, so the Content-Security-Policy
+  hash covers it; change the key here and in `theme.ts` together. The Vite dev server
+  injects nothing, so in development the scheme is set when React mounts.
+- **The tokens.** `packages/frontend-shell/src/theme.css` defines the semantic tokens for
+  `:root` and `:root[data-mantine-color-scheme="dark"]`: `--vantigo-body-bg`,
+  `--vantigo-surface`, `--vantigo-text`, `--vantigo-text-dimmed`, `--vantigo-border`,
+  `--vantigo-link` and `--vantigo-subtle-bg`. `theme.ts` exports their names as
+  `vantigoTokens`, replaces Mantine's neutral `dark` scale with a blue-tinted grey
+  (`vantigoDark`, so the dark theme feels like the light page) and sets
+  `primaryShade: { light: 6, dark: 6 }`. `theme.test.ts` keeps the CSS and the scale
+  equal. Light is unchanged. The values are decided in these two files only; the public
+  site copies them.
+- **Never hard-code a colour.** In a component or a stylesheet use a Mantine colour prop
+  (`c="dimmed"`, `bg="var(--mantine-color-body)"`, `variant="light"`), a Mantine variable
+  or a token above, never `#hex`, `white`, `gray.0` or a shade-8/9 text colour: those stay
+  as they are in dark and are unreadable there. A rule that needs one value per scheme
+  keys on `:root[data-mantine-color-scheme="dark"]`. Anything that renders outside the
+  provider, like the crash page in `components/errors`, carries its own light and dark
+  values in its stylesheet.
+- **The logo.** `logo-dark.png` is `logo.png` with its navy stroke lightened to read on
+  the dark surface and the mint kept; the shell shows the variant that matches the scheme
+  unless the instance sets its own `logoUrl`. Regenerate it after a change to `logo.png`
+  with `go run packages/frontend-shell/scripts/logo-dark.go`. The same file is the dark
+  logo of this documentation site and the dark favicon (`favicon-dark.png`, chosen by
+  `media="(prefers-color-scheme: dark)"`), which the public host serves too.
+
 ## Page surfaces
 
 Every page sits on the shell's grey background, and its content sits on white, bordered
@@ -266,7 +319,7 @@ from Mantine's tokens so it follows the colour scheme.
   passes its children straight to the card, so `Card.Section` works inside it.
 - **Colours.** Never hardcode a colour on a surface (`white`, `#fff`,
   `--mantine-color-white`): use `--mantine-color-body` and the other Mantine tokens, which
-  dark mode redefines.
+  dark mode redefines (see [Colour scheme and tokens](#colour-scheme-and-tokens)).
 
 `KpiCard` and `WidgetCard` are the dashboard's own cards and keep their own look; dialogs,
 drawers and the sign-in pages are not page surfaces either.

@@ -59,8 +59,19 @@ export default defineConfig({
     starlight({
       title: "Vantigo",
       description: "Documentation for Vantigo, the open-source platform for running your business.",
-      logo: { src: "./src/assets/logo.png", alt: "Vantigo" },
+      logo: { light: "./src/assets/logo.png", dark: "./src/assets/logo-dark.png", alt: "Vantigo" },
       favicon: "/favicon.png",
+      head: [
+        {
+          tag: "link",
+          attrs: {
+            rel: "icon",
+            type: "image/png",
+            href: `${base === "/" ? "" : base}/favicon-dark.png`,
+            media: "(prefers-color-scheme: dark)",
+          },
+        },
+      ],
       defaultLocale: "en",
       locales: {
         en: { label: "English", lang: "en" },

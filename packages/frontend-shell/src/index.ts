@@ -84,7 +84,7 @@ export {
   useLiveUserId,
   usePresence,
 } from "./live";
-export { vantigoLogo } from "./logo";
+export { vantigoLogo, vantigoLogoDark } from "./logo";
 export { type PageBreadcrumb, PageHeader, type PageHeaderProps } from "./page-header";
 export { type PageTab, PageTabs, type PageTabsProps } from "./page-tabs";
 export { PROFILE_QUERY_KEY } from "./profile-query";
@@ -107,7 +107,13 @@ export {
 } from "./side-panel";
 export { SpotlightSearchBox } from "./spotlight-search-box";
 export { SpotlightSearchButton } from "./spotlight-search-button";
-export { vantigoTheme } from "./theme";
+export {
+  COLOR_SCHEME_STORAGE_KEY,
+  vantigoColorSchemeManager,
+  vantigoDark,
+  vantigoTheme,
+  vantigoTokens,
+} from "./theme";
 export * from "./ui";
 export {
   type DebouncedListSearchNavigate,

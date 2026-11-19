@@ -30,6 +30,7 @@ const profile = (overrides: Partial<PersonalProfile> = {}): PersonalProfile => (
   avatarUrl: null,
   avatarManagedBy: null,
   timeZone: null,
+  colorScheme: "auto",
   ...overrides,
 });
 
@@ -78,6 +79,37 @@ describe("the profile's time zone", () => {
     await waitFor(() => expect(updateProfile).toHaveBeenCalled());
     expect(updateProfile.mock.calls[0][0]).toMatchObject({ timeZone: "America/New_York" });
     expect(await screen.findByText(/means one thing to this installation/)).toBeInTheDocument();
+  });
+});
+
+describe("the profile's appearance", () => {
+  const appearance = async () => {
+    await renderProfile();
+    return screen.findByLabelText("Appearance", { selector: "input:not([type=hidden])" });
+  };
+
+  it("shows the saved scheme and saves a chosen one", async () => {
+    getProfile.mockResolvedValue(profile({ colorScheme: "dark" }));
+    updateProfile.mockImplementation(async (body) => profile(body));
+    const field = await appearance();
+    await waitFor(() => expect(field).toHaveValue("Dark"));
+
+    await userEvent.click(field);
+    await userEvent.click(await screen.findByRole("option", { name: "Light" }));
+    await userEvent.click(screen.getByRole("button", { name: "Save profile" }));
+    await waitFor(() => expect(updateProfile).toHaveBeenCalled());
+    expect(updateProfile.mock.calls[0][0]).toMatchObject({ colorScheme: "light" });
+  });
+
+  it("follows the computer by default, and saves that as auto", async () => {
+    getProfile.mockResolvedValue(profile());
+    updateProfile.mockImplementation(async (body) => profile(body));
+    const field = await appearance();
+    await waitFor(() => expect(field).toHaveValue("Automatic"));
+
+    await userEvent.click(screen.getByRole("button", { name: "Save profile" }));
+    await waitFor(() => expect(updateProfile).toHaveBeenCalled());
+    expect(updateProfile.mock.calls[0][0]).toMatchObject({ colorScheme: "auto" });
   });
 });
 

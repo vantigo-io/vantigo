@@ -19,6 +19,10 @@ export const settingsCatalog = {
     norwegian: "Norwegian",
     english: "English",
     languageDescription: "Choose Automatic to follow your browser language, or select a language.",
+    appearance: "Appearance",
+    appearanceDescription: "Choose Automatic to follow your computer's light or dark setting, or select one.",
+    light: "Light",
+    dark: "Dark",
     timeZone: "Time zone",
     sameAsWorkspace: "Same as the workspace ({{zone}})",
     timeZoneDescription:
@@ -119,6 +123,10 @@ export const settingsCatalog = {
     norwegian: "Norsk",
     english: "Engelsk",
     languageDescription: "Velg Automatisk for å følge nettleserspråket, eller velg et språk.",
+    appearance: "Utseende",
+    appearanceDescription: "Velg Automatisk for å følge datamaskinens lyse eller mørke innstilling, eller velg en.",
+    light: "Lys",
+    dark: "Mørk",
     timeZone: "Tidssone",
     sameAsWorkspace: "Samme som arbeidsområdet ({{zone}})",
     timeZoneDescription:

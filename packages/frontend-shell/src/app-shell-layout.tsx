@@ -1,11 +1,22 @@
-import { Anchor, AppShell, Box, Burger, Divider, Group, Image, Text, Title } from "@mantine/core";
+import {
+  Anchor,
+  AppShell,
+  Box,
+  Burger,
+  Divider,
+  Group,
+  Image,
+  Text,
+  Title,
+  useComputedColorScheme,
+} from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import type { ReactNode } from "react";
 import { appConfig, hasSupportContact } from "./app-config";
 import { registerCatalog, useI18n } from "./i18n";
 import { shellCatalog } from "./i18n/catalogs/shell";
 import { type ShellLinkComponent, ShellLinkProvider } from "./link-context";
-import { vantigoLogo } from "./logo";
+import { vantigoLogo, vantigoLogoDark } from "./logo";
 
 registerCatalog("shell", shellCatalog);
 
@@ -118,6 +129,7 @@ export const AppShellLayout = ({
   const [opened, { toggle, close }] = useDisclosure();
   const { t } = useI18n("shell");
   const config = appConfig();
+  const scheme = useComputedColorScheme("light");
   const showFooter = hasSupportContact(config);
 
   const shell = (
@@ -144,7 +156,15 @@ export const AppShellLayout = ({
             />
           )}
           <HomeLink linkComponent={linkComponent} label={t("goToDashboard")}>
-            <Image src={config.logoUrl ?? vantigoLogo} alt={config.title} h={32} w="auto" maw="30vw" fit="contain" />
+            <Image
+              // The Vantigo mark has a variant for each scheme: its navy stroke vanishes on dark.
+              src={config.logoUrl ?? (scheme === "dark" ? vantigoLogoDark : vantigoLogo)}
+              alt={config.title}
+              h={32}
+              w="auto"
+              maw="30vw"
+              fit="contain"
+            />
           </HomeLink>
           <Divider orientation="vertical" my="md" />
           <Title

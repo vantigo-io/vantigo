@@ -153,6 +153,36 @@ func TestNewIndex_ScriptHashCoversExactlyTheInjectedScript(t *testing.T) {
 	}
 }
 
+func TestNewIndex_InjectsThePrePaintColorSchemeSnippetInTheHashedScript(t *testing.T) {
+	idx, html := renderIndex(t, "", config.Branding{}, builtIndexHTML, nil)
+
+	start := strings.Index(html, "<head><script>") + len("<head><script>")
+	end := start + strings.Index(html[start:], "</script>")
+	script := html[start:end]
+
+	// After the config, inside the same script the CSP hash covers, so the
+	// first paint is right without a second inline script to pin.
+	if !strings.HasSuffix(script, colorSchemeScript) || !strings.Contains(script, "window.__VANTIGO_APP__=") {
+		t.Fatalf("the injected script does not end with the colour scheme snippet:\n%s", script)
+	}
+	for _, want := range []string{
+		`localStorage.getItem("vantigo-color-scheme")`,
+		`matchMedia("(prefers-color-scheme: dark)")`,
+		`setAttribute("data-mantine-color-scheme",s)`,
+		"try{", "catch(e){}",
+	} {
+		if !strings.Contains(script, want) {
+			t.Errorf("snippet is missing %q:\n%s", want, script)
+		}
+	}
+	if strings.Count(html, "<script>") != 1 {
+		t.Errorf("want exactly one inline script, the one the CSP hash covers:\n%s", html)
+	}
+	if idx.InlineScriptHash == "" {
+		t.Error("InlineScriptHash is empty")
+	}
+}
+
 func TestNewIndex_LeavesUnrelatedContentUntouched(t *testing.T) {
 	_, html := renderIndex(t, "/crm", config.Branding{}, builtIndexHTML, nil)
 	assertContains(t, html, `<div id="root"></div>`, `<meta charset="UTF-8" />`)

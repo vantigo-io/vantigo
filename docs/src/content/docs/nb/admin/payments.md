@@ -668,7 +668,7 @@ kodet `/`, `%2F`), står ikke på noen liste.
 | Metode | Sti |
 | --- | --- |
 | `GET`, `HEAD` | `/pay` (betalingssiden; enhver spørring) |
-| `GET`, `HEAD` | `/assets/…` (sidens kode), `/favicon.png` |
+| `GET`, `HEAD` | `/assets/…` (sidens kode), `/favicon.png`, `/favicon-dark.png` |
 | `POST` | `/api/v1/invoices/pay/read` (sidens lesing; tokenet i innholdet) |
 | `POST` | `/api/v1/invoices/pay/attempts` (en betaling startet) |
 | `GET` | `/api/v1/invoices/pay/attempts/{reference}` (statusen dens) |
