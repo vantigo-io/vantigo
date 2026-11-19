@@ -3,6 +3,7 @@ title: "Invoices module"
 description: "The sales document: the seller record, gap-free numbering, VAT, issue and immutability, credit notes, invoicing work, consumption and orders, billing runs, the PDF, payments, write-offs and recovered payments, sending, the journal, the bank feed a ledger reads, the export and retention."
 sources:
   - apps/server/internal/invoices
+  - apps/server/internal/db/migrations/00214_invoices_brand.sql
   - apps/invoices/frontend
   - openapi/invoices.yaml
   - apps/server/internal/db/migrations/00078_invoices_energy.sql
@@ -438,6 +439,57 @@ the key, at most 20 MiB each; a failed download's error never names its URL, who
 is the signature that grants it. A 422 is Storecove's refusal of the document **or** of a
 key it has already seen — the same answer — 401 and 403 are the key, a 429 carries its
 `Retry-After` (seconds, or a date judged by the module's clock), and a transport failure or a 5xx leaves the outcome unknown.
+
+## The brand of a document
+
+Brands on invoices (brands design [B27–B29a](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-11-19-brands-design.md),
+delivery E2; migration `00214_invoices_brand.sql`). A document carries `brand_id` (no foreign
+key: the brand is Identity's row, read through `contracts.Brands`, which this module never
+bypasses), `brand_source` (`chosen`, `customer`, `group` or `default`), `brand_skipped` and,
+once issued, the snapshot `brand_name`, `brand_logo_object_key` and `brand_logo_sha256`
+(the pair is both or neither, `ck_invoices_brand_logo`). Nothing is read from `contracts.Brands`
+under a lock. `contracts.Brands` answers a brand's **published version** only: no draft and no
+campaign overlay (B24), so no document ever prints a campaign.
+
+**The draft's brand (B28).** At creation the order is the request's `brandId` (`chosen`), else
+`CustomerEntry.BrandID` (`customer`), else `CustomerEntry.GroupBrandID` (`group`), else the
+default brand of `Brands.List` (`default`). A candidate that is not among the published,
+non-archived brands is skipped and `brand_skipped` is set; no default published is no brand
+(NULL). The same order serves every path that makes an invoice without a person choosing: the
+quick invoice, invoices from work, consumption and orders, and the billing worker's drafts
+(`DueOrder` carries no brand yet; delivery E3 adds it). A `brandId` that is not published is a
+400 on `brandId`, except the one the draft already carries. `PUT /invoices/{id}` with `brandId`
+sets it (`chosen`); without it the draft keeps its brand, unless `customerId` changed and the
+brand was not `chosen`, when it is picked again from the new customer. A credit-note draft refuses
+a `brandId` other than its invoice's (400 on `brandId`). `GET /invoices/brands`
+(`invoices:access` + `invoices:create`) lists the published brands for the editor's select.
+
+**The response's `brand {id, name, source, unavailable}`.** A draft's is read now: `name` is the
+published name, and `unavailable` is true when the brand is archived or unknown now or when
+`brand_skipped` is set. An issued document's, and a credit note's, is the snapshot, and
+`unavailable` is false. Documents issued before the migration have no `brand`.
+
+**The snapshot at issue (B27).** Before the lock, an invoice reads its brand with
+`Brands.Get`; one that is not published any more is replaced by a fresh pick from the
+customer's defaults. The brand's document logo is the `wordmark` slot when it has one, else
+`mark_light`; its bytes come from `Brands.LogoBytes`, are judged and normalised as an upload is
+([the logo](#the-logo-and-the-phone)), hashed and put under `branding/logo-<sha256>.<png|jpg>` in
+the `invoices` scope, never deleted. A brand with no such slot, no object store, a logo that cannot
+be read or one that is refused leaves the logo columns NULL, logged: an issue never fails for a
+logo, and the document prints the seller's logo (`seller_logo_*`) instead. Under the lock the
+columns are written by `IssueDocument`; `invoices.refuse_issued_document_change` compares the whole
+row, so they are immutable from then on (a test updates each and sees the refusal). A credit note
+copies its invoice's four columns at creation and keeps them at issue, whatever the customer's
+default became.
+
+**What prints it.** `documentLogo` returns the brand snapshot's logo when the row has one, else the
+seller's, for the PDF, the reminder letters and print batches, and the inline `cid:logo` of the
+e-mails; a draft's preview takes the brand's logo as `Brands.LogoBytes` has it now. The EHF
+e-invoice carries no logo, and the pay page shows none.
+
+**The seller stays one (B29a).** The legal name, organisation number, VAT registration, address,
+bank account, IBAN and footer are the settings row's, in every brand. The brand name is kept in the
+snapshot and is not printed in place of the seller's.
 
 ## Drafts
 

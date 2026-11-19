@@ -404,6 +404,37 @@ Bank's. The totals add **VAT in NOK** and **Total in NOK**. A draft that holds o
 lines, work or a-konto deductions keeps the currency it was made in. Work, consumption
 and the quick invoice are always in NOK.
 
+### The brand of a document
+
+Every invoice is printed in a brand ([Branding](/en/admin/branding/#where-else-a-brand-applies)):
+its logo, and the brand's name kept on the document's record. A new draft starts in the
+customer's **default brand**; a customer without one takes its group's, and a customer with
+neither the workspace's default brand ([Customers: Brand](/en/user/customers/#brand)). The
+invoice a billing run, the quick invoice or a wizard makes starts the same way.
+
+To print one document in another brand, pick it in **Brand** in the editor. The field
+offers the published brands, the default first, and the choice applies to this document
+only; it does not change the customer. A save without touching the field leaves the brand
+as it is, and changing the customer moves a brand you did not pick to the new customer's
+default. Under the field a line says that the seller's legal name, organisation number and
+bank account stay the same in every brand: a brand changes the look of the document, never
+who sends it.
+
+When the brand the draft would use has been archived since, a yellow notice says so — *The
+brand chosen for this customer is archived or no longer published* — and the invoice is
+issued in the next brand in the order, unless you pick another here. A draft's preview
+shows the brand's logo as it is now.
+
+When you issue the invoice, the brand's name and logo are copied onto it. The PDF, the
+reminder letters and the e-mails then print that copy for good: renaming or archiving the
+brand, changing its logo or running a campaign in it changes nothing already issued, and
+a campaign's look never appears on a document. A credit note keeps its invoice's brand.
+Open an issued invoice and its details say *Brand: …*.
+
+The logo is the brand's **wordmark** when it has one, otherwise its mark for light
+backgrounds. A brand with neither prints the seller's logo from the invoice settings
+([the logo](#the-logo)); so does an invoice issued when the brand's logo could not be read.
+
 ## Invoicing work
 
 The hours approved in Time, the expenses ready to invoice in Expenses and the billing

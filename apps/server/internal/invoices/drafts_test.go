@@ -127,6 +127,7 @@ type invoiceJSON struct {
 	Ehf                *ehfJSON          `json:"ehf"`
 	Efaktura           *efakturaJSON     `json:"efaktura"`
 	PayLink            *payLinkJSON      `json:"payLink"`
+	Brand              *brandJSON        `json:"brand"`
 }
 
 // line is one request line on code vatCodeID.

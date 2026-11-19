@@ -2609,6 +2609,13 @@ export const invoicesCatalog = {
     "currencies.day": "Day",
     "currencies.rate": "Rate (NOK per unit)",
     "currencies.enterRate": "Enter a rate",
+    "brand.label": "Brand",
+    "brand.hint":
+      "The logo this one document is printed with. The seller's legal name, organisation number and bank account stay the same in every brand.",
+    "brand.notice":
+      "The brand chosen for this customer is archived or no longer published. The invoice is issued in the next brand in the order — the customer's, its group's, then the default — unless you pick another here.",
+    "brand.archivedOption": "{{name}} (archived)",
+    "brand.is": "Brand: {{name}}",
     "currency.label": "Currency",
     "currency.agreedRate": "Use another rate ({{currency}}/NOK)",
     "currency.agreedHint": "Leave empty to use Norges Bank's rate of the issue date.",
@@ -5260,6 +5267,13 @@ export const invoicesCatalog = {
     "currencies.day": "Dag",
     "currencies.rate": "Kurs (NOK per enhet)",
     "currencies.enterRate": "Legg inn kurs",
+    "brand.label": "Merkevare",
+    "brand.hint":
+      "Logoen dette ene dokumentet skrives ut med. Selgerens juridiske navn, organisasjonsnummer og bankkonto er de samme i alle merkevarer.",
+    "brand.notice":
+      "Merkevaren som er valgt for denne kunden er arkivert eller ikke lenger publisert. Fakturaen utstedes i neste merkevare i rekkefølgen — kundens, gruppens og så standard — med mindre du velger en annen her.",
+    "brand.archivedOption": "{{name}} (arkivert)",
+    "brand.is": "Merkevare: {{name}}",
     "currency.label": "Valuta",
     "currency.agreedRate": "Bruk en annen kurs ({{currency}}/NOK)",
     "currency.agreedHint": "La stå tom for å bruke Norges Banks kurs for fakturadatoen.",

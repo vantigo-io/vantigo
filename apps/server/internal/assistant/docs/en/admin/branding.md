@@ -76,6 +76,19 @@ brand ends the fall-back. A brand changes the look and the name on a document, n
 seller is: the legal name, organisation number, VAT registration and bank account stay the single
 invoice settings.
 
+### Brands on invoices
+
+An invoice is printed in a brand: its draft starts in the customer's default brand, then the
+group's, then the default brand, and the person writing it can switch the brand for that one
+document ([Invoices: the brand of a document](/en/user/invoices/#the-brand-of-a-document)). When the
+invoice is issued, the brand's name and its logo are copied onto it, the **wordmark** if the brand
+has one and otherwise its **mark for light backgrounds**; a brand with neither prints the logo
+uploaded in the invoice settings. After that, changing, archiving or running a campaign in the
+brand never changes an issued invoice, its PDF, its reminder letters or its e-mails, and a
+campaign's look never reaches a document. Archiving a brand a draft was going to use makes the
+editor say so and the invoice is issued in the next brand in the order. For the exact rules, see
+[Invoices: the brand of a document](/en/reference/invoices/#the-brand-of-a-document).
+
 ## Who sees which brand
 
 A person sees one brand: their own choice if they have one and still may, otherwise the first
@@ -134,7 +147,8 @@ request rather than showing the default to someone who should have another brand
 
 ### How open sessions follow
 
-A publish, a new default, an archive, a restore, a delete and a change of the rules are announced
+A publish, a new default, an archive, a restore, a delete, a change of the rules and a change to a
+[campaign](#campaigns) are announced
 to open sessions on the live connection (`identity.brand`); a person's own switch is announced to
 their other sessions on `identity.brand:{userId}`, which only they may subscribe to. A session
 asks for its brand again after a random wait of up to five seconds, so a publish on many open
@@ -227,6 +241,54 @@ fully, without logos, and the upload controls say why.
 Saving and publishing use the brand's revision (`If-Match`): two administrators cannot overwrite
 one another; the second is told to reload.
 
+## Campaigns
+
+A **campaign** is a dated variant of one brand, such as Pride in June or a Christmas look from
+1 December to 6 January. It is laid over the brand on its dates and the brand returns on its own
+afterwards. Campaigns are managed on the **Campaigns** tab of **Workspace admin › Brand**, brand by
+brand, with the same permission as the brand itself (`identity:brands`).
+
+| Part | Content |
+| --- | --- |
+| Name | 1 to 100 characters, for the administration. |
+| First day, last day | Calendar dates, both inclusive, read in the workspace's [business time zone](/en/user/workspace-administration/#workspace-settings): a campaign ends at local midnight, not at midnight UTC. |
+| Repeat every year | Only the month and day count; the year of the first day is the first year the campaign is shown. A range that ends before it starts, such as 1 December to 6 January, runs over New Year. 29 February counts as 28 February in a year without one. A yearly range lasts at most 365 days (`422 campaign_too_long`). |
+| On | A campaign that is off keeps its settings and is never shown. |
+| Overlay | Anything of: another primary colour, another title, other logos in the same four slots. What it leaves out is the brand's. The corner radius and the support contacts are never changed. |
+| Also in e-mails | Stored. The system's e-mails are plain text today, so it has **no effect** until they carry a mark. |
+
+**A campaign has no draft.** It goes live for everyone as soon as it is saved, while it is on and
+on the days it covers; the editor says so and shows the overlay in both colour schemes before you
+save. A colour in the overlay is treated exactly like the brand's: you give one primary, the server
+builds the scale and the tokens (a request that carries `tokens` or `shades` is refused
+`400 invalid_request`), the colour must be one a scale can be built from (`422 brand_primary_range`)
+and every pair must read (`422 brand_contrast`, because a campaign has no publish step to stop it
+later). Logos follow the [brand's logo rules](#logos); a campaign's logo is served to everyone
+without a session only while the campaign is on and in force.
+
+**At most one campaign of a brand is shown on any day.** When you save, the server compares the
+campaign with the brand's other campaigns that are on, over two years from the earliest first day,
+so that a range over New Year and a leap day are both tried, and refuses a shared day with
+`409 campaign_overlap`, naming the other campaign and the day. A campaign that is off takes no days
+until it is turned on.
+
+What people see: the shell, the sign-in page of the brand's domains and the tab icon take the
+campaign's colour, title and logos on its days, and `GET /api/v1/identity/brand`, `…/brand/public`
+and `brand.css` carry it, with `campaign` (its id and name) and `validUntil`, the start of the next
+day on which the campaign in force changes, in the business time zone. A campaign that is created,
+saved, turned off or deleted is announced to open sessions on `identity.brand`, and each session
+asks again at `validUntil`, or after six hours if that is later, or when a tab wakes after a
+boundary; there is no background worker.
+
+**Issued documents never change.** An invoice, a credit note, a reminder, a sent quote or a
+confirmed order carries the plain brand of the customer or order, whatever campaign is running.
+
+Every write is audited, as `brand.campaign_created`, `brand.campaign_updated`,
+`brand.campaign_deleted`, `brand.campaign_logo_set` and `brand.campaign_logo_removed`. A brand's
+campaigns go with it if it is deleted, and are ignored while it is archived. The development seed
+adds two campaigns, **Jul** (1 December to 6 January, every year) on the default brand and **Pride**
+(June) on Nordlys, both off so the demo is not seasonal; turn one on from the Campaigns tab.
+
 ## How the page gets its colours without a flash
 
 The brand reaches the browser as a stylesheet, `GET /api/v1/identity/brand.css`, linked in the
@@ -294,6 +356,8 @@ the page, card, text and border colours stay Vantigo's in both schemes.
 | `409 brand_archived` | You tried to edit, publish or discard the draft of an archived brand; restore it first. |
 | `409 brand_in_use` | You tried to archive the default brand, or to delete a published brand or the default. |
 | `409 brand_not_candidate` | A person chose a brand their rules do not give them. |
+| `409 campaign_overlap` | Another campaign of the brand that is on is shown on one of the days; the response names it and the day. |
+| `422 campaign_too_long` | A campaign that repeats every year spans more than 365 days. |
 | `422 rule_duplicate`, `domain_taken`, `domain_invalid`, `rule_target_not_found`, `rule_brand_invalid`, `staff_disabled`, `too_many_rules` | A rule list the server refused; `fields` names the item. |
 | `400 logo_*` | The file is not an acceptable PNG or JPEG: `logo_unsupported_type`, `logo_too_large`, `logo_too_wide`, `logo_too_small`, `logo_invalid`, `logo_not_square`. |
 | `503 storage_unavailable` | No object store, or it could not be written. |

@@ -173,6 +173,9 @@ type issueWork struct {
 	// goneLogo is the settings' logo key the issue must not snapshot
 	// (server.goneLogo), "" for none.
 	goneLogo string
+	// brand is the brand snapshot an invoice's issue writes, nil for none
+	// (brands design B27).
+	brand *brandSnap
 }
 
 // readIssueWork reads, on the pool, before the issue's transaction, what the

@@ -133,11 +133,11 @@ func (s *server) GetIdentityBrand(ctx context.Context, req gen.GetIdentityBrandR
 		}
 		payload = s.resolvedBrand(b, b.editing(), b.draft != nil)
 	} else {
-		res, err := s.resolveUser(ctx, p.UserID)
+		res, err := s.resolveLook(ctx, p.UserID)
 		if err != nil {
 			return nil, err
 		}
-		payload = s.resolvedFor(res)
+		payload = withCampaign(s.resolvedFor(res), res)
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -167,7 +167,9 @@ func (s *server) GetIdentityBrandPublic(ctx context.Context, req gen.GetIdentity
 		err     error
 	)
 	if req.Params.Domain == nil {
-		b, v, err = s.resolve(ctx, uuid.Nil)
+		var plain resolution // the campaign is applied below, once, for both answers
+		plain, err = s.resolveUser(ctx, uuid.Nil)
+		b, v = plain.brand, plain.version
 	} else {
 		domain, ok := lookupDomain(*req.Params.Domain)
 		if !ok {
@@ -185,7 +187,12 @@ func (s *server) GetIdentityBrandPublic(ctx context.Context, req gen.GetIdentity
 	if err != nil {
 		return nil, err
 	}
-	payload := s.resolvedBrand(b, v, false)
+	// A campaign of the brand shown is laid over it, a domain-matched one included (B22).
+	res, err := s.applyCampaign(ctx, resolution{brand: b, version: v})
+	if err != nil {
+		return nil, err
+	}
+	payload := withCampaign(s.resolvedBrand(res.brand, res.version, false), res)
 	payload.Matched = &matched
 	if matched {
 		payload.Source = gen.ResolvedBrandSourceRule

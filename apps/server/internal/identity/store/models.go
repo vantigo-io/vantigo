@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type IdentityAccessGroup struct {
@@ -177,6 +178,22 @@ type IdentityBrand struct {
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
 	UpdatedByUserID  *uuid.UUID
+}
+
+type IdentityBrandCampaign struct {
+	ID              uuid.UUID
+	BrandID         uuid.UUID
+	Name            string
+	StartsOn        pgtype.Date
+	EndsOn          pgtype.Date
+	Yearly          bool
+	Overlay         []byte
+	AffectsEmail    bool
+	Enabled         bool
+	Revision        int32
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+	UpdatedByUserID *uuid.UUID
 }
 
 type IdentityBrandLogo struct {

@@ -1948,7 +1948,10 @@ The Assistant is the first caller ([The model loop](/en/reference/assistant/#the
   `Deps.Accounts`, so `WithAccounts(p)` replaces identity's `Module.Accounts` in the
   composition — `p` is what every module's `Deps.Accounts` resolves to — and
   `WithoutAccounts()` drops it, for the "accounts are unavailable" path; a test of
-  identity's real provider uses neither. Users is identity's own in every harness —
+  identity's real provider uses neither. Brands are identity's own too, but
+  `WithBrands(b)` replaces identity's `Module.Brands` the same way, with a
+  `modtest.FakeBrands`, for a module that reads a brand (Invoices' document brand
+  tests); unset, the slot is identity's real provider. Users is identity's own in every harness —
   a test shapes what the directory answers through identity's tables — but
   `WithUsers(wrap)` wraps identity's `Module.Users` in the composition, for the one
   answer those tables cannot give: a lookup that fails (Staff's holders read with the

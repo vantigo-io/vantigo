@@ -188,6 +188,34 @@ Staff (`staff:view`), it adds their e-mail domain, access groups and legal entit
 shows nothing beyond the rule that matched. The brands tab and the rules are open to anyone with
 **Manage brands**; changes reach people who have Vantigo open within a few seconds.
 
+### Campaigns
+
+A campaign lays a dated variant over a brand, such as Pride or a Christmas look, and the brand
+returns on its own when the dates are over. Open the **Campaigns** tab and choose the **Brand** at
+the top; its campaigns are listed with their dates and where each stands: **Active now**,
+**Upcoming**, **Ended** (a campaign with fixed dates that is over) or **Off**.
+
+1. Choose **New campaign**, or **Edit** on a row. **Delete** removes a campaign after you confirm,
+   and the brand returns for everyone at once.
+2. Give it a **Name** (for the administration only) and choose the **First day** and the **Last
+   day**. Both days are included, and they are read in the workspace's business time zone.
+3. Switch on **Repeat every year** for a campaign that comes back, like Christmas: only the month
+   and day count, so 1 December to 6 January runs over New Year. It can last at most 365 days. The
+   year of the first day is the first year it is shown.
+4. Under **What the campaign changes**, switch on **Use another colour** and pick it, give another
+   **Title**, and upload other **Logos**. Only what you set changes; everything else stays the
+   brand's, and the corner radius and the support contacts never change. The page checks the colour
+   as it does for a brand, and the **Preview** shows the result in light and in dark.
+5. **Also in e-mails** is saved for later: the system's e-mails are plain text today, so it does
+   nothing yet.
+6. **On** controls whether the campaign is shown at all. **Save and go live** saves it: there is no
+   draft, so a campaign that is on is shown to everyone on its days from that moment.
+
+Two campaigns of one brand cannot be shown on the same day. If the dates meet another campaign's,
+including across New Year, the page says so and names it; change the dates or turn the other
+campaign off. Invoices, credit notes and other documents that have been issued never take a
+campaign's look.
+
 ## Shop-floor stations
 
 **Stations** lists the shared tablets on the shop floor where operators switch in with a

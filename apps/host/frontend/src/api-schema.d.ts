@@ -826,6 +826,82 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/identity/brands/{id}/campaigns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a brand's campaigns
+         * @description The campaigns of a brand, a dated overlay each (brands design B22), with where each stands today in the business time zone.
+         */
+        get: operations["getIdentityBrandsByIdCampaigns"];
+        put?: never;
+        /**
+         * Create a campaign
+         * @description Creates a campaign on a brand (brands design B22). It is live on save when enabled: there is no draft. Two campaigns of a brand may not be active on the same date (B23), evaluated over a two-year window. The overlay's primary is recomputed into tokens on the server and must read (B4, B38); tokens in the request are refused. Open sessions are told on the live topic identity.brand. Audited brand.campaign_created.
+         */
+        post: operations["postIdentityBrandsByIdCampaigns"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/identity/brands/{id}/campaigns/{campaignId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Save a campaign
+         * @description Replaces a campaign's inputs (brands design B22); its logos are kept. Live on save when enabled, and the overlap, length and colour rules of the create apply. Audited brand.campaign_updated.
+         */
+        put: operations["putIdentityBrandsByIdCampaignsByCampaignId"];
+        post?: never;
+        /**
+         * Delete a campaign
+         * @description Deletes a campaign; what it changed reverts for everyone at once. The stored logo objects are kept. Audited brand.campaign_deleted.
+         */
+        delete: operations["deleteIdentityBrandsByIdCampaignsByCampaignId"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/identity/brands/{id}/campaigns/{campaignId}/logos/{slot}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a campaign logo
+         * @description A campaign's logo as stored, streamed to a holder of identity:brands so the editor can show it. Never sniffed; private, revalidated.
+         */
+        get: operations["getIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot"];
+        /**
+         * Set a campaign logo
+         * @description Sets one logo slot of the campaign's overlay (brands design B6, B38): a PNG or JPEG in the multipart field file, judged exactly as a brand logo is. Live at once while the campaign is enabled. Audited brand.campaign_logo_set.
+         */
+        put: operations["putIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot"];
+        post?: never;
+        /**
+         * Remove a campaign logo
+         * @description Clears one logo slot of the campaign's overlay; the stored object is kept. Live at once. Audited brand.campaign_logo_removed.
+         */
+        delete: operations["deleteIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/identity/brands/{id}/discard-draft": {
         parameters: {
             query?: never;
@@ -4239,6 +4315,79 @@ export interface components {
             /** @description An IANA name such as Europe/Oslo, which this server and its database must read the same way; a name the two read differently (CET, an abbreviation to the database and a zone with summer time to the server) is refused. Changing it moves "today" and every day derived from an instant from the next request on; dates already written stay what they were. */
             businessTimeZone: string;
         };
+        /** @description A dated overlay on one brand (brands design B22), live on save while enabled. */
+        BrandCampaign: {
+            /** @description Also apply the overlay's mark in the e-mails the system sends in this brand. Stored; it has no effect until system e-mail is HTML. */
+            affectsEmail: boolean;
+            /** Format: uuid */
+            brandId: string;
+            enabled: boolean;
+            /**
+             * Format: date
+             * @description The last day, inclusive, in the workspace's business time zone. For a yearly campaign only its month and day count.
+             */
+            endsOn: string;
+            /** Format: uuid */
+            id: string;
+            name: string;
+            overlay: components["schemas"]["BrandCampaignOverlay"];
+            /** Format: int32 */
+            revision: number;
+            /**
+             * Format: date
+             * @description The first day, inclusive. For a yearly campaign its year is the first year it is active.
+             */
+            startsOn: string;
+            /**
+             * @description Where the campaign stands today in the business time zone: active now, upcoming, ended (a dated campaign that is over) or disabled.
+             * @enum {string}
+             */
+            status: "active" | "upcoming" | "ended" | "disabled";
+            yearly: boolean;
+        };
+        /** @description A campaign's inputs. Any other member, tokens and shades included, is refused 400. */
+        BrandCampaignInput: {
+            affectsEmail?: boolean;
+            enabled?: boolean;
+            /** Format: date */
+            endsOn: string;
+            name: string;
+            overlay?: components["schemas"]["BrandCampaignOverlayInput"];
+            /** Format: date */
+            startsOn: string;
+            yearly?: boolean;
+        } & {
+            [key: string]: unknown;
+        };
+        /** @description What a campaign changes of the brand. Every member is optional; one it omits is the brand's. The radius and the support contacts are never changed. */
+        BrandCampaignOverlay: {
+            logos: components["schemas"]["BrandLogos"];
+            /** @description The primary colour, as #rrggbb. Its scale and tokens are generated on the server. */
+            primary?: string;
+            title?: string;
+        };
+        /** @description The overlay's inputs. Logos are set through their own operations. */
+        BrandCampaignOverlayInput: {
+            /** @description The primary colour, as #rrggbb. */
+            primary?: string;
+            title?: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /** @description The campaign in force, when the brand shown has one. */
+        BrandCampaignRef: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+        };
+        BrandCampaignsResponse: {
+            items: components["schemas"]["BrandCampaign"][];
+            /**
+             * Format: date
+             * @description The business calendar day the statuses are read at.
+             */
+            today: string;
+        };
         BrandCandidate: {
             /** Format: uuid */
             id: string;
@@ -4454,6 +4603,7 @@ export interface components {
             algorithm: number;
             /** Format: uuid */
             brandId: string;
+            campaign?: components["schemas"]["BrandCampaignRef"];
             /** @description The brands the person may choose among (B12); the switcher shows with more than one. Empty on the public look. */
             candidates?: components["schemas"]["BrandCandidate"][];
             /** @description The person has a choice that is no longer one of their candidates, so it is ignored. */
@@ -4472,6 +4622,11 @@ export interface components {
             tokens: components["schemas"]["BrandTokens"];
             /** Format: int32 */
             v: number;
+            /**
+             * Format: date-time
+             * @description The next time the campaign in force changes (B24): the start of the day a campaign starts or the day after one ends, in the business time zone. Absent when nothing is scheduled. The client refetches at the nearer of this and six hours.
+             */
+            validUntil?: string;
             /** @description The cache key of the payload. */
             version: string;
         };
@@ -8157,6 +8312,438 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
+            };
+        };
+    };
+    getIdentityBrandsByIdCampaigns: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandCampaignsResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    postIdentityBrandsByIdCampaigns: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BrandCampaignInput"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandCampaign"];
+                };
+            };
+            /** @description Bad Request - invalid_request (a member the contract does not list, a date out of order or out of range). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict - campaign_overlap (another enabled campaign of the brand shares a date) or brand_archived. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity - campaign_too_long (a yearly range over 365 days), brand_contrast or brand_primary_range (the overlay's colour). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    putIdentityBrandsByIdCampaignsByCampaignId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                campaignId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BrandCampaignInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandCampaign"];
+                };
+            };
+            /** @description Bad Request - invalid_request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict - campaign_overlap or brand_archived. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity - campaign_too_long, brand_contrast or brand_primary_range. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteIdentityBrandsByIdCampaignsByCampaignId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                campaignId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                campaignId: string;
+                slot: "mark_light" | "mark_dark" | "icon" | "wordmark";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": string;
+                    "image/png": string;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found - no such campaign or no logo in the slot. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Service Unavailable - storage_unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    putIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                campaignId: string;
+                slot: "mark_light" | "mark_dark" | "icon" | "wordmark";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandCampaign"];
+                };
+            };
+            /** @description Bad Request - logo_unsupported_type, logo_too_large, logo_too_wide, logo_too_small, logo_invalid or logo_not_square. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Service Unavailable - storage_unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                campaignId: string;
+                slot: "mark_light" | "mark_dark" | "icon" | "wordmark";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandCampaign"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

@@ -62,46 +62,53 @@ var markedByHand = map[string]string{
 	"postExpensesClaimsByIdPerDiemSuggestion": "auto",
 
 	// A secret or a credential would pass through the model and the provider.
-	"getIdentityAccountMfaSetup":                  "never", // the authenticator's shared secret
-	"getIdentityOwnerMfaSetup":                    "never",
-	"postIdentityAccountMfaSetup":                 "never",
-	"postIdentityAccountMfaEnable":                "never", // answers the recovery codes
-	"postIdentityAccountMfaDisable":               "never",
-	"postIdentityAccountMfaRecoveryCodes":         "never",
-	"postIdentityOwnerMfaSetup":                   "never",
-	"postIdentityOwnerMfaEnable":                  "never",
-	"postIdentityOwnerMfaDisable":                 "never",
-	"postIdentityOwnerMfaRecoveryCodes":           "never",
-	"postIdentityAccountPassword":                 "never", // a password in the body
-	"postIdentityAccountPasskeysBegin":            "never", // a WebAuthn ceremony needs the person's browser
-	"postIdentityAccountPasskeysComplete":         "never",
-	"deleteIdentityAccountPasskeysByCredentialId": "never",
-	"deleteIdentityBrandsByIdLogosBySlot":         "never",
-	"getIdentityBrands":                           "never",
-	"getIdentityBrandsById":                       "never",
-	"getIdentityBrandsByIdLogosBySlot":            "never",
-	"postIdentityBrandsByIdDiscardDraft":          "never",
-	"postIdentityBrandsByIdPublish":               "never",
-	"putIdentityBrandsById":                       "never",
-	"putIdentityBrandsByIdLogosBySlot":            "never",
-	"postIdentityBrands":                          "never",
-	"deleteIdentityBrandsById":                    "never",
-	"postIdentityBrandsByIdArchive":               "never",
-	"postIdentityBrandsByIdDuplicate":             "never",
-	"postIdentityBrandsByIdMakeDefault":           "never",
-	"postIdentityBrandsByIdRestore":               "never",
-	"getIdentityBrandRules":                       "never",
-	"putIdentityBrandRules":                       "never",
-	"getIdentityBrandRuleTargets":                 "never",
-	"getIdentityBrandsResolution":                 "never",
-	"putIdentityAccountBrand":                     "never",
-	"postIdentityAccountSessionsRevoke":           "never", // ends the session the assistant stands on
-	"getCalendarFeed":                             "never", // the address holds a bearer token
-	"postCalendarFeedByVariant":                   "never",
-	"postCommunicationsChannels":                  "never", // the SMTP password in the body
-	"putCommunicationsChannelsById":               "never",
-	"postInventoryLotAttachment":                  "never", // a lot's file is uploaded by a person (manufacturing phase 2 M54)
-	"putInvoicesBankFeed":                         "never", // the bank's API key in the body (bank feed plan finding 13)
+	"getIdentityAccountMfaSetup":                               "never", // the authenticator's shared secret
+	"getIdentityOwnerMfaSetup":                                 "never",
+	"postIdentityAccountMfaSetup":                              "never",
+	"postIdentityAccountMfaEnable":                             "never", // answers the recovery codes
+	"postIdentityAccountMfaDisable":                            "never",
+	"postIdentityAccountMfaRecoveryCodes":                      "never",
+	"postIdentityOwnerMfaSetup":                                "never",
+	"postIdentityOwnerMfaEnable":                               "never",
+	"postIdentityOwnerMfaDisable":                              "never",
+	"postIdentityOwnerMfaRecoveryCodes":                        "never",
+	"postIdentityAccountPassword":                              "never", // a password in the body
+	"postIdentityAccountPasskeysBegin":                         "never", // a WebAuthn ceremony needs the person's browser
+	"postIdentityAccountPasskeysComplete":                      "never",
+	"deleteIdentityAccountPasskeysByCredentialId":              "never",
+	"deleteIdentityBrandsByIdLogosBySlot":                      "never",
+	"getIdentityBrands":                                        "never",
+	"getIdentityBrandsById":                                    "never",
+	"getIdentityBrandsByIdLogosBySlot":                         "never",
+	"postIdentityBrandsByIdDiscardDraft":                       "never",
+	"postIdentityBrandsByIdPublish":                            "never",
+	"putIdentityBrandsById":                                    "never",
+	"putIdentityBrandsByIdLogosBySlot":                         "never",
+	"postIdentityBrands":                                       "never",
+	"deleteIdentityBrandsById":                                 "never",
+	"postIdentityBrandsByIdArchive":                            "never",
+	"postIdentityBrandsByIdDuplicate":                          "never",
+	"postIdentityBrandsByIdMakeDefault":                        "never",
+	"postIdentityBrandsByIdRestore":                            "never",
+	"getIdentityBrandRules":                                    "never",
+	"putIdentityBrandRules":                                    "never",
+	"getIdentityBrandRuleTargets":                              "never",
+	"getIdentityBrandsResolution":                              "never",
+	"deleteIdentityBrandsByIdCampaignsByCampaignId":            "never",
+	"deleteIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot": "never",
+	"getIdentityBrandsByIdCampaigns":                           "never",
+	"getIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot":    "never",
+	"postIdentityBrandsByIdCampaigns":                          "never",
+	"putIdentityBrandsByIdCampaignsByCampaignId":               "never",
+	"putIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot":    "never",
+	"putIdentityAccountBrand":                                  "never",
+	"postIdentityAccountSessionsRevoke":                        "never", // ends the session the assistant stands on
+	"getCalendarFeed":                                          "never", // the address holds a bearer token
+	"postCalendarFeedByVariant":                                "never",
+	"postCommunicationsChannels":                               "never", // the SMTP password in the body
+	"putCommunicationsChannelsById":                            "never",
+	"postInventoryLotAttachment":                               "never", // a lot's file is uploaded by a person (manufacturing phase 2 M54)
+	"putInvoicesBankFeed":                                      "never", // the bank's API key in the body (bank feed plan finding 13)
 
 	// The assistant never calls itself (S4). Every operation of its own API says
 	// so, though its access rules (session, OwnerManagement) already close them.

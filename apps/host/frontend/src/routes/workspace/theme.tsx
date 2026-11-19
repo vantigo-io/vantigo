@@ -15,6 +15,7 @@ import {
 } from "../../api/brands";
 import { hasPermissions } from "../../navigation";
 import "../../i18n";
+import { BrandCampaigns } from "./-brand-campaigns";
 import { BrandEditor } from "./-brand-editor";
 import { BrandList } from "./-brand-list";
 import { BrandLookup } from "./-brand-lookup";
@@ -52,6 +53,7 @@ const ThemePage = () => {
           <Tabs.List mb="md">
             <Tabs.Tab value="brands">{t("brands.tab.brands")}</Tabs.Tab>
             <Tabs.Tab value="rules">{t("brands.tab.rules")}</Tabs.Tab>
+            <Tabs.Tab value="campaigns">{t("brands.tab.campaigns")}</Tabs.Tab>
           </Tabs.List>
           <Tabs.Panel value="brands">
             <Stack gap="lg">
@@ -69,6 +71,9 @@ const ThemePage = () => {
               <BrandRules brands={items} />
               <BrandLookup />
             </Stack>
+          </Tabs.Panel>
+          <Tabs.Panel value="campaigns">
+            <BrandCampaigns brands={items} />
           </Tabs.Panel>
         </Tabs>
       )}

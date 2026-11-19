@@ -189,6 +189,33 @@ Staff (`staff:view`), legger det til e-postdomenet, tilgangsgruppene og de jurid
 deres; ellers viser det ingenting utover regelen som traff. Alle med **Administrer merkevare** får
 se merkevarene og reglene; endringer når folk som har Vantigo åpent i løpet av noen sekunder.
 
+### Kampanjer
+
+En kampanje legger en datert variant over en merkevare, for eksempel Pride eller et julepreg, og
+merkevaren kommer tilbake av seg selv når datoene er over. Åpne fanen **Kampanjer** og velg
+**Merkevare** øverst; kampanjene vises med datoer og hvor hver av dem står: **Aktiv nå**,
+**Kommer**, **Avsluttet** (en kampanje med faste datoer som er over) eller **Av**.
+
+1. Velg **Ny kampanje**, eller **Rediger** på en rad. **Slett** fjerner en kampanje etter at du har
+   bekreftet, og merkevaren kommer tilbake for alle med en gang.
+2. Gi den et **Navn** (bare for administrasjonen) og velg **Første dag** og **Siste dag**. Begge
+   dagene er med, og de leses i arbeidsområdets forretningstidssone.
+3. Slå på **Gjenta hvert år** for en kampanje som kommer tilbake, som jul: bare måned og dag
+   teller, så 1. desember til 6. januar går over nyttår. Den kan vare høyst 365 dager. Året til
+   første dag er første året den vises.
+4. Under **Hva kampanjen endrer** slår du på **Bruk en annen farge** og velger den, gir en annen
+   **Tittel** og laster opp andre **Logoer**. Bare det du setter, endres; alt annet er
+   merkevarens, og hjørneradiusen og støttekontaktene endres aldri. Siden sjekker fargen som for en
+   merkevare, og **Forhåndsvisning** viser resultatet i lys og i mørk.
+5. **Også i e-poster** lagres til senere: systemets e-poster er ren tekst i dag, så det gjør
+   ingenting ennå.
+6. **På** styrer om kampanjen vises i det hele tatt. **Lagre og gå i drift** lagrer den: det
+   finnes ikke noe utkast, så en kampanje som er på, vises for alle på dagene sine fra det øyeblikket.
+
+To kampanjer for samme merkevare kan ikke vises samme dag. Treffer datoene en annen kampanjes,
+også over nyttår, sier siden fra og navngir den; endre datoene eller slå den andre kampanjen av.
+Fakturaer, kreditnotaer og andre dokumenter som er utstedt, får aldri en kampanjes utseende.
+
 ## Nettbrettstasjoner i verkstedet
 
 **Nettbrettstasjoner** viser de delte nettbrettene i verkstedet der operatører logger på med PIN-kode

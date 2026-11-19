@@ -13,7 +13,7 @@ sources:
   - apps/server/internal/db/migrations/00142_identity_agent_grants.sql
   - apps/server/internal/db/migrations/00174_identity_stations.sql
   - apps/server/internal/db/migrations/00199_identity_api_requests.sql
-  - apps/server/internal/db/migrations/00214_identity_idempotency.sql
+  - apps/server/internal/db/migrations/00215_identity_idempotency.sql
   - apps/server/internal/live/handler.go
   - apps/server/internal/module/router.go
 ---

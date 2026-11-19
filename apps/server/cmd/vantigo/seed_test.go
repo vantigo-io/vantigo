@@ -89,6 +89,8 @@ func TestRun_SeedPopulatesDemoDatasetAndIsIdempotent(t *testing.T) {
 		// The default brand and the two demo brands, with a rule each; Kari matches both.
 		{"identity.brands", "SELECT count(*) FROM identity.brands WHERE state = 'published'", 3},
 		{"identity.brand_rules", "SELECT count(*) FROM identity.brand_rules", 2},
+		// Jul on the default brand and Pride on Nordlys, both disabled.
+		{"identity.brand_campaigns", "SELECT count(*) FROM identity.brand_campaigns WHERE NOT enabled AND yearly", 2},
 		{"identity.brand_rules group members", `SELECT count(*) FROM identity.brand_rules r
 			JOIN identity.access_group_memberships m ON m.group_id::text = r.target_ref WHERE r.kind = 'access_group'`, 2},
 		// The web shop's integration, its Webshop role and one key (API access
@@ -115,6 +117,11 @@ func TestRun_SeedPopulatesDemoDatasetAndIsIdempotent(t *testing.T) {
 		{"projects.projects", "SELECT count(*) FROM projects.projects", demoProjectCount},
 		// Those of main and one in EUR (seedInvoicesCurrency).
 		{"invoices.invoices", "SELECT count(*) FROM invoices.invoices", 32},
+		// The demo customers' brands on their invoices (brands delivery E2): the
+		// issued ones carry the snapshot's name (no object store is configured
+		// here, so no logo), the drafts only the brand.
+		{"invoices.invoices brand", "SELECT count(*) FROM invoices.invoices WHERE brand_id IS NOT NULL", 16},
+		{"invoices.invoices brand snapshot", "SELECT count(*) FROM invoices.invoices WHERE status = 'issued' AND brand_name IS NOT NULL", 14},
 		{"invoices.consumer_lookups found", "SELECT count(*) FROM invoices.consumer_lookups WHERE status = 'found' AND auto_accept", 1},
 		{"invoices.avtalegiro_mandates unresolved", "SELECT count(*) FROM invoices.avtalegiro_mandates WHERE customer_id IS NULL", 1},
 		{"invoices.avtalegiro_claims accepted", "SELECT count(*) FROM invoices.avtalegiro_claims WHERE status = 'accepted'", 1},
