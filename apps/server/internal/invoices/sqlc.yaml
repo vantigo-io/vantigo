@@ -30,6 +30,7 @@ sql:
       - ../db/migrations/00203_invoices_currency.sql
       - ../db/migrations/00205_invoices_send_jobs.sql
       - ../db/migrations/00208_invoices_buyer_vat_registered.sql
+      - ../db/migrations/00213_invoices_brand.sql
     queries: queries
     gen:
       go:

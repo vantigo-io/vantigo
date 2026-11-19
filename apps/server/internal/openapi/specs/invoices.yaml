@@ -3678,6 +3678,44 @@ components:
                 - data
                 - pagination
             type: object
+        InvoicesBrand:
+            description: "The brand a document is printed in (brands design B27, B28, delivery E2). On a draft it is the brand the draft carries and where it came from: chosen (the person switched it for this document), customer, group or default (B28). unavailable is true when the draft's choice is archived or unknown now, or when a brand higher in the order was skipped when the draft picked its brand: the editor says so, and the issue falls back to the next brand in the order. On an issued document it is the snapshot: id and name as they were at the issue, never read again, and unavailable is false. The brand changes the logo (and the name kept in the snapshot) of a document, never the seller's legal identity (B29a)."
+            properties:
+                id:
+                    format: uuid
+                    type: string
+                name:
+                    description: The brand's published name; absent on a draft whose brand cannot be read now.
+                    type: string
+                source:
+                    enum:
+                        - chosen
+                        - customer
+                        - group
+                        - default
+                    type: string
+                unavailable:
+                    type: boolean
+            required:
+                - id
+                - source
+                - unavailable
+            type: object
+        InvoicesBrandOption:
+            description: A published brand the draft editor's Brand select offers.
+            properties:
+                id:
+                    format: uuid
+                    type: string
+                isDefault:
+                    type: boolean
+                name:
+                    type: string
+            required:
+                - id
+                - name
+                - isDefault
+            type: object
         InvoicesBuyer:
             description: The buyer snapshot (D4), written at issue from the customer's billing profile and printed from, never re-read. A credit note carries its original's.
             properties:
@@ -3899,6 +3937,10 @@ components:
         InvoicesInvoiceRequest:
             description: 'A draft, created (POST) or replaced whole (PUT, with revision) (D4). customerId is the buyer. currency, when given, is NOK or a currency turned on in the settings (invoices phase 6 design I17, I19; else a 400 on currency); on create, absent is the billing profile''s currency when it is turned on, else NOK. A draft holding order lines, work or deduction lines keeps its currency (400 on currency). exchangeRate and exchangeRateDate set an agreed rate on a draft in another currency. Delivery is deliveryDate alone, deliveryFrom with deliveryTo (from on or before to), or none — none only on a draft; the issue refuses it. references are at most 100 characters each, note and internalNote 1000. lines are at most 500. On create, an omitted yourReference is the billing profile''s buyerReference and an omitted paymentTermsDays the profile''s terms, else the settings'' default; on PUT an invoice''s paymentTermsDays is required and an omitted reference is cleared. On a credit-note draft only what D8 allows may change: lines may be removed, a quantity or a unit price lowered, and a description, the note and the internal note edited. A line''s sources name the work it bills (invoices work design D2): never on a create or a credit note; on a PUT of a draft that holds work, required on every line ([] for none), each source one the draft already holds, named once — a save moves work between lines or drops it, and never adds any. At most 5000 sources on one document.'
             properties:
+                brandId:
+                    description: "The brand this one document is printed in (brands design B28, delivery E2). Must be a published brand, or the one the draft already carries; an unknown or archived id is a field error on brandId. On a create, absent takes the customer's default brand, then its group's, then the workspace default. On a PUT, absent keeps the draft's brand, unless the customer changed and the brand was not chosen: it is then taken from the new customer's defaults again. Not accepted on a credit-note draft, which carries its invoice's brand."
+                    format: uuid
+                    type: string
                 currency:
                     type: string
                 customerId:
@@ -4000,6 +4042,8 @@ components:
                         format: date
                         type: string
                     type: array
+                brand:
+                    $ref: '#/components/schemas/InvoicesBrand'
                 buyer:
                     $ref: '#/components/schemas/InvoicesBuyer'
                 creditLimit:
@@ -7915,6 +7959,35 @@ paths:
             tags:
                 - Invoices
             x-vantigo-access: permission:invoices:access+invoices:manage
+    /api/v1/invoices/brands:
+        get:
+            description: The published brands the draft editor's Brand select offers, the workspace default first (brands design B28, delivery E2), read from contracts.Brands. It needs the permission to write a draft and nothing from identity. A deployment without identity's brands offers none.
+            operationId: getInvoicesBrands
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/InvoicesBrandOption'
+                                type: array
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: List the brands a draft can be printed in
+            tags:
+                - Invoices
+            x-vantigo-access: permission:invoices:access+invoices:create
     /api/v1/invoices/settings/logo:
         delete:
             description: Removes the seller's logo (invoices phase 6 design I1) under the settings lock; the settings' revision does not move. The stored object is never deleted, since an issued document's snapshot may name it; documents issued from now on carry no logo, and those issued before keep theirs.

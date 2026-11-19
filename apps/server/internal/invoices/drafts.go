@@ -117,6 +117,9 @@ type draftInput struct {
 	ourReference, orderReference           string
 	note, internalNote                     string
 	lines                                  []draftLine
+	// brand is the brand a save sets, nil to leave the draft's as it is
+	// (brands design B28).
+	brand *brandPick
 	// refresh is what refreshSources read before the save's transaction, nil
 	// without it.
 	refresh *sourcesRefresh
@@ -559,6 +562,16 @@ func (s *server) PostInvoices(ctx context.Context, req gen.PostInvoicesRequestOb
 	if refusal := customerGate(profile); refusal != nil {
 		return gen.PostInvoices409ApplicationProblemPlusJSONResponse(*refusal), nil
 	}
+	// The draft's brand (brands design B28): the person's choice, else the
+	// customer's default, the group's, the workspace's — read before the lock.
+	brand, refused, err := s.createBrand(ctx, in.customerID, req.Body.BrandId)
+	if err != nil {
+		return nil, err
+	}
+	if refused {
+		return gen.PostInvoices400ApplicationProblemPlusJSONResponse(invalid(invalidInvoiceTitle, fieldError("brandId", brandUnknown))), nil
+	}
+	brandID, brandSource, brandSkipped := brand.params()
 	if in.yourReference == nil {
 		in.yourReference = ptr(profile.BuyerReference)
 	}
@@ -626,6 +639,7 @@ func (s *server) PostInvoices(ctx context.Context, req gen.PostInvoicesRequestOb
 			YourReference: *in.yourReference, OurReference: in.ourReference, OrderReference: in.orderReference,
 			Note: in.note, InternalNote: in.internalNote,
 			NetTotal: net, VatTotal: vat, GrossTotal: gross, VatTotalNok: vatNOK, Timesheet: in.timesheet,
+			BrandID: brandID, BrandSource: brandSource, BrandSkipped: brandSkipped,
 			CreatedByUserID: callerID(ctx), Now: s.deps.Clock(),
 		})
 		if err != nil {
@@ -699,6 +713,15 @@ func (s *server) PutInvoicesById(ctx context.Context, req gen.PutInvoicesByIdReq
 	if err != nil {
 		return nil, err
 	}
+	// The brand the save sets (brands design B28), read before the lock.
+	brand, refused, err := s.saveBrand(ctx, current, in.customerID, req.Body.BrandId)
+	if err != nil {
+		return nil, err
+	}
+	if refused {
+		return gen.PutInvoicesById400ApplicationProblemPlusJSONResponse(invalid(invalidInvoiceTitle, fieldError("brandId", brandUnknown))), nil
+	}
+	in.brand = brand
 	// The held work, read on the pool before the save's transaction: what
 	// refreshSources asks its modules about now, and what the derived
 	// project is judged on — no contract call is made under the lock (D2).
@@ -975,6 +998,14 @@ func (s *server) saveDraft(ctx context.Context, id int64, revision int32, in dra
 				ExchangeRateSource: in.rate.Source,
 			}); err != nil {
 				return fmt.Errorf("invoices: set draft %d's rate: %w", id, err)
+			}
+		}
+		if in.brand != nil && locked.Kind == kindInvoice {
+			id, source, skipped := in.brand.params()
+			if out.doc, err = txq.SetDraftBrand(ctx, store.SetDraftBrandParams{
+				ID: locked.ID, BrandID: id, BrandSource: source, BrandSkipped: skipped,
+			}); err != nil {
+				return fmt.Errorf("invoices: set draft %d's brand: %w", locked.ID, err)
 			}
 		}
 		lineIDs, err := writeLines(ctx, txq, id, in.lines)

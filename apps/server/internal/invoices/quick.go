@@ -166,6 +166,16 @@ func (s *server) PostInvoicesQuick(ctx context.Context, req gen.PostInvoicesQuic
 	line1, line2, postal, city, country := addressColumns(in.address)
 	// The logo's object, asked of the store before the lock (goneLogo).
 	goneLogo := s.goneLogo(ctx, q)
+	// The brand the invoice starts in and is issued with (brands design B28).
+	brand, err := s.defaultBrand(ctx, in.customerID)
+	if err != nil {
+		return nil, err
+	}
+	brandID, brandSource, brandSkipped := brand.params()
+	brandCopy, err := s.snapshotBrand(ctx, brandID, brandSource, in.customerID)
+	if err != nil {
+		return nil, err
+	}
 
 	var issued store.InvoicesInvoice
 	var refusal *gen.InvoicesConflictProblem
@@ -180,6 +190,7 @@ func (s *server) PostInvoicesQuick(ctx context.Context, req gen.PostInvoicesQuic
 			YourReference: *in.yourReference, OurReference: in.ourReference, OrderReference: in.orderReference,
 			Note: in.note, InternalNote: in.internalNote,
 			NetTotal: net, VatTotal: vat, GrossTotal: gross, VatTotalNok: vatNOK,
+			BrandID: brandID, BrandSource: brandSource, BrandSkipped: brandSkipped,
 			CreatedByUserID: callerID(ctx), Now: now,
 		})
 		if err != nil {
@@ -209,7 +220,7 @@ func (s *server) PostInvoicesQuick(ctx context.Context, req gen.PostInvoicesQuic
 		}
 		// 2. The issue's own body on the document held: the settings row,
 		// the number, the checks, the writes.
-		issued, refusal, err = s.issueLocked(ctx, tx, txq, draft, draft, profile, issueWork{goneLogo: goneLogo}, nil, true, loc)
+		issued, refusal, err = s.issueLocked(ctx, tx, txq, draft, draft, profile, issueWork{goneLogo: goneLogo, brand: brandCopy}, nil, true, loc)
 		if err != nil {
 			return err
 		}

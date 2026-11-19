@@ -379,6 +379,13 @@ func (s *server) issueDraft(ctx context.Context, id int64, issueDate *openapi_ty
 	// The logo's object, asked of the store before the lock: one the store
 	// does not hold is not snapshotted (goneLogo).
 	work.goneLogo = s.goneLogo(ctx, q)
+	// The brand's snapshot, copied into this module's scope (brands design
+	// B27); a credit note keeps its invoice's and reads nothing.
+	if draft.Kind == kindInvoice {
+		if work.brand, err = s.snapshotBrand(ctx, draft.BrandID, draft.BrandSource, draft.CustomerID); err != nil {
+			return issueOutcome{}, err
+		}
+	}
 	if issueBeforeLock != nil {
 		issueBeforeLock(ctx, draft.ID)
 	}
@@ -695,6 +702,7 @@ func (s *server) issueLocked(ctx context.Context, tx pgx.Tx, txq *store.Queries,
 	if work.goneLogo != "" && params.SellerLogoObjectKey != nil && *params.SellerLogoObjectKey == work.goneLogo {
 		params.SellerLogoObjectKey, params.SellerLogoSha256 = nil, nil
 	}
+	applyBrandSnapshot(&params, locked, work.brand)
 	params.Kid, params.KidAlgorithm = documentKid, kidAlgorithm
 	if params.ExchangeRate, err = numericFromRat(rate.Rate, ratesMaxDecimals); err != nil {
 		return failed(err)

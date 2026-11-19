@@ -336,9 +336,11 @@ func (a *allCalls) by(userID uuid.UUID) []contractCall {
 // calendar's reads are held to the lock rule like every other call, but left
 // out of contractCalls: nearly every request reads the zone once, and the
 // tests that read that record ask which neighbours a request asked for data.
+// The brands' reads (brands design B29) are held to the lock rule and left out
+// of it for the same reason: a draft's response names its brand.
 func noteContractCall(ctx context.Context, method string, txBound bool) {
 	lockedContractCalls.note(ctx, method, txBound)
-	if !strings.HasPrefix(method, "Calendar.") {
+	if !strings.HasPrefix(method, "Calendar.") && !strings.HasPrefix(method, "Brands.") {
 		contractCalls.note(ctx, method, txBound)
 	}
 }
@@ -355,6 +357,19 @@ type fakeCustomers struct {
 	onProfile func(id int32)
 	// profileErr, when set, is what every BillingProfile read fails with.
 	profileErr error
+	// brands is a customer's own default brand and its group's (brands
+	// design B28), as the directory's Customer answers them.
+	brands map[int32][2]*uuid.UUID
+}
+
+// setBrands sets a customer's own default brand and its group's, nil for none.
+func (f *fakeCustomers) setBrands(id int32, own, group *uuid.UUID) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.brands == nil {
+		f.brands = map[int32][2]*uuid.UUID{}
+	}
+	f.brands[id] = [2]*uuid.UUID{own, group}
 }
 
 var _ contracts.CustomerDirectory = (*fakeCustomers)(nil)
@@ -442,7 +457,10 @@ func (f *fakeCustomers) Customer(_ context.Context, id int32) (*contracts.Custom
 	if !ok {
 		return nil, nil
 	}
-	return &contracts.CustomerEntry{ID: p.ID, Name: p.Name, Archived: p.Status == "archived", MergedInto: p.MergedInto}, nil
+	b := f.brands[id]
+	return &contracts.CustomerEntry{
+		ID: p.ID, Name: p.Name, Archived: p.Status == "archived", MergedInto: p.MergedInto, BrandID: b[0], GroupBrandID: b[1],
+	}, nil
 }
 
 func (f *fakeCustomers) Customers(ctx context.Context, ids []int32) ([]contracts.CustomerEntry, error) {

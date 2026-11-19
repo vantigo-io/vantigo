@@ -301,6 +301,8 @@ type orderDraft struct {
 	profile *contracts.CustomerBillingProfile
 	// rate is the draft's in its currency (invoices phase 6 design I19).
 	rate draftRateOf
+	// brand is the brand the draft starts in (brands design B28).
+	brand brandPick
 }
 
 // fromOrders is the wizard's core (O39): the handler's and the billing run's
@@ -571,8 +573,14 @@ func (s *server) fromOrders(ctx context.Context, lines []orderLineInput, subs []
 		if terms == nil {
 			terms = &settings.DefaultPaymentTermsDays
 		}
+		// The brand a worker's draft starts in (brands design B28): the
+		// customer's default, the group's, the workspace's.
+		brand, err := s.defaultBrand(ctx, g.customerID)
+		if err != nil {
+			return ordersOutcome{}, err
+		}
 		drafts = append(drafts, orderDraft{
-			group: g, lines: made, rows: rows, totals: totals, profile: profile, rate: rate,
+			group: g, lines: made, rows: rows, totals: totals, profile: profile, rate: rate, brand: brand,
 			header: headerOf(g, rows, profile.BuyerReference, terms, today),
 		})
 	}
@@ -587,6 +595,7 @@ func (s *server) fromOrders(ctx context.Context, lines []orderLineInput, subs []
 				return err
 			}
 			h := d.header
+			brandID, brandSource, brandSkipped := d.brand.params()
 			line1, line2, postal, city, country := addressColumns(h.address)
 			doc, err := txq.InsertInvoiceDraft(ctx, store.InsertInvoiceDraftParams{
 				CustomerID: d.group.customerID, DeliveryDate: h.deliveryDate, DeliveryFrom: h.deliveryFrom, DeliveryTo: h.deliveryTo,
@@ -594,6 +603,7 @@ func (s *server) fromOrders(ctx context.Context, lines []orderLineInput, subs []
 				PaymentTermsDays: h.terms, Currency: d.group.key.currency, YourReference: h.yourReference,
 				ExchangeRate: d.rate.numeric(), ExchangeRateDate: d.rate.day(), ExchangeRateSource: &d.rate.Source,
 				OrderReference: h.orderReference, NetTotal: net, VatTotal: vatTotal, GrossTotal: gross, VatTotalNok: vatNOK,
+				BrandID: brandID, BrandSource: brandSource, BrandSkipped: brandSkipped,
 				CreatedByUserID: callerID(ctx), Now: s.deps.Clock(),
 			})
 			if err != nil {
