@@ -1,4 +1,5 @@
 import { Alert, Center, Loader, NavLink, Stack, Text } from "@mantine/core";
+import { notifications } from "@mantine/notifications";
 import type { QueryClient } from "@tanstack/react-query";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
@@ -26,7 +27,7 @@ import {
   useI18n,
   useSidePanelController,
 } from "@vantigo/frontend-shell";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import "../i18n";
 import { accountMenuSections } from "../account-menu";
 import { getProfile, profileQueryKey, updateProfile } from "../api/account";
@@ -188,15 +189,33 @@ const RootLayout = () => {
     productMessaging,
   });
   // The account menu's quick switch: the shell has already applied the scheme, this keeps it for the
-  // person. The language is sent back as it is, because the server clears a language left out.
+  // person. The profile is read fresh first, so the language sent back is the server's now and not a
+  // stale copy (the server clears a language left out). Only the latest click's answer reaches the
+  // cache, so rapid clicks cannot leave an older answer on top.
+  const latestColorSchemeSave = useRef(0);
   const saveColorScheme = useMutation({
-    mutationFn: (colorScheme: "light" | "dark") =>
-      updateProfile({
-        displayName: profile.data?.displayName ?? "",
-        preferredLanguage: profile.data?.preferredLanguage ?? "auto",
+    mutationFn: async (colorScheme: "light" | "dark") => {
+      const key = profileQueryKey(session?.user.id ?? "unknown");
+      const current = await queryClient.fetchQuery({ queryKey: key, queryFn: getProfile, staleTime: 0 });
+      return updateProfile({
+        displayName: current.displayName,
+        preferredLanguage: current.preferredLanguage,
         colorScheme,
-      }),
-    onSuccess: (saved) => queryClient.setQueryData(profileQueryKey(session?.user.id ?? "unknown"), saved),
+      });
+    },
+    onMutate: () => ++latestColorSchemeSave.current,
+    onSuccess: (saved, _scheme, request) => {
+      if (request === latestColorSchemeSave.current)
+        queryClient.setQueryData(profileQueryKey(session?.user.id ?? "unknown"), saved);
+    },
+    onError: (_error, _scheme, request) => {
+      if (request === latestColorSchemeSave.current)
+        notifications.show({
+          color: "red",
+          title: t("navigation.colorSchemeNotSaved"),
+          message: t("navigation.colorSchemeNotSavedBody"),
+        });
+    },
   });
   const logout = useMutation({
     mutationFn: signOut,
