@@ -22,6 +22,6 @@ export const Route = createFileRoute("/workspace/api-access_/$integrationId")({
     if (!session?.user.roles.includes("Owner")) throw redirect({ to: "/" });
   },
   validateSearch: (search: Record<string, unknown>): { tab?: IntegrationTab } =>
-    search.tab === "requests" ? { tab: "requests" } : {},
+    search.tab === "requests" || search.tab === "webhooks" ? { tab: search.tab } : {},
   component: IntegrationRoute,
 });

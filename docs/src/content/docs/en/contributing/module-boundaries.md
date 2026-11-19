@@ -1570,7 +1570,8 @@ lag, never what must refuse — go through the platform's domain-events outbox,
       `identity.yaml`, `google.yaml` and `entra.yaml`, accepts `allowed` and `read` only
       behind a `permission:` or `anonymous` rule, and `read` only on a `POST`.
       `apps/server/internal/openapi/testdata/api-marks.txt` pins every `never` and `read`
-      operation, so a change to what a key may call shows in review. Mark `never` what a
+      operation, so a change to what a key may call shows in review; an Owner's screens,
+      such as the integrations' keys and webhook endpoints, are among them. Mark `never` what a
       server-side client cannot use or must not: a browser flow (sign-in, an OAuth connect
       or callback), a provider's webhook, a token-in-URL page, a handler that needs a
       person's `SessionID`, and an operation whose queued work later runs as its creator

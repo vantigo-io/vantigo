@@ -3134,6 +3134,200 @@ components:
             required:
                 - code
             type: object
+        WebhookEndpoint:
+            description: A webhook endpoint of an integration (outgoing webhooks design W1), never its secret.
+            properties:
+                createdAt:
+                    format: date-time
+                    type: string
+                createdBy:
+                    format: uuid
+                    nullable: true
+                    type: string
+                description:
+                    nullable: true
+                    type: string
+                disabledAt:
+                    format: date-time
+                    nullable: true
+                    type: string
+                disabledReason:
+                    description: Why the endpoint is disabled — manual (an Owner disabled it), failing (it failed for 5 days), gone (it answered 410 Gone) or integration_archived; null while it is enabled.
+                    enum:
+                        - manual
+                        - failing
+                        - gone
+                        - integration_archived
+                    nullable: true
+                    type: string
+                events:
+                    description: The catalogue events it receives.
+                    items:
+                        type: string
+                    type: array
+                failingSince:
+                    description: Since when its attempts have failed with no success between; null when the last one succeeded.
+                    format: date-time
+                    nullable: true
+                    type: string
+                id:
+                    format: uuid
+                    type: string
+                integrationId:
+                    format: uuid
+                    type: string
+                lastSuccessAt:
+                    format: date-time
+                    nullable: true
+                    type: string
+                previousSecretExpiresAt:
+                    description: While a roll's overlap runs, when the secret it replaced stops signing; null otherwise.
+                    format: date-time
+                    nullable: true
+                    type: string
+                status:
+                    enum:
+                        - enabled
+                        - disabled
+                    type: string
+                updatedAt:
+                    format: date-time
+                    type: string
+                url:
+                    description: The URL in full, query included; shown to Owners only.
+                    type: string
+                version:
+                    description: The endpoint's version for If-Match.
+                    type: string
+            required:
+                - id
+                - integrationId
+                - url
+                - description
+                - events
+                - status
+                - disabledReason
+                - disabledAt
+                - failingSince
+                - lastSuccessAt
+                - previousSecretExpiresAt
+                - createdAt
+                - createdBy
+                - updatedAt
+                - version
+            type: object
+        WebhookEndpointCreateRequest:
+            properties:
+                description:
+                    description: Up to 500 characters.
+                    maxLength: 500
+                    type: string
+                events:
+                    description: 1 to 50 catalogue event names, each one the integration may receive.
+                    items:
+                        maxLength: 100
+                        type: string
+                    maxItems: 50
+                    minItems: 1
+                    type: array
+                url:
+                    description: https on port 443, a host name (not an address), no user name or password and no fragment, at most 2,048 characters; a query string is allowed.
+                    maxLength: 2048
+                    type: string
+            required:
+                - url
+                - events
+            type: object
+        WebhookEndpointList:
+            properties:
+                endpoints:
+                    items:
+                        $ref: '#/components/schemas/WebhookEndpoint'
+                    type: array
+            required:
+                - endpoints
+            type: object
+        WebhookEndpointSecret:
+            description: An endpoint just created or whose secret was just rolled, with its secret, which is never shown again.
+            properties:
+                endpoint:
+                    $ref: '#/components/schemas/WebhookEndpoint'
+                secret:
+                    description: The signing secret, whsec_ and the base64 of 32 random bytes (Standard Webhooks).
+                    type: string
+            required:
+                - endpoint
+                - secret
+            type: object
+        WebhookEndpointUpdateRequest:
+            properties:
+                description:
+                    description: Up to 500 characters; absent clears it.
+                    maxLength: 500
+                    type: string
+                events:
+                    description: 1 to 50 catalogue event names, each one the integration may receive.
+                    items:
+                        maxLength: 100
+                        type: string
+                    maxItems: 50
+                    minItems: 1
+                    type: array
+                url:
+                    description: As for creating one.
+                    maxLength: 2048
+                    type: string
+            required:
+                - url
+                - events
+            type: object
+        WebhookEvent:
+            properties:
+                module:
+                    description: The module that publishes it, as orders.
+                    type: string
+                name:
+                    description: The event's name, as orders.sales_order.confirmed.
+                    type: string
+                path:
+                    description: The REST path of the resource a receiver fetches, with its id as a parameter.
+                    type: string
+                permissions:
+                    description: The permissions that path's GET needs, every one of them.
+                    items:
+                        type: string
+                    type: array
+                permitted:
+                    description: Whether the integration's roles hold every one of those permissions now, none of them one no API key holds.
+                    type: boolean
+                resource:
+                    description: The type of resource a message names, as sales_order.
+                    type: string
+            required:
+                - name
+                - module
+                - resource
+                - path
+                - permissions
+                - permitted
+            type: object
+        WebhookEventCatalogue:
+            properties:
+                events:
+                    items:
+                        $ref: '#/components/schemas/WebhookEvent'
+                    type: array
+            required:
+                - events
+            type: object
+        WebhookSecretRollRequest:
+            properties:
+                overlapHours:
+                    description: How long the secret replaced signs beside the new one, 1 to 168 hours; 24 when absent.
+                    maximum: 168
+                    minimum: 1
+                    type: integer
+            type: object
         WorkspaceSettings:
             description: The workspace's own settings (time zones design D2 and D3). businessTimeZone is the one calendar every bookkeeping day in the installation is judged in — an invoice's issue day, a period lock, a trip's departure day, Staff's "today" — which every module reads through the platform's BusinessCalendar contract; Europe/Oslo until an Owner sets another.
             properties:
@@ -6111,6 +6305,542 @@ paths:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
                     description: 'Conflict — integration_archived, the integration is archived.'
             summary: Replace an integration's roles
+            tags:
+                - API access
+            x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
+            x-vantigo-assistant: never
+    /api/v1/identity/integrations/{id}/webhooks:
+        get:
+            description: 'An integration''s webhook endpoints (outgoing webhooks design W1, W25), oldest first, with their full URLs and never their secrets.'
+            operationId: getIdentityIntegrationsByIdWebhooks
+            parameters:
+                - description: The integration (its user's id).
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/WebhookEndpointList'
+                    description: 'OK'
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Unauthorized'
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Forbidden'
+                "404":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Not Found — not_found, no such integration.'
+            summary: List an integration's webhook endpoints
+            tags:
+                - API access
+            x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
+            x-vantigo-assistant: never
+        post:
+            description: 'Creates a webhook endpoint for an integration and answers its signing secret, once: it is kept sealed and never shown again. The URL is https on port 443 with a host name that resolves only to public addresses; each event is a catalogue name the integration''s roles let it receive. At most 5 endpoints per integration and 50 in the workspace. Audited webhook.created, with the URL''s scheme and host only.'
+            operationId: postIdentityIntegrationsByIdWebhooks
+            parameters:
+                - description: The integration (its user's id).
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            allOf:
+                                - $ref: '#/components/schemas/WebhookEndpointCreateRequest'
+                            nullable: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/WebhookEndpointSecret'
+                    description: 'Created — the endpoint and its secret, shown once.'
+                    headers:
+                        Cache-Control:
+                            description: no-store, so the secret is never kept by a cache or the browser.
+                            schema:
+                                type: string
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Bad Request — invalid_request with field errors: a URL outside the rules, a description over 500 characters, or 1 to 50 events not given.'
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Unauthorized'
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Forbidden'
+                "404":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Not Found — not_found, no such integration.'
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Conflict — webhook_limit_reached, the integration has 5 endpoints or the workspace 50; integration_archived, the integration is archived.'
+                "422":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Unprocessable Entity — webhook_event_unknown, an event the catalogue does not have; webhook_event_not_permitted, an event the integration''s roles do not let it receive; webhook_url_blocked, the host resolves to a private, loopback or reserved address; webhook_url_unresolvable, it does not resolve.'
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
+            summary: Create a webhook endpoint
+            tags:
+                - API access
+            x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
+            x-vantigo-assistant: never
+    /api/v1/identity/integrations/{id}/webhooks/{webhookId}:
+        delete:
+            description: 'Deletes a webhook endpoint with its deliveries and their attempts. It cannot be undone. Audited webhook.deleted.'
+            operationId: deleteIdentityIntegrationsByIdWebhooksByWebhookId
+            parameters:
+                - description: The integration (its user's id).
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+                - description: The endpoint.
+                  in: path
+                  name: webhookId
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            responses:
+                "204":
+                    description: 'No Content'
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Unauthorized'
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Forbidden'
+                "404":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Not Found — not_found, no such integration or endpoint.'
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
+            summary: Delete a webhook endpoint
+            tags:
+                - API access
+            x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
+            x-vantigo-assistant: never
+        get:
+            description: 'A webhook endpoint of an integration, never its secret.'
+            operationId: getIdentityIntegrationsByIdWebhooksByWebhookId
+            parameters:
+                - description: The integration (its user's id).
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+                - description: The endpoint.
+                  in: path
+                  name: webhookId
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/WebhookEndpoint'
+                    description: 'OK'
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Unauthorized'
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Forbidden'
+                "404":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Not Found — not_found, no such integration or endpoint.'
+            summary: Get a webhook endpoint
+            tags:
+                - API access
+            x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
+            x-vantigo-assistant: never
+        patch:
+            description: 'Replaces a webhook endpoint''s URL, description (absent clears it) and events under If-Match on its version, by the rules of its creation. The secret is not rolled; deliveries already queued go to the URL as it is when they are sent. Audited webhook.updated.'
+            operationId: patchIdentityIntegrationsByIdWebhooksByWebhookId
+            parameters:
+                - description: The integration (its user's id).
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+                - description: The endpoint.
+                  in: path
+                  name: webhookId
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+                - description: The endpoint's version as it was read, bare or quoted. A version that has moved on is a 412 version_mismatch.
+                  in: header
+                  name: If-Match
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            allOf:
+                                - $ref: '#/components/schemas/WebhookEndpointUpdateRequest'
+                            nullable: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/WebhookEndpoint'
+                    description: 'OK'
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Bad Request — invalid_request with field errors, or an If-Match that is not a version.'
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Unauthorized'
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Forbidden'
+                "404":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Not Found — not_found, no such integration or endpoint.'
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Conflict — integration_archived, the integration is archived.'
+                "412":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Precondition Failed — version_mismatch, the endpoint has been changed since the If-Match version.'
+                "422":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Unprocessable Entity — webhook_event_unknown, webhook_event_not_permitted, webhook_url_blocked or webhook_url_unresolvable, as for creating one.'
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
+            summary: Change a webhook endpoint
+            tags:
+                - API access
+            x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
+            x-vantigo-assistant: never
+    /api/v1/identity/integrations/{id}/webhooks/{webhookId}/disable:
+        post:
+            description: 'Disables a webhook endpoint: nothing more is queued for it, and every delivery still pending is settled as dead, so nothing stale is sent once it is enabled again. One disabled already is answered as it is. Audited webhook.disabled.'
+            operationId: postIdentityIntegrationsByIdWebhooksByWebhookIdDisable
+            parameters:
+                - description: The integration (its user's id).
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+                - description: The endpoint.
+                  in: path
+                  name: webhookId
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/WebhookEndpoint'
+                    description: 'OK'
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Unauthorized'
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Forbidden'
+                "404":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Not Found — not_found, no such integration or endpoint.'
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
+            summary: Disable a webhook endpoint
+            tags:
+                - API access
+            x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
+            x-vantigo-assistant: never
+    /api/v1/identity/integrations/{id}/webhooks/{webhookId}/enable:
+        post:
+            description: 'Enables a disabled webhook endpoint: it receives the events published from then on, with no failure counted. One enabled already is answered as it is. Audited webhook.enabled.'
+            operationId: postIdentityIntegrationsByIdWebhooksByWebhookIdEnable
+            parameters:
+                - description: The integration (its user's id).
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+                - description: The endpoint.
+                  in: path
+                  name: webhookId
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/WebhookEndpoint'
+                    description: 'OK'
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Unauthorized'
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Forbidden'
+                "404":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Not Found — not_found, no such integration or endpoint.'
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Conflict — integration_archived, the integration is archived.'
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
+            summary: Enable a webhook endpoint
+            tags:
+                - API access
+            x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
+            x-vantigo-assistant: never
+    /api/v1/identity/integrations/{id}/webhooks/{webhookId}/roll-secret:
+        post:
+            description: 'Gives a webhook endpoint a new signing secret and answers it, once. The secret it replaces signs every message too, beside the new one, for the overlap, 1 to 168 hours (24 by default); rolling again within an overlap ends the older secret at once. Audited webhook.secret_rolled, without either secret.'
+            operationId: postIdentityIntegrationsByIdWebhooksByWebhookIdRollSecret
+            parameters:
+                - description: The integration (its user's id).
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+                - description: The endpoint.
+                  in: path
+                  name: webhookId
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            allOf:
+                                - $ref: '#/components/schemas/WebhookSecretRollRequest'
+                            nullable: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/WebhookEndpointSecret'
+                    description: 'Created — the endpoint and its new secret, shown once.'
+                    headers:
+                        Cache-Control:
+                            description: no-store, so the secret is never kept by a cache or the browser.
+                            schema:
+                                type: string
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Bad Request — invalid_request with field errors: an overlap outside 1 to 168 hours.'
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Unauthorized'
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Forbidden'
+                "404":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Not Found — not_found, no such integration or endpoint.'
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Conflict — integration_archived, the integration is archived.'
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
+            summary: Roll a webhook endpoint's secret
             tags:
                 - API access
             x-vantigo-access: policy:Owner+OwnerManagement
@@ -10208,6 +10938,55 @@ paths:
             tags:
                 - Shop-floor stations
             x-vantigo-access: permission:identity:manage
+            x-vantigo-api: never
+            x-vantigo-assistant: never
+    /api/v1/identity/webhook-events:
+        get:
+            description: 'The events a webhook endpoint may subscribe to (outgoing webhooks design W4-W7), grouped by module: each event''s name, the resource a receiver fetches when told of one and the permissions that GET needs, and whether the integration''s roles let it receive the event now.'
+            operationId: getIdentityWebhookEvents
+            parameters:
+                - description: The integration the answer is for (its user's id).
+                  in: query
+                  name: integrationId
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/WebhookEventCatalogue'
+                    description: 'OK'
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Bad Request — integrationId missing or not an id.'
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Unauthorized'
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Forbidden'
+                "404":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Not Found — not_found, no such integration.'
+            summary: List the webhook events
+            tags:
+                - API access
+            x-vantigo-access: policy:Owner+OwnerManagement
             x-vantigo-api: never
             x-vantigo-assistant: never
 servers:

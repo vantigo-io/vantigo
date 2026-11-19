@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/vantigo-io/vantigo/server/internal/identity/store"
+	"github.com/vantigo-io/vantigo/server/internal/netguard"
 )
 
 // Hooks for the identity_test package. Tests start and revoke sessions
@@ -50,6 +51,14 @@ const (
 // requests through c, a test's fake provider. It must run before the
 // module mounts, which is when the relying party takes its client.
 func SetOIDCHTTPClient(a *Access, c *http.Client) { a.oidcHTTPClient = c }
+
+// SetWebhookResolver makes r what a webhook endpoint's save resolves its
+// host with, so no test touches DNS.
+func SetWebhookResolver(a *Access, r netguard.Resolver) { a.webhookResolver = r }
+
+// WebhookSecretPurpose is the secrets.Box purpose an endpoint's secret is
+// sealed under, for a test that opens the column.
+var WebhookSecretPurpose = webhookSecretPurpose
 
 var (
 	CreateSession       = (*Access).createSession

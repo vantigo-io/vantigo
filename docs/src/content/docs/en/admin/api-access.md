@@ -1,6 +1,6 @@
 ---
 title: API access
-description: Letting another application use Vantigo's API without a person's session — integrations, their roles, API keys with an expiry, a narrowing, a read-only switch and networks, rolling and revoking a key, what is never available to a key, how a client sends it, the rate limit and its headers, the answers it can get, the request log, the expiry notices, and what to do when a key leaks.
+description: Letting another application use Vantigo's API without a person's session — integrations, their roles, API keys with an expiry, a narrowing, a read-only switch and networks, rolling and revoking a key, what is never available to a key, how a client sends it, the rate limit and its headers, the answers it can get, the request log, the expiry notices, webhook endpoints and their signing secrets, and what to do when a key leaks.
 sidebar:
   order: 22
 sources:
@@ -16,6 +16,14 @@ sources:
   - apps/host/frontend/src/routes/workspace/-api-access-integration.tsx
   - apps/host/frontend/src/routes/workspace/-api-key-dialog.tsx
   - apps/host/frontend/src/routes/workspace/-api-access-requests.tsx
+  - apps/host/frontend/src/routes/workspace/-api-access-webhooks.tsx
+  - apps/host/frontend/src/routes/workspace/-webhook-secret-dialog.tsx
+  - apps/server/internal/identity/webhooks.go
+  - apps/server/internal/identity/webhooks_url.go
+  - apps/server/internal/identity/webhooks_secret.go
+  - apps/server/internal/identity/webhooks_signer.go
+  - apps/server/internal/identity/webhooks_client.go
+  - apps/server/internal/contracts/webhook_events.go
   - apps/server/internal/apiref
   - apps/apiref/frontend/src
 ---
@@ -155,8 +163,8 @@ Under **Actions**:
 
 - **Disable** refuses every key of the integration at once, until you choose **Enable**. Use
   it to stop an application while you find out what it is doing.
-- **Archive** revokes every key, frees the name and keeps the integration, read-only, for
-  what it did. It cannot be undone.
+- **Archive** revokes every key, disables every [webhook endpoint](#webhooks), frees the name
+  and keeps the integration, read-only, for what it did. It cannot be undone.
 
 ## When a key leaks
 
@@ -328,6 +336,71 @@ get the notice.
 
 The notices are sent by the `identity.api-keys` worker; with it switched off, none are sent.
 
+## Webhooks
+
+A **webhook endpoint** is an HTTPS address of the application to which Vantigo is to post a
+short, signed message when something happens — a sales order confirmed, an invoice overdue.
+The message names the resource and nothing else; the application fetches it with its API key.
+What the message holds, how it is signed and how the application checks it are in the
+reference, [Webhooks](/en/reference/webhooks/).
+
+**In this release** you add endpoints and get their secrets, but Vantigo does not send
+messages yet: sending, retries and the delivery log come in the next releases.
+
+### Add an endpoint
+
+1. On the integration's page, open the **Webhooks** tab and choose **New endpoint**.
+2. Give its **URL**: an `https://` address on port 443 with a host name — not an IP address,
+   `localhost` or a name under `.local`, `.localhost` or `.internal` — with no user name,
+   password or `#` part. A query string is allowed. Add a **Description** if it helps.
+3. Tick its **Events**. They are grouped by module, and only those the integration's roles let
+   it receive are offered: an event about a sales order needs a role with access to Orders, for
+   example. If none is offered, give the integration a role first.
+4. Choose **Create endpoint**. The **signing secret** (`whsec_…`) appears **once**, with
+   **Copy**. Put it where the application checks messages and choose **I have copied the
+   secret**. Vantigo keeps it sealed and never shows it again; if it is lost, roll it.
+
+Vantigo looks the host name up when you save. An address that resolves to a private, loopback
+or otherwise reserved address is refused (*The address resolves to an address Vantigo never
+sends to.*), as is one that does not resolve (*The host name does not resolve.*). Messages will only ever go to public addresses,
+checked again every time one is sent, so an application on your own network needs a public
+address or a tunnel.
+
+An integration has at most 5 endpoints, and the workspace 50. The tab shows each endpoint's
+full URL, query included — the only place it is shown — its events and its status.
+
+### Change, disable or delete an endpoint
+
+In the endpoint's row, under **Actions**:
+
+- **Edit endpoint** changes its URL, description and events, by the same rules. Changing the
+  URL keeps the secret. If someone else changed the endpoint since you opened it, the save is
+  refused and the tab shows the latest; make the change again.
+- **Disable** stops it, after you confirm: nothing more is sent to it, and the messages
+  waiting for it are dropped. **Enable** starts it again with the events that happen from then
+  on.
+- **Delete**, after you confirm, deletes the endpoint and its deliveries. It cannot be undone.
+
+The status says why an endpoint is disabled: by an Owner, because it kept failing for 5 days,
+because it answered `410 Gone`, or because the integration was archived. Archiving an
+integration disables its endpoints; they can then only be deleted.
+
+### Roll a secret
+
+Rolling gives an endpoint a new secret without a moment in which the application cannot check a
+message.
+
+1. In the endpoint's row, choose **Actions › Roll secret**.
+2. Choose the **Overlap** — how long the old secret keeps signing beside the new one: 1 hour,
+   24 hours (the default), 3 days or 7 days.
+3. Choose **Roll secret**. The new secret appears once, as when the endpoint was made.
+4. Put it in the application before the overlap ends. Until then every message carries a
+   signature by each secret, so the application accepts it with either; the row says until
+   when the previous secret signs.
+
+Rolling again while an overlap runs ends the older secret at once, and the dialog warns of it.
+If a secret may have leaked, roll it with the shortest overlap.
+
 ## What is audited
 
 Identity's authorization audit trail records, with the Owner who did it and whether they used MFA:
@@ -338,6 +411,12 @@ Identity's authorization audit trail records, with the Owner who did it and whet
 a key's row 90 days after it expired; the audit rows stay
 ([Configuration](/en/admin/configuration/#workers)). Names, roles, the narrowing, read-only,
 the networks and the expiry are recorded; a key's secret and its hash never are.
+
+For webhook endpoints it records `webhook.created`, `webhook.updated`, `webhook.deleted`,
+`webhook.enabled`, `webhook.disabled` (also once for each endpoint an archive disables) and
+`webhook.secret_rolled`. Of an endpoint's URL it keeps only the scheme and host, with a short
+digest that shows when the rest changed: services such as Zapier and Slack carry their token
+in the path. The signing secret is never recorded.
 
 ## What can go wrong
 
@@ -356,3 +435,9 @@ the networks and the expiry are recorded; a key's secret and its hash never are.
 - **Making a key answers that the expiry is wrong.** The date must be in the future and at most
   365 days ahead.
 - **A key was lost.** It cannot be shown again: roll it.
+- **An endpoint's URL is refused.** It must be `https://` on port 443 with a host name that
+  resolves to public addresses only; an application on your own network needs a public address
+  or a tunnel.
+- **An event is not offered.** The integration's roles do not give the permission the event's
+  resource is read with; the reference lists each event's permission.
+- **A webhook secret was lost.** It cannot be shown again: roll it.
