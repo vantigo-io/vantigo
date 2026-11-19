@@ -34,7 +34,7 @@ const allowlistPath = join(repositoryRoot, "tools/frontend/colour-allowlist.json
 const value = String.raw`(?:\{(?:[^{}]|\{[^{}]*\})*\}|"[^"\n]*"|'[^'\n]*')`;
 const notWord = String.raw`(?<![-\w])`;
 const bareColour = String.raw`(?<![-\w])(?:white|black)(?![-\w])`;
-const declaration = String.raw`(?:color|background(?:-color)?|backgroundColor|border(?:-(?:top|right|bottom|left))?(?:-color)?|border(?:Top|Right|Bottom|Left)?(?:Color)?)`;
+const declaration = `(?:color|background(?:-color)?|backgroundColor|border(?:-(?:top|right|bottom|left))?(?:-color)?|border(?:Top|Right|Bottom|Left)?(?:Color)?)`;
 
 type Rule = { rule: string; re: RegExp; inner?: RegExp };
 
