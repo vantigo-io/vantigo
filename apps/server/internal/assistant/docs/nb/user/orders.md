@@ -56,7 +56,7 @@ Kunder, tas det med ved neste lagring.
 
 ### Merkevaren til et tilbud eller en ordre
 
-Hvert tilbud og hver ordre skrives ut i en merkevare ([Merkevare](/nb/admin/branding/#merkevarer-pa-tilbud-og-ordrer)):
+Hvert tilbud og hver ordre skrives ut i en merkevare ([Merkevare](/nb/admin/branding/#merkevarer-på-tilbud-og-ordrer)):
 logoen, og merkevarens navn som ligger på dokumentets post. Et nytt utkast starter i kundens
 **standardmerkevare**; en kunde uten egen merkevare får gruppens, og en kunde med ingen av delene
 arbeidsområdets standardmerkevare ([Kunder: Merkevare](/nb/user/customers/#merkevare)). En ordre som
