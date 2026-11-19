@@ -249,6 +249,34 @@ native mechanisms; `PATCH`/`DELETE`; server-minted keys for MCP; a per-integrati
     purpose stays far inside its bound at this volume (a key per installation, rows living 24 hours);
     should volume grow, revisit with XAES-256-GCM or a per-row subkey.
 
+- **2.3** (2026-11-19): delivery B as built, and where it departs from the text:
+  - *`Build`'s option* (I25) is `integrator.Options{Idempotency func(method, op, catalog) bool}`, a
+    fourth parameter of `Build`, rather than a bool: depguard keeps `integrator` from the router's
+    package, so the callers pass `module.Idempotent` in, and a nil predicate adds nothing. It is
+    asked of every operation `Build` keeps, before `decorate`. The parameter is one component,
+    `components/parameters/IdempotencyKey` (string, 1–255, optional, its description linking
+    *Retrying safely*); where an operation documents no `409` or `422`, it refers to
+    `components/responses/IdempotencyConflict` (with `Retry-After`) or `IdempotencyKeyReused`;
+    where it does, the operation gets a copy of its own answer — never the shared component it may
+    refer to — with "With an Idempotency-Key, …" appended to the description and
+    `AuthErrorResponse` beside its `application/json` schema as a `oneOf` (or as that schema, or as
+    a new `application/json`, beside a `problem+json` one). Over the composed contract 325
+    operations take the key: 266 answers merged, 384 of their own.
+  - *The switch* (I25): `apiDocuments` reads it once from the `contracts.IdempotencyStore` on
+    `Access`, as the router does, and both LRUs key on it (`scopeKey`). The offline document
+    (`vantigo openapi integrator`, `IntegratorDocument`) is the default installation's, so it
+    offers the key.
+  - *MCP* (I15): the catalogue records `idempotencyKey` from the document's parameter (a native one
+    counts too); `search_operations` answers `idempotencyKey: true`; `buildCall` needed no change.
+    The instructions, `write` and `delete` share one text (one key per intended action, the same
+    key for every retry, never a new key for one, and what each answer means). A replay's result is
+    `{"idempotentReplayed": true, "status", "response"}`; the three refusals carry a `next`, and
+    `idempotency_in_progress` its `retryAfterSeconds`. An unanswered write says to retry with the
+    same key where the operation takes one, and to read the record first where it takes none.
+  - *The Assistant* (I16) is unchanged; a test asserts the dispatcher's description of an in-scope
+    operation lists no `Idempotency-Key`.
+  - *The landing clause* (I18) is not part of this delivery's pull request.
+
 ## 11. Amendments (revision 2, from the review)
 
 - **I19 (replaces I1): the scope is `Build`'s keep-set.** One shared predicate decides, for the router, the

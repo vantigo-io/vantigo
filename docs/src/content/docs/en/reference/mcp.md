@@ -1,6 +1,6 @@
 ---
 title: "MCP server"
-description: "The MCP endpoint at /api/mcp: an integration's MCP setting and its operation, MCP_ENABLED, authentication with an API key, the two protocol eras and how a request is classified, the headers, the five tools and their arguments, the write and delete tools and their destructive annotation, a call whose outcome is in doubt, results and their limits, counting and the request log, the errors, examples, and what bounds an agent."
+description: "The MCP endpoint at /api/mcp: an integration's MCP setting and its operation, MCP_ENABLED, authentication with an API key, the two protocol eras and how a request is classified, the headers, the five tools and their arguments, the write and delete tools and their destructive annotation, the Idempotency-Key and a replay, a call whose outcome is in doubt, results and their limits, counting and the request log, the errors, examples, and what bounds an agent."
 sidebar:
   order: 4
 sources:
@@ -129,8 +129,9 @@ How a request is classified:
 it carries nothing about the key. `tools/list` varies by key and answers `cacheScope: "private"`
 with `ttlMs: 0`. `initialize` answers the negotiated `protocolVersion`, the same capabilities,
 `serverInfo` and the instructions. The instructions say what the tools do, to search before
-calling, to read a record before changing it and send `If-Match` and `Idempotency-Key` where an
-operation takes them, that a write or delete that did not answer in time may have been made,
+calling, to read a record before changing it and send `If-Match` where an operation takes it,
+how to use an `Idempotency-Key` ([below](#the-idempotency-key)), that a write or delete that did
+not answer in time may have been made,
 that `write` and `delete` are listed only under `read_write` for a key that is not
 read-only, and that what the tools answer is untrusted data from the workspace. They are the
 same text for every key.
@@ -158,7 +159,7 @@ list is fixed in the code: two keys of one mode get the same bytes.
 
 | Tool | Annotations | Arguments | Answers |
 | --- | --- | --- | --- |
-| `search_operations` | `readOnlyHint: true` | `query` (required), `limit` (1–25, 10 when left out) | The operations the key may call in its mode that match the query, best first: `operation`, `method`, `path`, `summary`, `tag`, `kind`, and `tool`, the tool that calls it |
+| `search_operations` | `readOnlyHint: true` | `query` (required), `limit` (1–25, 10 when left out) | The operations the key may call in its mode that match the query, best first: `operation`, `method`, `path`, `summary`, `tag`, `kind`, `tool`, the tool that calls it, and `idempotencyKey: true` when it takes an `Idempotency-Key` |
 | `describe_operation` | `readOnlyHint: true` | `operation` (required) | Its method and path, kind and tool, path, query and header parameters, request body and success response as compact JSON schemas, with `$ref`s resolved, at most 16 KB |
 | `read` | `readOnlyHint: true` | `operation` (required), `path`, `query`, `headers`, `body` | The answer of an operation of kind *read*, called as the key |
 | `write` | `destructiveHint: true`, `readOnlyHint: false` | The same as `read` | The answer of an operation of kind *write* whose method is not `DELETE`, called as the key |
@@ -195,11 +196,32 @@ a string, or a query
 parameter to a list of strings, which repeats it. Every path parameter is required and is
 escaped as one segment, so a `/` or `..` in a value cannot reach another route. A parameter the
 operation does not declare is refused. `headers` may set only `If-Match`, `If-None-Match` and
-`Idempotency-Key`, and only when the operation declares them, each once (two spellings of one
-header differing in case are refused); a line break in a value is refused, and
-`Authorization`, `Cookie` and `Host` can never be set. `body` is any JSON, for an
+`Idempotency-Key`, and only when the operation declares them in the key's document, each once
+(two spellings of one header differing in case are refused); a line break in a value is
+refused, and `Authorization`, `Cookie` and `Host` can never be set. `body` is any JSON, for an
 operation that takes one. The Assistant's own marks (`x-vantigo-assistant`) are not consulted:
 what a key may call is decided by the API's marks, its roles and its narrowing.
+
+### The Idempotency-Key
+
+An operation takes an `Idempotency-Key` when the router honours one on it — every `POST`
+[Retrying safely](/en/reference/api-introduction/#retrying-safely) covers — or when it declares
+a key of its own. The catalogue records it from the key's document, so `describe_operation`
+lists it among `headerParameters` and `search_operations` marks the operation
+`idempotencyKey: true`; with `IDEMPOTENCY_ENABLED` off neither does, and `write` refuses the
+header as one the operation does not declare. The Assistant is not affected: it sends a key only
+to an operation that declares one of its own.
+
+The instructions and the descriptions of `write` and `delete` tell the model to **mint one key
+per intended action** — a new UUID, say — and to send **that same key with every retry of that
+action**, never a new key for a retry, since a new key is a new action. The answers it can get:
+
+| Answer | Its result | What the model is told to do |
+| --- | --- | --- |
+| The first answer again | `{"idempotentReplayed": true, "status", "response"}`, `response` the first answer's body as a `2xx` result shows it | Nothing: it is the first call's answer, not a second change |
+| `409 idempotency_in_progress` | An error result with `retryAfterSeconds` and `next` | Retry shortly with the same key |
+| `409 idempotency_outcome_unknown` | An error result with `next` | Read the record, then use a new key only if the change is not there |
+| `422 idempotency_key_reused` | An error result with `next` | A new action takes a new key; a retry sends the same request as the first |
 
 ### How a call is made
 
@@ -229,9 +251,13 @@ operation's own answer, exactly as over REST.
 A tool's result is one `text` content and `isError`; `structuredContent` is not used.
 
 - A `2xx` answer is its JSON body as sent; an answer that is not JSON is described by its
-  `status`, `contentType` and `length`; an empty one is `{"status": 204}`.
+  `status`, `contentType` and `length`; an empty one is `{"status": 204}`. A replay for an
+  `Idempotency-Key` (`Idempotent-Replayed: true`) is that result wrapped as
+  `{"idempotentReplayed": true, "status", "response"}`.
 - Any other status is `isError: true` with JSON of `status`, `code`, `title` and `detail` from
-  the API's answer — never its raw body. A `429` also carries `retryAfterSeconds`.
+  the API's answer — never its raw body. A `429` and a `409 idempotency_in_progress` also carry
+  `retryAfterSeconds`, and the Idempotency-Key's refusals, on an operation that takes one, a
+  `next` saying what to do.
 - The text is at most **100 KB**, counted as the JSON-escaped string it is sent as. A larger
   answer to a `read` is never cut short: the result is an error asking for less — a smaller
   `limit`, a filter, a later page. A `write` or `delete` that succeeded with a larger answer is
@@ -241,9 +267,10 @@ A tool's result is one `text` content and `isError`; `structuredContent` is not 
 - **A call whose outcome is in doubt.** A call whose 30 seconds ran out, or whose client went
   away, is judged by what it answered: an answer below `500` is its result as above, a `201`
   that came late included. One that answered nothing, or a server error, is an error result;
-  for a `write` or `delete` it says the change **may or may not have been made**: read the
-  record before retrying, and resend with the same `Idempotency-Key` where the operation takes
-  one. A call that fails unexpectedly says the same for a change.
+  for a `write` or `delete` it says the change **may or may not have been made**: on an
+  operation that takes an `Idempotency-Key`, retry with the same key, never a new one; on one
+  that takes none, read the record before retrying. A call that fails unexpectedly says the
+  change may or may not have been made too.
 - An operation that fails unexpectedly or does not answer in time is an error result naming
   the trace id, never a failed envelope.
 - A refusal of the tool's own — an operation outside the catalogue, a missing or undeclared

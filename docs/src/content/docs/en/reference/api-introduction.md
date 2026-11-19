@@ -48,7 +48,12 @@ curl -H "Authorization: Bearer vtg_…" https://vantigo.example.com/api/openapi.
 ```
 
 Each operation's description ends with the permission it requires, for example
-*Requires `customers:view`*, and declares the `401`, `403` and `429` answers below. `servers`
+*Requires `customers:view`*, and declares the `401`, `403` and `429` answers below. Every
+operation that honours an `Idempotency-Key` ([Retrying safely](#retrying-safely)) declares it
+as an optional header, with the `409` and `422` it can answer: added to the operation's own
+`409` or `422` where it documents one — its description first, the error body offered beside
+its schema — and declared on their own where it does not. With `IDEMPOTENCY_ENABLED` off no
+operation declares it, since none honours it. `servers`
 is the installation's address, and the `bearerAuth` scheme is the key. The document follows
 the key: when its roles, narrowing or read-only switch change, so does the document. A person
 signed in to Vantigo gets every operation a key can call with `?view=api`.
@@ -127,8 +132,9 @@ curl -X POST -H "Authorization: Bearer vtg_…" -H "Idempotency-Key: 8e03978e-40
 - **Where it works.** On every `POST` a key can call that creates or changes something and takes
   and answers JSON: not on a read marked as one (a search, a preview), not on a file upload or a
   download, not on one that answers a secret once, and not on the staff retention run, which can
-  run longer than two minutes. Elsewhere the header is ignored. Three communications operations and applying a credit note keep a key of their own,
-  described on each. It is never required.
+  run longer than two minutes. Elsewhere the header is ignored. The document of what a key
+  reaches declares the header on exactly these operations. Three communications operations and
+  applying a credit note keep a key of their own, described on each. It is never required.
 - **The key** is 1–255 printable ASCII characters, optionally in double quotes; anything else is
   `400 idempotency_key_invalid`. A key belongs to the integration (across all its keys) and to the
   operation: the same key on another operation, or from another integration, is another key.
