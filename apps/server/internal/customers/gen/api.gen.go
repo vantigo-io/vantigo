@@ -1300,7 +1300,7 @@ type SafeCustomerResponse struct {
 	// Anonymisation A private person's anonymisation, scheduled or done (customers GDPR design D4). Absent unless one is scheduled — omitted, never null, like owner. Once anonymisedAt is set the customer is read-only, and its name, identity and contact info are gone.
 	Anonymisation *CustomerAnonymisation `json:"anonymisation,omitempty"`
 
-	// Brand The customer's default brand and the brand a new document starts in (brands design B28). Always present on a response; needs nothing beyond customers:view to read.
+	// Brand The customer's default brand and the brand a new document starts in (brands design B28). Present on every single-customer response (GET, and the writes that answer the customer) and omitted from list pages and the CSV export; needs nothing beyond customers:view to read.
 	Brand *CustomerBrandInfo `json:"brand,omitempty"`
 
 	// ContactInfo A customer's own contact details (invoice-ready customer design D2). Always present; optional here only because the recorded exchange corpus predates it.

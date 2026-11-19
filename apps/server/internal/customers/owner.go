@@ -117,6 +117,19 @@ func (s *server) decorate(ctx context.Context, q *store.Queries, rows ...custome
 // would be noise standing in for the one place this matters. Everything
 // decorate's own doc comment says still holds, the pool-backed q included.
 func (s *server) decorateKnowing(ctx context.Context, q *store.Queries, known *contracts.UserEntry, rows ...customerRow) (customerDecoration, error) {
+	return s.decorateRows(ctx, q, known, true, rows...)
+}
+
+// decorateListing is decorate for a page of the list or the CSV export: the
+// same, without the default brand (brands design B28), which belongs to the
+// single-customer responses. A page of customers each carrying the resolved
+// brand block would grow every list response, and what an AI tool or a client
+// reads from the list, by a few hundred bytes a row for nothing it shows.
+func (s *server) decorateListing(ctx context.Context, q *store.Queries, rows ...customerRow) (customerDecoration, error) {
+	return s.decorateRows(ctx, q, nil, false, rows...)
+}
+
+func (s *server) decorateRows(ctx context.Context, q *store.Queries, known *contracts.UserEntry, withBrands bool, rows ...customerRow) (customerDecoration, error) {
 	dec := customerDecoration{
 		owners:         map[uuid.UUID]contracts.UserEntry{},
 		tags:           map[int32][]gen.CustomerTag{},
@@ -175,8 +188,10 @@ func (s *server) decorateKnowing(ctx context.Context, q *store.Queries, known *c
 	// The default brand is one more batched query over the same ids (brands
 	// design B28) plus the brands the contract reads, resolved to the brand a
 	// new document starts in.
-	if err := s.decorateBrands(ctx, q, customerIDs, &dec); err != nil {
-		return customerDecoration{}, err
+	if withBrands {
+		if err := s.decorateBrands(ctx, q, customerIDs, &dec); err != nil {
+			return customerDecoration{}, err
+		}
 	}
 
 	// The merge marker is one more batched query over the same ids (customers

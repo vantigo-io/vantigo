@@ -507,7 +507,7 @@ func (s *server) GetCustomers(ctx context.Context, req gen.GetCustomersRequestOb
 	// One directory call and one tags query for the whole page (owner and tags
 	// design D1, D2), never one per row: 25 rows would otherwise be 25
 	// out-of-process calls for data that is on the wire either way.
-	dec, err := s.decorate(ctx, q, rows...)
+	dec, err := s.decorateListing(ctx, q, rows...)
 	if err != nil {
 		return nil, err
 	}

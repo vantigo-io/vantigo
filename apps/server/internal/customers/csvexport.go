@@ -128,7 +128,7 @@ func (s *server) GetCustomersExport(ctx context.Context, req gen.GetCustomersExp
 		ids = append(ids, r.ID)
 	}
 
-	dec, err := s.decorate(ctx, q, rows...)
+	dec, err := s.decorateListing(ctx, q, rows...)
 	if err != nil {
 		return nil, err
 	}

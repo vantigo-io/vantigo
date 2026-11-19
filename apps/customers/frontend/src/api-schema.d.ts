@@ -2114,7 +2114,7 @@ export interface components {
             anonymisation?: components["schemas"]["CustomerAnonymisation"];
             /** @description A customer's own contact details (invoice-ready customer design D2). Always present; optional here only because the recorded exchange corpus predates it. */
             contactInfo?: components["schemas"]["CustomerContactInfo"];
-            /** @description The customer's default brand and the brand a new document starts in (brands design B28). Always present on a response; needs nothing beyond customers:view to read. */
+            /** @description The customer's default brand and the brand a new document starts in (brands design B28). Present on every single-customer response (GET, and the writes that answer the customer) and omitted from list pages and the CSV export; needs nothing beyond customers:view to read. */
             brand?: components["schemas"]["CustomerBrandInfo"];
             /** Format: date-time */
             createdAt: string;
