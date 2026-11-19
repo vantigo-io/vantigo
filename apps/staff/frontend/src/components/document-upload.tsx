@@ -1,12 +1,12 @@
-import { Alert, Box, Button, FileButton, Group, Modal, Select, Stack, Text } from "@mantine/core";
+import { Alert, Button, FileButton, Group, Modal, Select, Stack, Text } from "@mantine/core";
 import { DateInput } from "@mantine/dates";
 import { type UseFormReturnType, useForm } from "@mantine/form";
 import { useMediaQuery } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconCamera, IconFileUpload } from "@tabler/icons-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useI18n } from "@vantigo/frontend-shell";
-import { type DragEvent, useRef, useState } from "react";
+import { DropZone, useI18n } from "@vantigo/frontend-shell";
+import { useRef, useState } from "react";
 import { type StaffDocumentCategory, uploadDocument } from "../api/documents";
 import { STAFF_QUERY_KEY } from "../api/request";
 import "../i18n";
@@ -112,7 +112,6 @@ const UploadForm = ({
   const queryClient = useQueryClient();
   // A camera is offered where there is one to hand: a touch screen.
   const touch = useMediaQuery("(pointer: coarse)");
-  const [over, setOver] = useState(false);
   const [banner, setBanner] = useState<string | null>(null);
   const offered = fileableCategories(categories, canSeeHealth);
   const form = useForm<UploadValues>({
@@ -150,10 +149,8 @@ const UploadForm = ({
     resetPicker.current?.();
     resetCamera.current?.();
   };
-  const drop = (event: DragEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    setOver(false);
-    take(event.dataTransfer?.files?.[0]);
+  const drop = (files: File[]) => {
+    take(files[0]);
   };
 
   return (
@@ -169,21 +166,12 @@ const UploadForm = ({
             {banner}
           </Alert>
         )}
-        <Box
+        <DropZone
           role="group"
           aria-label={t("documentFile")}
           p="sm"
-          style={{
-            border: `1px dashed var(--mantine-color-${form.errors.file ? "red-6" : "gray-4"})`,
-            borderRadius: "var(--mantine-radius-sm)",
-            background: over ? "var(--mantine-color-gray-0)" : undefined,
-          }}
-          onDragOver={(event) => {
-            event.preventDefault();
-            setOver(true);
-          }}
-          onDragLeave={() => setOver(false)}
-          onDrop={drop}
+          invalid={Boolean(form.errors.file)}
+          onDropFiles={drop}
         >
           <Stack gap="xs">
             <Text size="sm" c="dimmed">
@@ -241,7 +229,7 @@ const UploadForm = ({
               </Text>
             )}
           </Stack>
-        </Box>
+        </DropZone>
         <DocumentFields form={form} categories={offered} filing />
         <Group justify="flex-end">
           <Button type="button" variant="default" onClick={onDone} disabled={upload.isPending}>

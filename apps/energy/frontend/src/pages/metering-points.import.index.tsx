@@ -1,11 +1,11 @@
-import { ActionIcon, Alert, Anchor, Badge, Box, Button, Group, Loader, Stack, Table, Text } from "@mantine/core";
+import { ActionIcon, Alert, Anchor, Badge, Button, Group, Loader, Stack, Table, Text } from "@mantine/core";
 import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconTrash } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { ContentSkeleton, EmptyState, PageHeader, PageSection, useI18n } from "@vantigo/frontend-shell";
-import { type ChangeEvent, type DragEvent, useId, useState } from "react";
+import { ContentSkeleton, DropZone, EmptyState, PageHeader, PageSection, useI18n } from "@vantigo/frontend-shell";
+import { type ChangeEvent, useId, useState } from "react";
 import {
   deleteImport,
   type EnergyImport,
@@ -42,7 +42,6 @@ export const ImportStartPage = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const dropTextId = useId();
-  const [over, setOver] = useState(false);
   const [problem, setProblem] = useState<string[] | null>(null);
   const live = useImportsLive();
   const imports = useQuery(importsQueryOptions(1, 10, live));
@@ -79,10 +78,8 @@ export const ImportStartPage = () => {
     choose(event.target.files?.[0]);
     event.target.value = "";
   };
-  const drop = (event: DragEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    setOver(false);
-    choose(event.dataTransfer?.files?.[0]);
+  const drop = (files: File[]) => {
+    choose(files[0]);
   };
   const confirmDelete = (imp: EnergyImport) =>
     modals.openConfirmModal({
@@ -122,20 +119,7 @@ export const ImportStartPage = () => {
       />
       <PageSection>
         <Stack gap="md">
-          <Box
-            p="lg"
-            style={{
-              border: "1px dashed var(--mantine-color-gray-4)",
-              borderRadius: "var(--mantine-radius-sm)",
-              background: over ? "var(--mantine-color-gray-0)" : undefined,
-            }}
-            onDragOver={(event) => {
-              event.preventDefault();
-              setOver(true);
-            }}
-            onDragLeave={() => setOver(false)}
-            onDrop={drop}
-          >
+          <DropZone p="lg" onDropFiles={drop}>
             <Stack gap="xs" align="flex-start">
               <Text id={dropTextId} size="sm">
                 {t("importDropFile")}
@@ -155,7 +139,7 @@ export const ImportStartPage = () => {
                 {t("importFileHelp")}
               </Text>
             </Stack>
-          </Box>
+          </DropZone>
           {problem && (
             <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("importCouldNotUpload")}>
               {problem.map((message, index) => (

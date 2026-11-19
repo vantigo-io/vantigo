@@ -1,22 +1,10 @@
-import {
-  ActionIcon,
-  Box,
-  Card,
-  Checkbox,
-  Group,
-  Image,
-  Loader,
-  SimpleGrid,
-  Stack,
-  Text,
-  TextInput,
-} from "@mantine/core";
+import { ActionIcon, Card, Checkbox, Group, Image, Loader, SimpleGrid, Stack, Text, TextInput } from "@mantine/core";
 import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
 import { IconArrowLeft, IconArrowRight, IconStar, IconStarFilled, IconTrash } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { PageSection, useI18n } from "@vantigo/frontend-shell";
-import { type ChangeEvent, type DragEvent, useState } from "react";
+import { DropZone, PageSection, useI18n } from "@vantigo/frontend-shell";
+import { type ChangeEvent, useState } from "react";
 import "../i18n";
 import {
   deleteProductImage,
@@ -58,7 +46,6 @@ export const ProductImages = ({ productId }: ProductImagesProps) => {
   const { data: images = [], isLoading } = useQuery(productImagesQueryOptions(productId));
   const [uploading, setUploading] = useState<string | null>(null);
   const [refusals, setRefusals] = useState<Refusal[]>([]);
-  const [over, setOver] = useState(false);
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: productImagesQueryKey(productId) });
 
@@ -102,10 +89,7 @@ export const ProductImages = ({ productId }: ProductImagesProps) => {
     event.target.value = "";
     if (files.length > 0) void send(files);
   };
-  const drop = (event: DragEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    setOver(false);
-    const files = Array.from(event.dataTransfer?.files ?? []);
+  const drop = (files: File[]) => {
     if (files.length > 0) void send(files);
   };
 
@@ -138,27 +122,14 @@ export const ProductImages = ({ productId }: ProductImagesProps) => {
         <Text size="sm" c="dimmed">
           {t("images.description")}
         </Text>
-        <Box
-          p="sm"
-          style={{
-            border: "1px dashed var(--mantine-color-gray-4)",
-            borderRadius: "var(--mantine-radius-sm)",
-            background: over ? "var(--mantine-color-gray-0)" : undefined,
-          }}
-          onDragOver={(event) => {
-            event.preventDefault();
-            setOver(true);
-          }}
-          onDragLeave={() => setOver(false)}
-          onDrop={drop}
-        >
+        <DropZone p="sm" onDropFiles={drop}>
           <Stack gap="xs">
             <Text size="sm" c="dimmed">
               {t("images.dropHere")}
             </Text>
             <input type="file" multiple accept={IMAGE_ACCEPT} aria-label={t("images.addImages")} onChange={pick} />
           </Stack>
-        </Box>
+        </DropZone>
         {uploading && (
           <Group gap="xs">
             <Loader size="xs" />

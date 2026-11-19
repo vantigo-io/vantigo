@@ -1,6 +1,6 @@
-import { Box, Group, Loader, Stack, Text } from "@mantine/core";
-import { useI18n } from "@vantigo/frontend-shell";
-import { type ChangeEvent, type DragEvent, useState } from "react";
+import { Group, Loader, Stack, Text } from "@mantine/core";
+import { DropZone, useI18n } from "@vantigo/frontend-shell";
+import { type ChangeEvent, useState } from "react";
 import { uploadReceipt } from "../api/attachments";
 import type { ExpenseAttachment } from "../api/entries";
 import { type ApiError, ApiValidationError } from "../api/request";
@@ -46,7 +46,6 @@ export const ReceiptDropzone = ({ entryId, attachmentCount, onUploaded, supplier
   const { t } = useI18n("expenses");
   const [pending, setPending] = useState<Pending[]>([]);
   const [busy, setBusy] = useState(false);
-  const [over, setOver] = useState(false);
 
   if (entryId === undefined) {
     return (
@@ -101,29 +100,13 @@ export const ReceiptDropzone = ({ entryId, attachmentCount, onUploaded, supplier
     if (files.length > 0) void send(files);
   };
 
-  const drop = (event: DragEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    setOver(false);
-    const files = Array.from(event.dataTransfer?.files ?? []);
+  const drop = (files: File[]) => {
     if (files.length > 0) void send(files);
   };
 
   return (
     <Stack gap="xs">
-      <Box
-        p="sm"
-        style={{
-          border: "1px dashed var(--mantine-color-gray-4)",
-          borderRadius: "var(--mantine-radius-sm)",
-          background: over ? "var(--mantine-color-gray-0)" : undefined,
-        }}
-        onDragOver={(event) => {
-          event.preventDefault();
-          setOver(true);
-        }}
-        onDragLeave={() => setOver(false)}
-        onDrop={drop}
-      >
+      <DropZone p="sm" onDropFiles={drop}>
         <Stack gap="xs">
           <Text size="sm" c="dimmed">
             {supplierInvoice ? t("dropSupplierInvoiceHere") : t("dropReceiptsHere")}
@@ -139,7 +122,7 @@ export const ReceiptDropzone = ({ entryId, attachmentCount, onUploaded, supplier
             <input type="file" accept="image/*" capture="environment" aria-label={t("takePhoto")} onChange={pick} />
           </Group>
         </Stack>
-      </Box>
+      </DropZone>
       {busy && (
         <Group gap="xs">
           <Loader size="xs" />
