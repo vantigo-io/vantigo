@@ -3134,6 +3134,183 @@ components:
             required:
                 - code
             type: object
+        WebhookDelivery:
+            description: One message to one endpoint, as the delivery log shows it (outgoing webhooks design W23), without its body.
+            properties:
+                completedAt:
+                    description: When it left pending — succeeded, dead or skipped; null while pending.
+                    format: date-time
+                    nullable: true
+                    type: string
+                createdAt:
+                    format: date-time
+                    type: string
+                eventId:
+                    description: The outbox event's id, the body's sequence; null for a ping.
+                    format: int64
+                    nullable: true
+                    type: integer
+                eventName:
+                    description: The catalogue event's name, or webhook.ping for a test event.
+                    type: string
+                id:
+                    format: uuid
+                    type: string
+                kind:
+                    description: event, or ping for a test event.
+                    enum:
+                        - event
+                        - ping
+                    type: string
+                lastError:
+                    description: The last attempt's error word, from a closed set; null when it had none (a 2xx, or no attempt yet).
+                    enum:
+                        - timeout
+                        - connection_refused
+                        - dns
+                        - tls
+                        - blocked_address
+                        - redirect
+                        - http_status
+                        - too_large
+                        - other
+                    nullable: true
+                    type: string
+                lastStatus:
+                    description: The HTTP status the last attempt was answered with; null when no answer came.
+                    nullable: true
+                    type: integer
+                maxRunAttempts:
+                    description: The attempts of a run, 8 for an event and 1 for a ping.
+                    type: integer
+                messageId:
+                    description: The webhook-id header every attempt carries, msg_ and the delivery's id without dashes; the same across retries and resends.
+                    type: string
+                nextAttemptAt:
+                    description: When a pending delivery is next tried; null otherwise.
+                    format: date-time
+                    nullable: true
+                    type: string
+                resendable:
+                    description: Whether its kind, state and age let it be resent — an event that succeeded or is dead, created less than 30 days ago. A resend also needs the endpoint enabled, the integration not archived and still permitted the event.
+                    type: boolean
+                runAttempts:
+                    description: The attempts of its current run.
+                    type: integer
+                state:
+                    enum:
+                        - pending
+                        - succeeded
+                        - dead
+                        - skipped
+                    type: string
+                stateReason:
+                    description: Why it is skipped (permission_not_held) or dead (attempts_exhausted, gone, endpoint_disabled, integration_archived, expired); null while pending or once succeeded.
+                    enum:
+                        - permission_not_held
+                        - attempts_exhausted
+                        - gone
+                        - endpoint_disabled
+                        - integration_archived
+                        - expired
+                    nullable: true
+                    type: string
+                totalAttempts:
+                    description: Its attempts in all, every run counted.
+                    type: integer
+            required:
+                - id
+                - messageId
+                - eventId
+                - eventName
+                - kind
+                - state
+                - stateReason
+                - runAttempts
+                - maxRunAttempts
+                - totalAttempts
+                - nextAttemptAt
+                - lastStatus
+                - lastError
+                - createdAt
+                - completedAt
+                - resendable
+            type: object
+        WebhookDeliveryAttempt:
+            description: One attempt to send a delivery (outgoing webhooks design W16, W23).
+            properties:
+                at:
+                    format: date-time
+                    type: string
+                durationMs:
+                    type: integer
+                error:
+                    description: The attempt's error word, from the closed set of lastError; null for a 2xx.
+                    enum:
+                        - timeout
+                        - connection_refused
+                        - dns
+                        - tls
+                        - blocked_address
+                        - redirect
+                        - http_status
+                        - too_large
+                        - other
+                    nullable: true
+                    type: string
+                excerpt:
+                    description: At most 512 bytes of a non-2xx answer's body, control and format characters blanked. It is the receiver's text, to be shown as plain text only.
+                    nullable: true
+                    type: string
+                secretUsed:
+                    description: current when the current secret signed alone, both when the previous one signed beside it during a roll's overlap.
+                    enum:
+                        - current
+                        - both
+                    type: string
+                statusCode:
+                    description: The HTTP status it was answered with; null when no answer came.
+                    nullable: true
+                    type: integer
+            required:
+                - at
+                - statusCode
+                - durationMs
+                - error
+                - excerpt
+                - secretUsed
+            type: object
+        WebhookDeliveryDetail:
+            description: A delivery with the body it sends and its latest attempts.
+            properties:
+                attempts:
+                    description: Its attempts, newest first, at most the latest 100.
+                    items:
+                        $ref: '#/components/schemas/WebhookDeliveryAttempt'
+                    type: array
+                body:
+                    description: The JSON body every attempt sends, byte for byte.
+                    type: string
+                delivery:
+                    $ref: '#/components/schemas/WebhookDelivery'
+            required:
+                - delivery
+                - body
+                - attempts
+            type: object
+        WebhookDeliveryPage:
+            properties:
+                deliveries:
+                    description: Newest first.
+                    items:
+                        $ref: '#/components/schemas/WebhookDelivery'
+                    type: array
+                nextCursor:
+                    description: Pass as cursor for the next page; absent on the last.
+                    type: string
+            required:
+                - deliveries
+            type: object
         WebhookEndpoint:
             description: A webhook endpoint of an integration (outgoing webhooks design W1), never its secret.
             properties:
@@ -6641,6 +6818,225 @@ paths:
                             schema:
                                 type: string
             summary: Change a webhook endpoint
+            tags:
+                - API access
+            x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
+            x-vantigo-assistant: never
+    /api/v1/identity/integrations/{id}/webhooks/{webhookId}/deliveries:
+        get:
+            description: 'The delivery log of a webhook endpoint (outgoing webhooks design W23), newest first, by cursor: every event and test event (kind ping) queued to it in the last 30 days, with its state, its attempts and the last one''s status and error word, never its body. state and event narrow it to one state or one event name (webhook.ping for the test events).'
+            operationId: getIdentityIntegrationsByIdWebhooksByWebhookIdDeliveries
+            parameters:
+                - description: The integration (its user's id).
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+                - description: The endpoint.
+                  in: path
+                  name: webhookId
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+                - description: Only deliveries in this state.
+                  in: query
+                  name: state
+                  required: false
+                  schema:
+                    enum:
+                        - pending
+                        - succeeded
+                        - dead
+                        - skipped
+                    type: string
+                - description: Only deliveries of this event name, as orders.sales_order.confirmed or webhook.ping.
+                  in: query
+                  name: event
+                  required: false
+                  schema:
+                    maxLength: 100
+                    type: string
+                - description: The previous page's nextCursor.
+                  in: query
+                  name: cursor
+                  required: false
+                  schema:
+                    type: string
+                - description: How many deliveries a page holds, 1 to 100.
+                  in: query
+                  name: limit
+                  required: false
+                  schema:
+                    default: 50
+                    maximum: 100
+                    minimum: 1
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/WebhookDeliveryPage'
+                    description: 'OK'
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Bad Request — invalid_request with field errors: a state, limit or cursor that does not read.'
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Unauthorized'
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Forbidden'
+                "404":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Not Found — not_found, no such integration or endpoint.'
+            summary: List a webhook endpoint's deliveries
+            tags:
+                - API access
+            x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
+            x-vantigo-assistant: never
+    /api/v1/identity/integrations/{id}/webhooks/{webhookId}/deliveries/{deliveryId}:
+        get:
+            description: 'A delivery of a webhook endpoint with the body every attempt sends and its latest 100 attempts, newest first: each one''s time, status, duration, error word, which secrets signed it and, for a non-2xx answer, an excerpt of what the receiver answered. The excerpt is the receiver''s text: show it as plain text only. A delivery of another endpoint or integration is not found.'
+            operationId: getIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryId
+            parameters:
+                - description: The integration (its user's id).
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+                - description: The endpoint.
+                  in: path
+                  name: webhookId
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+                - description: The delivery.
+                  in: path
+                  name: deliveryId
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/WebhookDeliveryDetail'
+                    description: 'OK'
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Unauthorized'
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Forbidden'
+                "404":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Not Found — not_found, no such integration, endpoint or delivery of that endpoint.'
+            summary: Get a webhook delivery with its attempts
+            tags:
+                - API access
+            x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
+            x-vantigo-assistant: never
+    /api/v1/identity/integrations/{id}/webhooks/{webhookId}/deliveries/{deliveryId}/resend:
+        post:
+            description: 'Sends a delivery again (outgoing webhooks design W22, W35): an event that succeeded or is dead, created less than 30 days ago, to an enabled endpoint of an integration that is not archived and still holds the event''s permissions. It keeps its webhook-id and its body, is signed afresh at each attempt with a new timestamp, and starts a new run of 8 attempts. A delivery is resent at most 3 times a minute. A test event (ping) is not resent: send another. Audited webhook.resent.'
+            operationId: postIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResend
+            parameters:
+                - description: The integration (its user's id).
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+                - description: The endpoint.
+                  in: path
+                  name: webhookId
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+                - description: The delivery.
+                  in: path
+                  name: deliveryId
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            responses:
+                "202":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/WebhookDelivery'
+                    description: 'Accepted — the delivery, pending again.'
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Unauthorized'
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Forbidden'
+                "404":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Not Found — not_found, no such integration, endpoint or delivery of that endpoint.'
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Conflict — integration_archived, the integration is archived; webhook_endpoint_disabled, the endpoint is disabled; webhook_event_not_permitted, the integration no longer holds the event''s permissions; webhook_delivery_not_resendable, a test event, a delivery still pending or skipped, or one created 30 days ago or more.'
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Too Many Requests — rate_limited, the delivery was resent 3 times in the last minute; or the address''s limit.'
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
+            summary: Resend a webhook delivery
             tags:
                 - API access
             x-vantigo-access: policy:Owner+OwnerManagement

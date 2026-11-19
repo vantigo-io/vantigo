@@ -195,13 +195,16 @@ WHERE id = sqlc.arg(id) AND disabled_notice_sent_at = sqlc.arg(claimed_at)::time
 -- still pending since before cutoff and not in flight (W30). The rows are
 -- taken SKIP LOCKED, so a result being written for one is left to it, and
 -- the outer WHERE checks again what the subquery chose, so a row that was
--- leased or settled meanwhile is never expired.
+-- leased or settled meanwhile is never expired. A resent delivery's 3 days
+-- run from its resend: resend_window_start is within a minute of the last
+-- one (W35), so its run is not expired the moment it starts.
 UPDATE identity.webhook_deliveries
 SET state = 'dead', state_reason = 'expired', completed_at = sqlc.arg(now)::timestamptz,
     next_attempt_at = NULL, lease_id = NULL, lease_until = NULL
 WHERE id IN (
     SELECT d.id FROM identity.webhook_deliveries d
     WHERE d.state = 'pending' AND d.created_at < sqlc.arg(cutoff)::timestamptz
+      AND (d.resend_window_start IS NULL OR d.resend_window_start < sqlc.arg(cutoff)::timestamptz)
       AND (d.lease_until IS NULL OR d.lease_until <= sqlc.arg(now)::timestamptz)
     ORDER BY d.created_at
     LIMIT sqlc.arg(batch_size)::int

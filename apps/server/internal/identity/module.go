@@ -35,6 +35,10 @@ var (
 	policyPasskeyLogin         = ratelimit.Policy{Name: "PasskeyLogin", Limit: 30, Window: 5 * time.Minute, Message: authRateLimitMessage}
 	policyUserManagement       = ratelimit.Policy{Name: "UserManagement", Limit: 30, Window: time.Minute, Message: authRateLimitMessage}
 	policyOwnerAvatarRead      = ratelimit.Policy{Name: "OwnerAvatarRead", Limit: 300, Window: time.Minute, Message: authRateLimitMessage}
+	// policyWebhookResend is an Owner's resends of webhook deliveries
+	// (outgoing webhooks design W35), per address, beside each delivery's own
+	// limit of 3 a minute.
+	policyWebhookResend = ratelimit.Policy{Name: "WebhookResend", Limit: 30, Window: time.Minute, Message: authRateLimitMessage}
 	// policyDirectorySearch and policyDirectoryMatches are the Owner's
 	// directory reads (Google Workspace design G8), with the figures Entra's
 	// picker and matches had: every search reaches the provider's
@@ -150,6 +154,9 @@ var limits = map[string]ratelimit.Policy{
 	"postIdentityIntegrationsByIdWebhooksByWebhookIdEnable":     policyUserManagement,
 	"postIdentityIntegrationsByIdWebhooksByWebhookIdRollSecret": policyUserManagement,
 	"postIdentityIntegrationsByIdWebhooksByWebhookIdTest":       policyUserManagement,
+	// A resend has a bucket of its own, as many a minute as the other writes,
+	// and is also limited per delivery, 3 a minute (W35, webhooks_log.go).
+	"postIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryIdResend": policyWebhookResend,
 }
 
 // Module is identity as a platform module: its contract mounted under
