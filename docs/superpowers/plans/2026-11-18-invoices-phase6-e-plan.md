@@ -40,7 +40,7 @@ the other's files except the docs' *What comes next* lines.
 | Piece | Branch | Migration |
 | --- | --- | --- |
 | E-1 | `claude/invoices-send-all` | next free when its PR opens. Main holds `00199` and `00200`, D holds `00201`–`00202`, C holds `00203` and identity's webhooks `00204`, so this is `00205_invoices_send_jobs` |
-| E-2 | `claude/invoices-credit-limits` | next free after E-1's, for example `00206_customers_credit_limit_bookkeeping` |
+| E-2 | `claude/invoices-credit-limits` | next free after E-1's, for example `00207_customers_credit_limit_bookkeeping` |
 
 Recheck both numbers against `main` right before merging (memory: *Migration number
 collisions*).
@@ -373,7 +373,7 @@ worker never holds a connection while it waits for another.
 
 ## E-2 — The 2028 rule and credit limits
 
-### E10. Migration `00206_customers_credit_limit_bookkeeping.sql`
+### E10. Migration `00207_customers_credit_limit_bookkeeping.sql`
 
 - **`customers.customer_registry_records`** (`mig/00021_customers_registry_records.sql:6`)
   gains `business_register_registered boolean NULL`, from Enhetsregisteret's
