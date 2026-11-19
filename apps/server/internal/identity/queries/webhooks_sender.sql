@@ -36,7 +36,7 @@ ON CONFLICT (endpoint_id, event_id) DO NOTHING;
 -- same endpoint's leases at once and the cap of 4 in flight holds across
 -- processes. The endpoint's URL and secrets are read here, as they are at
 -- the attempt (W10).
-SELECT e.id, e.integration_id, e.url, e.secret_ciphertext, e.previous_secret_ciphertext, e.previous_secret_expires_at
+SELECT e.id, e.integration_id, e.url, e.events, e.secret_ciphertext, e.previous_secret_ciphertext, e.previous_secret_expires_at
 FROM identity.webhook_endpoints e
 JOIN identity.integrations i ON i.user_id = e.integration_id
 JOIN identity.users u ON u.id = e.integration_id
@@ -92,8 +92,9 @@ RETURNING d.id, d.endpoint_id, d.kind, d.event_name, d.body, d.run_attempts, d.m
 
 -- name: SkipWebhookDeliveries :execrows
 -- SkipWebhookDeliveries settles leased deliveries whose integration no
--- longer holds their event's permission as skipped instead of sending them
--- (W33).
+-- longer holds their event's permission, or whose endpoint no longer lists
+-- their event, as skipped instead of sending them (W33). The migration's
+-- check ties skipped to permission_not_held, which covers both.
 UPDATE identity.webhook_deliveries
 SET state = 'skipped', state_reason = 'permission_not_held', completed_at = sqlc.arg(now)::timestamptz,
     next_attempt_at = NULL, lease_id = NULL, lease_until = NULL
@@ -197,7 +198,9 @@ WHERE id = sqlc.arg(id) AND disabled_notice_sent_at = sqlc.arg(claimed_at)::time
 -- the outer WHERE checks again what the subquery chose, so a row that was
 -- leased or settled meanwhile is never expired. A resent delivery's 3 days
 -- run from its resend: resend_window_start is within a minute of the last
--- one (W35), so its run is not expired the moment it starts.
+-- one (W35, an approximation: the window opens at the first resend of a
+-- minute, so a later one in it measures from up to a minute earlier), so
+-- its run is not expired the moment it starts.
 UPDATE identity.webhook_deliveries
 SET state = 'dead', state_reason = 'expired', completed_at = sqlc.arg(now)::timestamptz,
     next_attempt_at = NULL, lease_id = NULL, lease_until = NULL
@@ -215,27 +218,32 @@ WHERE id IN (
 -- name: PruneWebhookDeliveries :execrows
 -- PruneWebhookDeliveries deletes a batch of deliveries created before
 -- cutoff, whatever their state, with their attempts (W23, W30), skipping a
--- row another transaction holds, which the next sweep takes.
+-- row another transaction holds, which the next sweep takes. A pending
+-- delivery resent since the cutoff is left to finish its run, which the
+-- 3-day expiry bounds.
 DELETE FROM identity.webhook_deliveries
 WHERE id IN (
     SELECT d.id FROM identity.webhook_deliveries d
     WHERE d.created_at < sqlc.arg(cutoff)::timestamptz
+      AND NOT (d.state = 'pending' AND d.resend_window_start >= sqlc.arg(cutoff)::timestamptz)
     ORDER BY d.created_at
     LIMIT sqlc.arg(batch_size)::int
     FOR UPDATE SKIP LOCKED)
-  AND created_at < sqlc.arg(cutoff)::timestamptz;
+  AND created_at < sqlc.arg(cutoff)::timestamptz
+  AND NOT (state = 'pending' AND resend_window_start >= sqlc.arg(cutoff)::timestamptz);
 
 -- name: DeadLetterStaleWebhookDeliveries :execrows
 -- DeadLetterStaleWebhookDeliveries settles as dead (expired) the pending
 -- deliveries of the endpoints that have been due since before cutoff: what
 -- waited, overdue, while their integration was disabled, too old to send
 -- once it is enabled again (W30). A delivery queued long ago whose retry is
--- not yet that overdue keeps its run.
+-- not yet that overdue keeps its run, as does one resent within that time.
 UPDATE identity.webhook_deliveries
 SET state = 'dead', state_reason = 'expired', completed_at = sqlc.arg(now)::timestamptz,
     next_attempt_at = NULL, lease_id = NULL, lease_until = NULL
 WHERE endpoint_id = ANY(sqlc.arg(endpoint_ids)::uuid[]) AND state = 'pending'
-  AND next_attempt_at < sqlc.arg(cutoff)::timestamptz;
+  AND next_attempt_at < sqlc.arg(cutoff)::timestamptz
+  AND (resend_window_start IS NULL OR resend_window_start < sqlc.arg(cutoff)::timestamptz);
 
 -- name: RecentSkippedWebhookDelivery :one
 -- RecentSkippedWebhookDelivery reports whether the endpoint already has a

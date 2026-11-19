@@ -14,6 +14,7 @@ import {
   type WebhookDeliveryState,
   type WebhookEndpoint,
   webhookDeliveriesQueryKey,
+  webhooksQueryKey,
 } from "../../api/webhooks";
 import { codeOf } from "./-api-access-shared";
 
@@ -29,6 +30,18 @@ const stateColor: Record<WebhookDeliveryState, string> = {
 
 /** The test event's name, which the Event filter offers beside the endpoint's events (W19). */
 const pingName = "webhook.ping";
+
+/** The refusals of a resend the screen explains in its own words; any other shows the server's message. */
+const resendRefusals = new Set([
+  "rate_limited",
+  "webhook_resend_limited",
+  "webhook_event_not_permitted",
+  "webhook_event_not_subscribed",
+  "webhook_endpoint_disabled",
+  "webhook_delivery_not_resendable",
+  "integration_archived",
+  "not_found",
+]);
 
 /**
  * The receiver's text — an attempt's excerpt — or a body, shown as plain
@@ -81,15 +94,17 @@ export const WebhookDeliveries = ({
       });
       await queryClient.invalidateQueries({ queryKey: key });
     },
-    onError: (error) => {
+    onError: async (error) => {
       const code = codeOf(error);
-      const known =
-        code === "rate_limited" || code === "webhook_event_not_permitted" || code === "webhook_endpoint_disabled";
       notifications.show({
         color: "red",
         title: t("apiAccess.webhookCouldNotResend"),
-        message: known ? t(`apiAccess.webhookResendRefused_${code}`) : (error as Error).message,
+        message:
+          code && resendRefusals.has(code) ? t(`apiAccess.webhookResendRefused_${code}`) : (error as Error).message,
       });
+      // A refusal says the screen is stale — the endpoint or the delivery
+      // changed meanwhile — so both are read again.
+      await queryClient.invalidateQueries({ queryKey: webhooksQueryKey(integrationId) });
     },
   });
   const canResend = !archived && endpoint.status === "enabled";
@@ -104,6 +119,19 @@ export const WebhookDeliveries = ({
   const set = (patch: WebhookDeliveryFilters) => setFilters((current) => ({ ...current, ...patch }));
   const deliveries = log.data?.pages.flatMap((page) => page.deliveries) ?? [];
   const filtered = filters.state !== undefined || filters.event !== undefined;
+  // While another filter's answer loads, the previous rows show, dimmed, and
+  // cannot be resent.
+  const busy = log.isPlaceholderData;
+  // The Event filter offers the endpoint's events, the test event and any
+  // other event a loaded row has — one the endpoint no longer lists.
+  const eventOptions = [
+    ...new Set([
+      ...endpoint.events,
+      pingName,
+      ...deliveries.map((delivery) => delivery.eventName),
+      ...(filters.event ? [filters.event] : []),
+    ]),
+  ];
 
   let body: ReactNode;
   if (log.isPending) {
@@ -124,7 +152,14 @@ export const WebhookDeliveries = ({
     body = (
       <Stack gap="sm">
         <Table.ScrollContainer minWidth={900}>
-          <Table data-testid="webhook-deliveries" fz="sm" verticalSpacing="xs">
+          <Table
+            data-testid="webhook-deliveries"
+            data-busy={busy || undefined}
+            aria-busy={busy}
+            fz="sm"
+            verticalSpacing="xs"
+            style={busy ? { opacity: 0.5 } : undefined}
+          >
             <Table.Thead>
               <Table.Tr>
                 <Table.Th>{t("apiAccess.webhookDeliveryCreated")}</Table.Th>
@@ -202,6 +237,7 @@ export const WebhookDeliveries = ({
                           size="compact-sm"
                           variant="light"
                           loading={resend.isPending && resend.variables?.id === delivery.id}
+                          disabled={busy || (resend.isPending && resend.variables?.id !== delivery.id)}
                           onClick={() => confirmResend(delivery)}
                         >
                           {t("apiAccess.webhookResend")}
@@ -260,7 +296,7 @@ export const WebhookDeliveries = ({
             placeholder={t("apiAccess.webhookFilterAllEvents")}
             clearable
             searchable
-            data={[...endpoint.events, pingName]}
+            data={eventOptions}
             value={filters.event ?? null}
             onChange={(value) => set({ event: value ?? undefined })}
           />

@@ -259,7 +259,8 @@ func (w *webhookSender) claimAndSend(ctx context.Context) (int, bool, error) {
 // statement of its own, their unexpired leases counted and their due
 // deliveries ranked and leased. Before it commits, each integration's
 // permission is read once and the leased events it no longer may receive
-// are settled skipped instead (W33).
+// are settled skipped instead (W33), as are those of an event the endpoint
+// no longer lists (S1).
 //
 // It also answers whether it leased all it could — limit in all, or a pass's
 // share of some endpoint — so the next pass may run at once.
@@ -306,6 +307,14 @@ func (w *webhookSender) claim(ctx context.Context, limit int) ([]webhookClaim, b
 		for _, d := range rows {
 			e := byID[d.EndpointID]
 			if d.Kind == webhookKindEvent {
+				// An event the endpoint no longer lists — taken off by an edit
+				// after it was queued — is not sent either; the migration's
+				// check ties skipped to permission_not_held, which stands for
+				// both (S1).
+				if !slices.Contains(e.Events, d.EventName) {
+					skipped = append(skipped, d.ID)
+					continue
+				}
 				ok, err := w.stillPermitted(ctx, q, held, e.IntegrationID, d.EventName)
 				if err != nil {
 					return err

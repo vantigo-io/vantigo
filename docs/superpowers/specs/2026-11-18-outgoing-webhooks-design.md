@@ -483,6 +483,32 @@ asymmetric signing (`v1a`/`v2a`); a replay-missing/backfill tool; receivers othe
     archived integration reduces to Delete) shows the log in place of the list; a drawer shows a
     delivery's webhook-id, body and attempts; the excerpt and the body are React text in a
     `Code` block only (S7), held by a test with `<script>` and `<img onerror>` text.
+- **8** (2026-11-19, delivery C's code and security reviews; C rebased onto main, which has B):
+  - **Resend bound 27 days**, not 30: the retention less the 3-day pending limit, so a resent run
+    is never pruned before it ends. The prune also leaves a pending delivery resent since its
+    cutoff, and the enable-time dead-letter (W30) one resent within its 24 hours.
+  - **Lifetime cap**: a delivery with 80 attempts in all (about 10 runs) is not resendable
+    (`webhook_delivery_not_resendable`), with no new column. A per-endpoint resend limit is not
+    added: accepted, the per-address bucket bounds an Owner's resends.
+  - **The window** is "three resends within a window of one minute that opens at the first". The
+    per-delivery refusal is now its own code, `429 webhook_resend_limited`, with `Retry-After` the
+    seconds until the window closes; `429 rate_limited` stays the address's bucket.
+  - **Expiry measures from the window's start**, not the latest resend: approximate by up to a
+    minute, said in the query's comment. No code change.
+  - **S1, the subscription.** A resend re-checks that the endpoint still lists the event (409
+    `webhook_event_not_subscribed`), and the sender's claim skips a delivery whose event the
+    endpoint no longer lists. The migration's check ties `skipped` to `permission_not_held`, so
+    that reason stands for both (no migration); the log and the guides say so. A resend goes to
+    the endpoint's current URL, which the reference says.
+  - **Log order** is `created_at DESC, id ASC`, the cursor `created_at < t OR (created_at = t AND
+    id > i)`, matching `ix_webhook_deliveries_endpoint` (`00204` untouched). The list query no
+    longer reads the body.
+  - **Screen**: every refusal code has its words in en and nb, the address's bucket its own
+    (*Too many requests*); a refusal reads the endpoints and the log again; rows dim and Resend is
+    disabled while another filter's answer loads, and on every row while one resend is pending;
+    the Event filter also offers the event names of loaded rows.
+  - **S5**: the reference says a resend is for a message the receiver never processed, since
+    receivers dedupe on `webhook-id`.
 
 ## 12. What overturning a default changes
 

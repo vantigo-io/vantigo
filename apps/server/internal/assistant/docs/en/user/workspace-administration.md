@@ -200,7 +200,9 @@ is stored; a test event is sent to the new endpoint at once. Each endpoint's **A
 **Send test event**, edit, disable, delete and **Roll secret**. An endpoint whose
 messages keep failing is marked **Failing**; one Vantigo disabled — failing for 5 days with
 at least 5 messages given up after every retry, or answering `410 Gone` — gets a banner with the reason and **Enable**, and the integration's
-contact and the Owners are mailed.
+contact and the Owners are mailed. **Deliveries** on an endpoint opens its **Delivery log**: the
+messages of the last 30 days, newest first, filtered by **Status** and **Event**, each with its
+attempts under **View**, and **Resend** for a message the application never processed.
 
 The details — what a key can reach, the narrowing, read-only keys, networks, the rate limit,
 the answers a client gets, the request log, webhook endpoints and what to do when a key

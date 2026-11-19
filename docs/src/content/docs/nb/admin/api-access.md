@@ -413,7 +413,7 @@ leveranselogg, merket **Test**.
 | **Venter** | Venter på neste forsøk; raden sier når. |
 | **Levert** | Programmet svarte `2xx`. |
 | **Mislyktes** | Gitt opp: alle forsøkene feilet, endepunktet svarte `410 Gone`, det ble deaktivert eller integrasjonen arkivert mens meldingen ventet, eller den var fortsatt ikke levert etter 3 dager. Raden sier hvilken. |
-| **Hoppet over** | Ikke sendt, fordi integrasjonens roller ikke lenger lar den motta hendelsen. Gi den rollen igjen for å motta de neste. |
+| **Hoppet over** | Ikke sendt, fordi integrasjonens roller ikke lenger lar den motta hendelsen, eller endepunktet ikke lenger lytter etter den. Gi den rollen igjen, eller legg hendelsen til igjen, for å motta de neste. |
 
 Feilen sier med et ord hvorfor et forsøk feilet:
 
@@ -431,24 +431,33 @@ Feilen sier med et ord hvorfor et forsøk feilet:
 
 ### Send en leveranse på nytt
 
-Når programmet gikk glipp av en melding eller mistet det det gjorde med en, sender du den igjen:
+Når programmet aldri behandlet en melding — det var nede, eller feilet og mistet det det
+gjorde — sender du den igjen:
 
-1. Finn meldingen i leveranseloggen — **Levert** eller **Mislyktes**, lagt i kø de siste 30
+1. Finn meldingen i leveranseloggen — **Levert** eller **Mislyktes**, lagt i kø de siste 27
    dagene — og velg **Send på nytt**.
-2. Bekreft. *Leveransen er lagt i kø igjen*: den sendes i løpet av sekunder med samme
-   **webhook-id** og innhold og en ny signatur, og prøves på nytt etter den vanlige planen, opptil
+2. Bekreft. *Leveransen er lagt i kø igjen*: den sendes i løpet av sekunder, til endepunktets URL
+   slik den er nå, med samme **webhook-id** og innhold og en ny signatur, og prøves på nytt etter den vanlige planen, opptil
    8 forsøk, hvis den feiler.
 3. Raden sier **Venter**, så **Levert**; **Vis** viser de nye forsøkene over de gamle.
 
 Programmet bør se bort fra en melding med en webhook-id det allerede har behandlet, så det er
-trygt å sende på nytt. **Send på nytt** tilbys bare mens endepunktet er aktivert og integrasjonen
-ikke er arkivert; en testhendelse sendes ikke på nytt — send en ny. Vantigo avviser å sende på
-nytt:
+trygt å sende på nytt — og det får ikke programmet til å handle på en melding to ganger. **Send
+på nytt** tilbys bare mens endepunktet er aktivert og integrasjonen ikke er arkivert, for en
+melding som ble lagt i kø for mindre enn 27 dager siden (så de nye forsøkene er over før den
+slettes etter 30 dager) og er forsøkt færre enn 80 ganger i alt; en testhendelse sendes ikke på
+nytt — send en ny. Vantigo avviser å sende på nytt:
 
-- den samme meldingen mer enn **3 ganger i minuttet** — *En leveranse sendes på nytt høyst 3
-  ganger i minuttet*; vent litt;
+- den samme meldingen en fjerde gang innen et minutt etter den første nye sendingen — *En
+  leveranse sendes på nytt høyst 3 ganger innen et minutt etter den første*; vent til minuttet
+  er gått;
 - når integrasjonens roller ikke lenger lar den motta hendelsen — gi den rollen igjen;
+- når endepunktet ikke lenger lytter etter hendelsen — *Endepunktet lytter ikke lenger etter
+  denne hendelsen*; legg den til igjen med **Rediger endepunkt** hvis den skal sendes;
 - når endepunktet er deaktivert i mellomtiden — aktiver det først.
+
+*For mange forespørsler* betyr at du har sendt flere nye sendinger og andre endringer fra
+adressen din dette minuttet enn Vantigo tillater; prøv igjen om litt.
 
 ### Endre, deaktiver eller slett et endepunkt
 
@@ -569,5 +578,5 @@ tokenet sitt i stien. Signeringshemmeligheten registreres aldri.
 - **En melding står ikke i leveranseloggen.** Den slettes 30 dager etter at den ble lagt i kø;
   en hendelse som skjedde mens endepunktet var deaktivert, ble aldri lagt i kø.
 - **Det finnes ingen Send på nytt.** Meldingen venter fortsatt eller ble hoppet over, er en
-  testhendelse eller er 30 dager gammel; eller endepunktet er deaktivert eller integrasjonen
-  arkivert.
+  testhendelse, ble lagt i kø for 27 dager siden eller mer, eller er forsøkt 80 ganger; eller
+  endepunktet er deaktivert eller integrasjonen arkivert.

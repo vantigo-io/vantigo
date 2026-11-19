@@ -215,16 +215,54 @@ describe("a webhook endpoint's delivery log", () => {
       expect(within(first).getByRole("button", { name: "Resend" })).toHaveAttribute("data-loading", "true"),
     );
     expect(within(second).getByRole("button", { name: "Resend" })).not.toHaveAttribute("data-loading");
+    // No other row is resent while one is.
+    expect(within(second).getByRole("button", { name: "Resend" })).toBeDisabled();
   });
 
-  it("explains a resend refused for the limit", async () => {
+  it.each([
+    ["webhook_resend_limited", /at most 3 times within a minute of the first/],
+    ["rate_limited", /Too many requests/],
+    ["webhook_event_not_subscribed", /no longer lists this event/],
+    ["webhook_delivery_not_resendable", /can no longer be resent/],
+    ["integration_archived", /The integration is archived/],
+    ["not_found", /no longer exists/],
+  ])("explains a resend refused with %s, and reads the endpoints and the log again", async (code, text) => {
     api.listWebhookDeliveries.mockResolvedValue({ deliveries: [delivery()] });
-    api.resendWebhookDelivery.mockRejectedValue(Object.assign(new Error("Too many"), { code: "rate_limited" }));
+    api.resendWebhookDelivery.mockRejectedValue(Object.assign(new Error("Refused"), { code }));
     await renderLog();
+    const lists = api.listWebhooks.mock.calls.length;
+    const logs = api.listWebhookDeliveries.mock.calls.length;
 
     fireEvent.click(await screen.findByRole("button", { name: "Resend" }));
     fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Resend" }));
-    expect(await screen.findByText(/at most 3 times a minute/)).toBeInTheDocument();
+    expect(await screen.findByText(text)).toBeInTheDocument();
+    await waitFor(() => expect(api.listWebhooks.mock.calls.length).toBeGreaterThan(lists));
+    await waitFor(() => expect(api.listWebhookDeliveries.mock.calls.length).toBeGreaterThan(logs));
+  });
+
+  it("dims the rows and offers no resend while another filter's answer loads", async () => {
+    api.listWebhookDeliveries.mockResolvedValueOnce({ deliveries: [delivery()] });
+    api.listWebhookDeliveries.mockReturnValue(new Promise(() => {}));
+    await renderLog();
+    const table = await screen.findByTestId("webhook-deliveries");
+    expect(within(table).getByRole("button", { name: "Resend" })).not.toBeDisabled();
+
+    fireEvent.click(within(screen.getByTestId("delivery-filters")).getByRole("combobox", { name: "Status" }));
+    fireEvent.click(await screen.findByRole("option", { name: "Failed" }));
+    await waitFor(() => expect(screen.getByTestId("webhook-deliveries")).toHaveAttribute("data-busy", "true"));
+    expect(within(screen.getByTestId("webhook-deliveries")).getByRole("button", { name: "Resend" })).toBeDisabled();
+  });
+
+  it("offers in the Event filter an event a row has that the endpoint no longer lists", async () => {
+    api.listWebhookDeliveries.mockResolvedValue({
+      deliveries: [delivery({ eventName: "invoices.invoice.overdue" })],
+    });
+    await renderLog();
+    await screen.findByTestId("webhook-deliveries");
+    fireEvent.click(within(screen.getByTestId("delivery-filters")).getByRole("combobox", { name: "Event" }));
+    expect(await screen.findByRole("option", { name: "invoices.invoice.overdue" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "orders.sales_order.cancelled" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "webhook.ping" })).toBeInTheDocument();
   });
 
   it("offers no resend for a disabled endpoint or an archived integration", async () => {

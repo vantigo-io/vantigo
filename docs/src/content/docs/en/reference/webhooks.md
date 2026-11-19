@@ -267,18 +267,21 @@ it `dead` with no retry — and never counts toward disabling the endpoint, exce
 ### Expiry and retention
 
 Once a minute the sender settles as `dead` (`expired`) every message still `pending` 3 days
-after it was queued — or, for a [resent](#resend) one, 3 days after its resend — and deletes every message queued more than **30 days** ago, with its
-attempts, whatever its state, a thousand at a time; a row another transaction holds is left
-for the next sweep. While an integration is disabled its endpoints get nothing new and
-nothing waiting is sent; when it is enabled again, what has been due for more than 24 hours
-— overdue because it was disabled — is settled `expired`, and the rest is sent. With the sender
+after it was queued — or, for a [resent](#resend) one, 3 days after its resend window opened,
+which is at most a minute before the resend — and deletes every message queued more than
+**30 days** ago, with its attempts, whatever its state, a thousand at a time, except one still
+pending from a resend within those 30 days, which is left to finish its run; a row another
+transaction holds is left for the next sweep. While an integration is disabled its endpoints
+get nothing new and nothing waiting is sent; when it is enabled again, what has been due for
+more than 24 hours — overdue because it was disabled — is settled `expired`, unless it was
+resent within those 24 hours, and the rest is sent. With the sender
 switched off, messages queue and expire the same way once it runs again.
 
 ## The delivery log
 
 Each endpoint has a log of the messages queued to it: every event and every test event
-(`kind` `ping`) of the last **30 days**, newest first, a page of up to 100 at a time by an
-opaque cursor, filtered by `state` and by event name (`webhook.ping` for the test events).
+(`kind` `ping`) of the last **30 days**, newest first (and by id among those queued at the
+same instant), a page of up to 100 at a time by an opaque cursor, filtered by `state` and by event name (`webhook.ping` for the test events).
 A row has the delivery's id and its `messageId` — the `webhook-id` header it is sent with —
 the event's name and outbox id, its `kind`, its `state` and `stateReason`, the attempts of its
 current run out of the run's length and in all, when it is next tried, the last attempt's
@@ -294,7 +297,7 @@ body.
 | `dead` | `endpoint_disabled` | The endpoint was disabled while it waited |
 | `dead` | `integration_archived` | The integration was archived while it waited |
 | `dead` | `expired` | Still pending 3 days after it was queued or resent, or overdue for more than 24 hours when a disabled integration was enabled again |
-| `skipped` | `permission_not_held` | The integration's roles no longer let it receive the event, at the fan-out or at the claim; nothing was sent |
+| `skipped` | `permission_not_held` | The integration's roles no longer let it receive the event, at the fan-out or at the claim, or — at the claim — the endpoint no longer lists the event, taken off by an edit after the message was queued; nothing was sent |
 
 One delivery reads with the **body** every attempt sends, byte for byte, and its latest 100
 attempts, newest first: when, the status code (none when no answer came), how long it took,
@@ -323,17 +326,30 @@ or another integration is `404 not_found`, as if it did not exist.
 
 ### Resend
 
-An Owner can **resend** a delivery that `succeeded` or is `dead`, queued less than 30 days ago,
-while its endpoint is enabled, its integration is not archived and the integration's roles
-still hold the event's permissions — checked again at the resend. The message keeps its
-`webhook-id` and its body, so a receiver that deduplicates on `webhook-id` recognises it;
-each attempt takes a new `webhook-timestamp` and so a new signature. It is `pending` again
-with a fresh run of **8 attempts** on the [retry schedule](#retries), due at once; the attempts
-of its earlier runs stay in its log, and `totalAttempts` counts them all. Its 3 days of
-[expiry](#expiry-and-retention) run from the resend; it is still deleted 30 days after it was
-first queued. A test event is not resent: send another one. One delivery is resent at most
-**3 times a minute** (`429 rate_limited`), counted on its own row, and every resend is audited
-`webhook.resent` with the delivery's id and event name.
+A resend is for a message the receiver **never processed** — it was down, or failed and lost
+what it did. A receiver deduplicates on `webhook-id`, and a resend keeps it, so a message the
+receiver already handled is dropped there again: a resend does not make it act twice, and it is
+no way to replay one it did act on.
+
+An Owner can resend a delivery that `succeeded` or is `dead`, while:
+
+- it was queued less than **27 days** ago — the 30 days of retention less the 3 days a run may
+  stay pending, so its run ends before it is deleted;
+- it has had fewer than **80 attempts** in all, about 10 runs, so resending cannot become a
+  stream of its own;
+- its endpoint is enabled and **still lists the event**, its integration is not archived, and the
+  integration's roles still hold the event's permissions — each checked again at the resend.
+
+The message keeps its `webhook-id` and its body, and goes to the endpoint's URL **as it is
+now**, which an edit may have changed since the message was first sent. Each attempt takes a
+new `webhook-timestamp` and so a new signature. It is `pending` again with a fresh run of
+**8 attempts** on the [retry schedule](#retries), due at once; the attempts of its earlier runs
+stay in its log, and `totalAttempts` counts them all. Its 3 days of
+[expiry](#expiry-and-retention) run from the resend. A test event is not resent: send another
+one. One delivery is resent at most **three times within a window of one minute that opens at
+the first** (`429 webhook_resend_limited`, with `Retry-After` the seconds until the window
+closes), counted on its own row; there is no limit per endpoint beyond the address's. Every
+resend is audited `webhook.resent` with the delivery's id and event name.
 
 ## Signing
 
@@ -436,13 +452,15 @@ not limited.
 | `409` | `integration_archived` | Creating, changing, enabling, rolling, sending a test event or resending on an archived integration |
 | `409` | `webhook_endpoint_disabled` | Sending a test event or resending to a disabled endpoint |
 | `409` | `webhook_event_not_permitted` | Resending an event the integration's roles no longer let it receive |
-| `409` | `webhook_delivery_not_resendable` | Resending a test event, a delivery still `pending` or `skipped`, or one queued 30 days ago or more |
+| `409` | `webhook_event_not_subscribed` | Resending an event the endpoint no longer lists |
+| `409` | `webhook_delivery_not_resendable` | Resending a test event, a delivery still `pending` or `skipped`, one queued 27 days ago or more, or one that has had 80 attempts |
 | `412` | `version_mismatch` | The endpoint changed since the `If-Match` version |
 | `422` | `webhook_event_unknown` | A name the catalogue does not have |
 | `422` | `webhook_event_not_permitted` | An event the integration's roles do not let it receive |
 | `422` | `webhook_url_blocked` | The host resolves to an address Vantigo never sends to |
 | `422` | `webhook_url_unresolvable` | The host does not resolve |
-| `429` | `rate_limited` | Over the address's limit, or a fourth resend of one delivery within a minute |
+| `429` | `rate_limited` | Over the address's limit |
+| `429` | `webhook_resend_limited` | A fourth resend of one delivery within the minute that opened at its first, with `Retry-After` |
 
 ## Tables
 

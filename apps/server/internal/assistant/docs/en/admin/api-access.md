@@ -405,7 +405,7 @@ disabled as for any message. The test event appears in the endpoint's delivery l
 | **Pending** | Waiting for its next attempt; the row says when. |
 | **Delivered** | The application answered `2xx`. |
 | **Failed** | Given up: every attempt failed, the endpoint answered `410 Gone`, it was disabled or its integration archived while the message waited, or it was still not delivered after 3 days. The row says which. |
-| **Skipped** | Not sent, because the integration's roles no longer let it receive the event. Give it the role again to receive the next ones. |
+| **Skipped** | Not sent, because the integration's roles no longer let it receive the event, or the endpoint no longer lists it. Give it the role again, or add the event back, to receive the next ones. |
 
 The error says, in a word, why an attempt failed:
 
@@ -423,23 +423,32 @@ The error says, in a word, why an attempt failed:
 
 ### Resend a delivery
 
-When the application missed a message or lost what it did with one, send it again:
+When the application never processed a message — it was down, or failed and lost what it did —
+send it again:
 
-1. In the delivery log, find the message — **Delivered** or **Failed**, queued in the last 30
+1. In the delivery log, find the message — **Delivered** or **Failed**, queued in the last 27
    days — and choose **Resend**.
-2. Confirm. *Delivery queued again*: it is sent within seconds with the same **webhook-id** and
-   body and a fresh signature, and retried on the usual schedule, up to 8 attempts, if it fails.
+2. Confirm. *Delivery queued again*: it is sent within seconds, to the endpoint's URL as it is
+   now, with the same **webhook-id** and body and a fresh signature, and retried on the usual
+   schedule, up to 8 attempts, if it fails.
 3. Its row says **Pending**, then **Delivered**; **View** shows the new attempts above the old
    ones.
 
 The application should drop a message whose webhook-id it has handled already, so a resend is
-safe. **Resend** is offered only while the endpoint is enabled and the integration is not
-archived; a test event is not resent — send another. Vantigo refuses a resend:
+safe — and it does not make the application act on a message twice. **Resend** is offered only
+while the endpoint is enabled and the integration is not archived, for a message queued less
+than 27 days ago (so its retries end before it is deleted at 30 days) and tried fewer than 80
+times in all; a test event is not resent — send another. Vantigo refuses a resend:
 
-- of the same message more than **3 times a minute** — *A delivery is resent at most 3 times a
-  minute*; wait a moment;
+- of the same message a fourth time within a minute of its first resend — *A delivery is resent
+  at most 3 times within a minute of the first*; wait for the minute to pass;
 - when the integration's roles no longer let it receive the event — give it the role again;
+- when the endpoint no longer lists the event — *The endpoint no longer lists this event*;
+  add it back with **Edit endpoint** if it should be sent;
 - when the endpoint was disabled meanwhile — enable it first.
+
+*Too many requests* means you sent more resends and other changes from your address this minute
+than Vantigo allows; try again shortly.
 
 ### Change, disable or delete an endpoint
 
@@ -556,5 +565,6 @@ in the path. The signing secret is never recorded.
 - **An endpoint was disabled.** See [When Vantigo disables an endpoint](#when-vantigo-disables-an-endpoint).
 - **A message is not in the delivery log.** It is deleted 30 days after it was queued; an event
   that happened while the endpoint was disabled was never queued.
-- **There is no Resend.** The message is still pending or was skipped, is a test event, or is 30
-  days old; or the endpoint is disabled or the integration archived.
+- **There is no Resend.** The message is still pending or was skipped, is a test event, was
+  queued 27 days ago or more, or has been tried 80 times; or the endpoint is disabled or the
+  integration archived.
