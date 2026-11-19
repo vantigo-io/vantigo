@@ -252,6 +252,9 @@ the hand-rolled core for the official SDK if the specification outgrows it.
   `Describe` compactor and JSON checks are exported from `internal/operations` (`shared.go`).
   `IntegrationDetail` carries both `mcpAccess` and `mcpAvailable`; `Integration` (the list)
   does not.
+  `PUT …/mcp` has no per-address limit, as `PATCH` of the integration and `PUT …/roles` have
+  none: adding it to `UserManagement` (30 a minute, shared by every Owner operation) tipped
+  the whole-contract walks of `internal/integration` over that budget.
 
 ## 10. What overturning a default changes
 
