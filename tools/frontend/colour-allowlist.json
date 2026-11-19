@@ -70,6 +70,12 @@
     "reason": "White text on a filled dark chip (its background is light-dark() already)"
   },
   {
+    "path": "packages/frontend-shell/src/brand/scale.ts",
+    "pattern": "^export const [A-Z_]+ = \"#[0-9a-f]{6}\";$",
+    "reason": "Brand scale constants mirror the theme.css tokens and are pinned by tokens.test.ts",
+    "optional": true
+  },
+  {
     "path": "apps/staff/frontend/src/components/person-avatar.tsx",
     "pattern": "fillStyle = \"#fff\"",
     "reason": "Canvas fills white behind a JPEG, which has no transparency"

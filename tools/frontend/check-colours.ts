@@ -24,7 +24,8 @@ import { join, relative, resolve } from "node:path";
  */
 
 export type Hit = { file: string; line: number; text: string; rule: string };
-export type AllowEntry = { path: string; pattern?: string; reason: string };
+/** `optional` tolerates a path that does not exist (yet); the entry still fails if its file exists and it matches nothing. */
+export type AllowEntry = { path: string; pattern?: string; reason: string; optional?: boolean };
 export type CompiledAllow = AllowEntry & { re?: RegExp; used: number };
 
 const repositoryRoot = resolve(import.meta.dir, "../..");
@@ -195,7 +196,7 @@ export const scanRepository = (root: string, allow: CompiledAllow[]): Hit[] =>
 export const staleEntries = (root: string, allow: CompiledAllow[]): string[] =>
   allow.flatMap((a) => {
     const label = `${a.path}${a.pattern ? ` /${a.pattern}/` : ""}`;
-    if (!existsSync(join(root, a.path))) return [`${label}: the path does not exist`];
+    if (!existsSync(join(root, a.path))) return a.optional ? [] : [`${label}: the path does not exist`];
     if (a.used === 0) return [`${label}: suppresses nothing; remove it or fix its pattern`];
     return [];
   });
