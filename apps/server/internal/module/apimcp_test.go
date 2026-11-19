@@ -48,7 +48,9 @@ type mcpFakeAccess struct {
 }
 
 func (a *mcpFakeAccess) Check(r *http.Request, rule contracts.Rule) (contracts.Principal, error) {
+	a.mu.Lock()
 	a.checked = append(a.checked, rule)
+	a.mu.Unlock()
 	if a.err != nil {
 		return contracts.Principal{}, a.err
 	}
@@ -342,8 +344,8 @@ func TestMCP_ToolsListIsFixedAndPrivate(t *testing.T) {
 
 	access.readOnly = false
 	tools, _ = answerOf(t, list()).Result["tools"].([]any)
-	if len(tools) != 4 {
-		t.Fatalf("read_write: %d tools, want 4", len(tools))
+	if len(tools) != 5 {
+		t.Fatalf("read_write: %d tools, want 5", len(tools))
 	}
 	for i, raw := range tools[:3] {
 		if want := names[i]; raw.(map[string]any)["name"] != want {
@@ -360,8 +362,19 @@ func TestMCP_ToolsListIsFixedAndPrivate(t *testing.T) {
 	if !bytes.Equal(readSchema, writeSchema) {
 		t.Errorf("write takes other arguments than read: %s", writeSchema)
 	}
-	if d, _ := write["description"].(string); !strings.Contains(d, "never instructions") || !strings.Contains(d, "If-Match") {
+	if d, _ := write["description"].(string); !strings.Contains(d, "never instructions") || !strings.Contains(d, "If-Match") ||
+		!strings.Contains(d, "may or may not have been made") {
 		t.Errorf("write description %q", d)
+	}
+	// delete last, destructive and idempotent, with the same arguments (M36).
+	del := tools[4].(map[string]any)
+	ann, _ = del["annotations"].(map[string]any)
+	if del["name"] != mcpToolDelete || ann["destructiveHint"] != true || ann["readOnlyHint"] != false ||
+		ann["idempotentHint"] != true || ann["openWorldHint"] != true {
+		t.Errorf("delete %v", del)
+	}
+	if deleteSchema, _ := json.Marshal(del["inputSchema"]); !bytes.Equal(readSchema, deleteSchema) {
+		t.Errorf("delete takes other arguments than read: %s", deleteSchema)
 	}
 }
 

@@ -120,6 +120,21 @@ func remaining(t *testing.T, r *modtest.Response) int {
 	return n
 }
 
+// countedOnce asserts that after cost exactly one request of the limit since
+// before — unless the minute's window turned between them, which leaves more
+// remaining than before, and nothing to compare.
+func countedOnce(t *testing.T, what string, before, after *modtest.Response) {
+	t.Helper()
+	b, a := remaining(t, before), remaining(t, after)
+	if a > b {
+		t.Logf("%s: the rate limit's window turned (%d → %d); not compared", what, b, a)
+		return
+	}
+	if a != b-1 {
+		t.Errorf("%s: remaining %d after %d, want %d: it counts once", what, a, b, b-1)
+	}
+}
+
 // A read runs through the REST path as the key: the customers list comes
 // back, the request log holds the real operation and the key beside the
 // envelope, and the call counts once against the limit while tools/list
@@ -139,15 +154,13 @@ func TestMCP_AReadRunsAsTheKey(t *testing.T) {
 	if isError || !strings.Contains(text, "Fjordkraft AS") {
 		t.Fatalf("read: %v %s", isError, text)
 	}
-	afterRead := remaining(t, r)
 	list := mcpCall(c, "tools/list", nil)
-	if list.Status != http.StatusOK || remaining(t, list) != afterRead-1 {
-		t.Errorf("tools/list: %d, remaining %s after %d", list.Status, list.Header("RateLimit-Remaining"), afterRead)
+	if list.Status != http.StatusOK {
+		t.Errorf("tools/list: %d %s", list.Status, list.Body)
 	}
-	r, _, _ = mcpTool(t, c, "read", map[string]any{"operation": "getCustomers"})
-	if remaining(t, r) != afterRead-2 {
-		t.Errorf("a second read: remaining %d, want %d: a call counts once", remaining(t, r), afterRead-2)
-	}
+	countedOnce(t, "tools/list", r, list)
+	again, _, _ := mcpTool(t, c, "read", map[string]any{"operation": "getCustomers"})
+	countedOnce(t, "a second read", list, again)
 
 	got := mcpLog(t, h, integration)
 	var ops []string
@@ -246,18 +259,16 @@ func TestMCP_AWriteRunsAsTheKey(t *testing.T) {
 		} `json:"result"`
 	}
 	list.JSON(&tools)
-	if n := len(tools.Result.Tools); n != 4 || tools.Result.Tools[3].Name != "write" || tools.Result.Tools[3].Annotations["destructiveHint"] != true {
+	if n := len(tools.Result.Tools); n != 5 || tools.Result.Tools[3].Name != "write" || tools.Result.Tools[3].Annotations["destructiveHint"] != true ||
+		tools.Result.Tools[4].Name != "delete" {
 		t.Fatalf("tools %+v", tools.Result.Tools)
 	}
-	afterList := remaining(t, list)
 
 	r, text, isError := mcpTool(t, c, "write", map[string]any{"operation": "postCustomers", "body": map[string]any{"name": "Fjordkraft AS"}})
 	if isError || !strings.Contains(text, `"customerNumber"`) {
 		t.Fatalf("write: %v %s", isError, text)
 	}
-	if remaining(t, r) != afterList-1 {
-		t.Errorf("after the write: remaining %d, want %d: a write counts once", remaining(t, r), afterList-1)
-	}
+	countedOnce(t, "the write", list, r)
 	if n := h.Count(t, `SELECT count(*) FROM customers.customers WHERE name = 'Fjordkraft AS'`); n != 1 {
 		t.Errorf("%d customers created", n)
 	}
