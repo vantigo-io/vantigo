@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"io"
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -42,6 +44,7 @@ type mcpFakeAccess struct {
 
 	mu       sync.Mutex
 	recorded []contracts.APIRequest
+	scopes   []bool // what each MCP call asked for
 }
 
 func (a *mcpFakeAccess) Check(r *http.Request, rule contracts.Rule) (contracts.Principal, error) {
@@ -55,8 +58,15 @@ func (a *mcpFakeAccess) Check(r *http.Request, rule contracts.Rule) (contracts.P
 	return contracts.Principal{UserID: uuid.New(), Via: &contracts.Via{Kind: contracts.ViaAPIKey, KeyID: uuid.New()}}, nil
 }
 
-func (a *mcpFakeAccess) MCP(context.Context, contracts.Principal) (contracts.MCPKeyAccess, error) {
-	return contracts.MCPKeyAccess{Mode: a.mode, Permissions: a.permissions, ReadOnly: a.readOnly}, nil
+func (a *mcpFakeAccess) MCP(_ context.Context, _ contracts.Principal, scope bool) (contracts.MCPKeyAccess, error) {
+	a.mu.Lock()
+	a.scopes = append(a.scopes, scope)
+	a.mu.Unlock()
+	m := contracts.MCPKeyAccess{Mode: a.mode, ReadOnly: a.readOnly}
+	if scope {
+		m.Permissions = a.permissions
+	}
+	return m, nil
 }
 
 func (a *mcpFakeAccess) Record(_ context.Context, req contracts.APIRequest) {
@@ -382,11 +392,13 @@ func TestMCP_UnsupportedVersions(t *testing.T) {
 		t.Errorf("answer %+v", a)
 	}
 
-	// A modern method with nothing naming a version.
-	wantError(t, postMCP(t, h, map[string]any{"jsonrpc": "2.0", "id": 3, "method": mcpMethodDiscover}, nil), http.StatusBadRequest, rpcUnsupportedVersion)
-	// Anything else with nothing naming a version is not a request any
-	// revision sends.
-	wantError(t, postMCP(t, h, plain, nil), http.StatusBadRequest, rpcInvalidRequest)
+	// With nothing naming a version, the missing header is a mismatch,
+	// whatever the method.
+	a = wantError(t, postMCP(t, h, map[string]any{"jsonrpc": "2.0", "id": 3, "method": mcpMethodDiscover}, nil), http.StatusBadRequest, rpcHeaderMismatch)
+	if !strings.Contains(a.Error.Message, "header is missing") || string(a.ID) != "3" {
+		t.Errorf("answer %+v", a)
+	}
+	wantError(t, postMCP(t, h, plain, nil), http.StatusBadRequest, rpcHeaderMismatch)
 }
 
 // A modern request whose _meta lacks the client's capabilities is malformed:
@@ -515,7 +527,12 @@ func TestMCP_MalformedBodies(t *testing.T) {
 	wantError(t, postMCP(t, h, "{nope", nil), http.StatusBadRequest, rpcParseError)
 	wantError(t, postMCP(t, h, "", nil), http.StatusBadRequest, rpcParseError)
 	wantError(t, postMCP(t, h, `[{"jsonrpc":"2.0","id":1,"method":"ping"}]`, nil), http.StatusBadRequest, rpcInvalidRequest)
-	wantError(t, postMCP(t, h, `{"id":1,"method":"ping"}`, nil), http.StatusBadRequest, rpcInvalidRequest)
+	if a := wantError(t, postMCP(t, h, `{"id":1,"method":"ping"}`, nil), http.StatusBadRequest, rpcInvalidRequest); string(a.ID) != "1" {
+		t.Errorf("an invalid request with a valid id answered id %s", a.ID)
+	}
+	if a := wantError(t, postMCP(t, h, `{"jsonrpc":"2.0","id":"x"}`, nil), http.StatusBadRequest, rpcInvalidRequest); string(a.ID) != `"x"` {
+		t.Errorf("a request without a method answered id %s", a.ID)
+	}
 	wantError(t, postMCP(t, h, `{"jsonrpc":"2.0","id":null,"method":"ping"}`, nil), http.StatusBadRequest, rpcInvalidRequest)
 	big := `{"jsonrpc":"2.0","id":1,"method":"ping","params":{"x":"` + strings.Repeat("a", mcpMaxBodyBytes) + `"}}`
 	if rec := postMCP(t, h, big, nil); rec.Code != http.StatusRequestEntityTooLarge {
@@ -599,6 +616,20 @@ func TestMCP_SwitchedOffIsNotFound(t *testing.T) {
 	rec := postMCP(t, h, body, header)
 	if rec.Code != http.StatusNotFound || rec.Header().Get("Content-Type") != "application/problem+json" || len(access.checked) != 0 {
 		t.Errorf("%d %s", rec.Code, rec.Body)
+	}
+}
+
+// A composition with no Config serves no MCP endpoint: only MCP_ENABLED on
+// does (fail-safe).
+func TestMCP_NoConfigNoEndpoint(t *testing.T) {
+	access := newMCPAccess()
+	handler, _, err := composeFrom(Deps{Access: access}, embedded, customersModules()...)
+	if err != nil {
+		t.Fatalf("Compose: %v", err)
+	}
+	body, header := modern(mcpMethodToolsList, nil)
+	if rec := postMCP(t, handler, body, header); rec.Code != http.StatusNotFound || len(access.checked) != 0 {
+		t.Errorf("no Config: %d %s", rec.Code, rec.Body)
 	}
 }
 
@@ -810,7 +841,9 @@ func TestMCP_CallResults(t *testing.T) {
 // The kind of an operation is the router's rule (M24): for every operation a
 // key could call in every module's contract, read exactly when the
 // integrator's document for a read-only key keeps it, which judges the
-// x-vantigo-api mark on its own.
+// x-vantigo-api mark on its own — except a POST marked read that is not in
+// mcpReadPosts, which MCP takes for a write (M35). Every entry of
+// mcpReadPosts must still be a POST marked read.
 func TestMCP_KindIsTheRoutersRule(t *testing.T) {
 	var names []string
 	entries, err := fs.ReadDir(openapi.Files(), ".")
@@ -865,6 +898,21 @@ func TestMCP_KindIsTheRoutersRule(t *testing.T) {
 		return out
 	}
 	keyable, readable := ops(nil), ops(&integrator.Filter{Permissions: perms, ReadOnly: true})
+	// The POSTs a read-only key may call: MCP reads only those it lists.
+	readPosts := map[string]bool{}
+	for _, item := range contract.Paths.Map() {
+		if op := item.Post; op != nil && readable[op.OperationID] {
+			readPosts[op.OperationID] = true
+		}
+	}
+	for id := range mcpReadPosts {
+		if !readPosts[id] {
+			t.Errorf("mcpReadPosts lists %s, which is no POST marked read: drop it", id)
+		}
+	}
+	if len(readPosts) == 0 {
+		t.Fatal("no POST marked read: the test reads no contract")
+	}
 	kinds, err := operationKinds(contract)
 	if err != nil {
 		t.Fatal(err)
@@ -874,7 +922,9 @@ func TestMCP_KindIsTheRoutersRule(t *testing.T) {
 	}
 	for id := range keyable {
 		want := mcpKindWrite
-		if readable[id] {
+		if readable[id] && (!readPosts[id] || mcpReadPosts[id]) {
+			// The router's rule, except a POST marked read that MCP has not
+			// been told is safe, which is a write to MCP (M35).
 			want = mcpKindRead
 		}
 		if kinds[id] != want {
@@ -924,5 +974,141 @@ func TestMCP_DecodeHeaderValue(t *testing.T) {
 	}
 	if _, ok := decodeHeaderValue("=?base64?!!?="); ok {
 		t.Error("bad Base64 decoded")
+	}
+}
+
+// Without an API key in Authorization the endpoint answers 401 before it
+// counts or looks anything up (S5).
+func TestMCP_NoKeyIsRefusedFirst(t *testing.T) {
+	access := newMCPAccess()
+	h := composeMCP(t, access, &mcpCustomers{}, true)
+	for _, auth := range []string{"", "Basic dXNlcjpwdw==", "Bearer not-a-key"} {
+		req := httptest.NewRequest(http.MethodPost, mcpPath, strings.NewReader(`{}`))
+		if auth != "" {
+			req.Header.Set("Authorization", auth)
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != http.StatusUnauthorized || !strings.Contains(rec.Body.String(), "api_key_required") {
+			t.Errorf("%q: %d %s", auth, rec.Code, rec.Body)
+		}
+	}
+	if len(access.checked) != 0 {
+		t.Errorf("Check ran %d times", len(access.checked))
+	}
+}
+
+// A body over 1 MiB is 413: by its Content-Length before anything is read,
+// and, sent without one, when reading passes the cap.
+func TestMCP_TheBodyCap(t *testing.T) {
+	access := newMCPAccess()
+	h := composeMCP(t, access, &mcpCustomers{}, true)
+	big := `{"jsonrpc":"2.0","id":1,"method":"ping","params":{"x":"` + strings.Repeat("a", mcpMaxBodyBytes) + `"}}`
+
+	if rec := postMCP(t, h, big, nil); rec.Code != http.StatusRequestEntityTooLarge || len(access.checked) != 0 {
+		t.Errorf("by Content-Length: %d, %d checked", rec.Code, len(access.checked))
+	}
+	req := httptest.NewRequest(http.MethodPost, mcpPath, io.NopCloser(strings.NewReader(big)))
+	req.ContentLength = -1
+	req.Header.Set("Authorization", "Bearer vtg_test")
+	req.Header.Set(mcpHeaderProtocolVersion, "2025-11-25")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Errorf("chunked: %d %s", rec.Code, rec.Body)
+	}
+}
+
+// Only a tool that reads the catalogue asks identity for the key's scope
+// (M22): tools/list and server/discover read the mode alone.
+func TestMCP_TheScopeIsReadOnlyForTools(t *testing.T) {
+	access := newMCPAccess()
+	h := composeMCP(t, access, &mcpCustomers{}, true)
+	for _, method := range []string{mcpMethodDiscover, mcpMethodToolsList} {
+		body, header := modern(method, nil)
+		postMCP(t, h, body, header)
+	}
+	toolText(t, callTool(t, h, mcpToolSearch, map[string]any{"query": "customers"}))
+	if want := []bool{false, false, true}; !slices.Equal(access.scopes, want) {
+		t.Errorf("scopes asked %v, want %v", access.scopes, want)
+	}
+}
+
+// A call that does not answer within mcpCallTimeout is an error result naming
+// the trace id; the operation's context ends with it.
+func TestMCP_ACallTimesOut(t *testing.T) {
+	old := mcpCallTimeout
+	mcpCallTimeout = 50 * time.Millisecond
+	t.Cleanup(func() { mcpCallTimeout = old })
+	ended := make(chan struct{})
+	customers := &mcpCustomers{answer: func(_ http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+		close(ended)
+	}}
+	h := composeMCP(t, newMCPAccess(), customers, true)
+	text, isError := toolText(t, callTool(t, h, mcpToolRead, map[string]any{"operation": "getCustomers"}))
+	if !isError || !strings.Contains(text, "did not answer") || !strings.Contains(text, "trace id") {
+		t.Errorf("%v %s", isError, text)
+	}
+	select {
+	case <-ended:
+	case <-time.After(time.Second):
+		t.Error("the operation's context did not end")
+	}
+}
+
+// A client that goes away cancels the call it was making, as on REST (S1).
+func TestMCP_AGoneClientCancelsTheCall(t *testing.T) {
+	started, ended := make(chan struct{}), make(chan struct{})
+	customers := &mcpCustomers{answer: func(_ http.ResponseWriter, r *http.Request) {
+		close(started)
+		select {
+		case <-r.Context().Done():
+			close(ended)
+		case <-time.After(10 * time.Second):
+		}
+	}}
+	h := composeMCP(t, newMCPAccess(), customers, true)
+	body, header := modern(mcpMethodToolsCall, map[string]any{"name": mcpToolRead, "arguments": map[string]any{"operation": "getCustomers"}})
+	raw, _ := json.Marshal(body)
+	ctx, cancel := context.WithCancel(context.Background())
+	req := httptest.NewRequestWithContext(ctx, http.MethodPost, mcpPath, bytes.NewReader(raw))
+	req.Header = header
+	req.Header.Set("Authorization", "Bearer vtg_test")
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		h.ServeHTTP(httptest.NewRecorder(), req)
+	}()
+	<-started
+	cancel()
+	select {
+	case <-ended:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the call's context was not cancelled with the client's")
+	}
+	<-done
+}
+
+// A burst of first requests for one scope builds its catalogue once.
+func TestMCP_OneBuildPerScope(t *testing.T) {
+	docs := newAPIDocuments(nil, nil, mustCustomersContract(t), map[string]contracts.Permission{
+		"customers:view": {Key: "customers:view", Delegable: true},
+	}, "")
+	c := newMCPCatalogue(docs)
+	var wg sync.WaitGroup
+	got := make([]*mcpIndex, 8)
+	for i := range got {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			got[i], _ = c.scoped([]string{"customers:view"}, false)
+		}()
+	}
+	wg.Wait()
+	for _, index := range got {
+		if index == nil || index != got[0] {
+			t.Fatal("the same scope answered different catalogues")
+		}
 	}
 }

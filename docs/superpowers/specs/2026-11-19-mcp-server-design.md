@@ -255,6 +255,33 @@ the hand-rolled core for the official SDK if the specification outgrows it.
   `PUT …/mcp` has no per-address limit, as `PATCH` of the integration and `PUT …/roles` have
   none: adding it to `UserManagement` (30 a minute, shared by every Owner operation) tipped
   the whole-contract walks of `internal/integration` over that budget.
+- **4** (2026-11-19, A's code and security reviews):
+  - **M35 (amends M24): a POST marked read is a read to MCP only when listed.** The router's rule
+    makes every `x-vantigo-api: read` POST a read, and seven exist; some act outside Vantigo or
+    reveal more than reading should (`estimateShipping` asks Bring, `printInventoryLabels`,
+    `postStaffPeopleSimilarErased`). MCP's kind is *read* for `GET`/`HEAD` and for the POSTs in
+    `mcpReadPosts`, reviewed side-effect free (`previewAccountingVoucher`,
+    `previewAccountingBankCsv`, `postExpensesClaimsByIdPerDiemSuggestion`,
+    `resolveKnowledgeLinks`); every other POST marked read is a write to MCP, a new one included
+    until it is listed (fail-safe). The kind test asserts the router's rule except that set, and
+    that every listed id is still a POST marked read.
+  - **M26 amended:** the loopback keeps the envelope's cancellation (`context.WithTimeout` of the
+    envelope's context): a client that goes away cancels the call, as on REST. The timeout result
+    names the trace id.
+  - The catalogue's build is single-flighted per scope key.
+  - The endpoint exists only when a `Config` with `MCP_ENABLED` on is composed (no `Config`, no
+    endpoint), and `mcpAvailable` is false without one.
+  - A request with no `Authorization: Bearer vtg_…` is the handler's `401 api_key_required` before
+    the per-IP limiter; a `Content-Length` over 1 MiB is `413` up front.
+  - A request without `MCP-Protocol-Version` (other than `initialize`) is `-32020`, whatever the
+    method, replacing revision 3's `-32022`/`-32600` for a request with no `_meta`.
+  - An invalid request keeps a valid id in its error.
+  - `contracts.MCPAccess.MCP(ctx, p, scope)`: the mode and read-only flag come from one query; the
+    key's effective permissions are read only for the three tools.
+  - Two request-log rows per looped-back `read` (the counted operation and the uncounted
+    envelope) are kept and documented.
+  - The screen's snippets carry `"type": "http"`, with a VS Code (`servers`) block beside the
+    `mcpServers` one; the write-access warning shows only under `read_write`.
 
 ## 10. What overturning a default changes
 

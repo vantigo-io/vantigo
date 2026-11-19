@@ -298,12 +298,15 @@ until an Owner turns it on.
      --header "Authorization: Bearer vtg_…"
    ```
 
-   A client that takes a URL and headers gets the JSON block the section shows. Replace
-   `vtg_…` with the key: its secret is shown only when it is made.
+   The section also shows the `mcp.json` block Cursor and most other clients read, and the one
+   VS Code reads (`.vscode/mcp.json`). Replace `vtg_…` with the key: its secret is shown only
+   when it is made.
 
 **To verify:** ask the client to list its tools. It shows `search_operations`,
-`describe_operation` and `read`, and a call shows in the integration's **Requests** tab as the
-operation it called and as `postApiMcp` for the MCP request itself.
+`describe_operation` and `read`. Each `read` shows twice in the integration's **Requests** tab:
+as the operation it called, which counts against the rate limit, and as `postApiMcp` for the MCP
+request around it, which does not. Every other MCP request is one `postApiMcp` row and counts
+once.
 
 The change is audited `integration.mcp_changed`, and an integration being changed by someone
 else meanwhile is refused with a message to reload, as its details are.
@@ -347,7 +350,9 @@ the API answers people with: `{"error": {"code": "…", "message": "…"}}`.
 
 The integration's page has a **Requests** tab: what its keys called over the last 30 days.
 Every request a key made that Vantigo could tell was the key's is there, the refused ones too;
-a request with a key that matched no key is not, because there is nothing to tie it to.
+a request with a key that matched no key is not, because there is nothing to tie it to. An AI
+client's request at the MCP endpoint is the operation `postApiMcp`, and each `read` it makes
+is a second row, the operation it called ([MCP](#mcp)).
 
 - **Requests per day** counts them per day and status class — *2xx success*, *3xx redirect*,
   *4xx refused* and *5xx server error* — as a chart and a table. Days are UTC days.

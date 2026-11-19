@@ -206,7 +206,7 @@ func rejectAPIKey(w http.ResponseWriter, err error) {
 // integration's effective permissions less APINever, cut down to the key's
 // narrowing — and whether it only reads.
 func (a *Access) Scope(ctx context.Context, p contracts.Principal) ([]string, bool, error) {
-	m, err := a.MCP(ctx, p)
+	m, err := a.MCP(ctx, p, true)
 	if err != nil {
 		return nil, false, err
 	}
@@ -214,15 +214,18 @@ func (a *Access) Scope(ctx context.Context, p contracts.Principal) ([]string, bo
 }
 
 // MCP is contracts.MCPAccess (MCP server design M6, M22): the key of p's
-// integration's MCP setting and the key's scope, from one read of the key and
-// its integration.
-func (a *Access) MCP(ctx context.Context, p contracts.Principal) (contracts.MCPKeyAccess, error) {
+// integration's MCP setting and read-only flag from one read of the key and
+// its integration, and, when scope is true, the key's scope as well.
+func (a *Access) MCP(ctx context.Context, p contracts.Principal, scope bool) (contracts.MCPKeyAccess, error) {
 	if p.Via == nil || p.Via.Kind != contracts.ViaAPIKey || p.Via.KeyID == uuid.Nil {
 		return contracts.MCPKeyAccess{}, errors.New("identity: not an API key's principal")
 	}
 	k, err := a.q.GetAPIKeyScope(ctx, p.Via.KeyID)
 	if err != nil {
 		return contracts.MCPKeyAccess{}, fmt.Errorf("identity: read the API key's scope: %w", err)
+	}
+	if !scope {
+		return contracts.MCPKeyAccess{Mode: k.McpAccess, ReadOnly: k.ReadOnly}, nil
 	}
 	held, err := a.q.EffectivePermissionsForUser(ctx, k.IntegrationID)
 	if err != nil {

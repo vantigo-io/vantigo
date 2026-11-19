@@ -19,9 +19,9 @@ const modes: IntegrationMcpAccess[] = ["off", "read", "read_write"];
 export const mcpEndpoint = () => `${window.location.origin}${appUrl("/api/mcp")}`;
 
 /**
- * How a client connects (M16): the Claude Code command, and the url and
- * headers block other clients take. The key is a placeholder: its secret is
- * shown once, when it is made.
+ * How a client connects (M16): the Claude Code command, the mcpServers block
+ * Cursor and most clients read, and the servers block VS Code reads. The key is
+ * a placeholder: its secret is shown once, when it is made.
  */
 export const mcpSnippets = (url: string, name: string) => {
   const server =
@@ -32,7 +32,16 @@ export const mcpSnippets = (url: string, name: string) => {
   const header = "Authorization: Bearer vtg_…";
   return {
     claude: `claude mcp add --transport http ${server} ${url} --header "${header}"`,
-    json: JSON.stringify({ mcpServers: { [server]: { url, headers: { Authorization: "Bearer vtg_…" } } } }, null, 2),
+    json: JSON.stringify(
+      { mcpServers: { [server]: { type: "http", url, headers: { Authorization: "Bearer vtg_…" } } } },
+      null,
+      2,
+    ),
+    vscode: JSON.stringify(
+      { servers: { [server]: { type: "http", url, headers: { Authorization: "Bearer vtg_…" } } } },
+      null,
+      2,
+    ),
   };
 };
 
@@ -94,6 +103,7 @@ export const IntegrationMcp = ({ detail, archived }: { detail: IntegrationDetail
         {mcpAccess !== "off" && (
           <Alert color="orange" icon={<IconAlertTriangle size={16} />}>
             {t("apiAccess.mcpWarning")}
+            {mcpAccess === "read_write" && ` ${t("apiAccess.mcpWriteWarning")}`}
           </Alert>
         )}
         <Copyable label={t("apiAccess.mcpUrl")} value={url} />
@@ -101,6 +111,7 @@ export const IntegrationMcp = ({ detail, archived }: { detail: IntegrationDetail
           <>
             <Copyable label={t("apiAccess.mcpClaudeCode")} value={snippets.claude} multiline />
             <Copyable label={t("apiAccess.mcpJson")} value={snippets.json} multiline />
+            <Copyable label={t("apiAccess.mcpVsCode")} value={snippets.vscode} multiline />
             <Text size="sm" c="dimmed">
               {t("apiAccess.mcpSnippetHint")}
             </Text>

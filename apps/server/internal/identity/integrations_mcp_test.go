@@ -80,7 +80,7 @@ func TestIntegrations_TheMCPSetting(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Check: %v", err)
 	}
-	m, err := h.access.MCP(context.Background(), p)
+	m, err := h.access.MCP(context.Background(), p, false)
 	if err != nil || m.Mode != "read_write" || !m.ReadOnly || m.Effective() != "read" {
 		t.Errorf("MCP: %+v %v", m, err)
 	}

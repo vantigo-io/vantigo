@@ -148,20 +148,25 @@ func parseMCP(body []byte) (rpcMessage, rpcParams, *rpcFailure) {
 	if !strings.HasPrefix(trimmed, "{") {
 		return msg, rpcParams{}, failure(http.StatusBadRequest, rpcInvalidRequest, "Invalid Request: the body must be one JSON-RPC request or notification.")
 	}
-	if err := json.Unmarshal(body, &msg); err != nil || msg.JSONRPC != "2.0" || msg.Method == "" {
-		return rpcMessage{}, rpcParams{}, failure(http.StatusBadRequest, rpcInvalidRequest, `Invalid Request: a JSON-RPC 2.0 message has "jsonrpc": "2.0" and a method.`)
+	if err := json.Unmarshal(body, &msg); err != nil {
+		return rpcMessage{}, rpcParams{}, failure(http.StatusBadRequest, rpcInvalidRequest, "Invalid Request: the body must be one JSON-RPC request or notification.")
 	}
 	if !msg.notification() {
+		// An id that is neither a string nor a number is answered with none;
+		// a valid one is kept on every error that follows.
 		var id any
-		if err := json.Unmarshal(msg.ID, &id); err != nil {
-			return rpcMessage{}, rpcParams{}, failure(http.StatusBadRequest, rpcInvalidRequest, "Invalid Request: the id is a string or a number.")
-		}
+		valid := json.Unmarshal(msg.ID, &id) == nil
 		switch id.(type) {
 		case string, float64:
 		default:
-			msg.ID = nil
+			valid = false
+		}
+		if !valid {
 			return rpcMessage{}, rpcParams{}, failure(http.StatusBadRequest, rpcInvalidRequest, "Invalid Request: the id is a string or a number.")
 		}
+	}
+	if msg.JSONRPC != "2.0" || msg.Method == "" {
+		return rpcMessage{ID: msg.ID}, rpcParams{}, failure(http.StatusBadRequest, rpcInvalidRequest, `Invalid Request: a JSON-RPC 2.0 message has "jsonrpc": "2.0" and a method.`)
 	}
 	var params rpcParams
 	if len(msg.Params) > 0 && string(msg.Params) != "null" {
@@ -184,8 +189,7 @@ func parseMCP(body []byte) (rpcMessage, rpcParams, *rpcFailure) {
 //   - with no _meta, a legacy MCP-Protocol-Version selects the legacy method
 //     set, the modern one is a mismatch (the body does not say it), and any
 //     other is an unsupported version;
-//   - with neither, a request is invalid: no revision the endpoint speaks
-//     sends one so.
+//   - with neither, the missing header is a mismatch, whatever the method.
 func classify(r *http.Request, msg rpcMessage, params rpcParams) (mcpRequest, *rpcFailure) {
 	req := mcpRequest{msg: msg, params: params}
 	header := r.Header.Get(mcpHeaderProtocolVersion)
@@ -224,12 +228,11 @@ func classify(r *http.Request, msg rpcMessage, params rpcParams) (mcpRequest, *r
 		return req, headerMismatch("%s header value %q has no %s in the body's _meta", mcpHeaderProtocolVersion, header, mcpMetaProtocolVersion)
 	case header != "":
 		return req, unsupportedVersion(header)
-	case msg.Method == mcpMethodDiscover:
-		// A modern method with nothing to say which version it speaks.
-		return req, unsupportedVersion("")
 	default:
-		return req, failure(http.StatusBadRequest, rpcInvalidRequest,
-			"Invalid Request: send the "+mcpHeaderProtocolVersion+" header, or initialize first.")
+		// Every revision the endpoint speaks sends the header after
+		// initialize (streamable-http § Server Validation: a missing
+		// required header is a mismatch).
+		return req, headerMismatch("the %s header is missing", mcpHeaderProtocolVersion)
 	}
 }
 

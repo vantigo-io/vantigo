@@ -346,16 +346,19 @@ const (
 	MCPAccessReadWrite = "read_write"
 )
 
-// MCPKeyAccess is what the MCP endpoint needs of an API key, read at once
-// (MCP server design M22): its integration's MCP setting, and the scope
-// APIKeyScope answers.
+// MCPKeyAccess is what the MCP endpoint needs of an API key (MCP server
+// design M22): its integration's MCP setting and whether the key only reads,
+// from one read of the key and its integration, and, when asked for, the
+// scope APIKeyScope answers.
 type MCPKeyAccess struct {
 	// Mode is the integration's mcp_access: MCPAccessOff, MCPAccessRead or
 	// MCPAccessReadWrite.
 	Mode string
-	// Permissions and ReadOnly are APIKeyScope.Scope's answer for the key.
+	// ReadOnly is whether the key only reads.
+	ReadOnly bool
+	// Permissions is APIKeyScope.Scope's answer for the key, nil unless the
+	// scope was asked for.
 	Permissions []string
-	ReadOnly    bool
 }
 
 // Effective is the narrower of the integration's setting and the key (M3): a
@@ -376,9 +379,10 @@ func (m MCPKeyAccess) Effective() string {
 // implements it beside APIKeyScope; the endpoint finds it by a type assertion.
 type MCPAccess interface {
 	// MCP answers, for the key of p (Via.Kind ViaAPIKey), its integration's
-	// MCP setting and the key's scope as Scope answers it. A principal that is
-	// not an API key's, or a key that no longer exists, is an error.
-	MCP(ctx context.Context, p Principal) (MCPKeyAccess, error)
+	// MCP setting and whether the key only reads, and, when scope is true, the
+	// permissions Scope answers, which cost a second query. A principal that
+	// is not an API key's, or a key that no longer exists, is an error.
+	MCP(ctx context.Context, p Principal, scope bool) (MCPKeyAccess, error)
 }
 
 // StationAccess is what the live hub asks of identity for a shared station's

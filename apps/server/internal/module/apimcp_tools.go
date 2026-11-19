@@ -38,9 +38,11 @@ const (
 	// mcpResultMaxBytes caps a result's text, counted as the JSON-escaped
 	// string it is sent as (M32).
 	mcpResultMaxBytes = 100_000
-	// mcpCallTimeout bounds a looped-back request (M26).
-	mcpCallTimeout = 30 * time.Second
 )
+
+// mcpCallTimeout bounds a looped-back request (M26); a variable so a test can
+// shorten it.
+var mcpCallTimeout = 30 * time.Second
 
 // mcpDescribeDepths are the nesting levels describe_operation tries, deepest
 // first, as the dispatcher's Describe does.
@@ -515,13 +517,13 @@ func buildCall(e *mcpOperation, args mcpCallArguments) (target string, headers h
 }
 
 // loopback serves one call to e through api, the composed API handler, as the
-// envelope's own caller (M12, M26): its Authorization, its address, and a
-// context that keeps the envelope's values (the forwarded client address, the
-// trace) but not its cancellation, with a deadline of its own. Nothing else
-// is put on it: no principal, no grant, so every rule of the REST path judges
-// the call afresh.
+// envelope's own caller (M12, M26): its Authorization, its address, and the
+// envelope's context — its values (the forwarded client address, the trace)
+// and its cancellation, so a client that goes away stops the call as on REST —
+// with a deadline of its own. Nothing else is put on it: no principal, no
+// grant, so every rule of the REST path judges the call afresh.
 func loopback(api http.Handler, envelope *http.Request, e *mcpOperation, target string, headers http.Header, body []byte) (*callRecorder, bool, bool) {
-	ctx, cancel := context.WithTimeout(context.WithoutCancel(envelope.Context()), mcpCallTimeout)
+	ctx, cancel := context.WithTimeout(envelope.Context(), mcpCallTimeout)
 	defer cancel()
 	var reader io.Reader
 	if body != nil {

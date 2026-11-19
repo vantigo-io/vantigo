@@ -684,11 +684,11 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 
 	// The MCP endpoint (MCP server design M29): every method, so a GET or a
 	// DELETE is its 405 rather than the catch-all's 404, bound to the
-	// composed API below, which it loops tool calls back through. MCP_ENABLED
-	// off leaves the path to the catch-all; a composition with no Access has
-	// no key to serve it to.
+	// composed API below, which it loops tool calls back through. Only a
+	// Config with MCP_ENABLED on serves it (fail-safe: no Config, no
+	// endpoint); a composition with no Access has no key to serve it to.
 	var mcp *mcpHandler
-	if deps.Access != nil && (deps.Config == nil || deps.Config.MCPEnabled) {
+	if deps.Access != nil && deps.Config != nil && deps.Config.MCPEnabled {
 		mcp = newMCPHandler(documents, deps.Access, deps.Limiter)
 		outer.Handle(mcpPath, mcp)
 	}

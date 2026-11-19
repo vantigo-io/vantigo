@@ -332,10 +332,12 @@ const en = {
   "apiAccess.mcpModeHint_read_write":
     "Writing is not available through MCP yet: until it is, this works as Read only. A read-only key always only reads.",
   "apiAccess.mcpWarning":
-    "An AI client acts on what it reads, and a record can contain text written to mislead it. A key with write access lets it change data: read only is safest.",
+    "An AI client acts on what it reads, and a record can contain text written to mislead it. Give the integration only the roles the agent needs.",
+  "apiAccess.mcpWriteWarning": "A key with write access lets it change data: read only is safest.",
   "apiAccess.mcpUrl": "MCP endpoint",
   "apiAccess.mcpClaudeCode": "Claude Code",
-  "apiAccess.mcpJson": "Other clients (url and headers)",
+  "apiAccess.mcpJson": "Cursor and other clients (mcp.json)",
+  "apiAccess.mcpVsCode": "VS Code (.vscode/mcp.json)",
   "apiAccess.mcpSnippetHint":
     "Replace vtg_… with one of the integration's keys. The key is shown only when it is made.",
   "apiAccess.mcpUnavailableTitle": "MCP is switched off",
@@ -667,10 +669,12 @@ const nb: Record<keyof typeof en, string> = {
   "apiAccess.mcpModeHint_read_write":
     "Skriving er ikke tilgjengelig gjennom MCP ennå: til det er det, virker dette som Bare lese. En skrivebeskyttet nøkkel leser alltid bare.",
   "apiAccess.mcpWarning":
-    "En AI-klient handler på det den leser, og en post kan inneholde tekst skrevet for å villede den. En nøkkel med skrivetilgang lar den endre data: bare lese er tryggest.",
+    "En AI-klient handler på det den leser, og en post kan inneholde tekst skrevet for å villede den. Gi integrasjonen bare rollene agenten trenger.",
+  "apiAccess.mcpWriteWarning": "En nøkkel med skrivetilgang lar den endre data: bare lese er tryggest.",
   "apiAccess.mcpUrl": "MCP-endepunkt",
   "apiAccess.mcpClaudeCode": "Claude Code",
-  "apiAccess.mcpJson": "Andre klienter (url og headers)",
+  "apiAccess.mcpJson": "Cursor og andre klienter (mcp.json)",
+  "apiAccess.mcpVsCode": "VS Code (.vscode/mcp.json)",
   "apiAccess.mcpSnippetHint": "Bytt ut vtg_… med en av integrasjonens nøkler. Nøkkelen vises bare når den lages.",
   "apiAccess.mcpUnavailableTitle": "MCP er slått av",
   "apiAccess.mcpUnavailable":

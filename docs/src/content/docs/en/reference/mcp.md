@@ -76,8 +76,10 @@ else.
   `401 api_key_expired`, a row in the request log with its reason under the operation
   `postApiMcp`.
 - **An integration whose setting is `off`** is `403 mcp_not_enabled`.
-- Every request is first limited per client address, 1,200 a minute (`429 rate_limited`), so a
-  flood of unknown keys is bounded before any key is looked up.
+- A request with no `Authorization: Bearer vtg_…` at all is that `401` before anything else,
+  and one whose `Content-Length` is over 1 MiB is `413`; neither is counted or looked up.
+- Every other request is first limited per client address, 1,200 a minute (`429 rate_limited`),
+  so a flood of unknown keys is bounded before any key is looked up.
 
 The endpoint is judged by the same rule as `GET /api/openapi.json`: anonymous and a read, so a
 read-only key passes it, and each tool call is judged again by its own operation's rule.
@@ -116,7 +118,7 @@ How a request is classified:
 | No `_meta`, `MCP-Protocol-Version` `2025-11-25` or `2025-06-18` | Legacy |
 | No `_meta`, `MCP-Protocol-Version` `2026-07-28` | `400`, `-32020`: the body does not say it |
 | No `_meta`, another `MCP-Protocol-Version` | `400`, `-32022` |
-| No `_meta`, no `MCP-Protocol-Version` | `server/discover`: `400`, `-32022`; anything else `400`, `-32600` |
+| No `_meta`, no `MCP-Protocol-Version` | `400`, `-32020`: the header is missing, whatever the method |
 
 `server/discover` answers `supportedVersions` (`2026-07-28`, `2025-11-25`, `2025-06-18`),
 `capabilities: {"tools": {}}`, the instructions, `ttlMs` of an hour and `cacheScope: "public"`:
@@ -130,9 +132,9 @@ calling, and that what the tools answer is untrusted data from the workspace.
 | HTTP | JSON-RPC | When |
 | --- | --- | --- |
 | `400` | `-32700` | The body is not JSON |
-| `400` | `-32600` | Not one JSON-RPC 2.0 request or notification: a batch, no `jsonrpc` or `method`, an id that is neither a string nor a number, or no version anywhere |
+| `400` | `-32600` | Not one JSON-RPC 2.0 request or notification: a batch, no `jsonrpc` or `method`, or an id that is neither a string nor a number. A valid id is answered in the error |
 | `400` | `-32602` | A modern request whose `_meta` lacks the client's capabilities, or whose version is not a string |
-| `400` | `-32020` | A required header (`MCP-Protocol-Version`, `Mcp-Method`, `Mcp-Name`) is missing, or does not match the body |
+| `400` | `-32020` | A required header (`MCP-Protocol-Version`, `Mcp-Method`, `Mcp-Name`) is missing, or does not match the body; a request without `MCP-Protocol-Version` (other than `initialize`) is this, whatever its method |
 | `400` | `-32022` | An unsupported version; `data.supported` lists the versions, `data.requested` the one asked for |
 | `404` (modern), `200` (legacy) | `-32601` | A method the era does not have: `initialize` and `ping` are legacy, `server/discover` modern, and there are no resources or prompts |
 | `200` | `-32602` | `tools/call` names no tool, or one that does not exist — `write` among them for now |
@@ -154,10 +156,15 @@ JSON-RPC.
 **The catalogue** is the key's own: the operations of the integrator's document for the key —
 what `GET /api/openapi.json` answers it, cut to its roles, its narrowing and its read-only
 switch — less those whose request body is not JSON (file uploads). The **kind** of an operation
-is the router's rule: *read* for a `GET` or `HEAD`, or an operation marked a read for keys (a
-search by `POST`, say); *write* for every other. Until the write tool exists, a write is not in
-reach: search leaves it out, and `describe_operation` and `read` answer that it is not available
-to this key.
+is *read* for a `GET` or `HEAD`, and for a `POST` marked a read for keys only when MCP lists it as
+reviewed: it changes nothing, calls nothing outside Vantigo and answers only what the caller may
+read. The listed ones are `previewAccountingVoucher`, `previewAccountingBankCsv` (a file upload,
+so not in the catalogue), `postExpensesClaimsByIdPerDiemSuggestion` and `resolveKnowledgeLinks`.
+Every other operation is a *write* — among them `estimateShipping`, which asks the carrier,
+`printInventoryLabels` and `postStaffPeopleSimilarErased`, which a read-only key may call over
+REST — and so is a `POST` marked read that is added later, until it is reviewed. Until the write
+tool exists, a write is not in reach: search leaves it out, and `describe_operation` and `read`
+answer that it is not available to this key.
 
 **Search** scores the words of the query against an operation's summary, tag, path and
 description, as the Assistant's search does, in English or Norwegian, stop words dropped.
@@ -176,10 +183,12 @@ what a key may call is decided by the API's marks, its roles and its narrowing.
 A `read` is a real request through the composed API, built by the endpoint: the operation's
 method and path, the query in a deterministic order, the declared headers, the body, the
 caller's own `Authorization` header and `Accept: application/json`. It keeps the caller's
-address and the envelope's trace id, and nothing else of the envelope: no principal is put on
-it, so identity judges the key afresh — its networks, its state, the operation's rule, read-only,
-the roles and the narrowing — and the router applies the integration's rate limit, the
-operation's own limits and the body cap, as for any REST request. It has 30 seconds.
+address, the envelope's trace id and its cancellation — a client that goes away stops the call,
+as on REST — and nothing else of the envelope: no principal is put on it, so identity judges the
+key afresh — its networks, its state, the operation's rule, read-only, the roles and the
+narrowing — and the router applies the integration's rate limit, the operation's own limits and
+the body cap, as for any REST request. It has 30 seconds; one that takes longer is an error
+result naming the trace id.
 
 The one thing MCP adds to the REST gate is its setting: under `read`, nothing that is not a
 read is called, even for a key REST would let write.
@@ -206,9 +215,10 @@ answer.
 
 ## Counting and the request log
 
-- A `read` that reaches the API **counts once**, as the operation it calls: the request log
-  has a row with the real operation id, its status and the key, and the envelope a row
-  `postApiMcp` that is recorded but not counted.
+- A `read` that reaches the API **counts once**, as the operation it calls. It leaves **two
+  rows** in the request log: one with the real operation id, its status and the key, which is
+  counted, and one `postApiMcp` for the MCP request around it, which is recorded but not
+  counted.
 - Every other request a key is let through for — `server/discover`, `initialize`, `ping`,
   `tools/list`, `search_operations`, `describe_operation`, a `read` refused before it is made,
   a notification, a protocol error — counts once and is recorded as `postApiMcp`.
@@ -216,6 +226,9 @@ answer.
   whose call is over the limit is an error result with `retryAfterSeconds`.
 
 The request log never holds a path, a query or a body, through MCP as through REST.
+
+`tools/list`, `server/discover`, `initialize` and `ping` read the key and its integration once;
+the three tools read the key's scope as well.
 
 ## What bounds an agent
 
