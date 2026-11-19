@@ -7,20 +7,16 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"image"
-	"image/draw"
-	"image/jpeg"
-	"image/png"
 	"io"
 	"mime/multipart"
 	"net/http"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/phpdave11/gofpdf"
 
 	"github.com/vantigo-io/vantigo/server/internal/invoices/gen"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/store"
+	"github.com/vantigo-io/vantigo/server/internal/logoimage"
 	"github.com/vantigo-io/vantigo/server/internal/mail"
 	"github.com/vantigo-io/vantigo/server/internal/storage"
 )
@@ -36,34 +32,25 @@ import (
 // Staff's person photo (staff/person_photo.go): one multipart part, file,
 // read no further than the bound allows, its own bytes deciding its type.
 
-// maxStoredLogoBytes bounds a stored logo's read: the normalised file, which
-// may be larger than the upload — a JPEG of a photograph is encoded again —
-// and is refused as logo_too_large past it. logoJPEGQuality is what a JPEG is
-// encoded again at, Products' images' quality.
+// The logo's bounds and refusals are the shared logoimage package's (brands
+// design B6); this file keeps the seller's logo's storage, keys and snapshot
+// rules. The request — the file and its multipart framing — stays under the
+// router's default body cap of 1 MiB, so the operation needs no BodyLimits
+// entry (module.go).
 const (
-	maxStoredLogoBytes = 4 << 20
-	logoJPEGQuality    = 90
-)
-
-// The logo's bounds (I1). The request — the file and its multipart framing —
-// stays under the router's default body cap of 1 MiB, so the operation needs
-// no BodyLimits entry (module.go).
-const (
-	maxLogoBytes       = 512 << 10
-	maxLogoLongerSide  = 2000
-	minLogoShorterSide = 16
-	logoFormField      = "file"
-	logoCacheControl   = "private, max-age=0, must-revalidate"
-	invalidLogoTitle   = "Invalid logo"
-	contentTypePNG     = "image/png"
-	contentTypeJPEG    = "image/jpeg"
-	logoKeyPrefix      = "branding/logo-"
+	logoCacheControl = "private, max-age=0, must-revalidate"
+	invalidLogoTitle = "Invalid logo"
+	contentTypePNG   = logoimage.ContentTypePNG
+	contentTypeJPEG  = logoimage.ContentTypeJPEG
+	logoKeyPrefix    = "branding/logo-"
 	// logoContentID is the logo's Content-ID in a mail, which the HTML
 	// body's <img src="cid:logo"> names.
 	logoContentID = "logo"
 )
 
-// The logo's refusals, each a 400 carrying its code (I1).
+// The logo's refusals, each a 400 carrying its code (I1). They are written out
+// here, not aliased, because the frontend's catalog test reads this package's
+// code… constants as source; logoimage's own are pinned equal by a test.
 const (
 	codeLogoUnsupportedType = "logo_unsupported_type"
 	codeLogoTooLarge        = "logo_too_large"
@@ -72,13 +59,6 @@ const (
 	codeLogoInvalid         = "logo_invalid"
 )
 
-// logoFormats is the format image.DecodeConfig names for each type a logo may
-// be, keyed by the type its bytes sniff as, and the extension its key takes.
-var logoFormats = map[string]struct{ format, extension string }{
-	contentTypePNG:  {"png", "png"},
-	contentTypeJPEG: {"jpeg", "jpg"},
-}
-
 // logoRefused is the 400 a logo is refused with: its code and a sentence.
 func logoRefused(code, detail string) gen.InvoicesConflictProblem {
 	c := conflict(code, invalidLogoTitle, detail)
@@ -86,123 +66,38 @@ func logoRefused(code, detail string) gen.InvoicesConflictProblem {
 	return c
 }
 
-// readLogo reads the one file part of mr, at most maxLogoBytes+1 bytes of it
-// — enough to tell "too large" from "just within" — skipping any other part.
-// It answers the bytes, or the refusal: logo_too_large past the bound (the
-// router's own cap included), logo_invalid for a body that is not a readable
-// multipart form, no file part, an empty one, or two.
+// refusedLogo is a shared refusal as this module's 400, nil for none.
+func refusedLogo(r *logoimage.Refusal) *gen.InvoicesConflictProblem {
+	if r == nil {
+		return nil
+	}
+	return ptr(logoRefused(r.Code, r.Detail))
+}
+
+// readLogo reads the one file part of mr (logoimage.Read): the bytes, or the
+// refusal.
 func readLogo(mr *multipart.Reader) ([]byte, *gen.InvoicesConflictProblem) {
-	if mr == nil {
-		return nil, ptr(logoRefused(codeLogoInvalid, "The request's body could not be read as a multipart form"))
-	}
-	fail := func(err error) ([]byte, *gen.InvoicesConflictProblem) {
-		var tooLarge *http.MaxBytesError
-		if errors.As(err, &tooLarge) {
-			return nil, ptr(logoRefused(codeLogoTooLarge, "A logo is at most 512 KiB"))
-		}
-		return nil, ptr(logoRefused(codeLogoInvalid, "The request's body could not be read as a multipart form"))
-	}
-	var data []byte
-	files := 0
-	for {
-		part, err := mr.NextPart()
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		if err != nil {
-			return fail(err)
-		}
-		if part.FormName() != logoFormField {
-			_ = part.Close()
-			continue
-		}
-		files++
-		body, err := io.ReadAll(io.LimitReader(part, maxLogoBytes+1))
-		_ = part.Close()
-		if err != nil {
-			return fail(err)
-		}
-		if len(body) > maxLogoBytes {
-			return nil, ptr(logoRefused(codeLogoTooLarge, "A logo is at most 512 KiB"))
-		}
-		data = body
-	}
-	switch {
-	case files > 1:
-		return nil, ptr(logoRefused(codeLogoInvalid, "A request sets one logo; this one carried more than one file"))
-	case files == 0 || len(data) == 0:
-		return nil, ptr(logoRefused(codeLogoInvalid, "A logo file is required, as the multipart part named 'file'"))
-	}
-	return data, nil
+	data, r := logoimage.Read(mr)
+	return data, refusedLogo(r)
 }
 
-// judgeLogo is the type data is stored as, or its refusal: a PNG or JPEG by
-// its own bytes that image.DecodeConfig — which reads the header alone, never
-// decompressing, so a decompression bomb costs nothing — decodes as that same
-// format, at most maxLogoLongerSide on its longer side and at least
-// minLogoShorterSide on its shorter.
+// judgeLogo is the type data is stored as, or its refusal (logoimage.Judge).
 func judgeLogo(data []byte) (string, *gen.InvoicesConflictProblem) {
-	contentType := http.DetectContentType(data)
-	want, ok := logoFormats[contentType]
-	if !ok {
-		return "", ptr(logoRefused(codeLogoUnsupportedType, "A logo is a PNG or a JPEG"))
-	}
-	cfg, format, err := image.DecodeConfig(bytes.NewReader(data))
-	if err != nil || format != want.format {
-		return "", ptr(logoRefused(codeLogoUnsupportedType, "A logo is a PNG or a JPEG"))
-	}
-	longer, shorter := max(cfg.Width, cfg.Height), min(cfg.Width, cfg.Height)
-	switch {
-	case longer > maxLogoLongerSide:
-		return "", ptr(logoRefused(codeLogoTooWide, fmt.Sprintf("A logo is at most %d pixels on its longer side", maxLogoLongerSide)))
-	case shorter < minLogoShorterSide:
-		return "", ptr(logoRefused(codeLogoTooSmall, fmt.Sprintf("A logo is at least %d pixels on its shorter side", minLogoShorterSide)))
-	}
-	return contentType, nil
+	info, r := logoimage.Judge(data)
+	return info.ContentType, refusedLogo(r)
 }
 
-// normaliseLogo is a judged logo as it is stored: decoded whole — bounded by
-// judgeLogo's 2,000 pixels — and encoded again, a PNG from an 8-bit NRGBA
-// picture (never interlaced, never 16-bit), a JPEG as baseline at quality 90.
-// Encoding again drops every piece of metadata. The result must then load in
-// the PDF renderer: gofpdf refuses some files silently at render time (an
-// interlaced PNG among them), and maroto would print its error into every
-// document issued with the logo, so one gofpdf will not take is logo_invalid.
+// normaliseLogo is a judged logo as it is stored (logoimage.Normalise):
+// encoded again without metadata and known to load in the PDF renderer.
 func normaliseLogo(data []byte, contentType string) ([]byte, *gen.InvoicesConflictProblem) {
-	unreadable := ptr(logoRefused(codeLogoUnsupportedType, "A logo is a PNG or a JPEG"))
-	src, _, err := image.Decode(bytes.NewReader(data))
-	if err != nil {
-		return nil, unreadable
-	}
-	b := src.Bounds()
-	flat := image.NewNRGBA(image.Rect(0, 0, b.Dx(), b.Dy()))
-	draw.Draw(flat, flat.Bounds(), src, b.Min, draw.Src)
-	var out bytes.Buffer
-	pdfType := "PNG"
-	if contentType == contentTypeJPEG {
-		pdfType = "JPG"
-		err = jpeg.Encode(&out, flat, &jpeg.Options{Quality: logoJPEGQuality})
-	} else {
-		err = png.Encode(&out, flat)
-	}
-	if err != nil {
-		return nil, unreadable
-	}
-	if out.Len() > maxStoredLogoBytes {
-		return nil, ptr(logoRefused(codeLogoTooLarge, "A logo is at most 512 KiB"))
-	}
-	probe := gofpdf.New("P", "mm", "A4", "")
-	probe.RegisterImageOptionsReader("logo", gofpdf.ImageOptions{ImageType: pdfType}, bytes.NewReader(out.Bytes()))
-	if probe.Err() {
-		return nil, ptr(logoRefused(codeLogoInvalid, "This picture cannot be printed on a document; save it again as an ordinary PNG or JPEG"))
-	}
-	return out.Bytes(), nil
+	out, r := logoimage.Normalise(data, contentType)
+	return out, refusedLogo(r)
 }
 
 // logoKey is where a logo's bytes are stored: named by their hash, so the
 // same logo uploaded twice is one object and a key never holds two.
 func logoKey(sha, contentType string) string {
-	return logoKeyPrefix + sha + "." + logoFormats[contentType].extension
+	return logoKeyPrefix + sha + "." + logoimage.Extension(contentType)
 }
 
 // settingsLogo is the settings' logo for the wire, nil when none is set.
@@ -440,7 +335,7 @@ func (s *server) logoOf(ctx context.Context, key, sha *string) ([]byte, string, 
 		return nil, "", fmt.Errorf("%w: read logo %s: %w", errObjectStore, *key, err)
 	}
 	defer func() { _ = rc.Close() }()
-	data, err := io.ReadAll(io.LimitReader(rc, maxStoredLogoBytes+1))
+	data, err := io.ReadAll(io.LimitReader(rc, logoimage.MaxStoredBytes+1))
 	if err != nil {
 		return nil, "", fmt.Errorf("%w: read logo %s: %w", errObjectStore, *key, err)
 	}
@@ -449,7 +344,7 @@ func (s *server) logoOf(ctx context.Context, key, sha *string) ([]byte, string, 
 		return nil, "", fmt.Errorf("invoices: logo %s does not hash to its recorded SHA-256", *key)
 	}
 	contentType := http.DetectContentType(data)
-	if _, ok := logoFormats[contentType]; !ok {
+	if !logoimage.Supported(contentType) {
 		return nil, "", fmt.Errorf("invoices: logo %s is %s, neither a PNG nor a JPEG", *key, contentType)
 	}
 	return data, contentType, nil
@@ -463,6 +358,6 @@ func (s *server) documentLogo(ctx context.Context, inv store.InvoicesInvoice) ([
 // logoAttachment is the logo as a mail's inline part, named so the HTML
 // body's cid:logo resolves.
 func logoAttachment(data []byte, contentType string) mail.Attachment {
-	name := "logo." + logoFormats[contentType].extension
+	name := "logo." + logoimage.Extension(contentType)
 	return mail.Attachment{FileName: name, ContentType: contentType, Content: data, ContentID: logoContentID, Inline: true}
 }

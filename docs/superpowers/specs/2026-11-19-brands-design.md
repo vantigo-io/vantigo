@@ -143,9 +143,10 @@ server (Go, the truth, which validates and stores) and in the editor's live prev
    This keeps the ends of the scale distinct from shade 6; it is **not** a contrast rule.
    Contrast is B4: white text on a colour passes AA only up to about `L ≤ 0.57`, and
    black text from about `L ≥ 0.56`, so the filled-text colour is chosen, not assumed:
-   **`filledText` is `#ffffff` when white passes 4.5 : 1 on shade 6, else `#000000`**
-   (Mantine's `autoContrast` with `luminanceThreshold: 0.179` set explicitly in the
-   theme, since Mantine's default is 0.3). One of the two always passes, so a light brand
+   **`filledText` is `#000000` when the relative luminance of shade 6 is above 0.179,
+   else `#ffffff`** (Mantine's `autoContrast` with `luminanceThreshold: 0.179` set
+   explicitly in the theme, since Mantine's default is 0.3). Both colours pass AA
+   (4.5 : 1) at the threshold, so one of the two always passes, and a light brand
    colour yields dark button text instead of a refusal.
 4. Lightness. For `i < 6`: `L_i = L6 + (0.975 − L6) · t_i` with
    `t = [1.00, 0.86, 0.68, 0.50, 0.32, 0.16]`. For `i > 6`:

@@ -84,6 +84,11 @@ lag, never what must refuse — go through the platform's domain-events outbox,
    handler type of rule 23 — `internal/docmath` — a sales document's arithmetic,
    shared by Invoices and Orders
    ([The document arithmetic](/en/contributing/platform-packages/#the-document-arithmetic)) —
+   `internal/brandscale` — a brand's colour scale and contrast checks
+   ([The brand colour scale](/en/contributing/platform-packages/#the-brand-colour-scale)) —
+   `internal/logoimage` — the judging and re-encoding of an uploaded logo, shared by
+   Invoices and Identity
+   ([The logo image rules](/en/contributing/platform-packages/#the-logo-image-rules)) —
    …) and its own subpackages, never another module's.
    `internal/payments/vipps/vippstest`, `internal/shipping/bring/bringtest` and
    `internal/bankfeed/folio/foliotest`, the adapters' fakes, are imported by tests only.
