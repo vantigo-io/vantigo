@@ -380,10 +380,13 @@ func (h *mcpHandler) run(w http.ResponseWriter, r *http.Request, call *mcpCall) 
 				"you retry. Quote the trace id %s when reporting it.", call.op.ID, httpx.TraceID(r))
 		case panicked:
 			t = toolError("%s failed unexpectedly. Quote the trace id %s when reporting it.", call.op.ID, httpx.TraceID(r))
+		case ended && !answered && write && call.op.idempotencyKey:
+			t = toolError("%s did not answer in time, and the change may or may not have been made: retry with the "+
+				"same Idempotency-Key, never a new one: the retry answers the first call's outcome, or says it is still "+
+				"running or cannot be told. Quote the trace id %s when reporting it.", call.op.ID, httpx.TraceID(r))
 		case ended && !answered && write:
 			t = toolError("%s did not answer in time, and the change may or may not have been made: read the record "+
-				"before you retry, and resend with the same Idempotency-Key where the operation takes one. Quote the "+
-				"trace id %s when reporting it.", call.op.ID, httpx.TraceID(r))
+				"before you retry. Quote the trace id %s when reporting it.", call.op.ID, httpx.TraceID(r))
 		case ended && !answered:
 			t = toolError("%s did not answer within %s. Quote the trace id %s when reporting it.", call.op.ID, mcpCallTimeout, httpx.TraceID(r))
 		default:

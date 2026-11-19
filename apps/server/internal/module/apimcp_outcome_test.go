@@ -48,7 +48,10 @@ func TestMCP_AnUnansweredWriteMayHaveBeenMade(t *testing.T) {
 	customers := &mcpCustomers{answer: func(_ http.ResponseWriter, r *http.Request) { <-r.Context().Done() }}
 	h := composeMCP(t, newWriteAccess(), customers, true)
 	text, isError := toolText(t, callTool(t, h, mcpToolWrite, map[string]any{"operation": "postCustomers", "body": map[string]any{"name": "x"}}))
-	if !isError || !strings.Contains(text, "may or may not have been made") || !strings.Contains(text, "Idempotency-Key") {
+	// postCustomers takes no Idempotency-Key here (the fake Access is no
+	// IdempotencyStore): read the record first.
+	if !isError || !strings.Contains(text, "may or may not have been made") || !strings.Contains(text, "read the record") ||
+		strings.Contains(text, "Idempotency-Key") {
 		t.Errorf("write: %v %s", isError, text)
 	}
 	text, isError = toolText(t, callTool(t, h, mcpToolRead, map[string]any{"operation": "getCustomers"}))
