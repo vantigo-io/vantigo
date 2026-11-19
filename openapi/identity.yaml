@@ -3533,6 +3533,345 @@ components:
             required:
                 - businessTimeZone
             type: object
+        BrandCheck:
+            properties:
+                background:
+                    type: string
+                foreground:
+                    type: string
+                pair:
+                    enum:
+                        - filled
+                        - filledHover
+                        - linkPage
+                        - linkCard
+                        - linkTint
+                    type: string
+                pass:
+                    type: boolean
+                ratio:
+                    format: double
+                    type: number
+                scheme:
+                    enum:
+                        - light
+                        - dark
+                    type: string
+            required:
+                - pair
+                - scheme
+                - foreground
+                - background
+                - ratio
+                - pass
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        BrandListResponse:
+            properties:
+                items:
+                    items:
+                        $ref: '#/components/schemas/BrandSummary'
+                    type: array
+            required:
+                - items
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        BrandLogo:
+            properties:
+                contentType:
+                    enum:
+                        - image/png
+                        - image/jpeg
+                    type: string
+                sha256:
+                    type: string
+            required:
+                - sha256
+                - contentType
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        BrandLogoUrls:
+            description: The URLs of a version's logos, by slot; a slot with no logo is absent.
+            properties:
+                icon:
+                    type: string
+                mark_dark:
+                    type: string
+                mark_light:
+                    type: string
+                wordmark:
+                    type: string
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        BrandLogos:
+            properties:
+                icon:
+                    $ref: '#/components/schemas/BrandLogo'
+                mark_dark:
+                    $ref: '#/components/schemas/BrandLogo'
+                mark_light:
+                    $ref: '#/components/schemas/BrandLogo'
+                wordmark:
+                    $ref: '#/components/schemas/BrandLogo'
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        BrandResponse:
+            properties:
+                checks:
+                    description: The contrast checks of the version being edited, light then dark.
+                    items:
+                        $ref: '#/components/schemas/BrandCheck'
+                    type: array
+                draft:
+                    allOf:
+                        - $ref: '#/components/schemas/BrandVersion'
+                    nullable: true
+                id:
+                    format: uuid
+                    type: string
+                importNotice:
+                    description: Why a logo could not be imported from APP_LOGO_URL, when it could not.
+                    nullable: true
+                    type: string
+                isDefault:
+                    type: boolean
+                logoStorageAvailable:
+                    description: Whether this installation has an object store, so logos can be uploaded.
+                    type: boolean
+                published:
+                    allOf:
+                        - $ref: '#/components/schemas/BrandVersion'
+                    nullable: true
+                publishedVersion:
+                    format: int32
+                    type: integer
+                revision:
+                    format: int32
+                    type: integer
+                state:
+                    enum:
+                        - draft
+                        - published
+                        - archived
+                    type: string
+                suggestedPrimary:
+                    description: The nearest primary that passes every check, when the version being edited fails; absent otherwise.
+                    nullable: true
+                    type: string
+            required:
+                - id
+                - isDefault
+                - state
+                - revision
+                - publishedVersion
+                - published
+                - draft
+                - checks
+                - logoStorageAvailable
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        BrandSchemeTokens:
+            properties:
+                derived:
+                    additionalProperties:
+                        type: string
+                    description: The variables Mantine derives from the shades, as ready CSS variable values.
+                    type: object
+                filledText:
+                    type: string
+                link:
+                    type: string
+                shades:
+                    items:
+                        type: string
+                    maxItems: 10
+                    minItems: 10
+                    type: array
+                subtleBg:
+                    type: string
+            required:
+                - shades
+                - filledText
+                - link
+                - subtleBg
+                - derived
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        BrandSummary:
+            properties:
+                hasDraft:
+                    type: boolean
+                id:
+                    format: uuid
+                    type: string
+                isDefault:
+                    type: boolean
+                name:
+                    type: string
+                primary:
+                    type: string
+                publishedVersion:
+                    format: int32
+                    type: integer
+                revision:
+                    format: int32
+                    type: integer
+                state:
+                    enum:
+                        - draft
+                        - published
+                        - archived
+                    type: string
+                title:
+                    type: string
+            required:
+                - id
+                - name
+                - title
+                - primary
+                - isDefault
+                - state
+                - hasDraft
+                - publishedVersion
+                - revision
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        BrandSupport:
+            properties:
+                email:
+                    type: string
+                phone:
+                    type: string
+                url:
+                    type: string
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        BrandTokens:
+            properties:
+                dark:
+                    $ref: '#/components/schemas/BrandSchemeTokens'
+                light:
+                    $ref: '#/components/schemas/BrandSchemeTokens'
+                radius:
+                    description: The value of --mantine-radius-default.
+                    type: string
+            required:
+                - light
+                - dark
+                - radius
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        BrandUpdateRequest:
+            additionalProperties: true
+            description: A brand's inputs. Any other member, tokens and shades included, is refused 400.
+            properties:
+                name:
+                    maxLength: 100
+                    minLength: 1
+                    type: string
+                primary:
+                    description: 'The primary colour, as #rrggbb.'
+                    type: string
+                radius:
+                    enum:
+                        - xs
+                        - sm
+                        - md
+                        - lg
+                        - xl
+                    type: string
+                support:
+                    $ref: '#/components/schemas/BrandSupport'
+                title:
+                    description: The product name in the tab, the shell header and the sign-in page; defaults to the name.
+                    maxLength: 60
+                    type: string
+            required:
+                - name
+                - primary
+                - radius
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        BrandVersion:
+            properties:
+                algorithm:
+                    format: int32
+                    type: integer
+                logos:
+                    $ref: '#/components/schemas/BrandLogos'
+                name:
+                    type: string
+                primary:
+                    type: string
+                radius:
+                    enum:
+                        - xs
+                        - sm
+                        - md
+                        - lg
+                        - xl
+                    type: string
+                support:
+                    $ref: '#/components/schemas/BrandSupport'
+                title:
+                    type: string
+                tokens:
+                    $ref: '#/components/schemas/BrandTokens'
+            required:
+                - name
+                - title
+                - primary
+                - radius
+                - support
+                - logos
+                - algorithm
+                - tokens
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        ResolvedBrand:
+            description: The brand a person sees, in the versioned payload of brands design B36.
+            properties:
+                algorithm:
+                    format: int32
+                    type: integer
+                brandId:
+                    format: uuid
+                    type: string
+                logos:
+                    $ref: '#/components/schemas/BrandLogoUrls'
+                name:
+                    type: string
+                source:
+                    enum:
+                        - default
+                        - preview
+                    type: string
+                support:
+                    $ref: '#/components/schemas/BrandSupport'
+                title:
+                    type: string
+                tokens:
+                    $ref: '#/components/schemas/BrandTokens'
+                v:
+                    format: int32
+                    type: integer
+                version:
+                    description: The cache key of the payload.
+                    type: string
+            required:
+                - v
+                - algorithm
+                - brandId
+                - version
+                - name
+                - title
+                - tokens
+                - logos
+                - support
+                - source
+            type: object
+            x-vantigo-source: Vantigo.Identity
+
 info:
     title: Vantigo Identity API
     version: "1"
@@ -5802,6 +6141,569 @@ paths:
                 - Authentication
             x-vantigo-access: anonymous
             x-vantigo-api: never
+    /api/v1/identity/brand:
+        get:
+            description: 'The brand the signed-in person sees (brands design B13), in the versioned payload of B36: the name, the title, the generated tokens for both colour schemes (the ten shades, the filled-text colour and the variables Mantine derives), the radius, the logo URLs and the support contacts. Until brands are assigned by rules (a later delivery) everyone sees the default brand. A holder of identity:brands may add preview={brandId} to get that brand''s pending draft instead, for "preview as me"; anyone else is refused 403. The answer is private and carries an ETag.'
+            operationId: getIdentityBrand
+            parameters:
+                - description: A brand id to preview its draft (identity:brands).
+                  in: query
+                  name: preview
+                  schema:
+                    format: uuid
+                    type: string
+                - description: The ETag a client holds; when it is the current one the answer is a bare 304.
+                  in: header
+                  name: If-None-Match
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ResolvedBrand'
+                    description: OK
+                "304":
+                    description: Not Modified - If-None-Match names the current payload.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden - preview without identity:brands.
+                "404":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Not Found - preview names no brand.
+            summary: 'Get my brand'
+            tags:
+                - Brands
+            x-vantigo-access: session
+            x-vantigo-api: never
+    /api/v1/identity/brand-assets/{file}:
+        get:
+            description: 'A brand''s logo file by the hash of its bytes (brands design B15): anonymous, content-addressed, served immutable with a long max-age, never sniffed and rate-limited per address. It answers only for an asset a published brand names; any other hash, an unpublished draft''s logo included, is a 404.'
+            operationId: getIdentityBrandAssetsByFile
+            parameters:
+                - description: The logo's SHA-256 in lower-case hex and its extension, png or jpg.
+                  in: path
+                  name: file
+                  required: true
+                  schema:
+                    pattern: ^[0-9a-f]{64}\.(png|jpg)$
+                    type: string
+            responses:
+                "200":
+                    content:
+                        image/jpeg:
+                            schema:
+                                format: binary
+                                type: string
+                        image/png:
+                            schema:
+                                format: binary
+                                type: string
+                    description: OK
+                "404":
+                    description: Not Found - no published brand names this asset. The body is empty.
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
+            summary: 'Get a published brand logo'
+            tags:
+                - Brands
+            x-vantigo-access: anonymous
+            x-vantigo-api: never
+    /api/v1/identity/brand.css:
+        get:
+            description: 'The brand as CSS custom properties (brands design B16): the ten shades, the derived Mantine variables for both colour schemes and the radius, built only from generated values. It is linked render-blocking from the document so the first paint is right. Without a session it is the default brand; with a valid session cookie it is the person''s own brand. Answers carry an ETag and Vary: Cookie; with a session they are private, no-cache.'
+            operationId: getIdentityBrandCss
+            parameters:
+                - description: The ETag a client holds; when it is the current one the answer is a bare 304.
+                  in: header
+                  name: If-None-Match
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        text/css:
+                            schema:
+                                type: string
+                    description: OK
+                "304":
+                    description: Not Modified - If-None-Match names the current stylesheet.
+            summary: 'Get the brand stylesheet'
+            tags:
+                - Brands
+            x-vantigo-access: anonymous
+            x-vantigo-api: never
+    /api/v1/identity/brand/public:
+        get:
+            description: 'The look of the default brand for the pages shown before sign-in (brands design B17): setup, sign-in, password recovery, accepting an invitation and the signed-out screen. Anonymous, cached for 60 seconds, rate-limited per address. It never carries more than the brand''s public look.'
+            operationId: getIdentityBrandPublic
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ResolvedBrand'
+                    description: OK
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
+            summary: 'Get the public brand'
+            tags:
+                - Brands
+            x-vantigo-access: anonymous
+            x-vantigo-api: never
+    /api/v1/identity/brands:
+        get:
+            description: 'The workspace''s brands (brands design B21), the default first. In this delivery there is exactly one, the default brand.'
+            operationId: getIdentityBrands
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/BrandListResponse'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: 'List the brands'
+            tags:
+                - Brands
+            x-vantigo-access: permission:identity:brands
+            x-vantigo-api: never
+            x-vantigo-assistant: never
+    /api/v1/identity/brands/{id}:
+        get:
+            description: 'One brand with its published version, its pending draft, and the contrast checks (brands design B4) and the nearest passing primary for the version being edited (the draft, else the published one).'
+            operationId: getIdentityBrandsById
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/BrandResponse'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+            summary: 'Get a brand'
+            tags:
+                - Brands
+            x-vantigo-access: permission:identity:brands
+            x-vantigo-api: never
+            x-vantigo-assistant: never
+        put:
+            description: 'Writes the brand''s pending draft (brands design B1, B20, B37) from its inputs: the name, the title, one primary colour as #rrggbb, the radius and the support contacts; the published version is untouched until a publish. Every generated value (the ten shades and the rest of the tokens) is recomputed on the server; a body that carries tokens, shades or any other field is a 400 invalid_request. The logos are set through their own endpoints. A draft may be saved while its colours fail the contrast checks. Audited brand.updated.'
+            operationId: putIdentityBrandsById
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+                - description: The brand's revision it was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 stale_revision.
+                  in: header
+                  name: If-Match
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            allOf:
+                                - $ref: '#/components/schemas/BrandUpdateRequest'
+                            nullable: true
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/BrandResponse'
+                    description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Bad Request - invalid_request, a field the body may not carry, or an If-Match that is not a revision.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Conflict - stale_revision, the brand has changed since If-Match.
+                "422":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unprocessable Entity - brand_primary_range (the primary's lightness is outside 0.35 to 0.85), brand_support_invalid (a support contact is not a plain address, a tel-safe phone or an http(s) or same-origin URL; fields names it).
+            summary: 'Save a brand''s draft'
+            tags:
+                - Brands
+            x-vantigo-access: permission:identity:brands
+            x-vantigo-api: never
+            x-vantigo-assistant: never
+    /api/v1/identity/brands/{id}/discard-draft:
+        post:
+            description: 'Drops the pending version; the published version is what is left (brands design B20). Audited brand.updated.'
+            operationId: postIdentityBrandsByIdDiscardDraft
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+                - description: The brand's revision it was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 stale_revision.
+                  in: header
+                  name: If-Match
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/BrandResponse'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Conflict - stale_revision, or no_draft when there is nothing to discard.
+            summary: 'Discard a brand''s draft'
+            tags:
+                - Brands
+            x-vantigo-access: permission:identity:brands
+            x-vantigo-api: never
+            x-vantigo-assistant: never
+    /api/v1/identity/brands/{id}/logos/{slot}:
+        delete:
+            description: 'Clears one logo slot in the brand''s draft (brands design B6); the stored object is kept, since a document may name it. Audited brand.logo_removed.'
+            operationId: deleteIdentityBrandsByIdLogosBySlot
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+                - in: path
+                  name: slot
+                  required: true
+                  schema:
+                    enum:
+                        - mark_light
+                        - mark_dark
+                        - icon
+                        - wordmark
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/BrandResponse'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+            summary: 'Remove a brand logo from the draft'
+            tags:
+                - Brands
+            x-vantigo-access: permission:identity:brands
+            x-vantigo-api: never
+            x-vantigo-assistant: never
+        get:
+            description: 'A logo as stored (brands design B6, B15), streamed to a holder of identity:brands: the published one, or with draft=true the pending one, so the editor can show an uploaded logo before it is published. Never sniffed; private, revalidated.'
+            operationId: getIdentityBrandsByIdLogosBySlot
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+                - in: path
+                  name: slot
+                  required: true
+                  schema:
+                    enum:
+                        - mark_light
+                        - mark_dark
+                        - icon
+                        - wordmark
+                    type: string
+                - description: True to read the pending (draft) logo instead of the published one.
+                  in: query
+                  name: draft
+                  schema:
+                    type: boolean
+            responses:
+                "200":
+                    content:
+                        image/jpeg:
+                            schema:
+                                format: binary
+                                type: string
+                        image/png:
+                            schema:
+                                format: binary
+                                type: string
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found - no such brand or no logo in the slot. The body is empty.
+                "503":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Service Unavailable - storage_unavailable, the object store could not be read.
+            summary: 'Get a brand logo'
+            tags:
+                - Brands
+            x-vantigo-access: permission:identity:brands
+            x-vantigo-api: never
+            x-vantigo-assistant: never
+        put:
+            description: 'Sets one logo slot in the brand''s draft (brands design B6): a PNG or JPEG in the multipart field file, its own bytes deciding its type, at most 512 KiB, 16 to 2,000 pixels, metadata removed by re-encoding. The icon must be square within 5 %. The published version is never touched. Audited brand.logo_set.'
+            operationId: putIdentityBrandsByIdLogosBySlot
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+                - in: path
+                  name: slot
+                  required: true
+                  schema:
+                    enum:
+                        - mark_light
+                        - mark_dark
+                        - icon
+                        - wordmark
+                    type: string
+            requestBody:
+                content:
+                    multipart/form-data:
+                        schema:
+                            properties:
+                                file:
+                                    format: binary
+                                    type: string
+                            required:
+                                - file
+                            type: object
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/BrandResponse'
+                    description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Bad Request - logo_unsupported_type, logo_too_large, logo_too_wide, logo_too_small, logo_invalid or logo_not_square.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "503":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Service Unavailable - storage_unavailable, this installation has no object store or it could not be written.
+            summary: 'Set a brand logo in the draft'
+            tags:
+                - Brands
+            x-vantigo-access: permission:identity:brands
+            x-vantigo-api: never
+            x-vantigo-assistant: never
+    /api/v1/identity/brands/{id}/publish:
+        post:
+            description: 'Makes the draft the published version and bumps its version (brands design B20). Refused 422 brand_contrast, naming the failing pairs (B4), while any colour pair is below AA 4.5:1 in either colour scheme. Audited brand.published.'
+            operationId: postIdentityBrandsByIdPublish
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+                - description: The brand's revision it was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 stale_revision.
+                  in: header
+                  name: If-Match
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/BrandResponse'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Conflict - stale_revision, or no_draft when there is nothing to publish.
+                "422":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unprocessable Entity - brand_contrast (fields names the failing pairs) or brand_primary_range.
+            summary: 'Publish a brand''s draft'
+            tags:
+                - Brands
+            x-vantigo-access: permission:identity:brands
+            x-vantigo-api: never
+            x-vantigo-assistant: never
     /api/v1/identity/integrations:
         get:
             description: 'Every integration (API access design K21), archived ones last: its status, its roles, the number of keys in force, the nearest expiry among them and when any of its keys was last used.'

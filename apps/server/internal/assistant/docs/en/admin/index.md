@@ -29,6 +29,9 @@ application.
   access**, gives it custom roles and makes API keys for it — each with an expiry, and
   optionally narrowed, read-only or limited to networks — then rolls or revokes them. It needs
   no setting of its own; the `identity.api-keys` worker audits the keys' expiry.
+- **Branding.** [Branding](/en/admin/branding/) is the workspace's name, colour and logos,
+  edited under **Workspace admin › Brand** with a draft you can preview and a publish step,
+  and the one-time import of `APP_TITLE`, `APP_LOGO_URL` and `APP_SUPPORT_*` into it.
 - **Security.** [Transport security and browser hardening](/en/admin/transport-security/)
   walks through https, PostgreSQL TLS, SMTP TLS, HSTS, host filtering and the content
   security policy, and what each choice costs.

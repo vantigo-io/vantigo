@@ -517,11 +517,6 @@ func serve(ctx context.Context, logger *slog.Logger, cfg *config.Config, ln net.
 	var apiRunners []module.Runner
 	if withAPI {
 		assets := web.Assets()
-		index, err := web.NewIndex(assets, cfg.BasePath, cfg.Branding, cfg.Modules)
-		if err != nil {
-			logger.Error("startup failed", "error", err)
-			return 1
-		}
 
 		// Every module this binary knows is passed to Compose, which keeps
 		// identity — always mounted, never listed in MODULES — plus whichever
@@ -548,6 +543,26 @@ func serve(ctx context.Context, logger *slog.Logger, cfg *config.Config, ln net.
 		// treatment as opening the pool above: context.WithoutCancel(ctx), so a
 		// SIGTERM during boot cannot leave the bootstrap grant half-applied.
 		if err := identity.RunStartup(context.WithoutCancel(ctx), deps); err != nil {
+			logger.Error("startup failed", "error", err)
+			return 1
+		}
+
+		// The index is templated once the API is composed, because what it
+		// injects depends on the default brand: the environment's branding
+		// stays honoured until the brand has imported it, and is dropped from
+		// the page once it has (brands design B17, B30).
+		imported, err := identity.BrandingImported(context.WithoutCancel(ctx), deps)
+		if err != nil {
+			logger.Error("startup failed", "error", err)
+			return 1
+		}
+		var index *web.Index
+		if imported {
+			index, err = web.NewImportedIndex(assets, cfg.BasePath, cfg.Modules)
+		} else {
+			index, err = web.NewIndex(assets, cfg.BasePath, cfg.Branding, cfg.Modules)
+		}
+		if err != nil {
 			logger.Error("startup failed", "error", err)
 			return 1
 		}

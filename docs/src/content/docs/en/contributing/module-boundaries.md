@@ -1589,7 +1589,7 @@ lag, never what must refuse — go through the platform's domain-events outbox,
       behind a `permission:` or `anonymous` rule, and `read` only on a `POST`.
       `apps/server/internal/openapi/testdata/api-marks.txt` pins every `never` and `read`
       operation, so a change to what a key may call shows in review; an Owner's screens,
-      such as the integrations' keys, webhook endpoints and their delivery log, are among them. Mark `never` what a
+      such as the integrations' keys, webhook endpoints and their delivery log, and the brand editor's operations (`identity:brands` is never an API key's), are among them. Mark `never` what a
       server-side client cannot use or must not: a browser flow (sign-in, an OAuth connect
       or callback), a provider's webhook, a token-in-URL page, a handler that needs a
       person's `SessionID`, and an operation whose queued work later runs as its creator

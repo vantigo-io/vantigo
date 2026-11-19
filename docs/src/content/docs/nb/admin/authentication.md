@@ -1151,6 +1151,26 @@ Alle policyer unntatt `login-attempts`, `StationPairingGlobal`, `station-operato
 derfor `TRUSTED_PROXY_HOPS` og `TRUSTED_PROXY_CIDRS` betyr noe bak en proxy: setter du
 dem feil, deler alle forespørsler én bøtte, eller en klient velger sin egen.
 
+## Merkevarer
+
+Identitet lagrer arbeidsområdets merkevare (i dag standardmerkevaren): tabellene `identity.brands`
+og `identity.brand_logos`, og tillatelsen `identity:brands` («Administrer merkevare», i kategorien
+Administrasjon, **kan delegeres**; en Owner har den implisitt og ingen API-nøkkel har den noen
+gang). Den lar en person opprette og redigere merkevaren, laste opp logoene, publisere den og
+forhåndsvise den; den styrer ikke lesing av egen merkevare, som alle innloggede kan. Hvordan en
+merkevare redigeres og hva som sjekkes står i [Merkevare](/nb/admin/branding/).
+
+| Operasjon | Tilgang |
+| --- | --- |
+| `GET /api/v1/identity/brand` (den innloggedes merkevare, `?preview={brandId}` for et utkast) | en økt; en forhåndsvisning krever `identity:brands` |
+| `GET /api/v1/identity/brand/public`, `GET /api/v1/identity/brand.css`, `GET /api/v1/identity/brand-assets/{sha256}.{png\|jpg}` | anonym (`brand.css` leser øktinformasjonskapselen når det finnes en); begrenset per adresse |
+| `GET /brands`, `GET`/`PUT /brands/{id}`, `POST /brands/{id}/publish`, `POST /brands/{id}/discard-draft`, `PUT`/`DELETE`/`GET /brands/{id}/logos/{slot}` | `identity:brands` |
+
+Hver skriving revideres i transaksjonen som gjør den, som `brand.updated`, `brand.published`,
+`brand.logo_set` og `brand.logo_removed`, med navn, versjoner og revisjoner og aldri byte av en
+logo. Tellerne `vantigo.identity.brand.css_requests`, `.public_lookups`, `.publishes` og
+`.imports` eksporteres sammen med de andre målingene.
+
 ## Nettbrettstasjoner i verkstedet
 
 En **nettbrettstasjon** er et delt nettbrett i verkstedet (Produksjon, fase 2). Den er en registrert
@@ -1635,7 +1655,7 @@ importen; neste utgivelse avviser dem ved oppstart. Se
 | `ENERGY_SPOT_PRICE_SERVICE_URL` | Den delte spotpristjenestens basis-URL — `http://vantigo-spotprices:8080` på våre verter. Satt slår den på spotprisjobben med tjenesten som kilde: den kopierer prisene for hvert prisområde i bruk eller som tjenesten følger, fra fjorten dager tilbake til i morgen, og historikken deres. En absolutt `http`- eller `https`-URL uten bruker, sti, spørring eller fragment; en `http`-URL kobles bare til en privat adresse ([Transportsikkerhet](/nb/admin/transport-security/#unntaket-for-private-nettverk)). **Én kilde per installasjon**: satt sammen med `ENERGY_SPOT_PRICE_FEED_ENABLED=1` stopper den oppstarten («set one spot price source») ([Spot prices](/en/reference/energy/#the-sources)) | ikke satt |
 | `ENERGY_SPOT_PRICE_SERVICE_KEY` | Installasjonens bærernøkkel (bearer) for spotpristjenesten. Påkrevd med `ENERGY_SPOT_PRICE_SERVICE_URL` og avvist uten den; høyst 200 byte med skrivbare tegn uten mellomrom. En hemmelighet: maskert overalt der konfigurasjonen skrives ut, og aldri logget | ikke satt |
 | `ENERGY_SPOT_PRICE_HISTORY_FROM` | Den eldste dagen spotpristjenestens historikk kopieres fra, `YYYY-MM-DD`; alt annet stopper oppstarten. Ikke satt kopieres alt tjenesten har for hvert område | ikke satt |
-| `APP_TITLE`, `APP_LOGO_URL`, `APP_SUPPORT_EMAIL`, `APP_SUPPORT_PHONE`, `APP_SUPPORT_URL` | Profilering av SPA-en | ikke satt |
+| `APP_TITLE`, `APP_LOGO_URL`, `APP_SUPPORT_EMAIL`, `APP_SUPPORT_PHONE`, `APP_SUPPORT_URL` | Profilering av SPA-en, importert én gang inn i standardmerkevaren ([Merkevare](/nb/admin/branding/)) | ikke satt |
 
 Peppol-oppslaget behandler NXDOMAIN og NOERROR-uten-NAPTR-poster som det samme
 endelige «ikke registrert»-svaret ([Peppol-oppslag](/en/reference/customers/#peppol-lookup)),

@@ -45,6 +45,12 @@ var (
 	// directory, and a debounced picker asks once per pause in typing;
 	// one read of the matches asks it for every user not yet connected — a
 	// review an Owner opens, not a list they refresh.
+	// The brand's anonymous operations (brands design B15, B16, B17): the
+	// public look, the stylesheet every page load links, and the logo files.
+	policyBrandPublic = ratelimit.Policy{Name: "BrandPublic", Limit: 60, Window: time.Minute, Message: authRateLimitMessage}
+	policyBrandCSS    = ratelimit.Policy{Name: "BrandCSS", Limit: 300, Window: time.Minute, Message: authRateLimitMessage}
+	policyBrandAssets = ratelimit.Policy{Name: "BrandAssets", Limit: 600, Window: time.Minute, Message: authRateLimitMessage}
+
 	policyDirectorySearch  = ratelimit.Policy{Name: "DirectorySearch", Limit: 60, Window: time.Minute, Message: authRateLimitMessage}
 	policyDirectoryMatches = ratelimit.Policy{Name: "DirectoryMatches", Limit: 6, Window: time.Minute, Message: authRateLimitMessage}
 )
@@ -97,6 +103,10 @@ var limits = map[string]ratelimit.Policy{
 	"getIdentityOwnerSsoDirectoryMatches":     policyDirectoryMatches,
 	"getIdentityOwnerAiSettings":              policyUserManagement,
 	"putIdentityOwnerAiTasksByKey":            policyUserManagement,
+
+	"getIdentityBrandPublic":       policyBrandPublic,
+	"getIdentityBrandCss":          policyBrandCSS,
+	"getIdentityBrandAssetsByFile": policyBrandAssets,
 
 	"getIdentityOwnerInvitations":            policyInvitations,
 	"postIdentityOwnerInvitations":           policyInvitations,
@@ -174,6 +184,14 @@ func Module(a *Access) module.Module {
 			Category:    "Administration",
 			Sensitive:   true,
 			Delegable:   false,
+		}, {
+			// B31: delegable, and an Owner holds it implicitly.
+			Key:         permBrands,
+			Display:     "Manage brands",
+			Description: "Create and edit brands, their logos, assignment rules and campaigns.",
+			Category:    "Administration",
+			Sensitive:   false,
+			Delegable:   true,
 		}},
 		Mount:    func(d module.Deps) (http.Handler, error) { return mount(a, d) },
 		Users:    func(d module.Deps) contracts.UserDirectory { return newUserDirectory(a, d) },
@@ -192,6 +210,8 @@ func Module(a *Access) module.Module {
 		// The webhooks' fan-out, on the outbox (outgoing webhooks design W14,
 		// W39).
 		EventHandlers: webhookEventHandlers,
+		// The default brand's logo import runs off the boot path (B30).
+		APIRunners: func(d module.Deps) []module.Runner { return brandImportRunners(a, d) },
 	}
 }
 
@@ -245,6 +265,12 @@ func mount(a *Access, d module.Deps) (http.Handler, error) {
 	// COMMUNICATIONS_AI_MODEL becomes Communications' tasks' model while no
 	// task has a choice (ai_models_import.go).
 	if err := importAITaskModelsFromEnvironment(ctx, d, a.aiModelsFor(d)); err != nil {
+		return nil, err
+	}
+	// The default brand: created here when there is none, with the
+	// environment's branding (brand_import.go). Only the row; its logo is
+	// fetched by a runner after the API is composed.
+	if err := importBrandingOnMount(ctx, d, a.brandMetricsFor()); err != nil {
 		return nil, err
 	}
 	strict := gen.NewStrictHandlerWithOptions(srv, []gen.StrictMiddlewareFunc{accessConflictFilter}, gen.StrictHTTPServerOptions{

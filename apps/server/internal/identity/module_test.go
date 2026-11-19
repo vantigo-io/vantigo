@@ -34,11 +34,15 @@ func TestModule_ComposesAndDemandsASession(t *testing.T) {
 	}
 }
 
-// TestModule_DeclaresIdentityManage pins the module's name and its one
-// catalog permission, as the .NET host registered it (HOST/Program.cs:203-206).
+// TestModule_DeclaresIdentityManage pins the module's name and its catalog
+// permissions: identity:manage, as the .NET host registered it
+// (HOST/Program.cs:203-206), and the delegable identity:brands (brands design B31).
 func TestModule_DeclaresIdentityManage(t *testing.T) {
 	m := identity.Module(nil)
-	want := []contracts.Permission{{Key: "identity:manage", Display: "Manage identity", Description: "Manage accounts, roles, and access.", Category: "Administration", Sensitive: true, Delegable: false}}
+	want := []contracts.Permission{
+		{Key: "identity:manage", Display: "Manage identity", Description: "Manage accounts, roles, and access.", Category: "Administration", Sensitive: true, Delegable: false},
+		{Key: "identity:brands", Display: "Manage brands", Description: "Create and edit brands, their logos, assignment rules and campaigns.", Category: "Administration", Sensitive: false, Delegable: true},
+	}
 	if m.Name != "identity" || !slices.Equal(m.Permissions, want) {
 		t.Errorf("Module = {Name: %q, Permissions: %+v}", m.Name, m.Permissions)
 	}

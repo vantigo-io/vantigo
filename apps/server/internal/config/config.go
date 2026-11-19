@@ -1817,7 +1817,7 @@ func branding(p *problems, env map[string]string) Branding {
 		SupportURL:   linkField(p, env, "APP_SUPPORT_URL"),
 	}
 	if v := strings.TrimSpace(env["APP_SUPPORT_EMAIL"]); v != "" {
-		if a, err := mail.ParseAddress(v); err != nil || a.Address != v {
+		if !ValidPlainAddress(v) {
 			p.add("APP_SUPPORT_EMAIL", "must be a plain email address such as support@example.com")
 		} else {
 			b.SupportEmail = v
@@ -1826,19 +1826,33 @@ func branding(p *problems, env map[string]string) Branding {
 	return b
 }
 
-// linkField accepts an absolute http(s) URL or a same-origin path. Anything
-// else (javascript:, protocol-relative //host, or /\host, which a browser
-// reads as //host) would end up in an href or src the SPA renders.
+// ValidLink reports whether v is a value an href or src may carry: an absolute
+// http(s) URL or a same-origin path. Anything else (javascript:,
+// protocol-relative //host, or /\host, which a browser reads as //host) would
+// end up in a link the SPA renders. Brands' support contacts use the same rule
+// (brands design B37).
+func ValidLink(v string) bool {
+	if strings.HasPrefix(v, "/") && !strings.HasPrefix(v, "//") && !strings.HasPrefix(v, `/\`) {
+		return true
+	}
+	u, err := url.Parse(v)
+	return err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host != ""
+}
+
+// ValidPlainAddress reports whether v is a plain e-mail address: one that
+// equals its own parsed address, with no display name.
+func ValidPlainAddress(v string) bool {
+	a, err := mail.ParseAddress(v)
+	return err == nil && a.Address == v
+}
+
+// linkField accepts an absolute http(s) URL or a same-origin path (ValidLink).
 func linkField(p *problems, env map[string]string, field string) string {
 	v := strings.TrimSpace(env[field])
 	if v == "" {
 		return ""
 	}
-	if strings.HasPrefix(v, "/") && !strings.HasPrefix(v, "//") && !strings.HasPrefix(v, `/\`) {
-		return v
-	}
-	u, err := url.Parse(v)
-	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+	if !ValidLink(v) {
 		p.add(field, "must be an absolute http or https URL or a path starting with /")
 		return ""
 	}

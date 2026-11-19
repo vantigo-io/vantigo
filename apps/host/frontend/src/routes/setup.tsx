@@ -2,7 +2,7 @@ import { Alert, Anchor, Button, Card, Center, PasswordInput, Stack, Text, TextIn
 import { useForm } from "@mantine/form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { appConfig, appUrl, SupportContactLine, useI18n, vantigoTokens } from "@vantigo/frontend-shell";
+import { appUrl, SupportContactLine, useBrand, useI18n, vantigoTokens } from "@vantigo/frontend-shell";
 import { bootstrapAccount, fetchBootstrapStatus } from "../api/account-lifecycle";
 import { fetchSession, sessionQueryKey } from "../api/auth";
 import { showLifecycleFormError } from "../lib/lifecycle-form-errors";
@@ -11,6 +11,7 @@ import "../i18n";
 
 const SetupPage = () => {
   const { t } = useI18n("host");
+  const brand = useBrand();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const status = useQuery({ queryKey: ["auth", "bootstrap-status"], queryFn: fetchBootstrapStatus, retry: false });
@@ -44,7 +45,7 @@ const SetupPage = () => {
         <Card withBorder p="xl" maw={440} w="100%">
           <Stack>
             <Title order={2}>{t("auth.setupUnavailable")}</Title>
-            <Text c="dimmed">{t("auth.setupUnavailableDescription", { app: appConfig().title })}</Text>
+            <Text c="dimmed">{t("auth.setupUnavailableDescription", { app: brand.title })}</Text>
             <Button component={Link} to="/sign-in">
               {t("auth.goToSignIn")}
             </Button>
@@ -57,7 +58,7 @@ const SetupPage = () => {
       <Stack maw={460} w="100%" align="center">
         <Card withBorder shadow="sm" p="xl" w="100%">
           <Stack>
-            <Title order={2}>{t("auth.setupTitle", { app: appConfig().title })}</Title>
+            <Title order={2}>{t("auth.setupTitle", { app: brand.title })}</Title>
             <Text c="dimmed">{t("auth.setupDescription")}</Text>
             {mutation.error && <Alert color="red">{mutation.error.message}</Alert>}
             <form onSubmit={form.onSubmit((values) => mutation.mutate(values))}>

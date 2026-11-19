@@ -401,6 +401,12 @@ func seedDemoDataset(ctx context.Context, pool *pgxpool.Pool, logger *slog.Logge
 		return err
 	}
 
+	// The brand is applied on every run (it is idempotent), so an installation
+	// seeded before brands existed gets it too.
+	if err := seedDemoBrand(ctx, pool, logger, cfg); err != nil {
+		return fmt.Errorf("seed the demo brand: %w", err)
+	}
+
 	if skipped {
 		logger.Info("development seed already applied; skipping")
 		return nil

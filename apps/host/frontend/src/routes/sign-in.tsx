@@ -3,7 +3,7 @@ import { useForm } from "@mantine/form";
 import { IconAlertCircle } from "@tabler/icons-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
-import { appConfig, appUrl, SupportContactLine, useI18n, vantigoTokens } from "@vantigo/frontend-shell";
+import { appUrl, SupportContactLine, useBrand, useI18n, vantigoTokens } from "@vantigo/frontend-shell";
 import { useEffect, useState } from "react";
 import { isPasskeyClientError, loginWithPasskey } from "../api/account";
 import { completeTwoFactor, fetchOidcProvider } from "../api/account-lifecycle";
@@ -13,6 +13,7 @@ import "../i18n";
 
 const SignInPage = () => {
   const { t } = useI18n("host");
+  const brand = useBrand();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const search = Route.useSearch();
@@ -74,7 +75,7 @@ const SignInPage = () => {
           <Stack>
             <Title order={2}>{showingMfa ? t("auth.verifySignIn") : t("auth.welcomeBack")}</Title>
             <Text c="dimmed">
-              {showingMfa ? t("auth.authenticatorRecoveryCode") : t("auth.signInContinue", { app: appConfig().title })}
+              {showingMfa ? t("auth.authenticatorRecoveryCode") : t("auth.signInContinue", { app: brand.title })}
             </Text>
             {(login.error || verify.error || passkeyLogin.error || search.error) && (
               <Alert icon={<IconAlertCircle size={18} />} color="red">

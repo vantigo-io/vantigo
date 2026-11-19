@@ -171,7 +171,10 @@ the authoritative reference, and summarised in
 [Identity, authentication and deployment](/en/admin/authentication/). Workforce
 OIDC and SCIM provisioning are not among them: an Owner sets both on the **Single
 sign-on** card, and [SSO and SCIM operations](/en/admin/sso-scim/) has the procedures
-and the recovery.
+and the recovery. Nor are the application's name, colour and logos: `APP_TITLE`, `APP_LOGO_URL`
+and `APP_SUPPORT_*` are imported once into the default brand and edited under **Workspace admin ›
+Brand** from then on ([Branding](/en/admin/branding/)); remove them from `vantigo.env` once the
+import has run.
 
 ### The settings you must decide on
 
