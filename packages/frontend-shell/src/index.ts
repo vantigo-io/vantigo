@@ -3,6 +3,7 @@ export {
   type AccountMenuItem,
   type AccountMenuProps,
   type AccountMenuSection,
+  type BrandSwitcher,
   type ShellUser,
 } from "./account-menu";
 export {
@@ -27,6 +28,12 @@ export {
   routeMatches,
 } from "./assist-targets";
 export {
+  BRAND_REFETCH_JITTER_MS,
+  BRAND_TOPIC,
+  BrandLiveSync,
+  type BrandLiveSyncProps,
+} from "./brand/live-sync";
+export {
   BRAND_MIRROR_KEY,
   type BrandMirror,
   clearBrandMirror,
@@ -37,6 +44,7 @@ export { BrandPreviewBanner } from "./brand/preview-banner";
 export {
   BRAND_PREVIEW_EVENT,
   BRAND_PREVIEW_KEY,
+  BRAND_REFRESH_EVENT,
   type Brand,
   BrandedMantineProvider,
   type BrandMark,
@@ -44,6 +52,7 @@ export {
   type BrandProviderProps,
   brandFromDocument,
   getBrandPreview,
+  refreshBrand,
   setBrandPreview,
   useBrand,
   useBrandMark,

@@ -12,6 +12,14 @@ export const BRAND_PREVIEW_KEY = "vantigo-brand-preview";
 /** Fired on `window` when the preview changes, so the provider asks again. */
 export const BRAND_PREVIEW_EVENT = "vantigo:brand-preview";
 
+/** Fired on `window` to make the provider ask the server for the brand again (a live event, a choice). */
+export const BRAND_REFRESH_EVENT = "vantigo:brand-refresh";
+
+/** Asks the provider to fetch the brand again. */
+export function refreshBrand(): void {
+  window.dispatchEvent(new Event(BRAND_REFRESH_EVENT));
+}
+
 /** The brand being previewed in this tab, or null. */
 export function getBrandPreview(): string | null {
   try {
@@ -156,9 +164,13 @@ export function BrandProvider({ userId, sessionless = false, children }: BrandPr
   const [previewTick, setPreviewTick] = useState(0);
 
   useEffect(() => {
-    const onPreview = () => setPreviewTick((n) => n + 1);
-    window.addEventListener(BRAND_PREVIEW_EVENT, onPreview);
-    return () => window.removeEventListener(BRAND_PREVIEW_EVENT, onPreview);
+    const onAgain = () => setPreviewTick((n) => n + 1);
+    window.addEventListener(BRAND_PREVIEW_EVENT, onAgain);
+    window.addEventListener(BRAND_REFRESH_EVENT, onAgain);
+    return () => {
+      window.removeEventListener(BRAND_PREVIEW_EVENT, onAgain);
+      window.removeEventListener(BRAND_REFRESH_EVENT, onAgain);
+    };
   }, []);
 
   useEffect(() => {
@@ -190,7 +202,7 @@ export function BrandProvider({ userId, sessionless = false, children }: BrandPr
       if (cancelled || !result.payload) return;
       clearInlineBrand();
       setPayload(result.payload);
-      if (userId && result.payload.source === "default") writeBrandMirror(userId, result.payload);
+      if (userId && result.payload.source !== "preview") writeBrandMirror(userId, result.payload);
     })().catch(() => {
       // Offline or failed: the stylesheet, and the mirror behind it, keep the page right.
     });
