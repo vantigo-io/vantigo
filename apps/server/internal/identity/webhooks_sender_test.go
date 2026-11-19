@@ -808,15 +808,16 @@ func TestWebhookSender_FourInFlightPerEndpointAndTheRestGoOn(t *testing.T) {
 			t.Errorf("%s held %d at once, want 4", host, got)
 		}
 	}
-	// The fast endpoint's went roughly in creation order: the first pass
-	// sent its first two, at once.
-	firstTwo := map[string]bool{}
-	for _, r := range rc.requests("fast.example.com")[:2] {
-		firstTwo[r.header.Get("webhook-id")] = true
+	// Every one of the fast endpoint's ten went out, each once. Their order
+	// is not asserted: sends of one pass run concurrently, so the order in
+	// which the requests arrive is the scheduler's (W21 promises none).
+	sent := map[string]int{}
+	for _, r := range rc.requests("fast.example.com") {
+		sent[r.header.Get("webhook-id")]++
 	}
-	for _, id := range fastIDs[:2] {
-		if !firstTwo[msgID(id)] {
-			t.Errorf("the fast endpoint's first two messages %v lack %s", firstTwo, msgID(id))
+	for _, id := range fastIDs {
+		if sent[msgID(id)] != 1 {
+			t.Errorf("the fast endpoint's message %s was sent %d times, want once", msgID(id), sent[msgID(id)])
 		}
 	}
 	rc.release()
