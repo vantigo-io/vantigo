@@ -418,11 +418,14 @@ jobs:
           fi
           (cd "$base/apps/server" && go run ./cmd/vantigo openapi integrator) > "$RUNNER_TEMP/base.json"
           (cd apps/server && go run ./cmd/vantigo openapi integrator) > "$RUNNER_TEMP/head.json"
-          if oasdiff breaking "$RUNNER_TEMP/base.json" "$RUNNER_TEMP/head.json" --fail-on ERR; then
+          # tools/api/oasdiff-severity.txt lowers what reference/api-compatibility
+          # does not count as breaking — a value added to a response enum — to
+          # info, so the check holds pull requests to the written promise.
+          if oasdiff breaking "$RUNNER_TEMP/base.json" "$RUNNER_TEMP/head.json" --fail-on ERR --severity-levels tools/api/oasdiff-severity.txt; then
             echo "verdict=clean" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          oasdiff breaking "$RUNNER_TEMP/base.json" "$RUNNER_TEMP/head.json" --format json > "$RUNNER_TEMP/findings.json"
+          oasdiff breaking "$RUNNER_TEMP/base.json" "$RUNNER_TEMP/head.json" --severity-levels tools/api/oasdiff-severity.txt --format json > "$RUNNER_TEMP/findings.json"
           # The pull request's own commits: HEAD^2 is its head.
           git fetch --no-tags --deepen="$PR_COMMITS" origin
           bun run tools/api/breaking-check.ts "$RUNNER_TEMP/findings.json" "HEAD^1..HEAD^2" --output "$GITHUB_OUTPUT"
