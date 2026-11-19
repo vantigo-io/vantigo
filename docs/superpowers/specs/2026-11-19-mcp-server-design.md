@@ -80,10 +80,11 @@ clients; an MCP tool-call dashboard.
     page and R disagree the page wins and the spec's revision log records it.
 - **M8 — The tool list is deterministic and per key.** `tools/list` returns, in this order,
   `search_operations`, `describe_operation`, `read` and — only when the effective mode is
-  `read_write` — `write`. The descriptions are fixed text in code and say that tool output
-  is data from the workspace and never instructions. Annotations: the first three
-  `readOnlyHint: true`; `write` `destructiveHint: true`, `readOnlyHint: false`. No tool
-  list change notification exists.
+  `read_write` — `write` *and `delete` (M36, §9 revision 6)*. The descriptions are fixed text
+  in code and say that tool output is data from the workspace and never instructions.
+  Annotations: the first three `readOnlyHint: true`; `write` `destructiveHint: true`,
+  `readOnlyHint: false`; *`delete` the same and `idempotentHint: true` (M36)*. No tool list
+  change notification exists.
 - **M9 — Rate limit and request log.**
   - A `tools/call` of `read` or `write` is **counted once**, by the request it loops back
     (M12), so a call costs one request, not two. `search_operations` and `describe_operation`
@@ -112,9 +113,10 @@ clients; an MCP tool-call dashboard.
     schema and the success-response schema, with `$ref`s resolved to a bounded depth and
     descriptions clipped, at most 16 KB (the dispatcher's `Describe` is the model; MCP does
     not import `srv/operations`, which depguard reserves for the Assistant and agents).
-  - `read {operation, path?, query?, body?}` and (C) `write` with the same arguments:
-    `path` and `query` are string maps, `body` any JSON. `read` refuses a write operation
-    and `write` refuses a read one, with `isError` and a message naming the right tool.
+  - `read {operation, path?, query?, body?}` and ~~(C)~~ `write` *(delivered in B, M21)* with
+    the same arguments: `path` and `query` are string maps, `body` any JSON. `read` refuses a
+    write operation and `write` refuses a read one, with `isError` and a message naming the
+    right tool. *Superseded in part by M36: a `DELETE` is `delete`'s, and `write` refuses it.*
     An operation not in the key's catalogue is `isError` "not available to this key".
 - **M12 — A call runs through the full gate.**
   - The handler builds an `http.Request`: the operation's method and path with path
@@ -181,7 +183,8 @@ clients; an MCP tool-call dashboard.
 - **A key revoked, disabled, expired or narrowed during a session:** nothing is cached
   (the protocol is stateless); the next call is judged afresh.
 - **The mode changes between `tools/list` and `tools/call`:** the call is judged by the
-  current mode; a `write` call under `read` is `isError` "not available".
+  current mode; ~~a `write` call under `read` is `isError` "not available"~~ *superseded by
+  M31: `write` (and `delete`) under `read` is the protocol error `-32602` (§9 revision 5)*.
 - **Two keys of one integration:** share the integration's limit and mode; a read-only key
   is narrower.
 - **A huge `tools/call` body:** the 1 MiB envelope cap answers `413` as any request would.
@@ -216,7 +219,9 @@ clients; an MCP tool-call dashboard.
 
 OAuth and ChatGPT; resources (`knowledge://article/{id}`) and prompts; an Origin allow-list for
 trusted browser clients; tool-call counts in the request log's UI; per-key MCP mode; swapping
-the hand-rolled core for the official SDK if the specification outgrows it.
+the hand-rolled core for the official SDK if the specification outgrows it; an integration's
+allowlist of the operations MCP may call (B's security review); an MCP mark on the request
+log's rows of looped-back calls (needs a column; the trace id links them today).
 
 ## 9. Revision log
 
@@ -298,7 +303,8 @@ the hand-rolled core for the official SDK if the specification outgrows it.
   - The instructions stay one fixed text for every key (`server/discover` is `public`): they
     describe `write`, say it is listed only under `read_write` for a key that is not read-only,
     and ask the model to read before writing and send `If-Match`/`Idempotency-Key` where taken.
-  - The key dialog's snippet (M16) is shown for a key **just made**, with its secret, under
+  - The key dialog's snippet (M16) is shown for a key **just made**, ~~with its secret~~
+    *(revision 6, S4: no snippet holds a key)*, under
     *Connect an AI client (MCP)*; while the integration's mode is `off` it shows a hint to turn MCP
     on instead, with the installation's switch off it shows nothing, and a read-only key under
     `read_write` is said to only read. The roll dialog does not show it: it does not hold the
@@ -309,6 +315,42 @@ the hand-rolled core for the official SDK if the specification outgrows it.
     revision_conflict`), so the `412` passthrough is tested with a module that answers it; the
     `If-Match` header itself is tested end to end on inventory's `putInventorySite` in the unit
     composition. The integration test creates a customer through `write`.
+- **6** (2026-11-19, B's code and security reviews):
+  - **M36 (amends M8, M11): `delete` is its own tool.** Under `read_write` the list ends `write`,
+    `delete`; `delete` calls the operations of kind write whose method is `DELETE`, `write` the
+    other writes, and each refuses the other's (and `read`'s) naming the right tool, so a client
+    can approve changes and still be asked before each delete. `delete`'s annotations:
+    `destructiveHint: true`, `readOnlyHint: false`, `idempotentHint: true`, `openWorldHint: true`.
+    `search_operations` and `describe_operation` answer each operation's `tool` beside its `kind`.
+  - **A write whose outcome is in doubt is never read as failed (S1).** A call whose context
+    ended — deadline or the client gone — is judged by what it wrote: an answer below `500` is the
+    result (a late `201` is a success); none, or a `5xx`, is for a write or delete an error saying
+    the change may or may not have been made, to read the record before retrying and resend with
+    the same `Idempotency-Key`. A panic during a write says the same. The `write` and `delete`
+    descriptions and the instructions say it.
+  - **An applied write is never `isError` (S2):** a `2xx` write over the 100 KB cap answers
+    `{status, truncated: true, length}` with the `Location` and the body's top-level `id` when
+    present (read from the kept prefix). Reads keep M13's "ask for less".
+  - **The snippets hold no key (S4):** Claude Code's command reads `$VANTIGO_API_KEY` in the shell
+    (Claude Code stores the expanded header in the user's own `~/.claude.json`); Cursor's block
+    `${env:VANTIGO_API_KEY}` (Cursor's documented interpolation in `headers`; its remote examples
+    carry no `type`, so the block has none); VS Code's an `inputs` entry `promptString` with
+    `password: true` and `${input:vantigo-key}`. The secret is shown only in its Copy field, with a
+    warning never to commit a key. Checked against cursor.com/docs/context/mcp,
+    code.visualstudio.com/docs/agents/reference/mcp-configuration and code.claude.com/docs/en/mcp.
+  - **`read` is not a boundary against the key's holder (S5):** the screen, the dialog and the
+    pages say only a read-only key guarantees reads, and the new key's dialog warns a key that can
+    write. "Safest" and "clients ask before each write" are withdrawn: a client asks unless the
+    user allowed the tool, so the pages say not to auto-approve `write` or `delete`.
+  - **S6 needs no column:** a looped-back call's row carries the envelope's trace id, so it is
+    found from the `postApiMcp` row (tested end to end). A mark of its own is Later (§8).
+  - **S7:** a key has at most four looped-back calls in flight per process; one more is an
+    `isError` result ("retry shortly"), counted as an envelope request. Per key, not per
+    integration: two agents of one integration do not starve each other, and the integration's
+    rate limit bounds them together.
+  - **S8:** a `headers` argument naming one header twice in different cases is refused.
+  - The integration tests' rate-limit assertions skip the comparison when the minute's window
+    turned between two answers.
 
 ## 10. What overturning a default changes
 

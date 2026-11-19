@@ -240,10 +240,11 @@ attempts under **View**, and **Resend** for a message the application never proc
 The **MCP** section on an integration's **Overview** lets an AI client such as Claude Code
 connect with one of its keys. Choose the **MCP access** — **Off** (the default), **Read only**,
 or **Read and write**, which also lets the client create, change, delete and send — and copy the
-**MCP endpoint** and the connection it shows, putting the key where it says `vtg_…`. A key made
-while MCP is on shows the connection with the key already in it, under **Connect an AI client
-(MCP)**. Read only is the safest: an AI client acts on what it reads, and most clients ask you
-before each change.
+**MCP endpoint** and the connection it shows; it reads the key from `VANTIGO_API_KEY` (VS Code
+asks for it), so no key is written into a file. A key made while MCP is on shows the connection
+under **Connect an AI client (MCP)**. Read only limits what an AI client does through MCP; only a
+read-only key keeps the key itself from writing. A client asks before it runs a tool unless you
+have allowed it: do not auto-approve writes or deletes.
 
 The details — what a key can reach, the narrowing, read-only keys, networks, the rate limit,
 the answers a client gets, the request log, webhook endpoints, MCP and what to do when a key

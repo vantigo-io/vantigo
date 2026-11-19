@@ -69,7 +69,7 @@ installation. See [Trying the API at /api](/en/admin/api-access/#trying-the-api-
 An AI client that speaks the Model Context Protocol connects to `POST /api/mcp` with the same
 key, once an Owner has turned MCP on for the integration. It reaches the same operations through
 its tools — search, describe, read and, when the integration allows writing and the key is not
-read-only, write — every call judged, counted and logged as the REST request it makes. See the
+read-only, write and delete — every call judged, counted and logged as the REST request it makes. See the
 [MCP server](/en/reference/mcp/).
 
 ## Refusals

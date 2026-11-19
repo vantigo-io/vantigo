@@ -288,6 +288,12 @@ func TestMCP_AWriteRunsAsTheKey(t *testing.T) {
 	if want := []string{"postApiMcp", "postApiMcp", "postCustomers"}; !slices.Equal(ops, want) {
 		t.Errorf("logged %v, want %v", ops, want)
 	}
+	// The operation's row is found from the MCP request's by its trace id (S6).
+	if n := h.Count(t, `SELECT count(*) FROM identity.api_requests o JOIN identity.api_requests e
+		ON e.trace_id = o.trace_id AND e.operation_id = 'postApiMcp'
+		WHERE o.integration_id = $1 AND o.operation_id = 'postCustomers' AND o.trace_id <> ''`, integration); n != 1 {
+		t.Errorf("%d postCustomers rows share a trace id with an MCP request, want 1", n)
+	}
 
 	setMCPAccess(t, h, integration, "read")
 	if r := mcpCall(c, "tools/call", map[string]any{"name": "write", "arguments": map[string]any{"operation": "postCustomers", "body": map[string]any{"name": "Again AS"}}}); r.Status != http.StatusOK || mcpRPCError(r) != -32602 {

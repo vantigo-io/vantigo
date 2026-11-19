@@ -1,6 +1,6 @@
 ---
 title: "MCP server"
-description: "The MCP endpoint at /api/mcp: an integration's MCP setting and its operation, MCP_ENABLED, authentication with an API key, the two protocol eras and how a request is classified, the headers, the four tools and their arguments, the write tool and its destructive annotation, results and their limits, counting and the request log, the errors, examples, and what bounds an agent."
+description: "The MCP endpoint at /api/mcp: an integration's MCP setting and its operation, MCP_ENABLED, authentication with an API key, the two protocol eras and how a request is classified, the headers, the five tools and their arguments, the write and delete tools and their destructive annotation, a call whose outcome is in doubt, results and their limits, counting and the request log, the errors, examples, and what bounds an agent."
 sidebar:
   order: 4
 sources:
@@ -21,9 +21,9 @@ sources:
 Vantigo serves a [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) endpoint at
 `POST /api/mcp`. An AI client — Claude Code, Cursor, VS Code, n8n, an in-house agent — connects
 to it with one of an integration's [API keys](/en/reference/api-introduction/) and works with
-Vantigo through four tools: find an operation, describe it, call it to read, and — when the
-integration allows it — call it to write. It is the REST API in
-the form agents expect, and it grants nothing the key could not already do: every call runs as
+Vantigo through five tools: find an operation, describe it, call it to read, and — when the
+integration allows it — call it to write or to delete. It is the REST API in the form agents
+expect, and it grants nothing the key could not already do: every call runs as
 a request of the key's own through the same gate as REST.
 
 This page is the endpoint's contract, for a person writing or configuring a client. How an
@@ -37,11 +37,17 @@ Each integration has an **MCP access**, `identity.integrations.mcp_access`:
 | --- | --- |
 | `off` | Every key of the integration is refused with `403 mcp_not_enabled`. The default for every integration, new and existing |
 | `read` | The key may search, describe and call the operations of kind *read* it may call over REST |
-| `read_write` | As `read`, and the `write` tool calls the operations of kind *write* it may call over REST |
+| `read_write` | As `read`, and the `write` and `delete` tools call the operations of kind *write* it may call over REST |
 
 The effective mode of a request is the narrower of the setting and the key: a **read-only key**
 is `read` even when the integration is `read_write`. Nothing is cached: a change of the
 setting, a key revoked, disabled, expired or narrowed applies at the next request.
+
+**`read` limits MCP, not the key.** The setting decides what an AI client may call through
+`/api/mcp`; it does not change what the key is. A key that is not read-only, held by someone who
+has it, can still write over REST as far as the integration's roles allow. Only a **read-only
+key** guarantees reads, at the endpoint and everywhere else: under `read`, give the agent a
+read-only key.
 
 An Owner changes it with `PUT /api/v1/identity/integrations/{id}/mcp` and
 `{"mcpAccess": "off" | "read" | "read_write"}`, with `If-Match` carrying the integration's
@@ -124,7 +130,8 @@ it carries nothing about the key. `tools/list` varies by key and answers `cacheS
 with `ttlMs: 0`. `initialize` answers the negotiated `protocolVersion`, the same capabilities,
 `serverInfo` and the instructions. The instructions say what the tools do, to search before
 calling, to read a record before changing it and send `If-Match` and `Idempotency-Key` where an
-operation takes them, that `write` is listed only under `read_write` for a key that is not
+operation takes them, that a write or delete that did not answer in time may have been made,
+that `write` and `delete` are listed only under `read_write` for a key that is not
 read-only, and that what the tools answer is untrusted data from the workspace. They are the
 same text for every key.
 
@@ -138,7 +145,7 @@ same text for every key.
 | `400` | `-32020` | A required header (`MCP-Protocol-Version`, `Mcp-Method`, `Mcp-Name`) is missing, or does not match the body; a request without `MCP-Protocol-Version` (other than `initialize`) is this, whatever its method |
 | `400` | `-32022` | An unsupported version; `data.supported` lists the versions, `data.requested` the one asked for |
 | `404` (modern), `200` (legacy) | `-32601` | A method the era does not have: `initialize` and `ping` are legacy, `server/discover` modern, and there are no resources or prompts |
-| `200` | `-32602` | `tools/call` names no tool, or one that does not exist — `write` among them when it is not listed: under `read`, or for a read-only key |
+| `200` | `-32602` | `tools/call` names no tool, or one that does not exist — `write` and `delete` among them when they are not listed: under `read`, or for a read-only key |
 
 The authentication answers above are the API's own JSON, `{"error": {"code", "message"}}`, not
 JSON-RPC.
@@ -146,20 +153,22 @@ JSON-RPC.
 ## The tools
 
 `tools/list` answers `search_operations`, `describe_operation` and `read`, in that order, and —
-only when the request's effective mode is `read_write` — `write` after them. The list is fixed in
-the code: two keys of one mode get the same bytes.
+only when the request's effective mode is `read_write` — `write` and `delete` after them. The
+list is fixed in the code: two keys of one mode get the same bytes.
 
 | Tool | Annotations | Arguments | Answers |
 | --- | --- | --- | --- |
-| `search_operations` | `readOnlyHint: true` | `query` (required), `limit` (1–25, 10 when left out) | The operations the key may call in its mode that match the query, best first: `operation`, `method`, `path`, `summary`, `tag`, `kind` |
-| `describe_operation` | `readOnlyHint: true` | `operation` (required) | Its method and path, path, query and header parameters, request body and success response as compact JSON schemas, with `$ref`s resolved, at most 16 KB |
+| `search_operations` | `readOnlyHint: true` | `query` (required), `limit` (1–25, 10 when left out) | The operations the key may call in its mode that match the query, best first: `operation`, `method`, `path`, `summary`, `tag`, `kind`, and `tool`, the tool that calls it |
+| `describe_operation` | `readOnlyHint: true` | `operation` (required) | Its method and path, kind and tool, path, query and header parameters, request body and success response as compact JSON schemas, with `$ref`s resolved, at most 16 KB |
 | `read` | `readOnlyHint: true` | `operation` (required), `path`, `query`, `headers`, `body` | The answer of an operation of kind *read*, called as the key |
-| `write` | `destructiveHint: true`, `readOnlyHint: false` | The same as `read` | The answer of an operation of kind *write*, called as the key |
+| `write` | `destructiveHint: true`, `readOnlyHint: false` | The same as `read` | The answer of an operation of kind *write* whose method is not `DELETE`, called as the key |
+| `delete` | `destructiveHint: true`, `readOnlyHint: false`, `idempotentHint: true` | The same as `read` | The answer of a `DELETE` operation, called as the key |
 
-The read tools also say `destructiveHint: false`, `idempotentHint: true` and `openWorldHint: false`;
-`write` says `idempotentHint: false` and `openWorldHint: true`, since a write may send mail or
-call a carrier. A client uses `destructiveHint` to ask its user before each `write`: that
-approval, in the client, is the human step for a change.
+The read tools also say `destructiveHint: false`, `idempotentHint: true` and
+`openWorldHint: false`; `write` says `idempotentHint: false`, and `write` and `delete` say
+`openWorldHint: true`, since a change may send mail or call a carrier. Deletes have a tool of
+their own so a client can be told to allow one and not the other. A client asks its user before
+it runs a tool unless the user has allowed that tool; do not auto-approve `write` or `delete`.
 
 **The catalogue** is the key's own: the operations of the integrator's document for the key —
 what `GET /api/openapi.json` answers it, cut to its roles, its narrowing and its read-only
@@ -172,39 +181,46 @@ Every other operation is a *write* — among them `estimateShipping`, which asks
 `printInventoryLabels` and `postStaffPeopleSimilarErased`, which a read-only key may call over
 REST — and so is a `POST` marked read that is added later, until it is reviewed.
 
-**Each tool calls its own kind.** `read` refuses a write and `write` refuses a read, each with an
-error result that names the right tool. Under `read` a write is not in reach at all: search leaves
-it out, `describe_operation` and `read` answer that it is not available to this key, and `write`
-is not listed. Under `read_write` search and `describe_operation` reach the writes too.
+**Each tool calls its own operations.** `read` calls the reads, `delete` the `DELETE`s and
+`write` every other write; each refuses another's with an error result that names the right
+tool. Under `read` a write is not in reach at all: search leaves it out, `describe_operation`
+and `read` answer that it is not available to this key, and `write` and `delete` are not
+listed. Under `read_write` search and `describe_operation` reach the writes too.
 
 **Search** scores the words of the query against an operation's summary, tag, path and
 description, as the Assistant's search does, in English or Norwegian, stop words dropped.
 
-**The arguments of `read` and `write`.** `path` and `query` map a parameter's name to a string, or a query
+**The arguments of `read`, `write` and `delete`.** `path` and `query` map a parameter's name to
+a string, or a query
 parameter to a list of strings, which repeats it. Every path parameter is required and is
 escaped as one segment, so a `/` or `..` in a value cannot reach another route. A parameter the
 operation does not declare is refused. `headers` may set only `If-Match`, `If-None-Match` and
-`Idempotency-Key`, and only when the operation declares them; a line break in a value is
-refused, and `Authorization`, `Cookie` and `Host` can never be set. `body` is any JSON, for an
+`Idempotency-Key`, and only when the operation declares them, each once (two spellings of one
+header differing in case are refused); a line break in a value is refused, and
+`Authorization`, `Cookie` and `Host` can never be set. `body` is any JSON, for an
 operation that takes one. The Assistant's own marks (`x-vantigo-assistant`) are not consulted:
 what a key may call is decided by the API's marks, its roles and its narrowing.
 
 ### How a call is made
 
-A `read` or a `write` is a real request through the composed API, built by the endpoint: the operation's
+A call of `read`, `write` or `delete` is a real request through the composed API, built by the
+endpoint: the operation's
 method and path, the query in a deterministic order, the declared headers, the body, the
 caller's own `Authorization` header and `Accept: application/json`. It keeps the caller's
 address, the envelope's trace id and its cancellation — a client that goes away stops the call,
 as on REST — and nothing else of the envelope: no principal is put on it, so identity judges the
 key afresh — its networks, its state, the operation's rule, read-only, the roles and the
 narrowing — and the router applies the integration's rate limit, the operation's own limits and
-the body cap, as for any REST request. It has 30 seconds; one that takes longer is an error
-result naming the trace id.
+the body cap, as for any REST request. It has 30 seconds.
+
+A key has at most **four** calls looping back at once, on each server process; one more is an
+error result asking it to retry shortly, and is counted as an MCP request.
 
 The one thing MCP adds to the REST gate is its setting: under `read`, nothing that is not a
 read is called, even for a key REST would let write. The mode is judged at every request: an
 integration lowered from `read_write` to `read` after a client listed `write` refuses the next
-`write` with `-32602`. Everything else about a write — whether the key's roles and narrowing
+`write` or `delete` with `-32602`. Everything else about a write — whether the key's roles and
+narrowing
 allow it, `If-Match` against the record's version, an `Idempotency-Key` replayed — is the
 operation's own answer, exactly as over REST.
 
@@ -217,8 +233,17 @@ A tool's result is one `text` content and `isError`; `structuredContent` is not 
 - Any other status is `isError: true` with JSON of `status`, `code`, `title` and `detail` from
   the API's answer — never its raw body. A `429` also carries `retryAfterSeconds`.
 - The text is at most **100 KB**, counted as the JSON-escaped string it is sent as. A larger
-  answer is never cut short: the result is an error asking for less — a smaller `limit`, a
-  filter, a later page.
+  answer to a `read` is never cut short: the result is an error asking for less — a smaller
+  `limit`, a filter, a later page. A `write` or `delete` that succeeded with a larger answer is
+  no error, since the change was made: its result is `{"status", "truncated": true, "length"}`
+  with the answer's `location` and its top-level `id` when it has them; read the record to see
+  it.
+- **A call whose outcome is in doubt.** A call whose 30 seconds ran out, or whose client went
+  away, is judged by what it answered: an answer below `500` is its result as above, a `201`
+  that came late included. One that answered nothing, or a server error, is an error result;
+  for a `write` or `delete` it says the change **may or may not have been made**: read the
+  record before retrying, and resend with the same `Idempotency-Key` where the operation takes
+  one. A call that fails unexpectedly says the same for a change.
 - An operation that fails unexpectedly or does not answer in time is an error result naming
   the trace id, never a failed envelope.
 - A refusal of the tool's own — an operation outside the catalogue, a missing or undeclared
@@ -230,13 +255,13 @@ answer.
 
 ## Counting and the request log
 
-- A `read` or `write` that reaches the API **counts once**, as the operation it calls. It leaves **two
+- A call of `read`, `write` or `delete` that reaches the API **counts once**, as the operation it
+  calls. It leaves **two
   rows** in the request log: one with the real operation id, its status and the key, which is
   counted, and one `postApiMcp` for the MCP request around it, which is recorded but not
   counted.
 - Every other request a key is let through for — `server/discover`, `initialize`, `ping`,
-  `tools/list`, `search_operations`, `describe_operation`, a `read` or `write` refused before it
-  is made,
+  `tools/list`, `search_operations`, `describe_operation`, a call refused before it is made,
   a notification, a protocol error — counts once and is recorded as `postApiMcp`.
 - Past the integration's limit, an envelope is `429 rate_limited` with `Retry-After`; a call
   over the limit is an error result with `retryAfterSeconds`.
@@ -244,7 +269,10 @@ answer.
 The request log never holds a path, a query or a body, through MCP as through REST.
 
 `tools/list`, `server/discover`, `initialize` and `ping` read the key and its integration once;
-the four tools read the key's scope as well.
+the five tools read the key's scope as well.
+
+The rows a call leaves carry the envelope's trace id, so the operation an MCP request made is
+found by the `postApiMcp` row's trace id.
 
 ## Examples
 
@@ -270,7 +298,8 @@ and gets the operation's `201` body as the result's text:
 ```json
 {"jsonrpc": "2.0", "id": 7, "result": {"resultType": "complete",
   "content": [{"type": "text", "text": "{\"customerNumber\":1042,\"id\":1042}"}],
-  "isError": false, "_meta": {"io.modelcontextprotocol/serverInfo": {"name": "vantigo", "version": "…"}}}}
+  "isError": false,
+  "_meta": {"io.modelcontextprotocol/serverInfo": {"name": "vantigo", "title": "Vantigo", "version": "…"}}}}
 ```
 
 A write with `If-Match` sends the version it read in `headers`, here to rename an inventory
@@ -294,15 +323,18 @@ Inventory answers a stale version with `409 revision_conflict`; operations that 
 `412 version_mismatch` come back the same way, with their own status and code.
 A key whose roles do not allow the change gets the operation's `403` the same way, as
 `{"code": "forbidden", "status": 403, …}` with `isError: true`; an operation the key's catalogue
-does not hold at all is the error "not available to this key", and `write` named under `read` is
-the JSON-RPC error `-32602`.
+does not hold at all is the error "not available to this key", `write` naming a `DELETE` is the
+error that names `delete`, and `write` or `delete` named under `read` is the JSON-RPC error
+`-32602`.
 
 ## What bounds an agent
 
 An agent reads records written by people and other systems, and a record can carry text meant
 to steer it. That cannot be prevented here; what bounds it is the setting (off by default, and
-`read_write` only where an Owner chose it), the split between `read` and `write`, the client's
-own approval of each `write`, the key's roles, narrowing and read-only switch, the integration's rate
-limit and the request log, which shows every operation the agent called. The tools' descriptions
+`read_write` only where an Owner chose it), the split between `read`, `write` and `delete`,
+the client's approval of each change unless its user auto-approves it, the key's roles,
+narrowing and read-only switch, the integration's rate limit, the four calls a key may have in
+flight, and the request log, which shows every operation the agent called. The setting `read`
+is not a boundary against whoever holds the key: only a read-only key is. The tools' descriptions
 and the instructions tell the model that what it reads is data, never instructions. A tool's
 description and the tool list are fixed in the code, the same for every key.
