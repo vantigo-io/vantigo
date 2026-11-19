@@ -3,7 +3,7 @@ title: "Invoices module"
 description: "The sales document: the seller record, gap-free numbering, VAT, issue and immutability, credit notes, invoicing work, consumption and orders, billing runs, the PDF, payments, write-offs and recovered payments, sending, the journal, the bank feed a ledger reads, the export and retention."
 sources:
   - apps/server/internal/invoices
-  - apps/server/internal/db/migrations/00213_invoices_brand.sql
+  - apps/server/internal/db/migrations/00214_invoices_brand.sql
   - apps/invoices/frontend
   - openapi/invoices.yaml
   - apps/server/internal/db/migrations/00078_invoices_energy.sql
@@ -443,7 +443,7 @@ key it has already seen — the same answer — 401 and 403 are the key, a 429 c
 ## The brand of a document
 
 Brands on invoices (brands design [B27–B29a](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-11-19-brands-design.md),
-delivery E2; migration `00213_invoices_brand.sql`). A document carries `brand_id` (no foreign
+delivery E2; migration `00214_invoices_brand.sql`). A document carries `brand_id` (no foreign
 key: the brand is Identity's row, read through `contracts.Brands`, which this module never
 bypasses), `brand_source` (`chosen`, `customer`, `group` or `default`), `brand_skipped` and,
 once issued, the snapshot `brand_name`, `brand_logo_object_key` and `brand_logo_sha256`
