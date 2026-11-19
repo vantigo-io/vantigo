@@ -44,6 +44,14 @@ export const setIntegrationRoles = (id: string, roleIds: string[]) =>
     headers: json,
     body: JSON.stringify({ roleIds }),
   });
+export type IntegrationMcpAccess = components["schemas"]["IntegrationMcpAccess"];
+/** Sets what the integration's keys may do at /api/mcp (MCP server design M2), under If-Match on the version read. */
+export const setIntegrationMcpAccess = (id: string, version: string, mcpAccess: IntegrationMcpAccess) =>
+  request<IntegrationDetail>(`${base}/${id}/mcp`, {
+    method: "PUT",
+    headers: { ...json, "If-Match": version },
+    body: JSON.stringify({ mcpAccess }),
+  });
 export const disableIntegration = (id: string) => post<IntegrationDetail>(`${base}/${id}/disable`);
 export const enableIntegration = (id: string) => post<IntegrationDetail>(`${base}/${id}/enable`);
 export const archiveIntegration = (id: string) => post<IntegrationDetail>(`${base}/${id}/archive`);

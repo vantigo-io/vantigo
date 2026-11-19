@@ -104,6 +104,8 @@ const detail = (keys: ApiKey[] = []): IntegrationDetail => ({
     { key: "alpha:view", apiNever: false },
     { key: "alpha:secret", apiNever: true },
   ],
+  mcpAccess: "off",
+  mcpAvailable: true,
 });
 
 const renderPage = async () => {
