@@ -1,22 +1,10 @@
-import {
-  Anchor,
-  AppShell,
-  Box,
-  Burger,
-  Divider,
-  Group,
-  Image,
-  Text,
-  Title,
-  useComputedColorScheme,
-} from "@mantine/core";
+import { Anchor, AppShell, Box, Burger, Divider, Group, Image, Text, Title } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import type { ReactNode } from "react";
-import { appConfig, hasSupportContact } from "./app-config";
+import { useBrand, useBrandMark } from "./brand/provider";
 import { registerCatalog, useI18n } from "./i18n";
 import { shellCatalog } from "./i18n/catalogs/shell";
 import { type ShellLinkComponent, ShellLinkProvider } from "./link-context";
-import { vantigoLogo, vantigoLogoDark } from "./logo";
 
 registerCatalog("shell", shellCatalog);
 
@@ -46,9 +34,9 @@ export interface AppShellLayoutProps {
 
 /** The support contact line shown in the shell footer and on auth pages. */
 export const SupportContactLine = () => {
-  const { support } = appConfig();
+  const { support } = useBrand();
   const { t } = useI18n("shell");
-  if (!hasSupportContact()) return null;
+  if (!support.email && !support.phone && !support.url) return null;
   const items: ReactNode[] = [];
   if (support.email)
     items.push(
@@ -128,9 +116,9 @@ export const AppShellLayout = ({
 }: AppShellLayoutProps) => {
   const [opened, { toggle, close }] = useDisclosure();
   const { t } = useI18n("shell");
-  const config = appConfig();
-  const scheme = useComputedColorScheme("light");
-  const showFooter = hasSupportContact(config);
+  const brand = useBrand();
+  const mark = useBrandMark();
+  const showFooter = Boolean(brand.support.email || brand.support.phone || brand.support.url);
 
   const shell = (
     <AppShell
@@ -156,15 +144,14 @@ export const AppShellLayout = ({
             />
           )}
           <HomeLink linkComponent={linkComponent} label={t("goToDashboard")}>
-            <Image
-              // The Vantigo mark has a variant for each scheme: its navy stroke vanishes on dark.
-              src={config.logoUrl ?? (scheme === "dark" ? vantigoLogoDark : vantigoLogo)}
-              alt={config.title}
-              h={32}
-              w="auto"
-              maw="30vw"
-              fit="contain"
-            />
+            {/* The brand's mark for the scheme; one made for a light background rides on a chip in dark. */}
+            <Box
+              bg={mark.chip ? "white" : undefined}
+              p={mark.chip ? 2 : 0}
+              style={{ borderRadius: "var(--mantine-radius-sm)", lineHeight: 0 }}
+            >
+              <Image src={mark.src} alt={brand.title} h={mark.chip ? 28 : 32} w="auto" maw="30vw" fit="contain" />
+            </Box>
           </HomeLink>
           <Divider orientation="vertical" my="md" />
           <Title
@@ -172,7 +159,7 @@ export const AppShellLayout = ({
             fw={500}
             style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
           >
-            {title ?? config.title}
+            {title ?? brand.title}
           </Title>
           {headerCenter && (
             <Box flex={1} visibleFrom="sm" px="md">

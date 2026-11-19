@@ -27,6 +27,56 @@ export {
   routeMatches,
 } from "./assist-targets";
 export {
+  BRAND_MIRROR_KEY,
+  type BrandMirror,
+  clearBrandMirror,
+  readBrandMirror,
+  writeBrandMirror,
+} from "./brand/mirror";
+export { BrandPreviewBanner } from "./brand/preview-banner";
+export {
+  BRAND_PREVIEW_EVENT,
+  BRAND_PREVIEW_KEY,
+  type Brand,
+  BrandedMantineProvider,
+  type BrandMark,
+  BrandProvider,
+  type BrandProviderProps,
+  brandFromDocument,
+  getBrandPreview,
+  setBrandPreview,
+  useBrand,
+  useBrandMark,
+  useBrandTheme,
+} from "./brand/provider";
+export {
+  BRAND_ALGORITHM,
+  BrandScaleError,
+  type ContrastCheck,
+  contrastChecks,
+  passes as brandChecksPass,
+  suggestPrimary,
+} from "./brand/scale";
+export {
+  BRAND_PAYLOAD_VERSION,
+  BRAND_RADII,
+  type BrandPayload,
+  type BrandRadius,
+  type BrandSupport,
+  type BrandTokens,
+  BUILTIN_PRIMARY,
+  BUILTIN_SHADES,
+  builtinPayload,
+  computeTokens,
+  cssVariables,
+  LOGO_SLOTS,
+  type LogoSlot,
+  RADIUS_VALUES,
+  type SchemeTokens,
+  scaleOf,
+  tryComputeTokens,
+} from "./brand/tokens";
+export {
   browserTimeZone,
   type CatalogLoader,
   type CatalogResources,
@@ -109,6 +159,7 @@ export { SpotlightSearchBox } from "./spotlight-search-box";
 export { SpotlightSearchButton } from "./spotlight-search-button";
 export {
   COLOR_SCHEME_STORAGE_KEY,
+  createVantigoTheme,
   vantigoColorSchemeManager,
   vantigoDark,
   vantigoTheme,
