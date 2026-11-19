@@ -278,8 +278,13 @@ func absorbedSnapshot(c store.CustomerForMergeRow) (mergedCustomerSnapshot, erro
 	if err != nil {
 		return mergedCustomerSnapshot{}, err
 	}
+	limit, err := creditLimitText(c.CreditLimit)
+	if err != nil {
+		return mergedCustomerSnapshot{}, err
+	}
 	return mergedCustomerSnapshot{
-		ID: c.ID, CustomerNumber: c.CustomerNumber, Name: c.Name, Type: c.Type, Status: c.Status,
+		CreditLimit: limit,
+		ID:          c.ID, CustomerNumber: c.CustomerNumber, Name: c.Name, Type: c.Type, Status: c.Status,
 		Identity:    identitySnapshot(identityFromRow(c.LegalCountry, c.LegalID, c.LegalName, c.LegalSource, c.LegalType)),
 		ContactInfo: contactInfoFromRow(c.Email, c.Phone, c.Website),
 		BillingProfile: billingProfileFromRow(c.InvoiceEmail, c.ReminderEmail, c.PaymentTermsDays, c.Currency, c.Language,

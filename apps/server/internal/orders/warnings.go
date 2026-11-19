@@ -118,12 +118,16 @@ func (s *server) readOverride(ctx context.Context, f *fieldErrors, override *boo
 // judgeWarnings refuses a send or a confirm that a block warning stops
 // (blocked_by_warning, with the warnings' texts), on q, and answers the block
 // warnings an allowed override overrides — none when nothing blocks. An info
-// warning never refuses.
-func judgeWarnings(ctx context.Context, q *store.Queries, customerID int32, lines []store.OrdersLine, o warningOverride) ([]gen.OrdersWarning, error) {
+// warning never refuses. computed are the warnings the caller computed rather
+// than read — the confirm's credit warning (invoices phase 6 design I38) —
+// judged as the stored ones are; when they are the only blocks the refusal is
+// credit_limit_exceeded.
+func judgeWarnings(ctx context.Context, q *store.Queries, customerID int32, lines []store.OrdersLine, o warningOverride, computed ...gen.OrdersWarning) ([]gen.OrdersWarning, error) {
 	all, err := documentWarnings(ctx, q, customerID, lines)
 	if err != nil {
 		return nil, err
 	}
+	all = append(all, computed...)
 	var blocks []gen.OrdersWarning
 	for _, w := range all {
 		if w.Level == gen.OrdersWarningLevelBlock {
@@ -137,22 +141,29 @@ func judgeWarnings(ctx context.Context, q *store.Queries, customerID int32, line
 		return blocks, nil
 	}
 	texts := make([]string, 0, len(blocks))
+	code, title := codeCreditLimitExceeded, "The customer's credit limit blocks this"
 	for _, w := range blocks {
 		texts = append(texts, warningLabel(w))
+		if w.Scope != gen.OrdersWarningScopeCredit {
+			code, title = codeBlockedByWarning, "A warning blocks this"
+		}
 	}
 	detail := strings.Join(texts, " ")
 	if o.requested {
 		detail += " Only a holder of Manage Orders settings may override a block."
 	}
-	return nil, refuse(problem(http.StatusConflict, codeBlockedByWarning, "A warning blocks this", detail))
+	return nil, refuse(problem(http.StatusConflict, code, title, detail))
 }
 
 // warningLabel is a warning as a refusal and the change log name it: its
 // subject, then its text.
 func warningLabel(w gen.OrdersWarning) string {
 	subject := "Customer"
-	if w.Scope == gen.OrdersWarningScopeProduct {
+	switch w.Scope {
+	case gen.OrdersWarningScopeProduct:
 		subject = "Product"
+	case gen.OrdersWarningScopeCredit:
+		subject = "Credit limit of customer"
 	}
 	if w.Name != "" {
 		subject += " " + w.Name

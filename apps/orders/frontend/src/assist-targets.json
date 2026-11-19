@@ -574,5 +574,17 @@
       "en": "Checks the account's keys with the carrier and lists the services it can book; says when prices are list prices only.",
       "nb": "Sjekker kontoens nøkler hos transportøren og viser tjenestene den kan bestille; sier fra når prisene bare er listepriser."
     }
+  },
+  {
+    "key": "orders.confirm.credit-override",
+    "route": "/orders/orders/{orderId}",
+    "label": {
+      "en": "Override the warnings",
+      "nb": "Overstyr advarslene"
+    },
+    "description": {
+      "en": "The choice in the confirm dialog that confirms an order a block warning or the customer's credit limit stops, with a reason. Only a holder of Manage Orders settings may.",
+      "nb": "Valget i bekreftelsesdialogen som bekrefter en ordre en blokkerende advarsel eller kundens kredittgrense stopper, med en begrunnelse. Bare den som kan administrere ordreinnstillinger, kan gjøre det."
+    }
   }
 ]

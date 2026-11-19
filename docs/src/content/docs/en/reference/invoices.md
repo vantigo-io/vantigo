@@ -22,6 +22,7 @@ sources:
   - apps/server/internal/db/migrations/00203_invoices_currency.sql
   - apps/server/internal/db/migrations/00205_invoices_send_jobs.sql
   - apps/server/internal/consumerinvoice
+  - apps/server/internal/db/migrations/00207_invoices_buyer_vat_registered.sql
   - apps/server/internal/docmath
 ---
 The Invoices module issues the sales document of Norwegian bookkeeping: a draft
@@ -2001,7 +2002,8 @@ The checks, each a 409 that rolls the number back: `seller_incomplete`, `no_line
 invoice the customer gates, `buyer_incomplete`, `vat_code_inactive` and
 `vat_code_not_valid` (with `linePosition`), `vat_not_registered` (a seller outside the
 register issues only O lines), `category_o_not_allowed` (a registered seller issues no O
-line), `reverse_charge_needs_org_number`, `vat_codes_ambiguous` and, under a KID agreement,
+line), `reverse_charge_needs_org_number`, `buyer_org_number_required` ([the 2028 buyer
+rule](#the-2028-buyer-rule), invoices and credit notes alike), `vat_codes_ambiguous` and, under a KID agreement,
 `kid_length_exceeded` (the allocated number no longer fits a shortened agreement), and for
 a final settlement `deduction_exceeds_invoice` (with `linePosition`) and
 `invoice_total_not_positive` (also for an invoice whose energy correction lines take it to zero or below) — a deduction line is exempt from the two VAT code checks,
@@ -6351,6 +6353,80 @@ of days, `toDayExclusive − fromDay`, ending at `fromDay`. The platform's
 daylight-saving change or for a default period that starts mid-day, and "the period of
 the same length just before" is what the delta compares against. There is no timeseries.
 
+### The 2028 buyer rule
+
+Bokføringsforskriften § 5-1-2 first paragraph, as amended by FOR-2026-09-29-1933
+(<https://lovdata.no/dokument/LTI/forskrift/2026-09-29-1933>, adopted 29 September 2026;
+read with Skatteetaten's summary on 2026-11-18), keeps its first sentence — the buyer's
+name, and its address or organisation number — and from **1 January 2028** adds: «Ved salg
+til bokføringspliktig kjøper skal kjøpers organisasjonsnummer alltid angis. Dersom kjøper
+som nevnt i § 5-1-1 nr. 7 er registrert i Merverdiavgiftsregisteret, skal
+organisasjonsnummer etterfølges av bokstavene MVA.» It replaces the reverse-charge-only
+sentence `reverse_charge_needs_org_number` stands on, which stays as a special case; the
+MVA suffix is unchanged.
+
+Whether the buyer is bookkeeping-obligated is the customer directory's
+`CustomerBillingProfile.BookkeepingObligated` ([Customers' derived
+fact](/en/reference/customers/#credit-limit-and-bookkeeping-obligation)): a person's
+override, else the registry's VAT register or Register of Business Enterprises flag, else
+unknown — and unknown is judged as not obligated, so § 5-1-2's address alternative still
+serves it.
+
+- **At the issue**, after `buyer_incomplete`, for an invoice on the buyer snapshot it
+  writes and for a credit note on the snapshot it carries (its original's): an obligated
+  buyer with no organisation number is refused **409 `buyer_org_number_required`** — *The
+  buyer is bookkeeping-obligated, and from 1 January 2028 its organisation number must be
+  on the invoice (bokføringsforskriften § 5-1-2)* — when the **issue date** is on or after
+  `buyerOrgNumberFrom` (2028-01-01), and warned of with **`buyer_org_number_missing`** in
+  the issue's `warnings` before it. A credit note reads the directory for this alone, and
+  only when its snapshot has no organisation number. A
+  billing run's item fails with the code, as with any issue refusal.
+- **On an invoice draft**, the same judgement on today and the snapshot its issue would
+  take: `buyer_org_number_missing` before the day, `buyer_org_number_required` from it.
+- **A business whose obligation is unknown** — no override and no answer from the register
+  — and no organisation number is warned of with `buyer_org_number_missing` from that day,
+  on the draft and the issue, and **never refused**: it may well be obligated, and nothing
+  here can tell. A buyer known not to be obligated, and a person, are neither warned nor
+  refused.
+
+**The MVA suffix.** § 5-1-2's last sentence has a VAT-registered buyer's organisation
+number followed by *MVA*. The issue snapshots the buyer's VAT registration
+(`CustomerBillingProfile.VATRegistered`, the registry record's VAT flag) as
+`buyer_vat_registered` (migration `00207_invoices_buyer_vat_registered.sql`, false for
+every document issued before it); a credit note keeps its original's. The PDF then prints
+the buyer's *Org.nr. 923 609 016 MVA*, and the EHF writes the buyer's
+`cac:PartyTaxScheme` — `cbc:CompanyID` `NO923609016MVA` under `cac:TaxScheme/cbc:ID`
+`VAT` (BT-48), after the postal address and before the legal entity, as the seller's is.
+A buyer outside the VAT register prints and renders as before, byte for byte; the golden
+`invoice-buyer-vat-registered.xml` is green under the official validator.
+
+The refusal is rare by construction (plan reading E8): the snapshot already carries the
+organisation number of any business whose legal identity is Norwegian, and only such a
+customer has a registry record. It is refused only when the buyer is *known* to be
+obligated — an override `true` without an organisation number, or a business whose legal
+country is wrong — and warned of when the obligation is unknown.
+
+§ 5-2-1 fourth paragraph, from the same day — «Salgsdokument skal oversendes
+bokføringspliktig kjøper» — is an attention item, not a refusal: the module cannot see a
+hand-over it was not told of. `invoiceUndelivered` (below) lists an invoice to an
+obligated buyer issued on or after 2028-01-01 with no delivery seven days on; recording a
+manual delivery, or sending it, clears it.
+
+### The credit limit's warning
+
+A customer with a credit limit (`CustomerBillingProfile.CreditLimit`, NOK) is judged by
+`internal/creditlimit`'s one definition, in NOK: this module's own open receivables in every
+currency at their NOK — `OutstandingNOK` of the receivables it serves, `open_nok()` of each
+outstanding invoice — plus `contracts.OrderBacklog`'s uninvoiced gross when Orders is on,
+plus, on a draft, its own gross, each amount in another currency at today's rate
+(`contracts.ExchangeRates`). A currency with no rate within seven days is listed in
+`uncounted`, never added. `GET /invoices/{id}` of an invoice draft answers the figures as
+`creditLimit` (`limit`, `exposureNok`, `exceeded`, `uncounted`, `ordersCounted`) and, past
+the limit, the warning **`credit_limit_exceeded`**; the issue's answer carries the same
+after the commit, the document now among the open ones. **It never refuses** (design
+I38): a read that fails is logged and shows nothing. The refusal is Orders' at confirm
+([the credit limit](/en/reference/orders/#the-credit-limit)).
+
 ### Attention
 
 `GET /invoices/stats/attention` is the dashboard's attention list for Invoices, in the
@@ -6377,6 +6453,20 @@ request's business day.
 | `paymentReservationStranded` | attempt the worker cannot carry: a reservation (`capturing`, `capture_unknown`) while `INVOICES_VIPPS_ENABLED=0` or made under a sales unit that is not the stored one (D1, I20), and an attempt **parked** for a person — a create given up after ten tries, a release Vipps refuses for good; never an attempt already a `paymentCaptureUnknown` item, so each attempt is one item | the attempt's invoice; the buyer's name; the authorization, or the creation; — | Vipps or the sales unit is back, the attempt is abandoned, or — a parked release — it is released in the portal and handed back by an abandon |
 | `vippsRefundSeen` | captured attempt with a refund stored by [the refund watch](#the-refund-watch) (`refunded_amount` above zero) whose payment is still live (I6) | the attempt's invoice; the buyer's name; the capture; — | the payment is removed |
 | `sendBatchNotSent` | send batch made in the last **7 days** with jobs `failed` or `uncertain` ([Send all](#send-all)) | the batch; its id; when it was made; the documents not sent | 7 days pass — its jobs are final, and the batch page says what each needs |
+
+`invoiceUndelivered` (every caller with `invoices:access`, [the 2028 buyer
+rule](#the-2028-buyer-rule)): from 2028-01-01, the **20 oldest** issued invoices issued on or
+after that day and more than **seven days** ago with no delivery the module knows of — no
+e-mail, no EHF transmission `queued`, `submitted`, `delivered` or `unconfirmed`, no manual
+delivery not removed — whose buyer the customer directory says is bookkeeping-obligated.
+The candidates are filtered in SQL before their limit of 200 to a buyer that may be
+obligated — `buyer_type` business, or a buyer organisation number — so consumers'
+invoices never crowd an obligated buyer's out, and the directory is asked once for all of
+them (`CustomerDirectory.Customers`, `CustomerEntry.BookkeepingObligated`), never once per
+row; `entityId` the invoice, `title`
+the buyer's name, `occurredAt` seven days after the issue. It clears when the invoice is
+sent or a delivery is recorded. Credit notes are not listed: a manual delivery cannot be
+recorded on one.
 
 `id` is `<type>/<entityId>` but for `reminderFailed` and the four Vipps types, whose id
 names the attempt: `<type>/<attemptId>`. A credited invoice whose letters'
@@ -7116,8 +7206,10 @@ submitter agreement is in place and the operator turns it on. eFaktura and Avtal
 are NOK only. Delivery E-1, send all, is done: a selection on the list or a billing run's
 documents sent in one go, each by its customer's channel, by the `invoices-send` worker
 ([Send all](#send-all)), on migration `00205_invoices_send_jobs.sql`; scheduled billing
-runs (design §13) are unblocked by it. Still to come: E-2, the 2028 buyer rule and credit
-limits.
+runs (design §13) are unblocked by it. Delivery E-2 is done: [the 2028 buyer rule](#the-2028-buyer-rule) with the buyer's
+MVA suffix, and [the credit limit's warning](#the-credit-limits-warning), with the
+attention item `invoiceUndelivered`, on Customers' migration
+`00206_customers_credit_limit_bookkeeping.sql` and `00207_invoices_buyer_vat_registered.sql`.
 Orders' NOK equivalent in its analysis through `contracts.ExchangeRates`, a charge
 payment in currency, a currency bank account and unrealised revaluation at year-end are
 later.
@@ -7175,7 +7267,8 @@ counter sales, receipts, X and Z reports.
 
 Left out of phase 3 on purpose (design D13, D16):
 
-- **The 2028 buyer org-number rule.** From 2028-01-01 bokføringsforskriften § 5-1-2,
+- **The 2028 buyer org-number rule** — since delivered by phase 6's E-2 ([the 2028
+  buyer rule](#the-2028-buyer-rule)). From 2028-01-01 bokføringsforskriften § 5-1-2,
   as amended by FOR-2026-09-29-1933, reads "Ved salg til bokføringspliktig kjøper skal kjøpers
   organisasjonsnummer alltid angis", where the issue's `buyer_incomplete` still accepts
   a complete address or an organisation number. The customers directory knows no

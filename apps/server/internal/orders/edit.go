@@ -404,6 +404,18 @@ func (s *server) saveConfirmedOrder(ctx context.Context, cur store.OrdersOrder, 
 		return gen.OrdersOrder{}, err
 	}
 	var f fieldErrors
+	// A save that raises the order's gross is judged against the customer's
+	// credit limit (invoices phase 6 design I38), as a confirm is: the
+	// override and the credit are read before the transaction.
+	override := s.readOverride(ctx, &f, body.OverrideWarnings, body.OverrideReason)
+	profile, err := s.billingProfile(ctx, cur.CustomerID)
+	if err != nil {
+		return gen.OrdersOrder{}, err
+	}
+	credit, err := s.readCredit(ctx, profile, cur.Currency)
+	if err != nil {
+		return gen.OrdersOrder{}, err
+	}
 	base := headerOfOrder(cur)
 	h, err := s.frozenHeader(ctx, &f, base, body)
 	if err != nil {
@@ -554,6 +566,15 @@ func (s *server) saveConfirmedOrder(ctx context.Context, cur store.OrdersOrder, 
 		lines, err := linesOf(ctx, txq, ownerOrder, o.ID)
 		if err != nil {
 			return err
+		}
+		// A higher gross is judged against the credit limit, the order's
+		// lines as now written counted in the backlog.
+		if totalsOfPriced(priced).gross.Cmp(ratOrZero(o.GrossTotal)) > 0 {
+			overridden, err := judgeCreditRaise(ctx, txq, credit, o, override, now)
+			if err != nil {
+				return err
+			}
+			actions = append(actions, overrideActions(overridden, override.reason)...)
 		}
 		// The reservations follow the edit (O26, O46): a new site takes
 		// them all over, at what is open now; otherwise each line's grows or

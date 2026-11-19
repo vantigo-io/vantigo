@@ -32,7 +32,7 @@ SELECT customer_id, organisation_number, name, organisation_form_code, organisat
        industry_code, industry, employees, vat_registered, bankrupt, under_liquidation,
        under_forced_liquidation, deleted_on, founded_on, website, email, phone, mobile,
        parent_organisation_number, business_address, postal_address, fetched_at,
-       registry_updated_hint, bankrupt_on, liquidation_on
+       registry_updated_hint, bankrupt_on, liquidation_on, business_register_registered
 FROM customers.customer_registry_records
 WHERE customer_id = $1
 `
@@ -69,6 +69,7 @@ func (q *Queries) GetCustomerRegistryRecord(ctx context.Context, customerID int3
 		&i.RegistryUpdatedHint,
 		&i.BankruptOn,
 		&i.LiquidationOn,
+		&i.BusinessRegisterRegistered,
 	)
 	return i, err
 }
@@ -78,7 +79,7 @@ SELECT customer_id, organisation_number, name, organisation_form_code, organisat
        industry_code, industry, employees, vat_registered, bankrupt, under_liquidation,
        under_forced_liquidation, deleted_on, founded_on, website, email, phone, mobile,
        parent_organisation_number, business_address, postal_address, fetched_at,
-       registry_updated_hint, bankrupt_on, liquidation_on
+       registry_updated_hint, bankrupt_on, liquidation_on, business_register_registered
 FROM customers.customer_registry_records
 WHERE customer_id = $1
 FOR UPDATE
@@ -125,6 +126,7 @@ func (q *Queries) GetCustomerRegistryRecordForUpdate(ctx context.Context, custom
 		&i.RegistryUpdatedHint,
 		&i.BankruptOn,
 		&i.LiquidationOn,
+		&i.BusinessRegisterRegistered,
 	)
 	return i, err
 }
@@ -217,13 +219,13 @@ INSERT INTO customers.customer_registry_records (
     industry_code, industry, employees, vat_registered, bankrupt, under_liquidation,
     under_forced_liquidation, deleted_on, bankrupt_on, liquidation_on, founded_on,
     website, email, phone, mobile,
-    parent_organisation_number, business_address, postal_address, fetched_at
+    parent_organisation_number, business_address, postal_address, fetched_at, business_register_registered
 ) VALUES (
     $1, $2, $3, $4, $5,
     $6, $7, $8, $9, $10, $11,
     $12, $13, $14, $15, $16,
     $17, $18, $19, $20,
-    $21, $22, $23, $24::timestamptz
+    $21, $22, $23, $24::timestamptz, $25
 )
 ON CONFLICT (customer_id) DO UPDATE SET
     organisation_number        = EXCLUDED.organisation_number,
@@ -248,34 +250,36 @@ ON CONFLICT (customer_id) DO UPDATE SET
     parent_organisation_number = EXCLUDED.parent_organisation_number,
     business_address           = EXCLUDED.business_address,
     postal_address             = EXCLUDED.postal_address,
+    business_register_registered = EXCLUDED.business_register_registered,
     fetched_at                 = EXCLUDED.fetched_at
 `
 
 type UpsertCustomerRegistryRecordParams struct {
-	CustomerID               int32
-	OrganisationNumber       string
-	Name                     string
-	OrganisationFormCode     *string
-	OrganisationForm         *string
-	IndustryCode             *string
-	Industry                 *string
-	Employees                *int32
-	VatRegistered            bool
-	Bankrupt                 bool
-	UnderLiquidation         bool
-	UnderForcedLiquidation   bool
-	DeletedOn                pgtype.Date
-	BankruptOn               pgtype.Date
-	LiquidationOn            pgtype.Date
-	FoundedOn                pgtype.Date
-	Website                  *string
-	Email                    *string
-	Phone                    *string
-	Mobile                   *string
-	ParentOrganisationNumber *string
-	BusinessAddress          []byte
-	PostalAddress            []byte
-	FetchedAt                time.Time
+	CustomerID                 int32
+	OrganisationNumber         string
+	Name                       string
+	OrganisationFormCode       *string
+	OrganisationForm           *string
+	IndustryCode               *string
+	Industry                   *string
+	Employees                  *int32
+	VatRegistered              bool
+	Bankrupt                   bool
+	UnderLiquidation           bool
+	UnderForcedLiquidation     bool
+	DeletedOn                  pgtype.Date
+	BankruptOn                 pgtype.Date
+	LiquidationOn              pgtype.Date
+	FoundedOn                  pgtype.Date
+	Website                    *string
+	Email                      *string
+	Phone                      *string
+	Mobile                     *string
+	ParentOrganisationNumber   *string
+	BusinessAddress            []byte
+	PostalAddress              []byte
+	FetchedAt                  time.Time
+	BusinessRegisterRegistered *bool
 }
 
 // UpsertCustomerRegistryRecord writes what the registry just said (design
@@ -313,6 +317,7 @@ func (q *Queries) UpsertCustomerRegistryRecord(ctx context.Context, arg UpsertCu
 		arg.BusinessAddress,
 		arg.PostalAddress,
 		arg.FetchedAt,
+		arg.BusinessRegisterRegistered,
 	)
 	return err
 }

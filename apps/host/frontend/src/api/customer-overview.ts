@@ -46,6 +46,19 @@ export interface OverviewInvoices {
   asOf: string;
 }
 
+/**
+ * The customer's credit limit against its exposure (invoices phase 6 design
+ * I38): NOK only, as decimal text; what is open in another currency is listed
+ * and never added.
+ */
+export interface OverviewCredit {
+  limit: string;
+  exposureNok: string;
+  exceeded: boolean;
+  ordersCounted: boolean;
+  uncounted: OverviewAmount[];
+}
+
 export interface CustomerOverview {
   projects: { openCount: number; totalCount: number; truncated: boolean; open: OverviewOpenProject[] } | null;
   work: {
@@ -58,6 +71,7 @@ export interface CustomerOverview {
   } | null;
   expenses: { readyCount: number; readyAmounts: OverviewAmount[]; lastExpenseOn: string | null } | null;
   invoices: OverviewInvoices | null;
+  credit: OverviewCredit | null;
   lastActivity: {
     timelineOn: string | null;
     workOn: string | null;
@@ -89,6 +103,7 @@ interface CustomerOverviewWire {
     lastIssuedOn?: string;
     lastPaymentOn?: string;
   };
+  credit?: OverviewCredit;
   lastActivity?: { timelineOn?: string; workOn?: string; expenseOn?: string; invoicedOn?: string; paymentOn?: string };
 }
 
@@ -119,6 +134,7 @@ export const normaliseCustomerOverview = (wire: CustomerOverviewWire): CustomerO
         lastPaymentOn: wire.invoices.lastPaymentOn ?? null,
       }
     : null,
+  credit: wire.credit ?? null,
   // Always present on the wire (D2); read defensively all the same, because a
   // missing object here would take the whole panel down rather than one tile.
   lastActivity: {

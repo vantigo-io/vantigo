@@ -56,6 +56,9 @@ export interface CustomerBillingGroupDefault {
  * (the billing profile lives on the customer row), and `warnings` is
  * recomputed at read time, never stored (design D4).
  */
+/** Where the bookkeeping obligation came from (invoices phase 6 design I37). */
+export type BookkeepingObligatedSource = "override" | "registry" | "unknown";
+
 export interface CustomerBillingProfile {
   invoiceEmail: string | null;
   reminderEmail: string | null;
@@ -74,6 +77,20 @@ export interface CustomerBillingProfile {
    * themselves.
    */
   defaultBillRate: number | null;
+  /**
+   * The customer's credit limit in NOK, decimal text with two decimals
+   * (invoices phase 6 design I38), or null when none is set.
+   */
+  creditLimit: string | null;
+  /**
+   * Whether the customer is bookkeeping-obligated (I37): the override when
+   * set, else the registry's word, else null — unknown.
+   */
+  bookkeepingObligated: boolean | null;
+  bookkeepingObligatedSource: BookkeepingObligatedSource;
+  /** A person's decision that overrules the registry, null for "as the registry says". */
+  bookkeepingObligatedOverride: boolean | null;
+  bookkeepingObligatedOverrideReason: string | null;
   revision: number;
   /**
    * The last Peppol lookup on record for the participant this profile
@@ -119,8 +136,11 @@ const normalizePeppolLookup = (raw?: RawCustomerPeppolLookup): CustomerPeppolLoo
  * "not decided, the invoicing default applies"), so this shape is mapped to
  * the full one at the boundary and nothing downstream has to know.
  */
-type RawCustomerBillingProfile = Partial<Omit<CustomerBillingProfile, "revision" | "peppolLookup" | "groupDefault">> & {
+type RawCustomerBillingProfile = Partial<
+  Omit<CustomerBillingProfile, "revision" | "peppolLookup" | "groupDefault" | "bookkeepingObligatedSource">
+> & {
   revision: number;
+  bookkeepingObligatedSource?: BookkeepingObligatedSource;
   peppolLookup?: RawCustomerPeppolLookup;
   groupDefault?: { group: CustomerGroupRef; paymentTermsDays?: number | null };
 };
@@ -137,6 +157,11 @@ const normalizeBillingProfile = (raw: RawCustomerBillingProfile): CustomerBillin
   gln: raw.gln ?? null,
   buyerReference: raw.buyerReference ?? null,
   defaultBillRate: raw.defaultBillRate ?? null,
+  creditLimit: raw.creditLimit ?? null,
+  bookkeepingObligated: raw.bookkeepingObligated ?? null,
+  bookkeepingObligatedSource: raw.bookkeepingObligatedSource ?? "unknown",
+  bookkeepingObligatedOverride: raw.bookkeepingObligatedOverride ?? null,
+  bookkeepingObligatedOverrideReason: raw.bookkeepingObligatedOverrideReason ?? null,
   revision: raw.revision,
   peppolLookup: normalizePeppolLookup(raw.peppolLookup),
   warnings: raw.warnings ?? [],
@@ -175,6 +200,13 @@ export interface CustomerBillingProfileInput {
   gln: string | null;
   buyerReference: string | null;
   defaultBillRate: number | null;
+  /** NOK, decimal text; null keeps what is stored — clearCreditLimit removes it. */
+  creditLimit: string | null;
+  clearCreditLimit: boolean;
+  /** null keeps what is stored; set, it needs its reason. clearBookkeepingOverride removes it. */
+  bookkeepingObligatedOverride: boolean | null;
+  bookkeepingObligatedOverrideReason: string | null;
+  clearBookkeepingOverride: boolean;
   revision?: number;
 }
 

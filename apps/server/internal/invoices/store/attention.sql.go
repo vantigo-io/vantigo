@@ -504,6 +504,68 @@ func (q *Queries) AttentionStrandedCandidates(ctx context.Context) ([]AttentionS
 	return items, nil
 }
 
+const attentionUndelivered = `-- name: AttentionUndelivered :many
+SELECT i.id, i.customer_id, i.buyer_name, i.issued_at::timestamptz AS issued_at
+FROM invoices.invoices i
+WHERE i.kind = 'invoice' AND i.status = 'issued' AND i.issued_at IS NOT NULL
+  AND (i.buyer_type = 'business' OR i.buyer_organisation_number IS NOT NULL)
+  AND i.issue_date >= $1::date AND i.issued_at < $2::timestamptz
+  AND NOT EXISTS (SELECT 1 FROM invoices.deliveries d WHERE d.invoice_id = i.id)
+  AND NOT EXISTS (SELECT 1 FROM invoices.transmissions t WHERE t.invoice_id = i.id
+                  AND t.status IN ('queued', 'submitted', 'delivered', 'unconfirmed'))
+  AND NOT EXISTS (SELECT 1 FROM invoices.manual_deliveries m WHERE m.invoice_id = i.id AND m.removed_at IS NULL)
+ORDER BY i.issued_at, i.id
+LIMIT $3::int
+`
+
+type AttentionUndeliveredParams struct {
+	FromDay pgtype.Date
+	Before  time.Time
+	MaxRows int32
+}
+
+type AttentionUndeliveredRow struct {
+	ID         int64
+	CustomerID int32
+	BuyerName  *string
+	IssuedAt   time.Time
+}
+
+// AttentionUndelivered is the candidates for invoiceUndelivered (invoices
+// phase 6 design I37, bokføringsforskriften § 5-2-1 fourth paragraph from
+// 2028): issued invoices dated on or after @from_day, issued before @before,
+// with no delivery the module knows of — no e-mail, no EHF transmission that
+// is or was on its way (queued, submitted, delivered or unconfirmed) and no
+// manual delivery not removed — oldest issue first, at most @max_rows. Only a
+// buyer that may be bookkeeping-obligated is a candidate, filtered before the
+// limit: a business, or one whose snapshot carries an organisation number —
+// consumers' invoices never crowd an obligated buyer's out. Whether it is
+// obligated is the customer directory's, asked by the caller in one batch.
+func (q *Queries) AttentionUndelivered(ctx context.Context, arg AttentionUndeliveredParams) ([]AttentionUndeliveredRow, error) {
+	rows, err := q.db.Query(ctx, attentionUndelivered, arg.FromDay, arg.Before, arg.MaxRows)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AttentionUndeliveredRow
+	for rows.Next() {
+		var i AttentionUndeliveredRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.CustomerID,
+			&i.BuyerName,
+			&i.IssuedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const attentionUnpostedBatches = `-- name: AttentionUnpostedBatches :many
 SELECT b.id, b.post_on,
     (SELECT count(*) FROM invoices.reminders r WHERE r.print_batch_id = b.id AND r.status = 'printed')::int AS letters

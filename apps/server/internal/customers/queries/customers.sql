@@ -229,6 +229,38 @@ RETURNING id, revision, type, legal_country, legal_id, legal_name, legal_source,
           invoice_email, reminder_email, payment_terms_days, currency, language,
           invoice_delivery, reminder_delivery, peppol_id, gln, buyer_reference, default_bill_rate;
 
+-- name: CustomerCreditSettings :one
+-- CustomerCreditSettings is the billing profile's credit half (invoices phase
+-- 6 design I37, I38): the credit limit, the bookkeeping override and its
+-- reason, and the registry's two flags the derived fact is read from — from
+-- the registry record only when it is of the customer's own legal id, as
+-- DirectoryCustomersByLegalID joins it. has_registry_record says there is
+-- one. Its own query, so the importer's and the export's billing columns
+-- stay the eleven they were.
+SELECT c.credit_limit, c.bookkeeping_obligated_override, c.bookkeeping_obligated_override_reason,
+       r.vat_registered AS registry_vat_registered,
+       r.business_register_registered AS registry_business_register_registered,
+       (r.customer_id IS NOT NULL)::boolean AS has_registry_record
+FROM customers.customers c
+LEFT JOIN customers.customer_registry_records r
+       ON r.customer_id = c.id AND r.organisation_number = c.legal_id
+WHERE c.id = @id;
+
+-- name: UpdateCustomerCreditSettings :one
+-- UpdateCustomerCreditSettings is the PUT's write of the credit half, on the
+-- transaction that holds the customer's lock. Guarded and revision-bumping as
+-- UpdateCustomerBillingProfile is; the PUT passes no revision when that write
+-- already ran on the same transaction.
+UPDATE customers.customers
+SET credit_limit = @credit_limit,
+    bookkeeping_obligated_override = @bookkeeping_obligated_override,
+    bookkeeping_obligated_override_reason = @bookkeeping_obligated_override_reason::text,
+    updated_at = @updated_at::timestamptz,
+    revision = revision + 1
+WHERE id = @id
+  AND (sqlc.narg(expected_revision)::int IS NULL OR revision = sqlc.narg(expected_revision)::int)
+RETURNING id, revision, type, email;
+
 -- name: CustomerBillingProfilesForCustomers :many
 -- CustomerBillingProfilesForCustomers is the billing profile of a whole export
 -- in ONE query (customers import/export design D2), CustomerTagsForCustomers'
@@ -589,9 +621,15 @@ ORDER BY m.id;
 -- only exists once, so the result never repeats a customer; an id nobody has
 -- is simply absent, not an error. Ordered by id, not by @ids' own order, so
 -- two callers asking for the same set always see it the same way. The group
--- and industry-code columns are DirectoryCustomer's own, joined the same way.
+-- and industry-code columns are DirectoryCustomer's own, joined the same way;
+-- the override and the registry's two flags are the bookkeeping obligation's
+-- (invoices phase 6 design I37), so a caller judging a page of customers needs
+-- no billing profile per row.
 SELECT c.id, c.name, c.status = 'archived' AS archived, c.group_id, g.name AS group_name, c.merged_into_customer_id,
-       r.industry_code
+       r.industry_code, c.bookkeeping_obligated_override,
+       r.vat_registered AS registry_vat_registered,
+       r.business_register_registered AS registry_business_register_registered,
+       (r.customer_id IS NOT NULL)::boolean AS has_registry_record
 FROM customers.customers c
 LEFT JOIN customers.customer_groups g ON g.id = c.group_id
 LEFT JOIN customers.customer_registry_records r

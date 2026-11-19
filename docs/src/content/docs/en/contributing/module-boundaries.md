@@ -139,7 +139,10 @@ lag, never what must refuse — go through the platform's domain-events outbox,
    hours a user logged in a week, consumer-gated), `Expenses`
    (`contracts.ProjectExpenses`, expenses), `Receivables`
    (`contracts.CustomerReceivables`, invoices — what a customer was invoiced and
-   owes, every state judged on the provider's own business day), `SalesTax`
+   owes, every state judged on the provider's own business day), `OrderBacklog`
+   (`contracts.OrderBacklog`, orders — what a customer's confirmed orders hold that is
+   not yet invoiced, per currency, which a credit limit is judged on with
+   `internal/creditlimit`; `modtest.WithOrderBacklog` is the seam), `SalesTax`
    (`contracts.SalesTax`, invoices — its VAT codes with the rate valid on a day, the VAT
    code each of Products' tax categories maps to, and the seller block it prints — its
    phone and its logo's storage key among them; nil
@@ -293,7 +296,9 @@ lag, never what must refuse — go through the platform's domain-events outbox,
    invoices — the bank feed over Invoices' one connection and sealed key, every direction
    and kind; its provider answers nil while `INVOICES_BANK_FEED_ENABLED` is off;
    `modtest.WithBankFeed` is the seam), which Accounting's `accounting.bankfeed` worker reads
-   in worker mode. Two providers are a compose error naming both, and a panic in
+   in worker mode. After it both resolve `OrderBacklog` (`withOrderBacklog`): the
+   invoices-billing worker issues through the issue's own code path, which reads it.
+   Two providers are a compose error naming both, and a panic in
    Workers. `module.WorkerDeps` is that resolution on its own — the `Deps` `module.Workers`
    hands every worker — for a program that drives a module's entry points without composing:
    the demo seed builds Accounting's `Deps` with it. It also fills `Deps.Catalog` with the

@@ -104,6 +104,9 @@ func Module() module.Module {
 		InvoicedWork:         newInvoicedWorkHolder,
 		// The invoicing read (O37), resolved from the enabled modules only.
 		BillableOrders: newBillableOrders,
+		// The order backlog a credit limit is judged on (invoices phase 6
+		// design I38), from this module's own tables.
+		OrderBacklog: newOrderBacklog,
 		// Manufacturing's read of the sales order lines (manufacturing
 		// design M43a), resolved from the enabled modules only.
 		SalesOrderLines: newSalesOrderLines,

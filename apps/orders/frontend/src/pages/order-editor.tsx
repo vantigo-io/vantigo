@@ -153,6 +153,7 @@ type Dialog =
   | "undoDelivered"
   | "releaseDrafts"
   | "shortfall"
+  | "creditOverride"
   | null;
 
 const OrderEditor = ({ order, access }: { order: Order; access: OrdersAccess }) => {
@@ -214,17 +215,34 @@ const OrderEditor = ({ order, access }: { order: Order; access: OrdersAccess }) 
   };
   const common = { detailKey, showRefusal: editor.showRefusal, onDone: close };
 
-  const save = useDocumentWrite({
+  // A confirmed order's save that would put the customer past its credit
+  // limit is refused credit_limit_exceeded (invoices phase 6 design I38): its
+  // detail is kept to show, and a settings holder saves again with a reason.
+  const [creditRefusal, setCreditRefusal] = useState<string | null>(null);
+  const save = useDocumentWrite<Order, string | undefined>({
     ...common,
-    write: () =>
+    showRefusal: (error, title) => {
+      if (refusalCode(error) === "credit_limit_exceeded") {
+        setDialog(null);
+        setCreditRefusal(error instanceof Error ? error.message : "");
+        return;
+      }
+      editor.showRefusal(error, title);
+    },
+    write: (reason) =>
       updateOrder(order.id, {
         version: order.version,
         expectedUpdatedAt: order.updatedAt,
         ...headerInput(editor.header),
         siteId: editor.header.siteId,
         lines: editor.lines.map((line) => toLineInput(line, { quote: false })),
+        ...overrideOf(reason),
       }),
     done: t("orderSaved"),
+    onDone: () => {
+      setCreditRefusal(null);
+      close();
+    },
     errorTitle: t("couldNotSave"),
   });
   const transition = useDocumentWrite({
@@ -410,7 +428,7 @@ const OrderEditor = ({ order, access }: { order: Order; access: OrdersAccess }) 
                 leftSection={<IconDeviceFloppy size={16} />}
                 disabled={!editor.dirty}
                 loading={save.isPending}
-                onClick={() => editor.checkLines() && save.mutate()}
+                onClick={() => editor.checkLines() && save.mutate(undefined)}
                 data-assist="orders.order.save"
               >
                 {t("save")}
@@ -533,6 +551,38 @@ const OrderEditor = ({ order, access }: { order: Order; access: OrdersAccess }) 
         override={override}
         onOverride={setOverride}
       />
+      {creditRefusal !== null && (
+        <Alert color="red" title={t("creditSaveRefusedTitle")} data-testid="credit-save-refused">
+          <Stack gap="xs">
+            {creditRefusal && <Text size="sm">{creditRefusal}</Text>}
+            {access.canManageSettings ? (
+              <Group>
+                <Button size="xs" color="red" variant="light" onClick={() => setDialog("creditOverride")}>
+                  {t("creditSaveOverride")}
+                </Button>
+              </Group>
+            ) : (
+              <Text size="sm" c="dimmed">
+                {t("creditSaveOverrideByOthers")}
+              </Text>
+            )}
+          </Stack>
+        </Alert>
+      )}
+      {dialog === "creditOverride" && (
+        <ReasonDialog
+          title={t("creditSaveOverride")}
+          description={t("creditSaveOverrideHint")}
+          label={t("overrideReason")}
+          submitLabel={t("creditSaveOverride")}
+          required
+          danger
+          maxLength={500}
+          loading={save.isPending}
+          onSubmit={(reason) => save.mutate(reason)}
+          onClose={close}
+        />
+      )}
       {editor.conflict && <ConflictAlert onReload={() => void queryClient.refetchQueries({ queryKey: detailKey })} />}
       {order.onHold && (
         <Alert color="orange" icon={<IconPlayerPause size={16} />} title={t("onHoldTitle")}>

@@ -156,6 +156,34 @@ They also see **Add customer warning** (or **Edit customer warning**) there, to 
 customer's warning without leaving the document. All warnings are kept under
 **Orders settings** → **Sales warnings** ([administration](/en/admin/orders/#keep-the-sales-warnings)).
 
+### The customer's credit limit
+
+When the customer has a **credit limit** — set on its billing profile in Customers
+([Billing](/en/user/customers/#billing)) — a draft order shows **Credit limit — the
+customer** in yellow as soon as the order would put the customer above it: *With this
+order the customer's exposure is NOK 112 500.00, above its credit limit of NOK
+100 000.00.* The exposure is in NOK: what the customer owes on issued invoices — one in
+euro at its NOK value — plus what its confirmed orders hold that is not yet invoiced, plus
+this order, VAT included, an order in another currency at today's exchange rate. An amount
+in a currency with no rate in the last week is not counted; the warning names it (*Not
+counted: DKK 50.00*).
+
+At **Confirm** — and when a quote is accepted into a confirmed order — the warning turns
+red and stops the confirm, as a block does: the app says *The customer's credit limit
+blocks this*. Someone who manages the Orders settings overrides it the same way, with a
+reason, and the **Change log** keeps it as **Warning overridden**. If the customer's open
+invoices cannot be read, the order says *The customer's credit could not be checked* and
+can be confirmed: an outage never stops a sale.
+
+A **confirmed** order whose change raises its total past the limit — more lines, a higher
+quantity or price — is stopped when you save it: *The customer's credit limit stops this
+change*. Someone who manages the Orders settings chooses **Override and save**, gives a
+**Reason**, and the change is saved with the override in the **Change log**; anyone else
+is told that such a person can do it.
+A change that keeps or lowers the total is never stopped. The figures need
+`invoices:access`; without it the warning only says the customer is over its credit
+limit.
+
 ## Send a quote
 
 **Send** opens **Send the quote**: the **Recipient** (the contact person's e-mail, else the

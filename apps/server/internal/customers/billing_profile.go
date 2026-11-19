@@ -210,8 +210,18 @@ func (s *server) GetCustomersByIdBillingProfile(ctx context.Context, req gen.Get
 		return nil, fmt.Errorf("customers: resolve peppol lookup: %w", err)
 	}
 
+	facts, err := readCreditFacts(ctx, q, req.Id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return gen.GetCustomersByIdBillingProfile404Response{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
 	warnings := billingWarnings(profile, row.Type, identity, row.Email, hasInvoiceAddress, lookup)
-	return gen.GetCustomersByIdBillingProfile200JSONResponse(billingProfileResponse(profile, row.Revision, warnings, lookup, groupDefault)), nil
+	resp := billingProfileResponse(profile, row.Revision, warnings, lookup, groupDefault)
+	withCreditFacts(&resp, facts)
+	return gen.GetCustomersByIdBillingProfile200JSONResponse(resp), nil
 }
 
 // resolvedPeppolLookupFor is GET/PUT .../billing-profile's shared step
@@ -288,7 +298,14 @@ func (s *server) PutCustomersByIdBillingProfile(ctx context.Context, req gen.Put
 	}
 
 	after, errs := validateBillingProfile(body)
-	if errs != nil {
+	if errs == nil {
+		errs = map[string][]string{}
+	}
+	// The credit half (invoices phase 6 design I37, I38) is judged beside
+	// the rest, every error reported together; what it keeps is applied to
+	// the stored values once they are read, below.
+	validateCreditSettings(body, creditSettings{}, errs)
+	if len(errs) > 0 {
 		return gen.PutCustomersByIdBillingProfile400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid billing profile", errs)), nil
 	}
 
@@ -320,14 +337,28 @@ func (s *server) PutCustomersByIdBillingProfile(ctx context.Context, req gen.Put
 	if err != nil {
 		return nil, fmt.Errorf("customers: customer has invoice address: %w", err)
 	}
+	beforeFacts, err := readCreditFacts(ctx, q, req.Id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return gen.PutCustomersByIdBillingProfile404Response{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	afterCredit := validateCreditSettings(body, beforeFacts.settings, map[string][]string{})
+	billingChanged := !billingProfileEqual(before, after)
+	creditChanged := !creditSettingsEqual(beforeFacts.settings, afterCredit)
+	afterFacts := beforeFacts
+	afterFacts.settings = afterCredit
 
-	if billingProfileEqual(before, after) {
+	if !billingChanged && !creditChanged {
 		lookup, err := s.resolvedPeppolLookupFor(ctx, q, req.Id, before, identity, existing.Type)
 		if err != nil {
 			return nil, fmt.Errorf("customers: resolve peppol lookup: %w", err)
 		}
 		warnings := billingWarnings(before, existing.Type, identity, existing.Email, hasInvoiceAddress, lookup)
-		return gen.PutCustomersByIdBillingProfile200JSONResponse(billingProfileResponse(before, existing.Revision, warnings, lookup, groupDefault)), nil
+		resp := billingProfileResponse(before, existing.Revision, warnings, lookup, groupDefault)
+		withCreditFacts(&resp, beforeFacts)
+		return gen.PutCustomersByIdBillingProfile200JSONResponse(resp), nil
 	}
 
 	now := s.deps.Clock()
@@ -341,11 +372,36 @@ func (s *server) PutCustomersByIdBillingProfile(ctx context.Context, req gen.Put
 		return nil, fmt.Errorf("customers: resolve actor: %w", err)
 	}
 
-	var updated store.UpdateCustomerBillingProfileRow
+	// The two halves are two writes on one transaction, each bumping the
+	// revision: the profile's first, guarded by the request's revision, then
+	// the credit half's, guarded by it only when it is the only write.
+	var updatedRevision int32
+	var updatedType string
+	var updatedEmail *string
+	bumps := int32(0)
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
-		var err error
-		updated, err = writeBillingProfile(ctx, store.New(tx), req.Id, before, after, body.Revision, now, act)
-		return err
+		txq := store.New(tx)
+		if billingChanged {
+			updated, err := writeBillingProfile(ctx, txq, req.Id, before, after, body.Revision, now, act)
+			if err != nil {
+				return err
+			}
+			updatedRevision, updatedType, updatedEmail = updated.Revision, updated.Type, updated.Email
+			bumps++
+		}
+		if creditChanged {
+			expected := body.Revision
+			if billingChanged {
+				expected = nil
+			}
+			updated, err := writeCreditSettings(ctx, tx, txq, req.Id, beforeFacts.settings, afterCredit, expected, billingChanged, now, act)
+			if err != nil {
+				return err
+			}
+			updatedRevision, updatedType, updatedEmail = updated.Revision, updated.Type, updated.Email
+			bumps++
+		}
+		return nil
 	})
 	switch {
 	case isReadOnlyCustomer(err):
@@ -372,7 +428,7 @@ func (s *server) PutCustomersByIdBillingProfile(ctx context.Context, req gen.Put
 	// response carries is then more than one past the snapshot's, and the group
 	// is read again so the two still describe the same row. With a revision the
 	// guarded UPDATE already refused that case above.
-	if updated.Revision != existing.Revision+1 {
+	if updatedRevision != existing.Revision+bumps {
 		membership, err := q.CustomerGroupMembership(ctx, req.Id)
 		switch {
 		case errors.Is(err, pgx.ErrNoRows):
@@ -386,10 +442,12 @@ func (s *server) PutCustomersByIdBillingProfile(ctx context.Context, req gen.Put
 		}
 	}
 
-	lookup, err := s.resolvedPeppolLookupFor(ctx, q, req.Id, after, identity, updated.Type)
+	lookup, err := s.resolvedPeppolLookupFor(ctx, q, req.Id, after, identity, updatedType)
 	if err != nil {
 		return nil, fmt.Errorf("customers: resolve peppol lookup: %w", err)
 	}
-	warnings := billingWarnings(after, updated.Type, identity, updated.Email, hasInvoiceAddress, lookup)
-	return gen.PutCustomersByIdBillingProfile200JSONResponse(billingProfileResponse(after, updated.Revision, warnings, lookup, groupDefault)), nil
+	warnings := billingWarnings(after, updatedType, identity, updatedEmail, hasInvoiceAddress, lookup)
+	resp := billingProfileResponse(after, updatedRevision, warnings, lookup, groupDefault)
+	withCreditFacts(&resp, afterFacts)
+	return gen.PutCustomersByIdBillingProfile200JSONResponse(resp), nil
 }

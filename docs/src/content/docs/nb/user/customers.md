@@ -102,7 +102,10 @@ skylder på utstedte fakturaer, med hvor mange fakturaer det gjelder, hvor mange
 er forfalt og det eldste forfallet, og eventuelle på vent eller til inkasso;
 **Fakturert i år** er årets fakturaer minus årets kreditnotaer, med fjorårets tall
 under. Begge krever Faktura-modulen og `invoices:access`, og kommer med lenken **Se
-fakturaer** til kundens Fakturaer-fane; se
+fakturaer** til kundens Fakturaer-fane. En kunde med [kredittgrense](#fakturering) får
+også flisen **Kredittgrense** — eksponeringen mot grensen, *NOK 112 500 av NOK 100 000*,
+med **Over grensen** eller **Innenfor grensen**, og ordrebeløp i en valuta uten
+valutakurs (*Ikke medregnet: DKK 50*), under den samme Faktura-modulen og `invoices:access`. Se
 [Customer 360](/en/reference/customers/#customer-360). Under det kommer kortene
 **Kunderelasjon**, **Kontakt og adresser**, **Register**, **Fakturering**,
 **Kontakter**, **Vedlegg** og **Tidslinje**, beskrevet i avsnittene som følger.
@@ -189,7 +192,8 @@ postadresse; ingenting lagres uten et klikk. Se [Addresses](/en/reference/custom
 For en bedriftskunde med norsk organisasjonsnummer som juridisk identitet, og med
 `customers:legal-identity-view`, viser kortet **Register** hva Brønnøysundregistrene
 sier: **Organisasjonsform**, **Næringskode**, **Ansatte**, **Registrert i
-Merverdiavgiftsregisteret**, **Stiftet**, kontaktopplysninger, **Overordnet enhet**,
+Merverdiavgiftsregisteret**, **Registrert i Foretaksregisteret** (når opplysningene er
+lest etter at linjen kom til), **Stiftet**, kontaktopplysninger, **Overordnet enhet**,
 **Forretningsadresse** og **Postadresse**, og når opplysningene ble hentet. Røde merker
 flagger et selskap som er **Konkurs**, **Under avvikling**, **Under tvangsavvikling**
 eller **Slettet**.
@@ -218,6 +222,40 @@ kunden kan motta EHF-fakturaer og beholder svaret med dato; kan den det, og EHF 
 ikke er valgt, tilbyr **Denne kunden kan motta EHF-fakturaer** valget **Bruk EHF**. Se
 [Billing profile](/en/reference/customers/#billing-profile) og
 [Peppol lookup](/en/reference/customers/#peppol-lookup).
+
+### Kredittgrense
+
+**Kredittgrense (NOK)** i faktureringsprofilen er det Ordre sjekker kunden mot: en ordre
+som ville ført kunden over den, stoppes ved **Bekreft**, og det gjør også en endring som
+hever en bekreftet ordre over den, til den som håndterer innstillingene for Ordre,
+overstyrer. Ingenting annet stoppes av den — fakturaer varsler bare. Skriv den i NOK med
+sifre, med høyst to desimaler (*100000* eller *100 000,50*); *1,000* eller *1.000* avvises
+som uklart. La feltet stå tomt for ingen grense. Å sette eller heve den krever
+`customers:billing-manage`. Kortet viser den, og kundens flis
+**Kredittgrense** under **Oversikt** sammenligner den med **eksponeringen**, i NOK: det
+kunden skylder på utstedte fakturaer — en faktura i euro til NOK-verdien — pluss det de
+bekreftede ordrene har som ikke er fakturert, med mva., en ordre i en annen valuta til
+dagens kurs. En ordre i en valuta uten kurs den siste uken gjettes ikke: den nevnes ved
+siden av tallet som *Ikke medregnet*. Lik grensen er innenfor den.
+
+Ordre varsler på en ordrekladd som ville gått over den, og stopper bekreftelsen til den
+som håndterer innstillingene for Ordre, overstyrer med en begrunnelse ([kundens
+kredittgrense](/nb/user/orders/#kundens-kredittgrense)). Faktura varsler bare, på et
+utkast og når fakturaen utstedes: en faktura avvises aldri for den.
+
+### Bokføringspliktig
+
+**Bokføringspliktig** sier om kunden har bokføringsplikt etter bokføringsloven. Vantigo
+leser det fra registeret: en virksomhet som er i Merverdiavgiftsregisteret eller i
+Foretaksregisteret, er bokføringspliktig. En kunde registeret ikke vet noe om — en
+privatperson, en utenlandsk virksomhet — er *ukjent*, som regnes som ikke
+bokføringspliktig. Kortet sier hvilken, *ifølge registeret* eller *etter avgjørelse*.
+
+Tar registeret feil for denne kunden, velg **Ja, uansett hva registeret sier** eller
+**Nei, uansett hva registeret sier** og skriv **Begrunnelse for avgjørelsen**; **Som
+registeret sier** går tilbake. Det har betydning fra **1. januar 2028**: en faktura til en
+bokføringspliktig kjøper skal da ha kjøperens organisasjonsnummer, og Faktura avviser en
+uten ([Utstede](/nb/user/invoices/#utstede)). Før den dagen varsler den.
 
 ## Kontakter og rollene deres
 
@@ -532,4 +570,4 @@ Hele listen, med hva hver nøkkel beskytter, står under [Permissions](/en/refer
 
 ## Vis meg hvordan
 
-[Assistent](/nb/user/assistant/#vis-meg-hvordan) kan ta deg gjennom to ting her. Spør «hvordan oppretter jeg en kunde?» og trykk **Vis meg**: omvisningen peker på **Opprett ny kunde**, kundetypen, navnet og **Opprett kunde**. Spør «hvordan legger jeg til en kontakt?» mens du er på en kunde, så peker den på **Legg til kontakt**, søkefeltet i dialogen og knappen som legger til kontakten.
+[Assistent](/nb/user/assistant/#vis-meg-hvordan) kan ta deg gjennom to ting her. Spør «hvordan oppretter jeg en kunde?» og trykk **Vis meg**: omvisningen peker på **Opprett ny kunde**, kundetypen, navnet og **Opprett kunde**. Spør «hvordan legger jeg til en kontakt?» mens du er på en kunde, så peker den på **Legg til kontakt**, søkefeltet i dialogen og knappen som legger til kontakten. Spør «hvordan setter jeg en kredittgrense?», så peker den på **Kredittgrense (NOK)** og **Bokføringspliktig** i faktureringsprofilen.

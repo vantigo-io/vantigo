@@ -108,6 +108,7 @@ func (r *customerReceivables) ReceivablesForCustomer(ctx context.Context, custom
 			{&c.CreditedLastYear, row.CreditedLastYear},
 			{&c.Outstanding, row.Outstanding},
 			{&c.Overdue, row.Overdue},
+			{&c.OutstandingNOK, row.OutstandingNok},
 		} {
 			text, err := contractAmount(f.from)
 			if err != nil {

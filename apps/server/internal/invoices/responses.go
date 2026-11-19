@@ -544,6 +544,10 @@ func (s *server) renderInvoice(ctx context.Context, q *store.Queries, inv store.
 	if profile != nil && profile.Currency != "" && profile.Currency != inv.Currency {
 		resp.Warnings = append(resp.Warnings, warningCustomerCurrencyDiffers)
 	}
+	// The 2028 buyer rule, as the issue would judge it today (buyer_rule.go).
+	if inv.Kind == kindInvoice {
+		withDraftBuyerWarning(profile, today, &resp)
+	}
 	// A draft headed for EHF with neither reference is told now: neither
 	// changes after the issue, and the send would refuse it (EHF and KID
 	// design D8).

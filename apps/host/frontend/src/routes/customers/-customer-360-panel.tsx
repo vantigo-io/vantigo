@@ -86,7 +86,7 @@ export const Customer360Panel = ({ customerId }: { customerId: number }) => {
     );
   }
 
-  const { projects, work, expenses, invoices, lastActivity } = overview.data;
+  const { projects, work, expenses, invoices, credit, lastActivity } = overview.data;
   const count = (value: number) => formatters.formatNumber(value);
   // One currency per entry, never a sum across them (D2): the tile's second line.
   const amounts = (list: OverviewAmount[] | null) =>
@@ -96,7 +96,8 @@ export const Customer360Panel = ({ customerId }: { customerId: number }) => {
   // Calendar dates from the server, shown as the calendar date they are.
   const date = (on: string) => formatters.formatDate(on, { dateStyle: "medium", timeZone: "UTC" });
   const latest = latestActivity(lastActivity);
-  const tiles = 1 + [projects, work, expenses].filter((section) => section !== null).length + (invoices ? 2 : 0);
+  const tiles =
+    1 + [projects, work, expenses].filter((section) => section !== null).length + (invoices ? 2 : 0) + (credit ? 1 : 0);
   // The Outstanding tile's hint (customers receivables design D3): how many
   // invoices, the overdue ones with the oldest due date, and — because a
   // relationship owner should learn it here rather than from the agency —
@@ -184,6 +185,25 @@ export const Customer360Panel = ({ customerId }: { customerId: number }) => {
                   ? t("customer.overview360.lastYearHint", { amounts: amounts(invoices.invoicedLastYearAmounts) })
                   : t("customer.overview360.lastYearNothingHint")
               }
+            />
+          )}
+          {/* The credit limit (invoices phase 6 design I38): only with a
+              limit set, and under the invoices section's own gate. */}
+          {credit && (
+            <KpiCard
+              label={t("customer.overview360.creditLimit")}
+              value={t("customer.overview360.creditExposureValue", {
+                exposure: formatters.formatCurrency(Number(credit.exposureNok), "NOK"),
+                limit: formatters.formatCurrency(Number(credit.limit), "NOK"),
+              })}
+              hint={[
+                credit.exceeded ? t("customer.overview360.creditExceeded") : t("customer.overview360.creditWithin"),
+                credit.uncounted.length > 0
+                  ? t("customer.overview360.creditUncounted", { amounts: amounts(credit.uncounted) })
+                  : null,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
             />
           )}
           <KpiCard

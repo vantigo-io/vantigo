@@ -993,6 +993,27 @@ omvendt avgiftsplikt mangler kjøperens organisasjonsnummer, eller den valgte da
 er tillatt den dagen. Hver avvisning sies i dialogen
 ([alle avvisningene](/en/reference/invoices/#issuing)).
 
+**Fra 1. januar 2028** skal en faktura eller en kreditnota til en kjøper som er
+**bokføringspliktig** — slik kundens faktureringsprofil sier, ifølge registeret eller
+etter avgjørelse ([Bokføringspliktig](/nb/user/customers/#bokføringspliktig)) — ha
+kjøperens organisasjonsnummer (bokføringsforskriften § 5-1-2). Uten det avvises
+utstedelsen: *Kjøperen er bokføringspliktig, og fra 1. januar 2028 skal
+organisasjonsnummeret stå på fakturaen.* Før den dagen varsler utkastet og den utstedte
+fakturaen om det i stedet. Legg organisasjonsnummeret inn i kundens juridiske identitet,
+eller rett avgjørelsen på kunden, og utsted på nytt
+([2028-regelen for kjøper](/en/reference/invoices/#the-2028-buyer-rule)). En virksomhet
+registeret ikke har sagt noe om, varsles det bare om fra den dagen, den avvises aldri.
+
+En kjøper i Merverdiavgiftsregisteret skrives med *MVA* etter organisasjonsnummeret —
+*Org.nr. 923 609 016 MVA* — og en EHF har det samme, slik forskriften krever. Det hentes fra
+registeret når fakturaen utstedes.
+
+**Over kredittgrensen.** Når kunden har en [kredittgrense](/nb/user/customers/#kredittgrense)
+og de åpne fakturaene og bekreftede ordrene, med dette utkastet, er over den, varsler
+utkastet: *Kundens åpne fakturaer og bekreftede ordrer er, med denne fakturaen, over
+kredittgrensen. Du kan likevel utstede den.* Utstedelsen avvises aldri for det, og den
+utstedte fakturaen varsler på samme måte.
+
 **Bruk kundens kreditt.** Når kunden har [kreditt](#kundens-kreditt) i fakturaens valuta,
 tilbyr dialogen **Bruk kundens kreditt** — *Kunden har NOK 500,00 til gode. Den brukes på
 fakturaen når den er utstedt* — uten kryss. Kryss av for å bruke kreditten med en gang
@@ -2633,7 +2654,12 @@ person* og *… ble refundert i Vipps-portalen*
 **Administrer arbeidsområde** › **Integrasjoner** › **Bank** — *Banken avviste
 API-nøkkelen: kontoen som slutter på …, leses ikke*, *Bankintegrasjonen klarer ikke å lese
 kontoen som slutter på …* og *Bankintegrasjonen avviste en bunke for kontoen som slutter
-på …* ([Innbetalinger hentet fra banken](#innbetalinger-hentet-fra-banken)). En
+på …* ([Innbetalinger hentet fra banken](#innbetalinger-hentet-fra-banken)). Fra 1. januar
+2028 kommer også *Fakturaen til … ble utstedt for over 7 dager siden og er ikke sendt*,
+for alle med `invoices:access`: en faktura til en bokføringspliktig kjøper skal sendes til
+den (bokføringsforskriften § 5-2-1), og Vantigo viser en som er utstedt den dagen eller
+senere uten e-post, uten EHF og uten registrert levering en uke etter. Send den, eller
+registrer hvordan den ble levert, så forsvinner den. En
 faktura som en pågående Vipps-betaling dekker helt, vises ikke som forfalt
 ([oppmerksomhet](/en/reference/invoices/#stats)).
 

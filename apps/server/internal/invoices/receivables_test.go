@@ -151,7 +151,7 @@ func TestReceivables_TheFiguresOverACustomersDocuments(t *testing.T) {
 	got := customerReceivablesOf(t, h, customerAcme)
 	wantCurrencies(t, got.Currencies, []contracts.CurrencyReceivables{{
 		Currency: "NOK", IssuedThisYear: "1850.00", CreditedThisYear: "200.00", IssuedLastYear: "2000.00", CreditedLastYear: "0.00",
-		Outstanding: "2850.00", Overdue: "2350.00",
+		Outstanding: "2850.00", OutstandingNOK: "2850.00", Overdue: "2350.00",
 	}})
 	if got.OutstandingCount != 4 || got.OverdueCount != 3 {
 		t.Errorf("outstanding %d overdue %d, want 4 and 3", got.OutstandingCount, got.OverdueCount)
@@ -180,8 +180,8 @@ func TestReceivables_ACreditNoteCountsInItsOwnYear(t *testing.T) {
 
 	got := customerReceivablesOf(t, h, customerAcme)
 	wantCurrencies(t, got.Currencies, []contracts.CurrencyReceivables{
-		{Currency: "EUR", IssuedThisYear: "0.00", CreditedThisYear: "0.00", IssuedLastYear: "0.00", CreditedLastYear: "0.00", Outstanding: "0.00", Overdue: "0.00"},
-		{Currency: "NOK", IssuedThisYear: "0.00", CreditedThisYear: "700.00", IssuedLastYear: "1000.00", CreditedLastYear: "300.00", Outstanding: "0.00", Overdue: "0.00"},
+		{Currency: "EUR", IssuedThisYear: "0.00", CreditedThisYear: "0.00", IssuedLastYear: "0.00", CreditedLastYear: "0.00", Outstanding: "0.00", OutstandingNOK: "0.00", Overdue: "0.00"},
+		{Currency: "NOK", IssuedThisYear: "0.00", CreditedThisYear: "700.00", IssuedLastYear: "1000.00", CreditedLastYear: "300.00", Outstanding: "0.00", OutstandingNOK: "0.00", Overdue: "0.00"},
 	})
 	if got.OutstandingCount != 0 {
 		t.Errorf("OutstandingCount = %d, want 0: the invoice is fully credited", got.OutstandingCount)
@@ -226,7 +226,7 @@ func TestReceivables_PaidAndCreditedAreNotOutstanding(t *testing.T) {
 	got := customerReceivablesOf(t, h, customerAcme)
 	wantCurrencies(t, got.Currencies, []contracts.CurrencyReceivables{{
 		Currency: "NOK", IssuedThisYear: "300.00", CreditedThisYear: "100.00", IssuedLastYear: "0.00", CreditedLastYear: "0.00",
-		Outstanding: "60.00", Overdue: "0.00",
+		Outstanding: "60.00", OutstandingNOK: "60.00", Overdue: "0.00",
 	}})
 	if got.OutstandingCount != 1 || got.OverdueCount != 0 {
 		t.Errorf("outstanding %d overdue %d, want 1 and 0", got.OutstandingCount, got.OverdueCount)
@@ -292,8 +292,8 @@ func TestReceivables_PerCurrencyNeverAcross(t *testing.T) {
 
 	got := customerReceivablesOf(t, h, customerAcme)
 	wantCurrencies(t, got.Currencies, []contracts.CurrencyReceivables{
-		{Currency: "EUR", IssuedThisYear: "40.00", CreditedThisYear: "0.00", IssuedLastYear: "0.00", CreditedLastYear: "0.00", Outstanding: "40.00", Overdue: "0.00"},
-		{Currency: "NOK", IssuedThisYear: "100.00", CreditedThisYear: "0.00", IssuedLastYear: "0.00", CreditedLastYear: "0.00", Outstanding: "100.00", Overdue: "0.00"},
+		{Currency: "EUR", IssuedThisYear: "40.00", CreditedThisYear: "0.00", IssuedLastYear: "0.00", CreditedLastYear: "0.00", Outstanding: "40.00", OutstandingNOK: "0.00", Overdue: "0.00"},
+		{Currency: "NOK", IssuedThisYear: "100.00", CreditedThisYear: "0.00", IssuedLastYear: "0.00", CreditedLastYear: "0.00", Outstanding: "100.00", OutstandingNOK: "100.00", Overdue: "0.00"},
 	})
 	if got.OutstandingCount != 2 {
 		t.Errorf("OutstandingCount = %d, want 2 across both currencies", got.OutstandingCount)

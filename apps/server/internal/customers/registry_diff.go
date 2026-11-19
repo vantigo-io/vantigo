@@ -140,6 +140,11 @@ func diffRegistryRecords(before *registryRecord, legalName string, after registr
 	add("industryCode", before.IndustryCode, after.IndustryCode)
 	add("employees", registryEmployeesDisplay(before.Employees), registryEmployeesDisplay(after.Employees))
 	add("vatRegistered", registryBoolDisplay(before.VATRegistered), registryBoolDisplay(after.VATRegistered))
+	// A record read before the flag was fetched (nil) learning it is not a
+	// change in the register, only in what was asked of it: no entry.
+	if before.BusinessRegisterRegistered != nil && after.BusinessRegisterRegistered != nil {
+		add("businessRegisterRegistered", registryBoolDisplay(*before.BusinessRegisterRegistered), registryBoolDisplay(*after.BusinessRegisterRegistered))
+	}
 	add("bankrupt", registryBoolDisplay(before.Bankrupt), registryBoolDisplay(after.Bankrupt))
 	add("underLiquidation", registryBoolDisplay(before.UnderLiquidation), registryBoolDisplay(after.UnderLiquidation))
 	add("underForcedLiquidation", registryBoolDisplay(before.UnderForcedLiquidation), registryBoolDisplay(after.UnderForcedLiquidation))

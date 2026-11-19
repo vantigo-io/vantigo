@@ -128,6 +128,12 @@ export const invoicesCatalog = {
     warnings: "Worth a look",
     warningUnknown: "The server flags something this version has no words for ({{code}}).",
     "warning.customer_currency_differs": "The customer's billing profile is in another currency than this draft.",
+    "warning.buyer_org_number_missing":
+      "The buyer is bookkeeping-obligated and its organisation number is not on the invoice. From 1 January 2028 the issue will refuse this (bokføringsforskriften § 5-1-2).",
+    "warning.buyer_org_number_required":
+      "The buyer is bookkeeping-obligated, and from 1 January 2028 its organisation number must be on the invoice: the issue will refuse it as it stands (bokføringsforskriften § 5-1-2).",
+    "warning.credit_limit_exceeded":
+      "The customer's open invoices and confirmed orders, with this invoice, are above its credit limit. You can still issue it.",
     "warning.issued_late": "The delivery ended more than a month ago; the law asks for the invoice within a month.",
     "warning.credit_exceeds_invoice":
       "This credit note is more than the invoice has left to credit; it cannot be issued as it stands.",
@@ -465,6 +471,8 @@ export const invoicesCatalog = {
       "The seller is not VAT-registered, so every line must be outside the VAT act (code 7).",
     "refusal.category_o_not_allowed": "The seller is VAT-registered, so no line may be outside the VAT act.",
     "refusal.reverse_charge_needs_org_number": "Reverse charge needs the buyer's organisation number.",
+    "refusal.buyer_org_number_required":
+      "The buyer is bookkeeping-obligated, and from 1 January 2028 its organisation number must be on the invoice (bokføringsforskriften § 5-1-2).",
     "refusal.vat_codes_ambiguous": "Two lines share a VAT rate but carry different SAF-T codes.",
     "refusal.kid_length_exceeded":
       "The next invoice number no longer fits the KID agreement's length. Change the KID agreement in the settings.",
@@ -2759,6 +2767,12 @@ export const invoicesCatalog = {
     warnings: "Verdt å se på",
     warningUnknown: "Serveren påpeker noe denne versjonen ikke har ord for ({{code}}).",
     "warning.customer_currency_differs": "Kundens fakturaprofil er i en annen valuta enn dette utkastet.",
+    "warning.buyer_org_number_missing":
+      "Kjøperen er bokføringspliktig, og organisasjonsnummeret står ikke på fakturaen. Fra 1. januar 2028 avviser utstedelsen dette (bokføringsforskriften § 5-1-2).",
+    "warning.buyer_org_number_required":
+      "Kjøperen er bokføringspliktig, og fra 1. januar 2028 skal organisasjonsnummeret stå på fakturaen: utstedelsen avviser den slik den står (bokføringsforskriften § 5-1-2).",
+    "warning.credit_limit_exceeded":
+      "Kundens åpne fakturaer og bekreftede ordrer er, med denne fakturaen, over kredittgrensen. Du kan likevel utstede den.",
     "warning.issued_late":
       "Leveringen ble avsluttet for mer enn en måned siden; loven krever fakturaen innen en måned.",
     "warning.credit_exceeds_invoice":
@@ -3095,6 +3109,8 @@ export const invoicesCatalog = {
     "refusal.vat_not_registered": "Selgeren er ikke mva-registrert, så alle linjer må være utenfor mva-loven (kode 7).",
     "refusal.category_o_not_allowed": "Selgeren er mva-registrert, så ingen linje kan være utenfor mva-loven.",
     "refusal.reverse_charge_needs_org_number": "Omvendt avgiftsplikt krever kjøperens organisasjonsnummer.",
+    "refusal.buyer_org_number_required":
+      "Kjøperen er bokføringspliktig, og fra 1. januar 2028 skal organisasjonsnummeret stå på fakturaen (bokføringsforskriften § 5-1-2).",
     "refusal.vat_codes_ambiguous": "To linjer har samme mva-sats, men ulike SAF-T-koder.",
     "refusal.kid_length_exceeded":
       "Neste fakturanummer passer ikke lenger i KID-avtalens lengde. Endre KID-avtalen i innstillingene.",

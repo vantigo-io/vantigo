@@ -525,7 +525,10 @@ Merket teller de **egendefinerte under administrasjon**, som du oppretter.
   Administrasjon, Kunder · Kontakter, Timer · Timer, Fakturaer · Fakturaer, og så
   videre), hver med en kort beskrivelse av hva den tillater. En tillatelse som
   avslører mer enn den ser ut til — en persons kostnadssats, for eksempel — bærer
-  merket **Sensitiv**.
+  merket **Sensitiv**. **Administrer faktureringsprofiler** (`customers:billing-manage`)
+  er en av dem: i tillegg til betalingsbetingelser og levering setter — og hever — den en
+  kundes kredittgrense, som Ordre sjekker en bekreftelse mot, og om kunden er
+  bokføringspliktig.
 
 Velg minst én tillatelse og velg **Lagre rolle**. **Rediger** på en egendefinert
 rolle åpner den samme dialogen; sletteknappen spør **Slette egendefinert rolle?** —

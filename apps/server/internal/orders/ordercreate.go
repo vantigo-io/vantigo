@@ -134,9 +134,11 @@ func (s *server) createOrder(ctx context.Context, _ pgx.Tx, txq *store.Queries, 
 // It makes no call out of the module: the customer's billing profile was read
 // before the transaction and rides in as customer, and today — the day the
 // ledger judges a lot's expiry on (manufacturing phase 2 M63) — as today.
+// credit is the customer's credit read before the transaction too (readCredit,
+// invoices phase 6 design I38), nil when it has no limit.
 // lifecycle.go sets it.
 var confirmOrderTx func(ctx context.Context, s *server, tx pgx.Tx, txq *store.Queries, order store.OrdersOrder, lines []store.OrdersLine, o warningOverride,
-	by actor, customer *contracts.CustomerBillingProfile, reserve bool, today time.Time) (store.OrdersOrder, error)
+	by actor, customer *contracts.CustomerBillingProfile, credit *creditRead, reserve bool, today time.Time) (store.OrdersOrder, error)
 
 // afterOrderConfirmed is what follows a confirmation's commit, outside any
 // transaction: storing the confirmation's PDF (O24), printed as body inside

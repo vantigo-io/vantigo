@@ -17,6 +17,7 @@ sources:
   - apps/server/internal/events
   - apps/server/internal/live
   - apps/server/internal/docmath
+  - apps/server/internal/creditlimit
 ---
 
 A module may import the platform but never another module (see
@@ -1038,3 +1039,22 @@ over exact decimals (`math/big.Rat`): no database, no request, no float, no cloc
 Invoices' rules for the amounts are described where it applies them
 ([The model](/en/reference/invoices/#the-model)). The package imports the standard
 library only, and any module may import it.
+
+## `internal/creditlimit`
+
+[`apps/server/internal/creditlimit`](https://github.com/vantigo-io/vantigo/tree/main/apps/server/internal/creditlimit)
+is a customer's credit exposure and whether it passes the customer's credit limit
+(invoices phase 6 design I38): the one definition Customers' overview, Orders' confirm and
+Invoices' draft and issue all judge a limit by, so the three never disagree. Pure
+functions over exact decimals (`math/big.Rat`), no database and no request; it imports
+`internal/contracts` for its types and nothing of a module.
+
+| Name | What it does |
+| --- | --- |
+| `Exposure(receivables, backlog, rates, extra...)` | Sums into `Result{NOK, Uncounted}`, the NOK total as decimal text with two decimals: `receivables`' `OutstandingNOK` of every currency — each invoice's open NOK (Invoices' `open_nok`, at the rate it was issued at; nil receivables count nothing — invoicing off, or not read); the order backlog (`[]contracts.CurrencyAmount`, from `contracts.OrderBacklog`) and `extra` (the document being judged), NOK as it is and another currency at its rate in `rates`, rounded to øre. A currency with no rate is not guessed: its sum is listed in `Uncounted`, by code, never added. A text that is not a decimal is an error, never a zero. |
+| `RatesFor(ctx, rates, now, currencies...)` | Today's rate of each currency but NOK through `contracts.ExchangeRates` (the business day, at most seven days back); one with none is left out, so `Exposure` lists it. Nil rates — Invoices off — leave them all out. |
+| `Exceeds(limit, result)` | Whether the NOK total is **above** the limit; equal is within it, and a nil limit is never exceeded. |
+
+Delivery C's NOK figures are what make the one total possible (plan reading E14): the
+receivables answer each currency's NOK, and an order's currency is converted at Norges
+Bank's rate as Invoices holds it.

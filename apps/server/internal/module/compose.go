@@ -336,6 +336,12 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 	if receivablesProvider != nil {
 		deps.Receivables = receivablesProvider.Receivables(deps)
 	}
+	// The order backlog (contracts.OrderBacklog, invoices phase 6 design
+	// I38) resolves right after receivables: the two are what a credit limit
+	// is judged on.
+	if deps, err = withOrderBacklog(deps, mods); err != nil {
+		return nil, nil, err
+	}
 
 	// Sales tax (contracts.SalesTax, orders design O8) resolves right after
 	// receivables: the same module provides both, from its own tables only.

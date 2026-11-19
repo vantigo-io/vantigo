@@ -1019,7 +1019,7 @@ const en = {
   "admin.permission.customersLookupViewDescription": "Search the external business registry for legal identities.",
   "admin.permission.customersBillingManage": "Manage billing profiles",
   "admin.permission.customersBillingManageDescription":
-    "Set a customer's payment terms, invoice delivery and billing addresses for documents.",
+    "Set a customer's payment terms, invoice delivery and billing addresses for documents, its credit limit — and raise it — and whether it is bookkeeping-obligated.",
   "admin.permission.customersMerge": "Merge customers",
   "admin.permission.customersMergeDescription":
     "Merge a duplicate customer into another, moving its contacts, addresses, timeline, tags and other modules' references, and archiving it.",
@@ -1826,7 +1826,7 @@ const nb: { [Key in keyof typeof en]: string } = {
     "Søk i det eksterne foretaksregisteret etter juridiske identiteter.",
   "admin.permission.customersBillingManage": "Administrer faktureringsprofiler",
   "admin.permission.customersBillingManageDescription":
-    "Sett en kundes betalingsbetingelser, fakturalevering og faktureringsadresser for dokumenter.",
+    "Sett en kundes betalingsbetingelser, fakturalevering og faktureringsadresser for dokumenter, kredittgrensen — og heve den — og om kunden er bokføringspliktig.",
   "admin.permission.customersMerge": "Slå sammen kunder",
   "admin.permission.customersMergeDescription":
     "Slå en duplikatkunde sammen med en annen: kontaktene, adressene, tidslinjen, merkelappene og andre modulers referanser flyttes, og duplikatet arkiveres.",

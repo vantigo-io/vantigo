@@ -147,6 +147,13 @@ func (s *server) GetCustomersByIdOverview(ctx context.Context, req gen.GetCustom
 		resp.Invoices = &invoices
 		resp.LastActivity.InvoicedOn = invoices.LastIssuedOn
 		resp.LastActivity.PaymentOn = invoices.LastPaymentOn
+		// The credit limit beside what is owed (invoices phase 6 design I38),
+		// under the same gate: the exposure is money.
+		credit, err := s.overviewCredit(ctx, q, req.Id, totals)
+		if err != nil {
+			return nil, err
+		}
+		resp.Credit = credit
 	}
 	return gen.GetCustomersByIdOverview200JSONResponse(resp), nil
 }

@@ -26,27 +26,56 @@ export interface WarningBannersProps {
  * the customer's warning from here.
  */
 export const WarningBanners = ({ warnings, customer, access, blocking, override, onOverride }: WarningBannersProps) => {
-  const { t } = useOrdersFormat();
+  const { t, money } = useOrdersFormat();
   const [dialog, setDialog] = useState<"override" | "customer" | null>(null);
-  const blocks = warnings.some((w) => w.level === "block");
+  // The credit warning (invoices phase 6 design I38) is computed, never
+  // stored: the server answers it at info on a draft, and the confirm judges
+  // it a block — so at the step it stops, it is shown and overridden as one.
+  const levelOf = (w: Warning) =>
+    w.scope === "credit" && w.code === "credit_limit_exceeded" && blocking ? "block" : w.level;
+  const blocks = warnings.some((w) => levelOf(w) === "block");
+  const creditBlocks = warnings.some((w) => w.scope === "credit" && levelOf(w) === "block");
   const customerWarning = warnings.find((w) => w.scope === "customer");
   const subject = (w: Warning) =>
-    t(w.scope === "customer" ? "warningOnCustomer" : "warningOnProduct", { name: w.name });
+    t(w.scope === "customer" ? "warningOnCustomer" : w.scope === "credit" ? "warningOnCredit" : "warningOnProduct", {
+      name: w.name,
+    });
+  // A computed warning is worded here from its figures; a stored one is the
+  // text a person wrote.
+  const textOf = (w: Warning) => {
+    if (w.scope !== "credit") return w.text;
+    if (w.code === "credit_not_checked" || !w.credit) return t("creditNotChecked");
+    const parts = [
+      t("creditLimitExceededText", {
+        exposure: money(Number(w.credit.exposureNok), "NOK"),
+        limit: money(Number(w.credit.limit), "NOK"),
+      }),
+    ];
+    if (w.credit.uncounted.length > 0) {
+      parts.push(
+        t("creditUncounted", {
+          amounts: w.credit.uncounted.map((u) => money(Number(u.amount), u.currency)).join(", "),
+        }),
+      );
+    }
+    if (!w.credit.invoicesCounted) parts.push(t("creditInvoicesNotCounted"));
+    return parts.join(" ");
+  };
   if (warnings.length === 0 && !access.canManageSettings) return null;
   return (
     <Stack gap="xs" data-testid="warning-banners">
       {warnings.map((w) => (
         <Alert
           key={`${w.scope}-${w.id}`}
-          color={w.level === "block" ? "red" : "yellow"}
-          icon={w.level === "block" ? <IconAlertOctagon size={16} /> : <IconInfoCircle size={16} />}
+          color={levelOf(w) === "block" ? "red" : "yellow"}
+          icon={levelOf(w) === "block" ? <IconAlertOctagon size={16} /> : <IconInfoCircle size={16} />}
           title={subject(w)}
-          data-level={w.level}
+          data-level={levelOf(w)}
         >
           <Text size="sm" style={{ whiteSpace: "pre-wrap" }}>
-            {w.text}
+            {textOf(w)}
           </Text>
-          {w.level === "block" && blocking && !override && (
+          {levelOf(w) === "block" && blocking && !override && (
             <Text size="xs" c="dimmed" mt={4}>
               {access.canManageSettings ? t("warningBlocksOverride") : t("warningBlocks")}
             </Text>
@@ -65,7 +94,18 @@ export const WarningBanners = ({ warnings, customer, access, blocking, override,
       )}
       {access.canManageSettings && (
         <Group gap="xs" data-assist="orders.document.warnings">
-          {blocks && blocking && !override && (
+          {blocks && blocking && !override && creditBlocks && (
+            <Button
+              size="xs"
+              color="red"
+              variant="light"
+              onClick={() => setDialog("override")}
+              data-assist="orders.confirm.credit-override"
+            >
+              {t("overrideWarning")}
+            </Button>
+          )}
+          {blocks && blocking && !override && !creditBlocks && (
             <Button size="xs" color="red" variant="light" onClick={() => setDialog("override")}>
               {t("overrideWarning")}
             </Button>

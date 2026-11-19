@@ -82,5 +82,29 @@
       "en": "The button in the Add contact dialog that links the contact to the customer.",
       "nb": "Knappen i dialogen Legg til kontakt som knytter kontakten til kunden."
     }
+  },
+  {
+    "key": "customers.billing.credit-limit",
+    "route": "/customers/{customerId}",
+    "label": {
+      "en": "Credit limit (NOK)",
+      "nb": "Kredittgrense (NOK)"
+    },
+    "description": {
+      "en": "The field in the billing profile dialog that sets the customer's credit limit in NOK. Orders warns at confirm when the customer's open invoices and confirmed orders would pass it.",
+      "nb": "Feltet i dialogen for faktureringsprofilen som setter kundens kredittgrense i NOK. Ordre varsler ved bekreftelse når kundens åpne fakturaer og bekreftede ordrer ville gå over den."
+    }
+  },
+  {
+    "key": "customers.billing.bookkeeping-obligated",
+    "route": "/customers/{customerId}",
+    "label": {
+      "en": "Bookkeeping-obligated",
+      "nb": "Bokføringspliktig"
+    },
+    "description": {
+      "en": "The choice in the billing profile dialog that follows the register on whether the customer is bookkeeping-obligated, or overrides it with a reason.",
+      "nb": "Valget i dialogen for faktureringsprofilen som følger registeret om kunden er bokføringspliktig, eller overstyrer det med en begrunnelse."
+    }
   }
 ]

@@ -95,6 +95,12 @@ export const CustomerRegistryFields = ({ record }: { record: CustomerRegistryRec
         label={t("registryVatRegistered")}
         value={<Text size="sm">{record.vatRegistered ? t("yes") : t("no")}</Text>}
       />
+      {record.businessRegisterRegistered !== null && (
+        <RegistryRow
+          label={t("registryBusinessRegisterRegistered")}
+          value={<Text size="sm">{record.businessRegisterRegistered ? t("yes") : t("no")}</Text>}
+        />
+      )}
       {record.foundedOn && (
         <RegistryRow
           label={t("registryFoundedOn")}

@@ -44,7 +44,7 @@ SELECT id, customer_number, name, type, status, revision, merged_into_customer_i
        legal_country, legal_id, legal_name, legal_source, legal_type,
        email, phone, website, owner_user_id, group_id,
        invoice_email, reminder_email, payment_terms_days, currency, language,
-       invoice_delivery, reminder_delivery, peppol_id, gln, buyer_reference, default_bill_rate
+       invoice_delivery, reminder_delivery, peppol_id, gln, buyer_reference, default_bill_rate, credit_limit
 FROM customers.customers
 WHERE id = $1
 `
@@ -79,6 +79,7 @@ type CustomerForMergeRow struct {
 	Gln                  *string
 	BuyerReference       *string
 	DefaultBillRate      pgtype.Numeric
+	CreditLimit          pgtype.Numeric
 }
 
 // CustomerForMerge is a merge's read of each of its two customers (customers
@@ -122,6 +123,7 @@ func (q *Queries) CustomerForMerge(ctx context.Context, id int32) (CustomerForMe
 		&i.Gln,
 		&i.BuyerReference,
 		&i.DefaultBillRate,
+		&i.CreditLimit,
 	)
 	return i, err
 }

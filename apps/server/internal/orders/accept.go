@@ -106,11 +106,15 @@ func (s *server) AcceptQuote(ctx context.Context, req gen.AcceptQuoteRequestObje
 	// Accept and confirm judges the customer as a confirm does, from the
 	// billing profile read before the transaction.
 	var customer *contracts.CustomerBillingProfile
+	var credit *creditRead
 	var p printer
 	var today time.Time
 	if confirm {
 		if customer, err = s.billingProfile(ctx, quote.CustomerID); err != nil {
 			return answer(err, resp)
+		}
+		if credit, err = s.readCredit(ctx, customer, quote.Currency); err != nil {
+			return nil, err
 		}
 		if p, err = s.readPrinter(ctx); err != nil {
 			return nil, err
@@ -147,7 +151,7 @@ func (s *server) AcceptQuote(ctx context.Context, req gen.AcceptQuoteRequestObje
 			return err
 		}
 		if confirm {
-			if order, err = confirmOrderTx(ctx, s, tx, txq, order, orderLines, override, by, customer, true, today); err != nil {
+			if order, err = confirmOrderTx(ctx, s, tx, txq, order, orderLines, override, by, customer, credit, true, today); err != nil {
 				return err
 			}
 			if printed, err = p.confirmation(order, orderLines, s.deps.Clock()); err != nil {

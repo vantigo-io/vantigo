@@ -948,3 +948,12 @@ func SetCreditMoveAfterIssue(hook func(ctx context.Context, creditNoteID int64) 
 	creditMoveAfterIssue = hook
 	return func() { creditMoveAfterIssue = nil }
 }
+
+// SetUndeliveredCandidates sets how many candidates invoiceUndelivered reads,
+// and answers the function that puts it back. A test using it does not run in
+// parallel.
+func SetUndeliveredCandidates(n int32) func() {
+	was := undeliveredCandidates
+	undeliveredCandidates = n
+	return func() { undeliveredCandidates = was }
+}

@@ -628,6 +628,10 @@ type mergedCustomerSnapshot struct {
 	BillingProfile billingProfile         `json:"billingProfile"`
 	OwnerUserID    *uuid.UUID             `json:"ownerUserId"`
 	GroupID        *uuid.UUID             `json:"groupId"`
+	// CreditLimit is the merged-away customer's own credit limit, dropped by
+	// the merge — the survivor keeps its own (invoices phase 6 design I38) —
+	// named here so the timeline says what went.
+	CreditLimit *string `json:"creditLimit,omitempty"`
 }
 
 // customerRefSnapshot is a customer named by id, number and name, as the

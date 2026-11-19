@@ -6,7 +6,7 @@ SELECT customer_id, organisation_number, name, organisation_form_code, organisat
        industry_code, industry, employees, vat_registered, bankrupt, under_liquidation,
        under_forced_liquidation, deleted_on, founded_on, website, email, phone, mobile,
        parent_organisation_number, business_address, postal_address, fetched_at,
-       registry_updated_hint, bankrupt_on, liquidation_on
+       registry_updated_hint, bankrupt_on, liquidation_on, business_register_registered
 FROM customers.customer_registry_records
 WHERE customer_id = @customer_id;
 
@@ -27,7 +27,7 @@ SELECT customer_id, organisation_number, name, organisation_form_code, organisat
        industry_code, industry, employees, vat_registered, bankrupt, under_liquidation,
        under_forced_liquidation, deleted_on, founded_on, website, email, phone, mobile,
        parent_organisation_number, business_address, postal_address, fetched_at,
-       registry_updated_hint, bankrupt_on, liquidation_on
+       registry_updated_hint, bankrupt_on, liquidation_on, business_register_registered
 FROM customers.customer_registry_records
 WHERE customer_id = @customer_id
 FOR UPDATE;
@@ -47,13 +47,13 @@ INSERT INTO customers.customer_registry_records (
     industry_code, industry, employees, vat_registered, bankrupt, under_liquidation,
     under_forced_liquidation, deleted_on, bankrupt_on, liquidation_on, founded_on,
     website, email, phone, mobile,
-    parent_organisation_number, business_address, postal_address, fetched_at
+    parent_organisation_number, business_address, postal_address, fetched_at, business_register_registered
 ) VALUES (
     @customer_id, @organisation_number, @name, @organisation_form_code, @organisation_form,
     @industry_code, @industry, @employees, @vat_registered, @bankrupt, @under_liquidation,
     @under_forced_liquidation, @deleted_on, @bankrupt_on, @liquidation_on, @founded_on,
     @website, @email, @phone, @mobile,
-    @parent_organisation_number, @business_address, @postal_address, @fetched_at::timestamptz
+    @parent_organisation_number, @business_address, @postal_address, @fetched_at::timestamptz, @business_register_registered
 )
 ON CONFLICT (customer_id) DO UPDATE SET
     organisation_number        = EXCLUDED.organisation_number,
@@ -78,6 +78,7 @@ ON CONFLICT (customer_id) DO UPDATE SET
     parent_organisation_number = EXCLUDED.parent_organisation_number,
     business_address           = EXCLUDED.business_address,
     postal_address             = EXCLUDED.postal_address,
+    business_register_registered = EXCLUDED.business_register_registered,
     fetched_at                 = EXCLUDED.fetched_at;
 
 -- name: RegistryAttentionCandidates :many

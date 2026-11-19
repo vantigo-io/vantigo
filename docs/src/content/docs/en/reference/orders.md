@@ -4,6 +4,7 @@ description: "The quotes and sales orders made for customers: the module and the
 sources:
   - apps/server/internal/orders
   - apps/orders/frontend
+  - apps/server/internal/contracts/order_backlog.go
   - openapi/orders.yaml
   - apps/server/internal/openapi/specs/orders.yaml
   - apps/server/internal/db/migrations/00119_orders_baseline.sql
@@ -302,7 +303,7 @@ two derived statuses:
 
 | Operation | Takes | Refused with |
 | --- | --- | --- |
-| Confirm | a draft | `order_not_draft` (409); `customer_disabled`, `order_empty` (no product line), `line_unpriced`, `vat_code_unmapped` (400); `blocked_by_warning` (409, [Sales warnings](#sales-warnings)) |
+| Confirm | a draft | `order_not_draft` (409); `customer_disabled`, `order_empty` (no product line), `line_unpriced`, `vat_code_unmapped` (400); `blocked_by_warning` (409, [Sales warnings](#sales-warnings)); `credit_limit_exceeded` (409, [The credit limit](#the-credit-limit)) |
 | Hold, release | a confirmed order | `order_not_confirmed` (409). Release of an order not on hold answers it unchanged |
 | Lock, unlock | a confirmed order | `order_not_confirmed` (409) |
 | Cancel | a draft, or a confirmed, unlocked order with nothing delivered or invoiced | `order_locked` (409) for a locked one — unlock it first; `order_has_progress` (409) once anything is delivered or invoiced; `order_not_confirmed` (409) for one already cancelled; `order_in_draft_invoice` (409) while a draft allocation holds part of it |
@@ -1618,6 +1619,74 @@ no longer be set (`PUT` is 404) but is removed with `DELETE`. A catalog that can
 leaves the list unmarked rather than failing it. [The holders](#the-holders) re-point a customer's warning on a
 merge and delete it on an erase.
 
+### The credit limit
+
+The customer's **credit limit** (invoices phase 6 design I38) is a computed sales warning
+of scope **`credit`**, never stored: Customers keeps the limit, in NOK, on the billing
+profile (`CustomerBillingProfile.CreditLimit`, [the billing
+profile](/en/reference/customers/#credit-limit-and-bookkeeping-obligation)). The
+**exposure** is one definition, `internal/creditlimit` ([platform
+packages](/en/contributing/platform-packages/#internalcreditlimit)), shared with Customers
+and Invoices:
+
+- Invoices' open receivables in NOK, every currency — `CustomerReceivables.
+  ReceivablesForCustomer`'s `OutstandingNOK` (each invoice's `open_nok`, at its own rate),
+  read **before** the transaction (a contract call inside one is refused);
+- plus this module's confirmed orders' uninvoiced gross, `UninvoicedGrossSums` on the
+  confirm's own transaction, the order being confirmed left out;
+- plus the order's own `gross_total`.
+
+An order amount in another currency counts at today's rate, read before the transaction
+through `contracts.ExchangeRates` for the currencies of the customer's orders and of the
+document (the business day, at most seven days back); a currency with no rate — or with
+Invoices off — is listed in the warning's `credit.uncounted` and never added. Equal to the
+limit is within it.
+
+- On **confirm**, and on **accept** into a confirmed order, a limit the exposure passes is a
+  `block` warning with `code: credit_limit_exceeded` and its `credit` figures (`limit`,
+  `exposureNok`, `uncounted`, `invoicesCounted`), judged with the stored warnings: it is
+  overridden as they are (`overrideWarnings`, `overrideReason`, `orders:settings`) and
+  logged as a `warning_overridden` action naming *Credit limit of customer …*. Refused, the
+  code is **`credit_limit_exceeded`** when it is the only block, and `blocked_by_warning`,
+  its detail naming both, when a stored block stands too.
+- `GET /orders/{id}` of a **draft** answers the same warning at `info`, read after the
+  snapshot, so the person sees it before confirm. A read of it that fails shows nothing.
+- With Invoices off (`Deps.Receivables` nil) only the backlog and the order count, and
+  `invoicesCounted` is false. When the receivables cannot be read the confirm is never
+  refused: the warning is `credit_not_checked` at `info` and the error is logged — an
+  outage must not stop sales (plan reading E7).
+- **A confirmed order's save that raises its gross** (`PUT /orders/{id}`) is judged the
+  same way, after the new lines are written on its transaction so the backlog counts them:
+  past the limit it is refused `credit_limit_exceeded`, and `overrideWarnings` with
+  `overrideReason` and `orders:settings` saves it, logged as `warning_overridden`. A save
+  that keeps or lowers the gross is never judged.
+- **The figures are money.** `credit` (and the figures in the text and the refusal's
+  detail) go only to a caller who holds `invoices:access`, as Customers' overview gates
+  them; anyone else is told *The customer is over its credit limit with this order*.
+- **The backlog leaves out what draft invoices hold** (`orders.invoice_allocations` in
+  `draft`), as `DueOrderLines` does: a draft invoice counts its own gross in Invoices'
+  judgement, so the order must not count it again. A draft invoice is not a sales
+  document, so in Orders' own judgement that part is counted by neither until it is issued.
+- **Concurrent confirms are not serialised by the check.** The receivables are read before
+  the transaction and the backlog on it without a lock of the customer's other orders, so
+  two confirms for the same customer that commit at once can each pass the limit alone and
+  together exceed it. The check is best effort against a concurrent change, as the sales
+  warnings' are; the next confirm or raise sees both.
+- Quotes carry no credit warning: a quote commits nothing.
+
+### `contracts.OrderBacklog`
+
+The module provides `contracts.OrderBacklog` (`Module.OrderBacklog`, resolved by Compose
+and Workers beside the receivables), the one read another module judges a credit limit
+with: `UninvoicedForCustomer(ctx, customerID)` answers the customer's confirmed orders'
+gross that is neither cancelled nor invoiced, per currency, by code — each product or
+shipping line's `round(line_net × (1 + vat_rate_percent / 100) × (quantity −
+qty_cancelled − qty_invoiced − draft-allocated) / quantity, 2)`, a kit's child lines left out (they are
+invoiced as their kit), summed per currency. Drafts count for nothing. It authorises
+nothing, reads this module's own tables on the pool, and is nil when Orders is off.
+Customers' [Customer 360](/en/reference/customers/#customer-360) and Invoices' draft and
+issue read it.
+
 ## The variant grid
 
 `GET /products/{productId}/grid` (O34) answers a product's variants for *Add from grid*,
@@ -1726,6 +1795,7 @@ a bare 400.
 | `client_request_reused` | 409 | The `clientRequestId` made a document for another customer |
 | `template_name_taken` | 409 | Another template has the name |
 | `blocked_by_warning` | 409 | A block warning on the customer or a product refuses send, mark as sent, confirm or accept into a confirmed order; the detail names it ([Sales warnings](#sales-warnings)) |
+| `credit_limit_exceeded` | 409 | Confirm, or accept into a confirmed order: the customer's exposure with the order passes its credit limit, and no other block stands; overridden as a block warning is ([The credit limit](#the-credit-limit)) |
 | `subscription_goods_not_allowed` | 400 | A subscription's catalog line is goods, not a service |
 | `subscription_not_editable` | 400 | An activated subscription given another customer, currency, VAT mode, interval, billing, start or end |
 | `not_a_period_start` | 400 | `effectiveFrom`, or a pause's or a resume's `from`, is not the first day of one of the subscription's periods |
@@ -1866,6 +1936,7 @@ The Assistant can point at these controls in a guided tour ([the registry](/en/r
 | `orders.subscription.effective-from` | `/orders/subscriptions/{subscriptionId}` | Changes take effect from |
 | `orders.subscription.final-period` | `/orders/subscriptions/{subscriptionId}` | Final period when a subscription ends, in the plan |
 | `orders.subscription.end-final-period` | `/orders/subscriptions/{subscriptionId}` | The final period, in the End dialog |
+| `orders.confirm.credit-override` | `/orders/orders/{orderId}` | Override the warnings, when the customer's credit limit stops the confirm |
 
 ## Enabling and disabling
 
@@ -1919,7 +1990,7 @@ and 403 are the platform's. Every write of a quote or an order also answers 409
 | `GET /orders/{id}` | access | 200 with lines, buckets and totals, and each goods line's [production](#production-on-the-order); 404 |
 | `PUT /orders/{id}` | sales-manage | 200; 400 incl. `quantity_below_progress`, `line_invalid`, `site_not_fulfilling`; 404; 409 `version_conflict`, `order_locked`, `line_invoiced`, `line_in_draft_invoice`, `line_has_progress`, `line_kind_changed`, `order_has_deliveries`, `insufficient_available`; 503 |
 | `DELETE /orders/{id}` | sales-manage | 204 — a draft accepted from a quote puts the quote back to `sent`; 404; 409 `order_not_draft`, `version_conflict` (`expectedUpdatedAt` in the query) |
-| `POST /orders/{id}/confirm` | sales-confirm (+ settings to override) | 200; 400 `customer_disabled`, `order_empty`, `line_unpriced`, `vat_code_unmapped`, `overrideReason`; 404; 409 `order_not_draft`, `blocked_by_warning`, `insufficient_available`, `site_not_fulfilling`, `variant_not_stocked` |
+| `POST /orders/{id}/confirm` | sales-confirm (+ settings to override) | 200; 400 `customer_disabled`, `order_empty`, `line_unpriced`, `vat_code_unmapped`, `overrideReason`; 404; 409 `order_not_draft`, `blocked_by_warning`, `credit_limit_exceeded`, `insufficient_available`, `site_not_fulfilling`, `variant_not_stocked` |
 | `POST /orders/{id}/reserve` | sales-manage | 200; 404; 409 `order_not_confirmed`, `order_has_no_site`, `insufficient_available`; 503 without stock |
 | `POST /orders/{id}/hold` | sales-manage | 200; 400 reason; 404; 409 `order_not_confirmed` |
 | `POST /orders/{id}/release` | sales-manage | 200; 404; 409 |

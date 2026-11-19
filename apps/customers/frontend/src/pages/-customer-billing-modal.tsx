@@ -30,7 +30,14 @@ interface BillingFormValues {
   peppolId: string;
   gln: string;
   buyerReference: string;
+  creditLimit: string;
+  /** "" for "as the register says", else "true" or "false" (invoices phase 6 design I37). */
+  bookkeepingOverride: string;
+  bookkeepingOverrideReason: string;
 }
+
+/** The override's choice as the Select holds it. */
+const overrideValue = (v: boolean | null): string => (v === null ? "" : String(v));
 
 /**
  * Exported so `-customer-peppol-status.tsx`'s Use EHF button can build its
@@ -51,7 +58,42 @@ export const valuesFromProfile = (profile: CustomerBillingProfile): BillingFormV
   peppolId: profile.peppolId ?? "",
   gln: profile.gln ?? "",
   buyerReference: profile.buyerReference ?? "",
+  creditLimit: profile.creditLimit ?? "",
+  bookkeepingOverride: overrideValue(profile.bookkeepingObligatedOverride),
+  bookkeepingOverrideReason: profile.bookkeepingObligatedOverrideReason ?? "",
 });
+
+/**
+ * What the register says, for the bookkeeping field's hint: the derived fact
+ * when it came from the register, unknown when the customer has no record,
+ * and "overridden" when a person's decision stands in its place.
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export const registerWord = (t: (key: string) => string, profile: CustomerBillingProfile): string => {
+  if (profile.bookkeepingObligatedSource === "override") return t("billingBookkeepingOverridden");
+  if (profile.bookkeepingObligatedSource !== "registry" || profile.bookkeepingObligated === null) {
+    return t("billingBookkeepingUnknown");
+  }
+  return profile.bookkeepingObligated ? t("yes") : t("no");
+};
+
+/**
+ * A credit limit as a person types it, as the server's decimal text: spaces
+ * (and no-break spaces) as thousands separators dropped, a decimal comma or
+ * point. A comma and a point together, or a separator followed by three
+ * digits ("1,000", "1.000"), cannot be read for sure and answer undefined —
+ * the form refuses it rather than guess between one thousand and one.
+ * Empty answers null.
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export const parseCreditLimit = (raw: string): string | null | undefined => {
+  const compact = raw.replace(/[\s\u00a0\u202f]/g, "");
+  if (compact === "") return null;
+  if (compact.includes(",") && compact.includes(".")) return undefined;
+  const normal = compact.replace(",", ".");
+  if (!/^[0-9]{1,12}(\.[0-9]{1,2})?$/.test(normal)) return undefined;
+  return normal;
+};
 
 /** A NumberInput's own value type (`number | string`), empty string meaning "cleared" — mapped to null on submit. */
 const numeric = (value: number | string): number | null => {
@@ -76,6 +118,14 @@ export const toInput = (values: BillingFormValues, revision: number): CustomerBi
   peppolId: values.peppolId.trim() || null,
   gln: values.gln.trim() || null,
   buyerReference: values.buyerReference.trim() || null,
+  // The credit half is kept by an absent field, so an empty one is said as a
+  // clear: the limit as parseCreditLimit reads it, the override as chosen.
+  creditLimit: parseCreditLimit(values.creditLimit) ?? null,
+  clearCreditLimit: values.creditLimit.trim() === "",
+  bookkeepingObligatedOverride: values.bookkeepingOverride === "" ? null : values.bookkeepingOverride === "true",
+  bookkeepingObligatedOverrideReason:
+    values.bookkeepingOverride === "" ? null : values.bookkeepingOverrideReason.trim() || null,
+  clearBookkeepingOverride: values.bookkeepingOverride === "",
   revision,
 });
 
@@ -110,7 +160,12 @@ export const CustomerBillingModal = ({
   // refetch of the billing profile while the modal is open must not blow
   // away what the caller is mid-typing.
   const [wasOpened, setWasOpened] = useState(opened);
-  const form = useForm<BillingFormValues>({ initialValues: valuesFromProfile(profile) });
+  const form = useForm<BillingFormValues>({
+    initialValues: valuesFromProfile(profile),
+    validate: {
+      creditLimit: (value) => (parseCreditLimit(value) === undefined ? t("billingCreditLimitUnreadable") : null),
+    },
+  });
   // The conflict alert's Reload, shared with the other two modals that edit
   // this row: it refetches the billing profile rather than the customer, but
   // seeds the same row revision (design D4) and fails as loudly.
@@ -269,6 +324,34 @@ export const CustomerBillingModal = ({
             description={t("billingBuyerReferenceHint")}
             {...form.getInputProps("buyerReference")}
           />
+          <TextInput
+            label={t("billingCreditLimit")}
+            description={t("billingCreditLimitHint")}
+            inputMode="decimal"
+            data-assist="customers.billing.credit-limit"
+            {...form.getInputProps("creditLimit")}
+          />
+          <Select
+            label={t("billingBookkeepingObligated")}
+            description={t("billingBookkeepingFromRegister", { value: registerWord(t, profile) })}
+            data={[
+              { value: "", label: t("billingBookkeepingAsRegister") },
+              { value: "true", label: t("billingBookkeepingOverrideYes") },
+              { value: "false", label: t("billingBookkeepingOverrideNo") },
+            ]}
+            allowDeselect={false}
+            data-assist="customers.billing.bookkeeping-obligated"
+            {...form.getInputProps("bookkeepingOverride")}
+          />
+          {form.values.bookkeepingOverride !== "" && (
+            <TextInput
+              label={t("billingBookkeepingOverrideReason")}
+              maxLength={500}
+              required
+              {...form.getInputProps("bookkeepingOverrideReason")}
+              error={form.errors.bookkeepingObligatedOverrideReason ?? form.errors.bookkeepingOverrideReason}
+            />
+          )}
           <Group justify="flex-end">
             <Button variant="default" onClick={onClose}>
               {t("cancel")}

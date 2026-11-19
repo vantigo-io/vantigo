@@ -149,6 +149,7 @@ func buyerParty(inv store.InvoicesInvoice) pdfParty {
 		name: deref(inv.BuyerName), line1: deref(inv.BuyerAddressLine1), line2: deref(inv.BuyerAddressLine2),
 		postalCode: deref(inv.BuyerPostalCode), city: deref(inv.BuyerCity), country: deref(inv.BuyerCountry),
 		organisationNumber: deref(inv.BuyerOrganisationNumber), foreignID: deref(inv.BuyerForeignID),
+		vatRegistered: inv.BuyerVatRegistered,
 	}
 }
 

@@ -2211,6 +2211,7 @@ linters:
             - "**/internal/holidays/**"
             - "**/internal/config/**"
             - "**/internal/consumerinvoice/**"
+            - "**/internal/creditlimit/**"
             - "**/internal/db/**"
             - "**/internal/docmath/**"
             - "**/internal/events/**"

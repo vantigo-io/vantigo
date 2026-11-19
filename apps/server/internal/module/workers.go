@@ -169,6 +169,11 @@ func WorkerDeps(deps Deps, mods ...Module) Deps {
 	if deps, err = withBankFeed(deps, enabled); err != nil {
 		panic(err.Error())
 	}
+	// The order backlog, as Compose resolves it: the invoices-billing worker
+	// issues through the issue's own code path, which reads it.
+	if deps, err = withOrderBacklog(deps, enabled); err != nil {
+		panic(err.Error())
+	}
 	// The stock read and the stock ledger, resolved as Compose resolves
 	// them: a worker that cancels an order must release its reservations
 	// as the API does.
@@ -368,6 +373,21 @@ func withBankFeed(deps Deps, enabled []Module) (Deps, error) {
 	}
 	if provider != nil {
 		deps.BankFeed = provider.BankFeed(deps)
+	}
+	return deps, nil
+}
+
+// withOrderBacklog resolves contracts.OrderBacklog from the enabled modules —
+// at most one may declare it — keeping a preset value when none does. Compose
+// calls it right after the receivables, Workers after the bank feed; its
+// provider reads its own tables only.
+func withOrderBacklog(deps Deps, enabled []Module) (Deps, error) {
+	provider, err := soleProvider(enabled, "an order backlog", func(m Module) bool { return m.OrderBacklog != nil })
+	if err != nil {
+		return deps, err
+	}
+	if provider != nil {
+		deps.OrderBacklog = provider.OrderBacklog(deps)
 	}
 	return deps, nil
 }

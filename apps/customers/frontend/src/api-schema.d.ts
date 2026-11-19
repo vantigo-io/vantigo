@@ -1185,7 +1185,20 @@ export interface components {
         };
         /** @description A customer's billing profile (invoice-ready customer design D1, D4): payment terms, currency, document language, delivery methods and the identifiers used to send it invoices — every field optional, meaning "not decided here, whoever invoices uses its own default"; unset, a field is simply absent from the response rather than sent as null. warnings is computed at read time from the profile plus the customer's type, legal identity, contact email and addresses — never stored — in a fixed order: ehf_without_recipient, email_without_address, efaktura_for_business, no_invoice_address, ehf_recipient_not_registered, ehf_available (can-this-customer-receive-EHF design D4). peppolLookup is the last Peppol lookup on record (POST .../peppol-lookup), present only when it was made for the participant this profile would look up now — a stale answer (the org number or peppolId changed since) is omitted. groupDefault is the customer's group and the payment term that group would give it (customer groups design D4), computed at read time and absent for a customer in no group; the profile's own paymentTermsDays, when set, overrides it. defaultBillRate is the customer's default hourly bill rate (customers bill-rate design D1), quoted in this profile's own currency: the rate chain's customer step, which Time applies to this customer's projects that price their hours neither by a billing line nor by a default of their own. It is never set without a currency. */
         CustomerBillingProfile: {
+            /** @description Whether the customer is bookkeeping-obligated (bokføringspliktig, invoices phase 6 design I37): bookkeepingObligatedOverride when it is set, else — with a registry record of the customer's own organisation number — whether the registry has it in the VAT register or the Register of Business Enterprises, else absent: unknown, which an invoice treats as not obligated. From 1 January 2028 an invoice to an obligated buyer must carry its organisation number (bokføringsforskriften § 5-1-2). */
+            bookkeepingObligated?: boolean | null;
+            /** @description A person's decision that overrules the registry's word; absent means as the registry says. */
+            bookkeepingObligatedOverride?: boolean | null;
+            /** @description Why the override was set. Present exactly when bookkeepingObligatedOverride is. */
+            bookkeepingObligatedOverrideReason?: string | null;
+            /**
+             * @description Where bookkeepingObligated came from.
+             * @enum {string}
+             */
+            bookkeepingObligatedSource: "override" | "registry" | "unknown";
             buyerReference?: string | null;
+            /** @description The customer's credit limit in NOK (invoices phase 6 design I38), decimal text with two decimals, as "50000.00"; absent when none is set. Orders warns at confirm, and Invoices on a draft and at the issue, when the customer's exposure would pass it. */
+            creditLimit?: string | null;
             currency?: string | null;
             /**
              * Format: double
@@ -1494,6 +1507,19 @@ export interface components {
             /** Format: int32 */
             readyCount: number;
         };
+        /** @description The customer's credit limit and its exposure (invoices phase 6 design I38): in NOK, what it owes on issued invoices of every currency at their NOK (each invoice's open NOK at the rate it was issued at), plus what its confirmed orders hold that is not yet invoiced, VAT included, an order in another currency at today's exchange rate. An order currency with no rate within seven days is listed in uncounted and never added. Present when the customer has a credit limit, the invoices module is on and the caller holds invoices:access. */
+        CustomerOverviewCredit: {
+            /** @description Whether exposureNok is above limit. Equal is not exceeding. */
+            exceeded: boolean;
+            /** @description The exposure in NOK, decimal text with two decimals. */
+            exposureNok: string;
+            /** @description The credit limit in NOK, decimal text with two decimals. */
+            limit: string;
+            /** @description Whether the orders module is on, so confirmed orders are in the exposure. */
+            ordersCounted: boolean;
+            /** @description What the confirmed orders hold in a currency with no exchange rate within seven days, per currency by ISO code, not counted against the limit. */
+            uncounted: components["schemas"]["CustomerOverviewAmount"][];
+        };
         /** @description What the customer has been invoiced and what they owe (customers receivables design D2), read from the invoices module and judged on the business day asOf. Outstanding is the issued invoices that are open, partially paid or overdue, at their open amounts — gross less credited less paid; overdue the overdue ones among them. Reminder fees, compensation and interest are never included. Invoiced this year is the invoices issued in asOf's calendar year less the credit notes issued in it, whatever year the credited invoice was; last year the same for the year before. Present when the invoices module is on and the caller holds invoices:access. A customer with no issued document answers zero counts and empty lists, not absence. */
         CustomerOverviewInvoices: {
             /**
@@ -1597,6 +1623,7 @@ export interface components {
         /** @description What is going on with one customer across the modules that know (customer 360 design D1, D2). Every section but lastActivity may be absent, and absent means the module is off or the section is not for this caller — the response never says which, and never answers 403 for it. */
         CustomerOverviewResponse: {
             expenses?: components["schemas"]["CustomerOverviewExpenses"];
+            credit?: components["schemas"]["CustomerOverviewCredit"];
             invoices?: components["schemas"]["CustomerOverviewInvoices"];
             lastActivity: components["schemas"]["CustomerOverviewLastActivity"];
             projects?: components["schemas"]["CustomerOverviewProjects"];
@@ -1765,6 +1792,8 @@ export interface components {
             postalAddress?: components["schemas"]["CustomerRegistryAddress"];
             /** Format: date-time */
             registryUpdatedHint?: string | null;
+            /** @description Whether the entity is in the Register of Business Enterprises (Foretaksregisteret, registrertIForetaksregisteret). Absent on a record not refreshed since the field was added; the next refresh fills it. */
+            businessRegisterRegistered?: boolean | null;
             underForcedLiquidation: boolean;
             underLiquidation: boolean;
             vatRegistered: boolean;
@@ -1895,9 +1924,19 @@ export interface components {
             source: string;
             type: string;
         };
-        /** @description PUT /customers/{id}/billing-profile's own request body (invoice-ready customer design D1, D4): a full replace of the customer's billing profile — every field present or null, absent and null both meaning the field is cleared. revision is optional, as PUT /customers/{id}'s own is. */
+        /** @description PUT /customers/{id}/billing-profile's own request body (invoice-ready customer design D1, D4): a full replace of the customer's billing profile — every field present or null, absent and null both meaning the field is cleared — except the credit half (invoices phase 6 design I37, I38): creditLimit and bookkeepingObligatedOverride absent or null KEEP what is stored, and only clearCreditLimit and clearBookkeepingOverride remove them, so a client that never sends them never wipes them. revision is optional, as PUT /customers/{id}'s own is. */
         PutCustomerBillingProfileRequest: {
+            /** @description Overrule the registry on whether the customer is bookkeeping-obligated (invoices phase 6 design I37). Absent or null keeps the stored override. Set, it needs bookkeepingObligatedOverrideReason, or the request is a 400 on that field. */
+            bookkeepingObligatedOverride?: boolean | null;
+            /** @description True removes the override and its reason, so the registry decides again. With bookkeepingObligatedOverride set too, a 400. */
+            clearBookkeepingOverride?: boolean | null;
+            /** @description True removes the credit limit. With creditLimit set too, a 400 on creditLimit. */
+            clearCreditLimit?: boolean | null;
+            /** @description Why the override is set, at most 500 characters. Ignored when there is no override. */
+            bookkeepingObligatedOverrideReason?: string | null;
             buyerReference?: string | null;
+            /** @description The customer's credit limit in NOK, as decimal text — zero or more, at most two decimals, no thousands separators, below 1 000 000 000 000 — or a 400 on creditLimit. Absent or null keeps the stored limit; clearCreditLimit removes it. */
+            creditLimit?: string | null;
             currency?: string | null;
             /**
              * Format: double

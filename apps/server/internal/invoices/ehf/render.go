@@ -203,6 +203,13 @@ func Render(d Document) ([]byte, error) {
 	w.start("cac:Party")
 	w.leaf("cbc:EndpointID", buyerID, attr("schemeID", buyerScheme))
 	writeAddress(w, "cac:PostalAddress", d.Buyer.Address)
+	// The buyer's VAT identifier (BT-48) for a Norwegian buyer in the VAT
+	// register: the organisation number with the NO prefix and the MVA
+	// suffix, under VAT, as the seller's — after the address, before the
+	// legal entity, UBL's order.
+	if d.Buyer.VATRegistered && d.Buyer.OrganisationNumber != "" && !d.Buyer.Person {
+		writeTaxScheme(w, "NO"+d.Buyer.OrganisationNumber+"MVA", vatScheme)
+	}
 	w.start("cac:PartyLegalEntity")
 	w.leaf("cbc:RegistrationName", d.Buyer.Name)
 	switch {

@@ -342,6 +342,7 @@ describe("the customer 360 panel", () => {
       work: null,
       expenses: null,
       invoices: null,
+      credit: null,
       lastActivity: { timelineOn: "2026-09-01", workOn: null, expenseOn: null, invoicedOn: null, paymentOn: null },
     };
     // Stale from the start, so mounting refetches — and that refetch fails.

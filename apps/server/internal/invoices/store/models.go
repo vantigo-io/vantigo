@@ -438,6 +438,7 @@ type InvoicesInvoice struct {
 	SellerPhone                *string
 	BuyerAvtalegiroKid         *string
 	ExchangeRateSource         string
+	BuyerVatRegistered         bool
 }
 
 type InvoicesInvoiceHold struct {

@@ -32,6 +32,11 @@ type CustomerEntry struct {
 	// metering point's electricity-tax class (energy electricity-tax suggestion
 	// design) — a hint, never a decision any module stores.
 	IndustryCode string
+	// BookkeepingObligated is CustomerBillingProfile.BookkeepingObligated,
+	// answered by Customers (the batch read) only, nil elsewhere and nil for
+	// unknown: a caller judging a page of customers — Invoices' undelivered
+	// attention item — asks once, not once per customer.
+	BookkeepingObligated *bool
 }
 
 // CustomerGroupEntry is the group a customer belongs to, as another module may
@@ -147,6 +152,25 @@ type CustomerBillingProfile struct {
 	// tier, so nil means this customer decided nothing, and a consumer pricing
 	// hours (Time's rate chain) falls through to its next step.
 	DefaultBillRate *float64
+	// BookkeepingObligated is whether the customer is bookkeeping-obligated
+	// (bokføringspliktig, invoices phase 6 design I37): a person's override
+	// when one is set, else the registry's word — registered in the VAT
+	// register or in the Register of Business Enterprises — when the customer
+	// has a registry record, else nil, unknown. A consumer reads nil as "not
+	// known to be obligated", never as obligated.
+	BookkeepingObligated *bool
+	// VATRegistered is whether the customer's registry record — of its own
+	// organisation number — has it in the VAT register (Merverdiavgifts-
+	// registeret); false without a record. Invoices snapshots it at the issue
+	// and prints "<org nr> MVA" for it (bokføringsforskriften § 5-1-2).
+	VATRegistered bool
+	// BookkeepingObligatedSource says where BookkeepingObligated came from:
+	// "override", "registry" or "unknown".
+	BookkeepingObligatedSource string
+	// CreditLimit is the customer's credit limit in NOK, decimal text with two
+	// decimals as money crosses a contract, nil when none is set (invoices
+	// phase 6 design I38).
+	CreditLimit *string
 	// DeliveryAddresses are every address of the customer a delivery may go
 	// to, each with its ID and Type (orders design O10): the delivery
 	// addresses first, the primary one first, then the visiting, postal and

@@ -24,6 +24,11 @@ const profile = {
   gln: null,
   buyerReference: null,
   defaultBillRate: null,
+  creditLimit: null,
+  bookkeepingObligated: null,
+  bookkeepingObligatedSource: "unknown" as const,
+  bookkeepingObligatedOverride: null,
+  bookkeepingObligatedOverrideReason: null,
   revision: 3,
   peppolLookup: null,
   warnings: [],
@@ -261,6 +266,11 @@ describe("updateBillingProfile", () => {
       gln: null,
       buyerReference: null,
       defaultBillRate: 1250.5,
+      creditLimit: null,
+      bookkeepingObligatedOverride: null,
+      bookkeepingObligatedOverrideReason: null,
+      clearCreditLimit: true,
+      clearBookkeepingOverride: true,
       revision: 3,
     };
     const result = await updateBillingProfile(1001, input);
@@ -285,6 +295,11 @@ describe("updateBillingProfile", () => {
     gln: null,
     buyerReference: null,
     defaultBillRate: null,
+    creditLimit: null,
+    bookkeepingObligatedOverride: null,
+    bookkeepingObligatedOverrideReason: null,
+    clearCreditLimit: true,
+    clearBookkeepingOverride: true,
     revision: 3,
   };
 

@@ -108,6 +108,7 @@ SET name = $1::text,
     legal_country = NULL, legal_id = NULL, legal_name = NULL, legal_source = NULL, legal_type = NULL,
     email = NULL, phone = NULL, website = NULL, date_of_birth = NULL,
     invoice_email = NULL, reminder_email = NULL, peppol_id = NULL, gln = NULL, buyer_reference = NULL,
+    bookkeeping_obligated_override_reason = '',
     group_id = NULL,
     anonymise_on = $2::date,
     anonymised_at = $3::timestamptz, updated_at = $3::timestamptz, revision = revision + 1
@@ -124,8 +125,10 @@ type AnonymiseCustomerRowParams struct {
 // The row itself, last before the event (design D4): the name becomes the
 // anonymised name — the customer number stays, it is the bookkeeping reference
 // — the legal identity, the contact info and the billing profile's five
-// identifiers are cleared, and the terms, currency, language and delivery
-// methods stay: they say how the customer was invoiced, not who it was. Owner
+// identifiers and the bookkeeping override's reason (free text) are cleared,
+// and the terms, currency, language, delivery methods, the credit limit and
+// the bookkeeping override itself stay: they say how the customer was
+// invoiced, not who it was. Owner
 // and tags stay: staff and vocabulary. It leaves its group, though, the
 // merged-away customer's way (MarkCustomerMerged): an anonymised customer
 // refuses every write, the group PUT included, so a group it still counted in

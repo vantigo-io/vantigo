@@ -1358,6 +1358,24 @@ func (e OrdersVariantGridMode) Valid() bool {
 	}
 }
 
+// Defines values for OrdersWarningCode.
+const (
+	CreditLimitExceeded OrdersWarningCode = "credit_limit_exceeded"
+	CreditNotChecked    OrdersWarningCode = "credit_not_checked"
+)
+
+// Valid indicates whether the value is a known member of the OrdersWarningCode enum.
+func (e OrdersWarningCode) Valid() bool {
+	switch e {
+	case CreditLimitExceeded:
+		return true
+	case CreditNotChecked:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for OrdersWarningLevel.
 const (
 	OrdersWarningLevelBlock OrdersWarningLevel = "block"
@@ -1378,6 +1396,7 @@ func (e OrdersWarningLevel) Valid() bool {
 
 // Defines values for OrdersWarningScope.
 const (
+	OrdersWarningScopeCredit   OrdersWarningScope = "credit"
 	OrdersWarningScopeCustomer OrdersWarningScope = "customer"
 	OrdersWarningScopeProduct  OrdersWarningScope = "product"
 )
@@ -1385,6 +1404,8 @@ const (
 // Valid indicates whether the value is a known member of the OrdersWarningScope enum.
 func (e OrdersWarningScope) Valid() bool {
 	switch e {
+	case OrdersWarningScopeCredit:
+		return true
 	case OrdersWarningScopeCustomer:
 		return true
 	case OrdersWarningScopeProduct:
@@ -1899,6 +1920,20 @@ type OrdersContact struct {
 type OrdersCountAmount struct {
 	Amount float64 `json:"amount"`
 	Count  int32   `json:"count"`
+}
+
+// OrdersCreditAmount An amount in one currency, decimal text.
+type OrdersCreditAmount struct {
+	Amount   string `json:"amount"`
+	Currency string `json:"currency"`
+}
+
+// OrdersCreditFigures The figures of a credit warning (invoices phase 6 design I38): the limit and the exposure in NOK as decimal text — invoices of every currency at their NOK, an order in another currency at today's exchange rate — what is in a currency with no rate within seven days and not counted, and whether the open invoices could be counted at all (false with the invoices module off).
+type OrdersCreditFigures struct {
+	ExposureNok     string               `json:"exposureNok"`
+	InvoicesCounted bool                 `json:"invoicesCounted"`
+	Limit           string               `json:"limit"`
+	Uncounted       []OrdersCreditAmount `json:"uncounted"`
 }
 
 // OrdersCurrencySum A count and a sum in one currency.
@@ -2674,10 +2709,16 @@ type OrdersOrderUpdate struct {
 	IntroText         *string                    `json:"introText,omitempty"`
 	Language          *OrdersOrderUpdateLanguage `json:"language,omitempty"`
 	Lines             []OrdersLineInput          `json:"lines"`
-	PaymentTermsDays  *int32                     `json:"paymentTermsDays,omitempty"`
-	PricesIncludeVat  *bool                      `json:"pricesIncludeVat,omitempty"`
-	ProjectId         *int32                     `json:"projectId,omitempty"`
-	SalespersonId     *openapi_types.UUID        `json:"salespersonId,omitempty"`
+
+	// OverrideReason Why the credit limit is overridden on a confirmed order's save; required with overrideWarnings, at most 500 characters. Logged on the order's change log.
+	OverrideReason *string `json:"overrideReason,omitempty"`
+
+	// OverrideWarnings On a confirmed order's save that raises its gross: override the customer's credit limit (credit_limit_exceeded, invoices phase 6 design I38). Only a holder of orders:settings may; anyone else is still refused. Ignored on a draft.
+	OverrideWarnings *bool               `json:"overrideWarnings,omitempty"`
+	PaymentTermsDays *int32              `json:"paymentTermsDays,omitempty"`
+	PricesIncludeVat *bool               `json:"pricesIncludeVat,omitempty"`
+	ProjectId        *int32              `json:"projectId,omitempty"`
+	SalespersonId    *openapi_types.UUID `json:"salespersonId,omitempty"`
 
 	// SiteId The site (O46). On a draft, absent or null names none. On a confirmed order, absent keeps it; another site moves the order's reservations there (released at the old, reserved at the new, insufficient_available when it is short), refused once the order has a delivery (order_has_deliveries).
 	SiteId        *int64  `json:"siteId,omitempty"`
@@ -2732,7 +2773,7 @@ type OrdersPickupPointList struct {
 	Items []OrdersPickupPoint `json:"items"`
 }
 
-// OrdersProblem An RFC 9457 problem with this module's refusal code (orders design §3). code names the rule that refused and is what a client keys off, never the words. 400: field errors (errors), customer_disabled, project_customer_mismatch, order_empty, series_start_too_low, send_channel_unknown, and a document's line refusals in lines, the first of which is also code: too_many_lines, optional_not_allowed, line_unpriced, vat_code_unmapped, variant_not_found, packaging_not_found, quantity_invalid, price_invalid, discount_invalid, vat_code_unknown, line_invalid, quantity_below_progress (O26), over_delivery, undo_exceeds_delivered, delivered_below_invoiced and line_not_found (O32). 409: version_conflict (a stale version, revision or expectedUpdatedAt), quote_not_draft, quote_not_sent, quote_already_accepted, order_not_draft, order_not_confirmed, order_locked, order_on_hold, order_has_progress, order_in_draft_invoice (a cancel while a draft invoice holds part of the order, O36), line_invoiced, line_has_progress, line_kind_changed, line_in_draft_invoice (a price or discount change on a line a draft invoice holds part of, O26), client_request_reused, template_name_taken, blocked_by_warning (a block warning refuses send, mark as sent, confirm and accept into a confirmed order; detail holds its text, O33). 503: dependency_unavailable (a module Orders reads is not composed), sending_disabled (Communications is off, or no channel that can send is chosen) and mail_failed (the mail provider did not take the e-mail; nothing changed and the failed send is listed). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither.
+// OrdersProblem An RFC 9457 problem with this module's refusal code (orders design §3). code names the rule that refused and is what a client keys off, never the words. 400: field errors (errors), customer_disabled, project_customer_mismatch, order_empty, series_start_too_low, send_channel_unknown, and a document's line refusals in lines, the first of which is also code: too_many_lines, optional_not_allowed, line_unpriced, vat_code_unmapped, variant_not_found, packaging_not_found, quantity_invalid, price_invalid, discount_invalid, vat_code_unknown, line_invalid, quantity_below_progress (O26), over_delivery, undo_exceeds_delivered, delivered_below_invoiced and line_not_found (O32). 409: version_conflict (a stale version, revision or expectedUpdatedAt), quote_not_draft, quote_not_sent, quote_already_accepted, order_not_draft, order_not_confirmed, order_locked, order_on_hold, order_has_progress, order_in_draft_invoice (a cancel while a draft invoice holds part of the order, O36), line_invoiced, line_has_progress, line_kind_changed, line_in_draft_invoice (a price or discount change on a line a draft invoice holds part of, O26), client_request_reused, template_name_taken, blocked_by_warning (a block warning refuses send, mark as sent, confirm and accept into a confirmed order; detail holds its text, O33), credit_limit_exceeded (a confirm, or an accept into a confirmed order, that would put the customer's exposure above its credit limit, when that is the only block; with another block it is blocked_by_warning, detail naming both. Overridden as a block warning is; invoices phase 6 design I38). 503: dependency_unavailable (a module Orders reads is not composed), sending_disabled (Communications is off, or no channel that can send is chosen) and mail_failed (the mail provider did not take the e-mail; nothing changed and the failed send is listed). errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither.
 type OrdersProblem struct {
 	Code     *string              `json:"code,omitempty"`
 	Detail   *string              `json:"detail,omitempty"`
@@ -3676,8 +3717,14 @@ type OrdersVersionInput struct {
 	Version           int32     `json:"version"`
 }
 
-// OrdersWarning A sales warning (O33) on a customer or a product: info is shown when it is put on a quote or an order, block also refuses send and confirm (blocked_by_warning) unless an orders:settings holder overrides it with a reason. name is the customer's or the product's name as it was when the warning was written.
+// OrdersWarning A sales warning (O33) on a customer or a product: info is shown when it is put on a quote or an order, block also refuses send and confirm (blocked_by_warning) unless an orders:settings holder overrides it with a reason. name is the customer's or the product's name as it was when the warning was written. A warning of scope credit is computed, never stored (invoices phase 6 design I38): code credit_limit_exceeded when the customer's exposure — its open NOK invoices, its confirmed uninvoiced NOK orders and this order, VAT included — passes its credit limit, a block at confirm and info on a draft order; or credit_not_checked, info, when the figures could not be read. credit holds the figures; id is the customer's.
 type OrdersWarning struct {
+	// Code A computed warning's code (scope credit only).
+	Code *OrdersWarningCode `json:"code,omitempty"`
+
+	// Credit The figures of a credit warning (invoices phase 6 design I38): the limit and the exposure in NOK as decimal text — invoices of every currency at their NOK, an order in another currency at today's exchange rate — what is in a currency with no rate within seven days and not counted, and whether the open invoices could be counted at all (false with the invoices module off).
+	Credit *OrdersCreditFigures `json:"credit,omitempty"`
+
 	// Id The customer's or the product's id.
 	Id    int32              `json:"id"`
 	Level OrdersWarningLevel `json:"level"`
@@ -3690,6 +3737,9 @@ type OrdersWarning struct {
 	UpdatedAt time.Time          `json:"updatedAt"`
 	UpdatedBy *OrdersPerson      `json:"updatedBy,omitempty"`
 }
+
+// OrdersWarningCode A computed warning's code (scope credit only).
+type OrdersWarningCode string
 
 // OrdersWarningLevel defines model for OrdersWarning.Level.
 type OrdersWarningLevel string

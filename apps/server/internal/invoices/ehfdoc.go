@@ -68,7 +68,7 @@ func ehfDocumentOf(inv store.InvoicesInvoice, lines []store.InvoicesLine, sums [
 		Buyer: ehf.Buyer{
 			PeppolID: str(inv.BuyerPeppolID), Name: p.buyer.name, Address: address(p.buyer, str(inv.BuyerRegion)),
 			OrganisationNumber: p.buyer.organisationNumber, ForeignID: p.buyer.foreignID,
-			Person: str(inv.BuyerType) == "person",
+			Person: str(inv.BuyerType) == "person", VATRegistered: inv.BuyerVatRegistered,
 		},
 		Payment:  ehf.Payment{BankAccount: p.bankAccount, IBAN: p.iban, BIC: p.bic, KID: p.kid},
 		NetTotal: p.totals.Net, VATTotal: p.totals.VAT, GrossTotal: p.totals.Gross,

@@ -295,6 +295,7 @@ describe("the registry's addresses, offered beside the customer's own", () => {
     industry: null,
     employees: null,
     vatRegistered: true,
+    businessRegisterRegistered: null,
     bankrupt: false,
     underLiquidation: false,
     underForcedLiquidation: false,
