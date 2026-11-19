@@ -115,13 +115,16 @@ skjermbildet; det finnes i API-et for en eier hvis egen økt er MFA-bekreftet.
 
 ## Merkevare
 
-**Merkevare** er der arbeidsområdet får navn, farge og logoer. Du trenger eierrollen eller
+**Merkevare** er der arbeidsområdet får navn, farger og logoer, og der du bestemmer hvem som ser
+hvilken. Du trenger eierrollen eller
 tillatelsen **Administrer merkevare** (`identity:brands`), som du kan gi en egendefinert rolle
 under **Roller og tilgang**. Hvordan den virker for den som driver installasjonen, med reglene
 bak, står i [Merkevare](/nb/admin/branding/).
 
-1. Åpne **Administrer arbeidsområde › Merkevare**. Siden viser arbeidsområdets merkevare, versjon
-   og om det finnes **Upubliserte endringer**.
+1. Åpne **Administrer arbeidsområde › Merkevare**. Fanen **Merkevarer** lister arbeidsområdets
+   merkevarer, med standarden merket, statusen til hver (*Publisert*, *Aldri publisert* eller
+   *Arkivert*) og hvor mange regler som peker på den. Velg navnet på en merkevare for å redigere
+   den under listen; siden viser versjonen og om det finnes **Upubliserte endringer**.
 2. Under **Navn og tittel** endrer du hva administrasjonen kaller merkevaren og produktnavnet som
    vises i nettleserfanen, toppen og påloggingssiden. Tittelen er navnet når du lar den stå tom.
 3. Under **Farge** skriver du inn eller velger **Hovedfarge** og velger en **Hjørneradius**. De ti
@@ -143,6 +146,48 @@ bak, står i [Merkevare](/nb/admin/branding/).
 
 Brukte installasjonen den gamle innstillingen `APP_LOGO_URL` og bildet ikke kunne importeres, ber en
 melding øverst på siden deg laste opp logoen her.
+
+### Flere merkevarer
+
+Velg **Ny merkevare** over listen, gi den et navn og en farge og **Opprett**: den starter som et
+utkast ingen ser før du publiserer det. Menyen **⋯** på en rad tilbyr det som gjelder for den
+merkevaren:
+
+- **Dupliser** lager et nytt utkast av den, med logoer.
+- **Gjør til standard** (bare publiserte merkevarer) gjør den til merkevaren folk ser når ingen
+  regel treffer dem; Vantigo ber deg bekrefte.
+- **Arkiver** tar den ut av bruk: ingen kan tildeles den eller velge den, og reglene dens fjernes.
+  Standardmerkevaren kan ikke arkiveres. **Gjenopprett** henter en arkivert merkevare tilbake, uten
+  reglene.
+- **Slett** (en merkevare som aldri har vært publisert) fjerner den for godt, med reglene.
+- **Eksporter som fil** lagrer navn, tittel, farge, radius og kontaktinformasjon for support som en
+  JSON-fil, og **Importer fra fil** over listen oppretter en utkastmerkevare av en, for å flytte en
+  merkevare mellom en test- og en produksjonsinstallasjon.
+
+### Hvem som ser hvilken merkevare
+
+Fanen **Tildeling** har reglene. Hver regel har en type, et mål og en merkevare:
+
+1. Under **Legg til regel** velger du **Type regel**: **E-postdomene** (skriv `acme.no`; akkurat det
+   domenet, ikke underdomenene), **Tilgangsgruppe** (velg en) eller **Juridisk enhet** (velg en;
+   tilbys bare mens Staff er på). Velg **Merkevare** og **Legg til regel**.
+2. Den første regelen som treffer en person, bestemmer merkevaren deres, så rekkefølgen
+   betyr noe. Dra en regel i håndtaket, eller bruk pilene, for å flytte den. En ny regel havner der
+   typen hører hjemme (domener, så juridiske enheter, så grupper). **Fjern** tar en ut.
+3. **Lagre regler** lagrer hele listen på én gang; **Forkast endringer** setter listen tilbake som
+   den var. Har noen andre endret reglene i mellomtiden, blir du bedt om å laste inn på nytt.
+4. En regel hvis gruppe eller juridiske enhet er borte, beholdes, viser hvorfor i gult og treffer
+   ingen.
+
+Folk som ikke treffer noen regel, ser standardmerkevaren. Den som treffes av flere merkevarer, kan
+bytte mellom dem fra avatarmenyen ([Velg merkevare](/nb/user/getting-started/#velg-merkevare)).
+
+For å sjekke resultatet for én person skriver du e-postadressen deres under **Hvem ser hva** og
+velger **Slå opp**: det sier hvilken merkevare de ser og hvorfor (eget valg, regelnummer og hva den
+navngir, eller standarden), og hvilke merkevarer de kunne valgt. Kan du også lese ansettelser i
+Staff (`staff:view`), legger det til e-postdomenet, tilgangsgruppene og de juridiske enhetene
+deres; ellers viser det ingenting utover regelen som traff. Alle med **Administrer merkevare** får
+se merkevarene og reglene; endringer når folk som har Vantigo åpent i løpet av noen sekunder.
 
 ## Nettbrettstasjoner i verkstedet
 

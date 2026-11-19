@@ -113,13 +113,16 @@ screen; it exists in the API for an Owner whose own session is MFA-verified.
 
 ## Brand
 
-**Brand** is where the workspace gets its name, its colour and its logos. It needs the Owner
+**Brand** is where the workspace gets its names, colours and logos, and where you say who sees
+which. It needs the Owner
 role or the **Manage brands** permission (`identity:brands`), which you can give a custom role
 under **Roles & access**. How it works for the person running the installation, with the rules
 behind it, is in [Branding](/en/admin/branding/).
 
-1. Open **Workspace admin › Brand**. The page shows the workspace's brand, version and whether
-   there are **Unpublished changes**.
+1. Open **Workspace admin › Brand**. The **Brands** tab lists the workspace's brands, with the
+   default marked, each one's state (*Published*, *Never published* or *Archived*) and how many
+   rules point at it. Choose a brand's name to edit it below the list; the page shows its
+   version and whether there are **Unpublished changes**.
 2. Under **Name and title** change what the administration calls the brand and the product name
    shown in the browser tab, the header and the sign-in page. The title is the name when you leave
    it empty.
@@ -143,6 +146,47 @@ behind it, is in [Branding](/en/admin/branding/).
 
 If the installation used the old `APP_LOGO_URL` setting and its picture could not be imported, a
 notice at the top of the page asks you to upload the logo here.
+
+### Several brands
+
+Choose **New brand** above the list, give it a name and a colour and **Create**: it starts as a
+draft that nobody sees until you publish it. The **⋯** menu on a row offers what applies to that
+brand:
+
+- **Duplicate** makes a new draft from it, logos included.
+- **Make default** (published brands only) makes it the brand people see when no rule matches
+  them; Vantigo asks you to confirm.
+- **Archive** takes it out of use: nobody can be assigned to it or choose it, and its rules are
+  removed. The default brand cannot be archived. **Restore** brings an archived brand back,
+  without its rules.
+- **Delete** (a brand that was never published) removes it for good, with its rules.
+- **Export as file** saves its name, title, colour, radius and support contacts as a JSON file,
+  and **Import from file** above the list creates a draft brand from one, for moving a brand
+  between a test and a production installation.
+
+### Who sees which brand
+
+The **Assignment** tab holds the rules. Each rule has a kind, a target and a brand:
+
+1. Under **Add rule** choose the **Kind of rule**: **E-mail domain** (type `acme.no`; exactly
+   that domain, not its subdomains), **Access group** (pick one), or **Legal entity** (pick one;
+   offered only while Staff is on). Choose the **Brand** and **Add rule**.
+2. The first rule that matches a person decides their brand, so the order matters. Drag a rule
+   by its handle, or use the arrows, to move it. A new rule lands where its kind belongs (domains,
+   then legal entities, then groups). **Remove** takes one out.
+3. **Save rules** saves the whole list at once; **Discard changes** puts the list back as it was.
+   If someone else changed the rules meanwhile you are asked to reload.
+4. A rule whose group or legal entity has gone is kept, shows why in yellow, and matches no one.
+
+People who match no rule see the default brand. Someone who matches several brands can switch
+between them from the avatar menu ([Choose your brand](/en/user/getting-started/#choose-your-brand)).
+
+To check the result for one person, type their e-mail address under **Who sees what** and choose
+**Look up**: it says which brand they see and why (their own choice, rule number and what it
+names, or the default), and which brands they could choose. If you can also read employment in
+Staff (`staff:view`), it adds their e-mail domain, access groups and legal entities; otherwise it
+shows nothing beyond the rule that matched. The brands tab and the rules are open to anyone with
+**Manage brands**; changes reach people who have Vantigo open within a few seconds.
 
 ## Shop-floor stations
 

@@ -10,8 +10,9 @@ sources:
   - apps/host/frontend/src/routes/workspace
 ---
 A **brand** is how the workspace looks to its people: a name and a title, one colour, a few
-logos and the support contacts. Vantigo has one brand today, the **default brand**, edited at
-**Workspace admin › Brand** by an Owner or by anyone who holds the `identity:brands` permission
+logos and the support contacts. A workspace can have several brands, and rules say who sees
+which ([Several brands](#several-brands), [Who sees which brand](#who-sees-which-brand)). They are
+edited at **Workspace admin › Brand** by an Owner or by anyone who holds the `identity:brands` permission
 ("Manage brands", delegable like any other permission under **Roles & access**). The screen is
 described for the person using it in
 [Workspace administration](/en/user/workspace-administration/#brand).
@@ -36,6 +37,95 @@ published version, which is what people see, does not move until you publish.
 The generated values are worked out on the server every time a draft is saved. Nothing in the
 API accepts a colour scale from a client: a request that carries `tokens`, `shades` or anything
 else beyond the inputs is refused with `400 invalid_request`.
+
+## Several brands
+
+A workspace can hold any number of brands. The **default brand** is the one a person sees when no
+rule matches them; it always exists. On **Workspace admin › Brand**, the **Brands** tab lists them
+with their state, the default marked, and how many rules point at each. From the list you can:
+
+- **Create** a brand from a name and a primary colour. It starts as a draft that was never
+  published, and matches no rule until you publish it.
+- **Duplicate** a brand: a new draft made from the version being edited, logos included, named
+  "… (copy)".
+- **Make default** a published brand. The previous default stays a brand of its own.
+- **Archive** a brand to take it out of use. It can no longer be edited, assigned or chosen, its
+  rules are removed and the choice of anyone who had picked it is cleared. The default brand
+  cannot be archived (`409 brand_in_use`); make another brand the default first.
+- **Restore** an archived brand: published again if it ever was, else a draft. Its rules are not
+  restored.
+- **Delete** a brand that was never published. A published brand is archived instead, because
+  documents may name it. A deleted brand's rules go with it.
+- **Export** a brand as a JSON file and **Import** one: the file holds the name, title, colour,
+  radius and support contacts, never the logos or any generated colour. An import creates a draft
+  and works everything out again, so a brand can move between a test and a production installation.
+
+A brand's name is unique whatever its case (`409 brand_name_taken`).
+
+## Who sees which brand
+
+A person sees one brand: their own choice if they have one and still may, otherwise the first
+assignment rule that matches them, otherwise the default brand. It is worked out on every request
+from current data and never stored, so a change of group or employment shows without anyone
+re-assigning.
+
+### The rules
+
+The **Assignment** tab holds one ordered list of rules for the whole workspace. The first rule
+that matches a person decides their brand. A rule has a kind and a target:
+
+| Kind | Matches a person when |
+| --- | --- |
+| E-mail domain | The domain of their e-mail address equals the rule's domain exactly: no wildcards, and `mail.acme.no` does not match `acme.no`. Written in lower case and punycode. A domain belongs to at most one brand. |
+| Access group | They are an effective member of the group, counted as role mapping counts it (forced in, or present upstream with no override forcing them out), and the group is active. |
+| Legal entity | They have an employment in force today under a business unit of the Staff legal entity. Offered only while Staff is enabled. |
+
+Drag a rule, or use the arrows, to change the order; **Save rules** replaces the whole list at
+once, with the list's revision as `If-Match`, so two administrators cannot interleave half-edits
+and a refused list changes nothing. A new rule is placed where its kind belongs (domains, then
+legal entities, then groups) and can be moved anywhere. Refusals: `rule_duplicate` (the same
+target twice), `domain_taken` (the domain belongs to another brand), `domain_invalid`,
+`rule_target_not_found`, `rule_brand_invalid` (no such brand, or archived), `staff_disabled` and
+`too_many_rules` (at most 200), all `422`, and `409 stale_revision`.
+
+A rule whose target has gone (a deleted or inactive group, an archived legal entity) is kept,
+flagged on the screen, and matches no one. Rules never point at an archived brand. An integration
+or an agent is not a person and always gets the default brand.
+
+### A person's own choice
+
+A person matched by several brands may choose among the brands of the rules that match them: the
+avatar menu then has a **Brand** section listing them, with **Automatic** to follow the rules
+again. The default brand is a candidate only for someone no rule matches. The choice is kept on
+the person's account like their colour scheme, beats the rules for as long as it is one of their
+candidates, and is not audited. When the rules change so that it no longer is, it is ignored (the
+menu says so) and comes back if the rules do. `PUT /api/v1/identity/account/brand` with a brand
+that is not a candidate is `409 brand_not_candidate`. Archiving a brand clears the choice of
+everyone who made it.
+
+### Who sees what
+
+On the **Assignment** tab, type a person's e-mail address under **Who sees what** to see which
+brand they get and why: their own choice, the rule that matched, or the default, and the other
+brands they could choose. It needs `identity:brands`. It shows no employment detail: only the
+rule that matched is named. A caller who also holds `staff:view`, while Staff is enabled, also
+gets the person's e-mail domain, access groups and legal entities.
+
+### When Staff is off
+
+Legal entities come from Staff through a read-only contract, `contracts.BrandTargets`. While
+Staff is not enabled the screen offers no legal entity rules, and the ones already in the list
+stay, flagged and inert; they work again when Staff is turned on. A failing Staff read fails the
+request rather than showing the default to someone who should have another brand.
+
+### How open sessions follow
+
+A publish, a new default, an archive, a restore, a delete and a change of the rules are announced
+to open sessions on the live connection (`identity.brand`); a person's own switch is announced to
+their other sessions on `identity.brand:{userId}`, which only they may subscribe to. A session
+asks for its brand again after a random wait of up to five seconds, so a publish on many open
+sessions is not that many requests at once. What Staff says about a person's employment is kept for
+30 seconds, and shared between requests that ask at once; everything else is read afresh.
 
 ## The colour and why it is checked
 
@@ -80,8 +170,9 @@ fully, without logos, and the upload controls say why.
 1. Change the brand and **Save draft**. Only administrators can see the draft.
 2. **Preview as me** puts the whole application in the draft's look for you, in this browser tab
    only, with a banner to stop. It never changes anything for anyone else.
-3. **Publish** makes the draft the brand everyone sees. The version number goes up. A person
-   with the application open gets the new brand the next time the page loads.
+3. **Publish** makes the draft the brand everyone assigned to it sees. The version number goes
+   up. A person with the application open gets the new brand within a few seconds
+   ([How open sessions follow](#how-open-sessions-follow)).
 4. **Discard draft** drops the pending version.
 
 Saving and publishing use the brand's revision (`If-Match`): two administrators cannot overwrite
@@ -91,8 +182,8 @@ one another; the second is told to reload.
 
 The brand reaches the browser as a stylesheet, `GET /api/v1/identity/brand.css`, linked in the
 page head so the first paint is already right. Without a session it is the default brand; with a
-session it is the signed-in person's brand. It is `Cache-Control: private` with an `ETag` and
-`Vary: Cookie` for a signed-in person, so a shared cache never serves one person's brand to
+session it is the signed-in person's brand, the one they are assigned or chose. For a signed-in
+person it is `Cache-Control: private, no-store` with an `ETag` and `Vary: Cookie`, so a shared cache never serves one person's brand to
 another. If a reverse proxy sits in front, let `Vary: Cookie` through.
 
 If the stylesheet cannot load (offline, a failed request), the browser paints the last brand it
@@ -147,7 +238,11 @@ the page, card, text and border colours stay Vantigo's in both schemes.
 | `422 brand_primary_range` | The colour is nearly white or nearly black. |
 | `422 brand_contrast` | A pair is below 4.5 : 1; the response names the pairs. |
 | `422 brand_support_invalid` | The e-mail has a display name or holds `?`, `&` or `%`, the phone has other characters than digits, spaces and `+ - ( ) .` or is over 30 long, or the link is not `http(s)` or a path starting with a single `/`, or holds a control character such as a tab or a line break. The same rule applies to `APP_SUPPORT_URL` and `APP_LOGO_URL` at start. |
-| `409 stale_revision` | Someone else saved the brand since you opened it. |
+| `409 stale_revision` | Someone else saved the brand, or the rule list, since you opened it. |
+| `409 brand_name_taken` | Another brand has the name. |
+| `409 brand_in_use` | You tried to archive the default brand, or to delete a published brand or the default. |
+| `409 brand_not_candidate` | A person chose a brand their rules do not give them. |
+| `422 rule_duplicate`, `domain_taken`, `domain_invalid`, `rule_target_not_found`, `rule_brand_invalid`, `staff_disabled`, `too_many_rules` | A rule list the server refused; `fields` names the item. |
 | `400 logo_*` | The file is not an acceptable PNG or JPEG: `logo_unsupported_type`, `logo_too_large`, `logo_too_wide`, `logo_too_small`, `logo_invalid`, `logo_not_square`. |
 | `503 storage_unavailable` | No object store, or it could not be written. |
 | A notice about the logo of `APP_LOGO_URL` | The import could not fetch it; upload the logo and publish. Until then the variables stay in effect. |

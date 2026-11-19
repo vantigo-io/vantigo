@@ -10,8 +10,10 @@ sources:
   - apps/host/frontend/src/routes/workspace
 ---
 En **merkevare** er hvordan arbeidsområdet ser ut for folkene i det: et navn og en tittel, én
-farge, noen logoer og kontaktinformasjon for support. Vantigo har i dag én merkevare,
-**standardmerkevaren**, som en Owner eller alle som har tillatelsen `identity:brands`
+farge, noen logoer og kontaktinformasjon for support. Et arbeidsområde kan ha flere merkevarer, og regler
+sier hvem som ser hvilken ([Flere merkevarer](#flere-merkevarer), [Hvem som ser hvilken
+merkevare](#hvem-som-ser-hvilken-merkevare)). De redigeres av en Owner eller alle som har tillatelsen
+`identity:brands`
 («Administrer merkevare», kan delegeres som alle andre tillatelser under **Roller og tilgang**)
 redigerer under **Arbeidsområde › Merkevare**. Skjermbildet er beskrevet for den som bruker det i
 [Arbeidsområdeadministrasjon](/nb/user/workspace-administration/#merkevare).
@@ -36,6 +38,100 @@ publiserte versjonen, som er det folk ser, flytter seg ikke før du publiserer.
 De genererte verdiene regnes ut på serveren hver gang et utkast lagres. API-et tar aldri imot en
 fargeskala fra en klient: en forespørsel som inneholder `tokens`, `shades` eller noe annet enn
 inndataene avvises med `400 invalid_request`.
+
+## Flere merkevarer
+
+Et arbeidsområde kan ha så mange merkevarer det vil. **Standardmerkevaren** er den en person ser
+når ingen regel treffer dem; den finnes alltid. Under **Arbeidsområde › Merkevare** lister fanen
+**Merkevarer** dem med status, standarden merket og hvor mange regler som peker på hver. Fra listen
+kan du:
+
+- **Opprette** en merkevare fra et navn og en hovedfarge. Den starter som et utkast som aldri har
+  vært publisert, og treffer ingen regel før du publiserer den.
+- **Duplisere** en merkevare: et nytt utkast laget av versjonen som redigeres, med logoer, med
+  navnet «… (kopi)».
+- **Gjøre til standard** en publisert merkevare. Den forrige standarden består som en egen merkevare.
+- **Arkivere** en merkevare for å ta den ut av bruk. Den kan ikke lenger redigeres, tildeles eller
+  velges, reglene dens fjernes, og valget til alle som hadde valgt den, nullstilles.
+  Standardmerkevaren kan ikke arkiveres (`409 brand_in_use`); gjør en annen merkevare til standard
+  først.
+- **Gjenopprette** en arkivert merkevare: publisert igjen hvis den noen gang var det, ellers et
+  utkast. Reglene dens gjenopprettes ikke.
+- **Slette** en merkevare som aldri har vært publisert. En publisert merkevare arkiveres i stedet,
+  fordi dokumenter kan nevne den. Reglene til en slettet merkevare forsvinner med den.
+- **Eksportere** en merkevare som en JSON-fil og **importere** en: filen har navn, tittel, farge,
+  radius og kontaktinformasjon for support, aldri logoene eller genererte farger. En import oppretter
+  et utkast og regner alt ut på nytt, så en merkevare kan flyttes mellom en test- og en
+  produksjonsinstallasjon.
+
+Navnet på en merkevare er unikt uansett store og små bokstaver (`409 brand_name_taken`).
+
+## Hvem som ser hvilken merkevare
+
+En person ser én merkevare: sitt eget valg hvis de har ett og fortsatt kan ha det, ellers den første
+tildelingsregelen som treffer dem, ellers standardmerkevaren. Den regnes ut ved hver forespørsel av
+gjeldende data og lagres aldri, så en endring av gruppe eller ansettelse vises uten at noen må
+tildele på nytt.
+
+### Reglene
+
+Fanen **Tildeling** har én ordnet liste med regler for hele arbeidsområdet. Den første regelen som
+treffer en person, bestemmer merkevaren deres. En regel har en type og et mål:
+
+| Type | Treffer en person når |
+| --- | --- |
+| E-postdomene | Domenet i e-postadressen deres er nøyaktig regelens domene: ingen jokertegn, og `mail.acme.no` treffer ikke `acme.no`. Skrives med små bokstaver og punycode. Et domene tilhører høyst én merkevare. |
+| Tilgangsgruppe | De er effektive medlemmer av gruppen, regnet slik rollekoblingen regner (tvunget inn, eller til stede oppstrøms uten overstyring som tvinger dem ut), og gruppen er aktiv. |
+| Juridisk enhet | De har et ansettelsesforhold i kraft i dag under en virksomhet i den juridiske enheten i Staff. Tilbys bare mens Staff er slått på. |
+
+Dra en regel, eller bruk pilene, for å endre rekkefølgen; **Lagre regler** erstatter hele listen
+på én gang, med listens revisjon som `If-Match`, så to administratorer kan ikke blande halve
+redigeringer, og en avvist liste endrer ingenting. En ny regel settes der typen hører hjemme
+(domener, så juridiske enheter, så grupper) og kan flyttes hvor som helst. Avvisninger:
+`rule_duplicate` (samme mål to ganger), `domain_taken` (domenet tilhører en annen merkevare),
+`domain_invalid`, `rule_target_not_found`, `rule_brand_invalid` (ingen slik merkevare, eller den er
+arkivert), `staff_disabled` og `too_many_rules` (høyst 200), alle `422`, og `409 stale_revision`.
+
+En regel hvis mål er borte (en slettet eller inaktiv gruppe, en arkivert juridisk enhet) beholdes,
+merkes på skjermen og treffer ingen. Regler peker aldri på en arkivert merkevare. En integrasjon
+eller en agent er ikke en person og får alltid standardmerkevaren.
+
+### Personens eget valg
+
+En person som treffes av flere merkevarer, kan velge mellom merkevarene til reglene som treffer
+dem: avatarmenyen har da en seksjon **Merkevare** som lister dem, med **Automatisk** for å følge
+reglene igjen. Standardmerkevaren er bare en kandidat for den ingen regel treffer. Valget lagres på
+personens konto som fargeskjemaet, går foran reglene så lenge det er en av kandidatene, og
+revideres ikke. Når reglene endres slik at det ikke lenger er det, ignoreres valget (menyen sier
+fra) og det kommer tilbake hvis reglene gjør det. `PUT /api/v1/identity/account/brand` med en
+merkevare som ikke er en kandidat, gir `409 brand_not_candidate`. Å arkivere en merkevare
+nullstiller valget til alle som gjorde det.
+
+### Hvem ser hva
+
+Under **Hvem ser hva** på fanen **Tildeling** skriver du inn e-postadressen til en person for å se
+hvilken merkevare de får og hvorfor: eget valg, regelen som traff eller standarden, og de andre
+merkevarene de kunne valgt. Det krever `identity:brands`. Det viser ingen ansettelsesdetaljer: bare
+regelen som traff, navngis. En som også har `staff:view`, mens Staff er slått på, får også
+personens e-postdomene, tilgangsgrupper og juridiske enheter.
+
+### Når Staff er av
+
+Juridiske enheter kommer fra Staff gjennom en skrivebeskyttet kontrakt, `contracts.BrandTargets`.
+Mens Staff ikke er slått på, tilbyr skjermen ingen regler for juridiske enheter, og de som allerede
+står i listen, blir stående, merket og uvirksomme; de virker igjen når Staff slås på. En Staff-lesing
+som feiler, feiler forespørselen i stedet for å vise standarden til en som skulle hatt en annen
+merkevare.
+
+### Hvordan åpne økter følger med
+
+En publisering, en ny standard, en arkivering, en gjenoppretting, en sletting og en endring av
+reglene kunngjøres til åpne økter på sanntidsforbindelsen (`identity.brand`); en persons eget valg
+kunngjøres til deres andre økter på `identity.brand:{userId}`, som bare de kan abonnere på. En økt
+henter merkevaren på nytt etter en tilfeldig ventetid på opptil fem sekunder, så en publisering
+til mange åpne økter ikke blir like mange forespørsler samtidig. Det Staff sier om en persons
+ansettelse, beholdes i 30 sekunder og deles mellom forespørsler som kommer samtidig; alt annet
+leses på nytt.
 
 ## Fargen og hvorfor den sjekkes
 
@@ -80,8 +176,9 @@ fullt ut, uten logoer, og opplastingskontrollene sier hvorfor.
 1. Endre merkevaren og **Lagre utkast**. Bare administratorer kan se utkastet.
 2. **Forhåndsvis som meg** setter hele programmet i utkastets utseende for deg, bare i denne
    nettleserfanen, med et banner for å avslutte. Det endrer aldri noe for noen andre.
-3. **Publiser** gjør utkastet til merkevaren alle ser. Versjonsnummeret går opp. En person som har
-   programmet åpent får den nye merkevaren neste gang siden lastes.
+3. **Publiser** gjør utkastet til merkevaren alle som er tildelt den, ser. Versjonsnummeret går
+   opp. En person som har programmet åpent får den nye merkevaren i løpet av noen sekunder
+   ([Hvordan åpne økter følger med](#hvordan-åpne-økter-følger-med)).
 4. **Forkast utkast** fjerner den ventende versjonen.
 
 Lagring og publisering bruker merkevarens revisjon (`If-Match`): to administratorer kan ikke
@@ -91,8 +188,8 @@ overskrive hverandre; den andre får beskjed om å laste på nytt.
 
 Merkevaren når nettleseren som et stilark, `GET /api/v1/identity/brand.css`, lenket i sidens
 hode slik at den første tegningen allerede er riktig. Uten innlogging er det standardmerkevaren;
-med innlogging er det den innloggede personens merkevare. For en innlogget person er svaret
-`Cache-Control: private` med `ETag` og `Vary: Cookie`, så en delt hurtigbuffer aldri serverer én
+med innlogging er det den innloggede personens merkevare, den de er tildelt eller har valgt. For en
+innlogget person er svaret `Cache-Control: private, no-store` med `ETag` og `Vary: Cookie`, så en delt hurtigbuffer aldri serverer én
 persons merkevare til en annen. Står det en omvendt proxy foran, la `Vary: Cookie` passere.
 
 Kan ikke stilarket lastes (frakoblet, en feilet forespørsel), tegner nettleseren den siste
@@ -147,7 +244,11 @@ tekst- og kantfargene forblir Vantigos i begge skjemaene.
 | `422 brand_primary_range` | Fargen er nesten hvit eller nesten svart. |
 | `422 brand_contrast` | Et par er under 4,5 : 1; svaret navngir parene. |
 | `422 brand_support_invalid` | E-posten har et visningsnavn eller inneholder `?`, `&` eller `%`, telefonen har andre tegn enn sifre, mellomrom og `+ - ( ) .` eller er over 30 lang, eller lenken er ikke `http(s)` eller en sti som begynner med én enkelt `/`, eller inneholder et kontrolltegn som tabulator eller linjeskift. Samme regel gjelder `APP_SUPPORT_URL` og `APP_LOGO_URL` ved oppstart. |
-| `409 stale_revision` | Noen andre lagret merkevaren siden du åpnet den. |
+| `409 stale_revision` | Noen andre lagret merkevaren, eller regellisten, siden du åpnet den. |
+| `409 brand_name_taken` | En annen merkevare har navnet. |
+| `409 brand_in_use` | Du prøvde å arkivere standardmerkevaren, eller å slette en publisert merkevare eller standarden. |
+| `409 brand_not_candidate` | En person valgte en merkevare reglene deres ikke gir dem. |
+| `422 rule_duplicate`, `domain_taken`, `domain_invalid`, `rule_target_not_found`, `rule_brand_invalid`, `staff_disabled`, `too_many_rules` | En regelliste serveren avviste; `fields` navngir elementet. |
 | `400 logo_*` | Filen er ikke en akseptabel PNG eller JPEG: `logo_unsupported_type`, `logo_too_large`, `logo_too_wide`, `logo_too_small`, `logo_invalid`, `logo_not_square`. |
 | `503 storage_unavailable` | Ikke noe objektlager, eller det kunne ikke skrives til. |
 | En melding om logoen fra `APP_LOGO_URL` | Importen kunne ikke hente den; last opp logoen og publiser. Til da gjelder variablene fortsatt. |

@@ -161,6 +161,19 @@ datamaskinens innstilling når det ikke finnes noe, så innloggingssiden er alle
 mørk for den som jobber i mørk modus. [Dokumentasjonsnettstedet](https://docs.vantigo.io)
 har sin egen lys/mørk-bryter, som ikke deles med appen.
 
+### Velg merkevare
+
+Et arbeidsområde kan vise folkene sine ulike merkevarer, med eget navn, egne farger og egne logoer,
+etter kontor, avdeling, gruppe eller e-postdomene. Hvilken du ser, bestemmer administratoren din,
+så de fleste ser bare én og har ingenting å velge.
+
+Hører du til flere, har avatarmenyen en seksjon **Merkevare** som lister dem. Velg en for å se
+Vantigo i den med en gang, på alle enheter du logger inn fra; velg **Automatisk** for å følge
+administratorens tildeling igjen. Endrer administratoren tildelingen slik at en merkevare du valgte
+ikke lenger er din, sier menyen fra at det du valgte tidligere ikke lenger gjelder, og du ser den
+tildelte merkevaren til den er din igjen. Valget ditt av lys eller mørk er et annet og virker med
+alle merkevarer.
+
 ### Velg tidssonen din
 
 Tidssonen din bestemmer to ting: klokkeslettene Vantigo viser deg — når en hendelse på

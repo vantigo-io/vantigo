@@ -1156,27 +1156,39 @@ dem feil, deler alle forespørsler én bøtte, eller en klient velger sin egen.
 
 ## Merkevarer
 
-Identitet lagrer arbeidsområdets merkevare (i dag standardmerkevaren): tabellene `identity.brands`
-og `identity.brand_logos`, og tillatelsen `identity:brands` («Administrer merkevare», i kategorien
+Identitet lagrer arbeidsområdets merkevarer: tabellene `identity.brands`, `identity.brand_logos` og
+`identity.brand_rules` (med revisjonen til regellisten), en persons eget valg som
+`identity.users.preferred_brand_id`, og tillatelsen `identity:brands` («Administrer merkevare», i kategorien
 Administrasjon, **kan delegeres**; en Owner har den implisitt og ingen API-nøkkel har den noen
 gang). Den lar en person opprette og redigere merkevaren, laste opp logoene, publisere den og
 forhåndsvise den; den styrer ikke lesing av egen merkevare, som alle innloggede kan. Hvordan en
-merkevare redigeres og hva som sjekkes står i [Merkevare](/nb/admin/branding/).
+merkevare redigeres og hva som sjekkes, og reglene som tildeler merkevarer til folk, står i
+[Merkevare](/nb/admin/branding/).
+
+En persons merkevare er den første av: deres eget valg, så lenge det er en av merkevarene til
+reglene som treffer dem; merkevaren til den første regelen som treffer, i listens rekkefølge (et
+e-postdomene lik domenet i adressen deres, medlemskap i en aktiv tilgangsgruppe regnet slik
+rollekoblingen regner, eller et ansettelsesforhold i kraft i dag under en juridisk enhet i Staff);
+standardmerkevaren. Et valg er en preferanse som fargeskjemaet og består når profilen endres; å
+slette eller arkivere merkevaren nullstiller det. Å fjerne en bruker fjerner raden og valget med den.
 
 | Operasjon | Tilgang |
 | --- | --- |
-| `GET /api/v1/identity/brand` (den innloggedes merkevare, `?preview={brandId}` for et utkast) | en økt; en forhåndsvisning krever `identity:brands` |
+| `GET /api/v1/identity/brand` (den innloggedes merkevare med merkevarene de kan velge mellom, `?preview={brandId}` for et utkast), `PUT /api/v1/identity/account/brand` (deres eget valg, `409 brand_not_candidate`) | en økt; en forhåndsvisning krever `identity:brands` |
 | `GET /api/v1/identity/brand/public`, `GET /api/v1/identity/brand.css`, `GET /api/v1/identity/brand-assets/{sha256}.{png\|jpg}` | anonym (`brand.css` leser øktinformasjonskapselen når det finnes en); begrenset per adresse |
-| `GET /brands`, `GET`/`PUT /brands/{id}`, `POST /brands/{id}/publish`, `POST /brands/{id}/discard-draft`, `PUT`/`DELETE`/`GET /brands/{id}/logos/{slot}` | `identity:brands` |
+| `GET`/`POST /brands`, `GET`/`PUT`/`DELETE /brands/{id}`, `POST /brands/{id}/publish`, `/discard-draft`, `/duplicate`, `/archive`, `/restore`, `/make-default`, `PUT`/`DELETE`/`GET /brands/{id}/logos/{slot}` | `identity:brands` |
+| `GET`/`PUT /brand-rules` (hele den ordnede listen, `If-Match`), `GET /brand-rule-targets`, `GET /brands/resolution?userId=` eller `?email=` | `identity:brands`; oppslaget legger til en persons grupper og juridiske enheter bare for en som også har `staff:view` mens Staff er på |
 
-Hver skriving revideres i transaksjonen som gjør den, som `brand.updated`, `brand.published`,
-`brand.draft_discarded`, `brand.logo_set` og `brand.logo_removed`, med navn, versjoner og revisjoner og aldri byte av en
-logo. Hva merkevare-endepunktene sender bufres med omhu: et svar til en innlogget person (`brand`,
-og `brand.css` med øktcookie) er `private, no-store`, så en delt hurtigbuffer eller et CDN som
-ignorerer `Vary` aldri beholder én persons merkevare; den anonyme `brand.css` og `brand/public` er
-offentlige i 60 sekunder, og en publisert logo er uforanderlig og svarer på en gjentatt
-forespørsel med `ETag` med `304`, uten lesing fra objektlageret. Tellerne `vantigo.identity.brand.css_requests`, `.public_lookups`, `.publishes` og
-`.imports` eksporteres sammen med de andre målingene.
+Hver skriving revideres i transaksjonen som gjør den, som `brand.created`, `brand.updated`,
+`brand.published`, `brand.draft_discarded`, `brand.archived`, `brand.restored`, `brand.deleted`, `brand.default_changed`,
+`brand.logo_set`, `brand.logo_removed` og `brand_rules.changed` (listen før og etter), med navn,
+versjoner og revisjoner og aldri byte av en logo. En persons eget valg revideres ikke. Hva merkevare-endepunktene sender bufres med omhu: et svar til en innlogget person (`brand`, og `brand.css` med øktcookie) er `private, no-store`, så en delt hurtigbuffer eller et CDN som ignorerer `Vary` aldri beholder én persons merkevare; den anonyme `brand.css` og `brand/public` er offentlige i 60 sekunder, og en publisert logo er uforanderlig og svarer på en gjentatt forespørsel med `ETag` med `304`, uten lesing fra objektlageret. Tellerne
+`vantigo.identity.brand.css_requests`, `.public_lookups`, `.publishes`, `.imports`, `.rule_changes`,
+`.choices` og `.entity_reads` eksporteres sammen med de andre målingene.
+
+Sanntidstemaene `identity.brand` (alle innloggede) og `identity.brand:{userId}` (bare den personen)
+ber åpne økter hente merkevaren sin på nytt; hendelsene bærer ingen data. Det Staff svarer om en
+persons juridiske enheter, holdes i minnet i 30 sekunder per prosess.
 
 ## Nettbrettstasjoner i verkstedet
 

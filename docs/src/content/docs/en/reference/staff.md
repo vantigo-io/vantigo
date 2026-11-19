@@ -3736,6 +3736,23 @@ through `contracts.Workforce`, and its delivery B the catalogue, for a request's
 requirements, and `PreferenceFits`, the fit Staff scores for a booking
 ([the matching contract's Staff side](#the-workforce-contract)).
 
+### The brand targets contract
+
+`contracts.BrandTargets` (brands design B9) is the second contract Staff provides, read only by
+Identity to assign a [brand](/en/admin/branding/#who-sees-which-brand) to people by legal
+entity. Staff is its sole provider (the `BrandTargets` slot, resolved by Compose after the
+business calendar); with Staff off it is nil, which Identity reads as "no legal-entity targets",
+never as "the person works under no entity". It performs no authorization — Identity decides who
+may ask — and fails rather than under-reports.
+
+- `LegalEntities` answers every legal entity by name, archived ones marked, for the rule editor's
+  picker and to flag a rule whose entity has been archived.
+- `LegalEntitiesOf(userIDs)` answers, for each identity user id, the ids of the legal entities
+  under which the person linked to that user (the `identity` link) has an employment in force
+  today — started and not ended, today being a calendar day in the
+  [business time zone](#the-business-time-zone) — under a business unit of an entity that is not
+  archived. A user with no link or no such employment is absent from the answer.
+
 ## Absence
 
 Absence is delivery B: the [absence types](#absence-types) with

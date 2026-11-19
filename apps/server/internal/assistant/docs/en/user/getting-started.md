@@ -161,6 +161,19 @@ computer's setting when there is none, so the sign-in page is already dark for s
 who works in dark. The [documentation site](https://docs.vantigo.io) has its own
 light/dark switch, which is not shared with the app.
 
+### Choose your brand
+
+A workspace can show its people different brands, with a name, colours and logos of their own,
+by office, department, group or e-mail domain. Which one you see is set by your administrator,
+so most people see only one and have nothing to choose.
+
+If you belong to more than one, the avatar menu has a **Brand** section listing them. Choose
+one to see Vantigo in it at once, on every device you sign in from; choose **Automatic** to
+follow your administrator's assignment again. If your administrator changes the assignment so
+that a brand you chose is no longer yours, the menu tells you your earlier choice no longer
+applies and you see the assigned brand until it is yours again. Your light or dark choice is
+separate and works with every brand.
+
 ### Choose your time zone
 
 Your time zone decides two things: the clock times Vantigo shows you — when a timeline
