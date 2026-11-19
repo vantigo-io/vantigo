@@ -25,6 +25,8 @@ a key reaches, the error codes and the rate limit. What changes, and how, is the
 [API compatibility](/en/reference/api-compatibility/) policy. An application told of events
 as they happen, rather than polling, reads [Webhooks](/en/reference/webhooks/): the events an
 integration's endpoint may receive, the signed message and how to verify it.
+An AI client connecting with an integration's key reads the [MCP server](/en/reference/mcp/):
+the endpoint at `/api/mcp`, its protocol, its tools and what bounds an agent.
 
 ## Modules
 

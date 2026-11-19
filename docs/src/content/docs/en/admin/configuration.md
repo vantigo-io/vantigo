@@ -64,6 +64,7 @@ the guides linked from each group say how to choose.
 | `CSP_REPORT_ONLY` | `0` | Emit the content security policy as report-only |
 | `MANAGEMENT_PORT`, `MANAGEMENT_TOKEN` | unset | The private control-plane listener and its bearer token |
 | `LIVE_ENABLED` | `1` | Whether `api` and `server` mode serve the live-updates endpoint, `GET /api/v1/live`. `0` answers `404` and every screen refreshes about once a minute instead |
+| `MCP_ENABLED` | `1` | Whether `api` and `server` mode serve the MCP endpoint, `POST /api/mcp`, that AI clients connect to with an integration's key once an Owner turns MCP on for it ([API access › MCP](/en/admin/api-access/#mcp)). `0` answers `404` there for every key |
 | `LIVE_DATABASE_URL` | unset | The database address for the two connections live updates hold per HTTP replica. Unset, they use `DATABASE_URL`. Point it at the database's direct port when `DATABASE_URL` goes through a transaction-mode pooler, where `LISTEN` does not work. Redacted when printed |
 | `APP_TITLE`, `APP_LOGO_URL`, `APP_SUPPORT_EMAIL`, `APP_SUPPORT_PHONE`, `APP_SUPPORT_URL` | unset | The branding the application showed. **Imported once** into the default brand; set and edited under **Workspace admin › Brand** from then on, and ignored once the import has completed ([Branding](/en/admin/branding/#the-one-time-import-of-app_title-app_logo_url-and-app_support_)) |
 

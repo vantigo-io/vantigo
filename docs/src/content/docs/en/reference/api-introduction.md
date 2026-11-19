@@ -1,6 +1,6 @@
 ---
 title: "API introduction"
-description: "Calling Vantigo's API as an integration: authenticating with an API key, the document of what a key reaches, the error codes a refusal carries, the rate limit and its headers, the interactive reference at /api, and the compatibility promise."
+description: "Calling Vantigo's API as an integration: authenticating with an API key, the document of what a key reaches, the error codes a refusal carries, the rate limit and its headers, the interactive reference at /api, connecting an AI client over MCP, and the compatibility promise."
 sidebar:
   order: 1
 sources:
@@ -9,6 +9,7 @@ sources:
   - apps/server/internal/openapi/integrator
   - apps/server/internal/module/apidocument.go
   - apps/server/internal/module/apikeygate.go
+  - apps/server/internal/module/apimcp.go
 ---
 
 Vantigo's API is the same HTTP API its own screens use: JSON over HTTPS, one set of paths per
@@ -62,6 +63,14 @@ what it reaches and to send real requests with **Test Request**; signed in witho
 see every operation a key can call, and a request you try goes with your own session. The key
 stays in the page and is never stored. Nothing on the page is fetched from outside the
 installation. See [Trying the API at /api](/en/admin/api-access/#trying-the-api-at-api).
+
+## Connecting an AI client
+
+An AI client that speaks the Model Context Protocol connects to `POST /api/mcp` with the same
+key, once an Owner has turned MCP on for the integration. It reaches the same operations through
+three tools — search, describe and read — every call judged, counted and logged as the REST
+request it makes. Writing through MCP is not available yet. See the
+[MCP server](/en/reference/mcp/).
 
 ## Refusals
 
