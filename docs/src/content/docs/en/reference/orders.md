@@ -16,6 +16,8 @@ sources:
   - apps/server/internal/db/migrations/00161_orders_mto_ready.sql
   - apps/server/internal/db/migrations/00166_orders_delivery_lots.sql
   - apps/server/internal/db/migrations/00177_orders_kits.sql
+  - apps/server/internal/db/migrations/00216_orders_brand.sql
+  - apps/server/internal/contracts/brands.go
   - apps/server/internal/contracts/production.go
   - apps/server/internal/contracts/kit_structure.go
   - apps/server/internal/contracts/billable_orders.go
@@ -114,6 +116,64 @@ afresh from the profile (O14). Sending a quote or confirming an order **freezes*
 an issued invoice's. A customer disabled, archived or merged away takes no new document
 and no change of customer (`customer_disabled`, 400); a draft whose customer was disabled
 since can still be saved and is refused at send or confirm.
+
+## The brand of a document
+
+Brands on quotes and orders (brands design [B27–B29a](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-11-19-brands-design.md),
+delivery E3; migration `00216_orders_brand.sql`). A quote and an order carry `brand_id` (no
+foreign key: the brand is Identity's row, read through `contracts.Brands`), `brand_source`
+(`chosen`, `customer`, `group` or `default`), `brand_skipped` and, once sent or confirmed, the
+snapshot `brand_name`, `brand_logo_object_key` and `brand_logo_sha256` (both or neither,
+`ck_quotes_brand_logo`, `ck_orders_brand_logo`). A subscription carries `brand_id` alone, copied
+from the quote it was accepted from. No call to `contracts.Brands` or the object store is made
+inside a transaction. `contracts.Brands` answers a brand's **published version** only: no draft
+and no campaign overlay (B24), so no document ever prints a campaign. The seller block is
+Invoices' `SellerProfile`, unchanged by a brand (B29a); the brand's name is kept in the snapshot
+and never printed.
+
+**The draft's brand (B28).** At creation the order is the request's `brandId` (`chosen`), else
+`CustomerEntry.BrandID` (`customer`), else `CustomerEntry.GroupBrandID` (`group`), else the
+default brand of `Brands.List` (`default`). A candidate that is not among the published,
+non-archived brands is skipped and `brand_skipped` is set; no default published is no brand
+(NULL). A `brandId` that is not published, other than the one the draft already carries, is a 400
+on `brandId`. A save with `brandId` sets it (`chosen`); without it the draft keeps its brand,
+unless `customerId` changed and the brand was not `chosen`, when it is picked again from the new
+customer. A copy keeps the source's brand; an order accepted from a quote starts in the quote's.
+A confirmed order refuses a `brandId` other than its own (400 on `brandId`). `GET /orders/brands`
+(`orders:access`) lists the published brands for the editor's select.
+
+**The response's `brand {id, name, source, unavailable}`.** A draft's is read now: `name` is the
+published name, and `unavailable` is true when the brand is archived or unknown now or when
+`brand_skipped` is set. A sent quote's and a confirmed order's is the snapshot, and `unavailable`
+is false. Documents made before the migration have no `brand`.
+
+**The snapshot (B27).** Before any transaction, sending a quote (send and mark as sent) and
+confirming an order read the brand with `Brands.Get`; one that is not published any more is
+replaced by a fresh pick from the customer's defaults. The brand's document logo is the
+`wordmark` slot when it has one, else `mark_light`; its bytes come from `Brands.LogoBytes`, are
+judged and normalised as a logo upload is (`internal/logoimage`), hashed, and put in **this
+module's** storage scope under `branding/logo-<sha256>.<png|jpg>`, so a sent document does not
+depend on Identity's scope. The objects are never deleted. A logo that cannot be copied is
+logged and left out: the snapshot keeps the name, the document prints no logo, and the send or
+the confirm goes on. The send (`SetQuoteSent`) and the confirm (`ConfirmOrderRow`) write the
+brand's id, source and snapshot with the state change, and the PDF is rendered from the same
+snapshot. An order accepted from a quote and confirmed at once takes the quote's snapshot as it
+is, with no new read. A revise of a sent quote clears the snapshot columns; the revision starts
+as a draft in the same brand.
+
+**Immutability.** Triggers `tr_quotes_brand_immutable` and `tr_orders_brand_immutable` refuse a
+change of the brand columns of a quote that is neither draft before nor after the update, and of
+an order that is not a draft, with `a sent quote keeps its brand` and `a confirmed order keeps
+its brand`.
+
+**PDFs.** A sent quote's or a confirmed order's PDF, its pro forma and its later versions read
+the logo from the snapshot's key, verified against its hash (a missing or damaged logo is the
+stored-PDF error, a 500). A draft's PDF and pro forma print the brand's logo as it is now, copy
+nothing, and print none for an archived or unknown brand. The logo stands top left of the title,
+as on an invoice. The e-mail attaches the stored PDF and carries no logo of its own.
+
+**Invoicing.** `contracts.DueOrder.BrandID` is the order's `brand_id` (a subscription's own);
+Invoices starts a draft made from orders in it ([the brand of a document](/en/reference/invoices/#the-brand-of-a-document)).
 
 ## Lines
 
@@ -452,7 +512,7 @@ clock and never reads a directory; its caller never calls it under a lock of its
   invoice; a `DueOrder`'s `Kind` is `order` or `subscription`, and an order and a
   subscription are numbered apart, so a caller keys a document by its kind and id. An
   order answers number, customer, currency, project,
-  your reference, delivery date, delivery name and address, payment terms and, per line,
+  your reference, delivery date, delivery name and address, payment terms, brand (`BrandID`) and, per line,
   its position, text, unit, `ToInvoice`, unit price, discount, VAT code, invoice policy and
   amount. `Until` bounds the orders by their delivery date, on or before; an order with
   none is always due. A draft order and one on hold are answered with `Blocked` (`draft`,
