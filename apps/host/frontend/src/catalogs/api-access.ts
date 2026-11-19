@@ -7,7 +7,8 @@ import type { CatalogResources } from "@vantigo/frontend-shell";
  * (routes/workspace/-api-key-dialog.tsx), and its request log
  * (routes/workspace/-api-access-requests.tsx), and its webhook endpoints
  * (routes/workspace/-api-access-webhooks.tsx, -webhook-secret-dialog.tsx)
- * with their delivery log (routes/workspace/-api-access-webhook-deliveries.tsx).
+ * with their delivery log (routes/workspace/-api-access-webhook-deliveries.tsx),
+ * and its MCP section (routes/workspace/-api-access-mcp.tsx).
  */
 const en = {
   "apiAccess.title": "API access",
@@ -319,6 +320,27 @@ const en = {
   "apiAccess.webhookResendRefused_webhook_endpoint_disabled": "The endpoint is disabled; enable it first.",
   "apiAccess.webhookResendDisabled": "The endpoint is disabled: enable it to resend a delivery.",
   "apiAccess.webhookResendArchived": "The integration is archived: its deliveries are shown, and none is resent.",
+  "apiAccess.mcpTitle": "MCP",
+  "apiAccess.mcpDescription":
+    "An AI client such as Claude Code, Cursor or VS Code can connect to Vantigo over the Model Context Protocol with one of this integration's keys. It reaches only what the key may reach through the API.",
+  "apiAccess.mcpAccess": "MCP access",
+  "apiAccess.mcpMode_off": "Off",
+  "apiAccess.mcpModeHint_off": "The integration's keys are refused at the MCP endpoint.",
+  "apiAccess.mcpMode_read": "Read only",
+  "apiAccess.mcpModeHint_read": "An AI client may search the API and call operations that read. The safest choice.",
+  "apiAccess.mcpMode_read_write": "Read and write",
+  "apiAccess.mcpModeHint_read_write":
+    "Writing is not available through MCP yet: until it is, this works as Read only. A read-only key always only reads.",
+  "apiAccess.mcpWarning":
+    "An AI client acts on what it reads, and a record can contain text written to mislead it. A key with write access lets it change data: read only is safest.",
+  "apiAccess.mcpUrl": "MCP endpoint",
+  "apiAccess.mcpClaudeCode": "Claude Code",
+  "apiAccess.mcpJson": "Other clients (url and headers)",
+  "apiAccess.mcpSnippetHint":
+    "Replace vtg_… with one of the integration's keys. The key is shown only when it is made.",
+  "apiAccess.mcpUnavailableTitle": "MCP is switched off",
+  "apiAccess.mcpUnavailable":
+    "MCP is switched off for this installation (MCP_ENABLED=0), so no key can connect whatever is chosen here.",
 };
 
 const nb: Record<keyof typeof en, string> = {
@@ -633,6 +655,26 @@ const nb: Record<keyof typeof en, string> = {
   "apiAccess.webhookResendRefused_webhook_endpoint_disabled": "Endepunktet er deaktivert; aktiver det først.",
   "apiAccess.webhookResendDisabled": "Endepunktet er deaktivert: aktiver det for å sende en leveranse på nytt.",
   "apiAccess.webhookResendArchived": "Integrasjonen er arkivert: leveransene vises, og ingen sendes på nytt.",
+  "apiAccess.mcpTitle": "MCP",
+  "apiAccess.mcpDescription":
+    "En AI-klient som Claude Code, Cursor eller VS Code kan koble seg til Vantigo med Model Context Protocol og en av integrasjonens nøkler. Den når bare det nøkkelen kan nå gjennom API-et.",
+  "apiAccess.mcpAccess": "MCP-tilgang",
+  "apiAccess.mcpMode_off": "Av",
+  "apiAccess.mcpModeHint_off": "Integrasjonens nøkler avvises ved MCP-endepunktet.",
+  "apiAccess.mcpMode_read": "Bare lese",
+  "apiAccess.mcpModeHint_read": "En AI-klient kan søke i API-et og kalle operasjoner som leser. Det tryggeste valget.",
+  "apiAccess.mcpMode_read_write": "Lese og skrive",
+  "apiAccess.mcpModeHint_read_write":
+    "Skriving er ikke tilgjengelig gjennom MCP ennå: til det er det, virker dette som Bare lese. En skrivebeskyttet nøkkel leser alltid bare.",
+  "apiAccess.mcpWarning":
+    "En AI-klient handler på det den leser, og en post kan inneholde tekst skrevet for å villede den. En nøkkel med skrivetilgang lar den endre data: bare lese er tryggest.",
+  "apiAccess.mcpUrl": "MCP-endepunkt",
+  "apiAccess.mcpClaudeCode": "Claude Code",
+  "apiAccess.mcpJson": "Andre klienter (url og headers)",
+  "apiAccess.mcpSnippetHint": "Bytt ut vtg_… med en av integrasjonens nøkler. Nøkkelen vises bare når den lages.",
+  "apiAccess.mcpUnavailableTitle": "MCP er slått av",
+  "apiAccess.mcpUnavailable":
+    "MCP er slått av for denne installasjonen (MCP_ENABLED=0), så ingen nøkkel kan koble seg til uansett hva som velges her.",
 };
 
 export const apiAccessCatalog = { en, nb } as const satisfies CatalogResources;

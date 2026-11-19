@@ -42,6 +42,7 @@ import {
 } from "../../api/integrations";
 import { CustomRolePicker } from "../../components/custom-role-picker";
 import { translateHostPermissionKey, translateHostPermissionModule } from "../../i18n";
+import { IntegrationMcp } from "./-api-access-mcp";
 import { IntegrationRequests } from "./-api-access-requests";
 import { codeOf, contactOptions, fieldErrorsOf, integrationStatusColor, keyStatusColor } from "./-api-access-shared";
 import { IntegrationWebhooks } from "./-api-access-webhooks";
@@ -66,7 +67,8 @@ const sameIds = (a: string[], b: string[]) => a.length === b.length && [...a].so
  * flag, networks and last use, to make, roll and revoke. An archived
  * integration is shown and not changed. Its Requests tab is the request log
  * (K23, -api-access-requests.tsx), its Webhooks tab its webhook endpoints
- * (outgoing webhooks design W1, -api-access-webhooks.tsx).
+ * (outgoing webhooks design W1, -api-access-webhooks.tsx). Its Overview holds
+ * the MCP section (MCP server design M16, -api-access-mcp.tsx).
  */
 export type IntegrationTab = "overview" | "requests" | "webhooks";
 
@@ -489,6 +491,8 @@ export const IntegrationPage = ({
               </Table.ScrollContainer>
             )}
           </PageSection>
+
+          <IntegrationMcp detail={detail.data} archived={archived} />
         </>
       )}
 
