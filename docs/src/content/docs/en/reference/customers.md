@@ -6,6 +6,7 @@ sources:
   - apps/customers/frontend
   - openapi/customers.yaml
   - apps/server/internal/contracts/directory.go
+  - apps/server/internal/db/migrations/00212_customers_brand.sql
   - apps/server/internal/db/migrations/00202_customers_date_of_birth.sql
   - apps/server/internal/contracts/events_customers.go
   - apps/server/internal/db/migrations/00207_customers_credit_limit_bookkeeping.sql
@@ -895,6 +896,80 @@ after group carries a default — a per-request check, with no new key.
 when it comes), any default beyond payment terms, bulk moves or a
 move-on-delete, a group on the create form, hierarchy, paging the vocabulary, and
 a group column in the list table — the filter and the relationship card carry it.
+
+## Default brand
+
+A customer and a customer group can each carry a **default brand** (brands design B27 to
+B29, delivery E1): the brand a new invoice or order for the customer starts in. Both are
+nullable `brand_id uuid` columns (migration `00212`), on `customers.customers` and on
+`customers.customer_groups`. Neither has a foreign key, for the owner's reason: a brand is
+Identity's row, which this module may not reference. A value is checked at write, through
+`contracts.Brands`, and tolerated at read.
+
+### The order
+
+A document's brand is, in order, the person's explicit choice on the document (Invoices and
+Orders, later deliveries); else the customer's `brand_id`; else its group's; else the
+workspace's default brand. This module resolves the middle two and the last, on every read,
+and stores nothing resolved. A choice is **usable** when `contracts.Brands` says the brand is
+published. An archived brand, or an id no brand holds, is skipped and the next step applies:
+the fall-back is silent in the data and visible in the response (`unavailable`). No archive
+of a brand notifies Customers and none is blocked by a customer pointing at it; restoring
+the brand ends the fall-back, because nothing was rewritten.
+
+### Writing
+
+- `PUT /customers/{id}/brand` takes `{brandId?, revision?}`. It is the group PUT's shape:
+  404 for the customer; a supplied `revision` that disagrees, 409 ahead of the no-op check;
+  a `brandId` equal to the current one (null included) writes nothing and bumps nothing; a
+  `brandId` that is not a published brand is a 400 field error on `brandId`; otherwise a
+  guarded write that bumps the row's `revision`, answering the whole customer. The write
+  records no timeline entry: a brand is how the customer is invoiced, not an event in the
+  relationship. A merged-away or anonymised customer answers 409 as for every write.
+  Permission: `customers:update` and `customers:view`.
+- A group's `brandId` is a field of `POST` and `PUT /customers/groups`, with the same
+  validation. `PUT` on a group is a full replace, so an omitted `brandId` clears it.
+- The check applies to a **change** only. Resubmitting the brand already held passes whatever
+  its state, so a form that saves a customer's or a group's other fields again is never
+  refused for a brand archived since (the disabled owner's rule).
+- `GET /customers/brands` lists the published brands, the workspace default first, for the
+  picker. It is gated on `customers:view`, so editing a customer needs nothing from Identity's
+  `identity:brands`. All three operations are open to API keys with those permissions: an
+  integrator may set a customer's or a group's brand.
+
+### Reading
+
+`SafeCustomerResponse.brand` is present on every response: `own` and `group` are the choices
+as made (`{id, name?, state}`, `state` being `published`, `archived` or `unknown`, null for none),
+`effective` is `{id, name?, source}` with `source` one of `customer`, `group` and `default`, and
+`unavailable` names the choices skipped (`customer`, `group`). `CustomerGroupSummary.brand` is
+the group's choice. The resolution is `customerDecoration`'s, one batched query and one read of
+`contracts.Brands` per page.
+
+`contracts.CustomerEntry` gains `BrandID` and `GroupBrandID`, filled by `Customer`, `Customers` and
+`CustomersByLegalID`: the raw ids, not checked against `contracts.Brands`, so a document module
+applies the same order and asks `Brands.Get` whether the brand is still published.
+
+### Erasure, anonymisation and merging
+
+A brand is not personal data. Anonymising a customer leaves `brand_id` as it is, like the owner and
+the billing terms. A customer merged away keeps its row, its brand included; the survivor keeps
+its own and takes nothing from the absorbed customer. A group deleted while empty takes its brand
+with it.
+
+### `contracts.Brands`
+
+Identity is the sole provider (`Module.Brands`, Compose and Workers wire it into every module's
+`Deps`). It is read-only, performs no authorization, reads only a brand's **published** version
+and never returns a draft brand, a pending draft or a campaign overlay. `List` is the published,
+non-archived brands, the default first; `Get` is one brand (archived included) as
+`{ID, Name, Title, Primary, State, Default, Logos}`, `(nil, nil)` for an unknown or never published
+one; `LogoBytes` is a logo some published or archived brand's published version names, for a
+document that copies it when it stops being editable. A consumer tests against `modtest.FakeBrands`
+(`modtest.WithBrands`).
+
+The seller's legal identity stays single: a brand changes the look and name of a document, never
+the legal name, organisation number, VAT registration or bank account.
 
 ## The timeline
 

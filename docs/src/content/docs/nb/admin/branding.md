@@ -66,6 +66,21 @@ kan du:
 
 Navnet på en merkevare er unikt uansett store og små bokstaver (`409 brand_name_taken`).
 
+### Hvor ellers en merkevare gjelder
+
+Foruten hvem som ser hvilken merkevare i applikasjonen, kan en merkevare være en **kundes
+standardmerkevare**: utseendet og navnet et nytt faktura- eller ordredokument til den kunden
+starter i. Den settes på kunden, eller på en kundegruppe for alle medlemmene (**Kunder**, kortet
+**Kunderelasjon** og **Administrer grupper**; se [Merkevare](/nb/user/customers/#merkevare)), av
+alle som kan redigere kunder, uten at de trenger `identity:brands`. Bare publiserte merkevarer
+tilbys.
+
+Å arkivere en merkevare rører ingen kunde som peker på den, og stoppes ikke av noen. De kundene
+faller tilbake på gruppens merkevare, deretter standardmerkevaren, og sier fra om det;
+gjenoppretter du merkevaren, tar fallbacken slutt. En merkevare endrer utseendet og navnet på et
+dokument, aldri hvem selgeren er: juridisk navn, organisasjonsnummer, mva-registrering og
+bankkonto er fortsatt de felles fakturainnstillingene.
+
 ## Hvem som ser hvilken merkevare
 
 En person ser én merkevare: sitt eget valg hvis de har ett og fortsatt kan ha det, ellers den første

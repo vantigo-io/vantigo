@@ -62,6 +62,20 @@ with their state, the default marked, and how many rules point at each. From the
 
 A brand's name is unique whatever its case (`409 brand_name_taken`).
 
+### Where else a brand applies
+
+Besides who sees which brand in the application, a brand can be a **customer's default brand**:
+the look and name a new invoice or order for that customer starts in. It is set on the customer, or
+on a customer group for all its members (**Customers**, the **Relationship** card and **Manage
+groups**; see [Brand](/en/user/customers/#brand)), by anyone who may edit customers, with no need
+for `identity:brands`. Only published brands are offered.
+
+Archiving a brand does not touch any customer that points at it and is not blocked by one. Those
+customers fall back to their group's brand, then to the default brand, and say so; restoring the
+brand ends the fall-back. A brand changes the look and the name on a document, never who the
+seller is: the legal name, organisation number, VAT registration and bank account stay the single
+invoice settings.
+
 ## Who sees which brand
 
 A person sees one brand: their own choice if they have one and still may, otherwise the first

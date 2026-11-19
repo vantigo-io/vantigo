@@ -154,6 +154,7 @@ in and how it is tagged. With `customers:update` each has a control:
   default payment term, which the Billing card shows the customer inheriting.
 - **Tags**: pick existing tags, or type a new name and choose **Create "…"** to create
   and attach it in one go.
+- **Brand**: the brand this customer's documents start in. See [Brand](#brand).
 
 The vocabularies are managed from the customer list (`customers:update`). **Manage
 tags** beside the Tag filter renames a tag, gives it a **Colour** or deletes it, which
@@ -162,6 +163,33 @@ filter creates a group with a **Group name** and an optional **Default payment t
 (days)**, edits it, or deletes it — refused while any customer belongs to it. The rules are
 [Owner and tags](/en/reference/customers/#owner-and-tags) and
 [Groups](/en/reference/customers/#groups).
+
+## Brand
+
+A workspace can have several [brands](/en/admin/branding/#several-brands), and a customer
+can have a default one, so that its invoices and orders start in the right look and name.
+On the **Relationship** card, **Brand** says which brand a new document for this customer
+starts in and where that comes from:
+
+- *"…, chosen for this customer"*: the customer has a brand of its own.
+- *"…, from the group …"*: the customer has none, and its group does.
+- *"…, the workspace default"*: neither does.
+
+With `customers:update`, **Brand for this customer** is a list of the published brands. Pick
+one to give the customer its own, or the first row, **Use the group's brand, or the workspace
+default**, to clear it. A group has the same choice under **Manage groups** (**Default brand**):
+every member without a brand of its own then starts in the group's.
+
+If a chosen brand is archived later, nothing is lost and nothing is blocked: the customer
+takes the next brand in the order, the card says that the chosen one is archived, and the
+choice is shown in the list as *"(archived)"* until you change it. Restoring the brand ends
+the fall-back. Whoever writes a document can still pick another brand for that one document;
+the customer's brand is only where it starts.
+
+A brand changes the look and the name on a document: the logo, the brand name and the title.
+It does not change who the seller is: the legal name, organisation number, VAT registration
+and bank account stay the single [invoice settings](/en/user/invoices/). Anonymising a
+customer keeps its brand, since a brand is not personal data.
 
 ## Contact details and addresses
 
@@ -547,7 +575,7 @@ nothing on it can be changed, and only the export remains. See
 | --- | --- |
 | See the list, a customer page, its billing profile and the 360 panel; export | `customers:view` |
 | Create a customer | `customers:create` |
-| Edit, restore, change the type, set owner, group and tags, manage tags and groups, edit contact details and addresses | `customers:update` |
+| Edit, restore, change the type, set owner, group, brand and tags, manage tags and groups, edit contact details and addresses | `customers:update` |
 | Archive a customer | `customers:delete` |
 | See the legal identity and the Registry card | `customers:legal-identity-view` |
 | Save a legal identity, refresh the registry record, update the legal name | `customers:legal-identity-manage` |

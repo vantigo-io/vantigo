@@ -150,6 +150,7 @@ hvilke merkelapper den har. Med `customers:update` har hver av dem en kontroll:
   standard betalingsbetingelser, som faktureringskortet viser at kunden arver.
 - **Merkelapper**: velg blant eksisterende, eller skriv et nytt navn og velg
   **Opprett «…»** for å opprette og sette den på i ett.
+- **Merkevare**: merkevaren kundens dokumenter starter i. Se [Merkevare](#merkevare).
 
 Ordforrådene administreres fra kundelisten (`customers:update`). **Administrer
 merkelapper** ved merkelappfilteret gir en merkelapp nytt navn, en **Farge** eller
@@ -159,6 +160,34 @@ betalingsbetingelser (dager)**, redigerer eller sletter den — avvist så lenge
 kunde er i den. Reglene er
 [Owner and tags](/en/reference/customers/#owner-and-tags) og
 [Groups](/en/reference/customers/#groups).
+
+## Merkevare
+
+Et arbeidsområde kan ha flere [merkevarer](/nb/admin/branding/#flere-merkevarer), og en kunde
+kan ha en standard, slik at fakturaene og ordrene starter i riktig utseende og navn. På kortet
+**Kunderelasjon** sier **Merkevare** hvilken merkevare et nytt dokument til denne kunden starter
+i, og hvor den kommer fra:
+
+- *«…, valgt for denne kunden»*: kunden har en egen merkevare.
+- *«…, fra gruppen …»*: kunden har ingen, men gruppen har.
+- *«…, arbeidsområdets standard»*: ingen av dem har.
+
+Med `customers:update` er **Merkevare for denne kunden** en liste over de publiserte
+merkevarene. Velg en for å gi kunden sin egen, eller første rad, **Bruk gruppens merkevare,
+eller arbeidsområdets standard**, for å fjerne den. En gruppe har det samme valget under
+**Administrer grupper** (**Standard merkevare**): hvert medlem uten egen merkevare starter da i
+gruppens.
+
+Hvis en valgt merkevare arkiveres senere, mister du ingenting og ingenting stoppes: kunden får
+neste merkevare i rekkefølgen, kortet sier at den valgte er arkivert, og valget vises i listen
+som *«(arkivert)»* til du endrer det. Gjenoppretter du merkevaren, tar fallbacken slutt. Den som
+skriver et dokument kan fortsatt velge en annen merkevare for akkurat det dokumentet; kundens
+merkevare er bare der det starter.
+
+En merkevare endrer utseendet og navnet på et dokument: logoen, merkevarenavnet og tittelen. Den
+endrer ikke hvem selgeren er: juridisk navn, organisasjonsnummer, mva-registrering og
+bankkonto er fortsatt de felles [fakturainnstillingene](/nb/user/invoices/). Anonymisering
+av en kunde beholder merkevaren, siden en merkevare ikke er personopplysninger.
 
 ## Kontaktdetaljer og adresser
 
@@ -552,7 +581,7 @@ på den kan endres, og bare eksporten står igjen. Se
 | --- | --- |
 | Se listen, en kundeside, faktureringsprofilen og 360-panelet; eksportere | `customers:view` |
 | Opprette en kunde | `customers:create` |
-| Redigere, gjenopprette, endre type, sette eier, gruppe og merkelapper, administrere merkelapper og grupper, redigere kontaktdetaljer og adresser | `customers:update` |
+| Redigere, gjenopprette, endre type, sette eier, gruppe, merkevare og merkelapper, administrere merkelapper og grupper, redigere kontaktdetaljer og adresser | `customers:update` |
 | Arkivere en kunde | `customers:delete` |
 | Se den juridiske identiteten og registerkortet | `customers:legal-identity-view` |
 | Lagre en juridisk identitet, oppdatere registeropplysningene, oppdatere juridisk navn | `customers:legal-identity-manage` |
