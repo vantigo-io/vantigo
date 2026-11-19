@@ -517,6 +517,7 @@ func serve(ctx context.Context, logger *slog.Logger, cfg *config.Config, ln net.
 	var apiRunners []module.Runner
 	if withAPI {
 		assets := web.Assets()
+		access.UseBrandAssets(assets)
 
 		// Every module this binary knows is passed to Compose, which keeps
 		// identity — always mounted, never listed in MODULES — plus whichever

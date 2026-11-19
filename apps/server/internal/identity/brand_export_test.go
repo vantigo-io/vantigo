@@ -11,6 +11,7 @@ import (
 
 	"github.com/vantigo-io/vantigo/server/internal/module"
 	"github.com/vantigo-io/vantigo/server/internal/netguard"
+	"github.com/vantigo-io/vantigo/server/internal/storage"
 )
 
 // SetBrandImportNetwork makes the brand logo import resolve with resolver and
@@ -33,6 +34,13 @@ func RunBrandImportOnce(ctx context.Context, a *Access, d module.Deps) (bool, er
 		return false, err
 	}
 	r := &brandImportRunner{d: d, a: a, objects: objects, metrics: a.brandMetricsFor(), wait: time.Millisecond}
+	return r.once(ctx)
+}
+
+// RunBrandImportOnceWith is RunBrandImportOnce over objects, with the import
+// bounded by deadline.
+func RunBrandImportOnceWith(ctx context.Context, a *Access, d module.Deps, objects storage.ObjectStore, deadline time.Duration) (bool, error) {
+	r := &brandImportRunner{d: d, a: a, objects: brandObjects{store: objects, configured: true}, metrics: a.brandMetricsFor(), wait: time.Millisecond, deadline: deadline}
 	return r.once(ctx)
 }
 

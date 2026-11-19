@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"slices"
@@ -87,12 +88,20 @@ type Access struct {
 	// brandNet is what the brand logo import resolves and dials with; nil
 	// means the process's guarded transport. Only a test sets it.
 	brandNet *webhookNetwork
+	// brandAssets is the embedded frontend build a same-origin APP_LOGO_URL
+	// path is read from (UseBrandAssets); nil means there is none to read.
+	brandAssets fs.FS
 	// brandMP is the meter provider the brand counters are built on; nil
 	// means the global one. Only a test sets it.
 	brandMP   metric.MeterProvider
 	brandOnce sync.Once
 	brandMtr  *brandMetrics
 }
+
+// UseBrandAssets gives the brand logo import the application's own files, the
+// embedded frontend build: a same-origin APP_LOGO_URL path such as /logo.png
+// is read from them in process, not fetched from this server's address.
+func (a *Access) UseBrandAssets(assets fs.FS) { a.brandAssets = assets }
 
 // brandMetricsFor is the one set of brand counters of this Access.
 func (a *Access) brandMetricsFor() *brandMetrics {

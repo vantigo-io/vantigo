@@ -777,8 +777,8 @@ func TestBrandImport_RefusedAddressesAreNeverDialled(t *testing.T) {
 			if strings.Contains(*b.ImportNotice, "10.0.0.5") || strings.Contains(*b.ImportNotice, "169.254") {
 				t.Errorf("the notice leaks the address: %q", *b.ImportNotice)
 			}
-			if imported, _ := identity.BrandingImported(context.Background(), h.deps); !imported {
-				t.Error("a failed logo must still complete the import")
+			if imported, _ := identity.BrandingImported(context.Background(), h.deps); imported {
+				t.Error("a failed logo must leave the import incomplete, so the environment stays honoured")
 			}
 		})
 	}
@@ -829,6 +829,9 @@ func TestBrandImport_WithoutAnObjectStoreTheRestIsImportedAndANoticeIsRaised(t *
 	b := getBrand(t, owner)
 	if b.ImportNotice == nil || !strings.Contains(*b.ImportNotice, "object store") || b.Published.Title != "Acme" {
 		t.Errorf("brand = %+v notice = %v", b.Published, b.ImportNotice)
+	}
+	if imported, _ := identity.BrandingImported(context.Background(), h.deps); imported {
+		t.Error("an import without a store must stay incomplete")
 	}
 }
 

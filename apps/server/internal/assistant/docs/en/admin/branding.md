@@ -114,18 +114,25 @@ default brand**, the way `OIDC_*` became the single sign-on card:
   it) and the three support contacts. The same validation as the editor applies; a contact that is
   not valid is left out and named in the log.
 - `APP_LOGO_URL` is **fetched after the application is up**, never while it starts. The address
-  must be `http` or `https` (a path beginning with `/` is read from the installation's own public
-  address); no redirect is followed; it must answer within 15 seconds with at most 2 MiB; and it
-  may not point at a private, loopback, link-local or cloud-metadata address. The picture must
-  pass the logo rules above and becomes the mark for light backgrounds.
+  must be `http` or `https`; no redirect is followed; it must answer within 15 seconds with at
+  most 2 MiB; and it may not point at a private, loopback, link-local or cloud-metadata address.
+  A path beginning with `/` (such as `/logo.png`) names one of the application's own files and is
+  read from them directly, without a request to the installation's address; the base path, if
+  there is one, may be included or left out. The whole import, the object store included, must
+  finish within 90 seconds. The picture must pass the logo rules above and becomes the mark for
+  light backgrounds. An SVG is not accepted.
 - If the logo cannot be imported (unreachable, refused address, not an image, over the limit, no
-  object store) everything else is still imported, a warning is logged and the **Brand** screen
-  shows a notice asking you to upload the logo. The fetch is not retried.
+  such file, no object store, too slow) the title and support contacts are still in the brand, a
+  warning is logged and the **Brand** screen shows a notice asking you to upload the logo. The
+  import is then **not complete**: `APP_TITLE` and `APP_LOGO_URL` stay in effect as before until
+  you upload a logo and publish the brand, and the next start fetches the logo again.
 - Several replicas starting together create **one** default brand and only one of them fetches
   the logo; a replica that stops mid-fetch is replaced after two minutes.
 - **Until the import has completed**, the variables stay honoured exactly as before, so a rollback
-  to an older release loses nothing. After it, the application ignores them and logs a line while
-  they are still set. You can remove them from your environment.
+  to an older release loses nothing. It completes when the logo has been imported, or when an
+  administrator publishes the default brand with a logo of their own. After it, the application
+  ignores the variables from the next start and logs a line while they are still set. You can
+  remove them from your environment.
 
 ## What stays Vantigo's
 
@@ -143,4 +150,4 @@ the page, card, text and border colours stay Vantigo's in both schemes.
 | `409 stale_revision` | Someone else saved the brand since you opened it. |
 | `400 logo_*` | The file is not an acceptable PNG or JPEG: `logo_unsupported_type`, `logo_too_large`, `logo_too_wide`, `logo_too_small`, `logo_invalid`, `logo_not_square`. |
 | `503 storage_unavailable` | No object store, or it could not be written. |
-| A notice about the logo of `APP_LOGO_URL` | The import could not fetch it; upload the logo. |
+| A notice about the logo of `APP_LOGO_URL` | The import could not fetch it; upload the logo and publish. Until then the variables stay in effect. |

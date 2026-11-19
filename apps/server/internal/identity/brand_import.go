@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net"
 	"net/http"
 	"net/url"
+	"path"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -42,6 +44,10 @@ const (
 	// brandImportRetry is how often a runner that does not hold the lease
 	// looks again.
 	brandImportRetry = 30 * time.Second
+	// brandImportDeadline bounds the whole logo import (fetch, judge, store,
+	// record), well inside the lease, so a stuck object store cannot let the
+	// lease go stale while this replica is still writing.
+	brandImportDeadline = brandImportLease - 30*time.Second
 )
 
 // ensureDefaultBrand creates the default brand when there is none, from the
@@ -147,6 +153,8 @@ type brandImportRunner struct {
 	objects brandObjects
 	metrics *brandMetrics
 	wait    time.Duration
+	// deadline bounds one logo import; zero means brandImportDeadline.
+	deadline time.Duration
 }
 
 func brandImportRunners(a *Access, d module.Deps) []module.Runner {
@@ -194,18 +202,32 @@ func (r *brandImportRunner) once(ctx context.Context) (bool, error) {
 	case err != nil:
 		return false, fmt.Errorf("identity: claim the brand import: %w", err)
 	}
-	reason := r.importLogo(ctx, id.String())
+	deadline := r.deadline
+	if deadline == 0 {
+		deadline = brandImportDeadline
+	}
+	ictx, cancel := context.WithTimeout(ctx, deadline)
+	reason := r.importLogo(ictx, id.String())
+	if reason != "" && ictx.Err() != nil {
+		reason = importTimeout
+	}
+	cancel()
 	if err := ctx.Err(); err != nil {
 		return false, nil // stopping: the lease goes stale and a later start takes over
 	}
-	var notice *string
 	if reason != "" {
-		n := "APP_LOGO_URL could not be imported (" + reason + "): upload the logo instead."
-		notice = &n
+		// The import stays incomplete (B30): the variables keep being honoured,
+		// the title and logo included, until an admin publishes a logo of their
+		// own; the next start fetches again. The notice says what to do now.
+		notice := "APP_LOGO_URL could not be imported (" + reason + "): upload the logo instead."
 		r.metrics.imports.Add(ctx, 1, importOutcomeAttr("logo_failed"))
-		r.d.Logger.WarnContext(ctx, "identity: the brand logo could not be imported from APP_LOGO_URL", "reason", reason)
+		r.d.Logger.WarnContext(ctx, "identity: the brand logo could not be imported from APP_LOGO_URL; APP_TITLE and APP_LOGO_URL stay in effect until a logo is published in the brand editor, and the next start tries again", "reason", reason)
+		if err := q.FailBrandImport(ctx, store.FailBrandImportParams{ID: id, Notice: notice}); err != nil {
+			return false, fmt.Errorf("identity: record the failed brand import: %w", err)
+		}
+		return true, nil
 	}
-	if err := q.CompleteBrandImport(ctx, store.CompleteBrandImportParams{ID: id, Now: r.d.Clock(), Notice: notice}); err != nil {
+	if err := q.CompleteBrandImport(ctx, store.CompleteBrandImportParams{ID: id, Now: r.d.Clock()}); err != nil {
 		return false, fmt.Errorf("identity: complete the brand import: %w", err)
 	}
 	r.metrics.imports.Add(ctx, 1, importOutcomeAttr("completed"))
@@ -223,6 +245,7 @@ const (
 	importNotImage    = "the file is not a PNG or JPEG logo within the limits"
 	importNoStorage   = "this installation has no object store"
 	importTimeout     = "the address did not answer in time"
+	importNoLocalFile = "the file is not one of this application's own files"
 )
 
 // importLogo fetches, judges and stores the logo and puts it in the brand's
@@ -258,7 +281,13 @@ func (r *brandImportRunner) putLogo(ctx context.Context, brandID string, logo br
 	now := r.d.Clock()
 	return db.WithTx(ctx, r.d.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		q := store.New(tx)
-		raw, err := q.GetDefaultBrand(ctx)
+		def, err := q.GetDefaultBrand(ctx)
+		if err != nil {
+			return err
+		}
+		// The row is locked as every brand write does (changeBrand), so an
+		// admin's save in the meantime is not overwritten with a stale copy.
+		raw, err := q.LockBrand(ctx, def.ID)
 		if err != nil {
 			return err
 		}
@@ -299,13 +328,13 @@ const logoSlotLight = "mark_light"
 
 // fetchLogo reads the logo at raw through the guarded transport (B30.2): http
 // or https only, no redirect followed, 15 seconds, 2 MiB read. A same-origin
-// path is read from the app's own public address.
+// path is read from the application's own embedded files, in this process,
+// never over the network (B30.2).
 func (r *brandImportRunner) fetchLogo(ctx context.Context, raw string) ([]byte, string) {
-	target := raw
-	if strings.HasPrefix(raw, "/") {
-		target = strings.TrimRight(r.d.Config.AppOrigin, "/") + r.d.Config.BasePath + raw
+	if strings.HasPrefix(raw, "/") && !strings.HasPrefix(raw, "//") {
+		return r.localLogo(raw)
 	}
-	u, err := url.Parse(target)
+	u, err := url.Parse(raw)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		return nil, importBlocked
 	}
@@ -339,6 +368,43 @@ func (r *brandImportRunner) fetchLogo(ctx context.Context, raw string) ([]byte, 
 		return nil, importStatus
 	}
 	data, err := io.ReadAll(io.LimitReader(resp.Body, brandLogoFetchMax+1))
+	switch {
+	case err != nil:
+		return nil, importUnreachable
+	case len(data) > brandLogoFetchMax:
+		return nil, importTooLarge
+	}
+	return data, ""
+}
+
+// localLogo reads a same-origin APP_LOGO_URL from the embedded frontend build.
+// The path is what the browser would request, so it may already carry the base
+// path: that prefix is removed once, never added.
+func (r *brandImportRunner) localLogo(raw string) ([]byte, string) {
+	if r.a.brandAssets == nil {
+		return nil, importNoLocalFile
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return nil, importBlocked
+	}
+	p := path.Clean("/" + u.Path)
+	if base := r.d.Config.BasePath; base != "" && (p == base || strings.HasPrefix(p, base+"/")) {
+		p = strings.TrimPrefix(p, base)
+	}
+	name := strings.TrimPrefix(p, "/")
+	if name == "" || name == "index.html" || !fs.ValidPath(name) {
+		return nil, importNoLocalFile
+	}
+	f, err := r.a.brandAssets.Open(name)
+	if err != nil {
+		return nil, importNoLocalFile
+	}
+	defer func() { _ = f.Close() }()
+	if info, err := f.Stat(); err != nil || info.IsDir() {
+		return nil, importNoLocalFile
+	}
+	data, err := io.ReadAll(io.LimitReader(f, brandLogoFetchMax+1))
 	switch {
 	case err != nil:
 		return nil, importUnreachable
