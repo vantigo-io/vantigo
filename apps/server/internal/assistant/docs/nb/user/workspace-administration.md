@@ -196,9 +196,17 @@ statusen og, for en avvist forespørsel, hvorfor. **Nøkkel**, **Status**, **Avv
 **Kontaktpersonen** og hver eier får en e-post 14 dager og 3 dager før en nøkkel utløper, og på
 dagen, med mindre den er rotert eller tilbakekalt. Roter nøkkelen før den tid.
 
+Fanen **Webhooks** viser integrasjonens webhook-endepunkter: HTTPS-adressene til programmet som
+skal få beskjed når noe skjer, for eksempel at en salgsordre er bekreftet. **Nytt endepunkt** ber
+om **URL** og **Hendelser**, blant dem integrasjonens roller lar den motta, og viser
+**signeringshemmeligheten** én gang: velg **Jeg har kopiert hemmeligheten** når den er lagret.
+Under hvert endepunkts **Handlinger** redigerer, deaktiverer eller sletter du det, eller velger
+**Roter hemmeligheten**. Vantigo sender ikke meldinger til endepunktene ennå; det kommer i en
+senere versjon.
+
 Detaljene — hva en nøkkel når, begrensning, nøkler for bare lesing, nettverk,
-hastighetsgrensen, svarene en klient får, forespørselsloggen og hva du gjør når en nøkkel
-lekker — står under [API-tilgang](/nb/admin/api-access/).
+hastighetsgrensen, svarene en klient får, forespørselsloggen, webhook-endepunkter og hva du
+gjør når en nøkkel lekker — står under [API-tilgang](/nb/admin/api-access/).
 
 ## Deaktiver, aktiver eller slett en bruker
 

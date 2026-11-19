@@ -23,6 +23,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/httpx"
 	"github.com/vantigo-io/vantigo/server/internal/identity/store"
 	"github.com/vantigo-io/vantigo/server/internal/module"
+	"github.com/vantigo-io/vantigo/server/internal/netguard"
 )
 
 // maxActivityWriteInterval caps how long a session may go without its idle
@@ -58,6 +59,14 @@ type Access struct {
 	// test sets it (SetOIDCHTTPClient), before the module mounts, to reach a
 	// fake provider.
 	oidcHTTPClient *http.Client
+	// webhookResolver is what a webhook endpoint's save resolves its host
+	// with (outgoing webhooks design W11); nil means net.DefaultResolver.
+	// Only a test sets it (SetWebhookResolver), so no test touches DNS.
+	webhookResolver netguard.Resolver
+	// webhookNet is what the webhook sender resolves, dials and trusts with;
+	// nil means the process's guarded transport. Only a test sets it, and
+	// every send still goes through netguard (webhookNetwork).
+	webhookNet *webhookNetwork
 	// ai is the Owner's choice of model per AI task through its cache
 	// (ai_models.go). The AIModels slot hands it to the platform AI client and
 	// the settings endpoints read and evict the same one, so a save is in

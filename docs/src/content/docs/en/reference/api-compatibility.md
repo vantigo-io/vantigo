@@ -56,7 +56,9 @@ keeps working, unchanged, until then.
 
 Every pull request to Vantigo builds the integrator's document — every operation a key can call,
 with every module enabled (`vantigo openapi integrator`) — for itself and for the commit it is
-based on, and compares the two with [oasdiff](https://github.com/oasdiff/oasdiff). A breaking
+based on, and compares the two with [oasdiff](https://github.com/oasdiff/oasdiff). What this page counts as
+compatible is not a finding: a value added to a response enum is lowered to information
+([`tools/api/oasdiff-severity.txt`](https://github.com/vantigo-io/vantigo/blob/main/tools/api/oasdiff-severity.txt)). A breaking
 finding fails the pull request unless one of its commits says so on purpose: a Conventional
 Commits subject with `!` (`feat(orders)!: …`) and, for each operation, a trailer
 

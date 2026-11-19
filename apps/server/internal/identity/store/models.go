@@ -454,3 +454,58 @@ type IdentityUserRole struct {
 	UserID uuid.UUID
 	RoleID uuid.UUID
 }
+
+type IdentityWebhookAttempt struct {
+	ID         int64
+	DeliveryID uuid.UUID
+	At         time.Time
+	StatusCode *int16
+	DurationMs int32
+	Error      *string
+	Excerpt    *string
+	SecretUsed string
+}
+
+type IdentityWebhookDelivery struct {
+	ID                uuid.UUID
+	EndpointID        uuid.UUID
+	EventID           *int64
+	EventName         string
+	Kind              string
+	Body              string
+	State             string
+	StateReason       *string
+	RunAttempts       int32
+	MaxRunAttempts    int32
+	TotalAttempts     int32
+	NextAttemptAt     *time.Time
+	LeaseID           *uuid.UUID
+	LeaseUntil        *time.Time
+	LastStatus        *int16
+	LastError         *string
+	ResendCount       int32
+	ResendWindowStart *time.Time
+	CreatedAt         time.Time
+	CompletedAt       *time.Time
+}
+
+type IdentityWebhookEndpoint struct {
+	ID                       uuid.UUID
+	IntegrationID            uuid.UUID
+	Url                      string
+	Description              *string
+	Events                   []string
+	SecretCiphertext         []byte
+	PreviousSecretCiphertext []byte
+	PreviousSecretExpiresAt  *time.Time
+	Status                   string
+	DisabledReason           *string
+	DisabledAt               *time.Time
+	FailingSince             *time.Time
+	LastSuccessAt            *time.Time
+	DisabledNoticeSentAt     *time.Time
+	CreatedBy                *uuid.UUID
+	CreatedAt                time.Time
+	UpdatedAt                time.Time
+	Version                  uuid.UUID
+}

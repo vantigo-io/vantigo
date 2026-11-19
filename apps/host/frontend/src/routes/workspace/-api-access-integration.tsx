@@ -44,6 +44,7 @@ import { CustomRolePicker } from "../../components/custom-role-picker";
 import { translateHostPermissionKey, translateHostPermissionModule } from "../../i18n";
 import { IntegrationRequests } from "./-api-access-requests";
 import { codeOf, contactOptions, fieldErrorsOf, integrationStatusColor, keyStatusColor } from "./-api-access-shared";
+import { IntegrationWebhooks } from "./-api-access-webhooks";
 import { NewKeyDialog, RollKeyDialog } from "./-api-key-dialog";
 
 type DetailsDraft = {
@@ -64,9 +65,10 @@ const sameIds = (a: string[], b: string[]) => a.length === b.length && [...a].so
  * sensitive ones badged — and its keys, each with its narrowing, read-only
  * flag, networks and last use, to make, roll and revoke. An archived
  * integration is shown and not changed. Its Requests tab is the request log
- * (K23, -api-access-requests.tsx).
+ * (K23, -api-access-requests.tsx), its Webhooks tab its webhook endpoints
+ * (outgoing webhooks design W1, -api-access-webhooks.tsx).
  */
-export type IntegrationTab = "overview" | "requests";
+export type IntegrationTab = "overview" | "requests" | "webhooks";
 
 export const IntegrationPage = ({
   integrationId,
@@ -260,6 +262,7 @@ export const IntegrationPage = ({
         items={[
           { value: "overview", label: t("apiAccess.tabOverview") },
           { value: "requests", label: t("apiAccess.tabRequests") },
+          { value: "webhooks", label: t("apiAccess.tabWebhooks") },
         ]}
         value={tab}
         onChange={(next) => onTab?.(next)}
@@ -267,6 +270,8 @@ export const IntegrationPage = ({
 
       {tab === "requests" ? (
         <IntegrationRequests integrationId={integrationId} keys={keys} />
+      ) : tab === "webhooks" ? (
+        <IntegrationWebhooks integrationId={integrationId} archived={archived} />
       ) : (
         <>
           <PageSection title={t("apiAccess.details")}>

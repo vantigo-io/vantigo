@@ -646,9 +646,10 @@ func (s *server) PostIdentityIntegrationsByIdEnable(ctx context.Context, req gen
 	return gen.PostIdentityIntegrationsByIdEnable200JSONResponse(detail), nil
 }
 
-// PostIdentityIntegrationsByIdArchive revokes every key of an integration and
-// archives it, in one transaction, audited api_key.revoked for each key and
-// integration.archived (K8). It cannot be undone.
+// PostIdentityIntegrationsByIdArchive revokes every key of an integration,
+// disables its webhook endpoints and archives it, in one transaction, audited
+// api_key.revoked for each key, webhook.disabled for each endpoint and
+// integration.archived (K8, outgoing webhooks design W2). It cannot be undone.
 // (POST /api/v1/identity/integrations/{id}/archive)
 func (s *server) PostIdentityIntegrationsByIdArchive(ctx context.Context, req gen.PostIdentityIntegrationsByIdArchiveRequestObject) (gen.PostIdentityIntegrationsByIdArchiveResponseObject, error) {
 	p, r, err := integrationCaller(ctx)
@@ -681,6 +682,11 @@ func (s *server) PostIdentityIntegrationsByIdArchive(ctx context.Context, req ge
 			}); err != nil {
 				return err
 			}
+		}
+		// Its webhook endpoints are disabled in the same transaction, their
+		// pending deliveries settled (outgoing webhooks design W2, W31).
+		if err := s.archiveIntegrationWebhooks(ctx, q, r, req.Id, p, now); err != nil {
+			return err
 		}
 		if err := q.ArchiveIntegration(ctx, store.ArchiveIntegrationParams{UserID: req.Id, Now: now, ArchivedBy: &p.UserID, Version: uuid.New()}); err != nil {
 			return fmt.Errorf("identity: archive the integration: %w", err)

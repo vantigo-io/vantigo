@@ -22,6 +22,7 @@ sql:
       - ../db/migrations/00194_identity_integration_kind.sql
       - ../db/migrations/00195_identity_api_keys.sql
       - ../db/migrations/00199_identity_api_requests.sql
+      - ../db/migrations/00204_identity_webhooks.sql
     queries: queries
     gen:
       go:

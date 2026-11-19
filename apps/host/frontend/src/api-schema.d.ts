@@ -798,6 +798,118 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/identity/integrations/{id}/webhooks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List an integration's webhook endpoints
+         * @description An integration's webhook endpoints (outgoing webhooks design W1, W25), oldest first, with their full URLs and never their secrets.
+         */
+        get: operations["getIdentityIntegrationsByIdWebhooks"];
+        put?: never;
+        /**
+         * Create a webhook endpoint
+         * @description Creates a webhook endpoint for an integration and answers its signing secret, once: it is kept sealed and never shown again. The URL is https on port 443 with a host name that resolves only to public addresses; each event is a catalogue name the integration's roles let it receive. At most 5 endpoints per integration and 50 in the workspace. Audited webhook.created, with the URL's scheme and host only.
+         */
+        post: operations["postIdentityIntegrationsByIdWebhooks"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/identity/integrations/{id}/webhooks/{webhookId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a webhook endpoint
+         * @description A webhook endpoint of an integration, never its secret.
+         */
+        get: operations["getIdentityIntegrationsByIdWebhooksByWebhookId"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete a webhook endpoint
+         * @description Deletes a webhook endpoint with its deliveries and their attempts. It cannot be undone. Audited webhook.deleted.
+         */
+        delete: operations["deleteIdentityIntegrationsByIdWebhooksByWebhookId"];
+        options?: never;
+        head?: never;
+        /**
+         * Change a webhook endpoint
+         * @description Replaces a webhook endpoint's URL, description (absent clears it) and events under If-Match on its version, by the rules of its creation. The secret is not rolled; deliveries already queued go to the URL as it is when they are sent. Audited webhook.updated.
+         */
+        patch: operations["patchIdentityIntegrationsByIdWebhooksByWebhookId"];
+        trace?: never;
+    };
+    "/api/v1/identity/integrations/{id}/webhooks/{webhookId}/disable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Disable a webhook endpoint
+         * @description Disables a webhook endpoint: nothing more is queued for it, and every delivery still pending is settled as dead, so nothing stale is sent once it is enabled again. One disabled already is answered as it is. Audited webhook.disabled.
+         */
+        post: operations["postIdentityIntegrationsByIdWebhooksByWebhookIdDisable"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/identity/integrations/{id}/webhooks/{webhookId}/enable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Enable a webhook endpoint
+         * @description Enables a disabled webhook endpoint: it receives the events published from then on, with no failure counted. One enabled already is answered as it is. Audited webhook.enabled.
+         */
+        post: operations["postIdentityIntegrationsByIdWebhooksByWebhookIdEnable"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/identity/integrations/{id}/webhooks/{webhookId}/roll-secret": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Roll a webhook endpoint's secret
+         * @description Gives a webhook endpoint a new signing secret and answers it, once. The secret it replaces signs every message too, beside the new one, for the overlap, 1 to 168 hours (24 by default); rolling again within an overlap ends the older secret at once. Audited webhook.secret_rolled, without either secret.
+         */
+        post: operations["postIdentityIntegrationsByIdWebhooksByWebhookIdRollSecret"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/identity/invitations/accept": {
         parameters: {
             query?: never;
@@ -2102,6 +2214,26 @@ export interface paths {
          * @description Clears a person's station PIN (M132); an administrator never sets or reads one. Audited pin_cleared.
          */
         delete: operations["deleteIdentityUsersByIdPin"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/identity/webhook-events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the webhook events
+         * @description The events a webhook endpoint may subscribe to (outgoing webhooks design W4-W7), grouped by module: each event's name, the resource a receiver fetches when told of one and the permissions that GET needs, and whether the integration's roles let it receive the event now.
+         */
+        get: operations["getIdentityWebhookEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -3436,6 +3568,93 @@ export interface components {
             code: string | null;
             /** @default false */
             rememberMe: boolean;
+        };
+        /** @description A webhook endpoint of an integration (outgoing webhooks design W1), never its secret. */
+        WebhookEndpoint: {
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: uuid */
+            createdBy: string | null;
+            description: string | null;
+            /** Format: date-time */
+            disabledAt: string | null;
+            /**
+             * @description Why the endpoint is disabled — manual (an Owner disabled it), failing (it failed for 5 days), gone (it answered 410 Gone) or integration_archived; null while it is enabled.
+             * @enum {string|null}
+             */
+            disabledReason: "manual" | "failing" | "gone" | "integration_archived" | null;
+            /** @description The catalogue events it receives. */
+            events: string[];
+            /**
+             * Format: date-time
+             * @description Since when its attempts have failed with no success between; null when the last one succeeded.
+             */
+            failingSince: string | null;
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            integrationId: string;
+            /** Format: date-time */
+            lastSuccessAt: string | null;
+            /**
+             * Format: date-time
+             * @description While a roll's overlap runs, when the secret it replaced stops signing; null otherwise.
+             */
+            previousSecretExpiresAt: string | null;
+            /** @enum {string} */
+            status: "enabled" | "disabled";
+            /** Format: date-time */
+            updatedAt: string;
+            /** @description The URL in full, query included; shown to Owners only. */
+            url: string;
+            /** @description The endpoint's version for If-Match. */
+            version: string;
+        };
+        WebhookEndpointCreateRequest: {
+            /** @description Up to 500 characters. */
+            description?: string;
+            /** @description 1 to 50 catalogue event names, each one the integration may receive. */
+            events: string[];
+            /** @description https on port 443, a host name (not an address), no user name or password and no fragment, at most 2,048 characters; a query string is allowed. */
+            url: string;
+        };
+        WebhookEndpointList: {
+            endpoints: components["schemas"]["WebhookEndpoint"][];
+        };
+        /** @description An endpoint just created or whose secret was just rolled, with its secret, which is never shown again. */
+        WebhookEndpointSecret: {
+            endpoint: components["schemas"]["WebhookEndpoint"];
+            /** @description The signing secret, whsec_ and the base64 of 32 random bytes (Standard Webhooks). */
+            secret: string;
+        };
+        WebhookEndpointUpdateRequest: {
+            /** @description Up to 500 characters; absent clears it. */
+            description?: string;
+            /** @description 1 to 50 catalogue event names, each one the integration may receive. */
+            events: string[];
+            /** @description As for creating one. */
+            url: string;
+        };
+        WebhookEvent: {
+            /** @description The module that publishes it, as orders. */
+            module: string;
+            /** @description The event's name, as orders.sales_order.confirmed. */
+            name: string;
+            /** @description The REST path of the resource a receiver fetches, with its id as a parameter. */
+            path: string;
+            /** @description The permissions that path's GET needs, every one of them. */
+            permissions: string[];
+            /** @description Whether the integration's roles hold every one of those permissions now, none of them one no API key holds. */
+            permitted: boolean;
+            /** @description The type of resource a message names, as sales_order. */
+            resource: string;
+        };
+        WebhookEventCatalogue: {
+            events: components["schemas"]["WebhookEvent"][];
+        };
+        WebhookSecretRollRequest: {
+            /** @description How long the secret replaced signs beside the new one, 1 to 168 hours; 24 when absent. */
+            overlapHours?: number;
         };
         /** @description The workspace's own settings (time zones design D2 and D3). businessTimeZone is the one calendar every bookkeeping day in the installation is judged in — an invoice's issue day, a period lock, a trip's departure day, Staff's "today" — which every module reads through the platform's BusinessCalendar contract; Europe/Oslo until an Owner sets another. */
         WorkspaceSettings: {
@@ -7093,6 +7312,585 @@ export interface operations {
             /** @description Conflict — integration_archived, the integration is archived. */
             409: {
                 headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getIdentityIntegrationsByIdWebhooks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The integration (its user's id). */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookEndpointList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — not_found, no such integration. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postIdentityIntegrationsByIdWebhooks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The integration (its user's id). */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["WebhookEndpointCreateRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Created — the endpoint and its secret, shown once. */
+            201: {
+                headers: {
+                    /** @description no-store, so the secret is never kept by a cache or the browser. */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookEndpointSecret"];
+                };
+            };
+            /** @description Bad Request — invalid_request with field errors: a URL outside the rules, a description over 500 characters, or 1 to 50 events not given. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — not_found, no such integration. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — webhook_limit_reached, the integration has 5 endpoints or the workspace 50; integration_archived, the integration is archived. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity — webhook_event_unknown, an event the catalogue does not have; webhook_event_not_permitted, an event the integration's roles do not let it receive; webhook_url_blocked, the host resolves to a private, loopback or reserved address; webhook_url_unresolvable, it does not resolve. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getIdentityIntegrationsByIdWebhooksByWebhookId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The integration (its user's id). */
+                id: string;
+                /** @description The endpoint. */
+                webhookId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookEndpoint"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — not_found, no such integration or endpoint. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteIdentityIntegrationsByIdWebhooksByWebhookId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The integration (its user's id). */
+                id: string;
+                /** @description The endpoint. */
+                webhookId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — not_found, no such integration or endpoint. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    patchIdentityIntegrationsByIdWebhooksByWebhookId: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The endpoint's version as it was read, bare or quoted. A version that has moved on is a 412 version_mismatch. */
+                "If-Match": string;
+            };
+            path: {
+                /** @description The integration (its user's id). */
+                id: string;
+                /** @description The endpoint. */
+                webhookId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["WebhookEndpointUpdateRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookEndpoint"];
+                };
+            };
+            /** @description Bad Request — invalid_request with field errors, or an If-Match that is not a version. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — not_found, no such integration or endpoint. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — integration_archived, the integration is archived. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Precondition Failed — version_mismatch, the endpoint has been changed since the If-Match version. */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity — webhook_event_unknown, webhook_event_not_permitted, webhook_url_blocked or webhook_url_unresolvable, as for creating one. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postIdentityIntegrationsByIdWebhooksByWebhookIdDisable: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The integration (its user's id). */
+                id: string;
+                /** @description The endpoint. */
+                webhookId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookEndpoint"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — not_found, no such integration or endpoint. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postIdentityIntegrationsByIdWebhooksByWebhookIdEnable: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The integration (its user's id). */
+                id: string;
+                /** @description The endpoint. */
+                webhookId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookEndpoint"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — not_found, no such integration or endpoint. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — integration_archived, the integration is archived. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postIdentityIntegrationsByIdWebhooksByWebhookIdRollSecret: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The integration (its user's id). */
+                id: string;
+                /** @description The endpoint. */
+                webhookId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["WebhookSecretRollRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Created — the endpoint and its new secret, shown once. */
+            201: {
+                headers: {
+                    /** @description no-store, so the secret is never kept by a cache or the browser. */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookEndpointSecret"];
+                };
+            };
+            /** @description Bad Request — invalid_request with field errors: an overlap outside 1 to 168 hours. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — not_found, no such integration or endpoint. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — integration_archived, the integration is archived. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -12109,6 +12907,65 @@ export interface operations {
                 };
             };
             /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getIdentityWebhookEvents: {
+        parameters: {
+            query: {
+                /** @description The integration the answer is for (its user's id). */
+                integrationId: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookEventCatalogue"];
+                };
+            };
+            /** @description Bad Request — integrationId missing or not an id. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — not_found, no such integration. */
             404: {
                 headers: {
                     [name: string]: unknown;

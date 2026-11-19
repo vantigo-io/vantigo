@@ -1,6 +1,6 @@
 ---
 title: API-tilgang
-description: La et annet program bruke Vantigos API uten en persons økt — integrasjoner, rollene deres, API-nøkler med utløp, begrensning, bryter for bare lesing og nettverk, rotering og tilbakekalling av en nøkkel, hva en nøkkel aldri får, hvordan en klient sender den, hastighetsgrensen og hodene dens, svarene den kan få, forespørselsloggen, varslene om utløp, og hva du gjør når en nøkkel lekker.
+description: La et annet program bruke Vantigos API uten en persons økt — integrasjoner, rollene deres, API-nøkler med utløp, begrensning, bryter for bare lesing og nettverk, rotering og tilbakekalling av en nøkkel, hva en nøkkel aldri får, hvordan en klient sender den, hastighetsgrensen og hodene dens, svarene den kan få, forespørselsloggen, varslene om utløp, webhook-endepunkter og signeringshemmelighetene deres, og hva du gjør når en nøkkel lekker.
 sidebar:
   order: 22
 sources:
@@ -16,6 +16,14 @@ sources:
   - apps/host/frontend/src/routes/workspace/-api-access-integration.tsx
   - apps/host/frontend/src/routes/workspace/-api-key-dialog.tsx
   - apps/host/frontend/src/routes/workspace/-api-access-requests.tsx
+  - apps/host/frontend/src/routes/workspace/-api-access-webhooks.tsx
+  - apps/host/frontend/src/routes/workspace/-webhook-secret-dialog.tsx
+  - apps/server/internal/identity/webhooks.go
+  - apps/server/internal/identity/webhooks_url.go
+  - apps/server/internal/identity/webhooks_secret.go
+  - apps/server/internal/identity/webhooks_signer.go
+  - apps/server/internal/identity/webhooks_client.go
+  - apps/server/internal/contracts/webhook_events.go
   - apps/server/internal/apiref
   - apps/apiref/frontend/src
 ---
@@ -157,8 +165,9 @@ Under **Handlinger**:
 
 - **Deaktiver** avviser alle integrasjonens nøkler med en gang, til du velger **Aktiver**. Bruk
   det for å stoppe et program mens du finner ut hva det gjør.
-- **Arkiver** tilbakekaller alle nøklene, frigjør navnet og beholder integrasjonen, uten
-  mulighet til å endre den, for det den har gjort. Det kan ikke angres.
+- **Arkiver** tilbakekaller alle nøklene, deaktiverer alle [webhook-endepunktene](#webhooks),
+  frigjør navnet og beholder integrasjonen, uten mulighet til å endre den, for det den har
+  gjort. Det kan ikke angres.
 
 ## Når en nøkkel lekker
 
@@ -334,6 +343,74 @@ fortsatt varselet.
 
 Varslene sendes av arbeideren `identity.api-keys`; er den slått av, sendes ingen.
 
+## Webhooks
+
+Et **webhook-endepunkt** er en HTTPS-adresse til programmet som Vantigo skal sende en kort,
+signert melding til når noe skjer — en salgsordre bekreftet, en faktura forfalt. Meldingen
+sier hvilken ressurs det gjelder og ingenting annet; programmet henter den med API-nøkkelen
+sin. Hva meldingen inneholder, hvordan den signeres og hvordan programmet kontrollerer den,
+står i referansen, [Webhooks](/en/reference/webhooks/) (på engelsk).
+
+**I denne versjonen** legger du til endepunkter og får hemmelighetene deres, men Vantigo sender
+ikke meldinger ennå: sending, nye forsøk og leveringsloggen kommer i de neste versjonene.
+
+### Legg til et endepunkt
+
+1. På integrasjonens side åpner du fanen **Webhooks** og velger **Nytt endepunkt**.
+2. Oppgi **URL**: en `https://`-adresse på port 443 med et vertsnavn — ikke en IP-adresse,
+   `localhost` eller et navn under `.local`, `.localhost` eller `.internal` — uten brukernavn,
+   passord eller `#`-del. En spørrestreng er tillatt. Legg til en **Beskrivelse** om det hjelper.
+3. Kryss av for **Hendelser**. De er gruppert etter modul, og bare de integrasjonens roller lar
+   den motta, tilbys: en hendelse om en salgsordre krever for eksempel en rolle med tilgang til
+   Ordre. Tilbys ingen, gir du integrasjonen en rolle først.
+4. Velg **Opprett endepunkt**. **Signeringshemmeligheten** (`whsec_…`) vises **én gang**, med
+   **Kopier**. Legg den der programmet kontrollerer meldingene, og velg **Jeg har kopiert
+   hemmeligheten**. Vantigo oppbevarer den forseglet og viser den aldri igjen; går den tapt,
+   roterer du den.
+
+Vantigo slår opp vertsnavnet når du lagrer. En adresse som peker til en privat, lokal eller på
+annen måte reservert adresse, avvises (*The address resolves to an address Vantigo never sends
+to.*), og det gjør også en som ikke finnes (*The host name does not resolve.*). Meldinger går
+bare til offentlige adresser, kontrollert på nytt hver gang en sendes, så et program på deres
+eget nettverk trenger en offentlig adresse eller en tunnel.
+
+En integrasjon kan ha høyst 5 endepunkter, og arbeidsområdet 50. Fanen viser hvert endepunkts
+fulle URL, spørrestrengen med — det eneste stedet den vises — hendelsene og statusen.
+
+### Endre, deaktiver eller slett et endepunkt
+
+I endepunktets rad, under **Handlinger**:
+
+- **Rediger endepunkt** endrer URL, beskrivelse og hendelser, etter de samme reglene. En ny URL
+  beholder hemmeligheten. Har noen andre endret endepunktet etter at du åpnet det, avvises
+  lagringen og fanen viser det siste; gjør endringen på nytt.
+- **Deaktiver** stopper det når du har bekreftet: ingenting mer sendes til det, og meldingene
+  som venter på det, forkastes. **Aktiver** starter det igjen med hendelsene som skjer fra da av.
+- **Slett** sletter endepunktet og leveransene til det når du har bekreftet. Det kan ikke
+  angres.
+
+Statusen sier hvorfor et endepunkt er deaktivert: av en eier, fordi det har feilet i 5 dager,
+fordi det svarte `410 Gone`, eller fordi integrasjonen ble arkivert. Arkiverer du en
+integrasjon, deaktiveres endepunktene; da kan de bare slettes.
+
+### Roter en hemmelighet
+
+Rotering gir et endepunkt en ny hemmelighet uten et øyeblikk der programmet ikke kan kontrollere
+en melding.
+
+1. I endepunktets rad velger du **Handlinger › Roter hemmeligheten**.
+2. Velg **Overlapp** — hvor lenge den gamle hemmeligheten fortsetter å signere ved siden av den
+   nye: 1 time, 24 timer (standard), 3 dager eller 7 dager.
+3. Velg **Roter hemmeligheten**. Den nye hemmeligheten vises én gang, slik som da endepunktet
+   ble laget.
+4. Legg den inn i programmet før overlappet er over. Fram til da har hver melding en signatur
+   fra hver hemmelighet, så programmet godtar den med hvilken som helst av dem; raden sier til
+   når den forrige hemmeligheten signerer.
+
+Roterer du igjen mens et overlapp pågår, slutter den eldre hemmeligheten med en gang, og
+dialogen advarer om det. Kan en hemmelighet ha lekket, roterer du den med det korteste
+overlappet.
+
 ## Hva som revideres
 
 Identitys revisjonsspor for autorisasjon registrerer, med eieren som gjorde det og om hen brukte
@@ -344,6 +421,12 @@ MFA: `integration.created`, `integration.updated`, `integration.roles_changed`,
 sletter en nøkkels rad 90 dager etter at den utløp; revisjonsradene blir værende
 ([Konfigurasjon](/nb/admin/configuration/#arbeidere)). Navn, roller, begrensningen, bare
 lesing, nettverkene og utløpet registreres; en nøkkels hemmelighet og hash gjør aldri det.
+
+For webhook-endepunkter registrerer det `webhook.created`, `webhook.updated`, `webhook.deleted`,
+`webhook.enabled`, `webhook.disabled` (også én gang for hvert endepunkt en arkivering
+deaktiverer) og `webhook.secret_rolled`. Av et endepunkts URL beholdes bare skjemaet og verten,
+med et kort sammendrag som viser når resten endret seg: tjenester som Zapier og Slack har
+tokenet sitt i stien. Signeringshemmeligheten registreres aldri.
 
 ## Hva som kan gå galt
 
@@ -362,3 +445,9 @@ lesing, nettverkene og utløpet registreres; en nøkkels hemmelighet og hash gj�
 - **Å lage en nøkkel svarer at utløpet er feil.** Datoen må være fram i tid og høyst 365 dager
   fram.
 - **En nøkkel er tapt.** Den kan ikke vises igjen: roter den.
+- **Et endepunkts URL avvises.** Den må være `https://` på port 443 med et vertsnavn som bare
+  peker til offentlige adresser; et program på deres eget nettverk trenger en offentlig adresse
+  eller en tunnel.
+- **En hendelse tilbys ikke.** Integrasjonens roller gir ikke tillatelsen hendelsens ressurs
+  leses med; referansen viser tillatelsen for hver hendelse.
+- **En webhook-hemmelighet er tapt.** Den kan ikke vises igjen: roter den.

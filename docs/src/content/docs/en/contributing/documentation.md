@@ -82,7 +82,9 @@ policy — and never merged automatically, Dependabot's included.
 
 That document is a promise to integrators ([API compatibility](/en/reference/api-compatibility/)),
 and CI holds pull requests to it: the `lint_server` job builds it for the pull request and
-for its base and runs `oasdiff breaking`. A breaking finding fails the job unless a commit
+for its base and runs `oasdiff breaking`, with `tools/api/oasdiff-severity.txt` lowering
+a value added to a response enum to information, as the compatibility page allows. A
+breaking finding fails the job unless a commit
 in the pull request is marked with Conventional Commits' `!` and names each broken
 operation in a trailer:
 
