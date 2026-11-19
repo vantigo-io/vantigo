@@ -291,9 +291,20 @@ are libraries rendered inside the host.
   keys on `:root[data-mantine-color-scheme="dark"]`. Anything that renders outside the
   provider, like the crash page in `components/errors`, carries its own light and dark
   values in its stylesheet.
+- **The brand layer.** A brand changes only the ten shades of the `vantigo` colour, the
+  link and the tinted background, the radius and the logos (brands design B2): the page,
+  card, text and border tokens stay Vantigo's. `--vantigo-link` and `--vantigo-subtle-bg` are
+  `var(--mantine-color-vantigo-8|3|0)` for that reason, never hex. The host's one provider is
+  a `BrandedMantineProvider` inside a `BrandProvider` (`packages/frontend-shell/src/brand`):
+  the theme is `createVantigoTheme(brand)`, `useBrand()` gives the title, logos and support,
+  the stylesheet `GET /api/v1/identity/brand.css` (linked in `index.html`) paints the first
+  frame, and `localStorage["vantigo-brand"]` (`{v, algorithm, userId}`, cleared on sign-out)
+  is only a fallback for when it cannot load. `brand/tokens.ts` is a port of
+  `identity/brand_tokens.go`; both are tested against `brand-tokens.golden.json`, and a test
+  mounts a `MantineProvider` to compare every variable it derives with the server's.
 - **The logo.** `logo-dark.png` is `logo.png` with its navy stroke lightened to read on
-  the dark surface and the mint kept; the shell shows the variant that matches the scheme
-  unless the instance sets its own `logoUrl`. Regenerate it after a change to `logo.png`
+  the dark surface and the mint kept; the shell shows the brand's own mark for the scheme
+  and falls back to the variant that matches the scheme. Regenerate it after a change to `logo.png`
   with `go run packages/frontend-shell/scripts/logo-dark.go`. The same file is the dark
   logo of this documentation site and the dark favicon (`favicon-dark.png`, chosen by
   `media="(prefers-color-scheme: dark)"`), which the public host serves too.

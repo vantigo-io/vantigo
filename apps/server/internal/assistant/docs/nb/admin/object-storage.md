@@ -13,6 +13,7 @@ sources:
   - apps/server/internal/customers/objects.go
   - apps/server/internal/manufacturing/quality_photos.go
   - apps/server/internal/products/objects.go
+  - apps/server/internal/identity/brand_logos.go
 ---
 Objektlagring er applikasjonsporten Kommunikasjon mellomlagrer og serverer vedlegg
 gjennom. Moduler snakker aldri med en leverandør-SDK: de får et `ObjectStore` avgrenset
@@ -61,6 +62,18 @@ starte.
 `STORAGE_FS_ALLOW_INSECURE_ROOT` godtas **bare når `APP_ENV=development`**; utenfor
 development er den en oppstartsfeil uansett hva den ville ha gjort — samme form som
 `MAIL_DRIVER=log` og `OWNERS_ALLOW_INSECURE_NO_MFA`.
+
+## Merkevarelogoer
+
+Identitet lagrer nå **merkevarelogoer** (merkene, ikonet og ordmerket i
+[Merkevare](/nb/admin/branding/)) i sitt eget område, `identity`, som
+`brands/logo-{sha256}.{png|jpg}`: oppkalt etter hashen av den normaliserte filen, så å laste opp
+den samme logoen to ganger gir ett objekt, og **aldri slettet**, siden et dokument kan bære en.
+Uten objektlager fungerer merkevarer fullt ut, uten logoer; **Merkevare**-skjermen sier hvorfor
+opplastingskontrollene er av. Engangsimporten av `APP_LOGO_URL` trenger også et lager, og gir en
+melding når det ikke finnes noe. Publiserte logoer serveres til alle uten innlogging fra
+`/api/v1/identity/brand-assets/{sha256}.{png|jpg}`, som bare svarer for en fil en publisert
+merkevare navngir.
 
 ## Filsystemdriveren
 

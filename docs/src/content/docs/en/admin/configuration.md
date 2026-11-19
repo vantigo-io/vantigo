@@ -23,11 +23,12 @@ may choose, and the interface may *show* an instance fact that bears on a page �
 a read-only line, never a field. A secret — a key, a password, a token — is never
 shown at all, in any form: the page says only that one is set.
 
-The overlaps in history are two one-time imports. The `OIDC_*` and `SCIM_*` variables
+The overlaps in history are three one-time imports. The `OIDC_*` and `SCIM_*` variables
 were read once, into the workspace's single sign-on settings, and are ignored since
 ([Workforce OIDC and SCIM](/en/admin/authentication/#workforce-oidc-and-scim)).
 `COMMUNICATIONS_AI_MODEL` is read once, into the model chosen for each of Communications'
-AI tasks, and is ignored since ([the import](#the-import-of-communications_ai_model)).
+AI tasks, and is ignored since ([the import](#the-import-of-communications_ai_model)). `APP_TITLE`, `APP_LOGO_URL` and `APP_SUPPORT_*`
+are read once, into the default brand, and are ignored since ([Branding](/en/admin/branding/)).
 
 ## The instance's settings
 
@@ -64,7 +65,7 @@ the guides linked from each group say how to choose.
 | `MANAGEMENT_PORT`, `MANAGEMENT_TOKEN` | unset | The private control-plane listener and its bearer token |
 | `LIVE_ENABLED` | `1` | Whether `api` and `server` mode serve the live-updates endpoint, `GET /api/v1/live`. `0` answers `404` and every screen refreshes about once a minute instead |
 | `LIVE_DATABASE_URL` | unset | The database address for the two connections live updates hold per HTTP replica. Unset, they use `DATABASE_URL`. Point it at the database's direct port when `DATABASE_URL` goes through a transaction-mode pooler, where `LISTEN` does not work. Redacted when printed |
-| `APP_TITLE`, `APP_LOGO_URL`, `APP_SUPPORT_EMAIL`, `APP_SUPPORT_PHONE`, `APP_SUPPORT_URL` | unset | The branding the application shows |
+| `APP_TITLE`, `APP_LOGO_URL`, `APP_SUPPORT_EMAIL`, `APP_SUPPORT_PHONE`, `APP_SUPPORT_URL` | unset | The branding the application showed. **Imported once** into the default brand; set and edited under **Workspace admin › Brand** from then on, and ignored once the import has completed ([Branding](/en/admin/branding/#the-one-time-import-of-app_title-app_logo_url-and-app_support_)) |
 
 See [Installation](/en/admin/installation/) (including [Live updates and your proxy](/en/admin/installation/#live-updates-and-your-proxy)), [Identity, authentication and
 deployment](/en/admin/authentication/), [Transport security](/en/admin/transport-security/)
