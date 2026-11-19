@@ -702,6 +702,11 @@ served on the public host. Keys are made under **Workspace admin › API access*
 cut to what the key reaches; see
 [The API contract document](/en/admin/transport-security/#the-api-contract-document).
 
+`POST /api/mcp` is the MCP endpoint AI clients connect to with an integration's key, once an
+Owner turns MCP on for that integration ([API access › MCP](/en/admin/api-access/#mcp)). It
+needs nothing from your proxy beyond what `/api` already has: plain request and response, no
+stream. `MCP_ENABLED=0` in `vantigo.env` switches it off.
+
 ## Email and observability
 
 **Two kinds of mail, two routes.** The installation's own mail — `MAIL_DRIVER` and

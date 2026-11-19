@@ -724,6 +724,11 @@ API-tilgang** ([API-tilgang](/nb/admin/api-access/)).
 ned til det nøkkelen når; se
 [API-kontraktdokumentet](/nb/admin/transport-security/#api-kontraktdokumentet).
 
+`POST /api/mcp` er MCP-endepunktet AI-klienter kobler seg til med en integrasjons nøkkel når en
+eier har slått på MCP for integrasjonen ([API-tilgang › MCP](/nb/admin/api-access/#mcp)). Det
+trenger ingenting av proxyen utover det `/api` allerede har: vanlig forespørsel og svar, ingen
+strøm. `MCP_ENABLED=0` i `vantigo.env` slår det av.
+
 ## E-post og observerbarhet
 
 **To slags e-post, to veier.** Installasjonens egen e-post — `MAIL_DRIVER` og `SMTP_*` — er

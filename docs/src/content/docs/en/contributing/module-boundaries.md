@@ -1589,7 +1589,7 @@ lag, never what must refuse — go through the platform's domain-events outbox,
       behind a `permission:` or `anonymous` rule, and `read` only on a `POST`.
       `apps/server/internal/openapi/testdata/api-marks.txt` pins every `never` and `read`
       operation, so a change to what a key may call shows in review; an Owner's screens,
-      such as the integrations' keys, webhook endpoints and their delivery log, and the brand editor's operations (`identity:brands` is never an API key's), are among them. Mark `never` what a
+      such as the integrations' keys, their MCP setting, webhook endpoints and their delivery log, and the brand editor's operations (`identity:brands` is never an API key's), are among them. Mark `never` what a
       server-side client cannot use or must not: a browser flow (sign-in, an OAuth connect
       or callback), a provider's webhook, a token-in-URL page, a handler that needs a
       person's `SessionID`, and an operation whose queued work later runs as its creator
@@ -1661,7 +1661,16 @@ lag, never what must refuse — go through the platform's domain-events outbox,
 headers, `429` over it, and recorded in the request log as `getApiOpenapiJson`, refusals
 included. Every answer is `Cache-Control: private, no-store` with
 `Vary: Authorization, Cookie`. `module.IntegratorDocument` builds the unfiltered one for
-      every module given, which `vantigo openapi integrator` writes for CI. `/api` itself
+      every module given, which `vantigo openapi integrator` writes for CI.
+    - **`compose.go` registers the MCP endpoint, `/api/mcp`, beside it** (MCP server design
+      M29, [MCP server](/en/reference/mcp/)), method-less so `GET` and `DELETE` are its `405`,
+      and binds it to the composed API after `dispatchModules`: each `read` tool call is a
+      request of the caller's own — its `Authorization`, its address, the envelope's context
+      without its cancellation — through the router's gate, never a principal put on a
+      context. `apimcp_index.go` reads an operation's kind with the router's own
+      `setAPIRule`; `keyGate.recordOnly` records the envelope of a looped-back call without
+      counting it. `MCP_ENABLED=0`, or a composition with no `Access`, leaves the path to the
+      catch-all. `/api` itself
       stays the catch-all `404` problem in `compose.go`: `internal/server` hands a browser's
       `GET` or `HEAD` of `/api` (`Accept` preferring `text/html`) and `/api/reference/` to
       `internal/apiref`, the interactive reference, before the API is reached, so an API
