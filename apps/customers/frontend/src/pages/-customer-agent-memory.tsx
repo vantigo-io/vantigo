@@ -63,7 +63,7 @@ export const CustomerAgentMemory = ({ customerId }: { customerId: number }) => {
               {t("agentMemoryCount", { count: total })}
             </Text>
             {full && (
-              <Text size="sm" c="orange.8">
+              <Text size="sm" c="orange">
                 {t("agentMemoryFullBadge")}
               </Text>
             )}
@@ -77,7 +77,7 @@ export const CustomerAgentMemory = ({ customerId }: { customerId: number }) => {
             {entries.map((entry) => (
               <Stack key={entry.agentId} gap={4}>
                 {entry.full && (
-                  <Text size="xs" c="orange.8" data-testid="agent-memory-full">
+                  <Text size="xs" c="orange" data-testid="agent-memory-full">
                     {t("agentMemoryFull", { agent: entry.agentName })}
                   </Text>
                 )}

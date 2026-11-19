@@ -500,7 +500,7 @@ const EvidencePicker = ({
       aria-label={t("competenceEvidenceFile")}
       p="sm"
       style={{
-        border: `1px dashed var(--mantine-color-${error ? "red-6" : "gray-4"})`,
+        border: `1px dashed ${error ? "var(--mantine-color-red-6)" : "var(--mantine-color-default-border)"}`,
         borderRadius: "var(--mantine-radius-sm)",
       }}
     >
