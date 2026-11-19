@@ -96,7 +96,9 @@
     "format:check": "biome check .",
     "format:write": "biome check --write .",
     "docs:check": "bun run tools/docs/check-coverage.ts",
-    "docs:test": "bun test tools/docs"
+    "docs:test": "bun test tools/docs",
+    "colours:check": "bun run tools/frontend/check-colours.ts",
+    "colours:test": "bun test tools/frontend"
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.5",

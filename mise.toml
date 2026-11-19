@@ -58,6 +58,8 @@ run = [
 description = "Formatting, lint, typecheck and tests for every frontend workspace (what CI runs)"
 run = [
   "bun run format:check",
+  "bun run colours:test",
+  "bun run colours:check",
   "bun run translations:check",
   "bun run frontend:lint",
   "bun run frontend:typecheck",
