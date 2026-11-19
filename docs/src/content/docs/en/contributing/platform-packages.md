@@ -44,7 +44,11 @@ is derived once and cached for the life of the process. Two operations use it:
   a value sealed for one purpose cannot be opened under another. The output starts
   with a key-id byte, `0x01` today, which leaves room for a rotation scheme. `Open`
   never says why it failed. `SealString` and `OpenString` are the same operations for
-  text contexts such as cookies.
+  text contexts such as cookies. **`SealBound` and `OpenBound`** bind a value of the
+  caller's too — a row's key, say — into the additional data under one purpose, for a
+  purpose whose values are many and each tied to its own row (the stored answers of an
+  Idempotency-Key), where a purpose per row would derive and cache a key per row; a bound
+  value never opens with `Open`.
 - **`MAC`** returns the HMAC-SHA256 of the data under the purpose's key: 32 bytes,
   the same every time for the same purpose, data and `APP_SECRET`. Sealing is
   randomised, so two seals of one value never match; a MAC is what lets a sealed
@@ -328,6 +332,10 @@ available to a module. `module.Compose` hands it, as `Deps.Operations`, to the m
   for a signed-in client. The package's own tests bind it to a small synthetic contract and
   `TestOperations_TheRealContract` (`internal/integration`) checks the mode of every operation
   of the shipped contract.
+
+The MCP endpoint and the router's Idempotency-Key predicate use a few of its pieces as they
+are (`shared.go`): `Tokenize`, `TokenMatches`, `CompactSchema`, `Shorten`, `IsJSON`, and
+`JSONRequest` and `JSONResponse`, which say whether an operation takes and answers JSON.
 
 ## The payments port
 

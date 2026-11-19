@@ -209,7 +209,8 @@ func Module(a *Access) module.Module {
 		SSOConnections: func(d module.Deps) contracts.SSOConnections {
 			return newSSOConnections(a, d)
 		},
-		Workers: func(d module.Deps) []worker.Worker { return workers(a, d) },
+		Workers:              func(d module.Deps) []worker.Worker { return workers(a, d) },
+		CustomerPersonalData: newIdempotencyPersonalData,
 		// identity.brand, workspace-wide and per person (brands design B18).
 		LiveTopics: liveTopics,
 		// The webhooks' fan-out, on the outbox (outgoing webhooks design W14,

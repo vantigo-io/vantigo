@@ -11,7 +11,10 @@ import {
   type RequestLogFilters,
 } from "../../api/integrations";
 
-/** The status classes the log counts, and the reasons a refusal is recorded under (K23, K24). */
+/**
+ * The status classes the log counts, and the reasons a request is recorded under: a refusal's
+ * (K23, K24), or a replay for an Idempotency-Key (idempotency design I22).
+ */
 export const statusClasses = [2, 3, 4, 5] as const;
 export const refusalReasons = [
   "expired",
@@ -23,6 +26,7 @@ export const refusalReasons = [
   "never",
   "forbidden",
   "rate_limited",
+  "idempotent_replay",
 ] as const;
 
 /**

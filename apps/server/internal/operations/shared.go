@@ -33,3 +33,8 @@ func IsJSON(contentType string) bool { return isJSON(contentType) }
 // JSONRequest is false for an operation whose request body is a file upload:
 // it takes a body, and none of its media types is JSON.
 func JSONRequest(op *openapi3.Operation) bool { return jsonRequest(op) }
+
+// JSONResponse is false for an operation whose success answer is a file or a
+// redirect: it has a 2xx with content and none of it is JSON, or it has no 2xx
+// content at all but a 3xx.
+func JSONResponse(op *openapi3.Operation) bool { return jsonResponse(op) }

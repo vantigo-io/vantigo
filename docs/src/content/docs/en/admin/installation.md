@@ -707,6 +707,12 @@ Owner turns MCP on for that integration ([API access › MCP](/en/admin/api-acce
 needs nothing from your proxy beyond what `/api` already has: plain request and response, no
 stream. `MCP_ENABLED=0` in `vantigo.env` switches it off.
 
+A creating `POST` an integration sends with an `Idempotency-Key` header is carried out once and
+its answer given again to every retry for 24 hours
+([API access › Retrying safely](/en/admin/api-access/#retrying-safely)). Your proxy must pass
+that header through, and the `Idempotent-Replayed` and `Retry-After` headers back.
+`IDEMPOTENCY_ENABLED=0` in `vantigo.env` switches it off.
+
 ## Email and observability
 
 **Two kinds of mail, two routes.** The installation's own mail — `MAIL_DRIVER` and

@@ -6,7 +6,7 @@
 -- key and its integration, the operation and how it was answered. It never
 -- holds a body, a query string or a path parameter's value, which can carry
 -- personal data; the operation id and the trace id find a request in the
--- server's own traces. reason is set for a refusal. There is no FK to
+-- server's own traces. reason is set for a refusal, or for a replay (00214). There is no FK to
 -- api_keys: a key's row is deleted 90 days after it expires, and its log
 -- rows age out on their own after 30 days.
 --

@@ -729,6 +729,12 @@ eier har slått på MCP for integrasjonen ([API-tilgang › MCP](/nb/admin/api-a
 trenger ingenting av proxyen utover det `/api` allerede har: vanlig forespørsel og svar, ingen
 strøm. `MCP_ENABLED=0` i `vantigo.env` slår det av.
 
+En opprettende `POST` en integrasjon sender med en `Idempotency-Key`-header, utføres én gang, og
+svaret gis igjen til hvert nytt forsøk i 24 timer
+([API-tilgang › Prøv på nytt uten å gjøre noe to ganger](/nb/admin/api-access/#prøv-på-nytt-uten-å-gjøre-noe-to-ganger)).
+Proxyen må slippe den headeren gjennom, og headerne `Idempotent-Replayed` og `Retry-After` tilbake.
+`IDEMPOTENCY_ENABLED=0` i `vantigo.env` slår det av.
+
 ## E-post og observerbarhet
 
 **To slags e-post, to veier.** Installasjonens egen e-post — `MAIL_DRIVER` og `SMTP_*` — er

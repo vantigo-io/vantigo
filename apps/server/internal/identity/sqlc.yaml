@@ -28,6 +28,7 @@ sql:
       - ../db/migrations/00210_identity_mcp_access.sql
       - ../db/migrations/00211_identity_brand_rules.sql
       - ../db/migrations/00213_identity_brand_campaigns.sql
+      - ../db/migrations/00217_identity_idempotency.sql
     queries: queries
     gen:
       go:

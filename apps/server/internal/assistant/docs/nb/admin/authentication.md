@@ -13,6 +13,7 @@ sources:
   - apps/server/internal/db/migrations/00142_identity_agent_grants.sql
   - apps/server/internal/db/migrations/00174_identity_stations.sql
   - apps/server/internal/db/migrations/00199_identity_api_requests.sql
+  - apps/server/internal/db/migrations/00217_identity_idempotency.sql
   - apps/server/internal/live/handler.go
   - apps/server/internal/module/router.go
 ---
@@ -1084,7 +1085,8 @@ Det en nøkkel gjorde, registreres i `identity.api_requests`: hver forespørsel 
 som identitet kunne knytte til den, sluppet gjennom eller avvist — tidspunktet, nøkkelen,
 integrasjonen, metoden, `operationId`, statusen, for en avvisning årsaken (`expired`,
 `revoked`, `disabled`, `archived`, `network`, `read_only`, `never`, `forbidden` eller
-`rate_limited`), varigheten, klientadressen og sporings-ID-en. En forespørsel med en nøkkel som
+`rate_limited`) og for et svar gjentatt for en `Idempotency-Key` årsaken `idempotent_replay`,
+varigheten, klientadressen og sporings-ID-en. En forespørsel med en nøkkel som
 ikke passet noen nøkkel, registreres ikke. En kropp, en spørrestreng og verdien til en
 stiparameter registreres aldri, siden de kan inneholde personopplysninger; sporings-ID-en finner
 forespørselen i serverens spor og logglinjer. Det er her du ser hva en nøkkel gjorde, og hvorfor
@@ -1092,6 +1094,17 @@ den ble avvist: en tilbakekalt nøkkel, en deaktivert eller arkivert integrasjon
 fra utenfor nøkkelens nettverk får alle bare `401 unauthenticated`. Eiere leser
 den i integrasjonens fane **Forespørsler**
 ([API-tilgang](/nb/admin/api-access/#forespørselsloggen)).
+
+En opprettende `POST` sendt med en `Idempotency-Key` gjøres krav på i
+`identity.idempotency_keys` før den kjører, for integrasjonen (eller personen, med veien personen
+kom inn), operasjonen og nøkkelen, med forespørselen som en HMAC av sammendraget under en nøkkel
+avledet av `APP_SECRET`; svaret — status, headere og innhold som én verdi — forsegles med en annen
+avledet nøkkel, bundet til raden, og gis igjen til hvert nytt forsøk i 24 timer. Ruteren når
+tabellen gjennom identitets `Access`, slik den når forespørselsloggen; arbeideren
+`identity.api-keys` sletter utløpte rader hver syklus under en egen lease, uansett hva
+`IDEMPOTENCY_ENABLED` sier ([API-tilgang › Prøv på nytt uten å gjøre noe to ganger](/nb/admin/api-access/#prøv-på-nytt-uten-å-gjøre-noe-to-ganger)).
+En kundes anonymisering hever et vannmerke i `identity.idempotency_erasure`: et svar lagret før
+det gis aldri igjen.
 
 Ruteren gir hver besvarte forespørsel til identitets registrator, som legger den i kø og aldri
 venter. En skriver i API-prosessen skriver køen hvert annet sekund eller per 500 rader, på en

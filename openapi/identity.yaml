@@ -1053,7 +1053,7 @@ components:
                 operationId:
                     type: string
                 reason:
-                    description: Why the request was refused, for a refusal.
+                    description: Why the request was refused, for a refusal; idempotent_replay for an answer replayed for its Idempotency-Key.
                     nullable: true
                     type: string
                 status:
@@ -8704,7 +8704,7 @@ paths:
                     maximum: 5
                     minimum: 2
                     type: integer
-                - description: Only the requests refused for this reason.
+                - description: Only the requests refused for this reason, or, for idempotent_replay, the answers replayed for an Idempotency-Key.
                   in: query
                   name: reason
                   schema:
@@ -8718,6 +8718,7 @@ paths:
                         - never
                         - forbidden
                         - rate_limited
+                        - idempotent_replay
                     type: string
                 - description: Only this UTC day, one of the last 30.
                   in: query

@@ -47,6 +47,14 @@ type Router struct {
 	// keys is an API key's rate limit and request log (keyGate), shared with
 	// GET /api/openapi.json.
 	keys keyGate
+	// idempotency is the Idempotency-Key store, when Access is an enabled
+	// contracts.IdempotencyStore (idempotency.go, design I12), found by a type
+	// assertion as keys finds the request log; nil installs no middleware.
+	// known and never are opts.Catalog's keys and contracts.APINever, which
+	// the predicate reads.
+	idempotency contracts.IdempotencyStore
+	known       map[string]bool
+	never       []string
 
 	routes map[string][]*route // HTTP method → every route registered for it, each split into segments once, in registration order
 
@@ -213,6 +221,14 @@ func NewRouter(o RouterOptions) *Router {
 		normalized:   map[string]string{},
 	}
 	r.keys = newKeyGate(o.Access, o.Limiter)
+	if store, ok := o.Access.(contracts.IdempotencyStore); ok && store.IdempotencyEnabled() {
+		r.idempotency = store
+		catalog := make([]contracts.Permission, 0, len(o.Catalog))
+		for _, p := range o.Catalog {
+			catalog = append(catalog, p)
+		}
+		r.known, r.never = idempotencyCatalog(catalog)
+	}
 	if o.Doc != nil && o.Doc.Paths != nil {
 		for path, item := range o.Doc.Paths.Map() {
 			for method, op := range item.Operations() {
@@ -286,7 +302,7 @@ func (r *Router) HandleFunc(pattern string, h func(http.ResponseWriter, *http.Re
 
 	r.routes[method] = append(r.routes[method], &route{
 		segments: segments,
-		handler:  r.wrap(op, rule, r.bodyLimit(op.OperationID), h),
+		handler:  r.wrap(op, rule, r.bodyLimit(op.OperationID), newIdempotentRoute(r.idempotency, r.known, r.never, method, op, rule, segments), h),
 	})
 	r.normalized[key] = pattern
 	r.registered[pattern] = true
@@ -359,7 +375,7 @@ func (r *Router) bodyLimit(operationID string) int64 {
 // read past it fails with *http.MaxBytesError, which the generated
 // wrapper hands to the module's RequestErrorHandlerFunc like any other
 // undecodable body (DecodeError: the operation's own documented 400).
-func (r *Router) wrap(op *openapi3.Operation, rule contracts.Rule, maxBody int64, h func(http.ResponseWriter, *http.Request)) http.HandlerFunc {
+func (r *Router) wrap(op *openapi3.Operation, rule contracts.Rule, maxBody int64, idem *idempotentRoute, h func(http.ResponseWriter, *http.Request)) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		start := time.Now()
 		if policy, ok := r.opts.Limits[op.OperationID]; ok {
@@ -390,7 +406,7 @@ func (r *Router) wrap(op *openapi3.Operation, rule contracts.Rule, maxBody int64
 			return
 		}
 
-		serve := func(w http.ResponseWriter) {
+		serve := func(w http.ResponseWriter, req *http.Request) {
 			if req.Body != nil && req.Body != http.NoBody {
 				req.Body = http.MaxBytesReader(w, req.Body, maxBody)
 			}
@@ -399,13 +415,23 @@ func (r *Router) wrap(op *openapi3.Operation, rule contracts.Rule, maxBody int64
 			// back out finds the principal on it, as it would on the request
 			// it was dispatched with.
 			req = req.WithContext(contracts.WithPrincipal(req.Context(), p))
-			h(w, req.WithContext(contracts.WithRequest(req.Context(), w, req)))
+			handle := func(w http.ResponseWriter, req *http.Request) {
+				h(w, req.WithContext(contracts.WithRequest(req.Context(), w, req)))
+			}
+			if idem != nil {
+				// The middleware's recorder replaces w before WithRequest, so
+				// what a handler writes through ResponseWriterFrom is held
+				// back with the rest of its answer (I32).
+				idem.serve(w, req, p, handle)
+				return
+			}
+			handle(w, req)
 		}
 		if p.Via != nil && p.Via.Kind == contracts.ViaAPIKey {
 			r.keys.serve(w, req, p, op.OperationID, start, serve)
 			return
 		}
-		serve(w)
+		serve(w, req)
 	}
 }
 
