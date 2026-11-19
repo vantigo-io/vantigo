@@ -394,7 +394,7 @@ export const PayPage = ({ clearAddress }: PayPageProps) => {
   const returning = !!attempt && !!nonce;
   const page = read.data;
   return (
-    <Center mih="100vh" p="md" bg="gray.0">
+    <Center mih="100vh" p="md" bg="light-dark(var(--mantine-color-gray-0), var(--vantigo-body-bg))">
       <Stack w="100%" maw={440} gap="md" component="main">
         <Card withBorder shadow="sm" padding="lg" radius="md">
           <Stack gap="md">

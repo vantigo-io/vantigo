@@ -398,7 +398,10 @@ export const MeteringPointDetailsPage = ({
                       <Fragment key={item.id}>
                         {startsNewDay && (
                           <Table.Tr key={`${item.id}-day`}>
-                            <Table.Td colSpan={5} bg="gray.0">
+                            <Table.Td
+                              colSpan={5}
+                              bg="light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-6))"
+                            >
                               <Text size="sm" fw={600} c="dimmed">
                                 {consumptionDayHeader(item.start)}
                               </Text>

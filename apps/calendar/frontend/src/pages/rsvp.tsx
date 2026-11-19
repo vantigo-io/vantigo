@@ -174,7 +174,7 @@ export const RsvpPage = ({ clearAddress }: RsvpPageProps) => {
   const invalid = !token || (read.isError && statusOf(read.error) === 404);
   const refusedAnswer = answer.isError && statusOf(answer.error) !== 409 && statusOf(answer.error) !== 404;
   return (
-    <Center mih="100vh" p="md" bg="gray.0">
+    <Center mih="100vh" p="md" bg="light-dark(var(--mantine-color-gray-0), var(--vantigo-body-bg))">
       <Stack w="100%" maw={480} gap="md" component="main" lang={language}>
         <Card withBorder shadow="sm" padding="lg" radius="md">
           <Stack gap="md">

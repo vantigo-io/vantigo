@@ -477,7 +477,11 @@ const SuggestionRow = ({
 }) => {
   const { t, money } = useAccountingFormat();
   return (
-    <Card withBorder padding="xs" bg={first ? "var(--mantine-color-gray-0)" : undefined}>
+    <Card
+      withBorder
+      padding="xs"
+      bg={first ? "light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-6))" : undefined}
+    >
       <Group justify="space-between" align="flex-start" wrap="nowrap">
         <Stack gap={2}>
           <Group gap="xs">

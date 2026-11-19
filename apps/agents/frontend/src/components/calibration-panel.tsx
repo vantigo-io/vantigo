@@ -26,7 +26,7 @@ export const CalibrationChart = ({ calibration, x }: { calibration: RoleCalibrat
         y1={size.height - size.padding}
         x2={size.width - size.padding}
         y2={size.height - size.padding}
-        stroke="var(--mantine-color-gray-4)"
+        stroke="var(--mantine-color-default-border)"
       />
       <path
         d={linePath(calibration.points, (point) => point.autoShare, size)}
@@ -45,7 +45,7 @@ export const CalibrationChart = ({ calibration, x }: { calibration: RoleCalibrat
         y1={size.padding}
         x2={marker}
         y2={size.height - size.padding}
-        stroke="var(--mantine-color-dark-4)"
+        stroke="light-dark(var(--mantine-color-dark-4), var(--mantine-color-dark-1))"
         strokeDasharray="4 3"
         data-testid="calibration-marker"
       />
