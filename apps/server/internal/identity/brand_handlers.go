@@ -26,8 +26,9 @@ import (
 
 // Audit actions (B34).
 const (
-	auditBrandUpdated   = "brand.updated"
-	auditBrandPublished = "brand.published"
+	auditBrandUpdated        = "brand.updated"
+	auditBrandPublished      = "brand.published"
+	auditBrandDraftDiscarded = "brand.draft_discarded"
 )
 
 // brandPublicTTL is how long an anonymous answer may be cached (B17).
@@ -155,7 +156,9 @@ func (s *server) GetIdentityBrand(ctx context.Context, req gen.GetIdentityBrandR
 		return nil, fmt.Errorf("identity: marshal a brand: %w", err)
 	}
 	etag := etagOf(body)
-	const cc = "private, no-cache"
+	// Never stored by a shared cache: the answer is one person's brand, and a
+	// CDN that ignores Vary: Cookie would serve it to the next.
+	const cc = "private, no-store"
 	if etagMatchesAny(req.Params.IfNoneMatch, etag) {
 		return brandNotModified{etag: etag, cacheControl: cc}, nil
 	}
@@ -450,7 +453,7 @@ func (s *server) PostIdentityBrandsByIdDiscardDraft(ctx context.Context, req gen
 	if !ok {
 		return gen.PostIdentityBrandsByIdDiscardDraft409JSONResponse(staleRevision.body()), nil
 	}
-	out, err := s.changeBrand(ctx, uuid.UUID(req.Id), rev, auditBrandUpdated, func(b brandRow) (*brandVersion, *brandVersion, *brandRefusal, error) {
+	out, err := s.changeBrand(ctx, uuid.UUID(req.Id), rev, auditBrandDraftDiscarded, func(b brandRow) (*brandVersion, *brandVersion, *brandRefusal, error) {
 		if b.draft == nil {
 			return nil, nil, refuseBrand(http.StatusConflict, codeBrandNoDraft, "There is no pending draft to discard.", nil), nil
 		}

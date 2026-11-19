@@ -210,7 +210,7 @@ func TestBrand_TheDefaultBrandExistsFromTheFirstMountAndIsVantigos(t *testing.T)
 	if p.Tokens.Dark.Derived["--mantine-color-vantigo-light"] != "rgba(25, 23, 65, 1)" {
 		t.Errorf("dark light variant = %q", p.Tokens.Dark.Derived["--mantine-color-vantigo-light"])
 	}
-	if cc := r.headers.Get("Cache-Control"); cc != "private, no-cache" || r.headers.Get("ETag") == "" || !strings.Contains(r.headers.Get("Vary"), "Cookie") {
+	if cc := r.headers.Get("Cache-Control"); cc != "private, no-store" || r.headers.Get("ETag") == "" || !strings.Contains(r.headers.Get("Vary"), "Cookie") {
 		t.Errorf("GET /brand headers = %v", r.headers)
 	}
 	// ETag round trip.
@@ -325,7 +325,7 @@ func TestBrand_DraftAndPublishAreSeparateAndAudited(t *testing.T) {
 		t.Errorf("discard: status %d body %s", d.status, d.body)
 	}
 
-	for action, want := range map[string]int{"brand.updated": 3, "brand.published": 1} {
+	for action, want := range map[string]int{"brand.updated": 2, "brand.draft_discarded": 1, "brand.published": 1} {
 		if got := h.count(t, `SELECT count(*) FROM identity.authorization_audit_events WHERE action = $1`, action); got != want {
 			t.Errorf("audit %s = %d rows, want %d", action, got, want)
 		}
@@ -482,6 +482,17 @@ func TestBrand_LogosWriteTheDraftAndTheAssetRouteServesOnlyPublishedOnes(t *test
 	if a.status != http.StatusOK || a.headers.Get("Cache-Control") != "public, max-age=31536000, immutable" || a.headers.Get("X-Content-Type-Options") != "nosniff" || a.headers.Get("Content-Type") != "image/png" {
 		t.Errorf("GET asset: status %d headers %v", a.status, a.headers)
 	}
+	// A client that holds the ETag gets a bare 304 (the name is the hash).
+	n := anon.do(http.MethodGet, brandAssetsPath+sha+".png", nil, header("If-None-Match", `"`+sha+`"`))
+	if n.status != http.StatusNotModified || len(n.body) != 0 || n.headers.Get("Cache-Control") != "public, max-age=31536000, immutable" || n.headers.Get("ETag") != `"`+sha+`"` {
+		t.Errorf("GET asset with its ETag: status %d headers %v body %q, want a bare 304", n.status, n.headers, n.body)
+	}
+	if o := anon.do(http.MethodGet, brandAssetsPath+sha+".png", nil, header("If-None-Match", `"`+strings.Repeat("0", 64)+`"`)); o.status != http.StatusOK {
+		t.Errorf("GET asset with another ETag: %d, want 200", o.status)
+	}
+	if x := anon.do(http.MethodGet, brandAssetsPath+sha+".jpg", nil, header("If-None-Match", `"`+sha+`"`)); x.status != http.StatusNotFound {
+		t.Errorf("the right ETag with the wrong extension: %d, want 404", x.status)
+	}
 	if r := anon.do(http.MethodGet, brandAssetsPath+sha+".jpg", nil); r.status != http.StatusNotFound {
 		t.Errorf("the right hash with the wrong extension: %d, want 404", r.status)
 	}
@@ -568,9 +579,9 @@ func TestBrandCSS_DefaultWithoutASessionAndOwnWithOne(t *testing.T) {
 		t.Errorf("If-None-Match: %d, want 304", r.status)
 	}
 
-	// With a session it is private and revalidated, and still varies on the cookie.
+	// With a session it is private and never stored by a shared cache (a CDN may ignore Vary), and still varies on the cookie.
 	s := owner.do(http.MethodGet, brandCSSPath, nil)
-	if s.status != http.StatusOK || s.headers.Get("Cache-Control") != "private, no-cache" || !strings.Contains(s.headers.Get("Vary"), "Cookie") {
+	if s.status != http.StatusOK || s.headers.Get("Cache-Control") != "private, no-store" || !strings.Contains(s.headers.Get("Vary"), "Cookie") {
 		t.Errorf("GET brand.css with a session: status %d headers %v", s.status, s.headers)
 	}
 

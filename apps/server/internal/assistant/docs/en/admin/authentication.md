@@ -1129,8 +1129,12 @@ what is checked is in [Branding](/en/admin/branding/).
 | `GET /brands`, `GET`/`PUT /brands/{id}`, `POST /brands/{id}/publish`, `POST /brands/{id}/discard-draft`, `PUT`/`DELETE`/`GET /brands/{id}/logos/{slot}` | `identity:brands` |
 
 Every write is audited in the transaction that makes it, as `brand.updated`, `brand.published`,
-`brand.logo_set` and `brand.logo_removed`, with names, versions and revisions and never the bytes
-of a logo. Counters `vantigo.identity.brand.css_requests`, `.public_lookups`, `.publishes` and
+`brand.draft_discarded`, `brand.logo_set` and `brand.logo_removed`, with names, versions and revisions and never the bytes
+of a logo. What the brand endpoints send is cached carefully: an answer to a signed-in person
+(`brand`, and `brand.css` with a session cookie) is `private, no-store`, so a shared cache or a
+CDN that ignores `Vary` never keeps one person's brand; the anonymous `brand.css` and `brand/public`
+are public for 60 seconds, and a published logo is immutable and answers a repeated request that
+carries its `ETag` with `304` without a read from the object store. Counters `vantigo.identity.brand.css_requests`, `.public_lookups`, `.publishes` and
 `.imports` are exported with the other metrics.
 
 ## Shop-floor stations

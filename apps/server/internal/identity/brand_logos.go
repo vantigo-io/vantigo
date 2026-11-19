@@ -270,6 +270,13 @@ func (r brandAssetResponse) VisitGetIdentityBrandAssetsByFileResponse(w http.Res
 	return r.visit(w)
 }
 
+type brandAssetNotModified struct{ logoDownload }
+
+func (r brandAssetNotModified) VisitGetIdentityBrandAssetsByFileResponse(w http.ResponseWriter) error {
+	r.set(w)
+	return gen.GetIdentityBrandAssetsByFile304Response{}.VisitGetIdentityBrandAssetsByFileResponse(w)
+}
+
 // GetIdentityBrandsByIdLogosBySlot Get a brand logo
 // (GET /api/v1/identity/brands/{id}/logos/{slot})
 func (s *server) GetIdentityBrandsByIdLogosBySlot(ctx context.Context, req gen.GetIdentityBrandsByIdLogosBySlotRequestObject) (gen.GetIdentityBrandsByIdLogosBySlotResponseObject, error) {
@@ -338,14 +345,26 @@ func (s *server) GetIdentityBrandAssetsByFile(ctx context.Context, req gen.GetId
 	if !published {
 		return gen.GetIdentityBrandAssetsByFile404Response{}, nil
 	}
-	data, contentType, err := s.readLogoObject(ctx, sha)
-	if err != nil {
-		if !errors.Is(err, storage.ErrNotExist) && !errors.Is(err, errBrandStorageOff) && !errors.Is(err, pgx.ErrNoRows) {
-			s.deps.Logger.ErrorContext(ctx, "identity: a brand asset could not be read from the store", "error", err.Error())
-		}
+	row, err := s.q.GetBrandLogo(ctx, sha)
+	if errors.Is(err, pgx.ErrNoRows) {
 		return gen.GetIdentityBrandAssetsByFile404Response{}, nil
 	}
-	if (ext == "jpg") != (contentType == logoimage.ContentTypeJPEG) {
+	if err != nil {
+		return nil, fmt.Errorf("identity: read a brand logo's record: %w", err)
+	}
+	if (ext == "jpg") != (row.ContentType == logoimage.ContentTypeJPEG) {
+		return gen.GetIdentityBrandAssetsByFile404Response{}, nil
+	}
+	// The name is the hash of the bytes, so a client that holds the ETag holds
+	// the asset: answer before the object store is read.
+	if etagMatchesAny(req.Params.IfNoneMatch, `"`+sha+`"`) {
+		return brandAssetNotModified{logoDownload{sha: sha, cacheControl: brandAssetCacheControl}}, nil
+	}
+	data, contentType, err := readBrandObject(ctx, s.brandObjects, row)
+	if err != nil {
+		if !errors.Is(err, storage.ErrNotExist) && !errors.Is(err, errBrandStorageOff) {
+			s.deps.Logger.ErrorContext(ctx, "identity: a brand asset could not be read from the store", "error", err.Error())
+		}
 		return gen.GetIdentityBrandAssetsByFile404Response{}, nil
 	}
 	length := int64(len(data))

@@ -102,13 +102,18 @@ func (r cssNotModified) VisitGetIdentityBrandCssResponse(w http.ResponseWriter) 
 // access layer attaches the caller to an anonymous operation that has a live
 // session) and never fails for want of one: without a session it is the
 // default brand, with one the person's own (B7, B10). A stylesheet answered to
-// a session is private, and every answer varies on the cookie, so a shared
-// cache never serves one person's brand to another.
+// a session is private and not stored, and every answer varies on the cookie,
+// so a shared cache never serves one person's brand to another.
 func (s *server) GetIdentityBrandCss(ctx context.Context, req gen.GetIdentityBrandCssRequestObject) (gen.GetIdentityBrandCssResponseObject, error) {
+	// Anonymous, the default brand: public for a minute, varying on the cookie.
+	// Some CDNs ignore Vary, so a session's own stylesheet is never stored by a
+	// shared cache at all (no-store) rather than keyed by a header the edge may
+	// not honour; the worst an ignoring CDN can then do is serve the default
+	// brand, which is public anyway.
 	cache := "public, max-age=60"
 	var userID uuid.UUID
 	if p, signedIn := callerIsSession(ctx); signedIn {
-		cache = "private, no-cache"
+		cache = "private, no-store"
 		userID = p.UserID
 	}
 	_, v, err := s.resolve(ctx, userID)
