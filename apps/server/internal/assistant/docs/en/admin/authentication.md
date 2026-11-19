@@ -13,6 +13,7 @@ sources:
   - apps/server/internal/db/migrations/00142_identity_agent_grants.sql
   - apps/server/internal/db/migrations/00174_identity_stations.sql
   - apps/server/internal/db/migrations/00199_identity_api_requests.sql
+  - apps/server/internal/db/migrations/00214_identity_idempotency.sql
   - apps/server/internal/live/handler.go
   - apps/server/internal/module/router.go
 ---
@@ -1044,14 +1045,26 @@ replica that stops without shutting down loses at most a second of its count.
 What a key did is recorded in `identity.api_requests`: every request a key made that identity
 could attribute, admitted or refused — the time, the key, the integration, the method, the
 `operationId`, the status, for a refusal the reason (`expired`, `revoked`, `disabled`,
-`archived`, `network`, `read_only`, `never`, `forbidden` or `rate_limited`), the duration, the
-client address and the trace id. A request whose key matched no key is not recorded. A body, a
+`archived`, `network`, `read_only`, `never`, `forbidden` or `rate_limited`) and for an answer
+replayed for an `Idempotency-Key` the reason `idempotent_replay`, the duration, the client
+address and the trace id. A request whose key matched no key is not recorded. A body, a
 query string and a path parameter's value are never recorded, since they can carry personal
 data; the trace id finds the request in the server's traces and log lines. This is where to
 look for what a key did, and why it was refused: a revoked key, a disabled or archived
 integration and a request from outside the key's networks are all told only `401
 unauthenticated`. Owners read it on the integration's **Requests** tab
 ([API access](/en/admin/api-access/#the-request-log)).
+
+A creating `POST` sent with an `Idempotency-Key` is claimed in `identity.idempotency_keys`
+before it runs, by the integration (or the person, with the way they came in), the operation
+and the key, with the request as an HMAC of its digest under a key derived from `APP_SECRET`;
+its answer — status, headers and body as one value — is sealed with another derived key, bound to
+the row, and replayed to every retry for 24 hours. The router reaches the table through identity's
+`Access`, as it reaches the request log; the `identity.api-keys` worker deletes expired rows every
+cycle under a lease of its own, whatever `IDEMPOTENCY_ENABLED` says
+([API access › Retrying safely](/en/admin/api-access/#retrying-safely)). A customer's
+anonymisation raises a watermark in `identity.idempotency_erasure`: an answer kept before it is
+never replayed.
 
 The router hands each answered request to identity's recorder, which queues it and never
 waits. A writer in the API process writes the queue every 2 seconds or 500 rows, on a pooled

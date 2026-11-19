@@ -3147,7 +3147,7 @@ export interface components {
             keyName: string | null;
             method: string;
             operationId: string;
-            /** @description Why the request was refused, for a refusal. */
+            /** @description Why the request was refused, for a refusal; idempotent_replay for an answer replayed for its Idempotency-Key. */
             reason: string | null;
             status: number;
             traceId: string | null;
@@ -9368,8 +9368,8 @@ export interface operations {
                 key?: string;
                 /** @description Only the requests answered with this status class, 2 for 2xx through 5 for 5xx. */
                 statusClass?: number;
-                /** @description Only the requests refused for this reason. */
-                reason?: "expired" | "revoked" | "disabled" | "archived" | "network" | "read_only" | "never" | "forbidden" | "rate_limited";
+                /** @description Only the requests refused for this reason, or, for idempotent_replay, the answers replayed for an Idempotency-Key. */
+                reason?: "expired" | "revoked" | "disabled" | "archived" | "network" | "read_only" | "never" | "forbidden" | "rate_limited" | "idempotent_replay";
                 /** @description Only this UTC day, one of the last 30. */
                 day?: string;
             };

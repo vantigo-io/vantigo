@@ -11,6 +11,7 @@ sources:
   - apps/server/internal/identity/apirequests.go
   - apps/server/internal/identity/apikey_notices.go
   - apps/server/internal/identity/integration_requests.go
+  - apps/server/internal/identity/idempotency.go
   - apps/host/frontend/src/routes/workspace/api-access.tsx
   - apps/host/frontend/src/routes/workspace/api-access_.$integrationId.tsx
   - apps/host/frontend/src/routes/workspace/-api-access-integration.tsx
@@ -400,6 +401,10 @@ omstart.
 | `403` | `api_key_read_only` | En nøkkel for bare lesing på en operasjon som ikke er en lesing |
 | `429` | `rate_limited` | Integrasjonen har gjort så mange forespørsler som **Hastighetsgrense** tillater dette minuttet; `Retry-After` sier hvor lenge det skal ventes |
 
+En forespørsel sendt med en `Idempotency-Key` kan også få `400 idempotency_key_invalid`,
+`409 idempotency_in_progress`, `409 idempotency_outcome_unknown`, `422 idempotency_key_reused` eller
+`429 idempotency_quota` ([Prøv på nytt uten å gjøre noe to ganger](#prøv-på-nytt-uten-å-gjøre-noe-to-ganger)).
+
 En `401` har `WWW-Authenticate: Bearer realm="vantigo"`. Innholdet er den samme JSON-feilen API-et
 svarer personer med: `{"error": {"code": "…", "message": "…"}}`.
 
@@ -419,21 +424,22 @@ er noe å knytte den til. En AI-klients forespørsel ved MCP-endepunktet er oper
 - **Siste forespørsler** viser de 200 nyeste: når, i UTC, nøkkelen, metoden og operasjonen, statusen
   — med årsaken når den ble avvist — hvor lang tid den tok, klientens adresse og sporings-ID-en.
   En nøkkel med slettet rad, 90 dager etter at den utløp, vises som *Slettet nøkkel*.
-- **Nøkkel**, **Status**, **Avvist fordi** og **Dag** filtrerer alle tre.
+- **Nøkkel**, **Status**, **Årsak** og **Dag** filtrerer alle tre.
 
-En avvisning registreres med årsaken:
+En avvisning registreres med årsaken, og det gjør et gjentatt svar også:
 
-| Årsak | Forespørselen ble avvist fordi |
+| Årsak | Forespørselen |
 | --- | --- |
-| *Utløpt* (`expired`) | nøkkelen hadde utløpt |
-| *Tilbakekalt* (`revoked`) | nøkkelen var tilbakekalt |
-| *Integrasjonen er deaktivert* (`disabled`) | integrasjonen var deaktivert |
-| *Integrasjonen er arkivert* (`archived`) | integrasjonen var arkivert |
-| *Utenfor nettverkene sine* (`network`) | forespørselen kom fra utenfor nøkkelens **Nettverk** |
-| *Nøkkelen er bare for lesing* (`read_only`) | en nøkkel for bare lesing kalte en operasjon som ikke er en lesing |
-| *Ikke tilgjengelig for API-nøkler* (`never`) | operasjonen er aldri tilgjengelig for API-nøkler |
-| *Ikke tillatt av rollene* (`forbidden`) | rollene, eller begrensningen, gir ikke det operasjonen trenger |
-| *Over grensen for forespørsler* (`rate_limited`) | integrasjonen hadde gjort så mange forespørsler som **Hastighetsgrense** tillot det minuttet |
+| *Utløpt* (`expired`) | ble avvist fordi nøkkelen hadde utløpt |
+| *Tilbakekalt* (`revoked`) | ble avvist fordi nøkkelen var tilbakekalt |
+| *Integrasjonen er deaktivert* (`disabled`) | ble avvist fordi integrasjonen var deaktivert |
+| *Integrasjonen er arkivert* (`archived`) | ble avvist fordi integrasjonen var arkivert |
+| *Utenfor nettverkene sine* (`network`) | ble avvist fordi den kom fra utenfor nøkkelens **Nettverk** |
+| *Nøkkelen er bare for lesing* (`read_only`) | ble avvist fordi en nøkkel for bare lesing kalte en operasjon som ikke er en lesing |
+| *Ikke tilgjengelig for API-nøkler* (`never`) | ble avvist fordi operasjonen er aldri tilgjengelig for API-nøkler |
+| *Ikke tillatt av rollene* (`forbidden`) | ble avvist fordi rollene, eller begrensningen, ikke gir det operasjonen trenger |
+| *Over grensen for forespørsler* (`rate_limited`) | ble avvist fordi integrasjonen hadde gjort så mange forespørsler som **Hastighetsgrense** tillot det minuttet |
+| *Gjentatt svar for Idempotency-Key* (`idempotent_replay`) | ble ikke kjørt: den gjentok en tidligere forespørsel med samme `Idempotency-Key` og fikk svaret på den igjen ([Prøv på nytt uten å gjøre noe to ganger](#prøv-på-nytt-uten-å-gjøre-noe-to-ganger)) |
 
 En tilbakekalt nøkkel, en deaktivert eller arkivert integrasjon og en forespørsel fra utenfor
 nettverkene får alle `401 unauthenticated`, slik en ukjent nøkkel gjør, så klienten får ikke
@@ -451,6 +457,43 @@ revisjonssporet.
 Loggen beholder 30 dager, i dag medregnet: eldre rader slettes av arbeideren `identity.api-keys`
 ([Konfigurasjon](/nb/admin/configuration/#arbeidere)). Er arbeideren slått av, slettes ingenting
 fra loggen.
+
+## Prøv på nytt uten å gjøre noe to ganger
+
+Et program som sender en opprettende forespørsel — en kunde, en faktura, en e-post — og ikke får
+svar, kan ikke vite om den ble utført. Sender det forespørselen med en `Idempotency-Key`-header,
+en verdi det finner på én gang for den ene handlingen, og samme nøkkel ved hvert nytt forsøk,
+utfører Vantigo handlingen én gang og svarer hvert nytt forsøk med det første svaret, merket
+`Idempotent-Replayed: true`. Det virker på hver `POST` en nøkkel kan kalle som oppretter eller
+endrer noe i JSON, uten noe å slå på per integrasjon; [API-introduksjonen](/en/reference/api-introduction/#retrying-safely)
+sier nøyaktig hvor, og hva hvert svar betyr.
+
+- Et gjentatt svar er en forespørsel: det teller mot integrasjonens **Hastighetsgrense** og står i
+  fanen **Forespørsler** med årsaken *Gjentatt svar for Idempotency-Key*. Operasjonen ble ikke
+  kjørt igjen, så den revideres én gang.
+- En nøkkel hører til integrasjonen, på tvers av alle nøklene dens, og til operasjonen. En
+  integrasjon har høyst 2 000 nøkler, eller 16 MB lagrede svar (en forespørsel som fortsatt
+  kjører, teller som 256 KB), om gangen; over det får en ny nøkkel `429 idempotency_quota` til
+  eldre nøkler utløper, og et nytt forsøk med en nøkkel den har, får fortsatt svar.
+- Et gjentatt svar er det første svaret slik det var: operasjonens kontroller kjøres ikke på nytt
+  for det, så et nytt forsøk innen de 24 timene får det første svaret selv om posten eller
+  integrasjonens roller har endret seg siden.
+- Når Vantigo ikke kan vite hva den første forespørselen gjorde — den feilet med en `5xx`, den
+  tidsavbrøt, serveren startet på nytt — får et nytt forsøk med samme nøkkel
+  `409 idempotency_outcome_unknown`, og operasjonen kjøres ikke igjen. La programmet lese posten
+  det ville opprette, og sende handlingen på nytt med en ny nøkkel hvis den mangler.
+
+Nøklene beholdes i 24 timer fra den første forespørselen, i `identity.idempotency_keys`, og det
+første svaret — status, headere og innhold — lagres kryptert med en nøkkel avledet av
+installasjonens `APP_SECRET`; forespørselen det svarer på, lagres bare som et nøklet
+fingeravtrykk. Arbeideren `identity.api-keys` sletter utløpte nøkler hver syklus, uansett hva
+`IDEMPOTENCY_ENABLED` sier og også når API-nøklenes eget vedlikehold er slått av
+([Konfigurasjon](/nb/admin/configuration/#arbeidere)). Å slette en person sletter nøklene personen
+sendte. Å anonymisere en kunde sletter nøklene til agentkjøringer for den kunden, og hindrer at
+noe svar lagret før det gis igjen, siden hvert av dem kan nevne kunden: et nytt forsøk får
+`409 idempotency_outcome_unknown`, og raden forsvinner når den utløper. En sikkerhetskopi inneholder nøklene fra de siste 24 timene; gjenopprettet utløper de som
+vanlig. `IDEMPOTENCY_ENABLED=0` slår det av for hele installasjonen: headeren ignoreres da, og hvert
+nytt forsøk kjøres igjen.
 
 ## Varsler om utløp
 
@@ -679,6 +722,12 @@ tokenet sitt i stien. Signeringshemmeligheten registreres aldri.
   **Hastighetsgrense** tillater, til sammen for alle nøklene. La programmet vente ut
   `Retry-After` og følge med på `RateLimit-Remaining`, eller øk grensen under **Handlinger ›
   Rediger detaljer**. **Mest brukt** i fanen **Forespørsler** viser hva forespørslene går til.
+- **Det får `409 idempotency_outcome_unknown`.** Den første forespørselen med den
+  `Idempotency-Key`-en endte uten et svar Vantigo kan gi igjen, eller kjører fortsatt etter to
+  minutter. Finn ut av posten om den ble utført, og send den på nytt med en ny nøkkel hvis ikke.
+- **Det får `422 idempotency_key_reused`.** Programmet sendte én nøkkel med to ulike
+  forespørsler. Hver handling trenger sin egen nøkkel; bare et nytt forsøk på samme handling
+  bruker den igjen.
 - **En forespørsel står ikke i fanen Forespørsler.** Vent noen sekunder: radene skrives samlet.
   En forespørsel med en nøkkel som ikke passet noen nøkkel, registreres aldri; sjekk nøkkelen
   programmet sender.

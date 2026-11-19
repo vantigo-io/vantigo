@@ -11,6 +11,7 @@ sources:
   - apps/server/internal/identity/apirequests.go
   - apps/server/internal/identity/apikey_notices.go
   - apps/server/internal/identity/integration_requests.go
+  - apps/server/internal/identity/idempotency.go
   - apps/host/frontend/src/routes/workspace/api-access.tsx
   - apps/host/frontend/src/routes/workspace/api-access_.$integrationId.tsx
   - apps/host/frontend/src/routes/workspace/-api-access-integration.tsx
@@ -391,6 +392,10 @@ and a restart.
 | `403` | `api_key_read_only` | A read-only key on an operation that is not a read |
 | `429` | `rate_limited` | The integration has made its **Rate limit** of requests this minute; `Retry-After` says how long to wait |
 
+A request sent with an `Idempotency-Key` can also get `400 idempotency_key_invalid`,
+`409 idempotency_in_progress`, `409 idempotency_outcome_unknown`, `422 idempotency_key_reused` or
+`429 idempotency_quota` ([Retrying safely](#retrying-safely)).
+
 A `401` carries `WWW-Authenticate: Bearer realm="vantigo"`. The body is the same JSON error
 the API answers people with: `{"error": {"code": "…", "message": "…"}}`.
 
@@ -408,11 +413,11 @@ it makes is a second row, the operation it called ([MCP](#mcp)).
 - **Latest requests** lists the 200 newest: when, in UTC, the key, the method and the operation, the
   status — with why, for a refusal — how long it took, the client's address and the trace id.
   A key whose row has been deleted, 90 days after it expired, shows as *Deleted key*.
-- **Key**, **Status**, **Refused because** and **Day** filter all three.
+- **Key**, **Status**, **Reason** and **Day** filter all three.
 
-A refusal is recorded with its reason:
+A refusal is recorded with its reason, and so is a replayed answer:
 
-| Reason | The request was refused because |
+| Reason | The request |
 | --- | --- |
 | *Expired* (`expired`) | the key had expired |
 | *Revoked* (`revoked`) | the key was revoked |
@@ -423,6 +428,7 @@ A refusal is recorded with its reason:
 | *Not available to API keys* (`never`) | the operation is never available to API keys |
 | *Not allowed by the roles* (`forbidden`) | the roles, or the narrowing, do not give what the operation needs |
 | *Over the rate limit* (`rate_limited`) | the integration had made its **Rate limit** of requests that minute |
+| *Replayed for its Idempotency-Key* (`idempotent_replay`) | was not run: it repeated an earlier request with the same `Idempotency-Key`, and got that request's answer again ([Retrying safely](#retrying-safely)) |
 
 A revoked key, a disabled or archived integration and a request from outside the networks are
 all answered `401 unauthenticated`, as an unknown key is, so the client learns nothing about the
@@ -440,6 +446,44 @@ audit trail.
 The log keeps 30 days, today included: older rows are deleted by the `identity.api-keys` worker
 ([Configuration](/en/admin/configuration/#workers)). With the worker switched off, nothing is
 ever deleted from the log.
+
+## Retrying safely
+
+An application that sends a creating request — a customer, an invoice, a mail — and gets no answer
+cannot tell whether it was carried out. If it sends the request with an `Idempotency-Key` header,
+a value it makes up once for that one action, and sends the same key with every retry, Vantigo
+carries the action out once and answers every retry with the first answer, marked
+`Idempotent-Replayed: true`. It works on every `POST` a key can call that creates or changes
+something in JSON, without anything to switch on per integration; the
+[API introduction](/en/reference/api-introduction/#retrying-safely) says exactly where, and what
+each answer means.
+
+- A replay is a request: it counts against the integration's **Rate limit** and is on the
+  **Requests** tab, with the reason *Replayed for its Idempotency-Key*. The operation did not run
+  again, so it is audited once.
+- A key belongs to the integration, across all its keys, and to the operation. An integration keeps
+  at most 2,000 keys, or 16 MB of stored answers (a request still running counts as 256 KB), at a
+  time; past that a new key gets `429 idempotency_quota` until older keys expire, and a retry of a
+  key it has is still answered.
+- A replay is the first answer as it was: the operation's checks do not run again for it, so a
+  retry within the 24 hours gets the first answer even if the record or the integration's roles
+  have changed since.
+- When Vantigo cannot tell what the first request did — it failed with a `5xx`, it timed out, the
+  server restarted — a retry with the same key is answered `409 idempotency_outcome_unknown` and the
+  operation is not run again. Have the application read the record it meant to create, then send
+  the action again with a new key if it is missing.
+
+Keys are kept 24 hours from the first request, in `identity.idempotency_keys`, and the first
+answer — status, headers and body — is kept encrypted with a key derived from the installation's
+`APP_SECRET`; the request it answers is kept only as a keyed fingerprint. The `identity.api-keys`
+worker deletes expired keys on each cycle, whatever `IDEMPOTENCY_ENABLED` says and also when the
+API keys' own upkeep is switched off ([Configuration](/en/admin/configuration/#workers)). Erasing
+or deleting a person deletes the keys they sent. Anonymising a customer deletes the keys of agent
+runs for that customer, and stops every answer kept before it from being given again, since any
+of them may name the customer: a retry gets `409 idempotency_outcome_unknown`, and the row goes
+when it expires. A backup holds the
+keys of the last 24 hours; restored, they expire as usual. `IDEMPOTENCY_ENABLED=0` switches it off
+for the whole installation: the header is then ignored, and every retry runs again.
 
 ## Expiry notices
 
@@ -663,6 +707,11 @@ in the path. The signing secret is never recorded.
   **Rate limit**, across all its keys. Have the application wait out `Retry-After` and watch
   `RateLimit-Remaining`, or raise the limit under **Actions › Edit details**. **Called most** on
   the **Requests** tab shows what it spends its requests on.
+- **It gets `409 idempotency_outcome_unknown`.** The first request with that `Idempotency-Key`
+  ended without an answer Vantigo can give again, or is still running after two minutes. Find out
+  from the record whether it was carried out, and send it again with a new key if not.
+- **It gets `422 idempotency_key_reused`.** The application sent one key with two different
+  requests. Each action needs its own key; only a retry of the same action reuses one.
 - **A request is not on the Requests tab.** Wait a few seconds: rows are written in batches.
   A request with a key that matched no key is never recorded; check the key the application
   sends.

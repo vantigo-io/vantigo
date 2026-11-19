@@ -263,8 +263,10 @@ it cannot be undone. If a key may have leaked, revoke it at once.
 
 The **Requests** tab on an integration's page shows what its keys called over the last 30
 days: the requests per day by status, the operations called most, and the latest 200 with the
-key, the status and, for a refused one, why. **Key**, **Status**, **Refused because** and
-**Day** narrow it down. A new request shows there within a few seconds.
+key, the status and, for a refused one, why. A request that repeated an earlier one with the same
+`Idempotency-Key`, and got its answer again without running twice, is marked *Replayed for its
+Idempotency-Key*. **Key**, **Status**, **Reason** and **Day** narrow it down. A new request shows
+there within a few seconds.
 
 The **Contact** and every Owner get an email 14 days and 3 days before a key expires, and on
 the day, unless it has been rolled or revoked. Roll the key before then.

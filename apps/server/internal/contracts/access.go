@@ -279,7 +279,8 @@ func (e *APIKeyRefusal) Error() string { return "api key refused: " + e.Reason }
 func (e *APIKeyRefusal) Unwrap() error { return e.Err }
 
 // The reasons the request log records a refused API key request under: an
-// APIKeyRefusal's, and the router's own APIReasonRateLimited.
+// APIKeyRefusal's, and the router's own APIReasonRateLimited. A replayed
+// answer has APIReasonIdempotentReplay (idempotency.go).
 const (
 	APIReasonRevoked     = "revoked"
 	APIReasonDisabled    = "disabled"
@@ -307,7 +308,7 @@ type APIRequest struct {
 	OperationID   string
 	Status        int
 	// Reason is set for a refusal: an APIKeyRefusal's, or
-	// APIReasonRateLimited.
+	// APIReasonRateLimited; and for a replay, APIReasonIdempotentReplay.
 	Reason   string
 	Duration time.Duration
 	ClientIP string

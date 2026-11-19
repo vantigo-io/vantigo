@@ -27,6 +27,11 @@ import (
 //     the worker switched off, no partition is made and every row lands in
 //     DEFAULT, where it stays.
 //   - It mails the expiry notices (apikey_notices.go).
+//   - It prunes the expired Idempotency-Keys (idempotency design I21), under a
+//     lease of its own, every cycle, whatever IDEMPOTENCY_ENABLED says, so the
+//     keys kept before the switch was turned off still go. The worker runs
+//     when IDENTITY_API_KEYS_ENABLED or IDEMPOTENCY_ENABLED is on; the API
+//     keys' part only under the first.
 //
 // identity.webhook-sender sends integrations' webhook messages
 // (webhooks_worker.go).
@@ -36,7 +41,9 @@ const (
 	// apiKeysLeaseKey is the worker's advisory lease, so one replica runs a
 	// cycle.
 	apiKeysLeaseKey = int64(0x49444150494b4559) // "IDAPIKEY"
-	apiKeysBatch    = 200
+	// idempotencyLeaseKey is the prune's own advisory lease (I21).
+	idempotencyLeaseKey = int64(0x494449444d504f54) // "IDIDMPOT"
+	apiKeysBatch        = 200
 	// apiKeyRowRetention is how long a key's row outlives its expiry (K12).
 	apiKeyRowRetention = 90 * 24 * time.Hour
 	// apiKeysSystem is the actor the worker's audit rows name.
@@ -56,8 +63,11 @@ func workers(a *Access, d module.Deps) []worker.Worker {
 		return nil
 	}
 	var out []worker.Worker
-	if d.Config.IdentityIntegrationsWorkerEnabled {
-		out = append(out, &apiKeysWorker{deps: d, users: &userDirectory{q: store.New(d.Pool), sso: a.sso, mail: d.Mail}})
+	if d.Config.IdentityIntegrationsWorkerEnabled || d.Config.IdempotencyEnabled {
+		out = append(out, &apiKeysWorker{
+			deps: d, users: &userDirectory{q: store.New(d.Pool), sso: a.sso, mail: d.Mail},
+			keys: d.Config.IdentityIntegrationsWorkerEnabled,
+		})
 	}
 	if d.Config.IdentityWebhooksEnabled {
 		out = append(out, newWebhookSender(a, d))
@@ -71,6 +81,10 @@ type apiKeysWorker struct {
 	// users mails the expiry notices, as invitations are mailed, and says
 	// whether each was sent.
 	users *userDirectory
+	// keys is IDENTITY_API_KEYS_ENABLED: the expiries, the request log's
+	// partitions and the notices. The Idempotency-Keys' prune runs whatever
+	// it says.
+	keys bool
 }
 
 func (*apiKeysWorker) Name() string              { return apiKeysWorkerName }
@@ -99,15 +113,52 @@ func (w *apiKeysWorker) Run(ctx context.Context) error {
 // logged and does not keep the next from running; the cycle answers them
 // joined. It answers how many expiries it audited and how many rows it
 // deleted, both zero, and nothing done, when another replica holds the lease.
+//
+// The prune of the expired Idempotency-Keys runs after, under its own lease,
+// every cycle; the API keys' part runs only when IDENTITY_API_KEYS_ENABLED is.
+// A failure is answered, and Run logs it once.
 func (w *apiKeysWorker) RunCycle(ctx context.Context) (recorded, deleted int, err error) {
-	recorded, deleted, acquired, err := w.leasedCycle(ctx)
-	if !acquired || ctx.Err() != nil {
-		return recorded, deleted, err
+	if w.keys {
+		var acquired bool
+		recorded, deleted, acquired, err = w.leasedCycle(ctx)
+		if acquired && ctx.Err() == nil {
+			if _, nerr := w.sendAPIKeyNotices(ctx, w.deps.Clock()); nerr != nil {
+				err = errors.Join(err, nerr)
+			}
+		}
 	}
-	if _, nerr := w.sendAPIKeyNotices(ctx, w.deps.Clock()); nerr != nil {
-		err = errors.Join(err, nerr)
+	if ctx.Err() == nil {
+		if _, perr := w.pruneIdempotency(ctx); perr != nil {
+			err = errors.Join(err, perr)
+		}
 	}
 	return recorded, deleted, err
+}
+
+// pruneIdempotency deletes the expired Idempotency-Keys under the prune's
+// lease, on the lease's own connection, and answers how many; nothing when
+// another replica holds the lease.
+func (w *apiKeysWorker) pruneIdempotency(ctx context.Context) (int, error) {
+	conn, err := w.deps.Pool.Acquire(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("identity: acquire a connection for the idempotency lease: %w", err)
+	}
+	defer conn.Release()
+	var acquired bool
+	if err := conn.QueryRow(ctx, `SELECT pg_try_advisory_lock($1)`, idempotencyLeaseKey).Scan(&acquired); err != nil {
+		return 0, fmt.Errorf("identity: take the idempotency lease: %w", err)
+	}
+	if !acquired {
+		return 0, nil
+	}
+	defer func() {
+		release := context.WithoutCancel(ctx)
+		if _, uerr := conn.Exec(release, `SELECT pg_advisory_unlock($1)`, idempotencyLeaseKey); uerr != nil {
+			// A session that still holds the lease must not go back into the pool.
+			_ = conn.Conn().Close(release)
+		}
+	}()
+	return pruneIdempotencyKeys(ctx, store.New(conn), w.deps.Clock())
 }
 
 // leasedCycle is the part of a cycle that runs under the lease.

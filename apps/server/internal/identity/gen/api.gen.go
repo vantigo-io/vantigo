@@ -956,15 +956,16 @@ func (e PutIdentityBrandsByIdLogosBySlotParamsSlot) Valid() bool {
 
 // Defines values for GetIdentityIntegrationsByIdRequestsParamsReason.
 const (
-	GetIdentityIntegrationsByIdRequestsParamsReasonArchived    GetIdentityIntegrationsByIdRequestsParamsReason = "archived"
-	GetIdentityIntegrationsByIdRequestsParamsReasonDisabled    GetIdentityIntegrationsByIdRequestsParamsReason = "disabled"
-	GetIdentityIntegrationsByIdRequestsParamsReasonExpired     GetIdentityIntegrationsByIdRequestsParamsReason = "expired"
-	GetIdentityIntegrationsByIdRequestsParamsReasonForbidden   GetIdentityIntegrationsByIdRequestsParamsReason = "forbidden"
-	GetIdentityIntegrationsByIdRequestsParamsReasonNetwork     GetIdentityIntegrationsByIdRequestsParamsReason = "network"
-	GetIdentityIntegrationsByIdRequestsParamsReasonNever       GetIdentityIntegrationsByIdRequestsParamsReason = "never"
-	GetIdentityIntegrationsByIdRequestsParamsReasonRateLimited GetIdentityIntegrationsByIdRequestsParamsReason = "rate_limited"
-	GetIdentityIntegrationsByIdRequestsParamsReasonReadOnly    GetIdentityIntegrationsByIdRequestsParamsReason = "read_only"
-	GetIdentityIntegrationsByIdRequestsParamsReasonRevoked     GetIdentityIntegrationsByIdRequestsParamsReason = "revoked"
+	GetIdentityIntegrationsByIdRequestsParamsReasonArchived         GetIdentityIntegrationsByIdRequestsParamsReason = "archived"
+	GetIdentityIntegrationsByIdRequestsParamsReasonDisabled         GetIdentityIntegrationsByIdRequestsParamsReason = "disabled"
+	GetIdentityIntegrationsByIdRequestsParamsReasonExpired          GetIdentityIntegrationsByIdRequestsParamsReason = "expired"
+	GetIdentityIntegrationsByIdRequestsParamsReasonForbidden        GetIdentityIntegrationsByIdRequestsParamsReason = "forbidden"
+	GetIdentityIntegrationsByIdRequestsParamsReasonIdempotentReplay GetIdentityIntegrationsByIdRequestsParamsReason = "idempotent_replay"
+	GetIdentityIntegrationsByIdRequestsParamsReasonNetwork          GetIdentityIntegrationsByIdRequestsParamsReason = "network"
+	GetIdentityIntegrationsByIdRequestsParamsReasonNever            GetIdentityIntegrationsByIdRequestsParamsReason = "never"
+	GetIdentityIntegrationsByIdRequestsParamsReasonRateLimited      GetIdentityIntegrationsByIdRequestsParamsReason = "rate_limited"
+	GetIdentityIntegrationsByIdRequestsParamsReasonReadOnly         GetIdentityIntegrationsByIdRequestsParamsReason = "read_only"
+	GetIdentityIntegrationsByIdRequestsParamsReasonRevoked          GetIdentityIntegrationsByIdRequestsParamsReason = "revoked"
 )
 
 // Valid indicates whether the value is a known member of the GetIdentityIntegrationsByIdRequestsParamsReason enum.
@@ -977,6 +978,8 @@ func (e GetIdentityIntegrationsByIdRequestsParamsReason) Valid() bool {
 	case GetIdentityIntegrationsByIdRequestsParamsReasonExpired:
 		return true
 	case GetIdentityIntegrationsByIdRequestsParamsReasonForbidden:
+		return true
+	case GetIdentityIntegrationsByIdRequestsParamsReasonIdempotentReplay:
 		return true
 	case GetIdentityIntegrationsByIdRequestsParamsReasonNetwork:
 		return true
@@ -1808,7 +1811,7 @@ type IntegrationRequest struct {
 	Method      string  `json:"method"`
 	OperationId string  `json:"operationId"`
 
-	// Reason Why the request was refused, for a refusal.
+	// Reason Why the request was refused, for a refusal; idempotent_replay for an answer replayed for its Idempotency-Key.
 	Reason  *string `json:"reason"`
 	Status  int     `json:"status"`
 	TraceId *string `json:"traceId"`
@@ -3385,7 +3388,7 @@ type GetIdentityIntegrationsByIdRequestsParams struct {
 	// StatusClass Only the requests answered with this status class, 2 for 2xx through 5 for 5xx.
 	StatusClass *int `form:"statusClass,omitempty" json:"statusClass,omitempty"`
 
-	// Reason Only the requests refused for this reason.
+	// Reason Only the requests refused for this reason, or, for idempotent_replay, the answers replayed for an Idempotency-Key.
 	Reason *GetIdentityIntegrationsByIdRequestsParamsReason `form:"reason,omitempty" json:"reason,omitempty"`
 
 	// Day Only this UTC day, one of the last 30.

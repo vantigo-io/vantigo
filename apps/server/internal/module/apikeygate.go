@@ -53,7 +53,7 @@ func (g keyGate) refuse(w http.ResponseWriter, req *http.Request, access contrac
 // of the integration, writes the RateLimit-* headers, answers one over the
 // limit with ratelimit.Reject instead, and records the answer once given —
 // a panic's as 500, before the panic goes on to the recovery further out.
-func (g keyGate) serve(w http.ResponseWriter, req *http.Request, p contracts.Principal, operationID string, start time.Time, next func(http.ResponseWriter)) {
+func (g keyGate) serve(w http.ResponseWriter, req *http.Request, p contracts.Principal, operationID string, start time.Time, next func(http.ResponseWriter, *http.Request)) {
 	g.run(w, req, p, operationID, start, true, next)
 }
 
@@ -61,20 +61,23 @@ func (g keyGate) serve(w http.ResponseWriter, req *http.Request, p contracts.Pri
 // nothing against the integration's limit: the MCP endpoint's envelope of a
 // tool call whose looped-back request is counted itself (MCP server design
 // M22), so the call costs one request.
-func (g keyGate) recordOnly(w http.ResponseWriter, req *http.Request, p contracts.Principal, operationID string, start time.Time, next func(http.ResponseWriter)) {
+func (g keyGate) recordOnly(w http.ResponseWriter, req *http.Request, p contracts.Principal, operationID string, start time.Time, next func(http.ResponseWriter, *http.Request)) {
 	g.run(w, req, p, operationID, start, false, next)
 }
 
-func (g keyGate) run(w http.ResponseWriter, req *http.Request, p contracts.Principal, operationID string, start time.Time, count bool, next func(http.ResponseWriter)) {
+func (g keyGate) run(w http.ResponseWriter, req *http.Request, p contracts.Principal, operationID string, start time.Time, count bool, next func(http.ResponseWriter, *http.Request)) {
 	rec := httpx.NewStatusRecorder(w)
-	reason := ""
+	// reason is what the log records: a refusal's, or a replay's, which next
+	// sets through the holder on its request's context (idempotency design
+	// I22).
+	reason := new(string)
 	if g.recorder != nil {
 		defer func() {
 			if v := recover(); v != nil {
-				g.record(req, operationID, p.Via.KeyID, p.UserID, http.StatusInternalServerError, reason, start)
+				g.record(req, operationID, p.Via.KeyID, p.UserID, http.StatusInternalServerError, *reason, start)
 				panic(v)
 			}
-			g.record(req, operationID, p.Via.KeyID, p.UserID, rec.Status(), reason, start)
+			g.record(req, operationID, p.Via.KeyID, p.UserID, rec.Status(), *reason, start)
 		}()
 	}
 	if count && g.limiter != nil && p.Via.RateLimitPerMinute > 0 {
@@ -86,12 +89,12 @@ func (g keyGate) run(w http.ResponseWriter, req *http.Request, p contracts.Princ
 		}
 		ratelimit.WriteHeaders(rec, policy, d)
 		if !d.Allowed {
-			reason = contracts.APIReasonRateLimited
+			*reason = contracts.APIReasonRateLimited
 			ratelimit.Reject(rec, req, policy, d)
 			return
 		}
 	}
-	next(rec)
+	next(rec, req.WithContext(withAPIReason(req.Context(), reason)))
 }
 
 // record hands one answered key request to the request log. It carries the

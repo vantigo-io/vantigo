@@ -174,6 +174,80 @@ native mechanisms; `PATCH`/`DELETE`; server-minted keys for MCP; a per-integrati
 
 - **1** (2026-11-19): first draft from R.
 - **2** (2026-11-19): the review's findings, §11.
+- **2.1** (2026-11-19): delivery A as built, and where it departs from the text:
+  - *The store's interface* (I12) names its methods `ClaimIdempotencyKey`, `LookupIdempotencyKey`,
+    `CompleteIdempotencyKey`, `MarkIdempotencyKeyUnknown` and `ReleaseIdempotencyKey` (the 409 release of
+    I23), so they read on `Access` beside its other methods, and adds `IdempotencyEnabled()`: the kill
+    switch (I9) reaches the router through the store it already finds, with no `RouterOptions` change.
+  - *The scope* (I28) is a fourth key column, `via` (`session`, `api_key`, `station:<id>`,
+    `assistant:<grant>`, `agent:<grant>`), in the primary key `(principal_id, via, operation_id, key)`;
+    the quota (I21) counts across a principal's ways in.
+  - *Anonymising a customer* (I20) deletes the keys of agent runs scoped to that customer, kept in a
+    `customer_id` column from `Via.CustomerID`; identity registers a `CustomerPersonalData` for it
+    (kind `identity.idempotencyKeys`). Another principal's stored answer that mentions the customer is
+    sealed and expires within 24 hours; it is not searched.
+  - *Sealing* (I20): `secrets.Box` gained `SealBound`/`OpenBound`, which add a caller's value (the row's
+    scope) to the AEAD's additional data under one purpose, `identity/idempotency`; a purpose per row
+    would derive and cache a key per row.
+  - *The shared predicate* (I19) is `module.Idempotent` (exported, for delivery B's `Build` option and
+    MCP) over the router's pure `idempotentOperation(method, op, rule, never)`, with
+    `module.IdempotencyNever`; it lives in `module`, not `integrator`, because depguard keeps
+    `internal/operations` (`JSONRequest`/`JSONResponse`) out of `integrator`. B passes the predicate to
+    `Build` rather than `Build` calling it. Over the composed contract: 498 `POST`s, 321 in scope, 177
+    excluded, each listed with its reason in `integration/idempotency_scope_test.go`.
+  - *The slow operations* (I26) are the five named, listed with reasons; they were not measured, and no
+    other operation was found over 60 seconds in the test run (none is timed there). (2.2: one remains.)
+  - *A refusal that is not kept* (amends I20, I23): a `400`/`404`/`410`/`422` that carries `no-store` or
+    `Set-Cookie`, or a non-JSON body, **releases** the claim instead of leaving it `unknown`: a refusal
+    applied nothing, and every `400` written by `httpx.WriteProblem` (the decode errors) carries
+    `Cache-Control: no-store`. A success with them stays `unknown`, as written. A handler's own `401`/`403`
+    is `unknown`, as I23 says of every status it does not list.
+  - *The reason holder* (I22): `keyGate`'s `next` takes the request, so the holder travels on its context.
+  - *The prune* (I21) is a step of `identity.api-keys` under its own advisory lease; the worker now runs
+    when either `IDENTITY_API_KEYS_ENABLED` or `IDEMPOTENCY_ENABLED` is on, and does only the parts whose
+    switch is on.
+  - *`00199`'s description* (I22): its comment line, and a `COMMENT ON COLUMN` in the new migration.
+- **2.2** (2026-11-19): delivery A after its code review and security review; where it differs from 2.1,
+  2.2 wins.
+  - *The migration* is `00214_identity_idempotency.sql` (#408 holds 00213).
+  - *No answer written* (code review, blocker): a handler that wrote no status — a caller gone, whose
+    error `httpx.WriteError` answers with nothing — is `unknown`, never a stored empty `200`.
+  - *The quota is part of the claim* (I21; review): `ClaimIdempotencyKey` runs in one transaction under
+    `pg_advisory_xact_lock(hashtextextended('identity/idempotency:' || principal, 0))`; it reads the
+    key first, so a retry of an existing key is answered whatever the quota, and only a new key counts
+    against it. A claim still running reserves 256 KB of the 16 MB. The store's `LookupIdempotencyKey`
+    is gone: the claim answers the live key (`IdempotencyClaim.Existing`), so the three-attempt loop of
+    2.1 is gone too.
+  - *The fingerprint* (I24; review): the middleware's SHA-256 digest is keyed by the store with
+    `Box.MAC` under `identity/idempotency-fingerprint` (a MAC purpose, never a Seal's) before it is
+    kept or compared. Every name, value and count is its own length-prefixed part; `Content-Type` is
+    its media type and charset, lower-cased, `utf-8` dropped; a JSON body is canonicalised only up to
+    64 KiB and only in valid UTF-8, otherwise hashed as its bytes (a reformatted large body is another
+    request); nesting is bounded by `encoding/json`'s own depth limit.
+  - *One sealed answer* (I20; review): `answer` holds status, headers (at most 8 KB, else `unknown`) and
+    body as one plaintext, sealed and bound to the row; `status`, `headers` and `body` columns are gone.
+    The lookup classifies from `state`, `lease_until` and `expires_at` without opening.
+  - *Erasure* (I20; review): the Owner's user delete deletes the person's keys, as the erasure does.
+    Anonymising a customer also raises a watermark (`identity.idempotency_erasure`, one row, never
+    lowered): an answer claimed before it reads `unknown` and is never replayed, whoever stored it,
+    since any of them may name the customer; its sealed row is pruned when it expires, within 24 hours.
+  - *A grant's scope* (I28; review): an Assistant's or agent's principal with no grant on the context
+    has no scope and the header is not honoured (fail closed); a grant's customer is part of `via`.
+  - *The prune* (I21; review) runs every cycle of `identity.api-keys`, whatever `IDEMPOTENCY_ENABLED`
+    says, so rows kept before the switch was turned off still go; the worker runs when either switch is
+    on. A failed prune is logged once, by `Run`.
+  - *One predicate* (I19; review): `module.Idempotent` and the router call the same
+    `idempotentOperation(method, op, rule, known, never)`, the known-permission check included.
+  - *`IdempotencyNever`* holds only `postStaffRetentionRun`, the one of the five named in I26 that does
+    its work in the request; the billing run, the import run, the bank feed sync and the SAF-T export are
+    queued for a worker and answer at once, so they are in scope. Over the composed contract: 498
+    `POST`s, 325 in scope, 173 excluded.
+  - *Accepted* (review): a replay is the first answer as it was; the handler's own row-level checks (a
+    record changed since, a permission withdrawn) do not run again for it within the 24 hours. The docs
+    say so.
+  - *Noted, not now* (security review): AES-GCM with random 96-bit nonces under one derived key per
+    purpose stays far inside its bound at this volume (a key per installation, rows living 24 hours);
+    should volume grow, revisit with XAES-256-GCM or a per-row subkey.
 
 ## 11. Amendments (revision 2, from the review)
 

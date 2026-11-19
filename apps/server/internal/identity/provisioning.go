@@ -896,7 +896,7 @@ type erasedAudit struct {
 // unmanaged user (ErrAccountNotManaged), the last active Owner (ErrLastOwner),
 // an Owner or SystemAdmin (ErrAccountPrivileged), or an enabled user
 // (ErrAccountEnabled). It deletes the user's announcements, invitations, SCIM
-// mapping, created delegations, and user row (which cascades to sessions,
+// mapping, created delegations, Idempotency-Keys, and user row (which cascades to sessions,
 // passkeys, OIDC links, roles, group memberships, avatars, recovery codes,
 // reset tokens, and login tickets), pseudonymises the personal fields in the
 // before_json and after_json snapshots of audit rows naming the user to
@@ -945,6 +945,11 @@ func (p *provisioning) Erase(ctx context.Context, actor contracts.Actor, userID 
 			return err
 		}
 		if err := q.DeleteUserCreatedDelegations(ctx, userID); err != nil {
+			return err
+		}
+		// The answers an Idempotency-Key kept for the person (idempotency
+		// design I20).
+		if _, err := q.DeleteUserIdempotencyKeys(ctx, userID); err != nil {
 			return err
 		}
 		// The operator sessions stay as the stations' history (manufacturing

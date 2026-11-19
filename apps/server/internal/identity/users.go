@@ -696,6 +696,11 @@ func (s *server) DeleteIdentityOwnerUsersById(ctx context.Context, req gen.Delet
 		if err := endUserOperatorSessions(ctx, q, r, &p.UserID, req.Id, endUserInactive, now); err != nil {
 			return err
 		}
+		// The answers an Idempotency-Key kept for the person go with them
+		// (idempotency design I20).
+		if _, err := q.DeleteUserIdempotencyKeys(ctx, req.Id); err != nil {
+			return err
+		}
 		if err := q.DeleteUser(ctx, req.Id); err != nil {
 			if isProvenanceViolation(err) {
 				return provenanceConflict

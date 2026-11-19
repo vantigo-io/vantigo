@@ -1653,7 +1653,25 @@ lag, never what must refuse — go through the platform's domain-events outbox,
       wraps a `ResponseWriter` itself uses it rather than another recorder. The writer that
       drains the recorder runs in the API process only (`Access.StartRequestLog`, where
       `identity.NewAccess` is built); `modtest` starts it, and `Harness.FlushAPIRequests`
-      writes what is queued before a test reads `identity.api_requests`.
+      writes what is queued before a test reads `identity.api_requests`. The reason a
+      request is logged under reaches `keyGate.run`'s deferred record through a `*string`
+      holder it puts on the request's context: the Idempotency-Key middleware sets
+      `idempotent_replay` (`contracts.APIReasonIdempotentReplay`) there on a replay.
+    - **`contracts.IdempotencyStore` is the Idempotency-Key's port** (idempotency design I12):
+      `ClaimIdempotencyKey` (the claim and the quota in one transaction, answering the live
+      key when there is one), `CompleteIdempotencyKey`, `MarkIdempotencyKeyUnknown`,
+      `ReleaseIdempotencyKey` and `IdempotencyEnabled` (`IDEMPOTENCY_ENABLED`). The router
+      hands it the request's SHA-256 digest; identity keys it with an HMAC before it keeps it. Identity's `Access` implements it over
+      `identity.idempotency_keys`, and the router finds it by type assertion when it is built,
+      as it finds the recorder, so no module's `RouterOptions` names it. `HandleFunc` installs
+      the middleware (`idempotency.go`) on every operation `module.Idempotent` admits — a
+      `POST` behind a `permission:` rule a key could call, not a read, with no
+      `Idempotency-Key` parameter of its own, JSON in and out, not `no-store`, not in
+      `module.IdempotencyNever` — inside `wrap`'s `serve`, after the body cap and before
+      `contracts.WithRequest`: its recorder replaces the `ResponseWriter` there, so what a
+      handler writes through `ResponseWriterFrom` is held back with the rest of its answer.
+      A module does nothing to be covered; an operation that must run on every call, or can
+      run longer than two minutes, goes in `IdempotencyNever` with its reason.
     - **`compose.go` answers `/api/openapi.json` and leaves `/api` to the reference.**
       The document has its own check, `Rule{Kind: RuleAnonymous, API: APIRead}` — a
       read-only key may load its document — and a principal with no user is `401`. A session

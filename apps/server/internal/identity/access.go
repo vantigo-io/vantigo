@@ -27,6 +27,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/identity/store"
 	"github.com/vantigo-io/vantigo/server/internal/module"
 	"github.com/vantigo-io/vantigo/server/internal/netguard"
+	"github.com/vantigo-io/vantigo/server/internal/secrets"
 )
 
 // maxActivityWriteInterval caps how long a session may go without its idle
@@ -85,6 +86,8 @@ type Access struct {
 	// before it starts and after it stops, when Record keeps nothing.
 	dbPool   *pgxpool.Pool
 	requests atomic.Pointer[apiRequestLog]
+	// box seals the answers the Idempotency-Key store keeps (idempotency.go).
+	box *secrets.Box
 	// brandNet is what the brand logo import resolves and dials with; nil
 	// means the process's guarded transport. Only a test sets it.
 	brandNet *webhookNetwork
@@ -125,7 +128,7 @@ var _ contracts.Access = (*Access)(nil)
 //	deps.Access = a
 //	handler, err := module.Compose(deps, identity.Module(a))
 func NewAccess(d module.Deps) *Access {
-	return &Access{cfg: d.Config, q: store.New(d.Pool), pool: d.Pool, now: d.Clock, sso: newSSOSettingsReader(d.Pool, d.Clock, d.Secrets), log: d.Logger, dbPool: d.Pool}
+	return &Access{cfg: d.Config, q: store.New(d.Pool), pool: d.Pool, now: d.Clock, sso: newSSOSettingsReader(d.Pool, d.Clock, d.Secrets), log: d.Logger, dbPool: d.Pool, box: d.Secrets}
 }
 
 // Check evaluates rule for r. The scim rule admits a request that presents

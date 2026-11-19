@@ -201,6 +201,12 @@ type Config struct {
 	// answers the 404 every unknown API path does, whatever an integration's
 	// MCP setting says.
 	MCPEnabled bool
+	// IdempotencyEnabled is IDEMPOTENCY_ENABLED (idempotency design I9, I21):
+	// whether the router honours an Idempotency-Key on the creating POSTs it
+	// covers, and whether identity's worker prunes the stored keys. Defaults
+	// on; off, the header is ignored everywhere (the operations that declare
+	// their own keep theirs) and nothing is stored.
+	IdempotencyEnabled bool
 	// LiveDatabaseURL is LIVE_DATABASE_URL (live design L7): the connection
 	// the live hub's two dedicated connections (the listener and the presence
 	// publisher) open, for a deployment whose DATABASE_URL goes through a
@@ -780,6 +786,7 @@ func Load(env map[string]string) (*Config, error) {
 	c.WorkersInProcess = workersInProcess(&p, env)
 	c.LiveEnabled = boolean(&p, env, "LIVE_ENABLED", true)
 	c.MCPEnabled = boolean(&p, env, "MCP_ENABLED", true)
+	c.IdempotencyEnabled = boolean(&p, env, "IDEMPOTENCY_ENABLED", true)
 	c.LiveDatabaseURL = databaseURL(&p, env, "LIVE_DATABASE_URL", false)
 
 	c.BrregBaseURL = httpBaseURL(&p, env, "BRREG_BASE_URL", defaultBrregBaseURL)
