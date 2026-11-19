@@ -244,10 +244,11 @@ på nytt** for en melding programmet aldri behandlet.
 Seksjonen **MCP** på integrasjonens **Oversikt** lar en AI-klient som Claude Code koble seg til
 med en av nøklene. Velg **MCP-tilgang** — **Av** (standard), **Bare lese** eller **Lese og
 skrive**, som også lar klienten opprette, endre, slette og sende — og kopier **MCP-endepunkt** og
-tilkoblingen den viser, med nøkkelen der det står `vtg_…`. En nøkkel som lages mens MCP er på,
-viser tilkoblingen med nøkkelen allerede i, under **Koble til en AI-klient (MCP)**. Bare lese er
-tryggest: en AI-klient handler på det den leser, og de fleste klienter spør deg før hver
-endring.
+tilkoblingen den viser; den leser nøkkelen fra `VANTIGO_API_KEY` (VS Code spør etter den), så ingen
+nøkkel skrives inn i en fil. En nøkkel som lages mens MCP er på, viser tilkoblingen under **Koble
+til en AI-klient (MCP)**. Bare lese begrenser det en AI-klient gjør gjennom MCP; bare en nøkkel med
+bare lesing hindrer selve nøkkelen i å skrive. En klient spør før den kjører et verktøy med
+mindre du har tillatt det: ikke godkjenn skriving eller sletting automatisk.
 
 Detaljene — hva en nøkkel når, begrensning, nøkler for bare lesing, nettverk,
 hastighetsgrensen, svarene en klient får, forespørselsloggen, webhook-endepunkter, MCP og hva du

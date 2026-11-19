@@ -287,7 +287,7 @@ applikasjonens egen adresse; kontrakten står i
 
 En agent handler på det den leser, og en post — et notat på en kunde, en e-post, en artikkel —
 kan inneholde tekst skrevet for å villede den. Gi en agent en egen integrasjon, med bare de
-rollene den trenger, og la den bare lese med mindre den må endre data.
+rollene den trenger, og en nøkkel med bare lesing med mindre den må endre data.
 
 **Før du begynner:** en integrasjon med rollene agenten trenger. MCP er av for hver
 integrasjon til en eier slår det på.
@@ -299,45 +299,61 @@ integrasjon til en eier slår det på.
    - **Av** — integrasjonens nøkler avvises ved MCP-endepunktet. Standardvalget.
    - **Bare lese** — en AI-klient kan søke i API-et og kalle operasjoner som leser.
    - **Lese og skrive** — en AI-klient kan også kalle operasjoner som endrer data: opprette,
-     endre, slette og sende, for eksempel en faktura på e-post. En nøkkel med bare lesing leser
-     alltid bare, uansett valg.
+     endre og sende, for eksempel en faktura på e-post (verktøyet `write`), og slette (verktøyet
+     `delete`). En nøkkel med bare lesing leser alltid bare, uansett valg.
 
-**Skrivetilgang.** Med **Lese og skrive** kan en agent endre alt integrasjonens roller tillater,
-og en post den leser, kan prøve å overtale den til en endring. Gi integrasjonen bare rollene
-endringen trenger, og bruk en klient som spør deg før hver skriving: Claude Code, Cursor og
-VS Code gjør det, fordi Vantigo merker verktøyet `write` som destruktivt. For en agent som bare
-slår opp, velg **Bare lese**, eller gi den en nøkkel med bare lesing.
+**Bare lese begrenser MCP, ikke nøkkelen.** Med **Bare lese** kan en AI-klient ikke endre noe
+gjennom MCP, men selve nøkkelen er den samme: har den ikke bare lesing, kan den som har den,
+fortsatt skrive gjennom REST-API-et så langt integrasjonens roller rekker. Bare en nøkkel med bare
+lesing sikrer at den bare leser. For en agent som bare skal slå opp, velg **Bare lese** og gi den
+en nøkkel med bare lesing.
+
+**Skrivetilgang.** Med **Lese og skrive** kan en agent endre og slette alt integrasjonens roller
+tillater, og en post den leser, kan prøve å overtale den til en endring. Gi integrasjonen bare
+rollene endringen trenger. Klienter som Claude Code, Cursor og VS Code spør deg før de kjører et
+verktøy med mindre du har tillatt det: ikke godkjenn `write` eller `delete` automatisk. Sletting
+har et eget verktøy, så du kan tillate endringer og likevel bli spurt før hver sletting.
 
 ### Koble til en klient
+
+Tilkoblingen inneholder aldri nøkkelen, så den kan ligge i prosjektets filer uten å lekke den:
+Claude Code og Cursor leser nøkkelen fra miljøvariabelen `VANTIGO_API_KEY`, og VS Code spør etter
+den én gang og tar vare på den i sitt eget hemmelighetslager. Legg aldri en nøkkel i en fil du
+committer.
 
 1. Lag en nøkkel til agenten under **API-nøkler** ([Lag en nøkkel](#lag-en-nøkkel)). Slå på
    **Bare lesing** med mindre den må skrive. Når integrasjonens MCP er på, viser dialogen for
    den nye nøkkelen, under `curl`-eksempelet, **Koble til en AI-klient (MCP)**: kommandoen for
-   Claude Code og blokkene for Cursor og VS Code, med den nye nøkkelen allerede i dem. Mens MCP
-   er **Av**, sier den at det må slås på først, og viser ingen tilkobling.
-2. Kopier tilkoblingen for klienten din før du velger **Jeg har kopiert nøkkelen** — nøkkelen
-   vises ikke igjen:
-   - **Claude Code:** kjør kommandoen i en terminal, i prosjektet agenten arbeider i:
+   Claude Code og blokkene for Cursor og VS Code. Mens MCP er **Av**, sier den at det må slås på
+   først, og viser ingen tilkobling.
+2. Kopier nøkkelen inn i passordbehandleren din eller maskinens hemmelighetslager før du velger
+   **Jeg har kopiert nøkkelen** — den vises ikke igjen.
+3. Koble til klienten:
+   - **Claude Code:** sett nøkkelen i skallet, og kjør så kommandoen i prosjektet agenten arbeider
+     i. Claude Code tar vare på headeren i din egen `~/.claude.json`, ikke i prosjektet:
 
      ```sh
+     export VANTIGO_API_KEY=vtg_…
      claude mcp add --transport http vantigo https://vantigo.example.com/api/mcp \
-       --header "Authorization: Bearer vtg_…"
+       --header "Authorization: Bearer $VANTIGO_API_KEY"
      ```
 
-   - **Cursor og de fleste andre klienter:** legg `mcpServers`-blokken inn i klientens
-     `mcp.json` (i Cursor `.cursor/mcp.json` i prosjektet eller `~/.cursor/mcp.json`).
-   - **VS Code:** legg `servers`-blokken inn i `.vscode/mcp.json`.
+   - **Cursor:** legg `mcpServers`-blokken inn i `.cursor/mcp.json` i prosjektet eller
+     `~/.cursor/mcp.json`. Headeren leser `${env:VANTIGO_API_KEY}`, så sett variabelen der
+     Cursor startes.
+   - **VS Code:** legg blokken, med `inputs`-oppføringen, inn i `.vscode/mcp.json`. Første gang
+     serveren starter, spør VS Code etter nøkkelen i et passordfelt.
 
-   Seksjonen **MCP** på **Oversikt** viser den samme kommandoen og de samme blokkene, med
-   `vtg_…` i stedet for nøkkelen, for en nøkkel som er laget tidligere.
-3. Start klienten på nytt eller last den inn igjen, så den leser den nye serveren.
+   Seksjonen **MCP** på **Oversikt** viser den samme kommandoen og de samme blokkene, for en
+   nøkkel som er laget tidligere.
+4. Start klienten på nytt eller last den inn igjen, så den leser den nye serveren.
 
 **Slik kontrollerer du:** be klienten liste verktøyene sine. Den viser `search_operations`,
-`describe_operation` og `read`, og `write` med **Lese og skrive** for en nøkkel uten bare
-lesing. Hvert `read` eller `write` vises to ganger i integrasjonens fane **Forespørsler**: som
-operasjonen den kalte, som teller mot hastighetsgrensen, og som `postApiMcp` for
-MCP-forespørselen rundt, som ikke gjør det. Alle andre MCP-forespørsler er én rad `postApiMcp`
-og teller én gang.
+`describe_operation` og `read`, og `write` og `delete` med **Lese og skrive** for en nøkkel uten
+bare lesing. Hvert kall av `read`, `write` eller `delete` vises to ganger i integrasjonens fane
+**Forespørsler**: som operasjonen den kalte, som teller mot hastighetsgrensen, og som
+`postApiMcp` for MCP-forespørselen rundt, som ikke gjør det; de to har samme sporings-ID. Alle
+andre MCP-forespørsler er én rad `postApiMcp` og teller én gang.
 
 Endringen revideres som `integration.mcp_changed`, og hvis noen andre har endret integrasjonen
 i mellomtiden, avvises den med beskjed om å laste inn på nytt, som for detaljene.
@@ -361,11 +377,15 @@ omstart.
 - **Et verktøy svarer at en operasjon ikke er tilgjengelig for denne nøkkelen:**
   integrasjonens roller, nøkkelens begrensning eller bryteren for bare lesing når den ikke,
   eller den endrer data og MCP-tilgangen er **Bare lese**.
-- **Klienten har ikke verktøyet `write`, eller det avvises som ukjent:** MCP-tilgangen er
-  **Bare lese**, eller nøkkelen har bare lesing. Tilgangen kontrolleres ved hvert kall, så en
-  senkning virker straks, også i en klient som listet `write` før.
-- **En skriving svarer `409` eller `412`:** posten er endret siden agenten leste den; agenten
+- **Klienten har ikke verktøyet `write` eller `delete`, eller det avvises som ukjent:**
+  MCP-tilgangen er **Bare lese**, eller nøkkelen har bare lesing. Tilgangen kontrolleres ved
+  hvert kall, så en senkning virker straks, også i en klient som listet `write` før.
+- **En endring svarer `409` (eller `412`):** posten er endret siden agenten leste den; agenten
   leser den på nytt og prøver igjen med den nye versjonen, slik en REST-klient ville gjort.
+- **En endring svarte ikke i tide:** den kan ha blitt gjort, eller ikke. Agenten leser posten
+  før den prøver igjen, og prøver igjen med samme `Idempotency-Key` der operasjonen tar en.
+- **Et kall svarer at nøkkelen har for mange kall i gang:** en nøkkel har høyst fire
+  MCP-kall i gang samtidig; klienten prøver igjen om litt.
 - **En klient som kjører i nettleseren** kommer ikke inn: Vantigo avviser forespørsler fra
   andre nettsteder i nettleseren.
 

@@ -1664,7 +1664,7 @@ included. Every answer is `Cache-Control: private, no-store` with
       every module given, which `vantigo openapi integrator` writes for CI.
     - **`compose.go` registers the MCP endpoint, `/api/mcp`, beside it** (MCP server design
       M29, [MCP server](/en/reference/mcp/)), method-less so `GET` and `DELETE` are its `405`,
-      and binds it to the composed API after `dispatchModules`: each `read` or `write` tool
+      and binds it to the composed API after `dispatchModules`: each `read`, `write` or `delete` tool
       call is a request of the caller's own — its `Authorization`, its address, the envelope's
       context with its cancellation and a deadline — through the router's gate, never a
       principal put on a context. `apimcp_index.go` reads an operation's kind with the router's own
