@@ -1,0 +1,203 @@
+{
+  "algorithm": 1,
+  "pairs": ["filled", "filledHover", "linkPage", "linkCard", "linkTint"],
+  "cases": [
+    {
+      "name": "indigo",
+      "input": "#4f46e5",
+      "scale": [
+        "#f4f6ff",
+        "#d9dfff",
+        "#b7c2ff",
+        "#97a3ff",
+        "#7882ff",
+        "#6160ff",
+        "#4f46e5",
+        "#3e2ec4",
+        "#2e1a9f",
+        "#1f0677"
+      ],
+      "filledText": "#ffffff",
+      "contrast": { "light": [6.29, 8.78, 11.21, 11.9, 11.04], "dark": [6.29, 8.78, 7.52, 6.97, 8.18] },
+      "suggested": "#4f46e5"
+    },
+    {
+      "name": "very light",
+      "input": "#e2cc5a",
+      "scale": [
+        "#f9f7eb",
+        "#f6f1d8",
+        "#f3eabc",
+        "#f0e29a",
+        "#edda7a",
+        "#e9d361",
+        "#e2cc5a",
+        "#a6911b",
+        "#695b00",
+        "#302900"
+      ],
+      "filledText": "#000000",
+      "contrast": { "light": [13.02, 6.69, 6.39, 6.78, 6.31], "dark": [13.02, 6.69, 13.42, 12.43, 14] },
+      "suggested": "#e2cc5a"
+    },
+    {
+      "name": "very dark",
+      "input": "#3d2b85",
+      "scale": [
+        "#f6f6ff",
+        "#d8d8f2",
+        "#b4b2e0",
+        "#918dcf",
+        "#7068bb",
+        "#5648a4",
+        "#3d2b85",
+        "#362479",
+        "#2f2069",
+        "#271c58"
+      ],
+      "filledText": "#ffffff",
+      "contrast": { "light": [11.15, 12.46, 12.92, 13.71, 12.76], "dark": [11.15, 12.46, 5.78, 5.35, 6.13] },
+      "suggested": "#3d2b85"
+    },
+    {
+      "name": "saturated",
+      "input": "#0066ff",
+      "scale": [
+        "#f2f7ff",
+        "#d5e5ff",
+        "#afcdff",
+        "#89b4ff",
+        "#619bff",
+        "#3b82ff",
+        "#0066ff",
+        "#004ec8",
+        "#003894",
+        "#002262"
+      ],
+      "filledText": "#ffffff",
+      "contrast": { "light": [4.83, 7.18, 9.93, 10.54, 9.79], "dark": [4.83, 7.18, 8.39, 7.77, 8.92] },
+      "suggested": "#0066ff"
+    },
+    {
+      "name": "grey",
+      "input": "#808080",
+      "scale": [
+        "#f7f7f7",
+        "#e5e5e5",
+        "#cfcfcf",
+        "#bababa",
+        "#a4a4a4",
+        "#929292",
+        "#808080",
+        "#616161",
+        "#454545",
+        "#292929"
+      ],
+      "filledText": "#000000",
+      "contrast": { "light": [5.32, 3.39, 9.03, 9.59, 8.95], "dark": [5.32, 3.39, 9.05, 8.38, 9.41] },
+      "suggested": "#747474"
+    },
+    {
+      "name": "near grey",
+      "input": "#7c8088",
+      "scale": [
+        "#f6f7f8",
+        "#e4e5e7",
+        "#cdcfd3",
+        "#b7babf",
+        "#a1a4ac",
+        "#8e929a",
+        "#7c8088",
+        "#5e6269",
+        "#42454b",
+        "#27292e"
+      ],
+      "filledText": "#000000",
+      "contrast": { "light": [5.3, 3.43, 9.06, 9.61, 8.96], "dark": [5.3, 3.43, 9.02, 8.35, 9.39] },
+      "suggested": "#70747c"
+    },
+    {
+      "name": "green",
+      "input": "#16a34a",
+      "scale": [
+        "#eefbef",
+        "#d4efd8",
+        "#b0e1b7",
+        "#87d395",
+        "#5cc475",
+        "#34b55b",
+        "#16a34a",
+        "#007c34",
+        "#005722",
+        "#003311"
+      ],
+      "filledText": "#000000",
+      "contrast": { "light": [6.37, 3.93, 8.29, 8.8, 8.25], "dark": [6.37, 3.93, 9.85, 9.12, 10.23] },
+      "suggested": "#31b359"
+    },
+    {
+      "name": "red",
+      "input": "#dc2626",
+      "scale": [
+        "#fff4f2",
+        "#ffdbd6",
+        "#ffb9af",
+        "#ff9488",
+        "#ff675c",
+        "#f3423b",
+        "#dc2626",
+        "#b1000f",
+        "#820008",
+        "#540003"
+      ],
+      "filledText": "#ffffff",
+      "contrast": { "light": [4.83, 7.3, 10.13, 10.75, 9.97], "dark": [4.83, 7.3, 8.23, 7.62, 8.95] },
+      "suggested": "#dc2626"
+    },
+    {
+      "name": "yellow",
+      "input": "#eab308",
+      "scale": [
+        "#fdf6e8",
+        "#fbedd0",
+        "#f9e1ad",
+        "#f9d482",
+        "#f8c753",
+        "#f4bc23",
+        "#eab308",
+        "#aa8100",
+        "#6e5200",
+        "#352600"
+      ],
+      "filledText": "#000000",
+      "contrast": { "light": [10.95, 5.85, 6.89, 7.32, 6.8], "dark": [10.95, 5.85, 12.35, 11.44, 12.96] },
+      "suggested": "#eab308"
+    },
+    {
+      "name": "teal",
+      "input": "#0d9488",
+      "scale": [
+        "#eefaf8",
+        "#d3ebe7",
+        "#aedad3",
+        "#85c9bf",
+        "#59b7ac",
+        "#30a79a",
+        "#0d9488",
+        "#007168",
+        "#005049",
+        "#00312c"
+      ],
+      "filledText": "#000000",
+      "contrast": { "light": [5.61, 3.56, 8.82, 9.36, 8.76], "dark": [5.61, 3.56, 9.28, 8.6, 9.65] },
+      "suggested": "#008479"
+    }
+  ],
+  "refused": [
+    { "input": "#ffffff", "error": "brand_primary_range" },
+    { "input": "#000000", "error": "brand_primary_range" },
+    { "input": "#fde047", "error": "brand_primary_range" },
+    { "input": "#1e1b4b", "error": "brand_primary_range" },
+    { "input": "4f46e5", "error": "brand_hex" }
+  ]
+}

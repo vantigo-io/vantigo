@@ -17,13 +17,16 @@ sources:
   - apps/server/internal/events
   - apps/server/internal/live
   - apps/server/internal/docmath
+  - apps/server/internal/brandscale
+  - apps/server/internal/logoimage
+  - packages/frontend-shell/src/brand
 ---
 
 A module may import the platform but never another module (see
 [Module boundaries](/en/contributing/module-boundaries/)). This page describes the
 platform packages a module reaches for when it holds something it must not store in
 clear, when it sends a mail of its own, when it asks an AI model for something, when it takes a payment, when it reads a bank account's transactions, when it counts days
-around the public holidays, when it looks a company up in Brønnøysund, when it stores a picture people will see, when it makes an address for an account in a directory, when it tells other modules what happened to one of its own rows, and when it computes a sales document's amounts.
+around the public holidays, when it looks a company up in Brønnøysund, when it stores a picture people will see, when it makes an address for an account in a directory, when it tells other modules what happened to one of its own rows, when it computes a sales document's amounts, when it generates a brand's colour scale, and when it judges an uploaded logo.
 
 ## The secrets box
 
@@ -1038,3 +1041,48 @@ over exact decimals (`math/big.Rat`): no database, no request, no float, no cloc
 Invoices' rules for the amounts are described where it applies them
 ([The model](/en/reference/invoices/#the-model)). The package imports the standard
 library only, and any module may import it.
+
+## The brand colour scale
+
+[`apps/server/internal/brandscale`](https://github.com/vantigo-io/vantigo/tree/main/apps/server/internal/brandscale)
+generates a brand's ten-shade colour scale from one `#rrggbb` and computes the contrast
+checks a brand is validated by (brands design B3 and B4). Identity stores brands; Invoices
+will print them. The editor's live preview is a TypeScript port,
+[`packages/frontend-shell/src/brand/scale.ts`](https://github.com/vantigo-io/vantigo/blob/main/packages/frontend-shell/src/brand/scale.ts),
+and **Go is the truth**: both are tested against one golden file,
+[`brand-scale.golden.json`](https://github.com/vantigo-io/vantigo/blob/main/packages/frontend-shell/src/brand/brand-scale.golden.json),
+which the Go test writes (`go test ./internal/brandscale -run TestGolden -update-golden`)
+and the TypeScript test only reads, so the two cannot drift.
+
+| Name | What it does |
+| --- | --- |
+| `Generate(hex)` | the scale: sRGB to linear to OKLab by Ottosson's matrices, OKLCH steps in lightness and chroma, a colour outside sRGB fitted by exactly 24 bisections of a chroma scale (the lower bound, never clipping channels), each channel rounded half-up. Shade 6 is the input, copied and never round-tripped. A primary whose lightness is outside 0.35 to 0.85 is `ErrPrimaryRange` (`brand_primary_range`); a string that is not `#rrggbb` is `ErrInvalidHex`. |
+| `FilledText(background)` | `#ffffff` up to Mantine's `autoContrast` luminance threshold of 0.179 and `#000000` above it; one of the two always passes AA. |
+| `Contrast(a, b)` | the WCAG 2.x contrast ratio. |
+| `Checks(result)` | the ten pairs of B4, light then dark: the filled text on shades 6 and 7, and shade 8 (light) or 3 (dark) on the page, the card and a tinted cell. The page and card colours are `PageLight`, `CardLight`, `PageDark` and `CardDark`; a test reads `theme.css` and fails when they differ. |
+| `Suggest(hex)` | the nearest primary that passes every check: the same hue and chroma with the lightness moved, 0.005 at a time, darker before lighter. |
+| `Algorithm` | the version of the constants, stored with every published token set. Changing any constant is a new version. |
+
+The package imports the standard library only. The arithmetic is written in one fixed
+order with every product rounded before it is added, and chroma is scaled on the OKLab
+`a` and `b` components rather than through an angle, so the two languages agree to the
+byte.
+
+## The logo image rules
+
+[`apps/server/internal/logoimage`](https://github.com/vantigo-io/vantigo/tree/main/apps/server/internal/logoimage)
+judges and normalises a logo before a module stores it. Invoices' seller logo was its
+first user; a brand's logos are the second (brands design B6). Each caller keeps its own
+storage, keys and snapshot rules.
+
+| Name | What it does |
+| --- | --- |
+| `Read(mr)` | the one multipart part named `file`, read no further than 512 KiB plus a byte: `logo_too_large` past the bound, `logo_invalid` for an unreadable form, no file, an empty one or two. |
+| `Judge(data)` | a PNG or a JPEG by its own bytes that `image.DecodeConfig` decodes as the same format (never SVG, never a GIF), between 16 and 2,000 pixels: `logo_unsupported_type`, `logo_too_wide`, `logo_too_small`. It answers the type and the size, and `Info.IsSquare` says whether the sides are within 5 %, as a brand's icon must be. |
+| `Normalise(data, contentType)` | decoded whole and encoded again, which drops every piece of metadata: a PNG as 8-bit non-interlaced, a JPEG as baseline at quality 90; refused as `logo_too_large` past 4 MiB, and as `logo_invalid` when gofpdf, the renderer under the PDFs, cannot load the result. |
+
+The gofpdf probe is in the shared part because a brand's logo is printed on documents
+too, and a picture the renderer refuses would print its error into every one. A refusal
+is a `Refusal{Code, Detail}`; the module turns it into its own problem type, so Invoices'
+responses and codes are unchanged. The package imports the standard library and gofpdf,
+and any module may import it.
