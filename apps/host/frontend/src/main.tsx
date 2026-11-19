@@ -6,18 +6,17 @@ import "@mantine/spotlight/styles.css";
 import "@mantine/dates/styles.css";
 import "@vantigo/frontend-shell/theme.css";
 import "./styles.css";
-import { MantineProvider } from "@mantine/core";
 import { ModalsProvider } from "@mantine/modals";
 import { Notifications } from "@mantine/notifications";
 import { NavigationProgress } from "@mantine/nprogress";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRouter, RouterProvider } from "@tanstack/react-router";
 import {
-  appConfig,
+  BrandedMantineProvider,
+  BrandPreviewBanner,
   I18nProvider,
   initAppConfig,
   vantigoColorSchemeManager,
-  vantigoTheme,
 } from "@vantigo/frontend-shell";
 import { StrictMode } from "react";
 import ReactDOM from "react-dom/client";
@@ -25,6 +24,7 @@ import { setSessionHandlers } from "./api/session-handlers";
 import { AccountColorSchemePreference } from "./components/account-color-scheme-preference";
 import { AccountLanguagePreference } from "./components/account-language-preference";
 import { AppErrorBoundary, NotFoundPage, RouterError } from "./components/errors";
+import { HostBrandProvider } from "./components/host-brand-provider";
 import { LocaleDatesProvider } from "./components/locale-dates-provider";
 import { wireNavigationProgress } from "./lib/navigation-progress";
 import { publicPaths } from "./lib/public-paths";
@@ -32,7 +32,6 @@ import { routeTree } from "./routeTree.gen";
 
 const queryClient = new QueryClient();
 initAppConfig({ title: "Vantigo" });
-document.title = appConfig().title;
 const router = createRouter({
   routeTree,
   basepath: "/",
@@ -61,21 +60,24 @@ if (!root) throw new Error("Vantigo app root element is missing");
 ReactDOM.createRoot(root).render(
   <StrictMode>
     <AppErrorBoundary>
-      <MantineProvider theme={vantigoTheme} defaultColorScheme="auto" colorSchemeManager={vantigoColorSchemeManager}>
-        <NavigationProgress />
-        <Notifications />
-        <QueryClientProvider client={queryClient}>
-          <I18nProvider>
-            <LocaleDatesProvider>
-              <AccountLanguagePreference />
-              <AccountColorSchemePreference />
-              <ModalsProvider>
-                <RouterProvider router={router} />
-              </ModalsProvider>
-            </LocaleDatesProvider>
-          </I18nProvider>
-        </QueryClientProvider>
-      </MantineProvider>
+      <QueryClientProvider client={queryClient}>
+        <HostBrandProvider>
+          <BrandedMantineProvider defaultColorScheme="auto" colorSchemeManager={vantigoColorSchemeManager}>
+            <NavigationProgress />
+            <Notifications />
+            <I18nProvider>
+              <LocaleDatesProvider>
+                <AccountLanguagePreference />
+                <AccountColorSchemePreference />
+                <ModalsProvider>
+                  <BrandPreviewBanner />
+                  <RouterProvider router={router} />
+                </ModalsProvider>
+              </LocaleDatesProvider>
+            </I18nProvider>
+          </BrandedMantineProvider>
+        </HostBrandProvider>
+      </QueryClientProvider>
     </AppErrorBoundary>
   </StrictMode>,
 );

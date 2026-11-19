@@ -7,7 +7,8 @@
  * variable) instead of colour literals. The dark values match the `dark` scale
  * in theme.ts. Dimmed text, borders and the dark tint come from Mantine's own
  * variables, which switch with the scheme, so they cannot drift from its
- * components.
+ * components. The link and the tinted background are the brand's shades
+ * (brands design B2): a brand changes them with its primary colour.
  */
 :root {
   --vantigo-body-bg: #f7f8fc;
@@ -15,8 +16,8 @@
   --vantigo-text: #182033;
   --vantigo-text-dimmed: var(--mantine-color-dimmed);
   --vantigo-border: var(--mantine-color-default-border);
-  --vantigo-link: #3730a3;
-  --vantigo-subtle-bg: #eef2ff;
+  --vantigo-link: var(--mantine-color-vantigo-8);
+  --vantigo-subtle-bg: var(--mantine-color-vantigo-0);
   color-scheme: light;
 }
 
@@ -24,7 +25,7 @@
   --vantigo-body-bg: #15182a;
   --vantigo-surface: #1c1f32;
   --vantigo-text: #dde1ef;
-  --vantigo-link: #a5b4fc;
+  --vantigo-link: var(--mantine-color-vantigo-3);
   --vantigo-subtle-bg: var(--mantine-color-vantigo-light);
   color-scheme: dark;
 }

@@ -54,6 +54,7 @@ import {
   IconMessageChatbot,
   IconPackage,
   IconPackageImport,
+  IconPalette,
   IconPercentage,
   IconPlugConnected,
   IconPuzzle,
@@ -875,6 +876,14 @@ export const areas: readonly AreaDefinition[] = [
             to: "/workspace/roles",
             icon: IconShieldCheck,
             capability: "authorization",
+          },
+          // The brand (brands design B21): the workspace's name, colours and logos, behind
+          // identity:brands, which an Owner holds implicitly.
+          {
+            label: "navigation.brand",
+            to: "/workspace/theme",
+            icon: IconPalette,
+            requiredPermissions: ["identity:brands"],
           },
           // The shared shop-floor stations (manufacturing phase 2 M129): registered, paired and
           // revoked behind identity:manage, while Manufacturing is on.

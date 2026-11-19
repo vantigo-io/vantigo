@@ -590,6 +590,198 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/identity/brand": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get my brand
+         * @description The brand the signed-in person sees (brands design B13), in the versioned payload of B36: the name, the title, the generated tokens for both colour schemes (the ten shades, the filled-text colour and the variables Mantine derives), the radius, the logo URLs and the support contacts. Until brands are assigned by rules (a later delivery) everyone sees the default brand. A holder of identity:brands may add preview={brandId} to get that brand's pending draft instead, for "preview as me"; anyone else is refused 403. The answer is private and carries an ETag.
+         */
+        get: operations["getIdentityBrand"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/identity/brand-assets/{file}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a published brand logo
+         * @description A brand's logo file by the hash of its bytes (brands design B15): anonymous, content-addressed, served immutable with a long max-age, never sniffed and rate-limited per address. It answers only for an asset a published brand names; any other hash, an unpublished draft's logo included, is a 404.
+         */
+        get: operations["getIdentityBrandAssetsByFile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/identity/brand.css": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the brand stylesheet
+         * @description The brand as CSS custom properties (brands design B16): the ten shades, the derived Mantine variables for both colour schemes and the radius, built only from generated values. It is linked render-blocking from the document so the first paint is right. Without a session it is the default brand; with a valid session cookie it is the person's own brand. Answers carry an ETag and Vary: Cookie; with a session they are private, no-cache.
+         */
+        get: operations["getIdentityBrandCss"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/identity/brand/public": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the public brand
+         * @description The look of the default brand for the pages shown before sign-in (brands design B17): setup, sign-in, password recovery, accepting an invitation and the signed-out screen. Anonymous, cached for 60 seconds, rate-limited per address. It never carries more than the brand's public look.
+         */
+        get: operations["getIdentityBrandPublic"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/identity/brands": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the brands
+         * @description The workspace's brands (brands design B21), the default first. In this delivery there is exactly one, the default brand.
+         */
+        get: operations["getIdentityBrands"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/identity/brands/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a brand
+         * @description One brand with its published version, its pending draft, and the contrast checks (brands design B4) and the nearest passing primary for the version being edited (the draft, else the published one).
+         */
+        get: operations["getIdentityBrandsById"];
+        /**
+         * Save a brand's draft
+         * @description Writes the brand's pending draft (brands design B1, B20, B37) from its inputs: the name, the title, one primary colour as #rrggbb, the radius and the support contacts; the published version is untouched until a publish. Every generated value (the ten shades and the rest of the tokens) is recomputed on the server; a body that carries tokens, shades or any other field is a 400 invalid_request. The logos are set through their own endpoints. A draft may be saved while its colours fail the contrast checks. Audited brand.updated.
+         */
+        put: operations["putIdentityBrandsById"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/identity/brands/{id}/discard-draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Discard a brand's draft
+         * @description Drops the pending version; the published version is what is left (brands design B20). Audited brand.updated.
+         */
+        post: operations["postIdentityBrandsByIdDiscardDraft"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/identity/brands/{id}/logos/{slot}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a brand logo
+         * @description A logo as stored (brands design B6, B15), streamed to a holder of identity:brands: the published one, or with draft=true the pending one, so the editor can show an uploaded logo before it is published. Never sniffed; private, revalidated.
+         */
+        get: operations["getIdentityBrandsByIdLogosBySlot"];
+        /**
+         * Set a brand logo in the draft
+         * @description Sets one logo slot in the brand's draft (brands design B6): a PNG or JPEG in the multipart field file, its own bytes deciding its type, at most 512 KiB, 16 to 2,000 pixels, metadata removed by re-encoding. The icon must be square within 5 %. The published version is never touched. Audited brand.logo_set.
+         */
+        put: operations["putIdentityBrandsByIdLogosBySlot"];
+        post?: never;
+        /**
+         * Remove a brand logo from the draft
+         * @description Clears one logo slot in the brand's draft (brands design B6); the stored object is kept, since a document may name it. Audited brand.logo_removed.
+         */
+        delete: operations["deleteIdentityBrandsByIdLogosBySlot"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/identity/brands/{id}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Publish a brand's draft
+         * @description Makes the draft the published version and bumps its version (brands design B20). Refused 422 brand_contrast, naming the failing pairs (B4), while any colour pair is below AA 4.5:1 in either colour scheme. Audited brand.published.
+         */
+        post: operations["postIdentityBrandsByIdPublish"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/identity/integrations": {
         parameters: {
             query?: never;
@@ -3844,6 +4036,138 @@ export interface components {
             /** @description An IANA name such as Europe/Oslo, which this server and its database must read the same way; a name the two read differently (CET, an abbreviation to the database and a zone with summer time to the server) is refused. Changing it moves "today" and every day derived from an instant from the next request on; dates already written stay what they were. */
             businessTimeZone: string;
         };
+        BrandCheck: {
+            background: string;
+            foreground: string;
+            /** @enum {string} */
+            pair: "filled" | "filledHover" | "linkPage" | "linkCard" | "linkTint";
+            pass: boolean;
+            /** Format: double */
+            ratio: number;
+            /** @enum {string} */
+            scheme: "light" | "dark";
+        };
+        BrandListResponse: {
+            items: components["schemas"]["BrandSummary"][];
+        };
+        BrandLogo: {
+            /** @enum {string} */
+            contentType: "image/png" | "image/jpeg";
+            sha256: string;
+        };
+        /** @description The URLs of a version's logos, by slot; a slot with no logo is absent. */
+        BrandLogoUrls: {
+            icon?: string;
+            mark_dark?: string;
+            mark_light?: string;
+            wordmark?: string;
+        };
+        BrandLogos: {
+            icon?: components["schemas"]["BrandLogo"];
+            mark_dark?: components["schemas"]["BrandLogo"];
+            mark_light?: components["schemas"]["BrandLogo"];
+            wordmark?: components["schemas"]["BrandLogo"];
+        };
+        BrandResponse: {
+            /** @description The contrast checks of the version being edited, light then dark. */
+            checks: components["schemas"]["BrandCheck"][];
+            draft: components["schemas"]["BrandVersion"] | null;
+            /** Format: uuid */
+            id: string;
+            /** @description Why a logo could not be imported from APP_LOGO_URL, when it could not. */
+            importNotice?: string | null;
+            isDefault: boolean;
+            /** @description Whether this installation has an object store, so logos can be uploaded. */
+            logoStorageAvailable: boolean;
+            published: components["schemas"]["BrandVersion"] | null;
+            /** Format: int32 */
+            publishedVersion: number;
+            /** Format: int32 */
+            revision: number;
+            /** @enum {string} */
+            state: "draft" | "published" | "archived";
+            /** @description The nearest primary that passes every check, when the version being edited fails; absent otherwise. */
+            suggestedPrimary?: string | null;
+        };
+        BrandSchemeTokens: {
+            /** @description The variables Mantine derives from the shades, as ready CSS variable values. */
+            derived: {
+                [key: string]: string;
+            };
+            filledText: string;
+            link: string;
+            shades: string[];
+            subtleBg: string;
+        };
+        BrandSummary: {
+            hasDraft: boolean;
+            /** Format: uuid */
+            id: string;
+            isDefault: boolean;
+            name: string;
+            primary: string;
+            /** Format: int32 */
+            publishedVersion: number;
+            /** Format: int32 */
+            revision: number;
+            /** @enum {string} */
+            state: "draft" | "published" | "archived";
+            title: string;
+        };
+        BrandSupport: {
+            email?: string;
+            phone?: string;
+            url?: string;
+        };
+        BrandTokens: {
+            dark: components["schemas"]["BrandSchemeTokens"];
+            light: components["schemas"]["BrandSchemeTokens"];
+            /** @description The value of --mantine-radius-default. */
+            radius: string;
+        };
+        /** @description A brand's inputs. Any other member, tokens and shades included, is refused 400. */
+        BrandUpdateRequest: {
+            name: string;
+            /** @description The primary colour, as #rrggbb. */
+            primary: string;
+            /** @enum {string} */
+            radius: "xs" | "sm" | "md" | "lg" | "xl";
+            support?: components["schemas"]["BrandSupport"];
+            /** @description The product name in the tab, the shell header and the sign-in page; defaults to the name. */
+            title?: string;
+        } & {
+            [key: string]: unknown;
+        };
+        BrandVersion: {
+            /** Format: int32 */
+            algorithm: number;
+            logos: components["schemas"]["BrandLogos"];
+            name: string;
+            primary: string;
+            /** @enum {string} */
+            radius: "xs" | "sm" | "md" | "lg" | "xl";
+            support: components["schemas"]["BrandSupport"];
+            title: string;
+            tokens: components["schemas"]["BrandTokens"];
+        };
+        /** @description The brand a person sees, in the versioned payload of brands design B36. */
+        ResolvedBrand: {
+            /** Format: int32 */
+            algorithm: number;
+            /** Format: uuid */
+            brandId: string;
+            logos: components["schemas"]["BrandLogoUrls"];
+            name: string;
+            /** @enum {string} */
+            source: "default" | "preview";
+            support: components["schemas"]["BrandSupport"];
+            title: string;
+            tokens: components["schemas"]["BrandTokens"];
+            /** Format: int32 */
+            v: number;
+            /** @description The cache key of the payload. */
+            version: string;
+        };
         AuthErrorResponse: {
             error: {
                 code: string;
@@ -6724,6 +7048,642 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BootstrapStatusResponse"];
+                };
+            };
+        };
+    };
+    getIdentityBrand: {
+        parameters: {
+            query?: {
+                /** @description A brand id to preview its draft (identity:brands). */
+                preview?: string;
+            };
+            header?: {
+                /** @description The ETag a client holds; when it is the current one the answer is a bare 304. */
+                "If-None-Match"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResolvedBrand"];
+                };
+            };
+            /** @description Not Modified - If-None-Match names the current payload. */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden - preview without identity:brands. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found - preview names no brand. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getIdentityBrandAssetsByFile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The logo's SHA-256 in lower-case hex and its extension, png or jpg. */
+                file: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": string;
+                    "image/png": string;
+                };
+            };
+            /** @description Not Found - no published brand names this asset. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getIdentityBrandCss: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The ETag a client holds; when it is the current one the answer is a bare 304. */
+                "If-None-Match"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/css": string;
+                };
+            };
+            /** @description Not Modified - If-None-Match names the current stylesheet. */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getIdentityBrandPublic: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResolvedBrand"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getIdentityBrands: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandListResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getIdentityBrandsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    putIdentityBrandsById: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The brand's revision it was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 stale_revision. */
+                "If-Match": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BrandUpdateRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandResponse"];
+                };
+            };
+            /** @description Bad Request - invalid_request, a field the body may not carry, or an If-Match that is not a revision. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict - stale_revision, the brand has changed since If-Match. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity - brand_primary_range (the primary's lightness is outside 0.35 to 0.85), brand_support_invalid (a support contact is not a plain address, a tel-safe phone or an http(s) or same-origin URL; fields names it). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postIdentityBrandsByIdDiscardDraft: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The brand's revision it was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 stale_revision. */
+                "If-Match": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict - stale_revision, or no_draft when there is nothing to discard. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getIdentityBrandsByIdLogosBySlot: {
+        parameters: {
+            query?: {
+                /** @description True to read the pending (draft) logo instead of the published one. */
+                draft?: boolean;
+            };
+            header?: never;
+            path: {
+                id: string;
+                slot: "mark_light" | "mark_dark" | "icon" | "wordmark";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": string;
+                    "image/png": string;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found - no such brand or no logo in the slot. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Service Unavailable - storage_unavailable, the object store could not be read. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    putIdentityBrandsByIdLogosBySlot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                slot: "mark_light" | "mark_dark" | "icon" | "wordmark";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandResponse"];
+                };
+            };
+            /** @description Bad Request - logo_unsupported_type, logo_too_large, logo_too_wide, logo_too_small, logo_invalid or logo_not_square. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Service Unavailable - storage_unavailable, this installation has no object store or it could not be written. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteIdentityBrandsByIdLogosBySlot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                slot: "mark_light" | "mark_dark" | "icon" | "wordmark";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    postIdentityBrandsByIdPublish: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The brand's revision it was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 stale_revision. */
+                "If-Match": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict - stale_revision, or no_draft when there is nothing to publish. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity - brand_contrast (fields names the failing pairs) or brand_primary_range. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
         };

@@ -784,16 +784,18 @@ type catalogEntry struct {
 // composed after identity, come first.
 func TestAccessCatalog_ListsEveryModulesPermissionsInKeyOrder(t *testing.T) {
 	t.Parallel()
+	brands := catalogEntry{"identity:brands", "Manage brands", "Create and edit brands, their logos, assignment rules and campaigns.", "identity", "Administration", false, true}
 	manage := catalogEntry{"identity:manage", "Manage identity", "Manage accounts, roles, and access.", "identity", "Administration", true, false}
 	for _, c := range []struct {
 		name string
 		opts []harnessOption
 		want []catalogEntry
 	}{
-		{"identity alone", nil, []catalogEntry{manage}},
+		{"identity alone", nil, []catalogEntry{brands, manage}},
 		{"with the customers keys", []harnessOption{withPermissions(customersView, customersCreate)}, []catalogEntry{
 			{"customers:create", "Create customers", "Create customer records.", "customers", "Customers", false, true},
 			{"customers:view", "View customers", "Read customer records.", "customers", "Customers", false, true},
+			brands,
 			manage,
 		}},
 	} {

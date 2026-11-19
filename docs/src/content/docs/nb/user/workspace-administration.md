@@ -12,12 +12,12 @@ sources:
 Administrasjon av arbeidsområdet er der en **Eier** styrer hvem som kan bruke
 Vantigo og hva de kan gjøre. Åpne avatar-menyen øverst til høyre og velg
 **Administrer arbeidsområde**; sidemenyen har **Oversikt**, **Brukere**,
-**Invitasjoner**, **Roller og tilgang**, **Nettbrettstasjoner** (når Produksjon er på), **API-tilgang** og, under **Integrasjoner**, **Microsoft Entra ID**,
+**Invitasjoner**, **Roller og tilgang**, **Merkevare**, **Nettbrettstasjoner** (når Produksjon er på), **API-tilgang** og, under **Integrasjoner**, **Microsoft Entra ID**,
 **Google Workspace**, **Meta**, **Frakt**, **Bank** og, når Vantigo har satt opp KI for installasjonen, **KI-modeller** og **Assistent**.
 
 Alt her krever eierrollen, med ett unntak: den en eier har delegert
 rolleadministrasjon til, ser bare **Roller og tilgang**, både i avatar-menyen og i
-sidemenyen; den som har `entra:manage`, `google:manage`, `orders:carriers-manage` eller `invoices:manage` uten å være eier, ser bare
+sidemenyen; den som har `identity:brands` uten å være eier, ser **Merkevare** ([nedenfor](#merkevare)); den som har `entra:manage`, `google:manage`, `orders:carriers-manage` eller `invoices:manage` uten å være eier, ser bare
 **Integrasjoner**
 ([nedenfor](#integrasjoner)); og den som har `identity:manage`, ser **Nettbrettstasjoner**
 ([nedenfor](#nettbrettstasjoner-i-verkstedet)). Den siste aktive eieren kan aldri degraderes, deaktiveres
@@ -112,6 +112,37 @@ en annen, avvises.
 
 Å tilbakestille en annen administrators tofaktorautentisering tilbys ikke i dette
 skjermbildet; det finnes i API-et for en eier hvis egen økt er MFA-bekreftet.
+
+## Merkevare
+
+**Merkevare** er der arbeidsområdet får navn, farge og logoer. Du trenger eierrollen eller
+tillatelsen **Administrer merkevare** (`identity:brands`), som du kan gi en egendefinert rolle
+under **Roller og tilgang**. Hvordan den virker for den som driver installasjonen, med reglene
+bak, står i [Merkevare](/nb/admin/branding/).
+
+1. Åpne **Administrer arbeidsområde › Merkevare**. Siden viser arbeidsområdets merkevare, versjon
+   og om det finnes **Upubliserte endringer**.
+2. Under **Navn og tittel** endrer du hva administrasjonen kaller merkevaren og produktnavnet som
+   vises i nettleserfanen, toppen og påloggingssiden. Tittelen er navnet når du lar den stå tom.
+3. Under **Farge** skriver du inn eller velger **Hovedfarge** og velger en **Hjørneradius**. De ti
+   genererte nyansene vises under, og tabellen **Kontrast** sier for hvert par av farger, i lys og
+   i mørk, forholdet og om det består. Feiler et par, velger du **Bruk #…** for å ta den nærmeste
+   fargen som består. En veldig lys farge feiler lenker og hover-farger, som trenger en mørkere.
+4. Under **Logoer** laster du opp et merke for lyse bakgrunner, et merke for mørke bakgrunner, et
+   kvadratisk ikon og, om du vil, et ordmerke: en PNG eller JPEG på høyst 512 KiB, mellom 16 og
+   2 000 piksler. Siden forteller hva som er galt med en fil den avviser. Har installasjonen ikke
+   noe objektlager, sier siden det, og fargene virker likevel.
+5. Under **Kontaktinformasjon for support** fyller du inn en e-postadresse, et telefonnummer og en
+   lenke, alle valgfrie. De vises i bunnen og på påloggingssiden.
+6. **Forhåndsvisning** viser en liten utgave av programmet i lys og i mørk side om side, med
+   logoen, en knapp, en tabell, et merke, en lenke og ikonet i fanen, mens du redigerer.
+7. **Lagre utkast** beholder endringene dine der bare administratorer ser dem. **Forhåndsvis som
+   meg** setter hele programmet i utkastets utseende, for deg, bare i denne fanen; et banner øverst
+   har **Avslutt forhåndsvisning**. **Publiser** gjør utkastet til merkevaren alle ser, og er bare
+   mulig når alle fargepar består. **Forkast utkast** fjerner de ventende endringene.
+
+Brukte installasjonen den gamle innstillingen `APP_LOGO_URL` og bildet ikke kunne importeres, ber en
+melding øverst på siden deg laste opp logoen her.
 
 ## Nettbrettstasjoner i verkstedet
 

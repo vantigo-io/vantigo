@@ -148,6 +148,7 @@ import { Route as WorkspaceOverviewRouteImport } from './routes/workspace/overvi
 import { Route as WorkspaceRolesRouteImport } from './routes/workspace/roles'
 import { Route as WorkspaceShippingRouteImport } from './routes/workspace/shipping'
 import { Route as WorkspaceStationsRouteImport } from './routes/workspace/stations'
+import { Route as WorkspaceThemeRouteImport } from './routes/workspace/theme'
 import { Route as WorkspaceUsersRouteImport } from './routes/workspace/users'
 import { Route as AccountingBankIndexRouteImport } from './routes/accounting/bank.index'
 import { Route as AccountingBankImportRouteImport } from './routes/accounting/bank.import'
@@ -969,6 +970,11 @@ const WorkspaceStationsRoute = WorkspaceStationsRouteImport.update({
   path: '/stations',
   getParentRoute: () => WorkspaceRoute,
 } as any)
+const WorkspaceThemeRoute = WorkspaceThemeRouteImport.update({
+  id: '/theme',
+  path: '/theme',
+  getParentRoute: () => WorkspaceRoute,
+} as any)
 const WorkspaceUsersRoute = WorkspaceUsersRouteImport.update({
   id: '/users',
   path: '/users',
@@ -1756,6 +1762,7 @@ export interface FileRoutesByFullPath {
   '/workspace/roles': typeof WorkspaceRolesRoute
   '/workspace/shipping': typeof WorkspaceShippingRoute
   '/workspace/stations': typeof WorkspaceStationsRoute
+  '/workspace/theme': typeof WorkspaceThemeRoute
   '/workspace/users': typeof WorkspaceUsersRoute
   '/accounting/': typeof AccountingIndexRoute
   '/admin/': typeof AdminIndexRoute
@@ -1991,6 +1998,7 @@ export interface FileRoutesByTo {
   '/workspace/roles': typeof WorkspaceRolesRoute
   '/workspace/shipping': typeof WorkspaceShippingRoute
   '/workspace/stations': typeof WorkspaceStationsRoute
+  '/workspace/theme': typeof WorkspaceThemeRoute
   '/workspace/users': typeof WorkspaceUsersRoute
   '/accounting': typeof AccountingIndexRoute
   '/admin': typeof AdminIndexRoute
@@ -2254,6 +2262,7 @@ export interface FileRoutesById {
   '/workspace/roles': typeof WorkspaceRolesRoute
   '/workspace/shipping': typeof WorkspaceShippingRoute
   '/workspace/stations': typeof WorkspaceStationsRoute
+  '/workspace/theme': typeof WorkspaceThemeRoute
   '/workspace/users': typeof WorkspaceUsersRoute
   '/accounting/': typeof AccountingIndexRoute
   '/admin/': typeof AdminIndexRoute
@@ -2518,6 +2527,7 @@ export interface FileRouteTypes {
     | '/workspace/roles'
     | '/workspace/shipping'
     | '/workspace/stations'
+    | '/workspace/theme'
     | '/workspace/users'
     | '/accounting/'
     | '/admin/'
@@ -2753,6 +2763,7 @@ export interface FileRouteTypes {
     | '/workspace/roles'
     | '/workspace/shipping'
     | '/workspace/stations'
+    | '/workspace/theme'
     | '/workspace/users'
     | '/accounting'
     | '/admin'
@@ -3015,6 +3026,7 @@ export interface FileRouteTypes {
     | '/workspace/roles'
     | '/workspace/shipping'
     | '/workspace/stations'
+    | '/workspace/theme'
     | '/workspace/users'
     | '/accounting/'
     | '/admin/'
@@ -4173,6 +4185,13 @@ declare module '@tanstack/react-router' {
       path: '/stations'
       fullPath: '/workspace/stations'
       preLoaderRoute: typeof WorkspaceStationsRouteImport
+      parentRoute: typeof WorkspaceRoute
+    }
+    '/workspace/theme': {
+      id: '/workspace/theme'
+      path: '/theme'
+      fullPath: '/workspace/theme'
+      preLoaderRoute: typeof WorkspaceThemeRouteImport
       parentRoute: typeof WorkspaceRoute
     }
     '/workspace/users': {
@@ -5714,6 +5733,7 @@ interface WorkspaceRouteChildren {
   WorkspaceRolesRoute: typeof WorkspaceRolesRoute
   WorkspaceShippingRoute: typeof WorkspaceShippingRoute
   WorkspaceStationsRoute: typeof WorkspaceStationsRoute
+  WorkspaceThemeRoute: typeof WorkspaceThemeRoute
   WorkspaceUsersRoute: typeof WorkspaceUsersRoute
   WorkspaceIndexRoute: typeof WorkspaceIndexRoute
   WorkspaceApiAccessIntegrationIdRoute: typeof WorkspaceApiAccessIntegrationIdRoute
@@ -5732,6 +5752,7 @@ const WorkspaceRouteChildren: WorkspaceRouteChildren = {
   WorkspaceRolesRoute: WorkspaceRolesRoute,
   WorkspaceShippingRoute: WorkspaceShippingRoute,
   WorkspaceStationsRoute: WorkspaceStationsRoute,
+  WorkspaceThemeRoute: WorkspaceThemeRoute,
   WorkspaceUsersRoute: WorkspaceUsersRoute,
   WorkspaceIndexRoute: WorkspaceIndexRoute,
   WorkspaceApiAccessIntegrationIdRoute: WorkspaceApiAccessIntegrationIdRoute,

@@ -24,12 +24,14 @@ fra installasjonen som angår en side — som en skrivebeskyttet linje, aldri et
 hemmelighet — en nøkkel, et passord, et token — vises aldri i noen form: siden sier bare
 at en er satt.
 
-Overlappene i historien er to engangsimporter. Variablene `OIDC_*` og `SCIM_*`
+Overlappene i historien er tre engangsimporter. Variablene `OIDC_*` og `SCIM_*`
 ble lest én gang, inn i arbeidsområdets innstillinger for single sign-on, og blir
 ignorert siden
 ([OIDC og SCIM for arbeidsstyrken](/nb/admin/authentication/#oidc-og-scim-for-arbeidsstyrken)).
 `COMMUNICATIONS_AI_MODEL` leses én gang, inn i modellen som er valgt for hver av
 Kommunikasjons KI-oppgaver, og blir ignorert siden ([importen](#importen-av-communications_ai_model)).
+`APP_TITLE`, `APP_LOGO_URL` og `APP_SUPPORT_*` leses én gang, inn i standardmerkevaren, og blir
+ignorert siden ([Merkevare](/nb/admin/branding/)).
 
 ## Installasjonens innstillinger
 
@@ -66,7 +68,7 @@ veiledningene det lenkes til fra hver gruppe, sier hvordan du velger.
 | `MANAGEMENT_PORT`, `MANAGEMENT_TOKEN` | ikke satt | Den private lytteren for kontrollplanet og dens bærertoken |
 | `LIVE_ENABLED` | `1` | Om `api`- og `server`-modus serverer endepunktet for sanntidsoppdateringer, `GET /api/v1/live`. `0` svarer `404`, og hvert skjermbilde oppdaterer seg omtrent én gang i minuttet i stedet |
 | `LIVE_DATABASE_URL` | ikke satt | Databaseadressen for de to tilkoblingene sanntidsoppdateringer holder per HTTP-replika. Ikke satt bruker de `DATABASE_URL`. Pek den på databasens direkteport når `DATABASE_URL` går gjennom en pooler i transaksjonsmodus, der `LISTEN` ikke fungerer. Sladdes når den skrives ut |
-| `APP_TITLE`, `APP_LOGO_URL`, `APP_SUPPORT_EMAIL`, `APP_SUPPORT_PHONE`, `APP_SUPPORT_URL` | ikke satt | Profileringen applikasjonen viser |
+| `APP_TITLE`, `APP_LOGO_URL`, `APP_SUPPORT_EMAIL`, `APP_SUPPORT_PHONE`, `APP_SUPPORT_URL` | ikke satt | Profileringen applikasjonen viste. **Importeres én gang** inn i standardmerkevaren; settes og redigeres under **Administrer arbeidsområde › Merkevare** fra da av, og ignoreres når importen er fullført ([Merkevare](/nb/admin/branding/#engangsimporten-av-app_title-app_logo_url-og-app_support_)) |
 
 Se [Installasjon](/nb/admin/installation/) (blant annet [Sanntidsoppdateringer og proxyen din](/nb/admin/installation/#sanntidsoppdateringer-og-proxyen-din)), [Identitet, autentisering og
 utrulling](/nb/admin/authentication/), [Transportsikkerhet](/nb/admin/transport-security/)

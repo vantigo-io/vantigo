@@ -1111,6 +1111,26 @@ Every policy except `login-attempts`, `StationPairingGlobal`, `station-operator-
 `TRUSTED_PROXY_HOPS` and `TRUSTED_PROXY_CIDRS` matter behind a proxy: get them
 wrong and every request shares one bucket, or a client picks its own.
 
+## Brands
+
+Identity stores the workspace's brand (the default brand, today): the tables `identity.brands`
+and `identity.brand_logos`, and the permission `identity:brands` ("Manage brands", in the
+Administration category, **delegable**; an Owner holds it implicitly and no API key ever does).
+It lets a person create and edit the brand, upload its logos, publish it and preview it; it does
+not gate reading one's own brand, which every signed-in person can do. How a brand is edited and
+what is checked is in [Branding](/en/admin/branding/).
+
+| Operation | Access |
+| --- | --- |
+| `GET /api/v1/identity/brand` (the signed-in person's brand, `?preview={brandId}` for a draft) | a session; a preview needs `identity:brands` |
+| `GET /api/v1/identity/brand/public`, `GET /api/v1/identity/brand.css`, `GET /api/v1/identity/brand-assets/{sha256}.{png\|jpg}` | anonymous (`brand.css` reads the session cookie when there is one); rate limited per address |
+| `GET /brands`, `GET`/`PUT /brands/{id}`, `POST /brands/{id}/publish`, `POST /brands/{id}/discard-draft`, `PUT`/`DELETE`/`GET /brands/{id}/logos/{slot}` | `identity:brands` |
+
+Every write is audited in the transaction that makes it, as `brand.updated`, `brand.published`,
+`brand.logo_set` and `brand.logo_removed`, with names, versions and revisions and never the bytes
+of a logo. Counters `vantigo.identity.brand.css_requests`, `.public_lookups`, `.publishes` and
+`.imports` are exported with the other metrics.
+
 ## Shop-floor stations
 
 A **station** is a shared tablet on the shop floor (Manufacturing's, phase 2). It is a
@@ -1587,7 +1607,7 @@ release refuses them at startup. See
 | `ENERGY_SPOT_PRICE_SERVICE_URL` | The shared spot-price service's base URL — `http://vantigo-spotprices:8080` on our hosts. Set, it turns the spot price worker on with the service as its source: it copies the prices of every area in use or followed by the service, from fourteen days back to tomorrow, and their history. An absolute `http` or `https` URL with no user, path, query or fragment; an `http` URL is dialled only to a private address ([Transport security](/en/admin/transport-security/#the-private-network-exception)). **One source per installation**: set together with `ENERGY_SPOT_PRICE_FEED_ENABLED=1`, it stops the start-up ("set one spot price source") ([Spot prices](/en/reference/energy/#the-sources)) | unset |
 | `ENERGY_SPOT_PRICE_SERVICE_KEY` | The installation's bearer key for the spot-price service. Required with `ENERGY_SPOT_PRICE_SERVICE_URL` and refused without it; at most 200 bytes of printable characters with no space. A secret: redacted wherever the configuration is printed, never logged | unset |
 | `ENERGY_SPOT_PRICE_HISTORY_FROM` | The oldest day the spot-price service's history is copied from, `YYYY-MM-DD`; anything else stops the start-up. Unset copies everything the service holds for each area | unset |
-| `APP_TITLE`, `APP_LOGO_URL`, `APP_SUPPORT_EMAIL`, `APP_SUPPORT_PHONE`, `APP_SUPPORT_URL` | SPA branding | unset |
+| `APP_TITLE`, `APP_LOGO_URL`, `APP_SUPPORT_EMAIL`, `APP_SUPPORT_PHONE`, `APP_SUPPORT_URL` | SPA branding, imported once into the default brand ([Branding](/en/admin/branding/)) | unset |
 
 The Peppol lookup treats NXDOMAIN and NOERROR-with-no-NAPTR-records as the same
 definitive "not registered" answer ([Peppol lookup](/en/reference/customers/#peppol-lookup)), since

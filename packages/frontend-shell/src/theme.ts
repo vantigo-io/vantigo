@@ -1,10 +1,13 @@
 import { createTheme, localStorageColorSchemeManager, type MantineColorsTuple } from "@mantine/core";
+import { LUMINANCE_THRESHOLD } from "./brand/scale";
+import { BRAND_RADII, type BrandRadius, type BrandTokens, builtinPayload, RADIUS_VALUES } from "./brand/tokens";
 
 /**
  * The Vantigo brand color scale, anchored on indigo #4f46e5 (shade 6).
- * Change it here and every app picks it up.
+ * It is the scale of the default brand (brand/tokens.ts keeps the same ten values, and a test
+ * pins the two together); a brand with another primary generates its own.
  */
-const vantigoIndigo: MantineColorsTuple = [
+export const vantigoIndigo: MantineColorsTuple = [
   "#eef2ff",
   "#e0e7ff",
   "#c7d2fe",
@@ -65,15 +68,32 @@ export const vantigoTokens = {
   pageBg: "light-dark(var(--mantine-color-gray-0), var(--vantigo-body-bg))",
 } as const;
 
+/** The radius input a `--mantine-radius-default` value stands for; `md` for one it does not know. */
+const radiusKey = (value: string): BrandRadius => BRAND_RADII.find((r) => RADIUS_VALUES[r] === value) ?? "md";
+
 /**
- * The shared Mantine theme for all Vantigo frontend apps. Pass it to the
- * MantineProvider in each app's entry point, alongside importing
- * `@vantigo/frontend-shell/theme.css` for the global styles.
+ * The Mantine theme of a brand (brands design B14): the brand's ten shades as the `vantigo` colour,
+ * its radius, and the text colour on a filled primary chosen by Mantine's `autoContrast` at the
+ * threshold the server uses to choose it too (0.179, not Mantine's 0.3). With no brand it is the
+ * Vantigo default brand exactly. Everything else, the dark neutrals included, is Vantigo's.
  */
-export const vantigoTheme = createTheme({
-  colors: { vantigo: vantigoIndigo, dark: vantigoDark },
-  primaryColor: "vantigo",
-  // Mantine's default dark shade (8) turns indigo muddy on dark grey.
-  primaryShade: { light: 6, dark: 6 },
-  defaultRadius: "md",
-});
+export function createVantigoTheme(brand?: { tokens: BrandTokens }) {
+  const tokens = brand?.tokens ?? builtinPayload().tokens;
+  return createTheme({
+    colors: { vantigo: tokens.light.shades as unknown as MantineColorsTuple, dark: vantigoDark },
+    primaryColor: "vantigo",
+    // Mantine's default dark shade (8) turns indigo muddy on dark grey.
+    primaryShade: { light: 6, dark: 6 },
+    defaultRadius: radiusKey(tokens.radius),
+    autoContrast: true,
+    luminanceThreshold: LUMINANCE_THRESHOLD,
+  });
+}
+
+/**
+ * The shared Mantine theme for all Vantigo frontend apps, the default brand's. Pass it to the
+ * MantineProvider in each app's entry point, alongside importing
+ * `@vantigo/frontend-shell/theme.css` for the global styles; the host passes the signed-in
+ * person's brand instead (`createVantigoTheme`).
+ */
+export const vantigoTheme = createVantigoTheme();

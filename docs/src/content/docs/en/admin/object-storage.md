@@ -13,6 +13,7 @@ sources:
   - apps/server/internal/customers/objects.go
   - apps/server/internal/manufacturing/quality_photos.go
   - apps/server/internal/products/objects.go
+  - apps/server/internal/identity/brand_logos.go
 ---
 Object storage is the application port Communications stages and serves attachments
 through. Modules never talk to a provider SDK: they receive an `ObjectStore` scoped
@@ -61,6 +62,18 @@ boot.
 `STORAGE_FS_ALLOW_INSECURE_ROOT` is accepted **only when `APP_ENV=development`**;
 outside development it is a startup error regardless of what it would have done —
 the same shape as `MAIL_DRIVER=log` and `OWNERS_ALLOW_INSECURE_NO_MFA`.
+
+## Brand logos
+
+Identity now stores **brand logos** (the marks, icon and wordmark of
+[Branding](/en/admin/branding/)) in its own scope, `identity`, as
+`brands/logo-{sha256}.{png|jpg}`: named by the hash of the normalised file, so uploading the same
+logo twice is one object, and **never deleted**, since a document may carry one. Without an object
+store brands work in full, without logos; the **Brand** screen says why the upload controls are
+off. The one-time import of `APP_LOGO_URL` needs a store too, and raises a notice when there is
+none. Published logos are served to everyone without a session from
+`/api/v1/identity/brand-assets/{sha256}.{png|jpg}`, which answers only for a file a published
+brand names.
 
 ## The filesystem driver
 
