@@ -211,10 +211,86 @@ func TestMCP_WhoReachesIt(t *testing.T) {
 	}
 }
 
+// mcpRPCError is the JSON-RPC error code of an answer, 0 when it has none.
+func mcpRPCError(r *modtest.Response) int {
+	var out struct {
+		Error *struct {
+			Code int `json:"code"`
+		} `json:"error"`
+	}
+	r.JSON(&out)
+	if out.Error == nil {
+		return 0
+	}
+	return out.Error.Code
+}
+
+// A write runs through the REST path as the key (M8, M12, M22): write is
+// listed under read_write, the customer is created, the request log holds the
+// real operation with the key beside the envelope, and the call counts once.
+// Lowered to read, write is the protocol error and creates nothing.
+func TestMCP_AWriteRunsAsTheKey(t *testing.T) {
+	h := mcpHarness(t)
+	integration := h.Integration(t, "Agent", "customers:view", "customers:create")
+	setMCPAccess(t, h, integration, "read_write")
+	key, keyID := h.APIKeyFor(t, integration, modtest.APIKey{})
+	c := h.APIKeyClient(t, key)
+
+	list := mcpCall(c, "tools/list", nil)
+	var tools struct {
+		Result struct {
+			Tools []struct {
+				Name        string         `json:"name"`
+				Annotations map[string]any `json:"annotations"`
+			} `json:"tools"`
+		} `json:"result"`
+	}
+	list.JSON(&tools)
+	if n := len(tools.Result.Tools); n != 4 || tools.Result.Tools[3].Name != "write" || tools.Result.Tools[3].Annotations["destructiveHint"] != true {
+		t.Fatalf("tools %+v", tools.Result.Tools)
+	}
+	afterList := remaining(t, list)
+
+	r, text, isError := mcpTool(t, c, "write", map[string]any{"operation": "postCustomers", "body": map[string]any{"name": "Fjordkraft AS"}})
+	if isError || !strings.Contains(text, `"customerNumber"`) {
+		t.Fatalf("write: %v %s", isError, text)
+	}
+	if remaining(t, r) != afterList-1 {
+		t.Errorf("after the write: remaining %d, want %d: a write counts once", remaining(t, r), afterList-1)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM customers.customers WHERE name = 'Fjordkraft AS'`); n != 1 {
+		t.Errorf("%d customers created", n)
+	}
+
+	got := mcpLog(t, h, integration)
+	var ops []string
+	for _, row := range got {
+		if row.keyID != keyID {
+			t.Errorf("logged %+v", row)
+		}
+		if row.operationID == "postCustomers" && row.status != http.StatusCreated {
+			t.Errorf("postCustomers logged %+v", row)
+		}
+		ops = append(ops, row.operationID)
+	}
+	slices.Sort(ops)
+	if want := []string{"postApiMcp", "postApiMcp", "postCustomers"}; !slices.Equal(ops, want) {
+		t.Errorf("logged %v, want %v", ops, want)
+	}
+
+	setMCPAccess(t, h, integration, "read")
+	if r := mcpCall(c, "tools/call", map[string]any{"name": "write", "arguments": map[string]any{"operation": "postCustomers", "body": map[string]any{"name": "Again AS"}}}); r.Status != http.StatusOK || mcpRPCError(r) != -32602 {
+		t.Errorf("write after the mode went to read: %d %s", r.Status, r.Body)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM customers.customers`); n != 1 {
+		t.Errorf("%d customers: a write went through under read", n)
+	}
+}
+
 // What a key reaches (M3, M10, M25): under read_write a read-only key lists
-// the three tools and reads; a write is never in reach while the write tool
-// does not exist; a narrowed key neither finds nor reads what its narrowing
-// leaves out.
+// the three tools, reads, and its write is the protocol error; read refuses a
+// write and names the write tool; a narrowed key neither finds nor reads, nor
+// writes, what its narrowing leaves out.
 func TestMCP_WhatAKeyReaches(t *testing.T) {
 	h := mcpHarness(t)
 	integration := h.Integration(t, "Agent", "customers:view", "customers:create")
@@ -240,9 +316,16 @@ func TestMCP_WhatAKeyReaches(t *testing.T) {
 	if _, text, isError := mcpTool(t, c, "read", map[string]any{"operation": "getCustomers"}); isError {
 		t.Errorf("a read-only key's read: %s", text)
 	}
+	if r := mcpCall(c, "tools/call", map[string]any{"name": "write", "arguments": map[string]any{"operation": "postCustomers", "body": map[string]any{"name": "x"}}}); r.Status != http.StatusOK || mcpRPCError(r) != -32602 {
+		t.Errorf("a read-only key's write: %d %s", r.Status, r.Body)
+	}
 	full, _ := h.APIKeyFor(t, integration, modtest.APIKey{})
-	if _, text, isError := mcpTool(t, h.APIKeyClient(t, full), "read", map[string]any{"operation": "postCustomers", "body": map[string]any{"name": "x"}}); !isError || !strings.Contains(text, "not available") {
+	if _, text, isError := mcpTool(t, h.APIKeyClient(t, full), "read", map[string]any{"operation": "postCustomers", "body": map[string]any{"name": "x"}}); !isError || !strings.Contains(text, "write tool") {
 		t.Errorf("a write through read: %v %s", isError, text)
+	}
+	viewOnly, _ := h.APIKeyFor(t, integration, modtest.APIKey{Permissions: []string{"customers:view"}})
+	if _, text, isError := mcpTool(t, h.APIKeyClient(t, viewOnly), "write", map[string]any{"operation": "postCustomers", "body": map[string]any{"name": "x"}}); !isError || !strings.Contains(text, "not available") {
+		t.Errorf("a key narrowed to customers:view wrote: %v %s", isError, text)
 	}
 	if n := h.Count(t, `SELECT count(*) FROM customers.customers`); n != 0 {
 		t.Errorf("%d customers: a write went through", n)

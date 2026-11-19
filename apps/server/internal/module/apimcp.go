@@ -15,12 +15,13 @@ import (
 )
 
 // The MCP endpoint, POST /api/mcp (MCP server design M5-M13, M21-M33): an AI
-// client connects with an integration's API key and reaches, through three
-// tools, exactly the read operations that key may call over REST. The
-// handler authenticates the key itself, refuses an integration whose MCP
-// setting is off, and runs a tool call as a request of the key's own through
-// the composed API handler, so every rule of the REST path applies to it. The
-// one thing it adds is the setting: under read, nothing but a read is called.
+// client connects with an integration's API key and reaches, through its
+// tools, exactly the operations that key may call over REST: the reads, and
+// the writes too when the key's effective mode is read_write. The handler
+// authenticates the key itself, refuses an integration whose MCP setting is
+// off, and runs a tool call as a request of the key's own through the
+// composed API handler, so every rule of the REST path applies to it. The one
+// thing it adds is the setting: under read, nothing but a read is called.
 
 // mcpPath is where the endpoint is registered.
 const mcpPath = "/api/mcp"
@@ -162,7 +163,7 @@ func (h *mcpHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.keys.serve(w, r, p, mcpOperationID, start, answer)
 }
 
-// mcpCall is a tools/call of read that is ready to loop back.
+// mcpCall is a tools/call of read or write that is ready to loop back.
 type mcpCall struct {
 	req     mcpRequest
 	op      *mcpOperation
@@ -197,12 +198,13 @@ func (h *mcpHandler) plan(w http.ResponseWriter, r *http.Request, p contracts.Pr
 		}
 	}
 	needScope := readErr == nil && f == nil && !msg.notification() && msg.Method == mcpMethodToolsCall &&
-		params.Name != nil && (*params.Name == mcpToolSearch || *params.Name == mcpToolDescribe || *params.Name == mcpToolRead)
+		params.Name != nil && (*params.Name == mcpToolSearch || *params.Name == mcpToolDescribe || *params.Name == mcpToolRead || *params.Name == mcpToolWrite)
 	key, err := mcp.MCP(r.Context(), p, needScope)
 	if err != nil {
 		return fail(err)
 	}
-	if key.Effective() == contracts.MCPAccessOff {
+	mode := key.Effective()
+	if mode == contracts.MCPAccessOff {
 		return func(w http.ResponseWriter) {
 			writeAuthError(w, http.StatusForbidden, "mcp_not_enabled", mcpNotEnabledMessage)
 		}, nil
@@ -228,6 +230,9 @@ func (h *mcpHandler) plan(w http.ResponseWriter, r *http.Request, p contracts.Pr
 		}, nil
 	}
 
+	// writes is whether this request's mode reaches writes: judged afresh on
+	// every request, so a mode lowered after tools/list holds at the next call.
+	writes := mode == contracts.MCPAccessReadWrite
 	result := func(fields map[string]any) (func(http.ResponseWriter), *mcpCall) {
 		return func(w http.ResponseWriter) {
 			writeRPC(w, http.StatusOK, rpcResponse{ID: msg.ID, Result: req.result(fields, h.version)})
@@ -252,7 +257,7 @@ func (h *mcpHandler) plan(w http.ResponseWriter, r *http.Request, p contracts.Pr
 	case mcpMethodPing:
 		return result(map[string]any{})
 	case mcpMethodToolsList:
-		fields := map[string]any{"tools": mcpTools()}
+		fields := map[string]any{"tools": mcpTools(writes)}
 		if req.era == mcpModern {
 			fields["ttlMs"], fields["cacheScope"] = mcpToolsTTLMs, "private"
 		}
@@ -267,10 +272,12 @@ func (h *mcpHandler) plan(w http.ResponseWriter, r *http.Request, p contracts.Pr
 	}
 	name := *params.Name
 	tool := func(t toolResult) (func(http.ResponseWriter), *mcpCall) { return result(t.fields()) }
-	switch name {
-	case mcpToolSearch, mcpToolDescribe, mcpToolRead:
+	switch {
+	case name == mcpToolSearch, name == mcpToolDescribe, name == mcpToolRead:
+	case name == mcpToolWrite && writes:
 	default:
-		// The write tool is not one this endpoint has yet (M31).
+		// An unknown tool, and write where it is not listed, is a protocol
+		// error (M31).
 		return func(w http.ResponseWriter) {
 			writeFailure(w, msg.ID, failure(http.StatusOK, rpcInvalidParams, "Unknown tool: "+name))
 		}, nil
@@ -281,17 +288,20 @@ func (h *mcpHandler) plan(w http.ResponseWriter, r *http.Request, p contracts.Pr
 	}
 	switch name {
 	case mcpToolSearch:
-		return tool(searchTool(index, params.Arguments))
+		return tool(searchTool(index, params.Arguments, writes))
 	case mcpToolDescribe:
-		return tool(describeTool(index, params.Arguments))
+		return tool(describeTool(index, params.Arguments, writes))
 	}
 
 	var args mcpCallArguments
 	if err := decodeArguments(params.Arguments, &args); err != nil {
 		return tool(toolError("The arguments are not valid: %v.", err))
 	}
-	op, refusal := catalogueOperation(index, args.Operation)
+	op, refusal := catalogueOperation(index, args.Operation, writes)
 	if refusal != nil {
+		return tool(*refusal)
+	}
+	if refusal := wrongTool(name, op); refusal != nil {
 		return tool(*refusal)
 	}
 	target, headers, callBody, refusal := buildCall(op, args)

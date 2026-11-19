@@ -960,7 +960,7 @@ export interface paths {
         get?: never;
         /**
          * Set an integration's MCP access
-         * @description Sets what the integration's API keys may do at the MCP endpoint, POST /api/mcp (MCP server design M1-M3): off refuses them there, read lets an AI client search, describe and call read operations, and read_write lets it write as well. A read-only key reads whatever the setting. Until the write tool exists read_write behaves as read. Every integration starts off. Audited integration.mcp_changed.
+         * @description Sets what the integration's API keys may do at the MCP endpoint, POST /api/mcp (MCP server design M1-M3): off refuses them there, read lets an AI client search, describe and call read operations, and read_write lets it call write operations as well, through the write tool. A read-only key reads whatever the setting. Every integration starts off. Audited integration.mcp_changed.
          */
         put: operations["putIdentityIntegrationsByIdMcp"];
         post?: never;
