@@ -133,6 +133,41 @@ til mange åpne økter ikke blir like mange forespørsler samtidig. Det Staff si
 ansettelse, beholdes i 30 sekunder og deles mellom forespørsler som kommer samtidig; alt annet
 leses på nytt.
 
+## Innlogging etter e-postdomene
+
+Påloggingssiden starter i standardmerkevaren. Når noen skriver en e-postadresse med et domene du har
+koblet til en merkevare med en [e-postdomeneregel](#reglene), toner siden over i den merkevarens
+farger, logo og tittel på omtrent et tredels sekund, slik at kundens ansatte ser sitt eget firma
+når de logger inn. Glemt passord, tilbakestilling av passord og godtakelse av invitasjon gjør det
+samme for adressen de kjenner. Endres domenet til et som ikke er koblet til, eller tømmes feltet,
+toner siden tilbake. De som har valgt redusert bevegelse får endringen med en gang, uten
+overtoning. Overtoningen er bare et uttrykk: den avgjør aldri om noen kan logge inn, og
+SSO-knappene berøres ikke. Når noen har logget inn, tar deres egen merkevare, slik den er
+[tildelt ovenfor](#hvem-som-ser-hvilken-merkevare), over.
+
+For å bruke den kobler du kundens domene på fanen **Tildeling** og publiserer merkevaren. En
+merkevare som bare er et utkast, eller er arkivert, vises aldri her.
+
+**Hva som blir offentlig.** Merkevarens navn, tittel, farger og logoer kan leses av alle som skriver
+eller ber om et tilkoblet domene; de er offentlige merkevarer. Ikke koble til et domene hvis
+merkevare er konfidensiell. Oppslaget avslører at et domene er koblet til, og ingenting om folkene
+på det: det svarer likt for et domene med kontoer og et uten, og et domene som ikke er koblet til
+får standardmerkevaren i samme form.
+
+**Hva som når tjeneren.** Nettleseren sender bare det som står etter `@`, i
+`GET /api/v1/identity/brand/public?domain=acme.no`, når teksten ser ut som et domene (et punktum, og
+en siste del på to eller flere bokstaver) og har stått stille i 400 ms eller feltet forlates. Delen
+før `@` sendes aldri, og tjeneren avviser en verdi med `@` med `400 domain_invalid`. Det
+skrevne domenet er en spørringsparameter, så det står i tilgangsloggene til tjeneren og til enhver
+proxy eller CDN foran den, som er dine å beskytte og rotere; Vantigos egne logger og tellere
+registrerer bare en hash av domenet. Svar kan bufres i fem minutter, så en endring av reglene eller en
+publisering når påloggingssiden innen den tiden.
+
+**Hastighetsbegrensning.** Oppslaget tillater 30 forespørsler i minuttet per klientadresse; utover det
+er svaret `429` med `Retry-After`, og siden beholder merkevaren den har. En økende telling av
+`vantigo.identity.brand.public_lookups` med `result=limited` er tegnet på at noen prøver seg frem
+etter domener. Telleren har også resultatene `matched`, `unmatched`, `invalid` og `default`.
+
 ## Fargen og hvorfor den sjekkes
 
 Hovedfargen må være en som det går an å bygge en skala av: lysheten må ligge mellom 35 % og 85 %
@@ -198,7 +233,8 @@ fjernes når personen logger ut.
 
 Påloggingssiden, oppsettssiden, passordgjenoppretting, godtakelse av invitasjon og utloggingssiden
 viser standardmerkevarens tittel, favorittikon og farger, fra `GET /api/v1/identity/brand/public`
-(anonym, begrenset per adresse, bufret i ett minutt). Betalingssiden, RSVP-siden og stasjoner ber
+(anonym, begrenset per adresse, bufret i ett minutt), til en skrevet adresse peker på en annen
+merkevare ([Innlogging etter e-postdomene](#innlogging-etter-e-postdomene)). Betalingssiden, RSVP-siden og stasjoner ber
 ikke om noen merkevare i det hele tatt og beholder standardmerkevaren til fakturaer bærer sin egen.
 
 ## Engangsimporten av `APP_TITLE`, `APP_LOGO_URL` og `APP_SUPPORT_*`
@@ -244,6 +280,7 @@ tekst- og kantfargene forblir Vantigos i begge skjemaene.
 | `422 brand_primary_range` | Fargen er nesten hvit eller nesten svart. |
 | `422 brand_contrast` | Et par er under 4,5 : 1; svaret navngir parene. |
 | `422 brand_support_invalid` | E-posten har et visningsnavn eller inneholder `?`, `&` eller `%`, telefonen har andre tegn enn sifre, mellomrom og `+ - ( ) .` eller er over 30 lang, eller lenken er ikke `http(s)` eller en sti som begynner med én enkelt `/`, eller inneholder et kontrolltegn som tabulator eller linjeskift. Samme regel gjelder `APP_SUPPORT_URL` og `APP_LOGO_URL` ved oppstart. |
+| `400 domain_invalid` | Et oppslag etter domene inneholdt noe som ikke er et domene, for eksempel en adresse med `@`. |
 | `409 stale_revision` | Noen andre lagret merkevaren, eller regellisten, siden du åpnet den. |
 | `409 brand_name_taken` | En annen merkevare har navnet. |
 | `409 brand_archived` | Du prøvde å redigere, publisere eller forkaste utkastet til en arkivert merkevare; gjenopprett den først. |
