@@ -487,6 +487,21 @@ func (q *Queries) LiveTransmissionOf(ctx context.Context, arg LiveTransmissionOf
 	return id, err
 }
 
+const lockSendBatch = `-- name: LockSendBatch :exec
+SELECT 1 FROM invoices.send_batches WHERE id = $1 FOR NO KEY UPDATE
+`
+
+// LockSendBatch serializes the workers that end the jobs of one batch. Each
+// of them ends its job and asks FinishSendBatch whether any job is still
+// live, in its own transaction: without this lock the last two to end, at the
+// same time, each still see the other's job as sending (neither commit is
+// visible) and neither finishes the batch. FOR NO KEY UPDATE does not
+// hold up a job being queued for the batch (its foreign key takes FOR KEY SHARE).
+func (q *Queries) LockSendBatch(ctx context.Context, id int64) error {
+	_, err := q.db.Exec(ctx, lockSendBatch, id)
+	return err
+}
+
 const lockSendJob = `-- name: LockSendJob :one
 SELECT id, batch_id, invoice_id, channel, state, code, detail, attempts, lease_id, lease_until, started_at, transmission_id, delivery_id, created_at, finished_at FROM invoices.send_jobs WHERE id = $1 FOR UPDATE
 `
