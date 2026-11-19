@@ -1004,8 +1004,9 @@ slik en person har, og den handler bare med en API-nøkkel på forespørselen, a
 
 Integrasjoner og API-nøklene deres lages under **Administrer arbeidsområde › API-tilgang**
 ([API-tilgang](/nb/admin/api-access/)). En nøkkel når MCP-endepunktet, `/api/mcp`, bare når en
-eier har slått på integrasjonens **MCP-tilgang**, og gjennom det bare lesingene den kan kalle med
-REST ([API-tilgang › MCP](/nb/admin/api-access/#mcp)).
+eier har slått på integrasjonens **MCP-tilgang**, og gjennom det bare det den kan kalle med REST:
+lesingene, og skrivingene også med **Lese og skrive**
+([API-tilgang › MCP](/nb/admin/api-access/#mcp)).
 
 ### Hvordan en nøkkel leses
 

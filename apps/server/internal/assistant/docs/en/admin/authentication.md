@@ -967,8 +967,9 @@ session.
 
 Integrations and their API keys are made under **Workspace admin › API access**
 ([API access](/en/admin/api-access/)). A key reaches the MCP endpoint, `/api/mcp`, only when
-an Owner has turned its integration's **MCP access** on, and through it only the reads it may
-call over REST ([API access › MCP](/en/admin/api-access/#mcp)).
+an Owner has turned its integration's **MCP access** on, and through it only what it may call
+over REST: the reads, and the writes too under **Read and write**
+([API access › MCP](/en/admin/api-access/#mcp)).
 
 ### How a key is read
 

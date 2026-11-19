@@ -282,6 +282,33 @@ the hand-rolled core for the official SDK if the specification outgrows it.
     envelope) are kept and documented.
   - The screen's snippets carry `"type": "http"`, with a VS Code (`servers`) block beside the
     `mcpServers` one; the write-access warning shows only under `read_write`.
+- **5** (2026-11-19, delivery B built): `read_write` no longer behaves as `read` — the code
+  (tool list, search, describe, the catalogue check, the instructions), the contract's text of
+  `PUT …/mcp`, the screen's hint and every page now say what writing allows. Choices and
+  readings:
+  - `write`'s annotations are `destructiveHint: true`, `readOnlyHint: false` (M8) and also
+    `idempotentHint: false`, `openWorldHint: true`: a write may send mail or call a carrier.
+  - `write` named where it is not listed — mode `read`, a read-only key under `read_write`, or a
+    mode lowered after `tools/list` — is `-32602` (M31), not §6's `isError` "not available":
+    M31 is the later amendment, and the mode is read afresh on every request.
+  - `read` of a write and `write` of a read are `isError` naming the right tool (M11); in mode
+    `read` a write is "not available to this key" as before, so a read-mode key learns nothing of
+    the writes. Under `read_write`, `search_operations` and `describe_operation` reach the
+    writes, with their kind.
+  - The instructions stay one fixed text for every key (`server/discover` is `public`): they
+    describe `write`, say it is listed only under `read_write` for a key that is not read-only,
+    and ask the model to read before writing and send `If-Match`/`Idempotency-Key` where taken.
+  - The key dialog's snippet (M16) is shown for a key **just made**, with its secret, under
+    *Connect an AI client (MCP)*; while the integration's mode is `off` it shows a hint to turn MCP
+    on instead, with the installation's switch off it shows nothing, and a read-only key under
+    `read_write` is said to only read. The roll dialog does not show it: it does not hold the
+    integration's detail, and a rolled key replaces one whose client is already configured.
+    `mcpEndpoint` and `mcpSnippets` moved to `-api-access-shared.ts`, the snippet's key a
+    parameter, so the dialog and the Overview share them without an import cycle.
+  - No keyable operation answers a stale `If-Match` with `412` today (inventory answers `409
+    revision_conflict`), so the `412` passthrough is tested with a module that answers it; the
+    `If-Match` header itself is tested end to end on inventory's `putInventorySite` in the unit
+    composition. The integration test creates a customer through `write`.
 
 ## 10. What overturning a default changes
 
@@ -305,7 +332,7 @@ the hand-rolled core for the official SDK if the specification outgrows it.
     protocol eras, authentication, the scoped catalogue, `search_operations`,
     `describe_operation`, `read`, the request log, `reference/mcp.md`, `admin/api-access.md`,
     `admin/configuration.md`, `reference/api-introduction.md`. Until B the mode `read_write`
-    behaves as `read`, and the pages say so.
+    behaved as `read`, and the pages said so; B lifted it (§9, revision 5).
   - **B** — the `write` tool, the connection snippet in the key dialog, the docs' completion,
     `user/workspace-administration.md`, the landing page.
   - The next free migration is `00210` today (#398 holds `00209`); check again before
