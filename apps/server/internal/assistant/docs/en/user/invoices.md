@@ -412,6 +412,12 @@ customer's **default brand**; a customer without one takes its group's, and a cu
 neither the workspace's default brand ([Customers: Brand](/en/user/customers/#brand)). The
 invoice a billing run, the quick invoice or a wizard makes starts the same way.
 
+An invoice made from orders ([Invoice from orders](#invoicing-orders)) starts in the orders'
+brand ([Orders: the brand of a quote or an order](/en/user/orders/#the-brand-of-a-quote-or-an-order)),
+when every order on it was confirmed in the same one and that brand is still published; orders
+of different brands, or an order whose brand has been archived since, leave the choice to the
+customer's default order, and the archived case says so in the notice below.
+
 To print one document in another brand, pick it in **Brand** in the editor. The field
 offers the published brands, the default first, and the choice applies to this document
 only; it does not change the customer. A save without touching the field leaves the brand

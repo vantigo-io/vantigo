@@ -94,6 +94,19 @@ kampanjes utseende kommer aldri på et dokument. Arkiverer du en merkevare et ut
 sier editoren fra, og fakturaen utstedes i neste merkevare i rekkefølgen. De nøyaktige reglene står i
 [Fakturaer: merkevaren til et dokument](/en/reference/invoices/#the-brand-of-a-document).
 
+### Merkevarer på tilbud og ordrer
+
+Tilbud og ordrer skrives ut i en merkevare på samme måte: et utkast starter i kundens
+standardmerkevare, deretter gruppens, deretter arbeidsområdets standard, og den som skriver det kan
+bytte merkevare for akkurat det dokumentet
+([Ordre: merkevaren til et tilbud eller en ordre](/nb/user/orders/#merkevaren-til-et-tilbud-eller-en-ordre)).
+Når et tilbud sendes eller en ordre bekreftes, kopieres merkevarens navn og logo (ordmerket, ellers
+merket for lyse bakgrunner) over i Ordre-appens eget lager, slik at dokumentet skrives ut likt senere
+uansett hva som skjer med merkevaren, og en kampanjes utseende kommer aldri på det. Selgerens juridiske
+identitet er én i denne utgaven: en merkevare endrer logoen, aldri navn, organisasjonsnummer eller
+bankkonto på et dokument. En faktura som lages fra ordrer, starter i ordrenes merkevare. De nøyaktige
+reglene står i [Ordre: merkevaren til et dokument](/en/reference/orders/#the-brand-of-a-document).
+
 ## Hvem som ser hvilken merkevare
 
 En person ser én merkevare: sitt eget valg hvis de har ett og fortsatt kan ha det, ellers den første

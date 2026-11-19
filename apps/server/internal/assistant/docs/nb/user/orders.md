@@ -54,6 +54,38 @@ rabatten på PDF-en**, og under **Tekster** **Innledning**, **Avslutning** og et
 notat**, som aldri skrives ut. Et utkast følger kunden: endres kundens adresse eller navn i
 Kunder, tas det med ved neste lagring.
 
+### Merkevaren til et tilbud eller en ordre
+
+Hvert tilbud og hver ordre skrives ut i en merkevare ([Merkevare](/nb/admin/branding/#merkevarer-pa-tilbud-og-ordrer)):
+logoen, og merkevarens navn som ligger på dokumentets post. Et nytt utkast starter i kundens
+**standardmerkevare**; en kunde uten egen merkevare får gruppens, og en kunde med ingen av delene
+arbeidsområdets standardmerkevare ([Kunder: Merkevare](/nb/user/customers/#merkevare)). En ordre som
+lages av et tilbud, starter i tilbudets merkevare.
+
+Vil du skrive ut ett dokument i en annen merkevare, velg den i **Merkevare** under hodet. Feltet
+tilbyr de publiserte merkevarene, standard først, og valget gjelder bare dette dokumentet; det
+endrer ikke kunden. Å lagre uten å røre feltet lar merkevaren stå, og å bytte kunde flytter en
+merkevare du ikke selv valgte til den nye kundens standard. Under feltet står det at selgerens
+juridiske navn, organisasjonsnummer og bankkonto er de samme i alle merkevarer: en merkevare
+endrer logoen på dokumentet, aldri hvem som sender det. Merkevarens navn skrives ikke ut.
+
+Er merkevaren utkastet ville brukt arkivert i mellomtiden, sier et gult varsel fra — *Merkevaren
+som er valgt for denne kunden er arkivert eller ikke lenger publisert* — og tilbudet sendes, eller
+ordren bekreftes, i neste merkevare i rekkefølgen, med mindre du velger en annen her. PDF-en og
+proformaen til et utkast viser merkevarens logo slik den er nå.
+
+Når du sender et tilbud eller merker det som sendt, og når du bekrefter en ordre, kopieres
+merkevarens navn og logo over på dokumentet. PDF-en, proformaen og e-posten skriver deretter ut den
+kopien for godt: å gi merkevaren nytt navn, arkivere den, bytte logo eller kjøre en kampanje i den
+endrer ikke noe som allerede er sendt eller bekreftet, og en kampanjes utseende vises aldri på et
+dokument. **Merkevare** er da skrivebeskyttet. Å revidere et tilbud åpner det igjen: revisjonen er
+et utkast, og kopien lages på nytt når du sender det. En ordre som er godkjent fra et tilbud og
+bekreftes med en gang, får tilbudets kopi.
+
+Logoen er merkevarens **ordmerke** når den har et, ellers merket for lyse bakgrunner. En merkevare
+uten noen av dem skriver ikke ut noen logo, og det gjør heller ikke et dokument der merkevarens logo
+ikke kunne leses da det ble sendt eller bekreftet; tilbudet sendes og ordren bekreftes likevel.
+
 ### Legg til linjer
 
 Under **Linjer** legger du til:
@@ -552,7 +584,10 @@ på et fakturautkast.
    som skal faktureres — alt som gjenstår, eller mindre for å fakturere deler av en linje —
    og velg **Lag utkastene**
    ([Fakturer fra ordre](/nb/user/invoices/#fakturere-ordre)).
-3. Sjekk utkastet i Fakturaer og utsted det. Til da **holder** utkastet antallene det
+3. Utkastet starter i ordrens merkevare når alle ordrene på det ble bekreftet i den samme og
+   merkevaren fortsatt er publisert; ellers i kundens standard
+   ([Fakturaer: merkevaren til et dokument](/nb/user/invoices/#merkevaren-til-et-dokument)).
+   Sjekk utkastet i Fakturaer og utsted det. Til da **holder** utkastet antallene det
    fakturerer: fremdriften på hver linje viser «2 på fakturautkast», og de tilbys ikke til
    fakturering igjen.
 
