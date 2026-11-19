@@ -6131,6 +6131,7 @@ paths:
                 - Brands
             x-vantigo-access: permission:identity:brands
             x-vantigo-api: never
+            x-vantigo-assistant: never
     /api/v1/identity/brands/{id}:
         get:
             description: 'One brand with its published version, its pending draft, and the contrast checks (brands design B4) and the nearest passing primary for the version being edited (the draft, else the published one).'
@@ -6168,6 +6169,7 @@ paths:
                 - Brands
             x-vantigo-access: permission:identity:brands
             x-vantigo-api: never
+            x-vantigo-assistant: never
         put:
             description: 'Writes the brand''s pending draft (brands design B1, B20, B37) from its inputs: the name, the title, one primary colour as #rrggbb, the radius and the support contacts; the published version is untouched until a publish. Every generated value (the ten shades and the rest of the tokens) is recomputed on the server; a body that carries tokens, shades or any other field is a 400 invalid_request. The logos are set through their own endpoints. A draft may be saved while its colours fail the contrast checks. Audited brand.updated.'
             operationId: putIdentityBrandsById
@@ -6236,6 +6238,7 @@ paths:
                 - Brands
             x-vantigo-access: permission:identity:brands
             x-vantigo-api: never
+            x-vantigo-assistant: never
     /api/v1/identity/brands/{id}/discard-draft:
         post:
             description: 'Drops the pending version; the published version is what is left (brands design B20). Audited brand.updated.'
@@ -6285,6 +6288,7 @@ paths:
                 - Brands
             x-vantigo-access: permission:identity:brands
             x-vantigo-api: never
+            x-vantigo-assistant: never
     /api/v1/identity/brands/{id}/logos/{slot}:
         delete:
             description: 'Clears one logo slot in the brand''s draft (brands design B6); the stored object is kept, since a document may name it. Audited brand.logo_removed.'
@@ -6332,6 +6336,7 @@ paths:
                 - Brands
             x-vantigo-access: permission:identity:brands
             x-vantigo-api: never
+            x-vantigo-assistant: never
         get:
             description: 'A logo as stored (brands design B6, B15), streamed to a holder of identity:brands: the published one, or with draft=true the pending one, so the editor can show an uploaded logo before it is published. Never sniffed; private, revalidated.'
             operationId: getIdentityBrandsByIdLogosBySlot
@@ -6394,6 +6399,7 @@ paths:
                 - Brands
             x-vantigo-access: permission:identity:brands
             x-vantigo-api: never
+            x-vantigo-assistant: never
         put:
             description: 'Sets one logo slot in the brand''s draft (brands design B6): a PNG or JPEG in the multipart field file, its own bytes deciding its type, at most 512 KiB, 16 to 2,000 pixels, metadata removed by re-encoding. The icon must be square within 5 %. The published version is never touched. Audited brand.logo_set.'
             operationId: putIdentityBrandsByIdLogosBySlot
@@ -6464,6 +6470,7 @@ paths:
                 - Brands
             x-vantigo-access: permission:identity:brands
             x-vantigo-api: never
+            x-vantigo-assistant: never
     /api/v1/identity/brands/{id}/publish:
         post:
             description: 'Makes the draft the published version and bumps its version (brands design B20). Refused 422 brand_contrast, naming the failing pairs (B4), while any colour pair is below AA 4.5:1 in either colour scheme. Audited brand.published.'
@@ -6519,6 +6526,7 @@ paths:
                 - Brands
             x-vantigo-access: permission:identity:brands
             x-vantigo-api: never
+            x-vantigo-assistant: never
     /api/v1/identity/integrations:
         get:
             description: 'Every integration (API access design K21), archived ones last: its status, its roles, the number of keys in force, the nearest expiry among them and when any of its keys was last used.'

@@ -76,6 +76,14 @@ var markedByHand = map[string]string{
 	"postIdentityAccountPasskeysBegin":            "never", // a WebAuthn ceremony needs the person's browser
 	"postIdentityAccountPasskeysComplete":         "never",
 	"deleteIdentityAccountPasskeysByCredentialId": "never",
+	"deleteIdentityBrandsByIdLogosBySlot":         "never",
+	"getIdentityBrands":                           "never",
+	"getIdentityBrandsById":                       "never",
+	"getIdentityBrandsByIdLogosBySlot":            "never",
+	"postIdentityBrandsByIdDiscardDraft":          "never",
+	"postIdentityBrandsByIdPublish":               "never",
+	"putIdentityBrandsById":                       "never",
+	"putIdentityBrandsByIdLogosBySlot":            "never",
 	"postIdentityAccountSessionsRevoke":           "never", // ends the session the assistant stands on
 	"getCalendarFeed":                             "never", // the address holds a bearer token
 	"postCalendarFeedByVariant":                   "never",
