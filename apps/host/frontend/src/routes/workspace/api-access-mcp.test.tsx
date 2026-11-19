@@ -69,15 +69,17 @@ describe("an integration's MCP section", () => {
     await waitFor(() => expect(api.setIntegrationMcpAccess).toHaveBeenCalledWith("i-1", "v-3", "read"));
   });
 
-  it("shows how to connect once it is on, with a placeholder for the key", async () => {
+  it("shows how to connect once it is on, the key read from the client's own store", async () => {
     await renderSection(detail("read"));
     expect(screen.getByRole("radio", { name: /^Read only/ })).toBeChecked();
     const command = screen.getByText(/claude mcp add --transport http/);
     expect(command.textContent).toBe(
-      `claude mcp add --transport http claude-agent ${window.location.origin}/api/mcp --header "Authorization: Bearer vtg_…"`,
+      `claude mcp add --transport http claude-agent ${window.location.origin}/api/mcp --header "Authorization: Bearer $VANTIGO_API_KEY"`,
     );
     expect(screen.getByText(/"mcpServers"/).textContent).toContain(`"url": "${window.location.origin}/api/mcp"`);
     expect(screen.getByText(/"servers"/).textContent).toContain('"type": "http"');
+    expect(screen.getByText(/Never put a key in a file you commit/).textContent).toContain("export VANTIGO_API_KEY=…");
+    expect(screen.getByText(/a key that is not read-only can still write over the REST API/)).toBeInTheDocument();
     expect(screen.getByText(/text written to mislead it/)).toBeInTheDocument();
     expect(screen.queryByText(/write access/)).not.toBeInTheDocument();
   });
@@ -133,28 +135,23 @@ describe("an integration's MCP section", () => {
 });
 
 describe("the connection snippets", () => {
-  it("name the server after the integration and carry url and headers", () => {
-    const { claude, json, vscode } = mcpSnippets("https://erp.example.com/base/api/mcp", "Øst Webshop / 2");
+  it("name the server after the integration and read the key from each client's own store, never holding it", () => {
+    const url = "https://erp.example.com/base/api/mcp";
+    const { claude, json, vscode } = mcpSnippets(url, "Øst Webshop / 2");
     expect(claude).toBe(
-      'claude mcp add --transport http st-webshop-2 https://erp.example.com/base/api/mcp --header "Authorization: Bearer vtg_…"',
+      `claude mcp add --transport http st-webshop-2 ${url} --header "Authorization: Bearer $VANTIGO_API_KEY"`,
     );
-    const server = {
-      type: "http",
-      url: "https://erp.example.com/base/api/mcp",
-      headers: { Authorization: "Bearer vtg_…" },
-    };
-    expect(JSON.parse(json)).toEqual({ mcpServers: { "st-webshop-2": server } });
-    expect(JSON.parse(vscode)).toEqual({ servers: { "st-webshop-2": server } });
+    expect(JSON.parse(json)).toEqual({
+      mcpServers: { "st-webshop-2": { url, headers: { Authorization: "Bearer $" + "{env:VANTIGO_API_KEY}" } } },
+    });
+    expect(JSON.parse(vscode)).toEqual({
+      inputs: [{ type: "promptString", id: "vantigo-key", description: "Vantigo API key", password: true }],
+      servers: {
+        "st-webshop-2": { type: "http", url, headers: { Authorization: "Bearer $" + "{input:vantigo-key}" } },
+      },
+    });
     expect(mcpSnippets("https://x/api/mcp", "???").claude).toContain(" vantigo ");
-  });
-
-  it("carry the key they are given in place of the placeholder", () => {
-    const { claude, json, vscode } = mcpSnippets("https://x/api/mcp", "Agent", "vtg_secret");
-    expect(claude).toBe(
-      'claude mcp add --transport http agent https://x/api/mcp --header "Authorization: Bearer vtg_secret"',
-    );
-    expect(JSON.parse(json).mcpServers.agent.headers).toEqual({ Authorization: "Bearer vtg_secret" });
-    expect(JSON.parse(vscode).servers.agent.headers).toEqual({ Authorization: "Bearer vtg_secret" });
+    for (const text of [claude, json, vscode]) expect(text).not.toContain("vtg_");
   });
 });
 

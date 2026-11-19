@@ -18,8 +18,8 @@ const modes: IntegrationMcpAccess[] = ["off", "read", "read_write"];
 /**
  * An integration's MCP section on its Overview (MCP server design M16, M33):
  * what its keys may do at /api/mcp, saved under If-Match, the endpoint's
- * address and, once it is on, how a client connects, with a placeholder for
- * the key. When the installation has switched MCP off the section says so,
+ * address and, once it is on, how a client connects, reading the key from the
+ * client's own store. When the installation has switched MCP off the section says so,
  * whatever the setting.
  */
 export const IntegrationMcp = ({ detail, archived }: { detail: IntegrationDetail; archived: boolean }) => {
@@ -77,14 +77,7 @@ export const IntegrationMcp = ({ detail, archived }: { detail: IntegrationDetail
           </Alert>
         )}
         <Copyable label={t("apiAccess.mcpUrl")} value={url} />
-        {mcpAccess !== "off" && mcpAvailable && (
-          <>
-            <McpSnippets url={url} name={integration.name} />
-            <Text size="sm" c="dimmed">
-              {t("apiAccess.mcpSnippetHint")}
-            </Text>
-          </>
-        )}
+        {mcpAccess !== "off" && mcpAvailable && <McpSnippets url={url} name={integration.name} />}
       </Stack>
     </PageSection>
   );

@@ -178,32 +178,37 @@ describe("an integration's page", () => {
     const dialog = screen.getByRole("dialog");
     expect(within(dialog).getByText("Connect an AI client (MCP)")).toBeInTheDocument();
     expect(within(dialog).getByText(/claude mcp add --transport http/).textContent).toBe(
-      `claude mcp add --transport http webshop-sync ${window.location.origin}/api/mcp --header "Authorization: Bearer ${secret}"`,
+      `claude mcp add --transport http webshop-sync ${window.location.origin}/api/mcp --header "Authorization: Bearer $VANTIGO_API_KEY"`,
     );
     expect(JSON.parse(within(dialog).getByText(/"mcpServers"/).textContent ?? "")).toEqual({
       mcpServers: {
         "webshop-sync": {
-          type: "http",
           url: `${window.location.origin}/api/mcp`,
-          headers: { Authorization: `Bearer ${secret}` },
+          headers: { Authorization: "Bearer $" + "{env:VANTIGO_API_KEY}" },
         },
       },
     });
-    expect(within(dialog).getByText(/"servers"/).textContent).toContain(`Bearer ${secret}`);
-    expect(within(dialog).queryByText(/only reads/)).not.toBeInTheDocument();
+    // The secret is in its own Copy field alone, never in a snippet that
+    // could be committed (S4).
+    expect(within(dialog).getAllByText(secret, { exact: false })).toHaveLength(2); // the key and the curl example
+    expect(within(dialog).getByText(/"servers"/).textContent).not.toContain(secret);
+    expect(within(dialog).getByText(/Never put a key in a file you commit/)).toBeInTheDocument();
+    // A key that can write is told MCP's read does not bind it (S5).
+    expect(within(dialog).getByText(/This key is not read-only/)).toBeInTheDocument();
   });
 
   it("says a read-only key only reads under read and write", async () => {
     api.getIntegration.mockResolvedValue({ ...detail(), mcpAccess: "read_write" });
     await makeKey(key({ readOnly: true }), secret);
     expect(screen.getByText(/This key is read-only, so an AI client connected with it only reads/)).toBeInTheDocument();
+    expect(screen.queryByText(/This key is not read-only/)).not.toBeInTheDocument();
   });
 
   it("claims no MCP connection while the integration's MCP is off, and says where to turn it on", async () => {
     api.getIntegration.mockResolvedValue(detail());
     await makeKey(key(), secret);
     const dialog = screen.getByRole("dialog");
-    expect(within(dialog).getByText(/turn MCP on under MCP on the integration's Overview/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/turn MCP on in the MCP section of Overview first/)).toBeInTheDocument();
     expect(within(dialog).queryByText(/claude mcp add/)).not.toBeInTheDocument();
   });
 

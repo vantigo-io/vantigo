@@ -41,28 +41,42 @@ export const contactOptions = (users: AuthorizationUser[], current: string | nul
 /** The MCP endpoint's address on this installation, as the curl hint builds it (MCP server design M33). */
 export const mcpEndpoint = () => `${window.location.origin}${appUrl("/api/mcp")}`;
 
+/** The environment variable the snippets read the key from (S4). */
+export const mcpKeyVariable = "VANTIGO_API_KEY";
+
+/** The id of VS Code's prompt for the key. */
+const vscodeKeyInput = "vantigo-key";
+
 /**
- * How a client connects (M16): the Claude Code command, the mcpServers block
- * Cursor and most clients read, and the servers block VS Code reads, carrying
- * key — the placeholder vtg_… on the Overview, the new secret in the key
- * dialog, which is the one place it is shown.
+ * How a client connects (M16, S4): the Claude Code command, the Cursor block
+ * and the VS Code block. None carries a key, so none can be committed with
+ * one: the command reads $VANTIGO_API_KEY from the shell when it is run (and
+ * Claude Code keeps it in the user's own ~/.claude.json), Cursor reads
+ * ${env:VANTIGO_API_KEY} when it starts the server, and VS Code asks for the
+ * key once (${input:…}, a password prompt) and keeps it in its secret
+ * storage. The key itself is shown only in the new key's Copy field.
  */
-export const mcpSnippets = (url: string, name: string, key = "vtg_…") => {
+export const mcpSnippets = (url: string, name: string) => {
   const server =
     name
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-+|-+$/g, "") || "vantigo";
-  const authorization = `Bearer ${key}`;
+  const reference = (expression: string) => `Bearer ${"$"}{${expression}}`;
   return {
-    claude: `claude mcp add --transport http ${server} ${url} --header "Authorization: ${authorization}"`,
+    claude: `claude mcp add --transport http ${server} ${url} --header "Authorization: Bearer $${mcpKeyVariable}"`,
     json: JSON.stringify(
-      { mcpServers: { [server]: { type: "http", url, headers: { Authorization: authorization } } } },
+      { mcpServers: { [server]: { url, headers: { Authorization: reference(`env:${mcpKeyVariable}`) } } } },
       null,
       2,
     ),
     vscode: JSON.stringify(
-      { servers: { [server]: { type: "http", url, headers: { Authorization: authorization } } } },
+      {
+        inputs: [{ type: "promptString", id: vscodeKeyInput, description: "Vantigo API key", password: true }],
+        servers: {
+          [server]: { type: "http", url, headers: { Authorization: reference(`input:${vscodeKeyInput}`) } },
+        },
+      },
       null,
       2,
     ),
