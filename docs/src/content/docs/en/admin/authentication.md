@@ -1064,7 +1064,8 @@ the row, and replayed to every retry for 24 hours. The router reaches the table 
 cycle under a lease of its own, whatever `IDEMPOTENCY_ENABLED` says
 ([API access › Retrying safely](/en/admin/api-access/#retrying-safely)). A customer's
 anonymisation raises a watermark in `identity.idempotency_erasure`: an answer kept before it is
-never replayed.
+never replayed. With `IDEMPOTENCY_ENABLED` off nothing is claimed, and an answer to a request that
+sent a key to one of those operations carries `Idempotency-Key-Ignored: true`.
 
 The router hands each answered request to identity's recorder, which queues it and never
 waits. A writer in the API process writes the queue every 2 seconds or 500 rows, on a pooled
