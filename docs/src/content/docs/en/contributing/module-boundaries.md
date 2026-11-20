@@ -1671,7 +1671,9 @@ lag, never what must refuse — go through the platform's domain-events outbox,
       `contracts.WithRequest`: its recorder replaces the `ResponseWriter` there, so what a
       handler writes through `ResponseWriterFrom` is held back with the rest of its answer.
       A module does nothing to be covered; an operation that must run on every call, or can
-      run longer than two minutes, goes in `IdempotencyNever` with its reason.
+      run longer than two minutes, goes in `IdempotencyNever` with its reason. With the store
+      switched off (`IDEMPOTENCY_ENABLED`), the router mounts no middleware and instead answers
+      a request that sent a key to one of those operations with `Idempotency-Key-Ignored: true`.
     - **`compose.go` answers `/api/openapi.json` and leaves `/api` to the reference.**
       The document has its own check, `Rule{Kind: RuleAnonymous, API: APIRead}` — a
       read-only key may load its document — and a principal with no user is `401`. A session

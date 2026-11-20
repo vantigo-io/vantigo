@@ -830,8 +830,18 @@ func callResult(e *mcpOperation, rec *callRecorder, keyed bool) toolResult {
 			// said to be one, so the model does not take it for a second change
 			// nor, fed a key from the workspace, for its own.
 			// The response is spliced in as it was, not re-encoded.
-			note, _ := json.Marshal(mcpReplayNote)
-			text = fmt.Sprintf(`{"idempotentReplayed":true,"status":%d,"response":%s,"note":%s}`, rec.status, text, note)
+			// Every branch above left text as valid JSON, so it is a RawMessage
+			// here and the encoder, not a format string, builds the wrapper.
+			var wrapped bytes.Buffer
+			enc := json.NewEncoder(&wrapped)
+			enc.SetEscapeHTML(false)
+			_ = enc.Encode(struct {
+				IdempotentReplayed bool            `json:"idempotentReplayed"`
+				Status             int             `json:"status"`
+				Response           json.RawMessage `json:"response"`
+				Note               string          `json:"note"`
+			}{true, rec.status, json.RawMessage(text), mcpReplayNote})
+			text = strings.TrimSuffix(wrapped.String(), "\n")
 		}
 		if escapedLen(text) > mcpResultMaxBytes {
 			if e.Kind == mcpKindWrite {

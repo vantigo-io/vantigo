@@ -1104,7 +1104,9 @@ tabellen gjennom identitets `Access`, slik den når forespørselsloggen; arbeide
 `identity.api-keys` sletter utløpte rader hver syklus under en egen lease, uansett hva
 `IDEMPOTENCY_ENABLED` sier ([API-tilgang › Prøv på nytt uten å gjøre noe to ganger](/nb/admin/api-access/#prøv-på-nytt-uten-å-gjøre-noe-to-ganger)).
 En kundes anonymisering hever et vannmerke i `identity.idempotency_erasure`: et svar lagret før
-det gis aldri igjen.
+det gis aldri igjen. Med `IDEMPOTENCY_ENABLED` av gjøres det ikke krav på noe, og svaret på en
+forespørsel som sendte en nøkkel til en av disse operasjonene, har
+`Idempotency-Key-Ignored: true`.
 
 Ruteren gir hver besvarte forespørsel til identitets registrator, som legger den i kø og aldri
 venter. En skriver i API-prosessen skriver køen hvert annet sekund eller per 500 rader, på en
