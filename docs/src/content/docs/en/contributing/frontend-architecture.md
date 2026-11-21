@@ -289,7 +289,9 @@ are libraries rendered inside the host.
   and the navigation `dark-7` (`--vantigo-surface`), and what floats above a card, a
   menu, a popover, a select's list, is `dark-6` (`--vantigo-raised`): `theme.css` gives
   Mantine's `Popover`, `Menu`, `HoverCard` and `Combobox` dropdowns that background in
-  dark. In light the raised surface is the surface.
+  dark. In light the raised surface is the surface. Mantine's own `Card` in dark is
+  `dark-6`, the fill of an input and of a dropdown, so `theme.css` also makes a `Card` the
+  surface in dark: a field in a card, and a menu over one, are a step lighter than it.
 - **The tint in dark.** Mantine 9 makes the `light` variant of a colour in dark its shade 9
   darkened by half, which for a dark shade 9 (Vantigo's indigo, a generated brand scale,
   grey) is darker than the card it lies on. `vantigoCssVariablesResolver` in `theme.ts`,

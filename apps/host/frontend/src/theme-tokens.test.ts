@@ -73,4 +73,14 @@ describe("theme.css", () => {
     expect(light["--vantigo-link"]).toBe("var(--mantine-color-vantigo-8)");
     expect(light["--vantigo-subtle-bg"]).toBe("var(--mantine-color-vantigo-0)");
   });
+
+  it("makes a card the surface in dark, and what floats the raised surface", () => {
+    // Mantine's own Card in dark is the fill of an input and of a dropdown: a field in a card would not show.
+    const rule = (selector: string) =>
+      new RegExp(
+        `:root\\[data-mantine-color-scheme="dark"\\] \\.${selector}[^{]*\\{\\s*background-color: var\\((--vantigo-[a-z]+)\\)`,
+      ).exec(css)?.[1];
+    expect(rule("mantine-Card-root")).toBe("--vantigo-surface");
+    expect(rule("mantine-Combobox-dropdown")).toBe("--vantigo-raised");
+  });
 });

@@ -39,6 +39,13 @@ body {
   color: var(--vantigo-text);
 }
 
+/* Mantine's Card in dark is its shade 6, the fill of an input and of what floats: a field in a card
+   and a menu over one had only their borders to stand on. A card is the surface, shade 7, as the
+   navigation and the header are. In light a card is already the surface. */
+:root[data-mantine-color-scheme="dark"] .mantine-Card-root {
+  background-color: var(--vantigo-surface);
+}
+
 /* What floats above a card is one step lighter than the card in dark, where its shadow does not
    show. In light the raised surface is the surface, so nothing changes there. */
 :root[data-mantine-color-scheme="dark"] .mantine-Popover-dropdown,
