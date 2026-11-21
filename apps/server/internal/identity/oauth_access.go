@@ -162,8 +162,12 @@ func (a *Access) checkConnection(ctx context.Context, r *http.Request, rule cont
 }
 
 // bearerChallenge is C21's WWW-Authenticate for an OAuth refusal, naming the
-// protected resource's metadata.
+// protected resource's metadata while that document is served: with
+// MCP_ENABLED off it is not (A13), and a challenge never names a 404.
 func (a *Access) bearerChallenge(params string) string {
+	if !a.cfg.MCPEnabled {
+		return `Bearer ` + params
+	}
 	return `Bearer ` + params + `, resource_metadata="` + a.cfg.OAuthResourceMetadata + `"`
 }
 

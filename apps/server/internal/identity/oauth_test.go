@@ -316,32 +316,55 @@ func TestOAuth_PreviewRefusals(t *testing.T) {
 			t.Errorf("%s: %+v", name, p)
 		}
 	}
-	for name, c := range map[string]struct {
-		query, code string
-		automatic   bool
-	}{
-		"response_type token":  {authorizationQuery(hostedClaudeID, hostedClaudeReturn, "response_type", "token"), "unsupported_response_type", true},
-		"no PKCE":              {authorizationQuery(hostedClaudeID, hostedClaudeReturn, "code_challenge", ""), "invalid_request", true},
-		"plain PKCE":           {authorizationQuery(hostedClaudeID, hostedClaudeReturn, "code_challenge_method", "plain"), "invalid_request", true},
-		"an unknown scope":     {authorizationQuery(hostedClaudeID, hostedClaudeReturn, "scope", "read admin"), "invalid_scope", true},
-		"another resource":     {authorizationQuery(hostedClaudeID, hostedClaudeReturn, "resource", "https://other.example.com/api/mcp"), "invalid_target", true},
-		"a long state":         {authorizationQuery(hostedClaudeID, hostedClaudeReturn, "state", strings.Repeat("s", 513)), "invalid_request", true},
-		"a loopback redirect":  {authorizationQuery("https://claude.ai/oauth/claude-code-client-metadata", "http://localhost:53682/callback", "response_type", "token"), "unsupported_response_type", true},
-		"a repeated parameter": {authorizationQuery(hostedClaudeID, hostedClaudeReturn) + "&scope=read", "invalid_request", true},
-	} {
-		p := previewOf(t, owner, c.query)
-		if p.Outcome != "redirect" || p.Error == nil || *p.Error != c.code || p.Automatic == nil || *p.Automatic != c.automatic || p.RedirectTo == nil {
-			t.Errorf("%s: %+v", name, p)
-			continue
+	// Until a client of claude.ai has been connected here, no error is
+	// redirected without a click (A26); afterwards those whose redirect goes
+	// to the client's host or loopback are.
+	agent := createIntegration(t, owner, "Agent").Integration.ID
+	setIntegrationMCP(t, h, agent, "read")
+	for _, connected := range []bool{false, true} {
+		h.advance(time.Minute) // a fresh window of the consent limit
+		if connected {
+			connect(t, h, owner, agent, "read")
 		}
-		u, _ := url.Parse(*p.RedirectTo)
-		if u.Query().Get("error") != c.code || u.Query().Get("iss") != harnessOrigin {
-			t.Errorf("%s: redirect %s", name, u)
-		}
-		if name == "a long state" && u.Query().Has("state") {
-			t.Errorf("a state over its bound was echoed")
+		for name, c := range map[string]struct{ query, code string }{
+			"response_type token":  {authorizationQuery(hostedClaudeID, hostedClaudeReturn, "response_type", "token"), "unsupported_response_type"},
+			"no PKCE":              {authorizationQuery(hostedClaudeID, hostedClaudeReturn, "code_challenge", ""), "invalid_request"},
+			"plain PKCE":           {authorizationQuery(hostedClaudeID, hostedClaudeReturn, "code_challenge_method", "plain"), "invalid_request"},
+			"an unknown scope":     {authorizationQuery(hostedClaudeID, hostedClaudeReturn, "scope", "read admin"), "invalid_scope"},
+			"another resource":     {authorizationQuery(hostedClaudeID, hostedClaudeReturn, "resource", "https://other.example.com/api/mcp"), "invalid_target"},
+			"a long state":         {authorizationQuery(hostedClaudeID, hostedClaudeReturn, "state", strings.Repeat("s", 513)), "invalid_request"},
+			"a loopback redirect":  {authorizationQuery("https://claude.ai/oauth/claude-code-client-metadata", "http://localhost:53682/callback", "response_type", "token"), "unsupported_response_type"},
+			"a repeated parameter": {authorizationQuery(hostedClaudeID, hostedClaudeReturn) + "&scope=read", "invalid_request"},
+		} {
+			p := previewOf(t, owner, c.query)
+			if p.Outcome != "redirect" || p.Error == nil || *p.Error != c.code || p.Automatic == nil || *p.Automatic != connected || p.RedirectTo == nil {
+				t.Errorf("%s (connected before %v): %+v", name, connected, p)
+				continue
+			}
+			u, _ := url.Parse(*p.RedirectTo)
+			if u.Query().Get("error") != c.code || u.Query().Get("iss") != harnessOrigin {
+				t.Errorf("%s: redirect %s", name, u)
+			}
+			if name == "a long state" && u.Query().Has("state") {
+				t.Errorf("a state over its bound was echoed")
+			}
 		}
 	}
+	// Previews and approvals together are limited per person (A2).
+	h.advance(time.Minute)
+	limited := 0
+	for range 21 {
+		if r := owner.do(http.MethodPost, oauthPreviewPath, map[string]any{"query": authorizationQuery(hostedClaudeID, hostedClaudeReturn)}); r.status == http.StatusTooManyRequests {
+			limited++
+		}
+	}
+	if r := owner.do(http.MethodPost, oauthApprovePath, map[string]any{"query": authorizationQuery(hostedClaudeID, hostedClaudeReturn), "decision": "deny"}); r.status != http.StatusTooManyRequests || r.header("Retry-After") == "" {
+		t.Errorf("an approval over the limit: %d %s", r.status, r.body)
+	}
+	if limited != 1 {
+		t.Errorf("%d of 21 previews limited, want 1", limited)
+	}
+	h.advance(time.Minute)
 	// Deny answers the client access_denied.
 	r := owner.do(http.MethodPost, oauthApprovePath, map[string]any{"query": authorizationQuery(hostedClaudeID, hostedClaudeReturn), "decision": "deny"})
 	var denied struct {

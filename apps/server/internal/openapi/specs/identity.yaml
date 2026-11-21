@@ -10170,7 +10170,7 @@ paths:
             x-vantigo-api: never
     /api/v1/identity/oauth/authorizations:
         post:
-            description: 'Approves or denies an OAuth authorization request (OAuth connections design C14, A9): the consent page posts the request''s query string as it received it, the integration the client may act as, the access chosen and the decision. Every parameter is validated again, nothing of the preview trusted. Deny answers the client''s redirect with error=access_denied. Approve creates the connection, not yet activated, and a code valid 60 seconds, and answers the redirect that carries it, with state and iss. A client or redirect URI that is refused is 400 client_refused and is never redirected to; a request wrong in a way the client is told about answers its redirect with the error. 404 while OAUTH_ENABLED is off.'
+            description: 'Approves or denies an OAuth authorization request (OAuth connections design C14, A9): the consent page posts the request''s query string as it received it, the integration the client may act as, the access chosen and the decision. Every parameter is validated again, nothing of the preview trusted. Deny answers the client''s redirect with error=access_denied. Approve creates the connection, not yet activated, and a code valid 60 seconds, and answers the redirect that carries it, with state and iss. Counted with previews against the person''s limit of 20 a minute. A client or redirect URI that is refused is 400 client_refused and is never redirected to; a request wrong in a way the client is told about answers its redirect with the error. 404 while OAUTH_ENABLED is off.'
             operationId: postIdentityOauthAuthorizations
             requestBody:
                 content:
@@ -10220,6 +10220,16 @@ paths:
                             schema:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
                     description: 'Conflict — integration_not_eligible, the integration is archived, disabled or has MCP off, or the access chosen is more than it or the request allows.'
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
             summary: Approve or deny an OAuth authorization
             tags:
                 - API access
@@ -10228,7 +10238,7 @@ paths:
             x-vantigo-assistant: never
     /api/v1/identity/oauth/authorizations/preview:
         post:
-            description: 'Reads an OAuth authorization request for the consent page (OAuth connections design C13, A6, A7): the page posts the query string it received. The client_id and the redirect_uri are judged first: a client that is refused (an invalid client_id, a metadata document that cannot be fetched or breaks the rules, a redirect URI it does not register) is client_refused, and the page offers nothing but Close. A request wrong in a way the client is told about is redirect, with automatic true when the redirect''s host is the client_id''s or loopback. Otherwise it is consent: the client as it calls itself beside what Vantigo verified, the scopes asked, and the integrations with whether each is eligible. Previews are limited to 20 a minute per address, since each may fetch a client''s document. 404 while OAUTH_ENABLED is off.'
+            description: 'Reads an OAuth authorization request for the consent page (OAuth connections design C13, A6, A7): the page posts the query string it received. The client_id and the redirect_uri are judged first: a client that is refused (an invalid client_id, a metadata document that cannot be fetched or breaks the rules, a redirect URI it does not register) is client_refused, and the page offers nothing but Close. A request wrong in a way the client is told about is redirect, with automatic true only when the redirect''s host is the client_id''s or loopback and a client of that host has been connected here before (A26); otherwise the page shows a Return to <host> button. Otherwise it is consent: the client as it calls itself beside what Vantigo verified, the scopes asked, and the integrations with whether each is eligible. Previews and approvals together are limited to 20 a minute per person, since each may fetch a client''s document. 404 while OAUTH_ENABLED is off.'
             operationId: postIdentityOauthAuthorizationsPreview
             requestBody:
                 content:

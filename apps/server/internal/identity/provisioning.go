@@ -967,7 +967,7 @@ func (p *provisioning) Erase(ctx context.Context, actor contracts.Actor, userID 
 		// before the delete sets its authorizer to NULL (OAuth connections
 		// design A17).
 		erasedBy, erasedBySystem := auditActor(actor)
-		if err := p.access.revokeAuthorizerConnections(ctx, q, nil, erasedBy, erasedBySystem, userID, true, now); err != nil {
+		if err := revokeAuthorizerConnections(ctx, q, nil, erasedBy, erasedBySystem, userID, now); err != nil {
 			return err
 		}
 		if err := q.DeleteUser(ctx, userID); err != nil {

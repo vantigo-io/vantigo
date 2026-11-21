@@ -1,7 +1,6 @@
 package integration_test
 
 import (
-	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
@@ -9,7 +8,10 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -347,6 +349,18 @@ func TestOAuth_ACodeReplayed(t *testing.T) {
 	}
 }
 
+// revokeReason is the connection's revoke_reason, "" while it is live.
+func revokeReason(t *testing.T, h *modtest.Harness, connection uuid.UUID) string {
+	t.Helper()
+	return modtest.One[string](t, h, `SELECT coalesce(revoke_reason, '') FROM identity.oauth_connections WHERE id = $1`, connection)
+}
+
+// unspentRefreshTokens is how many refresh tokens of the connection are live.
+func unspentRefreshTokens(t *testing.T, h *modtest.Harness, connection uuid.UUID) int {
+	t.Helper()
+	return h.Count(t, `SELECT count(*) FROM identity.oauth_tokens WHERE connection_id = $1 AND kind = 'refresh' AND used_at IS NULL`, connection)
+}
+
 // Refresh (C17, A10, A11): each use issues a new pair; a spent token is
 // honoured once more within 60 seconds, which supersedes the first pair's
 // refresh token; after that it revokes the connection. An access token is
@@ -357,6 +371,7 @@ func TestOAuth_RefreshGraceAndReuse(t *testing.T) {
 	integration := h.Integration(t, "Agent", "customers:view")
 	setMCPAccess(t, h, integration, "read")
 	first := connectClient(t, h, owner, integration, "read", claudeID, claudeReturn)
+	connection := connectionOf(t, h, integration)
 	anon := h.Client(t)
 
 	// The same bytes under the other prefix are refused (A10).
@@ -366,44 +381,47 @@ func TestOAuth_RefreshGraceAndReuse(t *testing.T) {
 	if r := h.APIKeyClient(t, "vta_"+first.RefreshToken[4:]).Do(http.MethodGet, "/api/v1/customers", nil, modtest.SkipContract("a refusal")); r.Status != http.StatusUnauthorized {
 		t.Errorf("a refresh token as an access token: %d %s", r.Status, r.Body)
 	}
+	// An unspent token sent with another client_id or a wider scope is
+	// refused, and neither spends it nor ends the connection.
 	if r, out := tokenRequest(anon, refreshForm(first.RefreshToken, chatGPTID)); r.Status != http.StatusBadRequest || out.Error != "invalid_grant" {
 		t.Errorf("another client_id: %d %s", r.Status, r.Body)
 	}
 	if r, out := tokenRequest(anon, url.Values{"grant_type": {"refresh_token"}, "refresh_token": {first.RefreshToken}, "client_id": {claudeID}, "scope": {"read write"}}); r.Status != http.StatusBadRequest || out.Error != "invalid_scope" {
 		t.Errorf("a wider scope: %d %s", r.Status, r.Body)
 	}
+	if reason := revokeReason(t, h, connection); reason != "" || unspentRefreshTokens(t, h, connection) != 1 {
+		t.Fatalf("after the refused refreshes: %q, %d unspent", reason, unspentRefreshTokens(t, h, connection))
+	}
 
 	r, second := tokenRequest(anon, refreshForm(first.RefreshToken, claudeID))
 	if r.Status != http.StatusOK || second.RefreshToken == first.RefreshToken || second.AccessToken == first.AccessToken {
 		t.Fatalf("refresh: %d %s", r.Status, r.Body)
 	}
-	// The client lost the answer and retries within the grace: a new pair,
-	// and the pair it lost is superseded.
+	// The client lost the answer and retries within the grace: a new pair.
 	h.Advance(30 * time.Second)
 	r, retry := tokenRequest(anon, refreshForm(first.RefreshToken, claudeID))
-	if r.Status != http.StatusOK {
+	if r.Status != http.StatusOK || unspentRefreshTokens(t, h, connection) != 1 {
 		t.Fatalf("the retry: %d %s", r.Status, r.Body)
 	}
-	if r, out := tokenRequest(anon, refreshForm(second.RefreshToken, claudeID)); r.Status != http.StatusBadRequest || out.Error != "invalid_grant" {
-		t.Errorf("the superseded refresh token: %d %s", r.Status, r.Body)
-	}
+	// A third use within the grace is refused, and ends nothing.
 	if r, out := tokenRequest(anon, refreshForm(first.RefreshToken, claudeID)); r.Status != http.StatusBadRequest || out.Error != "invalid_grant" {
 		t.Errorf("a third use within the grace: %d %s", r.Status, r.Body)
 	}
-	connection := connectionOf(t, h, integration)
-	if reason := modtest.One[string](t, h, `SELECT coalesce(revoke_reason, '') FROM identity.oauth_connections WHERE id = $1`, connection); reason != "" {
+	if reason := revokeReason(t, h, connection); reason != "" {
 		t.Fatalf("revoked within the grace: %q", reason)
 	}
 	r, third := tokenRequest(anon, refreshForm(retry.RefreshToken, claudeID))
 	if r.Status != http.StatusOK {
 		t.Fatalf("refresh the retry's: %d %s", r.Status, r.Body)
 	}
-	// The spent token presented after the grace revokes the connection.
+	// The spent token presented after the grace revokes the connection,
+	// whatever client_id and scope it is sent with (the presenter holds it).
 	h.Advance(2 * time.Minute)
-	if r, out := tokenRequest(anon, refreshForm(retry.RefreshToken, claudeID)); r.Status != http.StatusBadRequest || out.Error != "invalid_grant" {
+	reuse := url.Values{"grant_type": {"refresh_token"}, "refresh_token": {retry.RefreshToken}, "client_id": {chatGPTID}, "scope": {"read write"}}
+	if r, out := tokenRequest(anon, reuse); r.Status != http.StatusBadRequest || out.Error != "invalid_grant" {
 		t.Errorf("reuse after the grace: %d %s", r.Status, r.Body)
 	}
-	if reason := modtest.One[string](t, h, `SELECT coalesce(revoke_reason, '') FROM identity.oauth_connections WHERE id = $1`, connection); reason != "refresh_reused" {
+	if reason := revokeReason(t, h, connection); reason != "refresh_reused" {
 		t.Errorf("the connection's reason %q", reason)
 	}
 	if r := h.APIKeyClient(t, third.AccessToken).Do(http.MethodGet, "/api/v1/customers", nil, modtest.SkipContract("a refusal")); r.Status != http.StatusUnauthorized {
@@ -418,6 +436,157 @@ func TestOAuth_RefreshGraceAndReuse(t *testing.T) {
 	}
 	if r, _ := tokenRequest(anon, refreshForm(fresh.RefreshToken, claudeID)); r.Status != http.StatusOK {
 		t.Errorf("its refresh token after the hour: %d %s", r.Status, r.Body)
+	}
+}
+
+// A grace replay by a second party (A25): the client spends R0 for R1; a
+// thief replays R0 within the grace and gets a pair, which supersedes R1;
+// when the client then presents R1 the family has two holders, and the
+// connection is revoked, the thief's tokens with it.
+func TestOAuth_AGraceReplayBySomeoneElse(t *testing.T) {
+	h := oauthHarness(t)
+	owner, _ := signInOwner(t, h)
+	integration := h.Integration(t, "Agent", "customers:view")
+	setMCPAccess(t, h, integration, "read")
+	first := connectClient(t, h, owner, integration, "read", claudeID, claudeReturn)
+	connection := connectionOf(t, h, integration)
+	client, thief := h.Client(t), h.Client(t)
+
+	r, own := tokenRequest(client, refreshForm(first.RefreshToken, claudeID))
+	if r.Status != http.StatusOK {
+		t.Fatalf("the client's refresh: %d %s", r.Status, r.Body)
+	}
+	h.Advance(10 * time.Second)
+	r, stolen := tokenRequest(thief, refreshForm(first.RefreshToken, claudeID))
+	if r.Status != http.StatusOK {
+		t.Fatalf("the replay within the grace: %d %s", r.Status, r.Body)
+	}
+	if r, out := tokenRequest(client, refreshForm(own.RefreshToken, claudeID)); r.Status != http.StatusBadRequest || out.Error != "invalid_grant" {
+		t.Errorf("the superseded token: %d %s", r.Status, r.Body)
+	}
+	if reason := revokeReason(t, h, connection); reason != "refresh_reused" {
+		t.Errorf("the connection's reason %q, want refresh_reused", reason)
+	}
+	if r := h.APIKeyClient(t, stolen.AccessToken).Do(http.MethodGet, "/api/v1/customers", nil, modtest.SkipContract("a refusal")); r.Status != http.StatusUnauthorized {
+		t.Errorf("the thief's access token: %d", r.Status)
+	}
+	if r, _ := tokenRequest(thief, refreshForm(stolen.RefreshToken, claudeID)); r.Status != http.StatusBadRequest {
+		t.Errorf("the thief's refresh token: %d %s", r.Status, r.Body)
+	}
+}
+
+// A refresh issues nothing the next request would refuse: with the
+// approver no longer an Owner, or the integration disabled, it is
+// invalid_grant, and the token is left unspent and the connection live
+// (a revocation is the change's own business).
+func TestOAuth_ARefreshOfAConnectionThatCannotAct(t *testing.T) {
+	h := oauthHarness(t)
+	owner, ownerID := signInOwner(t, h)
+	integration := h.Integration(t, "Agent", "customers:view")
+	setMCPAccess(t, h, integration, "read")
+	tok := connectClient(t, h, owner, integration, "read", claudeID, claudeReturn)
+	connection := connectionOf(t, h, integration)
+	anon := h.Client(t)
+
+	h.Exec(t, `DELETE FROM identity.user_roles WHERE user_id = $1 AND role_id = $2`, ownerID, identity.RoleOwnerID)
+	if r, out := tokenRequest(anon, refreshForm(tok.RefreshToken, claudeID)); r.Status != http.StatusBadRequest || out.Error != "invalid_grant" {
+		t.Errorf("the approver no longer an Owner: %d %s", r.Status, r.Body)
+	}
+	h.Exec(t, `INSERT INTO identity.user_roles (user_id, role_id) VALUES ($1, $2)`, ownerID, identity.RoleOwnerID)
+	h.Exec(t, `UPDATE identity.users SET is_disabled = true WHERE id = $1`, integration)
+	if r, out := tokenRequest(anon, refreshForm(tok.RefreshToken, claudeID)); r.Status != http.StatusBadRequest || out.Error != "invalid_grant" {
+		t.Errorf("the integration disabled: %d %s", r.Status, r.Body)
+	}
+	if reason := revokeReason(t, h, connection); reason != "" || unspentRefreshTokens(t, h, connection) != 1 {
+		t.Fatalf("after the refused refreshes: %q, %d unspent", reason, unspentRefreshTokens(t, h, connection))
+	}
+	h.Exec(t, `UPDATE identity.users SET is_disabled = false WHERE id = $1`, integration)
+	if r, _ := tokenRequest(anon, refreshForm(tok.RefreshToken, claudeID)); r.Status != http.StatusOK {
+		t.Errorf("enabled again: %d %s", r.Status, r.Body)
+	}
+}
+
+// Races (code review M2): two exchanges of one code at once, two refreshes
+// of one token at once, and a refresh token with its child at once. Each
+// request runs in a parallel subtest of its own, released together.
+func TestOAuth_Races(t *testing.T) {
+	h := oauthHarness(t)
+	owner, _ := signInOwner(t, h)
+	integration := h.Integration(t, "Agent", "customers:view")
+	setMCPAccess(t, h, integration, "read")
+
+	// race sends each form at once and answers the statuses in order.
+	race := func(name string, forms ...url.Values) []int {
+		t.Helper()
+		statuses := make([]int, len(forms))
+		release := make(chan struct{})
+		var ready sync.WaitGroup
+		ready.Add(len(forms))
+		t.Run(name, func(t *testing.T) {
+			for i, form := range forms {
+				t.Run(strconv.Itoa(i), func(t *testing.T) {
+					t.Parallel()
+					c := h.Client(t)
+					ready.Done()
+					<-release
+					r, _ := tokenRequest(c, form)
+					statuses[i] = r.Status
+				})
+			}
+			go func() {
+				ready.Wait()
+				close(release)
+			}()
+		})
+		return statuses
+	}
+
+	// One code, two exchanges: one wins, and the other revokes the
+	// connection as a replay.
+	code := approveCode(t, owner, authorizeQuery(claudeID, claudeReturn, "read"), integration, "read")
+	got := race("one code twice", codeForm(code, claudeID, claudeReturn), codeForm(code, claudeID, claudeReturn))
+	slices.Sort(got)
+	if !slices.Equal(got, []int{http.StatusOK, http.StatusBadRequest}) {
+		t.Errorf("two exchanges: %v", got)
+	}
+	if reason := revokeReason(t, h, connectionOf(t, h, integration)); reason != "code_replayed" {
+		t.Errorf("after two exchanges: %q, want code_replayed", reason)
+	}
+
+	// One refresh token, two refreshes: the second waits for the first and
+	// is honoured as its grace retry; the connection never has two live
+	// refresh tokens.
+	h.Advance(time.Second)
+	tok := connectClient(t, h, owner, integration, "read", claudeID, claudeReturn)
+	connection := connectionOf(t, h, integration)
+	got = race("one token twice", refreshForm(tok.RefreshToken, claudeID), refreshForm(tok.RefreshToken, claudeID))
+	if !slices.Equal(got, []int{http.StatusOK, http.StatusOK}) {
+		t.Errorf("two refreshes: %v", got)
+	}
+	if n, reason := unspentRefreshTokens(t, h, connection), revokeReason(t, h, connection); n != 1 || reason != "" {
+		t.Errorf("after two refreshes: %d unspent, %q", n, reason)
+	}
+
+	// A refresh token and its child at once: whichever runs second either
+	// is the parent's grace retry or finds itself superseded and revokes;
+	// never two live refresh tokens.
+	h.Advance(time.Second)
+	tok = connectClient(t, h, owner, integration, "read", claudeID, claudeReturn)
+	connection = connectionOf(t, h, integration)
+	r, child := tokenRequest(h.Client(t), refreshForm(tok.RefreshToken, claudeID))
+	if r.Status != http.StatusOK {
+		t.Fatalf("refresh: %d %s", r.Status, r.Body)
+	}
+	got = race("a token and its child", refreshForm(tok.RefreshToken, claudeID), refreshForm(child.RefreshToken, claudeID))
+	reason := revokeReason(t, h, connection)
+	switch {
+	case reason == "refresh_reused" && slices.Contains(got, http.StatusBadRequest):
+	case reason == "" && slices.Equal(got, []int{http.StatusOK, http.StatusOK}) && unspentRefreshTokens(t, h, connection) == 1:
+	default:
+		t.Errorf("a token and its child: %v, %q, %d unspent", got, reason, unspentRefreshTokens(t, h, connection))
+	}
+	if n := unspentRefreshTokens(t, h, connection); n > 1 {
+		t.Errorf("%d live refresh tokens", n)
 	}
 }
 
@@ -496,29 +665,85 @@ func TestOAuth_SwitchedOff(t *testing.T) {
 	}
 }
 
-// A pool of one connection (the lease-worker lessons): the flow and a tool
-// call never hold one connection while waiting for a second.
+// A pool of one connection (the lease-worker lessons): the flow, a tool
+// call, a refresh, a code replay, a reuse after the grace, an Owner's
+// demotion and an integration's archive each finish without holding one
+// connection while waiting for a second. A request that did would wait out
+// the client's timeout and fail here.
 func TestOAuth_APoolOfOne(t *testing.T) {
 	h := oauthHarness(t, modtest.WithPoolMaxConns(1))
 	owner, _ := signInOwner(t, h)
 	integration := h.Integration(t, "Agent", "customers:view")
 	setMCPAccess(t, h, integration, "read")
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		tok := connectClient(t, h, owner, integration, "read", claudeID, claudeReturn)
-		if _, _, isError := mcpTool(t, h.APIKeyClient(t, tok.AccessToken), "read", map[string]any{"operation": "getCustomers"}); isError {
-			t.Error("the read failed on a pool of one")
-		}
-		if r, _ := tokenRequest(h.Client(t), refreshForm(tok.RefreshToken, claudeID)); r.Status != http.StatusOK {
-			t.Errorf("refresh on a pool of one: %d %s", r.Status, r.Body)
-		}
-	}()
-	select {
-	case <-done:
-	case <-ctx.Done():
-		t.Fatal("the flow deadlocked on a pool of one")
+
+	tok := connectClient(t, h, owner, integration, "read", claudeID, claudeReturn)
+	if _, _, isError := mcpTool(t, h.APIKeyClient(t, tok.AccessToken), "read", map[string]any{"operation": "getCustomers"}); isError {
+		t.Error("the read failed on a pool of one")
+	}
+	r, next := tokenRequest(h.Client(t), refreshForm(tok.RefreshToken, claudeID))
+	if r.Status != http.StatusOK {
+		t.Fatalf("refresh: %d %s", r.Status, r.Body)
+	}
+	if r, _ := tokenRequest(h.Client(t), refreshForm(next.RefreshToken, claudeID)); r.Status != http.StatusOK {
+		t.Fatalf("refresh again: %d %s", r.Status, r.Body)
+	}
+	h.Advance(2 * time.Minute)
+	if r, _ := tokenRequest(h.Client(t), refreshForm(next.RefreshToken, claudeID)); r.Status != http.StatusBadRequest {
+		t.Errorf("reuse after the grace: %d %s", r.Status, r.Body)
+	}
+	if reason := revokeReason(t, h, connectionOf(t, h, integration)); reason != "refresh_reused" {
+		t.Errorf("reuse: %q", reason)
+	}
+
+	h.Advance(time.Second)
+	code := approveCode(t, owner, authorizeQuery(claudeID, claudeReturn, "read"), integration, "read")
+	if r, _ := tokenRequest(h.Client(t), codeForm(code, claudeID, claudeReturn)); r.Status != http.StatusOK {
+		t.Fatalf("exchange: %d %s", r.Status, r.Body)
+	}
+	if r, _ := tokenRequest(h.Client(t), codeForm(code, claudeID, claudeReturn)); r.Status != http.StatusBadRequest {
+		t.Errorf("the replay: %d %s", r.Status, r.Body)
+	}
+	if reason := revokeReason(t, h, connectionOf(t, h, integration)); reason != "code_replayed" {
+		t.Errorf("replay: %q", reason)
+	}
+
+	// Another Owner connects, and is demoted to User.
+	other, otherID := signInOwner(t, h)
+	h.Advance(time.Second)
+	connectClient(t, h, other, integration, "read", claudeID, claudeReturn)
+	demoted := connectionOf(t, h, integration)
+	email := modtest.One[string](t, h, `SELECT email FROM identity.users WHERE id = $1`, otherID)
+	if r := owner.Do(http.MethodPut, "/api/v1/identity/owner/users/"+otherID.String(),
+		map[string]any{"displayName": email, "email": email, "role": "User"}, oauthSkip); r.Status != http.StatusOK {
+		t.Fatalf("demote: %d %s", r.Status, r.Body)
+	}
+	if reason := revokeReason(t, h, demoted); reason != "authorizer_removed" {
+		t.Errorf("demotion: %q", reason)
+	}
+
+	h.Advance(time.Second)
+	connectClient(t, h, owner, integration, "read", claudeID, claudeReturn)
+	archived := connectionOf(t, h, integration)
+	if r := owner.Do(http.MethodPost, "/api/v1/identity/integrations/"+integration.String()+"/archive", nil, oauthSkip); r.Status != http.StatusOK {
+		t.Fatalf("archive: %d %s", r.Status, r.Body)
+	}
+	if reason := revokeReason(t, h, archived); reason != "integration_archived" {
+		t.Errorf("archive: %q", reason)
+	}
+}
+
+// With MCP off the protected resource's metadata is not served, so no
+// challenge names it (A13): a token's 401 is Bearer error="invalid_token"
+// alone.
+func TestOAuth_MCPOffNamesNoMetadata(t *testing.T) {
+	h := oauthHarness(t, modtest.WithEnv("MCP_ENABLED", "0"))
+	token, _, _ := identity.MintAPIKey()
+	token = "vta_" + token[4:]
+	r := h.APIKeyClient(t, token).Do(http.MethodGet, "/api/v1/customers", nil, modtest.SkipContract("a refusal"))
+	if r.Status != http.StatusUnauthorized || r.Header("WWW-Authenticate") != `Bearer error="invalid_token"` {
+		t.Errorf("a token with MCP off: %d %q", r.Status, r.Header("WWW-Authenticate"))
+	}
+	if r := h.Client(t).Do(http.MethodGet, "/.well-known/oauth-protected-resource/api/mcp", nil, modtest.SkipContract("discovery")); r.Status != http.StatusNotFound {
+		t.Errorf("the protected resource's metadata with MCP off: %d", r.Status)
 	}
 }

@@ -274,6 +274,61 @@ func (q *Queries) GetOAuthConnectionScope(ctx context.Context, id uuid.UUID) (Ge
 	return i, err
 }
 
+const getOAuthConnectionUsable = `-- name: GetOAuthConnectionUsable :one
+SELECT identity.oauth_authorizer_active(c.authorized_by, $1::boolean)::boolean AS authorizer_active,
+       i.archived_at, u.is_disabled, u.lockout_end, u.kind
+FROM identity.oauth_connections c
+JOIN identity.integrations i ON i.user_id = c.integration_id
+JOIN identity.users u ON u.id = i.user_id
+WHERE c.id = $2
+`
+
+type GetOAuthConnectionUsableParams struct {
+	ScimEnabled bool
+	ID          uuid.UUID
+}
+
+type GetOAuthConnectionUsableRow struct {
+	AuthorizerActive bool
+	ArchivedAt       *time.Time
+	IsDisabled       bool
+	LockoutEnd       *time.Time
+	Kind             string
+}
+
+// GetOAuthConnectionUsable is what a refresh needs to know beyond the
+// connection's own row: whether its authorizer still qualifies and its
+// integration may act (the token check's predicates), so a refresh never
+// issues tokens the next request would refuse.
+func (q *Queries) GetOAuthConnectionUsable(ctx context.Context, arg GetOAuthConnectionUsableParams) (GetOAuthConnectionUsableRow, error) {
+	row := q.db.QueryRow(ctx, getOAuthConnectionUsable, arg.ScimEnabled, arg.ID)
+	var i GetOAuthConnectionUsableRow
+	err := row.Scan(
+		&i.AuthorizerActive,
+		&i.ArchivedAt,
+		&i.IsDisabled,
+		&i.LockoutEnd,
+		&i.Kind,
+	)
+	return i, err
+}
+
+const getOAuthRefreshTokenConnection = `-- name: GetOAuthRefreshTokenConnection :one
+SELECT connection_id
+FROM identity.oauth_tokens
+WHERE token_hash = $1 AND kind = 'refresh'
+`
+
+// GetOAuthRefreshTokenConnection is the connection a refresh token belongs
+// to, read without a lock, so a refresh locks the connection before the
+// token (the one lock order: connection, then its tokens).
+func (q *Queries) GetOAuthRefreshTokenConnection(ctx context.Context, tokenHash []byte) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, getOAuthRefreshTokenConnection, tokenHash)
+	var connection_id uuid.UUID
+	err := row.Scan(&connection_id)
+	return connection_id, err
+}
+
 const insertOAuthCode = `-- name: InsertOAuthCode :exec
 INSERT INTO identity.oauth_codes (code_hash, connection_id, code_challenge, created_at, expires_at)
 VALUES ($1, $2, $3, $4::timestamptz, $5::timestamptz)
@@ -572,30 +627,21 @@ const revokeAuthorizerOAuthConnections = `-- name: RevokeAuthorizerOAuthConnecti
 UPDATE identity.oauth_connections
 SET revoked_at = $1::timestamptz, revoked_by = $2, revoke_reason = 'authorizer_removed'
 WHERE authorized_by = $3 AND revoked_at IS NULL
-  AND ($4::boolean OR NOT identity.oauth_authorizer_active(authorized_by, $5::boolean))
 RETURNING id, integration_id, client_id, client_kind, client_name, client_host, redirect_uri, scopes, authorized_by, created_at, activated_at, expires_at, last_used_at, last_used_ip, revoked_at, revoked_by, revoke_reason
 `
 
 type RevokeAuthorizerOAuthConnectionsParams struct {
-	Now           time.Time
-	RevokedBy     *uuid.UUID
-	AuthorizedBy  *uuid.UUID
-	Unconditional bool
-	ScimEnabled   bool
+	Now          time.Time
+	RevokedBy    *uuid.UUID
+	AuthorizedBy *uuid.UUID
 }
 
-// RevokeAuthorizerOAuthConnections ends the live connections a person
-// authorized (A17): all of them when unconditional, as the person's delete
-// or disable does, else those whose authorizer no longer qualifies, as the
-// Owner role's removal does.
+// RevokeAuthorizerOAuthConnections ends every live connection a person
+// authorized (A17), as their delete, their disable and the Owner role's
+// removal do: each of those leaves the person unqualified whatever else is
+// true of them.
 func (q *Queries) RevokeAuthorizerOAuthConnections(ctx context.Context, arg RevokeAuthorizerOAuthConnectionsParams) ([]IdentityOauthConnection, error) {
-	rows, err := q.db.Query(ctx, revokeAuthorizerOAuthConnections,
-		arg.Now,
-		arg.RevokedBy,
-		arg.AuthorizedBy,
-		arg.Unconditional,
-		arg.ScimEnabled,
-	)
+	rows, err := q.db.Query(ctx, revokeAuthorizerOAuthConnections, arg.Now, arg.RevokedBy, arg.AuthorizedBy)
 	if err != nil {
 		return nil, err
 	}
