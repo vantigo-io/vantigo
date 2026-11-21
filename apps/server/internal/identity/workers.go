@@ -32,6 +32,13 @@ import (
 //     keys kept before the switch was turned off still go. The worker runs
 //     when IDENTITY_API_KEYS_ENABLED or IDEMPOTENCY_ENABLED is on; the API
 //     keys' part only under the first.
+//   - It prunes the OAuth connections' rows (OAuth connections design C26,
+//     A21), under a lease of its own, every cycle, whatever OAUTH_ENABLED
+//     says: codes an hour after they were consumed or expired, tokens a day
+//     past their expiry, connections never activated 10 minutes after they
+//     were made, connections 90 days after they were revoked or expired, and
+//     client documents a week past their expiry. It runs when OAUTH_ENABLED
+//     is on too.
 //
 // identity.webhook-sender sends integrations' webhook messages
 // (webhooks_worker.go).
@@ -43,7 +50,9 @@ const (
 	apiKeysLeaseKey = int64(0x49444150494b4559) // "IDAPIKEY"
 	// idempotencyLeaseKey is the prune's own advisory lease (I21).
 	idempotencyLeaseKey = int64(0x494449444d504f54) // "IDIDMPOT"
-	apiKeysBatch        = 200
+	// oauthLeaseKey is the OAuth prune's own advisory lease (A21).
+	oauthLeaseKey = int64(0x49444f4155544850) // "IDOAUTHP"
+	apiKeysBatch  = 200
 	// apiKeyRowRetention is how long a key's row outlives its expiry (K12).
 	apiKeyRowRetention = 90 * 24 * time.Hour
 	// apiKeysSystem is the actor the worker's audit rows name.
@@ -63,7 +72,7 @@ func workers(a *Access, d module.Deps) []worker.Worker {
 		return nil
 	}
 	var out []worker.Worker
-	if d.Config.IdentityIntegrationsWorkerEnabled || d.Config.IdempotencyEnabled {
+	if d.Config.IdentityIntegrationsWorkerEnabled || d.Config.IdempotencyEnabled || d.Config.OAuthEnabled {
 		out = append(out, &apiKeysWorker{
 			deps: d, users: &userDirectory{q: store.New(d.Pool), sso: a.sso, mail: d.Mail},
 			keys: d.Config.IdentityIntegrationsWorkerEnabled,
@@ -132,7 +141,71 @@ func (w *apiKeysWorker) RunCycle(ctx context.Context) (recorded, deleted int, er
 			err = errors.Join(err, perr)
 		}
 	}
+	if ctx.Err() == nil {
+		if _, perr := w.pruneOAuth(ctx); perr != nil {
+			err = errors.Join(err, perr)
+		}
+	}
 	return recorded, deleted, err
+}
+
+// The OAuth prune's bounds (C26, A21).
+const (
+	oauthCodeRetention        = time.Hour
+	oauthTokenRetention       = 24 * time.Hour
+	oauthUnactivatedRetention = 10 * time.Minute
+	oauthEndedRetention       = 90 * 24 * time.Hour
+	oauthDocumentRetention    = 7 * 24 * time.Hour
+)
+
+// pruneOAuth deletes the OAuth rows past their keeping under the prune's
+// lease, on the lease's own connection, and answers how many; nothing when
+// another replica holds the lease.
+func (w *apiKeysWorker) pruneOAuth(ctx context.Context) (int, error) {
+	conn, err := w.deps.Pool.Acquire(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("identity: acquire a connection for the OAuth lease: %w", err)
+	}
+	defer conn.Release()
+	var acquired bool
+	if err := conn.QueryRow(ctx, `SELECT pg_try_advisory_lock($1)`, oauthLeaseKey).Scan(&acquired); err != nil {
+		return 0, fmt.Errorf("identity: take the OAuth lease: %w", err)
+	}
+	if !acquired {
+		return 0, nil
+	}
+	defer func() {
+		release := context.WithoutCancel(ctx)
+		if _, uerr := conn.Exec(release, `SELECT pg_advisory_unlock($1)`, oauthLeaseKey); uerr != nil {
+			// A session that still holds the lease must not go back into the pool.
+			_ = conn.Conn().Close(release)
+		}
+	}()
+	return pruneOAuthRows(ctx, store.New(conn), w.deps.Clock())
+}
+
+// pruneOAuthRows is the OAuth prune at now on q.
+func pruneOAuthRows(ctx context.Context, q *store.Queries, now time.Time) (int, error) {
+	total := 0
+	for _, step := range []struct {
+		what string
+		run  func() (int64, error)
+	}{
+		{"codes", func() (int64, error) { return q.DeleteSpentOAuthCodes(ctx, now.Add(-oauthCodeRetention)) }},
+		{"tokens", func() (int64, error) { return q.DeleteExpiredOAuthTokens(ctx, now.Add(-oauthTokenRetention)) }},
+		{"unactivated connections", func() (int64, error) {
+			return q.DeleteUnactivatedOAuthConnections(ctx, now.Add(-oauthUnactivatedRetention))
+		}},
+		{"ended connections", func() (int64, error) { return q.DeleteEndedOAuthConnections(ctx, now.Add(-oauthEndedRetention)) }},
+		{"client documents", func() (int64, error) { return q.DeleteStaleOAuthClientDocuments(ctx, now.Add(-oauthDocumentRetention)) }},
+	} {
+		n, err := step.run()
+		if err != nil {
+			return total, fmt.Errorf("identity: prune the OAuth %s: %w", step.what, err)
+		}
+		total += int(n)
+	}
+	return total, nil
 }
 
 // pruneIdempotency deletes the expired Idempotency-Keys under the prune's

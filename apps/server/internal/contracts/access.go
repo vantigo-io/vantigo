@@ -46,11 +46,16 @@ type Via struct {
 	StationID uuid.UUID
 	// KeyID is set for an "api_key" Via: the API key the request presented
 	// (API access design K10). The principal is the key's integration, with
-	// no session.
+	// no session. It is zero for a connection's access token.
 	KeyID uuid.UUID
+	// ConnectionID is set, in place of KeyID, for an "api_key" Via whose
+	// request presented an OAuth access token (OAuth connections design C20):
+	// the connection the token belongs to. The principal is the connection's
+	// integration, exactly as for its keys.
+	ConnectionID uuid.UUID
 	// RateLimitPerMinute is set for an "api_key" Via: the requests a minute
-	// the key's integration may make, across all its keys, which the router
-	// counts once Check has admitted the key (K24).
+	// the key's integration may make, across all its keys and connections,
+	// which the router counts once Check has admitted the key (K24, C20).
 	RateLimitPerMinute int
 }
 
@@ -255,6 +260,17 @@ var (
 	// ErrAPIKeyExpired is an API key that matched but has expired: 401
 	// api_key_expired (K12, K34). It is an ErrUnauthenticated.
 	ErrAPIKeyExpired = fmt.Errorf("%w: api_key_expired", ErrUnauthenticated)
+	// ErrInvalidToken is an OAuth access token (Bearer vta_…) that is
+	// unknown, expired, revoked, or whose connection may no longer act: 401
+	// token_invalid with a Bearer error="invalid_token" challenge (OAuth
+	// connections design C21, A15). It is an ErrUnauthenticated, and the MCP
+	// endpoint answers it with that challenge rather than its own 401.
+	ErrInvalidToken = fmt.Errorf("%w: invalid_token", ErrUnauthenticated)
+	// ErrInsufficientScope is a connection without the write scope refused an
+	// operation that is not a read, and only for that reason: 403
+	// insufficient_scope with a Bearer error="insufficient_scope" challenge
+	// (C21, A16). It is an ErrForbidden.
+	ErrInsufficientScope = fmt.Errorf("%w: insufficient_scope", ErrForbidden)
 )
 
 // APIKeyRefusal is Access.Check's refusal of a request that presented an API
@@ -266,10 +282,14 @@ var (
 // ErrUnauthenticated: there is nothing to attribute it to.
 //
 // Reason is one of revoked, disabled, archived, expired, network, never,
-// read_only and forbidden; the request log (APIRequest.Reason) adds the
-// router's own rate_limited.
+// read_only and forbidden, and for a connection insufficient_scope and
+// token_invalid; the request log (APIRequest.Reason) adds the router's own
+// rate_limited.
 type APIKeyRefusal struct {
-	KeyID         uuid.UUID
+	KeyID uuid.UUID
+	// ConnectionID is set, in place of KeyID, for a refused OAuth access
+	// token whose connection identity found (OAuth connections design A18).
+	ConnectionID  uuid.UUID
 	IntegrationID uuid.UUID
 	Reason        string
 	Err           error
@@ -291,6 +311,12 @@ const (
 	APIReasonReadOnly    = "read_only"
 	APIReasonForbidden   = "forbidden"
 	APIReasonRateLimited = "rate_limited"
+	// APIReasonInsufficientScope is a connection refused a write it has no
+	// scope for, APIReasonTokenInvalid one whose connection may no longer act
+	// for another reason than the key's: never activated, or its authorizer
+	// no longer qualifying (OAuth connections design A18).
+	APIReasonInsufficientScope = "insufficient_scope"
+	APIReasonTokenInvalid      = "token_invalid"
 )
 
 // APIRequest is one request an API key made that identity could attribute
@@ -301,8 +327,12 @@ const (
 type APIRequest struct {
 	// At is when the request arrived; the recorder stamps its own clock when
 	// it is zero.
-	At            time.Time
+	At time.Time
+	// KeyID is the key the request presented, or, for one a connection made,
+	// zero with ConnectionID set (OAuth connections design A18): the writer
+	// keeps exactly one of the two, and a zero id as NULL.
 	KeyID         uuid.UUID
+	ConnectionID  uuid.UUID
 	IntegrationID uuid.UUID
 	Method        string
 	OperationID   string
@@ -373,6 +403,16 @@ func (m MCPKeyAccess) Effective() string {
 		return m.Mode
 	}
 	return MCPAccessOff
+}
+
+// OAuthEndpoints is identity's OAuth token endpoint, which the composition
+// mounts at POST /api/oauth/token beside /api/mcp without importing identity
+// (OAuth connections design A22): identity's Access implements it, and the
+// composition finds it by a type assertion, as it finds MCPAccess.
+type OAuthEndpoints interface {
+	// ServeOAuthToken answers one token request (C15-C17): RFC 6749's
+	// form-encoded request and its JSON answers, never a problem document.
+	ServeOAuthToken(w http.ResponseWriter, r *http.Request)
 }
 
 // MCPAccess is how the MCP endpoint reads an API key's MCP setting and scope

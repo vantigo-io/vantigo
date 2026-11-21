@@ -157,6 +157,7 @@ identity never deleteIdentityBrandsById
 identity never deleteIdentityBrandsByIdCampaignsByCampaignId
 identity never deleteIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot
 identity never deleteIdentityBrandsByIdLogosBySlot
+identity never deleteIdentityIntegrationsByIdConnectionsByConnectionId
 identity never deleteIdentityIntegrationsByIdWebhooksByWebhookId
 identity never deleteIdentityOwnerSsoOidc
 identity never deleteIdentityOwnerSsoScim
@@ -198,6 +199,7 @@ identity never getIdentityBrandsByIdLogosBySlot
 identity never getIdentityBrandsResolution
 identity never getIdentityIntegrations
 identity never getIdentityIntegrationsById
+identity never getIdentityIntegrationsByIdConnections
 identity never getIdentityIntegrationsByIdRequests
 identity never getIdentityIntegrationsByIdWebhooks
 identity never getIdentityIntegrationsByIdWebhooksByWebhookId
@@ -281,6 +283,8 @@ identity never postIdentityInvitationsAccept
 identity never postIdentityLogin
 identity never postIdentityLogin2fa
 identity never postIdentityLogout
+identity never postIdentityOauthAuthorizations
+identity never postIdentityOauthAuthorizationsPreview
 identity never postIdentityOidcCallback
 identity never postIdentityOwnerInvitations
 identity never postIdentityOwnerInvitationsByIdResend

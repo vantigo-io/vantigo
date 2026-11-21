@@ -949,6 +949,86 @@ components:
                 - archivedAt
                 - version
             type: object
+        IntegrationConnection:
+            description: A connected app (OAuth connections design C25).
+            properties:
+                authorizedBy:
+                    description: The person who connected it, null once they are deleted.
+                    format: uuid
+                    nullable: true
+                    type: string
+                authorizedByName:
+                    nullable: true
+                    type: string
+                clientHost:
+                    description: The host Vantigo fetched the client's metadata document from.
+                    type: string
+                clientId:
+                    type: string
+                clientKind:
+                    enum:
+                        - metadata
+                        - registered
+                    type: string
+                clientName:
+                    description: The name the client calls itself, as the consent page showed it.
+                    type: string
+                connectedAt:
+                    format: date-time
+                    type: string
+                expiresAt:
+                    description: When the connection ends by itself, 180 days after it was approved.
+                    format: date-time
+                    type: string
+                id:
+                    format: uuid
+                    type: string
+                inactiveReason:
+                    description: Why an inactive connection's tokens are refused; authorizer_removed when the person who connected it is no longer an active Owner.
+                    nullable: true
+                    type: string
+                lastUsedAt:
+                    format: date-time
+                    nullable: true
+                    type: string
+                lastUsedIp:
+                    nullable: true
+                    type: string
+                scopes:
+                    description: read, and write for Read and write.
+                    items:
+                        type: string
+                    type: array
+                status:
+                    enum:
+                        - active
+                        - inactive
+                    type: string
+            required:
+                - id
+                - clientId
+                - clientKind
+                - clientName
+                - clientHost
+                - scopes
+                - authorizedBy
+                - authorizedByName
+                - connectedAt
+                - expiresAt
+                - lastUsedAt
+                - lastUsedIp
+                - status
+                - inactiveReason
+            type: object
+        IntegrationConnectionList:
+            properties:
+                connections:
+                    items:
+                        $ref: '#/components/schemas/IntegrationConnection'
+                    type: array
+            required:
+                - connections
+            type: object
         IntegrationCreateRequest:
             properties:
                 contactUserId:
@@ -1031,7 +1111,7 @@ components:
                 - apiNever
             type: object
         IntegrationRequest:
-            description: One request an API key of the integration made (API access design K23). It never carries a body, a query string or a path parameter's value.
+            description: One request an API key or a connected app of the integration made (API access design K23, OAuth connections design A18). It never carries a body, a query string or a path parameter's value.
             properties:
                 at:
                     format: date-time
@@ -1039,10 +1119,21 @@ components:
                 clientIp:
                     nullable: true
                     type: string
+                clientName:
+                    description: For a request a connected app made, the name its client called itself, null once the connection's row is deleted.
+                    nullable: true
+                    type: string
+                connectionId:
+                    description: The connection the request came through, null for a request a key made.
+                    format: uuid
+                    nullable: true
+                    type: string
                 durationMs:
                     type: integer
                 keyId:
+                    description: The key the request presented, null for a request a connected app made.
                     format: uuid
+                    nullable: true
                     type: string
                 keyName:
                     description: The key's name, null once the key's row is deleted, 90 days after it expired.
@@ -1065,6 +1156,8 @@ components:
                 - at
                 - keyId
                 - keyName
+                - connectionId
+                - clientName
                 - method
                 - operationId
                 - status
@@ -1372,6 +1465,161 @@ components:
                     type: string
             required:
                 - concurrencyStamp
+            type: object
+        OAuthAuthorizationDecision:
+            description: The consent page's answer to an authorization request (OAuth connections design C14).
+            properties:
+                access:
+                    description: What the connection may do, at most what the request and the integration allow; required to approve.
+                    enum:
+                        - read
+                        - read_write
+                    nullable: true
+                    type: string
+                decision:
+                    enum:
+                        - approve
+                        - deny
+                    type: string
+                integrationId:
+                    description: The integration the client may act as; required to approve.
+                    format: uuid
+                    nullable: true
+                    type: string
+                query:
+                    description: The authorization request's query string, as the page received it, without the leading question mark.
+                    maxLength: 8192
+                    type: string
+            required:
+                - query
+                - decision
+            type: object
+        OAuthAuthorizationPreview:
+            description: 'What the consent page shows for an authorization request (C13, A6, A7): one of client_refused, redirect or consent.'
+            properties:
+                automatic:
+                    description: For redirect, whether the page navigates there at once; otherwise it shows the error and a button that returns to returnHost.
+                    type: boolean
+                client:
+                    $ref: '#/components/schemas/OAuthClientDisplay'
+                error:
+                    description: For client_refused and redirect, the OAuth error code.
+                    nullable: true
+                    type: string
+                firstUse:
+                    description: For consent, true when no client of this host has been connected before.
+                    type: boolean
+                integrations:
+                    description: For consent, every integration not archived, with whether the client may be connected to it.
+                    items:
+                        $ref: '#/components/schemas/OAuthIntegrationChoice'
+                    type: array
+                message:
+                    description: For client_refused and redirect, why, in words a person reads.
+                    nullable: true
+                    type: string
+                nameWarning:
+                    description: For consent, true when the name the client claims contains Vantigo or the workspace's name.
+                    type: boolean
+                outcome:
+                    enum:
+                        - client_refused
+                        - redirect
+                        - consent
+                    type: string
+                redirectTo:
+                    description: For redirect, the client's redirect URI with the error, state and iss.
+                    nullable: true
+                    type: string
+                returnHost:
+                    description: For redirect, the redirect URI's host, in ASCII.
+                    nullable: true
+                    type: string
+                scopes:
+                    description: For consent, the scopes asked, read and write.
+                    items:
+                        type: string
+                    type: array
+            required:
+                - outcome
+            type: object
+        OAuthAuthorizationQuery:
+            properties:
+                query:
+                    description: The authorization request's query string, as the page received it, without the leading question mark.
+                    maxLength: 8192
+                    type: string
+            required:
+                - query
+            type: object
+        OAuthAuthorizationRedirect:
+            properties:
+                redirectTo:
+                    description: The client's redirect URI with the code or the error, state and iss.
+                    type: string
+            required:
+                - redirectTo
+            type: object
+        OAuthClientDisplay:
+            description: A client as the consent page shows it (C13, A7).
+            properties:
+                clientId:
+                    type: string
+                clientIdHost:
+                    description: The host of the client_id, where Vantigo fetched the client's metadata document from, in ASCII.
+                    type: string
+                kind:
+                    enum:
+                        - metadata
+                        - registered
+                    type: string
+                loopback:
+                    description: Whether the redirect goes to this computer, where any program could be asking.
+                    type: boolean
+                name:
+                    description: The name the client calls itself, stripped of control and bidirectional characters, at most 80 characters.
+                    type: string
+                redirectHost:
+                    description: The redirect URI's host, in ASCII.
+                    type: string
+            required:
+                - name
+                - clientId
+                - clientIdHost
+                - kind
+                - redirectHost
+                - loopback
+            type: object
+        OAuthIntegrationChoice:
+            properties:
+                eligible:
+                    description: 'Whether the client may be connected to it: the integration is active and its MCP setting is not off.'
+                    type: boolean
+                id:
+                    format: uuid
+                    type: string
+                maxAccess:
+                    description: The most the connection may do, capped by the scopes asked and the integration's MCP setting; null when not eligible.
+                    enum:
+                        - read
+                        - read_write
+                    nullable: true
+                    type: string
+                name:
+                    type: string
+                reason:
+                    description: Why it is not eligible.
+                    enum:
+                        - disabled
+                        - mcp_off
+                    nullable: true
+                    type: string
+            required:
+                - id
+                - name
+                - eligible
+                - maxAccess
+                - reason
             type: object
         OidcProviderResponse:
             properties:
@@ -8297,6 +8545,95 @@ paths:
             x-vantigo-access: policy:Owner+OwnerManagement
             x-vantigo-api: never
             x-vantigo-assistant: never
+    /api/v1/identity/integrations/{id}/connections:
+        get:
+            description: 'The integration''s connected apps (OAuth connections design C25, A17): every connection a person authorized, by signing in, for an MCP client or app to act as the integration, that has been activated and is neither revoked nor expired, newest first. One whose authorizer no longer qualifies (no longer an Owner, disabled, deleted, or deactivated by the directory) is listed as inactive with the reason: its tokens are refused, and it can be revoked. 404 while OAUTH_ENABLED is off.'
+            operationId: getIdentityIntegrationsByIdConnections
+            parameters:
+                - description: The integration (its user's id).
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/IntegrationConnectionList'
+                    description: 'OK'
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Unauthorized'
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Forbidden'
+                "404":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Not Found — not_found, no such integration, or OAuth is switched off.'
+            summary: List an integration's connected apps
+            tags:
+                - API access
+            x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
+            x-vantigo-assistant: never
+    /api/v1/identity/integrations/{id}/connections/{connectionId}:
+        delete:
+            description: 'Revokes a connection (C18): its access and refresh tokens are refused from the next request, on every replica at once. A connection revoked already is answered as it is. Audited connection.revoked with the reason revoked. 404 while OAUTH_ENABLED is off.'
+            operationId: deleteIdentityIntegrationsByIdConnectionsByConnectionId
+            parameters:
+                - description: The integration (its user's id).
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+                - description: The connection.
+                  in: path
+                  name: connectionId
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            responses:
+                "204":
+                    description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Unauthorized'
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Forbidden'
+                "404":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Not Found — not_found, no such integration or connection, or OAuth is switched off.'
+            summary: Revoke a connected app
+            tags:
+                - API access
+            x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
+            x-vantigo-assistant: never
     /api/v1/identity/integrations/{id}/disable:
         post:
             description: 'Disables an integration: every one of its keys is refused from the next request on, until it is enabled again. Audited integration.disabled.'
@@ -8718,6 +9055,8 @@ paths:
                         - never
                         - forbidden
                         - rate_limited
+                        - insufficient_scope
+                        - token_invalid
                         - idempotent_replay
                     type: string
                 - description: Only this UTC day, one of the last 30.
@@ -9829,6 +10168,126 @@ paths:
                 - Authentication
             x-vantigo-access: session
             x-vantigo-api: never
+    /api/v1/identity/oauth/authorizations:
+        post:
+            description: 'Approves or denies an OAuth authorization request (OAuth connections design C14, A9): the consent page posts the request''s query string as it received it, the integration the client may act as, the access chosen and the decision. Every parameter is validated again, nothing of the preview trusted. Deny answers the client''s redirect with error=access_denied. Approve creates the connection, not yet activated, and a code valid 60 seconds, and answers the redirect that carries it, with state and iss. A client or redirect URI that is refused is 400 client_refused and is never redirected to; a request wrong in a way the client is told about answers its redirect with the error. 404 while OAUTH_ENABLED is off.'
+            operationId: postIdentityOauthAuthorizations
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/OAuthAuthorizationDecision'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/OAuthAuthorizationRedirect'
+                    description: 'OK — where to send the browser.'
+                    headers:
+                        Cache-Control:
+                            description: no-store.
+                            schema:
+                                type: string
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Bad Request — client_refused, the client, its document or the redirect URI is refused; invalid_request with field errors.'
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Unauthorized'
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Forbidden'
+                "404":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Not Found — OAuth is switched off.'
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Conflict — integration_not_eligible, the integration is archived, disabled or has MCP off, or the access chosen is more than it or the request allows.'
+            summary: Approve or deny an OAuth authorization
+            tags:
+                - API access
+            x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
+            x-vantigo-assistant: never
+    /api/v1/identity/oauth/authorizations/preview:
+        post:
+            description: 'Reads an OAuth authorization request for the consent page (OAuth connections design C13, A6, A7): the page posts the query string it received. The client_id and the redirect_uri are judged first: a client that is refused (an invalid client_id, a metadata document that cannot be fetched or breaks the rules, a redirect URI it does not register) is client_refused, and the page offers nothing but Close. A request wrong in a way the client is told about is redirect, with automatic true when the redirect''s host is the client_id''s or loopback. Otherwise it is consent: the client as it calls itself beside what Vantigo verified, the scopes asked, and the integrations with whether each is eligible. Previews are limited to 20 a minute per address, since each may fetch a client''s document. 404 while OAUTH_ENABLED is off.'
+            operationId: postIdentityOauthAuthorizationsPreview
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/OAuthAuthorizationQuery'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/OAuthAuthorizationPreview'
+                    description: 'OK'
+                    headers:
+                        Cache-Control:
+                            description: no-store.
+                            schema:
+                                type: string
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Bad Request — invalid_request, the query string is missing or too long.'
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Unauthorized'
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Forbidden'
+                "404":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Not Found — OAuth is switched off.'
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
+            summary: Preview an OAuth authorization
+            tags:
+                - API access
+            x-vantigo-access: policy:Owner+OwnerManagement
+            x-vantigo-api: never
+            x-vantigo-assistant: never
     /api/v1/identity/oidc/callback:
         get:
             description: The workforce OpenID Connect redirect URI, served by the authentication handler rather than an endpoint (so the .NET OpenAPI dump omits it). Exchanges the authorization code, then redirects to the redirect URI the challenge set, or to /sign-in?error=… on failure.

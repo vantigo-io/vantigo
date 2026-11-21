@@ -217,7 +217,15 @@ func (a *Access) Scope(ctx context.Context, p contracts.Principal) ([]string, bo
 // integration's MCP setting and read-only flag from one read of the key and
 // its integration, and, when scope is true, the key's scope as well.
 func (a *Access) MCP(ctx context.Context, p contracts.Principal, scope bool) (contracts.MCPKeyAccess, error) {
-	if p.Via == nil || p.Via.Kind != contracts.ViaAPIKey || p.Via.KeyID == uuid.Nil {
+	if p.Via == nil || p.Via.Kind != contracts.ViaAPIKey {
+		return contracts.MCPKeyAccess{}, errors.New("identity: not an API key's principal")
+	}
+	// A connection's principal reads its connection instead (OAuth
+	// connections design A15).
+	if p.Via.ConnectionID != uuid.Nil {
+		return a.connectionMCP(ctx, p, scope)
+	}
+	if p.Via.KeyID == uuid.Nil {
 		return contracts.MCPKeyAccess{}, errors.New("identity: not an API key's principal")
 	}
 	k, err := a.q.GetAPIKeyScope(ctx, p.Via.KeyID)

@@ -62,16 +62,21 @@ type mcpHandler struct {
 	// bound once it exists (bind).
 	api     http.Handler
 	version string
+	// resourceMetadata is the protected resource's metadata URL while OAuth
+	// is on (OAuth connections design C22), "" while it is off: then only an
+	// API key is taken, and the 401 is M6's.
+	resourceMetadata string
 }
 
-func newMCPHandler(docs *apiDocuments, access contracts.Access, limiter *ratelimit.Limiter) *mcpHandler {
+func newMCPHandler(docs *apiDocuments, access contracts.Access, limiter *ratelimit.Limiter, resourceMetadata string) *mcpHandler {
 	return &mcpHandler{
-		access:    access,
-		keys:      docs.keys,
-		limiter:   limiter,
-		catalogue: newMCPCatalogue(docs),
-		inflight:  &inFlight{limit: mcpInFlight, keys: map[uuid.UUID]int{}},
-		version:   buildinfo.Version,
+		access:           access,
+		keys:             docs.keys,
+		limiter:          limiter,
+		catalogue:        newMCPCatalogue(docs),
+		inflight:         &inFlight{limit: mcpInFlight, keys: map[uuid.UUID]int{}},
+		version:          buildinfo.Version,
+		resourceMetadata: resourceMetadata,
 	}
 }
 
@@ -86,13 +91,18 @@ func writeAuthError(w http.ResponseWriter, status int, code, message string) {
 	_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]any{"code": code, "message": message}})
 }
 
-// presentsKey reports whether r carries an Authorization: Bearer vtg_… header,
-// the only credential the endpoint takes; Check judges it, and every other
-// header beside it.
-func presentsKey(r *http.Request) bool {
+// presentsKey reports whether r carries an Authorization: Bearer vtg_…
+// header, or, while OAuth is on, Bearer vta_… (OAuth connections design
+// C22): the only credentials the endpoint takes; Check judges it, and every
+// other header beside it.
+func (h *mcpHandler) presentsKey(r *http.Request) bool {
 	for _, v := range r.Header.Values("Authorization") {
 		scheme, token, ok := strings.Cut(strings.TrimSpace(v), " ")
-		if ok && strings.EqualFold(scheme, "Bearer") && strings.HasPrefix(strings.TrimSpace(token), "vtg_") {
+		if !ok || !strings.EqualFold(scheme, "Bearer") {
+			continue
+		}
+		token = strings.TrimSpace(token)
+		if strings.HasPrefix(token, "vtg_") || (h.resourceMetadata != "" && strings.HasPrefix(token, "vta_")) {
 			return true
 		}
 	}
@@ -100,10 +110,16 @@ func presentsKey(r *http.Request) bool {
 }
 
 // keyRequired is the endpoint's 401 for a request with no key, or with a
-// session (M27). It is written here, never by Access.Reject, which would
-// clear a signed-in browser's session cookie.
-func keyRequired(w http.ResponseWriter) {
-	w.Header().Set("WWW-Authenticate", `Bearer realm="vantigo"`)
+// session (M27). While OAuth is on its challenge names the protected
+// resource's metadata, so a client without a key starts a sign-in (C22). It
+// is written here, never by Access.Reject, which would clear a signed-in
+// browser's session cookie.
+func (h *mcpHandler) keyRequired(w http.ResponseWriter) {
+	challenge := `Bearer realm="vantigo"`
+	if h.resourceMetadata != "" {
+		challenge += `, resource_metadata="` + h.resourceMetadata + `", scope="read write"`
+	}
+	w.Header().Set("WWW-Authenticate", challenge)
 	writeAuthError(w, http.StatusUnauthorized, "api_key_required", mcpKeyRequiredMessage)
 }
 
@@ -118,8 +134,8 @@ func (h *mcpHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	// What is no key at all, or a body over the cap by its own account, is
 	// answered before anything is counted or looked up (M27, M5).
-	if !presentsKey(r) {
-		keyRequired(w)
+	if !h.presentsKey(r) {
+		h.keyRequired(w)
 		return
 	}
 	if r.ContentLength > mcpMaxBodyBytes {
@@ -146,21 +162,30 @@ func (h *mcpHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			// A key identity found and refused: answered and recorded as on
 			// every other path (K19, K23).
 			h.keys.refuse(w, r, h.access, mcpRule, err, mcpOperationID, start)
+		case errors.Is(err, contracts.ErrInvalidToken):
+			// An access token identity did not resolve: its own 401, with
+			// the challenge a client renews its token on (C21, A15).
+			h.access.Reject(w, r, mcpRule, err)
 		case errors.Is(err, contracts.ErrUnauthenticated) || errors.Is(err, contracts.ErrForbidden):
-			keyRequired(w)
+			h.keyRequired(w)
 		default:
 			httpx.WriteError(w, r, err)
 		}
 		return
 	}
 	if p.Via == nil || p.Via.Kind != contracts.ViaAPIKey {
-		keyRequired(w)
+		h.keyRequired(w)
 		return
+	}
+	// The in-flight places are the key's, or the connection's (A15).
+	holder := p.Via.KeyID
+	if holder == uuid.Nil {
+		holder = p.Via.ConnectionID
 	}
 
 	answer, call := h.plan(w, r, p)
 	if call != nil {
-		if !h.inflight.acquire(p.Via.KeyID) {
+		if !h.inflight.acquire(holder) {
 			// A key with mcpInFlight calls running is told to wait (S7); the
 			// refusal is the envelope's, counted as one.
 			h.keys.serve(w, r, p, mcpOperationID, start, func(w http.ResponseWriter, _ *http.Request) {
@@ -169,7 +194,7 @@ func (h *mcpHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
-		defer h.inflight.release(p.Via.KeyID)
+		defer h.inflight.release(holder)
 		// A tool call that reaches the loopback is counted there, once, under
 		// its real operation; the envelope is only recorded (M22).
 		h.keys.recordOnly(w, r, p, mcpOperationID, start, func(w http.ResponseWriter, _ *http.Request) { h.run(w, r, call) })
@@ -304,7 +329,11 @@ func (h *mcpHandler) plan(w http.ResponseWriter, r *http.Request, p contracts.Pr
 	case mcpMethodPing:
 		return result(map[string]any{})
 	case mcpMethodToolsList:
-		fields := map[string]any{"tools": mcpTools(writes, h.catalogue.docs.idempotency)}
+		tools := mcpTools(writes, h.catalogue.docs.idempotency)
+		if h.resourceMetadata != "" {
+			tools = withSecuritySchemes(tools)
+		}
+		fields := map[string]any{"tools": tools}
 		if req.era == mcpModern {
 			fields["ttlMs"], fields["cacheScope"] = mcpToolsTTLMs, "private"
 		}

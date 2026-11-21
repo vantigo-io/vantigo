@@ -691,6 +691,10 @@ func (s *server) PostIdentityIntegrationsByIdArchive(ctx context.Context, req ge
 				return err
 			}
 		}
+		// Its connected apps end with its keys (OAuth connections design A20).
+		if err := revokeIntegrationConnections(ctx, q, r, req.Id, p, now); err != nil {
+			return err
+		}
 		// Its webhook endpoints are disabled in the same transaction, their
 		// pending deliveries settled (outgoing webhooks design W2, W31).
 		if err := s.archiveIntegrationWebhooks(ctx, q, r, req.Id, p, now); err != nil {

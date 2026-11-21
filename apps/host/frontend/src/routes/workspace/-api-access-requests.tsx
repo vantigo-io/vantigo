@@ -26,6 +26,8 @@ export const refusalReasons = [
   "never",
   "forbidden",
   "rate_limited",
+  "insufficient_scope",
+  "token_invalid",
   "idempotent_replay",
 ] as const;
 
@@ -258,7 +260,7 @@ const RequestLog = ({ log: data, keyName }: { log: IntegrationRequestLog; keyNam
                         })}
                       </Table.Td>
                       <Table.Td>
-                        {request.keyName ?? keyName.get(request.keyId) ?? (
+                        {request.keyName ?? (request.keyId ? keyName.get(request.keyId) : undefined) ?? (
                           <Text span c="dimmed" size="sm">
                             {t("apiAccess.deletedKey")}
                           </Text>

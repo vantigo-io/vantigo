@@ -7,6 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -124,7 +125,8 @@ var _ contracts.APIRequestRecorder = (*Access)(nil)
 func (l *apiRequestLog) record(req contracts.APIRequest) {
 	row := store.InsertAPIRequestsParams{
 		At:            req.At.UTC(),
-		KeyID:         req.KeyID,
+		KeyID:         optionalID(req.KeyID),
+		ConnectionID:  optionalID(req.ConnectionID),
 		IntegrationID: req.IntegrationID,
 		Method:        clip(req.Method, 10),
 		OperationID:   clip(req.OperationID, 200),
@@ -239,6 +241,15 @@ func clip(s string, n int) string {
 		return s[:n]
 	}
 	return s
+}
+
+// optionalID is id as a nullable column: nil when zero, so a request a
+// connection made keeps no key, and one a key made no connection (A18).
+func optionalID(id uuid.UUID) *uuid.UUID {
+	if id == uuid.Nil {
+		return nil
+	}
+	return &id
 }
 
 // optional is s as a nullable column: nil when empty.

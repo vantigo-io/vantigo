@@ -1,0 +1,12 @@
+{
+  "client_id": "https://chatgpt.com/oauth/client.json",
+  "client_name": "ChatGPT",
+  "client_uri": "https://chatgpt.com",
+  "logo_uri": "https://chatgpt.com/favicon.ico",
+  "redirect_uris": ["https://chatgpt.com/connector_platform_oauth_redirect"],
+  "grant_types": ["authorization_code", "refresh_token"],
+  "response_types": ["code"],
+  "token_endpoint_auth_method": "private_key_jwt",
+  "token_endpoint_auth_methods_supported": ["none", "private_key_jwt"],
+  "jwks_uri": "https://chatgpt.com/oauth/jwks.json"
+}

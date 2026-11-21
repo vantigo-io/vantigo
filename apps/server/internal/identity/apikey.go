@@ -66,11 +66,16 @@ func apiKeyChecksum(random string) string {
 
 // newAPIKey mints a key: the text handed to the Owner once and the hash to
 // store.
-func newAPIKey() (key string, hash []byte) {
+func newAPIKey() (key string, hash []byte) { return newPrefixedToken(apiKeyPrefix) }
+
+// newPrefixedToken mints a token in the key's encoding under prefix: an API
+// key (vtg_) or an OAuth access or refresh token (vta_, vtr_; OAuth
+// connections design C16), all of the prefix's length.
+func newPrefixedToken(prefix string) (token string, hash []byte) {
 	b := make([]byte, tokenBytes)
 	_, _ = rand.Read(b) // crypto/rand.Read never returns an error; it crashes the process instead
 	random := base62(new(big.Int).SetBytes(b), apiKeyRandomChars)
-	return apiKeyPrefix + random + apiKeyChecksum(random), hashToken(b)
+	return prefix + random + apiKeyChecksum(random), hashToken(b)
 }
 
 // parseAPIKey checks a presented key's shape — the prefix, the length, the
@@ -78,12 +83,17 @@ func newAPIKey() (key string, hash []byte) {
 // reports false for anything newAPIKey cannot have produced, so garbage never
 // costs a database lookup; looking the hash up through the unique index is
 // the comparison, as parseToken's is.
-func parseAPIKey(s string) (hash []byte, ok bool) {
-	if len(s) != apiKeyLength || !strings.HasPrefix(s, apiKeyPrefix) {
+func parseAPIKey(s string) (hash []byte, ok bool) { return parsePrefixedToken(apiKeyPrefix, s) }
+
+// parsePrefixedToken is parseAPIKey for a token minted by newPrefixedToken
+// under prefix. The hash covers the random bytes alone, so the prefix is no
+// part of it: whoever looks the hash up says which kind it must be (A10).
+func parsePrefixedToken(prefix, s string) (hash []byte, ok bool) {
+	if len(s) != apiKeyLength || !strings.HasPrefix(s, prefix) {
 		return nil, false
 	}
-	random := s[len(apiKeyPrefix) : len(apiKeyPrefix)+apiKeyRandomChars]
-	if s[len(apiKeyPrefix)+apiKeyRandomChars:] != apiKeyChecksum(random) {
+	random := s[len(prefix) : len(prefix)+apiKeyRandomChars]
+	if s[len(prefix)+apiKeyRandomChars:] != apiKeyChecksum(random) {
 		return nil, false
 	}
 	n, ok := fromBase62(random)
