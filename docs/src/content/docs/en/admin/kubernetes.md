@@ -153,5 +153,6 @@ migrate a database with versions it does not know.
 | --- | --- |
 | Every probe answers `400` | The probes point at `PORT`, the public listener, which refuses the pod's address. Point them at the management port |
 | A new pod never becomes ready, its readiness failing with `schema` | The migration Job has not run or has failed. Its log says why |
+| Pods never become ready, readiness failing with `storage` | The bucket does not exist or the credentials are refused ([Object storage](/en/admin/object-storage/#the-readiness-check)). The operator creates the bucket; the app never does |
 | Users see a dropped connection on every rollout | `SHUTDOWN_DRAIN_DELAY` is `0s`, or the grace period is shorter than the drain needs |
 | `clock: this host's clock is off from the database's` in the log | The node's NTP is broken. The pod keeps the database's time; fix the node |
