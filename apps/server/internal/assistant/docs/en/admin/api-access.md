@@ -137,6 +137,9 @@ needs. A read-only key that calls anything else is refused `403 api_key_read_onl
 
 ### Restrict a key's networks
 
+A connected app has no network list: **Networks** belong to a key, and a connection made by
+signing in is not limited by them ([Connecting by signing in](#connecting-by-signing-in-switched-off-for-now)).
+
 **Networks** lists the addresses or CIDR ranges the key may be used from, one per line —
 IPv4 or IPv6, at most 20. Empty means anywhere. A request from outside them is refused
 `401 unauthenticated`, as an unknown key is, even when the key has also expired or been
@@ -439,7 +442,9 @@ it makes is a second row, the operation it called ([MCP](#mcp)).
 - **Called most** lists the ten operations called most.
 - **Latest requests** lists the 200 newest: when, in UTC, the key, the method and the operation, the
   status — with why, for a refusal — how long it took, the client's address and the trace id.
-  A key whose row has been deleted, 90 days after it expired, shows as *Deleted key*.
+  A key whose row has been deleted, 90 days after it expired, shows as *Deleted key*. A request a
+  connected app made names the app as it called itself, marked *(connected app)*, or *Removed
+  app* once the connection's row is gone.
 - **Key**, **Status**, **Reason** and **Day** filter all three.
 
 A refusal is recorded with its reason, and so is a replayed answer:

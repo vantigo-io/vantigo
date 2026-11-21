@@ -1134,7 +1134,7 @@ restarts** rather than per process. The limit is applied before the access check
 | `Invitations` | 30 / minute | Owner invitation management |
 | `InvitationAcceptance` | 20 / minute | Invitation validate and accept |
 | `UserManagement` | 30 / minute | Owner user management, adoption for Staff, the employee roles, and making or rolling an API key |
-| `OAuthPreview` | 20 / minute | Previewing an OAuth authorization request, which may fetch a client's metadata document |
+| `OAuthConsent` | 20 / minute | Previewing and approving OAuth authorization requests, per person, counted by the operations themselves; each may fetch a client's metadata document |
 | `OAuthToken` | 120 / minute | The OAuth token endpoint, `POST /api/oauth/token`, per address |
 | `api` | The integration's `rate_limit_per_minute` / minute | Every request an API key is admitted for, keyed by its integration, after the access check ([above](#the-rate-limit-of-a-key-request)) |
 | `OwnerAvatarRead` | 300 / minute | Owner avatar reads |

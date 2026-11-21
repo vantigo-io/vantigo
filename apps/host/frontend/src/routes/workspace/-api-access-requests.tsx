@@ -260,10 +260,20 @@ const RequestLog = ({ log: data, keyName }: { log: IntegrationRequestLog; keyNam
                         })}
                       </Table.Td>
                       <Table.Td>
-                        {request.keyName ?? (request.keyId ? keyName.get(request.keyId) : undefined) ?? (
-                          <Text span c="dimmed" size="sm">
-                            {t("apiAccess.deletedKey")}
-                          </Text>
+                        {request.keyId === null && request.connectionId !== null ? (
+                          <>
+                            {request.clientName ?? t("apiAccess.deletedConnection")}{" "}
+                            <Text span c="dimmed" size="sm">
+                              {t("apiAccess.connectedApp")}
+                            </Text>
+                          </>
+                        ) : (
+                          (request.keyName ??
+                          (request.keyId ? keyName.get(request.keyId) : undefined) ?? (
+                            <Text span c="dimmed" size="sm">
+                              {t("apiAccess.deletedKey")}
+                            </Text>
+                          ))
                         )}
                       </Table.Td>
                       <Table.Td>

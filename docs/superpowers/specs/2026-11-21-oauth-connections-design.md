@@ -415,3 +415,20 @@ an approved-clients mode that asks an Owner to approve a new client once.
   apps and the Requests tab, turns the default to **true**, and carries the administration guide in
   both languages; **C** is §1's B (registered clients, the allow-list, revalidation, the revocation
   endpoint, the log's filter, the MCP section's instructions) and the landing page.
+
+**From delivery A's reviews**
+
+- **A25 (A11) — A superseded token revokes.** A refresh token superseded by a grace replay of its
+  parent (spent, with no children of its own) that is later presented revokes the connection
+  (`refresh_reused`) and is `invalid_grant`: two parties hold the family, and a thief who replayed
+  the parent inside the grace would otherwise keep the connection while the real client was
+  merely refused. The cost is a re-sign-in for a client whose two processes race a refresh and
+  then both keep going. Reuse is judged before `client_id` and `scope`, since the presenter holds
+  the token; a refresh is also `invalid_grant` when the connection could not act (the token
+  check's authorizer and integration predicates), and every path locks the connection before its
+  tokens.
+- **A26 (A6) — Automatic error redirects only to known hosts.** An error is redirected without a
+  click only when the redirect's host is the `client_id`'s or loopback **and** a client of that
+  host has an activated connection here (revoked or not); otherwise the page shows the error and
+  a "Return to <host>" button, so a crafted, broken request cannot bounce a signed-in Owner to a
+  host nobody has approved.

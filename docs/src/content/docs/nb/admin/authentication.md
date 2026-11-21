@@ -1177,7 +1177,7 @@ tilgangskontrollen, unntatt `api`, som teller en nøkkel som er sluppet gjennom.
 | `Invitations` | 30 / minutt | Eiers administrasjon av invitasjoner |
 | `InvitationAcceptance` | 20 / minutt | Validering og aksept av invitasjon |
 | `UserManagement` | 30 / minutt | Eiers brukeradministrasjon, å ta inn brukere under Ansatte, ansattrollene og å lage eller rotere en API-nøkkel |
-| `OAuthPreview` | 20 / minutt | Forhåndsvisning av en OAuth-autorisasjonsforespørsel, som kan hente en klients metadatadokument |
+| `OAuthConsent` | 20 / minutt | Forhåndsvisning og godkjenning av OAuth-autorisasjonsforespørsler, per person, telt av operasjonene selv; hver kan hente en klients metadatadokument |
 | `OAuthToken` | 120 / minutt | OAuth-token-endepunktet, `POST /api/oauth/token`, per adresse |
 | `api` | Integrasjonens `rate_limit_per_minute` / minutt | Hver forespørsel en API-nøkkel slippes gjennom for, med integrasjonen som nøkkel, etter tilgangskontrollen ([over](#hastighetsgrensen-for-en-nøkkelforespørsel)) |
 | `OwnerAvatarRead` | 300 / minutt | Lesing av eieres avatarer |
