@@ -1,6 +1,6 @@
 ---
 title: API-tilgang
-description: La et annet program bruke Vantigos API uten en persons økt — integrasjoner, rollene deres, API-nøkler med utløp, begrensning, bryter for bare lesing og nettverk, rotering og tilbakekalling av en nøkkel, hva en nøkkel aldri får, hvordan en klient sender den, hastighetsgrensen og hodene dens, svarene den kan få, forespørselsloggen, varslene om utløp, webhook-endepunkter, signeringshemmelighetene deres og leveranseloggen med ny sending, å koble til en AI-klient med MCP med en nøkkel eller ved å logge inn, samtykkesiden, tilkoblede apper og å tilbakekalle en, og hva du gjør når en nøkkel lekker.
+description: La et annet program bruke Vantigos API uten en persons økt — integrasjoner, rollene deres, API-nøkler med utløp, begrensning, bryter for bare lesing og nettverk, rotering og tilbakekalling av en nøkkel, hva en nøkkel aldri får, hvordan en klient sender den, hastighetsgrensen og hodene dens, svarene den kan få, forespørselsloggen, varslene om utløp, webhook-endepunkter, signeringshemmelighetene deres og leveranseloggen med ny sending, å koble til en AI-klient med MCP med en nøkkel eller ved å logge inn, å registrere en klient for Cursor eller VS Code, å begrense klientvertene, samtykkesiden, tilkoblede apper og å tilbakekalle en, og hva du gjør når en nøkkel lekker.
 sidebar:
   order: 22
 sources:
@@ -43,6 +43,10 @@ sources:
   - apps/server/internal/identity/oauth_authorize.go
   - apps/host/frontend/src/routes/oauth.authorize.tsx
   - apps/host/frontend/src/routes/workspace/-api-access-connections.tsx
+  - apps/host/frontend/src/routes/workspace/-api-access-oauth-clients.tsx
+  - apps/server/internal/identity/oauth_clients.go
+  - apps/server/internal/identity/oauth_revoke.go
+  - apps/server/internal/identity/oauth_revalidate.go
   - apps/host/frontend/src/api/oauth.ts
 ---
 
@@ -405,8 +409,9 @@ omstart.
 
 ## Koble til ved å logge inn
 
-Claude Code, Claude og ChatGPT kan koble seg til uten at en nøkkel kopieres noe sted: du gir
-klienten MCP-adressen, den sender nettleseren din til Vantigo, du logger inn som eier, velger
+Claude Code, Claude og ChatGPT — og Cursor, VS Code og andre apper gjennom en
+[registrert klient](#koble-til-cursor-vs-code-eller-en-annen-app) — kan koble seg til uten at en
+nøkkel kopieres noe sted: du gir klienten MCP-adressen, den sender nettleseren din til Vantigo, du logger inn som eier, velger
 integrasjonen klienten kan handle som, og godkjenner. Klienten har da en **tilkobling** som
 handler som den integrasjonen, med rollene, MCP-tilgangen og hastighetsgrensen dens, som én
 nøkkel til; den fornyer selv tokenet sitt, som varer én time, og ser aldri en nøkkel. Kontrakten
@@ -426,9 +431,10 @@ er [OAuth connections](/en/reference/oauth/).
   til den klienten som kobler seg til. Vantigo henter klientens publiserte beskrivelse derfra når
   en eier åpner forespørselen om tilkobling, aldri fra en privat eller intern adresse; hentingen
   viser den verten installasjonens utgående adresse.
-- **Enhver klient kan spørre.** Til en senere utgivelse gir en liste over tillatte klientverter,
-  kan enhver klient som publiserer en beskrivelse, sende en eier til samtykkesiden; eierens
-  godkjenning er den eneste porten. Sjekk vertene på siden før du godkjenner.
+- **Hvilke klienter som kan spørre.** Som standard kan enhver klient som publiserer en
+  beskrivelse, sende en eier til samtykkesiden, og eierens godkjenning er porten: sjekk vertene
+  på siden før du godkjenner. For bare å tillate vertene du nevner, før dem opp under
+  [Klientverter](#begrens-klientvertene). En klient du har registrert her, kan alltid spørre.
 - **Claude og ChatGPT på nettet** kaller installasjonen fra sine egne servere, så den må ha en
   offentlig `https`-adresse. **Claude Code** kjører på datamaskinen din og kan koble seg til enhver
   adresse den når, også en utviklingsinstans på `http://localhost`.
@@ -455,6 +461,58 @@ er [OAuth connections](/en/reference/oauth/).
 2. Klienten sender nettleseren til Vantigos samtykkeside; logg inn først hvis du blir bedt om det.
 3. Godkjenn som beskrevet under [Samtykkesiden](#samtykkesiden). Nettleseren går tilbake til
    klienten.
+
+Integrasjonens **MCP**-seksjon viser adressen og kommandoen for Claude Code under **Koble til ved
+å logge inn**, ved siden av nøkkelens under **Koble til med en nøkkel**.
+
+### Koble til Cursor, VS Code eller en annen app
+
+En app som ikke publiserer en beskrivelse av seg selv, logger inn med en klient du registrerer her.
+
+**Før du begynner:** finn **omdirigerings-URI-en** appen logger inn med, i appens egen
+dokumentasjon. Vantigo tar `https://…`-adresser og, for en app på personens egen datamaskin,
+`http://127.0.0.1`, `http://[::1]` eller `http://localhost`; en loopback-URI registrert uten port
+passer enhver port appen velger, og `localhost` og `127.0.0.1` er forskjellige verter. En
+omdirigerings-URI med appens eget skjema, som `cursor://…`, kan ikke registreres: når appen
+tilbyr en loopback-adresse i stedet, registrerer du den.
+
+1. Gå til **Administrer arbeidsområde › API-tilgang** og velg **Registrer en klient** under
+   **Registrerte klienter**.
+2. Gi den et **Navn** — som vises på samtykkesiden og under **Tilkoblede apper** — og
+   **Omdirigerings-URI-er**, én per linje. Velg **Registrer en klient**.
+3. Kopier **Klient-ID** den viser, `vtc_` og 24 bokstaver og sifre. Den er ingen hemmelighet og
+   blir stående i listen.
+4. I appens innstillinger for MCP-serveren gir du MCP-adressen,
+   `https://vantigo.example.com/api/mcp`, og der appen ber om OAuth-klientopplysninger, skriver
+   du inn klient-ID-en og **lar klienthemmeligheten stå tom**: klienten er offentlig og beviser
+   seg med PKCE.
+5. Start tilkoblingen i appen. Nettleseren åpner samtykkesiden, som sier at appen er
+   **Registrert i dette arbeidsområdet av** deg; godkjenn som beskrevet under
+   [Samtykkesiden](#samtykkesiden).
+
+**Slik endrer eller avvikler du en klient:** **Endre** på raden endrer navnet og
+omdirigerings-URI-ene; en tilkobling som er laget før, virker fortsatt, så tilbakekall den under
+**Tilkoblede apper** hvis den ikke skal. **Arkiver**, etter en bekreftelse som sier hvor mange
+apper som er koblet til med den, kobler fra alle på én gang og avviser neste innlogging med den.
+Det kan ikke angres. Opptil 50 klienter kan være registrert samtidig.
+
+### Begrens klientvertene
+
+**Klientverter**, under **Administrer arbeidsområde › API-tilgang**, viser vertene der apper kan
+koble seg til med beskrivelsen sin, én per linje — `claude.ai`, `chatgpt.com`. Et underdomene av
+en vert i listen tillates også: `claude.ai` tillater `api.claude.ai`, ikke `notclaude.ai`.
+**Tom**, som er standard, tillater alle verter. Registrerte klienter tillates alltid.
+
+1. Skriv inn vertene, én per linje, og velg **Lagre**. En vert er bare et navn: ingen
+   `https://`, port, `*` eller IP-adresse.
+2. Listen gjelder med en gang: en forespørsel fra en annen vert vises som **Denne appen kan ikke
+   kobles til** på samtykkesiden, og Vantigo henter ikke engang beskrivelsen.
+
+Å lagre kobler ingenting fra. En tilkoblet app med en vert listen utelater, beholder tilgangen
+den har i høyst timen sin, kan ikke fornye den, og vises som **Inaktiv** — *Verten står ikke på
+arbeidsområdets liste over klientverter* — til du fører opp verten igjen, så den fortsetter, eller
+tilbakekaller den. Hver endring revideres som `oauth.client_hosts_changed`, med listen før og
+etter.
 
 **Slik kontrollerer du:** be klienten liste verktøyene sine, som for en nøkkel
 ([Koble til en klient](#koble-til-en-klient)), og åpne integrasjonen: klienten står under
@@ -507,10 +565,13 @@ Siden kan ikke vises inne i en ramme på et annet nettsted.
 
 Integrasjonens **Oversikt** viser de tilkoblede appene under **MCP**: navnet hver klient kaller
 seg og verten dens, hvem som koblet den til, **Bare lese** eller **Lese og skrive**, når den ble
-koblet til, siste bruk og adresse, og når den **slutter** av seg selv. En tilkobling der personen
-ikke lenger er en aktiv eier — fratatt rollen, deaktivert, slettet eller deaktivert av
+koblet til, siste bruk og adresse, når den **slutter** av seg selv, og hva slags den er:
+**Klientbeskrivelse** for en app som er kjent ved beskrivelsen den publiserer, **Registrert
+klient** for en som er registrert her, der verten er omdirigerings-URI-ens. En tilkobling der
+personen ikke lenger er en aktiv eier — fratatt rollen, deaktivert, slettet eller deaktivert av
 katalogen — er **Inaktiv**: tokenene avvises. Tilbakekall den, og koble klienten til på nytt hvis
-den fortsatt trengs.
+den fortsatt trengs. En der verten ikke lenger står blant [klientvertene](#begrens-klientvertene),
+er også **Inaktiv**, til verten føres opp igjen.
 
 Hver bærbar maskin som kjører Claude Code, er en egen tilkobling; å tilbakekalle én lar de andre
 være.
@@ -526,6 +587,13 @@ innlogging. Tilbakekallingen revideres som `connection.revoked`.
 - Det går **180 dager** fra den ble godkjent.
 - Klienten viser fram en kode eller et oppdateringstoken en gang til etter at det er brukt, som
   betyr at noen andre kan ha det.
+- Klienten **logger ut** eller fjerner serveren og sier fra til Vantigo, gjennom
+  tilbakekallingsendepunktet ([OAuth connections](/en/reference/oauth/#the-revocation-endpoint)).
+- Den **registrerte klienten** den logget inn med, arkiveres.
+- Klientens **beskrivelse endres** så den ikke lenger holder — den viser ikke lenger adressen
+  tilkoblingen går tilbake til, eller bryter en regel. Vantigo sjekker den igjen i bakgrunnen når
+  klienten fornyer tilgangen etter at kopien Vantigo har, er utløpt, høyst et døgn etter at den
+  sist ble lest; en beskrivelse som ikke kan nås for øyeblikket, endrer ingenting.
 
 En deaktivert integrasjons tilkoblinger avvises mens den er deaktivert, og virker igjen når den
 aktiveres, slik nøklene dens gjør.
@@ -543,6 +611,11 @@ berøres ikke.
 - **Klienten sier at innloggingen mislyktes, eller åpner aldri nettleseren:** sjekk at serveren
   når klientens vert over HTTPS, og, for Claude eller ChatGPT på nettet, at installasjonens
   adresse er offentlig `https`.
+- **Denne appen kan ikke kobles til** for en klient fra en vert du ikke har ført opp: verten står
+  ikke blant [klientvertene](#begrens-klientvertene). Legg den til, eller la listen stå tom.
+- **Denne appen kan ikke kobles til** for en registrert klient: den er arkivert, eller
+  omdirigerings-URI-en appen sender, er ikke en som er registrert. Sammenlign appens
+  omdirigerings-URI med klientens rad.
 - **Denne appen kan ikke kobles til:** klientens beskrivelse kunne ikke hentes eller ble avvist.
   Når siden viser det idet forespørselen åpnes, sier forklaringen hva slags avvisning det er;
   avvist ved **Godkjenn** eller **Avslå** sier den bare at appen ikke kan kobles til. Prøv igjen
@@ -588,7 +661,8 @@ er noe å knytte den til. En AI-klients forespørsel ved MCP-endepunktet er oper
   En nøkkel med slettet rad, 90 dager etter at den utløp, vises som *Slettet nøkkel*. En
   forespørsel en tilkoblet app gjorde, viser appen slik den kalte seg selv, merket *(tilkoblet
   app)*, eller *Fjernet app* når tilkoblingens rad er borte.
-- **Nøkkel**, **Status**, **Årsak** og **Dag** filtrerer alle tre.
+- **Nøkkel eller app**, **Status**, **Årsak** og **Dag** filtrerer alle tre. **Nøkkel eller app**
+  viser nøklene og de tilkoblede appene, så forespørslene til én app kan leses for seg.
 
 En avvisning registreres med årsaken, og det gjør et gjentatt svar også:
 
@@ -871,7 +945,10 @@ MFA: `integration.created`, `integration.updated`, `integration.roles_changed`,
 etter. En tilkoblet app revideres som `connection.authorized` når klienten fullfører
 innloggingen, med klienten, verten, omfanget og integrasjonen, og som `connection.revoked` med
 årsaken når den avsluttes — `revoked`, `integration_archived`, `authorizer_removed`,
-`code_replayed` eller `refresh_reused`, de to siste som `system:oauth`. Ingen token eller kode
+`client_archived`, `code_replayed`, `refresh_reused`, `client_document_changed` eller
+`revoked_by_client`, de fire siste som `system:oauth`. Å registrere, endre og arkivere en klient
+revideres som `oauth_client.created`, `oauth_client.updated` og `oauth_client.archived`, og en
+endring av klientvertene som `oauth.client_hosts_changed`. Ingen token eller kode
 registreres noen gang. Arbeideren `identity.api-keys` registrerer
 `api_key.expired` én gang for hver nøkkel som passerer utløpet, som `system:api-keys`, og
 sletter en nøkkels rad 90 dager etter at den utløp; revisjonsradene blir værende

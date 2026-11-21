@@ -728,7 +728,8 @@ stream. `MCP_ENABLED=0` in `vantigo.env` switches it off.
 An MCP client or app can connect by having an Owner sign in and approve it, instead of with a
 key ([API access › Connecting by signing in](/en/admin/api-access/#connecting-by-signing-in)).
 It is on by default; `OAUTH_ENABLED=0` in `vantigo.env` switches it off. The image serves
-`/.well-known/oauth-*`, the consent page `/oauth/authorize` and `POST /api/oauth/token`, and it
+`/.well-known/oauth-*`, the consent page `/oauth/authorize`, `POST /api/oauth/token` and
+`POST /api/oauth/revoke`, and it
 fetches each client's metadata document over HTTPS from the client's own host — `claude.ai` and
 `chatgpt.com`, say — so the server needs outbound HTTPS to those hosts. Claude and ChatGPT on
 the web reach the installation from their own servers, so they connect only to a public `https`
@@ -1300,6 +1301,17 @@ shows that host the installation's outbound address. Behind a base path, route
 `/.well-known/oauth-` to Vantigo ([Base path and reverse proxy](#base-path-and-reverse-proxy)).
 `OAUTH_ENABLED=0` in `vantigo.env` switches all of it off
 ([API access › Connecting by signing in](/en/admin/api-access/#connecting-by-signing-in)).
+
+**The release with registered OAuth clients.** It brings `00219_identity_oauth_clients.sql` —
+the clients Owners register by hand for Cursor, VS Code and other apps, the list of client hosts
+that may connect (empty, so every host is admitted as before), and an index on the request log
+by connection. The index is built over the log's 30 days of partitions as the migration runs;
+the log's writer waits meanwhile, and drops rows rather than slow requests if it waits long. From this release the image also
+serves the revocation endpoint `POST /api/oauth/revoke`, a plain form `POST` like the token
+endpoint, and checks a client's description again when one of its connections renews after the
+cached copy has expired, so the server keeps needing outbound HTTPS to the client hosts. Nothing
+needs changing in `vantigo.env` or the proxy
+([API access › Connect Cursor, VS Code or another app](/en/admin/api-access/#connect-cursor-vs-code-or-another-app)).
 
 For a complete backup, one-migrator, token rotation and Owner break-glass runbook, see
 [SSO and SCIM operations](/en/admin/sso-scim/).
