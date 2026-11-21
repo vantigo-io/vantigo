@@ -45,6 +45,7 @@ func (c Config) redacted() redactedConfig {
 	}
 	v.AIAPIKey = redact(v.AIAPIKey)
 	v.EnergySpotPriceServiceKey = redact(v.EnergySpotPriceServiceKey)
+	v.StorageS3SecretAccessKey = redact(v.StorageS3SecretAccessKey)
 	return v
 }
 

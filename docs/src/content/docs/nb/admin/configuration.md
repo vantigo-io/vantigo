@@ -109,9 +109,16 @@ og en SMTP-kanal uten egen legitimasjon sender ingenting.
 
 | Innstilling | Standard | Betydning |
 | --- | --- | --- |
-| `STORAGE_PROVIDER` | ikke satt | `fs`, eller ikke satt: ingenting som trenger objektlageret virker, og sier fra om det |
+| `STORAGE_PROVIDER` | ikke satt | `fs`, `s3`, eller ikke satt: ingenting som trenger objektlageret virker, og sier fra om det |
 | `STORAGE_FS_ROOT` | ikke satt | `fs`-driverens absolutte rotkatalog |
 | `STORAGE_FS_ALLOW_INSECURE_ROOT` | `0` | Letter kontrollen av rotens tillatelser (bare utvikling) |
+| `STORAGE_S3_ENDPOINT` | ikke satt | Den S3-kompatible tjenesten, `https://vert[:port]` (`http` bare i utvikling) |
+| `STORAGE_S3_REGION` | ikke satt | Leverandørens regionnavn, `europe-1` hos UpCloud |
+| `STORAGE_S3_BUCKET` | ikke satt | Installasjonens bøtte, som appen aldri oppretter |
+| `STORAGE_S3_PREFIX` | ingen | Et nøkkelprefiks inne i bøtta |
+| `STORAGE_S3_ACCESS_KEY_ID`, `STORAGE_S3_SECRET_ACCESS_KEY` | ikke satt | Faste nøkler; `_FILE`-variantene leser dem fra en montert fil |
+| `STORAGE_S3_FORCE_PATH_STYLE` | `1` | Bøtta i stien i stedet for i vertsnavnet; UpCloud vil ha `1` |
+| `TMPDIR` | `/tmp` | Der SAF-T-importen holder en opplasting mens den leser den; må være skrivbar |
 
 Se [Objektlagring](/nb/admin/object-storage/).
 

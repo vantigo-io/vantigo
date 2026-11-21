@@ -37,6 +37,7 @@ const rootMode = 0o700
 // for the one thing os.Root does not cover.
 type FS struct {
 	root              *os.Root
+	path              string // the root's absolute path, for Ping only
 	allowInsecureRoot bool
 }
 
@@ -110,7 +111,7 @@ func NewFS(root string, allowInsecureRoot, isDevelopment bool) (*FS, error) {
 		return nil, fmt.Errorf("storage: opening fs root: %w", stripPath(err))
 	}
 
-	store := &FS{root: osRoot, allowInsecureRoot: allowInsecureRoot}
+	store := &FS{root: osRoot, path: root, allowInsecureRoot: allowInsecureRoot}
 	if err := store.probeWritable(); err != nil {
 		_ = osRoot.Close()
 		return nil, err
@@ -431,4 +432,79 @@ func validateKey(key string) error {
 		}
 	}
 	return nil
+}
+
+// Ping is the fs driver's readiness check (Kubernetes readiness design
+// KR14): a stat of the root, by its path and through the opened Root. The
+// path catches a root removed or replaced since start, which the open Root
+// alone would not notice; the Root catches a volume that stopped answering.
+func (f *FS) Ping(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	info, err := os.Lstat(f.path)
+	if err != nil {
+		return fmt.Errorf("storage: fs root: %w", stripPath(err))
+	}
+	if !info.IsDir() || info.Mode()&fs.ModeSymlink != 0 {
+		return errors.New("storage: fs root is no longer a directory")
+	}
+	if _, err := f.root.Stat("."); err != nil {
+		return fmt.Errorf("storage: fs root: %w", stripPath(err))
+	}
+	return nil
+}
+
+// Walk calls fn for every regular file under the root, with its key in
+// "/" form. It skips the temporary files Put writes before its rename
+// (".<name>.<suffix>.tmp", createTemp) — a leftover is a write that never
+// finished, not an object — and anything that is not a regular file.
+func (f *FS) Walk(ctx context.Context, fn func(ObjectInfo) error) error {
+	return fs.WalkDir(f.root.FS(), ".", func(name string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return fmt.Errorf("storage: fs walk: %w", stripPath(err))
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if d.IsDir() || !d.Type().IsRegular() || isTempName(d.Name()) {
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				return nil
+			}
+			return fmt.Errorf("storage: fs walk: %w", stripPath(err))
+		}
+		return fn(ObjectInfo{Key: name, Size: info.Size()})
+	})
+}
+
+// Stat reports key's size, and whether it names a regular file.
+func (f *FS) Stat(ctx context.Context, key string) (ObjectInfo, bool, error) {
+	if err := ctx.Err(); err != nil {
+		return ObjectInfo{}, false, err
+	}
+	if err := validateKey(key); err != nil {
+		return ObjectInfo{}, false, err
+	}
+	info, err := f.root.Stat(filepath.FromSlash(key))
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return ObjectInfo{}, false, nil
+		}
+		return ObjectInfo{}, false, fmt.Errorf("storage: stat %q: %w", key, stripPath(err))
+	}
+	if !info.Mode().IsRegular() {
+		return ObjectInfo{}, false, nil
+	}
+	return ObjectInfo{Key: key, Size: info.Size()}, true, nil
+}
+
+// isTempName reports a name createTemp makes: a leading dot and a ".tmp"
+// suffix. No valid object name has both by accident often enough to
+// matter, and an object that did would be copied the next time it changed.
+func isTempName(name string) bool {
+	return strings.HasPrefix(name, ".") && strings.HasSuffix(name, ".tmp")
 }

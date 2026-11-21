@@ -10,7 +10,8 @@
 // (docs/src/content/docs/en/admin/object-storage.md "Tenant isolation, module scopes, and downloads").
 //
 // New picks the driver from config.Config.StorageProvider: "fs" (fs.go)
-// stores objects under StorageFSRoot. When StorageProvider is unset, New
+// stores objects under StorageFSRoot, "s3" (s3.go) in an S3-compatible
+// bucket. When StorageProvider is unset, New
 // still returns a usable store — the process starts — but every operation
 // on it reports ErrNotConfigured, mirroring .NET's host, which starts with
 // storage fail-closed when Storage__Provider is omitted (docs/src/content/docs/en/admin/object-storage.md).
@@ -73,7 +74,8 @@ type ObjectStore interface {
 }
 
 // New builds the ObjectStore config.Config selects. StorageProvider "fs"
-// selects NewFS, rooted at StorageFSRoot. An unset StorageProvider is not a
+// selects NewFS, rooted at StorageFSRoot; "s3" selects NewS3 with the
+// STORAGE_S3_* settings. An unset StorageProvider is not a
 // construction error: New still returns a store, whose every operation
 // reports ErrNotConfigured (docs/src/content/docs/en/admin/object-storage.md's fail-closed host).
 func New(cfg *config.Config) (ObjectStore, error) {
@@ -82,6 +84,8 @@ func New(cfg *config.Config) (ObjectStore, error) {
 		return unconfiguredStore{}, nil
 	case "fs":
 		return NewFS(cfg.StorageFSRoot, cfg.StorageFSAllowInsecureRoot, cfg.IsDevelopment())
+	case "s3":
+		return NewS3(S3OptionsFrom(cfg))
 	default:
 		return nil, fmt.Errorf("storage: unknown provider %q", cfg.StorageProvider)
 	}
@@ -199,4 +203,18 @@ func combine(scope, relativeKey string) (string, error) {
 		return "", fmt.Errorf("%w: combined key is too long", ErrInvalidKey)
 	}
 	return combined, nil
+}
+
+// S3OptionsFrom is cfg's STORAGE_S3_* settings as NewS3 takes them.
+func S3OptionsFrom(cfg *config.Config) S3Options {
+	return S3Options{
+		Endpoint:        cfg.StorageS3Endpoint,
+		Secure:          cfg.StorageS3Secure,
+		Region:          cfg.StorageS3Region,
+		Bucket:          cfg.StorageS3Bucket,
+		Prefix:          cfg.StorageS3Prefix,
+		AccessKeyID:     cfg.StorageS3AccessKeyID,
+		SecretAccessKey: cfg.StorageS3SecretAccessKey,
+		PathStyle:       cfg.StorageS3ForcePathStyle,
+	}
 }

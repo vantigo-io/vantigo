@@ -501,7 +501,8 @@ terminates immediately.
 The image has no shell, so the container `HEALTHCHECK` execs the binary itself
 (`/app/vantigo healthcheck`) rather than running a `CMD-SHELL` curl or wget one-liner.
 It probes `/health/ready`: startup complete, PostgreSQL reachable, and object storage
-reachable if configured. Keep any probe you configure — Compose's `healthcheck.test`,
+reachable if configured — the `storage` check, a `HeadBucket` for `s3` and a stat of
+the root for `fs` ([Object storage](/en/admin/object-storage/#the-readiness-check)). Keep any probe you configure — Compose's `healthcheck.test`,
 a Kubernetes liveness or readiness probe, anything else — in that same exec form. An
 HTTP-style probe that connects directly, rather than execing inside the container,
 sends its own address as the `Host` header, and the host filter only accepts

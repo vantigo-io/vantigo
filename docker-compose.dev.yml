@@ -4,6 +4,17 @@
 #
 # Kept apart from docker-compose.test.yml, whose server is throwaway and
 # holds only per-test databases.
+#
+# An S3-compatible object store, for trying STORAGE_PROVIDER=s3 locally, is
+# behind the s3 profile (SeaweedFS: MinIO no longer publishes images):
+#
+#   docker compose -f docker-compose.dev.yml --profile s3 up -d --wait
+#
+# then run the server with
+#
+#   STORAGE_PROVIDER=s3 STORAGE_S3_ENDPOINT=http://127.0.0.1:58333
+#   STORAGE_S3_REGION=us-east-1 STORAGE_S3_BUCKET=vantigo
+#   STORAGE_S3_ACCESS_KEY_ID=vantigo STORAGE_S3_SECRET_ACCESS_KEY=vantigo-dev-secret
 name: vantigo-dev
 
 services:
@@ -23,5 +34,33 @@ services:
       timeout: 3s
       retries: 30
 
+  s3:
+    profiles: ["s3"]
+    image: chrislusf/seaweedfs:4.54
+    command: server -dir=/data -s3 -s3.port=8333 -s3.config=/etc/seaweedfs/s3.json
+    configs:
+      - source: s3-identities
+        target: /etc/seaweedfs/s3.json
+    ports:
+      - "127.0.0.1:58333:8333"
+    volumes:
+      - s3-data:/data
+    healthcheck:
+      # The app never creates its bucket (an operator does), so the dev
+      # store's health check makes it, once, and then reports healthy.
+      test: ["CMD-SHELL", "echo 's3.bucket.list' | weed shell 2>/dev/null | grep -q vantigo || echo 's3.bucket.create -name vantigo' | weed shell >/dev/null 2>&1; echo 's3.bucket.list' | weed shell 2>/dev/null | grep -q vantigo"]
+      interval: 3s
+      timeout: 20s
+      retries: 40
+      start_period: 5s
+
+configs:
+  s3-identities:
+    content: |
+      {"identities": [{"name": "vantigo",
+        "credentials": [{"accessKey": "vantigo", "secretKey": "vantigo-dev-secret"}],
+        "actions": ["Admin", "Read", "Write", "List", "Tagging"]}]}
+
 volumes:
   postgres-data:
+  s3-data:

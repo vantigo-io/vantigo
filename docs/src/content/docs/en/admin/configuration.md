@@ -106,9 +106,16 @@ and an SMTP channel without credentials of its own sends nothing.
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
-| `STORAGE_PROVIDER` | unset | `fs`, or unset: nothing that needs the object store works, and says so |
+| `STORAGE_PROVIDER` | unset | `fs`, `s3`, or unset: nothing that needs the object store works, and says so |
 | `STORAGE_FS_ROOT` | unset | The `fs` driver's absolute root directory |
 | `STORAGE_FS_ALLOW_INSECURE_ROOT` | `0` | Relaxes the root's permission check (development only) |
+| `STORAGE_S3_ENDPOINT` | unset | The S3-compatible service, `https://host[:port]` (`http` in development only) |
+| `STORAGE_S3_REGION` | unset | The provider's region name, `europe-1` on UpCloud |
+| `STORAGE_S3_BUCKET` | unset | The installation's bucket, which the app never creates |
+| `STORAGE_S3_PREFIX` | none | A key prefix inside the bucket |
+| `STORAGE_S3_ACCESS_KEY_ID`, `STORAGE_S3_SECRET_ACCESS_KEY` | unset | Static credentials; the `_FILE` variants read them from a mounted file |
+| `STORAGE_S3_FORCE_PATH_STYLE` | `1` | Bucket in the path rather than the host name; UpCloud wants `1` |
+| `TMPDIR` | `/tmp` | Where the SAF-T import keeps an upload while it reads it; must be writable |
 
 See [Object storage](/en/admin/object-storage/).
 

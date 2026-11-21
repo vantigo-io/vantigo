@@ -1,10 +1,11 @@
 ---
 title: "Objektlagring"
-description: "Filsystemleverandøren, modulomfang, nøkkelvalidering og strømmede nedlastinger."
+description: "Filsystem- og S3-leverandørene, flytting mellom dem, modulomfang, nøkkelvalidering og strømmede nedlastinger."
 sidebar:
   order: 41
 sources:
   - apps/server/internal/storage
+  - apps/server/cmd/vantigo/storage.go
   - apps/server/internal/invoices/bankimport.go
   - apps/server/internal/invoices/bank_feed_sync.go
   - apps/server/internal/invoices/reminderpdf.go
@@ -19,39 +20,55 @@ Objektlagring er applikasjonsporten Kommunikasjon mellomlagrer og serverer vedle
 gjennom. Moduler snakker aldri med en leverandør-SDK: de får et `ObjectStore` avgrenset
 til sitt eget navnerom og sender relative nøkler.
 
-## Leverandørsettet er en regresjon fra .NET-implementasjonen
+## Leverandører
 
-**Det lokale filsystemet er den eneste støttede leverandøren.** Implementasjonen
-(`apps/server/internal/storage`) inneholder én driver, `fs.go`, og konfigurasjonen
-godtar bare `fs`:
+To drivere implementerer porten, og `STORAGE_PROVIDER` velger én av dem:
 
-```text
-STORAGE_PROVIDER: must be "fs" if set
-```
+- **`fs`** lagrer objektene under en lokal katalog, et montert volum i en container.
+- **`s3`** lagrer dem i en bøtte hos en hvilken som helst S3-kompatibel tjeneste:
+  UpCloud Managed Object Storage, AWS S3, MinIO, SeaweedFS og lignende.
 
-S3/MinIO- og Azure Blob-leverandørene som .NET-implementasjonen tilbød, **finnes ikke i
-denne porten**. Det finnes ingen `STORAGE_S3_*`, ingen `STORAGE_AZURE_BLOB_*`, ingen
-autentisering med tilgangsnøkkel, SAS, tilkoblingsstreng eller administrert identitet,
-og ingen provisjonering av containere. En installasjon som trenger ekstern
-objektlagring i dag, må montere varig lagring som den eier eksklusivt inn i
-containeren og peke `fs`-driveren på den. Å legge til en driver er additivt — porten
-er leverandørnøytral — men ingenting i dette repositoriet implementerer en.
+Azure Blob-leverandøren som .NET-implementasjonen tilbød, finnes ikke i denne porten.
+Begge driverne legger ut objektene på samme måte (se
+[Modulomfang og den fysiske nøkkelen](#modulomfang-og-den-fysiske-nøkkelen)), så
+`vantigo storage copy` flytter en installasjon fra den ene til den andre uten å gi noe
+nytt navn.
 
 ## Konfigurasjon
 
 | Variabel | Formål | Standard |
 | --- | --- | --- |
-| `STORAGE_PROVIDER` | `fs`, eller ikke satt | ikke satt |
+| `STORAGE_PROVIDER` | `fs`, `s3`, eller ikke satt | ikke satt |
 | `STORAGE_FS_ROOT` | Absolutt rotkatalog; påkrevd når leverandøren er `fs` | ikke satt |
 | `STORAGE_FS_ALLOW_INSECURE_ROOT` | Lemp på kontrollen av gruppe-/verdensskrivbar rot | `0` |
+| `STORAGE_S3_ENDPOINT` | Tjenestens URL, `https://vert[:port]` uten sti; `http` bare med `APP_ENV=development`. Påkrevd for `s3` | ikke satt |
+| `STORAGE_S3_REGION` | Leverandørens regionnavn, for eksempel `europe-1`. Påkrevd for `s3` | ikke satt |
+| `STORAGE_S3_BUCKET` | Installasjonens bøtte: 3–63 små bokstaver, sifre og bindestreker. Opprettes aldri av appen. Påkrevd for `s3` | ikke satt |
+| `STORAGE_S3_PREFIX` | Et nøkkelprefiks inne i bøtta: små bokstaver, sifre og bindestreker, i segmenter skilt med `/` | ingen |
+| `STORAGE_S3_ACCESS_KEY_ID` | Tilgangsnøkkelen; eller `STORAGE_S3_ACCESS_KEY_ID_FILE`, stien til en fil som inneholder den. Påkrevd for `s3` | ikke satt |
+| `STORAGE_S3_SECRET_ACCESS_KEY` | Den hemmelige nøkkelen; eller `STORAGE_S3_SECRET_ACCESS_KEY_FILE`. Påkrevd for `s3` | ikke satt |
+| `STORAGE_S3_FORCE_PATH_STYLE` | `1` adresserer bøtta i stien (`https://vert/bøtte/nøkkel`), `0` som underdomene | `1` |
 
 ```text
 STORAGE_PROVIDER=fs
 STORAGE_FS_ROOT=/var/lib/vantigo/objects
 ```
 
-`STORAGE_FS_ROOT` må være en absolutt sti, og å sette den uten `STORAGE_PROVIDER=fs`
-er en konfigurasjonsfeil, ikke en stilltiende no-op.
+```text
+STORAGE_PROVIDER=s3
+STORAGE_S3_ENDPOINT=https://abc123.upcloudobjects.com
+STORAGE_S3_REGION=europe-1
+STORAGE_S3_BUCKET=acme
+STORAGE_S3_ACCESS_KEY_ID_FILE=/run/secrets/s3/access-key-id
+STORAGE_S3_SECRET_ACCESS_KEY_FILE=/run/secrets/s3/secret-access-key
+```
+
+Hver drivers variabler gjelder bare med dens leverandør: å sette `STORAGE_FS_ROOT`
+uten `STORAGE_PROVIDER=fs`, eller en `STORAGE_S3_*` uten `STORAGE_PROVIDER=s3`, er en
+konfigurasjonsfeil, ikke en stilltiende no-op. En nøkkel og dens `_FILE`-variant kan
+ikke begge være satt; et linjeskift til slutt i en fil fjernes, og verdien kan ikke
+inneholde mellomrom. Den hemmelige nøkkelen sladdes overalt der konfigurasjonen
+skrives ut.
 
 **Lagring som ikke er satt, feiler lukket ved hver operasjon, ikke ved oppstart.** Med
 `STORAGE_PROVIDER` ikke satt starter prosessen likevel og betjener alt annet; hver
@@ -62,6 +79,107 @@ starte.
 `STORAGE_FS_ALLOW_INSECURE_ROOT` godtas **bare når `APP_ENV=development`**; utenfor
 development er den en oppstartsfeil uansett hva den ville ha gjort — samme form som
 `MAIL_DRIVER=log` og `OWNERS_ALLOW_INSECURE_NO_MFA`.
+
+## Klarhetskontrollen
+
+Når lagring er konfigurert, kjører `GET /health/ready` en kontroll som heter `storage`
+ved siden av `postgres`: en `HeadBucket` mot bøtta for `s3`, en stat av roten for `fs`.
+En bøtte som mangler, nøkler som avvises, et endepunkt som ikke svarer eller en rot som
+er borte, gir 503 med `storage` i `failing`; prosessen fortsetter å kjøre, så den
+kommer seg av seg selv når bøtta svarer igjen. Uten lagring er det ingen kontroll.
+
+Et lager som ikke engang kan bygges, er en oppstartsfeil, som før: for eksempel en
+`fs`-rot som ikke kan opprettes eller skrives til. `s3`-driveren kontakter ingenting
+ved oppstart, så problemene dens vises alltid i klarhetskontrollen i stedet.
+
+## S3-driveren
+
+- **Opplastinger strømmes.** Et objekt på opptil 16 MiB sendes som én `PUT` og holdes
+  i minnet mens det sendes; alt større sendes som en multipart-opplasting i deler på
+  16 MiB og holder omtrent to deler (32 MiB) i minnet, uansett hvor stor filen er.
+  Ingenting skrives til lokal disk. Regn det med i podens minnegrense: en pod med mange
+  store opplastinger samtidig trenger 32 MiB for hver.
+- **Innholdstypen** lagres med objektet. En `Put` over en eksisterende nøkkel
+  erstatter den.
+- **Ingen integritetstrailere.** Driveren (bygd på `minio-go`) sender aldri de
+  etterfølgende CRC-sjekksummene som nyere AWS-SDK-er legger til som standard, og som
+  UpCloud og flere andre S3-kompatible tjenester avviser.
+- **En nøkkel som mangler**, er «finnes ikke» for modulene, som på `fs`; å slette en
+  nøkkel som mangler, lykkes.
+- **Bøtta er aldri offentlig og aldri forhåndssignert**: nedlastinger strømmes
+  fortsatt gjennom applikasjonens autoriserte endepunkter, som beskrevet under
+  [Nedlastinger](#nedlastinger).
+- **Bøtta opprettes eller konfigureres aldri av appen.** Opprett den, nøklene og
+  policyen på forhånd.
+
+Nøklene trenger disse handlingene på bøtta og ingenting annet: `s3:ListBucket` på
+`arn:aws:s3:::<bøtte>` (for klarhetskontrollen og `vantigo storage copy`), og
+`s3:GetObject`, `s3:PutObject`, `s3:DeleteObject` og `s3:AbortMultipartUpload` på
+`arn:aws:s3:::<bøtte>/*`.
+
+### UpCloud Managed Object Storage
+
+- **Endepunkt:** `https://<tjeneste-id>.upcloudobjects.com`, eller
+  `https://<tjeneste-id>-private.upcloudobjects.com` fra et privat nettverk.
+- **Region:** regionnavnet med små bokstaver, `europe-1` for Helsingfors, ikke
+  sonekoden (`fi-hel2`).
+- **Adressering:** behold `STORAGE_S3_FORCE_PATH_STYLE=1`, standarden.
+- **Én bøtte per installasjon, med sin egen bruker.** Opprett en bruker for
+  installasjonen, knytt til en policy som gir handlingene over på den ene bøtta, og gi
+  appen den brukerens tilgangsnøkkel. En bruker uten policy kan ingenting, så nøklene
+  til én installasjon når ikke en annens bøtte.
+- **Kryptering i hvile** er alltid på (AES-256, nøkler forvaltet av UpCloud); det er
+  ingenting å konfigurere.
+
+## Flytte mellom fs og s3
+
+`vantigo storage copy` kopierer hvert objekt mellom en `fs`-rot og bøtta miljøet
+konfigurerer. Kjør den med `s3`-innstillingene (`STORAGE_PROVIDER=s3` og
+`STORAGE_S3_*`-variablene) og den gamle roten montert:
+
+```sh
+vantigo storage copy --fs-root /var/lib/vantigo/objects
+```
+
+Miljøet for kopieringen er installasjonens, med lagringsinnstillingene byttet ut:
+`STORAGE_PROVIDER=s3` og `STORAGE_S3_*`-variablene, og ingen `STORAGE_FS_ROOT`, som
+avvises uten `STORAGE_PROVIDER=fs` — roten oppgis med `--fs-root` i stedet.
+
+`--to fs` kopierer den andre veien, fra bøtta inn i roten. Kommandoen hopper over et
+objekt målet allerede har med samme størrelse, kopierer aldri `fs`-driverens
+uferdige skrivinger (`.<navn>.<tilfeldig>.tmp`-filer), skriver ut hvor mange objekter
+den kopierte og hoppet over, og avslutter med 1 ved første feil. Den er trygg å kjøre
+igjen: en ny kjøring kopierer objektene som er nye eller har endret størrelse. Et
+objekt som er skrevet om på samme sted med samme størrelse, hoppes også over; `--all`
+kopierer hvert objekt uansett hva som allerede ligger der.
+
+Slik flytter du en installasjon fra `fs` til `s3`:
+
+1. Opprett bøtta, brukeren og policyen.
+2. Kjør `vantigo storage copy` mens installasjonen betjener brukere. Det flytter det
+   meste.
+3. Stopp skrivingen: stopp prosessene `api`, `server` og `worker`, eller skaler dem
+   til null.
+4. Kjør `vantigo storage copy --all` igjen. Med skrivingen stoppet kopierer denne
+   runden alt, så ingenting som ble skrevet om i mellomtiden, går tapt. Uten `--all`
+   går den raskere og kopierer det som er nytt eller har endret størrelse.
+5. Bytt `STORAGE_PROVIDER` til `s3`, sett `STORAGE_S3_*`-variablene, fjern
+   `STORAGE_FS_ROOT`, og start.
+6. Sjekk at `/health/ready` består og at et eksisterende vedlegg kan lastes ned. Behold
+   det gamle volumet til du har gjort det.
+
+Et objekt som slettes mellom de to kopieringene, blir liggende i bøtta som foreldreløst:
+ingen modul viser til det lenger, så det serveres aldri.
+
+## Midlertidige filer
+
+Objekter går aldri via lokal disk med noen av driverne, men én funksjon skriver en
+midlertidig fil: **Regnskaps SAF-T-import** holder den opplastede filen (opptil
+`ACCOUNTING_SAFT_IMPORT_MAX_BYTES`, 512 MiB som standard) i den midlertidige katalogen
+mens den leser forhåndsvisningen fra den og deretter lagrer den. Den midlertidige
+katalogen er `$TMPDIR`, eller `/tmp` når den ikke er satt, og den må være skrivbar for
+applikasjonsbrukeren og stor nok for den største importen. Med et skrivebeskyttet
+rotfilsystem monterer du et skrivbart volum der.
 
 ## Merkevarelogoer
 
@@ -106,6 +224,9 @@ driveren. Den fysiske nøkkelen er:
 ```text
 {scope}/{relative-key}
 ```
+
+Det er stien under `STORAGE_FS_ROOT` for `fs` og objektnøkkelen i bøtta for `s3`,
+bak `STORAGE_S3_PREFIX` og en `/` når et prefiks er satt.
 
 **Det finnes ikke noe leietakersegment.** .NET-implementasjonens fysiske nøkkel var
 `tenants/{tenant-id}/{scope}/{relative-key}`; dette er en applikasjon for én leietaker,
