@@ -140,6 +140,9 @@ func seedDemoIntegration(ctx context.Context, pool *pgxpool.Pool, logger *slog.L
 	if err := seedDemoRequestLog(ctx, pool, logger, now); err != nil {
 		return err
 	}
+	if err := seedDemoOAuth(ctx, pool, logger, now); err != nil {
+		return err
+	}
 	if !created {
 		return nil
 	}
