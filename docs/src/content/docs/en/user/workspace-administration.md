@@ -294,7 +294,8 @@ days: the requests per day by status, the operations called most, and the latest
 key, the status and, for a refused one, why. A request that repeated an earlier one with the same
 `Idempotency-Key`, and got its answer again without running twice, is marked *Replayed for its
 Idempotency-Key*. **Key or app**, **Status**, **Reason** and **Day** narrow it down: **Key or
-app** lists the keys and the connected apps, so you can see one app's requests alone. A new
+app** lists the keys and the connected apps, so you can see one app's requests alone, and under
+**Ended apps** those that ended in the 30 days. A new
 request shows there within a few seconds. A request an app made after connecting by signing in
 names the app, marked *(connected app)*, and the two reasons *Connected app may only read* and
 *Connected app no longer allowed* are its.
@@ -345,11 +346,13 @@ registered on the **API access** page, under **Registered clients**. **Register 
 for a **Name**, shown on the consent page and in **Connected apps**, and the app's **Redirect
 URIs**, one a line, as the app documents them; it then shows the **Client ID**, `vtc_…`, to enter
 in the app's settings with the client secret left empty. The consent page then says the app was
-**Registered in this workspace by** you. **Edit** changes the name and the redirect URIs;
+**Registered in this workspace by** you. **Edit** changes the name and the redirect URIs —
+removing one disconnects the apps that signed in with it, and the form says so first;
 **Archive**, after a confirmation, disconnects every app connected with it and cannot be undone.
 
 **Client hosts**, on the same page, says which hosts' apps may connect by signing in, such as
-`claude.ai` and `chatgpt.com`, one a line; a subdomain of a listed host is admitted too. Left
+`claude.ai` and `chatgpt.com`, one a line; a subdomain of a listed host is admitted too, so
+`github.io` would admit every site hosted there. Left
 empty, the default, any host may. Registered clients are always admitted, and saving disconnects
 nothing.
 

@@ -476,11 +476,12 @@ offers a loopback address instead, register that.
    enter the client ID and **leave the client secret empty**: the client is public and proves
    itself with PKCE.
 5. Start the connection in the app. Your browser opens the consent page, which says the app is
-   **Registered in this workspace by** you; approve as described in
+   **Registered in this workspace by** you (by name while you are an Owner); approve as described in
    [The consent page](#the-consent-page).
 
-**To change or retire a client:** **Edit** on its row changes its name and redirect URIs; a
-connection made before keeps working, so revoke it in **Connected apps** if it should not.
+**To change or retire a client:** **Edit** on its row changes its name and redirect URIs.
+Removing a redirect URI disconnects, at once, every app that signed in with it — the form warns
+before you save when the client has apps connected — and the others are kept.
 **Archive**, after a confirmation that says how many apps are connected with it, disconnects
 every one of them at once and refuses the next sign-in with it. It cannot be undone. Up to 50
 clients can be registered at a time.
@@ -489,8 +490,9 @@ clients can be registered at a time.
 
 **Client hosts**, under **Workspace admin › API access**, lists the hosts whose apps may connect
 by their description, one a line — `claude.ai`, `chatgpt.com`. A subdomain of a listed host is
-admitted too: `claude.ai` admits `api.claude.ai`, not `notclaude.ai`. **Empty**, the default,
-admits any host. Registered clients are always admitted.
+admitted too: `claude.ai` admits `api.claude.ai`, not `notclaude.ai` — so an entry for a shared
+hosting domain such as `github.io`, `vercel.app` or `pages.dev` admits every tenant's site on it.
+**Empty**, the default, admits any host. Registered clients are always admitted.
 
 1. Enter the hosts, one a line, and choose **Save**. A host is a name only: no `https://`, port,
    `*` or IP address.
@@ -575,11 +577,13 @@ is audited `connection.revoked`.
   someone else may hold it.
 - The client **signs out** or removes the server and tells Vantigo, through the revocation
   endpoint ([OAuth connections](/en/reference/oauth/#the-revocation-endpoint)).
-- The **registered client** it signed in with is archived.
+- The **registered client** it signed in with is archived, or edited so that it no longer lists
+  the address the connection returns to.
 - The client's **description changes** so that it no longer holds — it no longer lists the
   address the connection returns to, or breaks a rule. Vantigo checks it again in the background
   when the client renews its access after the copy it keeps has expired, at most a day after it
-  last read it; a description it cannot reach for the moment changes nothing.
+  last read it. Only a description that names the client counts: one it cannot reach for the
+  moment, or a page that is not a description at all, changes nothing.
 
 A disabled integration's connections are refused while it is disabled and work again when it
 is enabled, as its keys do.
@@ -645,7 +649,8 @@ it makes is a second row, the operation it called ([MCP](#mcp)).
   connected app made names the app as it called itself, marked *(connected app)*, or *Removed
   app* once the connection's row is gone.
 - **Key or app**, **Status**, **Reason** and **Day** filter all three. **Key or app** lists the
-  keys and the connected apps, so one app's requests can be read apart.
+  keys and the connected apps, so one app's requests can be read apart, and under **Ended apps**
+  those that ended in the 30 days, with why.
 
 A refusal is recorded with its reason, and so is a replayed answer:
 
@@ -924,7 +929,7 @@ Identity's authorization audit trail records, with the Owner who did it and whet
 before and after. A connected app is audited `connection.authorized` when its client completes
 the sign-in, with the client, its host, the scopes and the integration, and
 `connection.revoked` with its reason when it ends — `revoked`, `integration_archived`,
-`authorizer_removed`, `client_archived`, `code_replayed`, `refresh_reused`,
+`authorizer_removed`, `client_archived`, `client_changed`, `code_replayed`, `refresh_reused`,
 `client_document_changed` or `revoked_by_client`, the last four as `system:oauth`. Registering,
 editing and archiving a client are `oauth_client.created`, `oauth_client.updated` and
 `oauth_client.archived`, and a change of the client hosts is `oauth.client_hosts_changed`. No

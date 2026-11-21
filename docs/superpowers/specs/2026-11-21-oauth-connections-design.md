@@ -271,6 +271,11 @@ an approved-clients mode that asks an Owner to approve a new client once.
 8. **No connection in the log (Q8):** C23 shrinks to a nullable `key_id`.
 9. **Off by default (Q9):** the default in C24.
 10. **Browser clients (Q10):** CORS on discovery, token and MCP, and an Origin policy.
+11. **Custom-scheme redirect URIs for registered clients (from delivery C):** default **refused**
+    (C9 holds: `https`, or `http` to a loopback host). Admitting private-use schemes (RFC 8252
+    §7.1), as Cursor has used (`cursor://anysphere.cursor-mcp/oauth/callback`), would widen C9 for
+    registered clients only and change the consent page's loopback warning to "an app on this
+    computer" for those schemes too.
 
 ## 11. Amendments (revision 2, from the reviews)
 
@@ -445,3 +450,21 @@ an approved-clients mode that asks an Owner to approve a new client once.
   before any enrolment check; a `401` from either operation stores the return and goes to
   sign-in. The buttons are **Approve** and **Deny**; **Close** closes the tab and, where a page
   cannot close itself, goes to `/`.
+
+**From delivery C's reviews**
+
+- **A28 (A3) — What revalidation may end.** Only a document that speaks for the client ends its
+  connection. **Terminal** (revoke, `client_document_changed`): a JSON object that names a
+  different, non-empty `client_id`, or names this `client_id` and breaks a rule of C6 or no
+  longer lists the connection's redirect URI. **Transient** (nothing revoked, nothing cached):
+  any failure to read, as before, and also a `200` whose `Content-Type` is not
+  `application/json` or `+json`, a body that is not a JSON object, or an object with no
+  `client_id`. At most one revalidation per client host runs at a time (and 8 in all); a panic is
+  recovered and logged; shutdown waits for them, bounded.
+- **A29 (C8) — Editing a registered client.** The spec was silent. An edit that removes a
+  redirect URI revokes, in its transaction, every connection of the client whose redirect URI the
+  new list no longer matches (C9's comparison), with the reason `client_changed`, each audited;
+  the others are kept. The approval reads the client `FOR SHARE` in its own transaction and
+  refuses (`client_refused`) one archived or no longer listing the redirect URI meanwhile; the
+  token endpoint refuses a registered connection whose client is archived. The consent page
+  names who registered a client only while that person is an active Owner (A17's predicate).
