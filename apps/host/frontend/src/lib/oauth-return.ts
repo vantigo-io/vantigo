@@ -12,6 +12,12 @@ import { appPathname } from "./public-paths";
  */
 export const authorizePath = "/oauth/authorize";
 export const oauthReturnKey = "oauth.return";
+/**
+ * When the entry's ten minutes last started again (touchOAuthReturn): a number
+ * of milliseconds and nothing else, kept beside the entry so the entry itself is
+ * never rewritten from what was read.
+ */
+export const oauthReturnTouchedKey = "oauth.return.touched";
 /** How long the entry is honoured (C13). */
 export const oauthReturnMaxAgeMs = 10 * 60_000;
 /** How the security page's way back leaves it, in one place the tests can watch. */
@@ -27,14 +33,20 @@ const returnShape = /^\/oauth\/authorize(\?[^#]*)?$/;
 export const rememberOAuthReturn = (query: string, storage: Storage = sessionStorage, now: number = Date.now()) => {
   const path = query ? `${authorizePath}?${query}` : authorizePath;
   try {
+    storage.removeItem(oauthReturnTouchedKey);
     storage.setItem(oauthReturnKey, JSON.stringify({ path, at: now }));
   } catch {
     /* storage refused (private mode, quota): the person comes back by the client's link */
   }
 };
 
-/** The path an entry holds when it is the consent page's and young enough; otherwise undefined. */
-const validReturn = (raw: string | null, now: number): string | undefined => {
+/**
+ * The path an entry holds when it is the consent page's and young enough;
+ * otherwise undefined. Its age runs from the later of its own time and the
+ * time it was last touched; a touched time that is not a finite number, or
+ * lies in the future, is ignored, and one without an entry means nothing.
+ */
+const validReturn = (raw: string | null, touchedRaw: string | null, now: number): string | undefined => {
   if (!raw) return undefined;
   let entry: unknown;
   try {
@@ -45,7 +57,9 @@ const validReturn = (raw: string | null, now: number): string | undefined => {
   if (!entry || typeof entry !== "object") return undefined;
   const { path, at } = entry as { path?: unknown; at?: unknown };
   if (typeof path !== "string" || typeof at !== "number" || !Number.isFinite(at)) return undefined;
-  if (now < at || now - at >= oauthReturnMaxAgeMs) return undefined;
+  const touched = touchedRaw === null ? Number.NaN : Number(touchedRaw);
+  const since = Number.isFinite(touched) && touched <= now ? Math.max(at, touched) : at;
+  if (now < at || now - since >= oauthReturnMaxAgeMs) return undefined;
   if (path.length > maxReturnLength || !returnShape.test(path)) return undefined;
   // The same path once a URL parser has read it: nothing that resolves elsewhere.
   const parsed = new URL(path, "https://vantigo.invalid");
@@ -53,9 +67,9 @@ const validReturn = (raw: string | null, now: number): string | undefined => {
   return path;
 };
 
-const read = (storage: Storage): string | null => {
+const read = (storage: Storage, key: string): string | null => {
   try {
-    return storage.getItem(oauthReturnKey);
+    return storage.getItem(key);
   } catch {
     return null;
   }
@@ -67,29 +81,32 @@ const read = (storage: Storage): string | null => {
  * undefined.
  */
 export const takeOAuthReturn = (storage: Storage = sessionStorage, now: number = Date.now()): string | undefined => {
-  const raw = read(storage);
+  const raw = read(storage, oauthReturnKey);
+  const touched = read(storage, oauthReturnTouchedKey);
   try {
     storage.removeItem(oauthReturnKey);
+    storage.removeItem(oauthReturnTouchedKey);
   } catch {
     return undefined;
   }
-  return validReturn(raw, now);
+  return validReturn(raw, touched, now);
 };
 
 /** Whether a valid entry is waiting, leaving it where it is. */
 export const peekOAuthReturn = (storage: Storage = sessionStorage, now: number = Date.now()): string | undefined =>
-  validReturn(read(storage), now);
+  validReturn(read(storage, oauthReturnKey), read(storage, oauthReturnTouchedKey), now);
 
 /**
  * Starts a valid entry's ten minutes again: the security page does so while it
  * holds a person at MFA enrolment, so the time spent enrolling does not use up
- * the way back. An entry that is not valid is left to expire.
+ * the way back. Only the time is written, under its own key: the entry is
+ * never rewritten, and nothing read from storage is stored again. An entry
+ * that is not valid is left to expire.
  */
 export const touchOAuthReturn = (storage: Storage = sessionStorage, now: number = Date.now()) => {
-  const path = peekOAuthReturn(storage, now);
-  if (!path) return;
+  if (!peekOAuthReturn(storage, now)) return;
   try {
-    storage.setItem(oauthReturnKey, JSON.stringify({ path, at: now }));
+    storage.setItem(oauthReturnTouchedKey, String(now));
   } catch {
     /* storage refused: the entry keeps its first time */
   }

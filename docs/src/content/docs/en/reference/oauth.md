@@ -213,7 +213,8 @@ browser to a `redirectTo` the server answered, and only when that is `https`, or
   enrolment; the page calls neither operation, so no document is fetched and nothing is
   redirected.
 - **An Owner held at MFA enrolment** is sent to the security settings with the entry stamped
-  afresh. While that page holds them it starts the entry's ten minutes again; once the
+  afresh. While that page holds them it starts the entry's ten minutes again, by keeping the
+  time under `oauth.return.touched` beside the entry, which is never rewritten; once the
   authenticator is on it shows **Continue to the app's request** below the recovery codes, which
   takes the entry and loads the consent page. It never navigates on its own.
 - **An Owner** sees the server's answer: a refused client with Close only; an error with an

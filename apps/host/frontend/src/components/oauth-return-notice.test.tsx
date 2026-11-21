@@ -35,7 +35,7 @@ describe("the way back to an app's request after MFA enrolment (OAuth connection
     entry(started);
     api.fetchSession.mockResolvedValue(session(true));
     await renderNotice();
-    await waitFor(() => expect(JSON.parse(sessionStorage.getItem("oauth.return") ?? "{}").at).toBeGreaterThan(started));
+    await waitFor(() => expect(Number(sessionStorage.getItem("oauth.return.touched"))).toBeGreaterThan(started));
     expect(screen.queryByRole("button", { name: "Continue to the app's request" })).not.toBeInTheDocument();
 
     // Enabling the authenticator refetches the session, which no longer needs enrolment.
@@ -49,6 +49,7 @@ describe("the way back to an app's request after MFA enrolment (OAuth connection
     fireEvent.click(button);
     expect(oauthReturnNavigation.assign).toHaveBeenCalledWith("/oauth/authorize?client_id=c&state=1e3");
     expect(sessionStorage.getItem("oauth.return")).toBeNull();
+    expect(sessionStorage.getItem("oauth.return.touched")).toBeNull();
   });
 
   it("shows nothing when no valid entry waits", async () => {
