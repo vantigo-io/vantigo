@@ -341,7 +341,8 @@ hver ekstra HTTP-replika ikke mangedobler pollerne:
 1. Sett `WORKERS_IN_PROCESS=0` i `vantigo.env`. Det gjelder API-replikaene.
 2. Kjør én ekstra container fra det samme imaget med kommandoen `worker`. Den kjører
    alltid bakgrunnsjobbene uansett `WORKERS_IN_PROCESS`, og serverer bare
-   `/health/live` og `/health/ready` for prober.
+   `/health/live` og `/health/ready` for prober — og, med `MANAGEMENT_PORT` satt,
+   [management-lytteren](/nb/admin/management-listener/), slik alle kommandoer gjør.
 3. Workeren trenger ingen egne OIDC- eller SCIM-innstillinger. Hvem som har en
    tillatelse (en deaktivering i katalogen teller bare så lenge SCIM er på) og
    kontomodusen (lokal eller føderert) følger begge innstillingene for single sign-on i
@@ -352,10 +353,15 @@ hver ekstra HTTP-replika ikke mangedobler pollerne:
    kontoreglene den leser fra databasen — så worker-containeren trenger, som API-et,
    utgående https til `login.microsoftonline.com` og `graph.microsoft.com`, uten proxy
    ([Microsoft Entra ID](/nb/admin/entra/#før-du-begynner)).
-4. Hold klokkene på API- og worker-vertene synkronisert (NTP). Kontojobben i Ansatte
-   tar koblinger med leieavtaler som hver prosess sammenligner med sin egen klokke, så
-   en klokke som går for fort kan ta over en kobling en annen prosess fortsatt arbeider
-   med.
+4. Hold klokkene på API- og worker-vertene synkronisert (NTP) likevel. Leieavtaler,
+   krav og vinduer for hastighetsgrenser regnes ut fra prosessens klokke og
+   sammenlignes med dem en annen prosess har skrevet; hver prosess leser derfor
+   databasens klokke i stedet for sin egen — den måler forskjellen ved oppstart og hvert
+   minutt, og nærmer seg den gradvis — så en vert med en klokke som går for fort, ikke
+   kan ta over et krav en annen prosess fortsatt holder. En forskjell utover
+   `CLOCK_MAX_SKEW` (5 sekunder som standard) logges som en advarsel én gang i timen, og
+   er tegnet på at vertens tidssynkronisering ikke virker
+   ([Kubernetes](/nb/admin/kubernetes/#klokken)).
 
 Replikaer som verken skal migrere eller kjøre bakgrunnsjobber kan kjøre kommandoen
 `server` i stedet for `api`; den serverer bare, uansett hva `WORKERS_IN_PROCESS` sier.
@@ -505,12 +511,18 @@ oppstarten selv når jobben er slått av. En mislykket henting logges som advars
 området, dagen og priskildens vert, aldri adressens sti eller spørring. Se
 [Spot prices](/en/reference/energy/#spot-prices).
 
-Ved avslutning tømmer prosessen pågående arbeid i opptil `SHUTDOWN_TIMEOUT` (30
-sekunder som standard), nok til at den lengste enkeltoperasjonen i en bakgrunnsjobb
-rekker å fullføre og committe. `compose.yaml` setter `stop_grace_period: 35s` på
-tjenesten `vantigo` slik at Compose sin SIGKILL aldri kommer før tømmingen kan
-fullføre. Uansett hva du setter `SHUTDOWN_TIMEOUT` til, hold `stop_grace_period`
-(Compose) eller `terminationGracePeriodSeconds` (Kubernetes) med god margin over den,
+Ved avslutning lar prosessen først beredskapssjekken feile med `draining`, og fortsetter
+å betjene forespørsler i `SHUTDOWN_DRAIN_DELAY` (0 som standard: ingen venting), slik at
+en lastbalanserer rekker å ta den ut av rotasjon. Så lukker den forbindelsene for
+sanntidsoppdateringer, slik at nettleserne kobler seg til en annen replika, stopper
+bakgrunnsjobbene og tømmer pågående forespørsler. Alt etter ventetiden — forespørsler,
+bakgrunnsjobber, management-lytteren, sanntidsforbindelsene, den siste skrivingen av
+hastighetsgrensene og databasepoolen — deler én `SHUTDOWN_TIMEOUT` (30 sekunder som
+standard), nok til at den lengste enkeltoperasjonen i en bakgrunnsjobb rekker å fullføre
+og committe. `compose.yaml` setter `stop_grace_period: 35s` på tjenesten `vantigo` slik
+at Compose sin SIGKILL aldri kommer før tømmingen kan fullføre. Uansett hva du setter de
+to til, hold `stop_grace_period` (Compose) eller `terminationGracePeriodSeconds`
+(Kubernetes) over `SHUTDOWN_DRAIN_DELAY` + `SHUTDOWN_TIMEOUT` med noen sekunders margin,
 ellers kan en pågående operasjon bli drept midt i og kjørt på nytt etter omstart. En
 SIGTERM som kommer under en migrering venter til den er ferdig; et andre signal
 avslutter umiddelbart.
@@ -519,15 +531,27 @@ avslutter umiddelbart.
 
 Imaget har ingen shell, så containerens `HEALTHCHECK` kjører binæren selv
 (`/app/vantigo healthcheck`) i stedet for en `CMD-SHELL`-enlinjer med curl eller wget.
-Den prober `/health/ready`: oppstart fullført, PostgreSQL tilgjengelig, og
-objektlagring tilgjengelig hvis konfigurert — kontrollen `storage`, en `HeadBucket`
-for `s3` og en stat av roten for `fs`
-([Objektlagring](/nb/admin/object-storage/#klarhetskontrollen)). Hold enhver probe du konfigurerer —
-Compose sin `healthcheck.test`, en liveness- eller readiness-probe i Kubernetes, hva
-som helst annet — i den samme exec-formen. En HTTP-probe som kobler til direkte, i
-stedet for å kjøre inne i containeren, sender sin egen adresse som `Host`-header, og
-vertsfilteret godtar bare verten i `APP_URL` pluss loopback (`localhost`, `127.0.0.1`,
-`::1`); enhver annen `Host` avvises med 400, så en slik probe feiler alltid.
+Den prober `/health/ready`, som svarer `200` når alle sjekkene består, og `503` med
+navnene på dem som feiler i `failing`:
+
+| Sjekk | Feiler mens |
+| --- | --- |
+| `postgres` | PostgreSQL ikke svarer på en ping |
+| `storage` | objektlagring er konfigurert og ikke svarer: en `HeadBucket` for `s3`, en stat av roten for `fs` ([Objektlagring](/nb/admin/object-storage/#klarhetskontrollen)) |
+| `schema` | `server` eller `worker` venter på at databasen skal nå migreringene binæren har med seg ([Oppgradering](#oppgradering)) |
+| `startup` | prosessen ikke er ferdig med å starte |
+| `draining` | prosessen avslutter ([Bakgrunnsjobber og skalering](#bakgrunnsjobber-og-skalering)) |
+
+`/health/live` svarer `200` så lenge prosessen kan svare i det hele tatt. Hold enhver
+probe du konfigurerer på den offentlige porten — Compose sin `healthcheck.test`, hva som
+helst annet — i den samme exec-formen. En HTTP-probe som kobler til direkte, i stedet for
+å kjøre inne i containeren, sender sin egen adresse som `Host`-header, og vertsfilteret
+godtar bare verten i `APP_URL` pluss loopback (`localhost`, `127.0.0.1`, `::1`); enhver
+annen `Host` avvises med 400, så en slik probe feiler alltid. `httpGet`-prober i
+Kubernetes hører hjemme på
+[management-lytteren](/nb/admin/management-listener/#helsesjekkene), som betjener de
+samme to probene, med de samme sjekkene, uten vertsfilter og uten token, i alle
+kommandoer ([Kubernetes](/nb/admin/kubernetes/)).
 
 Stackens probe kjører hvert 10. sekund med 5 sekunders tidsavbrudd, 6 forsøk og en
 startperiode på 30 sekunder.
@@ -1075,6 +1099,18 @@ docker compose up -d
 Compose henter det nye imaget, kjører `vantigo-migrate` på nytt som en engangsjobb, og
 starter `vantigo` på nytt først når migreringene har fullført vellykket. Hvis du har
 låst `VANTIGO_TAG` i `.env`, endrer du den til den nye utgivelsen først.
+
+**Med flere replikaer.** Migrer én gang, med `vantigo migrate` på
+`MIGRATIONS_DATABASE_URL`, og rull så replikaene over på det nye imaget. Kjør replikaene
+med `server` (og bakgrunnsjobbene med `worker`), aldri `api`: `api` migrerer før den
+betjener forespørsler, og en gammel `api` som startes på nytt under en utrulling, ville
+be om å migrere et skjema med versjoner den ikke kjenner. En `server` eller `worker` som
+starter før migreringen er ferdig, gjør ikke annet enn å svare på probene sine: den
+venter, spør hvert 2. sekund og logger hvert 30., til databasen har minst migreringene
+den ble bygget med, og beredskapssjekken feiler med `schema` så lenge — så en utrulling
+som starter for tidlig, stopper av seg selv til migreringen er på plass, og går ikke
+videre hvis den feiler. En replika av forrige utgivelse på det nyere skjemaet starter
+med en gang. Se [Kubernetes](/nb/admin/kubernetes/#rullerende-oppgraderinger).
 
 **Utgivelsen med Fakturaer.** En installasjon som lar `MODULES` stå usatt aktiverer
 hver modul denne binæren kjenner, så den får Fakturaer-appen ved oppgradering. Ingen

@@ -16,6 +16,7 @@ sources:
   - apps/server/internal/directoryaddress
   - apps/server/internal/events
   - apps/server/internal/live
+  - apps/server/internal/dbclock
   - apps/server/internal/docmath
   - apps/server/internal/creditlimit
   - apps/server/internal/brandscale
@@ -29,7 +30,7 @@ A module may import the platform but never another module (see
 [Module boundaries](/en/contributing/module-boundaries/)). This page describes the
 platform packages a module reaches for when it holds something it must not store in
 clear, when it sends a mail of its own, when it asks an AI model for something, when it takes a payment, when it reads a bank account's transactions, when it counts days
-around the public holidays, when it looks a company up in Brønnøysund, when it stores a picture people will see, when it makes an address for an account in a directory, when it tells other modules what happened to one of its own rows, when it computes a sales document's amounts, when it generates a brand's colour scale, when it judges an uploaded logo, and when it calls an outside service or runs a background worker, which telemetry sees.
+around the public holidays, when it looks a company up in Brønnøysund, when it stores a picture people will see, when it makes an address for an account in a directory, when it tells other modules what happened to one of its own rows, when it computes a sales document's amounts, when it generates a brand's colour scale, when it judges an uploaded logo, and when it calls an outside service or runs a background worker, which telemetry sees — and the clock every module's deadlines are computed from.
 
 ## The secrets box
 
@@ -1036,6 +1037,11 @@ An OpenTelemetry meter named `vantigo.live`: the up-down counters
 The browser side is described in [Live screens](/en/contributing/frontend-architecture/#live-screens);
 the operator's side in [Live updates and your proxy](/en/admin/installation/#live-updates-and-your-proxy).
 
+The hub's two dedicated connections are dialled with `db.UTCSession`, like the pool and the
+migrator's, so their sessions run in UTC whatever the connection string asks
+([UTC database sessions](/en/admin/kubernetes/#utc-database-sessions)).
+
+
 ## Telemetry
 
 `internal/telemetry` wires OpenTelemetry (the operator's side is
@@ -1102,6 +1108,24 @@ span or a log line; an error text that names a person is a bug in that text. The
 installs a span processor that looks for an email address in every span the suite
 exports — the name, every attribute, every event and link, the status — and fails the
 suite naming the span and the key when it finds one.
+
+## The clock
+
+`Deps.Clock` is the one clock a module computes a deadline from: a lease's or a claim's
+expiry, a retry's next attempt, a rate-limit window. Those are compared in SQL with deadlines
+another process wrote, so in `serve` it is `internal/dbclock`'s `Clock.Now` — the local clock
+plus an offset measured against PostgreSQL's `clock_timestamp()`, the first measurement
+applied in full before any worker starts, later ones every minute slewed by at most 100 ms,
+and clamped so it never runs backwards ([The clock](/en/admin/kubernetes/#the-clock)).
+
+- Take the clock from `Deps.Clock` and keep the `if deps.Clock == nil { time.Now }` fallback
+  only for a bare `Deps` in a test. A test injects its own clock to expire a lease, as before.
+- A worker file never names `time.Now` otherwise: `forbidigo` in `apps/server/.golangci.yml`
+  rejects it in every `*_worker.go`, `internal/worker` and the events dispatcher, and its
+  allow-list names the nil-clock fallbacks by file and by the shape of the line. A new worker
+  with such a fallback adds its file to that list.
+- Timestamps for a log line or a duration measured in process may use `time.Now`; anything
+  written to a row another process compares may not.
 
 ## The document arithmetic
 

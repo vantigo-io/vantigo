@@ -35,9 +35,13 @@ application.
 - **Security.** [Transport security and browser hardening](/en/admin/transport-security/)
   walks through https, PostgreSQL TLS, SMTP TLS, HSTS, host filtering and the content
   security policy, and what each choice costs.
+- **Kubernetes.** [Kubernetes](/en/admin/kubernetes/) is what a cluster needs from the
+  application: the probes on the management port and a startup probe, the drain on SIGTERM
+  and the grace period it needs, the `server` and `worker` replicas, the database-anchored
+  clock, UTC database sessions, and rolling upgrades with `server`, never `api`.
 - **Operations.** The [management listener](/en/admin/management-listener/) is the
-  private status endpoint a control plane polls, and the way the first Owner is seated by
-  invitation. [Object storage](/en/admin/object-storage/) describes where receipts, PDFs
+  private status endpoint a control plane polls, the health probes on a port no host
+  filter guards, and the way the first Owner is seated by invitation. [Object storage](/en/admin/object-storage/) describes where receipts, PDFs
   and attachments live.
 - **E-invoicing.** [E-invoicing](/en/admin/e-invoicing/) sets up sending invoices as EHF
   over the Peppol network: the Storecove account and its credentials, the switches, the

@@ -37,9 +37,14 @@ applikasjonen.
   redigert under **Administrer arbeidsområde › Merkevare** med et utkast du kan forhåndsvise og
   et publiseringstrinn, og engangsimporten av `APP_TITLE`, `APP_LOGO_URL` og `APP_SUPPORT_*`
   inn i den.
+- **Kubernetes.** [Kubernetes](/nb/admin/kubernetes/) er det en klynge trenger fra
+  applikasjonen: probene på management-porten og en oppstartsprobe, tømmingen ved SIGTERM
+  og avslutningsfristen den trenger, replikaene av `server` og `worker`, klokken som
+  følger databasen, databaseøkter i UTC, og rullerende oppgraderinger med `server`, aldri
+  `api`.
 - **Drift.** [Management-lytteren](/nb/admin/management-listener/) er det private
-  statusendepunktet et kontrollplan spør, og måten den første eieren settes inn ved
-  invitasjon. [Objektlagring](/nb/admin/object-storage/) beskriver hvor kvitteringer,
+  statusendepunktet et kontrollplan spør, helsesjekkene på en port som ikke noe
+  vertsfilter vokter, og måten den første eieren settes inn ved invitasjon. [Objektlagring](/nb/admin/object-storage/) beskriver hvor kvitteringer,
   PDF-er og vedlegg ligger.
 - **E-faktura.** [E-faktura](/nb/admin/e-invoicing/) setter opp sending av fakturaer som
   EHF i Peppol-nettverket: kontoen hos Storecove og påloggingsdataene, bryterne, de to
