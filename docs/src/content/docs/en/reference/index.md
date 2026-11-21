@@ -26,7 +26,10 @@ a key reaches, the error codes and the rate limit. What changes, and how, is the
 as they happen, rather than polling, reads [Webhooks](/en/reference/webhooks/): the events an
 integration's endpoint may receive, the signed message and how to verify it.
 An AI client connecting with an integration's key reads the [MCP server](/en/reference/mcp/):
-the endpoint at `/api/mcp`, its protocol, its tools and what bounds an agent.
+the endpoint at `/api/mcp`, its protocol, its tools and what bounds an agent. A client that
+connects by having a person sign in, instead of with a key, reads
+[OAuth connections](/en/reference/oauth/): discovery, the token endpoint and what a connection
+may do (switched off by default for now).
 
 ## Modules
 

@@ -294,6 +294,17 @@ Håndtereren kontrollerer derfor opprinnelsen selv: den godtar håndtrykket bare
 må slippe gjennom oppgraderingen
 ([Sanntidsoppdateringer og proxyen din](/nb/admin/installation/#sanntidsoppdateringer-og-proxyen-din)).
 
+### OAuth-token-endepunktet og oppdagelse
+
+Med `OAUTH_ENABLED=1` matches `POST /api/oauth/token` foran beskyttelsen mot
+kryssopprinnelsesforespørsler: det leser ingen informasjonskapsel, så en forespørsel fra et
+annet nettsted vinner ingenting på en nettlesers økt, og en klient som sender `Origin`, får
+OAuths eget JSON-svar i stedet for `403`. Det tar en skjemakropp på høyst 16 KiB og er begrenset
+til 120 forespørsler i minuttet per adresse. OAuth-oppdagelsesdokumentene under `/.well-known/`
+er offentlig JSON, mellomlagret i fem minutter; enhver annen sti under `/.well-known/` svarer
+`404` i stedet for applikasjonens side. Av, som er standard foreløpig, svarer alle `404`
+([OAuth connections](/en/reference/oauth/)).
+
 ## API-kontraktdokumentet
 
 Den kjørende tjeneren serverer den sammenslåtte kontrakten for sine **aktiverte**

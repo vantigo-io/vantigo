@@ -38,6 +38,8 @@ sources:
   - apps/host/frontend/src/routes/workspace/-api-access-shared.ts
   - apps/server/internal/apiref
   - apps/apiref/frontend/src
+  - apps/server/internal/identity/oauth_connections.go
+  - apps/server/internal/identity/oauth_client.go
 ---
 
 En **integrasjon** er kontoen et annet program — en nettbutikk, et rapportverktøy, et
@@ -394,6 +396,30 @@ omstart.
 - **En klient som kjører i nettleseren** kommer ikke inn: Vantigo avviser forespørsler fra
   andre nettsteder i nettleseren.
 
+### Koble til ved å logge inn (slått av foreløpig)
+
+Claude og ChatGPT kan også koble seg til uten at en nøkkel kopieres noe sted: personen legger
+inn MCP-adressen, sendes til Vantigo, logger inn som eier, velger integrasjonen klienten kan
+handle som, og godkjenner. Klienten har da en tilkobling som handler som den integrasjonen, med
+rollene og hastighetsgrensen dens, som én nøkkel til
+([OAuth connections](/en/reference/oauth/)).
+
+Serversiden av dette er på plass, men **slått av** til samtykkesiden og seksjonen
+**Tilkoblede apper** er på plass i skjermbildene: `OAUTH_ENABLED` er `0` som standard
+([Konfigurasjon](/nb/admin/configuration/)). Til da kobler du klienter til med en nøkkel som
+over. En driftsansvarlig som slår det på tidlig, bør vite dette:
+
+- **Utgående HTTPS.** Vantigo henter hver klients metadatadokument fra klientens egen vert —
+  `claude.ai`, `chatgpt.com` — når en eier blir bedt om å godkjenne den, så serveren trenger
+  utgående HTTPS til de vertene. Private og interne adresser hentes aldri.
+- **En basesti** krever at `/.well-known/oauth-` sendes til Vantigo
+  ([Installasjon](/nb/admin/installation/#basesti-og-omvendt-proxy)).
+- **Hva som avslutter en tilkobling.** En eier som tilbakekaller den, at integrasjonen
+  arkiveres, at personen som godkjente den, ikke lenger er en aktiv eier, eller at det går 180
+  dager. Å tilbakekalle en tilkobling virker fra neste forespørsel.
+- **Å slå det av** gir `404` på hver OAuth-adresse og avviser hver tilkoblings token;
+  tilkoblingene beholdes og virker igjen når det slås på igjen.
+
 ## Svarene en nøkkel kan få
 
 | Status | Kode | Når |
@@ -443,6 +469,8 @@ En avvisning registreres med årsaken, og det gjør et gjentatt svar også:
 | *Ikke tilgjengelig for API-nøkler* (`never`) | ble avvist fordi operasjonen er aldri tilgjengelig for API-nøkler |
 | *Ikke tillatt av rollene* (`forbidden`) | ble avvist fordi rollene, eller begrensningen, ikke gir det operasjonen trenger |
 | *Over grensen for forespørsler* (`rate_limited`) | ble avvist fordi integrasjonen hadde gjort så mange forespørsler som **Hastighetsgrense** tillot det minuttet |
+| *Den tilkoblede appen kan bare lese* (`insufficient_scope`) | en tilkobling godkjent for bare lesing kalte en operasjon som ikke er en lesing ([Koble til ved å logge inn](#koble-til-ved-å-logge-inn-slått-av-foreløpig)) |
+| *Den tilkoblede appen har ikke lenger tilgang* (`token_invalid`) | en tilkobling der den som godkjente, ikke lenger er en aktiv eier, eller som aldri ble fullført, viste tokenet sitt |
 | *Gjentatt svar for Idempotency-Key* (`idempotent_replay`) | ble ikke kjørt: den gjentok en tidligere forespørsel med samme `Idempotency-Key` og fikk svaret på den igjen ([Prøv på nytt uten å gjøre noe to ganger](#prøv-på-nytt-uten-å-gjøre-noe-to-ganger)) |
 
 En tilbakekalt nøkkel, en deaktivert eller arkivert integrasjon og en forespørsel fra utenfor
@@ -706,7 +734,11 @@ Identitys revisjonsspor for autorisasjon registrerer, med eieren som gjorde det 
 MFA: `integration.created`, `integration.updated`, `integration.roles_changed`,
 `integration.disabled`, `integration.enabled`, `integration.archived`, `api_key.created`,
 `api_key.rolled`, `api_key.revoked` og `integration.mcp_changed`, med MCP-tilgangen før og
-etter. Arbeideren `identity.api-keys` registrerer
+etter. En tilkoblet app revideres som `connection.authorized` når klienten fullfører
+innloggingen, med klienten, verten, omfanget og integrasjonen, og som `connection.revoked` med
+årsaken når den avsluttes — `revoked`, `integration_archived`, `authorizer_removed`,
+`code_replayed` eller `refresh_reused`, de to siste som `system:oauth`. Ingen token eller kode
+registreres noen gang. Arbeideren `identity.api-keys` registrerer
 `api_key.expired` én gang for hver nøkkel som passerer utløpet, som `system:api-keys`, og
 sletter en nøkkels rad 90 dager etter at den utløp; revisjonsradene blir værende
 ([Konfigurasjon](/nb/admin/configuration/#arbeidere)). Navn, roller, begrensningen, bare

@@ -15,6 +15,7 @@ sources:
   - apps/server/internal/db/migrations/00210_identity_mcp_access.sql
   - apps/host/frontend/src/routes/workspace/-api-access-mcp.tsx
   - apps/host/frontend/src/routes/workspace/-api-access-shared.ts
+  - apps/server/internal/identity/oauth_access.go
   - openapi/identity.yaml
 ---
 
@@ -68,19 +69,30 @@ setting says. The default is on.
 
 ## Authentication
 
-The endpoint requires an integration's API key in `Authorization: Bearer vtg_…` and nothing
-else.
+The endpoint requires an integration's API key in `Authorization: Bearer vtg_…`, or, while
+`OAUTH_ENABLED` is on, a connection's access token in `Authorization: Bearer vta_…`
+([OAuth connections](/en/reference/oauth/)), and nothing else. `OAUTH_ENABLED` is off by
+default for now.
 
 - **No key, a session cookie, or a key identity does not know** is `401 api_key_required` with
   `WWW-Authenticate: Bearer realm="vantigo"`, answered by the endpoint itself, so a signed-in
   browser's session is never touched. A client configured with a header reports the failure;
-  it does not start OAuth.
+  it does not start OAuth. While `OAUTH_ENABLED` is on, the challenge of a request with no
+  bearer at all also names the protected resource's metadata,
+  `Bearer realm="vantigo", resource_metadata="<origin>/.well-known/oauth-protected-resource<base>/api/mcp", scope="read write"`,
+  so a client that can sign in starts there.
+- **An access token** is judged as on REST: one that is unknown, expired or whose connection
+  has ended is `401 token_invalid` with `WWW-Authenticate: Bearer error="invalid_token",
+  resource_metadata="…"`. The effective mode is the narrower of the integration's setting and
+  the connection's scope, so a Read-only connection lists and calls no write tool. Each tool's
+  descriptor then carries `securitySchemes`, the OAuth scope it needs: `read` for the three
+  reading tools, `write` for `write` and `delete`.
 - **A key identity finds and refuses** — revoked, expired, disabled, archived, or presented from
   outside its networks — is answered and recorded exactly as on REST: `401 unauthenticated` or
   `401 api_key_expired`, a row in the request log with its reason under the operation
   `postApiMcp`.
 - **An integration whose setting is `off`** is `403 mcp_not_enabled`.
-- A request with no `Authorization: Bearer vtg_…` at all is that `401` before anything else,
+- A request with no `Authorization: Bearer vtg_…` (or `vta_…`) at all is that `401` before anything else,
   and one whose `Content-Length` is over 1 MiB is `413`; neither is counted or looked up.
 - Every other request is first limited per client address, 1,200 a minute (`429 rate_limited`),
   so a flood of unknown keys is bounded before any key is looked up.
@@ -246,8 +258,9 @@ key afresh — its networks, its state, the operation's rule, read-only, the rol
 narrowing — and the router applies the integration's rate limit, the operation's own limits and
 the body cap, as for any REST request. It has 30 seconds.
 
-A key has at most **four** calls looping back at once, on each server process; one more is an
-error result asking it to retry shortly, and is counted as an MCP request.
+A key, or a connection, has at most **four** calls looping back at once, on each server
+process; one more is an error result asking it to retry shortly, and is counted as an MCP
+request.
 
 The one thing MCP adds to the REST gate is its setting: under `read`, nothing that is not a
 read is called, even for a key REST would let write. The mode is judged at every request: an

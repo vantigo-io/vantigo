@@ -573,7 +573,24 @@ server {
 ```
 
 With `APP_BASE_PATH=/vantigo`, generated invitation, password-reset and OIDC callback
-URLs include that prefix. The base path is a runtime setting; the single image serves
+URLs include that prefix.
+
+With `OAUTH_ENABLED=1` and a base path, two of the OAuth discovery documents lie outside it,
+at the host's root: `/.well-known/oauth-protected-resource/vantigo/api/mcp` and
+`/.well-known/oauth-authorization-server/vantigo`, where an MCP client looks for them. Route
+`/.well-known/oauth-` to Vantigo as well, unchanged:
+
+```nginx
+    location /.well-known/oauth- {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+```
+
+Without a base path everything under `/` reaches Vantigo already
+([OAuth connections](/en/reference/oauth/#discovery)). The base path is a runtime setting; the single image serves
 the matching SPA without a rebuild. Trust exactly the proxy in front of you with
 `TRUSTED_PROXY_HOPS` and `TRUSTED_PROXY_CIDRS`, or the forwarded scheme, host and
 client-address headers are ignored.
@@ -706,6 +723,13 @@ cut to what the key reaches; see
 Owner turns MCP on for that integration ([API access › MCP](/en/admin/api-access/#mcp)). It
 needs nothing from your proxy beyond what `/api` already has: plain request and response, no
 stream. `MCP_ENABLED=0` in `vantigo.env` switches it off.
+
+`OAUTH_ENABLED=1` in `vantigo.env` lets an MCP client or app connect by having an Owner sign in
+and approve it, instead of with a key ([OAuth connections](/en/reference/oauth/)). It is off by
+default until the consent page lands. On, the image serves `/.well-known/oauth-*` and
+`POST /api/oauth/token`, and it fetches each client's metadata document over HTTPS from the
+client's own host — `claude.ai` and `chatgpt.com`, say — so the server needs outbound HTTPS to
+those hosts. The token endpoint is a plain form `POST`; it needs nothing more of your proxy.
 
 A creating `POST` an integration sends with an `Idempotency-Key` header is carried out once and
 its answer given again to every retry for 24 hours
