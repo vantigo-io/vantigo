@@ -6,11 +6,16 @@ import { renderRoute } from "../../test/render-route";
 import { dayRows, IntegrationRequests, windowDays } from "./-api-access-requests";
 import "../../i18n";
 
-const api = vi.hoisted(() => ({ getIntegrationRequests: vi.fn() }));
+const api = vi.hoisted(() => ({ getIntegrationRequests: vi.fn(), listIntegrationConnections: vi.fn() }));
 
 vi.mock("../../api/integrations", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../api/integrations")>()),
   getIntegrationRequests: api.getIntegrationRequests,
+}));
+
+vi.mock("../../api/oauth", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../api/oauth")>()),
+  listIntegrationConnections: api.listIntegrationConnections,
 }));
 
 const key = (id: string, name: string): ApiKey => ({
@@ -99,6 +104,25 @@ const renderTab = async () => {
 
 beforeEach(() => {
   api.getIntegrationRequests.mockReset();
+  api.listIntegrationConnections.mockReset();
+  api.listIntegrationConnections.mockResolvedValue([
+    {
+      id: "c-1",
+      clientId: "https://claude.ai/oauth/mcp-oauth-client-metadata",
+      clientKind: "metadata",
+      clientName: "Claude",
+      clientHost: "claude.ai",
+      scopes: ["read"],
+      authorizedBy: "u-1",
+      authorizedByName: "Kari Owner",
+      connectedAt: "2026-11-18T10:00:00Z",
+      expiresAt: "2027-05-17T10:00:00Z",
+      lastUsedAt: null,
+      lastUsedIp: null,
+      status: "active",
+      inactiveReason: null,
+    },
+  ]);
 });
 
 describe("an integration's request log", () => {
@@ -133,7 +157,7 @@ describe("an integration's request log", () => {
     fireEvent.click(await screen.findByRole("option", { name: "Over the rate limit" }));
     await waitFor(() => expect(api.getIntegrationRequests).toHaveBeenLastCalledWith("i-1", { reason: "rate_limited" }));
 
-    fireEvent.click(screen.getByRole("combobox", { name: "Key" }));
+    fireEvent.click(screen.getByRole("combobox", { name: "Key or app" }));
     fireEvent.click(await screen.findByRole("option", { name: "Staging" }));
     await waitFor(() =>
       expect(api.getIntegrationRequests).toHaveBeenLastCalledWith("i-1", { reason: "rate_limited", key: "k-2" }),
@@ -148,6 +172,32 @@ describe("an integration's request log", () => {
         statusClass: 4,
       }),
     );
+  });
+
+  it("filters by a connected app instead of a key", async () => {
+    api.getIntegrationRequests.mockResolvedValue(log);
+    await renderTab();
+    await screen.findByTestId("request-latest");
+
+    fireEvent.click(screen.getByRole("combobox", { name: "Key or app" }));
+    fireEvent.click(await screen.findByRole("option", { name: "Staging" }));
+    await waitFor(() => expect(api.getIntegrationRequests).toHaveBeenLastCalledWith("i-1", { key: "k-2" }));
+
+    fireEvent.click(screen.getByRole("combobox", { name: "Key or app" }));
+    fireEvent.click(await screen.findByRole("option", { name: "Claude · claude.ai" }));
+    await waitFor(() => expect(api.getIntegrationRequests).toHaveBeenLastCalledWith("i-1", { connection: "c-1" }));
+    const call = api.getIntegrationRequests.mock.lastCall?.[1] as Record<string, unknown>;
+    expect(call.key).toBeUndefined();
+  });
+
+  it("offers no connected apps while OAuth is switched off", async () => {
+    api.getIntegrationRequests.mockResolvedValue(log);
+    api.listIntegrationConnections.mockRejectedValue(Object.assign(new Error("Not Found"), { status: 404 }));
+    await renderTab();
+    await screen.findByTestId("request-latest");
+    fireEvent.click(screen.getByRole("combobox", { name: "Key or app" }));
+    expect(await screen.findByRole("option", { name: "Staging" })).toBeTruthy();
+    expect(screen.queryByRole("option", { name: "Claude · claude.ai" })).toBeNull();
   });
 
   it("says so when nothing matches", async () => {

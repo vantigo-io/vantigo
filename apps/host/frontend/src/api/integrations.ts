@@ -65,6 +65,8 @@ export type IntegrationRequest = components["schemas"]["IntegrationRequest"];
 /** The filters of the request log (K23); each one left out reads everything. */
 export type RequestLogFilters = {
   key?: string;
+  /** A connected app's id (OAuth connections design A18). */
+  connection?: string;
   statusClass?: number;
   reason?: string;
   day?: string;

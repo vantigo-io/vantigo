@@ -40,3 +40,50 @@ export const listIntegrationConnections = (id: string) =>
 
 export const revokeIntegrationConnection = (id: string, connectionId: string) =>
   request<void>(`/api/v1/identity/integrations/${id}/connections/${connectionId}`, { method: "DELETE" });
+
+/**
+ * The clients an Owner registers by hand (OAuth connections design C8), for
+ * a client that publishes no metadata document, and the client hosts that may
+ * connect by theirs (C11). Both answer 404 while the installation has OAuth
+ * switched off.
+ */
+export type RegisteredClient = components["schemas"]["OAuthRegisteredClient"];
+export type RegisteredClientRequest = components["schemas"]["OAuthRegisteredClientRequest"];
+
+export const registeredClientsQueryKey = ["oauth", "clients"] as const;
+export const listRegisteredClients = () =>
+  request<components["schemas"]["OAuthRegisteredClientList"]>("/api/v1/identity/oauth-clients").then(
+    (list) => list.clients,
+  );
+
+export const registerClient = (body: RegisteredClientRequest) =>
+  request<RegisteredClient>("/api/v1/identity/oauth-clients", {
+    method: "POST",
+    headers: json,
+    body: JSON.stringify(body),
+  });
+
+/** Replaces a registered client's name and redirect URIs under If-Match on the version read. */
+export const updateRegisteredClient = (id: string, version: string, body: RegisteredClientRequest) =>
+  request<RegisteredClient>(`/api/v1/identity/oauth-clients/${id}`, {
+    method: "PATCH",
+    headers: { ...json, "If-Match": version },
+    body: JSON.stringify(body),
+  });
+
+/** Archives a registered client and ends its connections, under If-Match on the version read. */
+export const archiveRegisteredClient = (id: string, version: string) =>
+  request<void>(`/api/v1/identity/oauth-clients/${id}/archive`, { method: "POST", headers: { "If-Match": version } });
+
+export const oauthClientHostsQueryKey = ["oauth", "settings"] as const;
+export const getOAuthClientHosts = () =>
+  request<components["schemas"]["OAuthClientHostsSettings"]>("/api/v1/identity/oauth/settings").then(
+    (settings) => settings.clientHosts,
+  );
+
+export const setOAuthClientHosts = (clientHosts: string[]) =>
+  request<components["schemas"]["OAuthClientHostsSettings"]>("/api/v1/identity/oauth/settings", {
+    method: "PUT",
+    headers: json,
+    body: JSON.stringify({ clientHosts }),
+  }).then((settings) => settings.clientHosts);

@@ -166,6 +166,48 @@ describe("the OAuth consent page", () => {
     expect(screen.getByRole("button", { name: "Approve" })).toBeDisabled();
   });
 
+  it("says who registered a registered client, instead of where its description is", async () => {
+    api.previewAuthorization.mockResolvedValue(
+      consent({
+        client: {
+          name: "Cursor",
+          clientId: "vtc_0123456789abcdefghijABCD",
+          clientIdHost: "127.0.0.1",
+          kind: "registered",
+          redirectHost: "127.0.0.1",
+          loopback: true,
+          registeredBy: "Kari Owner",
+        },
+      }),
+    );
+    await renderPage();
+    expect(await screen.findByTestId("oauth-registered-by")).toHaveTextContent(
+      "Registered in this workspace by Kari Owner",
+    );
+    const verified = within(screen.getByTestId("oauth-verified"));
+    expect(verified.queryByText(/read its description from/)).not.toBeInTheDocument();
+    expect(verified.getByText("127.0.0.1")).toBeInTheDocument();
+    expect(screen.getByText("An app on this computer")).toBeInTheDocument();
+  });
+
+  it("says so when the person who registered a client is gone", async () => {
+    api.previewAuthorization.mockResolvedValue(
+      consent({
+        client: {
+          name: "In-house app",
+          clientId: "vtc_0123456789abcdefghijABCD",
+          clientIdHost: "app.example.com",
+          kind: "registered",
+          redirectHost: "app.example.com",
+          loopback: false,
+          registeredBy: null,
+        },
+      }),
+    );
+    await renderPage();
+    expect(await screen.findByTestId("oauth-registered-by")).toHaveTextContent(/a person who is no longer in it/);
+  });
+
   it("warns of a name that borrows Vantigo's, a loopback redirect and a host never connected", async () => {
     api.previewAuthorization.mockResolvedValue(
       consent({

@@ -1,7 +1,7 @@
 import { Alert, Radio, Stack, Text } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconAlertTriangle } from "@tabler/icons-react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { PageSection, useI18n } from "@vantigo/frontend-shell";
 import {
   type IntegrationDetail,
@@ -10,22 +10,61 @@ import {
   integrationsQueryKey,
   setIntegrationMcpAccess,
 } from "../../api/integrations";
-import { codeOf, mcpEndpoint } from "./-api-access-shared";
+import { integrationConnectionsQueryKey, listIntegrationConnections } from "../../api/oauth";
+import { codeOf, mcpEndpoint, mcpSnippets } from "./-api-access-shared";
 import { Copyable, McpSnippets } from "./-api-key-dialog";
 
 const modes: IntegrationMcpAccess[] = ["off", "read", "read_write"];
 
 /**
+ * How a client connects by signing in instead of with a key (OAuth
+ * connections design C22, C25): the address to paste into Claude or ChatGPT,
+ * which reach it from the internet and so need a public https address, Claude
+ * Code's command without a key, and, for a client that publishes no metadata
+ * document, a client registered on the API access page.
+ */
+const SignInInstructions = ({ url, name }: { url: string; name: string }) => {
+  const { t } = useI18n("host");
+  return (
+    <Stack gap="sm" data-testid="mcp-sign-in">
+      <Text fw={600}>{t("apiAccess.mcpSignInTitle")}</Text>
+      <Text size="sm">{t("apiAccess.mcpSignInHosted")}</Text>
+      {!url.startsWith("https://") && (
+        <Alert color="orange" icon={<IconAlertTriangle size={16} />}>
+          {t("apiAccess.mcpSignInNotHttps")}
+        </Alert>
+      )}
+      <Copyable label={t("apiAccess.mcpSignInClaudeCode")} value={mcpSnippets(url, name).claudeSignIn} />
+      <Text size="sm" c="dimmed">
+        {t("apiAccess.mcpSignInClaudeCodeHint")}
+      </Text>
+      <Text size="sm" c="dimmed">
+        {t("apiAccess.mcpSignInRegistered")}
+      </Text>
+    </Stack>
+  );
+};
+
+/**
  * An integration's MCP section on its Overview (MCP server design M16, M33):
- * what its keys may do at /api/mcp, saved under If-Match, the endpoint's
- * address and, once it is on, how a client connects, reading the key from the
- * client's own store. When the installation has switched MCP off the section says so,
- * whatever the setting.
+ * what its keys and connected apps may do at /api/mcp, saved under If-Match,
+ * the endpoint's address and, once it is on, how a client connects: with a
+ * key read from the client's own store, or, while the installation has OAuth
+ * on, by signing in. When the installation has switched MCP off the section
+ * says so, whatever the setting.
  */
 export const IntegrationMcp = ({ detail, archived }: { detail: IntegrationDetail; archived: boolean }) => {
   const { t } = useI18n("host");
   const queryClient = useQueryClient();
   const { integration, mcpAccess, mcpAvailable } = detail;
+  // The connected apps' list answers 404 while OAuth is switched off: only
+  // once it has answered is anything said about signing in.
+  const connections = useQuery({
+    queryKey: integrationConnectionsQueryKey(integration.id),
+    queryFn: () => listIntegrationConnections(integration.id),
+    retry: false,
+  });
+  const oauthOn = connections.isSuccess;
   const save = useMutation({
     mutationFn: (mode: IntegrationMcpAccess) => setIntegrationMcpAccess(integration.id, integration.version, mode),
     onSuccess: async (next) => {
@@ -43,6 +82,7 @@ export const IntegrationMcp = ({ detail, archived }: { detail: IntegrationDetail
     },
   });
   const url = mcpEndpoint();
+  const connectable = mcpAccess !== "off" && mcpAvailable;
 
   return (
     <PageSection title={t("apiAccess.mcpTitle")}>
@@ -77,7 +117,9 @@ export const IntegrationMcp = ({ detail, archived }: { detail: IntegrationDetail
           </Alert>
         )}
         <Copyable label={t("apiAccess.mcpUrl")} value={url} />
-        {mcpAccess !== "off" && mcpAvailable && <McpSnippets url={url} name={integration.name} />}
+        {connectable && oauthOn && <Text fw={600}>{t("apiAccess.mcpWithKeyTitle")}</Text>}
+        {connectable && <McpSnippets url={url} name={integration.name} />}
+        {connectable && oauthOn && !archived && <SignInInstructions url={url} name={integration.name} />}
       </Stack>
     </PageSection>
   );
