@@ -26,9 +26,12 @@ den som har tokenet. `MANAGEMENT_TOKEN` uten `MANAGEMENT_PORT` er en
 konfigurasjonsfeil.
 
 Lytteren kjører i alle kommandoer som betjener forespørsler: `api`, `server` og
-`worker`. Den åpnes før noe annet starter, mens `server` og `worker` fortsatt venter
-på skjemaet ([Oppgradering](/nb/admin/installation/#oppgradering)), så helsesjekkene
-svarer fra første sekund; statusen kan svare `503` til prosessen er oppe. Den
+`worker`. Den åpnes så snart databasen svarer — før klokken synkroniseres mot den, før
+`server` og `worker` venter på skjemaet ([Oppgradering](/nb/admin/installation/#oppgradering))
+og før noen bakgrunnsjobb starter — så helsesjekkene svarer mens prosessen fortsatt
+starter; beredskapssjekken feiler med `startup` eller `schema` så lenge, og statusen kan
+svare `503` til prosessen er oppe. Så lenge databasen ikke kan nås i det hele tatt, lytter
+ingenting ennå. Den
 offentlige lytteren betjener aldri `/management/status` (en sti som ikke treffer noe
 der, faller gjennom til SPA-skallet, nøyaktig som enhver annen ukjent sti gjør).
 

@@ -26,9 +26,12 @@ to a bearer of the token. `MANAGEMENT_TOKEN` without `MANAGEMENT_PORT` is a
 configuration error.
 
 The listener runs in every command that serves: `api`, `server` and `worker`. It
-opens before anything else starts, while `server` and `worker` still wait for the
-schema ([Upgrading](/en/admin/installation/#upgrading)), so the probes answer from
-the first second; the status may answer `503` until the process is up. The public
+opens as soon as the database answers — before the clock is synced against it, before
+`server` and `worker` wait for the schema ([Upgrading](/en/admin/installation/#upgrading))
+and before any worker starts — so the probes answer while the process is still starting;
+readiness fails with `startup` or `schema` meanwhile, and the status may answer `503`
+until the process is up. While the database is not reachable at all, nothing listens
+yet. The public
 listener never serves `/management/status` (an unmatched path there falls through to
 the SPA shell, exactly as any other unknown path does).
 
