@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -208,7 +209,7 @@ func assertDemoWorkshopReads(t *testing.T, ctx context.Context, conn *pgx.Conn, 
 		t.Fatal(err)
 	}
 	defer pool.Close()
-	deps, access, err := moduleDeps(cfg, pool, slog.New(slog.DiscardHandler))
+	deps, access, err := moduleDeps(cfg, pool, slog.New(slog.DiscardHandler), time.Now)
 	if err != nil {
 		t.Fatal(err)
 	}

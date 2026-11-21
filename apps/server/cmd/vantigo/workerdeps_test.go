@@ -47,7 +47,7 @@ func TestWorkerModeDeps_CarryIdentitysUserDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	deps, access, err := moduleDeps(cfg, pool, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	deps, access, err := moduleDeps(cfg, pool, slog.New(slog.NewTextHandler(io.Discard, nil)), time.Now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +111,7 @@ func TestWorkerMode_StaffAloneStartsTheAccountsWorker(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		deps, access, err := moduleDeps(cfg, pool, slog.New(slog.NewTextHandler(io.Discard, nil)))
+		deps, access, err := moduleDeps(cfg, pool, slog.New(slog.NewTextHandler(io.Discard, nil)), time.Now)
 		if err != nil {
 			t.Fatal(err)
 		}
