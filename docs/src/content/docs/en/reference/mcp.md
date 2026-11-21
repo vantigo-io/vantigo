@@ -71,8 +71,8 @@ setting says. The default is on.
 
 The endpoint requires an integration's API key in `Authorization: Bearer vtg_…`, or, while
 `OAUTH_ENABLED` is on, a connection's access token in `Authorization: Bearer vta_…`
-([OAuth connections](/en/reference/oauth/)), and nothing else. `OAUTH_ENABLED` is off by
-default for now.
+([OAuth connections](/en/reference/oauth/)), and nothing else. `OAUTH_ENABLED` is on by
+default.
 
 - **No key, a session cookie, or a key identity does not know** is `401 api_key_required` with
   `WWW-Authenticate: Bearer realm="vantigo"`, answered by the endpoint itself, so a signed-in

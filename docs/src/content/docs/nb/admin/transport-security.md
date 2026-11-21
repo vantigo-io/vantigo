@@ -296,14 +296,15 @@ må slippe gjennom oppgraderingen
 
 ### OAuth-token-endepunktet og oppdagelse
 
-Med `OAUTH_ENABLED=1` matches `POST /api/oauth/token` foran beskyttelsen mot
+Mens `OAUTH_ENABLED` er på, som er standard, matches `POST /api/oauth/token` foran beskyttelsen mot
 kryssopprinnelsesforespørsler: det leser ingen informasjonskapsel, så en forespørsel fra et
 annet nettsted vinner ingenting på en nettlesers økt, og en klient som sender `Origin`, får
 OAuths eget JSON-svar i stedet for `403`. Det tar en skjemakropp på høyst 16 KiB og er begrenset
 til 120 forespørsler i minuttet per adresse. OAuth-oppdagelsesdokumentene under `/.well-known/`
 er offentlig JSON, mellomlagret i fem minutter; enhver annen sti under `/.well-known/` svarer
-`404` i stedet for applikasjonens side. Av, som er standard foreløpig, svarer alle `404`
-([OAuth connections](/en/reference/oauth/)).
+`404` i stedet for applikasjonens side. Med `OAUTH_ENABLED=0` svarer alle `404`
+([OAuth connections](/en/reference/oauth/)). Samtykkesiden, `/oauth/authorize`, er
+applikasjonens egen side og har dens headere, så ingen andre nettsteder kan vise den i en ramme.
 
 ## API-kontraktdokumentet
 
