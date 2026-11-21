@@ -123,10 +123,26 @@ func TestSync_AFailureLeavesTheFirstMeasurementForLater(t *testing.T) {
 	if c.Offset() != 0 {
 		t.Errorf("offset = %v, want 0", c.Offset())
 	}
-	m.set(2 * time.Second)
+	m.set(2*time.Second, 2*time.Second, 2*time.Second)
 	c.Tick(context.Background())
 	if c.Offset() != 2*time.Second {
 		t.Errorf("offset = %v, want 2s in full", c.Offset())
+	}
+}
+
+// The late first measurement is the median of its samples too, so one slow
+// round trip after a failed start cannot set the clock.
+func TestTick_ALateFirstMeasurementTakesTheMedian(t *testing.T) {
+	m := &fakeMeasurer{}
+	m.fail(errors.New("down"))
+	c := newClock(t, m, &fixedLocal{t: epoch}, nil, 0)
+	if err := c.Sync(context.Background()); err == nil {
+		t.Fatal("Sync = nil, want the measurer's error")
+	}
+	m.set(time.Second, 40*time.Second, 1100*time.Millisecond)
+	c.Tick(context.Background())
+	if c.Offset() != 1100*time.Millisecond {
+		t.Errorf("offset = %v, want the median 1.1s, not one sample", c.Offset())
 	}
 }
 

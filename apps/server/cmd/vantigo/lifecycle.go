@@ -45,9 +45,9 @@ var (
 // checks are the lifecycle's readiness checks, beside the dependencies'.
 func (l *lifecycle) checks() []health.Check {
 	return []health.Check{
-		{Name: "schema", Run: func(context.Context) error { return failUnless(l.schema.Load(), errSchemaBehind) }},
-		{Name: "startup", Run: func(context.Context) error { return failUnless(l.started.Load(), errStarting) }},
-		{Name: "draining", Run: func(context.Context) error { return failUnless(!l.draining.Load(), errDraining) }},
+		{Name: "schema", Run: func(context.Context) error { return failUnless(l.schema.Load(), errSchemaBehind) }, Quiet: true},
+		{Name: "startup", Run: func(context.Context) error { return failUnless(l.started.Load(), errStarting) }, Quiet: true},
+		{Name: "draining", Run: func(context.Context) error { return failUnless(!l.draining.Load(), errDraining) }, Quiet: true},
 	}
 }
 

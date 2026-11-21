@@ -3,9 +3,14 @@ package db_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
+	neturl "net/url"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 
 	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/testdb"
@@ -105,5 +110,62 @@ func TestWaitForSchema_HonoursTheContext(t *testing.T) {
 	})
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Errorf("WaitForSchema = %v, want the context's error", err)
+	}
+}
+
+// A runtime role without SELECT on goose_db_version cannot become ready by
+// waiting: SchemaVersion says so, naming the grant, and WaitForSchema stops
+// at once instead of polling forever.
+func TestSchemaVersion_APermissionErrorIsFatal(t *testing.T) {
+	_, url := testdb.Migrated(t)
+	ctx := context.Background()
+	admin, err := pgx.Connect(ctx, url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = admin.Close(ctx) }()
+	role := fmt.Sprintf("schema_wait_%d", time.Now().UnixNano())
+	if _, err := admin.Exec(ctx, `CREATE ROLE `+role+` LOGIN PASSWORD 'x'`); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		ctx := context.Background()
+		conn, err := pgx.Connect(ctx, url)
+		if err != nil {
+			return
+		}
+		defer func() { _ = conn.Close(ctx) }()
+		_, _ = conn.Exec(ctx, `DROP OWNED BY `+role)
+		_, _ = conn.Exec(ctx, `DROP ROLE IF EXISTS `+role)
+	})
+	if _, err := admin.Exec(ctx, `REVOKE ALL ON public.goose_db_version FROM PUBLIC`); err != nil {
+		t.Fatal(err)
+	}
+
+	u, err := neturl.Parse(url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u.User = neturl.UserPassword(role, "x")
+	pool, err := db.Open(ctx, u.String(), db.WithMaxConns(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+
+	_, err = db.SchemaVersion(ctx, pool)
+	if !errors.Is(err, db.ErrSchemaUnreadable) || !strings.Contains(err.Error(), `GRANT SELECT ON public.goose_db_version TO "`+role+`"`) {
+		t.Fatalf("SchemaVersion = %v, want ErrSchemaUnreadable naming the grant", err)
+	}
+	waitCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	err = db.WaitForSchema(waitCtx, db.SchemaWait{
+		Read:   func(ctx context.Context) (int64, error) { return db.SchemaVersion(ctx, pool) },
+		Want:   1,
+		Every:  time.Millisecond,
+		Logger: slog.New(slog.DiscardHandler),
+	})
+	if !errors.Is(err, db.ErrSchemaUnreadable) {
+		t.Errorf("WaitForSchema = %v, want it to stop with ErrSchemaUnreadable", err)
 	}
 }

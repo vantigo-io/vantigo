@@ -2361,9 +2361,23 @@ linters:
           - forbidigo
       # The allow-list: the nil-clock fallbacks, the one place a worker may
       # name time.Now — `if deps.Clock == nil` (a bare Deps in a test),
-      # never in production, where serve always sets Deps.Clock.
-      - path: '(^|/)internal/((calendar/(cancellations|mailbox|subscriptions)|customers/(anonymisation|import|peppol_recheck|registry_feed)|energy/(import|spot_prices)|identity/webhooks)_worker|events/dispatch)\.go$'
-        source: '^\s*(return time\.Now\(\)(\.UTC\(\))?|[\w.]+ = time\.Now)$'
+      # never in production, where serve always sets Deps.Clock. Each rule
+      # pairs the files with the exact fallback line they hold, so any other
+      # use of time.Now in the same file is still reported.
+      - path: '(^|/)internal/calendar/cancellations_worker\.go$'
+        source: '^\s*return time\.Now\(\)$'
+        linters:
+          - forbidigo
+      - path: '(^|/)internal/(customers/(anonymisation|import|peppol_recheck|registry_feed)|energy/(import|spot_prices))_worker\.go$'
+        source: '^\s*return time\.Now\(\)\.UTC\(\)$'
+        linters:
+          - forbidigo
+      - path: '(^|/)internal/calendar/(mailbox|subscriptions)_worker\.go$'
+        source: '^\s*d\.Clock = time\.Now$'
+        linters:
+          - forbidigo
+      - path: '(^|/)internal/(identity/webhooks_worker|events/dispatch)\.go$'
+        source: '^\s*clock = time\.Now$'
         linters:
           - forbidigo
 

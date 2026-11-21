@@ -417,6 +417,12 @@ func runBounded(fn func(), timeout time.Duration) bool {
 	}
 }
 
+// closeFloor is the least time a deferred close gets, even once the shared
+// shutdown budget is spent: closing the pool and the rate limiter's last
+// flush are worth a moment more, and a zero bound would only log a timeout
+// and skip them.
+const closeFloor = 500 * time.Millisecond
+
 // closePool closes pool but never blocks the process past timeout.
 // pgxpool.Pool.Close has no context parameter and blocks until every
 // checked-out connection is returned to the pool. serve already cancels and
@@ -470,7 +476,7 @@ func serve(ctx context.Context, logger *slog.Logger, cfg *config.Config, ln net.
 	// ordering this by defer, rather than by hand in every branch that
 	// returns, keeps the ordering true regardless of how serve returns. It
 	// gets what is left of the shutdown budget.
-	defer func() { closePool(pool, lc.remaining(), logger) }()
+	defer func() { closePool(pool, max(lc.remaining(), closeFloor), logger) }()
 	// The pool's gauges (Kubernetes readiness KR23); a failure costs only them.
 	if stopPoolMetrics, err := telemetry.ObservePool(pool); err != nil {
 		logger.Warn("the database pool metrics are not reported", "error", err)
@@ -478,24 +484,10 @@ func serve(ctx context.Context, logger *slog.Logger, cfg *config.Config, ln net.
 		defer stopPoolMetrics()
 	}
 
-	// Deps.Clock is anchored to the database's clock (KR7, KR8): the first
-	// measurement applies in full, here, before anything reads the clock, and
-	// later ones every minute. A first measurement that fails leaves the
-	// local clock until one succeeds; it is no reason not to start.
+	// Deps.Clock is anchored to the database's clock (KR7, KR8). It is built
+	// here and synced once the management listener is up, below: until the
+	// sync nothing that reads it runs except the listener's own routes.
 	clock := dbclock.New(dbclock.Options{Measure: dbclock.PoolMeasurer(pool), MaxSkew: cfg.ClockMaxSkew, Logger: logger})
-	if err := clock.Sync(context.WithoutCancel(ctx)); err != nil {
-		logger.Warn("clock: could not measure the database's clock; using this host's until it can", "error", err)
-	}
-	clockCtx, stopClock := context.WithCancel(context.WithoutCancel(ctx))
-	clockDone := make(chan struct{})
-	go func() {
-		defer close(clockDone)
-		clock.Run(clockCtx)
-	}()
-	defer func() {
-		stopClock()
-		<-clockDone
-	}()
 
 	storageCheck, err := storageReadiness(cfg)
 	if err != nil {
@@ -525,7 +517,7 @@ func serve(ctx context.Context, logger *slog.Logger, cfg *config.Config, ln net.
 	// Deferred after closePool's, it runs before it, and after the requests
 	// have drained, within what is left of the shutdown budget.
 	defer func() {
-		if !runBounded(deps.Limiter.Close, lc.remaining()) {
+		if !runBounded(deps.Limiter.Close, max(lc.remaining(), closeFloor)) {
 			logger.Warn("the rate limiter's last flush did not finish within the shutdown timeout")
 		}
 	}()
@@ -536,8 +528,9 @@ func serve(ctx context.Context, logger *slog.Logger, cfg *config.Config, ln net.
 	var hub *live.Hub
 	var liveHub atomic.Pointer[live.Hub]
 
-	// The management listener opens in every command (KR2), before the
-	// schema wait and before any worker starts, and serves at once: its
+	// The management listener opens in every command (KR2) as soon as the
+	// database answers — before the clock sync, the schema wait and any
+	// worker — and serves at once: its
 	// probes answer while the process waits (KR4), its readiness failing
 	// with "schema" and then "startup" until serve is really serving. A bind
 	// failure (the port is taken) returns while nothing is running yet.
@@ -586,6 +579,25 @@ func serve(ctx context.Context, logger *slog.Logger, cfg *config.Config, ln net.
 		logger.Info("management listener is up", "addr", mgmtLn.Addr().String())
 	}
 
+	// The first measurement applies in full here, before anything else reads
+	// the clock, and later ones every minute. A first measurement that fails
+	// leaves the local clock until one succeeds; it is no reason not to
+	// start. Registered after the management listener's defer, the clock
+	// stops before it.
+	if err := clock.Sync(context.WithoutCancel(ctx)); err != nil {
+		logger.Warn("clock: could not measure the database's clock; using this host's until it can", "error", err)
+	}
+	clockCtx, stopClock := context.WithCancel(context.WithoutCancel(ctx))
+	clockDone := make(chan struct{})
+	go func() {
+		defer close(clockDone)
+		clock.Run(clockCtx)
+	}()
+	defer func() {
+		stopClock()
+		<-clockDone
+	}()
+
 	// api has just migrated under the advisory lock; server and worker wait
 	// for whoever migrates (KR4). The wait honours the signal: a pod stopped
 	// while it waits exits without having started anything.
@@ -602,8 +614,12 @@ func serve(ctx context.Context, logger *slog.Logger, cfg *config.Config, ln net.
 			Want:   want,
 			Logger: logger,
 		}); err != nil {
-			logger.Info("shutdown requested while waiting for the schema; exiting without serving")
-			return 0
+			if ctx.Err() != nil {
+				logger.Info("shutdown requested while waiting for the schema; exiting without serving")
+				return 0
+			}
+			logger.Error("startup failed", "error", err)
+			return 1
 		}
 		lc.schema.Store(true)
 	}
