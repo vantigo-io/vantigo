@@ -1,6 +1,6 @@
 ---
 title: API access
-description: Letting another application use Vantigo's API without a person's session — integrations, their roles, API keys with an expiry, a narrowing, a read-only switch and networks, rolling and revoking a key, what is never available to a key, how a client sends it, the rate limit and its headers, the answers it can get, the request log, the expiry notices, webhook endpoints, their signing secrets and their delivery log with resend, connecting an AI client over MCP, and what to do when a key leaks.
+description: Letting another application use Vantigo's API without a person's session — integrations, their roles, API keys with an expiry, a narrowing, a read-only switch and networks, rolling and revoking a key, what is never available to a key, how a client sends it, the rate limit and its headers, the answers it can get, the request log, the expiry notices, webhook endpoints, their signing secrets and their delivery log with resend, connecting an AI client over MCP with a key or by signing in, the consent page, connected apps and revoking one, and what to do when a key leaks.
 sidebar:
   order: 22
 sources:
@@ -40,6 +40,10 @@ sources:
   - apps/apiref/frontend/src
   - apps/server/internal/identity/oauth_connections.go
   - apps/server/internal/identity/oauth_client.go
+  - apps/server/internal/identity/oauth_authorize.go
+  - apps/host/frontend/src/routes/oauth.authorize.tsx
+  - apps/host/frontend/src/routes/workspace/-api-access-connections.tsx
+  - apps/host/frontend/src/api/oauth.ts
 ---
 
 An **integration** is the account another application — a web shop, a reporting tool, a
@@ -138,7 +142,7 @@ needs. A read-only key that calls anything else is refused `403 api_key_read_onl
 ### Restrict a key's networks
 
 A connected app has no network list: **Networks** belong to a key, and a connection made by
-signing in is not limited by them ([Connecting by signing in](#connecting-by-signing-in-switched-off-for-now)).
+signing in is not limited by them ([Connecting by signing in](#connecting-by-signing-in)).
 
 **Networks** lists the addresses or CIDR ranges the key may be used from, one per line —
 IPv4 or IPv6, at most 20. Empty means anywhere. A request from outside them is refused
@@ -388,28 +392,138 @@ and a restart.
   calls in flight at once; the client retries shortly.
 - **A browser-based client** cannot connect: Vantigo refuses cross-site browser requests.
 
-### Connecting by signing in (switched off for now)
+## Connecting by signing in
 
-Claude and ChatGPT can also connect without a key being copied anywhere: the person adds the
-MCP address, is sent to Vantigo, signs in as an Owner, picks the integration the client may act
-as and approves. The client then holds a connection that acts as that integration, with its
-roles and its rate limit, like one more key ([OAuth connections](/en/reference/oauth/)).
+Claude Code, Claude and ChatGPT can connect without a key being copied anywhere: you give the
+client the MCP address, it sends your browser to Vantigo, you sign in as an Owner, pick the
+integration the client may act as and approve. The client then holds a **connection** that acts
+as that integration, with its roles, its MCP access and its rate limit, like one more key; it
+renews its own one-hour token and never sees a key. The contract is
+[OAuth connections](/en/reference/oauth/).
 
-The server side of this is in place but **switched off** until the consent page and the
-**Connected apps** section land on the screens: `OAUTH_ENABLED` defaults to `0`
-([Configuration](/en/admin/configuration/)). Until then, connect clients with a key as above.
-An operator who switches it on early should know:
+**Before you start:**
 
-- **Outbound HTTPS.** Vantigo fetches each client's metadata document from the client's own
-  host — `claude.ai`, `chatgpt.com` — when an Owner is asked to approve it, so the server needs
-  outbound HTTPS to those hosts. Private and internal addresses are never fetched.
-- **A base path** needs `/.well-known/oauth-` routed to Vantigo
+- An integration with the roles the client needs and its **MCP access** set to **Read only** or
+  **Read and write** ([Choose what the agent may do](#choose-what-the-agent-may-do)). One whose
+  MCP access is **Off**, or that is disabled, cannot be chosen.
+- You are an **Owner**. When the installation requires multi-factor authentication for
+  administrators, you have enrolled it; if not, Vantigo sends you to enrol and then back.
+- The server can reach the client's host over **outbound HTTPS** — `claude.ai`, `chatgpt.com`
+  or the host of whichever client connects. Vantigo fetches the client's published description
+  from there when you are asked to approve it, never from a private or internal address.
+- **Claude and ChatGPT on the web** call your installation from their own servers, so it must
+  have a public `https` address. **Claude Code** runs on your computer and can connect to any
+  address it can reach, a development instance on `http://localhost` included.
+- With a base path, `/.well-known/oauth-*` is routed to Vantigo
   ([Installation](/en/admin/installation/#base-path-and-reverse-proxy)).
-- **What ends a connection.** An Owner revoking it, the integration archived, the person who
-  approved it no longer an active Owner, or 180 days passing. Revoking a connection takes
-  effect at the next request.
-- **Switching it off** answers `404` at every OAuth address and refuses every connection's
-  token; the connections are kept and work again when it is switched back on.
+
+### Connect Claude Code
+
+1. Add the server without a key, in the project the agent works in:
+
+   ```sh
+   claude mcp add --transport http vantigo https://vantigo.example.com/api/mcp
+   ```
+
+2. In Claude Code, run `/mcp`, choose **vantigo** and authenticate. Your browser opens
+   Vantigo's consent page; sign in first if you are asked to.
+3. Approve as described in [The consent page](#the-consent-page). The browser goes back to
+   Claude Code, which says it is connected.
+
+### Connect Claude or ChatGPT
+
+1. In the client's settings, add a custom connector (Claude) or app (ChatGPT) with the MCP
+   address, `https://vantigo.example.com/api/mcp`, and OAuth as its authentication.
+2. The client sends your browser to Vantigo's consent page; sign in first if you are asked to.
+3. Approve as described in [The consent page](#the-consent-page). The browser goes back to the
+   client.
+
+**To verify:** ask the client to list its tools, as for a key
+([Connect a client](#connect-a-client)), and open the integration: the client is under
+**Connected apps** on **Overview**, and its calls are in the **Requests** tab, named as the app
+calls itself and marked *(connected app)*.
+
+### The consent page
+
+The page shows what the client asks and what Vantigo could verify about it:
+
+- **The app calls itself** — the name from the client's own description. Anyone can publish
+  any name, so the page puts beside it what Vantigo checked: **the host it read the
+  description from** and **the host your browser goes to** after you answer. Trust the hosts,
+  not the name.
+- A warning when the name mentions Vantigo or the workspace's name.
+- A warning when the answer goes to **an app on this computer** (a loopback address, as Claude
+  Code uses): any program on the computer could be asking, so approve only a connection you
+  just started yourself.
+- A notice when no app from that host has been connected to the workspace before.
+- **Integration** — none is chosen for you. An integration that is disabled or has MCP off is
+  listed but cannot be chosen.
+- **Access** — **Read only** unless you choose **Read and write**, which you can only when the
+  client asked to write and the integration's MCP access is **Read and write**.
+
+**Approve** creates the connection and sends the browser back to the client with a code it
+exchanges within a minute; **Deny** sends it back with a refusal. A connection lasts until it is
+revoked, and at most 180 days; then the client asks you to sign in again.
+
+What else the page can say:
+
+- **Ask an Owner** — you are signed in but not an Owner. Nothing is sent back to the client;
+  an Owner has to make the connection.
+- **This app cannot connect** — Vantigo could not fetch or accept the client's description, or
+  the address it wants to return to is not one it published. Nothing is sent back: the request
+  may not come from the client it names.
+- **The app's request is not valid** with **Return to *host*** — the client sent a request
+  Vantigo refuses, such as one without PKCE. The button tells the client; Vantigo returns to a
+  client's host without a click only once a client of that host has been connected here.
+- **Connecting apps by signing in is switched off** — `OAUTH_ENABLED` is `0`.
+
+The page cannot be shown inside another site's frame.
+
+### Connected apps
+
+The integration's **Overview** lists its connected apps under **MCP**: the name each client
+calls itself and its host, who connected it, **Read only** or **Read and write**, when it was
+connected, its last use and address, and when it **ends** by itself. A connection whose person
+is no longer an active Owner — demoted, disabled, deleted or deactivated by the directory — is
+**Inactive**: its tokens are refused. Revoke it, and connect the client again if it is still
+needed.
+
+Each laptop running Claude Code is a connection of its own; revoking one leaves the others.
+
+**To revoke a connection:** choose **Revoke** on its row and confirm. The client is refused from
+its next request, on every server at once, and must be connected again by signing in. Revoking
+is audited `connection.revoked`.
+
+### What ends a connection by itself
+
+- The integration is **archived**.
+- The person who approved it is deleted, disabled or no longer an Owner.
+- **180 days** pass since it was approved.
+- The client presents a code or a refresh token a second time after it was used, which means
+  someone else may hold it.
+
+A disabled integration's connections are refused while it is disabled and work again when it
+is enabled, as its keys do.
+
+### Switching it off
+
+`OAUTH_ENABLED=0` ([Configuration](/en/admin/configuration/)) and a restart switch connecting by
+signing in off for the whole installation: every OAuth address answers `404`, the consent page
+says it is switched off, every connection's token is refused, and **Connected apps** is not
+shown. The connections are kept and work again when it is switched back on with
+`OAUTH_ENABLED=1`, the default. Keys are not affected.
+
+### When a connection does not work
+
+- **The client says the sign-in failed or never opens the browser:** check that the server
+  reaches the client's host over HTTPS, and, for Claude or ChatGPT on the web, that the
+  installation's address is public `https`.
+- **This app cannot connect:** the client's description could not be fetched or was refused;
+  the reason is under the heading. Try again later, or connect the client with a key.
+- **The client connected but its calls are refused:** the integration's MCP access is **Off**,
+  it is disabled, or the connection is **Inactive**. The **Requests** tab shows the refusal.
+- **A change is refused with `insufficient_scope`:** the connection was approved for **Read
+  only**. Revoke it and connect again with **Read and write**.
 
 ## The answers a key can get
 
@@ -460,7 +574,7 @@ A refusal is recorded with its reason, and so is a replayed answer:
 | *Not available to API keys* (`never`) | the operation is never available to API keys |
 | *Not allowed by the roles* (`forbidden`) | the roles, or the narrowing, do not give what the operation needs |
 | *Over the rate limit* (`rate_limited`) | the integration had made its **Rate limit** of requests that minute |
-| *Connected app may only read* (`insufficient_scope`) | a connection approved for Read only called an operation that is not a read ([Connecting by signing in](#connecting-by-signing-in-switched-off-for-now)) |
+| *Connected app may only read* (`insufficient_scope`) | a connection approved for Read only called an operation that is not a read ([Connecting by signing in](#connecting-by-signing-in)) |
 | *Connected app no longer allowed* (`token_invalid`) | a connection whose approver is no longer an active Owner, or that was never completed, presented its token |
 | *Replayed for its Idempotency-Key* (`idempotent_replay`) | was not run: it repeated an earlier request with the same `Idempotency-Key`, and got that request's answer again ([Retrying safely](#retrying-safely)) |
 

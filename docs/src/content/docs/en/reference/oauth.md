@@ -13,6 +13,10 @@ sources:
   - apps/server/internal/db/migrations/00218_identity_oauth.sql
   - apps/server/internal/server/oauth_discovery.go
   - apps/server/internal/modtest/oauth.go
+  - apps/server/internal/config/config.go
+  - apps/host/frontend/src/routes/oauth.authorize.tsx
+  - apps/host/frontend/src/lib/oauth-return.ts
+  - apps/host/frontend/src/api/oauth.ts
 ---
 
 An MCP client or another app can connect to Vantigo by having a person sign in and approve it,
@@ -25,18 +29,15 @@ for a person writing or configuring a client; it follows OAuth 2.1 with PKCE, th
 resource metadata of RFC 9728, the authorization server metadata of RFC 8414 and the client ID
 metadata documents the MCP authorization specification describes.
 
-:::caution[Switched off for now]
-`OAUTH_ENABLED` is off by default until the consent page and the **Connected apps** section land
-on the screens. Until then an installation that turns it on serves everything below, but a
-person has no page to approve a client on. Use an [API key](/en/reference/mcp/#authentication)
-meanwhile.
-:::
+How an Owner connects Claude Code, Claude or ChatGPT, what the consent page shows and how a
+connection is revoked are in the [administration guide](/en/admin/api-access/#connecting-by-signing-in).
 
-## Switching it on
+## Switching it off
 
-`OAUTH_ENABLED=1` ([Configuration](/en/admin/configuration/)) turns it on. Off, which is the
-default for now, the discovery documents and the token endpoint answer `404`, the consent
-operations answer `404`, an access token (`Bearer vta_…`) is refused `401` as an unknown key is,
+It is on by default. `OAUTH_ENABLED=0` ([Configuration](/en/admin/configuration/)) switches it
+off: the discovery documents and the token endpoint answer `404`, the consent operations and the
+connection operations answer `404` (the consent page says so, and the integration's page shows
+no **Connected apps**), an access token (`Bearer vta_…`) is refused `401` as an unknown key is,
 and `/api/mcp`'s `401` is the plain one an API-key client expects. Connections already made are
 kept, and work again when it is turned back on.
 
@@ -189,7 +190,36 @@ applies), neither available to an API key nor to the Assistant:
   client_refused`; an integration that is not eligible, or an access above what it allows, is
   `409 integration_not_eligible`.
 
-A person who is not an Owner gets `403` from both, and the page tells them to ask an Owner.
+A person who is not an Owner gets `403` from both.
+
+### The consent page
+
+`<issuer>/oauth/authorize` is a page of the application (`routes/oauth.authorize.tsx`), open
+without a session so it can act on its own. It reads the query string as the browser received
+it, before the application's router can rewrite the address, and posts it unchanged; it never
+builds a redirect of its own and only ever sends the browser to a `redirectTo` the server
+answered.
+
+- **No session.** The page stores its path and query in `sessionStorage` under `oauth.return`,
+  with the time, and goes to sign-in. After any sign-in — password, two-factor, passkey, OIDC —
+  the application's root, once its session and MFA-enrolment gates pass, takes the entry and
+  loads it again. The entry is removed when it is read and honoured only when it is younger than
+  ten minutes and its path is exactly `/oauth/authorize` with a query: no other path, host,
+  scheme or fragment. No URL carries a return-to.
+- **An Owner held at MFA enrolment** is sent to enrol, with the same entry, and comes back once
+  enrolled.
+- **A person who is not an Owner** is told to ask an Owner, with Close only; the page calls
+  neither operation, so no document is fetched and nothing is redirected.
+- **An Owner** sees the server's answer: a refused client with Close only; an error with an
+  automatic redirect or a **Return to *host*** button, as `automatic` says; or the consent, with
+  the claimed name labelled as a claim beside the two hosts, the name, loopback and first-use
+  warnings, no integration preselected, and **Read only** unless **Read and write** is chosen
+  where `maxAccess` allows it. **Approve** and **Deny** post the decision and follow its
+  `redirectTo`.
+
+The page is never framed: every response carries `Content-Security-Policy: frame-ancestors
+'none'` and `X-Frame-Options: DENY` (the latter alone under `CSP_REPORT_ONLY`), and the page
+renders nothing when it finds itself inside a frame.
 
 ## The token endpoint
 
@@ -311,7 +341,10 @@ starts a sign-in.
 - **Revoke** by an Owner: `DELETE /api/v1/identity/integrations/{id}/connections/{connectionId}`
   (`revoked`). `GET /api/v1/identity/integrations/{id}/connections` lists the activated
   connections that are neither revoked nor expired, newest first, each `active` or `inactive`.
-  Both are `policy:Owner+OwnerManagement` and answer `404` while `OAUTH_ENABLED` is off.
+  Both are `policy:Owner+OwnerManagement` and answer `404` while `OAUTH_ENABLED` is off. The
+  integration's **Overview** shows the list as **Connected apps**, under MCP, with **Revoke**
+  behind a confirmation (`routes/workspace/-api-access-connections.tsx`); it is not shown while
+  the list answers `404`.
 - **Archiving the integration** revokes them in the same transaction as its keys
   (`integration_archived`).
 - **The person who approved it** stops qualifying: every request checks that they are a person,

@@ -1,6 +1,6 @@
 ---
 title: API-tilgang
-description: La et annet program bruke Vantigos API uten en persons økt — integrasjoner, rollene deres, API-nøkler med utløp, begrensning, bryter for bare lesing og nettverk, rotering og tilbakekalling av en nøkkel, hva en nøkkel aldri får, hvordan en klient sender den, hastighetsgrensen og hodene dens, svarene den kan få, forespørselsloggen, varslene om utløp, webhook-endepunkter, signeringshemmelighetene deres og leveranseloggen med ny sending, å koble til en AI-klient med MCP, og hva du gjør når en nøkkel lekker.
+description: La et annet program bruke Vantigos API uten en persons økt — integrasjoner, rollene deres, API-nøkler med utløp, begrensning, bryter for bare lesing og nettverk, rotering og tilbakekalling av en nøkkel, hva en nøkkel aldri får, hvordan en klient sender den, hastighetsgrensen og hodene dens, svarene den kan få, forespørselsloggen, varslene om utløp, webhook-endepunkter, signeringshemmelighetene deres og leveranseloggen med ny sending, å koble til en AI-klient med MCP med en nøkkel eller ved å logge inn, samtykkesiden, tilkoblede apper og å tilbakekalle en, og hva du gjør når en nøkkel lekker.
 sidebar:
   order: 22
 sources:
@@ -40,6 +40,10 @@ sources:
   - apps/apiref/frontend/src
   - apps/server/internal/identity/oauth_connections.go
   - apps/server/internal/identity/oauth_client.go
+  - apps/server/internal/identity/oauth_authorize.go
+  - apps/host/frontend/src/routes/oauth.authorize.tsx
+  - apps/host/frontend/src/routes/workspace/-api-access-connections.tsx
+  - apps/host/frontend/src/api/oauth.ts
 ---
 
 En **integrasjon** er kontoen et annet program — en nettbutikk, et rapportverktøy, et
@@ -141,7 +145,7 @@ bare lesing som kaller noe annet, avvises med `403 api_key_read_only`.
 ### Begrens en nøkkels nettverk
 
 En tilkoblet app har ingen nettverksliste: **Nettverk** hører til en nøkkel, og en tilkobling
-laget ved å logge inn begrenses ikke av dem ([Koble til ved å logge inn](#koble-til-ved-å-logge-inn-slått-av-foreløpig)).
+laget ved å logge inn begrenses ikke av dem ([Koble til ved å logge inn](#koble-til-ved-å-logge-inn)).
 
 **Nettverk** lister adressene eller CIDR-områdene nøkkelen kan brukes fra, én per linje —
 IPv4 eller IPv6, høyst 20. Tomt betyr hvor som helst. En forespørsel utenfra avvises med
@@ -399,29 +403,140 @@ omstart.
 - **En klient som kjører i nettleseren** kommer ikke inn: Vantigo avviser forespørsler fra
   andre nettsteder i nettleseren.
 
-### Koble til ved å logge inn (slått av foreløpig)
+## Koble til ved å logge inn
 
-Claude og ChatGPT kan også koble seg til uten at en nøkkel kopieres noe sted: personen legger
-inn MCP-adressen, sendes til Vantigo, logger inn som eier, velger integrasjonen klienten kan
-handle som, og godkjenner. Klienten har da en tilkobling som handler som den integrasjonen, med
-rollene og hastighetsgrensen dens, som én nøkkel til
-([OAuth connections](/en/reference/oauth/)).
+Claude Code, Claude og ChatGPT kan koble seg til uten at en nøkkel kopieres noe sted: du gir
+klienten MCP-adressen, den sender nettleseren din til Vantigo, du logger inn som eier, velger
+integrasjonen klienten kan handle som, og godkjenner. Klienten har da en **tilkobling** som
+handler som den integrasjonen, med rollene, MCP-tilgangen og hastighetsgrensen dens, som én
+nøkkel til; den fornyer selv tokenet sitt, som varer én time, og ser aldri en nøkkel. Kontrakten
+er [OAuth connections](/en/reference/oauth/).
 
-Serversiden av dette er på plass, men **slått av** til samtykkesiden og seksjonen
-**Tilkoblede apper** er på plass i skjermbildene: `OAUTH_ENABLED` er `0` som standard
-([Konfigurasjon](/nb/admin/configuration/)). Til da kobler du klienter til med en nøkkel som
-over. En driftsansvarlig som slår det på tidlig, bør vite dette:
+**Før du begynner:**
 
-- **Utgående HTTPS.** Vantigo henter hver klients metadatadokument fra klientens egen vert —
-  `claude.ai`, `chatgpt.com` — når en eier blir bedt om å godkjenne den, så serveren trenger
-  utgående HTTPS til de vertene. Private og interne adresser hentes aldri.
-- **En basesti** krever at `/.well-known/oauth-` sendes til Vantigo
+- En integrasjon med rollene klienten trenger og **MCP-tilgang** satt til **Bare lese** eller
+  **Lese og skrive** ([Velg hva agenten kan gjøre](#velg-hva-agenten-kan-gjøre)). En med
+  MCP-tilgang **Av**, eller som er deaktivert, kan ikke velges.
+- Du er **eier**. Når installasjonen krever flerfaktorautentisering for administratorer, har du
+  tatt den i bruk; hvis ikke sender Vantigo deg dit for å ta den i bruk og så tilbake.
+- Serveren når klientens vert over **utgående HTTPS** — `claude.ai`, `chatgpt.com` eller verten
+  til den klienten som kobler seg til. Vantigo henter klientens publiserte beskrivelse derfra når
+  du blir bedt om å godkjenne den, aldri fra en privat eller intern adresse.
+- **Claude og ChatGPT på nettet** kaller installasjonen fra sine egne servere, så den må ha en
+  offentlig `https`-adresse. **Claude Code** kjører på datamaskinen din og kan koble seg til enhver
+  adresse den når, også en utviklingsinstans på `http://localhost`.
+- Med en basesti sendes `/.well-known/oauth-*` til Vantigo
   ([Installasjon](/nb/admin/installation/#basesti-og-omvendt-proxy)).
-- **Hva som avslutter en tilkobling.** En eier som tilbakekaller den, at integrasjonen
-  arkiveres, at personen som godkjente den, ikke lenger er en aktiv eier, eller at det går 180
-  dager. Å tilbakekalle en tilkobling virker fra neste forespørsel.
-- **Å slå det av** gir `404` på hver OAuth-adresse og avviser hver tilkoblings token;
-  tilkoblingene beholdes og virker igjen når det slås på igjen.
+
+### Koble til Claude Code
+
+1. Legg til serveren uten nøkkel, i prosjektet agenten jobber i:
+
+   ```sh
+   claude mcp add --transport http vantigo https://vantigo.example.com/api/mcp
+   ```
+
+2. Kjør `/mcp` i Claude Code, velg **vantigo** og autentiser. Nettleseren åpner Vantigos
+   samtykkeside; logg inn først hvis du blir bedt om det.
+3. Godkjenn som beskrevet under [Samtykkesiden](#samtykkesiden). Nettleseren går tilbake til
+   Claude Code, som sier at den er koblet til.
+
+### Koble til Claude eller ChatGPT
+
+1. Legg til en egendefinert connector (Claude) eller app (ChatGPT) i klientens innstillinger,
+   med MCP-adressen, `https://vantigo.example.com/api/mcp`, og OAuth som autentisering.
+2. Klienten sender nettleseren til Vantigos samtykkeside; logg inn først hvis du blir bedt om det.
+3. Godkjenn som beskrevet under [Samtykkesiden](#samtykkesiden). Nettleseren går tilbake til
+   klienten.
+
+**Slik kontrollerer du:** be klienten liste verktøyene sine, som for en nøkkel
+([Koble til en klient](#koble-til-en-klient)), og åpne integrasjonen: klienten står under
+**Tilkoblede apper** på **Oversikt**, og kallene dens står i fanen **Forespørsler**, med navnet
+appen kaller seg og merket *(tilkoblet app)*.
+
+### Samtykkesiden
+
+Siden viser hva klienten ber om, og hva Vantigo kunne bekrefte om den:
+
+- **Appen kaller seg** — navnet fra klientens egen beskrivelse. Hvem som helst kan publisere
+  hvilket som helst navn, så siden viser ved siden av det Vantigo har sjekket: **verten
+  beskrivelsen ble lest fra** og **verten nettleseren går til** når du har svart. Stol på
+  vertene, ikke på navnet.
+- En advarsel når navnet nevner Vantigo eller arbeidsområdets navn.
+- En advarsel når svaret går til **en app på denne datamaskinen** (en loopback-adresse, slik
+  Claude Code bruker): hvilket som helst program på maskinen kan stå bak forespørselen, så
+  godkjenn bare en tilkobling du selv nettopp startet.
+- En merknad når ingen app fra den verten har vært koblet til arbeidsområdet før.
+- **Integrasjon** — ingen er valgt for deg. En integrasjon som er deaktivert eller har MCP av,
+  vises, men kan ikke velges.
+- **Tilgang** — **Bare lese** med mindre du velger **Lese og skrive**, som du bare kan når
+  klienten ba om å skrive og integrasjonens MCP-tilgang er **Lese og skrive**.
+
+**Godkjenn** lager tilkoblingen og sender nettleseren tilbake til klienten med en kode den bytter
+inn innen ett minutt; **Avslå** sender den tilbake med et avslag. En tilkobling varer til den
+tilbakekalles, og høyst 180 dager; da ber klienten deg logge inn igjen.
+
+Hva siden ellers kan si:
+
+- **Spør en eier** — du er logget inn, men er ikke eier. Ingenting sendes tilbake til klienten;
+  en eier må lage tilkoblingen.
+- **Denne appen kan ikke kobles til** — Vantigo kunne ikke hente eller godta klientens
+  beskrivelse, eller adressen den vil tilbake til, er ikke en den har publisert. Ingenting sendes
+  tilbake: forespørselen kommer kanskje ikke fra klienten den nevner.
+- **Forespørselen fra appen er ugyldig** med **Tilbake til *vert*** — klienten sendte en
+  forespørsel Vantigo avviser, for eksempel en uten PKCE. Knappen gir klienten beskjed; Vantigo
+  går tilbake til en klients vert uten et klikk bare når en klient fra den verten har vært koblet
+  til her før.
+- **Tilkobling av apper ved innlogging er slått av** — `OAUTH_ENABLED` er `0`.
+
+Siden kan ikke vises inne i en ramme på et annet nettsted.
+
+### Tilkoblede apper
+
+Integrasjonens **Oversikt** viser de tilkoblede appene under **MCP**: navnet hver klient kaller
+seg og verten dens, hvem som koblet den til, **Bare lese** eller **Lese og skrive**, når den ble
+koblet til, siste bruk og adresse, og når den **slutter** av seg selv. En tilkobling der personen
+ikke lenger er en aktiv eier — fratatt rollen, deaktivert, slettet eller deaktivert av
+katalogen — er **Inaktiv**: tokenene avvises. Tilbakekall den, og koble klienten til på nytt hvis
+den fortsatt trengs.
+
+Hver bærbar maskin som kjører Claude Code, er en egen tilkobling; å tilbakekalle én lar de andre
+være.
+
+**Slik tilbakekaller du en tilkobling:** velg **Tilbakekall** på raden og bekreft. Klienten
+avvises fra neste forespørsel, på alle servere på én gang, og må kobles til på nytt ved
+innlogging. Tilbakekallingen revideres som `connection.revoked`.
+
+### Hva som avslutter en tilkobling av seg selv
+
+- Integrasjonen **arkiveres**.
+- Personen som godkjente den, slettes, deaktiveres eller er ikke lenger eier.
+- Det går **180 dager** fra den ble godkjent.
+- Klienten viser fram en kode eller et oppdateringstoken en gang til etter at det er brukt, som
+  betyr at noen andre kan ha det.
+
+En deaktivert integrasjons tilkoblinger avvises mens den er deaktivert, og virker igjen når den
+aktiveres, slik nøklene dens gjør.
+
+### Slå det av
+
+`OAUTH_ENABLED=0` ([Konfigurasjon](/nb/admin/configuration/)) og en omstart slår tilkobling ved
+innlogging av for hele installasjonen: hver OAuth-adresse svarer `404`, samtykkesiden sier at det
+er slått av, hver tilkoblings token avvises, og **Tilkoblede apper** vises ikke. Tilkoblingene
+beholdes og virker igjen når det slås på igjen med `OAUTH_ENABLED=1`, som er standard. Nøkler
+berøres ikke.
+
+### Når en tilkobling ikke virker
+
+- **Klienten sier at innloggingen mislyktes, eller åpner aldri nettleseren:** sjekk at serveren
+  når klientens vert over HTTPS, og, for Claude eller ChatGPT på nettet, at installasjonens
+  adresse er offentlig `https`.
+- **Denne appen kan ikke kobles til:** klientens beskrivelse kunne ikke hentes eller ble avvist;
+  årsaken står under overskriften. Prøv igjen senere, eller koble klienten til med en nøkkel.
+- **Klienten ble koblet til, men kallene avvises:** integrasjonens MCP-tilgang er **Av**, den er
+  deaktivert, eller tilkoblingen er **Inaktiv**. Fanen **Forespørsler** viser avvisningen.
+- **En endring avvises med `insufficient_scope`:** tilkoblingen ble godkjent for **Bare lese**.
+  Tilbakekall den og koble til på nytt med **Lese og skrive**.
 
 ## Svarene en nøkkel kan få
 
@@ -474,7 +589,7 @@ En avvisning registreres med årsaken, og det gjør et gjentatt svar også:
 | *Ikke tilgjengelig for API-nøkler* (`never`) | ble avvist fordi operasjonen er aldri tilgjengelig for API-nøkler |
 | *Ikke tillatt av rollene* (`forbidden`) | ble avvist fordi rollene, eller begrensningen, ikke gir det operasjonen trenger |
 | *Over grensen for forespørsler* (`rate_limited`) | ble avvist fordi integrasjonen hadde gjort så mange forespørsler som **Hastighetsgrense** tillot det minuttet |
-| *Den tilkoblede appen kan bare lese* (`insufficient_scope`) | en tilkobling godkjent for bare lesing kalte en operasjon som ikke er en lesing ([Koble til ved å logge inn](#koble-til-ved-å-logge-inn-slått-av-foreløpig)) |
+| *Den tilkoblede appen kan bare lese* (`insufficient_scope`) | en tilkobling godkjent for bare lesing kalte en operasjon som ikke er en lesing ([Koble til ved å logge inn](#koble-til-ved-å-logge-inn)) |
 | *Den tilkoblede appen har ikke lenger tilgang* (`token_invalid`) | en tilkobling der den som godkjente, ikke lenger er en aktiv eier, eller som aldri ble fullført, viste tokenet sitt |
 | *Gjentatt svar for Idempotency-Key* (`idempotent_replay`) | ble ikke kjørt: den gjentok en tidligere forespørsel med samme `Idempotency-Key` og fikk svaret på den igjen ([Prøv på nytt uten å gjøre noe to ganger](#prøv-på-nytt-uten-å-gjøre-noe-to-ganger)) |
 

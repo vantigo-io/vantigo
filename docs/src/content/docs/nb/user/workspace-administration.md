@@ -327,6 +327,18 @@ til en AI-klient (MCP)**. Bare lese begrenser det en AI-klient gjør gjennom MCP
 bare lesing hindrer selve nøkkelen i å skrive. En klient spør før den kjører et verktøy med
 mindre du har tillatt det: ikke godkjenn skriving eller sletting automatisk.
 
+Claude Code, Claude og ChatGPT kan også koble seg til ved innlogging, uten nøkkel: du gir
+klienten MCP-endepunktet, den åpner Vantigos samtykkeside, og der velger du integrasjonen den
+skal handle som og **Bare lese** eller **Lese og skrive**, og så **Godkjenn**. Siden viser navnet
+appen kaller seg ved siden av vertene Vantigo har bekreftet, og advarer når navnet låner
+Vantigos, eller når svaret går til et program på datamaskinen din; sjekk vertene før du
+godkjenner. Den som ikke er eier, får beskjed om å spørre en. Tilkoblingene vises så under
+**Tilkoblede apper** på integrasjonens **Oversikt**, under **MCP**: appen og verten dens, hvem
+som koblet den til, tilgangen, når den ble koblet til, siste bruk og når den slutter, høyst 180
+dager etter at den ble godkjent. En der eieren siden har mistet rollen, er **Inaktiv** og
+avvises. **Tilbakekall**, etter en bekreftelse, avslutter en tilkobling ved neste forespørsel;
+appen må logge inn igjen.
+
 Detaljene — hva en nøkkel når, begrensning, nøkler for bare lesing, nettverk,
 hastighetsgrensen, svarene en klient får, forespørselsloggen, webhook-endepunkter, MCP og hva du
 gjør når en nøkkel lekker — står under [API-tilgang](/nb/admin/api-access/).
