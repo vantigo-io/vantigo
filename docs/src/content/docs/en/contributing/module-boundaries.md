@@ -1695,7 +1695,21 @@ included. Every answer is `Cache-Control: private, no-store` with
       principal put on a context. `apimcp_index.go` reads an operation's kind with the router's own
       `setAPIRule`; `keyGate.recordOnly` records the envelope of a looped-back call without
       counting it. `MCP_ENABLED=0`, or a composition with no `Access`, leaves the path to the
-      catch-all. `/api` itself
+      catch-all. While `OAUTH_ENABLED` is on it also takes an OAuth access token (`vta_`), its
+      `401` names the protected resource's metadata, the in-flight limit is keyed by the key or
+      the connection, and each tool carries `securitySchemes`
+      ([OAuth connections](/en/reference/oauth/)).
+    - **`compose.go` registers the OAuth token endpoint, `/api/oauth/token`,** while
+      `OAUTH_ENABLED` is on, reaching identity's handler through `contracts.OAuthEndpoints`,
+      found by a type assertion on `Access` as `MCPAccess` is: `internal/module` and
+      `internal/server` never import identity. `internal/server` matches the path ahead of the
+      cross-origin guard, as it does `/api/v1/live`, since the endpoint reads no cookie and a
+      client that sends `Origin` must get RFC 6749's JSON; and it answers the OAuth discovery
+      documents under `/.well-known/` from `Config` alone, every other path there the `404`
+      problem rather than the SPA. `keyGate` records a connection's requests with its
+      `ConnectionID` and no `KeyID`; `contracts.APIKeyRefusal` carries either. A module's
+      tests that run the flow serve client metadata documents from
+      `modtest.NewOAuthClientHost`, attached with `modtest.WithOAuthClientHost`. `/api` itself
       stays the catch-all `404` problem in `compose.go`: `internal/server` hands a browser's
       `GET` or `HEAD` of `/api` (`Accept` preferring `text/html`) and `/api/reference/` to
       `internal/apiref`, the interactive reference, before the API is reached, so an API

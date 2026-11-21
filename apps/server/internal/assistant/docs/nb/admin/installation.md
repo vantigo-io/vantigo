@@ -598,6 +598,23 @@ en kjøretidsinnstilling; det ene imaget serverer den tilhørende SPA-en uten ny
 Stol på nøyaktig proxyen foran deg med `TRUSTED_PROXY_HOPS` og `TRUSTED_PROXY_CIDRS`,
 ellers ignoreres de videresendte headerne for skjema, vert og klientadresse.
 
+Med `OAUTH_ENABLED=1` og en basesti ligger to av OAuth-oppdagelsesdokumentene utenfor den, i
+vertens rot: `/.well-known/oauth-protected-resource/vantigo/api/mcp` og
+`/.well-known/oauth-authorization-server/vantigo`, der en MCP-klient ser etter dem. Send
+`/.well-known/oauth-` til Vantigo også, uendret:
+
+```nginx
+    location /.well-known/oauth- {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+```
+
+Uten basesti når alt under `/` Vantigo allerede
+([OAuth connections](/en/reference/oauth/#discovery)).
+
 ## Sanntidsoppdateringer og proxyen din
 
 Vantigo holder skjermbildene oppdatert uten at du laster siden på nytt: Innboks i
@@ -728,6 +745,14 @@ ned til det nøkkelen når; se
 eier har slått på MCP for integrasjonen ([API-tilgang › MCP](/nb/admin/api-access/#mcp)). Det
 trenger ingenting av proxyen utover det `/api` allerede har: vanlig forespørsel og svar, ingen
 strøm. `MCP_ENABLED=0` i `vantigo.env` slår det av.
+
+`OAUTH_ENABLED=1` i `vantigo.env` lar en MCP-klient eller app koble seg til ved at en eier
+logger inn og godkjenner den, i stedet for med en nøkkel
+([OAuth connections](/en/reference/oauth/)). Det er av som standard til samtykkesiden er på
+plass. På serverer imaget `/.well-known/oauth-*` og `POST /api/oauth/token`, og det henter
+hver klients metadatadokument over HTTPS fra klientens egen vert — for eksempel `claude.ai` og
+`chatgpt.com` — så serveren trenger utgående HTTPS til de vertene. Token-endepunktet er en
+vanlig skjema-`POST`; det trenger ikke mer av proxyen.
 
 En opprettende `POST` en integrasjon sender med en `Idempotency-Key`-header, utføres én gang, og
 svaret gis igjen til hvert nytt forsøk i 24 timer

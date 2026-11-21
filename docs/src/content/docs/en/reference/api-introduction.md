@@ -11,6 +11,7 @@ sources:
   - apps/server/internal/module/apikeygate.go
   - apps/server/internal/module/apimcp.go
   - apps/server/internal/module/idempotency.go
+  - apps/server/internal/server/oauth_discovery.go
 ---
 
 Vantigo's API is the same HTTP API its own screens use: JSON over HTTPS, one set of paths per
@@ -79,6 +80,15 @@ its tools — search, describe, read and, when the integration allows writing an
 read-only, write and delete — every call judged, counted and logged as the REST request it makes. See the
 [MCP server](/en/reference/mcp/).
 
+## A token beside a key
+
+An integration can also be reached without a key being copied anywhere: a client connects by
+having an Owner sign in and approve it, and then holds a one-hour access token, `Bearer vta_…`,
+that it renews on its own. A token is accepted wherever a key is, on `/api/mcp` and on REST, and
+acts as its integration exactly as a key does, with the integration's roles and rate limit; a
+connection approved for Read only is a read-only key. It is switched on with `OAUTH_ENABLED`,
+off by default for now. See [OAuth connections](/en/reference/oauth/).
+
 ## Refusals
 
 A refused request answers JSON in this shape:
@@ -97,8 +107,11 @@ Branch on `error.code`; the message is for people and may change.
 | `403` | `api_not_available` | No key may call the operation |
 | `403` | `api_key_read_only` | A read-only key called an operation that is not a read |
 | `429` | `rate_limited` | The integration has used every request its limit allows this minute |
+| `401` | `token_invalid` | An access token is unknown or expired, or its connection has ended ([OAuth connections](/en/reference/oauth/#refusals)) |
+| `403` | `insufficient_scope` | A connection approved for Read only called an operation that is not a read |
 
-A `401` carries `WWW-Authenticate: Bearer realm="vantigo"`. Other answers — `400` for a request
+A key's `401` carries `WWW-Authenticate: Bearer realm="vantigo"`; a token's carries
+`Bearer error="invalid_token"` with the protected resource's metadata URL. Other answers — `400` for a request
 the contract refuses, `404`, `409` and the rest — are each operation's own and are in the
 document.
 

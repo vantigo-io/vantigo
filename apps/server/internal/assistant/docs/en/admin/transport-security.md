@@ -290,6 +290,16 @@ security policy needs no change: `connect-src 'self'` covers a same-origin WebSo
 current browsers. The proxy must pass the upgrade
 ([Live updates and your proxy](/en/admin/installation/#live-updates-and-your-proxy)).
 
+### The OAuth token endpoint and discovery
+
+With `OAUTH_ENABLED=1`, `POST /api/oauth/token` is matched ahead of the cross-origin
+protection: it reads no cookie, so a cross-site request gains nothing from a browser's session,
+and a client that sends `Origin` gets OAuth's own JSON answer rather than a `403`. It takes a
+form body of at most 16 KiB and is limited to 120 requests a minute per address. The OAuth
+discovery documents under `/.well-known/` are public JSON, cached five minutes; every other
+path under `/.well-known/` answers `404` rather than the application's page. Off, which is the
+default for now, all of them answer `404` ([OAuth connections](/en/reference/oauth/)).
+
 ## The API contract document
 
 The running server serves the merged contract of its **enabled** modules at:

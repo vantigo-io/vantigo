@@ -38,6 +38,8 @@ sources:
   - apps/host/frontend/src/routes/workspace/-api-access-shared.ts
   - apps/server/internal/apiref
   - apps/apiref/frontend/src
+  - apps/server/internal/identity/oauth_connections.go
+  - apps/server/internal/identity/oauth_client.go
 ---
 
 An **integration** is the account another application — a web shop, a reporting tool, a
@@ -383,6 +385,29 @@ and a restart.
   calls in flight at once; the client retries shortly.
 - **A browser-based client** cannot connect: Vantigo refuses cross-site browser requests.
 
+### Connecting by signing in (switched off for now)
+
+Claude and ChatGPT can also connect without a key being copied anywhere: the person adds the
+MCP address, is sent to Vantigo, signs in as an Owner, picks the integration the client may act
+as and approves. The client then holds a connection that acts as that integration, with its
+roles and its rate limit, like one more key ([OAuth connections](/en/reference/oauth/)).
+
+The server side of this is in place but **switched off** until the consent page and the
+**Connected apps** section land on the screens: `OAUTH_ENABLED` defaults to `0`
+([Configuration](/en/admin/configuration/)). Until then, connect clients with a key as above.
+An operator who switches it on early should know:
+
+- **Outbound HTTPS.** Vantigo fetches each client's metadata document from the client's own
+  host — `claude.ai`, `chatgpt.com` — when an Owner is asked to approve it, so the server needs
+  outbound HTTPS to those hosts. Private and internal addresses are never fetched.
+- **A base path** needs `/.well-known/oauth-` routed to Vantigo
+  ([Installation](/en/admin/installation/#base-path-and-reverse-proxy)).
+- **What ends a connection.** An Owner revoking it, the integration archived, the person who
+  approved it no longer an active Owner, or 180 days passing. Revoking a connection takes
+  effect at the next request.
+- **Switching it off** answers `404` at every OAuth address and refuses every connection's
+  token; the connections are kept and work again when it is switched back on.
+
 ## The answers a key can get
 
 | Status | Code | When |
@@ -430,6 +455,8 @@ A refusal is recorded with its reason, and so is a replayed answer:
 | *Not available to API keys* (`never`) | the operation is never available to API keys |
 | *Not allowed by the roles* (`forbidden`) | the roles, or the narrowing, do not give what the operation needs |
 | *Over the rate limit* (`rate_limited`) | the integration had made its **Rate limit** of requests that minute |
+| *Connected app may only read* (`insufficient_scope`) | a connection approved for Read only called an operation that is not a read ([Connecting by signing in](#connecting-by-signing-in-switched-off-for-now)) |
+| *Connected app no longer allowed* (`token_invalid`) | a connection whose approver is no longer an active Owner, or that was never completed, presented its token |
 | *Replayed for its Idempotency-Key* (`idempotent_replay`) | was not run: it repeated an earlier request with the same `Idempotency-Key`, and got that request's answer again ([Retrying safely](#retrying-safely)) |
 
 A revoked key, a disabled or archived integration and a request from outside the networks are
@@ -689,7 +716,11 @@ Identity's authorization audit trail records, with the Owner who did it and whet
 `integration.created`, `integration.updated`, `integration.roles_changed`,
 `integration.disabled`, `integration.enabled`, `integration.archived`, `api_key.created`,
 `api_key.rolled`, `api_key.revoked` and `integration.mcp_changed`, with the MCP access
-before and after. The `identity.api-keys` worker records
+before and after. A connected app is audited `connection.authorized` when its client completes
+the sign-in, with the client, its host, the scopes and the integration, and
+`connection.revoked` with its reason when it ends — `revoked`, `integration_archived`,
+`authorizer_removed`, `code_replayed` or `refresh_reused`, the last two as `system:oauth`. No
+token or code is ever recorded. The `identity.api-keys` worker records
 `api_key.expired` once for each key that passes its expiry, as `system:api-keys`, and deletes
 a key's row 90 days after it expired; the audit rows stay
 ([Configuration](/en/admin/configuration/#workers)). Names, roles, the narrowing, read-only,
