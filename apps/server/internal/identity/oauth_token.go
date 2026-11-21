@@ -183,12 +183,12 @@ func (a *Access) tokenRequest(r *http.Request) (tokenResponse, error) {
 	if err != nil {
 		return tokenResponse{}, invalidRequest("The body is not valid form encoding.")
 	}
-	for name, v := range values {
+	for _, v := range values {
 		if len(v) > 1 {
-			return tokenResponse{}, invalidRequest("The parameter " + name + " is repeated.")
+			return tokenResponse{}, invalidRequest("A parameter is repeated.")
 		}
 		if len(v[0]) > maxTokenParamLength {
-			return tokenResponse{}, invalidRequest("The parameter " + name + " is too long.")
+			return tokenResponse{}, invalidRequest("A parameter is too long.")
 		}
 	}
 	if values.Has("client_secret") || values.Has("client_assertion") || values.Has("client_assertion_type") {
