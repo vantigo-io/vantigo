@@ -294,13 +294,15 @@ Håndtereren kontrollerer derfor opprinnelsen selv: den godtar håndtrykket bare
 må slippe gjennom oppgraderingen
 ([Sanntidsoppdateringer og proxyen din](/nb/admin/installation/#sanntidsoppdateringer-og-proxyen-din)).
 
-### OAuth-token-endepunktet og oppdagelse
+### OAuth-endepunktene for token og tilbakekalling, og oppdagelse
 
-Mens `OAUTH_ENABLED` er på, som er standard, matches `POST /api/oauth/token` foran beskyttelsen mot
-kryssopprinnelsesforespørsler: det leser ingen informasjonskapsel, så en forespørsel fra et
-annet nettsted vinner ingenting på en nettlesers økt, og en klient som sender `Origin`, får
-OAuths eget JSON-svar i stedet for `403`. Det tar en skjemakropp på høyst 16 KiB og er begrenset
-til 120 forespørsler i minuttet per adresse. OAuth-oppdagelsesdokumentene under `/.well-known/`
+Mens `OAUTH_ENABLED` er på, som er standard, matches `POST /api/oauth/token` og
+`POST /api/oauth/revoke` foran beskyttelsen mot kryssopprinnelsesforespørsler: de leser ingen
+informasjonskapsel, så en forespørsel fra et annet nettsted vinner ingenting på en nettlesers
+økt, og en klient som sender `Origin`, får OAuths eget JSON-svar i stedet for `403`. Hvert av dem
+tar en skjemakropp på høyst 16 KiB og er begrenset, med sin egen telling, til 120 forespørsler i
+minuttet per adresse. Tilbakekallingsendepunktet avslutter en tilkobling bare for den som
+legger frem et av tilkoblingens egne tokener. OAuth-oppdagelsesdokumentene under `/.well-known/`
 er offentlig JSON, mellomlagret i fem minutter; enhver annen sti under `/.well-known/` svarer
 `404` i stedet for applikasjonens side. Med `OAUTH_ENABLED=0` svarer alle `404`
 ([OAuth connections](/en/reference/oauth/)). Samtykkesiden, `/oauth/authorize`, er

@@ -19,6 +19,7 @@ sources:
   - apps/server/internal/server/oauth_discovery.go
   - apps/server/internal/modtest/oauth.go
   - apps/server/internal/config/config.go
+  - openapi/identity.yaml
   - apps/host/frontend/src/routes/oauth.authorize.tsx
   - apps/host/frontend/src/lib/oauth-return.ts
   - apps/host/frontend/src/api/oauth.ts

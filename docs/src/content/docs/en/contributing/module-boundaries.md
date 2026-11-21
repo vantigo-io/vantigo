@@ -1699,17 +1699,21 @@ included. Every answer is `Cache-Control: private, no-store` with
       `401` names the protected resource's metadata, the in-flight limit is keyed by the key or
       the connection, and each tool carries `securitySchemes`
       ([OAuth connections](/en/reference/oauth/)).
-    - **`compose.go` registers the OAuth token endpoint, `/api/oauth/token`,** while
-      `OAUTH_ENABLED` is on, reaching identity's handler through `contracts.OAuthEndpoints`,
+    - **`compose.go` registers the OAuth token and revocation endpoints, `/api/oauth/token`
+      and `/api/oauth/revoke`,** while
+      `OAUTH_ENABLED` is on, reaching identity's handlers through `contracts.OAuthEndpoints`,
       found by a type assertion on `Access` as `MCPAccess` is: `internal/module` and
-      `internal/server` never import identity. `internal/server` matches the path ahead of the
-      cross-origin guard, as it does `/api/v1/live`, since the endpoint reads no cookie and a
+      `internal/server` never import identity. `internal/server` matches both paths ahead of the
+      cross-origin guard, as it does `/api/v1/live`, since neither endpoint reads a cookie and a
       client that sends `Origin` must get RFC 6749's JSON; and it answers the OAuth discovery
       documents under `/.well-known/` from `Config` alone, every other path there the `404`
       problem rather than the SPA. `keyGate` records a connection's requests with its
       `ConnectionID` and no `KeyID`; `contracts.APIKeyRefusal` carries either. A module's
       tests that run the flow serve client metadata documents from
-      `modtest.NewOAuthClientHost`, attached with `modtest.WithOAuthClientHost`. `/api` itself
+      `modtest.NewOAuthClientHost`, attached with `modtest.WithOAuthClientHost`; `modtest` waits
+      for a client document's revalidation, which a refresh starts in the background, before a
+      test's database goes away. The session-only operations for registered clients and client
+      hosts are marked in `internal/openapi/testdata/api-marks.txt` like the consent operations. `/api` itself
       stays the catch-all `404` problem in `compose.go`: `internal/server` hands a browser's
       `GET` or `HEAD` of `/api` (`Accept` preferring `text/html`) and `/api/reference/` to
       `internal/apiref`, the interactive reference, before the API is reached, so an API
