@@ -25,6 +25,11 @@ reference for every setting; this page adds what is particular to a cluster.
   ([Rolling upgrades](#rolling-upgrades)).
 - `MANAGEMENT_PORT` is set on every pod, so each one has the private listener the probes
   use ([Management listener](/en/admin/management-listener/)).
+- The runtime role (`DATABASE_URL`) may read goose's version table, which `server` and
+  `worker` check before they start:
+  `GRANT SELECT ON public.goose_db_version TO "vantigo_app";` (with your role's name;
+  [Database roles](/en/admin/installation/#database-roles)). Without it a pod stops with
+  `startup failed` and an error that names this grant, rather than waiting forever.
 
 ## Probes on the management port
 
@@ -34,6 +39,9 @@ filter and serves `GET /health/live` and `GET /health/ready` without a token, wi
 checks as the public listener ([Health probes](/en/admin/installation/#health-probes)), in
 every command — `server` and `worker` alike. Set `MANAGEMENT_PORT` (for example `9090`); a
 `MANAGEMENT_TOKEN` is needed only for the control plane's own routes, not for the probes.
+The listener opens once the database answers — before the clock is synced and before the
+schema wait — so a pod whose database is not reachable yet answers no probe at all until
+it is (the process retries for about 30 seconds, then exits).
 
 ```yaml
 ports:
@@ -119,7 +127,10 @@ difference beyond `CLOCK_MAX_SKEW` (`5s` by default) logs
 `clock: this host's clock is off from the database's` at warning, at most once an hour. It
 does not fail readiness — the pod is already on the right time — but it says that the node's
 time synchronisation is broken. If the first measurement fails, the process starts on its
-own clock, logs it, and takes the database's as soon as a measurement succeeds.
+own clock, logs it, and takes the database's at the next minute's measurement that
+succeeds, from several samples as at start. When that late first measurement sets the
+clock back, the clock holds still, never running backwards, until the node's time catches
+up with the last time it gave — at most the size of the offset.
 
 ## UTC database sessions
 

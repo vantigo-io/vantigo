@@ -26,6 +26,12 @@ innstilling; denne siden legger til det som er særegent for en klynge.
   ingenting kjører `api` ([Rullerende oppgraderinger](#rullerende-oppgraderinger)).
 - `MANAGEMENT_PORT` er satt på hver pod, slik at hver av dem har den private lytteren
   probene bruker ([Management-lytter](/nb/admin/management-listener/)).
+- Kjørerollen (`DATABASE_URL`) kan lese versjonstabellen til goose, som `server` og
+  `worker` sjekker før de starter:
+  `GRANT SELECT ON public.goose_db_version TO "vantigo_app";` (med navnet på rollen din;
+  [Databaseroller](/nb/admin/installation/#databaseroller)). Uten den stopper en pod med
+  `startup failed` og en feilmelding som nevner denne tildelingen, i stedet for å vente i
+  det uendelige.
 
 ## Probene på management-porten
 
@@ -35,7 +41,10 @@ har ikke noe vertsfilter og betjener `GET /health/live` og `GET /health/ready` u
 med de samme sjekkene som den offentlige lytteren
 ([Helseprober](/nb/admin/installation/#helseprober)), i alle kommandoer — `server` og
 `worker` likt. Sett `MANAGEMENT_PORT` (for eksempel `9090`); et `MANAGEMENT_TOKEN` trengs
-bare for kontrollplanets egne ruter, ikke for probene.
+bare for kontrollplanets egne ruter, ikke for probene. Lytteren åpnes så snart databasen
+svarer — før klokken synkroniseres og før ventingen på skjemaet — så en pod som ikke når
+databasen ennå, svarer ikke på noen probe før den gjør det (prosessen prøver igjen i rundt
+30 sekunder, og avslutter så).
 
 ```yaml
 ports:
@@ -126,8 +135,10 @@ observerbarhet](/nb/admin/installation/#e-post-og-observerbarhet)). En forskjell
 `clock: this host's clock is off from the database's` som advarsel, høyst én gang i
 timen. Den får ikke beredskapssjekken til å feile — poden har allerede riktig tid — men
 den sier at nodens tidssynkronisering ikke virker. Hvis den første målingen feiler,
-starter prosessen på sin egen klokke, logger det, og tar i bruk databasens så snart en
-måling lykkes.
+starter prosessen på sin egen klokke, logger det, og tar i bruk databasens ved den neste
+minuttmålingen som lykkes, ut fra flere prøver som ved oppstart. Når en slik sen første
+måling stiller klokken tilbake, står klokken stille, uten noen gang å gå bakover, til
+nodens tid har tatt igjen den siste tiden den ga — høyst så lenge som forskjellen.
 
 ## Databaseøkter i UTC
 
