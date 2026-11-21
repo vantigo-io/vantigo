@@ -162,5 +162,6 @@ ikke kjenner.
 | --- | --- |
 | Hver probe svarer `400` | Probene peker mot `PORT`, den offentlige lytteren, som avviser podens adresse. Pek dem mot management-porten |
 | En ny pod blir aldri klar, og beredskapssjekken feiler med `schema` | Migreringsjobben har ikke kjørt eller har feilet. Loggen dens sier hvorfor |
+| Podene blir aldri klare, og beredskapssjekken feiler med `storage` | Bøtta finnes ikke, eller nøklene avvises ([Objektlagring](/nb/admin/object-storage/#klarhetskontrollen)). Operatoren oppretter bøtta; appen gjør det aldri |
 | Brukerne ser en brutt forbindelse ved hver utrulling | `SHUTDOWN_DRAIN_DELAY` er `0s`, eller fristen er kortere enn tømmingen trenger |
 | `clock: this host's clock is off from the database's` i loggen | NTP på noden virker ikke. Poden holder databasens tid; rett opp noden |
