@@ -1,6 +1,7 @@
 package health
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -8,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 )
@@ -100,5 +102,24 @@ func TestProbe(t *testing.T) {
 	srv.Close()
 	if err := Probe(context.Background(), srv.URL); err == nil {
 		t.Error("closed server reported as healthy")
+	}
+}
+
+// A quiet check fails readiness like any other but is not logged: it is an
+// expected state of the process (starting, draining), and a probe every few
+// seconds would otherwise fill the log with warnings.
+func TestReady_AQuietCheckFailsWithoutAWarning(t *testing.T) {
+	var logs bytes.Buffer
+	quiet := Check{Name: "draining", Quiet: true, Run: func(context.Context) error { return errors.New("shutting down") }}
+	h := Handler(slog.New(slog.NewTextHandler(&logs, nil)), "1.2.3", quiet, broken("postgres"))
+	code, r, _ := probe(t, h, http.MethodGet, "/health/ready")
+	if code != http.StatusServiceUnavailable || !slices.Equal(r.Failing, []string{"draining", "postgres"}) {
+		t.Errorf("ready = %d %+v, want 503 naming both", code, r)
+	}
+	if strings.Contains(logs.String(), "check=draining") {
+		t.Errorf("the quiet check was logged: %s", logs.String())
+	}
+	if !strings.Contains(logs.String(), "check=postgres") {
+		t.Errorf("the real failure was not logged: %s", logs.String())
 	}
 }

@@ -164,13 +164,33 @@ func LatestMigration() (int64, error) {
 	return latest, nil
 }
 
+// ErrSchemaUnreadable is returned by SchemaVersion, and so by WaitForSchema,
+// when the role cannot read goose_db_version at all: waiting would never
+// end, so the caller stops instead.
+var ErrSchemaUnreadable = errors.New("db: the schema version cannot be read")
+
 // SchemaVersion is the highest migration applied to the database pool
 // reaches, or 0 before the first (goose_db_version does not exist yet).
+//
+// max(version_id) WHERE is_applied, not the latest row: goose writes a row
+// per applied migration and, for a migration rolled back with a down
+// migration in an older release, a later row with is_applied false; this
+// query reads the highest version still applied, which is what the binary
+// needs. Migrations are forward-only now, so the case is legacy.
+//
+// A permission error (42501) or a missing schema (3F000) is not a state that
+// changes by waiting: it is ErrSchemaUnreadable, naming the grant to add.
 func SchemaVersion(ctx context.Context, pool *pgxpool.Pool) (int64, error) {
 	var v int64
 	err := pool.QueryRow(ctx, `SELECT coalesce(max(version_id), 0) FROM goose_db_version WHERE is_applied`).Scan(&v)
-	if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok && pgErr.Code == "42P01" { // undefined_table
-		return 0, nil
+	if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok {
+		switch pgErr.Code {
+		case "42P01": // undefined_table: nothing has migrated yet
+			return 0, nil
+		case "42501", "3F000": // insufficient_privilege, invalid_schema_name
+			return 0, fmt.Errorf("%w: the role %q cannot read public.goose_db_version (%s); grant it with: GRANT SELECT ON public.goose_db_version TO %q;",
+				ErrSchemaUnreadable, pool.Config().ConnConfig.User, pgErr.Code, pool.Config().ConnConfig.User)
+		}
 	}
 	return v, err
 }
@@ -188,7 +208,8 @@ type SchemaWait struct {
 // WaitForSchema returns nil once Read reports at least Want, polling every
 // Every and logging every LogEvery, or ctx's error once ctx ends. A read
 // that fails is logged and polled again: a database that is briefly away is
-// no reason to stop waiting.
+// no reason to stop waiting. A read that fails with ErrSchemaUnreadable is
+// returned at once: no amount of waiting grants a privilege.
 func WaitForSchema(ctx context.Context, w SchemaWait) error {
 	every, logEvery := w.Every, w.LogEvery
 	if every <= 0 {
@@ -206,6 +227,9 @@ func WaitForSchema(ctx context.Context, w SchemaWait) error {
 		v, err := w.Read(ctx)
 		if err == nil && v >= w.Want {
 			return nil
+		}
+		if errors.Is(err, ErrSchemaUnreadable) {
+			return err
 		}
 		if ctx.Err() != nil {
 			return ctx.Err()
