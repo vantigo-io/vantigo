@@ -148,6 +148,55 @@ describe("the root route's MFA enrolment gate", () => {
   });
 });
 
+// The return to the OAuth consent page after sign-in (OAuth connections
+// design A8): the root takes the entry once the session is past enrolment,
+// whichever page the sign-in landed on, and goes back with a full load.
+describe("the root route's return to the OAuth consent page", () => {
+  const entry = (path: string, at = Date.now()) => sessionStorage.setItem("oauth.return", JSON.stringify({ path, at }));
+
+  beforeEach(() => {
+    sessionStorage.clear();
+    fetchBootstrapStatus.mockResolvedValue({ available: false });
+  });
+
+  it("goes back to the consent page and its query after any sign-in, once", async () => {
+    fetchSession.mockResolvedValue(sessionWithRoles(["Owner"]));
+    entry("/oauth/authorize?client_id=https%3A%2F%2Fclaude.ai%2Fm&state=s");
+
+    const thrown = await runGuard(RootRoute, "/");
+    expect(isRedirect(thrown)).toBe(true);
+    expect((thrown as { options: { href?: string; reloadDocument?: boolean } }).options).toMatchObject({
+      href: "/oauth/authorize?client_id=https%3A%2F%2Fclaude.ai%2Fm&state=s",
+      reloadDocument: true,
+    });
+    expect(sessionStorage.getItem("oauth.return")).toBeNull();
+    await expectAdmitted(RootRoute, "/");
+  });
+
+  it("waits while the session must enrol, and goes back once it has", async () => {
+    fetchSession.mockResolvedValue(sessionWithRoles(["Owner"], false, true));
+    entry("/oauth/authorize?a=1");
+
+    await expectAdmitted(RootRoute, "/settings/security");
+    expect(sessionStorage.getItem("oauth.return")).not.toBeNull();
+
+    fetchSession.mockResolvedValue(sessionWithRoles(["Owner"]));
+    const thrown = await runGuard(RootRoute, "/dashboard");
+    expect((thrown as { options: { href?: string } }).options.href).toBe("/oauth/authorize?a=1");
+  });
+
+  it("follows no entry of another shape, and drops it", async () => {
+    fetchSession.mockResolvedValue(sessionWithRoles(["Owner"]));
+    for (const path of ["//evil.example/oauth/authorize", "https://evil.example/", "/workspace/users"]) {
+      entry(path);
+      await expectAdmitted(RootRoute, "/");
+      expect(sessionStorage.getItem("oauth.return")).toBeNull();
+    }
+    entry("/oauth/authorize?a=1", Date.now() - 11 * 60_000);
+    await expectAdmitted(RootRoute, "/");
+  });
+});
+
 // The routes behind the /workspace segment. Three children gate on the Owner
 // role; /workspace/roles gates on the authorization capability instead; the
 // layout admits whoever passes either, so its sidebar can offer each user the

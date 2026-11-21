@@ -27,11 +27,14 @@ import { AppErrorBoundary, NotFoundPage, RouterError } from "./components/errors
 import { HostBrandProvider } from "./components/host-brand-provider";
 import { LocaleDatesProvider } from "./components/locale-dates-provider";
 import { wireNavigationProgress } from "./lib/navigation-progress";
+import { captureAuthorizeQuery } from "./lib/oauth-return";
 import { publicPaths } from "./lib/public-paths";
 import { routeTree } from "./routeTree.gen";
 
 const queryClient = new QueryClient();
 initAppConfig({ title: "Vantigo" });
+// The consent page's query as the client sent it, before the router rewrites the address (lib/oauth-return.ts).
+captureAuthorizeQuery(window.location);
 const router = createRouter({
   routeTree,
   basepath: "/",
