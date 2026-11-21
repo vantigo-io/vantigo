@@ -108,9 +108,9 @@ func (a *Access) judgeAuthorization(ctx context.Context, raw string) (authorizat
 	req.client, req.redirectURI = client, redirectURI
 
 	// The redirect is known: what is wrong now is the client's to be told.
-	for name, v := range values {
+	for _, v := range values {
 		if len(v) > 1 {
-			return req, &redirectError{"invalid_request", "The parameter " + name + " is repeated."}, nil
+			return req, &redirectError{"invalid_request", "A parameter is repeated."}, nil
 		}
 	}
 	state, _ := one("state")

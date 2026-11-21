@@ -2417,7 +2417,7 @@ type OAuthClientDisplay struct {
 	// Loopback Whether the redirect goes to this computer, where any program could be asking.
 	Loopback bool `json:"loopback"`
 
-	// Name The name the client calls itself, stripped of control and bidirectional characters, at most 80 characters.
+	// Name The name the client calls itself, stripped of control and bidirectional characters, with at most two combining or enclosing marks on a character, at most 80 characters.
 	Name string `json:"name"`
 
 	// RedirectHost The redirect URI's host, in ASCII.

@@ -180,6 +180,9 @@ func TestOAuthDisplayName(t *testing.T) {
 		"Bell\x07":                    "Bell",
 		strings.Repeat("é", 100):      strings.Repeat("é", 80),
 		"Vantigo \u2066Support\u2069": "Vantigo Support",
+		// A stack of combining and enclosing marks keeps two per character.
+		"Z" + strings.Repeat("\u0301\u0336", 40) + "ed": "Z\u0301\u0336ed",
+		"e\u0301 \u20dd\u20ddA\u20dd\u20dd\u20dd":       "e\u0301 A\u20dd\u20dd",
 	} {
 		if got := oauthDisplayName(in); got != want {
 			t.Errorf("%q: %q, want %q", in, got, want)

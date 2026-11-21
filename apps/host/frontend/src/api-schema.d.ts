@@ -3536,7 +3536,7 @@ export interface components {
             kind: "metadata" | "registered";
             /** @description Whether the redirect goes to this computer, where any program could be asking. */
             loopback: boolean;
-            /** @description The name the client calls itself, stripped of control and bidirectional characters, at most 80 characters. */
+            /** @description The name the client calls itself, stripped of control and bidirectional characters, with at most two combining or enclosing marks on a character, at most 80 characters. */
             name: string;
             /** @description The redirect URI's host, in ASCII. */
             redirectHost: string;
