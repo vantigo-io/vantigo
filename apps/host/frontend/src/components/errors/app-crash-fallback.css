@@ -25,22 +25,22 @@
 }
 
 :root[data-mantine-color-scheme="dark"] .crash-page {
-  --crash-bg: #15182a;
-  --crash-text: #dde1ef;
-  --crash-dimmed: #8c93ad;
-  --crash-border: #3d4361;
-  --crash-control-bg: #1c1f32;
-  --crash-details-bg: #262a41;
+  --crash-bg: #0d0f14;
+  --crash-text: #dfe2ea;
+  --crash-dimmed: #8b90a3;
+  --crash-border: #353947;
+  --crash-control-bg: #191b24;
+  --crash-details-bg: #23262f;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-mantine-color-scheme]) .crash-page {
-    --crash-bg: #15182a;
-    --crash-text: #dde1ef;
-    --crash-dimmed: #8c93ad;
-    --crash-border: #3d4361;
-    --crash-control-bg: #1c1f32;
-    --crash-details-bg: #262a41;
+    --crash-bg: #0d0f14;
+    --crash-text: #dfe2ea;
+    --crash-dimmed: #8b90a3;
+    --crash-border: #353947;
+    --crash-control-bg: #191b24;
+    --crash-details-bg: #23262f;
   }
 }
 
