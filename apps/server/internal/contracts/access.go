@@ -405,14 +405,18 @@ func (m MCPKeyAccess) Effective() string {
 	return MCPAccessOff
 }
 
-// OAuthEndpoints is identity's OAuth token endpoint, which the composition
-// mounts at POST /api/oauth/token beside /api/mcp without importing identity
-// (OAuth connections design A22): identity's Access implements it, and the
-// composition finds it by a type assertion, as it finds MCPAccess.
+// OAuthEndpoints is identity's OAuth token and revocation endpoints, which
+// the composition mounts at POST /api/oauth/token and POST /api/oauth/revoke
+// beside /api/mcp without importing identity (OAuth connections design A22):
+// identity's Access implements it, and the composition finds it by a type
+// assertion, as it finds MCPAccess.
 type OAuthEndpoints interface {
 	// ServeOAuthToken answers one token request (C15-C17): RFC 6749's
 	// form-encoded request and its JSON answers, never a problem document.
 	ServeOAuthToken(w http.ResponseWriter, r *http.Request)
+	// ServeOAuthRevoke answers one revocation request (C18, A23): RFC 7009's
+	// form-encoded request, 200 for any token, RFC 6749's JSON errors.
+	ServeOAuthRevoke(w http.ResponseWriter, r *http.Request)
 }
 
 // MCPAccess is how the MCP endpoint reads an API key's MCP setting and scope

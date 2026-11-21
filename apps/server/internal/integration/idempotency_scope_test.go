@@ -249,6 +249,8 @@ var idempotencyExcluded = map[string]string{
 	"postIdentityIntegrations":                              "rule policy",
 	"postIdentityIntegrationsByIdArchive":                   "rule policy",
 	"postIdentityOauthAuthorizations":                       "rule policy",
+	"postIdentityOauthClients":                              "rule policy",
+	"postIdentityOauthClientsByIdArchive":                   "rule policy",
 	"postIdentityOauthAuthorizationsPreview":                "rule policy",
 	"postIdentityIntegrationsByIdDisable":                   "rule policy",
 	"postIdentityIntegrationsByIdEnable":                    "rule policy",

@@ -206,6 +206,8 @@ identity never getIdentityIntegrationsByIdWebhooksByWebhookId
 identity never getIdentityIntegrationsByIdWebhooksByWebhookIdDeliveries
 identity never getIdentityIntegrationsByIdWebhooksByWebhookIdDeliveriesByDeliveryId
 identity never getIdentityInvitationsValidate
+identity never getIdentityOauthClients
+identity never getIdentityOauthSettings
 identity never getIdentityOidcCallback
 identity never getIdentityOidcChallenge
 identity never getIdentityOidcComplete
@@ -240,6 +242,7 @@ identity never getIdentityWebhookEvents
 identity never patchIdentityAccountProfile
 identity never patchIdentityIntegrationsById
 identity never patchIdentityIntegrationsByIdWebhooksByWebhookId
+identity never patchIdentityOauthClientsById
 identity never patchIdentityScimV2GroupsById
 identity never patchIdentityScimV2UsersById
 identity never postIdentityAccessDelegations
@@ -285,6 +288,8 @@ identity never postIdentityLogin2fa
 identity never postIdentityLogout
 identity never postIdentityOauthAuthorizations
 identity never postIdentityOauthAuthorizationsPreview
+identity never postIdentityOauthClients
+identity never postIdentityOauthClientsByIdArchive
 identity never postIdentityOidcCallback
 identity never postIdentityOwnerInvitations
 identity never postIdentityOwnerInvitationsByIdResend
@@ -336,6 +341,7 @@ identity never putIdentityBrandsByIdCampaignsByCampaignIdLogosBySlot
 identity never putIdentityBrandsByIdLogosBySlot
 identity never putIdentityIntegrationsByIdMcp
 identity never putIdentityIntegrationsByIdRoles
+identity never putIdentityOauthSettings
 identity never putIdentityOwnerAiTasksByKey
 identity never putIdentityOwnerProvisioningRoles
 identity never putIdentityOwnerSsoOidc

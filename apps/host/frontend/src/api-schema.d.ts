@@ -1267,7 +1267,7 @@ export interface paths {
         };
         /**
          * Read an integration's request log
-         * @description The integration's request log (API access design K23) over the last 30 days, or over one UTC day of them: the requests per day and status class, the 10 operations called most and the latest 200 requests, each filtered by key, status class and reason. Every request an API key made that identity could attribute is in it, admitted or refused; a key that matched nothing is not. Rows are written in batches every few seconds.
+         * @description The integration's request log (API access design K23) over the last 30 days, or over one UTC day of them: the requests per day and status class, the 10 operations called most and the latest 200 requests, each filtered by key or connected app, status class and reason. Every request an API key or a connected app made that identity could attribute is in it, admitted or refused; a key that matched nothing is not. Rows are written in batches every few seconds.
          */
         get: operations["getIdentityIntegrationsByIdRequests"];
         put?: never;
@@ -1575,6 +1575,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/identity/oauth-clients": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the registered OAuth clients
+         * @description The clients registered by hand (OAuth connections design C8), not archived, oldest first, each with how many of its connections are live. 404 while OAUTH_ENABLED is off.
+         */
+        get: operations["getIdentityOauthClients"];
+        put?: never;
+        /**
+         * Register an OAuth client
+         * @description Registers a client by hand (C8), for a client that publishes no metadata document, such as Cursor or VS Code: Vantigo mints its client_id, vtc_ and 24 letters and digits, which the client is configured with. It is a public client: no secret, PKCE required, none at the token endpoint. At most 50 are registered at once. Audited oauth_client.created. 404 while OAUTH_ENABLED is off.
+         */
+        post: operations["postIdentityOauthClients"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/identity/oauth-clients/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Change a registered OAuth client
+         * @description Replaces a registered client's name and redirect URIs under If-Match on its version. Its connections are kept: a redirect URI matters at sign-in, and a connection no longer wanted is revoked in Connected apps. Audited oauth_client.updated. 404 while OAUTH_ENABLED is off.
+         */
+        patch: operations["patchIdentityOauthClientsById"];
+        trace?: never;
+    };
+    "/api/v1/identity/oauth-clients/{id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Archive a registered OAuth client
+         * @description Archives a registered client under If-Match on its version, in one transaction with the revocation of every connection it has (connection.revoked with the reason client_archived): no one can sign in with it again, and the tokens it holds are refused from the next request. It cannot be undone. Audited oauth_client.archived. 404 while OAUTH_ENABLED is off.
+         */
+        post: operations["postIdentityOauthClientsByIdArchive"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/identity/oauth/authorizations": {
         parameters: {
             query?: never;
@@ -1609,6 +1673,30 @@ export interface paths {
          * @description Reads an OAuth authorization request for the consent page (OAuth connections design C13, A6, A7): the page posts the query string it received. The client_id and the redirect_uri are judged first: a client that is refused (an invalid client_id, a metadata document that cannot be fetched or breaks the rules, a redirect URI it does not register) is client_refused, and the page offers nothing but Close. A request wrong in a way the client is told about is redirect, with automatic true only when the redirect's host is the client_id's or loopback and a client of that host has been connected here before (A26); otherwise the page shows a Return to <host> button. Otherwise it is consent: the client as it calls itself beside what Vantigo verified, the scopes asked, and the integrations with whether each is eligible. Previews and approvals together are limited to 20 a minute per person, since each may fetch a client's document. 404 while OAUTH_ENABLED is off.
          */
         post: operations["postIdentityOauthAuthorizationsPreview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/identity/oauth/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the client hosts that may connect
+         * @description The client hosts that may connect by their metadata document (OAuth connections design C11). Empty, the default, admits any. 404 while OAUTH_ENABLED is off.
+         */
+        get: operations["getIdentityOauthSettings"];
+        /**
+         * Change the client hosts that may connect
+         * @description Replaces the client hosts that may connect by their metadata document (C11): empty admits any; otherwise a client_id's host must equal an entry or be a subdomain of one. Registered clients are always admitted. The list is held at the consent page's preview and approval and at every refresh: a connection whose host is no longer listed is not ended, but cannot renew its token, and is listed as inactive, until the host is listed again. The list already held answers 200 with nothing written; a change is audited oauth.client_hosts_changed. 404 while OAUTH_ENABLED is off.
+         */
+        put: operations["putIdentityOauthSettings"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3260,12 +3348,15 @@ export interface components {
              */
             authorizedBy: string | null;
             authorizedByName: string | null;
-            /** @description The host Vantigo fetched the client's metadata document from. */
+            /** @description For a client identified by its metadata document, the host Vantigo fetched the document from; for a registered client, the host of the redirect URI it was approved for. */
             clientHost: string;
             clientId: string;
-            /** @enum {string} */
+            /**
+             * @description metadata for a client identified by its metadata document, registered for a client an Owner registered here (OAuth connections design C8, C25).
+             * @enum {string}
+             */
             clientKind: "metadata" | "registered";
-            /** @description The name the client calls itself, as the consent page showed it. */
+            /** @description The name the client calls itself, or the name it was registered under, as the consent page showed it. */
             clientName: string;
             /** Format: date-time */
             connectedAt: string;
@@ -3276,7 +3367,7 @@ export interface components {
             expiresAt: string;
             /** Format: uuid */
             id: string;
-            /** @description Why an inactive connection's tokens are refused; authorizer_removed when the person who connected it is no longer an active Owner. */
+            /** @description Why an inactive connection is held back. authorizer_removed when the person who connected it is no longer an active Owner, and its tokens are refused; client_not_allowed when its client's host is no longer on the workspace's list of client hosts (C11), and it cannot renew its token until the host is listed again. */
             inactiveReason: string | null;
             /** Format: date-time */
             lastUsedAt: string | null;
@@ -3530,9 +3621,12 @@ export interface components {
         /** @description A client as the consent page shows it (C13, A7). */
         OAuthClientDisplay: {
             clientId: string;
-            /** @description The host of the client_id, where Vantigo fetched the client's metadata document from, in ASCII. */
+            /** @description The host of the client_id, where Vantigo fetched the client's metadata document from, in ASCII; for a registered client, the redirect URI's host. */
             clientIdHost: string;
-            /** @enum {string} */
+            /**
+             * @description metadata for a client identified by its metadata document; registered for a client an Owner registered here (C8), which the page shows as registered here by registeredBy.
+             * @enum {string}
+             */
             kind: "metadata" | "registered";
             /** @description Whether the redirect goes to this computer, where any program could be asking. */
             loopback: boolean;
@@ -3540,6 +3634,17 @@ export interface components {
             name: string;
             /** @description The redirect URI's host, in ASCII. */
             redirectHost: string;
+            /** @description For a registered client, the name of the person who registered it, null once they are deleted; null for a client identified by its metadata document. */
+            registeredBy?: string | null;
+        };
+        /** @description The client hosts that may connect by their metadata document (OAuth connections design C11). */
+        OAuthClientHostsSettings: {
+            /** @description Host names, lower-case, sorted. Empty admits any client identified by its metadata document; otherwise a client_id's host must equal an entry or be a subdomain of one. Registered clients are always admitted. */
+            clientHosts: string[];
+        };
+        OAuthClientHostsSettingsRequest: {
+            /** @description At most 50 host names, each a DNS name of at least two labels in ASCII (no punycode, no address, no port, no wildcard); case and repeats are ignored. Empty admits any host. */
+            clientHosts: string[];
         };
         OAuthIntegrationChoice: {
             /** @description Whether the client may be connected to it: the integration is active and its MCP setting is not off. */
@@ -3557,6 +3662,36 @@ export interface components {
              * @enum {string|null}
              */
             reason: "disabled" | "mcp_off" | null;
+        };
+        /** @description A client an Owner registered by hand (OAuth connections design C8), for a client that publishes no metadata document. A public client with PKCE and no secret. */
+        OAuthRegisteredClient: {
+            /** @description The client_id the client is configured with, vtc_ and 24 letters and digits. */
+            clientId: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: uuid */
+            createdBy: string | null;
+            /** @description The person who registered it, null once they are deleted. */
+            createdByName: string | null;
+            /** Format: uuid */
+            id: string;
+            /** @description How many of its connections are activated, not revoked and not expired; archiving the client ends them. */
+            liveConnections: number;
+            name: string;
+            redirectUris: string[];
+            /** Format: date-time */
+            updatedAt: string;
+            /** @description Send it back as If-Match on PATCH and on the archive. */
+            version: string;
+        };
+        OAuthRegisteredClientList: {
+            clients: components["schemas"]["OAuthRegisteredClient"][];
+        };
+        OAuthRegisteredClientRequest: {
+            /** @description 1 to 80 characters, shown on the consent page and in Connected apps; control and bidirectional characters are removed. */
+            name: string;
+            /** @description 1 to 20 redirect URIs, each https with a host, or http on 127.0.0.1, [::1] or localhost (whose port is the client's to choose), with no fragment, at most 1,024 characters. Repeats are ignored. */
+            redirectUris: string[];
         };
         OidcProviderResponse: {
             displayName: string;
@@ -10260,6 +10395,8 @@ export interface operations {
             query?: {
                 /** @description Only the requests of this key. */
                 key?: string;
+                /** @description Only the requests of this connected app (OAuth connections design A18). With key as well, only requests that match both, which is none. */
+                connection?: string;
                 /** @description Only the requests answered with this status class, 2 for 2xx through 5 for 5xx. */
                 statusClass?: number;
                 /** @description Only the requests refused for this reason, or, for idempotent_replay, the answers replayed for an Idempotency-Key. */
@@ -11459,6 +11596,266 @@ export interface operations {
             };
         };
     };
+    getIdentityOauthClients: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthRegisteredClientList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — OAuth is switched off. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postIdentityOauthClients: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OAuthRegisteredClientRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthRegisteredClient"];
+                };
+            };
+            /** @description Bad Request — invalid_request with field errors. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — OAuth is switched off. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — oauth_client_limit, 50 clients are registered already. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    patchIdentityOauthClientsById: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The client's version as it was read, bare or quoted. A version that has moved on is a 412 version_mismatch. */
+                "If-Match": string;
+            };
+            path: {
+                /** @description The registered client. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OAuthRegisteredClientRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthRegisteredClient"];
+                };
+            };
+            /** @description Bad Request — invalid_request with field errors, or an If-Match that is not a version. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — not_found, no such client or it is archived, or OAuth is switched off. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Precondition Failed — version_mismatch, the client has been changed since the If-Match version. */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postIdentityOauthClientsByIdArchive: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The client's version as it was read, bare or quoted. A version that has moved on is a 412 version_mismatch. */
+                "If-Match": string;
+            };
+            path: {
+                /** @description The registered client. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Request — an If-Match that is not a version. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — not_found, no such client or it is archived already, or OAuth is switched off. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Precondition Failed — version_mismatch, the client has been changed since the If-Match version. */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
     postIdentityOauthAuthorizations: {
         parameters: {
             query?: never;
@@ -11604,6 +12001,113 @@ export interface operations {
             429: {
                 headers: {
                     "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getIdentityOauthSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthClientHostsSettings"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — OAuth is switched off. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    putIdentityOauthSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OAuthClientHostsSettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthClientHostsSettings"];
+                };
+            };
+            /** @description Bad Request — invalid_request with field errors. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — OAuth is switched off. */
+            404: {
+                headers: {
                     [name: string]: unknown;
                 };
                 content: {

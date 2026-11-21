@@ -38,9 +38,11 @@ func oauthDiscovery(cfg *config.Config) http.Handler {
 		"resource_name":            "Vantigo",
 	}
 	server := map[string]any{
-		"issuer":                                         cfg.OAuthIssuer,
-		"authorization_endpoint":                         cfg.OAuthIssuer + "/oauth/authorize",
-		"token_endpoint":                                 cfg.OAuthIssuer + "/api/oauth/token",
+		"issuer":                 cfg.OAuthIssuer,
+		"authorization_endpoint": cfg.OAuthIssuer + "/oauth/authorize",
+		"token_endpoint":         cfg.OAuthIssuer + "/api/oauth/token",
+		"revocation_endpoint":    cfg.OAuthIssuer + "/api/oauth/revoke",
+		"revocation_endpoint_auth_methods_supported":     []string{"none"},
 		"response_types_supported":                       []string{"code"},
 		"response_modes_supported":                       []string{"query"},
 		"grant_types_supported":                          []string{"authorization_code", "refresh_token"},

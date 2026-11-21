@@ -708,14 +708,15 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 		mcp = newMCPHandler(documents, deps.Access, deps.Limiter, resourceMetadata)
 		outer.Handle(mcpPath, mcp)
 	}
-	// The OAuth token endpoint (OAuth connections design C15, A22): every
-	// method, so a GET is its own 405, reached through identity's
-	// contracts.OAuthEndpoints. Only a Config with OAUTH_ENABLED on serves it;
-	// otherwise the path is the catch-all's 404. internal/server matches it
-	// ahead of the cross-origin guard (A9).
+	// The OAuth token and revocation endpoints (OAuth connections design
+	// C15, C18, A22, A23): every method, so a GET is its own 405, reached
+	// through identity's contracts.OAuthEndpoints. Only a Config with
+	// OAUTH_ENABLED on serves them; otherwise the paths are the catch-all's
+	// 404. internal/server matches them ahead of the cross-origin guard (A9).
 	if deps.Config != nil && deps.Config.OAuthEnabled {
 		if endpoints, ok := deps.Access.(contracts.OAuthEndpoints); ok {
 			outer.HandleFunc(OAuthTokenPath, endpoints.ServeOAuthToken)
+			outer.HandleFunc(OAuthRevokePath, endpoints.ServeOAuthRevoke)
 		}
 	}
 
@@ -753,6 +754,10 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 
 // OAuthTokenPath is where the OAuth token endpoint is registered (C15).
 const OAuthTokenPath = "/api/oauth/token"
+
+// OAuthRevokePath is where the OAuth revocation endpoint is registered (C18,
+// A23).
+const OAuthRevokePath = "/api/oauth/revoke"
 
 // AssistantModule is the name of the module that receives Deps.Operations for
 // the assistant principal.

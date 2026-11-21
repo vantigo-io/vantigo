@@ -258,6 +258,14 @@ var markedByHand = map[string]string{
 	"postIdentityOauthAuthorizations":                         "never",
 	"getIdentityIntegrationsByIdConnections":                  "never",
 	"deleteIdentityIntegrationsByIdConnectionsByConnectionId": "never",
+	// The clients registered by hand and the client hosts that may connect
+	// (OAuth connections design C8, C11): who may sign in is an Owner's.
+	"getIdentityOauthClients":             "never",
+	"postIdentityOauthClients":            "never",
+	"patchIdentityOauthClientsById":       "never",
+	"postIdentityOauthClientsByIdArchive": "never",
+	"getIdentityOauthSettings":            "never",
+	"putIdentityOauthSettings":            "never",
 	// Their webhook endpoints (outgoing webhooks design W34): a signing
 	// secret is a credential, and where the stream goes is an Owner's.
 	"getIdentityIntegrationsByIdWebhooks":                                         "never",

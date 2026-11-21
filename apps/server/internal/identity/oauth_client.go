@@ -64,6 +64,12 @@ type oauthClient struct {
 	host         string
 	name         string
 	redirectURIs []string
+	// kind is metadata or registered (C8); a registered client's host is
+	// the host of the redirect URI the request names, set once it matched.
+	kind string
+	// registeredBy is the name of the person who registered a registered
+	// client, nil once they are deleted or for a document's client.
+	registeredBy *string
 }
 
 // errOAuthClient is a client_id, a document or a redirect URI refused: the
@@ -270,7 +276,7 @@ func acceptOAuthDocument(clientID, host string, body []byte) (oauthClient, error
 	if doc.ResponseTypes != nil && !slices.Contains(*doc.ResponseTypes, "code") {
 		return oauthClient{}, clientRefused("The client's metadata document does not use the code response type.")
 	}
-	return oauthClient{id: clientID, host: host, name: *doc.ClientName, redirectURIs: *doc.RedirectURIs}, nil
+	return oauthClient{id: clientID, host: host, name: *doc.ClientName, redirectURIs: *doc.RedirectURIs, kind: oauthClientKindMetadata}, nil
 }
 
 // oauthDisplayName is the name a client claims as the consent page shows it
@@ -356,6 +362,45 @@ func (a *Access) oauthFetcherFor() *oauthFetcher {
 	return a.oauthFetch
 }
 
+// errClientHostNotAllowed is a client whose host the workspace's list of
+// client hosts does not admit (C11). It never names the host.
+var errClientHostNotAllowed = clientRefused("This workspace admits clients from some hosts only, and this client's host is not one of them.")
+
+// resolveOAuthClient answers the client clientID names (C6, C8, C11): a
+// registered client by its vtc_ client_id, not archived, always admitted;
+// otherwise a client identified by its metadata document whose host the
+// workspace's list of client hosts admits, read through oauthClientFor. The
+// list is held before any fetch, so a host it refuses is never fetched.
+func (a *Access) resolveOAuthClient(ctx context.Context, clientID string) (oauthClient, error) {
+	if strings.HasPrefix(clientID, registeredClientPrefix) {
+		if !isRegisteredClientID(clientID) {
+			return oauthClient{}, clientRefused("The client_id is not a client registered here.")
+		}
+		row, err := a.q.GetRegisteredOAuthClient(ctx, clientID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return oauthClient{}, clientRefused("The client_id is not a client registered here.")
+		}
+		if err != nil {
+			return oauthClient{}, fmt.Errorf("identity: read the registered client: %w", err)
+		}
+		return oauthClient{
+			id: row.ClientID, name: row.Name, redirectURIs: row.RedirectUris, kind: oauthClientKindRegistered, registeredBy: row.CreatedByName,
+		}, nil
+	}
+	u, err := oauthClientIDURL(clientID, a.cfg.AppHostname, a.cfg.PublicHostname)
+	if err != nil {
+		return oauthClient{}, err
+	}
+	allowed, err := a.oauthClientHosts(ctx)
+	if err != nil {
+		return oauthClient{}, err
+	}
+	if !clientHostAllowed(allowed, u.Hostname()) {
+		return oauthClient{}, errClientHostNotAllowed
+	}
+	return a.oauthClientFor(ctx, clientID)
+}
+
 // oauthClientFor answers the client clientID names: from the cache while its
 // document is fresh, else fetched, held to C6 and cached for its max-age. A
 // failure is never cached, and a client_id is fetched at most once per 10
@@ -379,23 +424,9 @@ func (a *Access) oauthClientFor(ctx context.Context, clientID string) (oauthClie
 	}
 
 	f := a.oauthFetcherFor()
-	f.mu.Lock()
-	if last, ok := f.tried[clientID]; ok && now.Sub(last) < oauthFetchSpacing && now.Sub(last) >= 0 {
-		f.mu.Unlock()
-		return oauthClient{}, clientRefused("The client's metadata document was fetched moments ago and could not be used; try again shortly.")
+	if err := f.claim(clientID, now); err != nil {
+		return oauthClient{}, err
 	}
-	for id, at := range f.tried {
-		if now.Sub(at) > time.Minute {
-			delete(f.tried, id)
-		}
-	}
-	if len(f.tried) >= oauthFetchTracked {
-		f.mu.Unlock()
-		return oauthClient{}, clientRefused("Too many client documents are being fetched; try again shortly.")
-	}
-	f.tried[clientID] = now
-	f.mu.Unlock()
-
 	body, maxAge, err := f.fetch(ctx, u.String())
 	if err != nil {
 		return oauthClient{}, err
@@ -414,6 +445,28 @@ func (a *Access) oauthClientFor(ctx context.Context, clientID string) (oauthClie
 		return oauthClient{}, fmt.Errorf("identity: keep the client's document: %w", err)
 	}
 	return c, nil
+}
+
+// claim records a fetch of clientID at now, or refuses it (C7): a
+// client_id is fetched at most once per 10 seconds in this process, and while
+// the fetcher remembers oauthFetchTracked client_ids tried in the last minute
+// no new one is fetched.
+func (f *oauthFetcher) claim(clientID string, now time.Time) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if last, ok := f.tried[clientID]; ok && now.Sub(last) < oauthFetchSpacing && now.Sub(last) >= 0 {
+		return clientRefused("The client's metadata document was fetched moments ago and could not be used; try again shortly.")
+	}
+	for id, at := range f.tried {
+		if now.Sub(at) > time.Minute {
+			delete(f.tried, id)
+		}
+	}
+	if len(f.tried) >= oauthFetchTracked {
+		return clientRefused("Too many client documents are being fetched; try again shortly.")
+	}
+	f.tried[clientID] = now
+	return nil
 }
 
 // fetch GETs a document (C6, A2): Accept: application/json, the fixed

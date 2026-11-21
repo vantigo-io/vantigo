@@ -98,12 +98,16 @@ func (a *Access) judgeAuthorization(ctx context.Context, raw string) (authorizat
 	if !ok1 || !ok2 {
 		return req, nil, clientRefused("The authorization request repeats its client_id or redirect_uri.")
 	}
-	client, err := a.oauthClientFor(ctx, clientID)
+	client, err := a.resolveOAuthClient(ctx, clientID)
 	if err != nil {
 		return req, nil, err
 	}
 	if redirectURI == "" || !slices.ContainsFunc(client.redirectURIs, func(registered string) bool { return redirectMatches(registered, redirectURI) }) {
 		return req, nil, clientRefused("The redirect_uri is not one the client registered.")
+	}
+	if client.kind == oauthClientKindRegistered {
+		// A registered client is known by where its codes go.
+		client.host = redirectHost(redirectURI)
 	}
 	req.client, req.redirectURI = client, redirectURI
 
@@ -223,8 +227,12 @@ func redirectHost(raw string) string {
 // redirected at once only when the redirect goes to the client_id's host or
 // to this computer, and a client of that host has been connected here
 // before. Otherwise a crafted, broken request could send a signed-in Owner to
-// any host that publishes a document, with no click.
+// any host that publishes a document, with no click. A registered client's
+// redirect URIs are an Owner's own, and are always followed (A6).
 func (s *server) redirectsAutomatically(ctx context.Context, req authorizationRequest) (bool, error) {
+	if req.client.kind == oauthClientKindRegistered {
+		return true, nil
+	}
 	if !isLoopbackRedirect(req.redirectURI) && redirectHost(req.redirectURI) != req.client.host {
 		return false, nil
 	}
@@ -355,17 +363,22 @@ func (s *server) PostIdentityOauthAuthorizationsPreview(ctx context.Context, req
 			choices = append(choices, integrationChoice(row, areq.write))
 		}
 	}
-	seen, err := s.q.OAuthClientHostSeen(ctx, areq.client.host)
-	if err != nil {
-		return nil, fmt.Errorf("identity: read the client's host: %w", err)
-	}
 	name := oauthDisplayName(areq.client.name)
-	firstUse, warn, scopes := !seen, s.access.nameWarns(name), scopeList(areq.write)
+	// A registered client's name and host are an Owner's: no first-use
+	// notice and no warning about the name (A7).
+	firstUse, warn, scopes := false, false, scopeList(areq.write)
+	if areq.client.kind == oauthClientKindMetadata {
+		seen, err := s.q.OAuthClientHostSeen(ctx, areq.client.host)
+		if err != nil {
+			return nil, fmt.Errorf("identity: read the client's host: %w", err)
+		}
+		firstUse, warn = !seen, s.access.nameWarns(name)
+	}
 	return answer(gen.OAuthAuthorizationPreview{
 		Outcome: previewConsent,
 		Client: &gen.OAuthClientDisplay{
-			Name: name, ClientId: areq.client.id, ClientIdHost: areq.client.host, Kind: oauthClientKindMetadata,
-			RedirectHost: redirectHost(areq.redirectURI), Loopback: isLoopbackRedirect(areq.redirectURI),
+			Name: name, ClientId: areq.client.id, ClientIdHost: areq.client.host, Kind: gen.OAuthClientDisplayKind(areq.client.kind),
+			RedirectHost: redirectHost(areq.redirectURI), Loopback: isLoopbackRedirect(areq.redirectURI), RegisteredBy: areq.client.registeredBy,
 		},
 		Scopes: &scopes, Integrations: &choices, FirstUse: &firstUse, NameWarning: &warn,
 	})
@@ -437,7 +450,7 @@ func (s *server) PostIdentityOauthAuthorizations(ctx context.Context, req gen.Po
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		q := store.New(tx)
 		if err := q.InsertOAuthConnection(ctx, store.InsertOAuthConnectionParams{
-			ID: connectionID, IntegrationID: rows[0].UserID, ClientID: areq.client.id, ClientKind: oauthClientKindMetadata,
+			ID: connectionID, IntegrationID: rows[0].UserID, ClientID: areq.client.id, ClientKind: areq.client.kind,
 			ClientName: oauthDisplayName(areq.client.name), ClientHost: areq.client.host, RedirectUri: areq.redirectURI,
 			Scopes: scopeList(access == contracts.MCPAccessReadWrite), AuthorizedBy: &p.UserID, Now: now,
 			ExpiresAt: now.Add(oauthConnectionLifetime),

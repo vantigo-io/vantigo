@@ -621,8 +621,12 @@ func TestOAuth_Discovery(t *testing.T) {
 		for _, path := range paths {
 			doc := get(path)
 			if doc["issuer"] != issuer || doc["authorization_endpoint"] != issuer+"/oauth/authorize" || doc["token_endpoint"] != issuer+"/api/oauth/token" ||
-				doc["client_id_metadata_document_supported"] != true || doc["authorization_response_iss_parameter_supported"] != true {
+				doc["client_id_metadata_document_supported"] != true || doc["authorization_response_iss_parameter_supported"] != true ||
+				doc["revocation_endpoint"] != issuer+"/api/oauth/revoke" {
 				t.Errorf("%s: %v", path, doc)
+			}
+			if methods, _ := doc["revocation_endpoint_auth_methods_supported"].([]any); len(methods) != 1 || methods[0] != "none" {
+				t.Errorf("%s: %v", path, doc["revocation_endpoint_auth_methods_supported"])
 			}
 			if methods, _ := doc["code_challenge_methods_supported"].([]any); len(methods) != 1 || methods[0] != "S256" {
 				t.Errorf("%s: %v", path, doc["code_challenge_methods_supported"])
@@ -649,6 +653,9 @@ func TestOAuth_SwitchedOff(t *testing.T) {
 	}
 	if r, _ := tokenRequest(c, url.Values{"grant_type": {"refresh_token"}}); r.Status != http.StatusNotFound {
 		t.Errorf("the token endpoint: %d %s", r.Status, r.Body)
+	}
+	if r := revokeRequest(c, url.Values{"token": {"vta_x"}, "client_id": {claudeID}}); r.Status != http.StatusNotFound {
+		t.Errorf("the revocation endpoint: %d %s", r.Status, r.Body)
 	}
 	if r := mcpCall(c, "tools/list", nil); r.Status != http.StatusUnauthorized || r.Header("WWW-Authenticate") != `Bearer realm="vantigo"` {
 		t.Errorf("MCP without a key: %d %q", r.Status, r.Header("WWW-Authenticate"))

@@ -307,6 +307,19 @@ type IdentityManagedAvatar struct {
 	UpdatedAt   time.Time
 }
 
+type IdentityOauthClient struct {
+	ID           uuid.UUID
+	ClientID     string
+	Name         string
+	RedirectUris []string
+	CreatedBy    *uuid.UUID
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+	Version      uuid.UUID
+	ArchivedAt   *time.Time
+	ArchivedBy   *uuid.UUID
+}
+
 type IdentityOauthClientDocument struct {
 	ClientID  string
 	Document  []byte
@@ -530,6 +543,7 @@ type IdentitySystemSetting struct {
 	AuthorityMode      *string
 	AuthorityModeAt    *time.Time
 	BusinessTimeZone   string
+	OauthClientHosts   []string
 }
 
 type IdentityUser struct {

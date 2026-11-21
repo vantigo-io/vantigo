@@ -586,12 +586,16 @@ func (q *Queries) LockOAuthRefreshToken(ctx context.Context, tokenHash []byte) (
 
 const oAuthClientHostSeen = `-- name: OAuthClientHostSeen :one
 SELECT EXISTS (
-    SELECT 1 FROM identity.oauth_connections WHERE client_host = $1 AND activated_at IS NOT NULL
+    SELECT 1 FROM identity.oauth_connections
+    WHERE client_host = $1 AND client_kind = 'metadata' AND activated_at IS NOT NULL
 )::boolean
 `
 
-// OAuthClientHostSeen is whether any client of the host has been connected
-// before, for the consent page's first-use notice (A7).
+// OAuthClientHostSeen is whether any client of the host identified by its
+// metadata document has been connected before, for the consent page's
+// first-use notice (A7) and its automatic error redirects (A26). A
+// registered client's connection names its redirect's host, and counts for
+// nothing here.
 func (q *Queries) OAuthClientHostSeen(ctx context.Context, clientHost string) (bool, error) {
 	row := q.db.QueryRow(ctx, oAuthClientHostSeen, clientHost)
 	var column_1 bool
