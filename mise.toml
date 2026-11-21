@@ -45,13 +45,15 @@ dir = "apps/server"
 run = "go test -count=1 ./..."
 
 [tasks."server:check"]
-description = "golangci-lint, govulncheck, shellcheck, actionlint and the GoReleaser config"
+description = "golangci-lint, govulncheck, shellcheck, actionlint, the GoReleaser config, and the schema compatibility check of the migrations this branch adds"
 run = [
   "cd apps/server && golangci-lint run",
   "cd apps/server && go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...",
   "shellcheck scripts/*.sh tools/ehf/*.sh tools/mva/*.sh tools/saft/*.sh",
   "actionlint",
   "goreleaser check",
+  "bun test tools/db",
+  "bun run tools/db/check-migrations.ts",
 ]
 
 [tasks."frontend:check"]

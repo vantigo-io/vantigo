@@ -19,6 +19,10 @@ The pages here cover the rules a change is held to:
   and the conventions every module follows.
 - [Frontend architecture](/en/contributing/frontend-architecture/) — workspace layout,
   module manifests, OpenAPI client generation, TanStack Query patterns, and i18n parity.
+- [Schema changes](/en/contributing/schema-changes/) — the one-release compatibility rule
+  for migrations (expand, then contract), the migration check and its
+  `-- vantigo:contract` marker, and why a rolling upgrade's old pods run `server`, never
+  `api`.
 - [Documentation](/en/contributing/documentation/) — how this site is organised, how to
   run it, and the rule that a change to behaviour lands together with the change to
   its documentation.
@@ -28,9 +32,6 @@ The pages here cover the rules a change is held to:
 - [VAT return validation](/en/contributing/vat-return-validation/) — the VAT return
   oracle: Skatteetaten's XSD over the accounting module's return goldens and
   Skatteetaten's examples, and how to change the return.
-- [SAF-T validation](/en/contributing/saft-validation/) — the SAF-T oracle: Skatteetaten's
-  SAF-T Financial XSDs over the accounting module's export goldens and Skatteetaten's
-  examples, the checks beyond the XSD, and how to change the export.
 - [SAF-T validation](/en/contributing/saft-validation/) — the SAF-T oracle: Skatteetaten's
   SAF-T Financial XSDs over the accounting module's export goldens and Skatteetaten's
   examples, the checks beyond the XSD, and how to change the export.
