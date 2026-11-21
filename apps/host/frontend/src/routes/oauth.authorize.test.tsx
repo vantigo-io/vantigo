@@ -404,7 +404,11 @@ describe("the OAuth consent page", () => {
   });
 
   it("keeps a long or stacked name to its box", async () => {
-    api.previewAuthorization.mockResolvedValue(consent({ client: { ...consent().client!, name: "W".repeat(80) } }));
+    api.previewAuthorization.mockResolvedValue(
+      consent({
+        client: { ...(consent().client as NonNullable<OAuthAuthorizationPreview["client"]>), name: "W".repeat(80) },
+      }),
+    );
     await renderPage();
     const name = await screen.findByTestId("oauth-client-name");
     expect(name.getAttribute("data-line-clamp") ?? name.className).toBeTruthy();
