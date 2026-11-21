@@ -97,6 +97,7 @@ import { Route as ManufacturingIndexRouteImport } from './routes/manufacturing/i
 import { Route as ManufacturingReportsRouteImport } from './routes/manufacturing/reports'
 import { Route as ManufacturingScheduleRouteImport } from './routes/manufacturing/schedule'
 import { Route as ManufacturingSuggestionsRouteImport } from './routes/manufacturing/suggestions'
+import { Route as OauthAuthorizeRouteImport } from './routes/oauth.authorize'
 import { Route as OrdersIndexRouteImport } from './routes/orders/index'
 import { Route as OrdersAnalysisRouteImport } from './routes/orders/analysis'
 import { Route as OrdersSettingsRouteImport } from './routes/orders/settings'
@@ -714,6 +715,11 @@ const ManufacturingSuggestionsRoute =
     path: '/suggestions',
     getParentRoute: () => ManufacturingRoute,
   } as any)
+const OauthAuthorizeRoute = OauthAuthorizeRouteImport.update({
+  id: '/oauth/authorize',
+  path: '/oauth/authorize',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const OrdersIndexRoute = OrdersIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -1720,6 +1726,7 @@ export interface FileRoutesByFullPath {
   '/manufacturing/reports': typeof ManufacturingReportsRoute
   '/manufacturing/schedule': typeof ManufacturingScheduleRoute
   '/manufacturing/suggestions': typeof ManufacturingSuggestionsRoute
+  '/oauth/authorize': typeof OauthAuthorizeRoute
   '/orders/analysis': typeof OrdersAnalysisRoute
   '/orders/settings': typeof OrdersSettingsRoute
   '/orders/templates': typeof OrdersTemplatesRoute
@@ -1959,6 +1966,7 @@ export interface FileRoutesByTo {
   '/manufacturing/reports': typeof ManufacturingReportsRoute
   '/manufacturing/schedule': typeof ManufacturingScheduleRoute
   '/manufacturing/suggestions': typeof ManufacturingSuggestionsRoute
+  '/oauth/authorize': typeof OauthAuthorizeRoute
   '/orders/analysis': typeof OrdersAnalysisRoute
   '/orders/settings': typeof OrdersSettingsRoute
   '/orders/templates': typeof OrdersTemplatesRoute
@@ -2220,6 +2228,7 @@ export interface FileRoutesById {
   '/manufacturing/reports': typeof ManufacturingReportsRoute
   '/manufacturing/schedule': typeof ManufacturingScheduleRoute
   '/manufacturing/suggestions': typeof ManufacturingSuggestionsRoute
+  '/oauth/authorize': typeof OauthAuthorizeRoute
   '/orders/analysis': typeof OrdersAnalysisRoute
   '/orders/settings': typeof OrdersSettingsRoute
   '/orders/templates': typeof OrdersTemplatesRoute
@@ -2485,6 +2494,7 @@ export interface FileRouteTypes {
     | '/manufacturing/reports'
     | '/manufacturing/schedule'
     | '/manufacturing/suggestions'
+    | '/oauth/authorize'
     | '/orders/analysis'
     | '/orders/settings'
     | '/orders/templates'
@@ -2724,6 +2734,7 @@ export interface FileRouteTypes {
     | '/manufacturing/reports'
     | '/manufacturing/schedule'
     | '/manufacturing/suggestions'
+    | '/oauth/authorize'
     | '/orders/analysis'
     | '/orders/settings'
     | '/orders/templates'
@@ -2984,6 +2995,7 @@ export interface FileRouteTypes {
     | '/manufacturing/reports'
     | '/manufacturing/schedule'
     | '/manufacturing/suggestions'
+    | '/oauth/authorize'
     | '/orders/analysis'
     | '/orders/settings'
     | '/orders/templates'
@@ -3210,6 +3222,7 @@ export interface RootRouteChildren {
   TimeRoute: typeof TimeRouteWithChildren
   WorkspaceRoute: typeof WorkspaceRouteWithChildren
   InvitationsAcceptRoute: typeof InvitationsAcceptRoute
+  OauthAuthorizeRoute: typeof OauthAuthorizeRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -3829,6 +3842,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/manufacturing/suggestions'
       preLoaderRoute: typeof ManufacturingSuggestionsRouteImport
       parentRoute: typeof ManufacturingRoute
+    }
+    '/oauth/authorize': {
+      id: '/oauth/authorize'
+      path: '/oauth/authorize'
+      fullPath: '/oauth/authorize'
+      preLoaderRoute: typeof OauthAuthorizeRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/orders/': {
       id: '/orders/'
@@ -5799,6 +5819,7 @@ const rootRouteChildren: RootRouteChildren = {
   TimeRoute: TimeRouteWithChildren,
   WorkspaceRoute: WorkspaceRouteWithChildren,
   InvitationsAcceptRoute: InvitationsAcceptRoute,
+  OauthAuthorizeRoute: OauthAuthorizeRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

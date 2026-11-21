@@ -49,6 +49,54 @@ const en = {
   "auth.preparedAccount":
     "Your employer has set up this account for you, with your name and roles. Choose a password to start using it.",
   "auth.activateAccount": "Activate account",
+  // The OAuth consent page (OAuth connections design C13, A6, A7).
+  "oauth.loading": "Loading",
+  "oauth.title": "Connect an app to {{app}}",
+  "oauth.callsItself": "The app calls itself",
+  "oauth.documentAt": "Vantigo read its description from",
+  "oauth.documentAtLoopback": "Its description is hosted at",
+  "oauth.redirectTo": "After you answer, your browser goes to",
+  "oauth.nameWarningTitle": "Check who this app is",
+  "oauth.nameWarning":
+    "Its name mentions Vantigo or {{app}}, but that is only what it calls itself. What Vantigo verified is the host it read the description from: {{host}}.",
+  "oauth.loopbackTitle": "An app on this computer",
+  "oauth.loopback":
+    "The answer goes to a program on this computer, not to a website. Any program on this computer could be asking: approve only if you just started the connection yourself.",
+  "oauth.firstUse": "No app from {{host}} has been connected to this workspace before.",
+  "oauth.integration": "Integration",
+  "oauth.integrationHint":
+    "The app acts as this integration, with its roles. It can do nothing an API key of the integration could not.",
+  "oauth.integrationPlaceholder": "Choose an integration",
+  "oauth.notEligible_disabled": "disabled",
+  "oauth.notEligible_mcp_off": "MCP is off",
+  "oauth.noIntegrations":
+    "No integration can be connected: each is disabled or has MCP switched off. Set one up under Workspace → API access first.",
+  "oauth.access": "Access",
+  "oauth.accessRead": "Read only",
+  "oauth.accessReadWrite": "Read and write",
+  "oauth.writeUnavailable": "The app asked only to read, or the integration's MCP setting allows only reading.",
+  "oauth.terms":
+    "The connection lasts until it is revoked, and at most 180 days. You can see and revoke it on the integration's page.",
+  "oauth.approve": "Approve",
+  "oauth.deny": "Deny",
+  "oauth.close": "Close",
+  "oauth.notEligible": "This integration cannot be connected with that access any more. Choose again.",
+  "oauth.askOwnerTitle": "Ask an Owner",
+  "oauth.askOwner":
+    "An app is asking to connect to this workspace. Only an Owner can approve it: ask an Owner of this workspace to connect it.",
+  "oauth.refusedTitle": "This app cannot connect",
+  "oauth.refused":
+    "The request does not identify an app Vantigo can verify, or names an address the app has not registered. Nothing was sent back to it.",
+  "oauth.noRequest": "This page was opened without a connection request.",
+  "oauth.requestErrorTitle": "The app's request is not valid",
+  "oauth.requestError": "Nothing was connected. You can return to the app to tell it.",
+  "oauth.returnTo": "Return to {{host}}",
+  "oauth.failedTitle": "The request could not be read",
+  "oauth.failed": "Something went wrong. Close this page and start the connection again from the app.",
+  "oauth.switchedOff": "Connecting apps by signing in is switched off on this installation.",
+  "oauth.tooMany": "Too many connection requests in a short time. Wait a minute and try again.",
+  "oauth.forbidden":
+    "Your session may not approve connections. Sign in with multi-factor authentication and try again.",
 };
 
 const nb: { [Key in keyof typeof en]: string } = {
@@ -101,6 +149,52 @@ const nb: { [Key in keyof typeof en]: string } = {
   "auth.preparedAccount":
     "Arbeidsgiveren din har satt opp denne kontoen til deg, med navnet og rollene dine. Velg et passord for å ta den i bruk.",
   "auth.activateAccount": "Aktiver konto",
+  "oauth.loading": "Laster inn",
+  "oauth.title": "Koble en app til {{app}}",
+  "oauth.callsItself": "Appen kaller seg",
+  "oauth.documentAt": "Vantigo leste beskrivelsen av den fra",
+  "oauth.documentAtLoopback": "Beskrivelsen av den ligger på",
+  "oauth.redirectTo": "Når du har svart, går nettleseren til",
+  "oauth.nameWarningTitle": "Sjekk hvem denne appen er",
+  "oauth.nameWarning":
+    "Navnet nevner Vantigo eller {{app}}, men det er bare det appen kaller seg selv. Det Vantigo har bekreftet, er verten beskrivelsen ble lest fra: {{host}}.",
+  "oauth.loopbackTitle": "En app på denne datamaskinen",
+  "oauth.loopback":
+    "Svaret går til et program på denne datamaskinen, ikke til et nettsted. Hvilket som helst program på maskinen kan stå bak forespørselen: godkjenn bare hvis du selv nettopp startet tilkoblingen.",
+  "oauth.firstUse": "Ingen app fra {{host}} har vært koblet til dette arbeidsområdet før.",
+  "oauth.integration": "Integrasjon",
+  "oauth.integrationHint":
+    "Appen handler som denne integrasjonen, med rollene dens. Den kan ikke gjøre noe en API-nøkkel for integrasjonen ikke kunne.",
+  "oauth.integrationPlaceholder": "Velg en integrasjon",
+  "oauth.notEligible_disabled": "deaktivert",
+  "oauth.notEligible_mcp_off": "MCP er av",
+  "oauth.noIntegrations":
+    "Ingen integrasjon kan kobles til: hver av dem er deaktivert eller har MCP slått av. Sett opp en under Arbeidsområde → API-tilgang først.",
+  "oauth.access": "Tilgang",
+  "oauth.accessRead": "Bare lese",
+  "oauth.accessReadWrite": "Lese og skrive",
+  "oauth.writeUnavailable": "Appen ba bare om å lese, eller integrasjonens MCP-innstilling tillater bare lesing.",
+  "oauth.terms":
+    "Tilkoblingen varer til den tilbakekalles, og høyst 180 dager. Du ser den og kan tilbakekalle den på integrasjonens side.",
+  "oauth.approve": "Godkjenn",
+  "oauth.deny": "Avslå",
+  "oauth.close": "Lukk",
+  "oauth.notEligible": "Denne integrasjonen kan ikke lenger kobles til med den tilgangen. Velg på nytt.",
+  "oauth.askOwnerTitle": "Spør en eier",
+  "oauth.askOwner":
+    "En app ber om å koble seg til dette arbeidsområdet. Bare en eier kan godkjenne den: be en eier av arbeidsområdet om å koble den til.",
+  "oauth.refusedTitle": "Denne appen kan ikke kobles til",
+  "oauth.refused":
+    "Forespørselen peker ikke på en app Vantigo kan bekrefte, eller den oppgir en adresse appen ikke har registrert. Ingenting ble sendt tilbake til den.",
+  "oauth.noRequest": "Denne siden ble åpnet uten en forespørsel om tilkobling.",
+  "oauth.requestErrorTitle": "Forespørselen fra appen er ugyldig",
+  "oauth.requestError": "Ingenting ble koblet til. Du kan gå tilbake til appen for å gi den beskjed.",
+  "oauth.returnTo": "Tilbake til {{host}}",
+  "oauth.failedTitle": "Forespørselen kunne ikke leses",
+  "oauth.failed": "Noe gikk galt. Lukk siden og start tilkoblingen på nytt fra appen.",
+  "oauth.switchedOff": "Tilkobling av apper ved innlogging er slått av på denne installasjonen.",
+  "oauth.tooMany": "For mange forespørsler om tilkobling på kort tid. Vent et minutt og prøv igjen.",
+  "oauth.forbidden": "Økten din kan ikke godkjenne tilkoblinger. Logg inn med flerfaktorautentisering og prøv igjen.",
 };
 
 export const authCatalog = { en, nb } as const satisfies CatalogResources;

@@ -55,6 +55,7 @@ import {
 import { connectionButtonFor } from "../lib/connections";
 import { enabledModuleKeys } from "../lib/enabled-modules";
 import { mfaEnrolmentRedirect } from "../lib/mfa-enrolment-gate";
+import { takeOAuthReturn } from "../lib/oauth-return";
 import { useOpenRoute } from "../lib/open-route";
 import { productMessagingOf } from "../lib/product-messaging";
 import { publicPaths, sessionlessPaths } from "../lib/public-paths";
@@ -404,6 +405,13 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     if (enrol) throw redirect({ to: enrol });
     if ((location.pathname === "/admin" || location.pathname.startsWith("/admin/")) && !session.isSystemAdmin) {
       throw redirect({ to: "/" });
+    }
+    // Back to the OAuth consent page a sign-in interrupted (OAuth connections design A8), once the
+    // session is past enrolment: whichever way the person signed in, they land here first. A full
+    // load, so the page reads its query as the client sent it.
+    if (session.mfaEnrollmentRequired !== true) {
+      const back = takeOAuthReturn();
+      if (back) throw redirect({ href: appUrl(back), reloadDocument: true });
     }
   },
   component: RootLayout,
