@@ -20,6 +20,10 @@ export const publicPaths = new Set([
   // A shared shop-floor station (manufacturing phase 2 M140): a paired device,
   // never a person's session.
   "/station",
+  // The OAuth consent page (OAuth connections design A8): it reads the session
+  // itself, and without one stores its return and goes to sign in
+  // (lib/oauth-return.ts), so the root must not send it away first.
+  "/oauth/authorize",
 ]);
 
 /** A browser pathname with the runtime base path taken off: `/vantigo/pay` is `/pay` under `/vantigo/`. */
