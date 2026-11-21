@@ -42,7 +42,7 @@ func (g keyGate) refuse(w http.ResponseWriter, req *http.Request, access contrac
 	if g.recorder != nil && errors.As(err, &refusal) {
 		rec := httpx.NewStatusRecorder(w)
 		access.Reject(rec, req, rule, err)
-		g.record(req, operationID, refusal.KeyID, refusal.IntegrationID, rec.Status(), refusal.Reason, start)
+		g.record(req, operationID, refusal.KeyID, refusal.ConnectionID, refusal.IntegrationID, rec.Status(), refusal.Reason, start)
 		return
 	}
 	access.Reject(w, req, rule, err)
@@ -74,10 +74,10 @@ func (g keyGate) run(w http.ResponseWriter, req *http.Request, p contracts.Princ
 	if g.recorder != nil {
 		defer func() {
 			if v := recover(); v != nil {
-				g.record(req, operationID, p.Via.KeyID, p.UserID, http.StatusInternalServerError, *reason, start)
+				g.record(req, operationID, p.Via.KeyID, p.Via.ConnectionID, p.UserID, http.StatusInternalServerError, *reason, start)
 				panic(v)
 			}
-			g.record(req, operationID, p.Via.KeyID, p.UserID, rec.Status(), *reason, start)
+			g.record(req, operationID, p.Via.KeyID, p.Via.ConnectionID, p.UserID, rec.Status(), *reason, start)
 		}()
 	}
 	if count && g.limiter != nil && p.Via.RateLimitPerMinute > 0 {
@@ -97,13 +97,15 @@ func (g keyGate) run(w http.ResponseWriter, req *http.Request, p contracts.Princ
 	next(rec, req.WithContext(withAPIReason(req.Context(), reason)))
 }
 
-// record hands one answered key request to the request log. It carries the
-// operation, never the path, whose parameters can be personal data, nor the
-// query string.
-func (g keyGate) record(req *http.Request, operationID string, keyID, integrationID uuid.UUID, status int, reason string, start time.Time) {
+// record hands one answered key request to the request log: the key's, or a
+// connection's (OAuth connections design A18), whichever presented itself. It
+// carries the operation, never the path, whose parameters can be personal
+// data, nor the query string.
+func (g keyGate) record(req *http.Request, operationID string, keyID, connectionID, integrationID uuid.UUID, status int, reason string, start time.Time) {
 	g.recorder.Record(context.WithoutCancel(req.Context()), contracts.APIRequest{
 		At:            start,
 		KeyID:         keyID,
+		ConnectionID:  connectionID,
 		IntegrationID: integrationID,
 		Method:        req.Method,
 		OperationID:   operationID,

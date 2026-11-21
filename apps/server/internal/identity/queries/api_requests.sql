@@ -2,9 +2,9 @@
 -- InsertAPIRequests is the request log's buffered writer's one write (API
 -- access design K23): a batch of rows, copied in.
 INSERT INTO identity.api_requests (
-    at, key_id, integration_id, method, operation_id, status, reason, duration_ms, client_ip, trace_id
+    at, key_id, connection_id, integration_id, method, operation_id, status, reason, duration_ms, client_ip, trace_id
 ) VALUES (
-    @at, @key_id, @integration_id, @method, @operation_id, @status, @reason, @duration_ms, @client_ip, @trace_id
+    @at, @key_id, @connection_id, @integration_id, @method, @operation_id, @status, @reason, @duration_ms, @client_ip, @trace_id
 );
 
 -- name: EnsureAPIRequestsPartition :one
@@ -54,11 +54,13 @@ LIMIT @top::int;
 -- name: APIRequestsLatest :many
 -- APIRequestsLatest is the integration's latest requests in [from, to),
 -- under the screen's filters, each with its key's name while the key's row
--- is kept.
-SELECT r.at, r.key_id, k.name AS key_name, r.method, r.operation_id, r.status, r.reason,
+-- is kept, or, for a request a connection made, its client's name while the
+-- connection's row is (OAuth connections design A18).
+SELECT r.at, r.key_id, k.name AS key_name, r.connection_id, c.client_name, r.method, r.operation_id, r.status, r.reason,
        r.duration_ms, r.client_ip, r.trace_id
 FROM identity.api_requests r
 LEFT JOIN identity.api_keys k ON k.id = r.key_id
+LEFT JOIN identity.oauth_connections c ON c.id = r.connection_id
 WHERE r.integration_id = @integration_id
   AND r.at >= @from_at::timestamptz AND r.at < @to_at::timestamptz
   AND (sqlc.narg(key_id)::uuid IS NULL OR r.key_id = sqlc.narg(key_id)::uuid)

@@ -13,6 +13,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/config"
 	"github.com/vantigo-io/vantigo/server/internal/docs"
 	"github.com/vantigo-io/vantigo/server/internal/httpx"
+	"github.com/vantigo-io/vantigo/server/internal/module"
 	"github.com/vantigo-io/vantigo/server/internal/security"
 	"github.com/vantigo-io/vantigo/server/internal/web"
 )
@@ -68,6 +69,7 @@ func New(o Options) http.Handler {
 	}
 	docsHandler := docs.Handler(documentation, o.Config.BasePath)
 	reference := apiref.Handler(apiref.Assets())
+	discovery := oauthDiscovery(o.Config)
 
 	mux := http.NewServeMux()
 	mux.Handle("/health/", o.Health)
@@ -92,6 +94,14 @@ func New(o Options) http.Handler {
 				o.Live.ServeHTTP(w, r)
 				return
 			}
+			// The OAuth token endpoint is ahead of the CSRF guard too (OAuth
+			// connections design A9): it reads no cookie, and a client that
+			// sends Origin must get RFC 6749's JSON, not the guard's 403.
+			// The composition serves it only while OAUTH_ENABLED is on.
+			if path == module.OAuthTokenPath {
+				api.ServeHTTP(w, r)
+				return
+			}
 			// The API reference (API access design K26): /api itself for a
 			// browser, and the page's files. Everything else under /api,
 			// /api for an API client included, is the API's.
@@ -103,6 +113,12 @@ func New(o Options) http.Handler {
 				return
 			}
 			apiHandler.ServeHTTP(w, r)
+			return
+		}
+		// The OAuth discovery documents, and the 404 every other path under
+		// /.well-known/ answers instead of the SPA (C12, A13).
+		if isWellKnown(r.URL.EscapedPath()) {
+			discovery.ServeHTTP(w, r)
 			return
 		}
 		mux.ServeHTTP(w, r)

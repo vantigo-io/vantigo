@@ -1098,6 +1098,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/identity/integrations/{id}/connections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List an integration's connected apps
+         * @description The integration's connected apps (OAuth connections design C25, A17): every connection a person authorized, by signing in, for an MCP client or app to act as the integration, that has been activated and is neither revoked nor expired, newest first. One whose authorizer no longer qualifies (no longer an Owner, disabled, deleted, or deactivated by the directory) is listed as inactive with the reason: its tokens are refused, and it can be revoked. 404 while OAUTH_ENABLED is off.
+         */
+        get: operations["getIdentityIntegrationsByIdConnections"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/identity/integrations/{id}/connections/{connectionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke a connected app
+         * @description Revokes a connection (C18): its access and refresh tokens are refused from the next request, on every replica at once. A connection revoked already is answered as it is. Audited connection.revoked with the reason revoked. 404 while OAUTH_ENABLED is off.
+         */
+        delete: operations["deleteIdentityIntegrationsByIdConnectionsByConnectionId"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/identity/integrations/{id}/disable": {
         parameters: {
             query?: never;
@@ -1529,6 +1569,46 @@ export interface paths {
         put?: never;
         /** Sign out of the application cookie */
         post: operations["postIdentityLogout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/identity/oauth/authorizations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve or deny an OAuth authorization
+         * @description Approves or denies an OAuth authorization request (OAuth connections design C14, A9): the consent page posts the request's query string as it received it, the integration the client may act as, the access chosen and the decision. Every parameter is validated again, nothing of the preview trusted. Deny answers the client's redirect with error=access_denied. Approve creates the connection, not yet activated, and a code valid 60 seconds, and answers the redirect that carries it, with state and iss. A client or redirect URI that is refused is 400 client_refused and is never redirected to; a request wrong in a way the client is told about answers its redirect with the error. 404 while OAUTH_ENABLED is off.
+         */
+        post: operations["postIdentityOauthAuthorizations"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/identity/oauth/authorizations/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview an OAuth authorization
+         * @description Reads an OAuth authorization request for the consent page (OAuth connections design C13, A6, A7): the page posts the query string it received. The client_id and the redirect_uri are judged first: a client that is refused (an invalid client_id, a metadata document that cannot be fetched or breaks the rules, a redirect URI it does not register) is client_refused, and the page offers nothing but Close. A request wrong in a way the client is told about is redirect, with automatic true when the redirect's host is the client_id's or loopback. Otherwise it is consent: the client as it calls itself beside what Vantigo verified, the scopes asked, and the integrations with whether each is eligible. Previews are limited to 20 a minute per address, since each may fetch a client's document. 404 while OAUTH_ENABLED is off.
+         */
+        post: operations["postIdentityOauthAuthorizationsPreview"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3172,6 +3252,43 @@ export interface components {
             /** @description The integration's version for If-Match. */
             version: string;
         };
+        /** @description A connected app (OAuth connections design C25). */
+        IntegrationConnection: {
+            /**
+             * Format: uuid
+             * @description The person who connected it, null once they are deleted.
+             */
+            authorizedBy: string | null;
+            authorizedByName: string | null;
+            /** @description The host Vantigo fetched the client's metadata document from. */
+            clientHost: string;
+            clientId: string;
+            /** @enum {string} */
+            clientKind: "metadata" | "registered";
+            /** @description The name the client calls itself, as the consent page showed it. */
+            clientName: string;
+            /** Format: date-time */
+            connectedAt: string;
+            /**
+             * Format: date-time
+             * @description When the connection ends by itself, 180 days after it was approved.
+             */
+            expiresAt: string;
+            /** Format: uuid */
+            id: string;
+            /** @description Why an inactive connection's tokens are refused; authorizer_removed when the person who connected it is no longer an active Owner. */
+            inactiveReason: string | null;
+            /** Format: date-time */
+            lastUsedAt: string | null;
+            lastUsedIp: string | null;
+            /** @description read, and write for Read and write. */
+            scopes: string[];
+            /** @enum {string} */
+            status: "active" | "inactive";
+        };
+        IntegrationConnectionList: {
+            connections: components["schemas"]["IntegrationConnection"][];
+        };
         IntegrationCreateRequest: {
             /**
              * Format: uuid
@@ -3211,14 +3328,24 @@ export interface components {
             apiNever: boolean;
             key: string;
         };
-        /** @description One request an API key of the integration made (API access design K23). It never carries a body, a query string or a path parameter's value. */
+        /** @description One request an API key or a connected app of the integration made (API access design K23, OAuth connections design A18). It never carries a body, a query string or a path parameter's value. */
         IntegrationRequest: {
             /** Format: date-time */
             at: string;
             clientIp: string | null;
+            /** @description For a request a connected app made, the name its client called itself, null once the connection's row is deleted. */
+            clientName: string | null;
+            /**
+             * Format: uuid
+             * @description The connection the request came through, null for a request a key made.
+             */
+            connectionId: string | null;
             durationMs: number;
-            /** Format: uuid */
-            keyId: string;
+            /**
+             * Format: uuid
+             * @description The key the request presented, null for a request a connected app made.
+             */
+            keyId: string | null;
             /** @description The key's name, null once the key's row is deleted, 90 days after it expired. */
             keyName: string | null;
             method: string;
@@ -3350,6 +3477,86 @@ export interface components {
             concurrencyStamp: string | null;
             /** Format: uuid */
             scimConnectionId?: string | null;
+        };
+        /** @description The consent page's answer to an authorization request (OAuth connections design C14). */
+        OAuthAuthorizationDecision: {
+            /**
+             * @description What the connection may do, at most what the request and the integration allow; required to approve.
+             * @enum {string|null}
+             */
+            access?: "read" | "read_write" | null;
+            /** @enum {string} */
+            decision: "approve" | "deny";
+            /**
+             * Format: uuid
+             * @description The integration the client may act as; required to approve.
+             */
+            integrationId?: string | null;
+            /** @description The authorization request's query string, as the page received it, without the leading question mark. */
+            query: string;
+        };
+        /** @description What the consent page shows for an authorization request (C13, A6, A7): one of client_refused, redirect or consent. */
+        OAuthAuthorizationPreview: {
+            /** @description For redirect, whether the page navigates there at once; otherwise it shows the error and a button that returns to returnHost. */
+            automatic?: boolean;
+            client?: components["schemas"]["OAuthClientDisplay"];
+            /** @description For client_refused and redirect, the OAuth error code. */
+            error?: string | null;
+            /** @description For consent, true when no client of this host has been connected before. */
+            firstUse?: boolean;
+            /** @description For consent, every integration not archived, with whether the client may be connected to it. */
+            integrations?: components["schemas"]["OAuthIntegrationChoice"][];
+            /** @description For client_refused and redirect, why, in words a person reads. */
+            message?: string | null;
+            /** @description For consent, true when the name the client claims contains Vantigo or the workspace's name. */
+            nameWarning?: boolean;
+            /** @enum {string} */
+            outcome: "client_refused" | "redirect" | "consent";
+            /** @description For redirect, the client's redirect URI with the error, state and iss. */
+            redirectTo?: string | null;
+            /** @description For redirect, the redirect URI's host, in ASCII. */
+            returnHost?: string | null;
+            /** @description For consent, the scopes asked, read and write. */
+            scopes?: string[];
+        };
+        OAuthAuthorizationQuery: {
+            /** @description The authorization request's query string, as the page received it, without the leading question mark. */
+            query: string;
+        };
+        OAuthAuthorizationRedirect: {
+            /** @description The client's redirect URI with the code or the error, state and iss. */
+            redirectTo: string;
+        };
+        /** @description A client as the consent page shows it (C13, A7). */
+        OAuthClientDisplay: {
+            clientId: string;
+            /** @description The host of the client_id, where Vantigo fetched the client's metadata document from, in ASCII. */
+            clientIdHost: string;
+            /** @enum {string} */
+            kind: "metadata" | "registered";
+            /** @description Whether the redirect goes to this computer, where any program could be asking. */
+            loopback: boolean;
+            /** @description The name the client calls itself, stripped of control and bidirectional characters, at most 80 characters. */
+            name: string;
+            /** @description The redirect URI's host, in ASCII. */
+            redirectHost: string;
+        };
+        OAuthIntegrationChoice: {
+            /** @description Whether the client may be connected to it: the integration is active and its MCP setting is not off. */
+            eligible: boolean;
+            /** Format: uuid */
+            id: string;
+            /**
+             * @description The most the connection may do, capped by the scopes asked and the integration's MCP setting; null when not eligible.
+             * @enum {string|null}
+             */
+            maxAccess: "read" | "read_write" | null;
+            name: string;
+            /**
+             * @description Why it is not eligible.
+             * @enum {string|null}
+             */
+            reason: "disabled" | "mcp_off" | null;
         };
         OidcProviderResponse: {
             displayName: string;
@@ -9524,6 +9731,106 @@ export interface operations {
             };
         };
     };
+    getIdentityIntegrationsByIdConnections: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The integration (its user's id). */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationConnectionList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — not_found, no such integration, or OAuth is switched off. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteIdentityIntegrationsByIdConnectionsByConnectionId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The integration (its user's id). */
+                id: string;
+                /** @description The connection. */
+                connectionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — not_found, no such integration or connection, or OAuth is switched off. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
     postIdentityIntegrationsByIdDisable: {
         parameters: {
             query?: never;
@@ -9956,7 +10263,7 @@ export interface operations {
                 /** @description Only the requests answered with this status class, 2 for 2xx through 5 for 5xx. */
                 statusClass?: number;
                 /** @description Only the requests refused for this reason, or, for idempotent_replay, the answers replayed for an Idempotency-Key. */
-                reason?: "expired" | "revoked" | "disabled" | "archived" | "network" | "read_only" | "never" | "forbidden" | "rate_limited" | "idempotent_replay";
+                reason?: "expired" | "revoked" | "disabled" | "archived" | "network" | "read_only" | "never" | "forbidden" | "rate_limited" | "insufficient_scope" | "token_invalid" | "idempotent_replay";
                 /** @description Only this UTC day, one of the last 30. */
                 day?: string;
             };
@@ -11144,6 +11451,149 @@ export interface operations {
             /** @description Unauthorized */
             401: {
                 headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postIdentityOauthAuthorizations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OAuthAuthorizationDecision"];
+            };
+        };
+        responses: {
+            /** @description OK — where to send the browser. */
+            200: {
+                headers: {
+                    /** @description no-store. */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthAuthorizationRedirect"];
+                };
+            };
+            /** @description Bad Request — client_refused, the client, its document or the redirect URI is refused; invalid_request with field errors. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — OAuth is switched off. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — integration_not_eligible, the integration is archived, disabled or has MCP off, or the access chosen is more than it or the request allows. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postIdentityOauthAuthorizationsPreview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OAuthAuthorizationQuery"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    /** @description no-store. */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthAuthorizationPreview"];
+                };
+            };
+            /** @description Bad Request — invalid_request, the query string is missing or too long. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — OAuth is switched off. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
                     [name: string]: unknown;
                 };
                 content: {

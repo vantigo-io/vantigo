@@ -447,21 +447,57 @@ func (e IntegrationStatus) Valid() bool {
 	}
 }
 
+// Defines values for IntegrationConnectionClientKind.
+const (
+	IntegrationConnectionClientKindMetadata   IntegrationConnectionClientKind = "metadata"
+	IntegrationConnectionClientKindRegistered IntegrationConnectionClientKind = "registered"
+)
+
+// Valid indicates whether the value is a known member of the IntegrationConnectionClientKind enum.
+func (e IntegrationConnectionClientKind) Valid() bool {
+	switch e {
+	case IntegrationConnectionClientKindMetadata:
+		return true
+	case IntegrationConnectionClientKindRegistered:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for IntegrationConnectionStatus.
+const (
+	IntegrationConnectionStatusActive   IntegrationConnectionStatus = "active"
+	IntegrationConnectionStatusInactive IntegrationConnectionStatus = "inactive"
+)
+
+// Valid indicates whether the value is a known member of the IntegrationConnectionStatus enum.
+func (e IntegrationConnectionStatus) Valid() bool {
+	switch e {
+	case IntegrationConnectionStatusActive:
+		return true
+	case IntegrationConnectionStatusInactive:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for IntegrationMcpAccess.
 const (
-	Off       IntegrationMcpAccess = "off"
-	Read      IntegrationMcpAccess = "read"
-	ReadWrite IntegrationMcpAccess = "read_write"
+	IntegrationMcpAccessOff       IntegrationMcpAccess = "off"
+	IntegrationMcpAccessRead      IntegrationMcpAccess = "read"
+	IntegrationMcpAccessReadWrite IntegrationMcpAccess = "read_write"
 )
 
 // Valid indicates whether the value is a known member of the IntegrationMcpAccess enum.
 func (e IntegrationMcpAccess) Valid() bool {
 	switch e {
-	case Off:
+	case IntegrationMcpAccessOff:
 		return true
-	case Read:
+	case IntegrationMcpAccessRead:
 		return true
-	case ReadWrite:
+	case IntegrationMcpAccessReadWrite:
 		return true
 	default:
 		return false
@@ -489,6 +525,117 @@ func (e InvitationResponseRevokedReason) Valid() bool {
 	case InvitationResponseRevokedReasonOwner:
 		return true
 	case InvitationResponseRevokedReasonReplaced:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OAuthAuthorizationDecisionAccess.
+const (
+	OAuthAuthorizationDecisionAccessRead      OAuthAuthorizationDecisionAccess = "read"
+	OAuthAuthorizationDecisionAccessReadWrite OAuthAuthorizationDecisionAccess = "read_write"
+)
+
+// Valid indicates whether the value is a known member of the OAuthAuthorizationDecisionAccess enum.
+func (e OAuthAuthorizationDecisionAccess) Valid() bool {
+	switch e {
+	case OAuthAuthorizationDecisionAccessRead:
+		return true
+	case OAuthAuthorizationDecisionAccessReadWrite:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OAuthAuthorizationDecisionDecision.
+const (
+	Approve OAuthAuthorizationDecisionDecision = "approve"
+	Deny    OAuthAuthorizationDecisionDecision = "deny"
+)
+
+// Valid indicates whether the value is a known member of the OAuthAuthorizationDecisionDecision enum.
+func (e OAuthAuthorizationDecisionDecision) Valid() bool {
+	switch e {
+	case Approve:
+		return true
+	case Deny:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OAuthAuthorizationPreviewOutcome.
+const (
+	OAuthAuthorizationPreviewOutcomeClientRefused OAuthAuthorizationPreviewOutcome = "client_refused"
+	OAuthAuthorizationPreviewOutcomeConsent       OAuthAuthorizationPreviewOutcome = "consent"
+	OAuthAuthorizationPreviewOutcomeRedirect      OAuthAuthorizationPreviewOutcome = "redirect"
+)
+
+// Valid indicates whether the value is a known member of the OAuthAuthorizationPreviewOutcome enum.
+func (e OAuthAuthorizationPreviewOutcome) Valid() bool {
+	switch e {
+	case OAuthAuthorizationPreviewOutcomeClientRefused:
+		return true
+	case OAuthAuthorizationPreviewOutcomeConsent:
+		return true
+	case OAuthAuthorizationPreviewOutcomeRedirect:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OAuthClientDisplayKind.
+const (
+	OAuthClientDisplayKindMetadata   OAuthClientDisplayKind = "metadata"
+	OAuthClientDisplayKindRegistered OAuthClientDisplayKind = "registered"
+)
+
+// Valid indicates whether the value is a known member of the OAuthClientDisplayKind enum.
+func (e OAuthClientDisplayKind) Valid() bool {
+	switch e {
+	case OAuthClientDisplayKindMetadata:
+		return true
+	case OAuthClientDisplayKindRegistered:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OAuthIntegrationChoiceMaxAccess.
+const (
+	OAuthIntegrationChoiceMaxAccessRead      OAuthIntegrationChoiceMaxAccess = "read"
+	OAuthIntegrationChoiceMaxAccessReadWrite OAuthIntegrationChoiceMaxAccess = "read_write"
+)
+
+// Valid indicates whether the value is a known member of the OAuthIntegrationChoiceMaxAccess enum.
+func (e OAuthIntegrationChoiceMaxAccess) Valid() bool {
+	switch e {
+	case OAuthIntegrationChoiceMaxAccessRead:
+		return true
+	case OAuthIntegrationChoiceMaxAccessReadWrite:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OAuthIntegrationChoiceReason.
+const (
+	OAuthIntegrationChoiceReasonDisabled OAuthIntegrationChoiceReason = "disabled"
+	OAuthIntegrationChoiceReasonMcpOff   OAuthIntegrationChoiceReason = "mcp_off"
+)
+
+// Valid indicates whether the value is a known member of the OAuthIntegrationChoiceReason enum.
+func (e OAuthIntegrationChoiceReason) Valid() bool {
+	switch e {
+	case OAuthIntegrationChoiceReasonDisabled:
+		return true
+	case OAuthIntegrationChoiceReasonMcpOff:
 		return true
 	default:
 		return false
@@ -1052,16 +1199,18 @@ func (e PutIdentityBrandsByIdLogosBySlotParamsSlot) Valid() bool {
 
 // Defines values for GetIdentityIntegrationsByIdRequestsParamsReason.
 const (
-	GetIdentityIntegrationsByIdRequestsParamsReasonArchived         GetIdentityIntegrationsByIdRequestsParamsReason = "archived"
-	GetIdentityIntegrationsByIdRequestsParamsReasonDisabled         GetIdentityIntegrationsByIdRequestsParamsReason = "disabled"
-	GetIdentityIntegrationsByIdRequestsParamsReasonExpired          GetIdentityIntegrationsByIdRequestsParamsReason = "expired"
-	GetIdentityIntegrationsByIdRequestsParamsReasonForbidden        GetIdentityIntegrationsByIdRequestsParamsReason = "forbidden"
-	GetIdentityIntegrationsByIdRequestsParamsReasonIdempotentReplay GetIdentityIntegrationsByIdRequestsParamsReason = "idempotent_replay"
-	GetIdentityIntegrationsByIdRequestsParamsReasonNetwork          GetIdentityIntegrationsByIdRequestsParamsReason = "network"
-	GetIdentityIntegrationsByIdRequestsParamsReasonNever            GetIdentityIntegrationsByIdRequestsParamsReason = "never"
-	GetIdentityIntegrationsByIdRequestsParamsReasonRateLimited      GetIdentityIntegrationsByIdRequestsParamsReason = "rate_limited"
-	GetIdentityIntegrationsByIdRequestsParamsReasonReadOnly         GetIdentityIntegrationsByIdRequestsParamsReason = "read_only"
-	GetIdentityIntegrationsByIdRequestsParamsReasonRevoked          GetIdentityIntegrationsByIdRequestsParamsReason = "revoked"
+	GetIdentityIntegrationsByIdRequestsParamsReasonArchived          GetIdentityIntegrationsByIdRequestsParamsReason = "archived"
+	GetIdentityIntegrationsByIdRequestsParamsReasonDisabled          GetIdentityIntegrationsByIdRequestsParamsReason = "disabled"
+	GetIdentityIntegrationsByIdRequestsParamsReasonExpired           GetIdentityIntegrationsByIdRequestsParamsReason = "expired"
+	GetIdentityIntegrationsByIdRequestsParamsReasonForbidden         GetIdentityIntegrationsByIdRequestsParamsReason = "forbidden"
+	GetIdentityIntegrationsByIdRequestsParamsReasonIdempotentReplay  GetIdentityIntegrationsByIdRequestsParamsReason = "idempotent_replay"
+	GetIdentityIntegrationsByIdRequestsParamsReasonInsufficientScope GetIdentityIntegrationsByIdRequestsParamsReason = "insufficient_scope"
+	GetIdentityIntegrationsByIdRequestsParamsReasonNetwork           GetIdentityIntegrationsByIdRequestsParamsReason = "network"
+	GetIdentityIntegrationsByIdRequestsParamsReasonNever             GetIdentityIntegrationsByIdRequestsParamsReason = "never"
+	GetIdentityIntegrationsByIdRequestsParamsReasonRateLimited       GetIdentityIntegrationsByIdRequestsParamsReason = "rate_limited"
+	GetIdentityIntegrationsByIdRequestsParamsReasonReadOnly          GetIdentityIntegrationsByIdRequestsParamsReason = "read_only"
+	GetIdentityIntegrationsByIdRequestsParamsReasonRevoked           GetIdentityIntegrationsByIdRequestsParamsReason = "revoked"
+	GetIdentityIntegrationsByIdRequestsParamsReasonTokenInvalid      GetIdentityIntegrationsByIdRequestsParamsReason = "token_invalid"
 )
 
 // Valid indicates whether the value is a known member of the GetIdentityIntegrationsByIdRequestsParamsReason enum.
@@ -1077,6 +1226,8 @@ func (e GetIdentityIntegrationsByIdRequestsParamsReason) Valid() bool {
 		return true
 	case GetIdentityIntegrationsByIdRequestsParamsReasonIdempotentReplay:
 		return true
+	case GetIdentityIntegrationsByIdRequestsParamsReasonInsufficientScope:
+		return true
 	case GetIdentityIntegrationsByIdRequestsParamsReasonNetwork:
 		return true
 	case GetIdentityIntegrationsByIdRequestsParamsReasonNever:
@@ -1086,6 +1237,8 @@ func (e GetIdentityIntegrationsByIdRequestsParamsReason) Valid() bool {
 	case GetIdentityIntegrationsByIdRequestsParamsReasonReadOnly:
 		return true
 	case GetIdentityIntegrationsByIdRequestsParamsReasonRevoked:
+		return true
+	case GetIdentityIntegrationsByIdRequestsParamsReasonTokenInvalid:
 		return true
 	default:
 		return false
@@ -1913,6 +2066,46 @@ type Integration struct {
 // IntegrationStatus defines model for Integration.Status.
 type IntegrationStatus string
 
+// IntegrationConnection A connected app (OAuth connections design C25).
+type IntegrationConnection struct {
+	// AuthorizedBy The person who connected it, null once they are deleted.
+	AuthorizedBy     *openapi_types.UUID `json:"authorizedBy"`
+	AuthorizedByName *string             `json:"authorizedByName"`
+
+	// ClientHost The host Vantigo fetched the client's metadata document from.
+	ClientHost string                          `json:"clientHost"`
+	ClientId   string                          `json:"clientId"`
+	ClientKind IntegrationConnectionClientKind `json:"clientKind"`
+
+	// ClientName The name the client calls itself, as the consent page showed it.
+	ClientName  string    `json:"clientName"`
+	ConnectedAt time.Time `json:"connectedAt"`
+
+	// ExpiresAt When the connection ends by itself, 180 days after it was approved.
+	ExpiresAt time.Time          `json:"expiresAt"`
+	Id        openapi_types.UUID `json:"id"`
+
+	// InactiveReason Why an inactive connection's tokens are refused; authorizer_removed when the person who connected it is no longer an active Owner.
+	InactiveReason *string    `json:"inactiveReason"`
+	LastUsedAt     *time.Time `json:"lastUsedAt"`
+	LastUsedIp     *string    `json:"lastUsedIp"`
+
+	// Scopes read, and write for Read and write.
+	Scopes []string                    `json:"scopes"`
+	Status IntegrationConnectionStatus `json:"status"`
+}
+
+// IntegrationConnectionClientKind defines model for IntegrationConnection.ClientKind.
+type IntegrationConnectionClientKind string
+
+// IntegrationConnectionStatus defines model for IntegrationConnection.Status.
+type IntegrationConnectionStatus string
+
+// IntegrationConnectionList defines model for IntegrationConnectionList.
+type IntegrationConnectionList struct {
+	Connections []IntegrationConnection `json:"connections"`
+}
+
 // IntegrationCreateRequest defines model for IntegrationCreateRequest.
 type IntegrationCreateRequest struct {
 	// ContactUserId A person; absent for none.
@@ -1967,12 +2160,20 @@ type IntegrationPermission struct {
 	Key      string `json:"key"`
 }
 
-// IntegrationRequest One request an API key of the integration made (API access design K23). It never carries a body, a query string or a path parameter's value.
+// IntegrationRequest One request an API key or a connected app of the integration made (API access design K23, OAuth connections design A18). It never carries a body, a query string or a path parameter's value.
 type IntegrationRequest struct {
-	At         time.Time          `json:"at"`
-	ClientIp   *string            `json:"clientIp"`
-	DurationMs int                `json:"durationMs"`
-	KeyId      openapi_types.UUID `json:"keyId"`
+	At       time.Time `json:"at"`
+	ClientIp *string   `json:"clientIp"`
+
+	// ClientName For a request a connected app made, the name its client called itself, null once the connection's row is deleted.
+	ClientName *string `json:"clientName"`
+
+	// ConnectionId The connection the request came through, null for a request a key made.
+	ConnectionId *openapi_types.UUID `json:"connectionId"`
+	DurationMs   int                 `json:"durationMs"`
+
+	// KeyId The key the request presented, null for a request a connected app made.
+	KeyId *openapi_types.UUID `json:"keyId"`
 
 	// KeyName The key's name, null once the key's row is deleted, 90 days after it expired.
 	KeyName     *string `json:"keyName"`
@@ -2136,6 +2337,115 @@ type MutationRequest struct {
 	ConcurrencyStamp *string             `json:"concurrencyStamp"`
 	ScimConnectionId *openapi_types.UUID `json:"scimConnectionId,omitempty"`
 }
+
+// OAuthAuthorizationDecision The consent page's answer to an authorization request (OAuth connections design C14).
+type OAuthAuthorizationDecision struct {
+	// Access What the connection may do, at most what the request and the integration allow; required to approve.
+	Access   *OAuthAuthorizationDecisionAccess  `json:"access,omitempty"`
+	Decision OAuthAuthorizationDecisionDecision `json:"decision"`
+
+	// IntegrationId The integration the client may act as; required to approve.
+	IntegrationId *openapi_types.UUID `json:"integrationId,omitempty"`
+
+	// Query The authorization request's query string, as the page received it, without the leading question mark.
+	Query string `json:"query"`
+}
+
+// OAuthAuthorizationDecisionAccess What the connection may do, at most what the request and the integration allow; required to approve.
+type OAuthAuthorizationDecisionAccess string
+
+// OAuthAuthorizationDecisionDecision defines model for OAuthAuthorizationDecision.Decision.
+type OAuthAuthorizationDecisionDecision string
+
+// OAuthAuthorizationPreview What the consent page shows for an authorization request (C13, A6, A7): one of client_refused, redirect or consent.
+type OAuthAuthorizationPreview struct {
+	// Automatic For redirect, whether the page navigates there at once; otherwise it shows the error and a button that returns to returnHost.
+	Automatic *bool `json:"automatic,omitempty"`
+
+	// Client A client as the consent page shows it (C13, A7).
+	Client *OAuthClientDisplay `json:"client,omitempty"`
+
+	// Error For client_refused and redirect, the OAuth error code.
+	Error *string `json:"error,omitempty"`
+
+	// FirstUse For consent, true when no client of this host has been connected before.
+	FirstUse *bool `json:"firstUse,omitempty"`
+
+	// Integrations For consent, every integration not archived, with whether the client may be connected to it.
+	Integrations *[]OAuthIntegrationChoice `json:"integrations,omitempty"`
+
+	// Message For client_refused and redirect, why, in words a person reads.
+	Message *string `json:"message,omitempty"`
+
+	// NameWarning For consent, true when the name the client claims contains Vantigo or the workspace's name.
+	NameWarning *bool                            `json:"nameWarning,omitempty"`
+	Outcome     OAuthAuthorizationPreviewOutcome `json:"outcome"`
+
+	// RedirectTo For redirect, the client's redirect URI with the error, state and iss.
+	RedirectTo *string `json:"redirectTo,omitempty"`
+
+	// ReturnHost For redirect, the redirect URI's host, in ASCII.
+	ReturnHost *string `json:"returnHost,omitempty"`
+
+	// Scopes For consent, the scopes asked, read and write.
+	Scopes *[]string `json:"scopes,omitempty"`
+}
+
+// OAuthAuthorizationPreviewOutcome defines model for OAuthAuthorizationPreview.Outcome.
+type OAuthAuthorizationPreviewOutcome string
+
+// OAuthAuthorizationQuery defines model for OAuthAuthorizationQuery.
+type OAuthAuthorizationQuery struct {
+	// Query The authorization request's query string, as the page received it, without the leading question mark.
+	Query string `json:"query"`
+}
+
+// OAuthAuthorizationRedirect defines model for OAuthAuthorizationRedirect.
+type OAuthAuthorizationRedirect struct {
+	// RedirectTo The client's redirect URI with the code or the error, state and iss.
+	RedirectTo string `json:"redirectTo"`
+}
+
+// OAuthClientDisplay A client as the consent page shows it (C13, A7).
+type OAuthClientDisplay struct {
+	ClientId string `json:"clientId"`
+
+	// ClientIdHost The host of the client_id, where Vantigo fetched the client's metadata document from, in ASCII.
+	ClientIdHost string                 `json:"clientIdHost"`
+	Kind         OAuthClientDisplayKind `json:"kind"`
+
+	// Loopback Whether the redirect goes to this computer, where any program could be asking.
+	Loopback bool `json:"loopback"`
+
+	// Name The name the client calls itself, stripped of control and bidirectional characters, at most 80 characters.
+	Name string `json:"name"`
+
+	// RedirectHost The redirect URI's host, in ASCII.
+	RedirectHost string `json:"redirectHost"`
+}
+
+// OAuthClientDisplayKind defines model for OAuthClientDisplay.Kind.
+type OAuthClientDisplayKind string
+
+// OAuthIntegrationChoice defines model for OAuthIntegrationChoice.
+type OAuthIntegrationChoice struct {
+	// Eligible Whether the client may be connected to it: the integration is active and its MCP setting is not off.
+	Eligible bool               `json:"eligible"`
+	Id       openapi_types.UUID `json:"id"`
+
+	// MaxAccess The most the connection may do, capped by the scopes asked and the integration's MCP setting; null when not eligible.
+	MaxAccess *OAuthIntegrationChoiceMaxAccess `json:"maxAccess"`
+	Name      string                           `json:"name"`
+
+	// Reason Why it is not eligible.
+	Reason *OAuthIntegrationChoiceReason `json:"reason"`
+}
+
+// OAuthIntegrationChoiceMaxAccess The most the connection may do, capped by the scopes asked and the integration's MCP setting; null when not eligible.
+type OAuthIntegrationChoiceMaxAccess string
+
+// OAuthIntegrationChoiceReason Why it is not eligible.
+type OAuthIntegrationChoiceReason string
 
 // OidcProviderResponse defines model for OidcProviderResponse.
 type OidcProviderResponse struct {
@@ -3965,6 +4275,12 @@ type PostIdentityLoginJSONRequestBody = PostIdentityLoginJSONBody
 // PostIdentityLogin2faJSONRequestBody defines body for PostIdentityLogin2fa for application/json ContentType.
 type PostIdentityLogin2faJSONRequestBody = PostIdentityLogin2faJSONBody
 
+// PostIdentityOauthAuthorizationsJSONRequestBody defines body for PostIdentityOauthAuthorizations for application/json ContentType.
+type PostIdentityOauthAuthorizationsJSONRequestBody = OAuthAuthorizationDecision
+
+// PostIdentityOauthAuthorizationsPreviewJSONRequestBody defines body for PostIdentityOauthAuthorizationsPreview for application/json ContentType.
+type PostIdentityOauthAuthorizationsPreviewJSONRequestBody = OAuthAuthorizationQuery
+
 // PostIdentityOidcCallbackFormdataRequestBody defines body for PostIdentityOidcCallback for application/x-www-form-urlencoded ContentType.
 type PostIdentityOidcCallbackFormdataRequestBody PostIdentityOidcCallbackFormdataBody
 
@@ -4991,6 +5307,12 @@ type ServerInterface interface {
 	// PostIdentityIntegrationsByIdArchive Archive an integration
 	// (POST /api/v1/identity/integrations/{id}/archive)
 	PostIdentityIntegrationsByIdArchive(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// GetIdentityIntegrationsByIdConnections List an integration's connected apps
+	// (GET /api/v1/identity/integrations/{id}/connections)
+	GetIdentityIntegrationsByIdConnections(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// DeleteIdentityIntegrationsByIdConnectionsByConnectionId Revoke a connected app
+	// (DELETE /api/v1/identity/integrations/{id}/connections/{connectionId})
+	DeleteIdentityIntegrationsByIdConnectionsByConnectionId(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, connectionId openapi_types.UUID)
 	// PostIdentityIntegrationsByIdDisable Disable an integration
 	// (POST /api/v1/identity/integrations/{id}/disable)
 	PostIdentityIntegrationsByIdDisable(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
@@ -5066,6 +5388,12 @@ type ServerInterface interface {
 	// PostIdentityLogout Sign out of the application cookie
 	// (POST /api/v1/identity/logout)
 	PostIdentityLogout(w http.ResponseWriter, r *http.Request)
+	// PostIdentityOauthAuthorizations Approve or deny an OAuth authorization
+	// (POST /api/v1/identity/oauth/authorizations)
+	PostIdentityOauthAuthorizations(w http.ResponseWriter, r *http.Request)
+	// PostIdentityOauthAuthorizationsPreview Preview an OAuth authorization
+	// (POST /api/v1/identity/oauth/authorizations/preview)
+	PostIdentityOauthAuthorizationsPreview(w http.ResponseWriter, r *http.Request)
 	// GetIdentityOidcCallback Finish an OpenID Connect sign-in (redirect)
 	// (GET /api/v1/identity/oidc/callback)
 	GetIdentityOidcCallback(w http.ResponseWriter, r *http.Request, params GetIdentityOidcCallbackParams)
@@ -7607,6 +7935,67 @@ func (siw *ServerInterfaceWrapper) PostIdentityIntegrationsByIdArchive(w http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// GetIdentityIntegrationsByIdConnections operation middleware
+func (siw *ServerInterfaceWrapper) GetIdentityIntegrationsByIdConnections(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetIdentityIntegrationsByIdConnections(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteIdentityIntegrationsByIdConnectionsByConnectionId operation middleware
+func (siw *ServerInterfaceWrapper) DeleteIdentityIntegrationsByIdConnectionsByConnectionId(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "connectionId" -------------
+	var connectionId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "connectionId", r.PathValue("connectionId"), &connectionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "connectionId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteIdentityIntegrationsByIdConnectionsByConnectionId(w, r, id, connectionId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // PostIdentityIntegrationsByIdDisable operation middleware
 func (siw *ServerInterfaceWrapper) PostIdentityIntegrationsByIdDisable(w http.ResponseWriter, r *http.Request) {
 
@@ -8499,6 +8888,34 @@ func (siw *ServerInterfaceWrapper) PostIdentityLogout(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostIdentityLogout(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostIdentityOauthAuthorizations operation middleware
+func (siw *ServerInterfaceWrapper) PostIdentityOauthAuthorizations(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostIdentityOauthAuthorizations(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostIdentityOauthAuthorizationsPreview operation middleware
+func (siw *ServerInterfaceWrapper) PostIdentityOauthAuthorizationsPreview(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostIdentityOauthAuthorizationsPreview(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -10736,6 +11153,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/integrations/{id}", wrapper.GetIdentityIntegrationsById)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/v1/identity/integrations/{id}", wrapper.PatchIdentityIntegrationsById)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/integrations/{id}/archive", wrapper.PostIdentityIntegrationsByIdArchive)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/integrations/{id}/connections", wrapper.GetIdentityIntegrationsByIdConnections)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/identity/integrations/{id}/connections/{connectionId}", wrapper.DeleteIdentityIntegrationsByIdConnectionsByConnectionId)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/integrations/{id}/disable", wrapper.PostIdentityIntegrationsByIdDisable)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/integrations/{id}/enable", wrapper.PostIdentityIntegrationsByIdEnable)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/integrations/{id}/keys", wrapper.PostIdentityIntegrationsByIdKeys)
@@ -10761,6 +11180,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/login", wrapper.PostIdentityLogin)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/login/2fa", wrapper.PostIdentityLogin2fa)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/logout", wrapper.PostIdentityLogout)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/oauth/authorizations", wrapper.PostIdentityOauthAuthorizations)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/oauth/authorizations/preview", wrapper.PostIdentityOauthAuthorizationsPreview)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/oidc/callback", wrapper.GetIdentityOidcCallback)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/oidc/callback", wrapper.PostIdentityOidcCallback)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/oidc/challenge", wrapper.GetIdentityOidcChallenge)
@@ -17230,6 +17651,129 @@ func (response PostIdentityIntegrationsByIdArchive409JSONResponse) VisitPostIden
 	return err
 }
 
+type GetIdentityIntegrationsByIdConnectionsRequestObject struct {
+	Id openapi_types.UUID `json:"id"`
+}
+
+type GetIdentityIntegrationsByIdConnectionsResponseObject interface {
+	VisitGetIdentityIntegrationsByIdConnectionsResponse(w http.ResponseWriter) error
+}
+
+type GetIdentityIntegrationsByIdConnections200JSONResponse IntegrationConnectionList
+
+func (response GetIdentityIntegrationsByIdConnections200JSONResponse) VisitGetIdentityIntegrationsByIdConnectionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityIntegrationsByIdConnections401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityIntegrationsByIdConnections401JSONResponse) VisitGetIdentityIntegrationsByIdConnectionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityIntegrationsByIdConnections403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityIntegrationsByIdConnections403JSONResponse) VisitGetIdentityIntegrationsByIdConnectionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityIntegrationsByIdConnections404JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityIntegrationsByIdConnections404JSONResponse) VisitGetIdentityIntegrationsByIdConnectionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteIdentityIntegrationsByIdConnectionsByConnectionIdRequestObject struct {
+	Id           openapi_types.UUID `json:"id"`
+	ConnectionId openapi_types.UUID `json:"connectionId"`
+}
+
+type DeleteIdentityIntegrationsByIdConnectionsByConnectionIdResponseObject interface {
+	VisitDeleteIdentityIntegrationsByIdConnectionsByConnectionIdResponse(w http.ResponseWriter) error
+}
+
+type DeleteIdentityIntegrationsByIdConnectionsByConnectionId204Response struct {
+}
+
+func (response DeleteIdentityIntegrationsByIdConnectionsByConnectionId204Response) VisitDeleteIdentityIntegrationsByIdConnectionsByConnectionIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteIdentityIntegrationsByIdConnectionsByConnectionId401JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteIdentityIntegrationsByIdConnectionsByConnectionId401JSONResponse) VisitDeleteIdentityIntegrationsByIdConnectionsByConnectionIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteIdentityIntegrationsByIdConnectionsByConnectionId403JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteIdentityIntegrationsByIdConnectionsByConnectionId403JSONResponse) VisitDeleteIdentityIntegrationsByIdConnectionsByConnectionIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteIdentityIntegrationsByIdConnectionsByConnectionId404JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteIdentityIntegrationsByIdConnectionsByConnectionId404JSONResponse) VisitDeleteIdentityIntegrationsByIdConnectionsByConnectionIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PostIdentityIntegrationsByIdDisableRequestObject struct {
 	Id openapi_types.UUID `json:"id"`
 }
@@ -19458,6 +20002,220 @@ func (response PostIdentityLogout401JSONResponse) VisitPostIdentityLogoutRespons
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityOauthAuthorizationsRequestObject struct {
+	Body *PostIdentityOauthAuthorizationsJSONRequestBody
+}
+
+type PostIdentityOauthAuthorizationsResponseObject interface {
+	VisitPostIdentityOauthAuthorizationsResponse(w http.ResponseWriter) error
+}
+
+type PostIdentityOauthAuthorizations200ResponseHeaders struct {
+	CacheControl *string
+}
+
+type PostIdentityOauthAuthorizations200JSONResponse struct {
+	Body    OAuthAuthorizationRedirect
+	Headers PostIdentityOauthAuthorizations200ResponseHeaders
+}
+
+func (response PostIdentityOauthAuthorizations200JSONResponse) VisitPostIdentityOauthAuthorizationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.CacheControl != nil {
+		w.Header().Set("Cache-Control", fmt.Sprint(*response.Headers.CacheControl))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityOauthAuthorizations400JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityOauthAuthorizations400JSONResponse) VisitPostIdentityOauthAuthorizationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityOauthAuthorizations401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityOauthAuthorizations401JSONResponse) VisitPostIdentityOauthAuthorizationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityOauthAuthorizations403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityOauthAuthorizations403JSONResponse) VisitPostIdentityOauthAuthorizationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityOauthAuthorizations404JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityOauthAuthorizations404JSONResponse) VisitPostIdentityOauthAuthorizationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityOauthAuthorizations409JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityOauthAuthorizations409JSONResponse) VisitPostIdentityOauthAuthorizationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityOauthAuthorizationsPreviewRequestObject struct {
+	Body *PostIdentityOauthAuthorizationsPreviewJSONRequestBody
+}
+
+type PostIdentityOauthAuthorizationsPreviewResponseObject interface {
+	VisitPostIdentityOauthAuthorizationsPreviewResponse(w http.ResponseWriter) error
+}
+
+type PostIdentityOauthAuthorizationsPreview200ResponseHeaders struct {
+	CacheControl *string
+}
+
+type PostIdentityOauthAuthorizationsPreview200JSONResponse struct {
+	Body    OAuthAuthorizationPreview
+	Headers PostIdentityOauthAuthorizationsPreview200ResponseHeaders
+}
+
+func (response PostIdentityOauthAuthorizationsPreview200JSONResponse) VisitPostIdentityOauthAuthorizationsPreviewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.CacheControl != nil {
+		w.Header().Set("Cache-Control", fmt.Sprint(*response.Headers.CacheControl))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityOauthAuthorizationsPreview400JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityOauthAuthorizationsPreview400JSONResponse) VisitPostIdentityOauthAuthorizationsPreviewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityOauthAuthorizationsPreview401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityOauthAuthorizationsPreview401JSONResponse) VisitPostIdentityOauthAuthorizationsPreviewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityOauthAuthorizationsPreview403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityOauthAuthorizationsPreview403JSONResponse) VisitPostIdentityOauthAuthorizationsPreviewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityOauthAuthorizationsPreview404JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityOauthAuthorizationsPreview404JSONResponse) VisitPostIdentityOauthAuthorizationsPreviewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityOauthAuthorizationsPreview429ResponseHeaders struct {
+	RetryAfter *string
+}
+
+type PostIdentityOauthAuthorizationsPreview429JSONResponse struct {
+	Body    externalRef0.AuthErrorResponse
+	Headers PostIdentityOauthAuthorizationsPreview429ResponseHeaders
+}
+
+func (response PostIdentityOauthAuthorizationsPreview429JSONResponse) VisitPostIdentityOauthAuthorizationsPreviewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -26522,6 +27280,12 @@ type StrictServerInterface interface {
 	// PostIdentityIntegrationsByIdArchive Archive an integration
 	// (POST /api/v1/identity/integrations/{id}/archive)
 	PostIdentityIntegrationsByIdArchive(ctx context.Context, request PostIdentityIntegrationsByIdArchiveRequestObject) (PostIdentityIntegrationsByIdArchiveResponseObject, error)
+	// GetIdentityIntegrationsByIdConnections List an integration's connected apps
+	// (GET /api/v1/identity/integrations/{id}/connections)
+	GetIdentityIntegrationsByIdConnections(ctx context.Context, request GetIdentityIntegrationsByIdConnectionsRequestObject) (GetIdentityIntegrationsByIdConnectionsResponseObject, error)
+	// DeleteIdentityIntegrationsByIdConnectionsByConnectionId Revoke a connected app
+	// (DELETE /api/v1/identity/integrations/{id}/connections/{connectionId})
+	DeleteIdentityIntegrationsByIdConnectionsByConnectionId(ctx context.Context, request DeleteIdentityIntegrationsByIdConnectionsByConnectionIdRequestObject) (DeleteIdentityIntegrationsByIdConnectionsByConnectionIdResponseObject, error)
 	// PostIdentityIntegrationsByIdDisable Disable an integration
 	// (POST /api/v1/identity/integrations/{id}/disable)
 	PostIdentityIntegrationsByIdDisable(ctx context.Context, request PostIdentityIntegrationsByIdDisableRequestObject) (PostIdentityIntegrationsByIdDisableResponseObject, error)
@@ -26597,6 +27361,12 @@ type StrictServerInterface interface {
 	// PostIdentityLogout Sign out of the application cookie
 	// (POST /api/v1/identity/logout)
 	PostIdentityLogout(ctx context.Context, request PostIdentityLogoutRequestObject) (PostIdentityLogoutResponseObject, error)
+	// PostIdentityOauthAuthorizations Approve or deny an OAuth authorization
+	// (POST /api/v1/identity/oauth/authorizations)
+	PostIdentityOauthAuthorizations(ctx context.Context, request PostIdentityOauthAuthorizationsRequestObject) (PostIdentityOauthAuthorizationsResponseObject, error)
+	// PostIdentityOauthAuthorizationsPreview Preview an OAuth authorization
+	// (POST /api/v1/identity/oauth/authorizations/preview)
+	PostIdentityOauthAuthorizationsPreview(ctx context.Context, request PostIdentityOauthAuthorizationsPreviewRequestObject) (PostIdentityOauthAuthorizationsPreviewResponseObject, error)
 	// GetIdentityOidcCallback Finish an OpenID Connect sign-in (redirect)
 	// (GET /api/v1/identity/oidc/callback)
 	GetIdentityOidcCallback(ctx context.Context, request GetIdentityOidcCallbackRequestObject) (GetIdentityOidcCallbackResponseObject, error)
@@ -29462,6 +30232,59 @@ func (sh *strictHandler) PostIdentityIntegrationsByIdArchive(w http.ResponseWrit
 	}
 }
 
+// GetIdentityIntegrationsByIdConnections operation middleware
+func (sh *strictHandler) GetIdentityIntegrationsByIdConnections(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request GetIdentityIntegrationsByIdConnectionsRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetIdentityIntegrationsByIdConnections(ctx, request.(GetIdentityIntegrationsByIdConnectionsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetIdentityIntegrationsByIdConnections")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetIdentityIntegrationsByIdConnectionsResponseObject); ok {
+		if err := validResponse.VisitGetIdentityIntegrationsByIdConnectionsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteIdentityIntegrationsByIdConnectionsByConnectionId operation middleware
+func (sh *strictHandler) DeleteIdentityIntegrationsByIdConnectionsByConnectionId(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, connectionId openapi_types.UUID) {
+	var request DeleteIdentityIntegrationsByIdConnectionsByConnectionIdRequestObject
+
+	request.Id = id
+	request.ConnectionId = connectionId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteIdentityIntegrationsByIdConnectionsByConnectionId(ctx, request.(DeleteIdentityIntegrationsByIdConnectionsByConnectionIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteIdentityIntegrationsByIdConnectionsByConnectionId")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteIdentityIntegrationsByIdConnectionsByConnectionIdResponseObject); ok {
+		if err := validResponse.VisitDeleteIdentityIntegrationsByIdConnectionsByConnectionIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // PostIdentityIntegrationsByIdDisable operation middleware
 func (sh *strictHandler) PostIdentityIntegrationsByIdDisable(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
 	var request PostIdentityIntegrationsByIdDisableRequestObject
@@ -30212,6 +31035,68 @@ func (sh *strictHandler) PostIdentityLogout(w http.ResponseWriter, r *http.Reque
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PostIdentityLogoutResponseObject); ok {
 		if err := validResponse.VisitPostIdentityLogoutResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostIdentityOauthAuthorizations operation middleware
+func (sh *strictHandler) PostIdentityOauthAuthorizations(w http.ResponseWriter, r *http.Request) {
+	var request PostIdentityOauthAuthorizationsRequestObject
+
+	var body PostIdentityOauthAuthorizationsJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostIdentityOauthAuthorizations(ctx, request.(PostIdentityOauthAuthorizationsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostIdentityOauthAuthorizations")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostIdentityOauthAuthorizationsResponseObject); ok {
+		if err := validResponse.VisitPostIdentityOauthAuthorizationsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostIdentityOauthAuthorizationsPreview operation middleware
+func (sh *strictHandler) PostIdentityOauthAuthorizationsPreview(w http.ResponseWriter, r *http.Request) {
+	var request PostIdentityOauthAuthorizationsPreviewRequestObject
+
+	var body PostIdentityOauthAuthorizationsPreviewJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostIdentityOauthAuthorizationsPreview(ctx, request.(PostIdentityOauthAuthorizationsPreviewRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostIdentityOauthAuthorizationsPreview")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostIdentityOauthAuthorizationsPreviewResponseObject); ok {
+		if err := validResponse.VisitPostIdentityOauthAuthorizationsPreviewResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

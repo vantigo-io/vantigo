@@ -31,6 +31,7 @@ func (r iteratorForInsertAPIRequests) Values() ([]interface{}, error) {
 	return []interface{}{
 		r.rows[0].At,
 		r.rows[0].KeyID,
+		r.rows[0].ConnectionID,
 		r.rows[0].IntegrationID,
 		r.rows[0].Method,
 		r.rows[0].OperationID,
@@ -49,5 +50,5 @@ func (r iteratorForInsertAPIRequests) Err() error {
 // InsertAPIRequests is the request log's buffered writer's one write (API
 // access design K23): a batch of rows, copied in.
 func (q *Queries) InsertAPIRequests(ctx context.Context, arg []InsertAPIRequestsParams) (int64, error) {
-	return q.db.CopyFrom(ctx, []string{"identity", "api_requests"}, []string{"at", "key_id", "integration_id", "method", "operation_id", "status", "reason", "duration_ms", "client_ip", "trace_id"}, &iteratorForInsertAPIRequests{rows: arg})
+	return q.db.CopyFrom(ctx, []string{"identity", "api_requests"}, []string{"at", "key_id", "connection_id", "integration_id", "method", "operation_id", "status", "reason", "duration_ms", "client_ip", "trace_id"}, &iteratorForInsertAPIRequests{rows: arg})
 }

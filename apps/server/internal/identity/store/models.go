@@ -85,26 +85,27 @@ type IdentityApiKeyNotice struct {
 
 type IdentityApiRequest struct {
 	At            time.Time
-	KeyID         uuid.UUID
+	KeyID         *uuid.UUID
 	IntegrationID uuid.UUID
 	Method        string
 	OperationID   string
 	Status        int16
-	// Why the request was refused (revoked, disabled, archived, expired, network, never, read_only, forbidden, rate_limited), or idempotent_replay for an answer replayed for an Idempotency-Key.
-	Reason     *string
-	DurationMs int32
-	ClientIp   *string
-	TraceID    *string
+	// Why the request was refused (revoked, disabled, archived, expired, network, never, read_only, forbidden, rate_limited, insufficient_scope, token_invalid), or idempotent_replay for an answer replayed for an Idempotency-Key.
+	Reason       *string
+	DurationMs   int32
+	ClientIp     *string
+	TraceID      *string
+	ConnectionID *uuid.UUID
 }
 
 type IdentityApiRequestsDefault struct {
 	At            time.Time
-	KeyID         uuid.UUID
+	KeyID         *uuid.UUID
 	IntegrationID uuid.UUID
 	Method        string
 	OperationID   string
 	Status        int16
-	// Why the request was refused (revoked, disabled, archived, expired, network, never, read_only, forbidden, rate_limited), or idempotent_replay for an answer replayed for an Idempotency-Key.
+	// Why the request was refused (revoked, disabled, archived, expired, network, never, read_only, forbidden, rate_limited, insufficient_scope, token_invalid), or idempotent_replay for an answer replayed for an Idempotency-Key.
 	Reason     *string
 	DurationMs int32
 	ClientIp   *string
@@ -304,6 +305,52 @@ type IdentityManagedAvatar struct {
 	SourceStamp string
 	Version     int32
 	UpdatedAt   time.Time
+}
+
+type IdentityOauthClientDocument struct {
+	ClientID  string
+	Document  []byte
+	FetchedAt time.Time
+	ExpiresAt time.Time
+}
+
+type IdentityOauthCode struct {
+	CodeHash      []byte
+	ConnectionID  uuid.UUID
+	CodeChallenge string
+	CreatedAt     time.Time
+	ExpiresAt     time.Time
+	ConsumedAt    *time.Time
+}
+
+type IdentityOauthConnection struct {
+	ID            uuid.UUID
+	IntegrationID uuid.UUID
+	ClientID      string
+	ClientKind    string
+	ClientName    string
+	ClientHost    string
+	RedirectUri   string
+	Scopes        []string
+	AuthorizedBy  *uuid.UUID
+	CreatedAt     time.Time
+	ActivatedAt   *time.Time
+	ExpiresAt     time.Time
+	LastUsedAt    *time.Time
+	LastUsedIp    *string
+	RevokedAt     *time.Time
+	RevokedBy     *uuid.UUID
+	RevokeReason  *string
+}
+
+type IdentityOauthToken struct {
+	TokenHash    []byte
+	ConnectionID uuid.UUID
+	Kind         string
+	ParentHash   []byte
+	CreatedAt    time.Time
+	ExpiresAt    time.Time
+	UsedAt       *time.Time
 }
 
 type IdentityOidcLink struct {

@@ -128,10 +128,11 @@ func (q *Queries) APIRequestTopOperations(ctx context.Context, arg APIRequestTop
 }
 
 const aPIRequestsLatest = `-- name: APIRequestsLatest :many
-SELECT r.at, r.key_id, k.name AS key_name, r.method, r.operation_id, r.status, r.reason,
+SELECT r.at, r.key_id, k.name AS key_name, r.connection_id, c.client_name, r.method, r.operation_id, r.status, r.reason,
        r.duration_ms, r.client_ip, r.trace_id
 FROM identity.api_requests r
 LEFT JOIN identity.api_keys k ON k.id = r.key_id
+LEFT JOIN identity.oauth_connections c ON c.id = r.connection_id
 WHERE r.integration_id = $1
   AND r.at >= $2::timestamptz AND r.at < $3::timestamptz
   AND ($4::uuid IS NULL OR r.key_id = $4::uuid)
@@ -152,21 +153,24 @@ type APIRequestsLatestParams struct {
 }
 
 type APIRequestsLatestRow struct {
-	At          time.Time
-	KeyID       uuid.UUID
-	KeyName     *string
-	Method      string
-	OperationID string
-	Status      int16
-	Reason      *string
-	DurationMs  int32
-	ClientIp    *string
-	TraceID     *string
+	At           time.Time
+	KeyID        *uuid.UUID
+	KeyName      *string
+	ConnectionID *uuid.UUID
+	ClientName   *string
+	Method       string
+	OperationID  string
+	Status       int16
+	Reason       *string
+	DurationMs   int32
+	ClientIp     *string
+	TraceID      *string
 }
 
 // APIRequestsLatest is the integration's latest requests in [from, to),
 // under the screen's filters, each with its key's name while the key's row
-// is kept.
+// is kept, or, for a request a connection made, its client's name while the
+// connection's row is (OAuth connections design A18).
 func (q *Queries) APIRequestsLatest(ctx context.Context, arg APIRequestsLatestParams) ([]APIRequestsLatestRow, error) {
 	rows, err := q.db.Query(ctx, aPIRequestsLatest,
 		arg.IntegrationID,
@@ -188,6 +192,8 @@ func (q *Queries) APIRequestsLatest(ctx context.Context, arg APIRequestsLatestPa
 			&i.At,
 			&i.KeyID,
 			&i.KeyName,
+			&i.ConnectionID,
+			&i.ClientName,
 			&i.Method,
 			&i.OperationID,
 			&i.Status,
@@ -270,7 +276,8 @@ func (q *Queries) InsertAPIKeyNotice(ctx context.Context, arg InsertAPIKeyNotice
 
 type InsertAPIRequestsParams struct {
 	At            time.Time
-	KeyID         uuid.UUID
+	KeyID         *uuid.UUID
+	ConnectionID  *uuid.UUID
 	IntegrationID uuid.UUID
 	Method        string
 	OperationID   string

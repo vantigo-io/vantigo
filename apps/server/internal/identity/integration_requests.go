@@ -106,7 +106,8 @@ func (s *server) GetIdentityIntegrationsByIdRequests(ctx context.Context, req ge
 	}
 	for _, r := range latest {
 		out.Latest = append(out.Latest, gen.IntegrationRequest{
-			At: r.At.UTC(), KeyId: r.KeyID, KeyName: r.KeyName, Method: r.Method, OperationId: r.OperationID,
+			At: r.At.UTC(), KeyId: r.KeyID, KeyName: r.KeyName, ConnectionId: r.ConnectionID, ClientName: r.ClientName,
+			Method: r.Method, OperationId: r.OperationID,
 			Status: int(r.Status), Reason: r.Reason, DurationMs: int(r.DurationMs), ClientIp: r.ClientIp, TraceId: r.TraceID,
 		})
 	}

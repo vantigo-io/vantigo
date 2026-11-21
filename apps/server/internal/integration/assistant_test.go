@@ -251,6 +251,13 @@ var markedByHand = map[string]string{
 	"postIdentityIntegrationsByIdKeys":              "never",
 	"postIdentityIntegrationsByIdKeysByKeyIdRoll":   "never",
 	"postIdentityIntegrationsByIdKeysByKeyIdRevoke": "never",
+	// OAuth connections (OAuth connections design C2): consenting to a
+	// client is a person's, at the consent page, and who reaches the API an
+	// Owner's.
+	"postIdentityOauthAuthorizationsPreview":                  "never",
+	"postIdentityOauthAuthorizations":                         "never",
+	"getIdentityIntegrationsByIdConnections":                  "never",
+	"deleteIdentityIntegrationsByIdConnectionsByConnectionId": "never",
 	// Their webhook endpoints (outgoing webhooks design W34): a signing
 	// secret is a credential, and where the stream goes is an Owner's.
 	"getIdentityIntegrationsByIdWebhooks":                                         "never",

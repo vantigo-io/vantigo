@@ -318,6 +318,41 @@ func TestLoad_Idempotency(t *testing.T) {
 	}
 }
 
+// TestLoad_OAuth proves OAUTH_ENABLED defaults off until the consent page
+// lands and is a strict "0"/"1" switch (OAuth connections design C24, A24),
+// and that the issuer, the resource and its metadata URL are built from
+// APP_URL with a default port dropped and APP_BASE_PATH inserted (A12, A13).
+func TestLoad_OAuth(t *testing.T) {
+	if mustLoad(t, validEnv()).OAuthEnabled {
+		t.Error("OAUTH_ENABLED unset did not default to off")
+	}
+	if !mustLoad(t, with(validEnv(), "OAUTH_ENABLED", "1")).OAuthEnabled {
+		t.Error("OAUTH_ENABLED=1 did not switch it on")
+	}
+	if msg := loadError(t, with(validEnv(), "OAUTH_ENABLED", "yes")); !strings.Contains(msg, `OAUTH_ENABLED: must be "0" or "1"`) {
+		t.Errorf("error = %q", msg)
+	}
+	for _, c := range []struct{ url, base, issuer, resource, metadata string }{
+		{"https://Vantigo.Example.com", "", "https://vantigo.example.com", "https://vantigo.example.com/api/mcp",
+			"https://vantigo.example.com/.well-known/oauth-protected-resource/api/mcp"},
+		{"https://vantigo.example.com:443", "/erp", "https://vantigo.example.com/erp", "https://vantigo.example.com/erp/api/mcp",
+			"https://vantigo.example.com/.well-known/oauth-protected-resource/erp/api/mcp"},
+		{"https://vantigo.example.com:8443", "", "https://vantigo.example.com:8443", "https://vantigo.example.com:8443/api/mcp",
+			"https://vantigo.example.com:8443/.well-known/oauth-protected-resource/api/mcp"},
+		{"http://localhost:80", "", "http://localhost", "http://localhost/api/mcp", "http://localhost/.well-known/oauth-protected-resource/api/mcp"},
+		{"http://localhost:443", "", "http://localhost:443", "http://localhost:443/api/mcp", "http://localhost:443/.well-known/oauth-protected-resource/api/mcp"},
+	} {
+		env := with(validEnv(), "APP_URL", c.url)
+		if c.base != "" {
+			env = with(env, "APP_BASE_PATH", c.base)
+		}
+		cfg := mustLoad(t, env)
+		if cfg.OAuthIssuer != c.issuer || cfg.OAuthResource != c.resource || cfg.OAuthResourceMetadata != c.metadata {
+			t.Errorf("%s %s: %q %q %q", c.url, c.base, cfg.OAuthIssuer, cfg.OAuthResource, cfg.OAuthResourceMetadata)
+		}
+	}
+}
+
 // TestLoad_MCP proves MCP_ENABLED defaults on and is a strict "0"/"1" switch
 // (MCP server design M4).
 func TestLoad_MCP(t *testing.T) {

@@ -143,6 +143,8 @@ type Harness struct {
 // configuration from, the modules it composes beside identity, and the
 // Recorder its clients validate through.
 type setup struct {
+	// oauthHost is where OAuth client documents are fetched from (WithOAuthClientHost).
+	oauthHost         *OAuthClientHost
 	env               map[string]string
 	modules           []module.Module
 	recorder          *contracttest.Recorder
@@ -1124,6 +1126,9 @@ func New(t *testing.T, opts ...Option) *Harness {
 	}
 	access := identity.NewAccess(h.deps)
 	h.deps.Access = access
+	if s.oauthHost != nil {
+		s.oauthHost.Attach(access)
+	}
 	// The API request log runs as in the API process; FlushAPIRequests
 	// writes what it has queued.
 	t.Cleanup(access.StartRequestLog())

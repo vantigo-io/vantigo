@@ -701,8 +701,22 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 	// endpoint); a composition with no Access has no key to serve it to.
 	var mcp *mcpHandler
 	if deps.Access != nil && deps.Config != nil && deps.Config.MCPEnabled {
-		mcp = newMCPHandler(documents, deps.Access, deps.Limiter)
+		resourceMetadata := ""
+		if deps.Config.OAuthEnabled {
+			resourceMetadata = deps.Config.OAuthResourceMetadata
+		}
+		mcp = newMCPHandler(documents, deps.Access, deps.Limiter, resourceMetadata)
 		outer.Handle(mcpPath, mcp)
+	}
+	// The OAuth token endpoint (OAuth connections design C15, A22): every
+	// method, so a GET is its own 405, reached through identity's
+	// contracts.OAuthEndpoints. Only a Config with OAUTH_ENABLED on serves it;
+	// otherwise the path is the catch-all's 404. internal/server matches it
+	// ahead of the cross-origin guard (A9).
+	if deps.Config != nil && deps.Config.OAuthEnabled {
+		if endpoints, ok := deps.Access.(contracts.OAuthEndpoints); ok {
+			outer.HandleFunc(OAuthTokenPath, endpoints.ServeOAuthToken)
+		}
 	}
 
 	// Both the subtree and the bare "/api". Without the bare pattern,
@@ -736,6 +750,9 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 	}
 	return api, runners, nil
 }
+
+// OAuthTokenPath is where the OAuth token endpoint is registered (C15).
+const OAuthTokenPath = "/api/oauth/token"
 
 // AssistantModule is the name of the module that receives Deps.Operations for
 // the assistant principal.

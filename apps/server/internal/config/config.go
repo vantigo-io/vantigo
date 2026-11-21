@@ -207,6 +207,23 @@ type Config struct {
 	// on; off, the header is ignored everywhere (the operations that declare
 	// their own keep theirs) and nothing is stored.
 	IdempotencyEnabled bool
+	// OAuthEnabled is OAUTH_ENABLED (OAuth connections design C24, A24):
+	// whether api and server mode let an MCP client or app connect by
+	// signing in — the discovery documents, the token endpoint, the consent
+	// page's operations and the access tokens they issue. Defaults off until
+	// the consent page lands; off, every one of them answers 404, an access
+	// token is refused 401, and the connections already made are kept.
+	OAuthEnabled bool
+	// OAuthIssuer is the authorization server's issuer (C12, A12): AppOrigin
+	// with a default port dropped, then BasePath, no trailing slash.
+	OAuthIssuer string
+	// OAuthResource is the protected resource an access token is for (C5):
+	// OAuthIssuer followed by /api/mcp.
+	OAuthResource string
+	// OAuthResourceMetadata is the URL of the protected resource's metadata
+	// (C21, A13): the host-root well-known form, suffixed with the resource's
+	// path, which every WWW-Authenticate challenge names.
+	OAuthResourceMetadata string
 	// LiveDatabaseURL is LIVE_DATABASE_URL (live design L7): the connection
 	// the live hub's two dedicated connections (the listener and the presence
 	// publisher) open, for a deployment whose DATABASE_URL goes through a
@@ -787,6 +804,8 @@ func Load(env map[string]string) (*Config, error) {
 	c.LiveEnabled = boolean(&p, env, "LIVE_ENABLED", true)
 	c.MCPEnabled = boolean(&p, env, "MCP_ENABLED", true)
 	c.IdempotencyEnabled = boolean(&p, env, "IDEMPOTENCY_ENABLED", true)
+	c.OAuthEnabled = boolean(&p, env, "OAUTH_ENABLED", false)
+	c.OAuthIssuer, c.OAuthResource, c.OAuthResourceMetadata = oauthURLs(c.AppOrigin, c.BasePath)
 	c.LiveDatabaseURL = databaseURL(&p, env, "LIVE_DATABASE_URL", false)
 
 	c.BrregBaseURL = httpBaseURL(&p, env, "BRREG_BASE_URL", defaultBrregBaseURL)
@@ -881,6 +900,27 @@ func appOrigin(p *problems, env map[string]string) (origin, hostname string) {
 		return "", ""
 	}
 	return strings.ToLower(u.Scheme + "://" + u.Host), strings.ToLower(u.Hostname())
+}
+
+// oauthURLs are the OAuth issuer, the protected resource and the resource's
+// metadata URL for origin and basePath (OAuth connections design A12, A13):
+// origin, already lower-cased, with the scheme's default port dropped, so
+// the issuer a client compares is the one string every document carries.
+func oauthURLs(origin, basePath string) (issuer, resource, metadata string) {
+	if origin == "" {
+		return "", "", ""
+	}
+	if u, err := url.Parse(origin); err == nil {
+		host := u.Host
+		if (u.Scheme == "https" && u.Port() == "443") || (u.Scheme == "http" && u.Port() == "80") {
+			host = strings.TrimSuffix(host, ":"+u.Port())
+		}
+		origin = u.Scheme + "://" + host
+	}
+	issuer = origin + basePath
+	resource = issuer + "/api/mcp"
+	metadata = origin + "/.well-known/oauth-protected-resource" + basePath + "/api/mcp"
+	return issuer, resource, metadata
 }
 
 func basePath(p *problems, env map[string]string) string {

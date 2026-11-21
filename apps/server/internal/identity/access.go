@@ -27,6 +27,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/identity/store"
 	"github.com/vantigo-io/vantigo/server/internal/module"
 	"github.com/vantigo-io/vantigo/server/internal/netguard"
+	"github.com/vantigo-io/vantigo/server/internal/ratelimit"
 	"github.com/vantigo-io/vantigo/server/internal/secrets"
 )
 
@@ -99,6 +100,14 @@ type Access struct {
 	brandMP   metric.MeterProvider
 	brandOnce sync.Once
 	brandMtr  *brandMetrics
+	// oauthNet is what a client metadata document's fetch resolves, dials and
+	// trusts with (OAuth connections design A2); nil means the process's
+	// guarded transport. Only a test sets it (UseOAuthNetwork).
+	oauthNet   *oauthNetwork
+	oauthOnce  sync.Once
+	oauthFetch *oauthFetcher
+	// limiter counts the token endpoint's requests per client address (C15).
+	limiter *ratelimit.Limiter
 }
 
 // UseBrandAssets gives the brand logo import the application's own files, the
@@ -128,7 +137,7 @@ var _ contracts.Access = (*Access)(nil)
 //	deps.Access = a
 //	handler, err := module.Compose(deps, identity.Module(a))
 func NewAccess(d module.Deps) *Access {
-	return &Access{cfg: d.Config, q: store.New(d.Pool), pool: d.Pool, now: d.Clock, sso: newSSOSettingsReader(d.Pool, d.Clock, d.Secrets), log: d.Logger, dbPool: d.Pool, box: d.Secrets}
+	return &Access{cfg: d.Config, q: store.New(d.Pool), pool: d.Pool, now: d.Clock, sso: newSSOSettingsReader(d.Pool, d.Clock, d.Secrets), log: d.Logger, dbPool: d.Pool, box: d.Secrets, limiter: d.Limiter}
 }
 
 // Check evaluates rule for r. The scim rule admits a request that presents
@@ -149,7 +158,8 @@ func NewAccess(d module.Deps) *Access {
 // policies succeeds.
 //
 // A request that presents an integration's API key (Authorization: Bearer
-// vtg_…) is resolved by checkAPIKey, and no cookie is read.
+// vtg_…) is resolved by checkAPIKey, and one that presents an OAuth access
+// token (Bearer vta_…) by checkConnection; no cookie is read for either.
 //
 // A request whose context carries a grant (contracts.WithGrant, set only by
 // the operations dispatcher, never from a header or a cookie) is resolved by
@@ -194,6 +204,11 @@ func (a *Access) Check(r *http.Request, rule contracts.Rule) (contracts.Principa
 	} else if len(auth) == 1 {
 		if key, ok := apiKeyFrom(auth[0]); ok {
 			return a.checkAPIKey(ctx, r, rule, key, now)
+		}
+		// An OAuth access token is judged the same way, as its connection's
+		// alone (OAuth connections design A15): never by the cookie.
+		if token, ok := bearerWithPrefix(auth[0], accessTokenPrefix); ok {
+			return a.checkConnection(ctx, r, rule, token, now)
 		}
 	}
 	// Station credentials take precedence: a request presenting an operator
@@ -313,6 +328,12 @@ func (a *Access) Reject(w http.ResponseWriter, r *http.Request, rule contracts.R
 	// the reference may also hold is left alone.
 	if isAPIKeyRequest(r) {
 		rejectAPIKey(w, err)
+		return
+	}
+	// An access token's refusal is its connection's (OAuth connections
+	// design C21, A15): the session cookie is left alone too.
+	if isConnectionRequest(r) {
+		a.rejectConnection(w, err)
 		return
 	}
 	var station *stationRefusal

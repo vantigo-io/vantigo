@@ -88,6 +88,22 @@ type mcpTool struct {
 	Description string         `json:"description"`
 	InputSchema map[string]any `json:"inputSchema"`
 	Annotations map[string]any `json:"annotations"`
+	// SecuritySchemes is set while OAuth is on (OAuth connections design
+	// A14): the scope a tool needs, read for the reading tools and write for
+	// write and delete, as ChatGPT reads it.
+	SecuritySchemes []map[string]any `json:"securitySchemes,omitempty"`
+}
+
+// withSecuritySchemes is tools, each carrying the OAuth scope it needs (A14).
+func withSecuritySchemes(tools []mcpTool) []mcpTool {
+	for i := range tools {
+		scope := "read"
+		if tools[i].Name == mcpToolWrite || tools[i].Name == mcpToolDelete {
+			scope = "write"
+		}
+		tools[i].SecuritySchemes = []map[string]any{{"type": "oauth2", "scopes": []string{scope}}}
+	}
+	return tools
 }
 
 // stringMapSchema is the schema of a map of strings or lists of strings: the

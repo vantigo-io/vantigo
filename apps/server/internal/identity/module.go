@@ -51,6 +51,10 @@ var (
 	policyBrandCSS    = ratelimit.Policy{Name: "BrandCSS", Limit: 300, Window: time.Minute, Message: authRateLimitMessage}
 	policyBrandAssets = ratelimit.Policy{Name: "BrandAssets", Limit: 600, Window: time.Minute, Message: authRateLimitMessage}
 
+	// policyOAuthPreview bounds the consent page's previews, each of which
+	// may fetch a client's metadata document (OAuth connections design A2).
+	policyOAuthPreview = ratelimit.Policy{Name: "OAuthPreview", Limit: 20, Window: time.Minute, Message: authRateLimitMessage}
+
 	policyDirectorySearch  = ratelimit.Policy{Name: "DirectorySearch", Limit: 60, Window: time.Minute, Message: authRateLimitMessage}
 	policyDirectoryMatches = ratelimit.Policy{Name: "DirectoryMatches", Limit: 6, Window: time.Minute, Message: authRateLimitMessage}
 )
@@ -75,7 +79,12 @@ var policyLoginAttempts = ratelimit.Policy{
 // authentication (HOST/Program.cs:120-136). Each area adds its operations
 // as it implements them.
 var limits = map[string]ratelimit.Policy{
-	"postIdentityLogin":           policyLogin,
+	"postIdentityLogin": policyLogin,
+
+	// Each preview may fetch a client's metadata document (OAuth
+	// connections design A2).
+	"postIdentityOauthAuthorizationsPreview": policyOAuthPreview,
+
 	"postIdentityBootstrap":       policyBootstrap,
 	"postIdentityAccountPassword": policyPasswordRecovery,
 
