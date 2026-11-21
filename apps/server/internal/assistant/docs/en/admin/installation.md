@@ -336,7 +336,8 @@ HTTP replica does not multiply the pollers:
 1. Set `WORKERS_IN_PROCESS=0` in `vantigo.env`. It applies to the API replicas.
 2. Run one extra container from the same image with the `worker` command. It always
    runs the workers regardless of `WORKERS_IN_PROCESS`, and serves only `/health/live`
-   and `/health/ready` for probes.
+   and `/health/ready` for probes — and, with `MANAGEMENT_PORT` set, the
+   [management listener](/en/admin/management-listener/), as every command does.
 3. The worker needs no OIDC or SCIM settings of its own. Who holds a permission (a
    directory's deactivation counts only while SCIM is on) and the accounts mode (local
    or federated) both follow the single sign-on settings in the database, which the
@@ -347,9 +348,14 @@ HTTP replica does not multiply the pollers:
    rules it reads from the database — so the worker container, like the API, needs
    outbound https to `login.microsoftonline.com` and `graph.microsoft.com`, without a
    proxy ([Microsoft Entra ID](/en/admin/entra/#before-you-start)).
-4. Keep the clocks of the API and worker hosts in sync (NTP). The Staff accounts
-   worker's claims are leases that each process compares with its own clock, so a
-   clock that runs ahead can take over a link another process is still working on.
+4. Keep the clocks of the API and worker hosts in sync (NTP) all the same. Leases,
+   claims and rate-limit windows are computed from the process's clock and compared
+   with ones another process wrote; each process therefore reads the database's clock
+   rather than its own — it measures the difference at start and every minute, and
+   moves gently toward it — so a host whose clock runs ahead cannot take over a claim
+   another process still holds. A difference beyond `CLOCK_MAX_SKEW` (5 seconds by
+   default) is logged as a warning once an hour, and is the sign that the host's time
+   synchronisation is broken ([Kubernetes](/en/admin/kubernetes/#the-clock)).
 
 Replicas that should neither migrate nor run workers can run the `server` command
 instead of `api`; it serves only, whatever `WORKERS_IN_PROCESS` says. Whichever topology
@@ -487,27 +493,44 @@ stops the start-up even with the worker off. A failed fetch is logged at warning
 the area, the day and the feed's host, never the address's path or query. See
 [Spot prices](/en/reference/energy/#spot-prices).
 
-On shutdown the process drains for up to `SHUTDOWN_TIMEOUT` (30 seconds by default),
-enough for the longest single worker operation to finish and commit. `compose.yaml`
-sets `stop_grace_period: 35s` on the `vantigo` service so Compose's SIGKILL never
-arrives before that drain can complete. Whatever you set `SHUTDOWN_TIMEOUT` to, keep
-`stop_grace_period` (Compose) or `terminationGracePeriodSeconds` (Kubernetes) comfortably
-above it, or an in-flight operation can be killed mid-way and retried after restart.
-A SIGTERM that arrives during a migration waits for it to finish; a second signal
-terminates immediately.
+On shutdown the process first fails its readiness probe with `draining` and keeps
+serving for `SHUTDOWN_DRAIN_DELAY` (0 by default: no wait), so a load balancer can take
+it out of rotation. Then it closes the live-update sockets, so browsers reconnect to
+another replica, stops the workers and drains in-flight requests. Everything after the
+delay — requests, workers, the management listener, the live sockets, the last
+rate-limit flush and the database pool — shares one `SHUTDOWN_TIMEOUT` (30 seconds by
+default), enough for the longest single worker operation to finish and commit.
+`compose.yaml` sets `stop_grace_period: 35s` on the `vantigo` service so Compose's
+SIGKILL never arrives before that drain can complete. Whatever you set the two to, keep
+`stop_grace_period` (Compose) or `terminationGracePeriodSeconds` (Kubernetes) above
+`SHUTDOWN_DRAIN_DELAY` + `SHUTDOWN_TIMEOUT` with a few seconds to spare, or an in-flight
+operation can be killed mid-way and retried after restart. A SIGTERM that arrives
+during a migration waits for it to finish; a second signal terminates immediately.
 
 ## Health probes
 
 The image has no shell, so the container `HEALTHCHECK` execs the binary itself
 (`/app/vantigo healthcheck`) rather than running a `CMD-SHELL` curl or wget one-liner.
-It probes `/health/ready`: startup complete, PostgreSQL reachable, and object storage
-reachable if configured — the `storage` check, a `HeadBucket` for `s3` and a stat of
-the root for `fs` ([Object storage](/en/admin/object-storage/#the-readiness-check)). Keep any probe you configure — Compose's `healthcheck.test`,
-a Kubernetes liveness or readiness probe, anything else — in that same exec form. An
-HTTP-style probe that connects directly, rather than execing inside the container,
-sends its own address as the `Host` header, and the host filter only accepts
-`APP_URL`'s host plus loopback (`localhost`, `127.0.0.1`, `::1`); every other `Host`
-is rejected with 400, so such a probe always fails.
+It probes `/health/ready`, which answers `200` when every check passes and `503` naming
+the ones that fail in `failing`:
+
+| Check | Fails while |
+| --- | --- |
+| `postgres` | PostgreSQL does not answer a ping |
+| `storage` | object storage is configured and does not answer: a `HeadBucket` for `s3`, a stat of the root for `fs` ([Object storage](/en/admin/object-storage/#the-readiness-check)) |
+| `schema` | `server` or `worker` waits for the database to reach the migrations the binary carries ([Upgrading](#upgrading)) |
+| `startup` | the process has not finished starting |
+| `draining` | the process is shutting down ([Background workers and scaling](#background-workers-and-scaling)) |
+
+`/health/live` answers `200` whenever the process can answer at all. Keep any probe you
+configure on the public port — Compose's `healthcheck.test`, anything else — in that
+same exec form. An HTTP-style probe that connects directly, rather than execing inside
+the container, sends its own address as the `Host` header, and the host filter only
+accepts `APP_URL`'s host plus loopback (`localhost`, `127.0.0.1`, `::1`); every other
+`Host` is rejected with 400, so such a probe always fails. Kubernetes `httpGet` probes
+belong on the [management listener](/en/admin/management-listener/#the-probes), which
+serves the same two probes, the same checks, without a host filter or a token, in every
+command ([Kubernetes](/en/admin/kubernetes/)).
 
 The stack's probe runs every 10 seconds with a 5-second timeout, 6 retries and a
 30-second start period.
@@ -949,6 +972,18 @@ docker compose up -d
 Compose pulls the new image, runs `vantigo-migrate` again as a one-shot job, and
 restarts `vantigo` only once the migrations have completed successfully. If you pinned
 `VANTIGO_TAG` in `.env`, change it to the new release first.
+
+**With several replicas.** Migrate once, with `vantigo migrate` on
+`MIGRATIONS_DATABASE_URL`, then roll the replicas onto the new image. Run the replicas
+with `server` (and the workers with `worker`), never `api`: `api` migrates before it
+serves, and an old `api` that restarts during a rollout would ask to migrate a schema
+with versions it does not know. A `server` or `worker` that starts before the migration
+has finished does nothing but answer its probes: it waits, polling every 2 seconds and
+logging every 30, until the database holds at least the migrations it was built with,
+and its readiness fails with `schema` meanwhile — so a rollout that starts early stops
+by itself until the migration lands, and does not proceed if it fails. A replica of the
+previous release on the newer schema starts at once. See
+[Kubernetes](/en/admin/kubernetes/#rolling-upgrades).
 
 **The release with Invoices.** An installation that leaves `MODULES` unset enables every
 module this binary knows, so it gets the Invoices app on upgrade. Nobody can use it

@@ -1,6 +1,6 @@
 ---
 title: "Management-lytter"
-description: "Det private, bærerbeskyttede statusendepunktet et kontrollplan spør, leveringene i hendelsesutboksen som står fast og hvordan de prøves på nytt eller hoppes over, og hvordan den første eieren settes inn ved invitasjon."
+description: "Den private lytteren et kontrollplan spør: helsesjekkene i alle kommandoer, den bærerbeskyttede statusen, leveringene i hendelsesutboksen som står fast og hvordan de prøves på nytt eller hoppes over, og hvordan den første eieren settes inn ved invitasjon."
 sidebar:
   order: 40
 sources:
@@ -11,18 +11,35 @@ Et kontrollplan som kjører mange Vantigo-instanser trenger å spørre hver av d
 tre ting uten å holde en brukerøkt: hvilken versjon som kjører, om den første
 eieren er satt inn, og hvor mye den brukes. Management-lytteren svarer nøyaktig
 på det — og lar operatøren se og rydde leveringene i hendelsesutboksen som står fast
-([Hendelsesutboksen](#hendelsesutboksen)) — og ikke noe annet.
+([Hendelsesutboksen](#hendelsesutboksen)) — og ikke noe annet. Den betjener også de
+to helsesjekkene, slik at en orkestrator kan sjekke hver pod på én port som ikke noe
+vertsfilter vokter ([Helsesjekkene](#helsesjekkene)).
 
 | Variabel | Formål | Standard |
 | --- | --- | --- |
 | `MANAGEMENT_PORT` | Port for den private lytteren (må være en annen enn `PORT`) | ikke satt (slått av) |
-| `MANAGEMENT_TOKEN` | Bærertoken, minst 32 tegn, ingen blanktegn | ikke satt (slått av) |
+| `MANAGEMENT_TOKEN` | Bærertoken for alle ruter unntatt helsesjekkene, minst 32 tegn, ingen blanktegn | ikke satt (bare helsesjekkene svarer) |
 
-De to er én bryter: sett begge eller ingen — én alene er en konfigurasjonsfeil.
-Lytteren kjører i kommandoene `api` og `server`; `worker` åpner den aldri, og
-den offentlige lytteren betjener heller aldri `/management/status` (en sti som
-ikke treffer noe der, faller gjennom til SPA-skallet, nøyaktig som enhver annen
-ukjent sti gjør).
+`MANAGEMENT_PORT` er bryteren. Med den alene betjener lytteren helsesjekkene og svarer
+`401` på alle andre ruter. Med `MANAGEMENT_TOKEN` i tillegg åpnes rutene nedenfor for
+den som har tokenet. `MANAGEMENT_TOKEN` uten `MANAGEMENT_PORT` er en
+konfigurasjonsfeil.
+
+Lytteren kjører i alle kommandoer som betjener forespørsler: `api`, `server` og
+`worker`. Den åpnes før noe annet starter, mens `server` og `worker` fortsatt venter
+på skjemaet ([Oppgradering](/nb/admin/installation/#oppgradering)), så helsesjekkene
+svarer fra første sekund; statusen kan svare `503` til prosessen er oppe. Den
+offentlige lytteren betjener aldri `/management/status` (en sti som ikke treffer noe
+der, faller gjennom til SPA-skallet, nøyaktig som enhver annen ukjent sti gjør).
+
+## Helsesjekkene
+
+`GET /health/live` og `GET /health/ready` svarer uten token, på denne lytteren som på
+den offentlige: samme handler og samme sjekker
+([Helseprober](/nb/admin/installation/#helseprober)). De avslører versjonen og navnene
+på sjekkene som feiler, ikke noe annet. Pek en `httpGet`-probe i Kubernetes mot denne
+porten: vertsfilteret på den offentlige lytteren avviser en pod-adresse med `400`
+([Kubernetes](/nb/admin/kubernetes/)).
 
 ## Endepunktet
 
@@ -48,7 +65,7 @@ ukjent sti gjør).
 | `live.queueUsage` | `pg_notification_queue_usage()`, fra `0` til `1`, eller `-1` når den ikke kunne leses. Nær `1` betyr at en lytter står fast |
 | `live.connections` | Sanntidsforbindelsene som er åpne på denne replikaen |
 
-`live`-blokken er utelatt i svaret fra en ren `worker`-prosess og når `LIVE_ENABLED=0`: den
+`live`-blokken er utelatt i svaret fra en `worker`-prosess og når `LIVE_ENABLED=0`: den
 beskriver replikaen du spør ([Sanntidsoppdateringer og proxyen
 din](/nb/admin/installation/#sanntidsoppdateringer-og-proxyen-din)).
 
@@ -56,13 +73,12 @@ Det finnes ikke noe `usage.storageBytes`-felt — bruk er bare brukere, aktive b
 og databasestørrelse.
 
 Et feil eller manglende token er `401` med `WWW-Authenticate: Bearer`, for
-`/management/status` og for alle andre stier på denne lytteren: bærerkontrollen
-pakker inn hele handleren, foran rutingen, slik at en uautentisert kaller ikke
-kan finne ut hvilke ruter som finnes. En avhengighet som feiler er `503`; årsaken
-logges, aldri returneres. Et tomt konfigurert token — ikke mulig å nå gjennom
-vanlig konfigurasjon, siden `MANAGEMENT_TOKEN` må være minst 32 tegn, men lytteren
-stoler ikke på den oppstrøms kontrollen — stenger endepunktet i stedet for å åpne
-det: hver forespørsel avvises da, `401`, uansett hva som presenteres.
+`/management/status` og for alle andre stier på denne lytteren unntatt de to
+helsesjekkene: bærerkontrollen pakker inn alt annet, foran rutingen, slik at en
+uautentisert kaller ikke kan finne ut hvilke ruter som finnes. En avhengighet som
+feiler er `503`; årsaken logges, aldri returneres. Uten et konfigurert
+`MANAGEMENT_TOKEN` er de beskyttede rutene stengt, ikke åpne: hver forespørsel til dem
+avvises da, `401`, uansett hva som presenteres.
 
 ## Hendelsesutboksen
 
@@ -79,8 +95,9 @@ rekkefølgen. Å rydde den er operatørens jobb, med tre kall på denne lytteren
 samme bærertokenet. Ingen bruker i arbeidsområdet og ingen tillatelse når dem.
 
 Utsenderen kjører der arbeiderne kjører — kommandoen `worker`, eller `api` med
-`WORKERS_IN_PROCESS=1` — og har ingen innstilling av sin egen. Den logger det du skal
-se etter:
+`WORKERS_IN_PROCESS=1` — og har ingen innstilling av sin egen. Kallene nedenfor
+virker på lytteren i alle kommandoer: utboksen ligger i databasen, ikke i prosessen.
+Den logger det du skal se etter:
 
 | Logglinje | Nivå | Betydning |
 | --- | --- | --- |

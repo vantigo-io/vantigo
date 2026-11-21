@@ -1813,6 +1813,9 @@ The Assistant is the first caller ([The model loop](/en/reference/assistant/#the
   A rule set of a different kind, `test-fakes`, covers every non-test file and
   refuses a provider's fake — `internal/payments/vipps/vippstest` — outside
   `_test.go` files, so a fake can serve every package's tests and never ship.
+  Beside the boundaries, the same file enables `forbidigo` for one rule of the platform's:
+  a worker file computes its deadlines from `Deps.Clock`, never `time.Now`
+  ([The clock](/en/contributing/platform-packages/#the-clock)).
 - **Rule 4**: `apps/server/internal/db/schema_test.go` scans every migration and
   query file and fails when one module's SQL names another module's schema.
 - **Rule 5**: `module.Compose` itself. It fails on a duplicate module name, an
