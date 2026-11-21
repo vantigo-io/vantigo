@@ -86,8 +86,9 @@ An integration can also be reached without a key being copied anywhere: a client
 having an Owner sign in and approve it, and then holds a one-hour access token, `Bearer vta_…`,
 that it renews on its own. A token is accepted wherever a key is, on `/api/mcp` and on REST, and
 acts as its integration exactly as a key does, with the integration's roles and rate limit; a
-connection approved for Read only is a read-only key. It is on by default and switched off
-with `OAUTH_ENABLED=0`. See [OAuth connections](/en/reference/oauth/).
+connection approved for Read only is a read-only key. A client either publishes a description of
+itself or is registered here by an Owner, and a client ends its own connection at
+`POST /api/oauth/revoke`. It is on by default and switched off with `OAUTH_ENABLED=0`. See [OAuth connections](/en/reference/oauth/).
 
 ## Refusals
 

@@ -295,11 +295,11 @@ Fanen **Forespørsler** på integrasjonens side viser hva nøklene har kalt de s
 forespørslene per dag etter status, operasjonene som er kalt mest, og de 200 siste med nøkkelen,
 statusen og, for en avvist forespørsel, hvorfor. En forespørsel som gjentok en tidligere med samme
 `Idempotency-Key`, og fikk svaret på den igjen uten å kjøres to ganger, er merket *Gjentatt svar
-for Idempotency-Key*. **Nøkkel**, **Status**, **Årsak** og **Dag** snevrer den inn. En ny
-forespørsel vises der i løpet av noen sekunder. En forespørsel fra en app som har koblet seg til
-ved å logge inn, viser appen, merket *(tilkoblet app)*, og de to årsakene *Den tilkoblede appen
-kan bare lese* og *Den tilkoblede appen har ikke lenger tilgang* gjelder den; tilkobling ved å
-logge inn er ikke slått på ennå.
+for Idempotency-Key*. **Nøkkel eller app**, **Status**, **Årsak** og **Dag** snevrer den inn:
+**Nøkkel eller app** viser nøklene og de tilkoblede appene, så du kan se forespørslene til én app
+alene. En ny forespørsel vises der i løpet av noen sekunder. En forespørsel fra en app som har
+koblet seg til ved å logge inn, viser appen, merket *(tilkoblet app)*, og de to årsakene *Den
+tilkoblede appen kan bare lese* og *Den tilkoblede appen har ikke lenger tilgang* gjelder den.
 
 **Kontaktpersonen** og hver eier får en e-post 14 dager og 3 dager før en nøkkel utløper, og på
 dagen, med mindre den er rotert eller tilbakekalt. Roter nøkkelen før den tid.
@@ -335,9 +335,29 @@ Vantigos, eller når svaret går til et program på datamaskinen din; sjekk vert
 godkjenner. Den som ikke er eier, får beskjed om å spørre en. Tilkoblingene vises så under
 **Tilkoblede apper** på integrasjonens **Oversikt**, under **MCP**: appen og verten dens, hvem
 som koblet den til, tilgangen, når den ble koblet til, siste bruk og når den slutter, høyst 180
-dager etter at den ble godkjent. En der eieren siden har mistet rollen, er **Inaktiv** og
-avvises. **Tilbakekall**, etter en bekreftelse, avslutter en tilkobling ved neste forespørsel;
-appen må logge inn igjen.
+dager etter at den ble godkjent, og om den logget inn med en **Klientbeskrivelse** den
+publiserer, eller som en **Registrert klient**. En der eieren siden har mistet rollen, er
+**Inaktiv** og avvises; en der verten ikke lenger står på listen over **Klientverter**, er også
+**Inaktiv**, og kan ikke fornye tilgangen før verten står i listen igjen. **Tilbakekall**, etter en
+bekreftelse, avslutter en tilkobling ved neste forespørsel; appen må logge inn igjen. En app som
+logger ut, avslutter sin egen tilkobling på samme måte. Når MCP-seksjonen er på, viser den begge
+måtene å koble til på: **Koble til med en nøkkel** og **Koble til ved å logge inn**, med adressen
+som limes inn i Claude eller ChatGPT — som når Vantigo fra internett, så arbeidsområdet trenger en
+offentlig `https`-adresse — og kommandoen for Claude Code.
+
+Cursor, VS Code og andre apper som ikke publiserer en beskrivelse av seg selv, logger inn med en
+klient registrert på siden **API-tilgang**, under **Registrerte klienter**. **Registrer en
+klient** ber om et **Navn**, som vises på samtykkesiden og under **Tilkoblede apper**, og appens
+**Omdirigerings-URI-er**, én per linje, slik appen dokumenterer dem; så viser den **Klient-ID**,
+`vtc_…`, som skrives inn i appens innstillinger med klienthemmeligheten tom. Samtykkesiden sier
+da at appen er **Registrert i dette arbeidsområdet av** deg. **Endre** endrer navnet og
+omdirigerings-URI-ene; **Arkiver**, etter en bekreftelse, kobler fra alle apper som er koblet til
+med den, og kan ikke angres.
+
+**Klientverter**, på samme side, sier hvilke verter apper kan koble seg til fra ved innlogging,
+som `claude.ai` og `chatgpt.com`, én per linje; et underdomene av en vert i listen tillates også.
+Står den tom, som er standard, kan alle verter det. Registrerte klienter tillates alltid, og å
+lagre kobler ingenting fra.
 
 Detaljene — hva en nøkkel når, begrensning, nøkler for bare lesing, nettverk,
 hastighetsgrensen, svarene en klient får, forespørselsloggen, webhook-endepunkter, MCP og hva du

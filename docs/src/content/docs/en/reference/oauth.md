@@ -1,6 +1,6 @@
 ---
 title: "OAuth connections"
-description: "Connecting an MCP client or app by signing in, not with a key: OAUTH_ENABLED, the discovery documents, clients identified by a metadata document and the rules they are held to, redirect URIs, the authorization request and the consent operations, the token endpoint and its errors, the lifetimes, refresh and its grace, what a connection may do, the refusals and their challenges, what ends a connection, the request log and the upkeep."
+description: "Connecting an MCP client or app by signing in, not with a key: OAUTH_ENABLED, the discovery documents, clients identified by a metadata document and the rules they are held to, clients registered by hand, the client hosts that may connect, redirect URIs, the authorization request and the consent operations, the token endpoint and its errors, the lifetimes, refresh and its grace, the revalidation of a document, the revocation endpoint, what a connection may do, the refusals and their challenges, what ends a connection, the request log and the upkeep."
 sidebar:
   order: 5
 sources:
@@ -9,8 +9,13 @@ sources:
   - apps/server/internal/identity/oauth_client.go
   - apps/server/internal/identity/oauth_connections.go
   - apps/server/internal/identity/oauth_token.go
+  - apps/server/internal/identity/oauth_clients.go
+  - apps/server/internal/identity/oauth_revalidate.go
+  - apps/server/internal/identity/oauth_revoke.go
   - apps/server/internal/identity/queries/oauth.sql
+  - apps/server/internal/identity/queries/oauth_clients.sql
   - apps/server/internal/db/migrations/00218_identity_oauth.sql
+  - apps/server/internal/db/migrations/00219_identity_oauth_clients.sql
   - apps/server/internal/server/oauth_discovery.go
   - apps/server/internal/modtest/oauth.go
   - apps/server/internal/config/config.go
@@ -29,15 +34,17 @@ for a person writing or configuring a client; it follows OAuth 2.1 with PKCE, th
 resource metadata of RFC 9728, the authorization server metadata of RFC 8414 and the client ID
 metadata documents the MCP authorization specification describes.
 
-How an Owner connects Claude Code, Claude or ChatGPT, what the consent page shows and how a
-connection is revoked are in the [administration guide](/en/admin/api-access/#connecting-by-signing-in).
+How an Owner connects Claude Code, Claude, ChatGPT, Cursor or VS Code, what the consent page
+shows and how a connection is revoked are in the
+[administration guide](/en/admin/api-access/#connecting-by-signing-in).
 
 ## Switching it off
 
 It is on by default. `OAUTH_ENABLED=0` ([Configuration](/en/admin/configuration/)) switches it
-off: the discovery documents and the token endpoint answer `404`, the consent operations and the
-connection operations answer `404` (the consent page says so, and the integration's page shows
-no **Connected apps**), an access token (`Bearer vta_…`) is refused `401` as an unknown key is,
+off: the discovery documents, the token endpoint and the revocation endpoint answer `404`, the
+consent operations, the connection operations, the registered clients' operations and the client
+hosts' answer `404` (the consent page says so, and the screens show no **Connected apps**,
+**Registered clients** or **Client hosts**), an access token (`Bearer vta_…`) is refused `401` as an unknown key is,
 and `/api/mcp`'s `401` is the plain one an API-key client expects. Connections already made are
 kept, and work again when it is turned back on.
 
@@ -81,6 +88,8 @@ The authorization server's metadata:
   "issuer": "https://vantigo.example.com",
   "authorization_endpoint": "https://vantigo.example.com/oauth/authorize",
   "token_endpoint": "https://vantigo.example.com/api/oauth/token",
+  "revocation_endpoint": "https://vantigo.example.com/api/oauth/revoke",
+  "revocation_endpoint_auth_methods_supported": ["none"],
   "response_types_supported": ["code"],
   "response_modes_supported": ["query"],
   "grant_types_supported": ["authorization_code", "refresh_token"],
@@ -97,9 +106,16 @@ OpenID Connect either — no ID token and no `userinfo` — and no JWKS: tokens 
 
 ## Clients
 
-A client is identified by a **client ID metadata document**: its `client_id` is an `https` URL,
-and the document at that URL describes it. Claude, Claude Code and ChatGPT identify themselves
-this way.
+A client is identified in one of two ways:
+
+- by a **client ID metadata document**: its `client_id` is an `https` URL, and the document at
+  that URL describes it. Claude, Claude Code and ChatGPT identify themselves this way;
+- as a **registered client**: an Owner registered it here, and its `client_id` is one Vantigo
+  minted, `vtc_` and 24 letters and digits ([Registered clients](#registered-clients)). For a
+  client that publishes no document, such as Cursor and VS Code.
+
+A `client_id` that starts with `vtc_` is only ever looked up among the registered clients, never
+fetched.
 
 A `client_id` is accepted when it is an `https` URL of at most 512 characters, on port 443, with
 a host name in ASCII (a host spelled in punycode is refused, as is an IP address), no user, no
@@ -125,8 +141,66 @@ page, a `jwks_uri` — is ignored and never fetched or shown.
 
 A good document is kept for its `Cache-Control: max-age`, at least 5 minutes and at most 24
 hours, one hour when it has none. A failure is never kept; one `client_id` is fetched at most
-once in 10 seconds by each server process. A document is fetched only while an Owner previews or
-approves a request (below), never for an anonymous caller.
+once in 10 seconds by each server process. A document is fetched while an Owner previews or
+approves a request (below), and again, in the background, when one of its connections refreshes
+after the cached copy has expired ([Revalidation](#revalidation)); never for a caller who holds
+neither a session nor a connection.
+
+### Registered clients
+
+An Owner registers a client by hand for an app that publishes no document. The operations are
+`policy:Owner+OwnerManagement` (the Owner-MFA rule applies), available neither to an API key nor
+to the Assistant, and answer `404` while `OAUTH_ENABLED` is off:
+
+| Operation | What it does |
+| --- | --- |
+| `GET /api/v1/identity/oauth-clients` | the clients not archived, oldest first, each with who registered it and how many of its connections are live |
+| `POST /api/v1/identity/oauth-clients` | registers one: `201` with its minted `client_id`; at most 50 at once (`409 oauth_client_limit`); audited `oauth_client.created` |
+| `PATCH /api/v1/identity/oauth-clients/{id}` | replaces its name and redirect URIs under `If-Match` on its `version` (`412 version_mismatch`); its connections are kept; audited `oauth_client.updated` |
+| `POST /api/v1/identity/oauth-clients/{id}/archive` | archives it under `If-Match` and revokes every connection it has in the same transaction (`client_archived`); `204`; it cannot be undone; audited `oauth_client.archived` |
+
+The body of a registration or an edit is `{"name", "redirectUris"}`. The name is 1 to 80
+characters once control and bidirectional characters are removed; the redirect URIs are 1 to 20,
+each held to the rules a document's are ([Redirect URIs](#redirect-uris)), repeats dropped. A
+body that breaks a rule is `400 invalid_request` with the field at fault (`name`,
+`redirectUris`); the message never repeats what was sent. An archived client, or one never
+registered, is `404 not_found`.
+
+A registered client is a public client like any other: PKCE, `none` at the token endpoint, no
+secret. On the consent page it is shown with **Registered in this workspace by** the person who
+registered it instead of the host a document was read from, and the host shown and kept on its
+connections is the redirect URI's. Its redirect URIs are an Owner's own, so an error is always
+redirected without a click, and there is no first-use notice or name warning. Changing its
+redirect URIs applies from the next sign-in: a connection made before keeps working; revoke it in
+**Connected apps** when it should not.
+
+### Client hosts
+
+An Owner can limit which hosts' clients may connect by their document, with the setting
+`oauth_client_hosts` on the identity settings:
+
+- `GET /api/v1/identity/oauth/settings` answers `{"clientHosts": [...]}`, lower-case and sorted;
+- `PUT /api/v1/identity/oauth/settings` with `{"clientHosts": [...]}` replaces it. Each entry is a
+  DNS name of at least two labels in ASCII — no address, port, wildcard or punycode — and there
+  are at most 50; case and repeats are ignored. Anything else is `400 invalid_request` on
+  `clientHosts`. The list already held writes nothing; a change is audited
+  `oauth.client_hosts_changed` with the list before and after.
+
+Both are `policy:Owner+OwnerManagement`, never for an API key or the Assistant, and `404` while
+`OAUTH_ENABLED` is off.
+
+**Empty**, the default, admits any client identified by a document. Otherwise the `client_id`'s
+host must **equal an entry or be a subdomain of one**: `claude.ai` admits `claude.ai` and
+`api.claude.ai`, not `notclaude.ai`. **Registered clients are always admitted.** The list is held:
+
+- at the preview and the approval, **before** the document is fetched: a host it leaves out is
+  a refused client and is never fetched;
+- at **every refresh**: a connection whose host it leaves out is `invalid_grant` ("This workspace
+  no longer admits this client's host."), with the refresh token left unspent and nothing
+  revoked. An access token already issued works until it expires, within the hour.
+
+Changing the list **does not end** a connection: one whose host is left out is listed as
+`inactive` with the reason `client_not_allowed`, and renews again once its host is listed.
 
 ### Redirect URIs
 
@@ -143,8 +217,8 @@ The client sends the person's browser to `<issuer>/oauth/authorize` with:
 | Parameter | Rule |
 | --- | --- |
 | `response_type` | `code` |
-| `client_id` | the client's metadata document URL |
-| `redirect_uri` | one the document lists |
+| `client_id` | the client's metadata document URL, or a registered client's `vtc_…` |
+| `redirect_uri` | one the document, or the registered client, lists |
 | `code_challenge` | required: 43 characters of `[A-Za-z0-9_-]` |
 | `code_challenge_method` | `S256` |
 | `scope` | `read`, `write` and `offline_access`, separated by spaces; none, or only `offline_access`, means `read` |
@@ -154,15 +228,16 @@ The client sends the person's browser to `<issuer>/oauth/authorize` with:
 Each parameter appears at most once. `write` includes `read`. `offline_access` is accepted and
 changes nothing: a refresh token is always issued.
 
-The client and the redirect URI are judged first. A `client_id` that is refused, a document that
-cannot be fetched or breaks a rule, and a `redirect_uri` the document does not list are shown to
-the person as a refused client, and the browser is **never** sent back to the client. Anything
+The client and the redirect URI are judged first. A `client_id` that is refused, a registered
+client that is unknown or archived, a host the [client hosts](#client-hosts) leave out, a
+document that cannot be fetched or breaks a rule, and a `redirect_uri` the client does not list
+are shown to the person as a refused client, and the browser is **never** sent back to the client. Anything
 else wrong is the client's to be told, and the browser goes back to the redirect URI with
 `error` — `unsupported_response_type`, `invalid_request` (no PKCE, a method other than `S256`, a
 repeated parameter, a `state` over its bound), `invalid_scope` or `invalid_target` — and
-`error_description`, `state` and `iss`. It goes back at once only when the redirect URI's host is
-the `client_id`'s host or a loopback one **and** a client of that host has been connected here
-before; otherwise the page shows the error and a button that returns to that host, so a crafted
+`error_description`, `state` and `iss`. It goes back at once for a registered client, and for a
+document's client only when the redirect URI's host is the `client_id`'s host or a loopback one
+**and** a client of that host has been connected here before; otherwise the page shows the error and a button that returns to that host, so a crafted
 request cannot bounce a signed-in Owner to a host nobody has approved.
 
 ### The consent operations
@@ -173,8 +248,9 @@ applies), neither available to an API key nor to the Assistant:
 
 - `POST /api/v1/identity/oauth/authorizations/preview` with `{"query": "<the query string>"}`
   answers `client_refused`, `redirect` (with `redirectTo` and whether it is `automatic`) or
-  `consent`: the name the client calls itself (control and bidirectional characters stripped,
-  at most two combining or enclosing marks on a character, cut at 80 characters), the host Vantigo fetched its document from, the redirect URI's host and
+  `consent`: the client's `kind` (`metadata` or `registered`, with `registeredBy` for the
+  latter), the name the client calls itself (control and bidirectional characters stripped,
+  at most two combining or enclosing marks on a character, cut at 80 characters), the host Vantigo fetched its document from (for a registered client, the redirect URI's), the redirect URI's host and
   whether it is loopback, the scopes asked, whether a client of this host has been connected
   before, whether the name it claims contains "Vantigo" or the workspace's name (`APP_TITLE`,
   when it is set), and the integrations with whether each is **eligible** — active, and its MCP
@@ -273,7 +349,8 @@ A spent token is judged as a replay before anything else about the request, what
 `client_id` or `scope` it is sent with: whoever presents it holds it. An unspent token sent with
 another `client_id` or a wider `scope` is refused and spends nothing. A refresh of a connection
 whose tokens would be refused anyway — its approver no longer an active Owner, its integration
-archived or disabled — is `invalid_grant`, and the token is left as it was.
+archived or disabled — or whose client's host the [client hosts](#client-hosts) now leave out
+is `invalid_grant`, and the token is left as it was.
 
 Refreshes of one connection queue on the connection, so two at once never both spend the same
 token: the second is the first one's retry.
@@ -292,7 +369,60 @@ A token pair is answered as:
 
 Other errors: `unsupported_grant_type` for a grant other than the two, `invalid_request` for a
 missing, repeated or malformed parameter or another body, and `invalid_grant` for a code or
-refresh token that is unknown, expired, spent or whose connection has ended.
+refresh token that is unknown, expired, spent or whose connection has ended. A registered
+client's `client_id` sent as a code or a refresh token is `invalid_grant`, as any string is that
+is not one.
+
+### Revalidation
+
+A document's client is checked again while it keeps renewing. When a connection of a client
+identified by a document refreshes and the cached document has expired, the refresh is answered
+as usual and the document is then fetched again **in the background**, by the rules of
+[Clients](#clients):
+
+- a document that is read and **no longer holds** — it names another `client_id`, breaks a rule,
+  or no longer lists the connection's redirect URI — **revokes the connection**
+  (`client_document_changed`, audited `connection.revoked` as `system:oauth`). The tokens the
+  refresh just issued stop at their next request;
+- a document that **cannot be read** — the host unreachable, a timeout, a status other than
+  `200`, a redirect, a body over 16 KiB — is transient and changes nothing; the next refresh after
+  the cache has expired tries again;
+- a document that **still holds** is cached again for its `max-age`.
+
+A refresh while the cache is fresh fetches nothing. One `client_id` is fetched at most once in 10
+seconds by each server process, and each process runs at most 8 revalidations at once; a refresh
+that finds them busy starts none. The fetch holds no database connection or transaction: the
+cache is read before it, and the revocation or the cache write is a transaction of its own after.
+A registered client is never revalidated: an Owner changes it by hand.
+
+## The revocation endpoint
+
+`POST <issuer>/api/oauth/revoke` ([RFC 7009](https://www.rfc-editor.org/rfc/rfc7009)) lets a
+client end its own connection, as it signs out or removes the server. It is mounted like the token
+endpoint: anonymous, no cookie read, not behind the cross-origin protection, limited to **120
+requests a minute per address** (its own count beside the token endpoint's), `404` while
+`OAUTH_ENABLED` is off. The body is `application/x-www-form-urlencoded`, at most 16 KiB, each
+parameter at most once and at most 1,024 characters:
+
+| Parameter | Rule |
+| --- | --- |
+| `token` | required: the connection's access token (`vta_…`) or refresh token (`vtr_…`) |
+| `client_id` | required: the connection's |
+| `token_type_hint` | optional, ignored: the prefix says which token it is |
+
+Presenting **either** token with its connection's `client_id` revokes the **whole connection**
+(`revoked_by_client`, audited `connection.revoked` as `system:oauth`): both tokens are refused
+from their next request.
+
+| Answer | When |
+| --- | --- |
+| `200`, empty body, `Cache-Control: no-store` | the connection was revoked, or was already ended; and also for a token that is unknown, expired, malformed, of another kind (an API key, a `vtc_` client ID) or of another client's connection, for which nothing is revoked, so the answer says nothing about whether a token exists |
+| `400 invalid_request` | another content type, a missing `token` or `client_id`, a repeated or too long parameter, a body over 16 KiB |
+| `401 invalid_client` | `Authorization`, `client_secret` or `client_assertion` sent: the client is public |
+| `405 invalid_request` | another method than `POST`, with `Allow: POST` |
+| `429 invalid_request` | over the address's limit, with `Retry-After` |
+
+Errors are RFC 6749's `{"error", "error_description"}` with `Cache-Control: no-store`.
 
 ### Tokens and lifetimes
 
@@ -366,6 +496,11 @@ starts a sign-in.
   `authorizer_removed`, its tokens refused, until an Owner revokes it.
 - **A replay**: a code exchanged twice (`code_replayed`), a refresh token reused after its grace
   (`refresh_reused`).
+- **A registered client archived** (`client_archived`), in the archive's transaction.
+- **A document that no longer holds** at its [revalidation](#revalidation)
+  (`client_document_changed`).
+- **The client itself**, through the [revocation endpoint](#the-revocation-endpoint)
+  (`revoked_by_client`).
 - **Expiry**, 180 days after consent.
 
 Two approvals of the same client and integration make two connections: every Claude Code
@@ -378,6 +513,11 @@ A connection's requests are in its integration's [request log](/en/admin/api-acc
 beside its keys': a row names the connection (`connectionId`, and the client's name) instead of a
 key (`keyId` is `null`). Refusals add the reasons `insufficient_scope` and `token_invalid` (a
 connection never activated, or whose approver no longer qualifies) to the key's.
+
+`GET /api/v1/identity/integrations/{id}/requests?connection=<connection id>` reads one
+connection's requests, as `key=` reads one key's; with both, only requests that match both,
+which is none. The filter is served by the index `ix_api_requests_connection_at` on
+`(connection_id, at)`, kept for a connection's rows only (`00219_identity_oauth_clients.sql`).
 
 ## Upkeep
 

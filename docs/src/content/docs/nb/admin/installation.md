@@ -749,7 +749,8 @@ strøm. `MCP_ENABLED=0` i `vantigo.env` slår det av.
 En MCP-klient eller app kan koble seg til ved at en eier logger inn og godkjenner den, i stedet
 for med en nøkkel ([API-tilgang › Koble til ved å logge inn](/nb/admin/api-access/#koble-til-ved-å-logge-inn)).
 Det er på som standard; `OAUTH_ENABLED=0` i `vantigo.env` slår det av. Imaget serverer
-`/.well-known/oauth-*`, samtykkesiden `/oauth/authorize` og `POST /api/oauth/token`, og det
+`/.well-known/oauth-*`, samtykkesiden `/oauth/authorize`, `POST /api/oauth/token` og
+`POST /api/oauth/revoke`, og det
 henter hver klients metadatadokument over HTTPS fra klientens egen vert — for eksempel
 `claude.ai` og `chatgpt.com` — så serveren trenger utgående HTTPS til de vertene. Claude og
 ChatGPT på nettet når installasjonen fra sine egne servere, så de kobler seg bare til en
@@ -1343,6 +1344,17 @@ viser den verten installasjonens utgående adresse. Bak en basesti sendes `/.wel
 til Vantigo ([Basesti og omvendt proxy](#basesti-og-omvendt-proxy)). `OAUTH_ENABLED=0` i
 `vantigo.env` slår alt dette av
 ([API-tilgang › Koble til ved å logge inn](/nb/admin/api-access/#koble-til-ved-å-logge-inn)).
+
+**Utgivelsen med registrerte OAuth-klienter.** Den har `00219_identity_oauth_clients.sql` —
+klientene eiere registrerer for hånd for Cursor, VS Code og andre apper, listen over
+klientverter som kan koble seg til (tom, så alle verter tillates som før), og en indeks på
+forespørselsloggen etter tilkobling. Indeksen bygges over loggens 30 dager med partisjoner mens
+migreringen kjører; loggens skriver venter så lenge, og dropper heller rader enn å gjøre forespørsler tregere hvis den venter lenge. Fra denne
+utgivelsen serverer imaget også tilbakekallingsendepunktet `POST /api/oauth/revoke`, en vanlig
+skjema-`POST` som token-endepunktet, og sjekker en klients beskrivelse igjen når en av
+tilkoblingene fornyes etter at den mellomlagrede kopien er utløpt, så serveren trenger fortsatt
+utgående HTTPS til klientvertene. Ingenting må endres i `vantigo.env` eller proxyen
+([API-tilgang › Koble til Cursor, VS Code eller en annen app](/nb/admin/api-access/#koble-til-cursor-vs-code-eller-en-annen-app)).
 
 For en komplett driftsbok for sikkerhetskopi, én migrator, token-rotasjon og
 Owner-nødtilgang, se [SSO- og SCIM-drift](/nb/admin/sso-scim/).

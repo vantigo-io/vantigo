@@ -293,10 +293,11 @@ The **Requests** tab on an integration's page shows what its keys called over th
 days: the requests per day by status, the operations called most, and the latest 200 with the
 key, the status and, for a refused one, why. A request that repeated an earlier one with the same
 `Idempotency-Key`, and got its answer again without running twice, is marked *Replayed for its
-Idempotency-Key*. **Key**, **Status**, **Reason** and **Day** narrow it down. A new request shows
-there within a few seconds. A request an app made after connecting by signing in names the app,
-marked *(connected app)*, and the two reasons *Connected app may only read* and *Connected app
-no longer allowed* are its; connecting by signing in is not switched on yet.
+Idempotency-Key*. **Key or app**, **Status**, **Reason** and **Day** narrow it down: **Key or
+app** lists the keys and the connected apps, so you can see one app's requests alone. A new
+request shows there within a few seconds. A request an app made after connecting by signing in
+names the app, marked *(connected app)*, and the two reasons *Connected app may only read* and
+*Connected app no longer allowed* are its.
 
 The **Contact** and every Owner get an email 14 days and 3 days before a key expires, and on
 the day, unless it has been rolled or revoked. Roll the key before then.
@@ -330,8 +331,27 @@ the answer goes to a program on your computer; check the hosts before you approv
 is not an Owner is told to ask one. The connections then appear under **Connected apps** on
 the integration's **Overview**, below **MCP**: the app and its host, who connected it, its
 access, when it was connected, its last use and when it ends, at most 180 days after it was
-approved. One whose Owner has since lost the role is **Inactive** and refused. **Revoke**, after
-a confirmation, ends a connection at its next request; the app must sign in again.
+approved, and whether it signed in with a **Client description** it publishes or as a
+**Registered client**. One whose Owner has since lost the role is **Inactive** and refused; one
+whose host is no longer on the list of **Client hosts** is **Inactive** too, and cannot renew its
+access until the host is listed again. **Revoke**, after a confirmation, ends a connection at its
+next request; the app must sign in again. An app that signs out ends its own connection the same
+way. Once the MCP section is on, it shows both ways to connect: **Connect with a key** and
+**Connect by signing in**, with the address to paste into Claude or ChatGPT — which reach Vantigo
+from the internet, so the workspace needs a public `https` address — and Claude Code's command.
+
+Cursor, VS Code and other apps that publish no description of themselves sign in with a client
+registered on the **API access** page, under **Registered clients**. **Register a client** asks
+for a **Name**, shown on the consent page and in **Connected apps**, and the app's **Redirect
+URIs**, one a line, as the app documents them; it then shows the **Client ID**, `vtc_…`, to enter
+in the app's settings with the client secret left empty. The consent page then says the app was
+**Registered in this workspace by** you. **Edit** changes the name and the redirect URIs;
+**Archive**, after a confirmation, disconnects every app connected with it and cannot be undone.
+
+**Client hosts**, on the same page, says which hosts' apps may connect by signing in, such as
+`claude.ai` and `chatgpt.com`, one a line; a subdomain of a listed host is admitted too. Left
+empty, the default, any host may. Registered clients are always admitted, and saving disconnects
+nothing.
 
 The details — what a key can reach, the narrowing, read-only keys, networks, the rate limit,
 the answers a client gets, the request log, webhook endpoints, MCP and what to do when a key

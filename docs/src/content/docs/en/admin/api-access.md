@@ -1,6 +1,6 @@
 ---
 title: API access
-description: Letting another application use Vantigo's API without a person's session — integrations, their roles, API keys with an expiry, a narrowing, a read-only switch and networks, rolling and revoking a key, what is never available to a key, how a client sends it, the rate limit and its headers, the answers it can get, the request log, the expiry notices, webhook endpoints, their signing secrets and their delivery log with resend, connecting an AI client over MCP with a key or by signing in, the consent page, connected apps and revoking one, and what to do when a key leaks.
+description: Letting another application use Vantigo's API without a person's session — integrations, their roles, API keys with an expiry, a narrowing, a read-only switch and networks, rolling and revoking a key, what is never available to a key, how a client sends it, the rate limit and its headers, the answers it can get, the request log, the expiry notices, webhook endpoints, their signing secrets and their delivery log with resend, connecting an AI client over MCP with a key or by signing in, registering a client for Cursor or VS Code, limiting the client hosts, the consent page, connected apps and revoking one, and what to do when a key leaks.
 sidebar:
   order: 22
 sources:
@@ -43,6 +43,10 @@ sources:
   - apps/server/internal/identity/oauth_authorize.go
   - apps/host/frontend/src/routes/oauth.authorize.tsx
   - apps/host/frontend/src/routes/workspace/-api-access-connections.tsx
+  - apps/host/frontend/src/routes/workspace/-api-access-oauth-clients.tsx
+  - apps/server/internal/identity/oauth_clients.go
+  - apps/server/internal/identity/oauth_revoke.go
+  - apps/server/internal/identity/oauth_revalidate.go
   - apps/host/frontend/src/api/oauth.ts
 ---
 
@@ -394,8 +398,9 @@ and a restart.
 
 ## Connecting by signing in
 
-Claude Code, Claude and ChatGPT can connect without a key being copied anywhere: you give the
-client the MCP address, it sends your browser to Vantigo, you sign in as an Owner, pick the
+Claude Code, Claude and ChatGPT — and Cursor, VS Code and other apps through a
+[registered client](#connect-cursor-vs-code-or-another-app) — can connect without a key being
+copied anywhere: you give the client the MCP address, it sends your browser to Vantigo, you sign in as an Owner, pick the
 integration the client may act as and approve. The client then holds a **connection** that acts
 as that integration, with its roles, its MCP access and its rate limit, like one more key; it
 renews its own one-hour token and never sees a key. The contract is
@@ -415,9 +420,10 @@ renews its own one-hour token and never sees a key. The contract is
   or the host of whichever client connects. Vantigo fetches the client's published description
   from there when an Owner opens the connection request, never from a private or internal
   address; the fetch shows that host the installation's outbound address.
-- **Any client can ask.** Until a later release brings an allow-list of client hosts, any
-  client that publishes a description can send an Owner to the consent page; the Owner's
-  approval is the only gate. Check the hosts on the page before you approve.
+- **Which clients can ask.** By default any client that publishes a description can send an
+  Owner to the consent page, and the Owner's approval is the gate: check the hosts on the page
+  before you approve. To admit only the hosts you name, list them under
+  [Client hosts](#limit-the-client-hosts). A client you registered here can always ask.
 - **Claude and ChatGPT on the web** call your installation from their own servers, so it must
   have a public `https` address. **Claude Code** runs on your computer and can connect to any
   address it can reach, a development instance on `http://localhost` included.
@@ -444,6 +450,57 @@ renews its own one-hour token and never sees a key. The contract is
 2. The client sends your browser to Vantigo's consent page; sign in first if you are asked to.
 3. Approve as described in [The consent page](#the-consent-page). The browser goes back to the
    client.
+
+The integration's **MCP** section shows the address and Claude Code's command under **Connect
+by signing in**, beside the key's under **Connect with a key**.
+
+### Connect Cursor, VS Code or another app
+
+An app that does not publish a description of itself signs in with a client you register here.
+
+**Before you start:** find, in the app's own documentation, the **redirect URI** it signs in
+with. Vantigo takes `https://…` addresses and, for an app on the person's own computer,
+`http://127.0.0.1`, `http://[::1]` or `http://localhost`; a loopback URI registered without a
+port matches any port the app picks, and `localhost` and `127.0.0.1` are different hosts. A
+redirect URI with the app's own scheme, such as `cursor://…`, cannot be registered: when an app
+offers a loopback address instead, register that.
+
+1. Go to **Workspace admin › API access** and, under **Registered clients**, choose **Register a
+   client**.
+2. Give it a **Name** — shown on the consent page and in **Connected apps** — and its **Redirect
+   URIs**, one a line. Choose **Register a client**.
+3. Copy the **Client ID** it shows, `vtc_` and 24 letters and digits. It is not a secret, and
+   stays in the list.
+4. In the app's settings for the MCP server, give the MCP address,
+   `https://vantigo.example.com/api/mcp`, and where the app asks for OAuth client details,
+   enter the client ID and **leave the client secret empty**: the client is public and proves
+   itself with PKCE.
+5. Start the connection in the app. Your browser opens the consent page, which says the app is
+   **Registered in this workspace by** you; approve as described in
+   [The consent page](#the-consent-page).
+
+**To change or retire a client:** **Edit** on its row changes its name and redirect URIs; a
+connection made before keeps working, so revoke it in **Connected apps** if it should not.
+**Archive**, after a confirmation that says how many apps are connected with it, disconnects
+every one of them at once and refuses the next sign-in with it. It cannot be undone. Up to 50
+clients can be registered at a time.
+
+### Limit the client hosts
+
+**Client hosts**, under **Workspace admin › API access**, lists the hosts whose apps may connect
+by their description, one a line — `claude.ai`, `chatgpt.com`. A subdomain of a listed host is
+admitted too: `claude.ai` admits `api.claude.ai`, not `notclaude.ai`. **Empty**, the default,
+admits any host. Registered clients are always admitted.
+
+1. Enter the hosts, one a line, and choose **Save**. A host is a name only: no `https://`, port,
+   `*` or IP address.
+2. The list applies at once: a request from another host is shown **This app cannot connect** on
+   the consent page, and Vantigo does not even fetch its description.
+
+Saving disconnects nothing. A connected app whose host the list leaves out keeps the access it
+holds for at most its hour, cannot renew it, and is listed as **Inactive** — *Its host is not on
+this workspace's list of client hosts* — until you list the host again, when it carries on, or
+revoke it. Each change is audited `oauth.client_hosts_changed`, with the list before and after.
 
 **To verify:** ask the client to list its tools, as for a key
 ([Connect a client](#connect-a-client)), and open the integration: the client is under
@@ -495,10 +552,13 @@ The page cannot be shown inside another site's frame.
 
 The integration's **Overview** lists its connected apps under **MCP**: the name each client
 calls itself and its host, who connected it, **Read only** or **Read and write**, when it was
-connected, its last use and address, and when it **ends** by itself. A connection whose person
+connected, its last use and address, when it **ends** by itself, and its kind: **Client
+description** for an app identified by the description it publishes, **Registered client** for
+one registered here, whose host is the redirect URI's. A connection whose person
 is no longer an active Owner — demoted, disabled, deleted or deactivated by the directory — is
 **Inactive**: its tokens are refused. Revoke it, and connect the client again if it is still
-needed.
+needed. One whose host is no longer on the [client hosts](#limit-the-client-hosts) is
+**Inactive** too, until the host is listed again.
 
 Each laptop running Claude Code is a connection of its own; revoking one leaves the others.
 
@@ -513,6 +573,13 @@ is audited `connection.revoked`.
 - **180 days** pass since it was approved.
 - The client presents a code or a refresh token a second time after it was used, which means
   someone else may hold it.
+- The client **signs out** or removes the server and tells Vantigo, through the revocation
+  endpoint ([OAuth connections](/en/reference/oauth/#the-revocation-endpoint)).
+- The **registered client** it signed in with is archived.
+- The client's **description changes** so that it no longer holds — it no longer lists the
+  address the connection returns to, or breaks a rule. Vantigo checks it again in the background
+  when the client renews its access after the copy it keeps has expired, at most a day after it
+  last read it; a description it cannot reach for the moment changes nothing.
 
 A disabled integration's connections are refused while it is disabled and work again when it
 is enabled, as its keys do.
@@ -530,6 +597,10 @@ shown. The connections are kept and work again when it is switched back on with
 - **The client says the sign-in failed or never opens the browser:** check that the server
   reaches the client's host over HTTPS, and, for Claude or ChatGPT on the web, that the
   installation's address is public `https`.
+- **This app cannot connect** for a client of a host you have not listed: its host is not on
+  the [client hosts](#limit-the-client-hosts). Add it, or leave the list empty.
+- **This app cannot connect** for a registered client: it was archived, or the redirect URI the
+  app sends is not one registered. Compare the app's redirect URI with the client's row.
 - **This app cannot connect:** the client's description could not be fetched or was refused.
   When the page shows it on opening the request, the explanation names the kind of refusal, and
   on an English page the server's own reason follows it; refused at **Approve** or **Deny**, it
@@ -573,7 +644,8 @@ it makes is a second row, the operation it called ([MCP](#mcp)).
   A key whose row has been deleted, 90 days after it expired, shows as *Deleted key*. A request a
   connected app made names the app as it called itself, marked *(connected app)*, or *Removed
   app* once the connection's row is gone.
-- **Key**, **Status**, **Reason** and **Day** filter all three.
+- **Key or app**, **Status**, **Reason** and **Day** filter all three. **Key or app** lists the
+  keys and the connected apps, so one app's requests can be read apart.
 
 A refusal is recorded with its reason, and so is a replayed answer:
 
@@ -852,7 +924,10 @@ Identity's authorization audit trail records, with the Owner who did it and whet
 before and after. A connected app is audited `connection.authorized` when its client completes
 the sign-in, with the client, its host, the scopes and the integration, and
 `connection.revoked` with its reason when it ends — `revoked`, `integration_archived`,
-`authorizer_removed`, `code_replayed` or `refresh_reused`, the last two as `system:oauth`. No
+`authorizer_removed`, `client_archived`, `code_replayed`, `refresh_reused`,
+`client_document_changed` or `revoked_by_client`, the last four as `system:oauth`. Registering,
+editing and archiving a client are `oauth_client.created`, `oauth_client.updated` and
+`oauth_client.archived`, and a change of the client hosts is `oauth.client_hosts_changed`. No
 token or code is ever recorded. The `identity.api-keys` worker records
 `api_key.expired` once for each key that passes its expiry, as `system:api-keys`, and deletes
 a key's row 90 days after it expired; the audit rows stay

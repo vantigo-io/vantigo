@@ -817,7 +817,7 @@ const nb: Record<keyof typeof en, string> = {
   "apiAccess.mcpSignInClaudeCodeHint":
     "Kjør kommandoen, skriv så /mcp i Claude Code og velg Authenticate: nettleseren åpner innloggingssiden til dette arbeidsområdet.",
   "apiAccess.mcpSignInRegistered":
-    "Cursor, VS Code og andre apper som ikke publiserer en klientbeskrivelse, logger inn med en klient registrert under Arbeidsområde › API-tilgang › Registrerte klienter.",
+    "Cursor, VS Code og andre apper som ikke publiserer en klientbeskrivelse, logger inn med en klient registrert under Administrer arbeidsområde › API-tilgang › Registrerte klienter.",
   "apiAccess.connectionKind_metadata": "Klientbeskrivelse",
   "apiAccess.connectionKind_registered": "Registrert klient",
   "apiAccess.inactive_client_not_allowed":
