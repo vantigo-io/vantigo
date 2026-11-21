@@ -12,9 +12,10 @@ go = "1.27.4"
 # Used by CI to scan container images.
 trivy = "0.76.1"
 # Only the EHF oracle (tools/ehf, `mise run ehf:validate`) needs a JDK: Saxon
-# runs the official XSD and Schematron artefacts over the goldens. 21.0.12+101
-# is Adoptium's semver for the 21.0.12.1+1 respin.
-java = "temurin-21.0.12+101.0.LTS"
+# runs the official XSD and Schematron artefacts over the goldens. 21.0.12.1+1
+# is Adoptium's respin of 21.0.12, under the name the toolchain's index lists it
+# by since 2026-11-21 (it was 21.0.12+101 before, and that name stopped resolving).
+java = "temurin-21.0.12.1+1.0.LTS"
 
 # Go server: lint, release and supply-chain tools. CI installs only the subset
 # each job needs (mise-action install_args).
