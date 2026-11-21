@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/vantigo-io/vantigo/server/internal/telemetry"
 	"io"
 	"log/slog"
 	"net"
@@ -254,7 +255,7 @@ func newGoogleClient(d module.Deps) *googleClient {
 	}
 	return &googleClient{
 		http: &http.Client{
-			Transport:     hostGuard{next: rt},
+			Transport:     telemetry.OutboundTransport(hostGuard{next: rt}),
 			Timeout:       callBudget,
 			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 		},

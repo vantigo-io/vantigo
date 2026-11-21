@@ -123,7 +123,7 @@ func TestSetup_ExportsEveryConfiguredSignal(t *testing.T) {
 		t.Fatal(err)
 	}
 	counter.Add(ctx, 1)
-	NewLogger(io.Discard, slog.LevelInfo, true).Info("hello")
+	NewLogger(io.Discard, slog.LevelInfo, true, "").Info("hello")
 
 	if err := shutdown(ctx); err != nil { // flushes every signal
 		t.Fatalf("shutdown: %v", err)
@@ -243,7 +243,7 @@ func TestHTTPHandler_TracesAPIRequestsOnlyAndExposesTheTraceID(t *testing.T) {
 
 func TestNewLogger_WritesJSONAtTheConfiguredLevel(t *testing.T) {
 	var buf bytes.Buffer
-	logger := NewLogger(&buf, slog.LevelInfo, false)
+	logger := NewLogger(&buf, slog.LevelInfo, false, "")
 	logger.Debug("hidden")
 	logger.Info("shown", "k", "v")
 

@@ -26,6 +26,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/vantigo-io/vantigo/server/internal/telemetry"
 	"io"
 	"net/http"
 	"net/url"
@@ -92,7 +93,7 @@ func New(o Options) (*Client, error) {
 		apiKey:  o.APIKey,
 		// A 3xx is answered as the non-2xx it is: following one would send
 		// the key to a host no operator named.
-		http:    &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
+		http:    &http.Client{Transport: telemetry.OutboundTransport(transport), CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
 		now:     now,
 		timeout: callTimeout,
 	}, nil

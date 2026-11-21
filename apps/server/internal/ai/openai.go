@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"github.com/vantigo-io/vantigo/server/internal/telemetry"
 	"io"
 	"net/http"
 	"time"
@@ -50,7 +51,7 @@ func newOpenAI(apiKey, baseURL string, transport http.RoundTripper, chatTimeout 
 		// does not follow them: a redirect would re-send this request — API
 		// key included — to a host no operator named.
 		client: &http.Client{
-			Transport:     transport,
+			Transport:     telemetry.OutboundTransport(transport),
 			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 		},
 	}

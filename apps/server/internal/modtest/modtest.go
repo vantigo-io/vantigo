@@ -39,6 +39,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
+	"github.com/vantigo-io/vantigo/server/internal/telemetry"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -1217,6 +1218,10 @@ func New(t *testing.T, opts ...Option) *Harness {
 	})
 	if tracer != nil {
 		handler = otelhttp.NewHandler(handler, "http.server", otelhttp.WithTracerProvider(tracer))
+	} else {
+		// As production wraps it, on the global provider: a no-op unless a
+		// suite installs one (the integration suite's attribute check does).
+		handler = telemetry.HTTPHandler(handler, cfg.BasePath)
 	}
 	srv := httptest.NewUnstartedServer(handler)
 	srv.Start()

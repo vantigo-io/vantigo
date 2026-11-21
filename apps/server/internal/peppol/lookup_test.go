@@ -3,6 +3,7 @@ package peppol
 import (
 	"context"
 	"errors"
+	"github.com/vantigo-io/vantigo/server/internal/telemetry"
 	"net"
 	"net/http"
 	"net/netip"
@@ -350,9 +351,9 @@ func TestNewClient_DefaultTransport(t *testing.T) {
 	t.Parallel()
 	client := NewClient(Options{Zone: prodZone})
 
-	transport, ok := client.http.Transport.(*http.Transport)
+	transport, ok := telemetry.Base(client.http.Transport).(*http.Transport)
 	if !ok {
-		t.Fatalf("the default transport is %T, want *http.Transport", client.http.Transport)
+		t.Fatalf("the default transport is %T, want *http.Transport", telemetry.Base(client.http.Transport))
 	}
 	if transport.Proxy != nil {
 		t.Error("the default transport takes a proxy from the environment")
@@ -429,7 +430,7 @@ func TestNewClient_HTTPTransportReplacesTheDefault(t *testing.T) {
 	t.Parallel()
 	transport := &http.Transport{}
 	client := NewClient(Options{Zone: prodZone, HTTPTransport: transport})
-	if client.http.Transport != transport {
-		t.Errorf("the client uses %v, want the injected transport", client.http.Transport)
+	if telemetry.Base(client.http.Transport) != transport {
+		t.Errorf("the client uses %v, want the injected transport", telemetry.Base(client.http.Transport))
 	}
 }

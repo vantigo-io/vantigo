@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/vantigo-io/vantigo/server/internal/telemetry"
 	"io"
 	"log/slog"
 	"net"
@@ -167,7 +168,7 @@ func TestGraphTransport_GuardedNoProxyKeepAlivesOn(t *testing.T) {
 	}
 
 	c := newGraphClient(module.Deps{})
-	if c.http.Transport != http.RoundTripper(graphTransport()) {
+	if telemetry.Base(c.http.Transport) != http.RoundTripper(graphTransport()) {
 		t.Error("a client without Deps.HTTPTransport does not use the guarded transport")
 	}
 	if c.http.Timeout != 30*time.Second {
@@ -182,7 +183,7 @@ func TestGraphTransport_GuardedNoProxyKeepAlivesOn(t *testing.T) {
 		t.Errorf("the raw read's client: budget %s, its own transport or redirects", raw.Timeout)
 	}
 	fake := graphtest.New()
-	if newGraphClient(module.Deps{HTTPTransport: fake}).http.Transport != http.RoundTripper(fake) {
+	if telemetry.Base(newGraphClient(module.Deps{HTTPTransport: fake}).http.Transport) != http.RoundTripper(fake) {
 		t.Error("Deps.HTTPTransport is not the seam")
 	}
 }

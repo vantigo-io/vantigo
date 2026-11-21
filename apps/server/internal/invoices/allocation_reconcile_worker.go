@@ -81,8 +81,11 @@ func (w *AllocationReconcileWorker) Run(ctx context.Context) error {
 	ticker := time.NewTicker(allocationReconcileInterval)
 	defer ticker.Stop()
 	for {
-		if _, err := w.RunCycle(ctx); err != nil && ctx.Err() == nil {
-			w.logger().Error("invoices: an allocation reconcile cycle failed", "worker", allocationReconcileWorkerName, "error", err.Error())
+		cycleCtx, endCycle := worker.StartCycle(ctx, w.Name())
+		_, err := w.RunCycle(cycleCtx)
+		endCycle(err)
+		if err != nil && ctx.Err() == nil {
+			w.logger().ErrorContext(cycleCtx, "invoices: an allocation reconcile cycle failed", "worker", allocationReconcileWorkerName, "error", err.Error())
 		}
 		select {
 		case <-ctx.Done():

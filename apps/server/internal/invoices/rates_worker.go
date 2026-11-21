@@ -65,8 +65,11 @@ func (w *RatesWorker) Run(ctx context.Context) error {
 	ticker := time.NewTicker(ratesWorkerTick)
 	defer ticker.Stop()
 	for {
-		if err := w.RunCycle(ctx); err != nil && ctx.Err() == nil {
-			w.logger().Error("invoices: an exchange rates cycle failed", "worker", ratesWorkerName, "error", err.Error())
+		cycleCtx, endCycle := worker.StartCycle(ctx, w.Name())
+		err := w.RunCycle(cycleCtx)
+		endCycle(err)
+		if err != nil && ctx.Err() == nil {
+			w.logger().ErrorContext(cycleCtx, "invoices: an exchange rates cycle failed", "worker", ratesWorkerName, "error", err.Error())
 		}
 		select {
 		case <-ctx.Done():

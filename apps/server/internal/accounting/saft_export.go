@@ -430,8 +430,11 @@ func (w *SaftWorker) Run(ctx context.Context) error {
 	ticker := time.NewTicker(saftInterval)
 	defer ticker.Stop()
 	for {
-		if err := w.RunOnce(ctx); err != nil && ctx.Err() == nil {
-			w.logger().ErrorContext(ctx, "accounting: the SAF-T worker failed", "error", err)
+		cycleCtx, endCycle := worker.StartCycle(ctx, w.Name())
+		err := w.RunOnce(cycleCtx)
+		endCycle(err)
+		if err != nil && ctx.Err() == nil {
+			w.logger().ErrorContext(cycleCtx, "accounting: the SAF-T worker failed", "error", err)
 		}
 		select {
 		case <-ctx.Done():

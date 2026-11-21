@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
+	"github.com/vantigo-io/vantigo/server/internal/telemetry"
 	"io"
 	"log/slog"
 	"net"
@@ -122,7 +123,7 @@ func newWebhookClient(a *Access, now func() time.Time, log *slog.Logger) *webhoo
 	}
 	return &webhookClient{
 		http: &http.Client{
-			Transport:     transport,
+			Transport:     telemetry.OutboundTransport(transport),
 			Timeout:       webhookAttemptBudget,
 			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 		},

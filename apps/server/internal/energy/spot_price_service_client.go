@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/vantigo-io/vantigo/server/internal/telemetry"
 	"io"
 	"log/slog"
 	"net"
@@ -118,7 +119,7 @@ func newSpotServiceClient(raw, key string, rt http.RoundTripper, logger func() *
 		logger: logger,
 		now:    now,
 		http: &http.Client{
-			Transport: spotServiceHostOnly{scheme: u.Scheme, host: u.Host, next: rt},
+			Transport: telemetry.OutboundTransport(spotServiceHostOnly{scheme: u.Scheme, host: u.Host, next: rt}),
 			Timeout:   spotFeedFetchBudget,
 			// Redirects are never followed: the next address is one the
 			// guard never saw. A 3xx is recorded as the failure it is.

@@ -101,11 +101,21 @@ func (d *Dispatcher) Interval() time.Duration { return dispatchInterval }
 
 // Run passes until ctx is done. A failed pass is logged and the loop goes on.
 func (d *Dispatcher) Run(ctx context.Context) error {
+	// The backlog gauges live as long as the dispatcher runs, so only a
+	// process that dispatches reports them.
+	if unregister, err := observeBacklog(d.pool, d.clock); err != nil {
+		d.logger.Warn("events: the backlog gauges are not reported", "worker", DispatcherName, "error", err)
+	} else {
+		defer unregister()
+	}
 	ticker := time.NewTicker(dispatchInterval)
 	defer ticker.Stop()
 	for {
-		if err := d.RunOnce(ctx); err != nil && ctx.Err() == nil {
-			d.logger.Error("events dispatch failed", "worker", DispatcherName, "error", err)
+		cycleCtx, endCycle := worker.StartCycle(ctx, d.Name())
+		err := d.RunOnce(cycleCtx)
+		endCycle(err)
+		if err != nil && ctx.Err() == nil {
+			d.logger.ErrorContext(cycleCtx, "events dispatch failed", "worker", DispatcherName, "error", err)
 		}
 		select {
 		case <-ctx.Done():
@@ -293,6 +303,7 @@ func (d *Dispatcher) claim(ctx context.Context) ([]claimed, error) {
 		return nil, fmt.Errorf("events: claim deliveries: %w", err)
 	}
 	slices.SortFunc(out, func(a, b claimed) int { return cmp.Compare(a.id, b.id) })
+	worker.Claimed(ctx, len(out))
 	return out, nil
 }
 

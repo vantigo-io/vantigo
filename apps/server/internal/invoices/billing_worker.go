@@ -117,8 +117,11 @@ func (w *BillingWorker) Run(ctx context.Context) error {
 	ticker := time.NewTicker(billingWorkerInterval)
 	defer ticker.Stop()
 	for {
-		if err := w.RunCycle(ctx); err != nil && ctx.Err() == nil {
-			w.logger().Error("invoices: a billing worker cycle failed", "worker", billingWorkerName, "error", err.Error())
+		cycleCtx, endCycle := worker.StartCycle(ctx, w.Name())
+		err := w.RunCycle(cycleCtx)
+		endCycle(err)
+		if err != nil && ctx.Err() == nil {
+			w.logger().ErrorContext(cycleCtx, "invoices: a billing worker cycle failed", "worker", billingWorkerName, "error", err.Error())
 		}
 		select {
 		case <-ctx.Done():

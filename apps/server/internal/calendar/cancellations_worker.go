@@ -95,8 +95,11 @@ func (w *CancellationsWorker) Run(ctx context.Context) error {
 	ticker := time.NewTicker(w.Interval())
 	defer ticker.Stop()
 	for {
-		if _, _, err := w.RunCycle(ctx); err != nil && ctx.Err() == nil {
-			w.logger().Error("calendar: the cancellations cycle failed", "worker", cancellationsWorkerName, "error", err.Error())
+		cycleCtx, endCycle := worker.StartCycle(ctx, w.Name())
+		_, _, err := w.RunCycle(cycleCtx)
+		endCycle(err)
+		if err != nil && ctx.Err() == nil {
+			w.logger().ErrorContext(cycleCtx, "calendar: the cancellations cycle failed", "worker", cancellationsWorkerName, "error", err.Error())
 		}
 		select {
 		case <-ctx.Done():

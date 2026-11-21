@@ -4,11 +4,10 @@
 // logs each start and stop, propagates cancellation, and waits for them to
 // finish during shutdown.
 //
-// No Worker exists yet: this package is the platform piece, ported ahead of
-// the three communications workers (outbox delivery, retention, attachment
-// cleanup — design §3.10) that will implement it. It deliberately carries no
-// locking of its own — the .NET advisory-lock lease only the retention
-// worker takes is that worker's own concern, not the runner's.
+// Each worker owns its loop, so it opens each cycle itself with StartCycle
+// (cycle.go): a span and the cycle metrics per cycle, a panic recorded on
+// the cycle it unwound through (Kubernetes readiness KR21). The runner
+// carries no locking of its own — a lease is each worker's own concern.
 package worker
 
 import (

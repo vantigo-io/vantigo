@@ -71,7 +71,10 @@ func (w *retentionWorker) Run(ctx context.Context) error {
 	t := time.NewTicker(retentionWorkerInterval)
 	defer t.Stop()
 	for {
-		if err := w.cycle(ctx); err != nil && ctx.Err() == nil {
+		cycleCtx, endCycle := worker.StartCycle(ctx, w.Name())
+		err := w.cycle(cycleCtx)
+		endCycle(err)
+		if err != nil && ctx.Err() == nil {
 			w.s.warn("agents: the retention worker failed", "err", err)
 		}
 		select {

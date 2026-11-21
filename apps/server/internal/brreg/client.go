@@ -24,6 +24,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/vantigo-io/vantigo/server/internal/telemetry"
 	"io"
 	"math/rand/v2"
 	"net/http"
@@ -134,7 +135,7 @@ func New(baseURL string, timeout time.Duration, transport http.RoundTripper, bac
 		// configuration, so a redirect to an arbitrary host is not reachable
 		// today — but following one would send the request to a host no
 		// operator named.
-		client:  &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
+		client:  &http.Client{Transport: telemetry.OutboundTransport(transport), CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
 		backoff: backoff,
 	}
 }

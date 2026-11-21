@@ -76,8 +76,11 @@ func (w *EhfEventsWorker) Run(ctx context.Context) error {
 	ticker := time.NewTicker(ehfEventsInterval)
 	defer ticker.Stop()
 	for {
-		if _, err := w.RunCycle(ctx); err != nil && ctx.Err() == nil {
-			w.logger().Error("invoices: an EHF events cycle failed", "worker", ehfEventsWorkerName, "error", err.Error())
+		cycleCtx, endCycle := worker.StartCycle(ctx, w.Name())
+		_, err := w.RunCycle(cycleCtx)
+		endCycle(err)
+		if err != nil && ctx.Err() == nil {
+			w.logger().ErrorContext(cycleCtx, "invoices: an EHF events cycle failed", "worker", ehfEventsWorkerName, "error", err.Error())
 		}
 		select {
 		case <-ctx.Done():

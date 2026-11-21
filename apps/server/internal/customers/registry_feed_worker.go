@@ -135,7 +135,10 @@ func (w *RegistryFeedWorker) Run(ctx context.Context) error {
 	ticker := time.NewTicker(w.Interval())
 	defer ticker.Stop()
 	for {
-		if _, err := w.RunCycle(ctx); err != nil && ctx.Err() == nil {
+		cycleCtx, endCycle := worker.StartCycle(ctx, w.Name())
+		_, err := w.RunCycle(cycleCtx)
+		endCycle(err)
+		if err != nil && ctx.Err() == nil {
 			// The raw error text is safe here, unlike a per-refresh failure's
 			// (refresh logs a KIND for that reason): a cycle only ever fails on the
 			// lease, on one of the sweep's SELECTs, or on the feed read — and none of
@@ -146,7 +149,7 @@ func (w *RegistryFeedWorker) Run(ctx context.Context) error {
 			// CustomersByOrganisationNumbers, takes them as a []string, so pgx has no
 			// encode error to spell them into. Changing that argument to a struct or
 			// a jsonb payload would change this reasoning (final fix wave M3).
-			w.logger().Error("registry feed cycle failed", "worker", registryFeedWorkerName, "error", err)
+			w.logger().ErrorContext(cycleCtx, "registry feed cycle failed", "worker", registryFeedWorkerName, "error", err)
 		}
 		select {
 		case <-ctx.Done():

@@ -180,8 +180,11 @@ func (w *CatchUpWorker) Run(ctx context.Context) error {
 	ticker := time.NewTicker(catchupInterval)
 	defer ticker.Stop()
 	for {
-		if err := w.RunOnce(ctx); err != nil && ctx.Err() == nil {
-			w.logger().ErrorContext(ctx, "accounting: the catch-up failed", "error", err)
+		cycleCtx, endCycle := worker.StartCycle(ctx, w.Name())
+		err := w.RunOnce(cycleCtx)
+		endCycle(err)
+		if err != nil && ctx.Err() == nil {
+			w.logger().ErrorContext(cycleCtx, "accounting: the catch-up failed", "error", err)
 		}
 		select {
 		case <-ctx.Done():

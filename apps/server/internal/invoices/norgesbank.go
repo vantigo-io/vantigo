@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/vantigo-io/vantigo/server/internal/telemetry"
 	"io"
 	"math/big"
 	"net"
@@ -107,7 +108,7 @@ func ratesClient(rt http.RoundTripper) *http.Client {
 		rt = ratesTransport()
 	}
 	return &http.Client{
-		Transport:     rt,
+		Transport:     telemetry.OutboundTransport(rt),
 		Timeout:       ratesFetchBudget,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}

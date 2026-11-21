@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/vantigo-io/vantigo/server/internal/telemetry"
 	"io"
 	"net/http"
 	"os"
@@ -142,7 +143,7 @@ func newOIDCRelyingParty(o *oidcSettings, redirectURL string, client *http.Clien
 		return nil, fmt.Errorf("identity: the OIDC authority %q is not a valid issuer", o.Authority)
 	}
 	if client == nil {
-		client = &http.Client{Timeout: oidcHTTPTimeout}
+		client = &http.Client{Transport: telemetry.OutboundTransport(nil), Timeout: oidcHTTPTimeout}
 	}
 	return &oidcRelyingParty{
 		cfg:         o,

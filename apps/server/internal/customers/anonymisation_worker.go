@@ -2,6 +2,7 @@ package customers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"runtime/debug"
@@ -87,14 +88,19 @@ func (w *AnonymisationWorker) Run(ctx context.Context) error {
 	ticker := time.NewTicker(w.Interval())
 	defer ticker.Stop()
 	for {
-		if _, err := w.RunCycle(ctx); err != nil && ctx.Err() == nil {
+		// One cycle span over both passes (Kubernetes readiness KR21).
+		cycleCtx, endCycle := worker.StartCycle(ctx, w.Name())
+		_, err := w.RunCycle(cycleCtx)
+		if err != nil && ctx.Err() == nil {
 			// Only the lease or the batch's SELECT fails a cycle, and neither
 			// takes anything personal as an argument; one customer's failure is
 			// logged, by id, inside the cycle.
 			w.logger().Error("anonymisation cycle failed", "worker", anonymisationWorkerName, "error", err)
 		}
-		if _, _, err := w.RunLedger(ctx); err != nil && ctx.Err() == nil {
-			w.logger().Error("the deletion ledger pass failed", "worker", anonymisationWorkerName, "error", err)
+		_, _, ledgerErr := w.RunLedger(cycleCtx)
+		endCycle(errors.Join(err, ledgerErr))
+		if ledgerErr != nil && ctx.Err() == nil {
+			w.logger().ErrorContext(cycleCtx, "the deletion ledger pass failed", "worker", anonymisationWorkerName, "error", ledgerErr)
 		}
 		select {
 		case <-ctx.Done():

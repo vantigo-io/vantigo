@@ -7,7 +7,8 @@ import (
 )
 
 // The port and its adapter are platform (O49, module boundaries rules 1, 2
-// and 4): the standard library, internal/buildinfo and the port's own
+// and 4): the standard library, internal/buildinfo, internal/telemetry (the traced
+// outbound transport, KR20) and the port's own
 // packages, nothing else — no module, no store, no driver.
 func TestShipping_Purity(t *testing.T) {
 	t.Parallel()
@@ -15,6 +16,7 @@ func TestShipping_Purity(t *testing.T) {
 		module    = "github.com/vantigo-io/vantigo/server/internal/"
 		own       = module + "shipping"
 		buildinfo = module + "buildinfo"
+		telemetry = module + "telemetry"
 	)
 	for _, dir := range []string{".", "bring", "bring/bringtest"} {
 		p, err := build.ImportDir(dir, 0)
@@ -26,10 +28,10 @@ func TestShipping_Purity(t *testing.T) {
 		}
 		for _, imp := range p.Imports {
 			std := !strings.Contains(strings.SplitN(imp, "/", 2)[0], ".")
-			if std || imp == buildinfo || imp == own || strings.HasPrefix(imp, own+"/") {
+			if std || imp == buildinfo || imp == telemetry || imp == own || strings.HasPrefix(imp, own+"/") {
 				continue
 			}
-			t.Errorf("%s imports %s: only the standard library, internal/buildinfo and internal/shipping are allowed", dir, imp)
+			t.Errorf("%s imports %s: only the standard library, internal/buildinfo, internal/telemetry and internal/shipping are allowed", dir, imp)
 		}
 	}
 }

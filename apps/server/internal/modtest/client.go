@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/vantigo-io/vantigo/server/internal/telemetry"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
@@ -49,7 +50,7 @@ func (h *Harness) Client(t testing.TB) *Client {
 		ip: fmt.Sprintf("198.18.%d.%d", n>>8&0xff, n&0xff),
 		http: &http.Client{
 			Jar:           jar,
-			Transport:     h.recorder.Transport(t, h.srv.Client().Transport),
+			Transport:     telemetry.OutboundTransport(h.recorder.Transport(t, h.srv.Client().Transport)),
 			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 			Timeout:       clientTimeout,
 		},

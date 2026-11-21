@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/vantigo-io/vantigo/server/internal/telemetry"
 	"io"
 	"net"
 	"net/http"
@@ -80,7 +81,7 @@ func newCloudflare(cfg config.MailConfig) (*cloudflareSender, error) {
 		token:    cfg.CloudflareAPIToken,
 		from:     cfg.From,
 		client: &http.Client{
-			Transport: transport,
+			Transport: telemetry.OutboundTransport(transport),
 			// A redirect would re-send the request, token included, to a
 			// host no operator named.
 			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },

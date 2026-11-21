@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/vantigo-io/vantigo/server/internal/worker"
 	"log/slog"
 	"math/big"
 	"slices"
@@ -196,8 +197,11 @@ func (w *mtoWorker) Run(ctx context.Context) error {
 	ticker := time.NewTicker(mtoPoll)
 	defer ticker.Stop()
 	for {
-		if _, err := w.RunCycle(ctx); err != nil && ctx.Err() == nil {
-			w.logger().Error("manufacturing: the make-to-order cycle failed", "worker", mtoWorkerName, "error", err.Error())
+		cycleCtx, endCycle := worker.StartCycle(ctx, w.Name())
+		_, err := w.RunCycle(cycleCtx)
+		endCycle(err)
+		if err != nil && ctx.Err() == nil {
+			w.logger().ErrorContext(cycleCtx, "manufacturing: the make-to-order cycle failed", "worker", mtoWorkerName, "error", err.Error())
 		}
 		select {
 		case <-ctx.Done():

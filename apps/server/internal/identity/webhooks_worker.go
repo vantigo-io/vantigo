@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/vantigo-io/vantigo/server/internal/worker"
 	"math/rand/v2"
 	"slices"
 	"strings"
@@ -159,9 +160,11 @@ func (w *webhookSender) Run(ctx context.Context) error {
 	defer ticker.Stop()
 	defer w.Wait()
 	for {
-		_, more, err := w.pass(ctx)
+		cycleCtx, endCycle := worker.StartCycle(ctx, w.Name())
+		_, more, err := w.pass(cycleCtx)
+		endCycle(err)
 		if err != nil && ctx.Err() == nil {
-			w.deps.Logger.Error("identity webhook sender pass failed", "worker", w.Name(), "error", err)
+			w.deps.Logger.ErrorContext(cycleCtx, "identity webhook sender pass failed", "worker", w.Name(), "error", err)
 		}
 		if more && err == nil && ctx.Err() == nil {
 			continue

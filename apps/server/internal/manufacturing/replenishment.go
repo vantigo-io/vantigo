@@ -25,6 +25,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/vantigo-io/vantigo/server/internal/worker"
 	"math/big"
 	"net/http"
 	"slices"
@@ -237,8 +238,11 @@ func (w *replenishmentWorker) Run(ctx context.Context) error {
 	ticker := time.NewTicker(replenishmentPoll)
 	defer ticker.Stop()
 	for {
-		if _, err := w.RunCycle(ctx); err != nil && ctx.Err() == nil {
-			w.s.logger().Error("manufacturing: the replenishment cycle failed", "worker", replenishmentWorkerName, "error", err.Error())
+		cycleCtx, endCycle := worker.StartCycle(ctx, w.Name())
+		_, err := w.RunCycle(cycleCtx)
+		endCycle(err)
+		if err != nil && ctx.Err() == nil {
+			w.s.logger().ErrorContext(cycleCtx, "manufacturing: the replenishment cycle failed", "worker", replenishmentWorkerName, "error", err.Error())
 		}
 		select {
 		case <-ctx.Done():

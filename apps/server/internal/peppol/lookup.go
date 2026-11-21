@@ -3,6 +3,7 @@ package peppol
 import (
 	"context"
 	"fmt"
+	"github.com/vantigo-io/vantigo/server/internal/telemetry"
 	"net"
 	"net/http"
 	"strings"
@@ -107,7 +108,7 @@ func NewClient(opts Options) *Client {
 		timeout:  timeout,
 		resolver: &Resolver{Servers: opts.DNSServers},
 		http: &http.Client{
-			Transport: transport,
+			Transport: telemetry.OutboundTransport(transport),
 			// The same timeout again, on the client rather than the context: a
 			// caller that reaches fetchDocumentTypes with a context that has no
 			// deadline still gets the body read bounded. See defaultTimeout.

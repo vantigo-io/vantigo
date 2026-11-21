@@ -45,8 +45,11 @@ func (w *erasureWorker) Run(ctx context.Context) error {
 	ticker := time.NewTicker(erasurePoll)
 	defer ticker.Stop()
 	for {
-		if _, err := w.RunCycle(ctx); err != nil && ctx.Err() == nil {
-			w.deps.Logger.Error("manufacturing erasure cycle failed", "worker", w.Name(), "error", err)
+		cycleCtx, endCycle := worker.StartCycle(ctx, w.Name())
+		_, err := w.RunCycle(cycleCtx)
+		endCycle(err)
+		if err != nil && ctx.Err() == nil {
+			w.deps.Logger.ErrorContext(cycleCtx, "manufacturing erasure cycle failed", "worker", w.Name(), "error", err)
 		}
 		select {
 		case <-ctx.Done():

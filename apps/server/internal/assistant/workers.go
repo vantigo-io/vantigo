@@ -46,8 +46,11 @@ func (w *staleRunsWorker) Run(ctx context.Context) error {
 	ticker := time.NewTicker(staleRunsPoll)
 	defer ticker.Stop()
 	for {
-		if _, err := w.RunCycle(ctx); err != nil && ctx.Err() == nil {
-			w.deps.Logger.Error("assistant stale-runs cycle failed", "worker", w.Name(), "error", err)
+		cycleCtx, endCycle := worker.StartCycle(ctx, w.Name())
+		_, err := w.RunCycle(cycleCtx)
+		endCycle(err)
+		if err != nil && ctx.Err() == nil {
+			w.deps.Logger.ErrorContext(cycleCtx, "assistant stale-runs cycle failed", "worker", w.Name(), "error", err)
 		}
 		select {
 		case <-ctx.Done():
@@ -99,8 +102,11 @@ func (w *retentionWorker) Run(ctx context.Context) error {
 	ticker := time.NewTicker(retentionPoll)
 	defer ticker.Stop()
 	for {
-		if _, _, err := w.RunCycle(ctx); err != nil && ctx.Err() == nil {
-			w.deps.Logger.Error("assistant retention cycle failed", "worker", w.Name(), "error", err)
+		cycleCtx, endCycle := worker.StartCycle(ctx, w.Name())
+		_, _, err := w.RunCycle(cycleCtx)
+		endCycle(err)
+		if err != nil && ctx.Err() == nil {
+			w.deps.Logger.ErrorContext(cycleCtx, "assistant retention cycle failed", "worker", w.Name(), "error", err)
 		}
 		select {
 		case <-ctx.Done():

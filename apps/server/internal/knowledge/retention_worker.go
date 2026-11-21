@@ -64,7 +64,10 @@ func (w *retentionWorker) Run(ctx context.Context) error {
 	ticker := time.NewTicker(retentionInterval)
 	defer ticker.Stop()
 	for {
-		if _, err := w.cycle(ctx); err != nil && ctx.Err() == nil {
+		cycleCtx, endCycle := worker.StartCycle(ctx, w.Name())
+		_, err := w.cycle(cycleCtx)
+		endCycle(err)
+		if err != nil && ctx.Err() == nil {
 			w.deps.Logger.ErrorContext(ctx, "knowledge: the retention cycle failed", "worker", retentionWorkerName, "error", err.Error())
 		}
 		select {

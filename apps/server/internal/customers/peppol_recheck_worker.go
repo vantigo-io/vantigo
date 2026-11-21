@@ -110,14 +110,17 @@ func (w *PeppolRecheckWorker) Run(ctx context.Context) error {
 	ticker := time.NewTicker(w.Interval())
 	defer ticker.Stop()
 	for {
-		if _, err := w.RunCycle(ctx); err != nil && ctx.Err() == nil {
+		cycleCtx, endCycle := worker.StartCycle(ctx, w.Name())
+		_, err := w.RunCycle(cycleCtx)
+		endCycle(err)
+		if err != nil && ctx.Err() == nil {
 			// The raw error text is safe here (final fix wave M3): a cycle only fails
 			// on the lease or on one of its two candidate SELECTs, neither of which
 			// takes an identity as an argument at all — a pgx *PgError formats its
 			// message and code but never its Detail, which is where Postgres would put
 			// an offending value. A network failure never reaches this line: recheck
 			// swallows it, logged by kind.
-			w.logger().Error("peppol re-check cycle failed", "worker", peppolRecheckWorkerName, "error", err)
+			w.logger().ErrorContext(cycleCtx, "peppol re-check cycle failed", "worker", peppolRecheckWorkerName, "error", err)
 		}
 		select {
 		case <-ctx.Done():

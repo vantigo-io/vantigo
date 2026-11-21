@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
+	"github.com/vantigo-io/vantigo/server/internal/telemetry"
 	"log/slog"
 	"net"
 	"net/http"
@@ -105,7 +106,7 @@ func TestWebhookClient_HTTPTransportNeverReplacesTheGuard(t *testing.T) {
 	if a := testWebhookClient(n, nil).send(t.Context(), webhookMessage{url: testTarget, id: "msg_1", body: []byte("{}")}); a.errKind != webhookErrBlockedAddress {
 		t.Errorf("attempt %+v, want blocked_address", a)
 	}
-	if transport, ok := newWebhookClient(&Access{}, time.Now, nil).http.Transport.(*http.Transport); !ok || transport != webhookTransport() {
+	if transport, ok := telemetry.Base(newWebhookClient(&Access{}, time.Now, nil).http.Transport).(*http.Transport); !ok || transport != webhookTransport() {
 		t.Error("production's client is not the guarded transport")
 	}
 }

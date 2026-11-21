@@ -144,7 +144,9 @@ func (w *MailboxSyncWorker) Run(ctx context.Context) error {
 	ticker := time.NewTicker(mailboxSyncPollInterval)
 	defer ticker.Stop()
 	for {
-		w.drain(ctx)
+		cycleCtx, endCycle := worker.StartCycle(ctx, w.Name())
+		w.drain(cycleCtx)
+		endCycle(nil)
 		select {
 		case <-ctx.Done():
 			return nil

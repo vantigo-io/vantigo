@@ -2,6 +2,7 @@ package meta
 
 import (
 	"fmt"
+	"github.com/vantigo-io/vantigo/server/internal/telemetry"
 	"log/slog"
 	"net"
 	"net/http"
@@ -120,7 +121,7 @@ func newHTTPClient(d module.Deps, allow func(string) bool, timeout time.Duration
 		rt = d.HTTPTransport
 	}
 	return &http.Client{
-		Transport:     hostGuard{next: rt, allow: allow},
+		Transport:     telemetry.OutboundTransport(hostGuard{next: rt, allow: allow}),
 		Timeout:       timeout,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}

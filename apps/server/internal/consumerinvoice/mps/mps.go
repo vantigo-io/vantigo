@@ -30,6 +30,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"github.com/vantigo-io/vantigo/server/internal/telemetry"
 	"io"
 	"net/http"
 	"net/url"
@@ -107,7 +108,7 @@ func clientWith(base http.RoundTripper, cert tls.Certificate) (*http.Client, err
 	if !ok {
 		// A test's router, which presents the fake's client certificate
 		// itself (mpstest's ClientTransport): used as it is.
-		return &http.Client{Transport: base, Timeout: callTimeout}, nil
+		return &http.Client{Transport: telemetry.OutboundTransport(base), Timeout: callTimeout}, nil
 	}
 	t = t.Clone()
 	if t.TLSClientConfig == nil {
@@ -116,7 +117,7 @@ func clientWith(base http.RoundTripper, cert tls.Certificate) (*http.Client, err
 		t.TLSClientConfig.MinVersion = tls.VersionTLS12
 	}
 	t.TLSClientConfig.Certificates = []tls.Certificate{cert}
-	return &http.Client{Transport: t, Timeout: callTimeout}, nil
+	return &http.Client{Transport: telemetry.OutboundTransport(t), Timeout: callTimeout}, nil
 }
 
 // ServiceNamespace is the Kombo submitter service's XML namespace, on each
