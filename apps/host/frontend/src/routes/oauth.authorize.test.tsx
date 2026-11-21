@@ -3,7 +3,7 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { OAuthAuthorizationPreview } from "../api/oauth";
 import { renderRoute } from "../test/render-route";
-import { OAuthAuthorizePage, oauthPageNavigation } from "./oauth.authorize";
+import { isAllowedRedirect, OAuthAuthorizePage, oauthPageNavigation } from "./oauth.authorize";
 import "../i18n";
 
 const api = vi.hoisted(() => ({
@@ -113,6 +113,7 @@ describe("the OAuth consent page", () => {
     expect(await screen.findByRole("heading", { name: "This app cannot connect" })).toBeInTheDocument();
     expect(api.previewAuthorization).toHaveBeenCalledWith(query);
     expect(screen.getByText("The redirect_uri is not one the client registered.")).toBeInTheDocument();
+    expect(screen.getByText(/description could not be fetched or accepted/)).toBeInTheDocument();
     expect(screen.getAllByRole("button").map((b) => b.textContent)).toEqual(["Close"]);
     expect(nav.assign).not.toHaveBeenCalled();
   });
@@ -267,5 +268,146 @@ describe("the OAuth consent page", () => {
     await renderPage("");
     expect(await screen.findByText("This page was opened without a connection request.")).toBeInTheDocument();
     expect(api.previewAuthorization).not.toHaveBeenCalled();
+  });
+
+  it("tells a non-Owner held at enrolment to ask an Owner, and sends them nowhere", async () => {
+    api.fetchSession.mockResolvedValue({ ...session(["Member"], true), isSystemAdmin: true });
+    await renderPage();
+    expect(await screen.findByRole("heading", { name: "Ask an Owner" })).toBeInTheDocument();
+    expect(nav.assign).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem("oauth.return")).toBeNull();
+  });
+
+  it("says the request could not be read when the session cannot be", async () => {
+    api.fetchSession.mockRejectedValue(Object.assign(new Error("boom"), { status: 500 }));
+    await renderPage();
+    expect(await screen.findByRole("heading", { name: "The request could not be read" })).toBeInTheDocument();
+    expect(api.previewAuthorization).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [403, "Your session may not approve connections."],
+    [429, "Too many connection requests in a short time."],
+    [400, "Something went wrong."],
+  ])("explains a preview answered %i, and redirects nowhere", async (status, text) => {
+    api.previewAuthorization.mockRejectedValue(Object.assign(new Error("refused"), { status }));
+    await renderPage();
+    expect(await screen.findByText(new RegExp(text))).toBeInTheDocument();
+    expect(nav.assign).not.toHaveBeenCalled();
+  });
+
+  it("goes back to sign in when the session expired before the preview", async () => {
+    api.previewAuthorization.mockRejectedValue(Object.assign(new Error("expired"), { status: 401 }));
+    await renderPage();
+    await waitFor(() => expect(nav.assign).toHaveBeenCalledWith("/sign-in"));
+    expect(JSON.parse(sessionStorage.getItem("oauth.return") ?? "{}").path).toBe(`/oauth/authorize?${query}`);
+  });
+
+  it("goes back to sign in when the session expired before the approval", async () => {
+    api.previewAuthorization.mockResolvedValue(consent());
+    api.decideAuthorization.mockRejectedValue(Object.assign(new Error("expired"), { status: 401 }));
+    await renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "Deny" }));
+    await waitFor(() => expect(nav.assign).toHaveBeenCalledWith("/sign-in"));
+    expect(sessionStorage.getItem("oauth.return")).toContain("/oauth/authorize?");
+  });
+
+  it("reads the integrations again when the approval finds the one chosen no longer eligible", async () => {
+    api.previewAuthorization.mockResolvedValue(consent());
+    api.decideAuthorization.mockRejectedValue(
+      Object.assign(new Error("conflict"), { status: 409, code: "integration_not_eligible" }),
+    );
+    await renderPage();
+    fireEvent.click(await screen.findByLabelText("Integration", { selector: "input" }));
+    fireEvent.click(await screen.findByRole("option", { name: "Agent" }));
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+    expect(await screen.findByText(/cannot be connected with that access any more/)).toBeInTheDocument();
+    await waitFor(() => expect(api.previewAuthorization).toHaveBeenCalledTimes(2));
+    expect(nav.assign).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [429, "Too many connection requests in a short time."],
+    [500, "Something went wrong."],
+  ])("explains an approval answered %i, and lets the person try again", async (status, text) => {
+    api.previewAuthorization.mockResolvedValue(consent());
+    api.decideAuthorization.mockRejectedValue(Object.assign(new Error("failed"), { status }));
+    await renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "Deny" }));
+    expect(await screen.findByText(new RegExp(text))).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Deny" })).toBeEnabled();
+    expect(nav.assign).not.toHaveBeenCalled();
+  });
+
+  it("posts one decision however often Approve is pressed", async () => {
+    api.previewAuthorization.mockResolvedValue(consent());
+    api.decideAuthorization.mockReturnValue(new Promise(() => {}));
+    await renderPage();
+    fireEvent.click(await screen.findByLabelText("Integration", { selector: "input" }));
+    fireEvent.click(await screen.findByRole("option", { name: "Agent" }));
+    const approve = screen.getByRole("button", { name: "Approve" });
+    fireEvent.click(approve);
+    fireEvent.click(approve);
+    fireEvent.click(screen.getByRole("button", { name: "Deny" }));
+    await waitFor(() => expect(api.decideAuthorization).toHaveBeenCalledTimes(1));
+  });
+
+  it.each([["javascript:alert(1)"], ["http://evil.example/cb?code=c1"], ["data:text/html,hi"]])(
+    "refuses to send the browser to %s, whatever the server answered",
+    async (to) => {
+      api.previewAuthorization.mockResolvedValue(consent());
+      api.decideAuthorization.mockResolvedValue({ redirectTo: to });
+      await renderPage();
+      fireEvent.click(await screen.findByRole("button", { name: "Deny" }));
+      expect(await screen.findByText(/not one this page will send you to/)).toBeInTheDocument();
+      expect(nav.assign).not.toHaveBeenCalled();
+    },
+  );
+
+  it("refuses an automatic redirect to an address it does not allow", async () => {
+    api.previewAuthorization.mockResolvedValue({
+      outcome: "redirect",
+      error: "invalid_scope",
+      message: null,
+      redirectTo: "javascript:alert(1)",
+      returnHost: "x",
+      automatic: true,
+    });
+    await renderPage();
+    expect(await screen.findByText(/not one this page will send you to/)).toBeInTheDocument();
+    expect(nav.assign).not.toHaveBeenCalled();
+  });
+
+  it("allows https anywhere and http only to this computer", () => {
+    expect(isAllowedRedirect("https://claude.ai/cb?code=1")).toBe(true);
+    expect(isAllowedRedirect("http://127.0.0.1:33418/callback")).toBe(true);
+    expect(isAllowedRedirect("http://[::1]:5000/cb")).toBe(true);
+    expect(isAllowedRedirect("http://localhost:5000/cb")).toBe(true);
+    expect(isAllowedRedirect("http://localhost.evil.example/cb")).toBe(false);
+    expect(isAllowedRedirect("https://user:pw@claude.ai/cb")).toBe(false);
+    expect(isAllowedRedirect("vbscript:x")).toBe(false);
+    expect(isAllowedRedirect("/relative")).toBe(false);
+  });
+
+  it("renders nothing and asks nothing inside a frame", async () => {
+    const top = Object.getOwnPropertyDescriptor(window, "top");
+    Object.defineProperty(window, "top", { configurable: true, get: () => ({}) });
+    try {
+      await renderPage();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(screen.queryByRole("heading")).not.toBeInTheDocument();
+      expect(screen.queryByRole("status")).not.toBeInTheDocument();
+      expect(api.fetchSession).not.toHaveBeenCalled();
+    } finally {
+      if (top) Object.defineProperty(window, "top", top);
+    }
+  });
+
+  it("keeps a long or stacked name to its box", async () => {
+    api.previewAuthorization.mockResolvedValue(consent({ client: { ...consent().client!, name: "W".repeat(80) } }));
+    await renderPage();
+    const name = await screen.findByTestId("oauth-client-name");
+    expect(name.getAttribute("data-line-clamp") ?? name.className).toBeTruthy();
+    expect(name.style.overflowWrap).toBe("anywhere");
   });
 });

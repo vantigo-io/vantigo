@@ -1,11 +1,14 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   authorizeQuery,
   captureAuthorizeQuery,
   oauthReturnKey,
   oauthReturnMaxAgeMs,
+  peekOAuthReturn,
   rememberOAuthReturn,
+  restoreAuthorizeAddress,
   takeOAuthReturn,
+  touchOAuthReturn,
 } from "./oauth-return";
 
 const now = 1_800_000_000_000;
@@ -69,5 +72,51 @@ describe("the consent page's return after sign-in (OAuth connections design A8)"
     expect(authorizeQuery()).toBe(query);
     captureAuthorizeQuery({ pathname: "/workspace", search: "?tab=x" });
     expect(authorizeQuery()).toBe("");
+  });
+
+  it("peeks at a waiting entry without taking it", () => {
+    rememberOAuthReturn(query, sessionStorage, now);
+    expect(peekOAuthReturn(sessionStorage, now + 1000)).toBe(`/oauth/authorize?${query}`);
+    expect(sessionStorage.getItem(oauthReturnKey)).not.toBeNull();
+    expect(peekOAuthReturn(sessionStorage, now + oauthReturnMaxAgeMs)).toBeUndefined();
+  });
+
+  it("starts a valid entry's ten minutes again, and leaves an invalid one to expire", () => {
+    rememberOAuthReturn(query, sessionStorage, now);
+    touchOAuthReturn(sessionStorage, now + 9 * 60_000);
+    expect(takeOAuthReturn(sessionStorage, now + 18 * 60_000)).toBe(`/oauth/authorize?${query}`);
+    stored({ path: "/workspace", at: now });
+    touchOAuthReturn(sessionStorage, now + 1000);
+    expect(JSON.parse(sessionStorage.getItem(oauthReturnKey) ?? "{}").at).toBe(now);
+  });
+});
+
+describe("the consent page's address (OAuth connections design A27)", () => {
+  const raw = "client_id=https%3A%2F%2Fclaude.ai%2Fm&scope=read%20write&state=1e3";
+
+  it("puts back the query the router rewrote, so a reload reads the request unchanged", () => {
+    const history = { state: { key: "k" }, replaceState: vi.fn() };
+    restoreAuthorizeAddress(
+      raw,
+      {
+        pathname: "/oauth/authorize",
+        search: "?client_id=https%3A%2F%2Fclaude.ai%2Fm&scope=read+write&state=1000",
+        hash: "",
+      },
+      history,
+    );
+    expect(history.replaceState).toHaveBeenCalledWith({ key: "k" }, "", `/oauth/authorize?${raw}`);
+  });
+
+  it("leaves an exact address and other pages alone", () => {
+    const history = { state: null, replaceState: vi.fn() };
+    restoreAuthorizeAddress(raw, { pathname: "/oauth/authorize", search: `?${raw}`, hash: "" }, history);
+    restoreAuthorizeAddress(raw, { pathname: "/workspace", search: "?x=1", hash: "" }, history);
+    expect(history.replaceState).not.toHaveBeenCalled();
+  });
+
+  it("captures the query with its 1e3 and %20 exactly as sent", () => {
+    captureAuthorizeQuery({ pathname: "/oauth/authorize", search: `?${raw}` });
+    expect(authorizeQuery()).toBe(raw);
   });
 });
