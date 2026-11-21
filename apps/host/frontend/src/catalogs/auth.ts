@@ -56,7 +56,7 @@ const en = {
   "oauth.documentAt": "{{app}} read its description from",
   "oauth.documentAtLoopback": "Its description is hosted at",
   "oauth.registeredBy": "Registered in this workspace by {{person}}",
-  "oauth.registeredByDeleted": "Registered in this workspace by a person who is no longer in it",
+  "oauth.registeredHere": "Registered in this workspace",
   "oauth.redirectTo": "After you answer, your browser goes to",
   "oauth.nameWarningTitle": "Check who this app is",
   "oauth.nameWarning":
@@ -169,7 +169,7 @@ const nb: { [Key in keyof typeof en]: string } = {
   "oauth.documentAt": "{{app}} leste beskrivelsen av den fra",
   "oauth.documentAtLoopback": "Beskrivelsen av den ligger på",
   "oauth.registeredBy": "Registrert i dette arbeidsområdet av {{person}}",
-  "oauth.registeredByDeleted": "Registrert i dette arbeidsområdet av en person som ikke lenger er med i det",
+  "oauth.registeredHere": "Registrert i dette arbeidsområdet",
   "oauth.redirectTo": "Når du har svart, går nettleseren til",
   "oauth.nameWarningTitle": "Sjekk hvem denne appen er",
   "oauth.nameWarning":

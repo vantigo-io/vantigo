@@ -24,7 +24,15 @@ const statusOf = (error: unknown) => (error as { status?: number } | null)?.stat
 /** A name the client was given, kept to its box however it is built. */
 const clipped = { overflowWrap: "anywhere", overflow: "hidden" } as const;
 
-type Draft = { id?: string; version?: string; name: string; redirectUris: string };
+type Draft = {
+  id?: string;
+  version?: string;
+  name: string;
+  redirectUris: string;
+  /** The client's redirect URIs and live connections when the edit began. */
+  original?: string[];
+  live?: number;
+};
 
 /** The entries of a form's text, one a line, blanks dropped. */
 const redirectLines = (text: string) =>
@@ -65,15 +73,35 @@ export const RegisteredClients = () => {
       });
       await queryClient.invalidateQueries({ queryKey: registeredClientsQueryKey });
     },
-    onError: async (error) => {
+    onError: async (error, d) => {
       setErrors(fieldErrorsOf(error));
-      const stale = codeOf(error) === "version_mismatch";
-      notifications.show({
-        color: stale ? "orange" : "red",
-        title: t("apiAccess.couldNotSave"),
-        message: stale ? t("apiAccess.changedMeanwhile") : (error as Error).message,
+      const stale = codeOf(error) === "version_mismatch" || (d.id !== undefined && codeOf(error) === "not_found");
+      if (!stale) {
+        notifications.show({ color: "red", title: t("apiAccess.couldNotSave"), message: (error as Error).message });
+        return;
+      }
+      // Changed or archived meanwhile: read the client again, and either
+      // carry the edit onto its latest version or close the form.
+      const fresh = await queryClient.fetchQuery({
+        queryKey: registeredClientsQueryKey,
+        queryFn: listRegisteredClients,
+        staleTime: 0,
       });
-      if (stale) await queryClient.invalidateQueries({ queryKey: registeredClientsQueryKey });
+      const current = fresh.find((client) => client.id === d.id);
+      if (current) {
+        setDraft((open) =>
+          open?.id === current.id
+            ? { ...open, version: current.version, original: current.redirectUris, live: current.liveConnections }
+            : open,
+        );
+      } else {
+        setDraft(null);
+      }
+      notifications.show({
+        color: "orange",
+        title: t("apiAccess.couldNotSave"),
+        message: t(current ? "apiAccess.clientChangedMeanwhile" : "apiAccess.clientGone"),
+      });
     },
   });
   const archive = useMutation({
@@ -189,6 +217,8 @@ export const RegisteredClients = () => {
                               version: client.version,
                               name: client.name,
                               redirectUris: client.redirectUris.join("\n"),
+                              original: client.redirectUris,
+                              live: client.liveConnections,
                             })
                           }
                         >
@@ -245,6 +275,13 @@ export const RegisteredClients = () => {
                 error={errors.redirectUris}
                 onChange={(event) => setDraft({ ...draft, redirectUris: event.currentTarget.value })}
               />
+              {draft.id &&
+                (draft.live ?? 0) > 0 &&
+                (draft.original ?? []).some((uri) => !redirectLines(draft.redirectUris).includes(uri)) && (
+                  <Alert color="orange" data-testid="edit-client-ends">
+                    {t("apiAccess.editClientEnds", { count: draft.live })}
+                  </Alert>
+                )}
               <Button
                 type="submit"
                 loading={save.isPending}

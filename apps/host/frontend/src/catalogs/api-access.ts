@@ -424,12 +424,28 @@ const en = {
   "apiAccess.couldNotArchiveClient": "Could not archive the client",
   "apiAccess.clientHosts": "Client hosts",
   "apiAccess.clientHostsDescription":
-    "The hosts whose apps may connect by signing in, such as claude.ai and chatgpt.com. Leave the list empty to admit any host; a subdomain of a listed host is admitted too. Registered clients are always admitted. Saving disconnects nothing: an app whose host is left out cannot renew its access until the host is listed again.",
+    "The hosts whose apps may connect by signing in, such as claude.ai and chatgpt.com. Leave the list empty to admit any host; a subdomain of a listed host is admitted too, so a shared hosting domain such as github.io or vercel.app admits every site on it. Registered clients are always admitted. Saving disconnects nothing: an app whose host is left out cannot renew its access until the host is listed again.",
   "apiAccess.clientHostsLabel": "Allowed hosts",
   "apiAccess.clientHostsAny": "Empty: an app from any host may connect.",
   "apiAccess.clientHostsOnly": "Only apps from these hosts and their subdomains may connect.",
   "apiAccess.clientHostsPlaceholder": "One host a line, such as claude.ai",
   "apiAccess.couldNotLoadClientHosts": "The client hosts could not be loaded",
+  "apiAccess.filterGroupEnded": "Ended apps",
+  "apiAccess.endReason_revoked": "revoked by an Owner",
+  "apiAccess.endReason_integration_archived": "integration archived",
+  "apiAccess.endReason_authorizer_removed": "its Owner removed",
+  "apiAccess.endReason_client_archived": "client archived",
+  "apiAccess.endReason_client_changed": "redirect URI removed",
+  "apiAccess.endReason_client_document_changed": "its description changed",
+  "apiAccess.endReason_code_replayed": "code used twice",
+  "apiAccess.endReason_refresh_reused": "token reused",
+  "apiAccess.endReason_revoked_by_client": "signed out by the app",
+  "apiAccess.endReason_expired": "expired",
+  "apiAccess.editClientEnds":
+    "Removing a redirect URI disconnects every app that signed in with it. Connected with this client now: {{count}}.",
+  "apiAccess.clientChangedMeanwhile":
+    "Someone changed the client meanwhile: the form now holds its latest version. Check it and save again.",
+  "apiAccess.clientGone": "The client has been archived meanwhile.",
 };
 
 const nb: Record<keyof typeof en, string> = {
@@ -849,12 +865,28 @@ const nb: Record<keyof typeof en, string> = {
   "apiAccess.couldNotArchiveClient": "Kunne ikke arkivere klienten",
   "apiAccess.clientHosts": "Klientverter",
   "apiAccess.clientHostsDescription":
-    "Vertene der apper kan koble seg til ved innlogging, som claude.ai og chatgpt.com. La listen stå tom for å tillate alle verter; et underdomene av en vert i listen tillates også. Registrerte klienter tillates alltid. Å lagre kobler ingenting fra: en app med en vert som er tatt ut, kan ikke fornye tilgangen før verten står i listen igjen.",
+    "Vertene der apper kan koble seg til ved innlogging, som claude.ai og chatgpt.com. La listen stå tom for å tillate alle verter; et underdomene av en vert i listen tillates også, så et delt vertsdomene som github.io eller vercel.app tillater alle nettsteder på det. Registrerte klienter tillates alltid. Å lagre kobler ingenting fra: en app med en vert som er tatt ut, kan ikke fornye tilgangen før verten står i listen igjen.",
   "apiAccess.clientHostsLabel": "Tillatte verter",
   "apiAccess.clientHostsAny": "Tom: en app fra hvilken som helst vert kan koble seg til.",
   "apiAccess.clientHostsOnly": "Bare apper fra disse vertene og underdomenene deres kan koble seg til.",
   "apiAccess.clientHostsPlaceholder": "Én vert per linje, som claude.ai",
   "apiAccess.couldNotLoadClientHosts": "Klientvertene kunne ikke lastes",
+  "apiAccess.filterGroupEnded": "Avsluttede apper",
+  "apiAccess.endReason_revoked": "tilbakekalt av en eier",
+  "apiAccess.endReason_integration_archived": "integrasjonen arkivert",
+  "apiAccess.endReason_authorizer_removed": "eieren fjernet",
+  "apiAccess.endReason_client_archived": "klienten arkivert",
+  "apiAccess.endReason_client_changed": "omdirigerings-URI fjernet",
+  "apiAccess.endReason_client_document_changed": "beskrivelsen endret",
+  "apiAccess.endReason_code_replayed": "koden brukt to ganger",
+  "apiAccess.endReason_refresh_reused": "tokenet gjenbrukt",
+  "apiAccess.endReason_revoked_by_client": "logget ut av appen",
+  "apiAccess.endReason_expired": "utløpt",
+  "apiAccess.editClientEnds":
+    "Å fjerne en omdirigerings-URI kobler fra alle apper som logget inn med den. Tilkoblet med denne klienten nå: {{count}}.",
+  "apiAccess.clientChangedMeanwhile":
+    "Noen endret klienten i mellomtiden: skjemaet har nå den nyeste versjonen. Sjekk den og lagre igjen.",
+  "apiAccess.clientGone": "Klienten er arkivert i mellomtiden.",
 };
 
 export const apiAccessCatalog = { en, nb } as const satisfies CatalogResources;

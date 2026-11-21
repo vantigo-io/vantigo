@@ -190,7 +190,7 @@ describe("the OAuth consent page", () => {
     expect(screen.getByText("An app on this computer")).toBeInTheDocument();
   });
 
-  it("says so when the person who registered a client is gone", async () => {
+  it("names no one once the person who registered a client no longer vouches for it", async () => {
     api.previewAuthorization.mockResolvedValue(
       consent({
         client: {
@@ -205,7 +205,7 @@ describe("the OAuth consent page", () => {
       }),
     );
     await renderPage();
-    expect(await screen.findByTestId("oauth-registered-by")).toHaveTextContent(/a person who is no longer in it/);
+    expect(await screen.findByTestId("oauth-registered-by")).toHaveTextContent(/^Registered in this workspace$/);
   });
 
   it("warns of a name that borrows Vantigo's, a loopback redirect and a host never connected", async () => {

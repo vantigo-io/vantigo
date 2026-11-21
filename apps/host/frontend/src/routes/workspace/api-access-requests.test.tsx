@@ -6,7 +6,7 @@ import { renderRoute } from "../../test/render-route";
 import { dayRows, IntegrationRequests, windowDays } from "./-api-access-requests";
 import "../../i18n";
 
-const api = vi.hoisted(() => ({ getIntegrationRequests: vi.fn(), listIntegrationConnections: vi.fn() }));
+const api = vi.hoisted(() => ({ getIntegrationRequests: vi.fn(), listIntegrationConnectionsWithEnded: vi.fn() }));
 
 vi.mock("../../api/integrations", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../api/integrations")>()),
@@ -15,7 +15,7 @@ vi.mock("../../api/integrations", async (importOriginal) => ({
 
 vi.mock("../../api/oauth", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../api/oauth")>()),
-  listIntegrationConnections: api.listIntegrationConnections,
+  listIntegrationConnectionsWithEnded: api.listIntegrationConnectionsWithEnded,
 }));
 
 const key = (id: string, name: string): ApiKey => ({
@@ -104,8 +104,8 @@ const renderTab = async () => {
 
 beforeEach(() => {
   api.getIntegrationRequests.mockReset();
-  api.listIntegrationConnections.mockReset();
-  api.listIntegrationConnections.mockResolvedValue([
+  api.listIntegrationConnectionsWithEnded.mockReset();
+  api.listIntegrationConnectionsWithEnded.mockResolvedValue([
     {
       id: "c-1",
       clientId: "https://claude.ai/oauth/mcp-oauth-client-metadata",
@@ -190,9 +190,39 @@ describe("an integration's request log", () => {
     expect(call.key).toBeUndefined();
   });
 
+  it("offers the apps that ended in the window under Ended apps, with why", async () => {
+    api.getIntegrationRequests.mockResolvedValue(log);
+    api.listIntegrationConnectionsWithEnded.mockResolvedValue([
+      {
+        id: "c-9",
+        clientId: "https://chatgpt.com/oauth/client.json",
+        clientKind: "metadata",
+        clientName: "ChatGPT",
+        clientHost: "chatgpt.com",
+        scopes: ["read"],
+        authorizedBy: null,
+        authorizedByName: null,
+        connectedAt: "2026-11-01T10:00:00Z",
+        expiresAt: "2027-04-30T10:00:00Z",
+        lastUsedAt: null,
+        lastUsedIp: null,
+        status: "ended",
+        inactiveReason: null,
+        endedAt: "2026-11-10T10:00:00Z",
+        endReason: "revoked_by_client",
+      },
+    ]);
+    await renderTab();
+    await screen.findByTestId("request-latest");
+    fireEvent.click(screen.getByRole("combobox", { name: "Key or app" }));
+    expect(await screen.findByText("Ended apps")).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("option", { name: "ChatGPT · chatgpt.com · signed out by the app" }));
+    await waitFor(() => expect(api.getIntegrationRequests).toHaveBeenLastCalledWith("i-1", { connection: "c-9" }));
+  });
+
   it("offers no connected apps while OAuth is switched off", async () => {
     api.getIntegrationRequests.mockResolvedValue(log);
-    api.listIntegrationConnections.mockRejectedValue(Object.assign(new Error("Not Found"), { status: 404 }));
+    api.listIntegrationConnectionsWithEnded.mockRejectedValue(Object.assign(new Error("Not Found"), { status: 404 }));
     await renderTab();
     await screen.findByTestId("request-latest");
     fireEvent.click(screen.getByRole("combobox", { name: "Key or app" }));

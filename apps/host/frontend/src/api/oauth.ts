@@ -38,6 +38,15 @@ export const listIntegrationConnections = (id: string) =>
     (list) => list.connections,
   );
 
+export const integrationConnectionsWithEndedQueryKey = (id: string) =>
+  [...integrationQueryKey(id), "connections", "ended"] as const;
+
+/** Its connected apps and those that ended in the request log's 30 days, for the log's filter (A18). */
+export const listIntegrationConnectionsWithEnded = (id: string) =>
+  request<components["schemas"]["IntegrationConnectionList"]>(
+    `/api/v1/identity/integrations/${id}/connections?include=ended`,
+  ).then((list) => list.connections);
+
 export const revokeIntegrationConnection = (id: string, connectionId: string) =>
   request<void>(`/api/v1/identity/integrations/${id}/connections/${connectionId}`, { method: "DELETE" });
 
