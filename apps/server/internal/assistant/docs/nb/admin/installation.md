@@ -300,6 +300,10 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "vantigo" GRANT USAGE, SELECT ON SEQUENCES TO 
 GRANT USAGE ON SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, orders, manufacturing, accounting, purchasing, knowledge, calendar, entra, google, assistant TO "vantigo_app";
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, orders, manufacturing, accounting, purchasing, knowledge, calendar, entra, google, assistant TO "vantigo_app";
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, orders, manufacturing, accounting, purchasing, knowledge, calendar, entra, google, assistant TO "vantigo_app";
+
+-- Versjonstabellen til goose, som `server` og `worker` leser før de starter
+-- (de venter på skjemaet); uten den stopper de med en tilgangsfeil.
+GRANT SELECT ON public.goose_db_version TO "vantigo_app";
 ```
 
 ## Bakgrunnsjobber og skalering
