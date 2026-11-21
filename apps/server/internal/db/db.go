@@ -6,11 +6,28 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/exaring/otelpgx"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+// UTCSession makes every session opened from c run in UTC (Kubernetes
+// readiness design KR42). Stored times are timestamptz, an instant whatever
+// the zone, but a cast to date and date_trunc answer in the session's
+// TimeZone, which a managed PostgreSQL may default to something else. It
+// replaces a TimeZone the connection string set, in any spelling: a
+// workspace's own zone converts at the edge, never by changing the session.
+func UTCSession(c *pgx.ConnConfig) {
+	for k := range c.RuntimeParams {
+		if strings.EqualFold(k, "timezone") {
+			delete(c.RuntimeParams, k)
+		}
+	}
+	c.RuntimeParams["timezone"] = "UTC"
+}
 
 // Option adjusts the pool Open builds, after the connection string has been
 // parsed and before the pool is created.
@@ -37,6 +54,7 @@ func Open(ctx context.Context, databaseURL string, opts ...Option) (*pgxpool.Poo
 	// to the bare operation name (e.g. "SELECT"); WithQuerySpanNamePrefix
 	// prefixes it with "query " per the OTel DB span-naming convention.
 	cfg.ConnConfig.Tracer = otelpgx.NewTracer(otelpgx.WithQuerySpanNamePrefix())
+	UTCSession(cfg.ConnConfig)
 	for _, opt := range opts {
 		opt(cfg)
 	}
