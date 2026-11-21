@@ -20108,6 +20108,30 @@ func (response PostIdentityOauthAuthorizations409JSONResponse) VisitPostIdentity
 	return err
 }
 
+type PostIdentityOauthAuthorizations429ResponseHeaders struct {
+	RetryAfter *string
+}
+
+type PostIdentityOauthAuthorizations429JSONResponse struct {
+	Body    externalRef0.AuthErrorResponse
+	Headers PostIdentityOauthAuthorizations429ResponseHeaders
+}
+
+func (response PostIdentityOauthAuthorizations429JSONResponse) VisitPostIdentityOauthAuthorizationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PostIdentityOauthAuthorizationsPreviewRequestObject struct {
 	Body *PostIdentityOauthAuthorizationsPreviewJSONRequestBody
 }

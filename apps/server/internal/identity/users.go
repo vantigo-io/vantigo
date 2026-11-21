@@ -509,7 +509,7 @@ func (s *server) replaceManagedRole(ctx context.Context, q *store.Queries, r *ht
 	// A person who is no longer an Owner no longer holds the connections
 	// they authorized (OAuth connections design A17).
 	if slices.Contains(before, RoleOwner) && !slices.Contains(after, RoleOwner) {
-		if err := s.access.revokeAuthorizerConnections(ctx, q, r, &actor, "", userID, false, now); err != nil {
+		if err := revokeAuthorizerConnections(ctx, q, r, &actor, "", userID, now); err != nil {
 			return err
 		}
 	}
@@ -621,7 +621,7 @@ func (s *server) setUserDisabled(ctx context.Context, id uuid.UUID, disabled boo
 			// The connections the person authorized end with the disable
 			// (OAuth connections design A17).
 			if disabled {
-				if err := s.access.revokeAuthorizerConnections(ctx, q, r, &p.UserID, "", id, true, now); err != nil {
+				if err := revokeAuthorizerConnections(ctx, q, r, &p.UserID, "", id, now); err != nil {
 					return err
 				}
 			}
@@ -717,7 +717,7 @@ func (s *server) DeleteIdentityOwnerUsersById(ctx context.Context, req gen.Delet
 		}
 		// The connections the person authorized end before the delete sets
 		// their authorizer to NULL (OAuth connections design A17).
-		if err := s.access.revokeAuthorizerConnections(ctx, q, r, &p.UserID, "", req.Id, true, now); err != nil {
+		if err := revokeAuthorizerConnections(ctx, q, r, &p.UserID, "", req.Id, now); err != nil {
 			return err
 		}
 		if err := q.DeleteUser(ctx, req.Id); err != nil {

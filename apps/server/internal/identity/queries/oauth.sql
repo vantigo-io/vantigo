@@ -140,15 +140,35 @@ WHERE integration_id = sqlc.arg(integration_id) AND revoked_at IS NULL
 RETURNING *;
 
 -- name: RevokeAuthorizerOAuthConnections :many
--- RevokeAuthorizerOAuthConnections ends the live connections a person
--- authorized (A17): all of them when unconditional, as the person's delete
--- or disable does, else those whose authorizer no longer qualifies, as the
--- Owner role's removal does.
+-- RevokeAuthorizerOAuthConnections ends every live connection a person
+-- authorized (A17), as their delete, their disable and the Owner role's
+-- removal do: each of those leaves the person unqualified whatever else is
+-- true of them.
 UPDATE identity.oauth_connections
 SET revoked_at = sqlc.arg(now)::timestamptz, revoked_by = sqlc.narg(revoked_by), revoke_reason = 'authorizer_removed'
 WHERE authorized_by = sqlc.arg(authorized_by) AND revoked_at IS NULL
-  AND (sqlc.arg(unconditional)::boolean OR NOT identity.oauth_authorizer_active(authorized_by, sqlc.arg(scim_enabled)::boolean))
 RETURNING *;
+
+-- name: GetOAuthRefreshTokenConnection :one
+-- GetOAuthRefreshTokenConnection is the connection a refresh token belongs
+-- to, read without a lock, so a refresh locks the connection before the
+-- token (the one lock order: connection, then its tokens).
+SELECT connection_id
+FROM identity.oauth_tokens
+WHERE token_hash = @token_hash AND kind = 'refresh';
+
+-- name: GetOAuthConnectionUsable :one
+-- GetOAuthConnectionUsable is what a refresh needs to know beyond the
+-- connection's own row: whether its authorizer still qualifies and its
+-- integration may act (the token check's predicates), so a refresh never
+-- issues tokens the next request would refuse.
+SELECT identity.oauth_authorizer_active(c.authorized_by, @scim_enabled::boolean)::boolean AS authorizer_active,
+       i.archived_at, u.is_disabled, u.lockout_end, u.kind
+FROM identity.oauth_connections c
+JOIN identity.integrations i ON i.user_id = c.integration_id
+JOIN identity.users u ON u.id = i.user_id
+WHERE c.id = @id;
+
 
 -- name: ListIntegrationOAuthConnections :many
 -- ListIntegrationOAuthConnections is an integration's activated connections

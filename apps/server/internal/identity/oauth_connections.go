@@ -121,24 +121,17 @@ func revokeIntegrationConnections(ctx context.Context, q *store.Queries, r *http
 	return nil
 }
 
-// revokeAuthorizerConnections ends, on the caller's transaction, the live
-// connections userID authorized (A17), audited connection.revoked with the
-// reason authorizer_removed: all of them when unconditional (the person is
-// deleted or disabled), else those whose authorizer no longer qualifies (the
-// Owner role removed). actor and system say who made the change. The token
-// check refuses such a connection whether or not this runs; the row is for
-// the audit and the list.
-func (a *Access) revokeAuthorizerConnections(ctx context.Context, q *store.Queries, r *http.Request, actor *uuid.UUID, system string, userID uuid.UUID, unconditional bool, now time.Time) error {
-	scim := false
-	if !unconditional {
-		sso, err := a.sso.get(ctx)
-		if err != nil {
-			return fmt.Errorf("identity: read whether SCIM is on: %w", err)
-		}
-		scim = sso.SCIM != nil
-	}
+// revokeAuthorizerConnections ends, on the caller's transaction, every live
+// connection userID authorized (A17), audited connection.revoked with the
+// reason authorizer_removed: the person is deleted, disabled or no longer an
+// Owner, and none of those leaves them qualified whatever else is true, so
+// nothing more is read (no second connection is taken while the caller's
+// transaction holds one). actor and system say who made the change. The
+// token check refuses such a connection whether or not this runs; the row is
+// for the audit and the list.
+func revokeAuthorizerConnections(ctx context.Context, q *store.Queries, r *http.Request, actor *uuid.UUID, system string, userID uuid.UUID, now time.Time) error {
 	revoked, err := q.RevokeAuthorizerOAuthConnections(ctx, store.RevokeAuthorizerOAuthConnectionsParams{
-		Now: now, RevokedBy: actor, AuthorizedBy: &userID, Unconditional: unconditional, ScimEnabled: scim,
+		Now: now, RevokedBy: actor, AuthorizedBy: &userID,
 	})
 	if err != nil {
 		return fmt.Errorf("identity: revoke the person's connections: %w", err)

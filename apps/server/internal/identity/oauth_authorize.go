@@ -18,6 +18,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/identity/gen"
 	"github.com/vantigo-io/vantigo/server/internal/identity/store"
+	"github.com/vantigo-io/vantigo/server/internal/ratelimit"
 )
 
 // This file is the consent page's two operations (OAuth connections design
@@ -218,10 +219,50 @@ func redirectHost(raw string) string {
 	return strings.ToLower(u.Hostname())
 }
 
-// redirectsAutomatically is A6's rule: an error is redirected at once only
-// when the redirect goes to the client_id's host or to this computer.
-func redirectsAutomatically(req authorizationRequest) bool {
-	return isLoopbackRedirect(req.redirectURI) || redirectHost(req.redirectURI) == req.client.host
+// redirectsAutomatically is A6's rule as A26 narrows it: an error is
+// redirected at once only when the redirect goes to the client_id's host or
+// to this computer, and a client of that host has been connected here
+// before. Otherwise a crafted, broken request could send a signed-in Owner to
+// any host that publishes a document, with no click.
+func (s *server) redirectsAutomatically(ctx context.Context, req authorizationRequest) (bool, error) {
+	if !isLoopbackRedirect(req.redirectURI) && redirectHost(req.redirectURI) != req.client.host {
+		return false, nil
+	}
+	seen, err := s.q.OAuthClientHostSeen(ctx, req.client.host)
+	if err != nil {
+		return false, fmt.Errorf("identity: read the client's host: %w", err)
+	}
+	return seen, nil
+}
+
+// consentLimited counts one preview or approval against the person's
+// limit (A2): both may fetch a client's document. It answers the refusal to
+// give when the limit is spent, nil otherwise.
+func (s *server) consentLimited(ctx context.Context, p contracts.Principal) (*oauthRateLimited, error) {
+	if s.deps.Limiter == nil {
+		return nil, nil
+	}
+	d, err := s.deps.Limiter.Hit(ctx, policyOAuthConsent, p.UserID.String())
+	if err != nil {
+		return nil, fmt.Errorf("identity: count the consent limit: %w", err)
+	}
+	if !d.Allowed {
+		return &oauthRateLimited{decision: d}, nil
+	}
+	return nil, nil
+}
+
+// oauthRateLimited is the consent operations' 429, with Retry-After.
+type oauthRateLimited struct{ decision ratelimit.Decision }
+
+func (o oauthRateLimited) VisitPostIdentityOauthAuthorizationsPreviewResponse(w http.ResponseWriter) error {
+	ratelimit.Reject(w, nil, policyOAuthConsent, o.decision)
+	return nil
+}
+
+func (o oauthRateLimited) VisitPostIdentityOauthAuthorizationsResponse(w http.ResponseWriter) error {
+	ratelimit.Reject(w, nil, policyOAuthConsent, o.decision)
+	return nil
 }
 
 // integrationChoice is whether an integration may be connected (C13): active
@@ -268,6 +309,16 @@ func (s *server) PostIdentityOauthAuthorizationsPreview(ctx context.Context, req
 	if req.Body == nil || req.Body.Query == "" || len(req.Body.Query) > maxOAuthQueryLength {
 		return refuse(http.StatusBadRequest, "invalid_request", oauthQueryMessage, map[string][]string{"query": {oauthQueryMessage}}), nil
 	}
+	caller, err := callerFrom(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if limited, err := s.consentLimited(ctx, caller); err != nil || limited != nil {
+		if err != nil {
+			return nil, err
+		}
+		return *limited, nil
+	}
 	noStore := secretCacheControl
 	answer := func(p gen.OAuthAuthorizationPreview) (gen.PostIdentityOauthAuthorizationsPreviewResponseObject, error) {
 		return gen.PostIdentityOauthAuthorizationsPreview200JSONResponse{
@@ -284,7 +335,11 @@ func (s *server) PostIdentityOauthAuthorizationsPreview(ctx context.Context, req
 		return nil, err
 	}
 	if rerr != nil {
-		to, host, automatic := s.access.errorRedirect(areq, *rerr), redirectHost(areq.redirectURI), redirectsAutomatically(areq)
+		automatic, err := s.redirectsAutomatically(ctx, areq)
+		if err != nil {
+			return nil, err
+		}
+		to, host := s.access.errorRedirect(areq, *rerr), redirectHost(areq.redirectURI)
 		return answer(gen.OAuthAuthorizationPreview{
 			Outcome: previewRedirect, Error: &rerr.code, Message: &rerr.description, RedirectTo: &to, ReturnHost: &host, Automatic: &automatic,
 		})
@@ -332,6 +387,12 @@ func (s *server) PostIdentityOauthAuthorizations(ctx context.Context, req gen.Po
 	p, err := callerFrom(ctx)
 	if err != nil {
 		return nil, err
+	}
+	if limited, err := s.consentLimited(ctx, p); err != nil || limited != nil {
+		if err != nil {
+			return nil, err
+		}
+		return *limited, nil
 	}
 	noStore := secretCacheControl
 	redirect := func(to string) (gen.PostIdentityOauthAuthorizationsResponseObject, error) {

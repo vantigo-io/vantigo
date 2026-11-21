@@ -47,6 +47,9 @@ const (
 	// oauthFetchSpacing is how often one client_id may be fetched, in this
 	// process (C7).
 	oauthFetchSpacing = 10 * time.Second
+	// oauthFetchTracked is the most client_ids the fetcher remembers trying
+	// in the last minute; while it is full a new client_id is not fetched.
+	oauthFetchTracked = 10000
 	// oauthUserAgent is the fixed User-Agent of a fetch (A2).
 	oauthUserAgent = "Vantigo"
 	// oauthClientKindMetadata is a client identified by its metadata document.
@@ -372,12 +375,16 @@ func (a *Access) oauthClientFor(ctx context.Context, clientID string) (oauthClie
 		f.mu.Unlock()
 		return oauthClient{}, clientRefused("The client's metadata document was fetched moments ago and could not be used; try again shortly.")
 	}
-	f.tried[clientID] = now
 	for id, at := range f.tried {
 		if now.Sub(at) > time.Minute {
 			delete(f.tried, id)
 		}
 	}
+	if len(f.tried) >= oauthFetchTracked {
+		f.mu.Unlock()
+		return oauthClient{}, clientRefused("Too many client documents are being fetched; try again shortly.")
+	}
+	f.tried[clientID] = now
 	f.mu.Unlock()
 
 	body, maxAge, err := f.fetch(ctx, u.String())

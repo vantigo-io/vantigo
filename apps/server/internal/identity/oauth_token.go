@@ -135,7 +135,10 @@ func (a *Access) ServeOAuthToken(w http.ResponseWriter, r *http.Request) {
 	if a.limiter != nil {
 		d, err := a.limiter.Hit(r.Context(), policyOAuthToken, httpx.ClientIP(r))
 		if err != nil {
-			httpx.WriteError(w, r, err)
+			if a.log != nil {
+				a.log.ErrorContext(r.Context(), "identity: the token endpoint's limit could not be counted", "error", err)
+			}
+			writeTokenError(w, tokenError{http.StatusInternalServerError, "server_error", "The request could not be handled."})
 			return
 		}
 		if !d.Allowed {
@@ -286,10 +289,21 @@ func (a *Access) exchangeCode(r *http.Request, values url.Values) (tokenResponse
 	return out, nil
 }
 
-// refresh is grant_type=refresh_token (C17, A11): the refresh token spent
-// and a new pair issued. A spent token presented within 60 seconds is
-// honoured once more; one superseded by that is invalid_grant; one spent and
-// presented after the 60 seconds revokes the connection (refresh_reused).
+// refresh is grant_type=refresh_token (C17, A11, A25): the refresh token
+// spent and a new pair issued. Every lock is taken in one order, the
+// connection's row and then its tokens, so two refreshes of one connection
+// queue on the connection and never deadlock on each other's tokens.
+//
+// Once the presented token is known to be the connection's, reuse is judged
+// first, whatever client_id or scope the request names: the presenter holds
+// the real token, so a spent one is a replay however it is sent. A spent
+// token presented within 60 seconds whose pair was not superseded is
+// honoured once more; a spent token whose pair a retry superseded (no
+// children: two parties hold the family), or one presented after the 60
+// seconds, revokes the connection (refresh_reused). Only then are the
+// client_id, the scope and whether the connection could be used at all
+// judged, each invalid_grant (or invalid_scope) with nothing revoked and the
+// token left unspent.
 func (a *Access) refresh(r *http.Request, values url.Values) (tokenResponse, error) {
 	raw, clientID := values.Get("refresh_token"), values.Get("client_id")
 	if raw == "" || clientID == "" {
@@ -308,30 +322,43 @@ func (a *Access) refresh(r *http.Request, values url.Values) (tokenResponse, err
 		askedWrite = &write
 	}
 	ctx := r.Context()
+	dead := invalidGrant("The refresh token is invalid, expired or revoked.")
+	// Read before the transaction, so it never waits for a second connection
+	// while it holds one.
+	sso, err := a.sso.get(ctx)
+	if err != nil {
+		return tokenResponse{}, fmt.Errorf("identity: read whether SCIM is on: %w", err)
+	}
+	connectionID, err := a.q.GetOAuthRefreshTokenConnection(ctx, hash)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return tokenResponse{}, dead
+	}
+	if err != nil {
+		return tokenResponse{}, fmt.Errorf("identity: read the refresh token: %w", err)
+	}
 	var out tokenResponse
 	var refusal error
-	dead := invalidGrant("The refresh token is invalid, expired or revoked.")
-	err := db.WithTx(ctx, a.pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+	err = db.WithTx(ctx, a.pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		q := store.New(tx)
 		now := a.now()
-		t, err := q.LockOAuthRefreshToken(ctx, hash)
+		c, err := q.LockOAuthConnection(ctx, connectionID)
 		if errors.Is(err, pgx.ErrNoRows) {
+			refusal = dead
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("identity: read the connection: %w", err)
+		}
+		t, err := q.LockOAuthRefreshToken(ctx, hash)
+		if errors.Is(err, pgx.ErrNoRows) || (err == nil && t.ConnectionID != c.ID) {
 			refusal = dead
 			return nil
 		}
 		if err != nil {
 			return fmt.Errorf("identity: read the refresh token: %w", err)
 		}
-		c, err := q.LockOAuthConnection(ctx, t.ConnectionID)
-		if err != nil {
-			return fmt.Errorf("identity: read the connection: %w", err)
-		}
-		if c.ClientID != clientID || c.RevokedAt != nil || c.ActivatedAt == nil || !c.ExpiresAt.After(now) || !t.ExpiresAt.After(now) {
+		if c.RevokedAt != nil || c.ActivatedAt == nil || !c.ExpiresAt.After(now) || !t.ExpiresAt.After(now) {
 			refusal = dead
-			return nil
-		}
-		if askedWrite != nil && *askedWrite && !slices.Contains(c.Scopes, oauthScopeWrite) {
-			refusal = tokenError{http.StatusBadRequest, "invalid_scope", "The scope asked is more than the connection holds."}
 			return nil
 		}
 		if t.UsedAt != nil {
@@ -340,11 +367,10 @@ func (a *Access) refresh(r *http.Request, values url.Values) (tokenResponse, err
 				return fmt.Errorf("identity: read the refresh token: %w", err)
 			}
 			switch {
-			case children == 0:
-				// Superseded by a retry's pair, never spent itself.
-				refusal = dead
-				return nil
-			case now.Sub(*t.UsedAt) > refreshGrace:
+			case children == 0 || now.Sub(*t.UsedAt) > refreshGrace:
+				// Superseded by a retry of its parent (A25), or spent and
+				// presented after the grace (A11): two parties hold the
+				// family, and neither can be told from the other.
 				if err := a.revokeConnection(ctx, q, r, c.ID, nil, oauthSystem, revokeReasonRefreshReused, now); err != nil {
 					return err
 				}
@@ -355,6 +381,26 @@ func (a *Access) refresh(r *http.Request, values url.Values) (tokenResponse, err
 				refusal = dead
 				return nil
 			}
+		}
+		if c.ClientID != clientID {
+			refusal = dead
+			return nil
+		}
+		if askedWrite != nil && *askedWrite && !slices.Contains(c.Scopes, oauthScopeWrite) {
+			refusal = tokenError{http.StatusBadRequest, "invalid_scope", "The scope asked is more than the connection holds."}
+			return nil
+		}
+		// Tokens the next request would refuse are not issued (the token
+		// check's predicates), so a client does not loop refresh, 401,
+		// refresh.
+		usable, err := q.GetOAuthConnectionUsable(ctx, store.GetOAuthConnectionUsableParams{ID: c.ID, ScimEnabled: sso.SCIM != nil})
+		if err != nil {
+			return fmt.Errorf("identity: read whether the connection may act: %w", err)
+		}
+		if !usable.AuthorizerActive || usable.ArchivedAt != nil || usable.IsDisabled || isLockedOut(usable.LockoutEnd, now) ||
+			usable.Kind != contracts.UserKindIntegration {
+			refusal = dead
+			return nil
 		}
 		// The token is spent, and whatever the connection holds unspent
 		// beside it is superseded: a connection never has two live ones.
