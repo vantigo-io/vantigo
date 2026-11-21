@@ -1,5 +1,10 @@
-import { createTheme, localStorageColorSchemeManager, type MantineColorsTuple } from "@mantine/core";
-import { LUMINANCE_THRESHOLD } from "./brand/scale";
+import {
+  type CSSVariablesResolver,
+  createTheme,
+  localStorageColorSchemeManager,
+  type MantineColorsTuple,
+} from "@mantine/core";
+import { DARK_TINT_HOVER_PERCENT, DARK_TINT_PERCENT, LUMINANCE_THRESHOLD, overCard } from "./brand/scale";
 import { BRAND_RADII, type BrandRadius, type BrandTokens, builtinPayload, RADIUS_VALUES } from "./brand/tokens";
 
 /**
@@ -21,24 +26,27 @@ export const vantigoIndigo: MantineColorsTuple = [
 ];
 
 /**
- * Mantine's neutral `dark` scale, replaced by a blue-tinted grey so the dark
- * theme keeps the cool feel of the light page (#f7f8fc). Mantine reads shade 7
- * as the surface, 0 as the text, 2 as dimmed text and 4 as borders, so these ten
- * values place every Mantine component. theme.css pins the page background
- * (shade 8), the surface, the text and the link to the same values;
+ * Mantine's neutral `dark` scale, replaced by a cool slate: a grey with only a
+ * little blue in it, so the dark theme keeps the cool feel of the light page
+ * (#f7f8fc) while a brand's primary, of any hue, still reads as the one colour
+ * on the screen. Mantine reads shade 7 as the surface, 0 as the text, 2 as
+ * dimmed text and 4 as borders, so these ten values place every Mantine
+ * component. The steps are elevation: 8 is the page, 7 a card, 6 what floats
+ * above a card (a menu, a popover) and an input. theme.css pins the page, the
+ * surface, the raised surface, the text and the link to the same values;
  * theme.test.ts keeps the two in step.
  */
 export const vantigoDark: MantineColorsTuple = [
-  "#dde1ef",
-  "#b4bad0",
-  "#8c93ad",
-  "#666d8a",
-  "#3d4361",
-  "#2f3450",
-  "#262a41",
-  "#1c1f32",
-  "#15182a",
-  "#0f1120",
+  "#dfe2ea",
+  "#b6bac8",
+  "#8b90a3",
+  "#686d80",
+  "#353947",
+  "#2b2e3a",
+  "#23262f",
+  "#191b24",
+  "#0d0f14",
+  "#08090d",
 ];
 
 /**
@@ -64,6 +72,8 @@ export const vantigoTokens = {
   border: "var(--vantigo-border)",
   link: "var(--vantigo-link)",
   subtleBg: "var(--vantigo-subtle-bg)",
+  /** What floats above a surface (a menu, a popover): the surface in light, one step lighter in dark. */
+  raised: "var(--vantigo-raised)",
   /** The full-page backdrop of the public pages: Mantine gray-0 in light, the body background in dark. */
   pageBg: "light-dark(var(--mantine-color-gray-0), var(--vantigo-body-bg))",
 } as const;
@@ -89,6 +99,34 @@ export function createVantigoTheme(brand?: { tokens: BrandTokens }) {
     luminanceThreshold: LUMINANCE_THRESHOLD,
   });
 }
+
+/**
+ * The dark scheme's `light` variant (a tinted background: the active navigation link, an app tile,
+ * a light badge) of the brand colour and of grey. Mantine 9 makes it shade 9 darkened by half, which
+ * for a dark shade 9 is darker than the card it lies on, so the tint read as a hole. Here it is the
+ * colour's shade 5 laid over the card at a quarter strength: always lighter than the card, and the
+ * colour the server generates for a brand (brand/tokens.ts, B36). Grey takes the neutral steps.
+ * Pass it to the MantineProvider as `cssVariablesResolver`.
+ */
+export const vantigoCssVariablesResolver: CSSVariablesResolver = (theme) => {
+  const shade5 = theme.colors.vantigo?.[5];
+  return {
+    variables: {},
+    light: {},
+    dark: {
+      ...(shade5
+        ? {
+            "--mantine-color-vantigo-light": overCard(shade5, DARK_TINT_PERCENT),
+            "--mantine-color-vantigo-light-hover": overCard(shade5, DARK_TINT_HOVER_PERCENT),
+            "--mantine-color-vantigo-light-color": "var(--mantine-color-vantigo-1)",
+          }
+        : {}),
+      "--mantine-color-gray-light": "var(--mantine-color-dark-5)",
+      "--mantine-color-gray-light-hover": "var(--mantine-color-dark-4)",
+      "--mantine-color-gray-light-color": "var(--mantine-color-dark-0)",
+    },
+  };
+};
 
 /**
  * The shared Mantine theme for all Vantigo frontend apps, the default brand's. Pass it to the

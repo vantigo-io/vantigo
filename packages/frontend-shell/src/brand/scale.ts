@@ -9,7 +9,7 @@
  */
 
 /** The version of the constants below, stored with every published token set. */
-export const BRAND_ALGORITHM = 2;
+export const BRAND_ALGORITHM = 3;
 
 export const MIN_LIGHTNESS = 0.35;
 export const MAX_LIGHTNESS = 0.85;
@@ -25,9 +25,9 @@ export const BLACK = "#000000";
 export const PAGE_LIGHT = "#f7f8fc";
 export const CARD_LIGHT = "#ffffff";
 export const TEXT_LIGHT = "#182033";
-export const PAGE_DARK = "#15182a";
-export const CARD_DARK = "#1c1f32";
-export const TEXT_DARK = "#dde1ef";
+export const PAGE_DARK = "#0d0f14";
+export const CARD_DARK = "#191b24";
+export const TEXT_DARK = "#dfe2ea";
 
 export type BrandScaleErrorCode = "brand_hex" | "brand_primary_range";
 
@@ -276,13 +276,29 @@ export function contrast(a: string, b: string): number {
   return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
 }
 
+/** How much of shade 5 the dark tint is, in percent, and its hover; the rest is the dark card. */
+export const DARK_TINT_PERCENT = 24;
+export const DARK_TINT_HOVER_PERCENT = 32;
+
 /**
- * Mantine's `light` variant of a colour in the dark scheme: shade 9 darkened by half, each
- * channel halved and rounded half-up. It is opaque, so compositing it over the card changes nothing.
+ * A colour laid over the dark card at `percent` strength, as an opaque colour: each channel
+ * `(colour * percent + card * (100 - percent) + 50) / 100`, in whole numbers, so the server's Go and
+ * this port agree to the byte.
  */
-export function darkTint(shade9: string): string {
-  const [r, g, b] = parseHex(shade9);
-  return formatHex(Math.floor((r + 1) / 2), Math.floor((g + 1) / 2), Math.floor((b + 1) / 2));
+export function overCard(hex: string, percent: number): string {
+  const [r, g, b] = parseHex(hex);
+  const [cr, cg, cb] = parseHex(CARD_DARK);
+  const mix = (c: number, card: number) => Math.floor((c * percent + card * (100 - percent) + 50) / 100);
+  return formatHex(mix(r, cr), mix(g, cg), mix(b, cb));
+}
+
+/**
+ * The `light` variant of the brand colour in the dark scheme: shade 5 over the card at
+ * `DARK_TINT_PERCENT`. It is opaque and always lighter than the card. (Mantine's own rule, shade 9
+ * darkened by half, gave a tint darker than the card for a dark shade 9; theme.ts replaces it.)
+ */
+export function darkTint(shade5: string): string {
+  return overCard(shade5, DARK_TINT_PERCENT);
 }
 
 /** The ten checks of B4 for a generated scale, light then dark, each in the order of `PAIRS` (AA, 4.5 : 1). */
@@ -299,7 +315,7 @@ export function contrastChecks(result: BrandScale): ContrastCheck[] {
     ["dark", "filledHover", text, s[7]],
     ["dark", "linkPage", s[3], PAGE_DARK],
     ["dark", "linkCard", s[3], CARD_DARK],
-    ["dark", "linkTint", s[3], darkTint(s[9])],
+    ["dark", "linkTint", s[3], darkTint(s[5])],
   ];
   return rows.map(([scheme, pair, foreground, background]) => {
     const ratio = contrast(foreground, background);

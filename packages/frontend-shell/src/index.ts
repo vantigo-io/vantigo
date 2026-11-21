@@ -178,6 +178,7 @@ export {
   COLOR_SCHEME_STORAGE_KEY,
   createVantigoTheme,
   vantigoColorSchemeManager,
+  vantigoCssVariablesResolver,
   vantigoDark,
   vantigoTheme,
   vantigoTokens,

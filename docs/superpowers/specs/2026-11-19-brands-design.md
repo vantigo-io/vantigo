@@ -160,7 +160,7 @@ server (Go, the truth, which validates and stores) and in the editor's live prev
    chroma scale in `[0, 1]` and take the **lower bound** (the last in-gamut value). Never
    clip channels.
 7. Output `#rrggbb`: each sRGB channel rounded half-up to an integer.
-8. **Algorithm version.** The constants above are `algorithm: 2` (see B3.9). The version is stored
+8. **Algorithm version.** The constants above are `algorithm: 3` (see B3.9 and B3.10). The version is stored
    with every published token set (B5) and returned in the payload (B36); changing any
    constant is a new version, and old published sets are recomputed only by an explicit
    admin action, never silently on upgrade.
@@ -174,6 +174,15 @@ server (Go, the truth, which validates and stores) and in the editor's live prev
    with the smallest `t` in 24 bisection steps whose contrast with black is at least
    4.5; if none passes, shade 7 is shade 6. A white-text brand keeps the generated
    shade 7, which only gets darker. Algorithm 1 sets remain as published (B3.8).
+10. **The dark tint is shade 5 over the card (algorithm 3).** Mantine 9's `light` variant in
+   the dark scheme is shade 9 darkened by half, which for a dark shade 9 is darker than
+   the card it lies on: the active navigation link and the app tiles read as holes. Rule:
+   the dark tint is shade 5 laid over the dark card at 24 % (32 % hovered), each channel
+   `(colour · p + card · (100 − p) + 50) / 100` in whole numbers, and the text on it is
+   shade 1. The dark page and card are the slate of `theme.css` (`#0d0f14`, `#191b24`).
+   The link on the tint (B4) is checked against this colour; over 1 248 sampled primaries
+   in the accepted range the lowest ratio was 4.68 : 1. The shell gives Mantine the same
+   rule (`vantigoCssVariablesResolver`). Algorithm 2 sets remain as published (B3.8).
 
 Tests (A0): shade 6 equals the input byte for byte; lightness strictly decreases; hue
 stays within 2° of the input except for near-grey inputs (`C6 < 0.02`); every shade is in

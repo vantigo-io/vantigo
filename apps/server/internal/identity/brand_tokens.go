@@ -3,7 +3,6 @@ package identity
 import (
 	"errors"
 	"fmt"
-	"math"
 	"strconv"
 	"strings"
 
@@ -13,7 +12,9 @@ import (
 // This file is a brand's generated values (brands design B2, B3, B36): from the
 // inputs (a primary colour and a radius) it yields, for each colour scheme,
 // the ten shades of the `vantigo` colour, the filled-text colour, the link and
-// tint colours and the variables Mantine derives from the shades. The client
+// tint colours and the variables Mantine derives from the shades (and, for the
+// dark tint, the shell's own rule, which its cssVariablesResolver gives
+// Mantine). The client
 // never sends them and the server never trusts them: they are recomputed
 // whenever a draft is saved. The TypeScript twin is
 // packages/frontend-shell/src/brand/tokens.ts; both are tested against
@@ -102,14 +103,14 @@ func computeTokens(primary, radius string) (brandTokens, brandscale.Result, erro
 		},
 	}
 	dark := schemeTokens{
-		Shades: s, FilledText: res.FilledText, Link: s[3], SubtleBg: darkened(s[9], 0.5),
+		Shades: s, FilledText: res.FilledText, Link: s[3], SubtleBg: overCard(s[5], brandscale.DarkTintPercent),
 		Derived: map[string]string{
 			"--mantine-color-vantigo-text":          "var(--mantine-color-vantigo-4)",
 			"--mantine-color-vantigo-filled":        "var(--mantine-color-vantigo-6)",
 			"--mantine-color-vantigo-filled-hover":  "var(--mantine-color-vantigo-7)",
-			"--mantine-color-vantigo-light":         rgbaOf(s[9], 0.5),
-			"--mantine-color-vantigo-light-hover":   rgbaOf(s[9], 0.3),
-			"--mantine-color-vantigo-light-color":   "var(--mantine-color-vantigo-0)",
+			"--mantine-color-vantigo-light":         overCard(s[5], brandscale.DarkTintPercent),
+			"--mantine-color-vantigo-light-hover":   overCard(s[5], brandscale.DarkTintHoverPercent),
+			"--mantine-color-vantigo-light-color":   "var(--mantine-color-vantigo-1)",
 			"--mantine-color-vantigo-outline":       "var(--mantine-color-vantigo-2)",
 			"--mantine-color-vantigo-outline-hover": withAlpha(s[2], 0.05),
 			"--mantine-primary-color-contrast":      cssContrast(res.FilledText),
@@ -138,22 +139,9 @@ func withAlpha(hex string, a float64) string {
 	return fmt.Sprintf("rgba(%d, %d, %d, %s)", r, g, b, strconv.FormatFloat(a, 'f', -1, 64))
 }
 
-// darkenChannel is Math.round(c * (1 - alpha)) as Mantine's darken computes it
-// (alpha is a variable so the subtraction is not folded exactly at compile time).
-func darkenChannel(c int, alpha float64) int {
-	f := 1 - alpha
-	return int(math.Floor(float64(float64(c)*f) + 0.5))
-}
-
-// rgbaOf is Mantine's darken(): rgba(r, g, b, 1) with each channel scaled.
-func rgbaOf(hex string, alpha float64) string {
-	r, g, b := channels(hex)
-	return fmt.Sprintf("rgba(%d, %d, %d, 1)", darkenChannel(r, alpha), darkenChannel(g, alpha), darkenChannel(b, alpha))
-}
-
-// darkened is the same darkening as a hex colour, the dark scheme's tinted
-// cell (brandscale.DarkTint's value, which B4 checks links against).
-func darkened(hex string, alpha float64) string {
-	r, g, b := channels(hex)
-	return fmt.Sprintf("#%02x%02x%02x", darkenChannel(r, alpha), darkenChannel(g, alpha), darkenChannel(b, alpha))
+// overCard is the colour laid over the dark card (brandscale.OverCard): the
+// dark scheme's tint and its hover. The scale produced the colour, so it parses.
+func overCard(hex string, percent int) string {
+	out, _ := brandscale.OverCard(hex, percent)
+	return out
 }

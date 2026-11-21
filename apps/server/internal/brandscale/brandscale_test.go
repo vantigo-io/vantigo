@@ -283,7 +283,7 @@ func TestGenerate_Properties(t *testing.T) {
 	t.Parallel()
 	for _, in := range goldenInputs {
 		res := mustGenerate(t, in.hex)
-		if res.Algorithm != 2 {
+		if res.Algorithm != brandscale.Algorithm {
 			t.Errorf("%s: algorithm %d", in.name, res.Algorithm)
 		}
 		if res.Scale[6] != strings.ToLower(in.hex) {
@@ -425,9 +425,9 @@ func TestChecks_ThePairs(t *testing.T) {
 		{brandscale.Light, brandscale.PairLinkTint, res.Scale[8], res.Scale[0]},
 		{brandscale.Dark, brandscale.PairFilled, "#ffffff", res.Scale[6]},
 		{brandscale.Dark, brandscale.PairFilledHover, "#ffffff", res.Scale[7]},
-		{brandscale.Dark, brandscale.PairLinkPage, res.Scale[3], "#15182a"},
-		{brandscale.Dark, brandscale.PairLinkCard, res.Scale[3], "#1c1f32"},
-		{brandscale.Dark, brandscale.PairLinkTint, res.Scale[3], mustTint(t, res.Scale[9])},
+		{brandscale.Dark, brandscale.PairLinkPage, res.Scale[3], "#0d0f14"},
+		{brandscale.Dark, brandscale.PairLinkCard, res.Scale[3], "#191b24"},
+		{brandscale.Dark, brandscale.PairLinkTint, res.Scale[3], mustTint(t, res.Scale[5])},
 	}
 	for i, w := range want {
 		c := checks[i]
@@ -440,10 +440,10 @@ func TestChecks_ThePairs(t *testing.T) {
 	}
 }
 
-// Mantine halves shade 9 (each channel, rounded half-up) for the dark tint.
+// The dark tint is shade 5 over the dark card at 24 percent, rounded half-up.
 func TestDarkTint(t *testing.T) {
 	t.Parallel()
-	for in, want := range map[string]string{"#000000": "#000000", "#ffffff": "#808080", "#0102ff": "#010180", "#4f46e5": "#282373"} {
+	for in, want := range map[string]string{"#191b24": "#191b24", "#ffffff": "#505259", "#6366f1": "#2b2d55"} {
 		if got := mustTint(t, in); got != want {
 			t.Errorf("DarkTint(%s) = %s, want %s", in, got, want)
 		}

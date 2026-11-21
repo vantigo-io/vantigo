@@ -10,7 +10,7 @@ import "../../i18n";
  */
 const NEUTRAL = {
   light: { page: "#f7f8fc", surface: "#ffffff", text: "#182033", dimmed: "#5c6577", border: "#d5d9e4" },
-  dark: { page: "#15182a", surface: "#1c1f32", text: "#dde1ef", dimmed: "#8c93ad", border: "#3d4361" },
+  dark: { page: "#0d0f14", surface: "#191b24", text: "#dfe2ea", dimmed: "#8b90a3", border: "#353947" },
 } as const;
 
 type Scheme = "light" | "dark";
@@ -173,7 +173,7 @@ const SchemePreview = ({ tokens, scheme, title, mark, icon }: PreviewProps) => {
         px="sm"
         py={4}
         data-testid={`brand-tab-${scheme}`}
-        style={{ background: light ? "#e8eaf0" : "#0f1120", color: light ? "#182033" : "#dde1ef", fontSize: 11 }}
+        style={{ background: light ? "#e8eaf0" : "#08090d", color: light ? "#182033" : "#dfe2ea", fontSize: 11 }}
       >
         {icon ? (
           <img src={icon} alt="" style={{ height: 14, width: 14, display: "block" }} />

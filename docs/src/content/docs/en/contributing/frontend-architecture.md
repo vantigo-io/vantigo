@@ -278,13 +278,28 @@ are libraries rendered inside the host.
   injects nothing, so in development the scheme is set when React mounts.
 - **The tokens.** `packages/frontend-shell/src/theme.css` defines the semantic tokens for
   `:root` and `:root[data-mantine-color-scheme="dark"]`: `--vantigo-body-bg`,
-  `--vantigo-surface`, `--vantigo-text`, `--vantigo-text-dimmed`, `--vantigo-border`,
-  `--vantigo-link` and `--vantigo-subtle-bg`. `theme.ts` exports their names as
-  `vantigoTokens`, replaces Mantine's neutral `dark` scale with a blue-tinted grey
-  (`vantigoDark`, so the dark theme feels like the light page) and sets
-  `primaryShade: { light: 6, dark: 6 }`. `theme.test.ts` keeps the CSS and the scale
-  equal. Light is unchanged. The values are decided in these two files only; the public
-  site copies them.
+  `--vantigo-surface`, `--vantigo-raised`, `--vantigo-text`, `--vantigo-text-dimmed`,
+  `--vantigo-border`, `--vantigo-link` and `--vantigo-subtle-bg`. `theme.ts` exports their
+  names as `vantigoTokens`, replaces Mantine's neutral `dark` scale with a cool slate
+  (`vantigoDark`: a grey with only a little blue in it, so a brand's primary of any hue is
+  the one colour on the screen) and sets `primaryShade: { light: 6, dark: 6 }`.
+  `theme.test.ts` keeps the CSS and the scale equal. Light is unchanged. The values are
+  decided in these two files only; the public site copies them.
+- **Elevation in dark is a lighter surface, not a shadow.** The page is `dark-8`, a card
+  and the navigation `dark-7` (`--vantigo-surface`), and what floats above a card, a
+  menu, a popover, a select's list, is `dark-6` (`--vantigo-raised`): `theme.css` gives
+  Mantine's `Popover`, `Menu`, `HoverCard` and `Combobox` dropdowns that background in
+  dark. In light the raised surface is the surface.
+- **The tint in dark.** Mantine 9 makes the `light` variant of a colour in dark its shade 9
+  darkened by half, which for a dark shade 9 (Vantigo's indigo, a generated brand scale,
+  grey) is darker than the card it lies on. `vantigoCssVariablesResolver` in `theme.ts`,
+  which `BrandedMantineProvider` passes to Mantine, replaces it for the brand colour with
+  shade 5 laid over the card at 24 % (32 % hovered), the text on it shade 1, and for grey
+  with the neutral steps `dark-5` and `dark-4`. It is the colour `brandscale.DarkTint`
+  generates on the server, so the brand stylesheet and Mantine agree. The active
+  navigation link (`.vantigo-nav-link`) also carries a bar in shade 4 and a heavier label
+  in dark, and the app switcher's tiles take the hover tint, since their dropdown is a
+  raised surface.
 - **Never hard-code a colour.** In a component or a stylesheet use a Mantine colour prop
   (`c="dimmed"`, `bg="var(--mantine-color-body)"`, `variant="light"`), a Mantine variable
   or a token above, never `#hex`, `white`, `gray.0` or a shade-8/9 text colour: those stay
