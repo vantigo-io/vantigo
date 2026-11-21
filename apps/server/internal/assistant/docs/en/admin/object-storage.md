@@ -1,10 +1,11 @@
 ---
 title: "Object storage"
-description: "The filesystem provider, module scopes, key validation and streamed downloads."
+description: "The filesystem and S3 providers, moving between them, module scopes, key validation and streamed downloads."
 sidebar:
   order: 41
 sources:
   - apps/server/internal/storage
+  - apps/server/cmd/vantigo/storage.go
   - apps/server/internal/invoices/bankimport.go
   - apps/server/internal/invoices/bank_feed_sync.go
   - apps/server/internal/invoices/reminderpdf.go
@@ -19,39 +20,54 @@ Object storage is the application port Communications stages and serves attachme
 through. Modules never talk to a provider SDK: they receive an `ObjectStore` scoped
 to their own namespace and pass relative keys.
 
-## The provider set is a regression from the .NET implementation
+## Providers
 
-**The local filesystem is the only supported provider.** The implementation
-(`apps/server/internal/storage`) contains one driver, `fs.go`, and configuration
-accepts only `fs`:
+Two drivers implement the port, and `STORAGE_PROVIDER` picks one:
 
-```text
-STORAGE_PROVIDER: must be "fs" if set
-```
+- **`fs`** stores objects under a local directory, a mounted volume in a container.
+- **`s3`** stores them in a bucket on any S3-compatible service: UpCloud Managed
+  Object Storage, AWS S3, MinIO, SeaweedFS and the like.
 
-The S3/MinIO and Azure Blob providers the .NET implementation offered **do not
-exist in this port**. There is no `STORAGE_S3_*`, no `STORAGE_AZURE_BLOB_*`, no
-access-key, SAS, connection-string or managed-identity authentication, and no
-container provisioning. A deployment that needs remote object storage today must
-mount durable, exclusively-owned storage into the container and point the `fs`
-driver at it. Adding a driver is additive — the port is provider-neutral — but
-nothing in this repository implements one.
+The Azure Blob provider the .NET implementation offered does not exist in this port.
+Both drivers lay objects out the same way (see
+[Module scopes and the physical key](#module-scopes-and-the-physical-key)), so
+`vantigo storage copy` moves an installation from one to the other without renaming
+anything.
 
 ## Configuration
 
 | Variable | Purpose | Default |
 | --- | --- | --- |
-| `STORAGE_PROVIDER` | `fs`, or unset | unset |
+| `STORAGE_PROVIDER` | `fs`, `s3`, or unset | unset |
 | `STORAGE_FS_ROOT` | Absolute root directory; required when the provider is `fs` | unset |
 | `STORAGE_FS_ALLOW_INSECURE_ROOT` | Relax the group/world-writable root check | `0` |
+| `STORAGE_S3_ENDPOINT` | The service's URL, `https://host[:port]` with no path; `http` only with `APP_ENV=development`. Required for `s3` | unset |
+| `STORAGE_S3_REGION` | The provider's region name, for example `europe-1`. Required for `s3` | unset |
+| `STORAGE_S3_BUCKET` | The installation's bucket: 3–63 lowercase letters, digits and hyphens. Never created by the app. Required for `s3` | unset |
+| `STORAGE_S3_PREFIX` | A key prefix inside the bucket: lowercase letters, digits and hyphens, in segments joined by `/` | none |
+| `STORAGE_S3_ACCESS_KEY_ID` | The access key; or `STORAGE_S3_ACCESS_KEY_ID_FILE`, the path of a file holding it. Required for `s3` | unset |
+| `STORAGE_S3_SECRET_ACCESS_KEY` | The secret key; or `STORAGE_S3_SECRET_ACCESS_KEY_FILE`. Required for `s3` | unset |
+| `STORAGE_S3_FORCE_PATH_STYLE` | `1` addresses the bucket in the path (`https://host/bucket/key`), `0` as a subdomain | `1` |
 
 ```text
 STORAGE_PROVIDER=fs
 STORAGE_FS_ROOT=/var/lib/vantigo/objects
 ```
 
-`STORAGE_FS_ROOT` must be an absolute path, and setting it without
-`STORAGE_PROVIDER=fs` is a configuration error rather than a silent no-op.
+```text
+STORAGE_PROVIDER=s3
+STORAGE_S3_ENDPOINT=https://abc123.upcloudobjects.com
+STORAGE_S3_REGION=europe-1
+STORAGE_S3_BUCKET=acme
+STORAGE_S3_ACCESS_KEY_ID_FILE=/run/secrets/s3/access-key-id
+STORAGE_S3_SECRET_ACCESS_KEY_FILE=/run/secrets/s3/secret-access-key
+```
+
+Each driver's variables are valid only with its provider: setting `STORAGE_FS_ROOT`
+without `STORAGE_PROVIDER=fs`, or any `STORAGE_S3_*` without `STORAGE_PROVIDER=s3`, is a
+configuration error rather than a silent no-op. A credential and its `_FILE` variant
+must not both be set; a file's trailing newline is dropped, and the value must hold no
+whitespace. The secret key is redacted wherever the configuration is printed.
 
 **Unset storage fails closed at each operation, not at startup.** With
 `STORAGE_PROVIDER` unset the process still starts and serves everything else; every
@@ -62,6 +78,103 @@ boot.
 `STORAGE_FS_ALLOW_INSECURE_ROOT` is accepted **only when `APP_ENV=development`**;
 outside development it is a startup error regardless of what it would have done —
 the same shape as `MAIL_DRIVER=log` and `OWNERS_ALLOW_INSECURE_NO_MFA`.
+
+## The readiness check
+
+When storage is configured, `GET /health/ready` runs a check named `storage` next to
+`postgres`: a `HeadBucket` on the bucket for `s3`, a stat of the root for `fs`. A
+missing bucket, refused credentials, an unreachable endpoint or a root that has gone
+away answer 503 with `storage` in `failing`; the process keeps running, so it recovers
+by itself once the bucket answers again. With storage unset there is no check.
+
+A store that cannot even be built is a startup error, as before: an `fs` root that
+cannot be created or written, for example. The `s3` driver contacts nothing at
+startup, so its problems always show in readiness instead.
+
+## The S3 driver
+
+- **Uploads stream.** An object of up to 16 MiB goes as one `PUT` and is held in
+  memory while it is sent; anything larger goes as a multipart upload in 16 MiB parts,
+  holding about two parts (32 MiB) in memory, whatever the file's size. Nothing is
+  written to local disk. Count it in the pod's memory limit: a pod with many large
+  uploads in flight at once needs 32 MiB for each.
+- **Content type** is stored with the object. A `Put` over an existing key replaces it.
+- **No integrity trailers.** The driver (built on `minio-go`) never sends the
+  trailing CRC checksums recent AWS SDKs add by default, which UpCloud and several
+  other S3-compatible services reject.
+- **A missing key** is "does not exist" to the modules, as on `fs`; deleting a missing
+  key succeeds.
+- **The bucket is never public and never presigned**: downloads still stream through
+  the application's authorised endpoints, as described under [Downloads](#downloads).
+- **The bucket is never created or configured by the app.** Create it, its
+  credentials and its policy beforehand.
+
+The credentials need these actions on the bucket and nothing else:
+`s3:ListBucket` on `arn:aws:s3:::<bucket>` (for the readiness check and
+`vantigo storage copy`), and `s3:GetObject`, `s3:PutObject`, `s3:DeleteObject` and
+`s3:AbortMultipartUpload` on `arn:aws:s3:::<bucket>/*`.
+
+### UpCloud Managed Object Storage
+
+- **Endpoint:** `https://<service-id>.upcloudobjects.com`, or
+  `https://<service-id>-private.upcloudobjects.com` from a private network.
+- **Region:** the region name in lowercase, `europe-1` for Helsinki, not the zone
+  code (`fi-hel2`).
+- **Addressing:** keep `STORAGE_S3_FORCE_PATH_STYLE=1`, the default.
+- **One bucket per installation, with its own user.** Create a user for the
+  installation, attach a policy that grants the actions above on that one bucket, and
+  give the app that user's access key. A user with no policy can do nothing, so keys
+  of one installation cannot reach another's bucket.
+- **Encryption at rest** is always on (AES-256, keys managed by UpCloud); there is
+  nothing to configure.
+
+## Moving between fs and s3
+
+`vantigo storage copy` copies every object between an `fs` root and the bucket the
+environment configures. Run it with the `s3` settings (`STORAGE_PROVIDER=s3` and the
+`STORAGE_S3_*` variables) and the old root mounted:
+
+```sh
+vantigo storage copy --fs-root /var/lib/vantigo/objects
+```
+
+The copy run's environment is the installation's with the storage settings swapped:
+`STORAGE_PROVIDER=s3` and the `STORAGE_S3_*` variables, and no `STORAGE_FS_ROOT`, which
+is refused without `STORAGE_PROVIDER=fs` — the root is given with `--fs-root` instead.
+
+`--to fs` copies the other way, from the bucket into the root. The command skips an
+object the destination already holds with the same size, never copies the `fs`
+driver's unfinished writes (`.<name>.<random>.tmp` files), prints how many objects
+it copied and skipped, and exits 1 on the first error. It is safe to run again: a
+second run copies the objects that are new or have changed size. An object rewritten
+in place at the same size is skipped as well; `--all` copies every object whatever is
+already there.
+
+To move an installation from `fs` to `s3`:
+
+1. Create the bucket, its user and policy.
+2. Run `vantigo storage copy` while the installation serves. This moves the bulk.
+3. Stop writes: stop the `api`, `server` and `worker` processes, or scale them to
+   zero.
+4. Run `vantigo storage copy --all` again. With writes stopped, this pass copies
+   everything, so nothing rewritten in the meantime is missed. Without `--all` it is
+   quicker and copies what is new or has changed size.
+5. Switch `STORAGE_PROVIDER` to `s3`, set the `STORAGE_S3_*` variables, remove
+   `STORAGE_FS_ROOT`, and start.
+6. Check that `/health/ready` passes and that an existing attachment downloads. Keep
+   the old volume until you have.
+
+An object deleted between the two copies stays in the bucket as an orphan: no module
+refers to it any more, so it is never served.
+
+## Temporary files
+
+Objects never pass through local disk on either driver, but one feature writes a
+temporary file: **Accounting's SAF-T import** keeps the uploaded file (up to
+`ACCOUNTING_SAFT_IMPORT_MAX_BYTES`, 512 MiB by default) in the temporary directory
+while it reads the preview from it and then stores it. The temporary directory is `$TMPDIR`, or `/tmp` when it is
+unset, and it must be writable by the application user and large enough for the
+largest import. With a read-only root filesystem, mount a writable volume there.
 
 ## Brand logos
 
@@ -104,6 +217,9 @@ the driver. The physical key is:
 ```text
 {scope}/{relative-key}
 ```
+
+It is the path under `STORAGE_FS_ROOT` for `fs` and the object key in the bucket for
+`s3`, behind `STORAGE_S3_PREFIX` and a `/` when a prefix is set.
 
 **There is no tenant segment.** The .NET implementation's physical key was
 `tenants/{tenant-id}/{scope}/{relative-key}`; this is a single-tenant application and

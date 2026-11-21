@@ -12,6 +12,7 @@
 //	migrate      apply migrations and exit 0/1
 //	seed         development data (APP_ENV=development only)
 //	healthcheck  probe this container's /health/ready and exit 0/1
+//	storage copy copy every object between an fs root and the s3 bucket, then exit
 //	openapi integrator
 //	             write the integrator's API document, every module enabled, to
 //	             stdout (CI's breaking-change check); reads no environment
@@ -81,7 +82,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/worker"
 )
 
-const usage = "usage: vantigo <api|server|worker|migrate|seed|healthcheck|openapi integrator>"
+const usage = "usage: vantigo <api|server|worker|migrate|seed|healthcheck|storage copy|openapi integrator>"
 
 type mode int
 
@@ -94,6 +95,7 @@ const (
 	modeSeed
 	modeHealthcheck
 	modeOpenAPIIntegrator
+	modeStorageCopy
 )
 
 // readHeaderTimeout is the slowloris brake. There is deliberately no
@@ -131,6 +133,11 @@ func parseArgs(args []string) (mode, string) {
 		return modeSeed, args[0]
 	case "healthcheck":
 		return modeHealthcheck, args[0]
+	case "storage":
+		if len(args) >= 2 && args[1] == "copy" {
+			return modeStorageCopy, args[0]
+		}
+		return modeUsage, strings.Join(args, " ")
 	case "openapi":
 		if len(args) == 2 && args[1] == "integrator" {
 			return modeOpenAPIIntegrator, args[0]
@@ -194,6 +201,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 			return 2
 		}
 		return seed(ctx, logger, cfg, stdout)
+	case modeStorageCopy:
+		return storageCopy(ctx, cfg, args[2:], stdout, stderr)
 	case modeAPI:
 		if code := migrate(logger, cfg); code != 0 {
 			return code
@@ -448,7 +457,12 @@ func serve(ctx context.Context, logger *slog.Logger, cfg *config.Config, ln net.
 	// returns, keeps the ordering true regardless of how serve returns.
 	defer func() { closePool(pool, cfg.ShutdownTimeout, logger) }()
 
-	healthHandler := health.Handler(logger, buildinfo.Version, health.Check{Name: "postgres", Run: pool.Ping})
+	storageCheck, err := storageReadiness(cfg)
+	if err != nil {
+		logger.Error("startup failed", "error", err)
+		return 1
+	}
+	healthHandler := health.Handler(logger, buildinfo.Version, append([]health.Check{{Name: "postgres", Run: pool.Ping}}, storageCheck...)...)
 	handler := healthHandler
 	command := commandName(m)
 

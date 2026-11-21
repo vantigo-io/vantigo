@@ -520,7 +520,9 @@ avslutter umiddelbart.
 Imaget har ingen shell, så containerens `HEALTHCHECK` kjører binæren selv
 (`/app/vantigo healthcheck`) i stedet for en `CMD-SHELL`-enlinjer med curl eller wget.
 Den prober `/health/ready`: oppstart fullført, PostgreSQL tilgjengelig, og
-objektlagring tilgjengelig hvis konfigurert. Hold enhver probe du konfigurerer —
+objektlagring tilgjengelig hvis konfigurert — kontrollen `storage`, en `HeadBucket`
+for `s3` og en stat av roten for `fs`
+([Objektlagring](/nb/admin/object-storage/#klarhetskontrollen)). Hold enhver probe du konfigurerer —
 Compose sin `healthcheck.test`, en liveness- eller readiness-probe i Kubernetes, hva
 som helst annet — i den samme exec-formen. En HTTP-probe som kobler til direkte, i
 stedet for å kjøre inne i containeren, sender sin egen adresse som `Host`-header, og

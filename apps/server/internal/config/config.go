@@ -604,7 +604,7 @@ type Config struct {
 	CalendarMailboxNotificationsEnabled bool
 
 	// StorageProvider selects the internal/storage backend: "" (unset,
-	// STORAGE_PROVIDER) or "fs". When unset, internal/storage.New still
+	// STORAGE_PROVIDER), "fs" or "s3". When unset, internal/storage.New still
 	// returns a store rather than failing to start; every operation on it
 	// reports storage as not configured (docs/src/content/docs/en/admin/object-storage.md, design §2).
 	StorageProvider string
@@ -617,6 +617,28 @@ type Config struct {
 	// Development; set outside development it is a configuration error, the
 	// same shape as MAIL_DRIVER=log and OWNERS_ALLOW_INSECURE_NO_MFA.
 	StorageFSAllowInsecureRoot bool
+	// The s3 driver's settings (STORAGE_S3_*, Kubernetes readiness design
+	// KR11), valid only when StorageProvider is "s3". StorageS3Endpoint is
+	// the host[:port] of STORAGE_S3_ENDPOINT, and StorageS3Secure whether
+	// its scheme is https (http is accepted only in development).
+	StorageS3Endpoint string
+	StorageS3Secure   bool
+	StorageS3Region   string
+	// StorageS3Bucket is the tenant's bucket; the app never creates it.
+	StorageS3Bucket string
+	// StorageS3Prefix is an optional key prefix inside the bucket: one or
+	// more canonical scope-shaped segments joined by "/".
+	StorageS3Prefix string
+	// StorageS3AccessKeyID and StorageS3SecretAccessKey are static
+	// credentials, from the variable or its _FILE variant (a mounted
+	// secret). The secret key is redacted wherever the configuration is
+	// printed.
+	StorageS3AccessKeyID     string
+	StorageS3SecretAccessKey string
+	// StorageS3ForcePathStyle addresses the bucket in the path rather than
+	// as a subdomain (STORAGE_S3_FORCE_PATH_STYLE, default on: UpCloud and
+	// MinIO want it).
+	StorageS3ForcePathStyle bool
 
 	// CommunicationsAttachmentMaxBytes bounds one staged attachment
 	// (COMMUNICATIONS_ATTACHMENT_MAX_BYTES), moved here from .NET's removed
@@ -1502,8 +1524,10 @@ func objectStorage(p *problems, env map[string]string, c *Config) {
 		// Unconfigured: fails closed at each operation, not at startup.
 	case "fs":
 		c.StorageProvider = "fs"
+	case "s3":
+		c.StorageProvider = "s3"
 	default:
-		p.add("STORAGE_PROVIDER", `must be "fs" if set`)
+		p.add("STORAGE_PROVIDER", `must be "fs" or "s3" if set`)
 	}
 
 	c.StorageFSRoot = env["STORAGE_FS_ROOT"]
@@ -1520,6 +1544,125 @@ func objectStorage(p *problems, env map[string]string, c *Config) {
 	if c.StorageFSAllowInsecureRoot && !c.IsDevelopment() {
 		p.add("STORAGE_FS_ALLOW_INSECURE_ROOT", "must not be 1 outside development")
 	}
+
+	objectStorageS3(p, env, c)
+}
+
+// storageS3Keys are the s3 driver's variables, each valid only when
+// STORAGE_PROVIDER is "s3".
+var storageS3Keys = []string{
+	"STORAGE_S3_ENDPOINT", "STORAGE_S3_REGION", "STORAGE_S3_BUCKET", "STORAGE_S3_PREFIX",
+	"STORAGE_S3_ACCESS_KEY_ID", "STORAGE_S3_ACCESS_KEY_ID_FILE",
+	"STORAGE_S3_SECRET_ACCESS_KEY", "STORAGE_S3_SECRET_ACCESS_KEY_FILE",
+	"STORAGE_S3_FORCE_PATH_STYLE",
+}
+
+// s3BucketName is S3's bucket naming rule, less the dotted forms that break
+// TLS on a virtual-hosted address: 3–63 lowercase letters, digits and
+// hyphens, starting and ending with a letter or digit.
+var s3BucketName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$`)
+
+// s3PrefixSegment is one segment of STORAGE_S3_PREFIX: canonical like a
+// storage scope.
+var s3PrefixSegment = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$`)
+
+// objectStorageS3 resolves the STORAGE_S3_* settings (Kubernetes readiness
+// design KR11). They are required when STORAGE_PROVIDER is "s3" and refused
+// otherwise, the same rule STORAGE_FS_ROOT follows.
+func objectStorageS3(p *problems, env map[string]string, c *Config) {
+	if c.StorageProvider != "s3" {
+		for _, key := range storageS3Keys {
+			if env[key] != "" {
+				p.add(key, `is only valid when STORAGE_PROVIDER is "s3"`)
+			}
+		}
+		return
+	}
+
+	if raw := strings.TrimSpace(env["STORAGE_S3_ENDPOINT"]); raw == "" {
+		p.add("STORAGE_S3_ENDPOINT", `is required when STORAGE_PROVIDER is "s3"`)
+	} else {
+		u, err := url.Parse(raw)
+		switch {
+		case err != nil || u.Host == "" || u.User != nil || (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "":
+			p.add("STORAGE_S3_ENDPOINT", "must be an https:// URL with a host and no path")
+		case u.Scheme == "https":
+			c.StorageS3Endpoint, c.StorageS3Secure = u.Host, true
+		case u.Scheme == "http" && c.IsDevelopment():
+			c.StorageS3Endpoint = u.Host
+		case u.Scheme == "http":
+			p.add("STORAGE_S3_ENDPOINT", "must use https outside development")
+		default:
+			p.add("STORAGE_S3_ENDPOINT", "must be an https:// URL with a host and no path")
+		}
+	}
+
+	c.StorageS3Region = strings.TrimSpace(env["STORAGE_S3_REGION"])
+	if c.StorageS3Region == "" {
+		p.add("STORAGE_S3_REGION", `is required when STORAGE_PROVIDER is "s3"`)
+	} else if strings.ContainsFunc(c.StorageS3Region, unicode.IsSpace) {
+		p.add("STORAGE_S3_REGION", "must not contain whitespace")
+	}
+
+	c.StorageS3Bucket = strings.TrimSpace(env["STORAGE_S3_BUCKET"])
+	switch {
+	case c.StorageS3Bucket == "":
+		p.add("STORAGE_S3_BUCKET", `is required when STORAGE_PROVIDER is "s3"`)
+	case !s3BucketName.MatchString(c.StorageS3Bucket):
+		p.add("STORAGE_S3_BUCKET", "must be 3–63 lowercase letters, digits and hyphens, starting and ending with a letter or digit")
+	}
+
+	if prefix := env["STORAGE_S3_PREFIX"]; prefix != "" {
+		valid := len(prefix) <= 256
+		for seg := range strings.SplitSeq(prefix, "/") {
+			if !s3PrefixSegment.MatchString(seg) {
+				valid = false
+			}
+		}
+		if valid {
+			c.StorageS3Prefix = prefix
+		} else {
+			p.add("STORAGE_S3_PREFIX", `must be lowercase letters, digits and hyphens, in segments joined by "/", with no leading or trailing "/"`)
+		}
+	}
+
+	c.StorageS3AccessKeyID = secretOrFile(p, env, "STORAGE_S3_ACCESS_KEY_ID")
+	c.StorageS3SecretAccessKey = secretOrFile(p, env, "STORAGE_S3_SECRET_ACCESS_KEY")
+	c.StorageS3ForcePathStyle = boolean(p, env, "STORAGE_S3_FORCE_PATH_STYLE", true)
+}
+
+// secretOrFile reads a required secret from key, or from the file key_FILE
+// names (a mounted Kubernetes or Docker secret), never both. A file's
+// trailing newline is dropped, since editors and `echo` add one.
+func secretOrFile(p *problems, env map[string]string, key string) string {
+	value, file := env[key], env[key+"_FILE"]
+	switch {
+	case value != "" && file != "":
+		p.add(key, "must not be set together with %s_FILE", key)
+		return ""
+	case value != "" && strings.ContainsFunc(value, unicode.IsSpace):
+		p.add(key, "must hold one value with no whitespace")
+		return ""
+	case value != "":
+		return value
+	case file == "":
+		p.add(key, "or %s_FILE is required", key)
+		return ""
+	case !filepath.IsAbs(file):
+		p.add(key+"_FILE", "must be an absolute path")
+		return ""
+	}
+	raw, err := os.ReadFile(file)
+	if err != nil {
+		p.add(key+"_FILE", "must be a readable file")
+		return ""
+	}
+	secret := strings.TrimRight(string(raw), "\r\n")
+	if secret == "" || strings.ContainsFunc(secret, unicode.IsSpace) {
+		p.add(key+"_FILE", "must hold one value with no whitespace")
+		return ""
+	}
+	return secret
 }
 
 // accountingSaft loads Accounting's SAF-T limits: the largest file the

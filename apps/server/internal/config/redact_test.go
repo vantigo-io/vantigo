@@ -24,6 +24,7 @@ const (
 	fmtMigrationsPass   = "migrations password value"
 	fmtAIKey            = "ai-api-key-value"
 	fmtManagementToken  = "management-token-value-0123456789ab"
+	fmtS3SecretKey      = "s3-secret-access-key-value"
 )
 
 // secretPatterns is every way fmt could render one of the secrets: the
@@ -31,7 +32,7 @@ const (
 // decimal bytes (%v, %d).
 func secretPatterns() []string {
 	var out []string
-	for _, s := range []string{fmtAppSecret, fmtSMTPPassword, fmtOIDCClientSecret, fmtSCIMToken, fmtSCIMPrevious, fmtDBPassword, fmtMigrationsPass, fmtAIKey, fmtManagementToken} {
+	for _, s := range []string{fmtAppSecret, fmtSMTPPassword, fmtOIDCClientSecret, fmtSCIMToken, fmtSCIMPrevious, fmtDBPassword, fmtMigrationsPass, fmtAIKey, fmtManagementToken, fmtS3SecretKey} {
 		out = append(out, s, hex.EncodeToString([]byte(s)), strings.ToUpper(hex.EncodeToString([]byte(s))))
 	}
 	decimal := make([]string, 0, len(fmtAppSecret))
@@ -56,6 +57,12 @@ func secretConfig(t *testing.T) *Config {
 		"AI_API_KEY", fmtAIKey,
 		"MANAGEMENT_PORT", "9090",
 		"MANAGEMENT_TOKEN", fmtManagementToken,
+		"STORAGE_PROVIDER", "s3",
+		"STORAGE_S3_ENDPOINT", "https://s3.example.com",
+		"STORAGE_S3_REGION", "europe-1",
+		"STORAGE_S3_BUCKET", "acme",
+		"STORAGE_S3_ACCESS_KEY_ID", "s3-access-key-id",
+		"STORAGE_S3_SECRET_ACCESS_KEY", fmtS3SecretKey,
 		"DATABASE_URL", "postgres://vantigo:"+fmtDBPassword+"@db.internal:5432/vantigo?sslmode=verify-full",
 		"MIGRATIONS_DATABASE_URL", "host=db.internal user=owner password='"+fmtMigrationsPass+"' dbname=vantigo sslmode=verify-full",
 	))

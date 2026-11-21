@@ -73,6 +73,11 @@ func TestParseArgs(t *testing.T) {
 		"openapi":              modeUsage,
 		"openapi contract":     modeUsage,
 		"openapi integrator x": modeUsage,
+
+		"storage copy":                 modeStorageCopy,
+		"storage copy --fs-root /data": modeStorageCopy,
+		"storage":                      modeUsage,
+		"storage move":                 modeUsage,
 	} {
 		argv := strings.Fields(args)
 		if got, _ := parseArgs(argv); got != want {

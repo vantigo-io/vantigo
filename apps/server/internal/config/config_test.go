@@ -1315,8 +1315,102 @@ func TestLoad_StorageProvider(t *testing.T) {
 		t.Errorf("StorageProvider/StorageFSRoot = %q/%q", cfg.StorageProvider, cfg.StorageFSRoot)
 	}
 
-	if msg := loadError(t, with(validEnv(), "STORAGE_PROVIDER", "s3")); !strings.Contains(msg, `STORAGE_PROVIDER: must be "fs" if set`) {
+	if msg := loadError(t, with(validEnv(), "STORAGE_PROVIDER", "gcs")); !strings.Contains(msg, `STORAGE_PROVIDER: must be "fs" or "s3" if set`) {
 		t.Errorf("error = %q, want an unknown provider rejected", msg)
+	}
+}
+
+// s3Env is a valid s3 configuration.
+func s3Env() map[string]string {
+	return with(validEnv(),
+		"STORAGE_PROVIDER", "s3",
+		"STORAGE_S3_ENDPOINT", "https://abc123.upcloudobjects.com",
+		"STORAGE_S3_REGION", "europe-1",
+		"STORAGE_S3_BUCKET", "acme",
+		"STORAGE_S3_ACCESS_KEY_ID", "AKIAEXAMPLE",
+		"STORAGE_S3_SECRET_ACCESS_KEY", "secret-example",
+	)
+}
+
+func TestLoad_StorageS3(t *testing.T) {
+	cfg := mustLoad(t, s3Env())
+	if cfg.StorageProvider != "s3" || cfg.StorageS3Endpoint != "abc123.upcloudobjects.com" || !cfg.StorageS3Secure ||
+		cfg.StorageS3Region != "europe-1" || cfg.StorageS3Bucket != "acme" || cfg.StorageS3Prefix != "" ||
+		cfg.StorageS3AccessKeyID != "AKIAEXAMPLE" || cfg.StorageS3SecretAccessKey != "secret-example" || !cfg.StorageS3ForcePathStyle {
+		t.Errorf("s3 settings = %+v", cfg)
+	}
+
+	cfg = mustLoad(t, with(s3Env(), "STORAGE_S3_PREFIX", "tenants/acme", "STORAGE_S3_FORCE_PATH_STYLE", "0", "STORAGE_S3_ENDPOINT", "https://s3.example.com:9443/"))
+	if cfg.StorageS3Prefix != "tenants/acme" || cfg.StorageS3ForcePathStyle || cfg.StorageS3Endpoint != "s3.example.com:9443" {
+		t.Errorf("prefix/path style/endpoint = %q/%v/%q", cfg.StorageS3Prefix, cfg.StorageS3ForcePathStyle, cfg.StorageS3Endpoint)
+	}
+
+	dev := mustLoad(t, with(s3Env(), "APP_ENV", "development", "STORAGE_S3_ENDPOINT", "http://127.0.0.1:59000"))
+	if dev.StorageS3Secure || dev.StorageS3Endpoint != "127.0.0.1:59000" {
+		t.Errorf("development http endpoint = %q secure=%v", dev.StorageS3Endpoint, dev.StorageS3Secure)
+	}
+
+	for _, tc := range []struct {
+		env  map[string]string
+		want string
+	}{
+		{with(validEnv(), "STORAGE_PROVIDER", "s3"), `STORAGE_S3_ENDPOINT: is required when STORAGE_PROVIDER is "s3"`},
+		{with(validEnv(), "STORAGE_PROVIDER", "s3"), `STORAGE_S3_REGION: is required`},
+		{with(validEnv(), "STORAGE_PROVIDER", "s3"), `STORAGE_S3_BUCKET: is required`},
+		{with(validEnv(), "STORAGE_PROVIDER", "s3"), `STORAGE_S3_ACCESS_KEY_ID: or STORAGE_S3_ACCESS_KEY_ID_FILE is required`},
+		{with(validEnv(), "STORAGE_PROVIDER", "s3"), `STORAGE_S3_SECRET_ACCESS_KEY: or STORAGE_S3_SECRET_ACCESS_KEY_FILE is required`},
+		{with(s3Env(), "STORAGE_S3_ENDPOINT", "http://s3.example.com"), "STORAGE_S3_ENDPOINT: must use https outside development"},
+		{with(s3Env(), "STORAGE_S3_ENDPOINT", "https://s3.example.com/bucket"), "STORAGE_S3_ENDPOINT: must be an https:// URL with a host and no path"},
+		{with(s3Env(), "STORAGE_S3_ENDPOINT", "s3.example.com"), "STORAGE_S3_ENDPOINT: must be an https:// URL with a host and no path"},
+		{with(s3Env(), "STORAGE_S3_ENDPOINT", "https://user:pw@s3.example.com"), "STORAGE_S3_ENDPOINT: must be an https:// URL with a host and no path"},
+		{with(s3Env(), "STORAGE_S3_BUCKET", "Acme_Bucket"), "STORAGE_S3_BUCKET: must be 3–63"},
+		{with(s3Env(), "STORAGE_S3_REGION", "europe 1"), "STORAGE_S3_REGION: must not contain whitespace"},
+		{with(s3Env(), "STORAGE_S3_PREFIX", "/tenants"), "STORAGE_S3_PREFIX: must be"},
+		{with(s3Env(), "STORAGE_S3_PREFIX", "tenants/"), "STORAGE_S3_PREFIX: must be"},
+		{with(s3Env(), "STORAGE_S3_PREFIX", "Tenants"), "STORAGE_S3_PREFIX: must be"},
+		{with(s3Env(), "STORAGE_S3_FORCE_PATH_STYLE", "yes"), `STORAGE_S3_FORCE_PATH_STYLE: must be "0" or "1"`},
+		{with(s3Env(), "STORAGE_S3_SECRET_ACCESS_KEY_FILE", "/run/secrets/key"), "STORAGE_S3_SECRET_ACCESS_KEY: must not be set together with STORAGE_S3_SECRET_ACCESS_KEY_FILE"},
+		{with(s3Env(), "STORAGE_S3_SECRET_ACCESS_KEY", "secret-example "), "STORAGE_S3_SECRET_ACCESS_KEY: must hold one value with no whitespace"},
+		{with(validEnv(), "STORAGE_S3_BUCKET", "acme"), `STORAGE_S3_BUCKET: is only valid when STORAGE_PROVIDER is "s3"`},
+		{with(validEnv(), "STORAGE_PROVIDER", "fs", "STORAGE_FS_ROOT", "/var/lib/vantigo/objects", "STORAGE_S3_ENDPOINT", "https://s3.example.com"), `STORAGE_S3_ENDPOINT: is only valid when STORAGE_PROVIDER is "s3"`},
+	} {
+		if msg := loadError(t, tc.env); !strings.Contains(msg, tc.want) {
+			t.Errorf("error = %q, want %q", msg, tc.want)
+		}
+	}
+}
+
+// TestLoad_StorageS3SecretFiles reads the credentials from mounted files,
+// dropping the trailing newline a secret file usually has.
+func TestLoad_StorageS3SecretFiles(t *testing.T) {
+	dir := t.TempDir()
+	idFile, keyFile := filepath.Join(dir, "id"), filepath.Join(dir, "key")
+	if err := os.WriteFile(idFile, []byte("AKIAFROMFILE\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(keyFile, []byte("secret-from-file\r\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	env := s3Env()
+	delete(env, "STORAGE_S3_ACCESS_KEY_ID")
+	delete(env, "STORAGE_S3_SECRET_ACCESS_KEY")
+	cfg := mustLoad(t, with(env, "STORAGE_S3_ACCESS_KEY_ID_FILE", idFile, "STORAGE_S3_SECRET_ACCESS_KEY_FILE", keyFile))
+	if cfg.StorageS3AccessKeyID != "AKIAFROMFILE" || cfg.StorageS3SecretAccessKey != "secret-from-file" {
+		t.Errorf("credentials from files = %q/%q", cfg.StorageS3AccessKeyID, cfg.StorageS3SecretAccessKey)
+	}
+
+	if msg := loadError(t, with(env, "STORAGE_S3_ACCESS_KEY_ID", "x", "STORAGE_S3_SECRET_ACCESS_KEY_FILE", "relative")); !strings.Contains(msg, "STORAGE_S3_SECRET_ACCESS_KEY_FILE: must be an absolute path") {
+		t.Errorf("error = %q, want a relative file rejected", msg)
+	}
+	if msg := loadError(t, with(env, "STORAGE_S3_ACCESS_KEY_ID", "x", "STORAGE_S3_SECRET_ACCESS_KEY_FILE", filepath.Join(dir, "missing"))); !strings.Contains(msg, "STORAGE_S3_SECRET_ACCESS_KEY_FILE: must be a readable file") {
+		t.Errorf("error = %q, want a missing file rejected", msg)
+	}
+	two := filepath.Join(dir, "two")
+	if err := os.WriteFile(two, []byte("one two\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if msg := loadError(t, with(env, "STORAGE_S3_ACCESS_KEY_ID", "x", "STORAGE_S3_SECRET_ACCESS_KEY_FILE", two)); !strings.Contains(msg, "STORAGE_S3_SECRET_ACCESS_KEY_FILE: must hold one value with no whitespace") {
+		t.Errorf("error = %q, want a file with whitespace rejected", msg)
 	}
 }
 
