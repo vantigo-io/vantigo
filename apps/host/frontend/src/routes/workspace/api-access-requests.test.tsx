@@ -71,6 +71,20 @@ const log: IntegrationRequestLog = {
       clientIp: null,
       traceId: null,
     },
+    {
+      at: "2026-11-18T11:57:00Z",
+      keyId: null,
+      keyName: null,
+      connectionId: "c-1",
+      clientName: "Claude",
+      method: "GET",
+      operationId: "getCustomers",
+      status: 200,
+      reason: null,
+      durationMs: 12,
+      clientIp: null,
+      traceId: null,
+    },
   ],
 };
 
@@ -104,6 +118,8 @@ describe("an integration's request log", () => {
     const latest = within(screen.getByTestId("request-latest"));
     expect(latest.getByText("Over the rate limit")).toBeTruthy();
     expect(latest.getByText("Deleted key")).toBeTruthy();
+    expect(latest.getByText("(connected app)")).toBeTruthy();
+    expect(latest.getByText(/Claude/)).toBeTruthy();
     expect(latest.getByText("4bf92f3577b34da6a3ce929d0e0e4736")).toBeTruthy();
     expect(api.getIntegrationRequests).toHaveBeenCalledWith("i-1", {});
   });

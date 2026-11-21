@@ -296,9 +296,10 @@ forespørslene per dag etter status, operasjonene som er kalt mest, og de 200 si
 statusen og, for en avvist forespørsel, hvorfor. En forespørsel som gjentok en tidligere med samme
 `Idempotency-Key`, og fikk svaret på den igjen uten å kjøres to ganger, er merket *Gjentatt svar
 for Idempotency-Key*. **Nøkkel**, **Status**, **Årsak** og **Dag** snevrer den inn. En ny
-forespørsel vises der i løpet av noen sekunder. To årsaker, *Den tilkoblede appen kan bare
-lese* og *Den tilkoblede appen har ikke lenger tilgang*, gjelder apper som kobler seg til ved å
-logge inn, noe som ikke er slått på ennå.
+forespørsel vises der i løpet av noen sekunder. En forespørsel fra en app som har koblet seg til
+ved å logge inn, viser appen, merket *(tilkoblet app)*, og de to årsakene *Den tilkoblede appen
+kan bare lese* og *Den tilkoblede appen har ikke lenger tilgang* gjelder den; tilkobling ved å
+logge inn er ikke slått på ennå.
 
 **Kontaktpersonen** og hver eier får en e-post 14 dager og 3 dager før en nøkkel utløper, og på
 dagen, med mindre den er rotert eller tilbakekalt. Roter nøkkelen før den tid.

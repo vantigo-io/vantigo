@@ -140,6 +140,9 @@ bare lesing som kaller noe annet, avvises med `403 api_key_read_only`.
 
 ### Begrens en nøkkels nettverk
 
+En tilkoblet app har ingen nettverksliste: **Nettverk** hører til en nøkkel, og en tilkobling
+laget ved å logge inn begrenses ikke av dem ([Koble til ved å logge inn](#koble-til-ved-å-logge-inn-slått-av-foreløpig)).
+
 **Nettverk** lister adressene eller CIDR-områdene nøkkelen kan brukes fra, én per linje —
 IPv4 eller IPv6, høyst 20. Tomt betyr hvor som helst. En forespørsel utenfra avvises med
 `401 unauthenticated`, som en ukjent nøkkel, også når nøkkelen i tillegg er utløpt eller
@@ -453,7 +456,9 @@ er noe å knytte den til. En AI-klients forespørsel ved MCP-endepunktet er oper
 - **Mest brukt** viser de ti operasjonene som er kalt mest.
 - **Siste forespørsler** viser de 200 nyeste: når, i UTC, nøkkelen, metoden og operasjonen, statusen
   — med årsaken når den ble avvist — hvor lang tid den tok, klientens adresse og sporings-ID-en.
-  En nøkkel med slettet rad, 90 dager etter at den utløp, vises som *Slettet nøkkel*.
+  En nøkkel med slettet rad, 90 dager etter at den utløp, vises som *Slettet nøkkel*. En
+  forespørsel en tilkoblet app gjorde, viser appen slik den kalte seg selv, merket *(tilkoblet
+  app)*, eller *Fjernet app* når tilkoblingens rad er borte.
 - **Nøkkel**, **Status**, **Årsak** og **Dag** filtrerer alle tre.
 
 En avvisning registreres med årsaken, og det gjør et gjentatt svar også:

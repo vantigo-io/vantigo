@@ -57,8 +57,9 @@ The documents are answered as `application/json` with `Cache-Control: public, ma
 `<base>` is `APP_BASE_PATH`, empty at the domain root. With a base path the host-root forms lie
 outside it: the proxy in front must send `/.well-known/oauth-*` to Vantigo
 ([Installation](/en/admin/installation/)). With `MCP_ENABLED` off the protected resource's
-documents answer `404`; the rest stays. Any other path under `/.well-known/` answers the `404`
-problem, never the application's page.
+documents answer `404`; the rest stays. Every other path under `/.well-known/` that Vantigo
+does not serve answers the `404` problem, never the application's page: a `security.txt` or an
+ACME challenge is the proxy's to answer, in front of Vantigo.
 
 The protected resource's metadata:
 
@@ -102,7 +103,8 @@ this way.
 A `client_id` is accepted when it is an `https` URL of at most 512 characters, on port 443, with
 a host name in ASCII (a host spelled in punycode is refused, as is an IP address), no user, no
 fragment, a path other than `/` with no `.` or `..` segment, and a host that is not this
-installation's own. Vantigo then fetches the document:
+installation's own — the host names of `APP_URL` and `PUBLIC_BASE_URL`; another name that
+reaches the same server is not recognised as its own. Vantigo then fetches the document:
 
 - `GET` with `Accept: application/json` and `User-Agent: Vantigo`, through the same guard as
   webhooks: an address that is private, loopback, link-local or otherwise special is never
@@ -157,9 +159,10 @@ the person as a refused client, and the browser is **never** sent back to the cl
 else wrong is the client's to be told, and the browser goes back to the redirect URI with
 `error` — `unsupported_response_type`, `invalid_request` (no PKCE, a method other than `S256`, a
 repeated parameter, a `state` over its bound), `invalid_scope` or `invalid_target` — and
-`error_description`, `state` and `iss`. It goes back at once when the redirect URI's host is the
-`client_id`'s host or a loopback one; otherwise the page shows the error and a button that
-returns to that host.
+`error_description`, `state` and `iss`. It goes back at once only when the redirect URI's host is
+the `client_id`'s host or a loopback one **and** a client of that host has been connected here
+before; otherwise the page shows the error and a button that returns to that host, so a crafted
+request cannot bounce a signed-in Owner to a host nobody has approved.
 
 ### The consent operations
 
@@ -172,9 +175,11 @@ applies), neither available to an API key nor to the Assistant:
   `consent`: the name the client calls itself (control and bidirectional characters stripped,
   cut at 80 characters), the host Vantigo fetched its document from, the redirect URI's host and
   whether it is loopback, the scopes asked, whether a client of this host has been connected
-  before, whether the name it claims contains "Vantigo" or the workspace's name, and the
-  integrations with whether each is **eligible** — active, and its MCP setting not `off` — and
-  the most a connection to it may do. Previews are limited to 20 a minute per address.
+  before, whether the name it claims contains "Vantigo" or the workspace's name (`APP_TITLE`,
+  when it is set), and the integrations with whether each is **eligible** — active, and its MCP
+  setting not `off` — and the most a connection to it may do. Previews and approvals together
+  are limited to 20 a minute per person (`429` with `Retry-After`), since each may fetch a
+  client's document.
 - `POST /api/v1/identity/oauth/authorizations` with the same `query`, `decision` (`approve` or
   `deny`), and to approve `integrationId` and `access` (`read` or `read_write`, at most what the
   request asks and the integration's MCP setting allows) judges everything again and answers
@@ -216,9 +221,21 @@ token and spends the old refresh token:
 - a spent refresh token presented again **within 60 seconds** is honoured once more, for a
   client that lost the answer; the pair the first refresh issued is then superseded, so a
   connection never has two live refresh tokens;
-- a superseded refresh token, never spent itself, is `invalid_grant`;
+- a superseded refresh token presented later **revokes the connection** (`refresh_reused`): two
+  parties hold the family, and Vantigo cannot tell the client from a thief who replayed its
+  token. The cost is a new sign-in for a client whose two processes race one refresh and then
+  both keep going;
 - a spent refresh token presented **after the 60 seconds** revokes the connection
   (`refresh_reused`) and is `invalid_grant`.
+
+A spent token is judged as a replay before anything else about the request, whatever
+`client_id` or `scope` it is sent with: whoever presents it holds it. An unspent token sent with
+another `client_id` or a wider `scope` is refused and spends nothing. A refresh of a connection
+whose tokens would be refused anyway — its approver no longer an active Owner, its integration
+archived or disabled — is `invalid_grant`, and the token is left as it was.
+
+Refreshes of one connection queue on the connection, so two at once never both spend the same
+token: the second is the first one's retry.
 
 A token pair is answered as:
 
@@ -285,7 +302,9 @@ four tool calls of one connection run at once, as for one key.
 | `401 api_key_required` at `/api/mcp` | no `Bearer vtg_…` or `Bearer vta_…` at all | `Bearer realm="vantigo", resource_metadata="…", scope="read write"` |
 
 The metadata URL is the host-root form, `<origin>/.well-known/oauth-protected-resource<base>/api/mcp`.
-A client without a token that reads the last challenge starts a sign-in.
+With `MCP_ENABLED` off that document is not served, and no challenge names it: a token's `401`
+is `Bearer error="invalid_token"` alone. A client without a token that reads the last challenge
+starts a sign-in.
 
 ## What ends a connection
 

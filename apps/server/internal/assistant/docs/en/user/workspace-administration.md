@@ -294,8 +294,9 @@ days: the requests per day by status, the operations called most, and the latest
 key, the status and, for a refused one, why. A request that repeated an earlier one with the same
 `Idempotency-Key`, and got its answer again without running twice, is marked *Replayed for its
 Idempotency-Key*. **Key**, **Status**, **Reason** and **Day** narrow it down. A new request shows
-there within a few seconds. Two reasons, *Connected app may only read* and *Connected app no
-longer allowed*, belong to apps that connect by signing in, which is not switched on yet.
+there within a few seconds. A request an app made after connecting by signing in names the app,
+marked *(connected app)*, and the two reasons *Connected app may only read* and *Connected app
+no longer allowed* are its; connecting by signing in is not switched on yet.
 
 The **Contact** and every Owner get an email 14 days and 3 days before a key expires, and on
 the day, unless it has been rolled or revoked. Roll the key before then.
