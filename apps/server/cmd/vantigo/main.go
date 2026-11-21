@@ -32,6 +32,7 @@ import (
 	"os/signal"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -50,6 +51,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/config"
 	"github.com/vantigo-io/vantigo/server/internal/customers"
 	"github.com/vantigo-io/vantigo/server/internal/db"
+	"github.com/vantigo-io/vantigo/server/internal/dbclock"
 	"github.com/vantigo-io/vantigo/server/internal/docs"
 	"github.com/vantigo-io/vantigo/server/internal/energy"
 	"github.com/vantigo-io/vantigo/server/internal/entra"
@@ -339,8 +341,10 @@ func runWorkers(m mode, cfg *config.Config) bool {
 // that needs a module — Compose (api, server) or the worker runner (worker,
 // or api with WORKERS_IN_PROCESS=1) — shares. Building it is cheap: neither
 // mail.New nor secrets.New dials out, so worker-only mode pays no more at
-// startup than api mode already did.
-func moduleDeps(cfg *config.Config, pool *pgxpool.Pool, logger *slog.Logger) (module.Deps, *identity.Access, error) {
+// startup than api mode already did. clock is Deps.Clock, and the rate
+// limiter's windows follow it too: serve passes the database-anchored clock
+// (Kubernetes readiness design KR7), the seed and the tests time.Now.
+func moduleDeps(cfg *config.Config, pool *pgxpool.Pool, logger *slog.Logger, clock func() time.Time) (module.Deps, *identity.Access, error) {
 	sender, err := mail.New(cfg, logger)
 	if err != nil {
 		return module.Deps{}, nil, err
@@ -353,10 +357,10 @@ func moduleDeps(cfg *config.Config, pool *pgxpool.Pool, logger *slog.Logger) (mo
 		Config:  cfg,
 		Pool:    pool,
 		Logger:  logger,
-		Clock:   time.Now,
+		Clock:   clock,
 		Mail:    sender,
 		Secrets: box,
-		Limiter: ratelimit.New(pool),
+		Limiter: ratelimit.NewWithClock(pool, clock),
 	}
 	access := identity.NewAccess(deps)
 	deps.Access = access
@@ -437,8 +441,18 @@ func closePool(pool *pgxpool.Pool, timeout time.Duration, logger *slog.Logger) {
 // resolved through the same module.Workers call serve itself makes rather
 // than a bypass that only proves a worker can run once one is already in
 // hand.
+//
+// In server and worker mode it first waits for the schema (Kubernetes
+// readiness design KR4): nothing that reads or writes the database's tables
+// runs until the database is at least at the binary's latest migration,
+// while the management listener already answers the probes.
 func serve(ctx context.Context, logger *slog.Logger, cfg *config.Config, ln net.Listener, m mode, extraModules ...module.Module) int {
 	defer func() { _ = ln.Close() }()
+
+	// lc's budget is the one SHUTDOWN_TIMEOUT every deferred close below
+	// shares (KR5). Deferred first, its release runs last.
+	lc := newLifecycle(cfg.ShutdownDrainDelay, cfg.ShutdownTimeout)
+	defer lc.release()
 
 	// Startup is not cancelled by the shutdown signal: a SIGTERM during boot
 	// should produce a process that came up and then drained, not a half-built one.
@@ -454,15 +468,36 @@ func serve(ctx context.Context, logger *slog.Logger, cfg *config.Config, ln net.
 	// included. Closing the pool out from under a worker mid-query is
 	// exactly the failure that looks like an unrelated driver bug later;
 	// ordering this by defer, rather than by hand in every branch that
-	// returns, keeps the ordering true regardless of how serve returns.
-	defer func() { closePool(pool, cfg.ShutdownTimeout, logger) }()
+	// returns, keeps the ordering true regardless of how serve returns. It
+	// gets what is left of the shutdown budget.
+	defer func() { closePool(pool, lc.remaining(), logger) }()
+
+	// Deps.Clock is anchored to the database's clock (KR7, KR8): the first
+	// measurement applies in full, here, before anything reads the clock, and
+	// later ones every minute. A first measurement that fails leaves the
+	// local clock until one succeeds; it is no reason not to start.
+	clock := dbclock.New(dbclock.Options{Measure: dbclock.PoolMeasurer(pool), MaxSkew: cfg.ClockMaxSkew, Logger: logger})
+	if err := clock.Sync(context.WithoutCancel(ctx)); err != nil {
+		logger.Warn("clock: could not measure the database's clock; using this host's until it can", "error", err)
+	}
+	clockCtx, stopClock := context.WithCancel(context.WithoutCancel(ctx))
+	clockDone := make(chan struct{})
+	go func() {
+		defer close(clockDone)
+		clock.Run(clockCtx)
+	}()
+	defer func() {
+		stopClock()
+		<-clockDone
+	}()
 
 	storageCheck, err := storageReadiness(cfg)
 	if err != nil {
 		logger.Error("startup failed", "error", err)
 		return 1
 	}
-	healthHandler := health.Handler(logger, buildinfo.Version, append([]health.Check{{Name: "postgres", Run: pool.Ping}}, storageCheck...)...)
+	checks := append(append([]health.Check{{Name: "postgres", Run: pool.Ping}}, storageCheck...), lc.checks()...)
+	healthHandler := health.Handler(logger, buildinfo.Version, checks...)
 	handler := healthHandler
 	command := commandName(m)
 
@@ -473,7 +508,7 @@ func serve(ctx context.Context, logger *slog.Logger, cfg *config.Config, ln net.
 	// compose them, worker to resolve their background workers. Building
 	// deps is cheap (moduleDeps), so it is built once, unconditionally,
 	// rather than in whichever branch first turns out to need it.
-	deps, access, err := moduleDeps(cfg, pool, logger)
+	deps, access, err := moduleDeps(cfg, pool, logger, clock.Now)
 	if err != nil {
 		logger.Error("startup failed", "error", err)
 		return 1
@@ -482,51 +517,106 @@ func serve(ctx context.Context, logger *slog.Logger, cfg *config.Config, ln net.
 	// The rate limiter's flusher adds what it counted in process to the
 	// shared rows once more before the pool closes (API access design K24).
 	// Deferred after closePool's, it runs before it, and after the requests
-	// have drained.
-	defer deps.Limiter.Close()
-
-	// The management listener is bound here — before any worker starts —
-	// so a bind failure (the port is taken) returns while nothing is
-	// running yet: no worker to strand, and closePool's deferred close
-	// races nothing. It does not begin SERVING until after
-	// identity.RunStartup and the workers below (see the second half of
-	// this split, near srv's construction), so it only answers once the
-	// process is really up; a connection that arrives before that simply
-	// waits in the kernel's accept backlog. mgmtServing tracks the
-	// hand-off: closed by the deferred call right below on every early
-	// return before Serve takes ownership of it, and left alone once it
-	// does, since Server.Shutdown (deferred later, once serving starts)
-	// already closes a listener it was given — closing it twice here would
-	// just log a spurious error on the normal path.
-	var mgmtLn net.Listener
-	if withAPI && cfg.Management != nil {
-		mgmtLn, err = listenManagement(cfg.Management.Port)
-		if err != nil {
-			logger.Error("cannot listen on the management port", "port", cfg.Management.Port, "error", err)
-			return 1
-		}
-	}
-	mgmtServing := false
+	// have drained, within what is left of the shutdown budget.
 	defer func() {
-		if mgmtLn != nil && !mgmtServing {
-			_ = mgmtLn.Close()
+		if !runBounded(deps.Limiter.Close, lc.remaining()) {
+			logger.Warn("the rate limiter's last flush did not finish within the shutdown timeout")
 		}
 	}()
 
 	// The live hub (live design L1), in api and server mode only: a worker
-	// notifies through Postgres and needs none. Registered after closePool's
-	// defer, its wait runs first: Authorize reads the pool.
+	// notifies through Postgres and needs none. liveHub is what the
+	// management status reads: the listener is up before the hub exists.
 	var hub *live.Hub
+	var liveHub atomic.Pointer[live.Hub]
+
+	// The management listener opens in every command (KR2), before the
+	// schema wait and before any worker starts, and serves at once: its
+	// probes answer while the process waits (KR4), its readiness failing
+	// with "schema" and then "startup" until serve is really serving. A bind
+	// failure (the port is taken) returns while nothing is running yet.
+	// It is private and separate on purpose: it has no host filter, so a
+	// control plane can reach it by Service name and a kubelet by pod
+	// address, and the public listener never serves it. Registered after
+	// closePool's defer, its shutdown runs first: its handlers use the pool.
+	if cfg.Management != nil {
+		mgmtLn, err := listenManagement(cfg.Management.Port)
+		if err != nil {
+			logger.Error("cannot listen on the management port", "port", cfg.Management.Port, "error", err)
+			return 1
+		}
+		var mgmtLive func(context.Context) management.Live
+		if withAPI && cfg.LiveEnabled {
+			mgmtLive = liveHealth(&liveHub)
+		}
+		mgmt := &http.Server{
+			Handler: management.Handler(management.Options{
+				Logger:  logger,
+				Version: buildinfo.Version,
+				Token:   cfg.Management.Token,
+				Health:  healthHandler,
+				Installation: func(ctx context.Context) (management.Installation, error) {
+					st, err := identity.ReadInstallationStatus(ctx, deps)
+					return management.Installation{Bootstrap: st.Bootstrap, Users: st.Users, ActiveUsers: st.ActiveUsers}, err
+				},
+				DatabaseBytes: management.DatabaseBytes(pool),
+				Deliveries:    events.NewOperator(pool, deps.Clock),
+				Live:          mgmtLive,
+			}),
+			ReadHeaderTimeout: readHeaderTimeout,
+			IdleTimeout:       idleTimeout,
+			ErrorLog:          slog.NewLogLogger(logger.Handler(), slog.LevelWarn),
+		}
+		go func() {
+			if err := mgmt.Serve(mgmtLn); !errors.Is(err, http.ErrServerClosed) {
+				logger.Error("management listener stopped unexpectedly", "error", err)
+			}
+		}()
+		defer func() {
+			if err := mgmt.Shutdown(lc.budget()); err != nil {
+				logger.Warn("management listener did not drain", "error", err)
+			}
+		}()
+		logger.Info("management listener is up", "addr", mgmtLn.Addr().String())
+	}
+
+	// api has just migrated under the advisory lock; server and worker wait
+	// for whoever migrates (KR4). The wait honours the signal: a pod stopped
+	// while it waits exits without having started anything.
+	if m == modeAPI {
+		lc.schema.Store(true)
+	} else {
+		want, err := db.LatestMigration()
+		if err != nil {
+			logger.Error("startup failed", "error", err)
+			return 1
+		}
+		if err := db.WaitForSchema(ctx, db.SchemaWait{
+			Read:   func(ctx context.Context) (int64, error) { return db.SchemaVersion(ctx, pool) },
+			Want:   want,
+			Logger: logger,
+		}); err != nil {
+			logger.Info("shutdown requested while waiting for the schema; exiting without serving")
+			return 0
+		}
+		lc.schema.Store(true)
+	}
+
+	// Registered after closePool's defer, the hub's wait runs first:
+	// Authorize reads the pool.
 	defer func() {
 		if hub == nil {
 			return
 		}
-		waitCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
-		defer cancel()
-		if err := hub.Wait(waitCtx); err != nil {
+		if err := hub.Wait(lc.budget()); err != nil {
 			logger.Error("the live hub did not shut down in time", "error", err)
 		}
 	}()
+
+	// closeSockets stops the hub, which closes every live socket with 1001.
+	// serveUntilDone calls it after the drain delay (KR5), so browsers
+	// reconnect to another pod only once this one is out of rotation.
+	closeSockets := func() {}
 
 	var apiRunners []module.Runner
 	if withAPI {
@@ -582,20 +672,21 @@ func serve(ctx context.Context, logger *slog.Logger, cfg *config.Config, ln net.
 			return 1
 		}
 
-		// The hub runs on a context of its own, a child of the shutdown
-		// signal's, so a return before serving (an early failure) stops it
-		// too: the deferred Wait above would otherwise wait for a signal that
-		// never comes. Cancelled with ctx, it closes every socket with 1001
-		// while srv.Shutdown drains, which does not touch hijacked
-		// connections (L12).
+		// The hub runs on a context of its own, not a child of the shutdown
+		// signal's (KR5): the signal flips readiness, and the sockets stay
+		// open through the drain delay, until serveUntilDone calls
+		// closeSockets; srv.Shutdown does not touch hijacked connections
+		// (L12). The deferred stopHub stops it on a return before serving
+		// too, or the deferred Wait above would wait for nothing.
 		var liveHandler http.Handler
 		if cfg.LiveEnabled {
 			liveURL := cfg.LiveDatabaseURL
 			if liveURL == "" {
 				liveURL = cfg.DatabaseURL
 			}
-			hubCtx, stopHub := context.WithCancel(ctx)
+			hubCtx, stopHub := context.WithCancel(context.WithoutCancel(ctx))
 			defer stopHub()
+			closeSockets = stopHub
 			hub = live.New(live.Options{
 				DatabaseURL: liveURL,
 				Registry:    deps.Live,
@@ -606,6 +697,7 @@ func serve(ctx context.Context, logger *slog.Logger, cfg *config.Config, ln net.
 				Clock:       deps.Clock,
 			})
 			hub.Start(hubCtx)
+			liveHub.Store(hub)
 			liveHandler = hub
 		}
 
@@ -621,13 +713,12 @@ func serve(ctx context.Context, logger *slog.Logger, cfg *config.Config, ln net.
 		}), cfg.BasePath)
 	}
 
-	// workerCtx is cancelled explicitly (cancelWorkers), not left to be ctx
-	// itself: an early srv.Serve failure below does not cancel ctx — nothing
-	// sent a signal — so serveUntilDone needs its own way to tell every
-	// worker to stop before the deferred closePool runs. Deriving workerCtx
-	// from ctx means the normal shutdown path (SIGTERM cancels ctx) still
-	// cancels it too, with no separate call required there.
-	workerCtx, cancelWorkers := context.WithCancel(ctx)
+	// workerCtx is cancelled explicitly (cancelWorkers), never by the signal
+	// itself: on the graceful path serveUntilDone cancels it after the drain
+	// delay (KR5), and on an early srv.Serve failure, which no signal
+	// accompanies, it cancels it at once, so every worker is told to stop
+	// before the deferred closePool runs.
+	workerCtx, cancelWorkers := context.WithCancel(context.WithoutCancel(ctx))
 	defer cancelWorkers()
 
 	// The API-process runners start here, after Compose has bound the
@@ -656,46 +747,6 @@ func serve(ctx context.Context, logger *slog.Logger, cfg *config.Config, ln net.
 		runner.Start(workerCtx, workers)
 	}
 
-	// The management listener is private and separate on purpose: it has no
-	// host filter, so a control plane can reach it by Service name, and the
-	// public listener never serves it. Serving starts last (Serve below),
-	// so it only answers once the process is really up, even though the
-	// port was bound earlier, before the workers, above. Registered after
-	// closePool's defer, its shutdown runs first: its handlers use the pool.
-	if mgmtLn != nil {
-		mgmt := &http.Server{
-			Handler: management.Handler(management.Options{
-				Logger:  logger,
-				Version: buildinfo.Version,
-				Token:   cfg.Management.Token,
-				Installation: func(ctx context.Context) (management.Installation, error) {
-					st, err := identity.ReadInstallationStatus(ctx, deps)
-					return management.Installation{Bootstrap: st.Bootstrap, Users: st.Users, ActiveUsers: st.ActiveUsers}, err
-				},
-				DatabaseBytes: management.DatabaseBytes(pool),
-				Deliveries:    events.NewOperator(pool, deps.Clock),
-				Live:          liveHealth(hub),
-			}),
-			ReadHeaderTimeout: readHeaderTimeout,
-			IdleTimeout:       idleTimeout,
-			ErrorLog:          slog.NewLogLogger(logger.Handler(), slog.LevelWarn),
-		}
-		mgmtServing = true
-		go func() {
-			if err := mgmt.Serve(mgmtLn); !errors.Is(err, http.ErrServerClosed) {
-				logger.Error("management listener stopped unexpectedly", "error", err)
-			}
-		}()
-		defer func() {
-			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			if err := mgmt.Shutdown(shutdownCtx); err != nil {
-				logger.Warn("management listener did not drain", "error", err)
-			}
-		}()
-		logger.Info("management listener is up", "addr", mgmtLn.Addr().String())
-	}
-
 	srv := &http.Server{
 		Handler:           handler,
 		ReadHeaderTimeout: readHeaderTimeout,
@@ -705,21 +756,28 @@ func serve(ctx context.Context, logger *slog.Logger, cfg *config.Config, ln net.
 	logger.Info("vantigo is listening",
 		"version", buildinfo.Version, "command", command, "addr", ln.Addr().String(),
 		"app_url", cfg.AppOrigin, "base_path", cfg.BasePath, "env", cfg.Env)
-	return serveUntilDone(ctx, logger, srv, ln, cfg.ShutdownTimeout, runner, cancelWorkers)
+	lc.started.Store(true)
+	return serveUntilDone(ctx, logger, srv, ln, lc, runner, cancelWorkers, closeSockets)
 }
 
 // serveUntilDone serves until ctx is cancelled or srv.Serve fails on its
 // own, then either way cancels every worker (cancelWorkers) and waits for
-// them (runner.Wait, bounded by timeout) before returning — so serve's
-// deferred pool close never races a worker still using it. The graceful
-// path (ctx cancelled) additionally drains in-flight HTTP requests,
-// concurrently with the worker wait rather than after it, both bounded by
-// the same timeout: the orchestrator's termination grace period must exceed
-// it, and running the two waits one after the other would let each eat into
-// what should be the other's share of the budget. runner may be nil (server
-// mode, or api with WORKERS_IN_PROCESS=0): Runner.Wait on a nil *Runner
-// returns immediately.
-func serveUntilDone(ctx context.Context, logger *slog.Logger, srv *http.Server, ln net.Listener, timeout time.Duration, runner *worker.Runner, cancelWorkers context.CancelFunc) int {
+// them (runner.Wait) before returning — so serve's deferred pool close never
+// races a worker still using it.
+//
+// The graceful path (ctx cancelled) is the drain (Kubernetes readiness
+// design KR5): readiness fails with "draining" at once; the process keeps
+// serving for SHUTDOWN_DRAIN_DELAY, so endpoints controllers and the ingress
+// take it out of rotation; then it closes the live sockets (closeSockets)
+// and stops the workers, and drains in-flight HTTP requests concurrently
+// with the worker wait. From there on everything — these two waits and
+// serve's deferred closes after them — shares lc's one SHUTDOWN_TIMEOUT
+// budget, so the orchestrator's grace period must exceed SHUTDOWN_DRAIN_DELAY
+// plus SHUTDOWN_TIMEOUT. A second signal during any of it terminates at once
+// (run restores the default disposition). runner may be nil (server mode, or
+// api with WORKERS_IN_PROCESS=0): Runner.Wait on a nil *Runner returns
+// immediately.
+func serveUntilDone(ctx context.Context, logger *slog.Logger, srv *http.Server, ln net.Listener, lc *lifecycle, runner *worker.Runner, cancelWorkers, closeSockets func()) int {
 	errc := make(chan error, 1)
 	go func() { errc <- srv.Serve(ln) }()
 
@@ -733,34 +791,34 @@ func serveUntilDone(ctx context.Context, logger *slog.Logger, srv *http.Server, 
 		// Do that now and wait (bounded) before returning, so serve's
 		// deferred pool close does not run out from under a worker that is
 		// still mid-query — the exact bug this branch used to leave open.
+		closeSockets()
 		cancelWorkers()
-		waitCtx, cancel := context.WithTimeout(context.Background(), timeout)
-		defer cancel()
-		if werr := runner.Wait(waitCtx); werr != nil {
+		if werr := runner.Wait(lc.budget()); werr != nil {
 			logger.Error("workers did not finish before shutdown", "error", werr)
 		}
 		return 1
 	case <-ctx.Done():
 	}
 
-	logger.Info("shutdown signal received; draining", "timeout", timeout)
-	// workerCtx (which runner's workers were started with) is already a
-	// child of ctx, so it is already done at this point; this call is
-	// redundant in practice but kept explicit rather than relied upon —
-	// a reader should not need to trace workerCtx's ancestry back in serve
-	// to see that workers are told to stop here too.
+	lc.draining.Store(true)
+	logger.Info("shutdown signal received; readiness fails while the drain delay runs", "drain_delay", lc.delay, "timeout", lc.timeout)
+	if lc.delay > 0 {
+		time.Sleep(lc.delay)
+	}
+
+	logger.Info("draining")
+	closeSockets()
 	cancelWorkers()
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
+	budget := lc.budget()
 
 	var wg sync.WaitGroup
 	var httpErr error
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		httpErr = srv.Shutdown(shutdownCtx)
+		httpErr = srv.Shutdown(budget)
 	}()
-	workersErr := runner.Wait(shutdownCtx)
+	workersErr := runner.Wait(budget)
 	wg.Wait()
 
 	if httpErr != nil {
@@ -775,14 +833,16 @@ func serveUntilDone(ctx context.Context, logger *slog.Logger, srv *http.Server, 
 	return 0
 }
 
-// liveHealth is the hub's state for the management status, or nil when this
-// process runs no hub.
-func liveHealth(hub *live.Hub) func(context.Context) management.Live {
-	if hub == nil {
-		return nil
-	}
+// liveHealth is the hub's state for the management status. The listener
+// opens before the hub starts, so until it has, the status says the hub's
+// listener is down and its queue usage unknown.
+func liveHealth(hub *atomic.Pointer[live.Hub]) func(context.Context) management.Live {
 	return func(ctx context.Context) management.Live {
-		h := hub.Health(ctx)
-		return management.Live{Listener: h.Listener, QueueUsage: h.QueueUsage, Connections: h.Connections}
+		h := hub.Load()
+		if h == nil {
+			return management.Live{Listener: "down", QueueUsage: -1}
+		}
+		st := h.Health(ctx)
+		return management.Live{Listener: st.Listener, QueueUsage: st.QueueUsage, Connections: st.Connections}
 	}
 }

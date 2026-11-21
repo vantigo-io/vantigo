@@ -1669,6 +1669,46 @@ func TestLoad_Management_DisabledByDefault(t *testing.T) {
 	}
 }
 
+// TestLoad_ManagementWithoutToken pins KR3: a port alone opens the
+// listener for its probes, with no token, so every other route is refused.
+func TestLoad_ManagementWithoutToken(t *testing.T) {
+	cfg := mustLoad(t, with(validEnv(), "MANAGEMENT_PORT", "9090"))
+	if cfg.Management == nil || cfg.Management.Port != 9090 || cfg.Management.Token != "" {
+		t.Errorf("Management = %+v, want port 9090 and no token", cfg.Management)
+	}
+}
+
+func TestLoad_ShutdownDrainDelay(t *testing.T) {
+	if cfg := mustLoad(t, validEnv()); cfg.ShutdownDrainDelay != 0 {
+		t.Errorf("ShutdownDrainDelay defaults to %v, want 0", cfg.ShutdownDrainDelay)
+	}
+	for v, want := range map[string]time.Duration{"0s": 0, "10s": 10 * time.Second, "5m": 5 * time.Minute} {
+		if cfg := mustLoad(t, with(validEnv(), "SHUTDOWN_DRAIN_DELAY", v)); cfg.ShutdownDrainDelay != want {
+			t.Errorf("SHUTDOWN_DRAIN_DELAY=%s: %v, want %v", v, cfg.ShutdownDrainDelay, want)
+		}
+	}
+	for _, v := range []string{"soon", "-1s", "6m"} {
+		msg := loadError(t, with(validEnv(), "SHUTDOWN_DRAIN_DELAY", v))
+		if !strings.Contains(msg, "SHUTDOWN_DRAIN_DELAY: must be a duration from 0s to 5m") {
+			t.Errorf("SHUTDOWN_DRAIN_DELAY=%s: error = %q", v, msg)
+		}
+	}
+}
+
+func TestLoad_ClockMaxSkew(t *testing.T) {
+	if cfg := mustLoad(t, validEnv()); cfg.ClockMaxSkew != 5*time.Second {
+		t.Errorf("ClockMaxSkew defaults to %v, want 5s", cfg.ClockMaxSkew)
+	}
+	if cfg := mustLoad(t, with(validEnv(), "CLOCK_MAX_SKEW", "500ms")); cfg.ClockMaxSkew != 500*time.Millisecond {
+		t.Errorf("CLOCK_MAX_SKEW=500ms: %v", cfg.ClockMaxSkew)
+	}
+	for _, v := range []string{"0s", "later"} {
+		if msg := loadError(t, with(validEnv(), "CLOCK_MAX_SKEW", v)); !strings.Contains(msg, "CLOCK_MAX_SKEW: must be a positive duration") {
+			t.Errorf("CLOCK_MAX_SKEW=%s: error = %q", v, msg)
+		}
+	}
+}
+
 func TestLoad_Management(t *testing.T) {
 	token := strings.Repeat("t", 32)
 	cfg := mustLoad(t, with(validEnv(), "MANAGEMENT_PORT", "9090", "MANAGEMENT_TOKEN", token))
@@ -1680,7 +1720,6 @@ func TestLoad_Management(t *testing.T) {
 		pairs []string
 		want  string
 	}{
-		{[]string{"MANAGEMENT_PORT", "9090"}, "MANAGEMENT_TOKEN: is required when MANAGEMENT_PORT is set"},
 		{[]string{"MANAGEMENT_TOKEN", token}, "MANAGEMENT_PORT: is required when MANAGEMENT_TOKEN is set"},
 		{[]string{"MANAGEMENT_PORT", "0", "MANAGEMENT_TOKEN", token}, "MANAGEMENT_PORT: must be an integer from 1 to 65535"},
 		{[]string{"MANAGEMENT_PORT", "8080", "MANAGEMENT_TOKEN", token}, "MANAGEMENT_PORT: must differ from PORT"},

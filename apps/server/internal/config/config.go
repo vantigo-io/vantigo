@@ -141,8 +141,16 @@ type Config struct {
 	TrustedProxyHops int
 	CSPReportOnly    bool
 	ShutdownTimeout  time.Duration
-	LogLevel         slog.Level
-	Branding         Branding
+	// ShutdownDrainDelay is SHUTDOWN_DRAIN_DELAY: how long, after the first
+	// signal, the process keeps serving with readiness failing before it
+	// closes the live sockets and starts the shutdown that SHUTDOWN_TIMEOUT
+	// bounds. 0 (the default) starts it at once.
+	ShutdownDrainDelay time.Duration
+	// ClockMaxSkew is CLOCK_MAX_SKEW: an offset between this host's clock and
+	// the database's above it logs a warning, at most once an hour.
+	ClockMaxSkew time.Duration
+	LogLevel     slog.Level
+	Branding     Branding
 
 	// AppSecret is the process-wide key material (CSRF tokens, cookie
 	// signing, encryption of TOTP secrets). At least 32 bytes.
@@ -172,8 +180,8 @@ type Config struct {
 	// mails an Owner invitation to this address (BOOTSTRAP_OWNER_EMAIL).
 	BootstrapOwnerEmail string
 
-	// Management is the private management listener (MANAGEMENT_PORT and
-	// MANAGEMENT_TOKEN, set together). Nil disables it.
+	// Management is the private management listener (MANAGEMENT_PORT, and
+	// MANAGEMENT_TOKEN for its protected routes). Nil disables it.
 	Management *ManagementConfig
 
 	TrustedProxyCIDRs []netip.Prefix
@@ -791,6 +799,8 @@ func Load(env map[string]string) (*Config, error) {
 	c.Port = integer(&p, env, "PORT", 8080, 1, 65535)
 	c.TrustedProxyHops = integer(&p, env, "TRUSTED_PROXY_HOPS", 0, 0, 10)
 	c.ShutdownTimeout = duration(&p, env, "SHUTDOWN_TIMEOUT", 30*time.Second)
+	c.ShutdownDrainDelay = drainDelay(&p, env)
+	c.ClockMaxSkew = duration(&p, env, "CLOCK_MAX_SKEW", 5*time.Second)
 	c.LogLevel = logLevel(&p, env)
 	c.Branding = branding(&p, env)
 
@@ -2518,15 +2528,15 @@ func bootstrapOwnerEmail(p *problems, env map[string]string) string {
 	return v
 }
 
-// management resolves the management listener. The two variables are one
-// switch: both set enables it, neither disables it, one alone is a mistake.
+// management resolves the management listener. MANAGEMENT_PORT is the
+// switch: set, the listener opens and serves the health probes to anyone who
+// reaches it; MANAGEMENT_TOKEN then opens its other routes to a bearer of the
+// token, and without it every other route answers 401. A token without a
+// port is a mistake.
 func management(p *problems, env map[string]string, c *Config) *ManagementConfig {
 	port, token := env["MANAGEMENT_PORT"], env["MANAGEMENT_TOKEN"]
 	switch {
 	case port == "" && token == "":
-		return nil
-	case token == "":
-		p.add("MANAGEMENT_TOKEN", "is required when MANAGEMENT_PORT is set")
 		return nil
 	case port == "":
 		p.add("MANAGEMENT_PORT", "is required when MANAGEMENT_TOKEN is set")
@@ -2538,6 +2548,7 @@ func management(p *problems, env map[string]string, c *Config) *ManagementConfig
 		p.add("MANAGEMENT_PORT", "must differ from PORT")
 	}
 	switch {
+	case token == "":
 	case containsWhitespace(token):
 		p.add("MANAGEMENT_TOKEN", "must not contain whitespace")
 	case len(token) < 32:
@@ -2546,6 +2557,24 @@ func management(p *problems, env map[string]string, c *Config) *ManagementConfig
 		m.Token = token
 	}
 	return m
+}
+
+// drainDelay reads SHUTDOWN_DRAIN_DELAY, which unlike the other durations
+// may be 0 (its default: the shutdown starts at the signal, as it always
+// has). It is bounded at 5 minutes, since the orchestrator's grace period
+// must cover it and SHUTDOWN_TIMEOUT together.
+func drainDelay(p *problems, env map[string]string) time.Duration {
+	const field = "SHUTDOWN_DRAIN_DELAY"
+	v := env[field]
+	if v == "" {
+		return 0
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil || d < 0 || d > 5*time.Minute {
+		p.add(field, "must be a duration from 0s to 5m, such as 10s")
+		return 0
+	}
+	return d
 }
 
 // trustedProxyCIDRs parses TRUSTED_PROXY_CIDRS, the peers whose

@@ -783,7 +783,7 @@ func TestServeUntilDone_LetsInFlightRequestsFinish(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan int, 1)
 	go func() {
-		done <- serveUntilDone(ctx, slog.New(slog.DiscardHandler), srv, ln, 5*time.Second, nil, func() {})
+		done <- serveUntilDone(ctx, slog.New(slog.DiscardHandler), srv, ln, newLifecycle(0, 5*time.Second), nil, func() {}, func() {})
 	}()
 
 	result := make(chan string, 1)
@@ -838,7 +838,7 @@ func TestServeUntilDone_WaitsForWorkersConcurrentlyWithHTTPDrain(t *testing.T) {
 	// itself (as serve's graceful path derives workerCtx from ctx too), so
 	// cancel() below already stops it without a separate call.
 	go func() {
-		done <- serveUntilDone(ctx, slog.New(slog.DiscardHandler), srv, ln, 5*time.Second, runner, func() {})
+		done <- serveUntilDone(ctx, slog.New(slog.DiscardHandler), srv, ln, newLifecycle(0, 5*time.Second), runner, func() {}, func() {})
 	}()
 	cancel()
 
@@ -889,7 +889,7 @@ func TestServeUntilDone_WorkerExceedingTheTimeoutFailsShutdown(t *testing.T) {
 
 	done := make(chan int, 1)
 	go func() {
-		done <- serveUntilDone(ctx, slog.New(slog.DiscardHandler), srv, ln, 50*time.Millisecond, runner, func() {})
+		done <- serveUntilDone(ctx, slog.New(slog.DiscardHandler), srv, ln, newLifecycle(0, 50*time.Millisecond), runner, func() {}, func() {})
 	}()
 	cancel()
 
@@ -931,7 +931,7 @@ func TestServeUntilDone_EarlyServeFailureCancelsAndWaitsForWorkers(t *testing.T)
 	// The outer ctx is context.Background(): deliberately never cancelled,
 	// so the only way w can stop is serveUntilDone calling cancelWorkers
 	// itself in the early-failure branch.
-	code := serveUntilDone(context.Background(), slog.New(slog.DiscardHandler), srv, ln, 5*time.Second, runner, cancelWorkers)
+	code := serveUntilDone(context.Background(), slog.New(slog.DiscardHandler), srv, ln, newLifecycle(0, 5*time.Second), runner, cancelWorkers, func() {})
 
 	if code != 1 {
 		t.Errorf("exit %d, want 1: srv.Serve failed", code)
@@ -1058,23 +1058,6 @@ func TestServe_NoManagementListenerByDefault(t *testing.T) {
 	case <-addr:
 		t.Error("the management listener was opened without MANAGEMENT_PORT")
 	default:
-	}
-}
-
-func TestServe_WorkerModeHasNoManagementListener(t *testing.T) {
-	called := false
-	original := listenManagement
-	listenManagement = func(int) (net.Listener, error) { called = true; return nil, errors.New("must not be called") }
-	t.Cleanup(func() { listenManagement = original })
-
-	_, stop := startServeEnv(t, modeWorker, map[string]string{
-		"MANAGEMENT_PORT": "9090", "MANAGEMENT_TOKEN": strings.Repeat("m", 32),
-	})
-	if code := stop(); code != 0 {
-		t.Errorf("exit %d", code)
-	}
-	if called {
-		t.Error("worker mode must not open the management listener")
 	}
 }
 

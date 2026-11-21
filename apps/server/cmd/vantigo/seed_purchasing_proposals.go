@@ -20,6 +20,7 @@ import (
 	"log/slog"
 	"slices"
 	"strconv"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -56,7 +57,7 @@ func seedDemoPurchaseProposals(ctx context.Context, pool *pgxpool.Pool, logger *
 		logger.Info("purchase proposals demo: no workshop or no supplier items; skipping")
 		return nil
 	}
-	deps, access, err := moduleDeps(cfg, pool, logger)
+	deps, access, err := moduleDeps(cfg, pool, logger, time.Now)
 	if err != nil {
 		return err
 	}
