@@ -16,7 +16,17 @@ linters:
     - bodyclose
     - depguard
     - errorlint
+    # forbidigo: time.Now in a worker file (Kubernetes readiness design
+    # KR10). A lease, claim, window or retry deadline is compared in SQL
+    # against one another process wrote, so it is computed from Deps.Clock,
+    # the database-anchored clock, never this host's. Scoped to the worker
+    # files by the exclusion rules below.
+    - forbidigo
   settings:
+    forbidigo:
+      forbid:
+        - pattern: ^time\.Now$
+          msg: "a worker computes deadlines from Deps.Clock, the database-anchored clock (KR10); time.Now only as the nil-clock fallback"
     depguard:
       # Each business module is an island: internal/<module>/... (every
       # subpackage included, gen and otherwise) may import platform packages
@@ -2215,6 +2225,7 @@ linters:
             - "**/internal/consumerinvoice/**"
             - "**/internal/creditlimit/**"
             - "**/internal/db/**"
+            - "**/internal/dbclock/**"
             - "**/internal/docmath/**"
             - "**/internal/events/**"
             - "**/internal/fileimport/**"
@@ -2339,6 +2350,22 @@ linters:
       - path: _test\.go$
         linters:
           - bodyclose
+      # forbidigo's time.Now rule applies to the worker files only: every
+      # *_worker.go, the runner and the events dispatcher. Tests inject
+      # their own clocks and may read the wall clock freely.
+      - path-except: '(_worker\.go|(^|/)internal/worker/[^/]+\.go|(^|/)internal/events/dispatch\.go)$'
+        linters:
+          - forbidigo
+      - path: _test\.go$
+        linters:
+          - forbidigo
+      # The allow-list: the nil-clock fallbacks, the one place a worker may
+      # name time.Now — `if deps.Clock == nil` (a bare Deps in a test),
+      # never in production, where serve always sets Deps.Clock.
+      - path: '(^|/)internal/((calendar/(cancellations|mailbox|subscriptions)|customers/(anonymisation|import|peppol_recheck|registry_feed)|energy/(import|spot_prices)|identity/webhooks)_worker|events/dispatch)\.go$'
+        source: '^\s*(return time\.Now\(\)(\.UTC\(\))?|[\w.]+ = time\.Now)$'
+        linters:
+          - forbidigo
 
 formatters:
   enable:
