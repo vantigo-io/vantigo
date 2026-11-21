@@ -10,6 +10,7 @@ import { listAuthorizationRoles, listAuthorizationUsers } from "../../api/author
 import { createIntegration, type Integration, integrationsQueryKey, listIntegrations } from "../../api/integrations";
 import { CustomRolePicker } from "../../components/custom-role-picker";
 import "../../i18n";
+import { ClientHosts, RegisteredClients } from "./-api-access-oauth-clients";
 import { contactOptions, fieldErrorsOf, integrationStatusColor } from "./-api-access-shared";
 
 type Draft = { name: string; description: string; contactUserId: string | null; roleIds: string[] };
@@ -20,7 +21,9 @@ const emptyDraft: Draft = { name: "", description: "", contactUserId: null, role
  * integrations, the accounts external applications act as with an API key.
  * The list says each one's status, roles, keys in force, the nearest expiry
  * among them and when a key was last used; *New integration* makes one, and a
- * name opens its page.
+ * name opens its page. Below it, while OAuth is on, the clients registered by
+ * hand and the client hosts that may connect (OAuth connections design C8,
+ * C11, C25).
  */
 const ApiAccessPage = () => {
   const { t, formatters } = useI18n("host");
@@ -127,6 +130,8 @@ const ApiAccessPage = () => {
           </Table.ScrollContainer>
         )}
       </PageSection>
+      <RegisteredClients />
+      <ClientHosts />
       <Modal opened={draft !== null} onClose={() => setDraft(null)} title={t("apiAccess.newIntegration")} centered>
         {draft && (
           <form

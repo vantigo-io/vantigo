@@ -146,8 +146,8 @@ const en = {
   "apiAccess.noRequests": "No requests",
   "apiAccess.noRequestsHint": "None of the integration's keys made a request that matches the filters.",
   "apiAccess.couldNotLoadRequests": "The request log could not be loaded",
-  "apiAccess.filterKey": "Key",
-  "apiAccess.filterAllKeys": "All keys",
+  "apiAccess.filterKey": "Key or app",
+  "apiAccess.filterAllKeys": "All keys and apps",
   "apiAccess.filterStatus": "Status",
   "apiAccess.filterAllStatuses": "All statuses",
   "apiAccess.filterReason": "Reason",
@@ -330,13 +330,13 @@ const en = {
     "An AI client such as Claude Code, Cursor or VS Code can connect to Vantigo over the Model Context Protocol with one of this integration's keys. It reaches only what the key may reach through the API.",
   "apiAccess.mcpAccess": "MCP access",
   "apiAccess.mcpMode_off": "Off",
-  "apiAccess.mcpModeHint_off": "The integration's keys are refused at the MCP endpoint.",
+  "apiAccess.mcpModeHint_off": "The integration's keys and connected apps are refused at the MCP endpoint.",
   "apiAccess.mcpMode_read": "Read only",
   "apiAccess.mcpModeHint_read":
-    "An AI client may search the API and call operations that read. This limits MCP only: a key that is not read-only can still write over the REST API, so make the agent's key read-only too.",
+    "An AI client may search the API and call operations that read. This limits MCP only: a key that is not read-only can still write over the REST API, so make the agent's key read-only too. A connected app reads only, whatever it was approved for.",
   "apiAccess.mcpMode_read_write": "Read and write",
   "apiAccess.mcpModeHint_read_write":
-    "An AI client may also call operations that change data: create, change, delete and send. A client asks before it runs a tool unless you have allowed it: do not auto-approve write or delete. A read-only key always only reads.",
+    "An AI client may also call operations that change data: create, change, delete and send. A client asks before it runs a tool unless you have allowed it: do not auto-approve write or delete. A read-only key always only reads, and so does a connected app approved for Read only.",
   "apiAccess.mcpWarning":
     "An AI client acts on what it reads, and a record can contain text written to mislead it. Give the integration only the roles the agent needs.",
   "apiAccess.mcpWriteWarning":
@@ -378,6 +378,58 @@ const en = {
     "The app from {{host}} is refused from its next request, everywhere at once, and must be connected again by signing in. This cannot be undone.",
   "apiAccess.connectionRevoked": "Connection revoked",
   "apiAccess.couldNotRevokeConnection": "Could not revoke the connection",
+  "apiAccess.save": "Save",
+  "apiAccess.edit": "Edit",
+  "apiAccess.filterGroupKeys": "Keys",
+  "apiAccess.filterGroupApps": "Connected apps",
+  "apiAccess.mcpWithKeyTitle": "Connect with a key",
+  "apiAccess.mcpSignInTitle": "Connect by signing in",
+  "apiAccess.mcpSignInHosted":
+    "In Claude or ChatGPT, add a custom connector with the MCP endpoint above. The app sends you here to sign in as an Owner, choose this integration and approve it; no key is copied. Claude and ChatGPT reach Vantigo from the internet, so the installation needs a public https address.",
+  "apiAccess.mcpSignInNotHttps":
+    "This installation's address is not https, so Claude and ChatGPT cannot connect to it by signing in.",
+  "apiAccess.mcpSignInClaudeCode": "Claude Code, by signing in",
+  "apiAccess.mcpSignInClaudeCodeHint":
+    "Run the command, then type /mcp in Claude Code and choose Authenticate: your browser opens this workspace's sign-in page.",
+  "apiAccess.mcpSignInRegistered":
+    "Cursor, VS Code and other apps that publish no client description sign in with a client registered under Workspace admin › API access › Registered clients.",
+  "apiAccess.connectionKind_metadata": "Client description",
+  "apiAccess.connectionKind_registered": "Registered client",
+  "apiAccess.inactive_client_not_allowed":
+    "Its host is not on this workspace's list of client hosts, so it cannot renew its access. List the host again under API access › Client hosts, or revoke it.",
+  "apiAccess.registeredClients": "Registered clients",
+  "apiAccess.registeredClientsDescription":
+    "Apps that publish no client description, such as Cursor and VS Code, connect by signing in with a client registered here. Register one for each app, with the redirect URIs it uses: it gets a client ID, and no secret.",
+  "apiAccess.registerClient": "Register a client",
+  "apiAccess.editClient": "Edit client",
+  "apiAccess.editClientLabel": "Edit {{name}}",
+  "apiAccess.clientNameHint": "Shown on the sign-in page and in Connected apps; at most 80 characters.",
+  "apiAccess.redirectUris": "Redirect URIs",
+  "apiAccess.redirectUrisHint":
+    "One a line, as the app documents them: an https:// address, or http://127.0.0.1, http://[::1] or http://localhost for an app on the person's own computer, whose port the app chooses.",
+  "apiAccess.clientId": "Client ID",
+  "apiAccess.registeredBy": "Registered by",
+  "apiAccess.noClients": "No client is registered.",
+  "apiAccess.couldNotLoadClients": "The registered clients could not be loaded",
+  "apiAccess.clientRegistered": "Client registered",
+  "apiAccess.clientRegisteredSteps":
+    "In the app's settings for this workspace's MCP server, enter this client ID and leave the client secret empty. When the app connects, it opens this workspace's sign-in page, where an Owner approves it. The client ID is not a secret, and stays shown in the list.",
+  "apiAccess.clientIdDone": "Done",
+  "apiAccess.archiveClient": "Archive",
+  "apiAccess.archiveClientLabel": "Archive {{name}}",
+  "apiAccess.archiveClientTitle": "Archive {{name}}?",
+  "apiAccess.archiveClientBody":
+    "No one can sign in with it again, and every app connected with it is disconnected at once (connected now: {{count}}). This cannot be undone.",
+  "apiAccess.clientArchived": "Client archived",
+  "apiAccess.couldNotArchiveClient": "Could not archive the client",
+  "apiAccess.clientHosts": "Client hosts",
+  "apiAccess.clientHostsDescription":
+    "The hosts whose apps may connect by signing in, such as claude.ai and chatgpt.com. Leave the list empty to admit any host; a subdomain of a listed host is admitted too. Registered clients are always admitted. Saving disconnects nothing: an app whose host is left out cannot renew its access until the host is listed again.",
+  "apiAccess.clientHostsLabel": "Allowed hosts",
+  "apiAccess.clientHostsAny": "Empty: an app from any host may connect.",
+  "apiAccess.clientHostsOnly": "Only apps from these hosts and their subdomains may connect.",
+  "apiAccess.clientHostsPlaceholder": "One host a line, such as claude.ai",
+  "apiAccess.couldNotLoadClientHosts": "The client hosts could not be loaded",
 };
 
 const nb: Record<keyof typeof en, string> = {
@@ -516,8 +568,8 @@ const nb: Record<keyof typeof en, string> = {
   "apiAccess.noRequests": "Ingen forespørsler",
   "apiAccess.noRequestsHint": "Ingen av integrasjonens nøkler har gjort en forespørsel som passer filtrene.",
   "apiAccess.couldNotLoadRequests": "Forespørselsloggen kunne ikke lastes",
-  "apiAccess.filterKey": "Nøkkel",
-  "apiAccess.filterAllKeys": "Alle nøkler",
+  "apiAccess.filterKey": "Nøkkel eller app",
+  "apiAccess.filterAllKeys": "Alle nøkler og apper",
   "apiAccess.filterStatus": "Status",
   "apiAccess.filterAllStatuses": "Alle statuser",
   "apiAccess.filterReason": "Årsak",
@@ -702,13 +754,13 @@ const nb: Record<keyof typeof en, string> = {
     "En AI-klient som Claude Code, Cursor eller VS Code kan koble seg til Vantigo med Model Context Protocol og en av integrasjonens nøkler. Den når bare det nøkkelen kan nå gjennom API-et.",
   "apiAccess.mcpAccess": "MCP-tilgang",
   "apiAccess.mcpMode_off": "Av",
-  "apiAccess.mcpModeHint_off": "Integrasjonens nøkler avvises ved MCP-endepunktet.",
+  "apiAccess.mcpModeHint_off": "Integrasjonens nøkler og tilkoblede apper avvises ved MCP-endepunktet.",
   "apiAccess.mcpMode_read": "Bare lese",
   "apiAccess.mcpModeHint_read":
-    "En AI-klient kan søke i API-et og kalle operasjoner som leser. Dette begrenser bare MCP: en nøkkel som ikke er skrivebeskyttet, kan fortsatt skrive gjennom REST-API-et, så gjør også agentens nøkkel skrivebeskyttet.",
+    "En AI-klient kan søke i API-et og kalle operasjoner som leser. Dette begrenser bare MCP: en nøkkel som ikke er skrivebeskyttet, kan fortsatt skrive gjennom REST-API-et, så gjør også agentens nøkkel skrivebeskyttet. En tilkoblet app leser bare, uansett hva den ble godkjent for.",
   "apiAccess.mcpMode_read_write": "Lese og skrive",
   "apiAccess.mcpModeHint_read_write":
-    "En AI-klient kan også kalle operasjoner som endrer data: opprette, endre, slette og sende. En klient spør før den kjører et verktøy med mindre du har tillatt det: ikke godkjenn write eller delete automatisk. En skrivebeskyttet nøkkel leser alltid bare.",
+    "En AI-klient kan også kalle operasjoner som endrer data: opprette, endre, slette og sende. En klient spør før den kjører et verktøy med mindre du har tillatt det: ikke godkjenn write eller delete automatisk. En skrivebeskyttet nøkkel leser alltid bare, og det gjør også en tilkoblet app som er godkjent for Bare lese.",
   "apiAccess.mcpWarning":
     "En AI-klient handler på det den leser, og en post kan inneholde tekst skrevet for å villede den. Gi integrasjonen bare rollene agenten trenger.",
   "apiAccess.mcpWriteWarning":
@@ -751,6 +803,58 @@ const nb: Record<keyof typeof en, string> = {
     "Appen fra {{host}} avvises fra neste forespørsel, overalt på én gang, og må kobles til på nytt ved innlogging. Dette kan ikke angres.",
   "apiAccess.connectionRevoked": "Tilkoblingen er tilbakekalt",
   "apiAccess.couldNotRevokeConnection": "Kunne ikke tilbakekalle tilkoblingen",
+  "apiAccess.save": "Lagre",
+  "apiAccess.edit": "Endre",
+  "apiAccess.filterGroupKeys": "Nøkler",
+  "apiAccess.filterGroupApps": "Tilkoblede apper",
+  "apiAccess.mcpWithKeyTitle": "Koble til med en nøkkel",
+  "apiAccess.mcpSignInTitle": "Koble til ved å logge inn",
+  "apiAccess.mcpSignInHosted":
+    "I Claude eller ChatGPT legger du til en egendefinert kobling med MCP-endepunktet over. Appen sender deg hit for å logge inn som eier, velge denne integrasjonen og godkjenne den; ingen nøkkel kopieres. Claude og ChatGPT når Vantigo fra internett, så installasjonen trenger en offentlig https-adresse.",
+  "apiAccess.mcpSignInNotHttps":
+    "Adressen til denne installasjonen er ikke https, så Claude og ChatGPT kan ikke koble seg til den ved innlogging.",
+  "apiAccess.mcpSignInClaudeCode": "Claude Code, med innlogging",
+  "apiAccess.mcpSignInClaudeCodeHint":
+    "Kjør kommandoen, skriv så /mcp i Claude Code og velg Authenticate: nettleseren åpner innloggingssiden til dette arbeidsområdet.",
+  "apiAccess.mcpSignInRegistered":
+    "Cursor, VS Code og andre apper som ikke publiserer en klientbeskrivelse, logger inn med en klient registrert under Arbeidsområde › API-tilgang › Registrerte klienter.",
+  "apiAccess.connectionKind_metadata": "Klientbeskrivelse",
+  "apiAccess.connectionKind_registered": "Registrert klient",
+  "apiAccess.inactive_client_not_allowed":
+    "Verten står ikke på arbeidsområdets liste over klientverter, så den kan ikke fornye tilgangen. Før opp verten igjen under API-tilgang › Klientverter, eller tilbakekall den.",
+  "apiAccess.registeredClients": "Registrerte klienter",
+  "apiAccess.registeredClientsDescription":
+    "Apper som ikke publiserer en klientbeskrivelse, som Cursor og VS Code, kobler seg til ved innlogging med en klient registrert her. Registrer én for hver app, med omdirigerings-URI-ene den bruker: den får en klient-ID og ingen hemmelighet.",
+  "apiAccess.registerClient": "Registrer en klient",
+  "apiAccess.editClient": "Endre klient",
+  "apiAccess.editClientLabel": "Endre {{name}}",
+  "apiAccess.clientNameHint": "Vises på innloggingssiden og under Tilkoblede apper; høyst 80 tegn.",
+  "apiAccess.redirectUris": "Omdirigerings-URI-er",
+  "apiAccess.redirectUrisHint":
+    "Én per linje, slik appen dokumenterer dem: en https://-adresse, eller http://127.0.0.1, http://[::1] eller http://localhost for en app på personens egen datamaskin, der appen velger porten.",
+  "apiAccess.clientId": "Klient-ID",
+  "apiAccess.registeredBy": "Registrert av",
+  "apiAccess.noClients": "Ingen klient er registrert.",
+  "apiAccess.couldNotLoadClients": "De registrerte klientene kunne ikke lastes",
+  "apiAccess.clientRegistered": "Klienten er registrert",
+  "apiAccess.clientRegisteredSteps":
+    "I appens innstillinger for MCP-serveren til dette arbeidsområdet skriver du inn denne klient-ID-en og lar klienthemmeligheten stå tom. Når appen kobler seg til, åpner den innloggingssiden til dette arbeidsområdet, der en eier godkjenner den. Klient-ID-en er ingen hemmelighet og vises fortsatt i listen.",
+  "apiAccess.clientIdDone": "Ferdig",
+  "apiAccess.archiveClient": "Arkiver",
+  "apiAccess.archiveClientLabel": "Arkiver {{name}}",
+  "apiAccess.archiveClientTitle": "Arkivere {{name}}?",
+  "apiAccess.archiveClientBody":
+    "Ingen kan logge inn med den igjen, og alle apper som er koblet til med den, kobles fra med én gang (tilkoblet nå: {{count}}). Dette kan ikke angres.",
+  "apiAccess.clientArchived": "Klienten er arkivert",
+  "apiAccess.couldNotArchiveClient": "Kunne ikke arkivere klienten",
+  "apiAccess.clientHosts": "Klientverter",
+  "apiAccess.clientHostsDescription":
+    "Vertene der apper kan koble seg til ved innlogging, som claude.ai og chatgpt.com. La listen stå tom for å tillate alle verter; et underdomene av en vert i listen tillates også. Registrerte klienter tillates alltid. Å lagre kobler ingenting fra: en app med en vert som er tatt ut, kan ikke fornye tilgangen før verten står i listen igjen.",
+  "apiAccess.clientHostsLabel": "Tillatte verter",
+  "apiAccess.clientHostsAny": "Tom: en app fra hvilken som helst vert kan koble seg til.",
+  "apiAccess.clientHostsOnly": "Bare apper fra disse vertene og underdomenene deres kan koble seg til.",
+  "apiAccess.clientHostsPlaceholder": "Én vert per linje, som claude.ai",
+  "apiAccess.couldNotLoadClientHosts": "Klientvertene kunne ikke lastes",
 };
 
 export const apiAccessCatalog = { en, nb } as const satisfies CatalogResources;

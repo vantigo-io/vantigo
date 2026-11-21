@@ -97,6 +97,9 @@ export const IntegrationConnections = ({ integrationId, archived }: { integratio
                           {connection.clientName}
                         </Text>
                         <Code>{connection.clientHost}</Code>
+                        <Badge color="gray" variant="outline" data-testid="connection-kind">
+                          {t(`apiAccess.connectionKind_${connection.clientKind}`)}
+                        </Badge>
                         {connection.status === "active" ? (
                           <Badge color="teal" variant="light">
                             {t("apiAccess.connectionStatus_active")}
@@ -110,7 +113,9 @@ export const IntegrationConnections = ({ integrationId, archived }: { integratio
                               {t(
                                 connection.inactiveReason === "authorizer_removed"
                                   ? "apiAccess.inactive_authorizer_removed"
-                                  : "apiAccess.inactive_other",
+                                  : connection.inactiveReason === "client_not_allowed"
+                                    ? "apiAccess.inactive_client_not_allowed"
+                                    : "apiAccess.inactive_other",
                               )}
                             </Text>
                           </Stack>

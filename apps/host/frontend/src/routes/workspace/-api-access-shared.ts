@@ -65,6 +65,8 @@ export const mcpSnippets = (url: string, name: string) => {
   const reference = (expression: string) => `Bearer ${"$"}{${expression}}`;
   return {
     claude: `claude mcp add --transport http ${server} ${url} --header "Authorization: Bearer $${mcpKeyVariable}"`,
+    // With no key: Claude Code finds the sign-in itself (OAuth connections design C22).
+    claudeSignIn: `claude mcp add --transport http ${server} ${url}`,
     json: JSON.stringify(
       { mcpServers: { [server]: { url, headers: { Authorization: reference(`env:${mcpKeyVariable}`) } } } },
       null,

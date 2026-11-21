@@ -1,6 +1,6 @@
 import { notifications } from "@mantine/notifications";
 import { QueryClient } from "@tanstack/react-query";
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { IntegrationDetail, IntegrationMcpAccess } from "../../api/integrations";
 import { apiAccessCatalog } from "../../catalogs/api-access";
@@ -9,12 +9,19 @@ import { IntegrationMcp } from "./-api-access-mcp";
 import { mcpSnippets } from "./-api-access-shared";
 import "../../i18n";
 
-const api = vi.hoisted(() => ({ setIntegrationMcpAccess: vi.fn() }));
+const api = vi.hoisted(() => ({ setIntegrationMcpAccess: vi.fn(), listIntegrationConnections: vi.fn() }));
 
 vi.mock("../../api/integrations", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../api/integrations")>()),
   setIntegrationMcpAccess: api.setIntegrationMcpAccess,
 }));
+
+vi.mock("../../api/oauth", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../api/oauth")>()),
+  listIntegrationConnections: api.listIntegrationConnections,
+}));
+
+const switchedOff = () => Object.assign(new Error("Not Found"), { status: 404 });
 
 const detail = (mcpAccess: IntegrationMcpAccess = "off", mcpAvailable = true): IntegrationDetail => ({
   integration: {
@@ -51,6 +58,8 @@ const notify = { show: vi.spyOn(notifications, "show") };
 
 beforeEach(() => {
   api.setIntegrationMcpAccess.mockReset();
+  api.listIntegrationConnections.mockReset();
+  api.listIntegrationConnections.mockRejectedValue(switchedOff());
   notify.show = vi.spyOn(notifications, "show");
 });
 
@@ -82,6 +91,38 @@ describe("an integration's MCP section", () => {
     expect(screen.getByText(/a key that is not read-only can still write over the REST API/)).toBeInTheDocument();
     expect(screen.getByText(/text written to mislead it/)).toBeInTheDocument();
     expect(screen.queryByText(/write access/)).not.toBeInTheDocument();
+  });
+
+  it("says how to connect by signing in beside the key, while OAuth is on", async () => {
+    api.listIntegrationConnections.mockResolvedValue([]);
+    await renderSection(detail("read"));
+    const signIn = within(await screen.findByTestId("mcp-sign-in"));
+    expect(screen.getByText("Connect with a key")).toBeInTheDocument();
+    expect(signIn.getByText("Connect by signing in")).toBeInTheDocument();
+    expect(signIn.getByText(/add a custom connector with the MCP endpoint above/)).toBeInTheDocument();
+    expect(signIn.getByText(/needs a public https address/)).toBeInTheDocument();
+    // The test page is http: Claude and ChatGPT could not reach it.
+    expect(signIn.getByText(/is not https/)).toBeInTheDocument();
+    expect(
+      signIn.getByText(`claude mcp add --transport http claude-agent ${window.location.origin}/api/mcp`),
+    ).toBeInTheDocument();
+    expect(signIn.getByText(/type \/mcp in Claude Code and choose Authenticate/)).toBeInTheDocument();
+    expect(signIn.getByText(/Registered clients/)).toBeInTheDocument();
+    expect(signIn.queryByText(/VANTIGO_API_KEY/)).not.toBeInTheDocument();
+  });
+
+  it("says nothing of signing in while OAuth is switched off, or MCP is off", async () => {
+    await renderSection(detail("read"));
+    await waitFor(() => expect(api.listIntegrationConnections).toHaveBeenCalled());
+    expect(screen.queryByTestId("mcp-sign-in")).not.toBeInTheDocument();
+    expect(screen.queryByText("Connect with a key")).not.toBeInTheDocument();
+  });
+
+  it("says nothing of signing in for an integration whose MCP is off", async () => {
+    api.listIntegrationConnections.mockResolvedValue([]);
+    await renderSection(detail("off"));
+    await waitFor(() => expect(api.listIntegrationConnections).toHaveBeenCalled());
+    expect(screen.queryByTestId("mcp-sign-in")).not.toBeInTheDocument();
   });
 
   it("warns of writes only under read and write, and says what writing allows", async () => {
@@ -137,7 +178,8 @@ describe("an integration's MCP section", () => {
 describe("the connection snippets", () => {
   it("name the server after the integration and read the key from each client's own store, never holding it", () => {
     const url = "https://erp.example.com/base/api/mcp";
-    const { claude, json, vscode } = mcpSnippets(url, "Øst Webshop / 2");
+    const { claude, claudeSignIn, json, vscode } = mcpSnippets(url, "Øst Webshop / 2");
+    expect(claudeSignIn).toBe(`claude mcp add --transport http st-webshop-2 ${url}`);
     expect(claude).toBe(
       `claude mcp add --transport http st-webshop-2 ${url} --header "Authorization: Bearer $VANTIGO_API_KEY"`,
     );
@@ -151,7 +193,7 @@ describe("the connection snippets", () => {
       },
     });
     expect(mcpSnippets("https://x/api/mcp", "???").claude).toContain(" vantigo ");
-    for (const text of [claude, json, vscode]) expect(text).not.toContain("vtg_");
+    for (const text of [claude, claudeSignIn, json, vscode]) expect(text).not.toContain("vtg_");
   });
 });
 

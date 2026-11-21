@@ -330,10 +330,18 @@ const Consent = ({ query, answer }: { query: string; answer: OAuthAuthorizationP
         </Text>
       </Stack>
       <Stack gap={4} data-testid="oauth-verified">
-        <Text size="sm">
-          {client.loopback ? t("oauth.documentAtLoopback") : t("oauth.documentAt", { app: brand.title })}{" "}
-          <Code>{client.clientIdHost}</Code>
-        </Text>
+        {client.kind === "registered" ? (
+          <Text size="sm" data-testid="oauth-registered-by">
+            {client.registeredBy
+              ? t("oauth.registeredBy", { person: client.registeredBy })
+              : t("oauth.registeredByDeleted")}
+          </Text>
+        ) : (
+          <Text size="sm">
+            {client.loopback ? t("oauth.documentAtLoopback") : t("oauth.documentAt", { app: brand.title })}{" "}
+            <Code>{client.clientIdHost}</Code>
+          </Text>
+        )}
         <Text size="sm">
           {t("oauth.redirectTo")} <Code>{client.redirectHost}</Code>
         </Text>

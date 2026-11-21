@@ -47,6 +47,31 @@ beforeEach(() => {
 });
 
 describe("an integration's connected apps", () => {
+  it("shows each connection's kind, and why one whose host is no longer allowed is held back", async () => {
+    api.listIntegrationConnections.mockResolvedValue([
+      connection(),
+      connection({
+        id: "c-3",
+        clientId: "vtc_0123456789abcdefghijABCD",
+        clientKind: "registered",
+        clientName: "Cursor",
+        clientHost: "127.0.0.1",
+      }),
+      connection({
+        id: "c-4",
+        clientName: "ChatGPT",
+        clientHost: "chatgpt.com",
+        status: "inactive",
+        inactiveReason: "client_not_allowed",
+      }),
+    ]);
+    await renderSection();
+    const table = within(await screen.findByTestId("connected-apps"));
+    const kinds = table.getAllByTestId("connection-kind").map((badge) => badge.textContent);
+    expect(kinds).toEqual(["Client description", "Registered client", "Client description"]);
+    expect(table.getByText(/not on this workspace's list of client hosts/)).toBeInTheDocument();
+  });
+
   it("lists each connection with its host, who connected it, its access, dates and state", async () => {
     api.listIntegrationConnections.mockResolvedValue([
       connection(),

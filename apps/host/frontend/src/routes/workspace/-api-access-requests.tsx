@@ -10,6 +10,7 @@ import {
   integrationRequestsQueryKey,
   type RequestLogFilters,
 } from "../../api/integrations";
+import { integrationConnectionsQueryKey, listIntegrationConnections } from "../../api/oauth";
 
 /**
  * The status classes the log counts, and the reasons a request is recorded under: a refusal's
@@ -98,8 +99,33 @@ export const IntegrationRequests = ({ integrationId, keys }: { integrationId: st
   if (unfiltered && (logWindow?.from !== unfiltered.from || logWindow?.to !== unfiltered.to)) {
     setLogWindow({ from: unfiltered.from, to: unfiltered.to });
   }
+  // The connected apps the filter offers (OAuth connections design A18): none
+  // while the installation has OAuth switched off, when the list is a 404.
+  const connections = useQuery({
+    queryKey: integrationConnectionsQueryKey(integrationId),
+    queryFn: () => listIntegrationConnections(integrationId),
+    retry: false,
+  });
   const set = (patch: RequestLogFilters) => setFilters((current) => ({ ...current, ...patch }));
   const classLabel = (statusClass: number) => t(`apiAccess.statusClass_${statusClass}`);
+  const sources = [
+    {
+      group: t("apiAccess.filterGroupKeys"),
+      items: keys.map((key) => ({ value: `key:${key.id}`, label: key.name })),
+    },
+    ...((connections.data ?? []).length > 0
+      ? [
+          {
+            group: t("apiAccess.filterGroupApps"),
+            items: (connections.data ?? []).map((connection) => ({
+              value: `connection:${connection.id}`,
+              label: `${connection.clientName} · ${connection.clientHost}`,
+            })),
+          },
+        ]
+      : []),
+  ];
+  const source = filters.key ? `key:${filters.key}` : filters.connection ? `connection:${filters.connection}` : null;
 
   const filterRow = (
     <Group align="flex-end" gap="sm" data-testid="request-filters">
@@ -107,9 +133,12 @@ export const IntegrationRequests = ({ integrationId, keys }: { integrationId: st
         label={t("apiAccess.filterKey")}
         placeholder={t("apiAccess.filterAllKeys")}
         clearable
-        data={keys.map((key) => ({ value: key.id, label: key.name }))}
-        value={filters.key ?? null}
-        onChange={(value) => set({ key: value ?? undefined })}
+        data={sources}
+        value={source}
+        onChange={(value) => {
+          const [kind, id] = value ? value.split(":", 2) : [];
+          set({ key: kind === "key" ? id : undefined, connection: kind === "connection" ? id : undefined });
+        }}
       />
       <Select
         label={t("apiAccess.filterStatus")}
