@@ -318,16 +318,16 @@ func TestLoad_Idempotency(t *testing.T) {
 	}
 }
 
-// TestLoad_OAuth proves OAUTH_ENABLED defaults off until the consent page
-// lands and is a strict "0"/"1" switch (OAuth connections design C24, A24),
-// and that the issuer, the resource and its metadata URL are built from
-// APP_URL with a default port dropped and APP_BASE_PATH inserted (A12, A13).
+// TestLoad_OAuth proves OAUTH_ENABLED defaults on and is a strict "0"/"1"
+// switch (OAuth connections design C24, A24), and that the issuer, the
+// resource and its metadata URL are built from APP_URL with a default port
+// dropped and APP_BASE_PATH inserted (A12, A13).
 func TestLoad_OAuth(t *testing.T) {
-	if mustLoad(t, validEnv()).OAuthEnabled {
-		t.Error("OAUTH_ENABLED unset did not default to off")
+	if !mustLoad(t, validEnv()).OAuthEnabled {
+		t.Error("OAUTH_ENABLED unset did not default to on")
 	}
-	if !mustLoad(t, with(validEnv(), "OAUTH_ENABLED", "1")).OAuthEnabled {
-		t.Error("OAUTH_ENABLED=1 did not switch it on")
+	if mustLoad(t, with(validEnv(), "OAUTH_ENABLED", "0")).OAuthEnabled {
+		t.Error("OAUTH_ENABLED=0 did not switch it off")
 	}
 	if msg := loadError(t, with(validEnv(), "OAUTH_ENABLED", "yes")); !strings.Contains(msg, `OAUTH_ENABLED: must be "0" or "1"`) {
 		t.Errorf("error = %q", msg)

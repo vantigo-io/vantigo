@@ -205,10 +205,10 @@ func TestAPIRequests_TheWorkerKeepsThePartitions(t *testing.T) {
 
 // TestAPIRequests_WithTheWorkerOffRowsLandInDefault: no partition is made,
 // and every row goes to DEFAULT. The Idempotency-Key prune, which runs the
-// worker by itself, is off too.
+// worker by itself, is off too, and so is OAuth's prune.
 func TestAPIRequests_WithTheWorkerOffRowsLandInDefault(t *testing.T) {
 	t.Parallel()
-	h := newHarness(t, withEnv("IDENTITY_API_KEYS_ENABLED", "0"), withEnv("IDEMPOTENCY_ENABLED", "0"))
+	h := newHarness(t, withEnv("IDENTITY_API_KEYS_ENABLED", "0"), withEnv("IDEMPOTENCY_ENABLED", "0"), withEnv("OAUTH_ENABLED", "0"))
 	if apiKeysWorker(h) != nil {
 		t.Fatal("the worker runs while switched off")
 	}
