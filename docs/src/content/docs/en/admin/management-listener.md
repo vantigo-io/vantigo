@@ -1,6 +1,6 @@
 ---
 title: "Management listener"
-description: "The private, bearer-protected status endpoint a control plane polls, the stuck deliveries of the events outbox and their retry and skip, and seating the first Owner by invitation."
+description: "The private listener a control plane polls: the health probes in every command, the bearer-protected status, the stuck deliveries of the events outbox and their retry and skip, and seating the first Owner by invitation."
 sidebar:
   order: 40
 sources:
@@ -12,18 +12,34 @@ things without holding a user session: which version is running, whether its
 first Owner has been seated, and how much it is being used. The management
 listener answers exactly that — and lets the operator see and clear the deliveries of
 the events outbox that are stuck ([The events outbox](#the-events-outbox)) — and
-nothing else.
+nothing else. It also serves the two health probes, so an orchestrator can probe
+every pod on one port that no host filter guards ([The probes](#the-probes)).
 
 | Variable | Purpose | Default |
 | --- | --- | --- |
 | `MANAGEMENT_PORT` | Port of the private listener (must differ from `PORT`) | unset (disabled) |
-| `MANAGEMENT_TOKEN` | Bearer token, at least 32 characters, no whitespace | unset (disabled) |
+| `MANAGEMENT_TOKEN` | Bearer token for every route but the probes, at least 32 characters, no whitespace | unset (only the probes answer) |
 
-The two are one switch: set both or neither — one alone is a configuration
-error. The listener runs in the `api` and `server` commands; `worker` never
-opens it, and the public listener never serves `/management/status` either
-(an unmatched path there falls through to the SPA shell, exactly as any
-other unknown path does).
+`MANAGEMENT_PORT` is the switch. With it alone, the listener serves the probes and
+answers every other route `401`. With `MANAGEMENT_TOKEN` too, the routes below open
+to a bearer of the token. `MANAGEMENT_TOKEN` without `MANAGEMENT_PORT` is a
+configuration error.
+
+The listener runs in every command that serves: `api`, `server` and `worker`. It
+opens before anything else starts, while `server` and `worker` still wait for the
+schema ([Upgrading](/en/admin/installation/#upgrading)), so the probes answer from
+the first second; the status may answer `503` until the process is up. The public
+listener never serves `/management/status` (an unmatched path there falls through to
+the SPA shell, exactly as any other unknown path does).
+
+## The probes
+
+`GET /health/live` and `GET /health/ready` answer without a token, on this listener
+as on the public one: the same handler and the same checks
+([Health probes](/en/admin/installation/#health-probes)). They reveal the version and
+the names of the failing checks, nothing else. Point a Kubernetes `httpGet` probe at
+this port: the public listener's host filter refuses a pod address with `400`
+([Kubernetes](/en/admin/kubernetes/)).
 
 ## The endpoint
 
@@ -49,7 +65,7 @@ other unknown path does).
 | `live.queueUsage` | `pg_notification_queue_usage()`, from `0` to `1`, or `-1` when it could not be read. Near `1` means a listener is stuck |
 | `live.connections` | The live sockets open on this replica |
 
-The `live` block is left out of the answer of a `worker`-only process and when
+The `live` block is left out of the answer of a `worker` process and when
 `LIVE_ENABLED=0`: it describes the replica you ask ([Live updates and your
 proxy](/en/admin/installation/#live-updates-and-your-proxy)).
 
@@ -57,13 +73,11 @@ There is no `usage.storageBytes` field — usage is users, active users and
 database size only.
 
 A wrong or missing token is `401` with `WWW-Authenticate: Bearer`, for
-`/management/status` and for every other path on this listener: the bearer
-check wraps the whole handler, ahead of routing, so an unauthenticated
-caller cannot learn which routes exist. A failing dependency is `503`; the
-cause is logged, never returned. An empty configured token — unreachable
-through normal configuration, since `MANAGEMENT_TOKEN` must be at least 32
-characters, but the listener does not rely on that upstream check — closes
-the endpoint instead of opening it: every request is then rejected, `401`,
+`/management/status` and for every other path on this listener except the two
+probes: the bearer check wraps everything else, ahead of routing, so an
+unauthenticated caller cannot learn which routes exist. A failing dependency is
+`503`; the cause is logged, never returned. With no `MANAGEMENT_TOKEN` configured
+the protected routes are closed, not open: every request to them is rejected, `401`,
 regardless of what is presented.
 
 ## The events outbox
@@ -80,7 +94,8 @@ it is the operator's job, with three calls on this listener, behind the same bea
 token. No tenant user and no permission reaches them.
 
 The dispatcher runs wherever the workers run — the `worker` command, or `api` with
-`WORKERS_IN_PROCESS=1` — and has no setting of its own. It logs what to look for:
+`WORKERS_IN_PROCESS=1` — and has no setting of its own. These calls work on the
+listener of any command: the outbox is in the database, not in the process. It logs what to look for:
 
 | Log line | Level | Meaning |
 | --- | --- | --- |
