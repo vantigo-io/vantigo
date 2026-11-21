@@ -132,8 +132,8 @@ func (c *Clock) Offset() time.Duration { return time.Duration(c.offset.Load()) }
 // Sync takes the first measurement and applies it in full: the median of a
 // few samples back to back, so one slow round trip at start does not set it.
 // It returns the last error when no sample succeeded; the clock then keeps
-// reading the local clock, and the next successful measurement applies in
-// full instead.
+// reading the local clock, and the next Tick takes the first measurement
+// the same way, from several samples, rather than one.
 func (c *Clock) Sync(ctx context.Context) error {
 	var got []time.Duration
 	var err error
@@ -170,9 +170,16 @@ func (c *Clock) Run(ctx context.Context) {
 }
 
 // Tick takes one measurement and moves the offset toward the median of the
-// last Window, by at most Slew. Run calls it every Every; a test calls it
-// directly.
+// last Window, by at most Slew. Until a first measurement has succeeded it
+// takes that one instead, as Sync does. Run calls it every Every; a test
+// calls it directly.
 func (c *Clock) Tick(ctx context.Context) {
+	if !c.isAnchored() {
+		if err := c.Sync(ctx); err != nil && ctx.Err() == nil {
+			c.logger.WarnContext(ctx, "clock: could not measure the database's clock; still using this host's", "error", err)
+		}
+		return
+	}
 	d, err := c.sample(ctx)
 	if err != nil {
 		if ctx.Err() == nil {
@@ -181,6 +188,12 @@ func (c *Clock) Tick(ctx context.Context) {
 		return
 	}
 	c.observe(d)
+}
+
+func (c *Clock) isAnchored() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.anchored
 }
 
 func (c *Clock) sample(ctx context.Context) (time.Duration, error) {

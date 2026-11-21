@@ -16,6 +16,10 @@ import (
 type Check struct {
 	Name string
 	Run  func(context.Context) error
+	// Quiet marks a check whose failure is an expected state of the process
+	// — starting, waiting for the schema, draining — rather than a broken
+	// dependency: it still fails readiness, but is not logged on every probe.
+	Quiet bool
 }
 
 // checkTimeout bounds each readiness check so a wedged dependency answers 503
@@ -48,21 +52,24 @@ func Handler(logger *slog.Logger, version string, checks ...Check) http.Handler 
 
 func run(ctx context.Context, logger *slog.Logger, checks []Check) []string {
 	type result struct {
-		name string
-		err  error
+		name  string
+		quiet bool
+		err   error
 	}
 	results := make(chan result, len(checks))
 	for _, c := range checks {
 		go func() {
 			cctx, cancel := context.WithTimeout(ctx, checkTimeout)
 			defer cancel()
-			results <- result{c.Name, c.Run(cctx)}
+			results <- result{c.Name, c.Quiet, c.Run(cctx)}
 		}()
 	}
 	var failing []string
 	for range checks {
 		if res := <-results; res.err != nil {
-			logger.WarnContext(ctx, "readiness check failed", "check", res.name, "error", res.err)
+			if !res.quiet {
+				logger.WarnContext(ctx, "readiness check failed", "check", res.name, "error", res.err)
+			}
 			failing = append(failing, res.name)
 		}
 	}
