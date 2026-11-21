@@ -3,8 +3,11 @@
 // the public handler: it has no host filter, so that it can be reached by
 // Service name or pod address, and it is never routed from the internet. The
 // bearer token is its only protection; publish the port nowhere. An empty
-// configured token disables the endpoint — every request is then rejected —
-// rather than leaving it open.
+// configured token disables every protected route — each request is then
+// rejected — rather than leaving it open. The two health probes are the
+// exception: they answer without a token (Kubernetes readiness design KR1,
+// KR3), so a kubelet can probe the pod on this port, and they reveal the
+// version and the names of failing checks, nothing else.
 //
 // It imports no module: what it reports arrives as function values.
 package management
@@ -40,6 +43,10 @@ type Options struct {
 	Logger  *slog.Logger
 	Version string
 	Token   string
+	// Health serves GET /health/live and GET /health/ready (health.Handler,
+	// the same checks as the public listener's) outside the bearer check.
+	// Nil serves neither.
+	Health http.Handler
 
 	Installation  func(context.Context) (Installation, error)
 	DatabaseBytes func(context.Context) (int64, error)
@@ -87,7 +94,8 @@ type usage struct {
 // Handler serves GET /management/status — with Options.Live, the live hub's
 // state in it — and, with Options.Deliveries, the
 // outbox's deliveries (GET /management/events/deliveries and the retry and
-// skip of one), behind the bearer token.
+// skip of one), behind the bearer token; and, with Options.Health, the two
+// probes in front of it.
 func Handler(o Options) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /management/status", func(w http.ResponseWriter, r *http.Request) {
@@ -121,11 +129,18 @@ func Handler(o Options) http.Handler {
 		mountDeliveries(mux, o)
 	}
 
-	return httpx.Chain(mux,
+	protected := bearer(o.Token)(mux)
+	root := http.NewServeMux()
+	root.Handle("/", protected)
+	if o.Health != nil {
+		root.Handle("GET /health/live", o.Health)
+		root.Handle("GET /health/ready", o.Health)
+	}
+
+	return httpx.Chain(root,
 		httpx.RequestID,
 		httpx.RequestLog(o.Logger, ""),
 		httpx.Recover(o.Logger),
-		bearer(o.Token),
 	)
 }
 

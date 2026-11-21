@@ -255,7 +255,7 @@ func seedDemoWorkshop(ctx context.Context, cfg *config.Config, pool *pgxpool.Poo
 		return nil
 	}
 
-	deps, access, err := moduleDeps(cfg, pool, logger)
+	deps, access, err := moduleDeps(cfg, pool, logger, time.Now)
 	if err != nil {
 		return err
 	}

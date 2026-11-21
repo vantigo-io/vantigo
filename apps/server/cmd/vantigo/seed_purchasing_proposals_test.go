@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -29,7 +30,7 @@ func assertDemoProposals(t *testing.T, ctx context.Context, databaseURL string) 
 		t.Fatal(err)
 	}
 	defer pool.Close()
-	deps, access, err := moduleDeps(cfg, pool, slog.Default())
+	deps, access, err := moduleDeps(cfg, pool, slog.Default(), time.Now)
 	if err != nil {
 		t.Fatal(err)
 	}

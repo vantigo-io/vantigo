@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/vantigo-io/vantigo/server/internal/health"
 	"github.com/vantigo-io/vantigo/server/internal/management"
 	"github.com/vantigo-io/vantigo/server/internal/testdb"
 )
@@ -136,11 +137,10 @@ func TestStatus_TheBearerSchemeIsCaseInsensitive(t *testing.T) {
 }
 
 func TestStatus_AnEmptyConfiguredTokenRejectsEverything(t *testing.T) {
-	// Config validation requires MANAGEMENT_TOKEN to be at least 32
-	// characters, so this is unreachable through normal configuration — but
-	// this listener has no host filter and the token is its only defence,
-	// so bearer must fail closed on its own rather than trust that upstream
-	// check. In particular, "Bearer " (the prefix with an empty credential)
+	// MANAGEMENT_PORT without MANAGEMENT_TOKEN configures exactly this
+	// (KR3): the probes answer, and every protected route must refuse. This
+	// listener has no host filter and the token is its only defence, so
+	// bearer fails closed on its own. In particular, "Bearer " (the prefix with an empty credential)
 	// must never authenticate just because both sides hash to the same
 	// digest of "".
 	h := handler(management.Options{}, "")
@@ -185,6 +185,38 @@ func TestStatus_OnlyThatOneRoute(t *testing.T) {
 	h.ServeHTTP(rec, req)
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Errorf("POST: %d", rec.Code)
+	}
+}
+
+// TestProbes_AnswerWithoutTheToken pins KR1 and KR3: the two probes are the
+// public health handler's, mounted outside the bearer check, with and
+// without a configured token, while every other route still needs it.
+func TestProbes_AnswerWithoutTheToken(t *testing.T) {
+	failing := errors.New("down")
+	probes := health.Handler(slog.New(slog.DiscardHandler), "1.4.2",
+		health.Check{Name: "postgres", Run: func(context.Context) error { return nil }},
+		health.Check{Name: "schema", Run: func(context.Context) error { return failing }},
+	)
+	for name, configured := range map[string]string{"with a token": token, "without a token": ""} {
+		h := handler(management.Options{Health: probes}, configured)
+		if res := get(t, h, "/health/live", "", "10.1.2.3:9090"); res.StatusCode != http.StatusOK {
+			t.Errorf("%s: live answered %d, want 200", name, res.StatusCode)
+		}
+		res := get(t, h, "/health/ready", "", "")
+		raw, _ := io.ReadAll(res.Body)
+		if res.StatusCode != http.StatusServiceUnavailable || !strings.Contains(string(raw), `"failing":["schema"]`) {
+			t.Errorf("%s: ready answered %d %s, want 503 naming schema", name, res.StatusCode, raw)
+		}
+		if res := get(t, h, "/management/status", "", ""); res.StatusCode != http.StatusUnauthorized {
+			t.Errorf("%s: status without a token answered %d, want 401", name, res.StatusCode)
+		}
+		if res := get(t, h, "/health/other", "", ""); res.StatusCode != http.StatusUnauthorized {
+			t.Errorf("%s: another /health path answered %d, want 401", name, res.StatusCode)
+		}
+	}
+	// Without Options.Health the probes are protected routes that do not exist.
+	if res := get(t, handler(management.Options{}), "/health/live", "", ""); res.StatusCode != http.StatusUnauthorized {
+		t.Errorf("no Health: live answered %d, want 401", res.StatusCode)
 	}
 }
 
