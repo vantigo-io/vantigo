@@ -66,48 +66,61 @@ const getOAuthTokenConnection = `-- name: GetOAuthTokenConnection :one
 SELECT connection_id
 FROM identity.oauth_tokens
 WHERE token_hash = $1 AND kind = $2
+  AND (kind <> 'access' OR expires_at > $3::timestamptz)
 `
 
 type GetOAuthTokenConnectionParams struct {
 	TokenHash []byte
 	Kind      string
+	Now       time.Time
 }
 
 // GetOAuthTokenConnection is the connection a token of kind belongs to, for
-// the revocation endpoint (A10, A23): read without a lock, so the revocation
-// locks the connection first, as every path does.
+// the revocation endpoint (A10, A23): an access token only until it expires;
+// a refresh token spent, superseded or expired still names its connection
+// (A25). Read without a lock, so the revocation locks the connection first,
+// as every path does.
 func (q *Queries) GetOAuthTokenConnection(ctx context.Context, arg GetOAuthTokenConnectionParams) (uuid.UUID, error) {
-	row := q.db.QueryRow(ctx, getOAuthTokenConnection, arg.TokenHash, arg.Kind)
+	row := q.db.QueryRow(ctx, getOAuthTokenConnection, arg.TokenHash, arg.Kind, arg.Now)
 	var connection_id uuid.UUID
 	err := row.Scan(&connection_id)
 	return connection_id, err
 }
 
 const getRegisteredOAuthClient = `-- name: GetRegisteredOAuthClient :one
-SELECT c.client_id, c.name, c.redirect_uris, u.display_name AS created_by_name
+SELECT c.client_id, c.name, c.redirect_uris, u.display_name AS created_by_name,
+       identity.oauth_authorizer_active(c.created_by, $1::boolean)::boolean AS created_by_active
 FROM identity.oauth_clients c
 LEFT JOIN identity.users u ON u.id = c.created_by
-WHERE c.client_id = $1 AND c.archived_at IS NULL
+WHERE c.client_id = $2 AND c.archived_at IS NULL
 `
 
+type GetRegisteredOAuthClientParams struct {
+	ScimEnabled bool
+	ClientID    string
+}
+
 type GetRegisteredOAuthClientRow struct {
-	ClientID      string
-	Name          string
-	RedirectUris  []string
-	CreatedByName *string
+	ClientID        string
+	Name            string
+	RedirectUris    []string
+	CreatedByName   *string
+	CreatedByActive bool
 }
 
 // GetRegisteredOAuthClient is a registered client by its client_id, not
 // archived, with the name of the person who registered it for the consent
-// page (C13).
-func (q *Queries) GetRegisteredOAuthClient(ctx context.Context, clientID string) (GetRegisteredOAuthClientRow, error) {
-	row := q.db.QueryRow(ctx, getRegisteredOAuthClient, clientID)
+// page (C13) and whether they are still an active Owner, the authorizer's
+// rule (A17): only then does the page name them.
+func (q *Queries) GetRegisteredOAuthClient(ctx context.Context, arg GetRegisteredOAuthClientParams) (GetRegisteredOAuthClientRow, error) {
+	row := q.db.QueryRow(ctx, getRegisteredOAuthClient, arg.ScimEnabled, arg.ClientID)
 	var i GetRegisteredOAuthClientRow
 	err := row.Scan(
 		&i.ClientID,
 		&i.Name,
 		&i.RedirectUris,
 		&i.CreatedByName,
+		&i.CreatedByActive,
 	)
 	return i, err
 }
@@ -241,6 +254,70 @@ func (q *Queries) LockOAuthClientHosts(ctx context.Context) ([]string, error) {
 	return oauth_client_hosts, err
 }
 
+const lockRegisteredClientOAuthConnections = `-- name: LockRegisteredClientOAuthConnections :many
+SELECT id, integration_id, client_id, client_kind, client_name, client_host, redirect_uri, scopes, authorized_by, created_at, activated_at, expires_at, last_used_at, last_used_ip, revoked_at, revoked_by, revoke_reason
+FROM identity.oauth_connections
+WHERE client_id = $1 AND client_kind = 'registered' AND revoked_at IS NULL
+ORDER BY id
+FOR UPDATE
+`
+
+// LockRegisteredClientOAuthConnections is a registered client's connections
+// not revoked, held for an edit that may end those whose redirect URI it
+// removes (A29). The client's row is locked first, as the archive does.
+func (q *Queries) LockRegisteredClientOAuthConnections(ctx context.Context, clientID string) ([]IdentityOauthConnection, error) {
+	rows, err := q.db.Query(ctx, lockRegisteredClientOAuthConnections, clientID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []IdentityOauthConnection
+	for rows.Next() {
+		var i IdentityOauthConnection
+		if err := rows.Scan(
+			&i.ID,
+			&i.IntegrationID,
+			&i.ClientID,
+			&i.ClientKind,
+			&i.ClientName,
+			&i.ClientHost,
+			&i.RedirectUri,
+			&i.Scopes,
+			&i.AuthorizedBy,
+			&i.CreatedAt,
+			&i.ActivatedAt,
+			&i.ExpiresAt,
+			&i.LastUsedAt,
+			&i.LastUsedIp,
+			&i.RevokedAt,
+			&i.RevokedBy,
+			&i.RevokeReason,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const registeredOAuthClientLive = `-- name: RegisteredOAuthClientLive :one
+SELECT EXISTS (
+    SELECT 1 FROM identity.oauth_clients WHERE client_id = $1 AND archived_at IS NULL
+)::boolean
+`
+
+// RegisteredOAuthClientLive is whether a registered client exists and is not
+// archived, read by the token endpoint for a registered connection.
+func (q *Queries) RegisteredOAuthClientLive(ctx context.Context, clientID string) (bool, error) {
+	row := q.db.QueryRow(ctx, registeredOAuthClientLive, clientID)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const revokeClientOAuthConnections = `-- name: RevokeClientOAuthConnections :many
 UPDATE identity.oauth_connections
 SET revoked_at = $1::timestamptz, revoked_by = $2, revoke_reason = 'client_archived'
@@ -309,6 +386,28 @@ type SetOAuthClientHostsParams struct {
 func (q *Queries) SetOAuthClientHosts(ctx context.Context, arg SetOAuthClientHostsParams) error {
 	_, err := q.db.Exec(ctx, setOAuthClientHosts, arg.Hosts, arg.Now, arg.UpdatedByUserID)
 	return err
+}
+
+const shareRegisteredOAuthClient = `-- name: ShareRegisteredOAuthClient :one
+SELECT redirect_uris, archived_at
+FROM identity.oauth_clients
+WHERE client_id = $1
+FOR SHARE
+`
+
+type ShareRegisteredOAuthClientRow struct {
+	RedirectUris []string
+	ArchivedAt   *time.Time
+}
+
+// ShareRegisteredOAuthClient reads a registered client holding it against an
+// archive or an edit (their FOR UPDATE), for the approval's transaction: a
+// connection is never made for a client archived or changed meanwhile.
+func (q *Queries) ShareRegisteredOAuthClient(ctx context.Context, clientID string) (ShareRegisteredOAuthClientRow, error) {
+	row := q.db.QueryRow(ctx, shareRegisteredOAuthClient, clientID)
+	var i ShareRegisteredOAuthClientRow
+	err := row.Scan(&i.RedirectUris, &i.ArchivedAt)
+	return i, err
 }
 
 const updateOAuthClient = `-- name: UpdateOAuthClient :exec

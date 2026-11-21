@@ -1107,7 +1107,7 @@ export interface paths {
         };
         /**
          * List an integration's connected apps
-         * @description The integration's connected apps (OAuth connections design C25, A17): every connection a person authorized, by signing in, for an MCP client or app to act as the integration, that has been activated and is neither revoked nor expired, newest first. One whose authorizer no longer qualifies (no longer an Owner, disabled, deleted, or deactivated by the directory) is listed as inactive with the reason: its tokens are refused, and it can be revoked. 404 while OAUTH_ENABLED is off.
+         * @description The integration's connected apps (OAuth connections design C25, A17): every connection a person authorized, by signing in, for an MCP client or app to act as the integration, that has been activated and is neither revoked nor expired, newest first. One whose authorizer no longer qualifies (no longer an Owner, disabled, deleted, or deactivated by the directory) is listed as inactive with the reason: its tokens are refused, and it can be revoked. With include=ended, also the connections that ended — revoked or expired — within the request logs 30 days, as ended with when and why, for the Requests tabs filter (A18). 404 while OAUTH_ENABLED is off.
          */
         get: operations["getIdentityIntegrationsByIdConnections"];
         put?: never;
@@ -1614,7 +1614,7 @@ export interface paths {
         head?: never;
         /**
          * Change a registered OAuth client
-         * @description Replaces a registered client's name and redirect URIs under If-Match on its version. Its connections are kept: a redirect URI matters at sign-in, and a connection no longer wanted is revoked in Connected apps. Audited oauth_client.updated. 404 while OAUTH_ENABLED is off.
+         * @description Replaces a registered client's name and redirect URIs under If-Match on its version. A connection whose redirect URI the new list no longer matches is revoked in the same transaction (connection.revoked with the reason client_changed, A29); the others are kept. Audited oauth_client.updated. 404 while OAUTH_ENABLED is off.
          */
         patch: operations["patchIdentityOauthClientsById"];
         trace?: never;
@@ -3374,8 +3374,21 @@ export interface components {
             lastUsedIp: string | null;
             /** @description read, and write for Read and write. */
             scopes: string[];
-            /** @enum {string} */
-            status: "active" | "inactive";
+            /**
+             * @description active; inactive, with inactiveReason; or, with include=ended, ended, with endedAt and endReason.
+             * @enum {string}
+             */
+            status: "active" | "inactive" | "ended";
+            /**
+             * Format: date-time
+             * @description For an ended connection, when it was revoked or expired.
+             */
+            endedAt?: string | null;
+            /**
+             * @description For an ended connection, why: the reason it was revoked with (C18, A3, A23, A28, A29), or expired after its 180 days.
+             * @enum {string|null}
+             */
+            endReason?: "revoked" | "integration_archived" | "authorizer_removed" | "client_archived" | "client_changed" | "client_document_changed" | "code_replayed" | "refresh_reused" | "revoked_by_client" | "expired" | null;
         };
         IntegrationConnectionList: {
             connections: components["schemas"]["IntegrationConnection"][];
@@ -9868,7 +9881,10 @@ export interface operations {
     };
     getIdentityIntegrationsByIdConnections: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description ended to list, beside the live connections, those that ended in the last 30 days. */
+                include?: "ended";
+            };
             header?: never;
             path: {
                 /** @description The integration (its user's id). */

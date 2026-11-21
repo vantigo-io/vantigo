@@ -37,6 +37,7 @@ type OAuthClientHost struct {
 type oauthDocument struct {
 	body         []byte
 	cacheControl string
+	contentType  string
 }
 
 // NewOAuthClientHost starts a host answering for hosts, closed with t.
@@ -79,7 +80,15 @@ func NewOAuthClientHost(t testing.TB, hosts ...string) *OAuthClientHost {
 func (o *OAuthClientHost) Serve(url string, body []byte, cacheControl string) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	o.docs[url] = oauthDocument{body: body, cacheControl: cacheControl}
+	o.docs[url] = oauthDocument{body: body, cacheControl: cacheControl, contentType: "application/json"}
+}
+
+// ServeAs is Serve with the Content-Type given, for a host that answers
+// something other than JSON.
+func (o *OAuthClientHost) ServeAs(url string, body []byte, contentType, cacheControl string) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.docs[url] = oauthDocument{body: body, cacheControl: cacheControl, contentType: contentType}
 }
 
 // Unserve makes the host answer a GET of url 404 Not Found again.
@@ -106,7 +115,7 @@ func (o *OAuthClientHost) serve(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Type", doc.contentType)
 	if doc.cacheControl != "" {
 		w.Header().Set("Cache-Control", doc.cacheControl)
 	}

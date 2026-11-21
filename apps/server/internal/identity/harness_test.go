@@ -268,6 +268,7 @@ func newHarness(t *testing.T, opts ...harnessOption) *harness {
 	t.Cleanup(h.deps.Limiter.Close)
 	// The API request log runs as in the API process (API access design K23).
 	t.Cleanup(h.access.StartRequestLog())
+	t.Cleanup(h.access.WaitOAuthRevalidations)
 	if setup.oidc != nil {
 		setup.oidc.attach(h.access, h.now) // before Compose mounts identity
 	}

@@ -74,23 +74,20 @@ func (s *server) GetIdentityIntegrationsByIdRequests(ctx context.Context, req ge
 	if !exists {
 		return refusalOr[gen.GetIdentityIntegrationsByIdRequestsResponseObject](integrationNotFound)
 	}
-	days, err := s.q.APIRequestDailyCounts(ctx, store.APIRequestDailyCountsParams{
-		IntegrationID: req.Id, FromAt: from, ToAt: to, KeyID: key, ConnectionID: connection, StatusClass: class, Reason: reason,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("identity: read the request log's days: %w", err)
+	var days []store.APIRequestDailyCountsRow
+	var ops []store.APIRequestTopOperationsRow
+	var latest []store.APIRequestsLatestRow
+	switch {
+	case connection != nil && key != nil:
+		// A row names a key or a connection, never both: nothing matches.
+	case connection != nil:
+		// One connection's rows, through ix_api_requests_connection_at.
+		days, ops, latest, err = s.connectionRequests(ctx, req.Id, *connection, from, to, class, reason)
+	default:
+		days, ops, latest, err = s.integrationRequests(ctx, req.Id, key, from, to, class, reason)
 	}
-	ops, err := s.q.APIRequestTopOperations(ctx, store.APIRequestTopOperationsParams{
-		IntegrationID: req.Id, FromAt: from, ToAt: to, KeyID: key, ConnectionID: connection, StatusClass: class, Reason: reason, Top: requestLogTopOperations,
-	})
 	if err != nil {
-		return nil, fmt.Errorf("identity: read the request log's operations: %w", err)
-	}
-	latest, err := s.q.APIRequestsLatest(ctx, store.APIRequestsLatestParams{
-		IntegrationID: req.Id, FromAt: from, ToAt: to, KeyID: key, ConnectionID: connection, StatusClass: class, Reason: reason, Latest: requestLogLatest,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("identity: read the request log's latest requests: %w", err)
+		return nil, err
 	}
 
 	out := gen.IntegrationRequestLog{
@@ -116,6 +113,70 @@ func (s *server) GetIdentityIntegrationsByIdRequests(ctx context.Context, req ge
 		})
 	}
 	return gen.GetIdentityIntegrationsByIdRequests200JSONResponse(out), nil
+}
+
+// integrationRequests reads the log of an integration, or of one of its keys.
+func (s *server) integrationRequests(ctx context.Context, id uuid.UUID, key *uuid.UUID, from, to time.Time, class *int32, reason *string) (
+	[]store.APIRequestDailyCountsRow, []store.APIRequestTopOperationsRow, []store.APIRequestsLatestRow, error,
+) {
+	days, err := s.q.APIRequestDailyCounts(ctx, store.APIRequestDailyCountsParams{
+		IntegrationID: id, FromAt: from, ToAt: to, KeyID: key, StatusClass: class, Reason: reason,
+	})
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("identity: read the request log's days: %w", err)
+	}
+	ops, err := s.q.APIRequestTopOperations(ctx, store.APIRequestTopOperationsParams{
+		IntegrationID: id, FromAt: from, ToAt: to, KeyID: key, StatusClass: class, Reason: reason, Top: requestLogTopOperations,
+	})
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("identity: read the request log's operations: %w", err)
+	}
+	latest, err := s.q.APIRequestsLatest(ctx, store.APIRequestsLatestParams{
+		IntegrationID: id, FromAt: from, ToAt: to, KeyID: key, StatusClass: class, Reason: reason, Latest: requestLogLatest,
+	})
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("identity: read the request log's latest requests: %w", err)
+	}
+	return days, ops, latest, nil
+}
+
+// connectionRequests reads the log of one connection of an integration
+// (OAuth connections design A18), with the queries that filter on
+// connection_id plainly, so the planner can use its index.
+func (s *server) connectionRequests(ctx context.Context, id, connection uuid.UUID, from, to time.Time, class *int32, reason *string) (
+	[]store.APIRequestDailyCountsRow, []store.APIRequestTopOperationsRow, []store.APIRequestsLatestRow, error,
+) {
+	cdays, err := s.q.APIRequestDailyCountsByConnection(ctx, store.APIRequestDailyCountsByConnectionParams{
+		ConnectionID: &connection, IntegrationID: id, FromAt: from, ToAt: to, StatusClass: class, Reason: reason,
+	})
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("identity: read the connection's request days: %w", err)
+	}
+	cops, err := s.q.APIRequestTopOperationsByConnection(ctx, store.APIRequestTopOperationsByConnectionParams{
+		ConnectionID: &connection, IntegrationID: id, FromAt: from, ToAt: to, StatusClass: class, Reason: reason, Top: requestLogTopOperations,
+	})
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("identity: read the connection's request operations: %w", err)
+	}
+	clatest, err := s.q.APIRequestsLatestByConnection(ctx, store.APIRequestsLatestByConnectionParams{
+		ConnectionID: &connection, IntegrationID: id, FromAt: from, ToAt: to, StatusClass: class, Reason: reason, Latest: requestLogLatest,
+	})
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("identity: read the connection's latest requests: %w", err)
+	}
+	days := make([]store.APIRequestDailyCountsRow, 0, len(cdays))
+	for _, d := range cdays {
+		days = append(days, store.APIRequestDailyCountsRow(d))
+	}
+	ops := make([]store.APIRequestTopOperationsRow, 0, len(cops))
+	for _, o := range cops {
+		ops = append(ops, store.APIRequestTopOperationsRow(o))
+	}
+	latest := make([]store.APIRequestsLatestRow, 0, len(clatest))
+	for _, r := range clatest {
+		latest = append(latest, store.APIRequestsLatestRow(r))
+	}
+	return days, ops, latest, nil
 }
 
 func (r refusal) VisitGetIdentityIntegrationsByIdRequestsResponse(w http.ResponseWriter) error {

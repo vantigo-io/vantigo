@@ -32,7 +32,6 @@ FROM identity.api_requests r
 WHERE r.integration_id = @integration_id
   AND r.at >= @from_at::timestamptz AND r.at < @to_at::timestamptz
   AND (sqlc.narg(key_id)::uuid IS NULL OR r.key_id = sqlc.narg(key_id)::uuid)
-  AND (sqlc.narg(connection_id)::uuid IS NULL OR r.connection_id = sqlc.narg(connection_id)::uuid)
   AND (sqlc.narg(status_class)::int IS NULL OR r.status / 100 = sqlc.narg(status_class)::int)
   AND (sqlc.narg(reason)::text IS NULL OR r.reason = sqlc.narg(reason)::text)
 GROUP BY 1, 2
@@ -46,7 +45,6 @@ FROM identity.api_requests r
 WHERE r.integration_id = @integration_id
   AND r.at >= @from_at::timestamptz AND r.at < @to_at::timestamptz
   AND (sqlc.narg(key_id)::uuid IS NULL OR r.key_id = sqlc.narg(key_id)::uuid)
-  AND (sqlc.narg(connection_id)::uuid IS NULL OR r.connection_id = sqlc.narg(connection_id)::uuid)
   AND (sqlc.narg(status_class)::int IS NULL OR r.status / 100 = sqlc.narg(status_class)::int)
   AND (sqlc.narg(reason)::text IS NULL OR r.reason = sqlc.narg(reason)::text)
 GROUP BY r.operation_id
@@ -66,7 +64,6 @@ LEFT JOIN identity.oauth_connections c ON c.id = r.connection_id
 WHERE r.integration_id = @integration_id
   AND r.at >= @from_at::timestamptz AND r.at < @to_at::timestamptz
   AND (sqlc.narg(key_id)::uuid IS NULL OR r.key_id = sqlc.narg(key_id)::uuid)
-  AND (sqlc.narg(connection_id)::uuid IS NULL OR r.connection_id = sqlc.narg(connection_id)::uuid)
   AND (sqlc.narg(status_class)::int IS NULL OR r.status / 100 = sqlc.narg(status_class)::int)
   AND (sqlc.narg(reason)::text IS NULL OR r.reason = sqlc.narg(reason)::text)
 ORDER BY r.at DESC
@@ -127,3 +124,44 @@ ORDER BY u.id;
 -- DeleteAPIKeyNotice takes back a notice's record when it reached no one, so
 -- the next cycle tries it again.
 DELETE FROM identity.api_key_notices WHERE key_id = @key_id AND kind = @kind;
+
+-- name: APIRequestDailyCountsByConnection :many
+-- APIRequestDailyCountsByConnection is APIRequestDailyCounts for one
+-- connection (A18), with a plain predicate on connection_id so the planner
+-- can read ix_api_requests_connection_at.
+SELECT (r.at AT TIME ZONE 'UTC')::date AS day, (r.status / 100)::int AS status_class, count(*)::int AS requests
+FROM identity.api_requests r
+WHERE r.connection_id = @connection_id AND r.integration_id = @integration_id
+  AND r.at >= @from_at::timestamptz AND r.at < @to_at::timestamptz
+  AND (sqlc.narg(status_class)::int IS NULL OR r.status / 100 = sqlc.narg(status_class)::int)
+  AND (sqlc.narg(reason)::text IS NULL OR r.reason = sqlc.narg(reason)::text)
+GROUP BY 1, 2
+ORDER BY 1, 2;
+
+-- name: APIRequestTopOperationsByConnection :many
+-- APIRequestTopOperationsByConnection is APIRequestTopOperations for one
+-- connection (A18).
+SELECT r.operation_id, count(*)::int AS requests
+FROM identity.api_requests r
+WHERE r.connection_id = @connection_id AND r.integration_id = @integration_id
+  AND r.at >= @from_at::timestamptz AND r.at < @to_at::timestamptz
+  AND (sqlc.narg(status_class)::int IS NULL OR r.status / 100 = sqlc.narg(status_class)::int)
+  AND (sqlc.narg(reason)::text IS NULL OR r.reason = sqlc.narg(reason)::text)
+GROUP BY r.operation_id
+ORDER BY requests DESC, r.operation_id
+LIMIT @top::int;
+
+-- name: APIRequestsLatestByConnection :many
+-- APIRequestsLatestByConnection is APIRequestsLatest for one connection
+-- (A18): its newest rows, read in the index's order.
+SELECT r.at, r.key_id, k.name AS key_name, r.connection_id, c.client_name, r.method, r.operation_id, r.status, r.reason,
+       r.duration_ms, r.client_ip, r.trace_id
+FROM identity.api_requests r
+LEFT JOIN identity.api_keys k ON k.id = r.key_id
+LEFT JOIN identity.oauth_connections c ON c.id = r.connection_id
+WHERE r.connection_id = @connection_id AND r.integration_id = @integration_id
+  AND r.at >= @from_at::timestamptz AND r.at < @to_at::timestamptz
+  AND (sqlc.narg(status_class)::int IS NULL OR r.status / 100 = sqlc.narg(status_class)::int)
+  AND (sqlc.narg(reason)::text IS NULL OR r.reason = sqlc.narg(reason)::text)
+ORDER BY r.at DESC
+LIMIT @latest::int;

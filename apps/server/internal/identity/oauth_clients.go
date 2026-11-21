@@ -52,6 +52,9 @@ const (
 	auditOAuthClientUpdated      = "oauth_client.updated"
 	auditOAuthClientArchived     = "oauth_client.archived"
 	auditOAuthClientHostsChanged = "oauth.client_hosts_changed"
+	// revokeReasonClientChanged ends a registered client's connection whose
+	// redirect URI an edit removed (A29).
+	revokeReasonClientChanged = "client_changed"
 )
 
 const (
@@ -250,8 +253,9 @@ func (s *server) registeredClientTx(ctx context.Context, id uuid.UUID, ifMatch s
 }
 
 // PatchIdentityOauthClientsById replaces a registered client's name and
-// redirect URIs under If-Match, audited oauth_client.updated. Its
-// connections are kept.
+// redirect URIs under If-Match, audited oauth_client.updated. A connection
+// whose redirect URI the new list no longer matches is revoked in the same
+// transaction (client_changed, A29); the others are kept.
 // (PATCH /api/v1/identity/oauth-clients/{id})
 func (s *server) PatchIdentityOauthClientsById(ctx context.Context, req gen.PatchIdentityOauthClientsByIdRequestObject) (gen.PatchIdentityOauthClientsByIdResponseObject, error) {
 	if !s.deps.Config.OAuthEnabled {
@@ -270,6 +274,24 @@ func (s *server) PatchIdentityOauthClientsById(ctx context.Context, req gen.Patc
 		after.Name, after.RedirectUris, after.Version = name, uris, uuid.New()
 		if err := q.UpdateOAuthClient(ctx, store.UpdateOAuthClientParams{ID: c.ID, Name: name, RedirectUris: uris, Now: now, Version: after.Version}); err != nil {
 			return fmt.Errorf("identity: change the registered client: %w", err)
+		}
+		// A connection whose redirect URI the edit removes ends with it
+		// (A29): its code went to an address the Owner no longer vouches for.
+		connections, err := q.LockRegisteredClientOAuthConnections(ctx, c.ClientID)
+		if err != nil {
+			return fmt.Errorf("identity: read the client's connections: %w", err)
+		}
+		for _, k := range connections {
+			if slices.ContainsFunc(uris, func(registered string) bool { return redirectMatches(registered, k.RedirectUri) }) {
+				continue
+			}
+			revoked, err := q.RevokeOAuthConnection(ctx, store.RevokeOAuthConnectionParams{ID: k.ID, Now: now, RevokedBy: &p.UserID, Reason: revokeReasonClientChanged})
+			if err != nil {
+				return fmt.Errorf("identity: revoke the client's connection: %w", err)
+			}
+			if err := auditRevoked(ctx, q, r, revoked, &p.UserID, "", p.MFAVerified, now); err != nil {
+				return err
+			}
 		}
 		return writeAudit(ctx, q, r, now, auditEvent{
 			actor: &p.UserID, action: auditOAuthClientUpdated, before: registeredClientSnapshot(c), after: registeredClientSnapshot(after), mfa: p.MFAVerified,

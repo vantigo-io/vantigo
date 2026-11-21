@@ -104,8 +104,8 @@ func TestOAuth_ARegisteredClientsWholeFlow(t *testing.T) {
 }
 
 // The request log's filter by connected app (A18): each connection's
-// requests apart from the key's and from each other's, through the index
-// the migration adds.
+// requests apart from the key's and from each other's. That the queries read
+// the migration's index is store's TestAPIRequestsByConnectionUseItsIndex.
 func TestOAuth_TheRequestLogFilter(t *testing.T) {
 	h := oauthHarness(t)
 	owner, _ := signInOwner(t, h)
@@ -160,48 +160,6 @@ func TestOAuth_TheRequestLogFilter(t *testing.T) {
 	if r := owner.Do(http.MethodGet, base+"?connection=not-a-uuid", nil, modtest.SkipContract("a malformed filter")); r.Status != http.StatusBadRequest {
 		t.Errorf("a malformed connection: %d %s", r.Status, r.Body)
 	}
-	if !planUsesIndex(t, h, firstID) {
-		t.Error("the filter does not use ix_api_requests_connection_at")
-	}
-}
-
-// planUsesIndex reports whether Postgres, made to prefer an index, reads a
-// connection's latest requests through the migration's index.
-func planUsesIndex(t *testing.T, h *modtest.Harness, connection uuid.UUID) bool {
-	t.Helper()
-	ctx := t.Context()
-	conn, err := h.Pool().Acquire(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer conn.Release()
-	tx, err := conn.Begin(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	if _, err := tx.Exec(ctx, `SET LOCAL enable_seqscan = off`); err != nil {
-		t.Fatal(err)
-	}
-	rows, err := tx.Query(ctx, `EXPLAIN SELECT * FROM identity.api_requests WHERE connection_id = $1 ORDER BY at DESC LIMIT 200`, connection)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer rows.Close()
-	var plan strings.Builder
-	for rows.Next() {
-		var line string
-		if err := rows.Scan(&line); err != nil {
-			t.Fatal(err)
-		}
-		plan.WriteString(line + "\n")
-	}
-	// A partition's copy of the index is named after its columns.
-	if !strings.Contains(plan.String(), "connection_id_at") && !strings.Contains(plan.String(), "ix_api_requests_connection_at") {
-		t.Log(plan.String())
-		return false
-	}
-	return true
 }
 
 // The revocation endpoint's limit per address (A23), as the token

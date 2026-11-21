@@ -49,8 +49,11 @@ func (s *server) GetIdentityIntegrationsByIdConnections(ctx context.Context, req
 	if err != nil {
 		return nil, err
 	}
+	now := s.deps.Clock()
+	includeEnded := req.Params.Include != nil && *req.Params.Include == gen.GetIdentityIntegrationsByIdConnectionsParamsIncludeEnded
 	rows, err := s.q.ListIntegrationOAuthConnections(ctx, store.ListIntegrationOAuthConnectionsParams{
-		IntegrationID: req.Id, Now: s.deps.Clock(), ScimEnabled: sso.SCIM != nil,
+		IntegrationID: req.Id, Now: now, ScimEnabled: sso.SCIM != nil,
+		IncludeEnded: includeEnded, EndedSince: apiRequestOldestDay(now),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("identity: list the connections: %w", err)
@@ -58,7 +61,20 @@ func (s *server) GetIdentityIntegrationsByIdConnections(ctx context.Context, req
 	out := gen.IntegrationConnectionList{Connections: make([]gen.IntegrationConnection, 0, len(rows))}
 	for _, c := range rows {
 		status, reason := gen.IntegrationConnectionStatus("active"), (*string)(nil)
+		var endedAt *time.Time
+		var endReason *gen.IntegrationConnectionEndReason
 		switch {
+		case c.RevokedAt != nil || !c.ExpiresAt.After(now):
+			// Listed only with include=ended.
+			status = "ended"
+			at, why := c.ExpiresAt, gen.IntegrationConnectionEndReason("expired")
+			if c.RevokedAt != nil && c.RevokedAt.Before(c.ExpiresAt) {
+				at = *c.RevokedAt
+				if c.RevokeReason != nil {
+					why = gen.IntegrationConnectionEndReason(*c.RevokeReason)
+				}
+			}
+			endedAt, endReason = &at, &why
 		case !c.AuthorizerActive:
 			status = "inactive"
 			r := revokeReasonAuthorizerRemoved
@@ -78,7 +94,7 @@ func (s *server) GetIdentityIntegrationsByIdConnections(ctx context.Context, req
 			Id: c.ID, ClientId: c.ClientID, ClientKind: gen.IntegrationConnectionClientKind(c.ClientKind), ClientName: c.ClientName,
 			ClientHost: c.ClientHost, Scopes: nonNil(c.Scopes), AuthorizedBy: c.AuthorizedBy, AuthorizedByName: c.AuthorizedByName,
 			ConnectedAt: connected, ExpiresAt: c.ExpiresAt, LastUsedAt: c.LastUsedAt, LastUsedIp: c.LastUsedIp,
-			Status: status, InactiveReason: reason,
+			Status: status, InactiveReason: reason, EndedAt: endedAt, EndReason: endReason,
 		})
 	}
 	return gen.GetIdentityIntegrationsByIdConnections200JSONResponse(out), nil

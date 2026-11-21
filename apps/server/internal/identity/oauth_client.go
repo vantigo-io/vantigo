@@ -376,15 +376,25 @@ func (a *Access) resolveOAuthClient(ctx context.Context, clientID string) (oauth
 		if !isRegisteredClientID(clientID) {
 			return oauthClient{}, clientRefused("The client_id is not a client registered here.")
 		}
-		row, err := a.q.GetRegisteredOAuthClient(ctx, clientID)
+		sso, err := a.sso.get(ctx)
+		if err != nil {
+			return oauthClient{}, fmt.Errorf("identity: read whether SCIM is on: %w", err)
+		}
+		row, err := a.q.GetRegisteredOAuthClient(ctx, store.GetRegisteredOAuthClientParams{ClientID: clientID, ScimEnabled: sso.SCIM != nil})
 		if errors.Is(err, pgx.ErrNoRows) {
 			return oauthClient{}, clientRefused("The client_id is not a client registered here.")
 		}
 		if err != nil {
 			return oauthClient{}, fmt.Errorf("identity: read the registered client: %w", err)
 		}
+		// The consent page names who registered it only while that person
+		// still vouches for it: an active Owner, the authorizer's rule (A17).
+		var by *string
+		if row.CreatedByActive {
+			by = row.CreatedByName
+		}
 		return oauthClient{
-			id: row.ClientID, name: row.Name, redirectURIs: row.RedirectUris, kind: oauthClientKindRegistered, registeredBy: row.CreatedByName,
+			id: row.ClientID, name: row.Name, redirectURIs: row.RedirectUris, kind: oauthClientKindRegistered, registeredBy: by,
 		}, nil
 	}
 	u, err := oauthClientIDURL(clientID, a.cfg.AppHostname, a.cfg.PublicHostname)
@@ -473,36 +483,43 @@ func (f *oauthFetcher) claim(clientID string, now time.Time) error {
 // User-Agent, no redirect followed, 200 only, at most 16 KiB after
 // decompression. It answers the body and the max-age to keep it for.
 func (f *oauthFetcher) fetch(ctx context.Context, target string) ([]byte, time.Duration, error) {
+	body, maxAge, _, err := f.fetchDocument(ctx, target)
+	return body, maxAge, err
+}
+
+// fetchDocument is fetch that also answers the response's Content-Type,
+// which the revalidation judges (A28).
+func (f *oauthFetcher) fetchDocument(ctx context.Context, target string) ([]byte, time.Duration, string, error) {
 	ctx, cancel := context.WithTimeout(ctx, oauthDocumentBudget)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
 	if err != nil {
-		return nil, 0, clientRefused("The client_id is not a URL Vantigo can fetch.")
+		return nil, 0, "", clientRefused("The client_id is not a URL Vantigo can fetch.")
 	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", oauthUserAgent)
 	resp, err := f.client.Do(req)
 	if err != nil {
 		if errors.Is(err, netguard.ErrDisallowed) {
-			return nil, 0, clientRefused("The client's host resolves to an address Vantigo does not reach.")
+			return nil, 0, "", clientRefused("The client's host resolves to an address Vantigo does not reach.")
 		}
-		return nil, 0, clientRefused("The client's metadata document could not be fetched.")
+		return nil, 0, "", clientRefused("The client's metadata document could not be fetched.")
 	}
 	defer func() {
 		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, oauthDocumentMaxBytes))
 		_ = resp.Body.Close()
 	}()
 	if resp.StatusCode != http.StatusOK {
-		return nil, 0, clientRefused("The client's metadata document answered " + strconv.Itoa(resp.StatusCode) + ", not 200.")
+		return nil, 0, "", clientRefused("The client's metadata document answered " + strconv.Itoa(resp.StatusCode) + ", not 200.")
 	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, oauthDocumentMaxBytes))
 	if err != nil {
-		return nil, 0, clientRefused("The client's metadata document could not be read.")
+		return nil, 0, "", clientRefused("The client's metadata document could not be read.")
 	}
 	if len(body) >= oauthDocumentMaxBytes {
-		return nil, 0, clientRefused("The client's metadata document is larger than 16 KiB.")
+		return nil, 0, "", clientRefused("The client's metadata document is larger than 16 KiB.")
 	}
-	return body, documentMaxAge(resp.Header.Get("Cache-Control")), nil
+	return body, documentMaxAge(resp.Header.Get("Cache-Control")), resp.Header.Get("Content-Type"), nil
 }
 
 // documentMaxAge is a document's Cache-Control max-age clamped to 5 minutes

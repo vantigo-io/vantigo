@@ -177,14 +177,21 @@ WHERE c.id = @id;
 -- name: ListIntegrationOAuthConnections :many
 -- ListIntegrationOAuthConnections is an integration's activated connections
 -- that are neither revoked nor expired, newest first (C25), each with who
--- authorized it and whether that person still qualifies (A17).
+-- authorized it and whether that person still qualifies (A17); with
+-- include_ended, also those that ended (revoked or expired) after
+-- ended_since, for the request log's filter (A18).
 SELECT c.id, c.client_id, c.client_kind, c.client_name, c.client_host, c.scopes, c.authorized_by,
        a.display_name AS authorized_by_name, c.activated_at, c.expires_at, c.last_used_at, c.last_used_ip,
+       c.revoked_at, c.revoke_reason,
        identity.oauth_authorizer_active(c.authorized_by, @scim_enabled::boolean)::boolean AS authorizer_active
 FROM identity.oauth_connections c
 LEFT JOIN identity.users a ON a.id = c.authorized_by
 WHERE c.integration_id = @integration_id
-  AND c.activated_at IS NOT NULL AND c.revoked_at IS NULL AND c.expires_at > @now::timestamptz
+  AND c.activated_at IS NOT NULL
+  AND (
+      (c.revoked_at IS NULL AND c.expires_at > @now::timestamptz)
+      OR (@include_ended::boolean AND least(coalesce(c.revoked_at, c.expires_at), c.expires_at) > @ended_since::timestamptz)
+  )
 ORDER BY c.activated_at DESC, c.id;
 
 -- name: LockIntegrationOAuthConnection :one

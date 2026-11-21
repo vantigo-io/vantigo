@@ -95,6 +95,9 @@ func (a *Access) StartRequestLog() (closeLog func()) {
 	return func() {
 		a.requests.CompareAndSwap(l, nil)
 		l.close(apiRequestCloseTimeout)
+		// The client document revalidations a refresh started (A3) finish
+		// their revocation or cache write, or are left after a bound.
+		a.waitRevalidations(revalidationShutdownWait)
 	}
 }
 
