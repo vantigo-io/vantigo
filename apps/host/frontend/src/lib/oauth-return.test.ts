@@ -4,6 +4,7 @@ import {
   captureAuthorizeQuery,
   oauthReturnKey,
   oauthReturnMaxAgeMs,
+  oauthReturnTouchedKey,
   peekOAuthReturn,
   rememberOAuthReturn,
   restoreAuthorizeAddress,
@@ -81,13 +82,42 @@ describe("the consent page's return after sign-in (OAuth connections design A8)"
     expect(peekOAuthReturn(sessionStorage, now + oauthReturnMaxAgeMs)).toBeUndefined();
   });
 
-  it("starts a valid entry's ten minutes again, and leaves an invalid one to expire", () => {
+  it("starts a valid entry's ten minutes again without rewriting it, and leaves an invalid one to expire", () => {
     rememberOAuthReturn(query, sessionStorage, now);
+    const entry = sessionStorage.getItem(oauthReturnKey);
     touchOAuthReturn(sessionStorage, now + 9 * 60_000);
+    expect(sessionStorage.getItem(oauthReturnKey)).toBe(entry);
+    expect(sessionStorage.getItem(oauthReturnTouchedKey)).toBe(String(now + 9 * 60_000));
+    expect(peekOAuthReturn(sessionStorage, now + 18 * 60_000)).toBe(`/oauth/authorize?${query}`);
+    expect(peekOAuthReturn(sessionStorage, now + 19 * 60_000)).toBeUndefined();
     expect(takeOAuthReturn(sessionStorage, now + 18 * 60_000)).toBe(`/oauth/authorize?${query}`);
+    // Taking it clears the touched time too.
+    expect(sessionStorage.getItem(oauthReturnTouchedKey)).toBeNull();
+
     stored({ path: "/workspace", at: now });
     touchOAuthReturn(sessionStorage, now + 1000);
-    expect(JSON.parse(sessionStorage.getItem(oauthReturnKey) ?? "{}").at).toBe(now);
+    expect(sessionStorage.getItem(oauthReturnTouchedKey)).toBeNull();
+  });
+
+  it("does nothing with a touched time alone, and a new entry starts without the old one", () => {
+    sessionStorage.setItem(oauthReturnTouchedKey, String(now));
+    expect(peekOAuthReturn(sessionStorage, now + 1000)).toBeUndefined();
+    expect(takeOAuthReturn(sessionStorage, now + 1000)).toBeUndefined();
+    sessionStorage.setItem(oauthReturnTouchedKey, String(now + 9 * 60_000));
+    rememberOAuthReturn(query, sessionStorage, now);
+    expect(sessionStorage.getItem(oauthReturnTouchedKey)).toBeNull();
+    expect(peekOAuthReturn(sessionStorage, now + 11 * 60_000)).toBeUndefined();
+  });
+
+  it.each([
+    ["in the future", String(now + 60 * 60_000)],
+    ["not a number", "soon"],
+    ["infinite", "Infinity"],
+  ])("ignores a touched time %s", (_name, touched) => {
+    rememberOAuthReturn(query, sessionStorage, now);
+    sessionStorage.setItem(oauthReturnTouchedKey, touched);
+    expect(peekOAuthReturn(sessionStorage, now + 5 * 60_000)).toBe(`/oauth/authorize?${query}`);
+    expect(peekOAuthReturn(sessionStorage, now + oauthReturnMaxAgeMs)).toBeUndefined();
   });
 });
 
