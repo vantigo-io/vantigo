@@ -332,9 +332,7 @@ const Consent = ({ query, answer }: { query: string; answer: OAuthAuthorizationP
       <Stack gap={4} data-testid="oauth-verified">
         {client.kind === "registered" ? (
           <Text size="sm" data-testid="oauth-registered-by">
-            {client.registeredBy
-              ? t("oauth.registeredBy", { person: client.registeredBy })
-              : t("oauth.registeredByDeleted")}
+            {client.registeredBy ? t("oauth.registeredBy", { person: client.registeredBy }) : t("oauth.registeredHere")}
           </Text>
         ) : (
           <Text size="sm">

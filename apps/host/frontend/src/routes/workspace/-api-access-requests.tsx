@@ -10,7 +10,11 @@ import {
   integrationRequestsQueryKey,
   type RequestLogFilters,
 } from "../../api/integrations";
-import { integrationConnectionsQueryKey, listIntegrationConnections } from "../../api/oauth";
+import {
+  type IntegrationConnection,
+  integrationConnectionsWithEndedQueryKey,
+  listIntegrationConnectionsWithEnded,
+} from "../../api/oauth";
 
 /**
  * The status classes the log counts, and the reasons a request is recorded under: a refusal's
@@ -102,9 +106,18 @@ export const IntegrationRequests = ({ integrationId, keys }: { integrationId: st
   // The connected apps the filter offers (OAuth connections design A18): none
   // while the installation has OAuth switched off, when the list is a 404.
   const connections = useQuery({
-    queryKey: integrationConnectionsQueryKey(integrationId),
-    queryFn: () => listIntegrationConnections(integrationId),
+    queryKey: integrationConnectionsWithEndedQueryKey(integrationId),
+    queryFn: () => listIntegrationConnectionsWithEnded(integrationId),
     retry: false,
+  });
+  const live = (connections.data ?? []).filter((connection) => connection.status !== "ended");
+  const ended = (connections.data ?? []).filter((connection) => connection.status === "ended");
+  const appItem = (connection: IntegrationConnection) => ({
+    value: `connection:${connection.id}`,
+    label:
+      connection.status === "ended"
+        ? `${connection.clientName} · ${connection.clientHost} · ${t(`apiAccess.endReason_${connection.endReason ?? "revoked"}`)}`
+        : `${connection.clientName} · ${connection.clientHost}`,
   });
   const set = (patch: RequestLogFilters) => setFilters((current) => ({ ...current, ...patch }));
   const classLabel = (statusClass: number) => t(`apiAccess.statusClass_${statusClass}`);
@@ -113,17 +126,8 @@ export const IntegrationRequests = ({ integrationId, keys }: { integrationId: st
       group: t("apiAccess.filterGroupKeys"),
       items: keys.map((key) => ({ value: `key:${key.id}`, label: key.name })),
     },
-    ...((connections.data ?? []).length > 0
-      ? [
-          {
-            group: t("apiAccess.filterGroupApps"),
-            items: (connections.data ?? []).map((connection) => ({
-              value: `connection:${connection.id}`,
-              label: `${connection.clientName} · ${connection.clientHost}`,
-            })),
-          },
-        ]
-      : []),
+    ...(live.length > 0 ? [{ group: t("apiAccess.filterGroupApps"), items: live.map(appItem) }] : []),
+    ...(ended.length > 0 ? [{ group: t("apiAccess.filterGroupEnded"), items: ended.map(appItem) }] : []),
   ];
   const source = filters.key ? `key:${filters.key}` : filters.connection ? `connection:${filters.connection}` : null;
 

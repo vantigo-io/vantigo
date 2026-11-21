@@ -116,6 +116,37 @@ describe("the registered clients", () => {
     );
   });
 
+  it("warns that removing a redirect URI in use disconnects its apps", async () => {
+    api.listRegisteredClients.mockResolvedValue([
+      client({ redirectUris: ["http://127.0.0.1/callback", "https://vscode.dev/redirect"] }),
+    ]);
+    await render("clients");
+    fireEvent.click(await screen.findByRole("button", { name: "Edit Cursor" }));
+    const uris = await screen.findByLabelText(/^Redirect URIs/);
+    expect(screen.queryByTestId("edit-client-ends")).not.toBeInTheDocument();
+    fireEvent.change(uris, { target: { value: "http://127.0.0.1/callback\nhttps://other.example.com/cb" } });
+    expect(screen.getByTestId("edit-client-ends")).toHaveTextContent(/Connected with this client now: 2/);
+    fireEvent.change(uris, {
+      target: { value: "http://127.0.0.1/callback\nhttps://vscode.dev/redirect\nhttps://more.example.com/cb" },
+    });
+    expect(screen.queryByTestId("edit-client-ends")).not.toBeInTheDocument();
+  });
+
+  it("carries an edit onto the latest version after a change made meanwhile, so saving again succeeds", async () => {
+    api.listRegisteredClients.mockResolvedValueOnce([client()]).mockResolvedValue([client({ version: "v-2" })]);
+    api.updateRegisteredClient
+      .mockRejectedValueOnce(Object.assign(new Error("changed"), { code: "version_mismatch" }))
+      .mockResolvedValue(client({ name: "Cursor (laptop)", version: "v-3" }));
+    await render("clients");
+    fireEvent.click(await screen.findByRole("button", { name: "Edit Cursor" }));
+    fireEvent.change(await screen.findByLabelText(/^Name/), { target: { value: "Cursor (laptop)" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(api.updateRegisteredClient).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByLabelText(/^Name/)).toHaveValue("Cursor (laptop)"));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(api.updateRegisteredClient).toHaveBeenLastCalledWith("rc-1", "v-2", expect.anything()));
+  });
+
   it("archives a client behind a confirmation that says its connections end", async () => {
     api.listRegisteredClients.mockResolvedValue([client()]);
     api.archiveRegisteredClient.mockResolvedValue(undefined);
