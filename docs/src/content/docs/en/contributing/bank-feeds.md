@@ -12,8 +12,9 @@ is the port between a business module and a bank that answers an account's trans
 through an API, shaped like
 [the payments port](/en/contributing/platform-packages/#the-payments-port): interfaces and
 values only, no SQL — each consumer keeps its connections, accounts and lines in its own
-schema (module boundaries rule 4) — importing no module, only the standard library and
-`internal/buildinfo`. It is in depguard's platform set, and its purity test fails a build
+schema (module boundaries rule 4) — importing no module, only the standard library,
+`internal/buildinfo` and `internal/telemetry`, whose `OutboundTransport` every adapter's
+client goes through ([Telemetry](/en/contributing/platform-packages/#telemetry)). It is in depguard's platform set, and its purity test fails a build
 that imports anything else. Invoices is to read incoming payments through it; nothing
 imports it yet. The design is
 [the bank feed design](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-11-13-bank-feed-folio-design.md).

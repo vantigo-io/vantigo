@@ -1,6 +1,6 @@
 ---
 title: Platform packages
-description: The packages under the server's internal/ that every module may use — the secrets box that seals and MACs values under keys derived from APP_SECRET, the mail package's outbound message, its calendar part and its rendering as MIME, its reading of a received message and the sanitising of its HTML, the AI client with its model-per-task seam and its chat, the operations dispatcher the assistant calls the API through, the payments port with its Vipps MobilePay adapter, the bank feed port with its Folio adapter, the public-holiday calendar, the Brønnøysund client, the image metadata stripper, the address rule a directory provider makes an account's address by, and live updates — the topics a module serves, notifying on the transaction that writes, the endpoint and its station path, presence and the limits, and the binary frames and document topics that carry a collaboratively edited document.
+description: The packages under the server's internal/ that every module may use — the secrets box that seals and MACs values under keys derived from APP_SECRET, the mail package's outbound message, its calendar part and its rendering as MIME, its reading of a received message and the sanitising of its HTML, the AI client with its model-per-task seam and its chat, the operations dispatcher the assistant calls the API through, the payments port with its Vipps MobilePay adapter, the bank feed port with its Folio adapter, the public-holiday calendar, the Brønnøysund client, the image metadata stripper, the address rule a directory provider makes an account's address by, and live updates — the topics a module serves, notifying on the transaction that writes, the endpoint and its station path, presence and the limits, and the binary frames and document topics that carry a collaboratively edited document, and telemetry — traced outbound clients, worker cycles, route names and what an attribute may hold.
 sidebar:
   order: 5
 sources:
@@ -20,6 +20,8 @@ sources:
   - apps/server/internal/creditlimit
   - apps/server/internal/brandscale
   - apps/server/internal/logoimage
+  - apps/server/internal/telemetry
+  - apps/server/internal/worker
   - packages/frontend-shell/src/brand
 ---
 
@@ -27,7 +29,7 @@ A module may import the platform but never another module (see
 [Module boundaries](/en/contributing/module-boundaries/)). This page describes the
 platform packages a module reaches for when it holds something it must not store in
 clear, when it sends a mail of its own, when it asks an AI model for something, when it takes a payment, when it reads a bank account's transactions, when it counts days
-around the public holidays, when it looks a company up in Brønnøysund, when it stores a picture people will see, when it makes an address for an account in a directory, when it tells other modules what happened to one of its own rows, when it computes a sales document's amounts, when it generates a brand's colour scale, and when it judges an uploaded logo.
+around the public holidays, when it looks a company up in Brønnøysund, when it stores a picture people will see, when it makes an address for an account in a directory, when it tells other modules what happened to one of its own rows, when it computes a sales document's amounts, when it generates a brand's colour scale, when it judges an uploaded logo, and when it calls an outside service or runs a background worker, which telemetry sees.
 
 ## The secrets box
 
@@ -343,8 +345,9 @@ are (`shared.go`): `Tokenize`, `TokenMatches`, `CompactSchema`, `Shorten`, `IsJS
 is the port between a module and a payment provider, shared by Invoices and a later
 Point of sale so both use the same adapters. It holds interfaces and values only:
 no SQL — each consumer keeps its attempts and payments in its own schema (module
-boundaries rule 4) — and it imports nothing but the standard library and
-`internal/buildinfo`, which `TestPayments_Purity` and depguard's `platform` list
+boundaries rule 4) — and it imports nothing but the standard library,
+`internal/buildinfo` and `internal/telemetry` (an adapter's client goes through
+[`OutboundTransport`](#telemetry)), which `TestPayments_Purity` and depguard's `platform` list
 enforce.
 
 ### The interface
@@ -471,8 +474,8 @@ deletes the registration.
 is the port between a module and a bank that answers an account's transactions
 through an API, shaped like [the payments port](#the-payments-port): interfaces and
 values only, no SQL — the consumer keeps its connections, accounts and lines in its own
-schema (module boundaries rule 4) — importing nothing but the standard library and
-`internal/buildinfo`, which `TestBankfeed_Purity` and depguard's `platform` list
+schema (module boundaries rule 4) — importing nothing but the standard library,
+`internal/buildinfo` and `internal/telemetry` ([`OutboundTransport`](#telemetry)), which `TestBankfeed_Purity` and depguard's `platform` list
 enforce. Invoices is to be its first consumer; nothing imports it yet.
 [Bank feeds](/en/contributing/bank-feeds/) describes Folio's adapter and how to add a
 bank.
@@ -1032,6 +1035,73 @@ An OpenTelemetry meter named `vantigo.live`: the up-down counters
 
 The browser side is described in [Live screens](/en/contributing/frontend-architecture/#live-screens);
 the operator's side in [Live updates and your proxy](/en/admin/installation/#live-updates-and-your-proxy).
+
+## Telemetry
+
+`internal/telemetry` wires OpenTelemetry (the operator's side is
+[Telemetry](/en/admin/installation/#telemetry)): one OTLP/HTTP exporter per signal with an
+endpoint, a resource that names the service, its version, the command and — from
+`VANTIGO_TENANT_ID` — the tenant (`vantigo.tenant.id`), and the process logger, whose JSON
+lines carry `tenant`, and `trace_id` and `span_id` for a record logged with a context
+inside a span. Log with the `…Context` methods (`logger.ErrorContext(ctx, …)`) where you
+have one, or the line will not lead to its trace. A module uses four pieces of it.
+
+**An outbound client.** Every `http.Client` the server builds sets
+`Transport: telemetry.OutboundTransport(base)`, over whatever guard or fake `base` is
+(`Deps.HTTPTransport` in a test). Each request is a client span and a point on
+`http.client.request.duration`, with its method, host, port and status, and no path,
+query or error text; no `traceparent` goes out. Wrapping a wrapped transport returns it
+unchanged. `TestEveryHTTPClientIsTraced` in `internal/telemetry` fails on an `http.Client`
+literal without it in non-test code, and on `http.DefaultClient`, `http.Get`, `http.Post`,
+`http.PostForm` or `http.Head` outside its allow-list.
+
+**A worker's cycle.** The runner starts each worker's `Run` once; the worker's loop owns
+its cycles, so it opens each one:
+
+```go
+for {
+	cycleCtx, endCycle := worker.StartCycle(ctx, w.Name())
+	n, err := w.RunCycle(cycleCtx)
+	endCycle(err)
+	if err != nil && ctx.Err() == nil {
+		w.logger().ErrorContext(cycleCtx, "the cycle failed", "worker", w.Name(), "error", err)
+	}
+	// wait for the ticker or ctx
+}
+```
+
+The cycle is a root span, `worker <name>`, that the cycle's queries and outbound calls
+join, and a point on `vantigo.worker.cycles` (`worker`, `outcome` = `ok`, `error` or
+`panic`) and `vantigo.worker.cycle.duration`. An error that arrives because `ctx` was
+cancelled counts as `ok`. A panic that unwinds through `Run` ends the open cycle as a
+`panic`, with an `exception` event holding the value and the stack, before the runner logs
+it. A worker that claims rows under a lease calls `worker.Claimed(cycleCtx, n)`
+(`vantigo.worker.claims`); the events dispatcher and Orders' and Purchasing's queues do. The outbox's
+backlog gauges belong to the dispatcher (`vantigo.events.backlog`, `…backlog.age`).
+
+**The route.** `module.Router` calls `telemetry.SetRoute` once it has matched an
+operation, so the server span is named `GET /api/v1/invoices/{id}` and both the span and
+the server metrics carry `http.route`, never the raw path.
+
+**The pool.** `cmd/vantigo` reports the pool's statistics with `telemetry.ObservePool`
+(`vantigo.db.pool.*`).
+
+### What an attribute may hold
+
+What a span, a metric or a log record carries leaves the installation for whoever runs the
+collector, so its attributes hold only what identifies the work, never the people or the
+data in it (Kubernetes readiness KR24).
+
+| Allowed | Never |
+| --- | --- |
+| The tenant; a request ID, trace and span ID; an operation ID; the module; the route pattern; the worker's name; a status, an outcome, an error type; a count; an opaque user ID (a UUID) and its kind (`person`, `agent`, `integration`) | A name; an email address; a phone number; a request or response body; a query string or a URL path with anything but IDs in it; a file name; free text a person typed — a subject, a note, a search |
+
+An error is recorded as our own code wrote it. An error that wraps an outside service's
+response body is trimmed to its status and the service's error code before it reaches a
+span or a log line; an error text that names a person is a bug in that text. The integration suite holds the line: its `TestMain`
+installs a span processor that looks for an email address in every span the suite
+exports — the name, every attribute, every event and link, the status — and fails the
+suite naming the span and the key when it finds one.
 
 ## The document arithmetic
 
