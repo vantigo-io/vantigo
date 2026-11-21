@@ -487,12 +487,13 @@ tilbyr en loopback-adresse i stedet, registrerer du den.
    du inn klient-ID-en og **lar klienthemmeligheten stå tom**: klienten er offentlig og beviser
    seg med PKCE.
 5. Start tilkoblingen i appen. Nettleseren åpner samtykkesiden, som sier at appen er
-   **Registrert i dette arbeidsområdet av** deg; godkjenn som beskrevet under
+   **Registrert i dette arbeidsområdet av** deg (med navn så lenge du er eier); godkjenn som beskrevet under
    [Samtykkesiden](#samtykkesiden).
 
 **Slik endrer eller avvikler du en klient:** **Endre** på raden endrer navnet og
-omdirigerings-URI-ene; en tilkobling som er laget før, virker fortsatt, så tilbakekall den under
-**Tilkoblede apper** hvis den ikke skal. **Arkiver**, etter en bekreftelse som sier hvor mange
+omdirigerings-URI-ene. Å fjerne en omdirigerings-URI kobler med én gang fra alle apper som logget
+inn med den — skjemaet advarer før du lagrer når klienten har apper koblet til — og de andre
+beholdes. **Arkiver**, etter en bekreftelse som sier hvor mange
 apper som er koblet til med den, kobler fra alle på én gang og avviser neste innlogging med den.
 Det kan ikke angres. Opptil 50 klienter kan være registrert samtidig.
 
@@ -500,8 +501,10 @@ Det kan ikke angres. Opptil 50 klienter kan være registrert samtidig.
 
 **Klientverter**, under **Administrer arbeidsområde › API-tilgang**, viser vertene der apper kan
 koble seg til med beskrivelsen sin, én per linje — `claude.ai`, `chatgpt.com`. Et underdomene av
-en vert i listen tillates også: `claude.ai` tillater `api.claude.ai`, ikke `notclaude.ai`.
-**Tom**, som er standard, tillater alle verter. Registrerte klienter tillates alltid.
+en vert i listen tillates også: `claude.ai` tillater `api.claude.ai`, ikke `notclaude.ai` — så en
+oppføring for et delt vertsdomene som `github.io`, `vercel.app` eller `pages.dev` tillater alle
+kunders nettsteder på det. **Tom**, som er standard, tillater alle verter. Registrerte klienter
+tillates alltid.
 
 1. Skriv inn vertene, én per linje, og velg **Lagre**. En vert er bare et navn: ingen
    `https://`, port, `*` eller IP-adresse.
@@ -589,11 +592,13 @@ innlogging. Tilbakekallingen revideres som `connection.revoked`.
   betyr at noen andre kan ha det.
 - Klienten **logger ut** eller fjerner serveren og sier fra til Vantigo, gjennom
   tilbakekallingsendepunktet ([OAuth connections](/en/reference/oauth/#the-revocation-endpoint)).
-- Den **registrerte klienten** den logget inn med, arkiveres.
+- Den **registrerte klienten** den logget inn med, arkiveres, eller endres så den ikke lenger
+  viser adressen tilkoblingen går tilbake til.
 - Klientens **beskrivelse endres** så den ikke lenger holder — den viser ikke lenger adressen
   tilkoblingen går tilbake til, eller bryter en regel. Vantigo sjekker den igjen i bakgrunnen når
   klienten fornyer tilgangen etter at kopien Vantigo har, er utløpt, høyst et døgn etter at den
-  sist ble lest; en beskrivelse som ikke kan nås for øyeblikket, endrer ingenting.
+  sist ble lest. Bare en beskrivelse som nevner klienten, teller: en som ikke kan nås for
+  øyeblikket, eller en side som ikke er en beskrivelse i det hele tatt, endrer ingenting.
 
 En deaktivert integrasjons tilkoblinger avvises mens den er deaktivert, og virker igjen når den
 aktiveres, slik nøklene dens gjør.
@@ -662,7 +667,8 @@ er noe å knytte den til. En AI-klients forespørsel ved MCP-endepunktet er oper
   forespørsel en tilkoblet app gjorde, viser appen slik den kalte seg selv, merket *(tilkoblet
   app)*, eller *Fjernet app* når tilkoblingens rad er borte.
 - **Nøkkel eller app**, **Status**, **Årsak** og **Dag** filtrerer alle tre. **Nøkkel eller app**
-  viser nøklene og de tilkoblede appene, så forespørslene til én app kan leses for seg.
+  viser nøklene og de tilkoblede appene, så forespørslene til én app kan leses for seg, og under
+  **Avsluttede apper** de som ble avsluttet de siste 30 dagene, med årsaken.
 
 En avvisning registreres med årsaken, og det gjør et gjentatt svar også:
 
@@ -945,8 +951,8 @@ MFA: `integration.created`, `integration.updated`, `integration.roles_changed`,
 etter. En tilkoblet app revideres som `connection.authorized` når klienten fullfører
 innloggingen, med klienten, verten, omfanget og integrasjonen, og som `connection.revoked` med
 årsaken når den avsluttes — `revoked`, `integration_archived`, `authorizer_removed`,
-`client_archived`, `code_replayed`, `refresh_reused`, `client_document_changed` eller
-`revoked_by_client`, de fire siste som `system:oauth`. Å registrere, endre og arkivere en klient
+`client_archived`, `client_changed`, `code_replayed`, `refresh_reused`, `client_document_changed`
+eller `revoked_by_client`, de fire siste som `system:oauth`. Å registrere, endre og arkivere en klient
 revideres som `oauth_client.created`, `oauth_client.updated` og `oauth_client.archived`, og en
 endring av klientvertene som `oauth.client_hosts_changed`. Ingen token eller kode
 registreres noen gang. Arbeideren `identity.api-keys` registrerer

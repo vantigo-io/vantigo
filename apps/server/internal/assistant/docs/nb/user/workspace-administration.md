@@ -297,7 +297,7 @@ statusen og, for en avvist forespørsel, hvorfor. En forespørsel som gjentok en
 `Idempotency-Key`, og fikk svaret på den igjen uten å kjøres to ganger, er merket *Gjentatt svar
 for Idempotency-Key*. **Nøkkel eller app**, **Status**, **Årsak** og **Dag** snevrer den inn:
 **Nøkkel eller app** viser nøklene og de tilkoblede appene, så du kan se forespørslene til én app
-alene. En ny forespørsel vises der i løpet av noen sekunder. En forespørsel fra en app som har
+alene, og under **Avsluttede apper** de som ble avsluttet de siste 30 dagene. En ny forespørsel vises der i løpet av noen sekunder. En forespørsel fra en app som har
 koblet seg til ved å logge inn, viser appen, merket *(tilkoblet app)*, og de to årsakene *Den
 tilkoblede appen kan bare lese* og *Den tilkoblede appen har ikke lenger tilgang* gjelder den.
 
@@ -351,11 +351,13 @@ klient** ber om et **Navn**, som vises på samtykkesiden og under **Tilkoblede a
 **Omdirigerings-URI-er**, én per linje, slik appen dokumenterer dem; så viser den **Klient-ID**,
 `vtc_…`, som skrives inn i appens innstillinger med klienthemmeligheten tom. Samtykkesiden sier
 da at appen er **Registrert i dette arbeidsområdet av** deg. **Endre** endrer navnet og
-omdirigerings-URI-ene; **Arkiver**, etter en bekreftelse, kobler fra alle apper som er koblet til
+omdirigerings-URI-ene — å fjerne én kobler fra appene som logget inn med den, og skjemaet sier fra
+først; **Arkiver**, etter en bekreftelse, kobler fra alle apper som er koblet til
 med den, og kan ikke angres.
 
 **Klientverter**, på samme side, sier hvilke verter apper kan koble seg til fra ved innlogging,
-som `claude.ai` og `chatgpt.com`, én per linje; et underdomene av en vert i listen tillates også.
+som `claude.ai` og `chatgpt.com`, én per linje; et underdomene av en vert i listen tillates også,
+så `github.io` ville tillate alle nettsteder som ligger der.
 Står den tom, som er standard, kan alle verter det. Registrerte klienter tillates alltid, og å
 lagre kobler ingenting fra.
 

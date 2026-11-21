@@ -156,7 +156,7 @@ to the Assistant, and answer `404` while `OAUTH_ENABLED` is off:
 | --- | --- |
 | `GET /api/v1/identity/oauth-clients` | the clients not archived, oldest first, each with who registered it and how many of its connections are live |
 | `POST /api/v1/identity/oauth-clients` | registers one: `201` with its minted `client_id`; at most 50 at once (`409 oauth_client_limit`); audited `oauth_client.created` |
-| `PATCH /api/v1/identity/oauth-clients/{id}` | replaces its name and redirect URIs under `If-Match` on its `version` (`412 version_mismatch`); its connections are kept; audited `oauth_client.updated` |
+| `PATCH /api/v1/identity/oauth-clients/{id}` | replaces its name and redirect URIs under `If-Match` on its `version` (`412 version_mismatch`); a connection whose redirect URI the new list no longer matches is revoked in the same transaction (`client_changed`); audited `oauth_client.updated` |
 | `POST /api/v1/identity/oauth-clients/{id}/archive` | archives it under `If-Match` and revokes every connection it has in the same transaction (`client_archived`); `204`; it cannot be undone; audited `oauth_client.archived` |
 
 The body of a registration or an edit is `{"name", "redirectUris"}`. The name is 1 to 80
@@ -167,12 +167,21 @@ body that breaks a rule is `400 invalid_request` with the field at fault (`name`
 registered, is `404 not_found`.
 
 A registered client is a public client like any other: PKCE, `none` at the token endpoint, no
-secret. On the consent page it is shown with **Registered in this workspace by** the person who
-registered it instead of the host a document was read from, and the host shown and kept on its
-connections is the redirect URI's. Its redirect URIs are an Owner's own, so an error is always
-redirected without a click, and there is no first-use notice or name warning. Changing its
-redirect URIs applies from the next sign-in: a connection made before keeps working; revoke it in
-**Connected apps** when it should not.
+secret. On the consent page it is shown as **Registered in this workspace by** the person who
+registered it — named only while that person is still an active Owner, by the same rule an
+approver is held to; otherwise just **Registered in this workspace** (`registeredBy` is `null`) —
+instead of the host a document was read from, and the host shown and kept on its connections is
+the redirect URI's. Its redirect URIs are an Owner's own, so an error is always redirected
+without a click, and there is no first-use notice or name warning.
+
+The client's row is held through the approval: the approval's transaction reads it `FOR SHARE`,
+against the archive's and the edit's `FOR UPDATE`, and refuses (`400 client_refused`) a client
+archived or no longer listing the request's `redirect_uri` meanwhile, so no connection is made for
+either. The token endpoint also refuses (`invalid_grant`) an exchange or a refresh of a registered
+client's connection whose client is archived. An **edit** that removes a redirect URI revokes, in
+its transaction, every connection whose redirect URI the new list no longer matches — compared as
+at sign-in, a loopback port ignored — with the reason `client_changed`, each audited
+`connection.revoked`; the others are kept.
 
 ### Client hosts
 
@@ -198,6 +207,11 @@ host must **equal an entry or be a subdomain of one**: `claude.ai` admits `claud
 - at **every refresh**: a connection whose host it leaves out is `invalid_grant` ("This workspace
   no longer admits this client's host."), with the refresh token left unspent and nothing
   revoked. An access token already issued works until it expires, within the hour.
+
+It is not held again at the code exchange: a code approved just before the list changed can
+still be exchanged within its 60 seconds, and the connection is then held at its first refresh.
+An entry admits every subdomain, so a shared hosting domain — `github.io`, `vercel.app`,
+`pages.dev` — admits every tenant's site on it.
 
 Changing the list **does not end** a connection: one whose host is left out is listed as
 `inactive` with the reason `client_not_allowed`, and renews again once its host is listed.
@@ -378,20 +392,24 @@ is not one.
 A document's client is checked again while it keeps renewing. When a connection of a client
 identified by a document refreshes and the cached document has expired, the refresh is answered
 as usual and the document is then fetched again **in the background**, by the rules of
-[Clients](#clients):
+[Clients](#clients). Only a document that speaks for the client can end its connection:
 
-- a document that is read and **no longer holds** — it names another `client_id`, breaks a rule,
-  or no longer lists the connection's redirect URI — **revokes the connection**
-  (`client_document_changed`, audited `connection.revoked` as `system:oauth`). The tokens the
-  refresh just issued stop at their next request;
-- a document that **cannot be read** — the host unreachable, a timeout, a status other than
-  `200`, a redirect, a body over 16 KiB — is transient and changes nothing; the next refresh after
-  the cache has expired tries again;
+- **terminal** — the connection is **revoked** (`client_document_changed`, audited
+  `connection.revoked` as `system:oauth`) and the tokens the refresh just issued stop at their
+  next request — when the answer is a JSON object that names a **different**, non-empty
+  `client_id`, or names **this** `client_id` and breaks a rule of [Clients](#clients) or no longer
+  lists the connection's redirect URI;
+- **transient** — nothing revoked and nothing cached; the next refresh after the cache has
+  expired tries again — for anything else: a failure to read (the host unreachable, a timeout, a
+  status other than `200`, a redirect, a body over 16 KiB), a `200` whose `Content-Type` is not
+  `application/json` or a `+json` type, a body that is not a JSON object, or an object with no
+  `client_id`. A maintenance page or a CDN's error body is not the client changing its mind;
 - a document that **still holds** is cached again for its `max-age`.
 
 A refresh while the cache is fresh fetches nothing. One `client_id` is fetched at most once in 10
-seconds by each server process, and each process runs at most 8 revalidations at once; a refresh
-that finds them busy starts none. The fetch holds no database connection or transaction: the
+seconds by each server process, and each process runs at most 8 revalidations at once, at most
+one for each client host; a refresh that finds them busy starts none, and is logged at warning
+level when all 8 are taken. On shutdown the server waits up to 5 seconds for those running. The fetch holds no database connection or transaction: the
 cache is read before it, and the revocation or the cache write is a transaction of its own after.
 A registered client is never revalidated: an Owner changes it by hand.
 
@@ -412,11 +430,14 @@ parameter at most once and at most 1,024 characters:
 
 Presenting **either** token with its connection's `client_id` revokes the **whole connection**
 (`revoked_by_client`, audited `connection.revoked` as `system:oauth`): both tokens are refused
-from their next request.
+from their next request. An **access token** does so only until it expires; an expired one
+revokes nothing. A **refresh token** does so whether it is live, spent, superseded or expired:
+whoever holds any refresh token of the connection's family may end it, as a reused one ends it
+at the token endpoint.
 
 | Answer | When |
 | --- | --- |
-| `200`, empty body, `Cache-Control: no-store` | the connection was revoked, or was already ended; and also for a token that is unknown, expired, malformed, of another kind (an API key, a `vtc_` client ID) or of another client's connection, for which nothing is revoked, so the answer says nothing about whether a token exists |
+| `200`, empty body, `Cache-Control: no-store` | the connection was revoked, or was already ended; and also for a token that is unknown, malformed, an expired access token, of another kind (an API key, a `vtc_` client ID) or of another client's connection, for which nothing is revoked, so the answer says nothing about whether a token exists |
 | `400 invalid_request` | another content type, a missing `token` or `client_id`, a repeated or too long parameter, a body over 16 KiB |
 | `401 invalid_client` | `Authorization`, `client_secret` or `client_assertion` sent: the client is public |
 | `405 invalid_request` | another method than `POST`, with `Allow: POST` |
@@ -496,7 +517,8 @@ starts a sign-in.
   `authorizer_removed`, its tokens refused, until an Owner revokes it.
 - **A replay**: a code exchanged twice (`code_replayed`), a refresh token reused after its grace
   (`refresh_reused`).
-- **A registered client archived** (`client_archived`), in the archive's transaction.
+- **A registered client archived** (`client_archived`), in the archive's transaction, or **edited**
+  so that it no longer lists the connection's redirect URI (`client_changed`), in the edit's.
 - **A document that no longer holds** at its [revalidation](#revalidation)
   (`client_document_changed`).
 - **The client itself**, through the [revocation endpoint](#the-revocation-endpoint)
@@ -516,8 +538,14 @@ connection never activated, or whose approver no longer qualifies) to the key's.
 
 `GET /api/v1/identity/integrations/{id}/requests?connection=<connection id>` reads one
 connection's requests, as `key=` reads one key's; with both, only requests that match both,
-which is none. The filter is served by the index `ix_api_requests_connection_at` on
+which is none. A connection's requests are read by queries of their own, filtered on
+`connection_id` plainly, so they read the index `ix_api_requests_connection_at` on
 `(connection_id, at)`, kept for a connection's rows only (`00219_identity_oauth_clients.sql`).
+
+`GET /api/v1/identity/integrations/{id}/connections?include=ended` lists, beside the live
+connections, those that ended — revoked or expired — within the log's 30 days, each `ended` with
+`endedAt` and `endReason` (the reason it was revoked with, or `expired`), so the Requests tab can
+offer a connection that no longer works but still has rows.
 
 ## Upkeep
 
